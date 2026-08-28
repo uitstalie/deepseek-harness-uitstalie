@@ -533,6 +533,10 @@
     { "path": "./apps/cli" },
     { "path": "./apps/plugin-market-generator" },
     { "path": "./apps/desktop-host" },
-    { "path": "./apps/desktop/tsconfig.host.json" }
+    { "path": "./apps/desktop/tsconfig.host.json" },
+    // BEGIN uitstalie-k3, 2026/08/28, task6, 注册 uitstalie 组两个新包进 Host 聚合程序
+    { "path": "./packages/uitstalie/models-dev" },
+    { "path": "./packages/uitstalie/llm-plus" }
+    // END uitstalie-k3
   ]
 }
