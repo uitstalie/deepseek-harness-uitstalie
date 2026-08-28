@@ -326,6 +326,10 @@
     { "path": "./packages/lsp/lsp" },
     { "path": "./packages/lsp/lsp-stdio" },
     { "path": "./packages/lsp/tool-lsp" },
-    { "path": "./apps/cli" }
+    { "path": "./apps/cli" },
+    // BEGIN uitstalie-k3, 2026/08/28, task6, 注册 uitstalie 组两个新包进 Host 聚合程序
+    { "path": "./packages/uitstalie/models-dev" },
+    { "path": "./packages/uitstalie/llm-plus" }
+    // END uitstalie-k3
   ]
 }

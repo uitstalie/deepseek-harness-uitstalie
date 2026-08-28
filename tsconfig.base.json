@@ -231,6 +231,9 @@
       "@deepseek-ai/dsh-experimental-inspector": ["./packages/experimental/inspector/src"],
       "@deepseek-ai/dsh-experimental-inspector/client": ["./packages/experimental/inspector/src/client/index.ts"],
       "@deepseek-ai/dsh-util-crypto": ["./packages/util/crypto/src"],
+      // BEGIN uitstalie-k3, 2026/08/28, task5, 新增 models-dev 包的 deepseek-extra-params 子路径别名（生成器只管根与 invariant，子路径走手写区）
+      "@deepseek-ai/dsh-models-dev/deepseek-extra-params": ["./packages/uitstalie/models-dev/src/deepseek-extra-params.ts"],
+      // END uitstalie-k3
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp/invariant": ["./packages/acp/acp/src/invariant.ts"],
@@ -344,6 +347,8 @@
       "@deepseek-ai/dsh-llm-mock-server/invariant": ["./packages/test-support/llm-mock-server/src/invariant.ts"],
       "@deepseek-ai/dsh-llm-pi-ai": ["./packages/llm/llm-pi-ai/src"],
       "@deepseek-ai/dsh-llm-pi-ai/invariant": ["./packages/llm/llm-pi-ai/src/invariant.ts"],
+      "@deepseek-ai/dsh-llm-plus": ["./packages/uitstalie/llm-plus/src"],
+      "@deepseek-ai/dsh-llm-plus/invariant": ["./packages/uitstalie/llm-plus/src/invariant.ts"],
       "@deepseek-ai/dsh-llm-replay": ["./packages/test-support/llm-replay/src"],
       "@deepseek-ai/dsh-llm-replay/invariant": ["./packages/test-support/llm-replay/src/invariant.ts"],
       "@deepseek-ai/dsh-llm-retry": ["./packages/llm/llm-retry/src"],
@@ -358,6 +363,8 @@
       "@deepseek-ai/dsh-mcp-client/invariant": ["./packages/mcp/mcp-client/src/invariant.ts"],
       "@deepseek-ai/dsh-message-feedback": ["./packages/feedback/message-feedback/src"],
       "@deepseek-ai/dsh-message-feedback/invariant": ["./packages/feedback/message-feedback/src/invariant.ts"],
+      "@deepseek-ai/dsh-models-dev": ["./packages/uitstalie/models-dev/src"],
+      "@deepseek-ai/dsh-models-dev/invariant": ["./packages/uitstalie/models-dev/src/invariant.ts"],
       "@deepseek-ai/dsh-native-command": ["./packages/util/native-command/src"],
       "@deepseek-ai/dsh-native-command/invariant": ["./packages/util/native-command/src/invariant.ts"],
       "@deepseek-ai/dsh-output-retention": ["./packages/util/output-retention/src"],
