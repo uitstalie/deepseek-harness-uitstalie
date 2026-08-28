@@ -1,0 +1,62 @@
+{
+  "deepseek": {
+    "id": "deepseek",
+    "env": ["DEEPSEEK_API_KEY"],
+    "npm": "@ai-sdk/openai-compatible",
+    "api": "https://api.deepseek.com",
+    "name": "DeepSeek",
+    "doc": "https://api-docs.deepseek.com/quick_start/pricing",
+    "models": {
+      "deepseek-v4-flash": {
+        "id": "deepseek-v4-flash",
+        "name": "DeepSeek V4 Flash",
+        "family": "deepseek-flash",
+        "attachment": false,
+        "reasoning": true,
+        "reasoning_options": [
+          { "type": "toggle" },
+          { "type": "effort", "values": ["low", "high", "max"] }
+        ],
+        "tool_call": true,
+        "interleaved": { "field": "reasoning_content" },
+        "structured_output": true,
+        "temperature": true,
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "open_weights": true,
+        "limit": { "context": 1000000, "output": 384000 },
+        "cost": { "input": 0.14, "output": 0.28, "reasoning": 0.28, "cache_read": 0.0028 }
+      },
+      "deepseek-v4-pro": {
+        "id": "deepseek-v4-pro",
+        "name": "DeepSeek V4 Pro",
+        "reasoning": true,
+        "tool_call": true,
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "limit": { "context": 1000000, "output": 384000 },
+        "cost": { "input": 0.435, "output": 0.87 },
+        "experimental": {
+          "modes": {
+            "fast": {
+              "provider": { "headers": { "x-beta": "fast-mode" }, "body": { "speed": "fast" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "broken-provider": {
+    "id": "broken-provider",
+    "models": "not-a-map"
+  },
+  "partial": {
+    "id": "partial",
+    "models": {
+      "good-model": {
+        "id": "good-model",
+        "limit": { "context": 8192, "output": 1024 },
+        "modalities": { "input": ["text"] }
+      },
+      "bad-model": "not-an-object"
+    }
+  }
+}
