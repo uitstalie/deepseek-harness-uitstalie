@@ -123,7 +123,9 @@ export namespace ModuleLoader {
 
     if (major >= 24) {
       const raw = requireInternal('internal/modules/esm/loader')?.getOrInitializeCascadedLoader()
-      if (raw) return _cachedLoader = Object.assign(raw, { version: 'v2' })
+      // BEGIN uitstalie-k3, 2026/08/31, task7, v1/v2 按方法形状判定而非大版本号：Node 24.11 的 cascaded loader 仍是 v1 签名（resolveSync(specifier, parentURL, attributes)，getOrCreateModuleJob 缺席），按大版本误标 v2 会让 v2 调用形（如 dsh-client-modules）全部抛错，web 引导插件表为空
+      if (raw) return _cachedLoader = Object.assign(raw, { version: typeof raw.getOrCreateModuleJob === 'function' ? 'v2' : 'v1' })
+      // END uitstalie-k3
     } else if (major >= 22) {
       const raw = requireInternal('internal/modules/esm/loader')?.getOrInitializeCascadedLoader()
       if (raw) return _cachedLoader = Object.assign(raw, { version: 'v1' })
