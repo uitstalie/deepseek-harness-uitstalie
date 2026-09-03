@@ -40,6 +40,7 @@
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-models-dev": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
+    "@deepseek-ai/dsh-settings-file": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^"
   }
 }
