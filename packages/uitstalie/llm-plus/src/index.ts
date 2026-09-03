@@ -35,6 +35,7 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 import { PlusAdapter } from './adapter.ts'
 import { Config, PROTOCOL_NAMES, resolveRoutes, type PlusConfig, type ProtocolName, type ResolvedRoute } from './config.ts'
 import { registerOAuthFlows } from './oauth/index.ts'
+import { PlusAuthRemote } from './remote.ts'
 import { openAiCompletions } from './protocols/openai-completions.ts'
 import { openAiResponses } from './protocols/openai-responses.ts'
 import { anthropicMessages } from './protocols/anthropic-messages.ts'
@@ -144,6 +145,8 @@ export function apply(ctx: Context, config: PlusConfig): void {
     routesNow.filter(route => route.oauth !== undefined).map(route => route.id),
     routeId => routesNow.find(route => route.id === routeId)?.oauth,
   )
+  // OAuth 的 Remote 面（设置页的登录按钮读它）；routesNow 闭包热更新后现读
+  new PlusAuthRemote(ctx, () => routesNow)
 
   // 当前生效的路由表来源（settings 层或 cordis.yml 配置）。
   // 契约（对齐 llm-deepseek）：setSource 给的是** thunk**——存起来在

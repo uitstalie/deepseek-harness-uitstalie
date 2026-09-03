@@ -38,6 +38,16 @@ export const en = {
   modelsSubset: 'Selected subset',
   modelsLoading: 'loading models…',
   interpolatedUrl: 'The catalog endpoint contains {"${VAR}"} interpolation — fill in the concrete URL.',
+  oauthSection: 'Subscription sign-in (OAuth)',
+  oauthConfigured: 'signed in',
+  oauthNotConfigured: 'not signed in',
+  oauthSignInAgain: 'Sign in again',
+  oauthCancel: 'Cancel',
+  attemptRunning: 'signing in…',
+  attemptAuthorized: 'signed in',
+  attemptFailed: 'failed',
+  attemptCancelled: 'cancelled',
+  submitAnswer: 'Submit',
 }
 
 /** The settings.models-dev namespace key union. */
@@ -76,6 +86,16 @@ export const zh: { [Key in keyof typeof en]: string } = {
   modelsSubset: '选定子集',
   modelsLoading: '模型加载中…',
   interpolatedUrl: '目录端点含 {"${VAR}"} 插值——请填具体 URL。',
+  oauthSection: '订阅登录（OAuth）',
+  oauthConfigured: '已登录',
+  oauthNotConfigured: '未登录',
+  oauthSignInAgain: '重新登录',
+  oauthCancel: '取消',
+  attemptRunning: '登录中…',
+  attemptAuthorized: '已登录',
+  attemptFailed: '失败',
+  attemptCancelled: '已取消',
+  submitAnswer: '提交',
 }
 
 /**
