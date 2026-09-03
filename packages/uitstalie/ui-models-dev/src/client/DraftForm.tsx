@@ -8,6 +8,7 @@
 import type { CatalogModelSummary, CatalogProviderSummary } from '@deepseek-ai/dsh-models-dev/types'
 import type { ProtocolName } from '@deepseek-ai/dsh-llm-plus'
 import type { ProviderDraft } from './draft.ts'
+import { JsonField, TextField } from './fields.tsx'
 import { fill, type ModelsDevKey } from './locales.ts'
 import styles from './ModelsDevSection.module.css'
 
@@ -24,47 +25,6 @@ export interface DraftFormProps {
   onPatch: (patch: Partial<ProviderDraft>) => void
   onModelMode: (mode: ProviderDraft['modelMode']) => void
   onToggleModel: (modelId: string, checked: boolean) => void
-}
-
-/** 一个标签 + 文本输入行。 */
-function TextField(props: {
-  label: string
-  value: string
-  placeholder?: string
-  type?: string
-  onChange: (value: string) => void
-}) {
-  return (
-    <label className={styles.field}>
-      <span className={styles.fieldLabel}>{props.label}</span>
-      <input
-        className={styles.input}
-        type={props.type ?? 'text'}
-        value={props.value}
-        {...(props.placeholder === undefined ? {} : { placeholder: props.placeholder })}
-        onChange={event => props.onChange(event.target.value)}
-      />
-    </label>
-  )
-}
-
-/** 一个标签 + JSON 文本域行。 */
-function JsonField(props: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-}) {
-  return (
-    <label className={styles.field}>
-      <span className={styles.fieldLabel}>{props.label}</span>
-      <textarea
-        className={styles.textarea}
-        rows={2}
-        value={props.value}
-        onChange={event => props.onChange(event.target.value)}
-      />
-    </label>
-  )
 }
 
 /** 模型子集勾选区（全部跟随目录 / 选定子集两态）。 */
