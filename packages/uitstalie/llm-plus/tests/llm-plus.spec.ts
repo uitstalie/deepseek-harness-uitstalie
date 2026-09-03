@@ -526,6 +526,98 @@ test('anthropic serializer warns on replay degrade instead of forging history', 
   expect(reasons.some(reason => reason.includes('misaligned'))).toBe(true)
 })
 
+test('oauth route resolves the stored grant as Bearer, refreshing when near expiry', async () => {
+  const ctx = new Context()
+  // credentials stub：grant 记录存在内存表里，refresh 时换新 token
+  let record: { kind: 'grant'; payload: unknown } | undefined = {
+    kind: 'grant',
+    payload: { type: 'oauth', access: 'kimi-access-1', refresh: 'kimi-refresh', expires: Date.now() + 60_000 }, // 1 分钟后过期 → 触发刷新
+  }
+  let refreshed = 0
+  ctx.root.provide('credentials', {
+    resolve: () => Promise.resolve(undefined),
+    readRecord: () => Promise.resolve(record),
+    modifyRecord: (_key: unknown, mutate: (current: unknown) => Promise<typeof record>) => {
+      return Promise.resolve(mutate(record)).then((next) => {
+        refreshed++
+        if (next !== undefined) record = next
+        return record
+      })
+    },
+    deleteRecord: () => Promise.resolve(),
+  })
+  await ctx.plugin(LlmRuntime)
+  // kimi-coding flow 的 refresh 会打 auth.kimi.com——罐装它
+  const refreshTokenEndpoint = 'https://auth.kimi.com/api/oauth/token'
+  sseByUrl = [['http://test.local/v1/chat/completions', 'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n']]
+  // fetch stub 只认 SSE 表；OAuth 刷新端点要走 fetch JSON——单独 stub
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url === refreshTokenEndpoint) {
+      return new Response(JSON.stringify({ access_token: 'kimi-access-2', refresh_token: 'kimi-refresh-2', expires_in: 3600 }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    lastFetch = {
+      url,
+      headers: Object.fromEntries(new Headers(init?.headers).entries()),
+      body: JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Record<string, unknown>,
+    }
+    const hit = sseByUrl.find(([prefix]) => url.includes(prefix))
+    if (!hit) return new Response('no canned response for ' + url, { status: 500 })
+    return sseResponse(hit[1])
+  })
+  await ctx.plugin(llmPlus, {
+    routes: { 'kimi-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', oauth: 'kimi-coding' } },
+  })
+
+  await collect(ctx, { provider: 'kimi-plus', model: 'm', messages: [userMessage('hi')] })
+  // 临期 grant 在请求期被刷新（modifyRecord 锁内），新 access 成为 Bearer
+  expect(refreshed).toBe(1)
+  expect(lastFetch!.headers['authorization']).toBe('Bearer kimi-access-2')
+  expect((record as { payload: { access: string } }).payload.access).toBe('kimi-access-2')
+})
+
+test('oauth route without a stored grant fails with an actionable AUTH error, never sending the request', async () => {
+  const ctx = new Context()
+  ctx.root.provide('credentials', {
+    resolve: () => Promise.resolve(undefined),
+    readRecord: () => Promise.resolve(undefined),
+    modifyRecord: () => Promise.resolve(undefined),
+    deleteRecord: () => Promise.resolve(),
+  })
+  await ctx.plugin(LlmRuntime)
+  await ctx.plugin(llmPlus, {
+    routes: { 'kimi-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', oauth: 'kimi-coding' } },
+  })
+  sseByUrl = [['http://test.local', 'data: [DONE]\n']]
+  const chunks = await collect(ctx, { provider: 'kimi-plus', model: 'm', messages: [userMessage('hi')] })
+  expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'error', failure: { code: 'AUTH' } } })
+  expect(lastFetch).toBeUndefined()
+})
+
+test('oauth flows register with the authorization seam and leave with the fiber', async () => {
+  const ctx = new Context()
+  ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+  const flows = new Map<string, unknown>()
+  ctx.root.provide('authorization', {
+    registerFlow: (flow: { key: unknown }) => {
+      flows.set(String(flow.key), flow)
+      return () => { flows.delete(String(flow.key)) }
+    },
+  })
+  await ctx.plugin(LlmRuntime)
+  await ctx.plugin(llmPlus, {
+    routes: {
+      'kimi-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', oauth: 'kimi-coding' },
+      'plain-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', apiKeyRef: 'X' },
+    },
+  })
+  // 只有声明了 oauth 的路由注册 flow；key 的 scope 段是插件注册名。
+  // fiber 摘除时的移除是缝自己的契约（真实 AuthorizationService 的
+  // registerFlow 内 ctx.effect 绑定调用方 fiber，有其包自身测试覆盖），
+  // 这里的桩没有 fiber 感知，只断言注册面
+  expect([...flows.keys()]).toEqual(['llm-plus/kimi-plus'])
+})
+
 test('settings user-layer route additions take effect without a restart', async () => {
   // 真实动态组合（对齐 llm-deepseek 的 dynamic-config 夹具）：
   // settings-file 落地用户层，watch:false 走确定性的进程内写路径
