@@ -151,3 +151,62 @@
 .okText {
   color: var(--dsw-alias-state-success-label, #2e9e5b);
 }
+
+/* ---- OAuth 登录区 ---- */
+
+.oauthPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.rowAction {
+  margin-left: auto;
+}
+
+.attemptArea {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  padding-top: 8px;
+}
+
+.noticeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.noticeLink {
+  color: var(--dsw-alias-label-link, #3a6fd8);
+  word-break: break-all;
+}
+
+.deviceCode {
+  font-family: monospace;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.promptBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.promptRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.promptOptions {
+  display: flex;
+  gap: 8px;
+}

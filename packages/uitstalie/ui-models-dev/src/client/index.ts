@@ -21,6 +21,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only：拉进 ctx.remote merge 与 ClientRemote 类型
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import modelsDevRemote from '@deepseek-ai/dsh-models-dev/remote'
+import llmPlusRemote from '@deepseek-ai/dsh-llm-plus/remote'
 import { ModelsDevSection, type ModelsDevSectionInjected } from './ModelsDevSection.tsx'
 import { ModelsDevStore, type ModelsDevWire } from './store.ts'
 import { en, zh, type ModelsDevKey } from './locales.ts'
@@ -51,17 +52,19 @@ export const inject = ['slots', 'locale', 'remote', 'remote.settings', 'remote.c
  * @returns 清理函数：摘除 Remote contribution（slots 注册随 fiber 自动摘除）。
  */
 export async function apply(ctx: ClientContext): Promise<() => void> {
-  const disposeRemote = await ctx.remote.$mount(modelsDevRemote)
+  const disposeModelsDev = await ctx.remote.$mount(modelsDevRemote)
+  const disposeLlmPlus = await ctx.remote.$mount(llmPlusRemote)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-models-dev: copy dictionaries')
 
   const t = ctx.locale.bind(NS) as ModelsDevSectionInjected['t']
-  // $mount 之后 remote.modelsDev 才存在：内层 inject 等待它并把全部用到的
+  // $mount 之后 remote.* 才存在：内层 inject 等待它并把全部用到的
   // 服务重新声明进作用域（内层作用域不继承外层的可访问集）
-  ctx.inject(['slots', 'remote.modelsDev', 'remote.settings', 'remote.credentials'], (scoped) => {
+  ctx.inject(['slots', 'remote.modelsDev', 'remote.llmPlusAuth', 'remote.settings', 'remote.credentials'], (scoped) => {
     const wire: ModelsDevWire = {
       modelsDev: scoped.remote.modelsDev,
       settings: scoped.remote.settings,
       credentials: scoped.remote.credentials,
+      llmPlusAuth: scoped.remote.llmPlusAuth,
     }
     const controller = new ModelsDevStore(wire)
     const injected = (): ModelsDevSectionInjected => ({
@@ -80,6 +83,10 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
 
     // 目录拉取是页面级一次性动作（失败进 error 态，页面可重试）
     void controller.load()
+    void controller.loadOAuthRoutes()
   })
-  return disposeRemote
+  return () => {
+    disposeModelsDev()
+    disposeLlmPlus()
+  }
 }
