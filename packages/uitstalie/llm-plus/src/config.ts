@@ -16,6 +16,10 @@
 import z from '@deepseek-ai/schemastery'
 import { resolveRetryPolicy, RetryPolicySchema, type ResolvedRetryPolicy, type RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
+import { OAUTH_FLOW_IDS } from './oauth/index.ts'
+
+/** OAuth flow id 的封闭联合（与 schema 的 z.const 表一一对应）。 */
+export type OAuthFlowId = 'anthropic' | 'openai-codex' | 'github-copilot' | 'openrouter' | 'kimi-coding' | 'xai'
 
 /** 支持的 wire 协议名（与 protocols/ 下的实现一一对应）。 */
 export type ProtocolName = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'gemini'
@@ -64,6 +68,12 @@ export interface RouteConfig {
    * OAuth（PKCE 登录流）按协议/provider 后续加入。
    */
   apiKeyRef?: string
+  /**
+   * OAuth 登录流 id（oauth/ 目录的六家：anthropic/openai-codex/github-copilot/
+   * openrouter/kimi-coding/xai）。与 apiKeyRef 并列的凭据来源：
+   * apiKeyRef 命中时覆盖 OAuth grant；grant 缺失/判死时报可行动的重登错误。
+   */
+  oauth?: OAuthFlowId
   /** models.dev 的 provider id：给出即接入动态目录（模型列表/容量/价格）。 */
   modelsDevProvider?: string
   /** 手工模型表；与 modelsDevProvider 并存时**整体覆盖**目录数据。 */
@@ -117,6 +127,14 @@ const routeSchema = z.object({
   displayName: z.string(),
   baseURL: z.string(),
   apiKeyRef: z.string().role('credential-ref'),
+  oauth: z.union([
+    z.const('anthropic'),
+    z.const('openai-codex'),
+    z.const('github-copilot'),
+    z.const('openrouter'),
+    z.const('kimi-coding'),
+    z.const('xai'),
+  ]),
   modelsDevProvider: z.string(),
   models: z.array(modelEntrySchema),
   headers: z.dict(z.string()),
@@ -157,6 +175,8 @@ export interface ResolvedRoute {
   baseURL: string
   /** 凭据引用名（credentials seam 的键）；免认证路由缺席。 */
   apiKeyRef?: string
+  /** OAuth 登录流 id（已校验在 OAUTH_PROVIDERS 表内）；缺席 = 不走 OAuth。 */
+  oauth?: string
   modelsDevProvider?: string
   models?: ModelEntryConfig[]
   /** 合并后的路由级额外头（请求期只需照抄）。 */
@@ -203,6 +223,9 @@ export function resolveRoutes(routes: Record<string, RouteConfig>): ResolvedRout
         throw new Error(`llm-plus: route ${JSON.stringify(id)} models must be an array of objects with a non-empty string id`)
       }
     }
+    if (route.oauth !== undefined && !OAUTH_FLOW_IDS.includes(route.oauth)) {
+      throw new Error(`llm-plus: route ${JSON.stringify(id)} has unknown oauth flow ${JSON.stringify(route.oauth)} (expect one of ${OAUTH_FLOW_IDS.join(', ')})`)
+    }
     const baseURL = route.baseURL ?? PROTOCOL_DEFAULT_BASE_URL[route.protocol]
     return {
       id,
@@ -210,6 +233,7 @@ export function resolveRoutes(routes: Record<string, RouteConfig>): ResolvedRout
       displayName: route.displayName ?? id,
       baseURL,
       ...(route.apiKeyRef === undefined ? {} : { apiKeyRef: route.apiKeyRef }),
+      ...(route.oauth === undefined ? {} : { oauth: route.oauth }),
       ...(route.modelsDevProvider === undefined ? {} : { modelsDevProvider: route.modelsDevProvider }),
       // schema 会把缺席的数组物化为 []（schemastery 的默认行为）——空数组
       // 按"未提供"归一化（与 pi-ai 同语义），否则空手工表会遮蔽目录数据
