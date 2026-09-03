@@ -61,6 +61,21 @@ export interface RequestAssets {
   apiKey?: string
   /** 图片字节解析器。 */
   image: ImageWireResolver
+  /**
+   * replay 降级告警（对齐 pi-ai 的 onReplayDegrade）：历史消息上的 replay
+   * envelope 存在但不可用（blocks 与 content 位置对不齐 / 缺签名 / 缺加密
+   * 内容）时调用一次——行为仍是静默丢弃（强于伪造），告警是可观测性。
+   */
+  onReplayDegrade?: (reason: string) => void
+  /**
+   * 模型的 reasoning 控制面（adapter 从手工表或 models.dev 目录解析）：
+   * efforts = 档位枚举（openai 系透传前的校验池）、budget = 数值预算范围
+   * （anthropic budget_tokens / gemini thinkingBudget 的 clamp 依据）。
+   */
+  reasoning?: {
+    efforts?: string[]
+    budget?: { min?: number; max?: number }
+  }
 }
 
 /**
