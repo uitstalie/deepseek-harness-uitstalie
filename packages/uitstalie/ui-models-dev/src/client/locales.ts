@@ -48,6 +48,16 @@ export const en = {
   attemptFailed: 'failed',
   attemptCancelled: 'cancelled',
   submitAnswer: 'Submit',
+  myRoutes: 'My routes',
+  routeEdit: 'Edit',
+  routeDelete: 'Delete',
+  routeSave: 'Save',
+  fieldOAuth: 'OAuth flow',
+  oauthNone: 'none (API key)',
+  fieldMaxTokens: 'Default max output tokens',
+  routeFailureHeaders: 'Extra headers must be a JSON object',
+  routeFailureBody: 'Extra body fields must be a JSON object',
+  routeFailureMaxTokens: 'Default max output tokens must be a positive integer',
 }
 
 /** The settings.models-dev namespace key union. */
@@ -96,6 +106,16 @@ export const zh: { [Key in keyof typeof en]: string } = {
   attemptFailed: '失败',
   attemptCancelled: '已取消',
   submitAnswer: '提交',
+  myRoutes: '我的路由',
+  routeEdit: '编辑',
+  routeDelete: '删除',
+  routeSave: '保存',
+  fieldOAuth: 'OAuth 登录流',
+  oauthNone: '无（API key）',
+  fieldMaxTokens: '默认最大输出 token',
+  routeFailureHeaders: '额外请求头必须是 JSON 对象',
+  routeFailureBody: '额外请求体字段必须是 JSON 对象',
+  routeFailureMaxTokens: '默认最大输出 token 必须是正整数',
 }
 
 /**

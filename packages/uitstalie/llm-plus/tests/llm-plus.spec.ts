@@ -618,6 +618,42 @@ test('oauth flows register with the authorization seam and leave with the fiber'
   expect([...flows.keys()]).toEqual(['llm-plus/kimi-plus'])
 })
 
+test('oauth flow registered after settings change survives the seam mounting late', async () => {
+  // 竞态回归：路由从 settings 用户层到达 早于 authorization 缝激活——
+  // 曾经的实现在缝激活时只同步初始集，后到路由永远没有 flow
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-llm-plus-oauth-race-'))
+  try {
+    const ctx = new Context()
+    ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(FileSettingsProvider, { path: join(dir, 'settings.yaml'), watch: false })
+    await ctx.plugin(llmPlus, {
+      routes: { 'ds-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', apiKeyRef: 'DEEPSEEK_TEST' } },
+    })
+    // 用户层变更先到（缝还不在）
+    await ctx.settings.update(settingsNamespace('llm-plus'), {
+      routes: { 'kimi-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local/kimi/v1', oauth: 'kimi-coding' } },
+    })
+    await vi.waitFor(() => {
+      expect(ctx.root.llm.listProviders().map(provider => provider.id).sort()).toEqual(['ds-plus', 'kimi-plus'])
+    })
+    // 缝后到
+    const flows = new Map<string, unknown>()
+    ctx.root.provide('authorization', {
+      registerFlow: (flow: { key: unknown }) => {
+        flows.set(String(flow.key), flow)
+        return () => { flows.delete(String(flow.key)) }
+      },
+    })
+    await vi.waitFor(() => {
+      expect([...flows.keys()]).toEqual(['llm-plus/kimi-plus'])
+    })
+    await ctx.fiber.dispose()
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('settings user-layer route additions take effect without a restart', async () => {
   // 真实动态组合（对齐 llm-deepseek 的 dynamic-config 夹具）：
   // settings-file 落地用户层，watch:false 走确定性的进程内写路径
