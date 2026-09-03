@@ -20,7 +20,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, readReplayEnvelope, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, parseJsonObject } from './shared.ts'
+import { contentToText, clampBudget, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, parseJsonObject } from './shared.ts'
 
 /** 默认端点；baseURL 已含 /v1 时不再重复拼。 */
 function endpoint(baseURL: string): string {
@@ -66,6 +66,9 @@ async function serializeMessages(options: GenerateOptions, assets: RequestAssets
       ? readReplayEnvelope(message.source, 'anthropic-messages')
       : undefined
     const replayable = envelope !== undefined && envelope.blocks.length === message.content.length
+    if (envelope !== undefined && !replayable) {
+      assets.onReplayDegrade?.('replay envelope blocks misaligned with message content; dropping thinking blocks')
+    }
     // thinking 块必须先于 text/tool_use（Anthropic 的顺序约束），先扫一遍
     message.content.forEach((block, position) => {
       if (block.type !== 'reasoning') return
@@ -73,7 +76,11 @@ async function serializeMessages(options: GenerateOptions, assets: RequestAssets
       const meta = envelope.blocks[position]
       const signature = typeof meta?.signature === 'string' ? meta.signature : undefined
       // 有签名才回带；没有签名的 reasoning 块静默丢弃（强于伪造）
-      if (signature) push(role, { type: 'thinking', thinking: block.text, signature })
+      if (!signature) {
+        assets.onReplayDegrade?.('reasoning block has no signature; dropping it rather than forging history')
+        return
+      }
+      push(role, { type: 'thinking', thinking: block.text, signature })
     })
     const text = contentToText(message.content)
     if (text) push(role, { type: 'text', text })
@@ -112,9 +119,15 @@ async function buildRequest(route: ResolvedRoute, options: GenerateOptions, asse
       input_schema: tool.parameters as JsonValue,
     }))
   }
-  // reasoningEffort 存在即开思考；v1 不做 budget 细分（数据在 models.dev
-  // reasoning_options 里，细分逻辑留待 replay 一起做）
-  if (options.reasoningEffort !== undefined) body.thinking = { type: 'enabled' }
+  // reasoningEffort：数值形式映射为 budget_tokens（Anthropic 的数值预算
+  // 控制），clamp 进目录声明的范围；非数值档位只开思考（Anthropic 没有
+  // 档位概念，enabled 即全权）
+  if (options.reasoningEffort !== undefined) {
+    const budget = Number(options.reasoningEffort)
+    body.thinking = Number.isFinite(budget)
+      ? { type: 'enabled', budget_tokens: clampBudget(budget, assets.reasoning?.budget) }
+      : { type: 'enabled' }
+  }
   return {
     url: endpoint(route.baseURL),
     headers: {

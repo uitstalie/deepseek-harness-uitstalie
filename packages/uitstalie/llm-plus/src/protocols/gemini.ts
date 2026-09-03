@@ -21,7 +21,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, readReplayEnvelope, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, parseJsonObject } from './shared.ts'
+import { contentToText, clampBudget, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, parseJsonObject } from './shared.ts'
 
 /** 端点拼接：模型 id 进路径，SSE 走 ?alt=sse 查询参数。 */
 function endpoint(baseURL: string, model: string): string {
@@ -69,11 +69,18 @@ async function serializeContents(options: GenerateOptions, assets: RequestAssets
       ? readReplayEnvelope(message.source, 'gemini')
       : undefined
     const replayable = envelope !== undefined && envelope.blocks.length === message.content.length
+    if (envelope !== undefined && !replayable) {
+      assets.onReplayDegrade?.('replay envelope blocks misaligned with message content; dropping thought parts')
+    }
     message.content.forEach((block, position) => {
       if (block.type !== 'reasoning' || !replayable) return
       const meta = envelope.blocks[position]
       const signature = typeof meta?.thoughtSignature === 'string' ? meta.thoughtSignature : undefined
-      if (signature) push(role, { text: block.text, thought: true, thoughtSignature: signature })
+      if (!signature) {
+        assets.onReplayDegrade?.('reasoning block has no thoughtSignature; dropping it rather than forging history')
+        return
+      }
+      push(role, { text: block.text, thought: true, thoughtSignature: signature })
     })
     const text = contentToText(message.content)
     if (text) push(role, { text })
@@ -97,11 +104,11 @@ async function buildRequest(route: ResolvedRoute, options: GenerateOptions, asse
   const maxTokens = options.maxTokens ?? route.defaultMaxTokens
   if (maxTokens !== undefined) generationConfig.maxOutputTokens = maxTokens
   if (options.stop) generationConfig.stopSequences = options.stop
-  // reasoningEffort 存在即要求思考回显；数值形式（budget）解析得出时带上
+  // reasoningEffort 存在即要求思考回显；数值形式（budget）clamp 进目录范围
   if (options.reasoningEffort !== undefined) {
     const budget = Number(options.reasoningEffort)
     generationConfig.thinkingConfig = Number.isFinite(budget)
-      ? { includeThoughts: true, thinkingBudget: budget }
+      ? { includeThoughts: true, thinkingBudget: clampBudget(budget, assets.reasoning?.budget) }
       : { includeThoughts: true }
   }
   const body: Record<string, JsonValue> = {
