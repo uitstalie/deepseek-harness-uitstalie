@@ -10,6 +10,7 @@
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { fill, type ModelsDevKey } from './locales.ts'
+import { MyRoutes } from './MyRoutes.tsx'
 import { OAuthPanel } from './OAuthPanel.tsx'
 import { ProviderCard } from './ProviderCard.tsx'
 import type { ModelsDevState, ModelsDevStore, SubmitFailure } from './store.ts'
@@ -81,6 +82,19 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
         onAnswer={(routeId, promptId) => void controller.answerPrompt(routeId, promptId)}
         onAnswerDraft={(promptId, value) => controller.setAnswerDraft(promptId, value)}
       />
+      {state.myRoutes && (
+        <MyRoutes
+          routes={state.myRoutes.routes}
+          editing={state.myRoutes.editing}
+          failure={state.myRoutes.failure}
+          t={t}
+          onStartEdit={(routeId) => { controller.startEditRoute(routeId) }}
+          onPatchDraft={(patch) => { controller.patchEditDraft(patch) }}
+          onSaveEdit={() => void controller.saveEditRoute()}
+          onCancelEdit={() => { controller.cancelEditRoute() }}
+          onDelete={routeId => void controller.deleteRoute(routeId)}
+        />
+      )}
       <input
         className={styles.input}
         value={state.filter}
