@@ -97,3 +97,26 @@ export async function getJson(url: string, headers: Record<string, string>, sign
   }
   return response.json()
 }
+
+/**
+ * 把数值 reasoning 预算 clamp 进目录声明的范围（无范围原样通过——
+ * 端点是最终仲裁者，clamp 只纠正目录已知的越界）。
+ */
+export function clampBudget(value: number, budget?: { min?: number; max?: number }): number {
+  if (budget?.min !== undefined && value < budget.min) return budget.min
+  if (budget?.max !== undefined && value > budget.max) return budget.max
+  return value
+}
+
+/**
+ * openai 系 reasoning effort 透传前的档位校验：模型声明了档位池时，
+ * 池外的值 fail loud（比 provider 400 更可行动；池未知则放行透传）。
+ * @returns 可透传的 effort 字符串。
+ * @throws {Error} effort 不在声明的档位池内。
+ */
+export function validateEffort(effort: string, pool: string[] | undefined, model: string): string {
+  if (pool !== undefined && pool.length > 0 && !pool.includes(effort)) {
+    throw new Error(`llm-plus: reasoning effort ${JSON.stringify(effort)} is not valid for model ${JSON.stringify(model)} (expect one of ${pool.join(', ')})`)
+  }
+  return effort
+}

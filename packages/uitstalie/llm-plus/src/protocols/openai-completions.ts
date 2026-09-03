@@ -17,7 +17,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder } from './shared.ts'
+import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, validateEffort } from './shared.ts'
 
 /** API 路径拼接：容忍 baseURL 尾部斜杠。 */
 function endpoint(baseURL: string): string {
@@ -98,8 +98,11 @@ async function buildRequest(route: ResolvedRoute, options: GenerateOptions, asse
       function: { name: tool.name, description: tool.description, parameters: tool.parameters as JsonValue },
     }))
   }
-  // reasoningEffort 是不透明 id，openai-compat 方言直接透传字符串
-  if (options.reasoningEffort !== undefined) body.reasoning_effort = String(options.reasoningEffort)
+  // reasoningEffort 是不透明 id，openai-compat 方言直接透传字符串；
+  // 模型声明了档位池时先校验（池外值 fail loud，比 provider 400 更可行动）
+  if (options.reasoningEffort !== undefined) {
+    body.reasoning_effort = validateEffort(String(options.reasoningEffort), assets.reasoning?.efforts, options.model)
+  }
   return {
     url: endpoint(route.baseURL),
     headers: {

@@ -21,6 +21,7 @@ import {
   type GenerateOptions,
   type LlmModelInfo,
   type LlmResolvedModelInfo,
+  type ResolvedRetryPolicy,
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import { credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
@@ -84,6 +85,8 @@ export class PlusAdapter extends LlmAdapter {
       catalog?: ModelsDevCatalog
       credentials?: CredentialProvider
       attachments?: AttachmentStore
+      /** replay 降级告警出口（插件入口绑定 ctx.logger.warn）。 */
+      warn?: (message: string) => void
     },
   ) {
     super()
@@ -115,6 +118,11 @@ export class PlusAdapter extends LlmAdapter {
     return route
   }
 
+  /** 路由级重试策略（registry 在注册/replace 时捕获；undefined = 用全局默认）。 */
+  override providerRetryPolicy(provider: string): ResolvedRetryPolicy | undefined {
+    return this.routes.find(candidate => candidate.id === provider)?.retryPolicy
+  }
+
   /**
    * 每请求解析凭据。**唯一**路径是 credentials seam（环境变量与 .env 的
    * 兜底是 credentials provider 自己的分层职责，本插件不读 process.env）。
@@ -135,14 +143,50 @@ export class PlusAdapter extends LlmAdapter {
   }
 
   /**
+   * reasoning 控制面材料：efforts 档位池（手工表或目录）+ budget 预算范围
+   * （仅目录的 reasoning_options 提供）。都没有时缺席（协议不做校验/钳制）。
+   */
+  private reasoningAssets(
+    route: ResolvedRoute,
+    model: string,
+    info: LlmResolvedModelInfo,
+  ): { reasoning?: { efforts?: string[]; budget?: { min?: number; max?: number } } } {
+    const efforts = info.reasoning?.efforts.map(effort => effort.id as string)
+    const budget = route.modelsDevProvider !== undefined && this.deps.catalog !== undefined
+      ? this.deps.catalog.resolveModelDefaults(route.modelsDevProvider, model)?.reasoningBudget
+      : undefined
+    const hasBudget = budget !== undefined && (budget.min !== undefined || budget.max !== undefined)
+    if ((efforts === undefined || efforts.length === 0) && !hasBudget) return {}
+    // exactOptionalPropertyTypes：逐字段条件展开，不带 undefined 键
+    const budgetOut = hasBudget
+      ? { ...(budget.min === undefined ? {} : { min: budget.min }), ...(budget.max === undefined ? {} : { max: budget.max }) }
+      : undefined
+    return {
+      reasoning: {
+        ...(efforts === undefined || efforts.length === 0 ? {} : { efforts }),
+        ...(budgetOut === undefined ? {} : { budget: budgetOut }),
+      },
+    }
+  }
+
+  /**
    * 构造图片字节解析器。模型不收图（inputModalities 无 image）或
    * attachments 服务缺席时，解析器恒返回 undefined（协议实现换占位文本）。
+   * 路由声明了 requestImagePolicy 时经 attachment seam 的 readImageRequest
+   * 投影（像素预算 + 字节目标在 seam 内强制）；投影失败（provider 不支持）
+   * 直接抛——路由显式声明的预算不能静默绕过。
    */
-  private async imageResolver(route: ResolvedRoute, model: string): Promise<ImageWireResolver> {
+  private imageResolverFor(route: ResolvedRoute, info: LlmResolvedModelInfo): ImageWireResolver {
     const attachments = this.deps.attachments
-    const info = await this.resolveModel(route.id, model)
     const acceptsImage = info.inputModalities?.includes('image') ?? false
     if (!attachments || !acceptsImage) return () => Promise.resolve(undefined)
+    const policy = route.requestImagePolicy
+    if (policy !== undefined) {
+      return async (ref) => {
+        const variant = await attachments.readImageRequest(ref, policy)
+        return { base64: toBase64(variant.data), mediaType: variant.mediaType }
+      }
+    }
     return async (ref) => {
       const stored = await attachments.readImage(ref)
       return { base64: toBase64(stored.data), mediaType: ref.mediaType }
@@ -183,16 +227,21 @@ export class PlusAdapter extends LlmAdapter {
     const route = this.route(provider)
     const manual = route.models?.find(candidate => candidate.id === model)
     if (manual) {
+      // schema 物化的空数组按"未知"归一化（空 efforts 会被 runtime 以 INVALID_MODEL_REASONING 拒绝）
+      const reasoning = manual.reasoningEfforts === undefined || manual.reasoningEfforts.length === 0
+        ? {}
+        : { reasoning: { efforts: manual.reasoningEfforts.map(id => ({ id: ReasoningEffortId(id), name: id })) } }
+      const modalities = manual.inputModalities === undefined || manual.inputModalities.length === 0
+        ? {}
+        : { inputModalities: manual.inputModalities as never }
       return {
         provider,
         id: manual.id,
         name: manual.name ?? manual.id,
-        ...(manual.inputModalities === undefined ? {} : { inputModalities: manual.inputModalities as never }),
+        ...modalities,
         ...(manual.contextWindow === undefined ? {} : { context: { contextWindow: manual.contextWindow } }),
         ...(manual.maxTokens === undefined ? {} : { defaultMaxTokens: manual.maxTokens }),
-        ...(manual.reasoningEfforts === undefined ? {} : {
-          reasoning: { efforts: manual.reasoningEfforts.map(id => ({ id: ReasoningEffortId(id), name: id })) },
-        }),
+        ...reasoning,
       }
     }
     if (route.modelsDevProvider && this.deps.catalog) {
@@ -223,11 +272,18 @@ export class PlusAdapter extends LlmAdapter {
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const route = this.route(options.provider)
     const protocol = PROTOCOLS[route.protocol]
-    // 请求期材料：凭据 + 图片解析器（协议实现只管用不管来源）
+    // 请求期材料：凭据 + 图片解析器 + reasoning 控制面（协议实现只管用不管来源）。
+    // 模型元数据解析一次，图片与 reasoning 共享（避免 resolveModel 双跑）
     const apiKey = await this.resolveApiKey(route)
+    const info = await this.resolveModel(route.id, options.model)
+    const warn = this.deps.warn
     const assets = {
       ...(apiKey === undefined ? {} : { apiKey }),
-      image: await this.imageResolver(route, options.model),
+      image: this.imageResolverFor(route, info),
+      ...(warn === undefined ? {} : {
+        onReplayDegrade: (reason: string) => warn(`llm-plus: ${route.id}/${options.model}: ${reason}`),
+      }),
+      ...this.reasoningAssets(route, options.model, info),
     }
     const request = await protocol.buildRequest(route, options, assets)
 
