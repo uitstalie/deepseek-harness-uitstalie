@@ -12,12 +12,12 @@
  * @module @deepseek-ai/dsh-llm-plus/protocols/openai-completions
  */
 
-import type { GenerateOptions, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmDiscoveredModel, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, extractImages, extractToolCalls, extractToolResults, imagePlaceholder } from './shared.ts'
+import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder } from './shared.ts'
 
 /** API 路径拼接：容忍 baseURL 尾部斜杠。 */
 function endpoint(baseURL: string): string {
@@ -203,8 +203,23 @@ function translateUsage(raw: Record<string, unknown>): TokenUsage {
   }
 }
 
+/**
+ * OpenAI 系 GET /models interrogation（openai-completions 与 openai-responses
+ * 共用同一个列表端点）：响应是 {data: [{id, ...}]}，多数字段不披露。
+ */
+async function discoverModels(baseURL: string, apiKey: string | undefined, signal?: AbortSignal): Promise<LlmDiscoveredModel[]> {
+  const json = await getJson(
+    `${baseURL.replace(/\/+$/, '')}/models`,
+    { ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
+    signal,
+  )
+  const data = (json as { data?: { id?: unknown }[] }).data ?? []
+  return data.flatMap(model => typeof model.id === 'string' ? [{ id: model.id }] : [])
+}
+
 /** openai-completions 协议实例。 */
 export const openAiCompletions: Protocol = {
   buildRequest,
   createTranslator: (): StreamTranslator => new OpenAiCompletionsTranslator(),
+  discoverModels,
 }
