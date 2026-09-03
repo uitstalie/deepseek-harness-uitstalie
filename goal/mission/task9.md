@@ -6,7 +6,10 @@
 
 ## 范围（必做）
 
-1. **OAuth 登录流**：经 authorization seam（`ctx.authorization.registerFlow`）为需要 PKCE 登录的 provider（Copilot/Codex 类）提供授权流；凭据入 credentials seam，与 apiKeyRef 并列作为路由凭据来源。
+1. **OAuth 登录流**：经 authorization seam（`ctx.authorization.registerFlow`）为需要登录的 provider 提供授权流；凭据入 credentials seam（`credentialKey('llm-plus', providerId)` 的 grant 记录），与 apiKeyRef 并列作为路由凭据来源（apiKeyRef 命中时覆盖 grant）。已确认的设计决策：
+   - **范围**：pi-ai 七家中六家有固定端点（anthropic/openrouter 为 PKCE+本地回调+手贴 code 竞速；openai-codex 为 select 二选一（PKCE / device-code）；github-copilot/kimi-coding/xai 为 device-code 轮询）；**radius 是动态构造（无端点常量），留配置化扩展点不进 v1**。
+   - **触发面自建**：authorization seam 全仓库无 Remote/UI（begin() 零生产调用方，gateway 的 forwarded-event source 是独占的且事件白名单是原生的）——llm-plus 自带一个 TypertRemoteService（`llmPlusAuth`：listFlows/begin/cancel/describeAttempt/submitPrompt），notice/prompt 用**轮询桥**（describeAttempt 500ms 轮询 pending notice/prompt）绕开事件通道；ui-models-dev 目录页加"登录"区（OAuth 路由的状态 + 按钮 + device code 展示 + 手贴 code 输入）。
+   - **续期**：请求期主动刷新（距过期 <5min 时在 credentials `modifyRecord` 跨进程锁内刷新并持久化），不做 401 重试路径。
 2. **per-route retryPolicy**：RouteConfig 增加 retryPolicy 字段，PlusAdapter override `providerRetryPolicy`（对齐 pi-ai 的 profile.retryPolicy → adapter 路径）。
 3. **replay 降级告警**：replay envelope 对不齐/协议不符被丢弃时记 `logger.warn`（对齐 pi-ai 的 onReplayDegrade 可诊断性；静默仍是行为，告警是可观测性）。
 4. **目录支持率扫描**：用 models.dev 全量数据统计四协议（+ shape:"responses"）的覆盖率，未知方言（bedrock/azure/vertex/mistral/cerebras 等）显式标"不支持"，产出报告落 goal/。
