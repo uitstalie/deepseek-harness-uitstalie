@@ -25,6 +25,9 @@
       "path": "../../credentials/credentials"
     },
     {
+      "path": "../../credentials/authorization"
+    },
+    {
       "path": "../../settings/settings"
     },
     {
@@ -32,6 +35,9 @@
     },
     {
       "path": "../../runtime-diagnostics/invariants"
+    },
+    {
+      "path": "../../util/crypto"
     }
   ]
 }

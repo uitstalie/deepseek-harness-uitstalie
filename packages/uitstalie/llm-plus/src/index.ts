@@ -34,6 +34,7 @@ import {
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { PlusAdapter } from './adapter.ts'
 import { Config, PROTOCOL_NAMES, resolveRoutes, type PlusConfig, type ProtocolName, type ResolvedRoute } from './config.ts'
+import { registerOAuthFlows } from './oauth/index.ts'
 import { openAiCompletions } from './protocols/openai-completions.ts'
 import { openAiResponses } from './protocols/openai-responses.ts'
 import { anthropicMessages } from './protocols/anthropic-messages.ts'
@@ -135,6 +136,14 @@ export function apply(ctx: Context, config: PlusConfig): void {
   ctx.effect(() => registration, 'llm-plus.registerAdapter')
   const directory = ctx.llm.registerConfigurableProviders(directoryEntries(adapter.resolvedRoutes()))
   ctx.llm.registerModelDiscovery(SETTINGS_NS, (request, signal) => discover(adapter, request, signal))
+  // OAuth 登录流：authorization 缝缺席的组合里整体休眠（纯 apiKeyRef 工作）；
+  // 路由集变化时增量同步（sync 返回函数在缝缺席时为空转）
+  let routesNow = adapter.resolvedRoutes()
+  const syncOAuthFlows = registerOAuthFlows(
+    ctx,
+    routesNow.filter(route => route.oauth !== undefined).map(route => route.id),
+    routeId => routesNow.find(route => route.id === routeId)?.oauth,
+  )
 
   // 当前生效的路由表来源（settings 层或 cordis.yml 配置）。
   // 契约（对齐 llm-deepseek）：setSource 给的是** thunk**——存起来在
@@ -150,6 +159,8 @@ export function apply(ctx: Context, config: PlusConfig): void {
       adapter.updateRoutes(routes)
       registration.replace(routes.map(route => route.id))
       directory.replace(directoryEntries(routes))
+      routesNow = routes
+      syncOAuthFlows(routes.filter(route => route.oauth !== undefined).map(route => route.id))
     },
   })
 }
