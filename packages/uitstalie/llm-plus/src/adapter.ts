@@ -34,6 +34,7 @@ import { openAiResponses } from './protocols/openai-responses.ts'
 import { anthropicMessages } from './protocols/anthropic-messages.ts'
 import { gemini } from './protocols/gemini.ts'
 import type { ProtocolName, ResolvedRoute } from './config.ts'
+import { OAUTH_PROVIDERS, dropDeadGrant, resolveOAuthAuth } from './oauth/index.ts'
 
 /** 协议名 → 实现实例（无状态，全局共享）。 */
 const PROTOCOLS: Record<ProtocolName, Protocol> = {
@@ -82,8 +83,9 @@ export class PlusAdapter extends LlmAdapter {
   constructor(
     private routes: readonly ResolvedRoute[],
     private readonly deps: {
+      /** credentials seam（必备：apiKeyRef 与 OAuth grant 都读它）。 */
+      credentials: CredentialProvider
       catalog?: ModelsDevCatalog
-      credentials?: CredentialProvider
       attachments?: AttachmentStore
       /** replay 降级告警出口（插件入口绑定 ctx.logger.warn）。 */
       warn?: (message: string) => void
@@ -124,22 +126,48 @@ export class PlusAdapter extends LlmAdapter {
   }
 
   /**
-   * 每请求解析凭据。**唯一**路径是 credentials seam（环境变量与 .env 的
-   * 兜底是 credentials provider 自己的分层职责，本插件不读 process.env）。
-   * 缺失时报可行动的 AUTH 错误（消息点名引用名，绝不回显任何密钥内容）。
+   * 每请求解析认证。**apiKeyRef 路径**是 credentials seam（环境变量与 .env
+   * 的兜底是 credentials provider 自己的分层职责，本插件不读 process.env），
+   * 缺失时报可行动的 AUTH 错误。**OAuth 路径**：读 grant 记录、临期在
+   * credentials 的跨进程锁内刷新、判死即删记录并要求重登（never 回显任何
+   * 密钥内容）。两条路径都没有 → 免认证路由。
    */
-  private async resolveApiKey(route: ResolvedRoute): Promise<string | undefined> {
-    if (route.apiKeyRef === undefined) return undefined
-    const resolved = this.deps.credentials
-      ? await this.deps.credentials.resolve(credentialRef(route.apiKeyRef))
-      : undefined
-    const value = resolved?.value?.trim()
-    if (value) return value
-    throw new LlmError(
-      `llm-plus: route ${JSON.stringify(route.id)} needs credential ${route.apiKeyRef};`
-      + ' set it in the Models settings page or the credentials store',
-      'AUTH',
-    )
+  private async resolveAuth(route: ResolvedRoute, signal?: AbortSignal): Promise<{ apiKey?: string; baseURL?: string }> {
+    if (route.apiKeyRef !== undefined) {
+      const resolved = await this.deps.credentials.resolve(credentialRef(route.apiKeyRef))
+      const value = resolved?.value?.trim()
+      if (value) return { apiKey: value }
+      throw new LlmError(
+        `llm-plus: route ${JSON.stringify(route.id)} needs credential ${route.apiKeyRef};`
+        + ' set it in the Models settings page or the credentials store',
+        'AUTH',
+      )
+    }
+    if (route.oauth !== undefined) {
+      const def = OAUTH_PROVIDERS[route.oauth]
+      if (def === undefined) {
+        // resolveRoutes 已在激活点拦过；这里是 settings 热更新缝隙的防御
+        throw new LlmError(`llm-plus: route ${JSON.stringify(route.id)} names unknown oauth flow ${JSON.stringify(route.oauth)}`, 'AUTH')
+      }
+      try {
+        const auth = await resolveOAuthAuth(this.deps.credentials, def, route.id, signal)
+        if (auth !== undefined) return auth
+      } catch (error) {
+        // 刷新被判死（401/403/invalid_grant）：删记录，要求重登
+        await dropDeadGrant(this.deps.credentials, route.id)
+        throw new LlmError(
+          `llm-plus: route ${JSON.stringify(route.id)} OAuth grant is dead`
+          + ` (${error instanceof Error ? error.message : String(error)}); sign in again from the models.dev settings page`,
+          'AUTH',
+        )
+      }
+      throw new LlmError(
+        `llm-plus: route ${JSON.stringify(route.id)} uses oauth flow ${route.oauth} but no grant is stored;`
+        + ' sign in from the models.dev settings page',
+        'AUTH',
+      )
+    }
+    return {}
   }
 
   /**
@@ -155,16 +183,19 @@ export class PlusAdapter extends LlmAdapter {
     const budget = route.modelsDevProvider !== undefined && this.deps.catalog !== undefined
       ? this.deps.catalog.resolveModelDefaults(route.modelsDevProvider, model)?.reasoningBudget
       : undefined
-    const hasBudget = budget !== undefined && (budget.min !== undefined || budget.max !== undefined)
-    if ((efforts === undefined || efforts.length === 0) && !hasBudget) return {}
-    // exactOptionalPropertyTypes：逐字段条件展开，不带 undefined 键
-    const budgetOut = hasBudget
-      ? { ...(budget.min === undefined ? {} : { min: budget.min }), ...(budget.max === undefined ? {} : { max: budget.max }) }
-      : undefined
+    if (budget === undefined || (budget.min === undefined && budget.max === undefined)) {
+      // 无预算范围：只看档位池
+      if (efforts === undefined || efforts.length === 0) return {}
+      return { reasoning: { efforts } }
+    }
+    const budgetOut = {
+      ...(budget.min === undefined ? {} : { min: budget.min }),
+      ...(budget.max === undefined ? {} : { max: budget.max }),
+    }
     return {
       reasoning: {
         ...(efforts === undefined || efforts.length === 0 ? {} : { efforts }),
-        ...(budgetOut === undefined ? {} : { budget: budgetOut }),
+        budget: budgetOut,
       },
     }
   }
@@ -271,21 +302,24 @@ export class PlusAdapter extends LlmAdapter {
    */
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const route = this.route(options.provider)
-    const protocol = PROTOCOLS[route.protocol]
+    // OAuth 的凭据级端点覆盖（github-copilot 从 token 的 proxy-ep 解析）：
+    // 生效路由换掉 baseURL 再进协议序列化
+    const auth = await this.resolveAuth(route, options.signal)
+    const effectiveRoute = auth.baseURL === undefined ? route : { ...route, baseURL: auth.baseURL }
+    const protocol = PROTOCOLS[effectiveRoute.protocol]
     // 请求期材料：凭据 + 图片解析器 + reasoning 控制面（协议实现只管用不管来源）。
     // 模型元数据解析一次，图片与 reasoning 共享（避免 resolveModel 双跑）
-    const apiKey = await this.resolveApiKey(route)
-    const info = await this.resolveModel(route.id, options.model)
+    const info = await this.resolveModel(effectiveRoute.id, options.model)
     const warn = this.deps.warn
     const assets = {
-      ...(apiKey === undefined ? {} : { apiKey }),
-      image: this.imageResolverFor(route, info),
+      ...(auth.apiKey === undefined ? {} : { apiKey: auth.apiKey }),
+      image: this.imageResolverFor(effectiveRoute, info),
       ...(warn === undefined ? {} : {
-        onReplayDegrade: (reason: string) => warn(`llm-plus: ${route.id}/${options.model}: ${reason}`),
+        onReplayDegrade: (reason: string) => warn(`llm-plus: ${effectiveRoute.id}/${options.model}: ${reason}`),
       }),
-      ...this.reasoningAssets(route, options.model, info),
+      ...this.reasoningAssets(effectiveRoute, options.model, info),
     }
-    const request = await protocol.buildRequest(route, options, assets)
+    const request = await protocol.buildRequest(effectiveRoute, options, assets)
 
     // 额外 params 原生注入（adapter 自有，无需任何缝）：
     // 目录 extraParams（models.dev 数据 + models-dev 插件配置）垫底，
