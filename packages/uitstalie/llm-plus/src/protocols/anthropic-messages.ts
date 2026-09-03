@@ -15,12 +15,12 @@
  * @module @deepseek-ai/dsh-llm-plus/protocols/anthropic-messages
  */
 
-import type { GenerateOptions, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmDiscoveredModel, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, readReplayEnvelope, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, extractImages, extractToolCalls, extractToolResults, imagePlaceholder, parseJsonObject } from './shared.ts'
+import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, parseJsonObject } from './shared.ts'
 
 /** 默认端点；baseURL 已含 /v1 时不再重复拼。 */
 function endpoint(baseURL: string): string {
@@ -251,8 +251,26 @@ function translateUsage(raw: Record<string, unknown>): TokenUsage {
   }
 }
 
+/**
+ * Anthropic GET /v1/models interrogation（baseURL 已含 /v1 时不重复拼，
+ * 与 endpoint() 同一规则）：响应 {data: [{id, display_name}]}。
+ */
+async function discoverModels(baseURL: string, apiKey: string | undefined, signal?: AbortSignal): Promise<LlmDiscoveredModel[]> {
+  const base = baseURL.replace(/\/+$/, '')
+  const url = base.endsWith('/v1') ? `${base}/models` : `${base}/v1/models`
+  const json = await getJson(url, {
+    'anthropic-version': '2023-06-01',
+    ...(apiKey ? { 'x-api-key': apiKey } : {}),
+  }, signal)
+  const data = (json as { data?: { id?: unknown; display_name?: unknown }[] }).data ?? []
+  return data.flatMap(model => typeof model.id === 'string'
+    ? [{ id: model.id, ...(typeof model.display_name === 'string' ? { name: model.display_name } : {}) }]
+    : [])
+}
+
 /** anthropic-messages 协议实例。 */
 export const anthropicMessages: Protocol = {
   buildRequest,
   createTranslator: (): StreamTranslator => new AnthropicTranslator(),
+  discoverModels,
 }

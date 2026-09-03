@@ -16,12 +16,12 @@
  * @module @deepseek-ai/dsh-llm-plus/protocols/gemini
  */
 
-import type { GenerateOptions, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmDiscoveredModel, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, readReplayEnvelope, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, extractImages, extractToolCalls, extractToolResults, imagePlaceholder, parseJsonObject } from './shared.ts'
+import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, parseJsonObject } from './shared.ts'
 
 /** 端点拼接：模型 id 进路径，SSE 走 ?alt=sse 查询参数。 */
 function endpoint(baseURL: string, model: string): string {
@@ -195,8 +195,26 @@ function translateUsage(raw: Record<string, unknown>): TokenUsage {
   }
 }
 
+/**
+ * Gemini GET /v1beta/models interrogation：响应 {models: [{name: "models/x",
+ * displayName}]}，id 是剥掉 "models/" 前缀的部分。v1 只取第一页
+ * （模型列表远小于分页阈值；真撞上分页再补 nextPageToken 翻页）。
+ */
+async function discoverModels(baseURL: string, apiKey: string | undefined, signal?: AbortSignal): Promise<LlmDiscoveredModel[]> {
+  const json = await getJson(
+    `${baseURL.replace(/\/+$/, '')}/v1beta/models`,
+    { ...(apiKey ? { 'x-goog-api-key': apiKey } : {}) },
+    signal,
+  )
+  const models = (json as { models?: { name?: unknown; displayName?: unknown }[] }).models ?? []
+  return models.flatMap(model => typeof model.name === 'string'
+    ? [{ id: model.name.replace(/^models\//, ''), ...(typeof model.displayName === 'string' ? { name: model.displayName } : {}) }]
+    : [])
+}
+
 /** gemini 协议实例。 */
 export const gemini: Protocol = {
   buildRequest,
   createTranslator: (): StreamTranslator => new GeminiTranslator(),
+  discoverModels,
 }
