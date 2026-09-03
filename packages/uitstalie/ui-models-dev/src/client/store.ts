@@ -13,6 +13,7 @@
 import type { ClientRemote, SettingsPathOpView } from '@deepseek-ai/dsh-api-remotes/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { CatalogModelSummary, CatalogProviderSummary } from '@deepseek-ai/dsh-models-dev/types'
+import type { AttemptView, OAuthRouteInfo } from '@deepseek-ai/dsh-llm-plus/types'
 import { defaultDraft, draftError, materializeRoute, type ProviderDraft } from './draft.ts'
 
 /** 本页用到的 wire 方法（窄化面）。 */
@@ -20,6 +21,8 @@ export interface ModelsDevWire {
   modelsDev: Pick<ClientRemote['modelsDev'], 'listCatalogProviders' | 'listCatalogModels'>
   settings: Pick<ClientRemote['settings'], 'mutate'>
   credentials: Pick<ClientRemote['credentials'], 'set'>
+  /** llm-plus 的 OAuth Remote（登录流触发/轮询/回答/取消）。 */
+  llmPlusAuth: Pick<ClientRemote['llmPlusAuth'], 'listOAuthRoutes' | 'beginFlow' | 'describeAttempt' | 'submitPromptAnswer' | 'cancelAttempt'>
 }
 
 /** 提交失败的结构化形态（组件映射为字典文案）。 */
@@ -28,6 +31,18 @@ export type SubmitFailure =
   | { readonly kind: 'invalidJson'; readonly field: 'headers' | 'body'; readonly provider: string }
   | { readonly kind: 'conflict' }
   | { readonly kind: 'message'; readonly message: string }
+
+/** OAuth 登录区的状态（纯数据）。 */
+export interface OAuthSectionState {
+  /** 清单加载状态。 */
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  /** 带 OAuth 能力的路由（含凭据在位状态）。 */
+  routes: readonly OAuthRouteInfo[]
+  /** routeId → 最新一次尝试的视图（轮询桥的结果）。 */
+  attempts: Record<string, AttemptView>
+  /** promptId → 文本输入框草稿（回答提交前的载体）。 */
+  answerDrafts: Record<string, string>
+}
 
 /** 页面快照（纯数据）。 */
 export interface ModelsDevState {
@@ -49,6 +64,8 @@ export interface ModelsDevState {
   submitError: SubmitFailure | null
   /** 最近一次提交写成的路由 id 集（成功回执）。 */
   addedRoutes: readonly string[]
+  /** OAuth 登录区。 */
+  oauth: OAuthSectionState
 }
 
 /** 初始快照。 */
@@ -63,6 +80,7 @@ function initialState(): ModelsDevState {
     submitting: false,
     submitError: null,
     addedRoutes: [],
+    oauth: { status: 'idle', routes: [], attempts: {}, answerDrafts: {} },
   }
 }
 
@@ -172,6 +190,80 @@ export class ModelsDevStore {
           : current.modelIds.filter(candidate => candidate !== modelId),
       }
     })
+  }
+
+  // -------------------------------------------------------------------------
+  // OAuth 登录区（轮询桥的消费端：running 期间 800ms 轮一次 describeAttempt）
+  // -------------------------------------------------------------------------
+
+  /** 加载带 OAuth 能力的路由清单（挂载时 + 每次尝试终结后刷新 configured）。 */
+  async loadOAuthRoutes(): Promise<void> {
+    this.store.update((draft) => {
+      draft.oauth.status = 'loading'
+    })
+    try {
+      const result = await this.wire.llmPlusAuth.listOAuthRoutes()
+      this.store.update((draft) => {
+        draft.oauth.status = 'ready'
+        if (result.ok) draft.oauth.routes = result.value
+      })
+    } catch (error) {
+      console.error('ui-models-dev: oauth route list load rejected', error)
+      this.store.update((draft) => {
+        draft.oauth.status = 'error'
+      })
+    }
+  }
+
+  /** 发起一次登录尝试并驱动轮询直到终态。 */
+  async beginLogin(routeId: string): Promise<void> {
+    const result = await this.wire.llmPlusAuth.beginFlow(routeId)
+    if (!result.ok) {
+      console.error('ui-models-dev: beginFlow failed', result.error)
+      return
+    }
+    const attemptId = result.value.attemptId
+    // 轮询桥：直到终态；终结后刷新路由清单（configured 可能翻转为 true）
+    let view: AttemptView | undefined
+    do {
+      const described = await this.wire.llmPlusAuth.describeAttempt(attemptId)
+      if (described.ok) {
+        view = described.value
+        this.store.update((draft) => {
+          draft.oauth.attempts[routeId] = described.value
+        })
+      }
+      if (view === undefined || view.status === 'running') {
+        await new Promise(resolve => setTimeout(resolve, 800))
+      }
+    } while (view === undefined || view.status === 'running')
+    await this.loadOAuthRoutes()
+  }
+
+  /** 回答待答 prompt（文本框草稿随回答清除）。 */
+  async answerPrompt(routeId: string, promptId: string): Promise<void> {
+    const attemptId = this.store.getSnapshot().oauth.attempts[routeId]?.id ?? ''
+    const value = this.store.getSnapshot().oauth.answerDrafts[promptId] ?? ''
+    const result = await this.wire.llmPlusAuth.submitPromptAnswer(attemptId, promptId, value)
+    if (result.ok) {
+      this.store.update((draft) => {
+        draft.oauth.answerDrafts = omitKeys(draft.oauth.answerDrafts, new Set([promptId]))
+      })
+    }
+  }
+
+  /** 更新 prompt 回答的输入框草稿。 */
+  setAnswerDraft(promptId: string, value: string): void {
+    this.store.update((draft) => {
+      draft.oauth.answerDrafts[promptId] = value
+    })
+  }
+
+  /** 取消一次在途尝试。 */
+  async cancelLogin(routeId: string): Promise<void> {
+    const attemptId = this.store.getSnapshot().oauth.attempts[routeId]?.id
+    if (attemptId === undefined) return
+    await this.wire.llmPlusAuth.cancelAttempt(attemptId)
   }
 
   /**

@@ -10,6 +10,7 @@
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { fill, type ModelsDevKey } from './locales.ts'
+import { OAuthPanel } from './OAuthPanel.tsx'
 import { ProviderCard } from './ProviderCard.tsx'
 import type { ModelsDevState, ModelsDevStore, SubmitFailure } from './store.ts'
 import styles from './ModelsDevSection.module.css'
@@ -70,6 +71,16 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
   return (
     <div className={styles.section}>
       <p className={styles.subtitle}>{t('subtitle')}</p>
+      <OAuthPanel
+        routes={state.oauth.routes}
+        attempts={state.oauth.attempts}
+        answerDrafts={state.oauth.answerDrafts}
+        t={t}
+        onBegin={routeId => void controller.beginLogin(routeId)}
+        onCancel={routeId => void controller.cancelLogin(routeId)}
+        onAnswer={(routeId, promptId) => void controller.answerPrompt(routeId, promptId)}
+        onAnswerDraft={(promptId, value) => controller.setAnswerDraft(promptId, value)}
+      />
       <input
         className={styles.input}
         value={state.filter}
