@@ -84,6 +84,7 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
     // 目录拉取是页面级一次性动作（失败进 error 态，页面可重试）
     void controller.load()
     void controller.loadOAuthRoutes()
+    void controller.loadMyRoutes()
   })
   return () => {
     disposeModelsDev()
