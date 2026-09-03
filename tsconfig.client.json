@@ -101,6 +101,9 @@
     { "path": "./packages/client/ui-session" },
     { "path": "./packages/client/web" },
     { "path": "./packages/context/file-reference" },
-    { "path": "./apps/web" }
+    { "path": "./apps/web" },
+    // BEGIN uitstalie-k3, 2026/08/31, task8, 注册 uitstalie 组 client 包进 Client 聚合程序
+    { "path": "./packages/uitstalie/ui-models-dev" }
+    // END uitstalie-k3
   ]
 }
