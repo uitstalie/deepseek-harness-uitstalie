@@ -10,7 +10,7 @@
  * @module @deepseek-ai/dsh-llm-plus/protocol
  */
 
-import { ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, type GenerateOptions, type LlmDiscoveredModel, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { ResolvedRoute } from './config.ts'
@@ -84,6 +84,16 @@ export interface Protocol {
    * @returns 有状态翻译器。
    */
   createTranslator(route: ResolvedRoute, options: GenerateOptions): StreamTranslator
+  /**
+   * 端点模型列表 interrogation：原生设置页"发现模型"按钮的落点——
+   * 用户在编辑一个还没有路由的草稿，直接拿端点 + 一次性凭据问端点
+   * （目录数据由 adapter 的 listModels 分支回答，不走这里）。
+   * @param baseURL - 草稿上的端点。
+   * @param apiKey - 一次性凭据（harness 不存储）；免认证端点缺席。
+   * @param signal - 调用方取消。
+   * @returns 端点自报的模型（多数只披露 id）。
+   */
+  discoverModels?(baseURL: string, apiKey: string | undefined, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>
 }
 
 /**
