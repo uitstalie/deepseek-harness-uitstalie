@@ -5,9 +5,15 @@
  * （credentials seam 的键），不做任何按 URL 的猜测（pi-ai 的 compat 门禁
  * 系统就是猜测失败的代价；我们拥有协议实现，配置面只需要这几个字段）。
  *
+ * Config schema 是结构化的（不是 dict(any)）：原生 Models 设置页的
+ * ProviderEditor 按 schema 渲染编辑表单（参照 llm-pi-ai 的 profile 形状；
+ * `role('credential-ref')` 让凭据字段渲染成凭据选择器）。resolveRoutes 的
+ * 手工校验保留——它给出带路由名的精确错误，比 schema 的通用 issues 更可行动。
+ *
  * @module @deepseek-ai/dsh-llm-plus/config
  */
 
+import z from '@deepseek-ai/schemastery'
 import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 
 /** 支持的 wire 协议名（与 protocols/ 下的实现一一对应）。 */
@@ -44,6 +50,8 @@ export interface ModelEntryConfig {
 export interface RouteConfig {
   /** wire 协议（必填，显式选择）。 */
   protocol: ProtocolName
+  /** 展示名（选择器与原生设置页用）；缺省用路由 id。 */
+  displayName?: string
   /** API 端点；缺省用协议默认端点。 */
   baseURL?: string
   /**
@@ -74,6 +82,48 @@ export interface PlusConfig {
 }
 
 /**
+ * 单个手工模型条目的 schema（原生设置页编辑器按此渲染字段）。
+ * 缺省字段不物化（参照 pi-ai：缺席 = 未知，由目录数据兜底）。
+ */
+const modelEntrySchema = z.object({
+  id: z.string().required(),
+  name: z.string(),
+  contextWindow: z.number().step(1).min(1),
+  maxTokens: z.number().step(1).min(1),
+  inputModalities: z.array(z.string()),
+  reasoningEfforts: z.array(z.string()),
+})
+
+/**
+ * 单条路由的 schema。`role('credential-ref')` 是原生编辑器渲染凭据
+ * 选择器的约定（与 llm-pi-ai 的 apiKeyEnv 同款）；protocol 是封闭枚举。
+ */
+const routeSchema = z.object({
+  protocol: z.union([
+    z.const('openai-completions'),
+    z.const('openai-responses'),
+    z.const('anthropic-messages'),
+    z.const('gemini'),
+  ]).required(),
+  displayName: z.string(),
+  baseURL: z.string(),
+  apiKeyRef: z.string().role('credential-ref'),
+  modelsDevProvider: z.string(),
+  models: z.array(modelEntrySchema),
+  headers: z.dict(z.string()),
+  body: z.dict(z.any()),
+  defaultMaxTokens: z.number().step(1).min(1),
+})
+
+/**
+ * 配置 schema。结构化形状既是设置写入点的校验，也是原生 ProviderEditor
+ * 的渲染依据；resolveRoutes 的手工校验在其后给出带路由名的精确错误。
+ */
+export const Config: z<PlusConfig> = z.object({
+  routes: z.dict(routeSchema).required(),
+})
+
+/**
  * 解析后的路由（构造期完成全部校验与默认值物化，请求期零判断）。
  * 注意凭据不在这里物化：每请求经 credentials seam 解析，轮换立即生效——
  * 这是 harness 凭据契约的语义。
@@ -82,6 +132,8 @@ export interface ResolvedRoute {
   /** 路由 id（= provider 路由名）。 */
   id: string
   protocol: ProtocolName
+  /** 展示名（缺省物化为路由 id）。 */
+  displayName: string
   /** 已物化的端点（配置值或协议默认）。 */
   baseURL: string
   /** 凭据引用名（credentials seam 的键）；免认证路由缺席。 */
@@ -132,10 +184,13 @@ export function resolveRoutes(routes: Record<string, RouteConfig>): ResolvedRout
     return {
       id,
       protocol: route.protocol,
+      displayName: route.displayName ?? id,
       baseURL,
       ...(route.apiKeyRef === undefined ? {} : { apiKeyRef: route.apiKeyRef }),
       ...(route.modelsDevProvider === undefined ? {} : { modelsDevProvider: route.modelsDevProvider }),
-      ...(route.models === undefined ? {} : { models: route.models }),
+      // schema 会把缺席的数组物化为 []（schemastery 的默认行为）——空数组
+      // 按"未提供"归一化（与 pi-ai 同语义），否则空手工表会遮蔽目录数据
+      ...(route.models === undefined || route.models.length === 0 ? {} : { models: route.models }),
       headers: { ...route.headers },
       body: { ...route.body },
       ...(route.defaultMaxTokens === undefined ? {} : { defaultMaxTokens: route.defaultMaxTokens }),

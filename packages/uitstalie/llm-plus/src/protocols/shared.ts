@@ -80,3 +80,20 @@ export function parseJsonObject(raw: string): JsonValue {
     return {}
   }
 }
+
+/** 端点错误响应体的截断上限（发现模型的失败诊断用，防恶意网关撑爆日志）。 */
+const MAX_ERROR_BODY_CHARS = 4096
+
+/**
+ * 模型列表 interrogation 的共享 GET：JSON 响应原样返回，非 2xx 抛带
+ * 状态码与截断正文的 Error（由 llm 的 discoverModels 归一化为
+ * model-discovery-failed 报给设置页）。
+ */
+export async function getJson(url: string, headers: Record<string, string>, signal?: AbortSignal): Promise<unknown> {
+  const response = await fetch(url, { headers, signal: signal ?? null })
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, MAX_ERROR_BODY_CHARS)
+    throw new Error(`llm-plus: ${url} responded ${response.status}: ${detail}`)
+  }
+  return response.json()
+}

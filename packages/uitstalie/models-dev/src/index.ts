@@ -16,8 +16,9 @@
 
 import { readFile, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import {
@@ -76,6 +77,10 @@ export interface Config {
 
 /** 当前服务的目录来自哪里。'none' 表示空目录（网络与缓存都不可用）。 */
 export type CatalogProvenance = 'network' | 'cache' | 'none'
+
+// Remote 边界类型从 ./types 子路径公开（Typert 契约），包根再导出方便消费方
+import type { CatalogModelSummary, CatalogProviderSummary } from './types.ts'
+export type { CatalogModelSummary, CatalogProviderSummary } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -136,7 +141,7 @@ function assertExtraParamsShape(extraParams: Record<string, ExtraParamsConfig>):
  * 内部状态三个一组：data（当前服务的目录）+ provenance（来源）+ fetchedAt
  * （时间戳），只在 adopt() 里一起换，保证读者永远看到自洽的一组。
  */
-export default class ModelsDevCatalog extends Service {
+export default class ModelsDevCatalog extends TypertRemoteService {
   static Config: z<Config> = z.object({
     sourceUrl: z.string().default(DEFAULT_SOURCE_URL),
     cachePath: z.string().default(dshHomePath('cache', 'models-dev.json')),
@@ -208,6 +213,47 @@ export default class ModelsDevCatalog extends Service {
   /** 目录里全部 provider id。 */
   listProviders(): string[] {
     return Object.keys(this.data)
+  }
+
+  /**
+   * 目录提供商摘要列表（models.dev 设置页的列表数据源）。
+   * 按 id 排序，输出稳定；空目录返回空数组（provenance='none' 时
+   * 页面显示空态而不是报错——目录是 advisory 的）。
+   * @returns 全部提供商的摘要（含协议方言/端点/凭据变量名/模型数）。
+   */
+  @Remote
+  listCatalogProviders(): CatalogProviderSummary[] {
+    return Object.entries(this.data)
+      .map(([id, provider]) => ({
+        id,
+        ...(provider.name === undefined ? {} : { name: provider.name }),
+        ...(provider.npm === undefined ? {} : { npm: provider.npm }),
+        ...(provider.api === undefined ? {} : { api: provider.api }),
+        ...(provider.env === undefined ? {} : { env: [...provider.env] }),
+        modelCount: Object.keys(provider.models).length,
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id))
+  }
+
+  /**
+   * 一个提供商的目录模型摘要列表（设置页的模型子集勾选数据源）。
+   * @param providerId - models.dev provider id。
+   * @returns 模型摘要（按 id 排序）；未知 provider 返回空数组。
+   */
+  @Remote
+  listCatalogModels(providerId: string): CatalogModelSummary[] {
+    const provider = this.data[providerId]
+    if (provider === undefined) return []
+    return Object.values(provider.models)
+      .map(model => ({
+        id: model.id,
+        ...(model.name === undefined ? {} : { name: model.name }),
+        ...(model.limit?.context === undefined ? {} : { contextWindow: model.limit.context }),
+        ...(model.limit?.output === undefined ? {} : { maxTokens: model.limit.output }),
+        ...(model.modalities?.input === undefined ? {} : { inputModalities: [...model.modalities.input] }),
+        ...(model.reasoning === undefined ? {} : { reasoning: model.reasoning }),
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id))
   }
 
   /**
