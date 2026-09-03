@@ -124,6 +124,8 @@ export function apply(ctx: Context, config: PlusConfig): void {
     ...(catalog === undefined ? {} : { catalog }),
     credentials: ctx.credentials,
     ...(attachments === undefined ? {} : { attachments }),
+    // replay 降级告警走宿主 logger（对齐 pi-ai 的 onReplayDegrade 可观测性）
+    warn: message => ctx.logger.warn(message),
   })
 
   // 注册 handle 持有当前路由集；replace 在同一 adapter 实例上原子换路由。
