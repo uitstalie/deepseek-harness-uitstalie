@@ -14,6 +14,7 @@
  */
 
 import z from '@deepseek-ai/schemastery'
+import { resolveRetryPolicy, RetryPolicySchema, type ResolvedRetryPolicy, type RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 
 /** 支持的 wire 协议名（与 protocols/ 下的实现一一对应）。 */
@@ -73,6 +74,14 @@ export interface RouteConfig {
   body?: Record<string, JsonValue>
   /** 该路由的默认最大输出 token（请求未指定时用）。 */
   defaultMaxTokens?: number
+  /** 该路由的重试策略（llm-retry 消费；注册时被 registry 捕获，热更新随 registration.replace 重读）。 */
+  retryPolicy?: RetryPolicyConfig
+  /**
+   * 图片请求投影策略（attachment seam 的 readImageRequest 原语）：
+   * maxPixels = 像素预算（保宽高比缩放）、maxBytes = 编码字节目标
+   * （质量阶梯压到目标内）。缺席 = 读原始字节不投影。
+   */
+  requestImagePolicy?: { maxPixels: number; maxBytes: number } | undefined
 }
 
 /** 插件配置。 */
@@ -113,6 +122,16 @@ const routeSchema = z.object({
   headers: z.dict(z.string()),
   body: z.dict(z.any()),
   defaultMaxTokens: z.number().step(1).min(1),
+  retryPolicy: RetryPolicySchema,
+  // schemastery 会把缺席的嵌套对象物化为 {} 再撞内部 required，
+  // 显式 union undefined 让"缺席"合法（有值时两字段必填）
+  requestImagePolicy: z.union([
+    z.object({
+      maxPixels: z.number().step(1).min(1).required(),
+      maxBytes: z.number().step(1).min(1).required(),
+    }),
+    z.const(undefined),
+  ]),
 })
 
 /**
@@ -145,6 +164,10 @@ export interface ResolvedRoute {
   /** 合并前的路由级额外 body 字段（请求期还要再叠目录 extraParams）。 */
   body: Record<string, JsonValue>
   defaultMaxTokens?: number
+  /** 已解析的重试策略（构造期完成解析，非法值在激活点 fail loud）。 */
+  retryPolicy?: ResolvedRetryPolicy
+  /** 图片投影策略（请求期经 readImageRequest 强制；缺席不投影）。 */
+  requestImagePolicy?: { maxPixels: number; maxBytes: number }
 }
 
 /**
@@ -194,6 +217,9 @@ export function resolveRoutes(routes: Record<string, RouteConfig>): ResolvedRout
       headers: { ...route.headers },
       body: { ...route.body },
       ...(route.defaultMaxTokens === undefined ? {} : { defaultMaxTokens: route.defaultMaxTokens }),
+      // 重试策略在构造期解析：非法值在激活点带路由名 fail loud（请求期零判断）
+      ...(route.retryPolicy === undefined ? {} : { retryPolicy: resolveRetryPolicy(route.retryPolicy, `llm-plus: route ${JSON.stringify(id)} retryPolicy`) }),
+      ...(route.requestImagePolicy === undefined ? {} : { requestImagePolicy: route.requestImagePolicy }),
     }
   })
 }
