@@ -1,0 +1,153 @@
+/* models.dev 目录设置页样式：全部颜色经 --dsw-alias-* 语义 token
+ * （裸字面色会在暗色主题下保持亮色——token 是唯一入口）。 */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.rowCard {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rowHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.rowTitle {
+  font-weight: 600;
+}
+
+.rowMeta {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.rowApi {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.badge {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.draftForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  padding-top: 8px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.input {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: var(--dsw-alias-bg-primary);
+  color: var(--dsw-alias-label-primary);
+}
+
+.textarea {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: var(--dsw-alias-bg-primary);
+  color: var(--dsw-alias-label-primary);
+  font-family: monospace;
+  resize: vertical;
+}
+
+.radioRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modelList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.modelRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.submitBar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.submitButton {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 6px 16px;
+  background: var(--dsw-alias-bg-primary);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.submitButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.notice {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.errorText {
+  color: var(--dsw-alias-state-error-label, #d04437);
+}
+
+.okText {
+  color: var(--dsw-alias-state-success-label, #2e9e5b);
+}

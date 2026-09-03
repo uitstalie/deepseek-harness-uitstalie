@@ -103,6 +103,11 @@ export class PlusAdapter extends LlmAdapter {
     return this.routes.map(route => route.id)
   }
 
+  /** 当前解析后的路由表（目录条目映射用；与 routeIds 同一来源）。 */
+  resolvedRoutes(): readonly ResolvedRoute[] {
+    return this.routes
+  }
+
   /** 查路由；未注册的 route 是上层契约错误（LlmRuntime 已按注册表路由，到这里不该发生）。 */
   private route(provider: string): ResolvedRoute {
     const route = this.routes.find(candidate => candidate.id === provider)
