@@ -88,6 +88,11 @@ export async function dropDeadGrant(credentials: CredentialProvider, routeId: st
 
 /**
  * 为一组路由注册 OAuth 登录流（authorization seam 缺席的组合整体休眠）。
+ *
+ * 竞态语义：路由集（settings 用户层可随时改）与缝的激活（inject 等待）是
+ * 两条独立时间线——`current` 是唯一权威集，缝激活时同步的是**当时的**
+ * current，之后每次路由变化在已激活的缝上增量同步。
+ *
  * @returns 同步函数：路由集变化时增量注册/摘除（onChange 调用）。
  */
 export function registerOAuthFlows(
@@ -97,11 +102,13 @@ export function registerOAuthFlows(
 ): (routeIds: readonly string[]) => void {
   /** 已注册：routeId → 摘除器。 */
   const registered = new Map<string, () => void>()
-  // 缝缺席时 sync 是空转（无 authorization 的组合纯凭 apiKeyRef 工作）
-  const syncRef: { current: (routeIds: readonly string[]) => void } = { current: () => {} }
+  /** 当前应有 flow 的路由集（两条时间线的汇合点）。 */
+  let current: readonly string[] = initialRouteIds
+  /** 缝激活后的同步器；缺席时空转。 */
+  let live: (() => void) | undefined
   ctx.inject(['authorization'], (scoped) => {
-    const sync = (routeIds: readonly string[]): void => {
-      for (const routeId of routeIds) {
+    const sync = (): void => {
+      for (const routeId of current) {
         if (registered.has(routeId)) continue
         const flowId = flowIdOf(routeId)
         if (flowId === undefined) continue
@@ -123,13 +130,16 @@ export function registerOAuthFlows(
         registered.set(routeId, scoped.authorization.registerFlow(flow))
       }
       for (const [routeId, dispose] of [...registered]) {
-        if (routeIds.includes(routeId)) continue
+        if (current.includes(routeId)) continue
         registered.delete(routeId)
         dispose()
       }
     }
-    sync(initialRouteIds)
-    syncRef.current = sync
+    live = sync
+    sync()
   })
-  return routeIds => syncRef.current(routeIds)
+  return (routeIds) => {
+    current = routeIds
+    live?.()
+  }
 }
