@@ -14,12 +14,14 @@ import type { ClientRemote, SettingsPathOpView } from '@deepseek-ai/dsh-api-remo
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { CatalogModelSummary, CatalogProviderSummary } from '@deepseek-ai/dsh-models-dev/types'
 import type { AttemptView, OAuthRouteInfo } from '@deepseek-ai/dsh-llm-plus/types'
+import type { RouteConfig } from '@deepseek-ai/dsh-llm-plus'
 import { defaultDraft, draftError, materializeRoute, type ProviderDraft } from './draft.ts'
+import { draftToRoute, routeDraftError, routeToDraft, type RouteDraft } from './route-edit.ts'
 
 /** 本页用到的 wire 方法（窄化面）。 */
 export interface ModelsDevWire {
   modelsDev: Pick<ClientRemote['modelsDev'], 'listCatalogProviders' | 'listCatalogModels'>
-  settings: Pick<ClientRemote['settings'], 'mutate'>
+  settings: Pick<ClientRemote['settings'], 'mutate' | 'describe'>
   credentials: Pick<ClientRemote['credentials'], 'set'>
   /** llm-plus 的 OAuth Remote（登录流触发/轮询/回答/取消）。 */
   llmPlusAuth: Pick<ClientRemote['llmPlusAuth'], 'listOAuthRoutes' | 'beginFlow' | 'describeAttempt' | 'submitPromptAnswer' | 'cancelAttempt'>
@@ -44,6 +46,16 @@ export interface OAuthSectionState {
   answerDrafts: Record<string, string>
 }
 
+/** "我的路由"管理区状态（纯数据）。 */
+export interface MyRoutesState {
+  /** 当前路由表（llm-plus 命名空间的生效值；空 = 未加载或无路由）。 */
+  routes: Record<string, RouteConfig>
+  /** 正在编辑的路由（草稿载体）。 */
+  editing: { routeId: string; draft: RouteDraft } | undefined
+  /** 编辑/删除失败的 host 消息。 */
+  failure: string | null
+}
+
 /** 页面快照（纯数据）。 */
 export interface ModelsDevState {
   /** 目录加载状态。 */
@@ -66,6 +78,8 @@ export interface ModelsDevState {
   addedRoutes: readonly string[]
   /** OAuth 登录区。 */
   oauth: OAuthSectionState
+  /** "我的路由"管理区。 */
+  myRoutes: MyRoutesState
 }
 
 /** 初始快照。 */
@@ -81,6 +95,7 @@ function initialState(): ModelsDevState {
     submitError: null,
     addedRoutes: [],
     oauth: { status: 'idle', routes: [], attempts: {}, answerDrafts: {} },
+    myRoutes: { routes: {}, editing: undefined, failure: null },
   }
 }
 
@@ -266,6 +281,88 @@ export class ModelsDevStore {
     await this.wire.llmPlusAuth.cancelAttempt(attemptId)
   }
 
+  // -------------------------------------------------------------------------
+  // "我的路由"管理区（读 settings 的 llm-plus 命名空间生效值，写经 mutate 路径操作）
+  // -------------------------------------------------------------------------
+
+  /** 读当前路由表（挂载时 + 每次写操作后）。 */
+  async loadMyRoutes(): Promise<void> {
+    const described = await this.wire.settings.describe()
+    if (!described.ok) return
+    // describe 的命名空间视图：找 llm-plus 的生效值（base←user 已合并）
+    const view = described.value.namespaces.find((ns: { ns: string }) => ns.ns === 'llm-plus')
+    const value = (view as { value?: { routes?: Record<string, RouteConfig> } } | undefined)?.value
+    this.store.update((draft) => {
+      draft.myRoutes.routes = value?.routes ?? {}
+    })
+  }
+
+  /** 进入一条路由的编辑（草稿从当前配置生成）。 */
+  startEditRoute(routeId: string): void {
+    const route = this.store.getSnapshot().myRoutes.routes[routeId]
+    if (route === undefined) return
+    this.store.update((draft) => {
+      draft.myRoutes.editing = { routeId, draft: routeToDraft(route) }
+      draft.myRoutes.failure = null
+    })
+  }
+
+  /** 更新编辑草稿的局部字段。 */
+  patchEditDraft(patch: Partial<RouteDraft>): void {
+    this.store.update((draft) => {
+      const current = draft.myRoutes.editing
+      if (current !== undefined) draft.myRoutes.editing = { ...current, draft: { ...current.draft, ...patch } }
+    })
+  }
+
+  /** 取消编辑。 */
+  cancelEditRoute(): void {
+    this.store.update((draft) => {
+      draft.myRoutes.editing = undefined
+    })
+  }
+
+  /** 保存编辑：物化草稿 + 原路由的非编辑面字段原样带回，mutate set 写回。 */
+  async saveEditRoute(): Promise<void> {
+    const editing = this.store.getSnapshot().myRoutes.editing
+    if (editing === undefined) return
+    const failure = routeDraftError(editing.draft)
+    if (failure !== undefined) {
+      this.store.update((draft) => {
+        draft.myRoutes.failure = failure
+      })
+      return
+    }
+    const original = this.store.getSnapshot().myRoutes.routes[editing.routeId]
+    // 非编辑面字段（modelsDevProvider/models/retryPolicy/requestImagePolicy）原样带回
+    const next: Record<string, unknown> = {
+      ...(original?.modelsDevProvider === undefined ? {} : { modelsDevProvider: original.modelsDevProvider }),
+      ...(original?.models === undefined || original.models.length === 0 ? {} : { models: original.models }),
+      ...(original?.retryPolicy === undefined ? {} : { retryPolicy: original.retryPolicy }),
+      ...(original?.requestImagePolicy == null ? {} : { requestImagePolicy: original.requestImagePolicy }),
+      ...draftToRoute(editing.draft),
+    }
+    const response = await this.wire.settings.mutate('llm-plus', [{ op: 'set', path: ['routes', editing.routeId], value: next as never }], undefined)
+    this.store.update((draft) => {
+      if (response.ok) {
+        draft.myRoutes.editing = undefined
+        draft.myRoutes.failure = null
+      } else {
+        draft.myRoutes.failure = response.error.message
+      }
+    })
+    if (response.ok) await this.loadMyRoutes()
+  }
+
+  /** 删除一条路由（mutate unset）。 */
+  async deleteRoute(routeId: string): Promise<void> {
+    const response = await this.wire.settings.mutate('llm-plus', [{ op: 'unset', path: ['routes', routeId] }], undefined)
+    this.store.update((draft) => {
+      draft.myRoutes.failure = response.ok ? null : response.error.message
+    })
+    if (response.ok) await this.loadMyRoutes()
+  }
+
   /**
    * 物化提交：全部草稿先过本地校验（一个非法整体不写），一次 mutate 写入
    * 全部路由，再逐个写入一次性密钥。成功清除已添加的草稿并记录回执。
@@ -321,5 +418,7 @@ export class ModelsDevStore {
       // 已提交的草稿整体清除（entries 是提交前的快照，含改过的 routeId）
       draft.drafts = omitKeys(draft.drafts, new Set(entries.map(([id]) => id)))
     })
+    // 物化成的路由进"我的路由"管理区
+    await this.loadMyRoutes()
   }
 }
