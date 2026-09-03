@@ -17,6 +17,7 @@ import ModelsDevCatalog from '@deepseek-ai/dsh-models-dev'
 import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import * as llmPlus from '@deepseek-ai/dsh-llm-plus'
+import { resolveRoutes } from '../src/config.ts'
 
 // models-dev 的测试夹具（deepseek provider，两个模型）
 const FIXTURE_URL = pathToFileURL(
@@ -411,6 +412,118 @@ test('model discovery rejects an unknown draft protocol', async () => {
   const ctx = await mount()
   await expect(ctx.root.llm.discoverModels('llm-plus', { baseURL: 'http://x', api: 'nope' }))
     .rejects.toThrow(/unknown discovery protocol/)
+})
+
+test('route-level retryPolicy is resolved at activation and captured at registration', async () => {
+  const ctx = new Context()
+  ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+  await ctx.plugin(LlmRuntime)
+  await ctx.plugin(llmPlus, {
+    routes: {
+      'retry-plus': {
+        protocol: 'openai-completions',
+        baseURL: 'http://test.local/v1',
+        retryPolicy: { mode: 'normal', maxRetries: 2, retryableCodes: ['RATE_LIMIT'] },
+      },
+      'default-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1' },
+    },
+  })
+  // 配置的策略被解析并被 registry 捕获（llm-retry 读的就是这里）
+  expect(ctx.root.llm.providerRetryPolicy('retry-plus')).toMatchObject({ mode: 'normal', maxRetries: 2, retryableCodes: ['RATE_LIMIT'] })
+  // 未配置的路由回落到全局默认策略（normal 模式的默认 maxRetries 不是 2）
+  const fallback = ctx.root.llm.providerRetryPolicy('default-plus')
+  expect(fallback.mode === 'normal' && fallback.maxRetries !== 2).toBe(true)
+})
+
+test('route requestImagePolicy projects images through the attachment seam', async () => {
+  const ctx = new Context()
+  ctx.root.provide('credentials', { resolve: (ref: string) => Promise.resolve({ value: `key-for-${ref}`, source: 'test' }) })
+  // attachments stub：readImageRequest 返回投影后的固定字节；readImage 若被调用即记证
+  const calls: string[] = []
+  const ref = { attachmentId: 'att-1', mediaType: 'image/png', bytes: 9, width: 3, height: 3 } as never
+  ctx.root.provide('attachments', {
+    readImage: () => { calls.push('readImage'); return Promise.resolve({ ref, data: new Uint8Array([9, 9, 9]) }) },
+    readImageRequest: (r: never, policy: { maxPixels: number; maxBytes: number }) => {
+      calls.push(`readImageRequest:${policy.maxPixels}/${policy.maxBytes}`)
+      return Promise.resolve({ variantId: 'v1', attachment: r, data: new Uint8Array([1, 2, 3]), mediaType: 'image/png', bytes: 3, width: 1, height: 1, depth: 'uchar', space: 'srgb' })
+    },
+  })
+  await ctx.plugin(LlmRuntime)
+  await ctx.plugin(llmPlus, {
+    routes: {
+      'vision-plus': {
+        protocol: 'openai-completions',
+        baseURL: 'http://test.local/v1',
+        apiKeyRef: 'VISION_TEST',
+        models: [{ id: 'vision-1', inputModalities: ['text', 'image'] }],
+        requestImagePolicy: { maxPixels: 1_000_000, maxBytes: 50_000 },
+      },
+    },
+  })
+  sseByUrl = [['http://test.local/v1/chat/completions', 'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n']]
+  await collect(ctx, {
+    provider: 'vision-plus',
+    model: 'vision-1',
+    messages: [createUserMessage({ content: [{ type: 'text', text: '看图' }, { type: 'image', attachment: ref }], source: { kind: 'user' } })],
+  })
+  // 走了 readImageRequest（带路由声明的预算），不是 readImage 原图
+  expect(calls).toEqual(['readImageRequest:1000000/50000'])
+  // 请求体里是投影后的字节（base64 of [1,2,3]）
+  const messages = lastFetch!.body.messages as { content: { type: string; image_url?: { url: string } }[] }[]
+  expect(messages[0]!.content[1]).toEqual({ type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } })
+})
+
+test('anthropic maps numeric reasoning effort to clamped budget_tokens', async () => {
+  // 直接调协议实现（同包内部面）：数值 effort → budget_tokens，clamp 进预算范围
+  const { anthropicMessages } = await import('../src/protocols/anthropic-messages.ts')
+  const route = resolveRoutes({ c: { protocol: 'anthropic-messages', baseURL: 'http://x' } })[0]!
+  const build = (reasoningEffort: string) => anthropicMessages.buildRequest(route as never, {
+    provider: 'c',
+    model: 'm',
+    messages: [userMessage('hi')],
+    reasoningEffort: reasoningEffort as never,
+  } as never, { image: () => Promise.resolve(undefined), reasoning: { budget: { min: 1024, max: 8192 } } })
+  expect((await build('100000')).body.thinking).toEqual({ type: 'enabled', budget_tokens: 8192 })
+  expect((await build('512')).body.thinking).toEqual({ type: 'enabled', budget_tokens: 1024 })
+  expect((await build('4000')).body.thinking).toEqual({ type: 'enabled', budget_tokens: 4000 })
+  // 非数值档位只开思考（Anthropic 没有档位概念）
+  expect((await build('high')).body.thinking).toEqual({ type: 'enabled' })
+})
+
+test('openai effort outside the declared pool fails before any request leaves', async () => {
+  const ctx = await mount({ withCatalog: true })
+  const chunks = await collect(ctx, {
+    provider: 'ds-plus',
+    model: 'deepseek-v4-flash',
+    messages: [userMessage('hi')],
+    reasoningEffort: 'bogus' as never,
+  })
+  expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'error' } })
+  expect(lastFetch).toBeUndefined()
+})
+
+test('anthropic serializer warns on replay degrade instead of forging history', async () => {
+  // 直接调协议实现（同包内部面）：envelope 与 content 位置对不齐 → 降级告警 + 丢弃
+  const { anthropicMessages } = await import('../src/protocols/anthropic-messages.ts')
+  const route = resolveRoutes({ 'claude-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local' } })[0]!
+  const reasons: string[] = []
+  const misaligned = { kind: 'llm-plus', version: 1, protocol: 'anthropic-messages', response: {}, blocks: [null] }
+  await anthropicMessages.buildRequest(route as never, {
+    provider: 'claude-plus',
+    model: 'claude-sonnet-5',
+    messages: [
+      createMessage({
+        role: 'assistant',
+        content: [{ type: 'reasoning', text: '想一下' }, { type: 'text', text: '你好' }],
+        source: { kind: 'model', provider: 'claude-plus', model: 'claude-sonnet-5', replayState: misaligned },
+      }),
+      userMessage('继续'),
+    ],
+  } as never, {
+    image: () => Promise.resolve(undefined),
+    onReplayDegrade: reason => reasons.push(reason),
+  })
+  expect(reasons.some(reason => reason.includes('misaligned'))).toBe(true)
 })
 
 test('settings user-layer route additions take effect without a restart', async () => {

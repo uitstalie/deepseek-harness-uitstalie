@@ -24,7 +24,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, readReplayEnvelope, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder } from './shared.ts'
+import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, validateEffort } from './shared.ts'
 
 /** 端点拼接。 */
 function endpoint(baseURL: string): string {
@@ -57,12 +57,17 @@ async function serializeInput(options: GenerateOptions, assets: RequestAssets): 
     if (message.role === 'assistant') {
       const envelope = readReplayEnvelope(message.source, 'openai-responses')
       const replayable = envelope !== undefined && envelope.blocks.length === message.content.length
+      if (envelope !== undefined && !replayable) {
+        assets.onReplayDegrade?.('replay envelope blocks misaligned with message content; dropping reasoning items')
+      }
       message.content.forEach((block, position) => {
         if (block.type !== 'reasoning' || !replayable) return
         const meta = envelope.blocks[position]
         // reasoning item 必须带 id + encrypted_content 才能回带
         if (typeof meta?.id === 'string' && typeof meta?.encrypted_content === 'string') {
           out.push({ type: 'reasoning', id: meta.id, encrypted_content: meta.encrypted_content })
+        } else {
+          assets.onReplayDegrade?.('reasoning item lacks id or encrypted_content; dropping it rather than forging history')
         }
       })
       const text = contentToText(message.content)
@@ -111,8 +116,11 @@ async function buildRequest(route: ResolvedRoute, options: GenerateOptions, asse
       parameters: tool.parameters as JsonValue,
     }))
   }
-  // reasoningEffort 透传为 reasoning.effort（Responses API 的档位字段）
-  if (options.reasoningEffort !== undefined) body.reasoning = { effort: String(options.reasoningEffort) }
+  // reasoningEffort 透传为 reasoning.effort（Responses API 的档位字段）；
+  // 模型声明了档位池时先校验
+  if (options.reasoningEffort !== undefined) {
+    body.reasoning = { effort: validateEffort(String(options.reasoningEffort), assets.reasoning?.efforts, options.model) }
+  }
   return {
     url: endpoint(route.baseURL),
     headers: {
