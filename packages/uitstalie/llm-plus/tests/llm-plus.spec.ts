@@ -7,10 +7,15 @@
  * HTTP 错误分类、目录集成、配置 fail loud、fiber 摘除。
  */
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { createMessage, createUserMessage, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import ModelsDevCatalog from '@deepseek-ai/dsh-models-dev'
+import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import * as llmPlus from '@deepseek-ai/dsh-llm-plus'
 
 // models-dev 的测试夹具（deepseek provider，两个模型）
@@ -351,7 +356,8 @@ test('invalid route config fails loud at activation', async () => {
   ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
   await ctx.plugin(LlmRuntime)
   const fiber = ctx.plugin(llmPlus, { routes: { bad: { protocol: 'no-such-protocol' as never } } })
-  await expect(fiber).rejects.toThrow(/unknown protocol/)
+  // 结构化 schema 在写入点先拒绝（错误精确到配置路径），手工校验在其后兜底
+  await expect(fiber).rejects.toThrow(/routes\.bad\.protocol/)
 })
 
 test('adapter routes are removed with the plugin fiber', async () => {
@@ -360,4 +366,99 @@ test('adapter routes are removed with the plugin fiber', async () => {
   expect(ctx.root.llm.listProviders().map(provider => provider.id)).toContain('ds-plus')
   await ctx.root.registry.delete(llmPlus)
   expect(ctx.root.llm.listProviders().map(provider => provider.id)).not.toContain('ds-plus')
+})
+
+test('every route registers a configurable-provider directory entry, removed with the fiber', async () => {
+  const ctx = await mount()
+  const entries = ctx.root.llm.listConfigurableProviders()
+  // 每条路由一条目录条目：settingsNs/settingsPath 指向 llm-plus 命名空间的路由对象
+  const dsPlus = entries.find(entry => entry.provider === 'ds-plus')
+  expect(dsPlus).toMatchObject({
+    displayName: 'ds-plus',
+    settingsNs: 'llm-plus',
+    settingsPath: ['routes', 'ds-plus'],
+    declared: true,
+  })
+  expect(entries.filter(entry => entry.settingsNs === 'llm-plus').map(entry => entry.provider).sort())
+    .toEqual(['claude-plus', 'ds-plus', 'gemini-plus', 'oa-plus'])
+
+  await ctx.root.registry.delete(llmPlus)
+  expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.settingsNs === 'llm-plus')).toBe(false)
+})
+
+test('model discovery answers from adapter knowledge for an existing route, zero network', async () => {
+  const ctx = await mount({ withCatalog: true })
+  // request.provider 指名已有路由：目录数据直接作答，不发任何 HTTP
+  const models = await ctx.root.llm.discoverModels('llm-plus', { provider: 'ds-plus' })
+  expect(models.map(model => model.id).sort()).toEqual(['deepseek-v4-flash', 'deepseek-v4-pro'])
+  expect(lastFetch).toBeUndefined()
+})
+
+test('model discovery interrogates the draft endpoint with the one-shot credential', async () => {
+  const ctx = await mount()
+  sseByUrl = [['http://test.local/v1/models', '{"data":[{"id":"m1"},{"id":"m2"}]}']]
+  const models = await ctx.root.llm.discoverModels('llm-plus', {
+    baseURL: 'http://test.local/v1',
+    api: 'openai-completions',
+    apiKey: 'draft-key',
+  })
+  expect(models).toEqual([{ id: 'm1' }, { id: 'm2' }])
+  // 一次性凭据只用于这次 interrogation（harness 不存储）
+  expect(lastFetch!.headers['authorization']).toBe('Bearer draft-key')
+})
+
+test('model discovery rejects an unknown draft protocol', async () => {
+  const ctx = await mount()
+  await expect(ctx.root.llm.discoverModels('llm-plus', { baseURL: 'http://x', api: 'nope' }))
+    .rejects.toThrow(/unknown discovery protocol/)
+})
+
+test('settings user-layer route additions take effect without a restart', async () => {
+  // 真实动态组合（对齐 llm-deepseek 的 dynamic-config 夹具）：
+  // settings-file 落地用户层，watch:false 走确定性的进程内写路径
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-llm-plus-settings-'))
+  try {
+    const ctx = new Context()
+    ctx.root.provide('credentials', { resolve: (ref: string) => Promise.resolve({ value: `key-for-${ref}`, source: 'test' }) })
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(FileSettingsProvider, { path: join(dir, 'settings.yaml'), watch: false })
+    await ctx.plugin(llmPlus, {
+      routes: { 'ds-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', apiKeyRef: 'DEEPSEEK_TEST' } },
+    })
+    expect(ctx.root.llm.listProviders().map(provider => provider.id)).toEqual(['ds-plus'])
+
+    // 用户层写一个新路由（models.dev 设置页走的就是这条 mutate 路径）。
+    // 曾经有个 bug：apply 把 setSource 的 thunk 在挂接点求值冻结，用户层
+    // 变更永远读不到——这个用例钉死热更新语义
+    await ctx.settings.update(settingsNamespace('llm-plus'), {
+      routes: {
+        'kimi-for-coding': {
+          protocol: 'anthropic-messages',
+          displayName: 'Kimi For Coding',
+          baseURL: 'http://test.local/kimi/v1',
+          apiKeyRef: 'KIMI_API_KEY',
+          modelsDevProvider: 'kimi-for-coding',
+        },
+      },
+    })
+
+    // 不重启：settings 层是递归深合并（对象逐键、数组整体替换），base 的
+    // ds-plus 不被用户层抹掉。watch 回调走串行承诺链（SettingsWatcher.tail），
+    // 用 waitFor 等它跑到，而不是断言提交点的瞬时状态
+    // 不重启：settings 层是递归深合并（对象逐键、数组整体替换），base 的
+    // ds-plus 不被用户层抹掉。watch 回调走串行承诺链（SettingsWatcher.tail），
+    // 用 waitFor 等它跑到，而不是断言提交点的瞬时状态
+    await vi.waitFor(() => {
+      expect(ctx.root.llm.listProviders().map(provider => provider.id).sort()).toEqual(['ds-plus', 'kimi-for-coding'])
+    })
+    const kimi = ctx.root.llm.listConfigurableProviders().find(entry => entry.provider === 'kimi-for-coding')
+    expect(kimi).toMatchObject({
+      displayName: 'Kimi For Coding',
+      settingsNs: 'llm-plus',
+      settingsPath: ['routes', 'kimi-for-coding'],
+    })
+    await ctx.fiber.dispose()
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })
