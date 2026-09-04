@@ -222,7 +222,10 @@ export default class ModelsDevCatalog extends TypertRemoteService {
    * @returns 全部提供商的摘要（含协议方言/端点/凭据变量名/模型数）。
    */
   @Remote
-  listCatalogProviders(): CatalogProviderSummary[] {
+  async listCatalogProviders(): Promise<CatalogProviderSummary[]> {
+    // 启动竞速：首次加载（网络或缓存兜底）未落地时目录是空的——Remote 调用方
+    // 等到 ready 再答，页面不需要知道这条时间线
+    await this.whenReady()
     return Object.entries(this.data)
       .map(([id, provider]) => ({
         id,
@@ -241,7 +244,9 @@ export default class ModelsDevCatalog extends TypertRemoteService {
    * @returns 模型摘要（按 id 排序）；未知 provider 返回空数组。
    */
   @Remote
-  listCatalogModels(providerId: string): CatalogModelSummary[] {
+  async listCatalogModels(providerId: string): Promise<CatalogModelSummary[]> {
+    // 同 listCatalogProviders：等首次加载落地再答
+    await this.whenReady()
     const provider = this.data[providerId]
     if (provider === undefined) return []
     return Object.values(provider.models)
