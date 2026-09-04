@@ -654,6 +654,32 @@ test('oauth flow registered after settings change survives the seam mounting lat
   }
 })
 
+test('zero-route composition mounts dormant; the first settings route registers the adapter', async () => {
+  // 纯页面驱动的起点（base 零路由）：registerAdapter 的空初始集会抛、
+  // registerConfigurableProviders 同——两个注册都必须惰性到首个路由
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-llm-plus-empty-'))
+  try {
+    const ctx = new Context()
+    ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(FileSettingsProvider, { path: join(dir, 'settings.yaml'), watch: false })
+    await ctx.plugin(llmPlus, { routes: {} })
+    expect(ctx.root.llm.listProviders()).toEqual([])
+    expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.settingsNs === 'llm-plus')).toBe(false)
+
+    await ctx.settings.update(settingsNamespace('llm-plus'), {
+      routes: { 'kimi-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local/kimi/v1', apiKeyRef: 'KIMI' } },
+    })
+    await vi.waitFor(() => {
+      expect(ctx.root.llm.listProviders().map(provider => provider.id)).toEqual(['kimi-plus'])
+    })
+    expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.provider === 'kimi-plus')).toBe(true)
+    await ctx.fiber.dispose()
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 test('settings user-layer route additions take effect without a restart', async () => {
   // 真实动态组合（对齐 llm-deepseek 的 dynamic-config 夹具）：
   // settings-file 落地用户层，watch:false 走确定性的进程内写路径

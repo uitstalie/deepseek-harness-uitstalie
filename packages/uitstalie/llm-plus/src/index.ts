@@ -27,6 +27,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import {
   LlmError,
+  type DirectoryRegistrationHandle,
   type LlmConfigurableProvider,
   type LlmDiscoveredModel,
   type LlmModelDiscoveryRequest,
@@ -130,12 +131,35 @@ export function apply(ctx: Context, config: PlusConfig): void {
     warn: message => ctx.logger.warn(message),
   })
 
-  // 注册 handle 持有当前路由集；replace 在同一 adapter 实例上原子换路由。
-  // 三个注册都经服务代理绑到本 fiber（参照 llm-deepseek 的裸调），fiber
-  // 卸载时自动摘除
-  const registration = ctx.llm.registerAdapter(adapter.routeIds(), adapter)
-  ctx.effect(() => registration, 'llm-plus.registerAdapter')
-  const directory = ctx.llm.registerConfigurableProviders(directoryEntries(adapter.resolvedRoutes()))
+  // 路由注册是惰性的：registerAdapter 的空初始集会抛，但注册后的
+  // replace([]) 合法——所以零路由组合（纯目录/纯页面驱动）也能挂载，
+  // 首个路由出现时注册，清空时留在注册表持零路由
+  let registration: ReturnType<Context['llm']['registerAdapter']> | undefined
+  const syncRegistration = (routes: readonly ResolvedRoute[]): void => {
+    const ids = routes.map(route => route.id)
+    if (registration === undefined) {
+      if (ids.length === 0) return
+      registration = ctx.llm.registerAdapter(ids, adapter)
+    } else {
+      registration.replace(ids)
+    }
+  }
+  syncRegistration(adapter.resolvedRoutes())
+  ctx.effect(() => () => registration?.(), 'llm-plus.registerAdapter')
+  // 目录条目同样惰性：registerConfigurableProviders 空初始集抛、replace([])
+  // 合法——与路由注册同一条惰性路径（两个注册都在 onChange 里经同一闭包
+  // ctx 调用，绑定的仍是本 fiber）
+  let directory: DirectoryRegistrationHandle | undefined
+  const syncDirectory = (routes: readonly ResolvedRoute[]): void => {
+    const entries = directoryEntries(routes)
+    if (directory === undefined) {
+      if (entries.length === 0) return
+      directory = ctx.llm.registerConfigurableProviders(entries)
+    } else {
+      directory.replace(entries)
+    }
+  }
+  syncDirectory(adapter.resolvedRoutes())
   ctx.llm.registerModelDiscovery(SETTINGS_NS, (request, signal) => discover(adapter, request, signal))
   // OAuth 登录流：authorization 缝缺席的组合里整体休眠（纯 apiKeyRef 工作）；
   // 路由集变化时增量同步（sync 返回函数在缝缺席时为空转）
@@ -160,8 +184,8 @@ export function apply(ctx: Context, config: PlusConfig): void {
     onChange: () => {
       const routes = resolveRoutes(current().routes)
       adapter.updateRoutes(routes)
-      registration.replace(routes.map(route => route.id))
-      directory.replace(directoryEntries(routes))
+      syncRegistration(routes)
+      syncDirectory(routes)
       routesNow = routes
       syncOAuthFlows(routes.filter(route => route.oauth !== undefined).map(route => route.id))
     },
