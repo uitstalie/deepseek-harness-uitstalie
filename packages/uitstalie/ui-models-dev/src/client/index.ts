@@ -57,6 +57,8 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-models-dev: copy dictionaries')
 
   const t = ctx.locale.bind(NS) as ModelsDevSectionInjected['t']
+  /** 页面控制器（内层 inject 作用域创建，disposer 需要它的轮询开关）。 */
+  let controller: ModelsDevStore | undefined
   // $mount 之后 remote.* 才存在：内层 inject 等待它并把全部用到的
   // 服务重新声明进作用域（内层作用域不继承外层的可访问集）
   ctx.inject(['slots', 'remote.modelsDev', 'remote.llmPlusAuth', 'remote.settings', 'remote.credentials'], (scoped) => {
@@ -66,10 +68,11 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       credentials: scoped.remote.credentials,
       llmPlusAuth: scoped.remote.llmPlusAuth,
     }
-    const controller = new ModelsDevStore(wire)
+    const controllerInstance = new ModelsDevStore(wire)
+    controller = controllerInstance
     const injected = (): ModelsDevSectionInjected => ({
-      controller,
-      hooks: { snapshot: controller.store },
+      controller: controllerInstance,
+      hooks: { snapshot: controllerInstance.store },
       t,
     })
 
@@ -81,12 +84,15 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       inject: injected,
     }, ModelsDevSection))
 
-    // 目录拉取是页面级一次性动作（失败进 error 态，页面可重试）
-    void controller.load()
-    void controller.loadOAuthRoutes()
-    void controller.loadMyRoutes()
+    // 目录拉取是页面级一次性动作（失败进 error 态，页面可重试）；
+    // 之后 60s 后台轮询保持列表新鲜（缓存与 TTL 在 host 侧）
+    void controllerInstance.load()
+    void controllerInstance.loadOAuthRoutes()
+    void controllerInstance.loadMyRoutes()
+    controllerInstance.startCatalogPolling()
   })
   return () => {
+    controller?.stopCatalogPolling()
     disposeModelsDev()
     disposeLlmPlus()
   }
