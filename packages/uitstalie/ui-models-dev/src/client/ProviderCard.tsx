@@ -7,6 +7,7 @@
 
 import type { CatalogModelSummary, CatalogProviderSummary } from '@deepseek-ai/dsh-models-dev/types'
 import type { ProviderDraft } from './draft.ts'
+import { OAUTH_BY_CATALOG_ID } from './draft.ts'
 import { fill, type ModelsDevKey } from './locales.ts'
 import { DraftForm } from './DraftForm.tsx'
 import styles from './ModelsDevSection.module.css'
@@ -38,6 +39,7 @@ export function ProviderCard(props: ProviderCardProps) {
         <span className={styles.rowTitle}>{provider.name ?? provider.id}</span>
         <span className={styles.rowMeta}>{provider.id}</span>
         {provider.npm !== undefined && <span className={styles.badge}>{provider.npm}</span>}
+        {OAUTH_BY_CATALOG_ID[provider.id] !== undefined && <span className={styles.badge}>OAuth</span>}
         <span className={styles.rowMeta}>{fill(t('modelsCount'), { count: String(provider.modelCount) })}</span>
       </label>
       {provider.api !== undefined && <div className={styles.rowApi}>{provider.api}</div>}
