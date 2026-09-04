@@ -6,10 +6,11 @@
  */
 
 import type { CatalogModelSummary, CatalogProviderSummary } from '@deepseek-ai/dsh-models-dev/types'
-import type { ProtocolName } from '@deepseek-ai/dsh-llm-plus'
+import type { OAuthFlowId, ProtocolName } from '@deepseek-ai/dsh-llm-plus'
 import type { ProviderDraft } from './draft.ts'
 import { JsonField, TextField } from './fields.tsx'
 import { fill, type ModelsDevKey } from './locales.ts'
+import { OAUTH_FLOW_CHOICES } from './route-edit.ts'
 import styles from './ModelsDevSection.module.css'
 
 /** llm-plus 的四协议选项（顺序即下拉顺序）。 */
@@ -92,6 +93,17 @@ export function DraftForm(props: DraftFormProps) {
         <span className={styles.notice}>{fill(t('interpolatedUrl'), {})}</span>
       )}
       <TextField label={t('fieldApiKeyRef')} value={draft.apiKeyRef} onChange={apiKeyRef => onPatch({ apiKeyRef })} />
+      <label className={styles.field}>
+        <span className={styles.fieldLabel}>{t('fieldOAuth')}</span>
+        <select
+          className={styles.input}
+          value={draft.oauth}
+          onChange={event => onPatch({ oauth: event.target.value as OAuthFlowId | '' })}
+        >
+          <option value="">{t('oauthNone')}</option>
+          {OAUTH_FLOW_CHOICES.map(flow => <option key={flow} value={flow}>{flow}</option>)}
+        </select>
+      </label>
       <TextField
         label={t('fieldApiKey')}
         type="password"
