@@ -10,7 +10,20 @@
 
 import type { CatalogModelSummary, CatalogProviderSummary } from '@deepseek-ai/dsh-models-dev/types'
 import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
-import type { ProtocolName } from '@deepseek-ai/dsh-llm-plus'
+import type { OAuthFlowId, ProtocolName } from '@deepseek-ai/dsh-llm-plus'
+
+/**
+ * 目录 provider id → llm-plus OAuth flow 的映射（显式数据表）。
+ * 只有"目录 id 与 flow id 指向同一订阅产品"的才进表——openai 不映射
+ * （models.dev 的 openai 是 API 平台，openai-codex 是 ChatGPT 订阅，两家产品）。
+ */
+export const OAUTH_BY_CATALOG_ID: Readonly<Record<string, OAuthFlowId>> = {
+  anthropic: 'anthropic',
+  'kimi-for-coding': 'kimi-coding',
+  'github-copilot': 'github-copilot',
+  openrouter: 'openrouter',
+  xai: 'xai',
+}
 
 /** 模型子集模式：all = 路由跟随目录（不写 models 手工表）；subset = 物化勾选子集。 */
 export type ModelMode = 'all' | 'subset'
@@ -30,6 +43,8 @@ export interface ProviderDraft {
   baseURL: string
   /** 凭据引用名；默认目录 env[0]；空 = 免认证路由。 */
   apiKeyRef: string
+  /** OAuth 登录流 id；默认目录映射表（OAUTH_BY_CATALOG_ID），'' = 不走 OAuth。 */
+  oauth: OAuthFlowId | ''
   /** 一次性密钥：确认时经 credentials.set 写入凭据库，本字段不持久化。 */
   apiKey: string
   /** 额外请求头（JSON 对象文本；'' = 无）。 */
@@ -65,6 +80,7 @@ export function defaultDraft(provider: CatalogProviderSummary): ProviderDraft {
     protocol: defaultProtocol(provider.npm),
     baseURL: provider.api ?? '',
     apiKeyRef: provider.env?.[0] ?? '',
+    oauth: OAUTH_BY_CATALOG_ID[provider.id] ?? '',
     apiKey: '',
     headersText: '',
     bodyText: '',
@@ -102,6 +118,7 @@ export function materializeRoute(
   if (draft.displayName.trim() !== '') route.displayName = draft.displayName.trim()
   if (draft.baseURL.trim() !== '') route.baseURL = draft.baseURL.trim()
   if (draft.apiKeyRef.trim() !== '') route.apiKeyRef = draft.apiKeyRef.trim()
+  if (draft.oauth !== '') route.oauth = draft.oauth
   const headers = parseJsonObjectField(draft.headersText)
   if (headers !== undefined) route.headers = headers
   const body = parseJsonObjectField(draft.bodyText)
