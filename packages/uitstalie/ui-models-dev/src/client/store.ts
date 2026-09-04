@@ -111,33 +111,65 @@ export class ModelsDevStore {
 
   constructor(private readonly wire: ModelsDevWire) {}
 
-  /** 拉取目录提供商列表（挂载时一次 + 失败重试共用此入口）。 */
-  async load(): Promise<void> {
-    this.store.update((draft) => {
-      draft.status = 'loading'
-      draft.error = null
-    })
+  /** 拉取目录提供商列表（挂载时一次 + 失败重试共用此入口；后台刷新不打断现状）。 */
+  async load(background = false): Promise<void> {
+    // 后台轮询时不清空现有列表（避免闪烁）；只有首次/显式重试才进 loading 态
+    if (!background) {
+      this.store.update((draft) => {
+        draft.status = 'loading'
+        draft.error = null
+      })
+    }
     try {
       const result = await this.wire.modelsDev.listCatalogProviders()
       this.store.update((draft) => {
         if (result.ok) {
           draft.status = 'ready'
           draft.providers = result.value
-        } else {
+          draft.error = null
+        } else if (!background) {
           draft.status = 'error'
           draft.error = result.error.message
         }
       })
     } catch (error) {
       // RemoteResult 契约：业务失败折叠进 {ok:false}；能 reject 的只有装配
-      // 故障（方法未挂载/连接未就绪）——同样是 error 态 + 可重试
-      const message = error instanceof Error ? error.message : String(error)
-      console.error('ui-models-dev: catalog load rejected', error)
-      this.store.update((draft) => {
-        draft.status = 'error'
-        draft.error = message
-      })
+      // 故障（方法未挂载/连接未就绪）——显式加载进 error 态，后台轮询只记日志
+      if (!background) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error('ui-models-dev: catalog load rejected', error)
+        this.store.update((draft) => {
+          draft.status = 'error'
+          draft.error = message
+        })
+      } else {
+        console.error('ui-models-dev: background catalog refresh rejected', error)
+      }
     }
+  }
+
+  /** 轮询循环的存活开关（fiber 摘除时停）。 */
+  private polling = false
+
+  /**
+   * 目录刷新循环：60s 轮一次（目录 TTL 是小时级，摘要调用极轻；gateway 的
+   * 转发事件通道是应用独占的，models-dev/updated 推不出来，轮询是诚实的
+   * 通道）。host 侧 Remote 等到首次加载落地才答，启动竞速不在页面。
+   */
+  startCatalogPolling(): void {
+    if (this.polling) return
+    this.polling = true
+    void (async () => {
+      while (this.polling) {
+        await new Promise(resolve => setTimeout(resolve, 60_000))
+        if (this.polling) await this.load(true)
+      }
+    })()
+  }
+
+  /** 停止轮询循环（页面 fiber 摘除时调用）。 */
+  stopCatalogPolling(): void {
+    this.polling = false
   }
 
   /** 更新筛选串。 */
