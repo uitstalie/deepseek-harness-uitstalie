@@ -128,7 +128,7 @@ test('@Remote catalog queries serve provider and model summaries for the setting
   const catalog = await mountCatalog(ctx)
 
   // 提供商摘要：id 排序、含协议方言/端点/凭据变量名/模型数（partial 缺字段即缺席）
-  const providers = catalog.listCatalogProviders()
+  const providers = await catalog.listCatalogProviders()
   expect(providers.map(provider => provider.id)).toEqual(['deepseek', 'partial'])
   expect(providers[0]).toMatchObject({
     id: 'deepseek',
@@ -140,10 +140,10 @@ test('@Remote catalog queries serve provider and model summaries for the setting
   })
 
   // 模型摘要：能力字段齐备（设置页的模型子集勾选行）
-  const models = catalog.listCatalogModels('deepseek')
+  const models = await catalog.listCatalogModels('deepseek')
   expect(models.map(model => model.id)).toEqual(['deepseek-v4-flash', 'deepseek-v4-pro'])
   expect(models[0]).toMatchObject({ id: 'deepseek-v4-flash', contextWindow: 1_000_000, maxTokens: 384_000, inputModalities: ['text'], reasoning: true })
 
   // 未知 provider 返回空数组而不是抛错（目录是 advisory 的）
-  expect(catalog.listCatalogModels('no-such-provider')).toEqual([])
+  expect(await catalog.listCatalogModels('no-such-provider')).toEqual([])
 })
