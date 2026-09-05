@@ -56,6 +56,19 @@ function readGrantPayload(record: CredentialRecord | undefined): PlusOAuthCreden
 }
 
 /**
+ * OAuth 凭据携带的账号实际可用模型集（目前只有 github-copilot 在登录/刷新
+ * 时枚举）。@returns 非空 id 列表；无凭据/无清单返回 undefined（回落目录）。
+ */
+export async function oauthAvailableModelIds(
+  credentials: CredentialProvider,
+  routeId: string,
+): Promise<readonly string[] | undefined> {
+  const credential = readGrantPayload(await credentials.readRecord(grantKeyFor(routeId)))
+  const ids = credential?.availableModelIds
+  return ids !== undefined && ids.length > 0 ? ids : undefined
+}
+
+/**
  * 请求期解析一个 OAuth 路由的认证：读记录 → 临期在锁内刷新 → 推导 Bearer。
  * @returns undefined = 没有已登录凭据（调用方报可行动的重登错误）。
  */
