@@ -594,6 +594,34 @@ test('oauth route without a stored grant fails with an actionable AUTH error, ne
   expect(lastFetch).toBeUndefined()
 })
 
+test('oauth route with availableModelIds lists the account-enabled set enriched from the catalog', async () => {
+  const ctx = new Context()
+  ctx.root.provide('credentials', {
+    resolve: () => Promise.resolve(undefined),
+    readRecord: () => Promise.resolve({
+      kind: 'grant',
+      payload: { type: 'oauth', access: 'a', refresh: 'r', expires: Date.now() + 3_600_000, availableModelIds: ['deepseek-v4-flash', 'account-only-model'] },
+    }),
+  })
+  await ctx.plugin(LlmRuntime)
+  await ctx.plugin(ModelsDevCatalog, { sourceUrl: FIXTURE_URL })
+  await ctx.plugin(llmPlus, {
+    routes: {
+      'copilot-plus': {
+        protocol: 'openai-completions',
+        baseURL: 'http://test.local/v1',
+        oauth: 'github-copilot',
+        modelsDevProvider: 'deepseek',
+      },
+    },
+  })
+  const models = await ctx.root.llm.listModels('copilot-plus')
+  // 账号可用集是权威过滤（28 个目录模型只出可用那 2 个）；目录命中的富化显示名
+  expect(models.map(model => model.id)).toEqual(['deepseek-v4-flash', 'account-only-model'])
+  expect(models[0]!.name).toBe('DeepSeek V4 Flash')
+  expect(models[1]!.name).toBe('account-only-model')
+})
+
 test('oauth flows register with the authorization seam and leave with the fiber', async () => {
   const ctx = new Context()
   ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })

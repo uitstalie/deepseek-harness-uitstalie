@@ -34,7 +34,7 @@ import { openAiResponses } from './protocols/openai-responses.ts'
 import { anthropicMessages } from './protocols/anthropic-messages.ts'
 import { gemini } from './protocols/gemini.ts'
 import type { ProtocolName, ResolvedRoute } from './config.ts'
-import { OAUTH_PROVIDERS, dropDeadGrant, resolveOAuthAuth } from './oauth/index.ts'
+import { OAUTH_PROVIDERS, dropDeadGrant, oauthAvailableModelIds, resolveOAuthAuth } from './oauth/index.ts'
 
 /** 协议名 → 实现实例（无状态，全局共享）。 */
 const PROTOCOLS: Record<ProtocolName, Protocol> = {
@@ -226,10 +226,31 @@ export class PlusAdapter extends LlmAdapter {
 
   /**
    * 列出路由的模型（advisory 目录）。
-   * 手工 models 整体覆盖目录数据；都没有时给空表（契约允许）。
+   * 优先级：OAuth 凭据的账号实际可用集（copilot，目录元数据按 id 富化）
+   * > 手工 models 整体覆盖 > models.dev 目录 > 空表（契约允许）。
    */
   override async listModels(provider: string): Promise<readonly LlmModelInfo[]> {
     const route = this.route(provider)
+    // OAuth 凭据的账号可用集：登录时枚举的权威过滤（copilot 的账号只开了
+    // 部分模型；空集/无凭据回落目录路径）
+    if (route.oauth !== undefined) {
+      const available = await oauthAvailableModelIds(this.deps.credentials, route.id)
+      if (available !== undefined) {
+        await this.deps.catalog?.whenReady()
+        const catalogEntry = route.modelsDevProvider !== undefined && this.deps.catalog !== undefined
+          ? this.deps.catalog.getProvider(route.modelsDevProvider)
+          : undefined
+        return available.map((id) => {
+          const catalogModel = catalogEntry?.models[id]
+          return {
+            provider,
+            id,
+            name: catalogModel?.name ?? id,
+            ...(catalogModel?.modalities?.input === undefined ? {} : { inputModalities: catalogModel.modalities.input as never }),
+          }
+        })
+      }
+    }
     if (route.models) {
       return route.models.map(model => ({
         provider,
