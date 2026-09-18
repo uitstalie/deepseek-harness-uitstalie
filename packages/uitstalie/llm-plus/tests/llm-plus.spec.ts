@@ -15,7 +15,6 @@ import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { createMessage, createUserMessage, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import ModelsDevCatalog from '@deepseek-ai/dsh-models-dev'
 import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import * as llmPlus from '@deepseek-ai/dsh-llm-plus'
 import { resolveRoutes } from '../src/config.ts'
 
@@ -659,7 +658,7 @@ test('oauth flow registered after settings change survives the seam mounting lat
       routes: { 'ds-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', apiKeyRef: 'DEEPSEEK_TEST' } },
     })
     // 用户层变更先到（缝还不在）
-    await ctx.settings.update(settingsNamespace('llm-plus'), {
+    await ctx.settings.update('llm-plus', {
       routes: { 'kimi-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local/kimi/v1', oauth: 'kimi-coding' } },
     })
     await vi.waitFor(() => {
@@ -695,7 +694,7 @@ test('zero-route composition mounts dormant; the first settings route registers 
     expect(ctx.root.llm.listProviders()).toEqual([])
     expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.settingsNs === 'llm-plus')).toBe(false)
 
-    await ctx.settings.update(settingsNamespace('llm-plus'), {
+    await ctx.settings.update('llm-plus', {
       routes: { 'kimi-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local/kimi/v1', apiKeyRef: 'KIMI' } },
     })
     await vi.waitFor(() => {
@@ -725,7 +724,7 @@ test('settings user-layer route additions take effect without a restart', async 
     // 用户层写一个新路由（models.dev 设置页走的就是这条 mutate 路径）。
     // 曾经有个 bug：apply 把 setSource 的 thunk 在挂接点求值冻结，用户层
     // 变更永远读不到——这个用例钉死热更新语义
-    await ctx.settings.update(settingsNamespace('llm-plus'), {
+    await ctx.settings.update('llm-plus', {
       routes: {
         'kimi-for-coding': {
           protocol: 'anthropic-messages',

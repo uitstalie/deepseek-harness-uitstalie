@@ -32,7 +32,7 @@ import {
   type LlmDiscoveredModel,
   type LlmModelDiscoveryRequest,
 } from '@deepseek-ai/dsh-llm'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import { PlusAdapter } from './adapter.ts'
 import { Config, PROTOCOL_NAMES, resolveRoutes, type PlusConfig, type ProtocolName, type ResolvedRoute } from './config.ts'
 import { registerOAuthFlows } from './oauth/index.ts'
@@ -114,10 +114,10 @@ async function discover(
 /**
  * 挂载适配器。
  *
- * 接线说明：installSettingsSection 内部用 ctx.inject(['settings'], …)，
+ * 接线说明：settings.installSection 走 ctx.inject(['settings'], …)，
  * settings 服务不存在时整个接线休眠（组合里没有 settings 的 composition
  * 即纯 cordis.yml 配置）。onChange 在 attach/变更/detach 时都会触发，
- * 每次重新解析当前生效源并原子替换；非法配置由 installSettingsSection
+ * 每次重新解析当前生效源并原子替换；非法配置由 installSection
  * 的 validate 在写入点拒绝，onChange 读到的必是合法形状。
  */
 export function apply(ctx: Context, config: PlusConfig): void {
@@ -177,17 +177,19 @@ export function apply(ctx: Context, config: PlusConfig): void {
   // onChange 里现取；在 setSource 调用点求值会把它冻结成 attach 时的
   // 旧值，之后用户层变更就永远读不到（这正是 kimi 路由不生效的 bug）
   let current: () => PlusConfig = () => config
-  installSettingsSection(ctx, settingsNamespace(SETTINGS_NS), Config, config, {
-    setSource: (source) => {
-      current = source
-    },
-    onChange: () => {
-      const routes = resolveRoutes(current().routes)
-      adapter.updateRoutes(routes)
-      syncRegistration(routes)
-      syncDirectory(routes)
-      routesNow = routes
-      syncOAuthFlows(routes.filter(route => route.oauth !== undefined).map(route => route.id))
-    },
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.installSection(ctx, SETTINGS_NS, Config, config, {
+      setSource: (source) => {
+        current = source
+      },
+      onChange: () => {
+        const routes = resolveRoutes(current().routes)
+        adapter.updateRoutes(routes)
+        syncRegistration(routes)
+        syncDirectory(routes)
+        routesNow = routes
+        syncOAuthFlows(routes.filter(route => route.oauth !== undefined).map(route => route.id))
+      },
+    })
   })
 }
