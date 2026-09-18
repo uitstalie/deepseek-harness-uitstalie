@@ -752,6 +752,10 @@ test('settings user-layer route additions take effect without a restart', async 
       settingsNs: 'llm-plus',
       settingsPath: ['routes', 'kimi-for-coding'],
     })
+    // 模型目录的组标题取 providerInfo().name：displayName 必须穿过它，而不是
+    // 落回基类的 "id 即 name"（选择器里的展示名全靠这一条路径）
+    expect(ctx.root.llm.listProviders().find(provider => provider.id === 'kimi-for-coding')?.name).toBe('Kimi For Coding')
+    expect(ctx.root.llm.listProviders().find(provider => provider.id === 'ds-plus')?.name).toBe('ds-plus')
     await ctx.fiber.dispose()
   } finally {
     await rm(dir, { recursive: true, force: true })
