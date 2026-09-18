@@ -20,6 +20,7 @@ import {
   ReasoningEffortId,
   type GenerateOptions,
   type LlmModelInfo,
+  type LlmProviderInfo,
   type LlmResolvedModelInfo,
   type ResolvedRetryPolicy,
   type StreamChunk,
@@ -111,6 +112,15 @@ export class PlusAdapter extends LlmAdapter {
   /** 当前解析后的路由表（目录条目映射用；与 routeIds 同一来源）。 */
   resolvedRoutes(): readonly ResolvedRoute[] {
     return this.routes
+  }
+
+  /**
+   * 展示名取自路由的 displayName 而非路由 id：displayName 存在的意义就是
+   * 给部署方一个标签，若只有配置面读它，所有选择器都会显示原始 id
+   * （对齐 pi-ai 的 providerInfo 语义；模型目录的组标题经这里取 name）。
+   */
+  override providerInfo(provider: string): LlmProviderInfo {
+    return { id: provider, name: this.routes.find(candidate => candidate.id === provider)?.displayName ?? provider }
   }
 
   /** 查路由；未注册的 route 是上层契约错误（LlmRuntime 已按注册表路由，到这里不该发生）。 */
