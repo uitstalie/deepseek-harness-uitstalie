@@ -17,7 +17,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, validateEffort } from './shared.ts'
+import { contentToText, extractImages, extractToolCalls, getJson, imagePlaceholder, validateEffort } from './shared.ts'
 
 /** API 路径拼接：容忍 baseURL 尾部斜杠。 */
 function endpoint(baseURL: string): string {
@@ -34,18 +34,15 @@ function endpoint(baseURL: string): string {
  * - assistant 的 reasoning 块**丢弃**（DeepSeek 等 provider 明确要求多轮
  *   不回带 reasoning_content，回带反而 400）；
  * - assistant 的 tool-call 块 → tool_calls 数组；
- * - tool-result 块（harness 里是 role:user）→ 独立的 role:'tool' 消息。
+ * - tool 消息（harness 的独立 role）→ 独立的 role:'tool' 消息。
  */
 async function serializeMessages(options: GenerateOptions, assets: RequestAssets): Promise<JsonValue[]> {
   const out: JsonValue[] = []
   if (options.system) out.push({ role: 'system', content: options.system })
   for (const message of options.messages) {
     if (message.role === 'system') continue
-    const toolResults = extractToolResults(message)
-    if (toolResults.length > 0) {
-      for (const result of toolResults) {
-        out.push({ role: 'tool', tool_call_id: result.toolCallId, content: contentToText(result.content) })
-      }
+    if (message.role === 'tool') {
+      out.push({ role: 'tool', tool_call_id: message.toolCallId, content: contentToText(message.content) })
       continue
     }
     const text = contentToText(message.content)

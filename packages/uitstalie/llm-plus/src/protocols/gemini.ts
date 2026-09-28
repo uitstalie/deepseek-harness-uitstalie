@@ -8,7 +8,7 @@
  * - 角色词汇是 user/model（不是 user/assistant）；
  * - 内容是 parts 数组：{text} / {functionCall} / {functionResponse}；
  * - 工具结果是 functionResponse，需要**函数名**而不是 call id——
- *   harness 的 ToolResultBlock 只有 toolCallId，所以序列化时先扫一遍历史
+ *   harness 的 tool 消息只带 toolCallId，所以序列化时先扫一遍历史
  *   建 toolCallId → name 映射；
  * - 思考内容在同一个 part 里用 thought: true 标记（不是独立事件类型）；
  * - functionCall 是**完整帧**（不流式），一帧一个完整调用。
@@ -21,7 +21,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, readReplayEnvelope, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, clampBudget, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, parseJsonObject } from './shared.ts'
+import { contentToText, clampBudget, extractImages, extractToolCalls, getJson, imagePlaceholder, parseJsonObject } from './shared.ts'
 
 /** 端点拼接：模型 id 进路径，SSE 走 ?alt=sse 查询参数。 */
 function endpoint(baseURL: string, model: string): string {
@@ -52,16 +52,13 @@ async function serializeContents(options: GenerateOptions, assets: RequestAssets
   }
   for (const message of options.messages) {
     if (message.role === 'system') continue
-    const toolResults = extractToolResults(message)
-    if (toolResults.length > 0) {
-      for (const result of toolResults) {
-        push('user', {
-          functionResponse: {
-            name: callNames.get(result.toolCallId) ?? 'unknown_tool',
-            response: { result: contentToText(result.content) },
-          },
-        })
-      }
+    if (message.role === 'tool') {
+      push('user', {
+        functionResponse: {
+          name: callNames.get(message.toolCallId) ?? 'unknown_tool',
+          response: { result: contentToText(message.content) },
+        },
+      })
       continue
     }
     const role = message.role === 'assistant' ? 'model' : 'user'
