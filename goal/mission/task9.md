@@ -17,7 +17,7 @@
 
 ## 范围（应做）
 
-6. **图片预算**：路由级 maxRequestImageBytes / requestImagePixelBudget（请求装配期强制，对齐 pi-ai 字段语义）。
+6. **图片预算**：路由级 `requestImagePolicy: { maxPixels, maxBytes }`（请求装配期强制；`maxPixels` 按源尺寸折算确定目标尺寸，经 `readImageRequest` 投影）。
 7. **reasoning 细分**：models.dev reasoning_options 数据驱动——anthropic `budget_tokens`（min/max）、gemini thinkingBudget（已有数值路径）、openai effort 枚举校验。
 
 ## TODO（缓做，归后续 task）
