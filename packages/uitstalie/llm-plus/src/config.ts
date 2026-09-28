@@ -7,8 +7,10 @@
  *
  * Config schema 是结构化的（不是 dict(any)）：原生 Models 设置页的
  * ProviderEditor 按 schema 渲染编辑表单（参照 llm-pi-ai 的 profile 形状；
- * `role('credential-ref')` 让凭据字段渲染成凭据选择器）。resolveRoutes 的
- * 手工校验保留——它给出带路由名的精确错误，比 schema 的通用 issues 更可行动。
+ * `role('credential-ref')` 让凭据字段渲染成凭据选择器）。`routes` 声明为
+ * volatile，用户层的编辑因此提交引用而不重挂插件实例（profile 拥有活配置）。
+ * resolveRoutes 的手工校验保留——它给出带路由名的精确错误，比 schema 的
+ * 通用 issues 更可行动。
  *
  * @module @deepseek-ai/dsh-llm-plus/config
  */
@@ -94,12 +96,6 @@ export interface RouteConfig {
   requestImagePolicy?: { maxPixels: number; maxBytes: number } | undefined
 }
 
-/** 插件配置。 */
-export interface PlusConfig {
-  /** 路由表：routeId → 配置。routeId 即 GenerateOptions.provider 的值。 */
-  routes: Record<string, RouteConfig>
-}
-
 /**
  * 单个手工模型条目的 schema（原生设置页编辑器按此渲染字段）。
  * 缺省字段不物化（参照 pi-ai：缺席 = 未知，由目录数据兜底）。
@@ -155,10 +151,22 @@ const routeSchema = z.object({
 /**
  * 配置 schema。结构化形状既是设置写入点的校验，也是原生 ProviderEditor
  * 的渲染依据；resolveRoutes 的手工校验在其后给出带路由名的精确错误。
+ * `routes` 是 volatile 字段：整张表是一个引用，Loader 提交新快照而不重挂
+ * 实例（见 index.ts 的 loader/volatile-update 接线）。
  */
-export const Config: z<PlusConfig> = z.object({
-  routes: z.dict(routeSchema).required(),
+export const Config = z.object({
+  routes: z.dict(routeSchema).required().volatile(),
 })
+
+/**
+ * 插件配置（schema 的输出形态）：`routes` 是 volatile 引用——整张路由表是
+ * 一个引用，Loader 提交新快照并 emit `loader/volatile-update`，本实例不被
+ * 重挂（见 index.ts 的同步点）。
+ */
+export type PlusConfig = ReturnType<typeof Config>
+
+/** 写入点与解析点接受的普通配置形态（schema 的输入形态）。 */
+export type PlusOptions = Parameters<typeof Config>[0]
 
 /**
  * 解析后的路由（构造期完成全部校验与默认值物化，请求期零判断）。

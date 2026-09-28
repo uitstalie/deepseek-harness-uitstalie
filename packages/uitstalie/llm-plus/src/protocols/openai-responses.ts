@@ -24,7 +24,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, readReplayEnvelope, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, validateEffort } from './shared.ts'
+import { contentToText, extractImages, extractToolCalls, getJson, imagePlaceholder, validateEffort } from './shared.ts'
 
 /** 端点拼接。 */
 function endpoint(baseURL: string): string {
@@ -41,17 +41,14 @@ function endpoint(baseURL: string): string {
  * - reasoning 块 + 同协议 envelope → reasoning item（id + encrypted_content
  *   原样回带）；对不齐/缺 encrypted_content 则丢弃（强于伪造）；
  * - tool-call → {type:'function_call', call_id, name, arguments}（独立 item）；
- * - tool-result → {type:'function_call_output', call_id, output}（独立 item）。
+ * - tool 消息 → {type:'function_call_output', call_id, output}（独立 item）。
  */
 async function serializeInput(options: GenerateOptions, assets: RequestAssets): Promise<JsonValue[]> {
   const out: JsonValue[] = []
   for (const message of options.messages) {
     if (message.role === 'system') continue // system 由 instructions 承载
-    const toolResults = extractToolResults(message)
-    if (toolResults.length > 0) {
-      for (const result of toolResults) {
-        out.push({ type: 'function_call_output', call_id: result.toolCallId, output: contentToText(result.content) })
-      }
+    if (message.role === 'tool') {
+      out.push({ type: 'function_call_output', call_id: message.toolCallId, output: contentToText(message.content) })
       continue
     }
     if (message.role === 'assistant') {

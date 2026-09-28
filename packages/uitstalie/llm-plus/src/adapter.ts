@@ -26,7 +26,7 @@ import {
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import { credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
-import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
+import { requestImageDimensions, type AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type ModelsDevCatalog from '@deepseek-ai/dsh-models-dev'
 import { parseSse } from './sse.ts'
 import type { ImageWireResolver, Protocol, StreamTranslator } from './protocol.ts'
@@ -224,7 +224,12 @@ export class PlusAdapter extends LlmAdapter {
     const policy = route.requestImagePolicy
     if (policy !== undefined) {
       return async (ref) => {
-        const variant = await attachments.readImageRequest(ref, policy)
+        // 路由声明的是像素预算，seam 要的是这张图的确定目标尺寸：
+        // 按源尺寸与预算算保持宽高比的投影尺寸（与请求计价同一套几何）
+        const variant = await attachments.readImageRequest(ref, {
+          ...requestImageDimensions(ref.width, ref.height, policy.maxPixels),
+          maxBytes: policy.maxBytes,
+        })
         return { base64: toBase64(variant.data), mediaType: variant.mediaType }
       }
     }

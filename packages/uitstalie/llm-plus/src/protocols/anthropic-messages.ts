@@ -20,7 +20,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { SseEvent } from '../sse.ts'
 import { BaseTranslator, readReplayEnvelope, type Protocol, type ProtocolRequest, type RequestAssets, type StreamTranslator } from '../protocol.ts'
 import type { ResolvedRoute } from '../config.ts'
-import { contentToText, clampBudget, extractImages, extractToolCalls, extractToolResults, getJson, imagePlaceholder, parseJsonObject } from './shared.ts'
+import { contentToText, clampBudget, extractImages, extractToolCalls, getJson, imagePlaceholder, parseJsonObject } from './shared.ts'
 
 /** 默认端点；baseURL 已含 /v1 时不再重复拼。 */
 function endpoint(baseURL: string): string {
@@ -41,7 +41,7 @@ function endpoint(baseURL: string): string {
  *   缺签名视为伪造历史）；envelope 与 content 位置对不齐则整体降级
  *   （丢弃 thinking，保留其余）；
  * - 图片 → {type:'image', source:{type:'base64',...}} 块，失败降级占位文本；
- * - tool-result → user 消息里的 tool_result 块。
+ * - tool 消息 → user 消息里的 tool_result 块。
  */
 async function serializeMessages(options: GenerateOptions, assets: RequestAssets): Promise<JsonValue[]> {
   const out: { role: string; content: JsonValue[] }[] = []
@@ -52,11 +52,13 @@ async function serializeMessages(options: GenerateOptions, assets: RequestAssets
   }
   for (const message of options.messages) {
     if (message.role === 'system') continue
-    const toolResults = extractToolResults(message)
-    if (toolResults.length > 0) {
-      for (const result of toolResults) {
-        push('user', { type: 'tool_result', tool_use_id: result.toolCallId, content: contentToText(result.content) })
-      }
+    if (message.role === 'tool') {
+      push('user', {
+        type: 'tool_result',
+        tool_use_id: message.toolCallId,
+        content: contentToText(message.content),
+        ...message.isError === true ? { is_error: true } : {},
+      })
       continue
     }
     const role = message.role === 'assistant' ? 'assistant' : 'user'

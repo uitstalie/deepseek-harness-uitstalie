@@ -7,15 +7,11 @@
  * HTTP 错误分类、目录集成、配置 fail loud、fiber 摘除。
  */
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import LlmRuntime, { createMessage, createUserMessage, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createMessage, createToolResultMessage, createUserMessage, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import ModelsDevCatalog from '@deepseek-ai/dsh-models-dev'
-import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { liveConfig } from '../../../settings/settings/tests/live-config.ts'
 import * as llmPlus from '@deepseek-ai/dsh-llm-plus'
 import { resolveRoutes } from '../src/config.ts'
 
@@ -443,8 +439,8 @@ test('route requestImagePolicy projects images through the attachment seam', asy
   const ref = { attachmentId: 'att-1', mediaType: 'image/png', bytes: 9, width: 3, height: 3 } as never
   ctx.root.provide('attachments', {
     readImage: () => { calls.push('readImage'); return Promise.resolve({ ref, data: new Uint8Array([9, 9, 9]) }) },
-    readImageRequest: (r: never, policy: { maxPixels: number; maxBytes: number }) => {
-      calls.push(`readImageRequest:${policy.maxPixels}/${policy.maxBytes}`)
+    readImageRequest: (r: never, target: { width: number; height: number; maxBytes: number }) => {
+      calls.push(`readImageRequest:${target.width}x${target.height}/${target.maxBytes}`)
       return Promise.resolve({ variantId: 'v1', attachment: r, data: new Uint8Array([1, 2, 3]), mediaType: 'image/png', bytes: 3, width: 1, height: 1, depth: 'uchar', space: 'srgb' })
     },
   })
@@ -466,11 +462,62 @@ test('route requestImagePolicy projects images through the attachment seam', asy
     model: 'vision-1',
     messages: [createUserMessage({ content: [{ type: 'text', text: '看图' }, { type: 'image', attachment: ref }], source: { kind: 'user' } })],
   })
-  // 走了 readImageRequest（带路由声明的预算），不是 readImage 原图
-  expect(calls).toEqual(['readImageRequest:1000000/50000'])
+  // 走了 readImageRequest：路由的像素预算按源图 3x3 折算成确定目标尺寸
+  // （预算大于源像素，投影尺寸即源尺寸），不是 readImage 原图
+  expect(calls).toEqual(['readImageRequest:3x3/50000'])
   // 请求体里是投影后的字节（base64 of [1,2,3]）
   const messages = lastFetch!.body.messages as { content: { type: string; image_url?: { url: string } }[] }[]
   expect(messages[0]!.content[1]).toEqual({ type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } })
+})
+
+test('tool messages map to each protocol wire form', async () => {
+  // harness 的 tool 结果是独立的 role:'tool' 消息（toolCallId + isError），
+  // 不是内容块：四个协议各自把它翻成自己的 wire 词表
+  const history = [
+    createMessage({
+      role: 'assistant',
+      content: [{ type: 'tool-call', id: 'call_1' as never, name: 'bash', arguments: '{"command":"ls"}' }],
+      source: { kind: 'model', provider: 'p', model: 'm' },
+    }),
+    createToolResultMessage({
+      callId: 'call_1' as never,
+      content: [{ type: 'text', text: 'ls output' }],
+      isError: false,
+    }),
+  ]
+  const assets = { image: () => Promise.resolve(undefined) }
+  const build = async (protocol: 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'gemini', baseURL: string) => {
+    const route = resolveRoutes({ p: { protocol, baseURL } })[0]!
+    const options = { provider: 'p', model: 'm', messages: history } as never
+    const request = await (protocol === 'openai-completions'
+      ? (await import('../src/protocols/openai-completions.ts')).openAiCompletions.buildRequest(route as never, options, assets)
+      : protocol === 'openai-responses'
+        ? (await import('../src/protocols/openai-responses.ts')).openAiResponses.buildRequest(route as never, options, assets)
+        : protocol === 'anthropic-messages'
+          ? (await import('../src/protocols/anthropic-messages.ts')).anthropicMessages.buildRequest(route as never, options, assets)
+          : (await import('../src/protocols/gemini.ts')).gemini.buildRequest(route as never, options, assets))
+    return request.body
+  }
+
+  // openai-completions：独立的 role:'tool' 消息，带 tool_call_id
+  const completions = await build('openai-completions', 'http://test.local/v1')
+  expect((completions.messages as unknown as Record<string, unknown>[])[1])
+    .toEqual({ role: 'tool', tool_call_id: 'call_1', content: 'ls output' })
+
+  // openai-responses：function_call_output item
+  const responses = await build('openai-responses', 'http://test.local/v1')
+  expect((responses.input as unknown as Record<string, unknown>[])[1])
+    .toEqual({ type: 'function_call_output', call_id: 'call_1', output: 'ls output' })
+
+  // anthropic-messages：user 消息里的 tool_result 块
+  const anthropic = await build('anthropic-messages', 'http://test.local')
+  expect((anthropic.messages as unknown as { content: Record<string, unknown>[] }[])[1]!.content[0])
+    .toEqual({ type: 'tool_result', tool_use_id: 'call_1', content: 'ls output' })
+
+  // gemini：functionResponse 需要函数名——从先前的 tool-call 块反查
+  const geminiBody = await build('gemini', 'http://test.local')
+  expect((geminiBody.contents as unknown as { parts: Record<string, unknown>[] }[])[1]!.parts[0])
+    .toEqual({ functionResponse: { name: 'bash', response: { result: 'ls output' } } })
 })
 
 test('anthropic maps numeric reasoning effort to clamped budget_tokens', async () => {
@@ -646,118 +693,93 @@ test('oauth flows register with the authorization seam and leave with the fiber'
   expect([...flows.keys()]).toEqual(['llm-plus/kimi-plus'])
 })
 
-test('oauth flow registered after settings change survives the seam mounting late', async () => {
-  // 竞态回归：路由从 settings 用户层到达 早于 authorization 缝激活——
+test('oauth flow for a route added by a live profile edit survives the seam mounting late', async () => {
+  // 竞态回归：路由从活配置到达 早于 authorization 缝激活——
   // 曾经的实现在缝激活时只同步初始集，后到路由永远没有 flow
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-llm-plus-oauth-race-'))
-  try {
-    const ctx = new Context()
-    ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
-    await ctx.plugin(LlmRuntime)
-    await ctx.plugin(FileSettingsProvider, { path: join(dir, 'settings.yaml'), watch: false })
-    await ctx.plugin(llmPlus, {
-      routes: { 'ds-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', apiKeyRef: 'DEEPSEEK_TEST' } },
-    })
-    // 用户层变更先到（缝还不在）
-    await ctx.settings.update(settingsNamespace('llm-plus'), {
-      routes: { 'kimi-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local/kimi/v1', oauth: 'kimi-coding' } },
-    })
-    await vi.waitFor(() => {
-      expect(ctx.root.llm.listProviders().map(provider => provider.id).sort()).toEqual(['ds-plus', 'kimi-plus'])
-    })
-    // 缝后到
-    const flows = new Map<string, unknown>()
-    ctx.root.provide('authorization', {
-      registerFlow: (flow: { key: unknown }) => {
-        flows.set(String(flow.key), flow)
-        return () => { flows.delete(String(flow.key)) }
-      },
-    })
-    await vi.waitFor(() => {
-      expect([...flows.keys()]).toEqual(['llm-plus/kimi-plus'])
-    })
-    await ctx.fiber.dispose()
-  } finally {
-    await rm(dir, { recursive: true, force: true })
-  }
+  const ctx = new Context()
+  ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+  await ctx.plugin(LlmRuntime)
+  const live = await liveConfig(ctx, llmPlus, {
+    routes: { 'ds-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', apiKeyRef: 'DEEPSEEK_TEST' } },
+  })
+  // 活配置变更先到（缝还不在）：volatile 引用提交新快照，实例不重挂
+  await live.update({
+    routes: { 'kimi-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local/kimi/v1', oauth: 'kimi-coding' } },
+  })
+  expect(ctx.root.llm.listProviders().map(provider => provider.id).sort()).toEqual(['ds-plus', 'kimi-plus'])
+  // 缝后到
+  const flows = new Map<string, unknown>()
+  ctx.root.provide('authorization', {
+    registerFlow: (flow: { key: unknown }) => {
+      flows.set(String(flow.key), flow)
+      return () => { flows.delete(String(flow.key)) }
+    },
+  })
+  await vi.waitFor(() => {
+    expect([...flows.keys()]).toEqual(['llm-plus/kimi-plus'])
+  })
+  await ctx.fiber.dispose()
 })
 
-test('zero-route composition mounts dormant; the first settings route registers the adapter', async () => {
+test('zero-route composition mounts dormant; the first profile route registers the adapter', async () => {
   // 纯页面驱动的起点（base 零路由）：registerAdapter 的空初始集会抛、
   // registerConfigurableProviders 同——两个注册都必须惰性到首个路由
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-llm-plus-empty-'))
-  try {
-    const ctx = new Context()
-    ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
-    await ctx.plugin(LlmRuntime)
-    await ctx.plugin(FileSettingsProvider, { path: join(dir, 'settings.yaml'), watch: false })
-    await ctx.plugin(llmPlus, { routes: {} })
-    expect(ctx.root.llm.listProviders()).toEqual([])
-    expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.settingsNs === 'llm-plus')).toBe(false)
+  const ctx = new Context()
+  ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+  await ctx.plugin(LlmRuntime)
+  const live = await liveConfig(ctx, llmPlus, { routes: {} })
+  expect(ctx.root.llm.listProviders()).toEqual([])
+  expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.settingsNs === 'llm-plus')).toBe(false)
 
-    await ctx.settings.update(settingsNamespace('llm-plus'), {
-      routes: { 'kimi-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local/kimi/v1', apiKeyRef: 'KIMI' } },
-    })
-    await vi.waitFor(() => {
-      expect(ctx.root.llm.listProviders().map(provider => provider.id)).toEqual(['kimi-plus'])
-    })
-    expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.provider === 'kimi-plus')).toBe(true)
-    await ctx.fiber.dispose()
-  } finally {
-    await rm(dir, { recursive: true, force: true })
-  }
+  await live.update({
+    routes: { 'kimi-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local/kimi/v1', apiKeyRef: 'KIMI' } },
+  })
+  expect(ctx.root.llm.listProviders().map(provider => provider.id)).toEqual(['kimi-plus'])
+  expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.provider === 'kimi-plus')).toBe(true)
+  await ctx.fiber.dispose()
 })
 
-test('settings user-layer route additions take effect without a restart', async () => {
-  // 真实动态组合（对齐 llm-deepseek 的 dynamic-config 夹具）：
-  // settings-file 落地用户层，watch:false 走确定性的进程内写路径
-  const dir = await mkdtemp(join(tmpdir(), 'dsh-llm-plus-settings-'))
-  try {
-    const ctx = new Context()
-    ctx.root.provide('credentials', { resolve: (ref: string) => Promise.resolve({ value: `key-for-${ref}`, source: 'test' }) })
-    await ctx.plugin(LlmRuntime)
-    await ctx.plugin(FileSettingsProvider, { path: join(dir, 'settings.yaml'), watch: false })
-    await ctx.plugin(llmPlus, {
-      routes: { 'ds-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', apiKeyRef: 'DEEPSEEK_TEST' } },
-    })
-    expect(ctx.root.llm.listProviders().map(provider => provider.id)).toEqual(['ds-plus'])
+test('profile route additions take effect without a restart', async () => {
+  // 真实动态组合：Loader 提交 volatile 引用（设置页写的就是这条路径），
+  // 实例保持存活，注册随引用替换
+  const ctx = new Context()
+  ctx.root.provide('credentials', { resolve: (ref: string) => Promise.resolve({ value: `key-for-${ref}`, source: 'test' }) })
+  await ctx.plugin(LlmRuntime)
+  const live = await liveConfig(ctx, llmPlus, {
+    routes: { 'ds-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', apiKeyRef: 'DEEPSEEK_TEST' } },
+  })
+  expect(ctx.root.llm.listProviders().map(provider => provider.id)).toEqual(['ds-plus'])
+  // volatile 提交不重挂实例：uid 相同即适配器实例与其注册句柄都还在
+  const uid = live.fiber.uid
 
-    // 用户层写一个新路由（models.dev 设置页走的就是这条 mutate 路径）。
-    // 曾经有个 bug：apply 把 setSource 的 thunk 在挂接点求值冻结，用户层
-    // 变更永远读不到——这个用例钉死热更新语义
-    await ctx.settings.update(settingsNamespace('llm-plus'), {
-      routes: {
-        'kimi-for-coding': {
-          protocol: 'anthropic-messages',
-          displayName: 'Kimi For Coding',
-          baseURL: 'http://test.local/kimi/v1',
-          apiKeyRef: 'KIMI_API_KEY',
-          modelsDevProvider: 'kimi-for-coding',
-        },
+  // 活配置写一个新路由（models.dev 设置页走的就是这条 mutate 路径）。
+  // 曾经有个 bug：apply 把配置源在挂接点求值冻结，用户层变更永远读不到
+  // ——这个用例钉死热更新语义
+  await live.update({
+    routes: {
+      'kimi-for-coding': {
+        protocol: 'anthropic-messages',
+        displayName: 'Kimi For Coding',
+        baseURL: 'http://test.local/kimi/v1',
+        apiKeyRef: 'KIMI_API_KEY',
+        modelsDevProvider: 'kimi-for-coding',
       },
-    })
+    },
+  })
 
-    // 不重启：settings 层是递归深合并（对象逐键、数组整体替换），base 的
-    // ds-plus 不被用户层抹掉。watch 回调走串行承诺链（SettingsWatcher.tail），
-    // 用 waitFor 等它跑到，而不是断言提交点的瞬时状态
-    // 不重启：settings 层是递归深合并（对象逐键、数组整体替换），base 的
-    // ds-plus 不被用户层抹掉。watch 回调走串行承诺链（SettingsWatcher.tail），
-    // 用 waitFor 等它跑到，而不是断言提交点的瞬时状态
-    await vi.waitFor(() => {
-      expect(ctx.root.llm.listProviders().map(provider => provider.id).sort()).toEqual(['ds-plus', 'kimi-for-coding'])
-    })
-    const kimi = ctx.root.llm.listConfigurableProviders().find(entry => entry.provider === 'kimi-for-coding')
-    expect(kimi).toMatchObject({
-      displayName: 'Kimi For Coding',
-      settingsNs: 'llm-plus',
-      settingsPath: ['routes', 'kimi-for-coding'],
-    })
-    // 模型目录的组标题取 providerInfo().name：displayName 必须穿过它，而不是
-    // 落回基类的 "id 即 name"（选择器里的展示名全靠这一条路径）
-    expect(ctx.root.llm.listProviders().find(provider => provider.id === 'kimi-for-coding')?.name).toBe('Kimi For Coding')
-    expect(ctx.root.llm.listProviders().find(provider => provider.id === 'ds-plus')?.name).toBe('ds-plus')
-    await ctx.fiber.dispose()
-  } finally {
-    await rm(dir, { recursive: true, force: true })
-  }
+  // 不重启：profile 的 config 是整表替换 + 逐键合并（liveConfig 的 merge），
+  // base 的 ds-plus 不被用户层抹掉；实例本身没有被重挂
+  expect(live.entry.fiber?.uid).toBe(uid)
+  expect(ctx.root.llm.listProviders().map(provider => provider.id).sort()).toEqual(['ds-plus', 'kimi-for-coding'])
+  const kimi = ctx.root.llm.listConfigurableProviders().find(entry => entry.provider === 'kimi-for-coding')
+  expect(kimi).toMatchObject({
+    displayName: 'Kimi For Coding',
+    settingsNs: 'llm-plus',
+    settingsPath: ['routes', 'kimi-for-coding'],
+  })
+  // 模型目录的组标题取 providerInfo().name：displayName 必须穿过它，而不是
+  // 落回基类的 "id 即 name"（选择器里的展示名全靠这一条路径）
+  expect(ctx.root.llm.listProviders().find(provider => provider.id === 'kimi-for-coding')?.name).toBe('Kimi For Coding')
+  expect(ctx.root.llm.listProviders().find(provider => provider.id === 'ds-plus')?.name).toBe('ds-plus')
+  await ctx.fiber.dispose()
 })
