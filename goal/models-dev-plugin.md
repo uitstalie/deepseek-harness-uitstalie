@@ -45,18 +45,18 @@
 ## 已知缺口
 
 - headers 无注入缝（上述）；其它 provider 路由（pi-ai 系）无 body 注入缝。
-- 目录尚未接到 UI/运行时模型列表（`llm-deepseek.models` 仍是 settings 的事）；本插件目前是数据 + 注入层，UI 集成留后续任务。
+- 目录尚未接到 UI/运行时模型列表（`llm-deepseek.models` 仍是 volatile Config 的事）；本插件目前是数据 + 注入层，UI 集成留后续任务。
 
 ## 相关插件退役评估（"是否不再需要"）
 
 | 插件 | 结论 | 理由 |
 |---|---|---|
 | `dsh-llm-pi-ai` 的内置静态目录 | **价值大减，但插件整体不能退役** | 目录职能可被本插件取代（动态、更新快）；但 pi-ai 还承担多 provider 路由、OAuth 登录、wire 适配——目录只是它的附带品 |
-| `dsh-llm-deepseek` 的 `DEFAULT_MODELS` | **可被取代，但不能删** | 它是 fallback 默认值；本插件缺席时仍需它兜底。取代方式是 settings `llm-deepseek.models` 由本插件数据生成（后续任务做同步器） |
+| `dsh-llm-deepseek` 的 `DEFAULT_MODELS` | **可被取代，但不能删** | 它是 fallback 默认值；本插件缺席时仍需它兜底。取代方式是 volatile Config `llm-deepseek.models` 由本插件数据生成（后续任务做同步器） |
 | pi-ai 的 `discoverModels`（`GET /models` 探测） | **可被取代** | models.dev 目录覆盖面远大于单端点探测；设置页 "fetch available models" 对已知 provider 本就零网络 |
 | `dsh-plugin-package-inventory-deepseek` / `dsh-deepseek-llm-api-extensions` | **无关，保留** | 前者是请求元数据上报；后者恰是本插件依赖的写入缝 |
 
-**净结论**：本插件落地后没有插件可以物理删除；可退役的是"pi-ai 静态目录作为事实源"这一职能。真正的简化发生在后续：若做"models.dev → settings `llm-deepseek.models` 同步器"，`DEFAULT_MODELS` 表就只剩 fallback 意义。
+**净结论**：本插件落地后没有插件可以物理删除；可退役的是"pi-ai 静态目录作为事实源"这一职能。真正的简化发生在后续：若做"models.dev → volatile Config `llm-deepseek.models` 同步器"，`DEFAULT_MODELS` 表就只剩 fallback 意义。
 
 ## 附：dsh-llm-pi-ai 的复杂度解剖（"为什么这么多东西"）
 
