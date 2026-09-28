@@ -2,12 +2,14 @@
  * 四个协议共用的消息内容提取与序列化小工具。
  *
  * harness 的 Message.content 是 ContentBlock[]（text/reasoning/image/
- * tool-call/tool-result），序列化成各 wire 协议前需要先拆出这些成分。
+ * tool-call/tool-addition/tool-removal），序列化成各 wire 协议前需要先拆出
+ * 这些成分；工具结果不是内容块，而是独立的 role:'tool' 消息
+ * （toolCallId + isError），协议实现各自把它翻成自己的 wire 形态。
  *
  * @module @deepseek-ai/dsh-llm-plus/protocols/shared
  */
 
-import { textOnlyImageText, type ContentBlock, type ImageBlock, type ToolCallBlock, type ToolResultBlock } from '@deepseek-ai/dsh-llm'
+import { textOnlyImageText, type ContentBlock, type ImageBlock, type ToolCallBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 
 /**
@@ -26,20 +28,9 @@ export function contentToText(content: readonly ContentBlock[]): string {
   for (const block of content) {
     if (block.type === 'text') text += block.text
     else if (block.type === 'image') text += textOnlyImageText(block.attachment)
-    // reasoning / tool-call / tool-result 由各自的提取器处理，文本化时忽略
+    // reasoning / tool-call 由各自的提取器处理，文本化时忽略
   }
   return text
-}
-
-/**
- * 取出消息里的 tool-result 块（harness 里 tool result 是 role:user 的
- * 单块消息，但防御性地按"任意消息里找"来写）。
- *
- * @param message - 任意带 content 的消息。
- * @returns 全部 tool-result 块（无则空数组）。
- */
-export function extractToolResults(message: { readonly content: readonly ContentBlock[] }): ToolResultBlock[] {
-  return message.content.filter((block): block is ToolResultBlock => block.type === 'tool-result')
 }
 
 /**
