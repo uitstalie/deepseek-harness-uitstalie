@@ -430,10 +430,10 @@ export class ModelsDevStore {
       }
     })
     // expectedRevision 不传（本页不跟踪 llm-plus 命名空间的修订号；
-    // 冲突场景由 host 的 settings-conflict 兜住语义，v1 不做乐观锁）
+    // 冲突场景由 host 的 settings/conflict 兜住语义，v1 不做乐观锁）
     const response = await this.wire.settings.mutate('llm-plus', ops, undefined)
     if (!response.ok) {
-      return fail(response.error.code === 'settings-conflict' ? { kind: 'conflict' } : { kind: 'message', message: response.error.message })
+      return fail(response.error.code === 'settings/conflict' ? { kind: 'conflict' } : { kind: 'message', message: response.error.message })
     }
     // 一次性密钥：逐个写凭据服务（密钥不经过 settings，也不在本页持久化）
     for (const [, draft] of entries) {
