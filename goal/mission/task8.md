@@ -7,7 +7,7 @@
 ## 架构决策（已与用户确认）
 
 1. **接原生 custom-provider 缝**：llm-plus 实现 `registerConfigurableProviders`（每路由一条 `{provider, displayName, settingsNs: 'llm-plus', settingsPath: ['routes', routeId]}`）+ `registerModelDiscovery`，per-provider 编辑用原生 Models 设置页的编辑器（参照 llm-deepseek 单路由与 llm-pi-ai 目录两条既有路径）。
-2. **落点（Q2 歧义的解答）**：**llm-plus 是路由的唯一拥有者（单写者）**。models-dev 设置页只是"目录 → 路由"的**物化器**——勾选确认时把成品路由写进 llm-plus 命名空间用户层，写完即脱钩；`modelsDevProvider` 字段保留目录链接（模型元数据/能力/价格继续从目录读）。不产生第二个事实来源，llm-plus 对本 feature 零感知。
+2. **落点（Q2 歧义的解答）**：**llm-plus 是路由的唯一拥有者（单写者）**。models-dev 设置页只是"目录 → 路由"的**物化器**——勾选确认时把成品路由写进该 profile 条目的 volatile `config`（路径仍是 `routes.<routeId>`），写完即脱钩；`modelsDevProvider` 字段保留目录链接（模型元数据/能力/价格继续从目录读）。不产生第二个事实来源，llm-plus 对本 feature 零感知。
 3. **v1 自定义字段**：apiKeyRef（默认目录 env[0]）、baseURL（默认目录 api，含 ${ENV_VAR} 插值处理）、protocol（默认 npm 方言映射，可手改四协议）、extraParams（headers/body）、模型子集（默认全量；选子集则物化为 route.models 手工表）。
 4. **目录查询面**：models-dev 增加 @Remote 方法（listCatalogProviders/listCatalogModels），client 经 connection RPC 读取；写路由复用 settings 的既有 client 读写机制（同 ui-settings-models）。
 
@@ -30,12 +30,12 @@
 
 ## 验证
 
-- host 侧单测：models-dev Remote 查询面、llm-plus 目录条目注册/热更新替换/发现 handler、settings 用户层热更新（真实 settings-file 组合，20/20 绿）。
+- host 侧单测：models-dev Remote 查询面、llm-plus 目录条目注册/热更新替换/发现 handler、settings 用户层热更新（真实 `liveConfig` 组合——上游已删除 settings-file，测试夹具改为 `packages/settings/settings/tests/live-config.ts`，32 绿）。
 - 浏览器手验：设置页出现 models.dev 段、目录列表渲染、勾选物化路由、原生 Models 页可继续编辑该路由、模型选择器出现新 provider、真实对话通。
 
 ## 验收中修掉的三个实现 bug（2026/08/31 晚）
 
-1. **setSource 冻结**：llm-plus apply 把 installSettingsSection 给的 thunk 在挂接点求值（`source = current()`），用户层变更永远读旧值——页面上添加的路由全部不生效。修复对齐 llm-deepseek：存 thunk、onChange 里现取。教训：这类"接线语义"必须有真实 settings-file 组合的热更新测试（已补）。
+1. **配置源冻结**：llm-plus apply 把配置在挂接点求值（rebase 前是 installSettingsSection 的 setSource thunk），用户层变更永远读旧值——页面上添加的路由全部不生效。修复对齐 llm-pi-ai 的 volatile 读法：每次现读 `config.routes.get()`。教训：这类"接线语义"必须有真实组合的热更新测试（已补，夹具为 `liveConfig`）。
 2. **client 包漏 inject 声明**：浏览器 apply 访问 `ctx.remote/ctx.locale/ctx.slots` 未声明 inject，cordis 守卫拒绝（"cannot get property without inject"）。修复：模块级声明 + `remote.modelsDev` 走 $mount 后的内层 ctx.inject（agent-team 模式，防自供死锁）。
 3. **zod 未声明**：生成的 typert.remote-client 运行时需要 zod，ui-models-dev 未声明 dependencies → bundle 外部化 → 浏览器模块表无法满足。修复：zod 进 dependencies（私有内联）。
 
