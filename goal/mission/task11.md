@@ -45,9 +45,42 @@
 - 原生收敛后跑 `packages/fs/tool-fs` 与 `packages/fs/tool-str-replace-editor` 的既有测试
 - 真实手验：`dsh web` 里 workspace-write 模式下写工作区文件不再弹审批
 
-## 实施结果（2026/09/28）
+## 实测结果（2026/09/28）
 
-1. **acl.ts 修复**：`grantWrite` 的幂等跳过条件改为分别判断（ACE/deny/label 缺哪件补哪件），`mergeAndApply` 的 apply 标志按 `labelEdit.kind` 拆开——`labelEdit.kind === 'apply'` 才带 `LABEL_SECURITY_INFORMATION`，否则只写 DACL。这样 seam 的 grant 路径不再碰 SACL，部分落盘的状态能自愈，不会再因为「缺一件就整体重来」而撞 `WRITE_OWNER` 墙。
-2. **revokeWrite 修复**：`labelEdit.kind === 'clear'` 时也要带 `LABEL_SECURITY_INFORMATION`（SACL 参数为 null 即清除），否则 label 永远留在目录上。
-3. **approval-policy-guard 插件**：拦截 `ctx.approval.request`，workspace-write 且目标在工作区内时直接 `allowed-once`，不弹审批；越界操作仍走原审批链。
-4. **测试**：`acl.spec.ts` + `acl-failure-paths.spec.ts` 56 绿；`probe.spec.ts` 端到端通过；`workspace-path-probe.spec.ts` 在带空格 + 中文的 workspace 路径上通过（之前是 Win32 5）。
+真实根因不是代码，而是**环境前置条件**：
+
+工作区根目录 `D:\dqc\deepseek-harness-uitstalie - 副本` 的 DACL 中，调用账号
+`TS-20240229UGAL\TS`（`S-1-5-21-3439173371-1754965139-4214953713-1001`）只持有继承来的
+`NT AUTHORITY\Authenticated Users:(I)(M)`（Modify）。Modify 不含 `WRITE_OWNER`，而 Low
+强制标签写在 SACL 上，`SetNamedSecurityInfoW` 写 SACL 需要 `WRITE_OWNER`，于是授权在写标签
+那步被拒（`Win32 5`），fail-closed 在命令启动之前就中断。这正是本包
+`README.md:122`「被授权目录必须由调用者拥有并授予 `WRITE_OWNER`」记录的边界。
+
+修复（一次性环境修复，代码无需改动）：
+
+```powershell
+icacls '<workspace>' /grant '*S-1-5-21-3439173371-1754965139-4214953713-1001:(OI)(CI)F'
+```
+
+授权成功后根目录与整棵树落齐三件套 + 标签：
+`TS:(OI)(CI)(F)`、能力 SID `(W,D,DC)`、`Everyone:(CI)(DENY)`、
+`Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`（子目录以 `(I)` 继承）。
+
+实测（`workspace-write`）：
+
+| 用例 | 结果 |
+|---|---|
+| 写工作区内文件 `goal\test-write.txt` | 成功，删除成功 |
+| 写越界路径 `D:\dsh-out-of-workspace.txt` | `UnauthorizedAccessException`，正确拒绝 |
+
+### acl.ts 改动的定位更正
+
+此前的 `grantWrite` / `mergeAndApply` / `revokeWrite` 改动（`47d0a03be0`）**不是本次故障的
+修复**：故障当时的目录状态是「有 grant ACE、缺 deny、缺 label」，即便按新代码分别补缺，仍要
+补 deny 并写 label，一样会撞 SACL 写权限。该改动保留为次要健壮性改进（label 已立时不再重写
+SACL，避免整棵树 eager 重传播），但不应据此认为 Win32 5 已被代码修掉。
+
+### 待办
+
+- `approval-policy-guard` 插件尚未实现（审批噪音收敛部分）。
+- `escalationHintMarker` 在工作区内也追加的两处收敛尚未实现。
