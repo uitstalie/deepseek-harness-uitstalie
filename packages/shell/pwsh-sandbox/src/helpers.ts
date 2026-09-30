@@ -9,6 +9,8 @@
 /* jscpd:ignore-start */
 import { accessSync, constants, statSync } from 'node:fs'
 import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
+// uitstalie-k3, 2026/09/28, task12, 拒绝分类改用共享实现（带路径证据），不再只用短语匹配
+import { classifyDenial as sharedClassifyDenial } from '@deepseek-ai/dsh-sandbox'
 import type { RunnerFailureRule } from '@deepseek-ai/dsh-sandbox'
 
 /** Node-local spawn codes proven to identify executable resolution or permission failure. */
@@ -65,10 +67,16 @@ interface RunnerFailureMatch {
  * Classify a failed run against the selected backend's denial dialect.
  * @param result - settled foreground run.
  * @param signatures - case-insensitive denial substrings from the active wrap.
+ * @param writableRoots - the call's granted write roots; a denial phrase must
+ *   name a path these roots cannot explain (see `dsh-sandbox`'s `classifyDenial`).
  * @returns whether the failed run matches that denial dialect.
  */
-export function classifyDenial(result: ShellRunResult, signatures: readonly string[]): boolean {
-  return matchesSignature(result.exitCode, result.stderr.text, signatures)
+export function classifyDenial(
+  result: ShellRunResult,
+  signatures: readonly string[],
+  writableRoots: readonly string[],
+): boolean {
+  return sharedClassifyDenial(result.exitCode, result.stderr.text, signatures, writableRoots)
 }
 
 /**

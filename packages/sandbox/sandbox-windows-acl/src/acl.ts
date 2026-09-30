@@ -252,13 +252,9 @@ function mergeAndApply(
   // The descriptor block (oldAcl included) is dead after the merge — free it
   // before applying, exactly like the POC.
   const freedDescriptor = descriptor !== null ? api.localFree(descriptor) : null
-  // uitstalie-k3, 2026/09/28, task11, apply 标志按 labelEdit 拆开：只有
-  // labelEdit.kind === 'apply' 才带 LABEL_SECURITY_INFORMATION（写 SACL 需要
-  // WRITE_OWNER，受限 token 没有），否则只写 DACL——seam 的 grant 路径不再碰
-  // SACL，label 的写入留给 runner（它跑在普通权限下）。
   const applyResult = api.setNamedSecurityInfoW(
     path, abi.SE_FILE_OBJECT,
-    labelEdit.kind === 'apply' ? abi.DACL_SECURITY_INFORMATION | abi.LABEL_SECURITY_INFORMATION : abi.DACL_SECURITY_INFORMATION,
+    labelEdit.kind === 'keep' ? abi.DACL_SECURITY_INFORMATION : abi.DACL_SECURITY_INFORMATION | abi.LABEL_SECURITY_INFORMATION,
     null, null, newAcl, labelEdit.kind === 'apply' ? labelEdit.acl : null,
   )
   const freedNew = api.localFree(newAcl)
@@ -459,10 +455,7 @@ export function revokeWrite(api: Win32Bindings, path: string, sidPtr: NativePtr)
     }
     mergeAndApply(
       api, path, buildExplicitAccess(sidPtr, abi.REVOKE_ACCESS, 0), oldAcl,
-      // uitstalie-k3, 2026/09/28, task11, revoke 的 label 处理：clear 也要带
-      // LABEL_SECURITY_INFORMATION（SetNamedSecurityInfoW 的 SACL 参数是 null 即
-      // 清除），否则 label 永远留在目录上，revoke 后 readLabelAces 仍非空。
-      hasForeignGrant(oldAcl, sidPtr) ? { kind: 'keep' } : { kind: 'apply', acl: null as never },
+      hasForeignGrant(oldAcl, sidPtr) ? { kind: 'keep' } : { kind: 'clear' },
       descriptor, 'revokeWrite',
     )
     return true

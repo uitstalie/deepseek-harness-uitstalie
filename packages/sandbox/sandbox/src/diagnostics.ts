@@ -98,3 +98,83 @@ export function matchesSignature(exitCode: number | null, stderr: string, signat
   const lowered = stderr.toLowerCase()
   return signatures.some(signature => lowered.includes(signature.toLowerCase()))
 }
+
+// BEGIN uitstalie-k3, 2026/09/28, task12, 拒绝分类加入路径证据：仅凭短语会把与
+// 沙盒无关的失败（ssh 的 Permission denied、工作区内文件自身权限导致的拒绝）
+// 误报成沙盒拒绝，再经升级提示诱导模型升权。以下新增块全部为分支自有逻辑。
+/**
+ * Absolute-path spellings a denial message can name — a drive-letter path, a
+ * UNC share, or a POSIX path. Extraction prefers a quoted span, because these
+ * dialects quote the offending path (`Access to the path 'D:\my dir\x' is
+ * denied.`) and a path may contain spaces; the unquoted form is the fallback for
+ * messages that do not quote, ending at the delimiters that surround a path in
+ * them (`sh: /x: Permission denied`).
+ */
+const QUOTED_PATH = /'([^']*)'|"([^"]*)"/g
+const UNQUOTED_ABSOLUTE_PATH = /(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s'",;:)\]]*/g
+const IS_ABSOLUTE_PATH = /^(?:[A-Za-z]:[\\/]|\\\\|\/)/
+
+/** The absolute paths a denial message names, preferring its quoted spans. */
+function namedAbsolutePaths(line: string): string[] {
+  const quoted = [...line.matchAll(QUOTED_PATH)]
+    .flatMap(match => [match[1], match[2]])
+    .filter((candidate): candidate is string => candidate !== undefined && IS_ABSOLUTE_PATH.test(candidate))
+  if (quoted.length > 0) return quoted
+  return line.match(UNQUOTED_ABSOLUTE_PATH) ?? []
+}
+
+/** Collapse a path to the comparison spelling: unified separators, no trailing separator. */
+function comparisonPath(path: string): string {
+  return path.replaceAll('/', '\\').toLowerCase().replace(/\\+$/, '')
+}
+
+/** Whether `path` is one of `roots` or sits under one, on a segment boundary. */
+function isUnderAnyRoot(path: string, roots: readonly string[]): boolean {
+  const candidate = comparisonPath(path)
+  return roots.some((root) => {
+    const normalized = comparisonPath(root)
+    return candidate === normalized || candidate.startsWith(`${normalized}\\`)
+  })
+}
+
+/**
+ * Whether one phrase-matching stderr line evidences a POLICY denial: it must
+ * name an absolute path outside every granted root. `workspace-write` cannot
+ * refuse a path inside a granted root, so a denial phrase beside an in-root path
+ * — or beside no path at all — describes some other failure: an in-root file's
+ * own permissions, or an unrelated tool's message. Classifying that as a sandbox
+ * denial would tell the model the sandbox refused a call it never inspected.
+ * @param line - the stderr line that matched a denial signature.
+ * @param writableRoots - the call's granted write roots.
+ * @returns whether the line names a path the granted roots do not cover.
+ */
+function namesPathOutsideRoots(line: string, writableRoots: readonly string[]): boolean {
+  return namedAbsolutePaths(line).some(path => !isUnderAnyRoot(path, writableRoots))
+}
+
+/**
+ * Classify a failed run as a policy denial: a non-zero exit whose stderr carries
+ * one of the selected backend's denial phrases with path evidence that the
+ * granted roots cannot explain. Under `read-only` (no granted root) no named
+ * path can contradict a phrase, so the phrase alone decides.
+ * @param exitCode - process exit code; null means signal termination.
+ * @param stderr - collected stderr text, left unchanged.
+ * @param signatures - case-insensitive denial substrings from the active wrap.
+ * @param writableRoots - the calling session's granted write roots.
+ * @returns whether this run is a sandbox denial rather than an unrelated failure.
+ */
+export function classifyDenial(
+  exitCode: number | null,
+  stderr: string,
+  signatures: readonly string[],
+  writableRoots: readonly string[],
+): boolean {
+  if (exitCode === null || exitCode === 0) return false
+  const lowered = signatures.map(signature => signature.toLowerCase())
+  return stderr.split(/\r?\n/).some((line) => {
+    const candidate = line.toLowerCase()
+    if (!lowered.some(signature => candidate.includes(signature))) return false
+    return writableRoots.length === 0 || namesPathOutsideRoots(line, writableRoots)
+  })
+}
+// END uitstalie-k3
