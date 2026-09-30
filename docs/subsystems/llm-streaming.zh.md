@@ -1090,7 +1090,7 @@ Source: [`packages/llm/llm/src/index.ts`](../../packages/llm/llm/src/index.ts)
 
 models.dev 目录服务（Service 类插件形态：默认导出服务类即插件， Loader 以 `new ModelsDevCatalog(ctx, config)` 挂载；构造即向 ctx 注册 `modelsDev` 服务，fiber 卸载时自动摘除）。
 
-内部状态三个一组：data（当前服务的目录）+ provenance（来源）+ fetchedAt （时间戳），只在 adopt() 里一起换，保证读者永远看到自洽的一组。
+内部状态三个一组：data（当前服务的目录）+ origin（来源）+ fetchedAt （时间戳），只在 adopt() 里一起换，保证读者永远看到自洽的一组。
 
 ```ts cordis-catalog
 /** 等首次加载（网络或缓存兜底）结束；失败路径也在内部消化，不会 reject。 */
@@ -1104,7 +1104,7 @@ listProviders(): string[]
 
 /**
  * 目录提供商摘要列表（models.dev 设置页的列表数据源）。
- * 按 id 排序，输出稳定；空目录返回空数组（provenance='none' 时
+ * 按 id 排序，输出稳定；空目录返回空数组（origin='none' 时
  * 页面显示空态而不是报错——目录是 advisory 的）。
  * @returns 全部提供商的摘要（含协议方言/端点/凭据变量名/模型数）。
  */
@@ -1248,10 +1248,10 @@ Source: [`packages/llm/llm/src/index.ts`](../../packages/llm/llm/src/index.ts)
 /**
  * 服务的目录被替换（启动加载或 refresh() 成功后）。
  * 消费方（如未来的 UI）据此刷新模型列表。
- * @param provenance - 新目录的来源。
+ * @param origin - 新目录的来源。
  * @mode emit
  */
-'models-dev/updated'(this: ModelsDevCatalog, provenance: CatalogProvenance): void
+'models-dev/updated'(this: ModelsDevCatalog, origin: CatalogOrigin): void
 ```
 
 Source: [`packages/uitstalie/models-dev/src/index.ts`](../../packages/uitstalie/models-dev/src/index.ts)

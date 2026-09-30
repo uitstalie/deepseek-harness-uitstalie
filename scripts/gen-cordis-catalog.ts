@@ -951,7 +951,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   TerminalRetentionFrame: 'Browser terminal window holds are owned by packages/api/terminal-controller/README.md',
   WebTerminalId: 'Browser terminal identity is owned by packages/api/terminal-controller/README.md',
   // BEGIN uitstalie-k3, 2026/09/30, task18, models-dev 的事件与契约类型属本分支自有，不在子系统文档目录内
-  CatalogProvenance: 'models-dev catalog provenance is owned by packages/uitstalie/models-dev/src/index.ts',
+  CatalogOrigin: 'models-dev catalog origin field is owned by packages/uitstalie/models-dev/src/index.ts',
   ModelsDevCatalog: 'models-dev catalog service contract is owned by packages/uitstalie/models-dev/src/index.ts',
   CatalogProviderSummary: 'models-dev provider summary is owned by packages/uitstalie/models-dev/src/types.ts',
   CatalogModelSummary: 'models-dev model summary is owned by packages/uitstalie/models-dev/src/types.ts',
