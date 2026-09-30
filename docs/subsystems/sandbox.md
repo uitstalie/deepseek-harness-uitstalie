@@ -119,6 +119,8 @@ interface RunnerFailureRule {
 
 `ConfinedArgv` is what the consumer spawns. Besides the replacement argv, it carries the backend's enforcement fact and two orthogonal stderr classifiers. `denialSignatures` identify the confined command being blocked while the sandbox works correctly. `runnerFailureRules` identify the sandbox runner refusing or failing before it executes the command; consumers check these first and surface a sandbox infrastructure failure, never an ordinary task failure.
 
+A matching phrase alone does not prove a denial. The shared classifier in `dsh-sandbox` also requires the line to name an absolute path the call's writable roots do not cover, because these phrases are ordinary filesystem messages unrelated tools print (an SSH key rejection, a package manager's own access error) and no confined mode refuses a path it granted. Without that evidence the failure would reach the model as a sandbox denial plus an escalation hint, inviting a wider mode for a call the sandbox never governed. Under `read-only` no path can contradict a phrase, so the phrase decides alone.
+
 ```ts type-equiv
 /**
  * A {@link SandboxProvider.confine} result: the argv to spawn in place of

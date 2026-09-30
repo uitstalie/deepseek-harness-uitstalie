@@ -88,7 +88,7 @@ The executor is the sandboxing Service Provider for the `ctx.shell` seam: it inh
 
 ### Main flow
 
-For a confined mode, `resolve()` stamps the per-call policy (the session's mode override, or the deployment fallback); `execute` awaits preparation of the bash argv through the provider and hands the confined argv to the inherited subprocess path. At settlement the executor classifies the outcome: a runner failure outranks a denial because the command never ran, a failed run whose stderr carries the backend's denial dialect is reported `denied: true`, and every confined run carries its mode and enforcement facts. `danger-full-access` bypasses the provider entirely and stamps `denied: false`.
+For a confined mode, `resolve()` stamps the per-call policy (the session's mode override, or the deployment fallback); `execute` awaits preparation of the bash argv through the provider and hands the confined argv to the inherited subprocess path. At settlement the executor classifies the outcome: a runner failure outranks a denial because the command never ran, a failed run whose stderr carries the backend's denial dialect and names a path outside the call's writable roots is reported `denied: true` — the shared `dsh-sandbox` classifier owns that rule — and every confined run carries its mode and enforcement facts. `danger-full-access` bypasses the provider entirely and stamps `denied: false`.
 
 ### Invariants
 

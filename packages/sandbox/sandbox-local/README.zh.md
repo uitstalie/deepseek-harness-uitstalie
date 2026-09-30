@@ -86,7 +86,7 @@ Windows 档为每个工作区保留一个确定性写入 SID 和常驻 ACE，同
 
 ### 拒绝与 runner 失败方言
 
-每个 runner 的内核都有自己的拒绝方言，随每次包装以 `denialSignatures` 携带，`runnerFailureRules` 则给出每个 runner 的致命签名，因此消费方先分类 runner 拒绝，再检查拒绝签名。精确的字符串与退出码位于 [`src/index.ts`](src/index.ts)。
+每个 runner 的内核都有自己的拒绝方言，随每次包装以 `denialSignatures` 携带，`runnerFailureRules` 则给出每个 runner 的致命签名，因此消费方先分类 runner 拒绝，再检查拒绝签名。精确的字符串与退出码位于 [`src/index.ts`](src/index.ts)。方言只列出自身内核会产生的措辞：Windows ACL 档保留其两条 Windows 措辞，省略通用的 POSIX 措辞——无关工具也会打印它们（SSH 密钥被拒、包管理器自身的访问错误），纳入后会把那些失败判成此后端的拒绝。
 
 ### 源码地图
 
