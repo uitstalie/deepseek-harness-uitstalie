@@ -18,7 +18,7 @@
 
 1. 根目录固定为 `<projectRoot>/.dsh`，project root 的判定与 `dsh-skill-filesystem` 一致（cwd 向上找 `.git` 标记，找不到退化为 cwd）；根名可配置但默认 `.dsh`。
 2. 模型给出的路径**相对 `.dsh/`**；插件负责拼接、规范化并拒绝一切越界形态（绝对路径、盘符、UNC、`..`、`~`、软链逃逸）。
-3. 工具面按用户描述的三动词建模：`create` / `query` / `delete`，作用对象是文件或文件夹。
+3. 工具面只暴露**一个**工具 `dsh`（已定），动作 `create` / `query` / `delete`，作用对象是文件或文件夹。它的本质是 `.dsh/` 的**统一管理面与规范提醒**：目录下的内容参与 context 与运行时（rules、skills、MCP 声明、runtime 快照），所以 agent 应经它创建/查询/删除，而不是拿 `write`/`edit`/`bash` 直接改。因此 `create` 在落盘前按命名空间校验内容，宁可拒绝也不写入坏数据。
 4. 生产写操作前先做策略门禁（`read-only` 一律拒绝；`workspace-write` 仅允许 `.dsh/` 根内），拒绝时复用 `@deepseek-ai/dsh-sandbox` 的 denial marker，使模型看到与 fs/bash 一致的 `[sandbox: …]` 措辞。
 5. 建空目录与删除这两个 `ctx.fs` 未提供的原语，集中在插件内单一模块（`src/store-ops.ts`）实现；将来若把能力补进 `FileSystem` 服务定义，只需替换该模块。
 
@@ -34,6 +34,7 @@
 ## 验证
 
 - 单测：路径拒绝矩阵（`..`、绝对路径、盘符、UNC、`~`、软链逃逸）、三个 action 的正常路径、`read-only` 下拒绝、删除非空目录必须显式递归开关。
+- 命名空间校验：`rules/**` 的 front-matter 与 YAML 可解析性、`mcp.json`（复用 `@deepseek-ai/dsh-mcp-client` 的 `Config` 校验）、`skills/**/SKILL.md` 的必填项与 `name` 语法；非法内容必须被拒绝且不落盘。
 - 真实 Loader 组合测试（[packages/AGENTS.md](../../packages/AGENTS.md) 要求 product-visible 插件必须有非单测的真实组合测试）：在测试 profile 里挂载插件，断言工具注册与一次端到端调用。
 - `pnpm run typecheck`、`pnpm run build`、聚焦 `vitest run packages/uitstalie`。
 - 手工验证：Web 会话里工具出现在模型工具表，能对 `.dsh/rules` 建、查、删。
