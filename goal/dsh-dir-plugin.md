@@ -16,12 +16,11 @@
 
 ## 工具面
 
-推荐**单工具多动作**——用户的描述是「告诉插件做什么 + 在哪」，一个工具一次表达完，也省一份工具定义开销。备选是拆成三个单动词工具（贴合仓库 `read`/`write`/`edit` 的现状）。
+**已定：只暴露一个工具 `dsh`。** 用户明确这个工具的本质是**提醒 agent**——`.dsh/` 下的文件参与 context 与运行时，最好统一经工具管理修改。所以工具面不是"三个文件动词"，而是"一个规范入口"：工具名 `dsh`，动作 `create` / `query` / `delete`。
 
 ```ts
-// 方案 1（推荐）：单工具
 {
-  name: 'dsh_dir',
+  name: 'dsh',
   description: 'Create, inspect, and delete files and folders under the workspace .dsh/ store.',
   parameters: {
     action:    { type: 'string', required: true, enum: ['create', 'query', 'delete'] },
@@ -32,9 +31,6 @@
     depth:     { type: 'number', description: 'query on a directory: levels to list; default 1, -1 lists the whole subtree.' },
   },
 }
-
-// 方案 2（备选）：三个单动词工具
-// dsh_create(path, kind, content?) / dsh_query(path, depth?) / dsh_delete(path, recursive?)
 ```
 
 动作语义：
@@ -47,6 +43,26 @@
 | `delete` | 自动 | 文件直接删；目录需 `recursive: true` | 目录非空且未给 `recursive` → 报错而不是静默递归 |
 
 输出：结构化 `{ path, action, kind, entries? , content?, bytes? }` + `render` 出的人类可读文本；`presentCall`/`presentResult` 先给最小实现（沿用 `tool-fs` 的路径卡片思路），UI 打磨放二期。
+
+### 规范（norm）放在哪
+
+`.dsh/` 的正确性靠"agent 知道该走这条路"，所以规范要有落点，但**一件事只说一遍**：
+
+- **主位：工具的 `description`。** agent 考虑 `.dsh/` 工作时一定读到它，写明"这些文件参与 context 与运行时，请用本工具创建/查询/删除，不要用 `write`/`edit`/`bash` 直接改"。
+- **强化位：`ctx.systemPrompt.section({ name: 'tool:dsh', … })`。** 只写一句指向性的话（例如".dsh/ 下的内容用 `dsh` 工具管理"），**不重复**描述里的参数规则。
+- **不做硬拦截。** `write`/`edit` 不属于本插件，给它们加围栏是原生改动；先落软规范。
+- **可选补强（低成本、走现成 seam）**：订阅 `ctx.on('fs/observed')`，发现 `.dsh/` 下的**非本工具**写入时给一次提醒，说明这份内容应经 `dsh` 工具维护。`skill-filesystem` 已在用同一条 seam 做失效，不需要新机制。
+
+### 写入前校验（"统一规范"的落点）
+
+内容会喂 context 与运行时，所以 `create` 按命名空间校验后再落盘，**宁可拒绝也不写入坏数据**；校验失败返回结构化错误（字段 + 原因），不产生半成品文件：
+
+| 命名空间 | 校验 | 复用 |
+|---|---|---|
+| `rules/**` | front-matter 规格（可选 `globs`/`alwaysApply`）、YAML 必须可解析 | 自建规格（本分支自有能力） |
+| `mcp.json` | 整体按 MCP 客户端配置校验：serverName 归一化、传输联合、URL scheme、header/env 去重与合法性 | `@deepseek-ai/dsh-mcp-client` 的 `Config`，写法照 [acp/src/mcp.ts](../packages/acp/acp/src/mcp.ts:26) 的 `mountAcpMcpServers` |
+| `skills/**` | `SKILL.md` front-matter 必填项与 `name` 语法 | `isSkillName` @ `@deepseek-ai/dsh-skill` |
+| 其它路径 | 只做路径与字节限制 | — |
 
 ## 路径与安全模型
 
@@ -97,7 +113,7 @@
 |---|---|---|
 | P0 | 本设计文档 + 任务单 | 文档评审通过 |
 | P1 | 包骨架、`paths.ts`、`store-ops.ts`、单测 | 拒绝矩阵全绿；`read-only` 拒绝用例全绿 |
-| P2 | `tools.ts` 注册、提示段、输出渲染、`fs/observed` | 单测 + 手工调用可建/查/删 |
+| P2 | `tools.ts` 注册单工具 `dsh`、提示段、输出渲染、`fs/observed`、命名空间校验 | 单测 + 手工调用可建/查/删；非法内容被拒 |
 | P3 | 真实 Loader 组合测试、profile 挂载、Web 手工验证 | 组合测试绿；Web 工具表出现 `dsh_dir` 并端到端成功 |
 | P4 | 双语 README + i18n 记录、类型/构建/聚焦测试 | `pnpm run typecheck`、`pnpm run build`、`vitest run packages/uitstalie` 全绿 |
 | P5 | **新任务单**：`.dsh/rules/**` 目录形式 rules 加载器 | 见下节 |
@@ -115,9 +131,9 @@
 
 ## 未决问题（需用户拍板）
 
-1. **工具面粒度**：单工具 `dsh_dir(action)`（推荐）还是三个单动词工具？
-2. **命名**：工具 `dsh_dir`、包 `@deepseek-ai/dsh-tool-dsh-dir`、目录 `packages/uitstalie/dsh-dir/`；备选 `dsh_store` / `agent-store`。
-3. **删除的开放时机**：本阶段就开放 `delete`（含显式递归），还是先只做 `create`/`query`、删除留到二期？
-4. **根名**：固定 `.dsh`，还是做成配置项（默认 `.dsh`，允许部署改名）？
-5. **是否要 UI**：设置页或侧栏浏览 `.dsh/`？默认不做，先只给 agent 工具面。
-6. **原语路线**：确认方案 B（零原生改动 + 自建门禁）；若接受方案 A（扩 `FileSystem` 服务定义），本任务单的修改范围需要重写。
+1. ~~**工具面粒度**~~ **已定**：只暴露一个工具 `dsh`，动作 `create`/`query`/`delete`；命名若要用更描述性的名字（如 `dsh_dir`）只需改一处字符串。
+2. **删除的开放时机**：本阶段就开放 `delete`（含显式递归），还是先只做 `create`/`query`、删除留到二期？
+3. **根名**：固定 `.dsh`，还是做成配置项（默认 `.dsh`，允许部署改名）？
+4. **是否要 UI**：设置页或侧栏浏览 `.dsh/`？默认不做，先只给 agent 工具面。
+5. **原语路线**：确认方案 B（零原生改动 + 自建门禁）；若接受方案 A（扩 `FileSystem` 服务定义），本任务单的修改范围需要重写。
+6. **规范强度**：只落软规范（工具描述 + 提示段），还是加"检测到非本工具写入给一次提醒"（订阅 `fs/observed`）？
