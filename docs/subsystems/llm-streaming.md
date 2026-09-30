@@ -1078,6 +1078,107 @@ Types: [FileAttachmentRef](attachment.md)
 
 Source: [`packages/llm/llm/src/index.ts`](../../packages/llm/llm/src/index.ts)
 
+<a id="ctxmodelsdev--modelsdevcatalog"></a>
+
+### `ctx.modelsDev` — `ModelsDevCatalog`
+
+models.dev 目录服务（Service 类插件形态：默认导出服务类即插件， Loader 以 `new ModelsDevCatalog(ctx, config)` 挂载；构造即向 ctx 注册 `modelsDev` 服务，fiber 卸载时自动摘除）。
+
+内部状态三个一组：data（当前服务的目录）+ provenance（来源）+ fetchedAt （时间戳），只在 adopt() 里一起换，保证读者永远看到自洽的一组。
+
+```ts cordis-catalog
+/** 等首次加载（网络或缓存兜底）结束；失败路径也在内部消化，不会 reject。 */
+whenReady(): Promise<void>
+
+/**
+ * 目录里全部 provider id。
+ * @returns 目录中的 provider id 列表，顺序与目录解析顺序一致。
+ */
+listProviders(): string[]
+
+/**
+ * 目录提供商摘要列表（models.dev 设置页的列表数据源）。
+ * 按 id 排序，输出稳定；空目录返回空数组（provenance='none' 时
+ * 页面显示空态而不是报错——目录是 advisory 的）。
+ * @returns 全部提供商的摘要（含协议方言/端点/凭据变量名/模型数）。
+ */
+@Remote async listCatalogProviders(): Promise<CatalogProviderSummary[]>
+
+/**
+ * 一个提供商的目录模型摘要列表（设置页的模型子集勾选数据源）。
+ * @param providerId - models.dev provider id。
+ * @returns 模型摘要（按 id 排序）；未知 provider 返回空数组。
+ */
+@Remote async listCatalogModels(providerId: string): Promise<CatalogModelSummary[]>
+
+/**
+ * 查一个 provider 条目。
+ * @param providerId - models.dev provider id（如 "deepseek"）。
+ * @returns provider 条目；不存在返回 undefined。
+ */
+getProvider(providerId: string): ModelsDevProvider | undefined
+
+/**
+ * 查一个模型条目。
+ * @param providerId - models.dev provider id。
+ * @param modelId - 该 provider 下的模型 id。
+ * @returns 模型条目；不存在返回 undefined。
+ */
+getModel(providerId: string, modelId: string): ModelsDevModel | undefined
+
+/**
+ * 把 harness provider 路由解析为 models.dev provider id。
+ * @param route - harness 路由（如 "deepseek-official"）。
+ * @returns 别名命中返回映射值，否则原样返回 route。
+ */
+resolveRoute(route: string): string
+
+/**
+ * 把一个模型映射为 harness 形状默认值（上下文窗口、模态、reasoning 档位、
+ * 价格、协议方言提示）。
+ * @param route - harness 路由或 models.dev provider id。
+ * @param modelId - 模型 id。
+ * @returns 映射结果；模型未知返回 undefined（不是空对象）。
+ */
+resolveModelDefaults(route: string, modelId: string): ModelDefaults | undefined
+
+/**
+ * 解析一个路由/模型的额外请求参数。
+ *
+ * 合并顺序（后者按 key 取胜）：
+ * 1. 数据集 experimental.modes[mode].provider（仅当调用方给了 mode）；
+ * 2. 用户配置 provider 级 extraParams；
+ * 3. 用户配置 model 级 extraParams。
+ * 用户配置优先于数据集——数据集是公共默认值，本地配置是部署意图。
+ *
+ * @param route - harness 路由或 models.dev provider id。
+ * @param modelId - 模型 id。
+ * @param mode - 可选的 models.dev 实验模式名（如 "fast"）。
+ * @returns 合并后的 headers/body；无命中返回空对象。
+ */
+resolveExtraParams(route: string, modelId: string, mode?: string): ExtraParams
+
+/**
+ * 列出一个路由配置过的全部 body 键（provider 级 + 所有 model 级的并集）。
+ * 写入方（deepseek-extra-params 插件）据此在启动时为每个键注册一个
+ * 顶层字段槽——注册必须在请求到来前完成，所以键集是启动时静态确定的，
+ * 只有用户配置贡献键（数据集的 mode 级 body 不参与自动注入）。
+ *
+ * @param route - harness 路由或 models.dev provider id。
+ * @returns 去重排序后的键列表。
+ */
+configuredBodyKeys(route: string): string[]
+
+/**
+ * 强制重拉（无视缓存 TTL）。并发调用共享同一次拉取；失败只记日志、
+ * 保留当前目录，不抛给调用方。
+ * @returns 拉取（或失败消化）完成后 settle。
+ */
+refresh(): Promise<void>
+```
+
+Source: [`packages/uitstalie/models-dev/src/index.ts`](../../packages/uitstalie/models-dev/src/index.ts)
+
 <a id="llm-events"></a>
 
 ### `llm/*` events
@@ -1126,4 +1227,26 @@ Waterfall around every streaming model call (retry, replay, routing). Bound to t
 ```
 
 Source: [`packages/llm/llm/src/index.ts`](../../packages/llm/llm/src/index.ts)
+
+<a id="models-dev-events"></a>
+
+### `models-dev/*` events
+
+<a id="models-devupdated--emit"></a>
+
+#### `models-dev/updated` — emit
+
+服务的目录被替换（启动加载或 refresh() 成功后）。 消费方（如未来的 UI）据此刷新模型列表。
+
+```ts cordis-catalog
+/**
+ * 服务的目录被替换（启动加载或 refresh() 成功后）。
+ * 消费方（如未来的 UI）据此刷新模型列表。
+ * @param provenance - 新目录的来源。
+ * @mode emit
+ */
+'models-dev/updated'(this: ModelsDevCatalog, provenance: CatalogProvenance): void
+```
+
+Source: [`packages/uitstalie/models-dev/src/index.ts`](../../packages/uitstalie/models-dev/src/index.ts)
 <!-- END GENERATED cordis-surface -->

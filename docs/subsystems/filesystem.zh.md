@@ -458,6 +458,30 @@ abstract writeText( target: FsTarget, content: string, expected?: FsWriteIntent,
  * @returns the outcome, including the version the edit produced.
  */
 abstract editText( target: FsTarget, edit: FsEditRequest, expected?: { version: FsVersion }, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<FsEditOutcome>
+
+/**
+ * Create a directory, including any missing parents. Idempotent when the directory exists.
+ * @param target - the resolved directory to create.
+ * @param signal - aborts before the directory is created.
+ * @param sandboxPolicy - the per-call mode and workspace root this operation
+ *   runs under; a sandboxing backend fences it, the bare backend ignores it.
+ * @returns a promise that settles once the directory exists.
+ * @throws FsError `FS_IO_ERROR` when the mounted backend does not implement directory creation.
+ */
+mkdir(target: FsTarget, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy): Promise<void>
+
+/**
+ * Remove a file, or a directory whose entries are cleared, through the filesystem seam.
+ * @param target - the resolved target to remove.
+ * @param options - `recursive: true` removes a directory with its entries;
+ *   omission refuses a directory that still has entries.
+ * @param signal - aborts before the removal starts.
+ * @param sandboxPolicy - the per-call mode and workspace root this operation
+ *   runs under; a sandboxing backend fences it, the bare backend ignores it.
+ * @returns a promise that settles once the target is gone.
+ * @throws FsError `FS_IO_ERROR` when the mounted backend does not implement removal.
+ */
+remove( target: FsTarget, options: FsRemoveOptions = {}, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<void>
 ```
 
 Types: [SandboxExecutionPolicy](sandbox.zh.md)

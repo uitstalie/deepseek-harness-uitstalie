@@ -94,6 +94,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   inspector: 'extensions.md',
   webServer: 'web-server.md',
   llm: 'llm-streaming.md',
+  modelsDev: 'llm-streaming.md', // uitstalie-k3, 2026/09/30, task18, 分支自有的模型目录服务，归到 LLM 页
   lsp: 'lsp.md',
   messageFeedback: 'feedback.md',
   sessionFeedback: 'feedback.md',
@@ -245,6 +246,8 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'webserver': 'web-server.md',
   'workflow': 'workflow.md',
   'workspace': 'workspace.md',
+  // uitstalie-k3, 2026/09/30, task18, 分支自有的事件作用域，随其服务归到 LLM 页
+  'models-dev': 'llm-streaming.md',
 }
 
 /**
@@ -479,6 +482,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   FsInfo: 'filesystem.md',
   FsObservation: 'filesystem.md',
   FsPathInfo: 'filesystem.md',
+  FsRemoveOptions: 'filesystem.md', // uitstalie-k3, 2026/09/30, task18, remove 的选项类型
   FsObservationActor: 'filesystem.md',
   FsTarget: 'filesystem.md',
   FsVersion: 'filesystem.md',
@@ -946,6 +950,16 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   TerminalFrame: 'Browser terminal stream frames are owned by packages/api/terminal-controller/README.md',
   TerminalRetentionFrame: 'Browser terminal window holds are owned by packages/api/terminal-controller/README.md',
   WebTerminalId: 'Browser terminal identity is owned by packages/api/terminal-controller/README.md',
+  // BEGIN uitstalie-k3, 2026/09/30, task18, models-dev 的事件与契约类型属本分支自有，不在子系统文档目录内
+  CatalogProvenance: 'models-dev catalog provenance is owned by packages/uitstalie/models-dev/src/index.ts',
+  ModelsDevCatalog: 'models-dev catalog service contract is owned by packages/uitstalie/models-dev/src/index.ts',
+  CatalogProviderSummary: 'models-dev provider summary is owned by packages/uitstalie/models-dev/src/types.ts',
+  CatalogModelSummary: 'models-dev model summary is owned by packages/uitstalie/models-dev/src/types.ts',
+  ModelsDevProvider: 'models.dev provider record is owned by packages/uitstalie/models-dev/src/catalog.ts',
+  ModelsDevModel: 'models.dev model record is owned by packages/uitstalie/models-dev/src/catalog.ts',
+  ModelDefaults: 'harness-shaped model defaults are owned by packages/uitstalie/models-dev/src/catalog.ts',
+  ExtraParams: 'extra request params are owned by packages/uitstalie/models-dev/src/catalog.ts',
+  // END uitstalie-k3
 }
 
 /** Repository data policy consumed by the Cordis catalog projector. */
