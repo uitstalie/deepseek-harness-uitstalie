@@ -179,4 +179,4 @@ export abstract class SandboxProvider extends Service {
 
 export default SandboxProvider
 
-export { classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature } from './diagnostics.ts'
+export { classifyDenial, classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature } from './diagnostics.ts' // uitstalie-k3, 2026/09/28, task12, 导出带路径证据的拒绝分类
