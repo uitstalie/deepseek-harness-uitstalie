@@ -36,6 +36,19 @@
 - 不改 `FileSystem` 服务定义、不改 `agent-instructions`（能力缺口由新包内原语 + 自行门禁补齐）。
 - 挂载走**用户层 profile 补丁**（`~/.dsh/profiles/web/cordis.patch.yml` 插行），不进原生 bundle；本机验证用，不入仓库。
 
+## 侧边栏 UI 接线（代码调查结论；原生改动待批准）
+
+- **目标位置**：工作区行的"新建会话"按钮右侧，即 `ProjectRowItem` 的 `.rowActions` 容器（[Rows.tsx:268-308](../../packages/client/ui-workspace/src/client/rows/Rows.tsx:268)，按钮本体 :297-307）。
+- **现状**：该位置**没有任何 slot**。[ui-workspace 的 SlotMap](../../packages/client/ui-workspace/src/client/contract/slots.ts:114) 只有 `sidebar.workspaces.directoryFlow`、`.session.menu.item`、`.session.row.action`、`sidebar.session.row.leading`、`.hover`；逐工作区动作只有硬编码的 Rename/Delete 菜单。
+- **因此**：要精确落在该位置，必须在 `packages/client/ui-workspace` 新增**一个逐工作区的 list slot**（例名 `sidebar.workspaces.row.action`），三处**纯新增行**、逐处 `uitstalie-` 标记登记：
+  1. `src/client/contract/slots.ts` — SlotMap 声明；
+  2. `src/client/index.ts` — children 声明（照 :271 形状）；
+  3. `src/client/rows/Rows.tsx` — `.rowActions` 内 `renderSlot(...)`（照 :687 形状）。
+  既有行为不变（只多一个可注入 seat）。
+- **零原生改动的替代都不满足需求**：`sidebar.footer.action` 是已有的 slot，但只有全局一个按钮；工作区行的"..."菜单同样硬编码（仍需改原生）；在 `sidebar.workspaces`（single）里自渲染整块会重复 ui-workspace 的渲染。
+- **其余全走新路径**：新 client 包用 `ctx.slots.inject(...)` 注册（模板 [ui-schedule/src/client/index.ts:231](../../packages/client/ui-schedule/src/client/index.ts:231)）；工作区数据用 `ctx.get('workspaces')` 的 `WorkspaceView.path`（[types.ts:18](../../packages/api/workspace-controller/src/types.ts:18)）；读 `.dsh/rules` 走**本插件自己的 Typert Remote 只读 namespace**（`workspaceFiles` 是 session-scoped，不能复用），照 `models-dev` + `ui-models-dev` 的包内自挂模式。
+- **登记清单**：`tsconfig.client.json`、`tsconfig.base.json`（手写别名）、`tsconfig.host.json`；挂载走用户层 profile patch，不动 `packages/bundle/web-app/*`。
+
 ## 验证
 
 - 单测：路径拒绝矩阵（`..`、绝对路径、盘符、UNC、`~`、软链逃逸）、三个 action 的正常路径、`read-only` 下拒绝、删除非空目录必须显式递归开关。
