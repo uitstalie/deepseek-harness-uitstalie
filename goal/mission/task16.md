@@ -34,6 +34,25 @@
 
 用户补充的判断（同样适用于本任务单）：**这类"组合层小改 + 原生代码不动"本来就是应有做法**——[task17](task17.md) 据此把 models-dev / ui-models-dev 的挂载从"只存在于本机 profile patch"迁到仓库内的组合层。
 
+## 进度
+
+### 已完成（第一步：复用面 + 骨架 + 规则层）
+
+- **原生改动（一处，纯可见性）**：`packages/context/agent-instructions/src/index.ts` 追加导出块——`agentInstructionsMessage`、`reconcileInstructionContext`、`baselineInstructionState`、`applyInstructionVersionUpdates`、`retainedInstructionVersionUpdates`、`instructionContentSha1`、`trimmedInstructionDigest`、`resolveConfig`、`workspaceBaselineIdentity` 及配套类型，全部带 `uitstalie-k3` 标记。**为什么必须改**：原生包 `files` 只发布 `lib/`，从 `./src/*` 引用会把 source plane 与 artifact plane 混用（仓库明令禁止）；导出后 plus 用公开 API 复用，且**零行为变化**。
+- **新包骨架**：`packages/uitstalie/agent-instructions-plus/`
+  - `src/config.ts`：**嵌套复用**原生 `Config` schema（`agentInstructions` 段原样转发），外加 `rules` 段（`enabled` / `maxBytes` 默认 16 KiB / `maxSourceBytes` 默认 256 KiB）。
+  - `src/rules.ts`：`<projectRoot>/.dsh/rules/**` 扫描——递归、路径排序、按 trim 后内容在**整个集合内**去重、单文件超限跳过、集合 digest 用于变更检测；缺失目录即空扫描。
+  - `src/index.ts`：当前只导出上述层（插件接线是下一步），否则 tsdown 找不到入口。
+  - `tests/rules.spec.ts`：7 个用例（缺失目录、递归收集与忽略非 Markdown、跨文件去重、per-file cap 与空文件、digest 随增删改变化、首次扫描视为变更、abort）。
+- **登记**：`tsconfig.host.json` 聚合 references（标记行）；`tsconfig.base.json` 别名由 `pnpm run gen-tsconfig-paths` 自动推断（路径与包名后缀吻合）；`pnpm install` 更新 lockfile。
+- **验证**：`tsc -b tsconfig.host.json` 干净、`oxlint`（新包 + 原生包）0 错、规则测试 7 通过、`pnpm run build` 349 个 client artifact。
+
+### 下一步
+
+1. `src/index.ts` 的插件接线：AGENTS 段复用原生 `loadBaselineInstructions` 渲染（**逐字一致**＝可退回的硬证据），规则段独立预算渲染，两段拼进**同一条** `agent-instructions` 消息（`agentInstructionsMessage` + `baseline: true` + `baselineIdentity`）；增量继续用原生 `reconcileInstructionContext`；规则集合变更触发整条重发。
+2. 真实组合测试（对齐原生输出 + 规则进上下文）。
+3. 三个 preset 的替换（禁用原生 + 插入 plus）与 profile 挂载。
+
 ## 修改范围
 
 - 新增分支自有文件：新包 `packages/uitstalie/agent-instructions-plus/`（`package.json`、`tsconfig.json`、`src/*`、`tests/*`、双语 README + i18n 记录）、本任务单。
