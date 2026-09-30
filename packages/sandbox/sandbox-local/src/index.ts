@@ -208,9 +208,13 @@ const DENIAL_SIGNATURES = {
   bwrap: ['read-only file system'],
   landlock: ['permission denied'],
   seatbelt: ['operation not permitted'],
-  // pwsh/.NET: "Access to the path '...' is denied."; cmd: "Access is denied.";
-  // Node EACCES: "permission denied"; EPERM: "operation not permitted".
-  'windows-acl': ['access is denied', 'access to the path', 'permission denied', 'operation not permitted'],
+  // pwsh/.NET: "Access to the path '...' is denied."; cmd: "Access is denied."
+  // uitstalie-k3, 2026/09/28, task12, 去掉通用短语 "permission denied" 与
+  // "operation not permitted"：ssh 的 "Permission denied (publickey)"、包管理器的
+  // "EACCES: permission denied" 都会命中，把与沙盒无关的命令失败误报成沙盒拒绝，
+  // 再经升级提示诱导模型升权。Windows 的两条措辞保留，且分类还会要求拒绝信息里
+  // 出现工作区外的路径（见 dsh-sandbox diagnostics 的 classifyDenial）。
+  'windows-acl': ['access is denied', 'access to the path'],
   runnerCommand: ['read-only file system', 'permission denied'],
 } as const satisfies Record<SelectedRunner['runner'] | 'runnerCommand', readonly string[]>
 

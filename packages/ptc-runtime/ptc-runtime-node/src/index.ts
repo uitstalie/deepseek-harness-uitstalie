@@ -6,7 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import type { PtcBindingNamespace, PtcJsonValue, PtcRunFailure, PtcRunRequest, PtcRunResult, PtcRunSandbox, PtcRunSpec } from '@deepseek-ai/dsh-ptc-runtime'
 import { clampTimeout } from '@deepseek-ai/dsh-timeout'
-import { SandboxUnavailableError, classifyRunnerFailure, isRunnerSpawnFailure } from '@deepseek-ai/dsh-sandbox'
+import { SandboxUnavailableError, classifyDenial, classifyRunnerFailure, isRunnerSpawnFailure, writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
@@ -139,6 +139,8 @@ export class NodePtcRuntime extends PtcRuntime {
     const output = new OutputLedger(this.config.maxOutputBytes)
     const logs: string[] = []
     const sandbox: PtcRunSandbox = { mode: policy.mode, denied: false }
+    // uitstalie-k3, 2026/09/28, task12, 本次调用的授权根，供拒绝分类判断路径归属。
+    const grantedRoots = writableRoots(policy)
     const result = Promise.withResolvers<PtcRunResult>()
     const signal = spec.signal === undefined ? controller.signal : AbortSignal.any([spec.signal, controller.signal])
     let handle: SubprocessHandle | undefined
@@ -283,8 +285,13 @@ export class NodePtcRuntime extends PtcRuntime {
             if (settled) return
             const { error, value } = readProgramResult(raw)
             if (error !== undefined) {
-              if (confined !== undefined) sandbox.denied = confined.denialSignatures.some(signature =>
-                error.message.toLowerCase().includes(signature.toLowerCase()))
+              if (confined !== undefined) {
+                // uitstalie-k3, 2026/09/28, task12, 与 shell 执行器共用同一拒绝分类：
+                // 仅凭短语会把与沙盒无关的失败误报成沙盒拒绝（再诱导模型升权），因此
+                // 还要求失败信息里的路径不被本次调用的授权根覆盖。程序已失败，非零
+                // 退出码由失败帧本身代表。
+                sandbox.denied = classifyDenial(1, error.message, confined.denialSignatures, grantedRoots)
+              }
               if (error.kind === 'output-limit') outputOverflow = true
             }
             finish(error, value)
