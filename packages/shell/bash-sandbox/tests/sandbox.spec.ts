@@ -476,20 +476,23 @@ describe('per-call sandbox policy (the session and escalation carrier)', () => {
 })
 
 describe('classifyDenial', () => {
+  /** `read-only` grants no root, so no named path can contradict a matching phrase. */
+  const READ_ONLY_ROOTS: readonly string[] = []
+
   it('never classifies a clean exit or a signal kill as a denial', () => {
-    expect(classifyDenial(runResult(0, 'Permission denied'), UNIX_SIGNATURES)).toBe(false)
-    expect(classifyDenial(runResult(null, 'Permission denied'), UNIX_SIGNATURES)).toBe(false)
+    expect(classifyDenial(runResult(0, 'Permission denied'), UNIX_SIGNATURES, READ_ONLY_ROOTS)).toBe(false)
+    expect(classifyDenial(runResult(null, 'Permission denied'), UNIX_SIGNATURES, READ_ONLY_ROOTS)).toBe(false)
   })
 
   it('classifies failed runs by the wrap\'s own dialect, conservatively', () => {
-    expect(classifyDenial(runResult(1, 'touch: cannot touch /x: Read-only file system'), UNIX_SIGNATURES)).toBe(true)
-    expect(classifyDenial(runResult(1, 'sh: /x: Permission denied'), UNIX_SIGNATURES)).toBe(true)
+    expect(classifyDenial(runResult(1, 'touch: cannot touch /x: Read-only file system'), UNIX_SIGNATURES, READ_ONLY_ROOTS)).toBe(true)
+    expect(classifyDenial(runResult(1, 'sh: /x: Permission denied'), UNIX_SIGNATURES, READ_ONLY_ROOTS)).toBe(true)
     // Bare EPERM is not a Linux runner's dialect: mount/kill/ptrace fail with
     // it unsandboxed too, and the mode vocabulary governs file effects only —
     // claiming a file denial here would tell the model the sandbox blocked
     // something it never governed.
-    expect(classifyDenial(runResult(1, 'mount: Operation not permitted'), UNIX_SIGNATURES)).toBe(false)
-    expect(classifyDenial(runResult(1, 'No such file or directory'), UNIX_SIGNATURES)).toBe(false)
+    expect(classifyDenial(runResult(1, 'mount: Operation not permitted'), UNIX_SIGNATURES, READ_ONLY_ROOTS)).toBe(false)
+    expect(classifyDenial(runResult(1, 'No such file or directory'), UNIX_SIGNATURES, READ_ONLY_ROOTS)).toBe(false)
   })
 
   it('matches exactly the active backend\'s dialect: EPERM classifies under Seatbelt, EACCES does not under bwrap', () => {
@@ -497,8 +500,26 @@ describe('classifyDenial', () => {
     // text IS how the kernel refuses a governed file write; under bwrap's
     // EROFS-only dialect, `Permission denied` is ordinary DAC, not the
     // sandbox — per-wrap signatures are what keep both classifications honest.
-    expect(classifyDenial(runResult(1, 'bash: /etc/x: Operation not permitted'), ['operation not permitted'])).toBe(true)
-    expect(classifyDenial(runResult(1, 'sh: /x: Permission denied'), ['read-only file system'])).toBe(false)
+    expect(classifyDenial(runResult(1, 'bash: /etc/x: Operation not permitted'), ['operation not permitted'], READ_ONLY_ROOTS)).toBe(true)
+    expect(classifyDenial(runResult(1, 'sh: /x: Permission denied'), ['read-only file system'], READ_ONLY_ROOTS)).toBe(false)
+  })
+
+  it('under workspace-write requires the matched phrase to name a path outside the granted roots', () => {
+    const workspace = ['/home/dev/ws'] as const
+    // The sandbox cannot refuse a path inside a granted root, so a denial phrase
+    // beside an in-root path describes that file's own permissions (or another
+    // tool's message) — reporting it as a sandbox denial would invite the model
+    // to escalate a call the sandbox never governed.
+    expect(classifyDenial(runResult(1, 'sh: /home/dev/ws/x: Permission denied'), UNIX_SIGNATURES, workspace)).toBe(false)
+    // A phrase naming no path at all is not evidence of a policy denial either.
+    expect(classifyDenial(runResult(1, 'ssh: Permission denied (publickey)'), UNIX_SIGNATURES, workspace)).toBe(false)
+    // A path the grant does not cover is the denial the hint exists for.
+    expect(classifyDenial(runResult(1, 'sh: /etc/x: Permission denied'), UNIX_SIGNATURES, workspace)).toBe(true)
+    // These dialects quote the offending path, which may contain spaces: the
+    // whole quoted span must be compared, or a truncated prefix lands outside the
+    // root and the mismatch re-introduces the false positive.
+    const spaced = '/home/dev/my ws'
+    expect(classifyDenial(runResult(1, `Access to the path '${spaced}/x' is denied.`), ['access to the path'], [...workspace, spaced])).toBe(false)
   })
 })
 
