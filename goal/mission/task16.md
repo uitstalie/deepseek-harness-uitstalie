@@ -47,11 +47,25 @@
 - **登记**：`tsconfig.host.json` 聚合 references（标记行）；`tsconfig.base.json` 别名由 `pnpm run gen-tsconfig-paths` 自动推断（路径与包名后缀吻合）；`pnpm install` 更新 lockfile。
 - **验证**：`tsc -b tsconfig.host.json` 干净、`oxlint`（新包 + 原生包）0 错、规则测试 7 通过、`pnpm run build` 349 个 client artifact。
 
+### 已完成（第二步：插件接线 + 组合测试）
+
+- **架构定案**：plus **内部挂载原生插件**（`ctx.plugin({ name, inject, Config, apply }, config.agentInstructions)`），自己是一个注册在**前面**的 `agent/pre-step` 装饰器——瀑布顺序保证 `next()` 先跑到原生 listener，返回的消息再由 plus 追加规则段。原生代码逐字复用，组合层不复制任何逻辑。
+- **关键实现事实（踩过一次）**：原生在**空批次**（`step === 1 && decision.messages.length === 0`）时把 baseline 放进 **inbox**（`syncInbox`），不是放进 `decision.messages`。第一版装饰器只改 `decision.messages`，规则段被静默丢弃——组合测试直接抓到。现在三条通道都覆盖：① 批次里有 baseline → 就地追加；② inbox 里有 pending baseline → `inbox.replace` 换掉；③ 规则集合变了而链路没动 → 产出**替换基线**（批次为空时 `inbox.prepend`，否则插进批次）。
+- **组合测试**（`tests/plus.spec.ts`，3 个用例）：
+  1. AGENTS 链 + `.dsh/rules/**`（含嵌套）落在**同一条** `agent-instructions` 消息里；
+  2. **AGENTS 段是"原生单挂"输出的逐字前缀**——这就是"可退回"的硬证据；
+  3. 无 rules 目录时与原生输出**完全逐字相同**；
+  4. 改规则后产出替换基线，新文本在、旧文本不在。
+- **原生改动**（同一处导出块的补充）：`findProjectRoot`、`loadBaselineInstructionSet` 也一并导出（替换基线需要 `included` 来算 changes）。
+- **验证**：`tsc -b tsconfig.host.json` 干净、`oxlint` 0 错、**10 个测试全绿**（7 规则 + 3 组合）、`pnpm run build` 349 artifact、`pnpm install` 登记 `@deepseek-ai/dsh-agent-loop-testkit` devDep。
+
+### 已知的既有门禁失败（不属于本任务单）
+
+`pnpm exec tsx scripts/verify-package-dependencies.ts` 报 **29 条，全部在 `packages/uitstalie/ui-models-dev/package.json`**（task8 遗留：peerDependencies 用了 `workspace:^` 应为 `workspace:*`；`zod` 声明在 dependencies 应为 devDependencies）。新包零问题。待用户决定是否顺带修。
+
 ### 下一步
 
-1. `src/index.ts` 的插件接线：AGENTS 段复用原生 `loadBaselineInstructions` 渲染（**逐字一致**＝可退回的硬证据），规则段独立预算渲染，两段拼进**同一条** `agent-instructions` 消息（`agentInstructionsMessage` + `baseline: true` + `baselineIdentity`）；增量继续用原生 `reconcileInstructionContext`；规则集合变更触发整条重发。
-2. 真实组合测试（对齐原生输出 + 规则进上下文）。
-3. 三个 preset 的替换（禁用原生 + 插入 plus）与 profile 挂载。
+三个 preset 的替换（禁用原生 + 插入 plus）与 profile 挂载，然后跑一次 Web 端到端确认。
 
 ## 修改范围
 

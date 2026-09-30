@@ -60,6 +60,7 @@ export type {
 } from './state.ts'
 export type { AgentInstructionChange } from './render.ts'
 export { instructionContentSha1, trimmedInstructionDigest } from './digest.ts'
+export { findProjectRoot, loadBaselineInstructionSet } from './files.ts'
 export { resolveConfig, workspaceBaselineIdentity } from './config.ts'
 export type { Config as AgentInstructionsConfig, ResolvedConfig } from './config.ts'
 // END uitstalie-k3
