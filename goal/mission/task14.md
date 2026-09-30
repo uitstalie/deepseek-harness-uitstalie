@@ -22,6 +22,26 @@
 4. 生产写操作前先做策略门禁（`read-only` 一律拒绝；`workspace-write` 仅允许 `.dsh/` 根内），拒绝时复用 `@deepseek-ai/dsh-sandbox` 的 denial marker，使模型看到与 fs/bash 一致的 `[sandbox: …]` 措辞。
 5. 建空目录与删除这两个 `ctx.fs` 未提供的原语，集中在插件内单一模块（`src/store-ops.ts`）实现；将来若把能力补进 `FileSystem` 服务定义，只需替换该模块。
 
+## 进度
+
+### 已完成（第一步：路径矩阵 + 存储操作层）
+
+- 新包 `packages/uitstalie/tool-dsh-store/`（`@deepseek-ai/dsh-tool-dsh-store`）：
+  - `src/paths.ts`：`.dsh/` 相对路径归一化与**拒绝矩阵**（绝对路径/UNC/盘符、`..` 逃逸、`~`/`$`/`%` 展开、Windows 保留设备名、非法字符与段尾点/空格、长度与深度上限），纯函数、不触碰文件系统。
+  - `src/store-ops.ts`：把「建目录 / 写文件 / 查询 / 删除」落到 `ctx.fs` 上（`ensureStoreRoot`、`createStoreFolder`、`createStoreFile`、`queryStoreTarget`、`removeStoreTarget`），只接收已确认在根内的绝对路径，数据形状（`StoreQueryResult` / `StoreEntry` / …）与执行逻辑分离。
+  - `src/index.ts`：当前只导出上述两层（工具接线是下一步），否则 tsdown 找不到入口。
+  - 测试：`tests/paths.spec.ts`（10 个，逐行钉矩阵）+ `tests/store-ops.spec.ts`（9 个，真实 `LocalFileSystem` + 临时工作区，含"非空目录未给 recursive 必须拒绝"与"空目录可直接删"）。
+- 登记：`tsconfig.host.json` 聚合 references（标记行）、`tsconfig.base.json` 别名（生成器自动推断）、`pnpm install` 更新 lockfile。
+- 顺带修掉 task8 遗留的 **`ui-models-dev` manifest 问题**（29 条依赖门禁）：非 cordis 的 DSH 依赖下沉 devDependencies、`workspace:^`→`workspace:*`、cordis 保持 peer+dev 的 `workspace:~`、`zod` 移入 devDependencies。`verify-package-dependencies` 现在 75 个包全过。
+- **验证**：`tsc -b tsconfig.host.json` 干净、`oxlint` 0 错、**19 个测试全绿**、`pnpm run build` 349 artifact。
+
+### 下一步（按优先级）
+
+1. **工具接线**：`tool-dsh-store` 的 Tool schema（create/query/delete × file/folder）、会话策略门禁（`read-only` 一律拒绝、`workspace-write` 仅限 `.dsh/` 内）、拒绝措辞复用 sandbox denial marker、命名空间校验（`rules/**` 的 Markdown 与重复内容拒绝；`mcp.json` 复用 mcp-client 的 Config 校验；`skills/**/SKILL.md` 必填项）。挂载后确保根目录存在。
+2. **五个 uitstalie 包缺 README**：`verify-package-readme-model-experience` 与 `verify-package-readme-limitations` 对 models-dev / llm-plus / ui-models-dev / agent-instructions-plus / tool-dsh-store **全部报缺**（含 Model Experience 段与 `## Known Limitations and Deferred Work` 段，中文对与 i18n 记录同步）。
+3. **禁用词重命名**：`verify-concrete-terms` 禁止字面量 `provenance`（全仓库，除 vendor/ 与归档 Agent Notes）。命中处：`models-dev/src/index.ts`（`CatalogProvenance` 类型与字段）、`scripts/gen-cordis-catalog.ts` 的豁免说明、生成物 `api-catalog.ts` 与 `docs/subsystems/llm-streaming{,.zh}.md`、以及本目录的若干任务单。需改名为具体来源词（如 `CatalogOrigin` / `origin`）后重跑 `gen-cordis-api`。
+4. 侧边栏 rules UI（`ui-tool-dsh-store`）与 Remote 只读 namespace。
+
 ## 修改范围
 
 - 新增分支自有文件：
