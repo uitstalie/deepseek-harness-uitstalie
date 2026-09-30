@@ -6,7 +6,7 @@
 
 ```
 gen-cordis-catalog: 2 signature type-link coverage violation(s):
-  event 'models-dev/updated' references unclassified type 'CatalogProvenance'
+  event 'models-dev/updated' references unclassified type 'CatalogOrigin'
   event 'models-dev/updated' references unclassified type 'ModelsDevCatalog'
 ```
 
@@ -16,7 +16,7 @@ gen-cordis-catalog: 2 signature type-link coverage violation(s):
 
 ## 为什么走豁免而不是文档页
 
-两个类型都是**本分支自有**的（`CatalogProvenance` 是目录来源枚举 `'network' | 'cache' | 'none'`，`ModelsDevCatalog` 是服务类本身），不在 `docs/subsystems/` 的目录体系里，也没有对应的子系统页可指向。因此按既有惯例走 `typeLinkExemptions`，并把所有者写成它们真正的家：`packages/uitstalie/models-dev/src/index.ts`。
+两个类型都是**本分支自有**的（`CatalogOrigin` 是目录来源枚举 `'network' | 'cache' | 'none'`，`ModelsDevCatalog` 是服务类本身），不在 `docs/subsystems/` 的目录体系里，也没有对应的子系统页可指向。因此按既有惯例走 `typeLinkExemptions`，并把所有者写成它们真正的家：`packages/uitstalie/models-dev/src/index.ts`。
 
 ## 修改范围
 
@@ -27,7 +27,7 @@ gen-cordis-catalog: 2 signature type-link coverage violation(s):
 
 生成器是"逐层收敛"的：修完一层才暴露下一层。四层全部修完后通过。
 
-1. **事件签名类型分类**：`TYPE_LINK_EXEMPTIONS` 追加 8 条（models-dev 的 `CatalogProvenance`、`ModelsDevCatalog`、`CatalogProviderSummary`、`CatalogModelSummary`、`ModelsDevProvider`、`ModelsDevModel`、`ModelDefaults`、`ExtraParams`），归属写它们真正的家（`packages/uitstalie/models-dev/src/{index,types,catalog}.ts`）。
+1. **事件签名类型分类**：`TYPE_LINK_EXEMPTIONS` 追加 8 条（models-dev 的 `CatalogOrigin`、`ModelsDevCatalog`、`CatalogProviderSummary`、`CatalogModelSummary`、`ModelsDevProvider`、`ModelsDevModel`、`ModelDefaults`、`ExtraParams`），归属写它们真正的家（`packages/uitstalie/models-dev/src/{index,types,catalog}.ts`）。
 2. **JSDoc 完整性**：`ctx.modelsDev.listProviders` 缺 `@returns`，补齐。
 3. **服务方法签名类型分类**：`FsRemoveOptions` 归入 `LINK_MAP → filesystem.md`（fs 族既有类型都在那，且有子系统页），models-dev 的 6 个契约类型走上面的豁免。
 4. **分区归属**：新增 `SERVICE_PAGE.modelsDev = 'llm-streaming.md'` 与 `EVENT_SCOPE_PAGE['models-dev'] = 'llm-streaming.md'`——不新建子系统页，归到语义最近的 LLM 页（模型目录服务）。

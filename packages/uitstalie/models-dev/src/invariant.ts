@@ -15,7 +15,7 @@ export const inject = ['invariants']
 
 /**
  * No runtime invariant: the catalog is a read-through cache with no event
- * history; the only mutable relation (served data vs provenance) is set
+ * history; the only mutable relation (served data vs origin) is set
  * atomically inside `adopt()`.
  */
 const install: InvariantInstaller = () => {}
