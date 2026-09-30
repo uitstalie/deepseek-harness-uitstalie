@@ -203,7 +203,7 @@
 | `dsh-user-questions` (interaction/user-questions) | **Definition**：`ctx.userQuestions`：抽象"向人类提问"seam，`ask(request)` 派发 answerer waterfall 等首个被接受回答；定义意图词汇（`plan-review` 等）。服务类插件。 |
 | `dsh-tool-ask-user` (interaction/tool-ask-user) | Consumer：模型工具 `ask_user_question`，回答以紧凑 JSON 回到 loop；拒绝 runtime 子 agent 提问。函数插件。 |
 | `dsh-settings` (settings/settings) | **Definition**：`ctx.settings`（`SettingsForms`）：按 Loader 条目的 volatile Config 投影配置表单，`configure({ auto })` 抑制自动生成页、`describe()`（脱敏 secret）/`update`/`replace`/`mutate`（路径级写入，stale revision 拒绝），`settings/document-updated` 事件；用户编辑写进 profile 条目的 `config`，由 Loader 提交 volatile 引用。抽象服务类。 |
-| `dsh-settings-file` (settings/settings-file) | **Provider**：单份 `<dshHome>/settings.yaml`（或 JSON），chokidar 热重载，叶级 diff 保留注释，0600 权限 + 原子写。服务类插件。**（上游已于 601d6761e4 删除；user-layer 配置改为 profile 条目 volatile Config。）** |
+| `dsh-settings-file` (settings/settings-file) | **Provider**：单份 `<dshHome>/settings.yaml`（或 JSON），chokidar 热重载，叶级 diff 保留注释，0600 权限 + 原子写。服务类插件。**（上游已删除该包；user-layer 配置改为 profile 条目 volatile Config。）** |
 | `dsh-credentials` (credentials/credentials) | **Definition**：`ctx.credentials`：两个键空间——`credentialRef`（环境变量形引用，resolve/describe/set/unset）与 `credentialKey`（`<owner>/<id>` 持久记录，OAuth grant 等）；按操作即时 resolve，轮换立即生效。抽象服务类。 |
 | `dsh-credentials-local` (credentials/credentials-local) | **Provider**：`$DSH_HOME/.credentials.yaml`；四层优先级（启动环境快照 > 存储文件 > 项目 .env > 家目录 .env）；writer lock 行级 patch；拒绝他人可读文件。服务类插件。 |
 | `dsh-authorization` (credentials/authorization) | **Definition**：`ctx.authorization`：交互式授权流程注册表（OAuth 登录等），流程必须经 `modifyRecord` 提交记录后才报 `authorized`；自身不带 flow。服务类插件。 |
