@@ -63,9 +63,21 @@
 
 `pnpm exec tsx scripts/verify-package-dependencies.ts` 报 **29 条，全部在 `packages/uitstalie/ui-models-dev/package.json`**（task8 遗留：peerDependencies 用了 `workspace:^` 应为 `workspace:*`；`zod` 声明在 dependencies 应为 devDependencies）。新包零问题。待用户决定是否顺带修。
 
+### 已完成（第三步：preset 替换 + 真实 Loader 组合测试）
+
+- **三个 preset 的替换**（`packages/bundle/web-app/presets/{standard,ptc,cordis}.patch.yml`，各一处带标记的最小块）：原生 `agent-instructions` 行保留但 `disabled: true`（回退时删块即可），紧随其后插入 plus 行，配置为 `agentInstructions.maxBytes: 65536` + `rules.maxBytes: 16384`——两份额度与原设计一致。
+- **bundle 依赖**：`packages/bundle/web-app/package.json` 的 dependencies 增加 `@deepseek-ai/dsh-agent-instructions-plus`（preset 里出现裸包名就必须在 resolver manifest 的 dependencies 里）。
+- **真实 Loader 组合测试**（`tests/loader-composition.spec.ts` + `tests/fixtures/loader-composition/cordis.yml`）：test-only 的 YAML 组合（llm / session / session-projection / system-prompt / tools / fs-local / agent / agent-loop / plus）经**真 Loader** 启动，用 `ctx.agentLoop.create()` 建**生产 Agent**，断言同一条消息里同时有 AGENTS 链与 `.dsh/rules/api.md`。这同时证明了 preset 里那份嵌套配置形状能被 plus 的 `Config` schema 接受——满足 packages/AGENTS.md 对 product-visible 插件的"非单元真实组合测试"要求。
+- 第二个用例是 preset 守卫：三个 preset 都必须存在带标记的替换块（原生行 `disabled: true` + plus 行 + 两段配置）。
+- **验证**：`tsc -b tsconfig.host.json` 干净、`oxlint` 0 错、**12 个测试全绿**（7 规则 + 3 组合 + 2 Loader）、`pnpm run build` 349 artifact。
+
+### 环境性阻塞（非本改动引起）
+
+`pnpm run verify-cordis-config` 在本 checkout 无法运行：`apps/cli/tests/profiles/acp/cordis.yml` 是 git 软链（mode 120000），而本 checkout `core.symlinks=false`，它落成了内容为软链目标路径的文本文件，门禁按 YAML 解析后报 "root must be a Loader entry array"。**pristine master 上同样失败**，与本次改动无关；修复需要 Developer Mode/管理员权限重建软链，或换一个支持软链的 checkout。
+
 ### 下一步
 
-三个 preset 的替换（禁用原生 + 插入 plus）与 profile 挂载，然后跑一次 Web 端到端确认。
+Web 端到端确认需要从**本 checkout** 启动 harness（当前运行中的 GUI 是兄弟 checkout，其 node_modules 里没有 plus）——这需要用户决定时机，因为会与当前 3000 端口的 GUI 冲突。之后是 task14 的 `.dsh` 存储插件与 rules 侧边栏，以及 task15 的检查层。
 
 ## 修改范围
 
