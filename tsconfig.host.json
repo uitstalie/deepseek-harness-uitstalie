@@ -492,6 +492,8 @@
     { "path": "./packages/uitstalie/llm-plus" },
     // END uitstalie-k3
     // uitstalie-k3, 2026/09/30, task16, 注册 plus loader 进 Host 聚合程序
-    { "path": "./packages/uitstalie/agent-instructions-plus" }
+    { "path": "./packages/uitstalie/agent-instructions-plus" },
+    // uitstalie-k3, 2026/09/30, task14, 注册 .dsh 存储工具进 Host 聚合程序
+    { "path": "./packages/uitstalie/tool-dsh-store" }
   ]
 }
