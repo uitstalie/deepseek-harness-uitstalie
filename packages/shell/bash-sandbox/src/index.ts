@@ -11,7 +11,8 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import type { ShellExecRequest, ShellExecSpec, ShellExecution, ShellProcess, ShellRunResult } from '@deepseek-ai/dsh-shell'
-import { SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
+// uitstalie-k3, 2026/09/28, task12, 后台路径按 exitCode+stderr 直接分类（前台路径走 helpers 的结果级包装）
+import { SandboxUnavailableError, classifyDenial as classifyDenialText, writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type {
   ConfinedArgv,
   ConfinedSandboxMode,
@@ -24,7 +25,7 @@ import type {
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import type { Config as LocalConfig } from '@deepseek-ai/dsh-bash-local'
-import { classifyDenial, classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature } from './helpers.ts'
+import { classifyDenial, classifyRunnerFailure, isRunnerSpawnFailure } from './helpers.ts'
 
 /**
  * Plugin config: the local executor's knobs, verbatim. The sandbox policy —
@@ -60,6 +61,9 @@ export class SandboxBashExecutor extends LocalBashExecutor {
     mode: ConfinedSandboxMode
     enforcement: SandboxEnforcement
     denialSignatures: readonly string[]
+    // uitstalie-k3, 2026/09/28, task12, 拒绝分类需要本次调用的授权根，才能判断
+    // 拒绝信息里的路径是否在工作区内（工作区内的「拒绝」不可能来自沙盒）。
+    writableRoots: readonly string[]
     runnerFailureRules: readonly RunnerFailureRule[]
     runnerProgram: string | undefined
     workdir: string
@@ -96,6 +100,9 @@ export class SandboxBashExecutor extends LocalBashExecutor {
       )
     }
     let confined: ConfinedArgv | undefined
+    // uitstalie-k3, 2026/09/28, task12, 本次调用的授权根一次性派生，前后台两条
+    // 分类路径共用（工作区根 + 平台临时区；read-only 为空）。
+    const grantedRoots = writableRoots(policy)
     const ex = await this.executeArgv(spec, async (signal) => {
       const prepared = await this.confine(spec.command, { ...policy, mode }, signal)
       signal.throwIfAborted()
@@ -107,6 +114,7 @@ export class SandboxBashExecutor extends LocalBashExecutor {
         mode,
         enforcement: facts.enforcement,
         denialSignatures: facts.denialSignatures,
+        writableRoots: grantedRoots,
         runnerFailureRules: facts.runnerFailureRules,
         runnerProgram: facts.argv[0],
         workdir: spec.workdir,
@@ -121,7 +129,7 @@ export class SandboxBashExecutor extends LocalBashExecutor {
       if (runnerFailure !== undefined) {
         throw new SandboxUnavailableError(mode, runnerFailure.detail)
       }
-      return { ...result, sandbox: { mode, denied: classifyDenial(result, denialSignatures), enforcement } }
+      return { ...result, sandbox: { mode, denied: classifyDenial(result, denialSignatures, grantedRoots), enforcement } }
     }, (error) => {
       // An upstream abort remains cancellation even when it prevents spawn.
       if (spec.signal?.aborted === true) spec.signal.throwIfAborted()
@@ -167,7 +175,7 @@ export class SandboxBashExecutor extends LocalBashExecutor {
         : classifyRunnerFailure(proc.exitCode, stderr, facts.runnerFailureRules) !== undefined
       proc.sandbox = {
         mode: facts.mode,
-        denied: !runnerFailed && matchesSignature(proc.exitCode, stderr, facts.denialSignatures),
+        denied: !runnerFailed && classifyDenialText(proc.exitCode, stderr, facts.denialSignatures, facts.writableRoots),
         enforcement: facts.enforcement,
         ...(runnerFailed ? { runnerFailed } : {}),
       }
