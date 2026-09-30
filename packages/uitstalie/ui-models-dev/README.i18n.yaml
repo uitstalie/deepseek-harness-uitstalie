@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/ui-models-dev/README.md
+/:
+  en: e7d3a3a161bb4a1b
+  zh: 80b33fef16e7a10c
+/deepseek-ai-dsh-client-ui-models-dev:
+  en: fe655572f81418be
+  zh: 256fb89fdf5605cf
+/deepseek-ai-dsh-client-ui-models-dev/summary:
+  en: 393975043596bf55
+  zh: 4e1c3d8cb60bb78b
+/deepseek-ai-dsh-client-ui-models-dev/table-of-contents:
+  en: 4e53164159b5ce41
+  zh: 89582dc0294d0776
+/deepseek-ai-dsh-client-ui-models-dev/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-client-ui-models-dev/use-this-package/where-it-appears:
+  en: 761f4750e324ef2b
+  zh: d976cb6ba02a8a65
+/deepseek-ai-dsh-client-ui-models-dev/use-this-package/what-you-can-do:
+  en: 7a226f255d19adb2
+  zh: f61a91977da822b6
+/deepseek-ai-dsh-client-ui-models-dev/use-this-package/oauth-providers:
+  en: 4f2d0dab81797d19
+  zh: 999b96125132f040
+/deepseek-ai-dsh-client-ui-models-dev/model-experience:
+  en: c7cb3f01abe0435c
+  zh: c6f9bc322b893d0b
+/deepseek-ai-dsh-client-ui-models-dev/model-experience/kv-cache-effect:
+  en: 6d745424cd6b9d99
+  zh: 16ee10ddbb4b41f2
+/deepseek-ai-dsh-client-ui-models-dev/known-limitations-and-deferred-work:
+  en: 8f8ae6c692b60710
+  zh: 04a6bddd4606e6ab
+/deepseek-ai-dsh-client-ui-models-dev/known-limitations-and-deferred-work/dev-note:
+  en: fe084f2439fa9548
+  zh: 2c5084f0eaaf57e6

@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/agent-instructions-plus/README.md
+/:
+  en: e106e7ecb4e8b249
+  zh: 5ff584e3ca616ea1
+/deepseek-ai-dsh-agent-instructions-plus:
+  en: aad5ed3076beb97d
+  zh: e11b3f53c94ba88d
+/deepseek-ai-dsh-agent-instructions-plus/summary:
+  en: a0d4d502b3189120
+  zh: e2914c337afaf5f8
+/deepseek-ai-dsh-agent-instructions-plus/table-of-contents:
+  en: 76368b6b1da79c80
+  zh: 52384aee991ac542
+/deepseek-ai-dsh-agent-instructions-plus/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-agent-instructions-plus/use-this-package/what-it-adds:
+  en: 1a5d69c0a572f4fe
+  zh: 96d67a1fb0741868
+/deepseek-ai-dsh-agent-instructions-plus/use-this-package/configuration:
+  en: caaf7d449b91b95d
+  zh: 2d51d49572caf85d
+/deepseek-ai-dsh-agent-instructions-plus/use-this-package/authoring-rules:
+  en: 3489eca1d196ed16
+  zh: 3d18824448fad11c
+/deepseek-ai-dsh-agent-instructions-plus/understand-the-implementation:
+  en: be79d02642c670b1
+  zh: 2c4c57944e5424a1
+/deepseek-ai-dsh-agent-instructions-plus/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-agent-instructions-plus/model-experience/workspace-instruction-context:
+  en: 9b83575615d340a9
+  zh: ac08b15bcd9ce7a2
+/deepseek-ai-dsh-agent-instructions-plus/model-experience/workspace-instruction-context/what-the-model-sees:
+  en: 7281180944e35f2b
+  zh: ced7ca2e14c6b70c
+/deepseek-ai-dsh-agent-instructions-plus/model-experience/workspace-instruction-context/token-effect:
+  en: 6b69047c8729a967
+  zh: bb1330f558eac119
+/deepseek-ai-dsh-agent-instructions-plus/model-experience/workspace-instruction-context/kv-cache-effect:
+  en: e381db6d9cf710d9
+  zh: 843eb23e317fdc11
+/deepseek-ai-dsh-agent-instructions-plus/known-limitations-and-deferred-work:
+  en: 0ca1547d022c924d
+  zh: 51bb63b607e57339
+/deepseek-ai-dsh-agent-instructions-plus/known-limitations-and-deferred-work/dev-note:
+  en: 3088abf73c5acffd
+  zh: 3f18887de4388160

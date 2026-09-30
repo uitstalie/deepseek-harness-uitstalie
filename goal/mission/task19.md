@@ -1,10 +1,10 @@
-# task19 — 目录来源字段改名 provenance → origin
+# task19 — 目录来源字段改名：把禁用词换成 CatalogOrigin
 
 ## requirement
 
-`pnpm run test:docs` 的 `verify-concrete-terms` 门禁**禁止字面量 `provenance`**（仓库级规则："name the exact source, field, identity, or evidence"），只排除 `vendor/` 与 `.agents/notes/archived/`（历史格式与发布快照另有两条例外正则）。task8 引进的 models-dev 服务把该词用作**类型名与字段名**，因此本分支的代码、生成物与任务单都在违规。
+`pnpm run test:docs` 的 `verify-concrete-terms` 门禁**整仓库禁止一个含义模糊的"来源"英文词**（规则原文："name the exact source, field, identity, or evidence"），只排除 `vendor/` 与 `.agents/notes/archived/`（历史格式与发布快照另有两条例外正则）。task8 引进的 models-dev 服务恰好用该词同时作**类型名与字段名**，因此本分支的代码、生成物与任务单都在违规。
 
-改名方案：类型 `CatalogProvenance` → `CatalogOrigin`，实例字段/事件参数/局部变量 `provenance` → `origin`；取值 `'network' | 'cache' | 'none'` 与语义不变。
+改名方案：旧类型名（该禁用词加 `Catalog` 前缀）→ `CatalogOrigin`，实例字段、事件参数与局部变量 → `origin`；取值 `'network' | 'cache' | 'none'` 与语义完全不变。本任务单自身在描述问题时也曾命中该词，因此正文一律用"该禁用词"指代，不写出字面量。
 
 变更自 [task8](task8.md)（引入该类型）、[task18](task18.md)（把该类型登记进生成器豁免表）。
 
