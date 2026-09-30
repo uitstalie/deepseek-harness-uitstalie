@@ -65,6 +65,8 @@ Enforcement is reported per call: `full` means the backend governs every promise
 
 When a confined call is denied, the operation reports a denial marker naming the mode — `[sandbox: file access denied under <mode> mode]` — and, when the composition advertises escalation, an escalation hint. The model may retry the exact call once with `sandbox_permissions` (the narrowest wider mode that suffices) plus a `justification`; the approval service obtains consent for the operation. The request retains its audit reason and supplies English and Chinese presentation copy with the model's justification unchanged. Missing translations follow the locale service's fallback chain, ultimately English; requesters own their translated presentation text. A wider mode requires approval and applies to that one call only. Repeating the call's effective mode succeeds without approval; narrower targets remain invalid.
 
+A denial is inferred from the confined process's own stderr, and a matching phrase is not by itself enough: `classifyDenial` also requires the line to name an absolute path the call's writable roots do not cover. Those phrases are ordinary filesystem messages that unrelated tools print, and no confined mode can refuse a path it granted, so without that evidence an unrelated failure — a key the tool may not use, an in-workspace file's own permissions — would reach the model as a sandbox denial plus an invitation to escalate. Under `read-only` no path can contradict a phrase, so the phrase alone decides there.
+
 ### Fail-closed behavior
 
 When no backend can enforce the requested mode, the call fails with `SANDBOX_UNAVAILABLE` rather than running unconfined; the error text names the missing platform runner. A backend that fails after starting also reports a structured runner-failure signature, so a broken sandbox is distinguishable from a command failure.
@@ -93,6 +95,7 @@ This section explains the design decisions behind the contract and points at the
 | [`src/index.ts`](src/index.ts) | Plugin entry: `SandboxProvider` service, mode/enforcement/policy types, fail-closed error |
 | [`src/escalation.ts`](src/escalation.ts) | Escalation vocabulary: wider-mode ladder, argument validation, denial and hint markers, approval choreography |
 | [`src/roots.ts`](src/roots.ts) | Writable-root derivation shared by the Seatbelt profile and the in-process fs fence |
+| [`src/diagnostics.ts`](src/diagnostics.ts) | Shared stderr classification: runner-failure rules, denial signatures with the path evidence a denial requires |
 
 ### Escalation choreography
 

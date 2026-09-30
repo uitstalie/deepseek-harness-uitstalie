@@ -119,6 +119,8 @@ interface RunnerFailureRule {
 
 `ConfinedArgv` 是消费方实际 spawn 的内容。除了替换后的 argv，它还携带后端的强制执行事实和两种正交的 stderr 分类器。`denialSignatures` 用于识别沙箱正常工作时受限命令被阻止的情况。`runnerFailureRules` 用于识别沙箱 runner 在执行命令之前拒绝或失败的情况；消费方应先检查后者，将其作为沙箱基础设施故障上报，而非普通任务失败。
 
+仅命中短语并不能证明被拒绝。`dsh-sandbox` 中的共享分类器还要求该行指出一个不被本次调用可写根目录覆盖的绝对路径，因为无关工具也会打印这些普通文件系统消息（SSH 密钥被拒、包管理器自身的访问错误），而任何受限模式都不会拒绝它自己已授予的路径。缺少这项证据时，失败会以沙箱拒绝加升权提示的形式送达模型，为一个沙箱从未管辖的调用索取更宽模式。`read-only` 下没有任何路径与短语相矛盾，因此由短语单独判定。
+
 ```ts type-equiv
 /**
  * A {@link SandboxProvider.confine} result: the argv to spawn in place of

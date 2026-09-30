@@ -86,7 +86,7 @@ When the built ACL runner is absent, source launch pins the `tsx/esm/api` loader
 
 ### Denial and runner-failure dialects
 
-Each runner's kernel speaks its own denial dialect, carried on every wrap as `denialSignatures`, and `runnerFailureRules` give each runner's fatal signature, so consumers classify a runner refusal before checking denial signatures. The exact strings and exit codes live in [`src/index.ts`](src/index.ts).
+Each runner's kernel speaks its own denial dialect, carried on every wrap as `denialSignatures`, and `runnerFailureRules` give each runner's fatal signature, so consumers classify a runner refusal before checking denial signatures. The exact strings and exit codes live in [`src/index.ts`](src/index.ts). A dialect lists only phrasings its own kernel produces: the Windows ACL rung keeps its two Windows phrasings and omits the generic POSIX ones, which unrelated tools also print (an SSH key rejection, a package manager's own access error), so including them would classify those failures as this backend's denials.
 
 ### Source map
 
