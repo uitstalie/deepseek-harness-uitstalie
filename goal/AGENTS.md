@@ -2,7 +2,8 @@
 
 本文件是 cli-desktop 分支的强制规则，通过根部 opencode.json 的 `instructions` 字段注入到每个 opencode 会话，对全仓库范围的工作生效；原理、背景与示例见 [rebase-friendly.md](rebase-friendly.md)，任何任务要修改原生文件前必须先读完它。总目标：在尽可能不改变原生（master）内容的前提下实现 CLI 与 Desktop UI，任何时刻都可以 rebase 到最新 master。
 
-- 分支自有的一切只走新增路径：文档放 goal/（禁止出现 README.md 文件名的文件），新功能放新文件、新包、新 bundle，通过现有扩展点（cordis.yml 组合、插件注册、capability seam）挂接；禁止通过修改原生文件来落地新功能。
+- 分支自有的一切只走新增路径：文档放 goal/（禁止出现 README.md 文件名的文件），新功能放新文件、新包、新 bundle，通过现有扩展点（cordis.yml 组合、插件注册、capability seam）挂接；**默认**不通过修改原生文件来落地新功能。
+- 用户已许可（2026/09/30）：允许**小规模**改动原生文件——但仅限"新增行 / 最小连续块"，仍必须带 `uitstalie-` 标记、在任务单逐处登记，且不得顺手重排、重命名、格式化或重构。判定标准：改动面越小越好，能被一条 `git grep uitstalie-` 枚举完整。授权用于三处：`ui-workspace` 新增逐工作区 slot、`FileSystem` 服务定义的两处原语（若采用）、以及必要的聚合登记行。
 - 禁止重排、重命名、格式化或顺手优化任何原生内容；触碰原生文件的行数越少，rebase 冲突面越小。
 - 每一处对原生文件的修改或删除必须用标记注释包围：块形式为 `// BEGIN uitstalie-${llm_model_name}, ${yyyy/MM/dd}, ${mission_id}, ${修改原因简述}` 开始行加 `// END uitstalie-${llm_model_name}` 结束行，单行修改用行尾单行注释 `// uitstalie-${llm_model_name}, ${yyyy/MM/dd}, ${mission_id}, ${修改原因简述}`；注释语法按宿主文件类型调整，不支持注释的文件（如 JSON）改为在任务单中逐处登记文件、位置与原因。
 - 修改模式优先插入式：原行保留，新增内容放进标记注释内；只有新内容必须插到原行中间或前面时，才注释掉原行并在标记内重写。
