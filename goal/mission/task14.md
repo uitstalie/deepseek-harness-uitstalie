@@ -29,7 +29,8 @@
   - 客户端 UI 包 `packages/uitstalie/ui-tool-dsh-store/`（包名 `@deepseek-ai/dsh-client-ui-tool-dsh-store`）：工作区侧边栏"新建会话"按钮**右侧**的 rules 按钮，以及该工作区 rules 的查看视图。
   - 本任务单与设计文档 [dsh-dir-plugin.md](../dsh-dir-plugin.md)。
 - 原生文件（全部为新增行 / 最小块，逐处 `uitstalie-` 标记登记；具体清单在 UI 调查结论回来后定稿）：
-  - **`FileSystem` 两个原语**（用户已批准）：`packages/fs/fs/src/index.ts`（声明 `mkdir` / `remove`，默认抛 `FS_UNSUPPORTED`）、`packages/fs/fs-local/src/index.ts` + `src/fsio.ts`（实现）、`packages/fs/fs-sandbox/src/index.ts`（两个方法都过 `checkedTarget` 围栏）；生成物 `packages/extensions/tool-cordis/src/api-catalog.ts` 由 `pnpm run gen-cordis-api` 重建；`fs` / `fs-local` / `fs-sandbox` 三方 README 与双语配对同步。**不含 `fs-ssh`**（远端协议改动，见设计文档「已知限制」）。
+  - **`FileSystem` 两个原语**（已实现并验证）：`packages/fs/fs/src/index.ts`（声明 `mkdir` / `remove`，默认实现抛 `FS_IO_ERROR` 并指名后端——沿用同文件 `watch()` 的"不支持即报错"先例）、`packages/fs/fs/src/types.ts`（新增 `FsRemoveOptions`）、`packages/fs/fs-local/src/index.ts` + `src/fsio.ts`（实现：建目录递归、删除由 `recursive` 控制，非空目录未给 `recursive` 时拒绝）、`packages/fs/fs-sandbox/src/index.ts`（两个方法都过现成的 `checkedTarget` 围栏）；测试新增 `fs-local/tests/filesystem.spec.ts` 与 `fs-sandbox/tests/fs-sandbox.spec.ts` 各一组用例；`fs` / `fs-local` / `fs-sandbox` 三份 README + `.zh.md` + `README.i18n.yaml` 记录同步。**不含 `fs-ssh`**（远端协议改动，见设计文档「已知限制」）。
+  - **待生成**：`packages/extensions/tool-cordis/src/api-catalog.ts`（`pnpm run gen-cordis-api`）当前被 task8 遗留缺口阻塞——`models-dev/updated` 事件引用了未分类类型 `CatalogProvenance` 与 `ModelsDevCatalog`；已登记到 [task17](task17.md) 待办。
   - **侧边栏 slot**：`packages/client/ui-workspace/src/client/contract/slots.ts`（SlotMap 新增 seat）、`src/client/index.ts`（children 声明）、`src/client/rows/Rows.tsx`（`.rowActions` 内加 `renderSlot`）。
   - `tsconfig.host.json`：注册 host 包（做法同 task6）。
   - `tsconfig.client.json`：注册 client 包（做法同 task8）。

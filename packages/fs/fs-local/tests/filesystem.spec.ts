@@ -14,7 +14,7 @@ import { join, parse, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
-import { FsVersion } from '@deepseek-ai/dsh-fs'
+import { FsError, FsVersion } from '@deepseek-ai/dsh-fs'
 import type { FsTarget } from '@deepseek-ai/dsh-fs'
 
 let dir: string
@@ -835,3 +835,67 @@ describe('HMR / disposal', () => {
     expect(local.fs).toBeUndefined()
   })
 })
+
+// BEGIN uitstalie-k3, 2026/09/30, task14, 建目录与删除原语的本地行为
+describe('directory creation and removal', () => {
+  it('creates a directory with missing parents, idempotently', async () => {
+    const path = join(dir, '.dsh', 'rules')
+    const target = await fs.resolve(path)
+    await fs.mkdir(target)
+    await fs.mkdir(target)
+    expect((await fs.stat(target))?.type).toBe('directory')
+    expect(await fs.listDir(await fs.resolve(join(dir, '.dsh')))).toHaveLength(1)
+  })
+
+  it('removes a file', async () => {
+    const path = join(dir, 'gone.txt')
+    await writeFile(path, 'x')
+    const target = await fs.resolve(path)
+    await fs.remove(target)
+    expect(await fs.stat(target)).toBeUndefined()
+  })
+
+  it('removes an empty directory without recursive', async () => {
+    const path = join(dir, 'empty')
+    await mkdir(path)
+    const target = await fs.resolve(path)
+    await fs.remove(target)
+    expect(await fs.stat(target)).toBeUndefined()
+  })
+
+  it('refuses a non-empty directory without recursive, then removes the tree with it', async () => {
+    const path = join(dir, 'tree')
+    await mkdir(join(path, 'nested'), { recursive: true })
+    await writeFile(join(path, 'nested', 'a.txt'), 'x')
+    const target = await fs.resolve(path)
+    const refusal = await fs.remove(target).catch((error: unknown) => error)
+    expect(refusal).toBeInstanceOf(FsError)
+    expect((refusal as FsError).code).toBe('FS_IO_ERROR')
+    expect((refusal as FsError).message).toContain('directory is not empty')
+    expect((await fs.stat(target))?.type).toBe('directory')
+    await fs.remove(target, { recursive: true })
+    expect(await fs.stat(target)).toBeUndefined()
+  })
+
+  it('reports a missing target as FS_NOT_FOUND', async () => {
+    const target = await fs.resolve(join(dir, 'never-existed'))
+    await expect(fs.remove(target)).rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
+  })
+
+  it('refuses a path that passes through a file, at resolution', async () => {
+    await writeFile(join(dir, 'plain.txt'), 'x')
+    // Both platforms refuse it while resolving: POSIX realpath reports ENOTDIR,
+    // while Windows realpaths the file and the provider's repair reports it as absent.
+    await expect(fs.resolve(join(dir, 'plain.txt', 'child')))
+      .rejects.toMatchObject({ code: 'FS_NOT_FOUND' })
+  })
+
+  it('honors an already-aborted signal before touching the filesystem', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const target = await fs.resolve(join(dir, 'aborted'))
+    await expect(fs.mkdir(target, controller.signal)).rejects.toMatchObject({ code: 'FS_ABORTED' })
+    expect(await fs.stat(target)).toBeUndefined()
+  })
+})
+// END uitstalie-k3

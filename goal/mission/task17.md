@@ -31,6 +31,7 @@
 
 ## 待办与风险
 
+- **先修分类缺口**：`pnpm run gen-cordis-api` 当前失败，原因是 task8 引入的 `models-dev/updated` 事件（`packages/uitstalie/models-dev/src/index.ts:97`）引用了未分类类型 `CatalogProvenance` 与 `ModelsDevCatalog`，生成器要求把它们放进 `linkedTypePages`（并给出文档页）、`foundationTypeNames` 或 `typeLinkExemptions`。该缺口同时阻塞 task14 的 `api-catalog.ts` 重建，因此先修它。
 - 待确认落点：profile 级（web-app bundle）还是 per-agent（preset）。我的判断是 profile 级——目录服务与设置页是全局的。
 - 风险：若上游在同一位置新增行，标记块可能冲突；按既有规程逐处对照解决。
 - 风险：**顺序**上不要与 task16 的 preset 改动混在一个提交里——两个任务的标记块各自独立，便于单独回退。

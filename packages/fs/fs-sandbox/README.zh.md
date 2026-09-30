@@ -67,12 +67,12 @@ kind: "package-reference"
 
 | 文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | `SandboxedFileSystem`：`writeText`/`editText` 上的模式围栏、`sandboxMode` 事实 |
+| [`src/index.ts`](src/index.ts) | `SandboxedFileSystem`：`writeText`/`editText`/`mkdir`/`remove` 上的模式围栏、`sandboxMode` 事实 |
 | [`src/containment.ts`](src/containment.ts) | 祖先包含检查，带词法快速路径与基于身份的兜底 |
 
 ### 变更如何被围栏
 
-每次变更先解析按调用策略（`danger-full-access` 原样返回调用方目标；`read-only` 抛出 `FS_SANDBOX_DENIED`），`workspace-write` 则立即重新规范化目标，并要求它位于由唯一的 `writableRoots` 函数派生的某个可写根之下——与 Seatbelt profile 授权的集合相同，因此 fs 围栏与 bash runner 不会漂移。被变更的正是这个新目标，因此工具解析后被替换的符号链接祖先也会被发现。
+每次变更先解析按调用策略（`danger-full-access` 原样返回调用方目标；`read-only` 抛出 `FS_SANDBOX_DENIED`），`workspace-write` 则立即重新规范化目标，并要求它位于由唯一的 `writableRoots` 函数派生的某个可写根之下——与 Seatbelt profile 授权的集合相同，因此 fs 围栏与 bash runner 不会漂移。被变更的正是这个新目标，因此工具解析后被替换的符号链接祖先也会被发现。建目录与删除走同一条路径，因此围栏覆盖全部变更原语。
 
 ### 威胁模型
 

@@ -30,7 +30,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import type { Config as LocalConfig } from '@deepseek-ai/dsh-fs-local'
 import { FsError } from '@deepseek-ai/dsh-fs'
-import type { FsEditOutcome, FsEditRequest, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
+import type { FsEditOutcome, FsEditRequest, FsRemoveOptions, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs' // uitstalie-k3, 2026/09/30, task14, remove 的选项类型
 import { writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
@@ -107,6 +107,36 @@ export class SandboxedFileSystem extends LocalFileSystem {
   ): Promise<FsEditOutcome> {
     return super.editText(await this.checkedTarget(target, sandboxPolicy), edit, expected, signal)
   }
+
+  // BEGIN uitstalie-k3, 2026/09/30, task14, 建目录与删除同样要过策略围栏
+  /**
+   * Fence directory creation by the per-call policy, then delegate. See {@link checkedTarget}.
+   * @param target - the resolved directory to create.
+   * @param signal - aborts before the directory is created.
+   * @param sandboxPolicy - the per-call mode and workspace root; omit to use the deployment fallback.
+   * @returns a promise that settles once the directory exists.
+   */
+  override async mkdir(target: FsTarget, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy): Promise<void> {
+    return super.mkdir(await this.checkedTarget(target, sandboxPolicy), signal)
+  }
+
+  /**
+   * Fence removal by the per-call policy, then delegate. See {@link checkedTarget}.
+   * @param target - the resolved target to remove.
+   * @param options - `recursive: true` removes a directory with its entries.
+   * @param signal - aborts before the removal starts.
+   * @param sandboxPolicy - the per-call mode and workspace root; omit to use the deployment fallback.
+   * @returns a promise that settles once the target is gone.
+   */
+  override async remove(
+    target: FsTarget,
+    options: FsRemoveOptions = {},
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<void> {
+    return super.remove(await this.checkedTarget(target, sandboxPolicy), options, signal)
+  }
+  // END uitstalie-k3
 
   /**
    * Enforce the per-call policy against `target` and return the EXACT target the
