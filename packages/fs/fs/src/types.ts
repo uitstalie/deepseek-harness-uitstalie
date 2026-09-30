@@ -167,6 +167,14 @@ export interface FsEditOutcome {
   after: string
 }
 
+// BEGIN uitstalie-k3, 2026/09/30, task14, .dsh/ store 需要删除原语：给 remove 一个有名字的选项形状
+/** Options for file and directory removal through the filesystem seam. */
+export interface FsRemoveOptions {
+  /** Remove a directory together with its entries; omission refuses a non-empty directory. */
+  recursive?: boolean
+}
+// END uitstalie-k3
+
 /**
  * Stable, machine-routable codes for filesystem failures. Carried on
  * {@link FsError}; the tool registry exposes `{ name, code }` on `isError`
