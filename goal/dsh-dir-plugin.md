@@ -10,17 +10,18 @@
 
 ## 根目录与布局
 
-- 根 = `<projectRoot>/.dsh`。project root 的判定与 [skill-filesystem](../packages/skill/skill-filesystem/src/index.ts) 一致：从会话 cwd 向上找 `.git` 标记，找不到则退化为 cwd。这样 `.dsh/rules` 与既有 `.dsh/skills`、`~/.dsh/skills` 的归属完全对齐。
-- 配置项：`rootDir`（默认 `.dsh`）、`projectRootMarkers`（默认 `['.git']`）、`maxPathLength`、`maxDepth`、`maxReadBytes`（query 读文件的上限）。
+- 根 = `<projectRoot>/.dsh`，**根名锁定、不做配置项**（用户已定）。project root 的判定与 [skill-filesystem](../packages/skill/skill-filesystem/src/index.ts) 一致：从会话 cwd 向上找 `.git` 标记，找不到则退化为 cwd（标记同样不做配置项，保持与 skill 同源）。这样 `.dsh/rules` 与既有 `.dsh/skills`、`~/.dsh/skills` 的归属完全对齐。
+- **默认创建根目录**：挂载后若 `<projectRoot>/.dsh` 不存在，就建一个空目录（`createRoot` 默认 true）。它是一次写操作，所以受策略门禁约束：`read-only` 会话下跳过并记录，不报错。这条保证 `.dsh/` 作为"工作区级约定目录"总是存在，agent 与 UI 不需要先判断再创建。
+- 其余配置项：`maxPathLength`、`maxDepth`、`maxReadBytes`（query 读文件的上限）。
 - 布局示例：`.dsh/rules/*.md`、`.dsh/skills/<name>/SKILL.md`、`.dsh/runtime.json`。
 
 ## 工具面
 
-**已定：只暴露一个工具 `dsh`。** 用户明确这个工具的本质是**提醒 agent**——`.dsh/` 下的文件参与 context 与运行时，最好统一经工具管理修改。所以工具面不是"三个文件动词"，而是"一个规范入口"：工具名 `dsh`，动作 `create` / `query` / `delete`。
+**已定：只暴露一个工具 `tool-dsh-store`**（工具与插件/包同名；包 `@deepseek-ai/dsh-tool-dsh-store`）。用户明确这个工具的本质是**提醒 agent**——`.dsh/` 下的文件参与 context 与运行时，最好统一经工具管理修改。所以工具面不是"三个文件动词"，而是"一个规范入口"：动作 `create` / `query` / `delete`。
 
 ```ts
 {
-  name: 'dsh',
+  name: 'tool-dsh-store',
   description: 'Create, inspect, and delete files and folders under the workspace .dsh/ store.',
   parameters: {
     action:    { type: 'string', required: true, enum: ['create', 'query', 'delete'] },
@@ -102,25 +103,37 @@
 
 ## 与既有扩展点的关系
 
-- 注册：`ctx.tools.register(defineTool({...}))`，按 [tool-fs/write.ts](../packages/fs/tool-fs/src/write.ts) 的形状写；系统提示指导段用 `ctx.systemPrompt.section({ name: 'tool:dsh_dir', order: ctx.systemPrompt.getSectionOrder('TOOL_...'), text })`，仅在工具可见时输出文本。
-- 服务：`ctx.fs`（路径与读写）、`ctx.get('sandboxPolicy')`（会话策略；与 `ctx.fs.sandboxMode` 一起判断是否confining）。
-- 触达：`create`/`delete` 成功后 `ctx.emit('fs/observed', target, { kind, version }, exec)`，让按文件系统触达工作的消费者（`agent-instructions` 的子目录发现、skill 的观察失效）能看见 `.dsh/` 的变化——这是二期 rules 加载器「改了就刷新」的基础。
-- 观测/UI：`presentCall`/`presentResult` 先做最小卡片；是否需要专属 Web 面板放二期。
+- 注册：`ctx.tools.register(defineTool({...}))`，按 [tool-fs/write.ts](../packages/fs/tool-fs/src/write.ts) 的形状写；系统提示指导段用 `ctx.systemPrompt.section({ name: 'tool:tool-dsh-store', order: ctx.systemPrompt.getSectionOrder('TOOL_...'), text })`，仅在工具可见时输出文本。
+- 服务：`ctx.fs`（路径与读写）、`ctx.get('sandboxPolicy')`（会话策略；与 `ctx.fs.sandboxMode` 一起判断是否 confining）。
+- 触达：`create`/`delete` 成功后 `ctx.emit('fs/observed', target, { kind, version }, exec)`，让按文件系统触达工作的消费者（`agent-instructions` 的子目录发现、skill 的观察失效）能看见 `.dsh/` 的变化——这是 rules 加载器「改了就刷新」的基础。
+- 只读查询面：为侧边栏 UI 提供"列某工作区 `.dsh/rules/**`"与"读单条规则正文"的能力，路径在 host 侧解析并限制在 `.dsh/rules` 内。
+- 观测：`presentCall`/`presentResult` 给最小卡片（工具调用在会话里的呈现）。
+
+## 侧边栏 UI：工作区 rules 查看（已定）
+
+用户已定：UI 需要，且落在**侧边栏的工作区列表**里——每个工作区一条，按钮位置在**「新建会话」按钮右侧**，点开查看该工作区的 rules。
+
+- **形态**：客户端 UI 包 `@deepseek-ai/dsh-client-ui-tool-dsh-store`（目录 `packages/uitstalie/ui-tool-dsh-store/`），与 host 包分开，沿用本分支 `models-dev` + `ui-models-dev` 的既有分工。
+- **数据来源**：host 侧由 `tool-dsh-store` 提供**只读**查询面（列出某工作区 `.dsh/rules/**`、读取单条规则正文），客户端经现有 Remote/RPC seam 调用。客户端只传 workspace id：路径由 host 侧解析并限制在 `.dsh/rules` 内，**不把任意路径读取暴露给客户端**。
+- **展示**：规则列表（文件名 + front-matter 的 `description` + `alwaysApply`/`globs` 摘要）→ 点开看正文；空目录给空状态（引导"这个工作区还没有 rules"）；单条解析失败单独标注，不让整页报错。
+- **文案**：走 locale 字典（仓库 `verify-client-ui-i18n` 拒绝硬编码文案），中英各一份。
+- **待补**：按钮的 slot/注册点、客户端读工作区数据的 Service、以及新客户端包必须登记的聚合文件清单，由正在进行的侧边栏代码调查敲定后写入 [task14](mission/task14.md) 的「修改范围」。
 
 ## 阶段与验收
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
 | P0 | 本设计文档 + 任务单 | 文档评审通过 |
-| P1 | 包骨架、`paths.ts`、`store-ops.ts`、单测 | 拒绝矩阵全绿；`read-only` 拒绝用例全绿 |
-| P2 | `tools.ts` 注册单工具 `dsh`、提示段、输出渲染、`fs/observed`、命名空间校验 | 单测 + 手工调用可建/查/删；非法内容被拒 |
-| P3 | 真实 Loader 组合测试、profile 挂载、Web 手工验证 | 组合测试绿；Web 工具表出现 `dsh_dir` 并端到端成功 |
-| P4 | 双语 README + i18n 记录、类型/构建/聚焦测试 | `pnpm run typecheck`、`pnpm run build`、`vitest run packages/uitstalie` 全绿 |
-| P5 | **新任务单**：`.dsh/rules/**` 目录形式 rules 加载器 | 见下节 |
+| P1 | host 包骨架、`paths.ts`、`store-ops.ts`（含**根目录 ensure-create**）、单测 | 拒绝矩阵全绿；`read-only` 拒绝用例全绿；挂载后空 `.dsh/` 被创建 |
+| P2 | `tools.ts` 注册单工具 `tool-dsh-store`、提示段、输出渲染、`fs/observed`、命名空间校验 | 单测 + 手工调用可建/查/删；非法内容被拒 |
+| P3 | host 只读查询面（列 `.dsh/rules`、读单条）+ 真实 Loader 组合测试、profile 挂载 | 组合测试绿；查询面只接受 workspace id |
+| P4 | 客户端包：侧边栏工作区 rules 按钮（「新建会话」右侧）+ 查看视图 | Web 上每个工作区按钮可见可用；空状态正常；文案走 locale |
+| P5 | 双语 README + i18n 记录、类型/构建/聚焦测试 | `pnpm run typecheck`、`pnpm run build`、`vitest run packages/uitstalie` 全绿 |
+| P6 | **新任务单（[task15](mission/task15.md)）**：rules 常驻注入 + 交付前自检 | 见 [rules.md](rules.md) |
 
-提交拆分：分支自有文件一个提交（新包 + 文档）；原生登记（`tsconfig.host.json`、必要时 `tsconfig.base.json`）单独一个提交，带 `uitstalie-` 标记。
+提交拆分：host 包、client 包、docs 各自独立提交（分支自有文件）；原生登记（`tsconfig.host.json`、`tsconfig.client.json`、`tsconfig.base.json` 手写别名）单独一个提交，带 `uitstalie-` 标记。
 
-## 与二期 rules 加载器的衔接
+## 与 rules 加载器（[task15](mission/task15.md)）的衔接
 
 加载器**不改** `agent-instructions`（它的候选过滤只支持同目录文件名），而是新插件/新模块，复用同一套注入框架：
 
@@ -131,9 +144,10 @@
 
 ## 未决问题（需用户拍板）
 
-1. ~~**工具面粒度**~~ **已定**：只暴露一个工具 `dsh`，动作 `create`/`query`/`delete`；命名若要用更描述性的名字（如 `dsh_dir`）只需改一处字符串。
-2. **删除的开放时机**：本阶段就开放 `delete`（含显式递归），还是先只做 `create`/`query`、删除留到二期？
-3. **根名**：固定 `.dsh`，还是做成配置项（默认 `.dsh`，允许部署改名）？
-4. **是否要 UI**：设置页或侧栏浏览 `.dsh/`？默认不做，先只给 agent 工具面。
-5. **原语路线**：确认方案 B（零原生改动 + 自建门禁）；若接受方案 A（扩 `FileSystem` 服务定义），本任务单的修改范围需要重写。
-6. **规范强度**：只落软规范（工具描述 + 提示段），还是加"检测到非本工具写入给一次提醒"（订阅 `fs/observed`）？
+1. ~~工具面粒度与命名~~ **已定**：单工具、名为 `tool-dsh-store`，包与插件同名。
+2. ~~根名~~ **已定**：锁定 `.dsh`，不做配置项，且默认创建该空目录。
+3. ~~是否要 UI~~ **已定**：侧边栏工作区列表、「新建会话」右侧的 rules 按钮 + 查看视图。
+4. **删除的开放时机**：本阶段就开放 `delete`（非空目录需显式 `recursive: true`），还是先只做 `create`/`query`、删除留到后面？
+5. **原语路线**：确认方案 B（零原生改动 + 自建门禁）；若接受方案 A（扩 `FileSystem` 服务定义），修改范围需要重写。
+6. **规范强度**：只落软规范（工具描述 + 提示段），还是加"检测到非本工具写入 `.dsh/` 给一次提醒"（订阅 `fs/observed`）？
+7. **rules 视图是否只读**：本期按只读设计；若要在 UI 里直接编辑/删除规则，需要补写面与编辑交互，属另一阶段。
