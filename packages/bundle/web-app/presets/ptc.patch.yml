@@ -13,10 +13,18 @@
             config:
               suffix: Your working directory is {{cwd}}.
               prefix: You are a coding agent powered by the {{model}} model.
+          # BEGIN uitstalie-k3, 2026/09/30, task16, 禁用原生 loader，改挂 plus（原生链 + 工作区 rules）
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
+            disabled: true
+          - id: agent-instructions-plus
+            name: '@deepseek-ai/dsh-agent-instructions-plus'
             config:
-              maxBytes: 65536
+              agentInstructions:
+                maxBytes: 65536
+              rules:
+                maxBytes: 16384
+          # END uitstalie-k3
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'
           - id: tool-bash

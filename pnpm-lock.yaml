@@ -2411,6 +2411,9 @@ importers:
       '@deepseek-ai/dsh-agent-instructions':
         specifier: workspace:*
         version: link:../../context/agent-instructions
+      '@deepseek-ai/dsh-agent-instructions-plus':
+        specifier: workspace:*
+        version: link:../../uitstalie/agent-instructions-plus
       '@deepseek-ai/dsh-agent-preset':
         specifier: workspace:*
         version: link:../../preset/agent-preset
