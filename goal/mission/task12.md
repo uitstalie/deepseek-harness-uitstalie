@@ -67,3 +67,11 @@ cmd /c "echo permission denied 1>&2 & exit 1"
 ## 待办
 
 - 各包 README 的契约描述尚未同步（`dsh-sandbox`、`dsh-bash-sandbox`、`dsh-pwsh-sandbox`、`dsh-sandbox-local`、`dsh-ptc-runtime-node` 及其 `README.zh.md` 双语对）。
+
+## 文档同步（已完成）
+
+已同步 `dsh-sandbox`、`dsh-bash-sandbox`、`dsh-pwsh-sandbox`、`dsh-sandbox-local` 的 README 与 `README.zh.md`，以及子系统页 `docs/subsystems/sandbox.md` 与 `.zh.md`，并重录五个 `*.i18n.yaml` 配对记录。`dsh-ptc-runtime-node` 的 README 未描述分类细节，无需改动。
+
+同时清掉 `goal/` 下残留的提交标识（引用检查禁止在维护文件中出现提交哈希），改用主题描述代替。
+
+`pnpm run test:docs` 结果：17 项通过、3 项失败，失败项全部指向 `packages/uitstalie/` 下三个分支自有的包（`llm-plus`、`models-dev`、`ui-models-dev` 的 README 缺少必需章节与 Model Experience 段落，`models-dev/src` 有溯源措辞），与本次改动不相交，属既有问题。
