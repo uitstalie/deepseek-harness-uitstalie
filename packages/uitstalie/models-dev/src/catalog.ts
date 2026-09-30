@@ -233,7 +233,7 @@ export function validateModel(raw: unknown): ModelsDevModel | undefined {
   if (!isRecord(raw)) return undefined
   if (typeof raw.id !== 'string' || raw.id.length === 0) return undefined
   // 先整体透传（保留本包不识别的字段，如未来新增能力字段），再覆盖重校验字段
-  const model: ModelsDevModel = { ...raw, id: raw.id } as ModelsDevModel
+  const model: ModelsDevModel = { ...raw, id: raw.id }
   if (raw.limit !== undefined) {
     if (!isRecord(raw.limit)) {
       delete model.limit
@@ -279,13 +279,13 @@ export function parseCatalog(text: string, onDrop?: (entry: string, reason: stri
   const raw: unknown = JSON.parse(text)
   if (!isRecord(raw)) throw new SyntaxError('models.dev catalog: top-level payload must be an object of providers')
   // null-prototype：provider id 来自外部数据，避免 "__proto__" 这类键污染
-  const data: ModelsDevCatalogData = Object.create(null)
+  const data: ModelsDevCatalogData = Object.create(null) as ModelsDevCatalogData
   for (const [providerId, providerRaw] of Object.entries(raw)) {
     if (!isRecord(providerRaw) || !isRecord(providerRaw.models)) {
       onDrop?.(providerId, 'provider entry must be an object with a models map')
       continue
     }
-    const models: Record<string, ModelsDevModel> = Object.create(null)
+    const models: Record<string, ModelsDevModel> = Object.create(null) as Record<string, ModelsDevModel>
     for (const [modelId, modelRaw] of Object.entries(providerRaw.models)) {
       const model = validateModel(modelRaw)
       if (model === undefined) {

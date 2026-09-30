@@ -120,12 +120,14 @@ function assertPositiveInteger(label: string, value: number): void {
  * schemastery 只能把它声明为 dict(any)（键与嵌套形状是运行时数据），
  * 所以嵌套层级在这里手工校验，错误信息精确到配置路径。
  */
-function assertExtraParamsShape(extraParams: Record<string, ExtraParamsConfig>): void {
+function assertExtraParamsShape(extraParams: Record<string, unknown>): void {
   for (const [providerId, entry] of Object.entries(extraParams)) {
     if (entry === null || typeof entry !== 'object') {
       throw new Error(`models-dev: extraParams.${providerId} must be an object`)
     }
-    for (const [modelId, modelEntry] of Object.entries(entry.models ?? {})) {
+    // schemastery 只把它声明成 dict(any)，models 同样是运行时数据
+    const models = (entry as { models?: Record<string, unknown> }).models ?? {}
+    for (const [modelId, modelEntry] of Object.entries(models)) {
       if (modelEntry === null || typeof modelEntry !== 'object') {
         throw new Error(`models-dev: extraParams.${providerId}.models.${modelId} must be an object`)
       }
@@ -156,7 +158,7 @@ export default class ModelsDevCatalog extends TypertRemoteService {
   /** 冻结后的生效配置（物化 + 校验都通过后的值）。 */
   private readonly config: ResolvedConfig
   /** 当前服务的目录数据；空表 + provenance='none' 表示"不可用"。 */
-  private data: ModelsDevCatalogData = Object.create(null)
+  private data: ModelsDevCatalogData = Object.create(null) as ModelsDevCatalogData
   private provenance: CatalogProvenance = 'none'
   /** 当前目录的取得时间（epoch 毫秒）；空目录为 0。 */
   private fetchedAt = 0
@@ -171,7 +173,8 @@ export default class ModelsDevCatalog extends TypertRemoteService {
     // super() 即完成 ctx.modelsDev 注册（Service 基类契约），后续行注册失败会留下
     // 半注册状态——所以所有可能抛错的校验都放在 super 之后、异步加载开始之前
     super(ctx, 'modelsDev')
-    if (config === null || typeof config !== 'object') {
+    const rawConfig: unknown = config
+    if (rawConfig === null || typeof rawConfig !== 'object') {
       throw new Error('models-dev: configuration is required')
     }
     // 物化默认值：cordis 校验路径由 schema 的 .default() 完成；直接
@@ -210,7 +213,10 @@ export default class ModelsDevCatalog extends TypertRemoteService {
     return this.fetchedAt
   }
 
-  /** 目录里全部 provider id。 */
+  /**
+   * 目录里全部 provider id。
+   * @returns 目录中的 provider id 列表，顺序与目录解析顺序一致。
+   */
   listProviders(): string[] {
     return Object.keys(this.data)
   }
@@ -323,7 +329,7 @@ export default class ModelsDevCatalog extends TypertRemoteService {
     let result: ExtraParams = {}
     if (mode !== undefined) {
       const modeProvider = model?.experimental?.modes?.[mode]?.provider
-      if (modeProvider) result = mergeExtraParams(result, modeProvider as ExtraParams)
+      if (modeProvider) result = mergeExtraParams(result, modeProvider)
     }
     const userProvider = this.config.extraParams?.[providerId]
     if (userProvider) {
