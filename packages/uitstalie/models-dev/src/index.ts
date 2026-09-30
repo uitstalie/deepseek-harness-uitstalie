@@ -6,7 +6,7 @@
  * 加载语义（重要）：
  * 1. 缓存新鲜（mtime 在 TTL 内）→ 直接用缓存，零网络；
  * 2. 缓存陈旧/不存在 → 尝试拉取；拉取失败且缓存存在 → 回退陈旧缓存继续服务；
- * 3. 拉取失败且无缓存 → 以空目录（provenance='none'）服务，查询方法返回空
+ * 3. 拉取失败且无缓存 → 以空目录（origin='none'）服务，查询方法返回空
  *    结果而不抛错，后续 refresh() 仍可成功。
  * 即"目录缺席不阻塞系统启动"——模型目录是 advisory 的（dsh-llm 契约），
  * 空目录只是 UI 不显示模型，不影响已有配置发请求。
@@ -76,7 +76,7 @@ export interface Config {
 }
 
 /** 当前服务的目录来自哪里。'none' 表示空目录（网络与缓存都不可用）。 */
-export type CatalogProvenance = 'network' | 'cache' | 'none'
+export type CatalogOrigin = 'network' | 'cache' | 'none'
 
 // Remote 边界类型从 ./types 子路径公开（Typert 契约），包根再导出方便消费方
 import type { CatalogModelSummary, CatalogProviderSummary } from './types.ts'
@@ -91,10 +91,10 @@ declare module '@deepseek-ai/cordis' {
     /**
      * 服务的目录被替换（启动加载或 refresh() 成功后）。
      * 消费方（如未来的 UI）据此刷新模型列表。
-     * @param provenance - 新目录的来源。
+     * @param origin - 新目录的来源。
      * @mode emit
      */
-    'models-dev/updated'(this: ModelsDevCatalog, provenance: CatalogProvenance): void
+    'models-dev/updated'(this: ModelsDevCatalog, origin: CatalogOrigin): void
   }
 }
 
@@ -140,7 +140,7 @@ function assertExtraParamsShape(extraParams: Record<string, unknown>): void {
  * Loader 以 `new ModelsDevCatalog(ctx, config)` 挂载；构造即向 ctx 注册
  * `modelsDev` 服务，fiber 卸载时自动摘除）。
  *
- * 内部状态三个一组：data（当前服务的目录）+ provenance（来源）+ fetchedAt
+ * 内部状态三个一组：data（当前服务的目录）+ origin（来源）+ fetchedAt
  * （时间戳），只在 adopt() 里一起换，保证读者永远看到自洽的一组。
  */
 export default class ModelsDevCatalog extends TypertRemoteService {
@@ -157,9 +157,9 @@ export default class ModelsDevCatalog extends TypertRemoteService {
 
   /** 冻结后的生效配置（物化 + 校验都通过后的值）。 */
   private readonly config: ResolvedConfig
-  /** 当前服务的目录数据；空表 + provenance='none' 表示"不可用"。 */
+  /** 当前服务的目录数据；空表 + origin='none' 表示"不可用"。 */
   private data: ModelsDevCatalogData = Object.create(null) as ModelsDevCatalogData
-  private provenance: CatalogProvenance = 'none'
+  private origin: CatalogOrigin = 'none'
   /** 当前目录的取得时间（epoch 毫秒）；空目录为 0。 */
   private fetchedAt = 0
   /** 首次加载的 settle promise；whenReady() 暴露给依赖方。 */
@@ -204,8 +204,8 @@ export default class ModelsDevCatalog extends TypertRemoteService {
   }
 
   /** 当前目录的来源（network/cache/none）。 */
-  get source(): CatalogProvenance {
-    return this.provenance
+  get source(): CatalogOrigin {
+    return this.origin
   }
 
   /** 当前目录的取得时间（epoch 毫秒）；空目录为 0。 */
@@ -223,7 +223,7 @@ export default class ModelsDevCatalog extends TypertRemoteService {
 
   /**
    * 目录提供商摘要列表（models.dev 设置页的列表数据源）。
-   * 按 id 排序，输出稳定；空目录返回空数组（provenance='none' 时
+   * 按 id 排序，输出稳定；空目录返回空数组（origin='none' 时
    * 页面显示空态而不是报错——目录是 advisory 的）。
    * @returns 全部提供商的摘要（含协议方言/端点/凭据变量名/模型数）。
    */
@@ -382,15 +382,15 @@ export default class ModelsDevCatalog extends TypertRemoteService {
 
   /**
    * 原子替换当前服务的目录并广播 `models-dev/updated`。
-   * data/provenance/fetchedAt 三个字段只在这里一起换，是唯一的提交点。
+   * data/origin/fetchedAt 三个字段只在这里一起换，是唯一的提交点。
    */
-  private adopt(text: string, provenance: CatalogProvenance, fetchedAt: number): void {
+  private adopt(text: string, origin: CatalogOrigin, fetchedAt: number): void {
     this.data = parseCatalog(text, (entry, reason) => {
       this.ctx.logger('models-dev').warn(`models-dev: dropped ${entry}: ${reason}`)
     })
-    this.provenance = provenance
+    this.origin = origin
     this.fetchedAt = fetchedAt
-    this.ctx.emit(this, 'models-dev/updated', provenance)
+    this.ctx.emit(this, 'models-dev/updated', origin)
   }
 
   /**
