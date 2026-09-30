@@ -39,7 +39,7 @@
 
 1. **工具接线**：`tool-dsh-store` 的 Tool schema（create/query/delete × file/folder）、会话策略门禁（`read-only` 一律拒绝、`workspace-write` 仅限 `.dsh/` 内）、拒绝措辞复用 sandbox denial marker、命名空间校验（`rules/**` 的 Markdown 与重复内容拒绝；`mcp.json` 复用 mcp-client 的 Config 校验；`skills/**/SKILL.md` 必填项）。挂载后确保根目录存在。
 2. **五个 uitstalie 包缺 README**：`verify-package-readme-model-experience` 与 `verify-package-readme-limitations` 对 models-dev / llm-plus / ui-models-dev / agent-instructions-plus / tool-dsh-store **全部报缺**（含 Model Experience 段与 `## Known Limitations and Deferred Work` 段，中文对与 i18n 记录同步）。
-3. **禁用词重命名**：`verify-concrete-terms` 禁止字面量 `provenance`（全仓库，除 vendor/ 与归档 Agent Notes）。命中处：`models-dev/src/index.ts`（`CatalogProvenance` 类型与字段）、`scripts/gen-cordis-catalog.ts` 的豁免说明、生成物 `api-catalog.ts` 与 `docs/subsystems/llm-streaming{,.zh}.md`、以及本目录的若干任务单。需改名为具体来源词（如 `CatalogOrigin` / `origin`）后重跑 `gen-cordis-api`。
+3. ~~禁用词重命名~~ **已完成**，见 [task19](task19.md)：目录来源类型改为 `CatalogOrigin`、字段改为 `origin`，生成物已重跑。
 4. 侧边栏 rules UI（`ui-tool-dsh-store`）与 Remote 只读 namespace。
 
 ## 修改范围
@@ -50,7 +50,7 @@
   - 本任务单与设计文档 [dsh-dir-plugin.md](../dsh-dir-plugin.md)。
 - 原生文件（全部为新增行 / 最小块，逐处 `uitstalie-` 标记登记；具体清单在 UI 调查结论回来后定稿）：
   - **`FileSystem` 两个原语**（已实现并验证）：`packages/fs/fs/src/index.ts`（声明 `mkdir` / `remove`，默认实现抛 `FS_IO_ERROR` 并指名后端——沿用同文件 `watch()` 的"不支持即报错"先例）、`packages/fs/fs/src/types.ts`（新增 `FsRemoveOptions`）、`packages/fs/fs-local/src/index.ts` + `src/fsio.ts`（实现：建目录递归、删除由 `recursive` 控制，非空目录未给 `recursive` 时拒绝）、`packages/fs/fs-sandbox/src/index.ts`（两个方法都过现成的 `checkedTarget` 围栏）；测试新增 `fs-local/tests/filesystem.spec.ts` 与 `fs-sandbox/tests/fs-sandbox.spec.ts` 各一组用例；`fs` / `fs-local` / `fs-sandbox` 三份 README + `.zh.md` + `README.i18n.yaml` 记录同步。**不含 `fs-ssh`**（远端协议改动，见设计文档「已知限制」）。
-  - **待生成**：`packages/extensions/tool-cordis/src/api-catalog.ts`（`pnpm run gen-cordis-api`）当前被 task8 遗留缺口阻塞——`models-dev/updated` 事件引用了未分类类型 `CatalogProvenance` 与 `ModelsDevCatalog`；已登记到 [task17](task17.md) 待办。
+  - **待生成**：`packages/extensions/tool-cordis/src/api-catalog.ts`（`pnpm run gen-cordis-api`）当前被 task8 遗留缺口阻塞——`models-dev/updated` 事件引用了未分类类型 `CatalogOrigin` 与 `ModelsDevCatalog`；已登记到 [task17](task17.md) 待办。
   - **侧边栏 slot**：`packages/client/ui-workspace/src/client/contract/slots.ts`（SlotMap 新增 seat）、`src/client/index.ts`（children 声明）、`src/client/rows/Rows.tsx`（`.rowActions` 内加 `renderSlot`）。
   - `tsconfig.host.json`：注册 host 包（做法同 task6）。
   - `tsconfig.client.json`：注册 client 包（做法同 task8）。
