@@ -26,17 +26,13 @@
 - 预算：独立一份 `maxBytes`（与 AGENTS 链的那份互不挤占，建议 16 KiB），沿用同样的"先丢宽文件、再截断最具体、输出通知"策略。
 - 变更：沿用 `Updated instructions from: .dsh/rules/x.md` / `Instructions removed: …`。
 
-## 实现路线（两项待定）
+## 实现路线（已定）
 
-**A. 复用原生代码还是整包复制？**
-- 推荐**复用**：原生包 `exports` 里有 `"./src/*"`，可直接从 `@deepseek-ai/dsh-agent-instructions/src/state.ts` 等取内部实现；plus 只新写"rules 发现 + 组合编排"。
-- 复制的代价：整包复制会撞 `pnpm run duplication`（jscpd 跨文件克隆检测，本分支跑不过该门禁），且两份实现静默漂移。
-- 复用的代价：上游若重构那些内部模块，我们编译期报错（响亮、可修），而不是静默漂移。
+**A. 复用原生代码**（已定）：原生包 `exports` 内有 `"./src/*"`，plus 直接从 `@deepseek-ai/dsh-agent-instructions/src/*` 取发现、渲染与状态机实现，自己只新写"rules 发现 + 组合编排"。**不整包复制**——复制会撞 `pnpm run duplication`（jscpd 跨文件克隆检测），且两份实现会静默漂移；复用下上游重构会在编译期报错，响亮可修。
 
-**B. 组合替换怎么做？**
-- 原生的行来自**每个 agent preset**（`packages/bundle/web-app/presets/{standard,ptc,cordis}.patch.yml` 的 `config.plugins` 里插了 `agent-instructions`）；profile 层那行早已 disabled（[web-app/cordis.patch.yml:549](../../packages/bundle/web-app/cordis.patch.yml:549)），所以**只禁 profile 层不生效**。
-- 路线 B1（小改原生）：在三个 preset 里把该行 `disabled: true` 并紧跟插入 plus 行（各 3 行左右，带 `uitstalie-` 标记）。清晰、易退回（删标记块即恢复）。
-- 路线 B2（零原生改动）：在 profile patch 里按 id 覆盖 `preset-standard` 的 `config.plugins` 整表（这是 preset 注释里写明的、Web 编辑器实际使用的机制），把其中一行换成 plus。代价：要镜像整张插件表，上游改 preset 时我们要跟着改。
+**B. 小改预设（B1，已定）**：在三个 preset（`packages/bundle/web-app/presets/{standard,ptc,cordis}.patch.yml`）里把原生的 `agent-instructions` 行设为 `disabled: true`，紧跟插入 plus 行；每处为最小块 + `uitstalie-` 标记，退回时删标记块即可。不走"profile patch 覆盖整张 `config.plugins`"的 B2。
+
+用户补充的判断（同样适用于本任务单）：**这类"组合层小改 + 原生代码不动"本来就是应有做法**——[task17](task17.md) 据此把 models-dev / ui-models-dev 的挂载从"只存在于本机 profile patch"迁到仓库内的组合层。
 
 ## 修改范围
 
