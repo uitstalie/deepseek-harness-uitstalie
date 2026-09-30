@@ -75,7 +75,7 @@ icacls '<workspace>' /grant '*S-1-5-21-3439173371-1754965139-4214953713-1001:(OI
 
 ### acl.ts 改动的定位更正
 
-此前的 `grantWrite` / `mergeAndApply` / `revokeWrite` 改动（`47d0a03be0`）**不是本次故障的
+此前的 `grantWrite` / `mergeAndApply` / `revokeWrite` 改动（task11 的首个提交）**不是本次故障的
 修复**：故障当时的目录状态是「有 grant ACE、缺 deny、缺 label」，即便按新代码分别补缺，仍要
 补 deny 并写 label，一样会撞 SACL 写权限。该改动保留为次要健壮性改进（label 已立时不再重写
 SACL，避免整棵树 eager 重传播），但不应据此认为 Win32 5 已被代码修掉。

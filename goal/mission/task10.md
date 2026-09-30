@@ -2,7 +2,7 @@
 
 ## requirement
 
-rebase 到上游 master（`21638c5631`）后，goal/ 下多处描述与代码对不上：上游 #4587 把 settings 模型从 `dsh-settings-file` + `installSection` 换成 profile 条目 + volatile Config，工具结果从内容块改为 `role:'tool'` 消息，`readImageRequest` 改为显式 target。修正这些文档，并登记 rebase 期间原生文件的适配点。
+rebase 到上游 `deepseek-ai/deepseek-harness` master 后，goal/ 下多处描述与代码对不上：上游 #4587 把 settings 模型从 `dsh-settings-file` + `installSection` 换成 profile 条目 + volatile Config，工具结果从内容块改为 `role:'tool'` 消息，`readImageRequest` 改为显式 target。修正这些文档，并登记 rebase 期间原生文件的适配点。
 
 变更自：task5（models-dev 设计文档）、task8（models.dev 设置页）、task9（llm-plus 灰度替换），以及一份无任务单的早期 settings 摸底。
 
