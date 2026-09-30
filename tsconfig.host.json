@@ -489,7 +489,9 @@
     { "path": "./apps/desktop/tsconfig.host.json" },
     // BEGIN uitstalie-k3, 2026/08/28, task6, 注册 uitstalie 组两个新包进 Host 聚合程序
     { "path": "./packages/uitstalie/models-dev" },
-    { "path": "./packages/uitstalie/llm-plus" }
+    { "path": "./packages/uitstalie/llm-plus" },
     // END uitstalie-k3
+    // uitstalie-k3, 2026/09/30, task16, 注册 plus loader 进 Host 聚合程序
+    { "path": "./packages/uitstalie/agent-instructions-plus" }
   ]
 }

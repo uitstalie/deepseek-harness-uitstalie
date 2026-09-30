@@ -43,6 +43,27 @@ export type {
 export { renderAgentInstructions } from './render.ts'
 export type { RenderedAgentInstructions, TruncatedInstruction } from './render.ts'
 
+// BEGIN uitstalie-k3, 2026/09/30, task16, 让 plus 插件能复用 loader 的公开实现（纯导出可见性，行为不变）
+export {
+  agentInstructionsMessage,
+  applyInstructionVersionUpdates,
+  baselineInstructionState,
+  reconcileInstructionContext,
+  retainedInstructionVersionUpdates,
+} from './state.ts'
+export type {
+  AgentInstructionSource,
+  InstructionVersionCache,
+  InstructionVersionState,
+  InstructionVersionUpdate,
+  ReconciledInstructionContext,
+} from './state.ts'
+export type { AgentInstructionChange } from './render.ts'
+export { instructionContentSha1, trimmedInstructionDigest } from './digest.ts'
+export { resolveConfig, workspaceBaselineIdentity } from './config.ts'
+export type { Config as AgentInstructionsConfig, ResolvedConfig } from './config.ts'
+// END uitstalie-k3
+
 function visibleBaselineSource(
   agent: Agent,
   authorityMessages: readonly UserMessage[],
