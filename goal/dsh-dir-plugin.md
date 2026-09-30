@@ -91,15 +91,23 @@
 
 ## 能力缺口与实现路线
 
-`ctx.fs` 现状：`resolve` / `contains` / `stat` / `lstat` / `listDir` / `readText` / `streamText` / `readBytes` / `writeText` / `editText`。**没有建目录，也没有删除。**
+`ctx.fs` 现状：`resolve` / `contains` / `stat` / `lstat` / `listDir` / `readText` / `streamText` / `readBytes` / `writeText` / `editText`。**没有建目录，也没有删除**——用户已批准补齐这两个原语。
 
-**方案 B（推荐，符合分支「只走新增路径」规则）**：这两个原语在插件内实现，集中在 `src/store-ops.ts`：
+**已选路线（在服务定义上声明，本地链实现并加围栏）**：
 
-- 用 `node:fs` 的 `mkdir` / `rm`，但调用前必须完成：`ctx.fs.resolve` 规范化 → `.dsh/` 根归属校验（realpath）→ 会话策略门禁。
-- 读、写、列举一律走 `ctx.fs`（读 `readText`/`listDir`/`stat`，写 `writeText`），只有这两个缺口用宿主 `node:fs`。
-- 原生文件零改动；将来把能力补进服务定义时，只替换这一个模块。
+| 文件 | 改动 | 说明 |
+|---|---|---|
+| `packages/fs/fs/src/index.ts` | 声明 `mkdir` / `remove`，**具体方法 + 默认抛 `FS_UNSUPPORTED`** | 让类型对所有消费者可见；测试替身与未实现的 provider 无需改动即可编译，运行时明确失败 |
+| `packages/fs/fs-local/src/index.ts` + `src/fsio.ts` | 实现两个原语 | `mkdir` 递归建；`remove` 由 `{ recursive }` 控制，带 abort 检查与错误映射 |
+| `packages/fs/fs-sandbox/src/index.ts` | 两个方法都过现成的 `checkedTarget` 围栏 | `read-only` 拒绝、`workspace-write` 做 containment——**不需要插件自造门禁** |
+| `packages/extensions/tool-cordis/src/api-catalog.ts` | 生成物 | 由 `pnpm run gen-cordis-api` 重建（服务定义变了） |
+| `fs` / `fs-local` / `fs-sandbox` 三方 README + 双语/i18n 记录 | 文档 | 新操作的行为、错误码与围栏语义 |
 
-**方案 A（正解，但违反分支规则且冲突面大，留待上游）**：给 `FileSystem` 服务定义加 `mkdir(target, opts)` 与 `remove(target, { recursive })`，同步实现 `fs-local`（含 `fsio` 原语）、`fs-sandbox`（两个原语都要按 mode 加围栏：`read-only` 拒绝，`workspace-write` 做 containment）、`fs-ssh`，并更新三方 README/JSDoc 与 invariant。适合作为独立的上游提案，不在本分支落地。
+**已知限制（写进 README）**：`fs-ssh` 暂不实现——SSH 远端要同时扩展 `dsh-ssh` 的远端协议与 helper，属远端协议改动（涉及版本兼容）。因此 SSH 工作区上的 `.dsh/` store 会**明确失败**（`FS_UNSUPPORTED`）而不是静默降级。
+
+**备选（完整 seam）**：连 `fs-ssh` + `ssh` 协议/helper + 5 个测试替身一起补齐，让所有 provider 都支持。面更大，且远端协议改动要单独评估兼容性；适合作为独立的上游提案。
+
+（原先的"方案 B：插件内用 `node:fs` + 自造策略门禁"已废弃——既然能改原生，就没有理由让删除绕过 `fs-sandbox` 的围栏。）
 
 ## 与既有扩展点的关系
 
