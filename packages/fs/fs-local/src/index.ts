@@ -18,12 +18,14 @@ import type {
   FsEditRequest,
   FsInfo,
   FsPathInfo,
+  FsRemoveOptions, // uitstalie-k3, 2026/09/30, task14, remove 的选项类型
   FsTarget,
   FsWriteIntent,
   FsWriteOutcome,
 } from '@deepseek-ai/dsh-fs'
 import {
   applyLiteralEdit,
+  createDirectory, // uitstalie-k3, 2026/09/30, task14, 建目录原语
   listDirectory,
   localDisplayPath,
   normalizeLineEndings,
@@ -34,6 +36,7 @@ import {
   readTextForDiff,
   readWholeBytes,
   readWholeText,
+  removeTarget, // uitstalie-k3, 2026/09/30, task14, 删除原语
   resolveLocalTarget,
   restoreLineEndings,
   streamWholeText,
@@ -289,6 +292,16 @@ export class LocalFileSystem extends FileSystem {
       }
     })
   }
+
+  // BEGIN uitstalie-k3, 2026/09/30, task14, .dsh/ store 的建目录与删除（本地实现）
+  override async mkdir(target: FsTarget, signal?: AbortSignal): Promise<void> {
+    return createDirectory({ displayPath: target.displayPath, targetKey: target.targetKey }, signal)
+  }
+
+  override async remove(target: FsTarget, options: FsRemoveOptions = {}, signal?: AbortSignal): Promise<void> {
+    return removeTarget({ displayPath: target.displayPath, targetKey: target.targetKey }, options.recursive === true, signal)
+  }
+  // END uitstalie-k3
 
   /* v8 ignore next 5 -- the post-write probe finding the file absent requires a
    * concurrent unlink between rename and stat; fall back to a sentinel version. */

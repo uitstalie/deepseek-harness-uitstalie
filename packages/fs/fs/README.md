@@ -33,7 +33,7 @@ Pick [`fs-local`](../fs-local/README.md) for ordinary host files or [`fs-sandbox
 
 ### What the service lets you do
 
-Through `ctx.fs` you can resolve any path to a stable target identity, read a whole text file or stream it in chunks, read raw bytes up to an explicit cap, list one directory level, atomically create or replace a file, and apply a literal text edit atomically. The version guard on both mutations is optional: omit it for unconditional create-or-overwrite, or supply it to fail when the file changed since you last observed it. Read, listing, and mutation failures are typed `FsError`s with stable codes such as `FS_NOT_FOUND`, `FS_STALE_VERSION`, or `FS_AMBIGUOUS_EDIT`, so callers branch on the code, never on message text.
+Through `ctx.fs` you can resolve any path to a stable target identity, read a whole text file or stream it in chunks, read raw bytes up to an explicit cap, list one directory level, create a directory, remove a file or an empty directory, atomically create or replace a file, and apply a literal text edit atomically. The version guard on both mutations is optional: omit it for unconditional create-or-overwrite, or supply it to fail when the file changed since you last observed it. Read, listing, and mutation failures are typed `FsError`s with stable codes such as `FS_NOT_FOUND`, `FS_STALE_VERSION`, or `FS_AMBIGUOUS_EDIT`, so callers branch on the code, never on message text.
 
 `watch(target, changed, signal)` reports invalidations for one file or a directory's direct entries. It resolves once observation is ready with an asynchronous close function that the caller must await. The signal cancels initialization; unsupported providers reject without polling.
 
@@ -112,7 +112,8 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 These limits define when the contract is a poor fit or needs special operational care. They are current package constraints, not a general filesystem comparison or a task backlog.
 
 - **Text-only mutations by contract** — text reads and both mutations reject binary or non-UTF-8 content with `FS_NOT_TEXT`; `readBytes` and `readByteRange` are the raw-byte primitives, and binary-safe mutations remain deferred.
-- **No delete, rename, or copy** — `listDir` lists a single level, with recursion, globbing, pagination, and search out of scope ([directory-listing note](../../../.agents/notes/archived/architecture/2026-07-03-filesystem-directory-listing-seam.md)).
+- **No rename or copy** — removal exists as `remove`, but rename and copy remain deferred; `listDir` lists a single level, with recursion, globbing, pagination, and search out of scope ([directory-listing note](../../../.agents/notes/archived/architecture/2026-07-03-filesystem-directory-listing-seam.md)).
+- **Directory creation and removal are optional for backends** — the seam declares `mkdir` and `remove` with a failing default that names the provider (`FS_IO_ERROR`); the local chain implements both, while `fs-ssh` does not yet, so such a backend fails loudly rather than degrading silently.
 - **No I/O deadline** — the seam arms no timeout; cancellation is a best-effort optional `AbortSignal` per primitive ([fs family stance](../README.md)).
 - **Resolve-then-operate costs a remote backend two round-trips per tool call** — folding or caching resolution is left to such a backend.
 

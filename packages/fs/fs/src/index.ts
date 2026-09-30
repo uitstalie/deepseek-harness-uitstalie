@@ -18,6 +18,7 @@ import type {
   FsInfo,
   FsPathInfo,
   FsObservation,
+  FsRemoveOptions, // uitstalie-k3, 2026/09/30, task14, remove 的选项类型
   FsTarget,
   FsVersion,
   FsWriteIntent,
@@ -37,6 +38,7 @@ export type {
   FsInfo,
   FsObservation,
   FsPathInfo,
+  FsRemoveOptions, // uitstalie-k3, 2026/09/30, task14, 新增 remove 选项类型
   FsTarget,
   FsWriteIntent,
   FsWriteOutcome,
@@ -291,6 +293,59 @@ export abstract class FileSystem extends Service {
     signal?: AbortSignal,
     sandboxPolicy?: SandboxExecutionPolicy,
   ): Promise<FsEditOutcome>
+
+  // BEGIN uitstalie-k3, 2026/09/30, task14, .dsh/ store 需要"建目录/删除"两个原语：
+  // 在服务定义上声明，默认实现明确失败，由本地链实现并加策略围栏。
+  /**
+   * Create a directory, including any missing parents. Idempotent when the directory exists.
+   * @param target - the resolved directory to create.
+   * @param signal - aborts before the directory is created.
+   * @param sandboxPolicy - the per-call mode and workspace root this operation
+   *   runs under; a sandboxing backend fences it, the bare backend ignores it.
+   * @returns a promise that settles once the directory exists.
+   * @throws FsError `FS_IO_ERROR` when the mounted backend does not implement directory creation.
+   */
+  mkdir(target: FsTarget, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy): Promise<void> {
+    if (signal?.aborted === true) return Promise.reject(new FsError('create directory aborted', 'FS_ABORTED'))
+    return Promise.reject(new FsError(
+      `cannot create directory "${target.displayPath}"${modeSuffix(sandboxPolicy)}: `
+      + 'directory creation is not supported by this provider',
+      'FS_IO_ERROR',
+    ))
+  }
+
+  /**
+   * Remove a file, or a directory whose entries are cleared, through the filesystem seam.
+   * @param target - the resolved target to remove.
+   * @param options - `recursive: true` removes a directory with its entries;
+   *   omission refuses a directory that still has entries.
+   * @param signal - aborts before the removal starts.
+   * @param sandboxPolicy - the per-call mode and workspace root this operation
+   *   runs under; a sandboxing backend fences it, the bare backend ignores it.
+   * @returns a promise that settles once the target is gone.
+   * @throws FsError `FS_IO_ERROR` when the mounted backend does not implement removal.
+   */
+  remove(
+    target: FsTarget,
+    options: FsRemoveOptions = {},
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<void> {
+    if (signal?.aborted === true) return Promise.reject(new FsError('remove aborted', 'FS_ABORTED'))
+    const operation = options.recursive === true ? 'recursive removal' : 'removal'
+    return Promise.reject(new FsError(
+      `cannot remove "${target.displayPath}"${modeSuffix(sandboxPolicy)}: ${operation} is not supported by this provider`,
+      'FS_IO_ERROR',
+    ))
+  }
+  // END uitstalie-k3
 }
+
+// BEGIN uitstalie-k3, 2026/09/30, task14, 上面两个默认实现的共享提示后缀
+/** Name the per-call mode in an unsupported-operation message, when one was supplied. */
+function modeSuffix(sandboxPolicy?: SandboxExecutionPolicy): string {
+  return sandboxPolicy === undefined ? '' : ` under ${sandboxPolicy.mode}`
+}
+// END uitstalie-k3
 
 export default FileSystem

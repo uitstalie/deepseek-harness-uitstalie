@@ -833,4 +833,66 @@ export function applyLiteralEdit(
   return { content: content.split(oldNorm).join(newNorm), replacements }
 }
 
+// BEGIN uitstalie-k3, 2026/09/30, task14, .dsh/ store 需要"建目录/删除"两个原语（本地实现）
+/**
+ * Create a directory, including any missing parents. An existing directory is left alone.
+ * @param target - the resolved directory to create.
+ * @param signal - aborts before the directory is created (`FS_ABORTED`).
+ * @returns a promise that settles once the directory exists.
+ */
+export async function createDirectory(target: LocalTarget, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal, 'create directory')
+  try {
+    await mkdir(target.targetKey, { recursive: true })
+  } catch (error: unknown) {
+    if (signal?.aborted) throw new FsError('create directory aborted', 'FS_ABORTED')
+    /* v8 ignore next 3 -- resolution already refuses a file parent; only a segment swapped to one mid-call reaches this. */
+    if (isENOTDIR(error)) {
+      throw new FsError(`cannot create directory "${target.displayPath}": a parent segment is not a directory`, 'FS_NOT_DIRECTORY', { cause: error })
+    }
+    /* v8 ignore next 3 -- requires a real permission denial on the host filesystem. */
+    if (isPermissionError(error)) {
+      throw new FsError(`cannot create directory "${target.displayPath}": permission denied`, 'FS_PERMISSION_DENIED', { cause: error })
+    }
+    throw new FsError(`cannot create directory "${target.displayPath}": ${errorMessage(error)}`, 'FS_IO_ERROR', { cause: error })
+  }
+  throwIfAborted(signal, 'create directory')
+}
+
+/**
+ * Remove a file, or a directory together with its entries when `recursive` allows it.
+ * A directory that still has entries is refused unless `recursive` is set.
+ * @param target - the resolved target to remove.
+ * @param recursive - whether a directory's entries may be removed along with it.
+ * @param signal - aborts before the removal starts (`FS_ABORTED`).
+ * @returns a promise that settles once the target is gone.
+ */
+export async function removeTarget(target: LocalTarget, recursive: boolean, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal, 'remove')
+  const info = await probe(target.targetKey)
+  if (info === null) throw new FsError(`cannot remove "${target.displayPath}": not found`, 'FS_NOT_FOUND')
+  if (info.type === 'directory' && !recursive) {
+    const entries = await listDirectory({ displayPath: target.displayPath, targetKey: target.targetKey }, signal)
+    if (entries.length > 0) {
+      throw new FsError(
+        `cannot remove "${target.displayPath}": directory is not empty; pass recursive to remove it with its entries`,
+        'FS_IO_ERROR',
+      )
+    }
+  }
+  try {
+    await rm(target.targetKey, { recursive: info.type === 'directory', force: false })
+  } catch (error: unknown) {
+    if (signal?.aborted) throw new FsError('remove aborted', 'FS_ABORTED')
+    /* v8 ignore next -- requires the target to disappear between the probe above and this call. */
+    if (isENOENT(error)) throw new FsError(`cannot remove "${target.displayPath}": not found`, 'FS_NOT_FOUND', { cause: error })
+    /* v8 ignore next 3 -- requires a real permission denial on the host filesystem. */
+    if (isPermissionError(error)) {
+      throw new FsError(`cannot remove "${target.displayPath}": permission denied`, 'FS_PERMISSION_DENIED', { cause: error })
+    }
+    throw new FsError(`cannot remove "${target.displayPath}": ${errorMessage(error)}`, 'FS_IO_ERROR', { cause: error })
+  }
+}
+// END uitstalie-k3
+
 export { normalizeLineEndings, restoreLineEndings }
