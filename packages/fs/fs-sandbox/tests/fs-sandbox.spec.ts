@@ -241,3 +241,45 @@ describe('FsError identity', () => {
     expect((error as FsError).code).toBe('FS_SANDBOX_DENIED')
   })
 })
+
+// BEGIN uitstalie-k3, 2026/09/30, task14, 建目录与删除同样受策略围栏
+describe('mkdir and remove fence', () => {
+  it('read-only denies both and leaves the filesystem untouched', async () => {
+    await boot('read-only')
+    const created = join(workspace, 'new-dir')
+    await expect(fs.mkdir(await target(created))).rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+    expect(await fs.stat(await target(created))).toBeUndefined()
+    const existing = join(workspace, 'existing.txt')
+    await writeFile(existing, 'x')
+    await expect(fs.remove(await target(existing))).rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+    expect(await readFile(existing, 'utf8')).toBe('x')
+  })
+
+  it('workspace-write allows both inside the root and denies both outside', async () => {
+    await boot('workspace-write')
+    const inside = join(workspace, '.dsh', 'rules')
+    await fs.mkdir(await target(inside))
+    expect((await fs.stat(await target(inside)))?.type).toBe('directory')
+
+    await expect(fs.mkdir(await target(join(outside, 'denied-dir'))))
+      .rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+    const outsideFile = join(outside, 'denied.txt')
+    await writeFile(outsideFile, 'x')
+    await expect(fs.remove(await target(outsideFile))).rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+    expect(await readFile(outsideFile, 'utf8')).toBe('x')
+
+    await fs.remove(await target(join(workspace, '.dsh')), { recursive: true })
+    expect(await fs.stat(await target(join(workspace, '.dsh')))).toBeUndefined()
+  })
+
+  it('a per-call policy override reaches both operations', async () => {
+    await boot('read-only')
+    const path = join(workspace, 'escalated-dir')
+    const policy = { mode: 'workspace-write', workspaceRoot: workspace } as const
+    await fs.mkdir(await target(path), undefined, policy)
+    expect((await fs.stat(await target(path)))?.type).toBe('directory')
+    await fs.remove(await target(path), {}, undefined, policy)
+    expect(await fs.stat(await target(path))).toBeUndefined()
+  })
+})
+// END uitstalie-k3
