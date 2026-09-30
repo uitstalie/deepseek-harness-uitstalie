@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/tool-dsh-store/README.md
+/:
+  en: 66b4ffd2dbeea066
+  zh: 554f3e3fe9c21474
+/deepseek-ai-dsh-tool-dsh-store:
+  en: 1821d1628f167bdb
+  zh: d11dc28046b7206a
+/deepseek-ai-dsh-tool-dsh-store/summary:
+  en: 519bee97242c5859
+  zh: 6b1e80db855ed0e3
+/deepseek-ai-dsh-tool-dsh-store/table-of-contents:
+  en: 76368b6b1da79c80
+  zh: 52384aee991ac542
+/deepseek-ai-dsh-tool-dsh-store/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-tool-dsh-store/use-this-package/the-dsh-directory-is-the-store:
+  en: e8e8b130f76c269a
+  zh: 5776d1d5ce277b69
+/deepseek-ai-dsh-tool-dsh-store/use-this-package/paths-are-validated-before-they-are-used:
+  en: 50e775592f9dd94b
+  zh: c73565bd0938c22f
+/deepseek-ai-dsh-tool-dsh-store/use-this-package/store-operations:
+  en: cd2c05a9f3440960
+  zh: 0af6a63d14a7300d
+/deepseek-ai-dsh-tool-dsh-store/understand-the-implementation:
+  en: 5511f6f928d8da1f
+  zh: 4eddd2456e98ca3e
+/deepseek-ai-dsh-tool-dsh-store/model-experience:
+  en: 50b7461579bd85d7
+  zh: d6893d364df97e33
+/deepseek-ai-dsh-tool-dsh-store/model-experience/kv-cache-effect:
+  en: fe7971ac52d6dd04
+  zh: 57618b056f708aed
+/deepseek-ai-dsh-tool-dsh-store/known-limitations-and-deferred-work:
+  en: f3fb96f4f47a6e0c
+  zh: d4d3109beb43deec
+/deepseek-ai-dsh-tool-dsh-store/known-limitations-and-deferred-work/dev-note:
+  en: 3560be3f1405f992
+  zh: 76c5d7060e15ebd4

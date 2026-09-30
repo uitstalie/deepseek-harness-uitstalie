@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/llm-plus/README.md
+/:
+  en: dd87e6218ada1173
+  zh: d6596709309388f4
+/deepseek-ai-dsh-llm-plus:
+  en: 502da45396ea199a
+  zh: 1546992603e091a6
+/deepseek-ai-dsh-llm-plus/summary:
+  en: 5467858b04df60f9
+  zh: 37de2e9cf3108745
+/deepseek-ai-dsh-llm-plus/table-of-contents:
+  en: 4e53164159b5ce41
+  zh: 89582dc0294d0776
+/deepseek-ai-dsh-llm-plus/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-llm-plus/use-this-package/when-to-choose-it:
+  en: 16d83803a9d70e04
+  zh: ab6656fe4e74bc8c
+/deepseek-ai-dsh-llm-plus/use-this-package/routes-are-configuration:
+  en: b3da7dadd7e77e9c
+  zh: 04a2e6d040a97216
+/deepseek-ai-dsh-llm-plus/use-this-package/credentials-come-from-the-seam:
+  en: 84fd462a6e91ef7b
+  zh: c902ffab2b283356
+/deepseek-ai-dsh-llm-plus/use-this-package/live-configuration:
+  en: 0add8c9841fce18d
+  zh: fa60b3fec8394ad9
+/deepseek-ai-dsh-llm-plus/model-experience:
+  en: 11ea265e05a61420
+  zh: 431a045462a97c07
+/deepseek-ai-dsh-llm-plus/model-experience/kv-cache-effect:
+  en: 5dd586ed498a9686
+  zh: 02c8e5f70ec297f3
+/deepseek-ai-dsh-llm-plus/known-limitations-and-deferred-work:
+  en: a7b12f780da3ffb4
+  zh: e6863dd491cf3975
+/deepseek-ai-dsh-llm-plus/known-limitations-and-deferred-work/dev-note:
+  en: 1d4a7bffd56811c6
+  zh: db7878ca2e38b6e9
