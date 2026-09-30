@@ -55,7 +55,7 @@ cmd /c "echo permission denied 1>&2 & exit 1"
 
 ## 同时完成的回退
 
-`packages/sandbox/sandbox-windows-acl/src/acl.ts`：回退 task11（提交 `47d0a03be0`）中关于标签标志的两处改动，恢复 `mergeAndApply` 的 `labelEdit.kind === 'keep' ? DACL : DACL|LABEL` 与 `revokeWrite` 的 `{ kind: 'clear' }`（原写法本就是对的，改动使 `clear` 不再清 SACL，又用 `as never` 绕过）。**保留** `grantWrite` 的逐项幂等判定（部分落盘状态可自愈），该处标记注释随之保留。
+`packages/sandbox/sandbox-windows-acl/src/acl.ts`：回退 task11 中关于标签标志的两处改动，恢复 `mergeAndApply` 的 `labelEdit.kind === 'keep' ? DACL : DACL|LABEL` 与 `revokeWrite` 的 `{ kind: 'clear' }`（原写法本就是对的，改动使 `clear` 不再清 SACL，又用 `as never` 绕过）。**保留** `grantWrite` 的逐项幂等判定（部分落盘状态可自愈），该处标记注释随之保留。
 
 ## 验证
 
