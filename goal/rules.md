@@ -29,10 +29,8 @@ rules 是**工作区级的约定**，本质上就是**目录形式的扩展 AGEN
 
 | 维度 | 业界 | 我们 | 理由 |
 |---|---|---|---|
-| 字段名 | `description` / `globs` / `alwaysApply` | **沿用同名** | 迁移成本最低，用户已熟悉 |
-| 默认激活 | 缺省即"只能手动引用" | **默认常驻**；`globs` 是例外 | rules 是"每次交互过程的规范"，常驻才是常态 |
-| 扩展名 | `.mdc`（Cursor）/ `.md`（Cline） | **`.md`** | 与 AGENTS.md 同源，且我们自带解析 |
-| front-matter | 必需 | **可选** | 无 front-matter＝纯约定文本（AGENTS.md 式常驻），有则按字段控制激活 |
+| 元数据 | `description` / `globs` / `alwaysApply` 决定四种激活模式 | **不用元数据**：`rules/**` 全量常驻、纯 Markdown 逐字注入 | 规则是"每次交互过程的规范"，条件激活对本用途没有价值；去掉元数据后加载器退化成"发现 + 去重 + 预算" |
+| 扩展名 | `.mdc`（Cursor）/ `.md`（Cline） | **`.md`** | 与 AGENTS.md 同源，内容逐字注入 |
 | 位置 | 工作区 + 用户级 | `.dsh/rules/**`（二期可加 `~/.dsh/rules/**`） | 与既有 `.dsh/skills`、`~/.dsh/AGENTS.md` 层级一致 |
 | 与 AGENTS.md | Cursor 称 AGENTS.md 为"简单替代" | **同一条链的补充**（用户已定） | AGENTS.md 管仓库知识，rules 管交互过程规范 |
 
@@ -70,24 +68,17 @@ rules 是**工作区级的约定**，本质上就是**目录形式的扩展 AGEN
 
 因为机检层默认关闭，README 与任务单都要明确：**开启 `check` 的规则才付费**（时间成本与安全面），其余规则永远只是约定。
 
-## 规则文件规格（`.dsh/rules/**/*.md`）
+## 规则文件规格（`.dsh/rules/**/*.md`）——已定：纯 Markdown，无激活元数据
 
-```yaml
----
-description: 一行摘要，进注入头部与目录
-alwaysApply: true          # 默认 true：每轮常驻；false 时按 globs 触发
-globs: ["packages/**"]     # 可选；只在会话触碰这些路径后注入
-check:                     # 可选：交付前自检
-  mode: command            # command | model
-  command: pnpm run typecheck
-  timeoutMs: 120000
-  message: 交付前必须让 typecheck 通过
----
-正文：规则与必须执行的动作
-```
+用户已定：**不用 front-matter 控制激活，`rules/**` 下的每个 `.md` 默认全部注入**。
 
-- 目录形式、多文件、可 glob 作用域——这是相对单文件 `AGENTS.md` 的主要收益，也是必须新写加载器（`agent-instructions` 的候选只支持同目录文件名）的原因。
-- 规则文件本身经 `dsh` 工具写入（那个工具负责 front-matter 与 YAML 校验），保证 `.dsh/` 内容始终可被消费。
+- **格式**：纯 Markdown，与 AGENTS.md 完全同源；内容**逐字注入**（写了 front-matter 也只当正文文本，不解析）。
+- **激活**：全量常驻。不做 `alwaysApply` / `globs` / 模型自选，也不做"目录编码作用域"——目录层级只用于组织与排序（宽 → 具体）。
+- **去重**：加载器按"trim 后内容"去重，**在整个 rules 集合内**生效（同一份规则写进两个文件时只留排序靠前的那份），作者不必手工比对。
+- **预算**：独立 `maxBytes`（与 AGENTS.md 的那份互不挤占），沿用同一策略：先丢更宽的整文件、再截断最具体的文件、并输出预算通知。
+- **变更**：沿用 AGENTS.md 的 `Updated instructions from:` / `Instructions removed:` 通知语义。
+- **写作纪律**（写进 README 与 `tool-dsh-store` 工具描述，因为机器只能兜底）：规则要写成短句、祈使句；不重复已存在的规则（重复会被静默去重，等于白写）；一条规则只讲一件事。
+- **写入侧兜底**：`tool-dsh-store` 在写 `rules/**` 时比对新内容与现有规则的 trim 后内容，命中重复就返回提示（让"去重"这条纪律在写入时就被提醒，而不是等注入时静默消失）。
 
 ## 复用面（尽量不新造）
 
@@ -105,10 +96,12 @@ check:                     # 可选：交付前自检
 ## 待定（需拍板）
 
 1. ~~与 AGENTS.md 的关系~~ **已定**：同一条链的**补充**；rules 的本质是"**每次交互过程的规范**"（用户原话）。
-2. **激活语义确认**：按上表取"默认常驻 + 声明 `globs` 才按路径触发 + 无 front-matter 视为 AGENTS.md 式常驻"——确认？
-3. **作用域表达**：front-matter `globs`、目录编码作用域（`.dsh/rules/packages/foo/x.md` 天然只作用于 `packages/foo`，照抄嵌套 AGENTS.md），还是两者都要？
-4. **注入形态**：与 AGENTS.md 共用同一块 `<system-reminder>`（用 `displayPath` 区分来源）还是独立一块？（选 1 的"同一条链"倾向共用，但那需要动 `agent-instructions`；零原生改动的形态是独立一块。）
-5. **预算**：与 AGENTS.md 共用 `maxBytes`（真一条链）还是 rules 独立一份（倾向独立，例如 16 KiB）。
-6. **层级**：本期只做工作区级，还是同时加用户级 `~/.dsh/rules/**`（倾向二期）。
+2. ~~激活语义~~ **已定**：`rules/**` 全量常驻、无激活元数据、纯 Markdown 逐字注入。
+3. ~~作用域表达~~ **已定**：不用 `globs`、不用目录编码作用域；目录层级只用于组织与排序。
+4. **注入形态（唯一待定）**：
+   - **推荐：原生小改**——给 `agent-instructions` 加一个 `instructionDirs` 配置（例 `['.dsh/rules']`）：每层祖先目录除了现成的候选文件名，再多走一遍这些目录里的 `*.md`。去掉元数据之后这个扩展只是"多发现一类文件"，而收益是**整套 baseline 身份、去重、预算、变更/移除通知、会话日志可重建全部复用**；自建加载器必须重写那套状态机（`state.ts` 未导出，几百行 + 测试）。代价是规则加载从此与 upstream 那个包耦合，冲突面限于新增行。
+   - 备选：自建 `rules` 插件输出独立一块（零原生改动），但要重写状态机，且模型看到两块指令。
+5. **预算**：随第 4 条一起定——走原生扩展就与 AGENTS.md 共用一份 `maxBytes`（可调大）；走备选则 rules 独立一份（倾向 16 KiB）。
+6. **层级**：本期只做工作区级；用户级 `~/.dsh/rules/**` 留二期。
 7. **机检层**：是否整体移到独立任务单（倾向**是**——它面向"可机检门禁"，与约定语义是两件事）。
-8. **触发方式细节**：常驻内容是"每个 turn 都注入"（AGENTS.md 的 baseline 语义）还是"会话首次注入后靠变更通知"（同样沿用 AGENTS.md，不重复注入）。
+8. **触发方式**：会话首次注入 baseline + 之后靠变更通知（与 AGENTS.md 完全一致），不做每轮重复注入。
