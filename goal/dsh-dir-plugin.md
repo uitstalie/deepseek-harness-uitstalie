@@ -60,7 +60,7 @@
 
 | 命名空间 | 校验 | 复用 |
 |---|---|---|
-| `rules/**` | front-matter 规格（可选 `globs`/`alwaysApply`）、YAML 必须可解析 | 自建规格（本分支自有能力） |
+| `rules/**` | **无需格式校验**（纯 Markdown，加载器逐字注入）；但写入前比对 trim 后内容与现有规则，命中重复就提示并拒绝落盘 | 自建（对应"写 rules 时注意去重"的纪律） |
 | `mcp.json` | 整体按 MCP 客户端配置校验：serverName 归一化、传输联合、URL scheme、header/env 去重与合法性 | `@deepseek-ai/dsh-mcp-client` 的 `Config`，写法照 [acp/src/mcp.ts](../packages/acp/acp/src/mcp.ts:26) 的 `mountAcpMcpServers` |
 | `skills/**` | `SKILL.md` front-matter 必填项与 `name` 语法 | `isSkillName` @ `@deepseek-ai/dsh-skill` |
 | 其它路径 | 只做路径与字节限制 | — |
