@@ -28,11 +28,12 @@
   - 新包 `packages/uitstalie/tool-dsh-store/`（包名 `@deepseek-ai/dsh-tool-dsh-store`，工具名同为 `tool-dsh-store`）：`package.json`、`tsconfig.json`、`src/*`、`tests/*`、`README.md` + `README.zh.md` + `README.i18n.yaml`。
   - 客户端 UI 包 `packages/uitstalie/ui-tool-dsh-store/`（包名 `@deepseek-ai/dsh-client-ui-tool-dsh-store`）：工作区侧边栏"新建会话"按钮**右侧**的 rules 按钮，以及该工作区 rules 的查看视图。
   - 本任务单与设计文档 [dsh-dir-plugin.md](../dsh-dir-plugin.md)。
-- 原生文件（全部为新增行，逐处 `uitstalie-` 标记登记；具体清单在 UI 调查结论回来后定稿）：
+- 原生文件（全部为新增行 / 最小块，逐处 `uitstalie-` 标记登记；具体清单在 UI 调查结论回来后定稿）：
+  - **`FileSystem` 两个原语**（用户已批准）：`packages/fs/fs/src/index.ts`（声明 `mkdir` / `remove`，默认抛 `FS_UNSUPPORTED`）、`packages/fs/fs-local/src/index.ts` + `src/fsio.ts`（实现）、`packages/fs/fs-sandbox/src/index.ts`（两个方法都过 `checkedTarget` 围栏）；生成物 `packages/extensions/tool-cordis/src/api-catalog.ts` 由 `pnpm run gen-cordis-api` 重建；`fs` / `fs-local` / `fs-sandbox` 三方 README 与双语配对同步。**不含 `fs-ssh`**（远端协议改动，见设计文档「已知限制」）。
+  - **侧边栏 slot**：`packages/client/ui-workspace/src/client/contract/slots.ts`（SlotMap 新增 seat）、`src/client/index.ts`（children 声明）、`src/client/rows/Rows.tsx`（`.rowActions` 内加 `renderSlot`）。
   - `tsconfig.host.json`：注册 host 包（做法同 task6）。
   - `tsconfig.client.json`：注册 client 包（做法同 task8）。
   - `tsconfig.base.json`：别名。生成区由 `pnpm run gen-tsconfig-paths` 重建；client 包因目录前缀与 `dsh-client-ui-*` 命名不吻合，需手写根别名（同 task8）。
-  - UI 挂载点（client 行）所需的原生 composition 登记。
 - 不改 `FileSystem` 服务定义、不改 `agent-instructions`（能力缺口由新包内原语 + 自行门禁补齐）。
 - 挂载走**用户层 profile 补丁**（`~/.dsh/profiles/web/cordis.patch.yml` 插行），不进原生 bundle；本机验证用，不入仓库。
 
