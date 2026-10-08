@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-dsh-store` 拥有工作区的 `.dsh` 目录——这个项目级约定已经在承载项目技能与运行时快照。它按一张固定的拒绝矩阵校验 `.dsh` 相对路径，通过 `ctx.fs` 服务执行四个存储操作，并注册**一个**模型可见工具来按需执行它们。同时它负责让每个会话的存储根存在，并在会话不可写时跳过这次创建。
+`dsh-tool-dsh-store` 拥有工作区的 `.dsh` 目录——这个项目级约定已经在承载项目技能与运行时快照。它按一张固定的拒绝矩阵校验 `.dsh` 相对路径，通过 `ctx.fs` 服务执行四个存储操作，并注册**一个**模型可见工具来按需执行它们。同时它负责让每个会话的存储根存在，并在会话不可写时跳过这次创建；此外还提供一个只读 Remote 命名空间（`remote.dshStore`），让 Web 侧边栏**无需会话**即可列出并读取某工作区的规则。
 
 ## 目录
 
@@ -56,7 +56,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-`src/paths.ts` 把拒绝矩阵实现为不触碰文件系统的纯函数，因此矩阵的每一行都由单测钉住，而不是靠集成用例覆盖。`src/store-ops.ts` 把四个操作映射到 `FileSystem.mkdir`、`writeText`、`stat`/`listDir`/`readText` 与 `remove`，并返回具名的结果记录，让调用方读数据而不是读文件系统状态。`src/policy.ts` 在每次写操作前解析一次会话策略，并用共享的拒绝标记拒绝 `read-only` 会话；查询不过这道门禁，因为读取不会写存储区。`src/tool.ts` 定义工具并约束 `rules` 命名空间，`src/index.ts` 按会话解析 `<projectRoot>/.dsh`——从 `cwd` 向上找 `.git` 标记，找不到则退化为 `cwd`——并在会话可写时创建它。
+`src/paths.ts` 把拒绝矩阵实现为不触碰文件系统的纯函数，因此矩阵的每一行都由单测钉住，而不是靠集成用例覆盖。`src/store-ops.ts` 把四个操作映射到 `FileSystem.mkdir`、`writeText`、`stat`/`listDir`/`readText` 与 `remove`，并返回具名的结果记录，让调用方读数据而不是读文件系统状态。`src/policy.ts` 在每次写操作前解析一次会话策略，并用共享的拒绝标记拒绝 `read-only` 会话；查询不过这道门禁，因为读取不会写存储区。`src/tool.ts` 定义工具并约束 `rules` 命名空间，`src/index.ts` 按会话解析 `<projectRoot>/.dsh`——从 `cwd` 向上找 `.git` 标记，找不到则退化为 `cwd`——并在会话可写时创建它。`src/remote.ts` 是侧边栏使用的只读 Remote 命名空间：因为工作区行可能还没有会话，它按**工作区根**寻址；读取前先拿宿主的工作区注册表核对该根；它的列表就是指令加载器自己的保留集合，因此面板显示的正是进入模型的那一组。
 
 </details>
 

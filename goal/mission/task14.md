@@ -51,10 +51,21 @@
 - **`mcp.json`：** 决定**不做**。全仓库检索显示 `.dsh/mcp.json` **没有任何消费者**（唯一出现是本文档与 README），按仓库"公开选择必须有当前消费者证据"的规则，为它写校验等于凭空发明约定；已在 README 的 Known Limitations 与 Dev Note 里记录该判断与前提（先有消费者，再谈校验）。
 - **测试 33 个全绿**（新增 2 个 skills 用例：接受两种形态；拒绝无 frontmatter、缺 name、非法 name、缺 description、旧版键、过深路径，且拒绝时 `.dsh/skills` 不存在＝没落盘）。
 
+### 已完成（第四步：侧边栏数据面 —— 只读 Remote namespace）
+
+- **`src/remote.ts`**：`StoreRulesRemote extends TypertRemoteService`（服务键 `dshStore`），两个 `@Remote` 只读方法 `listRules(workspaceRoot)` / `readRule(workspaceRoot, path)`。四个要点：
+  - **按工作区根寻址**（不像 `workspaceFiles` 那样由 SessionId 派生）——工作区行可能还没有任何会话；
+  - **围栏**：读取前先拿 `ctx.workspaceRegistry.list()` 核对根，不认识的根一律以 `store/unknown-workspace` 拒绝（Remote 参数来自浏览器，不能直接信任）；
+  - **列表复用 loader 的扫描函数**（`scanWorkspaceRules`），因此面板显示的正是加载器真正注入的那一组（同样去重、同样路径序）；
+  - 读取一律走 `ctx.fs`（不用 node:fs），路径先过 `.dsh` 拒绝矩阵；`RemoteError` 错误码经 `RemoteErrorDetailsMap` 声明合并注册（Typert 要求边界类型从非根 `types` 子路径导出）。
+- **接线机制确认（重要，省掉一整类改动）**：客户端插件**自己挂载**宿主生成物——`import storeRemote from '@deepseek-ai/dsh-tool-dsh-store/remote'` 后 `ctx.remote.$mount(storeRemote)`（照 ui-models-dev 的包内自挂模式），**因此不需要改 `packages/api/remotes`**。
+- **`lib/typert.host.js` 与 `lib/typert.remote-client.js` 由构建自动生成**（没有独立代码生成命令）；`package.json` 已补 `./typert` / `./remote` / `./types` 导出与 `files` 条目。
+- **测试 37 个全绿**（新增 4 个：拒绝非 Host 拥有的根、返回拥有的根、容忍同一根的另一种写法、剥离 store 前缀）。
+
 ### 下一步（按优先级）
 
-1. 侧边栏 rules 按钮（`ui-tool-dsh-store`）——工作区行"新建会话"右侧，需要 `ui-workspace` 三处纯新增行。
-2. 把 tool-dsh-store 挂进仓库组合层（profile 级，与 task17 的 models-dev 一起），随后 Web 端到端验证。
+1. **客户端半边**：新包 `packages/uitstalie/ui-tool-dsh-store`（`@deepseek-ai/dsh-client-ui-tool-dsh-store`）——`ctx.remote.$mount` + 工作区行右侧的 rules 按钮 + 只读 rules 面板 + locale 字典；配合 `ui-workspace` 三处纯新增行（SlotMap 声明、children、`renderSlot`）。
+2. 把 tool-dsh-store 与 models-dev 一起挂进仓库组合层（task17），随后 Web 端到端验证。
 3. `rules` 加载侧（task16 已完成）与检查层（task15）的联动复核。
 
 ## 修改范围

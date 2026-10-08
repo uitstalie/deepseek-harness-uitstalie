@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-dsh-store` owns the `.dsh` directory of a workspace — the project-level convention that already holds project skills and runtime snapshots. It validates a `.dsh`-relative path against a fixed refusal matrix, performs four store operations through the `ctx.fs` service, and registers one model-facing tool that performs them on request. It also keeps the store root present for each session, skipping that creation while the session may not write.
+`dsh-tool-dsh-store` owns the `.dsh` directory of a workspace — the project-level convention that already holds project skills and runtime snapshots. It validates a `.dsh`-relative path against a fixed refusal matrix, performs four store operations through the `ctx.fs` service, and registers one model-facing tool that performs them on request. It also keeps the store root present for each session, skipping that creation while the session may not write, and serves a read-only Remote namespace (`remote.dshStore`) that lets the Web sidebar list and read a workspace's rules without a session.
 
 ## Table of Contents
 
@@ -56,7 +56,7 @@ Every operation takes an absolute path that the path layer already confined to t
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`src/paths.ts` holds the refusal matrix as pure functions that never touch the filesystem, which is why every row of the matrix is pinned by a unit test instead of an integration case. `src/store-ops.ts` maps the four operations onto `FileSystem.mkdir`, `writeText`, `stat`/`listDir`/`readText`, and `remove`, and returns named result records so callers read data rather than filesystem state. `src/policy.ts` resolves the per-session policy once per mutating call and refuses a `read-only` session with the shared denial marker; a query is not gated, because reading the store does not write it. `src/tool.ts` defines the tool and restricts the `rules` namespace, and `src/index.ts` resolves `<projectRoot>/.dsh` per session — `cwd` upward to a `.git` marker, `cwd` when no marker exists — and creates it once the session may write.
+`src/paths.ts` holds the refusal matrix as pure functions that never touch the filesystem, which is why every row of the matrix is pinned by a unit test instead of an integration case. `src/store-ops.ts` maps the four operations onto `FileSystem.mkdir`, `writeText`, `stat`/`listDir`/`readText`, and `remove`, and returns named result records so callers read data rather than filesystem state. `src/policy.ts` resolves the per-session policy once per mutating call and refuses a `read-only` session with the shared denial marker; a query is not gated, because reading the store does not write it. `src/tool.ts` defines the tool and restricts the `rules` namespace, and `src/index.ts` resolves `<projectRoot>/.dsh` per session — `cwd` upward to a `.git` marker, `cwd` when no marker exists — and creates it once the session may write. `src/remote.ts` is the read-only Remote namespace the sidebar uses: it is addressed by workspace root because a workspace row may have no session, it checks that root against the Host's workspace registry before reading anything, and its listing is the instruction loader's own retained set, so the panel shows exactly what reaches the model.
 
 </details>
 
