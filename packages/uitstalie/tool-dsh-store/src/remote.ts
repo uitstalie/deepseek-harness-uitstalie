@@ -10,11 +10,11 @@
  * @module @deepseek-ai/dsh-tool-dsh-store/remote
  */
 
-import { join, relative, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: resolves the workspace-registry service declaration.
-import type {} from '@deepseek-ai/dsh-workspace'
+import { WorkspaceId, type Workspace } from '@deepseek-ai/dsh-workspace'
 import { scanWorkspaceRules } from '@deepseek-ai/dsh-agent-instructions-plus'
 import { normalizeStorePath, resolveStoreTarget, STORE_DIR_NAME } from './paths.ts'
 import { isRulesPath } from './namespaces.ts'
@@ -25,22 +25,32 @@ import type { StoreRuleEntry, StoreRulesListing, StoreRuleText } from './types.t
 const MAX_RULE_BYTES = 256 * 1024
 
 /**
- * Refuse a workspace root the Host does not own.
+ * The workspace root of one workspace the Host resolved.
  *
- * A Remote method receives its arguments from the browser, so the root is
- * checked against the registry of workspaces the Host itself resolved instead of
- * being trusted as given.
- * @param knownPaths - absolute workspace paths the Host owns.
- * @param workspaceRoot - the root the caller asked for.
- * @returns the canonical `.dsh` root of that workspace.
- * @throws {RemoteError} `store/unknown-workspace` when the Host does not own the root.
+ * A Remote method receives its arguments from the browser, so the workspace is
+ * looked up by identity in the Host's own registry; the caller never supplies a
+ * path and cannot name a directory the Host does not own.
+ * @param workspace - the resolved workspace, or undefined when the id is unknown.
+ * @param workspaceId - the id the caller asked for, echoed in the refusal.
+ * @returns the canonical absolute workspace root.
+ * @throws {RemoteError} `store/unknown-workspace` when the Host has no such workspace.
  */
-export function storeRootOf(knownPaths: readonly string[], workspaceRoot: string): string {
-  const canonical = resolve(workspaceRoot)
-  if (!knownPaths.some(path => resolve(path) === canonical)) {
-    throw new RemoteError('store/unknown-workspace', `"${workspaceRoot}" is not a workspace of this Host`, { workspaceRoot })
+export function workspaceRootOf(workspace: Pick<Workspace, 'path'> | undefined, workspaceId: string): string {
+  if (workspace === undefined) {
+    throw new RemoteError('store/unknown-workspace', `"${workspaceId}" is not a workspace of this Host`, { workspaceId })
   }
-  return join(canonical, STORE_DIR_NAME)
+  return resolve(workspace.path)
+}
+
+/**
+ * The `.dsh` store root of one resolved workspace.
+ * @param workspace - the resolved workspace, or undefined when the id is unknown.
+ * @param workspaceId - the id the caller asked for, echoed in the refusal.
+ * @returns the canonical `.dsh` root.
+ * @throws {RemoteError} `store/unknown-workspace` when the Host has no such workspace.
+ */
+export function storeRootOfWorkspace(workspace: Pick<Workspace, 'path'> | undefined, workspaceId: string): string {
+  return join(workspaceRootOf(workspace, workspaceId), STORE_DIR_NAME)
 }
 
 /** Drop the store directory prefix from a loader display path (`rules/x.md`). */
@@ -65,26 +75,27 @@ export default class StoreRulesRemote extends TypertRemoteService {
     super(ctx, 'dshStore')
   }
 
-  /** Absolute workspace paths this Host owns. */
-  private knownPaths(): string[] {
-    return this.ctx.workspaceRegistry.list().map(workspace => workspace.path)
+  /** The workspace this Host resolved for one wire identity. */
+  private workspaceOf(workspaceId: string): Workspace | undefined {
+    return this.ctx.workspaceRegistry.get(WorkspaceId(workspaceId))
   }
 
   /**
-   * List the rules of one owned workspace.
+   * List the rules of one workspace.
    *
    * The listing is the instruction loader's own retained set — same scan, same
    * cross-file content deduplication — so the panel shows exactly what reaches
    * the model.
-   * @param workspaceRoot - absolute workspace path the client already knows.
+   * @param workspaceId - identity of the workspace whose rules the client shows.
    * @param signal - gateway-supplied cancellation.
    * @returns the retained rule files in path order.
+   * @throws {RemoteError} when this Host has no such workspace.
    */
   @Remote
-  async listRules(workspaceRoot: string, signal: AbortSignal): Promise<StoreRulesListing> {
-    const storeRoot = storeRootOf(this.knownPaths(), workspaceRoot)
+  async listRules(workspaceId: string, signal: AbortSignal): Promise<StoreRulesListing> {
+    const workspaceRoot = workspaceRootOf(this.workspaceOf(workspaceId), workspaceId)
     const scan = await scanWorkspaceRules(this.ctx.fs, {
-      projectRoot: resolve(workspaceRoot),
+      projectRoot: workspaceRoot,
       maxSourceBytes: MAX_RULE_BYTES,
       signal,
     })
@@ -92,20 +103,20 @@ export default class StoreRulesRemote extends TypertRemoteService {
       path: storeRelativePath(file.displayPath),
       size: Buffer.byteLength(file.content, 'utf8'),
     }))
-    return { root: relative(resolve(workspaceRoot), storeRoot).replaceAll('\\', '/'), entries }
+    return { root: STORE_DIR_NAME, entries }
   }
 
   /**
-   * Read one rule of one owned workspace.
-   * @param workspaceRoot - absolute workspace path the client already knows.
+   * Read one rule of one workspace.
+   * @param workspaceId - identity of the workspace whose rules the client shows.
    * @param path - rule path relative to the store directory, for example `rules/api.md`.
    * @param signal - gateway-supplied cancellation.
    * @returns the rule's complete text.
-   * @throws {RemoteError} when the path is not a rule path or no rule exists there.
+   * @throws {RemoteError} when the workspace is unknown, the path is not a rule path, or no rule exists there.
    */
   @Remote
-  async readRule(workspaceRoot: string, path: string, signal: AbortSignal): Promise<StoreRuleText> {
-    const storeRoot = storeRootOf(this.knownPaths(), workspaceRoot)
+  async readRule(workspaceId: string, path: string, signal: AbortSignal): Promise<StoreRuleText> {
+    const storeRoot = storeRootOfWorkspace(this.workspaceOf(workspaceId), workspaceId)
     const normalized = normalizeStorePath(path)
     if (!isRulesPath(normalized.displayPath)) {
       throw new RemoteError('store/invalid-rule-path', `"${path}" is not a path below rules/`, { path })
