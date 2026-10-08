@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * Rules button behavior: the trigger's accessible name, the listing it loads
- * when opened, reading one rule, and the empty, failed-listing, and
- * failed-read states.
+ * Rules button behavior: the mark trigger, the rule menu the shared Menu
+ * renders, reading one rule in the shared Modal, and the empty and failed paths
+ * that answer in the same dialog.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -45,62 +45,63 @@ function props(overrides: Partial<RulesButtonProps> = {}): RulesButtonProps {
   }
 }
 
+/** The mark trigger, addressed by its accessible name. */
+function trigger(): HTMLElement {
+  return screen.getByRole('button', { name: 'buttonAria:alpha' })
+}
+
 describe('RulesButton', () => {
-  it('names the mark trigger after the workspace it belongs to', () => {
+  it('renders a decorative mark named after the workspace it belongs to', () => {
     render(<RulesButton {...props()} />)
-    const trigger = screen.getByRole('button', { name: 'buttonAria:alpha' })
     // The copy stub returns keys, so the mark reads as its own key here.
-    expect(trigger.textContent).toBe('glyph')
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    // The mark is decorative: the accessible name above carries the meaning.
-    expect(trigger.querySelector('[aria-hidden="true"]')?.textContent).toBe('glyph')
+    expect(trigger().textContent).toBe('glyph')
+    expect(trigger().querySelector('[aria-hidden="true"]')?.textContent).toBe('glyph')
   })
 
-  it('loads the workspace rules on open and reads the selected rule', async () => {
-    const loadRules = vi.fn(async () => listing(['rules/api.md']))
+  it('lists the workspace rules in the shared menu and reads one in the dialog', async () => {
+    const loadRules = vi.fn(async () => listing(['rules/api.md', 'rules/style.md']))
     const loadRule = vi.fn(async () => ({ ok: true as const, value: { path: 'rules/api.md', text: 'Document public APIs.' } }))
     render(<RulesButton {...props({ loadRules, loadRule })} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'buttonAria:alpha' }))
+    fireEvent.click(trigger())
     expect(loadRules).toHaveBeenCalledWith('ws-1')
-    await waitFor(() => { expect(screen.getByText('rules/api.md')).toBeDefined() })
+    const row = await screen.findByRole('menuitem', { name: 'rules/api.md' })
+    expect(screen.getByRole('menuitem', { name: 'rules/style.md' })).toBeDefined()
 
-    fireEvent.click(screen.getByText('rules/api.md'))
+    fireEvent.click(row)
     expect(loadRule).toHaveBeenCalledWith('ws-1', 'rules/api.md')
     await waitFor(() => { expect(screen.getByText('Document public APIs.')).toBeDefined() })
   })
 
-  it('shows the empty copy when the workspace has no rules', async () => {
+  it('answers an empty workspace in the dialog instead of an empty menu', async () => {
     render(<RulesButton {...props({ loadRules: vi.fn(async () => listing([])) })} />)
-    fireEvent.click(screen.getByRole('button', { name: 'buttonAria:alpha' }))
+    fireEvent.click(trigger())
     await waitFor(() => { expect(screen.getByText('empty emptyHint')).toBeDefined() })
+    expect(screen.queryByRole('menuitem')).toBeNull()
   })
 
-  it('reports a failed listing as an alert', async () => {
+  it('reports a failed listing as an alert in the dialog', async () => {
     render(<RulesButton {...props({ loadRules: vi.fn(async () => failure('host refused')) })} />)
-    fireEvent.click(screen.getByRole('button', { name: 'buttonAria:alpha' }))
+    fireEvent.click(trigger())
     await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('loadFailed:host refused') })
   })
 
-  it('reports a failed rule read inside the open panel', async () => {
+  it('reports a failed rule read as an alert in the dialog', async () => {
     render(<RulesButton {...props({ loadRule: vi.fn(async () => failure('gone')) })} />)
-    fireEvent.click(screen.getByRole('button', { name: 'buttonAria:alpha' }))
-    await waitFor(() => { expect(screen.getByText('rules/api.md')).toBeDefined() })
-    fireEvent.click(screen.getByText('rules/api.md'))
-    await waitFor(() => { expect(screen.getByText('ruleFailed:gone')).toBeDefined() })
+    fireEvent.click(trigger())
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'rules/api.md' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('ruleFailed:gone') })
   })
 
-  it('closes on Escape and on its close control', async () => {
+  it('closes the dialog from its close control', async () => {
     render(<RulesButton {...props()} />)
-    const trigger = screen.getByRole('button', { name: 'buttonAria:alpha' })
-    fireEvent.click(trigger)
-    const surface = await screen.findByRole('dialog')
-    fireEvent.keyDown(surface, { key: 'Escape' })
-    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(trigger())
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'rules/api.md' }))
+    await waitFor(() => { expect(screen.getByText('Document public APIs.')).toBeDefined() })
 
-    fireEvent.click(trigger)
-    const reopened = await screen.findByRole('dialog')
-    fireEvent.click(screen.getByRole('button', { name: 'close' }))
-    expect(reopened.isConnected).toBe(false)
+    // The dialog carries two close affordances (its own chrome and the footer
+    // button); the footer one is the one with visible copy.
+    fireEvent.click(screen.getByText('close'))
+    await waitFor(() => { expect(screen.queryByText('Document public APIs.')).toBeNull() })
   })
 })
