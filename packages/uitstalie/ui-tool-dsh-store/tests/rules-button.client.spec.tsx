@@ -46,12 +46,14 @@ function props(overrides: Partial<RulesButtonProps> = {}): RulesButtonProps {
 }
 
 describe('RulesButton', () => {
-  it('names the icon trigger after the workspace it belongs to', () => {
+  it('names the mark trigger after the workspace it belongs to', () => {
     render(<RulesButton {...props()} />)
     const trigger = screen.getByRole('button', { name: 'buttonAria:alpha' })
-    expect(trigger.textContent).toBe('')
+    // The copy stub returns keys, so the mark reads as its own key here.
+    expect(trigger.textContent).toBe('glyph')
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(trigger.querySelector('svg')).not.toBeNull()
+    // The mark is decorative: the accessible name above carries the meaning.
+    expect(trigger.querySelector('[aria-hidden="true"]')?.textContent).toBe('glyph')
   })
 
   it('loads the workspace rules on open and reads the selected rule', async () => {

@@ -9,7 +9,6 @@
 import { useRef, useState } from 'react'
 import {
   Button,
-  IconChecklistOutlineRegular,
   IconCloseOutlineRegular,
   MenuItemButton,
   MenuSurface,
@@ -114,14 +113,13 @@ export function RulesButton({ workspaceId, label, t, loadRules, loadRule }: Rule
       <Tooltip label={t('button')} side="bottom" align="end" delayMs={500}>
         <Button
           ref={trigger}
-          variant="toolbar"
+          size="sm"
           className={css.trigger}
           aria-expanded={open}
           aria-label={t('buttonAria', { name: label })}
+          icon={<span className={css.glyph} aria-hidden="true">{t('glyph')}</span>}
           onClick={(event) => { event.stopPropagation(); void toggle() }}
-        >
-          <IconChecklistOutlineRegular />
-        </Button>
+        />
       </Tooltip>
       {open && (
         <MenuSurface
@@ -134,7 +132,7 @@ export function RulesButton({ workspaceId, label, t, loadRules, loadRule }: Rule
         >
           <span className={css.header}>
             <span className={css.title}>{t('title', { name: label })}</span>
-            <Button variant="toolbar" aria-label={t('close')} onClick={() => { setOpen(false) }}>
+            <Button size="sm" aria-label={t('close')} onClick={() => { setOpen(false) }}>
               <IconCloseOutlineRegular />
             </Button>
           </span>

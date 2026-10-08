@@ -2,6 +2,13 @@
   flex: none;
 }
 
+/* The trigger's mark: a letter standing in for an icon, sized by the button's
+   own icon slot so it matches the glyphs beside it. */
+.glyph {
+  font-weight: 600;
+  line-height: 1;
+}
+
 .surface {
   position: fixed;
   display: flex;

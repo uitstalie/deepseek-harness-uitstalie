@@ -7,6 +7,8 @@
 /** English strings (the key-set source of truth for this pair). */
 export const en = {
   button: 'Rules',
+  /** The trigger's mark; a single capital letter stands in for an icon. */
+  glyph: 'R',
   buttonAria: 'Show the workspace rules of {name}',
   title: 'Workspace rules of {name}',
   loading: 'Loading rules…',
@@ -20,6 +22,7 @@ export const en = {
 /** Chinese strings, same keys. */
 export const zh: typeof en = {
   button: '规则',
+  glyph: 'R',
   buttonAria: '查看 {name} 的工作区规则',
   title: '{name} 的工作区规则',
   loading: '正在载入规则…',
