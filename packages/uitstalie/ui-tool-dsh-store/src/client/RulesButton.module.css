@@ -1,52 +1,18 @@
+/* The trigger only claims its mark's weight; the shared Button supplies the rest
+   of its chrome, and the shared Menu and Modal supply their own surfaces. */
 .trigger {
   flex: none;
 }
 
-/* The trigger's mark: a letter standing in for an icon, sized by the button's
-   own icon slot so it matches the glyphs beside it. */
-.glyph {
+.mark {
   font-weight: 600;
   line-height: 1;
 }
 
-.surface {
-  position: fixed;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px;
-  min-width: 280px;
-  max-width: 420px;
-}
-
-.header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 6px;
-}
-
-.title {
-  font-weight: 500;
-}
-
-.list {
-  display: flex;
-  flex-direction: column;
-  max-height: 220px;
-  overflow: auto;
-}
-
-.notice {
-  padding: 4px 6px;
-}
-
 .ruleText {
   margin: 0;
-  padding: 4px 6px;
-  max-height: 280px;
-  overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
+  max-height: 360px;
+  overflow: auto;
 }
