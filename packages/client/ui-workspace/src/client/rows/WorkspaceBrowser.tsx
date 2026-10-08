@@ -499,6 +499,7 @@ function SessionTree({
           containsCurrentDescendant={currentAncestors.has(group.key)}
           home={home}
           t={t}
+          renderSlot={renderSlot}
           onToggle={() => {
             if (group.expanded) {
               setSessionLimits(limits => ({ ...limits, [group.key]: COLLAPSED_SESSION_LIMIT }))
