@@ -111,11 +111,32 @@
 
 尚需人工确认的只有**视觉**一环（工作区行右侧的按钮与面板内容），由用户在浏览器里点开该 URL 完成。
 
+### 已完成（第八步：修浏览器端模块表拒绝）
+
+**用户实测发现的真问题**（浏览器 boot 横幅）：
+
+```
+@deepseek-ai/dsh-client-ui-tool-dsh-store: import failed: client-modules: require("zod")
+missed the module table — not a platform seed word, not a materialized module, and no
+registered package factory (a build-time externals drift …)
+```
+
+**根因**：Typert 生成的 `lib/typert.remote-client.js`（`import { z } from 'zod'`）需要 zod，而**宿主包 `tool-dsh-store` 没有声明 zod**，于是 tsdown 解析不到、把它当外部依赖留在 bundle 里，浏览器模块表自然没有它。对照检查：所有发布 Typert 生成物的包（`models-dev`、`llm-plus`、`api/workspace-files`、`typert/registry`）都把 **zod 声明在 `dependencies`**——只有我们漏了。
+
+**修复**：宿主包 `dependencies` + `devDependencies` 补 `zod: ^4.4.3`（与 models-dev/llm-plus 同款）；客户端包的 `devDependencies` 也补上（浏览器侧构建输入，让 tsdown 内联它）。
+
+**验证**：
+- 重建后构建日志出现 `Detected dependencies in bundle: - zod`（**已内联**），`lib/client.js` 里剩下的裸依赖只有平台种子 `react` / `react/jsx-runtime` / `@deepseek-ai/dsh-client-ui-primitives`；
+- `pnpm run build` 不再出现 `Module not found, treating it as an external dependency` 警告，351 artifact；
+- `verify-client-packages`：63 个 client 包合规；`scripts/client-bundle-purity.spec.ts` 40 个全绿；两面 `tsc` 干净；`packages/uitstalie` + `ui-workspace` **482 测试**全绿。
+
+**门禁缺口（值得单独跟进）**：这次漂移**没有任何门禁拦住**——`pnpm run build` 只打印警告并以 0 退出，`verify-client-packages` 与 bundle purity 规格也都没发现它，直到浏览器运行时模块表才拒绝。建议后续加一条"客户端 bundle 出现非平台种子的未解析裸导入即失败"的检查（或在 `clientBundle` 预设里把该警告升级为错误）。
+
 ### 下一步（按优先级）
 
-1. **人工视觉确认**：打开 `http://127.0.0.1:3081/?token=…`，确认每个工作区行的"新建会话"按钮右侧出现 rules 按钮、点开能列出并读出该工作区 `.dsh/rules` 的内容；必要时在会话里确认模型工具表出现 `tool-dsh-store`。
-2. 修 `ui-models-dev` 的既有 CSS 违规（0.5px 中性边框 + `corner-shape`），让 `test:gui` 全绿。
-3. task17（把 models-dev / ui-models-dev 从本机 profile patch 迁到仓库组合层）与 task15 检查层。
+1. **人工视觉确认**：刷新 `http://127.0.0.1:3081/?token=…`，确认工作区行右侧的 rules 按钮与面板；若横幅仍在，说明浏览器缓存了旧 bundle（硬刷新）。
+2. 补"未解析裸导入即失败"的客户端构建门禁（上文缺口）。
+3. 修 `ui-models-dev` 的既有 CSS 违规（0.5px 中性边框 + `corner-shape`），让 `test:gui` 全绿；task15 检查层与 task17 的组合层迁移。
 
 ## 修改范围
 
