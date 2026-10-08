@@ -560,6 +560,7 @@ function SessionTree({
           containsCurrentDescendant={currentAncestors.has(group.key)}
           home={home}
           t={t}
+          renderSlot={renderSlot}
           onToggle={() => {
             if (group.expanded) dropWatermarks(key => withinGroup(key, group.key))
             setGroupExpanded(group.key, !group.expanded)
