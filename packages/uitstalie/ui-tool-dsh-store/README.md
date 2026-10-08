@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-tool-dsh-store` adds one button to every Workspace row in the Web sidebar, to the right of that row's new-session button. The button opens a read-only panel over the workspace's `.dsh` rules: the rule files the instruction loader injects, each one readable in place. It rides the store's Remote namespace (`remote.dshStore`), so the list is the Host's own loaded set and the panel cannot write anything.
+`dsh-client-ui-tool-dsh-store` adds one button to every Workspace row in the Web sidebar, to the right of that row's new-session button. The button opens the workspace's `.dsh` rules as rows of the shared `Menu`, and reading one rule opens the shared `Modal`, so the surfaces behave like every other row menu and dialog in the app. It rides the store's Remote namespace (`remote.dshStore`), so the list is the Host's own loaded set and the panel cannot write anything.
 
 ## Table of Contents
 
@@ -27,13 +27,13 @@ English | [中文](README.zh.md)
 
 The plugin occupies `sidebar.workspaces.row.action`, a list seat that the Workspace row renders inside its action group after the new-session button. The seat's owner share carries the workspace identity and its label, so the occupant needs no lookup of its own; the ungrouped bucket shows no Workspace and renders no occupant.
 
-### What the panel shows
+### What the button and dialog show
 
-Opening the button lists every retained rule as a path with its byte size, and selecting one reads that rule's text below the list. The list is the instruction loader's own retained set — same scan, same cross-file content deduplication — so the panel shows exactly the rules that reach the model, and an empty workspace says so instead of failing.
+The button is the trigger's mark only: the checklist of rule paths arrives as shared menu rows, and selecting one opens the shared dialog with that rule's text. The list is the instruction loader's own retained set — same scan, same cross-file content deduplication — so what the menu offers is exactly what reaches the model. A workspace with no rules, or a listing that fails, answers in the same dialog instead of an empty menu.
 
 ### Data and failures
 
-The panel reads through `remote.dshStore.listRules` and `readRule`, which the plugin mounts itself in `apply` before waiting for them in an inner scope. A Remote call resolves to a discriminated result, so a refused workspace or an unreadable rule arrives as copy in the panel rather than as an exception. Nothing in this package writes, and the Host checks the workspace identity against its own registry.
+The panel reads through `remote.dshStore.listRules` and `readRule`, which the plugin mounts itself in `apply` before waiting for them in an inner scope. A Remote call resolves to a discriminated result, so a refused workspace or an unreadable rule arrives as copy in the dialog rather than as an exception. Nothing in this package writes, and the Host checks the workspace identity against its own registry.
 
 -----
 
