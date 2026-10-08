@@ -12,3 +12,4 @@
 - 分支自有文件与原生文件的修改分开提交；原生修改的提交保持少而集中。
 - 每次 rebase 到 master 后执行 `git grep -n "uitstalie-"` 盘点全部标记，逐处确认适配结果；即使出现破坏性 rebase，也凭标记与任务单快速梳理和恢复。
 - 代码风格偏好（用户明确要求，对分支自有代码强制）：函数最小化且可组合——小函数、可复用函数、函数的组合优先于大函数，让 debug 与组合更简单、逻辑更清楚；数据与逻辑分离——数据形状做成有名字的纯数据接口（data class），数据之间用组合方式构造，行为函数只读写这些数据而不把形状匿名内联。
+- **UI 一律优先共用模板（用户明确要求，2026/09/30，对分支自有 client 代码强制）**：有共用件就用共用件——`ui-primitives` 的 `Menu` / `Modal` / `Button` / `Tooltip` / `HoverCard` 等组件承担摆放、portal、材质、键盘与焦点，`ui-theme` 的 `--dsw-*` token 承担颜色与描边；**不手搓**定位、层级、材质或自造色值。理由与背景见 [theme-overlay.md](theme-overlay.md)：用户计划做 theme 插件与 overlay 插件（对特定组件或主题 config 做 overlay），只有组件是共用件、样式走 token，overlay 才有稳定的落点。
