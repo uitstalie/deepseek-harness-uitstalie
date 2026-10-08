@@ -80,11 +80,28 @@
 - **`test:gui` 8 个失败，均与本改动无关**：3 个 `ui-theme` 样式规格是 **`ui-models-dev` 既有 CSS 违规**（中性 token 边框用了 `1px`，规格要求 `0.5px`；另有 `corner-shape` 缺失）；其余 4 个分别在 `client/connection`（binary rpc gzip）、`ui-deliverables`（symlink 打开）、`ui-sidebar-documentpreview`（license chunk）、`ui-sidebar-right`（持久化字节）——都与本次改动面无关。
 - **平面边界**：宿主面声明的 Remote 错误码（`src/types.ts` 的 `RemoteErrorDetailsMap` 增强）在**客户端测试程序**里合并不上（探针证明组件能看到、测试文件看不到）。本版 UI 不按错误码分支，因此用协议自带错误码写测试桩；将来若要按 `store/not-found` 之类分支，需要把错误码声明放到两个面都能加载的模块。
 
+### 已完成（第六步：挂进仓库组合层 + 编译测试）
+
+**原生插入（5 处，全部带标记）**——不再走本机 profile patch，直接由仓库声明：
+
+1. `packages/bundle/web-app/cordis.patch.yml`：紧随 `ui-workspace` 行插入 client 行 `ui-tool-dsh-store`（seat 的声明者在前，占用者在后）；
+2. `packages/bundle/web-app/presets/{standard,ptc,cordis}.patch.yml`：在 task16 的同一个标记块内、plus 行之后插入 host 行 `tool-dsh-store`（工具随 agent preset 组装，与 tool-bash/tool-fs 同侧）；
+3. `packages/bundle/web-app/package.json`：新增两个依赖（`@deepseek-ai/dsh-tool-dsh-store`、`@deepseek-ai/dsh-client-ui-tool-dsh-store`）——preset 与 client 行里的裸包名必须能在 bundle 的 manifest 里解析。
+
+**编译测试结果**：
+
+- `pnpm install` ✓、`pnpm run build` ✓（**351** client artifact）；
+- `tsc -b tsconfig.client.json` ✓、`tsc -b tsconfig.host.json` ✓；
+- 组合敏感测试：`packages/uitstalie` + `packages/preset/agent-preset-registry` 共 **17 文件 / 131 测试全绿**（含 preset 守卫测试与 store 的真实 Loader 组合测试）；
+- bundle 自身的组合测试：`packages/bundle/web-app/tests/{web-app,startup}.spec.ts` **22 个全绿**——新的 client 行与 preset 行在组合里可解析、可启动。
+
+**环境性失败（非本次改动）**：`ui-sidebar-documentpreview` 的许可证打包测试失败于**本机 pnpm store 损坏**（`D:\.pnpm-store\...\@pnpm\exe\package.json` 缺失，`pnpm pack` 起不来）；该修复涉及工作区外路径，按用户要求不擅自改动。
+
 ### 下一步（按优先级）
 
-1. **挂载与端到端**：把 tool-dsh-store（host）与 ui-tool-dsh-store（client）挂进本机 profile patch 之外的仓库组合层（与 task17 的 models-dev 一起），随后 Web 端到端验证（工作区行右侧看到按钮、点开能读规则）。
+1. **Web 端到端验证**：从本 checkout 启动 harness（需用户定时间/端口），确认工作区行右侧出现 rules 按钮、点开能读出该工作区的规则；同时确认模型工具表里出现 `tool-dsh-store`。
 2. 修 `ui-models-dev` 的既有 CSS 违规（0.5px 中性边框 + `corner-shape`），让 `test:gui` 全绿。
-3. `rules` 加载侧（task16）与检查层（task15）的联动复核。
+3. task17（把 models-dev / ui-models-dev 从本机 profile patch 迁到仓库组合层）与 task15 检查层。
 
 ## 修改范围
 
