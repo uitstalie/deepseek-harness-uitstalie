@@ -62,11 +62,29 @@
 - **`lib/typert.host.js` 与 `lib/typert.remote-client.js` 由构建自动生成**（没有独立代码生成命令）；`package.json` 已补 `./typert` / `./remote` / `./types` 导出与 `files` 条目。
 - **测试 37 个全绿**（新增 4 个：拒绝非 Host 拥有的根、返回拥有的根、容忍同一根的另一种写法、剥离 store 前缀）。
 
+### 已完成（第五步：客户端半边 —— 侧边栏 rules 按钮）
+
+- **原生插入（比预告的"三处"多，实际 4 个文件 7 处，全部为新增行 + 标记）**：
+  1. `ui-workspace/src/client/contract/slots.ts`：`WorkspaceRowOwnerProps`（工作区身份 + 标签）与 SlotMap 条目 `sidebar.workspaces.row.action`（list/root），以及 `WorkspaceBrowserProps` 的 `PropsRenderSlots` 联合；
+  2. `src/client/index.ts`：父注册的 `children` 声明该 seat；
+  3. `src/client/rows/Rows.tsx`：`RowRenderSlots` 联合、`ProjectRowItem` 的 `renderSlot` 参数，以及 `.rowActions` 内、新建会话按钮**右侧**的 `renderSlot` 调用；
+  4. `src/client/rows/WorkspaceBrowser.tsx`：把 `renderSlot` 透传给行组件。
+  - **偏差登记一**：`ProjectRowItem` 的 `renderSlot` 声明为**可选**（浏览器根始终传入）。理由：设为必填会让既有 `rows.client.spec.tsx` 的 9 处直接构造报错，而按仓库惯例要包一层默认值（改原生测试 9 处）；可选 + 显式 `!== undefined` 守卫把原生差异压到最小。代价：若浏览器根漏传，seat 静默不渲染。
+  - **偏差登记二**：`ui-workspace` 的 **README 未改**（其 slot 清单属原生双语文档，改了要重录配对）。seat 由本包的 README 记录为占用方。
+- **客户端包 `packages/uitstalie/ui-tool-dsh-store/`（`@deepseek-ai/dsh-client-ui-tool-dsh-store`）**：`ctx.remote.$mount(storeRemote)` 自挂 Remote → 内层 `ctx.inject(['slots','remote.dshStore'])` → `slots.inject(SEAT)` 注册按钮；`RulesButton` 用 ui-primitives 的 `Button` + `MenuSurface`（自定义下拉的强制容器）+ `MenuItemButton`，面板列出规则路径与字节数、点选后就地读正文，空态/失败态/读取失败态都有文案，Esc 与关闭控件都能收起。文案经 `ctx.locale.register(NS, { zh, en })` 双语注册。
+- **登记**：`tsconfig.client.json` 引用、`tsconfig.base.json` 手写根别名（client 前缀推不出）+ **手写 `/types` 子路径别名**、`pnpm install` 的 lockfile。
+- **验证**：`tsc` 客户端面与宿主面均干净、`oxlint`（本包 + ui-workspace）0 错、**组件测试 6 个全绿**、`ui-workspace` 396 个既有测试全绿、`pnpm run build` **351** artifact（新增 2 个 client 产物）、21 条文档门禁全绿。
+
+### 发现的既有问题与边界（不在本任务单范围）
+
+- **`test:gui` 8 个失败，均与本改动无关**：3 个 `ui-theme` 样式规格是 **`ui-models-dev` 既有 CSS 违规**（中性 token 边框用了 `1px`，规格要求 `0.5px`；另有 `corner-shape` 缺失）；其余 4 个分别在 `client/connection`（binary rpc gzip）、`ui-deliverables`（symlink 打开）、`ui-sidebar-documentpreview`（license chunk）、`ui-sidebar-right`（持久化字节）——都与本次改动面无关。
+- **平面边界**：宿主面声明的 Remote 错误码（`src/types.ts` 的 `RemoteErrorDetailsMap` 增强）在**客户端测试程序**里合并不上（探针证明组件能看到、测试文件看不到）。本版 UI 不按错误码分支，因此用协议自带错误码写测试桩；将来若要按 `store/not-found` 之类分支，需要把错误码声明放到两个面都能加载的模块。
+
 ### 下一步（按优先级）
 
-1. **客户端半边**：新包 `packages/uitstalie/ui-tool-dsh-store`（`@deepseek-ai/dsh-client-ui-tool-dsh-store`）——`ctx.remote.$mount` + 工作区行右侧的 rules 按钮 + 只读 rules 面板 + locale 字典；配合 `ui-workspace` 三处纯新增行（SlotMap 声明、children、`renderSlot`）。
-2. 把 tool-dsh-store 与 models-dev 一起挂进仓库组合层（task17），随后 Web 端到端验证。
-3. `rules` 加载侧（task16 已完成）与检查层（task15）的联动复核。
+1. **挂载与端到端**：把 tool-dsh-store（host）与 ui-tool-dsh-store（client）挂进本机 profile patch 之外的仓库组合层（与 task17 的 models-dev 一起），随后 Web 端到端验证（工作区行右侧看到按钮、点开能读规则）。
+2. 修 `ui-models-dev` 的既有 CSS 违规（0.5px 中性边框 + `corner-shape`），让 `test:gui` 全绿。
+3. `rules` 加载侧（task16）与检查层（task15）的联动复核。
 
 ## 修改范围
 
