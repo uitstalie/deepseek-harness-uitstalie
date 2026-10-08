@@ -45,12 +45,17 @@
 - 验证：`tsc -b tsconfig.host.json` 干净、`oxlint` 0 错、`pnpm run build` 349 artifact、依赖门禁与文档门禁全绿。
 - 顺带完成 README 三件套（见 [task20](task20.md)）：本包的 Model Experience 从"单句 none"升级为**结构化**条目（工具 schema、结果文本、KV 影响），并撤掉门禁表里那条"工具属于后续工作"的登记。
 
+### 已完成（第三步：命名空间校验收尾）
+
+- **`skills/**` 校验**（`src/namespaces.ts`）：只接受技能根真正发现的两形态（`skills/<name>.md` 与 `skills/<name>/SKILL.md`，依据 [skill-filesystem](../../packages/skill/skill-filesystem/src/index.ts) 的 `isPotentialSkillPath`）、frontmatter 必须是 YAML 映射、`name` 必须满足技能加载器导出的 `isSkillName` 规则（`^[a-z0-9]+(?:-[a-z0-9]+)*$`）、`description` 必须非空、三个旧版驼峰键必须报错并指向规范键。判据全部对齐加载器的真实行为（加载器对坏文件是"忽略 + 警告"，我们在写入前就拒绝，因此坏技能不会落盘）。
+- **`mcp.json`：** 决定**不做**。全仓库检索显示 `.dsh/mcp.json` **没有任何消费者**（唯一出现是本文档与 README），按仓库"公开选择必须有当前消费者证据"的规则，为它写校验等于凭空发明约定；已在 README 的 Known Limitations 与 Dev Note 里记录该判断与前提（先有消费者，再谈校验）。
+- **测试 33 个全绿**（新增 2 个 skills 用例：接受两种形态；拒绝无 frontmatter、缺 name、非法 name、缺 description、旧版键、过深路径，且拒绝时 `.dsh/skills` 不存在＝没落盘）。
+
 ### 下一步（按优先级）
 
-1. **`mcp.json` 与 `skills/**/SKILL.md` 的命名空间校验**（`rules` 已做；另两个分别需要 MCP client 的 schema 与技能清单规则）。
-2. 侧边栏 rules 按钮（`ui-tool-dsh-store`）——工作区行"新建会话"右侧，需要 `ui-workspace` 三处纯新增行。
-3. 把 tool-dsh-store 挂进仓库组合层（profile 级，与 task17 的 models-dev 一起），随后 Web 端到端验证。
-4. `rules` 加载侧（task16 已完成）与检查层（task15）的联动复核。
+1. 侧边栏 rules 按钮（`ui-tool-dsh-store`）——工作区行"新建会话"右侧，需要 `ui-workspace` 三处纯新增行。
+2. 把 tool-dsh-store 挂进仓库组合层（profile 级，与 task17 的 models-dev 一起），随后 Web 端到端验证。
+3. `rules` 加载侧（task16 已完成）与检查层（task15）的联动复核。
 
 ## 修改范围
 
