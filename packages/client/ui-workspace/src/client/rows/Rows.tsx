@@ -38,6 +38,7 @@ type RowTranslate = WorkspaceBrowserProps['t']
  * card is open.
  */
 type RowRenderSlots = PropsRenderSlots<
+  | 'sidebar.workspaces.row.action'
   | 'sidebar.workspaces.session.menu.item'
   | 'sidebar.workspaces.session.row.action'
   | 'sidebar.session.row.leading'
@@ -216,7 +217,9 @@ function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' |
  * @param props.t - the browser root's locale seat.
  * @returns the row element.
  */
-export function ProjectRowItem({ group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag, home, newShortcut, t }: {
+export function ProjectRowItem({
+  group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag, home, newShortcut, renderSlot, t,
+}: {
   group: GroupNode
   newShortcut?: ShortcutCatalogEntry | undefined
   containsCurrentDescendant?: boolean
@@ -228,6 +231,12 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
   drag?: WorkspaceRowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
   home?: string | undefined
+  /**
+   * Child-seat renderer for the workspace row's action list. The browser root
+   * always passes it; optional so a direct-prop render (tests, stories) does not
+   * have to stub a seat it does not exercise.
+   */
+  renderSlot?: RowRenderSlots | undefined
   t: RowTranslate
 }) {
   const row = group
@@ -305,6 +314,8 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
             <IconNewChatOutlineRegular />
           </button>
         </Tooltip>
+        {row.workspaceId !== undefined && renderSlot !== undefined
+          && renderSlot('sidebar.workspaces.row.action', { workspaceId: row.workspaceId, label })}
       </span>
     </div>
   )

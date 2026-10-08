@@ -337,7 +337,10 @@
       // END uitstalie-k3
       // BEGIN uitstalie-k3, 2026/08/31, task8, client 包命名（dsh-client-ui-*）与 uitstalie 目录前缀不吻合，生成器无法推断，手写根别名
       "@deepseek-ai/dsh-client-ui-models-dev": ["./packages/uitstalie/ui-models-dev/src"],
+      "@deepseek-ai/dsh-client-ui-tool-dsh-store": ["./packages/uitstalie/ui-tool-dsh-store/src"],
       // END uitstalie-k3
+      // uitstalie-k3, 2026/09/30, task14, /types 子路径走手写别名：生成器只管根与 invariant；该模块声明 Remote 错误码，必须与消费方解析到同一个模块
+      "@deepseek-ai/dsh-tool-dsh-store/types": ["./packages/uitstalie/tool-dsh-store/src/types.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],

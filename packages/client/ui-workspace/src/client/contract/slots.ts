@@ -111,12 +111,29 @@ export interface SessionRowScheduleOwnerProps {
   readonly sessionId: SessionId
 }
 
+/**
+ * Owner share of the workspace-row action seat: the row passes the Workspace it
+ * shows, so an occupant addresses that workspace's own data by identity.
+ */
+export interface WorkspaceRowOwnerProps {
+  /** Identity of the Workspace this row shows. */
+  readonly workspaceId: WorkspaceId
+  /** Display label of the row, for occupant copy such as an accessible name. */
+  readonly label: string
+}
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** Directory-flow hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
     'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
     'sidebar.workspaces.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
+    /**
+     * Trailing action seat of one Workspace row, rendered inside the row's action
+     * group directly after its new-session button. The ungrouped bucket shows no
+     * Workspace, so it renders no occupant.
+     */
+    'sidebar.workspaces.row.action': { kind: 'list'; scope: 'root'; owner: WorkspaceRowOwnerProps }
     /**
      * Leading decoration of one Session row, in the 16px cell before the title
      * that the row's own state dot otherwise occupies. A higher-priority state
@@ -455,6 +472,7 @@ export type WorkspaceBrowserProps =
   PropsRuntime<'sidebar.workspaces'>
   & PropsRenderSlots<
     | 'sidebar.workspaces.directoryFlow'
+    | 'sidebar.workspaces.row.action'
     | 'sidebar.workspaces.session.menu.item'
     | 'sidebar.workspaces.session.row.action'
     | 'sidebar.session.row.leading'

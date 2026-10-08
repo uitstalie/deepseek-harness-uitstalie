@@ -146,7 +146,9 @@
     { "path": "./packages/context/file-reference" },
     { "path": "./apps/web" },
     // BEGIN uitstalie-k3, 2026/08/31, task8, 注册 uitstalie 组 client 包进 Client 聚合程序
-    { "path": "./packages/uitstalie/ui-models-dev" }
+    { "path": "./packages/uitstalie/ui-models-dev" },
     // END uitstalie-k3
+    // uitstalie-k3, 2026/09/30, task14, 注册侧边栏 rules 按钮 client 包进 Client 聚合程序
+    { "path": "./packages/uitstalie/ui-tool-dsh-store" }
   ]
 }

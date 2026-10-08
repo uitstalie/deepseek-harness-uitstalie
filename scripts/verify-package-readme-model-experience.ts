@@ -236,6 +236,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/uitstalie/models-dev': { kind: 'indirect', reason: 'The catalog service resolves routes, model defaults, and extra request parameters that the LLM consumers render into requests.' },
   'packages/uitstalie/llm-plus': { kind: 'indirect', reason: 'The adapter registers provider routes and request fields with dsh-llm, which owns request assembly.' },
   'packages/uitstalie/ui-models-dev': { kind: 'none', reason: 'Browser-side settings section over the catalog service; the host services that register and serve the routes it edits own every model-visible effect.' },
+  'packages/uitstalie/ui-tool-dsh-store': { kind: 'none', reason: 'Browser-side sidebar panel that only reads rules through the store Remote namespace; it contributes no request content and writes nothing.' },
   // END uitstalie-k3
 }
 
