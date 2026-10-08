@@ -30,7 +30,7 @@ kind: "package-reference"
 
 ### 工具做什么
 
-注册的 `tool-dsh-store` 工具接收 `create`、`query` 或 `delete` 三种 `action`，以及相对 `.dsh` 的 `path`。`create` 写文件或建目录，`query` 列目录或读文件，`delete` 删除文件或目录——只有同时给出 `recursive` 时才允许删除非空目录。创建规则会先校验 `rules` 命名空间：目标必须是 Markdown、正文不得为空、正文不得与已存在的规则重复。
+注册的 `tool-dsh-store` 工具接收 `create`、`query` 或 `delete` 三种 `action`，以及相对 `.dsh` 的 `path`。`create` 写文件或建目录，`query` 列目录或读文件，`delete` 删除文件或目录——只有同时给出 `recursive` 时才允许删除非空目录。创建规则会先校验 `rules` 命名空间：目标必须是 Markdown、正文不得为空、正文不得与已存在的规则重复。写技能会校验技能根所需的文档：路径必须是它发现的两种形态之一、front-matter 必须是映射、`name` 必须是小写单词以单个连字符连接（`skills/review.md`、`skills/handoff/SKILL.md`）。
 
 ### 路径先校验再使用
 
@@ -85,7 +85,7 @@ kind: "package-reference"
 
 这些限制说明本包当前**有意不做**的事。
 
-- **命名空间校验只覆盖 `rules`**——`mcp.json` 与 `skills/**/SKILL.md` 目前按原样写入，校验属于后续工作。
+- **命名空间校验覆盖 `rules` 与 `skills`**——`mcp.json` 刻意不校验：harness 里没有任何插件读它，为它写校验等于凭空发明一个约定，而不是保护已有消费者。
 - **根目录固定为 `.dsh`**——不做配置项，因此一个工作区只有一个存储区。
 - **只读会话不保留存储根**——创建它属于写操作，因此根会在会话首次可写时出现；在此之前查询会如实报告根不存在。
 
@@ -97,6 +97,6 @@ kind: "package-reference"
 
 本开发备注是非权威的工作上下文：尚未决定的问题与方向。已发布行为与已确认的理由在上文各节与包内代码里。
 
-- **`mcp.json` 与 `skills/**/SKILL.md` 的命名空间校验**——`rules` 的检查先落地；另外两个命名空间分别需要 MCP client 的 schema 与技能清单规则。
+- **`mcp.json` 这个命名空间是否该存在**——需要先有一个消费它的插件，存储层才谈得上有意义地校验其内容。
 
 </details>
