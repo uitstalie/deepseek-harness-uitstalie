@@ -19,6 +19,7 @@ import { findProjectRoot } from '@deepseek-ai/dsh-agent-instructions'
 import { STORE_DIR_NAME } from './paths.ts'
 import { ensureStoreRoot } from './store-ops.ts'
 import { defineStoreTool } from './tool.ts'
+import StoreRulesRemote from './remote.ts'
 
 export const name = 'tool-dsh-store'
 /** The tool registry and the filesystem every store call writes through. */
@@ -73,6 +74,8 @@ export { resolveStorePolicy } from './policy.ts'
 export type { StorePolicy } from './policy.ts'
 export { defineStoreTool } from './tool.ts'
 export type { StoreToolOptions, StoreToolValue } from './tool.ts'
+export { storeRelativePath, storeRootOf } from './remote.ts'
+export type { StoreRuleEntry, StoreRulesListing, StoreRuleText } from './types.ts'
 
 /**
  * Register the store tool and the per-session root preparation.
@@ -114,6 +117,11 @@ export function apply(ctx: Context, config: Config): void {
       return prepare(exec.agent.session, exec.signal)
     },
   }))
+
+  // The read-only Remote namespace the Web sidebar consumes. It waits for the
+  // workspace registry on its own fiber, so a composition without one keeps the
+  // tool and loses only the sidebar surface.
+  void ctx.plugin(StoreRulesRemote)
 
   if (!ensureRoot) return
   ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
