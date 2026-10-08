@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/ui-tool-dsh-store/README.md
+/:
+  en: 942473b524d794ac
+  zh: 2af105d52dd828fa
+/deepseek-ai-dsh-client-ui-tool-dsh-store:
+  en: d18420022677b01d
+  zh: 83f14da73792c0ea
+/deepseek-ai-dsh-client-ui-tool-dsh-store/summary:
+  en: e687ffc3fa453297
+  zh: 4bcd2ee2d5adce92
+/deepseek-ai-dsh-client-ui-tool-dsh-store/table-of-contents:
+  en: 4e53164159b5ce41
+  zh: 89582dc0294d0776
+/deepseek-ai-dsh-client-ui-tool-dsh-store/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-client-ui-tool-dsh-store/use-this-package/where-the-button-appears:
+  en: 71e522aa91c59efc
+  zh: d5025525747baa00
+/deepseek-ai-dsh-client-ui-tool-dsh-store/use-this-package/what-the-panel-shows:
+  en: 972a7abe1f380e9a
+  zh: 7c9e18394042b57e
+/deepseek-ai-dsh-client-ui-tool-dsh-store/use-this-package/data-and-failures:
+  en: 0927122e93fff6be
+  zh: edafd8a024cf016d
+/deepseek-ai-dsh-client-ui-tool-dsh-store/model-experience:
+  en: 984f6e6c950a78dc
+  zh: 3113c92d3cd9ff7d
+/deepseek-ai-dsh-client-ui-tool-dsh-store/model-experience/kv-cache-effect:
+  en: 63c78e5874320546
+  zh: 7e584d459ce8f796
+/deepseek-ai-dsh-client-ui-tool-dsh-store/known-limitations-and-deferred-work:
+  en: 60412ad0a38a5209
+  zh: df0ec444a7ae184c
+/deepseek-ai-dsh-client-ui-tool-dsh-store/known-limitations-and-deferred-work/dev-note:
+  en: 363190d8ffa87dad
+  zh: 9c7305898ef81264
