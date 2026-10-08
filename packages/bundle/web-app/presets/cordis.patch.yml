@@ -27,6 +27,8 @@
                 maxBytes: 65536
               rules:
                 maxBytes: 16384
+          - id: tool-dsh-store
+            name: '@deepseek-ai/dsh-tool-dsh-store'
           # END uitstalie-k3
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'

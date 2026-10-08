@@ -356,6 +356,10 @@
     - id: ui-workspace
       name: '@deepseek-ai/dsh-client-ui-workspace'
 
+    # uitstalie-k3, 2026/09/30, task14, 侧边栏 rules 按钮：占用 ui-workspace 的工作区行 seat
+    - id: ui-tool-dsh-store
+      name: '@deepseek-ai/dsh-client-ui-tool-dsh-store'
+
     # Durable workflow lifecycle as an independent Chat node after the
     # existing generic workflow tool row.
     - id: ui-workflow-run
