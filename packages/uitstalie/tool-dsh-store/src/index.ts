@@ -43,11 +43,17 @@ export {
   isPathInside,
   normalizeStorePath,
   resolveStoreTarget,
-  RULES_NAMESPACE_PATTERN,
   STORE_DIR_NAME,
   StorePathError,
 } from './paths.ts'
 export type { NormalizedStorePath, StorePathLimits, StorePathRejection } from './paths.ts'
+export {
+  isRulesPath,
+  isSkillsPath,
+  RULES_NAMESPACE_PATTERN,
+  SKILLS_NAMESPACE_PATTERN,
+  validateNamespaceContent,
+} from './namespaces.ts'
 export {
   createStoreFile,
   createStoreFolder,

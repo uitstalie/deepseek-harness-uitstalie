@@ -192,6 +192,42 @@ test('refuses a delete for a path that does not exist', async () => {
   expect(text(missing)).toContain('not found: .dsh/rules/absent.md')
 })
 
+test('accepts the two skill shapes the skill root discovers', async () => {
+  const { ctx, agent } = await mount()
+  const flat = await call(ctx, agent, {
+    action: 'create',
+    target: 'file',
+    path: 'skills/review.md',
+    content: '---\nname: review\ndescription: Review a diff.\n---\n\nSteps.\n',
+  })
+  expect(flat.isError).toBe(false)
+  const nested = await call(ctx, agent, {
+    action: 'create',
+    target: 'file',
+    path: 'skills/handoff/SKILL.md',
+    content: '---\nname: handoff\ndescription: Write a handoff note.\n---\n\nSteps.\n',
+  })
+  expect(nested.isError).toBe(false)
+})
+
+test('refuses skill documents the skill root would ignore', async () => {
+  const { ctx, agent } = await mount()
+  const cases: [string, string, string][] = [
+    ['skills/plain.md', 'No frontmatter at all.', 'frontmatter'],
+    ['skills/plain.md', '---\ndescription: No name.\n---\n\nBody.\n', 'requires `name`'],
+    ['skills/plain.md', '---\nname: Review Skill\ndescription: Bad name.\n---\n\nBody.\n', 'must be lowercase words'],
+    ['skills/plain.md', '---\nname: review\n---\n\nBody.\n', 'non-empty `description`'],
+    ['skills/plain.md', '---\nname: review\ndescription: Legacy key.\nuserInvocable: true\n---\n\nBody.\n', 'is unsupported'],
+    ['skills/nested/deeper/SKILL.md', '---\nname: deep\ndescription: Too deep.\n---\n', 'a skill is'],
+  ]
+  for (const [path, content, expected] of cases) {
+    const refused = await call(ctx, agent, { action: 'create', target: 'file', path, content })
+    expect(refused.isError, path + ' ' + expected).toBe(true)
+    expect(text(refused), path + ' ' + expected).toContain(expected)
+  }
+  await expect(stat(join(project, '.dsh', 'skills'))).rejects.toThrow()
+})
+
 test('a read-only session refuses every mutation with the shared denial marker', async () => {
   const { ctx, agent } = await mount('read-only')
   const refused = await call(ctx, agent, {
