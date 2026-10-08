@@ -97,9 +97,23 @@
 
 **环境性失败（非本次改动）**：`ui-sidebar-documentpreview` 的许可证打包测试失败于**本机 pnpm store 损坏**（`D:\.pnpm-store\...\@pnpm\exe\package.json` 缺失，`pnpm pack` 起不来）；该修复涉及工作区外路径，按用户要求不擅自改动。
 
+### 已完成（第七步：受控 dev server 验证）
+
+从**本 checkout**（不是兄弟 checkout）启动受管 dev server：`pnpm run dev:web -- --skip-build --no-open --port 3081`（后台 job `pwsh-108`；3080 上用户原有的 GUI 未受影响）。
+
+服务端可观测的三层证据：
+
+1. **启动日志**：`dev-web: watching 74 dsh.client plugin packages ... packages/uitstalie/ui-tool-dsh-store`——我们的 client 包在 watcher 清单里（HMR 生效）；tsdown 也重建了 `[@deepseek-ai/dsh-client-ui-tool-dsh-store]`；
+2. **HTTP**：`GET http://127.0.0.1:3081/?token=…` → **200**，35,711 字节，含 `__DSH_BOOT__`；
+3. **组合与投递**：
+   - `pnpm dsh --profile web --dump-config` 中出现 `ui-tool-dsh-store → @deepseek-ai/dsh-client-ui-tool-dsh-store`（profile 级）与 preset 内的 `tool-dsh-store → @deepseek-ai/dsh-tool-dsh-store`（与 `agent-instructions` / `agent-instructions-plus` 相邻）；
+   - SPA 的 boot 载荷里列出 `@deepseek-ai/dsh-client-ui-tool-dsh-store/client.js`——浏览器确实会加载本插件。
+
+尚需人工确认的只有**视觉**一环（工作区行右侧的按钮与面板内容），由用户在浏览器里点开该 URL 完成。
+
 ### 下一步（按优先级）
 
-1. **Web 端到端验证**：从本 checkout 启动 harness（需用户定时间/端口），确认工作区行右侧出现 rules 按钮、点开能读出该工作区的规则；同时确认模型工具表里出现 `tool-dsh-store`。
+1. **人工视觉确认**：打开 `http://127.0.0.1:3081/?token=…`，确认每个工作区行的"新建会话"按钮右侧出现 rules 按钮、点开能列出并读出该工作区 `.dsh/rules` 的内容；必要时在会话里确认模型工具表出现 `tool-dsh-store`。
 2. 修 `ui-models-dev` 的既有 CSS 违规（0.5px 中性边框 + `corner-shape`），让 `test:gui` 全绿。
 3. task17（把 models-dev / ui-models-dev 从本机 profile patch 迁到仓库组合层）与 task15 检查层。
 
