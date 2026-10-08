@@ -39,6 +39,7 @@ type RowTranslate = WorkspaceBrowserProps['t']
  * card is open.
  */
 type RowRenderSlots = PropsRenderSlots<
+  | 'sidebar.workspaces.row.action'
   | 'sidebar.workspaces.session.menu.item'
   | 'sidebar.workspaces.session.row.action'
   | 'sidebar.session.row.trailing'
@@ -217,6 +218,12 @@ type ProjectRowItemProps = {
   drag?: WorkspaceRowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
   home?: string | undefined
+  /**
+   * Child-seat renderer for the workspace row's action list. The browser root
+   * always passes it; optional so a direct-prop render (tests, stories) does not
+   * have to stub a seat it does not exercise.
+   */
+  renderSlot?: RowRenderSlots | undefined
   t: RowTranslate
 } & Pick<WorkspaceBrowserProps, 'useRemoteAccess' | 'useWorkspaceAccess'>
 
@@ -271,7 +278,7 @@ function WorkspaceProjectRow({ workspaceId, ...props }: ProjectRowItemProps & { 
 }
 
 function ProjectRow({
-  group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag: offeredDrag, home, newShortcut, t, access,
+  group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag: offeredDrag, home, newShortcut, renderSlot, t, access,
 }: ProjectRowItemProps & { access: ProjectRowAccess }) {
   const drag = access.reorder ? offeredDrag : undefined
   const row = group
@@ -353,6 +360,8 @@ function ProjectRow({
             </button>
           </Tooltip>
         )}
+        {row.workspaceId !== undefined && renderSlot !== undefined
+          && renderSlot('sidebar.workspaces.row.action', { workspaceId: row.workspaceId, label })}
       </span>
     </div>
   )
@@ -620,6 +629,12 @@ export function SessionNodeItem({
   drag?: RowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
   home?: string | undefined
+  /**
+   * Child-seat renderer for the workspace row's action list. The browser root
+   * always passes it; optional so a direct-prop render (tests, stories) does not
+   * have to stub a seat it does not exercise.
+   */
+  renderSlot?: RowRenderSlots | undefined
   t: RowTranslate
 } & Pick<WorkspaceBrowserProps, 'useSessionAccess'> & PropsRenderSlots<
   | 'sidebar.workspaces.session.menu.item'
