@@ -1,5 +1,5 @@
 ---
-description: "The workspace .dsh store for users and maintainers who need its path refusal matrix, store operations, and the tool that will expose them."
+description: "The workspace .dsh store for users and maintainers who need its path refusal matrix, store operations, and the model-facing store tool."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-dsh-store` owns the `.dsh` directory of a workspace — the project-level convention that already holds project skills and runtime snapshots. It validates a `.dsh`-relative path against a fixed refusal matrix and performs four store operations through the `ctx.fs` service: create a folder, create a file, query a target, and remove a target. The package publishes that layer only; the single model-facing tool that will expose it is deferred work, so mounting the package today adds no request content.
+`dsh-tool-dsh-store` owns the `.dsh` directory of a workspace — the project-level convention that already holds project skills and runtime snapshots. It validates a `.dsh`-relative path against a fixed refusal matrix, performs four store operations through the `ctx.fs` service, and registers one model-facing tool that performs them on request. It also keeps the store root present for each session, skipping that creation while the session may not write.
 
 ## Table of Contents
 
@@ -26,7 +26,11 @@ English | [中文](README.zh.md)
 
 ### The .dsh directory is the store
 
-`.dsh` is already this repository's project-level convention: project skills live under `.dsh/skills`, workspace rules will live under `.dsh/rules`, and test fixtures write `.dsh/runtime.json`. The store owns that one directory, so a caller names a target relative to `.dsh` instead of assembling an absolute path.
+`.dsh` is already this repository's project-level convention: project skills live under `.dsh/skills`, workspace rules live under `.dsh/rules`, and test fixtures write `.dsh/runtime.json`. The store owns that one directory, so a caller names a target relative to `.dsh` instead of assembling an absolute path.
+
+### What the tool does
+
+The registered `tool-dsh-store` tool takes an `action` of `create`, `query`, or `delete` and a `path` relative to `.dsh`. `create` writes a file or makes a folder, `query` lists a folder or reads a file, and `delete` removes a file or a folder — a populated folder only when the call also sets `recursive`. Creating a rule validates the `rules` namespace first: the target must be Markdown, its text must not be empty, and its text must not repeat a rule that already exists.
 
 ### Paths are validated before they are used
 
@@ -42,7 +46,7 @@ English | [中文](README.zh.md)
 | Query a target | `queryStoreTarget` | Target kind, direct children, and optionally file text |
 | Remove a target | `removeStoreTarget` | `{ path, kind }`; a populated directory requires `recursive` |
 
-Every operation takes an absolute path that the path layer already confined to the root plus the `FileSystem` service, so project-root discovery and session policy stay with the caller.
+Every operation takes an absolute path that the path layer already confined to the root plus the `FileSystem` service, and a mutation also receives the calling session's resolved policy, so a confining provider fences the same call.
 
 -----
 
@@ -52,7 +56,7 @@ Every operation takes an absolute path that the path layer already confined to t
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`src/paths.ts` holds the refusal matrix as pure functions that never touch the filesystem, which is why every row of the matrix is pinned by a unit test instead of an integration case. `src/store-ops.ts` maps the four operations onto `FileSystem.mkdir`, `writeText`, `stat`/`listDir`/`readText`, and `remove`, and returns named result records so callers read data rather than filesystem state. `mkdir` and `remove` are the optional primitives this branch added to the filesystem service definition; a backend without them rejects the call and names itself.
+`src/paths.ts` holds the refusal matrix as pure functions that never touch the filesystem, which is why every row of the matrix is pinned by a unit test instead of an integration case. `src/store-ops.ts` maps the four operations onto `FileSystem.mkdir`, `writeText`, `stat`/`listDir`/`readText`, and `remove`, and returns named result records so callers read data rather than filesystem state. `src/policy.ts` resolves the per-session policy once per mutating call and refuses a `read-only` session with the shared denial marker; a query is not gated, because reading the store does not write it. `src/tool.ts` defines the tool and restricts the `rules` namespace, and `src/index.ts` resolves `<projectRoot>/.dsh` per session — `cwd` upward to a `.git` marker, `cwd` when no marker exists — and creates it once the session may write.
 
 </details>
 
@@ -61,21 +65,29 @@ Every operation takes an absolute path that the path layer already confined to t
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as the package currently publishes path validation and store operations only; the tool that will expose them to the model is deferred work.
+### Workspace store tool
+
+#### What the model sees
+
+One tool named `tool-dsh-store` with a required `action` of `create`, `query`, or `delete`, a required `path` relative to `.dsh`, and the optional `target`, `content`, and `recursive` fields. Each call answers with one short text result — `Created file .dsh/rules/api.md.`, `Deleted directory .dsh/rules.`, or `Not found: .dsh/rules/absent.md.` — and a folder query lists its direct children as `- file .dsh/rules/api.md (24 bytes)`.
+
+#### Token effect
+
+Fixed schema cost on every request where the tool is visible. Results stay small: a folder query grows with the number of direct children, and a file query returns that file's complete text.
 
 #### KV Cache effect
 
-None: the package contributes no request content.
+Prefix-stable while the definition and visibility are unchanged. Results are ordinary tool results appended after the reusable prefix, so they invalidate no earlier entry.
 
 ## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
 
-These limits describe what the package deliberately does not do yet. They are current constraints, not a task backlog.
+These limits describe what the package deliberately does not do.
 
-- **No model-facing tool yet** — the `tool-dsh-store` tool (create, query, delete over a `.dsh`-relative path), its session policy gate, and its namespace checks are the next slice; until then the package is a library.
-- **The root is fixed to `.dsh`** — it is not configurable, so one workspace has exactly one store, and callers cannot point the operations at another directory.
-- **No content validation** — the store writes what it is given; the rule that `.dsh/rules/**` entries are Markdown and non-duplicated belongs to the tool slice that creates them.
+- **Namespace checks cover `rules` only** — `mcp.json` and `skills/**/SKILL.md` are written as given; validating them is deferred.
+- **The root is fixed to `.dsh`** — it is not configurable, so one workspace has exactly one store.
+- **A read-only session keeps no store root** — creating it is a write, so it appears the first time the session may write, and a query placed before that reports the root as missing.
 
 <a id="dev-note"></a>
 ### Dev Note
@@ -85,6 +97,6 @@ These limits describe what the package deliberately does not do yet. They are cu
 
 This Dev Note is non-authoritative working context: open questions and directions that are not decided. Shipped behavior and accepted rationale live in the sections above and in the package code.
 
-- **The model-facing tool, its session policy gate, and its namespace checks are the next slice; until they land this package is a library.**
+- **Namespace validation for `mcp.json` and `skills/**/SKILL.md`** — the `rules` checks landed first; the other two namespaces need the MCP client's schema and the skill manifest rules respectively.
 
 </details>

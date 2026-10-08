@@ -7,6 +7,7 @@
  */
 
 import type { FileSystem, FsTarget } from '@deepseek-ai/dsh-fs'
+import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 
 /** 条目类型：只区分调用方需要区分的三类。 */
 export type StoreEntryKind = 'file' | 'directory' | 'other'
@@ -67,17 +68,19 @@ function entryKind(type: string): StoreEntryKind {
  * @param fileSystem - 使用的文件系统服务。
  * @param root - 根的绝对路径。
  * @param signal - 取消信号。
+ * @param sandboxPolicy - 本次调用所属的会话策略；限定型后端据此围栏。
  * @returns 本次调用是否真的创建了根目录。
  */
 export async function ensureStoreRoot(
   fileSystem: FileSystem,
   root: string,
   signal?: AbortSignal,
+  sandboxPolicy?: SandboxExecutionPolicy,
 ): Promise<boolean> {
   const target = await fileSystem.resolve(root, signal === undefined ? {} : { signal })
   const existing = await fileSystem.stat(target, signal)
   if (existing !== undefined) return false
-  await fileSystem.mkdir(target, signal)
+  await fileSystem.mkdir(target, signal, sandboxPolicy)
   return true
 }
 
@@ -87,6 +90,7 @@ export async function ensureStoreRoot(
  * @param absolutePath - 目标绝对路径，已确认位于根内。
  * @param displayPath - 目标相对 `.dsh/` 的展示路径。
  * @param signal - 取消信号。
+ * @param sandboxPolicy - 本次调用所属的会话策略；限定型后端据此围栏。
  * @returns 创建结果。
  */
 export async function createStoreFolder(
@@ -94,9 +98,10 @@ export async function createStoreFolder(
   absolutePath: string,
   displayPath: string,
   signal?: AbortSignal,
+  sandboxPolicy?: SandboxExecutionPolicy,
 ): Promise<StoreCreateResult> {
   const target = await fileSystem.resolve(absolutePath, signal === undefined ? {} : { signal })
-  await fileSystem.mkdir(target, signal)
+  await fileSystem.mkdir(target, signal, sandboxPolicy)
   return { path: displayPath, kind: 'directory' }
 }
 
@@ -107,6 +112,7 @@ export async function createStoreFolder(
  * @param displayPath - 目标相对 `.dsh/` 的展示路径。
  * @param content - 要写入的完整正文。
  * @param signal - 取消信号。
+ * @param sandboxPolicy - 本次调用所属的会话策略；限定型后端据此围栏。
  * @returns 创建结果。
  */
 export async function createStoreFile(
@@ -115,9 +121,10 @@ export async function createStoreFile(
   displayPath: string,
   content: string,
   signal?: AbortSignal,
+  sandboxPolicy?: SandboxExecutionPolicy,
 ): Promise<StoreCreateResult> {
   const target = await fileSystem.resolve(absolutePath, signal === undefined ? {} : { signal })
-  await fileSystem.writeText(target, content, undefined, signal)
+  await fileSystem.writeText(target, content, undefined, signal, sandboxPolicy)
   return { path: displayPath, kind: 'file' }
 }
 
@@ -175,6 +182,7 @@ function describeEntry(name: string, type: string, size: number | undefined, par
  * @param displayPath - 目标相对 `.dsh/` 的展示路径。
  * @param recursive - 是否递归删除目录内容；非空目录未给此开关时由文件系统拒绝。
  * @param signal - 取消信号。
+ * @param sandboxPolicy - 本次调用所属的会话策略；限定型后端据此围栏。
  * @returns 删除结果。
  */
 export async function removeStoreTarget(
@@ -183,10 +191,11 @@ export async function removeStoreTarget(
   displayPath: string,
   recursive: boolean,
   signal?: AbortSignal,
+  sandboxPolicy?: SandboxExecutionPolicy,
 ): Promise<StoreRemoveResult> {
   const target: FsTarget = await fileSystem.resolve(absolutePath, signal === undefined ? {} : { signal })
   const info = await fileSystem.stat(target, signal)
   const kind = info === undefined ? 'file' : entryKind(info.type)
-  await fileSystem.remove(target, { recursive }, signal)
+  await fileSystem.remove(target, { recursive }, signal, sandboxPolicy)
   return { path: displayPath, kind: kind === 'directory' ? 'directory' : 'file' }
 }
