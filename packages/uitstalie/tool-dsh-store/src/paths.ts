@@ -10,6 +10,9 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 /** 工作区内的约定根目录名（锁定，不做配置项）。 */
 export const STORE_DIR_NAME = '.dsh'
 
+/** 规则命名空间里合法 Markdown 文件的 `.dsh` 相对路径形态（允许嵌套目录）。 */
+export const RULES_NAMESPACE_PATTERN = /^rules\/(?:[^/]+\/)*[^/]+\.md$/u
+
 /** 路径长度与深度上限。 */
 export interface StorePathLimits {
   /** 相对 `.dsh/` 的展示路径最大字符数。 */

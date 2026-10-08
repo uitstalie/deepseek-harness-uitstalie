@@ -35,12 +35,22 @@
 - 顺带修掉 task8 遗留的 **`ui-models-dev` manifest 问题**（29 条依赖门禁）：非 cordis 的 DSH 依赖下沉 devDependencies、`workspace:^`→`workspace:*`、cordis 保持 peer+dev 的 `workspace:~`、`zod` 移入 devDependencies。`verify-package-dependencies` 现在 75 个包全过。
 - **验证**：`tsc -b tsconfig.host.json` 干净、`oxlint` 0 错、**19 个测试全绿**、`pnpm run build` 349 artifact。
 
+### 已完成（第二步：工具接线）
+
+- **工具面板**（`src/tool.ts`）：单个 `tool-dsh-store`，`action` 取 `create` / `query` / `delete`，`path` 相对 `.dsh`，另有 `target` / `content` / `recursive`。工具描述说明它是 `.dsh` 的统一入口（rules、skills、runtime 都在这下面），并点名它比通用 write/edit/shell 更合适。
+- **会话策略门禁**（`src/policy.ts`）：每次**写**调用解析会话策略，`read-only` 用共享的 `[sandbox: …]` 拒绝标记拒绝；**查询不过门禁**（读不写存储区，只读会话仍可查看）。策略对象同时传给 `mkdir` / `writeText` / `remove`，限定型后端围栏同一次调用。刻意**不**广告 `sandbox_permissions` 升级参数，因此拒绝文本只给标记、不给模型用不上的重试提示。
+- **`rules` 命名空间校验**（写前拒绝、不落盘）：必须是 `rules/**/*.md`、正文非空、且正文（去首尾空白后）不得与已有规则重复——重复检查复用 loader 包（`agent-instructions-plus`）的扫描函数，避免第二份"规则是什么"的实现。
+- **每会话准备存储根**（`src/index.ts`）：按会话解析 `<projectRoot>/.dsh`（`cwd` 向上找 `.git`，找不到退化为 `cwd`），在首次 `agent/pre-step` 与每次工具调用前确保其存在；`read-only` 不标记为已完成，会话后续变为可写时会补建。
+- **测试 31 个全绿**：路径矩阵 10、存储操作 9、工具层 11、**真实 Loader 组合 1**（YAML 组合启动 → 生产 Agent → 断言工具被注册、pre-step 后空 `.dsh/` 出现、工具调用真实落盘）。
+- 验证：`tsc -b tsconfig.host.json` 干净、`oxlint` 0 错、`pnpm run build` 349 artifact、依赖门禁与文档门禁全绿。
+- 顺带完成 README 三件套（见 [task20](task20.md)）：本包的 Model Experience 从"单句 none"升级为**结构化**条目（工具 schema、结果文本、KV 影响），并撤掉门禁表里那条"工具属于后续工作"的登记。
+
 ### 下一步（按优先级）
 
-1. **工具接线**：`tool-dsh-store` 的 Tool schema（create/query/delete × file/folder）、会话策略门禁（`read-only` 一律拒绝、`workspace-write` 仅限 `.dsh/` 内）、拒绝措辞复用 sandbox denial marker、命名空间校验（`rules/**` 的 Markdown 与重复内容拒绝；`mcp.json` 复用 mcp-client 的 Config 校验；`skills/**/SKILL.md` 必填项）。挂载后确保根目录存在。
-2. **五个 uitstalie 包缺 README**：`verify-package-readme-model-experience` 与 `verify-package-readme-limitations` 对 models-dev / llm-plus / ui-models-dev / agent-instructions-plus / tool-dsh-store **全部报缺**（含 Model Experience 段与 `## Known Limitations and Deferred Work` 段，中文对与 i18n 记录同步）。
-3. ~~禁用词重命名~~ **已完成**，见 [task19](task19.md)：目录来源类型改为 `CatalogOrigin`、字段改为 `origin`，生成物已重跑。
-4. 侧边栏 rules UI（`ui-tool-dsh-store`）与 Remote 只读 namespace。
+1. **`mcp.json` 与 `skills/**/SKILL.md` 的命名空间校验**（`rules` 已做；另两个分别需要 MCP client 的 schema 与技能清单规则）。
+2. 侧边栏 rules 按钮（`ui-tool-dsh-store`）——工作区行"新建会话"右侧，需要 `ui-workspace` 三处纯新增行。
+3. 把 tool-dsh-store 挂进仓库组合层（profile 级，与 task17 的 models-dev 一起），随后 Web 端到端验证。
+4. `rules` 加载侧（task16 已完成）与检查层（task15）的联动复核。
 
 ## 修改范围
 
