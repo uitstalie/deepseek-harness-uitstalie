@@ -74,7 +74,7 @@ export { resolveStorePolicy } from './policy.ts'
 export type { StorePolicy } from './policy.ts'
 export { defineStoreTool } from './tool.ts'
 export type { StoreToolOptions, StoreToolValue } from './tool.ts'
-export { storeRelativePath, storeRootOf } from './remote.ts'
+export { storeRelativePath, storeRootOfWorkspace, workspaceRootOf } from './remote.ts'
 export type { StoreRuleEntry, StoreRulesListing, StoreRuleText } from './types.ts'
 
 /**
