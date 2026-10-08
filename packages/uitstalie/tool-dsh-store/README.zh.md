@@ -1,5 +1,5 @@
 ---
-description: "工作区 .dsh 存储层说明，面向需要其路径拒绝矩阵、存储操作与后续模型工具的读者。"
+description: "工作区 .dsh 存储层说明，面向需要其路径拒绝矩阵、存储操作与模型可见工具的读者。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-dsh-store` 拥有工作区的 `.dsh` 目录——这个项目级约定已经在承载项目技能与运行时快照。它按一张固定的拒绝矩阵校验 `.dsh` 相对路径，并通过 `ctx.fs` 服务执行四个存储操作：建目录、写文件、查询目标、删除目标。本包目前只发布这一层；把它暴露给模型的**单个工具**属于后续工作，因此现在挂载它不会增加任何请求内容。
+`dsh-tool-dsh-store` 拥有工作区的 `.dsh` 目录——这个项目级约定已经在承载项目技能与运行时快照。它按一张固定的拒绝矩阵校验 `.dsh` 相对路径，通过 `ctx.fs` 服务执行四个存储操作，并注册**一个**模型可见工具来按需执行它们。同时它负责让每个会话的存储根存在，并在会话不可写时跳过这次创建。
 
 ## 目录
 
@@ -26,7 +26,11 @@ kind: "package-reference"
 
 ### .dsh 目录就是存储区
 
-`.dsh` 已经是本仓库的项目级约定：项目技能在 `.dsh/skills` 下，工作区规则将放在 `.dsh/rules` 下，测试夹具写 `.dsh/runtime.json`。存储层只拥有这一个目录，调用方给出相对 `.dsh` 的目标，而不是自己拼绝对路径。
+`.dsh` 已经是本仓库的项目级约定：项目技能在 `.dsh/skills` 下，工作区规则在 `.dsh/rules` 下，测试夹具写 `.dsh/runtime.json`。存储层只拥有这一个目录，调用方给出相对 `.dsh` 的目标，而不是自己拼绝对路径。
+
+### 工具做什么
+
+注册的 `tool-dsh-store` 工具接收 `create`、`query` 或 `delete` 三种 `action`，以及相对 `.dsh` 的 `path`。`create` 写文件或建目录，`query` 列目录或读文件，`delete` 删除文件或目录——只有同时给出 `recursive` 时才允许删除非空目录。创建规则会先校验 `rules` 命名空间：目标必须是 Markdown、正文不得为空、正文不得与已存在的规则重复。
 
 ### 路径先校验再使用
 
@@ -42,7 +46,7 @@ kind: "package-reference"
 | 查询目标 | `queryStoreTarget` | 目标类型、直接子项，以及可选的正文 |
 | 删除目标 | `removeStoreTarget` | `{ path, kind }`；非空目录需要 `recursive` |
 
-每个操作接收的绝对路径都已由路径层限定在根内，配合 `FileSystem` 服务使用，因此 project root 的判定与会话策略都留在调用方。
+每个操作接收的绝对路径都已由路径层限定在根内，配合 `FileSystem` 服务使用；写操作还会带上调用会话解析出的策略，因此限定型后端围栏的是同一次调用。
 
 -----
 
@@ -52,7 +56,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-`src/paths.ts` 把拒绝矩阵实现为不触碰文件系统的纯函数，因此矩阵的每一行都由单测钉住，而不是靠集成用例覆盖。`src/store-ops.ts` 把四个操作映射到 `FileSystem.mkdir`、`writeText`、`stat`/`listDir`/`readText` 与 `remove`，并返回具名的结果记录，让调用方读数据而不是读文件系统状态。`mkdir` 与 `remove` 是本分支为文件系统服务定义补上的可选原语；不支持它们的后端会拒绝调用并指名自己。
+`src/paths.ts` 把拒绝矩阵实现为不触碰文件系统的纯函数，因此矩阵的每一行都由单测钉住，而不是靠集成用例覆盖。`src/store-ops.ts` 把四个操作映射到 `FileSystem.mkdir`、`writeText`、`stat`/`listDir`/`readText` 与 `remove`，并返回具名的结果记录，让调用方读数据而不是读文件系统状态。`src/policy.ts` 在每次写操作前解析一次会话策略，并用共享的拒绝标记拒绝 `read-only` 会话；查询不过这道门禁，因为读取不会写存储区。`src/tool.ts` 定义工具并约束 `rules` 命名空间，`src/index.ts` 按会话解析 `<projectRoot>/.dsh`——从 `cwd` 向上找 `.git` 标记，找不到则退化为 `cwd`——并在会话可写时创建它。
 
 </details>
 
@@ -61,21 +65,29 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-无：本包目前只发布路径校验与存储操作，把它们暴露给模型的工具属于后续工作。
+### 工作区存储工具
+
+#### 模型看到的内容
+
+一个名为 `tool-dsh-store` 的工具：必填的 `action` 取 `create`、`query` 或 `delete`，必填的 `path` 相对 `.dsh`，另有可选的 `target`、`content` 与 `recursive`。每次调用返回一句短文本——`Created file .dsh/rules/api.md.`、`Deleted directory .dsh/rules.` 或 `Not found: .dsh/rules/absent.md.`——目录查询则把直接子项列为 `- file .dsh/rules/api.md (24 bytes)`。
+
+#### Token 影响
+
+工具可见时每次请求都有固定的 schema 开销。结果本身很小：目录查询随直接子项数量增长，文件查询返回该文件的完整正文。
 
 #### KV Cache 影响
 
-无：本包不贡献任何请求内容。
+在定义与可见性不变时前缀稳定。结果只是追加在可复用前缀之后的普通工具结果，不会使更早的条目失效。
 
 ## 已知限制与延期工作
 
 <a id="known-limitations-and-deferred-work"></a>
 
-这些限制说明本包当前**有意不做**的事，是当前约束而不是待办清单。
+这些限制说明本包当前**有意不做**的事。
 
-- **尚无模型可见工具**——`tool-dsh-store` 工具（对 `.dsh` 相对路径执行创建、查询、删除）、它的会话策略门禁与命名空间校验是下一步；在那之前本包只是库。
-- **根目录固定为 `.dsh`**——不做配置项，因此一个工作区只有一个存储区，调用方无法把操作指向别的目录。
-- **不做内容校验**——存储层写入它所收到的一切；`.dsh/rules/**` 必须是 Markdown 且不得重复内容这条规则，属于创建它们的工具那一步。
+- **命名空间校验只覆盖 `rules`**——`mcp.json` 与 `skills/**/SKILL.md` 目前按原样写入，校验属于后续工作。
+- **根目录固定为 `.dsh`**——不做配置项，因此一个工作区只有一个存储区。
+- **只读会话不保留存储根**——创建它属于写操作，因此根会在会话首次可写时出现；在此之前查询会如实报告根不存在。
 
 <a id="dev-note"></a>
 ### 开发备注
@@ -85,6 +97,6 @@ kind: "package-reference"
 
 本开发备注是非权威的工作上下文：尚未决定的问题与方向。已发布行为与已确认的理由在上文各节与包内代码里。
 
-- **模型工具、会话策略门禁与命名空间校验是下一步；在那之前本包只是库。**
+- **`mcp.json` 与 `skills/**/SKILL.md` 的命名空间校验**——`rules` 的检查先落地；另外两个命名空间分别需要 MCP client 的 schema 与技能清单规则。
 
 </details>

@@ -15,7 +15,19 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../context/agent-instructions"
+    },
+    {
+      "path": "../agent-instructions-plus"
+    },
+    {
       "path": "../../fs/fs"
+    },
+    {
+      "path": "../../sandbox/sandbox"
+    },
+    {
+      "path": "../../core/tools"
     }
   ]
 }
