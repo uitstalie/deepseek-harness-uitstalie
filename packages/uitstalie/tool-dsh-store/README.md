@@ -30,7 +30,7 @@ English | [中文](README.zh.md)
 
 ### What the tool does
 
-The registered `tool-dsh-store` tool takes an `action` of `create`, `query`, or `delete` and a `path` relative to `.dsh`. `create` writes a file or makes a folder, `query` lists a folder or reads a file, and `delete` removes a file or a folder — a populated folder only when the call also sets `recursive`. Creating a rule validates the `rules` namespace first: the target must be Markdown, its text must not be empty, and its text must not repeat a rule that already exists.
+The registered `tool-dsh-store` tool takes an `action` of `create`, `query`, or `delete` and a `path` relative to `.dsh`. `create` writes a file or makes a folder, `query` lists a folder or reads a file, and `delete` removes a file or a folder — a populated folder only when the call also sets `recursive`. Creating a rule validates the `rules` namespace first: the target must be Markdown, its text must not be empty, and its text must not repeat a rule that already exists. Writing a skill validates the skill document the skill root needs: the path must be one of the two shapes it discovers, the frontmatter must be a mapping, and `name` must be lowercase words joined by hyphens (`skills/review.md`, `skills/handoff/SKILL.md`).
 
 ### Paths are validated before they are used
 
@@ -85,7 +85,7 @@ Prefix-stable while the definition and visibility are unchanged. Results are ord
 
 These limits describe what the package deliberately does not do.
 
-- **Namespace checks cover `rules` only** — `mcp.json` and `skills/**/SKILL.md` are written as given; validating them is deferred.
+- **Namespace checks cover `rules` and `skills`** — a `mcp.json` namespace is deliberately not checked, because no plugin in the harness reads one; validating it would invent a convention instead of protecting an existing consumer.
 - **The root is fixed to `.dsh`** — it is not configurable, so one workspace has exactly one store.
 - **A read-only session keeps no store root** — creating it is a write, so it appears the first time the session may write, and a query placed before that reports the root as missing.
 
@@ -97,6 +97,6 @@ These limits describe what the package deliberately does not do.
 
 This Dev Note is non-authoritative working context: open questions and directions that are not decided. Shipped behavior and accepted rationale live in the sections above and in the package code.
 
-- **Namespace validation for `mcp.json` and `skills/**/SKILL.md`** — the `rules` checks landed first; the other two namespaces need the MCP client's schema and the skill manifest rules respectively.
+- **Whether a `mcp.json` namespace should exist at all** — it would need a consuming plugin before the store could meaningfully validate its contents.
 
 </details>

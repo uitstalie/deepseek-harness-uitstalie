@@ -13,7 +13,8 @@ import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { FileSystem } from '@deepseek-ai/dsh-fs'
 import { trimmedInstructionDigest } from '@deepseek-ai/dsh-agent-instructions'
 import { scanWorkspaceRules } from '@deepseek-ai/dsh-agent-instructions-plus'
-import { normalizeStorePath, resolveStoreTarget, RULES_NAMESPACE_PATTERN, STORE_DIR_NAME } from './paths.ts'
+import { normalizeStorePath, resolveStoreTarget, STORE_DIR_NAME } from './paths.ts'
+import { isRulesPath, validateNamespaceContent } from './namespaces.ts'
 import {
   createStoreFile,
   createStoreFolder,
@@ -49,30 +50,24 @@ export interface StoreToolOptions {
 }
 
 /**
- * Validate one `rules/**` creation against the namespace's authoring rules.
+ * Refuse a rule whose text repeats one the store already holds.
  *
- * Rules are always-on plain Markdown with no activation metadata, so the only
- * two ways to author a bad rule are a non-Markdown or empty file and a file
- * whose text repeats an existing rule. Both are refused here, before the write,
- * so the loaded rules never contain a silent duplicate.
+ * Rules are always-on and deduplicated by content when they load, so a copy
+ * under another name would silently disappear from the loaded set. The check
+ * runs before the write, and the pure shape checks live in
+ * {@link validateNamespaceContent}.
  * @param fileSystem - provider used to scan the existing rules.
  * @param root - absolute `.dsh` root.
- * @param displayPath - the `.dsh`-relative target path.
  * @param content - the text about to be written.
  * @param signal - cancellation for the scan.
- * @throws Error naming the violated rule; nothing is written.
+ * @throws Error naming the rule that already carries this text; nothing is written.
  */
-async function validateRuleCreate(
+async function validateRuleDuplicate(
   fileSystem: FileSystem,
   root: string,
-  displayPath: string,
   content: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  if (!RULES_NAMESPACE_PATTERN.test(displayPath)) {
-    throw new Error('invalid rule: a rule file is Markdown under `rules/`, for example `rules/api.md`')
-  }
-  if (content.trim().length === 0) throw new Error('invalid rule: rule text must not be empty')
   const scan = await scanWorkspaceRules(fileSystem, {
     projectRoot: dirname(root),
     maxSourceBytes: RULE_SOURCE_MAX_BYTES,
@@ -98,8 +93,8 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions) {
       `Create, inspect, and delete files and folders under this workspace's \`${STORE_DIR_NAME}\` directory, `
       + `which carries editor rules (\`${STORE_DIR_NAME}/rules\`), project skills, and runtime snapshots. `
       + 'Give a path relative to that directory. Use this tool instead of the generic write, edit, or shell '
-      + `tools for \`${STORE_DIR_NAME}\` content, because it validates the path, refuses rules that repeat an `
-      + 'existing rule, and reports what it deleted.',
+      + `tools for \`${STORE_DIR_NAME}\` content, because it validates the path, refuses a rule that repeats an `
+      + 'existing rule or a skill document missing the frontmatter a skill needs, and reports what it deleted.',
     parameters: {
       action: {
         type: 'string',
@@ -183,8 +178,9 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions) {
         }
         if (args.target !== 'file') throw new Error('invalid create: `target` must be `file` or `folder`')
         if (args.content === undefined) throw new Error('invalid create: creating a file requires `content`')
+        validateNamespaceContent(displayPath, args.content)
         if (isRulesPath(displayPath)) {
-          await validateRuleCreate(fileSystem, root, displayPath, args.content, exec.signal)
+          await validateRuleDuplicate(fileSystem, root, args.content, exec.signal)
         }
         await createStoreFile(fileSystem, absolutePath, displayPath, args.content, exec.signal, policy.execution)
         return { action: 'create', path: displayPath, kind: 'file' }
@@ -208,11 +204,6 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions) {
     },
     presentCall: args => ({ card: 'generic', title: `.dsh store: ${args.action}`, kind: 'other', rawInput: args }),
   })
-}
-
-/** Whether a `.dsh`-relative path names a rule file. */
-function isRulesPath(displayPath: string): boolean {
-  return displayPath === 'rules' || displayPath.startsWith('rules/')
 }
 
 /** Render one store result as the model-visible text. */
