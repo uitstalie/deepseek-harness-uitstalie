@@ -46,11 +46,12 @@ function props(overrides: Partial<RulesButtonProps> = {}): RulesButtonProps {
 }
 
 describe('RulesButton', () => {
-  it('names the trigger after the workspace it belongs to', () => {
+  it('names the icon trigger after the workspace it belongs to', () => {
     render(<RulesButton {...props()} />)
     const trigger = screen.getByRole('button', { name: 'buttonAria:alpha' })
-    expect(trigger.textContent).toBe('button')
+    expect(trigger.textContent).toBe('')
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(trigger.querySelector('svg')).not.toBeNull()
   })
 
   it('loads the workspace rules on open and reads the selected rule', async () => {
