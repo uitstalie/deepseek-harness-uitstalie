@@ -7,7 +7,14 @@
  */
 
 import { useRef, useState } from 'react'
-import { Button, MenuItemButton, MenuSurface } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button,
+  IconChecklistOutlineRegular,
+  IconCloseOutlineRegular,
+  MenuItemButton,
+  MenuSurface,
+  Tooltip,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the store's Remote error-code declarations into this program.
 import type {} from '@deepseek-ai/dsh-tool-dsh-store/types'
@@ -104,16 +111,18 @@ export function RulesButton({ workspaceId, label, t, loadRules, loadRule }: Rule
 
   return (
     <>
-      <Button
-        ref={trigger}
-        variant="ghost"
-        className={css.trigger}
-        aria-expanded={open}
-        aria-label={t('buttonAria', { name: label })}
-        onClick={(event) => { event.stopPropagation(); void toggle() }}
-      >
-        {t('button')}
-      </Button>
+      <Tooltip label={t('button')} side="bottom" align="end" delayMs={500}>
+        <Button
+          ref={trigger}
+          variant="toolbar"
+          className={css.trigger}
+          aria-expanded={open}
+          aria-label={t('buttonAria', { name: label })}
+          onClick={(event) => { event.stopPropagation(); void toggle() }}
+        >
+          <IconChecklistOutlineRegular />
+        </Button>
+      </Tooltip>
       {open && (
         <MenuSurface
           className={css.surface}
@@ -125,7 +134,9 @@ export function RulesButton({ workspaceId, label, t, loadRules, loadRule }: Rule
         >
           <span className={css.header}>
             <span className={css.title}>{t('title', { name: label })}</span>
-            <Button variant="ghost" onClick={() => { setOpen(false) }}>{t('close')}</Button>
+            <Button variant="toolbar" aria-label={t('close')} onClick={() => { setOpen(false) }}>
+              <IconCloseOutlineRegular />
+            </Button>
           </span>
           {state.status === 'loading' && <span className={css.notice}>{t('loading')}</span>}
           {state.status === 'failed' && <span className={css.notice} role="alert">{state.message}</span>}
