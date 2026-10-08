@@ -31,8 +31,8 @@ export interface StoreRuleText {
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
-    /** The requested root is not a workspace this Host owns. */
-    'store/unknown-workspace': { readonly workspaceRoot: string }
+    /** The requested identity is not a workspace this Host knows. */
+    'store/unknown-workspace': { readonly workspaceId: string }
     /** The requested path is not a rule path below the store's `rules` directory. */
     'store/invalid-rule-path': { readonly path: string }
     /** No rule exists at the requested path. */
