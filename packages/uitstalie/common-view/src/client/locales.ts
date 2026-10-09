@@ -10,6 +10,9 @@ export const en = {
   'marker.aria': 'Common-view overlay for {name}',
   'takeover.tooltip': 'Archive (common view)',
   'takeover.aria': 'Archive {name} through the common-view overlay',
+  'scaffold.sidebar': 'Sidebar',
+  'scaffold.top': 'Top',
+  'scaffold.content': 'Content',
 }
 
 /** Keys of the dictionary; the Chinese side must carry the same set. */
@@ -21,4 +24,7 @@ export const zh: typeof en = {
   'marker.aria': '{name} 的通用视图 overlay',
   'takeover.tooltip': '归档（通用视图）',
   'takeover.aria': '通过通用视图 overlay 归档 {name}',
+  'scaffold.sidebar': '侧边栏',
+  'scaffold.top': '顶部',
+  'scaffold.content': '内容区',
 }

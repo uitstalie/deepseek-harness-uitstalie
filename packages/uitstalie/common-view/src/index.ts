@@ -22,6 +22,9 @@ export const Config: z<Config> = z.object({
   unitGap: z.string().default(COMMON_VIEW_DEFAULTS.unitGap),
   unitAlign: z.union(['start', 'center', 'end', 'stretch'] as const).default(COMMON_VIEW_DEFAULTS.unitAlign),
   unitJustify: z.union(['start', 'center', 'end', 'between'] as const).default(COMMON_VIEW_DEFAULTS.unitJustify),
+  scaffold: z.boolean().default(COMMON_VIEW_DEFAULTS.scaffold),
+  scaffoldSidebarWidth: z.string().default(COMMON_VIEW_DEFAULTS.scaffoldSidebarWidth),
+  scaffoldTopHeight: z.string().default(COMMON_VIEW_DEFAULTS.scaffoldTopHeight),
 })
 
 /** The browser half owns every registration; the node half mounts nothing. */

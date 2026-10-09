@@ -51,6 +51,10 @@ kind: "package-reference"
 
 图片的可访问名由调用方提供，因此两个原子都不持有回退文案。
 
+### 大布局脚手架
+
+`AppScaffold` 把父 view 的大布局——左列、顶部条、中间区域——按上面的单元与叶子重新组合，每个区域由一个文本叶子标名。它的存在是为了让布局工作在这里迭代而不动原生文件：列宽与顶高是配置字段（`scaffoldSidebarWidth`、`scaffoldTopHeight`），以组件局部自定义属性落入 CSS。`scaffold` 默认关闭；打开后脚手架挂进框架级浮层，卸载插件即撤下。
+
 因为未声明 `config` 的行会把 `undefined` 交给浏览器半边，浏览器半边先经 `resolveCommonViewConfig` 解析收到的值；两侧的默认值都读自 `src/config.ts`。
 
 <a id="model-experience"></a>
