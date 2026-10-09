@@ -137,11 +137,13 @@
 | P3 | host 只读查询面（列 `.dsh/rules`、读单条）+ 真实 Loader 组合测试、profile 挂载 | 组合测试绿；查询面只接受 workspace id |
 | P4 | 客户端包：侧边栏工作区 rules 按钮（「新建会话」右侧）+ 查看视图 | Web 上每个工作区按钮可见可用；空状态正常；文案走 locale |
 | P5 | 双语 README + i18n 记录、类型/构建/聚焦测试 | `pnpm run typecheck`、`pnpm run build`、`vitest run packages/uitstalie` 全绿 |
-| P6 | **新任务单（[task15](mission/task15.md)）**：rules 常驻注入 + 交付前自检 | 见 [rules.md](rules.md) |
+| P6 | ~~rules 常驻注入 + 交付前自检~~ **已定**：注入层由 [task16](mission/task16.md)（`agent-instructions-plus`）交付；机检层**不做**（[task15](mission/task15.md) 已废弃） | 见 [rules.md](rules.md) |
+
+**状态（2026/09/30）**：P0–P5 均已完成，见 [task14](mission/task14.md) 的状态总表与该任务单各步记录；P6 按上表结论处理。本文以下各节保留为设计依据，不再是待办。
 
 提交拆分：host 包、client 包、docs 各自独立提交（分支自有文件）；原生登记（`tsconfig.host.json`、`tsconfig.client.json`、`tsconfig.base.json` 手写别名）单独一个提交，带 `uitstalie-` 标记。
 
-## 与 rules 加载器（[task15](mission/task15.md)）的衔接
+## 与 rules 加载器（[task16](mission/task16.md)）的衔接
 
 加载器**不改** `agent-instructions`（它的候选过滤只支持同目录文件名），而是新插件/新模块，复用同一套注入框架：
 
