@@ -493,6 +493,7 @@ function SessionTree({
             }
           }}
       >
+        {/* uitstalie-k3, 2026/09/30, task14, 把 seat 渲染器透传给工作区行组件 */}
         <ProjectRowItem
           newShortcut={shortcuts.find(row => row.id === 'session.new')}
           group={group}
