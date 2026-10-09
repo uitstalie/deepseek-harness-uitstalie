@@ -182,6 +182,9 @@ Error: client api: namespace "modelsDev" conflicts with an existing Remote names
 
 ## 待办
 
-1. **推送决策（需用户拍板）**：本次 rebase 重写了历史，`origin/cli-desktop` 已分叉，推送必须是 `--force-with-lease`（分支规则禁止裸 `--force`）。未推送。
-2. **38 个无标记原生文件的合规清扫**（见上，需用户定夺是否独立成任务）。
-3. task21 第二步（门禁级样式修正）与 task22（未解析裸导入门禁）不受本次 rebase 影响，可继续。
+1. ~~**推送决策**~~ **已完成（2026/10/09，用户批准）**：`git push --force-with-lease origin cli-desktop` → `cc2b460221...3b16b6c2bc (forced update)` ✓；推送前的 typecheck 钩子通过，推送后远端 HEAD 与本地一致。
+   - 推送前核对：远端比本地多 27 个提交，`git cherry` 判定 24 个补丁等价、3 个"远端独有"（`d327daf684` tsconfig 登记、`1aa8dfcaa5` sandbox 段落、`3545a6a8ae` lockfile 恢复）——三者的**内容都已以改后形态存在于本地**（rebase 冲突解法的产物），因此没有唯一内容丢失。
+   - 保底：远端被覆盖前的 tip 已在本机打 tag `backup-remote-cli-desktop-20261009`（另有 rebase 前的 `backup-cli-desktop-20261009-1030`）；如需回滚，`git push --force-with-lease origin backup-remote-cli-desktop-20261009:cli-desktop`。
+2. **`ui-trajectory/tests/client-bundle.client.spec.ts`**（`[]` vs `['trajectory']`）：上游包按构建产物挂进裸 ring 的断言，与本分支内容无关，rebase 后（Vite 8 等升级）才出现，待单独诊断。
+3. **38 个无标记原生文件的合规清扫**（见上，需用户定夺是否独立成任务）。
+4. task21 第二步（门禁级样式修正）与 task22（未解析裸导入门禁）不受本次 rebase 影响，可继续。
