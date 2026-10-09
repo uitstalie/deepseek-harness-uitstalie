@@ -76,6 +76,61 @@ rebase 后 `pnpm run test:gui` = **11 文件 / 50 测试失败**（此前 7 文�
 | **B 改上游规格** | 更新受影响的 2–4 个原生规格（认我们的分区 + 补我们的端点桩） | **原生 spec 改动**，每次 rebase 到同区域都会再冲突 → 违背"最小原生差异"总目标 |
 | **C 分支自有 bundle（推荐）** | 把我们的行移进一个分支自有 bundle 包（如 `packages/uitstalie/uitstalie-web/cordis.patch.yml` + `dsh.bundle` 清单），由分支 profile 挂载该 bundle | 原生组合层恢复与上游完全一致 → 这 11 个规格转绿、rebase 友好；代价：新 profile 需要多一行 bundle 声明（写入 goal 文档），task17 的"逐插件写入原生组合层"退化为"整包声明" |
 
+## 上层机制：推导器与 remote 桩是干什么的（用户追问，补记）
+
+### 推导器（`packages/test-support/client-runtime/src/assembly/bundle-roster.ts`）
+
+**它把"profile 的组合层"翻译成"vitest 里的浏览器 roster"**，让整个 client 层测的是**真实出厂组合**，而不是一份手写清单：
+
+1. 取 profile 的 bundle 层（`WEB_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app']`，与 `PROFILE_TEMPLATES.web` 一致）；
+2. 读每个 bundle 的 `dsh.bundle.patch` 文件清单，用**include 插件自己的 YAML 方言**（`entryListSchema`）解析，再用**同一个** `applyEntryPatches` 组合——即 `insert`、按 id 覆盖、group、`disabled` 的语义都是**启动器那一套**，不是重写；
+3. 展开 group、按 Loader 规则判定 `disabled`（含用 `{profileContext:{name:'web'}}` 作用域求值的 `!!js`）；
+4. 只把**包清单声明了 `dsh.client.platform === 'web'`** 的行变成 roster 行，带上该声明的 `inject`/`immediately`；
+5. **什么都不拷贝**：改一个 bundle patch，下次 import 就反映出来（模块注释原话）；解析不到的 bundle/行/patch 在此直接抛错（启动器只告警的地方它更严）。
+
+**推论**：把分支自有 client 行写进原生 bundle patch，就**按设计**改变了这 11 个用 `roster: webApp` 的规格所装配的 roster —— 所以失配要**在上层适配**（改规格期望 / 共享默认表），而不是把行搬走。
+
+### remote 桩（`packages/test-support/remote-mock/` + 装配默认表 `client-runtime/src/assembly/remote-default-responses.ts`）
+
+- `RemoteMock` 是 Host Typert Remote 网关的测试替身：一张**端点表**（unary 应答、stream 脚本）+ 流控 + 调用日志 + Connection 载体面。装配时注入为 `remote`，于是 client 插件的 `ctx.remote.ns.method()` 落到表里而不是网络。
+- 收尾时 `assertNoUnmatched` 会**因未登记的调用而失败**——这是**契约断言**（"该组合在启动/渲染阶段究竟用到了哪些端点"），不是噪音。
+- 共享默认表 `remote-default-responses.ts` 把"启动阶段会碰到的每个端点"列全，**每行注释写明调用方插件**，并声明策略：**"boot 从不触碰的端点保持缺席，好让新调用大声失败"**。
+
+## 上层适配（按"最小侵入上层"执行）
+
+| 文件 | 改动 | 依据 |
+|---|---|---|
+| `packages/test-support/client-runtime/src/assembly/remote-default-responses.ts` | 增两行：`modelsDev/listCatalogProviders`、`llmPlusAuth/listOAuthRoutes` → `ok([])`，注释写明调用方是本分支 `ui-models-dev` 的 apply（`load()`/`loadOAuthRoutes()`） | 遵循该表自己的策略与格式 |
+| `packages/client/ui-settings-general/tests/shell.client.spec.ts` | `PRODUCT_SECTIONS` 加 `'models-dev'`（并更新注释） | 规格自带注释："A plugin adding a section changes this list" |
+| `packages/uitstalie/ui-models-dev/src/client/index.ts`（分支侧） | 设置分区 `order: 20 → 12`，确定落在 `models`(10) 与 `plugins`(15) 之间 | 原为 20，与 `agent-presets` 并列导致导航顺序不确定 |
+
+## 真正的根因（46 个失败的来源）
+
+上面的适配消掉了 `remote-mock` 与分区账本两层，但簇仍红。抓到的最内层错误是：
+
+```
+Error: web boot: 1 entry did not activate
+@deepseek-ai/dsh-client-ui-models-dev: failed
+ ❯ assertEntriesActive packages/client/web/src/boot-client.ts:87
+```
+
+即 **`ui-models-dev` 在装配启动时激活失败**（`failed`，不是 pending），`bootClient` 因此抛错 → 所有装配 web roster 的规格连带失败。`assertEntriesActive` 只聚合失败项、**不打印 cause**，所以下一步要拿到该 fiber 的错误对象（在 `boot-client.ts` 的失败集合里）才能定位我们 apply 里的抛出点。这是**分支自有插件的问题**（由 task17 把它放进组合层才进入装配），不是 rebase 造成。
+
+## 原生改动审计（按"上游已满足则回归原生"）
+
+| 原生改动 | 上游现在是否已提供 | 结论 |
+|---|---|---|
+| invariant 伴生入口（`models-dev`/`llm-plus`/`ui-models-dev`） | **上游已删除该机制** | **已回归原生**（本次撤除）✓ |
+| `agent-instructions` 的导出块（task16） | 无（上游导出集与旧版一致，我们要的名字不在其中） | 保留 |
+| `ui-workspace` 逐工作区行动作 seat（task14） | 无（上游只有 session 行 seat 与 directoryFlow） | 保留 |
+| `FileSystem` 的 `createDirectory`/`remove` 原语（task14 等） | 无（`fs/fs`、`fs-local`、`fs-sandbox` 都没有） | 保留 |
+| sandbox 拒绝的**路径证据**（task12，`classifyDenial` 取授权根） | **无**——上游 `classifyDenial(result, signatures)` 仍是纯短语匹配；上游新增的 `diagnostics.ts` 只做 runner 失败与 spawn 可用性 | 保留（撤回会重现"误报沙盒拒绝并诱导升权"的缺陷） |
+| shell/ptc 调用点（task12 的配套） | n/a（服务于上一条） | 保留 |
+| `scripts/gen-cordis-catalog.ts` 的分类豁免（task18/19） | 无——实测**去掉即生成器失败** | 保留 |
+| bundle 组合行、tsconfig 登记与手写别名 | n/a（组合与登记，非能力） | 保留 |
+
+**结论**：本轮除 invariant 机制外，**没有其他可回归项**——上游尚未提供我们当初补的那些能力。
+
 ## 验证（rebase 后）
 
 | 检查 | 结果 |

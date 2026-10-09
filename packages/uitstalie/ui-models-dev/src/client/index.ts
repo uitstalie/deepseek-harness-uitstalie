@@ -79,7 +79,8 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
     scoped.slots.inject('settings.section', () => scoped.slots.register({
       name: 'settings.section',
       id: 'models-dev',
-      order: 20,
+      // 12 落在 models(10) 与 plugins(15) 之间：本页扩展的是 Models 设置区
+      order: 12,
       label: () => t('nav'),
       inject: injected,
     }, ModelsDevSection))
