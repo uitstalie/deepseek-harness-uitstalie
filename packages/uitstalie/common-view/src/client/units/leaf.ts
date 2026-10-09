@@ -12,6 +12,8 @@
 import type { CSSProperties } from 'react'
 import textCss from './TextView.module.css'
 import imageCss from './ImageView.module.css'
+import spacerCss from './Spacer.module.css'
+import dividerCss from './Divider.module.css'
 
 /** Ink roles a text leaf may use; every one is a semantic alias token. */
 export type TextTone = 'primary' | 'secondary' | 'tertiary' | 'caption'
@@ -51,6 +53,27 @@ export interface ImageSpec {
   height?: string | undefined
   /** Corner treatment; defaults to none. */
   radius?: ImageRadius | undefined
+  /** Extra class the composing caller owns. */
+  className?: string | undefined
+}
+
+/** Which way a divider runs: across a column, or down a row. */
+export type DividerOrientation = 'horizontal' | 'vertical'
+
+/** A spacer as composed: empty space inside a layout unit. */
+export interface SpacerSpec {
+  /** Fixed space, as a CSS length; ignored when the spacer grows. */
+  size?: string | undefined
+  /** Whether the spacer takes the unit's free space instead of a fixed size. */
+  grow?: boolean | undefined
+  /** Extra class the composing caller owns. */
+  className?: string | undefined
+}
+
+/** A divider as composed: a hairline between siblings. */
+export interface DividerSpec {
+  /** Which way the line runs; defaults to horizontal. */
+  orientation?: DividerOrientation | undefined
   /** Extra class the composing caller owns. */
   className?: string | undefined
 }
@@ -101,10 +124,41 @@ export function emitText(spec: TextSpec): { className: string; style: CSSPropert
 }
 
 /**
- * Emit the native element attributes for an image leaf.
- * @param spec - the leaf as composed.
- * @returns the class name, inline style, and element attributes DSH renders.
+ * Emit the native box for a spacer: the unit's own class plus the inline flex
+ * value that either fixes its size or takes the free space.
+ * @param spec - the spacer as composed.
+ * @returns the class name and inline style DSH renders.
  */
+export function emitSpacer(spec: SpacerSpec): { className: string; style: CSSProperties } {
+  return {
+    className: classes(spacerCss.spacer, spec.className),
+    style: spec.grow === true
+      ? { flexGrow: '1', flexShrink: '1', flexBasis: '0%' }
+      : { flexGrow: '0', flexShrink: '0', flexBasis: spec.size ?? '0px' },
+  }
+}
+
+/**
+ * Emit the native box for a divider: the orientation class carries the hairline,
+ * so the theme specs can see the 0.5px neutral stroke in the stylesheet.
+ * @param spec - the divider as composed.
+ * @returns the class name and separator attributes DSH renders.
+ */
+export function emitDivider(spec: DividerSpec): {
+  className: string
+  attrs: { role: 'separator'; 'aria-orientation': DividerOrientation }
+} {
+  const orientation = spec.orientation ?? 'horizontal'
+  return {
+    className: classes(
+      dividerCss.divider,
+      orientation === 'vertical' ? dividerCss.vertical : dividerCss.horizontal,
+      spec.className,
+    ),
+    attrs: { role: 'separator', 'aria-orientation': orientation },
+  }
+}
+
 export function emitImage(spec: ImageSpec): {
   className: string
   style: CSSProperties
