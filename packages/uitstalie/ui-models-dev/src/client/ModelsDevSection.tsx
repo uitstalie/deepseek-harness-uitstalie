@@ -7,6 +7,7 @@
  * @module @deepseek-ai/dsh-client-ui-models-dev/ModelsDevSection
  */
 
+import { useEffect } from 'react'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { fill, type ModelsDevKey } from './locales.ts'
@@ -20,6 +21,8 @@ import styles from './ModelsDevSection.module.css'
 export interface ModelsDevSectionInjected {
   /** 页面控制器（加载/勾选/草稿/提交动作）。 */
   controller: ModelsDevStore
+  /** 首次打开本页时启动取数；装配态下没人打开页面，就不读 Host。 */
+  activate: () => void
   hooks: {
     /** 页面快照（renderer 绑为 useSnapshot）。 */
     snapshot: SnapshotStore<ModelsDevState>
@@ -43,7 +46,8 @@ function failureText(failure: SubmitFailure, t: (key: ModelsDevKey) => string): 
 
 /** 页面根组件。 */
 export function ModelsDevSection(props: ModelsDevSectionProps) {
-  const { controller, useSnapshot, t } = props
+  const { controller, useSnapshot, t, activate } = props
+  useEffect(() => { activate?.() }, [activate])
   // 装配保障下三者必在；Partial 是测试直给 props 的零机关路径
   if (controller === undefined || useSnapshot === undefined || t === undefined) return null
   const state = useSnapshot(snapshot => snapshot)
