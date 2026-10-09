@@ -38,6 +38,17 @@ The package adopts the session row's action list (`sidebar.workspaces.session.ro
 
 Geometry belongs to the composition layer: the view is composed from layout units (`Row`, `Column`) whose spec is resolved once and emitted back as native output — a box class from the unit's own CSS module plus component-local custom properties and inline axes. Nothing foreign reaches the DOM, and every leaf is a shared control.
 
+### Display-only leaves
+
+Two atoms carry content, each resolved from a spec and emitted natively. Neither takes interaction props and neither holds state:
+
+| Atom | Spec | Emitted as | Theme resources |
+|---|---|---|---|
+| `TextView` | `{ text, tone?, size? }` | a `span` whose font role and ink travel as component-local custom properties | `size` picks a composite `font` token (`large` `--dsw-font-base-16`, `body` `--dsw-font-s-14`, `small` `--dsw-font-xs-13`, `caption` `--dsw-font-xxs-12`, each pairing size with line height); `tone` picks a `--dsw-alias-label-*` alias |
+| `ImageView` | `{ src, alt, fit?, width?, height?, radius? }` | an `img` whose fit and box sizes are inline values and whose corners are a class | `fit` is `contain`/`cover`/`fill`/`none`; the radius classes use `--dsw-radius-*`, with the full-round case pairing `corner-shape: round` |
+
+The caller supplies an image's accessible name, so neither atom owns fallback copy.
+
 Because a row that declares no `config` hands the browser half `undefined`, the browser half resolves what it receives through `resolveCommonViewConfig`; both halves read the same defaults from `src/config.ts`.
 
 <a id="model-experience"></a>

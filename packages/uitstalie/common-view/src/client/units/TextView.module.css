@@ -1,0 +1,8 @@
+/* A text leaf owns nothing but its ink and its type role; both arrive as
+   component-local custom properties so an overlay sets them per instance. */
+.text {
+  margin: 0;
+  font: var(--dsh-common-view-text-font, var(--dsw-font-s-14));
+  color: var(--dsh-common-view-text-ink, var(--dsw-alias-label-primary));
+  min-width: 0;
+}
