@@ -40,9 +40,6 @@ export const remoteDefaultResponses: RemoteTable = {
     // ui-settings-account bonus notice read and acknowledgement at signing in.
     'account/getUnnotifiedBonuses': ok(null),
     'account/ackBonusNotified': ok(true),
-    // uitstalie-k3, 2026/10/09, task23: ui-models-dev apply reads the catalog and the OAuth route table.
-    'modelsDev/listCatalogProviders': ok([]),
-    'llmPlusAuth/listOAuthRoutes': ok([]),
   },
   // Stream endpoints the roster opens later than boot; declared so a spec that forgets the script gets a stream miss.
   streams: [
