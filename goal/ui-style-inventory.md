@@ -15,6 +15,11 @@
 | 文案门禁 | **1 个**（`scripts/verify-client-ui-i18n.ts`，覆盖我们的树） | §F.1 |
 | 强制边界（门禁盲区） | **3 条**（半径门禁不含 `packages/uitstalie/**`；`test:gui` 不跑我们的测试；字面色与"只用 alias"无门禁） | §F.2 |
 | 我们分支自己的问题 | **21 项**：门禁级 **11** / 评审级 **7** / 技能级 **3** | §G |
+| 样式载体层数 | **4 层**（全局 token 表 / 组件 CSS Modules / 运行时 TS / 非 CSS 资产与清单） | §H.1 |
+| token 命名空间 | **4 个**（`--dsw-*` 403、`--dsh-*`、`--shiki-*` 11、`--ds-*` 5），其中 `--dsh-frame-*` 由 `ui-layout` 发布、**不属于主题** | §H.3 |
+| 组件式样维度 | **3 维**（variant / size / state → 类 → alias token），叠加"材料与外形归组件、布局钩子归调用方"的边界 | §I.1、§I.2 |
+| 视图层事实标准 | **3 条**（页面内缩 `28px + --dsh-frame-top-clearance`；设置卡材质两行别名 + `--dsw-radius-xl`；chrome 行 `CHROME_ROWS` 清单） | §I.3 |
+| theme / overlay 可覆盖点 | **2 个稳定点**（token 值 / 共用件本身）+ 1 个无落点（特性私有布局） | §J |
 
 ## 这份报告要回答什么
 
@@ -93,6 +98,56 @@
 `corner-shape-styles` 的 1 处：`ModelsDevSection.module.css .badge`（满圆半径缺 `corner-shape: round`）。
 
 **更正一处我先前给用户的判断**：早先 `pnpm run test:gui` 的三个 `ui-theme` 失败里，我把 `menu-surfaces` 也算成"`ui-models-dev` 的既有问题"——**错了**。该规格在本次实测中**通过**，它当初变红是因为 task14 初版那个**手搓的固定定位面板**（现已被共用 `Menu` + `Modal` 替换）；其余两条（`elevation-styles`、`corner-shape-styles`）才是 `ui-models-dev` 的既有违规。
+
+## D. Token 层盘点
+
+### D.1 承载文件（`ui-theme/src/styles/`，9 个）
+
+| 文件 | 定义行 | token 层级 |
+|---|---|---|
+| `design-platform.css` | 382 | 静态调色板 + 语义别名（明/暗）+ darwin 专用 |
+| `gradient-shadow-text.css` | 196 | 排版阶梯、渐变、阴影、高度、遮罩、菜单滤镜 |
+| `base.css` | 10 | 字体族、**半径尺度**、设置卡别名 |
+| `onboarding.css` | 10 | 引导态强调色/渐变/别名 |
+| `focus.css` | 2 | 焦点环宽度与颜色 |
+| `corner-shape.css` | 1 | `--dsw-corner-shape` |
+| `shiki.css` | 11（`--shiki-*`，非 `--dsw-`） | 语法高亮（明 `:root` / 暗 `body[data-ds-dark-theme]`） |
+| `scrollbar.css` | 5（`--dsh-scrollbar-*`） | 滚动条间接层 |
+| `brand-font.css` | 0（3 个 `@font-face`） | 品牌字体 |
+
+`ui-theme/src/styles/` 内**自定义属性唯一名 427 个**：`--dsw-` **403**、`--shiki-` 11、`--dsh-` 8、`--ds-` 5。仓库范围内 `--dsw-*` 定义行 628 行。**注意**：`--dsh-` 在这里只有 8 个（滚动条间接层 5 + 内容字号 3）；**框架/视图用的 `--dsh-frame-*` 族不在这 9 个文件里**，由 `ui-layout` 发布（见 §H.3）。
+
+### D.2 家族与数量（唯一名）
+
+| 家族 | 唯一名 | 家族 | 唯一名 |
+|---|---|---|---|
+| `--dsw-font-*` | **182** | `--dsw-gradient-*` | 3 |
+| `--dsw-alias-*` | **107** | `--dsw-focus-*` | 2 |
+| `--dsw-static-*` | **77** | `--dsw-linear-*` | 2 |
+| `--dsw-specific-*` | 11 | `--dsw-menu-*` | 2 |
+| `--dsw-radius-*` | 6 | `--dsw-corner-shape` | 1 |
+| `--dsw-elevation-*` | 5 | `--dsw-mask-blur` | 1 |
+| `--dsw-shadow-*` | 4 | | |
+
+别名子族：`bg` 15、`button` 15、`label` 13、`state` 12、`markdown` 8、`border` 7、`file` 6、`interactive` 5、`brand`/`onboarding`/`scrollbar` 各 4、`tooltip`/`menu`/`settings`/`toast`/`code`/`turn` 各 2、`link`/`switch` 各 1。全部 11 个 `--dsw-specific-*`：`bubble`、`bubble-highlight`、`input-major`、`login-input`、`menu`、`selector`、`sidebar-fill`、`sidebar-nav-item-active`、`sidebar-nav-item-active-accent`、`sidebar-nav-item-hover`、`tip`。
+
+**特性代码被要求只用的层级**（`web-styling.md:18`）：`--dsw-alias-*` 语义别名；不得拷贝静态调色值或写字面色。
+
+### D.3 消费实况
+
+`packages/client` + `apps/web` 内 `var()` 引用共 **3,177 处 / 219 个不同名字**：alias 103 名/2,195 次、radius 7/307、static 60/229、font 23/179、focus 2/142、specific 8/48、elevation 6/41、menu 2/24、mask 1/4、shadow 2/3、gradient 3/3、corner 1/1。
+
+引用最多的别名：`label-primary` 320、`label-tertiary` 310、`label-secondary` 226、`state-business-primary` 162、`interactive-bg-hover` 147、`state-error-primary` 127、`border-l2` 87、`label-caption` 80、`border-l3` 54、`bg-layer-1` 52。
+
+**`ui-theme` 不提供任何 class / 工具类 / CSS-Module API**：它只注入 8 个全局表（`client/styles.ts`），特性代码在 CSS Modules 里**直接 `var()`**（已验证 4 例：`MenuSurface.module.css:26–27` 取菜单材质、`GoalBar.module.css:61`、`SidebarRoot.module.css:17`、`JobListAction.module.css:142` 用 `color-mix`）。主题包**之外**有 25 个文件定义 `--dsw-*`（26 行），全是**对既有 token 的 rebind**（`--dsw-elevation-stroke-color` 占 20 处）；唯一的例外是 `ui-primitives/src/HoverCard.module.css:10` 用共享前缀造了组件局部 token 并写字面色 `#2C2C2E`。另外 `--dsw-static-*` 在主题包外被 11 个文件引用 33 次——**文档禁止但无人守**。
+
+### D.4 明暗与主题绑定
+
+不是类名、也不是构建期变体，而是**调色板属性选择器**：明色默认走 `body { … }`；暗色走 `body[data-ds-dark-theme] { … }`；macOS 特例走 `html[data-platform='darwin'] body[data-ds-dark-theme]`。写属性的是 `ui-theme/src/boot-theme.ts:32`（插件前脚本）与 `ui-layout/src/client/theme-presenter.ts`（按 `snapshot.active.colorScheme` 切换，**不按主题 id**）。**没有产品变体**；第三方主题是 `ThemeDefinition` 的别名覆盖，作为**内联 CSS 变量写在 `body`** 上，不新增选择器。
+
+### D.5 TypeScript 侧 token API
+
+存在于 `ui-theme/src/client/index.ts` 并从 `./client` 入口导出：`ThemeTokens = Record<string, string>`（**字典，不是 token 名联合**）、`ThemeTokenModes`/`ThemeTokenOverrides`/`ThemeDefinition`/`ThemeSnapshot`/`ThemeTokenInspection`、`ThemeRuntime`（`getTheme`/`exportInspectTokens`/`setTheme`/`setFontSize`/`register`/`overrideTokens`）与合并到 Context 的 `ctx.theme`。`BUILTIN_INSPECT_TOKENS` 只有 14 条描述项，不是全集。**没有生成的 token 名类型、没有逐 token 常量、没有类型化 CSS 助手**；特性组件代码不使用该 API（只有若干包做 type-only 导入），运行时覆盖 token 才是它的用途。
 
 ## E. 共用组件层盘点（`ui-primitives`）
 
@@ -184,55 +239,98 @@
 - `ui-tool-dsh-store` 除 `font-weight: 600` 外**无门禁级问题**：无字面色、无 px 半径字面量、菜单与对话框走共用 `Menu`/`Modal`、仅图标动作带 Tooltip、文案全部走字典（含 `glyph`）。
 - `ui-models-dev` 的 `corner-shape`/elevation 之外，README 双语、依赖声明、`dsh.client` 清单等结构面均已合规（此前 task20/task21 前置工作已修）。
 
-## D. Token 层盘点
+## H. 存储与投递格式（追加盘点）
 
-### D.1 承载文件（`ui-theme/src/styles/`，9 个）
+### H.1 四层载体
 
-| 文件 | 定义行 | token 层级 |
+| 层 | 载体 | 投向浏览器的方式 |
 |---|---|---|
-| `design-platform.css` | 382 | 静态调色板 + 语义别名（明/暗）+ darwin 专用 |
-| `gradient-shadow-text.css` | 196 | 排版阶梯、渐变、阴影、高度、遮罩、菜单滤镜 |
-| `base.css` | 10 | 字体族、**半径尺度**、设置卡别名 |
-| `onboarding.css` | 10 | 引导态强调色/渐变/别名 |
-| `focus.css` | 2 | 焦点环宽度与颜色 |
-| `corner-shape.css` | 1 | `--dsw-corner-shape` |
-| `shiki.css` | 11（`--shiki-*`，非 `--dsw-`） | 语法高亮（明 `:root` / 暗 `body[data-ds-dark-theme]`） |
-| `scrollbar.css` | 5（`--dsh-scrollbar-*`） | 滚动条间接层 |
-| `brand-font.css` | 0（3 个 `@font-face`） | 品牌字体 |
+| 全局 token 表 | `ui-theme/src/styles/*.css`，**9 个普通 `.css`**（非 CSS Modules、无预处理器） | `import base from '../styles/base.css?inline'` → 构建期变成**字符串** → `installThemeStyles(ctx)` 运行时以 `<style data-plugin-css="@deepseek-ai/dsh-client-ui-theme/<file>">` 注入 `head`，顺序固定（base → corner-shape → design-platform → focus → onboarding → scrollbar → gradient-shadow-text → shiki），每个表一个 `ctx.effect`，随插件 fiber 销毁而移除 |
+| 组件/特性样式 | 组件同目录的 `*.module.css` | 静态库（`ui-primitives` 等）由最终 Vite 构建合并进 Web 外壳；**动态插件包**见 §H.2 |
+| 运行时/TS | `ui-theme/src/client/index.ts` 的 `ThemeTokens`（`Record<string,string>`，**字典而非名字联合**）、`ThemeRuntime`、`ctx.theme`；`ThemeDefinition` 的第三方主题 | 覆盖值**作为内联 CSS 变量写到 `body`**，不新增选择器；没有生成的 token 名类型、没有逐 token 常量、没有类型化 CSS 助手 |
+| 非 CSS 资产与清单 | 品牌 WOFF2 + 许可（`brand-font.css` 的 3 个 `@font-face`）；`ui-theme/tests/expected/radius-exceptions.expected.json`（冻结例外）；`app-region-styles` 规格里的 `CHROME_ROWS` 清单 | 随包发布 / 只作门禁数据 |
 
-`ui-theme/src/styles/` 内**自定义属性唯一名 427 个**：`--dsw-` **403**、`--shiki-` 11、`--dsh-` 8、`--ds-` 5。仓库范围内 `--dsw-*` 定义行 628 行。
+### H.2 动态插件包的 CSS 实际形态（实测）
 
-### D.2 家族与数量（唯一名）
+- `packages/uitstalie/*/lib/` 里**没有独立 `.css` 产物**，只有 `client.js`（+ map/index.js）。
+- CSS 文本被**内联进 `lib/client.js` 的 JS 字符串**，类名格式为 `<哈希前缀>_<局部名>`，实测样例：
 
-| 家族 | 唯一名 | 家族 | 唯一名 |
+  ```
+  .kQj6AG_rowCard{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;…}
+  ```
+
+- bundle 内可见 `createElement("style")` / `appendChild` 的注入机制，即**运行时插 `<style>`**；`--dsw-` 字串在两个包的 bundle 里分别出现 27 次（引用计数）——因为 token 名是字符串，打包器无法改写也无法校验。
+
+### H.3 四个命名空间，归属不同（对 theme/overlay 很关键）
+
+| 前缀 | 唯一名 | 拥有者 | 内容 |
 |---|---|---|---|
-| `--dsw-font-*` | **182** | `--dsw-gradient-*` | 3 |
-| `--dsw-alias-*` | **107** | `--dsw-focus-*` | 2 |
-| `--dsw-static-*` | **77** | `--dsw-linear-*` | 2 |
-| `--dsw-specific-*` | 11 | `--dsw-menu-*` | 2 |
-| `--dsw-radius-*` | 6 | `--dsw-corner-shape` | 1 |
-| `--dsw-elevation-*` | 5 | `--dsw-mask-blur` | 1 |
-| `--dsw-shadow-*` | 4 | | |
+| `--dsw-*` | **403** | `ui-theme` | 主题：静态调色板、语义别名、排版、圆角、高度、材质、焦点、滚动条别名 |
+| `--dsh-*` | 8（主题包内）+ 框架族 | **`ui-layout` / `ui-web`** | 主题包内：滚动条间接层 5 + 内容字号 3；框架族：`--dsh-frame-top-clearance`（macOS 48px / Windows 标题栏高）、`--dsh-frame-leading-clearance`、`--dsh-frame-overlay-top`（=top+20px）、`--dsh-frame-chrome-top`（全屏归零）、`--dsh-windows-titlebar-height` |
+| `--shiki-*` | 11 | `ui-theme` | 代码高亮（明 `:root` / 暗 `body[data-ds-dark-theme]`） |
+| `--ds-*` | 5 | 上游 deepsuite 基础 | 字体族、缓动、过渡时长 |
 
-别名子族：`bg` 15、`button` 15、`label` 13、`state` 12、`markdown` 8、`border` 7、`file` 6、`interactive` 5、`brand`/`onboarding`/`scrollbar` 各 4、`tooltip`/`menu`/`settings`/`toast`/`code`/`turn` 各 2、`link`/`switch` 各 1。全部 11 个 `--dsw-specific-*`：`bubble`、`bubble-highlight`、`input-major`、`login-input`、`menu`、`selector`、`sidebar-fill`、`sidebar-nav-item-active`、`sidebar-nav-item-active-accent`、`sidebar-nav-item-hover`、`tip`。
+`--dsh-frame-*` 由 `ui-layout/src/client/AppFrame.module.css:94,99,106` 发布在根元素上（`ui-layout/README.md:37,41` 说明语义：顶带下沉量、左侧 chrome 带宽、浮层再留 20px、模态遮罩排除 Windows 顶栏）。**它们不是主题 token**——theme 插件若想覆盖"视图在窗口里的位置"必须另走这条路。
 
-**特性代码被要求只用的层级**（`web-styling.md:18`）：`--dsw-alias-*` 语义别名；不得拷贝静态调色值或写字面色。
+### H.4 格式结论（5 条）
 
-### D.3 消费实况
+1. 没有 Sass/Less/PostCSS、没有 Tailwind、没有 CSS-in-JS（`web-styling.md:17` 禁止加组件库/Tailwind）。
+2. 明暗**不拆文件**：同一个 `.css` 内 `body {}` 明色、`body[data-ds-dark-theme] {}` 暗色，macOS 特例用 `html[data-platform='darwin'] body[data-ds-dark-theme]`。
+3. **没有 token 代码生成**：`--dsw-*` 的唯一真源就是那 9 个 CSS 文件（文档也明说不复制这份清单）。
+4. `ui-theme` **不提供任何 class / 工具类 / CSS-Module API**，特性代码一律在 CSS Modules 里直接 `var()`。
+5. ⚠️ **token 名几乎没有校验**：门禁只拒绝**未知的 `--dsw-radius-*` 名**，其它家族写错名字不会报错，只会静默失效（`var()` 落空 → 声明无效）。theme/overlay 若拼接或手写 token 名，需要自建名字校验或复用常量。
 
-`packages/client` + `apps/web` 内 `var()` 引用共 **3,177 处 / 219 个不同名字**：alias 103 名/2,195 次、radius 7/307、static 60/229、font 23/179、focus 2/142、specific 8/48、elevation 6/41、menu 2/24、mask 1/4、shadow 2/3、gradient 3/3、corner 1/1。
+## I. 组件层与视图层的式样（追加盘点）
 
-引用最多的别名：`label-primary` 320、`label-tertiary` 310、`label-secondary` 226、`state-business-primary` 162、`interactive-bg-hover` 147、`state-error-primary` 127、`border-l2` 87、`label-caption` 80、`border-l3` 54、`bg-layer-1` 52。
+### I.1 组件式样 = `X.tsx` + `X.module.css`，按 variant / size / state 三维落类
 
-**`ui-theme` 不提供任何 class / 工具类 / CSS-Module API**：它只注入 8 个全局表（`client/styles.ts`），特性代码在 CSS Modules 里**直接 `var()`**（已验证 4 例：`MenuSurface.module.css:26–27` 取菜单材质、`GoalBar.module.css:61`、`SidebarRoot.module.css:17`、`JobListAction.module.css:142` 用 `color-mix`）。主题包**之外**有 25 个文件定义 `--dsw-*`（26 行），全是**对既有 token 的 rebind**（`--dsw-elevation-stroke-color` 占 20 处）；唯一的例外是 `ui-primitives/src/HoverCard.module.css:10` 用共享前缀造了组件局部 token 并写字面色 `#2C2C2E`。另外 `--dsw-static-*` 在主题包外被 11 个文件引用 33 次——**文档禁止但无人守**。
+`ui-primitives/src/Button.tsx:31` 是范式：`clsx(css.button, css[variant], css[size], className)`。`Button.module.css` 实测：
 
-### D.4 明暗与主题绑定
+| 类 | 内容 |
+|---|---|
+| `.button` | 几何 + `border: none` + `border-radius: var(--dsw-radius-md)` + `color: var(--dsw-alias-label-primary)` |
+| `.md` | `height: 36px` |
+| `.sm` | `height: 28px; font-size: 12px; line-height: 18px; padding: 0 10px; border-radius: var(--dsw-radius-sm)` |
+| `.primary` | `background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-foreground)` |
+| `:disabled` | `opacity: 0.4` |
 
-不是类名、也不是构建期变体，而是**调色板属性选择器**：明色默认走 `body { … }`；暗色走 `body[data-ds-dark-theme] { … }`；macOS 特例走 `html[data-platform='darwin'] body[data-ds-dark-theme]`。写属性的是 `ui-theme/src/boot-theme.ts:32`（插件前脚本）与 `ui-layout/src/client/theme-presenter.ts`（按 `snapshot.active.colorScheme` 切换，**不按主题 id**）。**没有产品变体**；第三方主题是 `ThemeDefinition` 的别名覆盖，作为**内联 CSS 变量写在 `body`** 上，不新增选择器。
+颜色、圆角、材质**在组件内部绑定到 alias token**；调用方只能改 props 或覆盖 token。外观 props（README 目录）：`Button.variant`(primary/ghost/outline/toolbar)+`size`(md/sm)+`icon` · `Tag.tone`(8 调色板) · `Pill.active` · `StateDot` 四态+`ongoing`（动画钉在 document time zero，保证同相位）· `Menu`(dense/compact/portal/align/side/selection/closeOnPointerLeave) · `MenuSurface.compact` · `Modal.backdropBlur` · `Tooltip.delayMs/portal` · `DisclosureRow` 固定 24px 行 + `contentLayoutClassName` · `PathLabel` 左渐隐保后缀 · `TextShimmer` 300ms/1s/500ms 节奏。
 
-### D.5 TypeScript 侧 token API
+### I.2 组件式样的边界：**封闭的 token 绑定 + 开放的布局钩子**
 
-存在于 `ui-theme/src/client/index.ts` 并从 `./client` 入口导出：`ThemeTokens = Record<string, string>`（**字典，不是 token 名联合**）、`ThemeTokenModes`/`ThemeTokenOverrides`/`ThemeDefinition`/`ThemeSnapshot`/`ThemeTokenInspection`、`ThemeRuntime`（`getTheme`/`exportInspectTokens`/`setTheme`/`setFontSize`/`register`/`overrideTokens`）与合并到 Context 的 `ctx.theme`。`BUILTIN_INSPECT_TOKENS` 只有 14 条描述项，不是全集。**没有生成的 token 名类型、没有逐 token 常量、没有类型化 CSS 助手**；特性组件代码不使用该 API（只有若干包做 type-only 导入），运行时覆盖 token 才是它的用途。
+| 调用方**可以** | 调用方**不可以** |
+|---|---|
+| 传 `className`/`listClassName`/`contentClassName` 等布局与高度钩子 | 覆盖 `MenuSurface` 消费类的 `background`/`backdrop-filter`/`anchor-name`（菜单门禁直接拒） |
+| 在**自己的容器上 rebind 既有 token**（实测 25 个文件 26 行，如 `--dsw-elevation-stroke-color`） | 在主题表外重定义菜单材质 token（`--dsw-specific-menu`/`--dsw-menu-surface-fill`/`--dsw-menu-backdrop-filter`） |
+| 用 props/slots 改变外观与内容 | 改组件的 **material 与 outer radius**（README 原文：*"Feature classes control layout and elevation, while the component owns material and outer radius"*） |
+| 用 `ThemeDefinition`/`ctx.theme.overrideTokens` 改 token 值 | 在特性 CSS 里写主题选择器（明暗覆盖属于主题所有者） |
+
+### I.3 视图层（页面/面板）靠 slot 组合 + 三条事实标准
+
+1. **组合**：右侧栏内容**注册进既有 sidebar**（不自己造 sidebar；每个 tab 声明 tab 图标）；框架只渲染 `'root'`。
+2. **页面内缩**：入口型页面同一写法，实测两处 —— `ui-plugin-manager/src/client/PluginManagerPage.module.css:39,1130` 与 `ui-schedule/src/client/TaskManagerPage.module.css:63`：
+
+   ```css
+   padding-top: calc(28px + var(--dsh-frame-top-clearance, 0px));
+   ```
+3. **卡片材质**：`base.css:24–27` 就两行别名 —— `--dsw-alias-settings-card-fill: var(--dsw-alias-bg-layer-2)`、`--dsw-alias-settings-card-stroke: var(--dsw-alias-border-l4)`，配 `--dsw-radius-xl`（`ui-radius.md` 的"设置卡"行）。
+4. **窗口 chrome**：`app-region-styles` 规格用 `CHROME_ROWS` 清单把每个 chrome 行的样式表、选择器、拖拽标记、高度、内缩逐行钉死（`-webkit-app-region: drag` 全仓只允许两处）。
+5. **品牌**：`brand-font.css` 三个 `@font-face`（WOFF2 + 许可），`--dsw-font-family-brand`。
+
+### I.4 结论
+
+视图层**没有另一套系统**：它就是**同样的 CSS Modules + alias token**，外加 slot 组合与上述页面约定。原生不提供的 6 类控件（§E）正是视图式样必须自写的部分——所以 task21 的修法不是"把视图样式搬进共用件"，而是**把自写样式修到合规**（描边 0.5px、圆角配 `corner-shape`、用 token 而非字面量、文案入字典）。
+
+## J. 对 theme / overlay 插件的含义（承接 [theme-overlay.md](theme-overlay.md)）
+
+| 覆盖目标 | 稳定落点 | 现有扩展点 |
+|---|---|---|
+| 主题值（全站颜色/圆角/材质） | **token 值** | `ctx.theme.register` / `overrideTokens` / `ThemeDefinition`（第三方主题即把 alias 覆盖写成 `body` 内联变量） |
+| 单个组件的外观 | **组件本身**（须是共用件） | 只能改 `ui-primitives` 的 props，或换掉该组件的注册（特性包之间不能互相 import） |
+| 视图布局 | **无稳定落点** | 视图布局是特性私有 CSS Module；overlay 要命中它只能按类名猜，类名还是哈希 |
+| 窗口/框架位置 | `--dsh-frame-*`（ui-layout 发布） | 与主题 token 分开处理，不能用 theme 覆盖 |
+
+这正是 [AGENTS.md](../AGENTS.md) 那条"UI 一律优先共用模板"规则的**技术原因**：组件式样只有"token 值"与"共用件本身"两个稳定覆盖点。另外两点提醒：(1) token 名无校验，overlay 拼名字要自建校验；(2) `TaskMenu`/`ClockPicker`（`ui-schedule`）是菜单材质的**显式例外**，若 overlay 依赖菜单材质一致性，需把这两处记为例外。
 
 ## 附：可复现命令
 
