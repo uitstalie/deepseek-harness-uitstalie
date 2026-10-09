@@ -6,9 +6,11 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
+import { Divider } from '../src/client/units/Divider.tsx'
 import { ImageView } from '../src/client/units/ImageView.tsx'
+import { Spacer } from '../src/client/units/Spacer.tsx'
 import { TextView } from '../src/client/units/TextView.tsx'
-import { emitImage, TEXT_SIZE_TOKENS, TEXT_TONE_TOKENS, type TextSize, type TextTone } from '../src/client/units/leaf.ts'
+import { emitDivider, emitImage, emitSpacer, TEXT_SIZE_TOKENS, TEXT_TONE_TOKENS, type TextSize, type TextTone } from '../src/client/units/leaf.ts'
 
 // This config does not enable vitest globals, so the DOM is torn down per case.
 afterEach(cleanup)
@@ -75,5 +77,41 @@ describe('image leaf', () => {
     expect(emitImage({ src: PIXEL, alt: '' }).className).toBe(emitImage({ src: PIXEL, alt: '', radius: 'none' }).className)
     expect(emitImage({ src: PIXEL, alt: '', radius: 'full' }).className)
       .not.toBe(emitImage({ src: PIXEL, alt: '', radius: 'none' }).className)
+  })
+})
+
+describe('spacer leaf', () => {
+  it('takes a fixed size and stays out of the accessibility tree', () => {
+    const { container } = render(<div><Spacer size="8px" /></div>)
+    const leaf = container.firstElementChild?.firstElementChild as HTMLElement
+    expect(leaf.getAttribute('aria-hidden')).toBe('true')
+    expect(leaf.textContent).toBe('')
+    expect(leaf.style.flexBasis).toBe('8px')
+    expect(leaf.style.flexGrow).toBe('0')
+  })
+
+  it('takes the unit free space when it grows', () => {
+    const { container } = render(<div><Spacer grow /></div>)
+    const leaf = container.firstElementChild?.firstElementChild as HTMLElement
+    expect(leaf.style.flexGrow).toBe('1')
+    expect(leaf.style.flexBasis).toBe('0%')
+    expect(emitSpacer({}).style.flexBasis).toBe('0px')
+  })
+})
+
+describe('divider leaf', () => {
+  it('is a separator that runs horizontally unless told otherwise', () => {
+    render(<Divider />)
+    const leaf = screen.getByRole('separator')
+    expect(leaf.getAttribute('aria-orientation')).toBe('horizontal')
+    cleanup()
+    render(<Divider orientation="vertical" />)
+    expect(screen.getByRole('separator').getAttribute('aria-orientation')).toBe('vertical')
+  })
+
+  it('carries the orientation in its class, so the hairline stays in the stylesheet', () => {
+    const vertical = emitDivider({ orientation: 'vertical' }).className
+    expect(vertical).not.toBe(emitDivider({}).className)
+    expect(vertical).not.toBe(emitDivider({ orientation: 'horizontal' }).className)
   })
 })
