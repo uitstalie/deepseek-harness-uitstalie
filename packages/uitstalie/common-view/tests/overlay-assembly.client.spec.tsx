@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 /**
- * The overlay assembled from the real web roster: the plugin must activate
- * (an entry that fails or stays pending fails the boot assertion), its marker
- * must land between the native items, withdrawing it must restore them, and a
- * takeover must sit at a lower priority than the native registration.
+ * The overlay assembled from the real web roster. Each case hands the row an
+ * explicit config through `provide` (the composition declares none), so the
+ * spec covers activation, the insertion point, withdrawal, the shadowing
+ * priority of a takeover, and the idle default.
  */
 import { describe, expect } from 'vitest'
 import { createClientTest, webApp } from '@deepseek-ai/dsh-client-test-runtime/src/assembly/index.ts'
 import { apply as applyOverlay } from '../src/client/index.ts'
+import type { CommonViewConfig } from '../src/config.ts'
 
 /** The roster row this package occupies. */
 const SELF = '@deepseek-ai/dsh-client-common-view'
@@ -28,15 +29,34 @@ const cellIn = (
 /** The whole roster's first boot pays the cold module transform of every plugin package. */
 const BOOT_TIMEOUT_MS = 60_000
 
-describe('common-view overlay on the assembled web roster', () => {
-  const it = createClientTest({ roster: webApp })
+/**
+ * A harness whose row carries `config`.
+ * @param config - the overlay config the row receives.
+ * @returns the harness `it`.
+ */
+function overlayTest(config: Partial<CommonViewConfig>) {
+  return createClientTest({
+    roster: webApp,
+    provide: {
+      [SELF]: {
+        // The replacement keeps the plugin's own `inject` declaration: without
+        // it the fiber has no `ctx.locale` and the row fails to activate.
+        inject: ['slots', 'locale'],
+        apply: (ctx) => { applyOverlay(ctx, config) },
+      },
+    },
+  })
+}
 
-  it('activates and inserts its marker between the native archive and pin items', async ({ start }) => {
+describe('common-view overlay on the assembled web roster', () => {
+  const itMarker = overlayTest({ sessionRowAction: true })
+
+  itMarker('activates and inserts its marker between the native archive and pin items', async ({ start }) => {
     const c = await start()
     expect(idsIn(c)).toEqual(['archive', 'common-view-marker', 'pin'])
   }, BOOT_TIMEOUT_MS)
 
-  it('withdraws the marker and leaves the native items untouched', async ({ start }) => {
+  itMarker('withdraws the marker and leaves the native items untouched', async ({ start }) => {
     const c = await start()
     await c.unload(SELF)
     await c.flush()
@@ -44,28 +64,24 @@ describe('common-view overlay on the assembled web roster', () => {
   }, BOOT_TIMEOUT_MS)
 
   describe('with the takeover enabled', () => {
-    // `provide` carries the test's own implementation of the row, so the case
-    // can hand the overlay a config the composition does not declare. The
-    // replacement keeps the plugin's own `inject` declaration: without it the
-    // fiber has no `ctx.locale` and the row fails to activate.
-    const itTakeover = createClientTest({
-      roster: webApp,
-      provide: {
-        [SELF]: {
-          inject: ['slots', 'locale'],
-          apply: (ctx) => { applyOverlay(ctx, { takeoverArchive: true }) },
-        },
-      },
-    })
+    const itTakeover = overlayTest({ takeoverArchive: true })
 
     itTakeover('shadows the archive item at a lower priority than the native one', async ({ start }) => {
       const c = await start()
       expect(cellIn(c)).toEqual([
         ['archive', -1],
         ['archive', 0],
-        ['common-view-marker', 0],
         ['pin', 0],
       ])
+    }, BOOT_TIMEOUT_MS)
+  })
+
+  describe('with nothing enabled', () => {
+    const itIdle = overlayTest({})
+
+    itIdle('contributes nothing, so the cell keeps exactly its native items', async ({ start }) => {
+      const c = await start()
+      expect(idsIn(c)).toEqual(['archive', 'pin'])
     }, BOOT_TIMEOUT_MS)
   })
 })
