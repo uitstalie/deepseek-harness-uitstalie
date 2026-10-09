@@ -1,0 +1,5 @@
+/* The takeover keeps the cell's geometry and paints only its own ink. */
+.takeover {
+  flex: none;
+  color: var(--dsh-common-view-accent, var(--dsw-alias-label-secondary));
+}
