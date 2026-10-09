@@ -11,10 +11,7 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./invariant": {
-      "types": "./lib/types/invariant.d.ts",
-      "default": "./lib/invariant.js"
-    },
+
     "./typert": {
       "types": "./lib/typert.host.d.ts",
       "default": "./lib/typert.host.js"
@@ -32,7 +29,7 @@
   },
   "files": [
     "lib/index.js",
-    "lib/invariant.js",
+
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts",
     "lib/typert.host.js",
@@ -47,7 +44,6 @@
     "@deepseek-ai/dsh-attachment": "workspace:^",
     "@deepseek-ai/dsh-authorization": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-models-dev": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
@@ -60,7 +56,6 @@
     "@deepseek-ai/dsh-attachment": "workspace:^",
     "@deepseek-ai/dsh-authorization": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-models-dev": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
