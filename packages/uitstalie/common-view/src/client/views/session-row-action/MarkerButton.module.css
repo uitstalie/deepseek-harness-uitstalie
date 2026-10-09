@@ -1,0 +1,5 @@
+/* The marker shapes itself; its color arrives as the overlay's accent. */
+.marker {
+  flex: none;
+  color: var(--dsh-common-view-accent, var(--dsw-alias-state-business-primary));
+}
