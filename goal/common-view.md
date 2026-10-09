@@ -121,6 +121,8 @@ config  │ 子槽声明 + 我们提供的叶子组件        │   │        +
 |---|---|---|---|
 | `TextView` | `TextSpec = { text, tone?, size? }` | `<span>` + 单元自身 CSS Module 的类；`font`/ink 以**内联组件局部属性**（`--dsh-common-view-text-font` / `-ink`）落入 CSS | `size` → **复合 `font` token**（`large`=`--dsw-font-base-16`、`body`=`--dsw-font-s-14`、`small`=`--dsw-font-xs-13`、`caption`=`--dsw-font-xxs-12`，**自带行高配对** ✓）；`tone` → `--dsw-alias-label-{primary,secondary,tertiary,caption}` |
 | `ImageView` | `ImageSpec = { src, alt, fit?, width?, height?, radius? }` | `<img>` + fit/尺寸以**内联属性**（`--dsh-common-view-image-fit`）落入 CSS；**圆角走类**（`radiusSm/Md/Lg` 用 `--dsw-radius-*`，`radiusFull` 用 `50%` + **`corner-shape: round` 配对**——必须让主题规格在 CSS 文本里看得见 ✓） | 无字面色；`fit` = `contain`/`cover`/`fill`/`none` |
+| `Spacer` | `SpacerSpec = { size?, grow? }` | `<span aria-hidden="true">` + **flex 长写属性内联**（`flexGrow/Shrink/Basis`：固定 = `0 0 <size>`，`grow` = `1 1 0%`）；不绘制任何东西 | 无（纯粹占位） |
+| `Divider` | `DividerSpec = { orientation? }` | `<span role="separator" aria-orientation>`；**描边留在类里**：`horizontal` = `border-top: 0.5px solid var(--dsw-alias-border-l2)` + `height:0`、`vertical` = `border-left: 0.5px …` + `width:0` + `align-self: stretch` | `--dsw-alias-border-l2`（中性 0.5px 发丝线；主题规格要求中性描边必须 0.5px 且不得与阴影并存 ✓） |
 
 两条立规：
 

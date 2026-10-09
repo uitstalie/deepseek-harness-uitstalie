@@ -46,6 +46,8 @@ kind: "package-reference"
 |---|---|---|---|
 | `TextView` | `{ text, tone?, size? }` | 一个 `span`，字型角色与墨色以组件局部自定义属性传入 | `size` 取**复合 `font` token**（`large` `--dsw-font-base-16`、`body` `--dsw-font-s-14`、`small` `--dsw-font-xs-13`、`caption` `--dsw-font-xxs-12`，**自带行高配对**）；`tone` 取 `--dsw-alias-label-*` 别名 |
 | `ImageView` | `{ src, alt, fit?, width?, height?, radius? }` | 一个 `img`，fit 与盒子尺寸为内联值，圆角走类 | `fit` 为 `contain`/`cover`/`fill`/`none`；圆角类用 `--dsw-radius-*`，满圆情形配 `corner-shape: round` |
+| `Spacer` | `{ size?, grow? }` | 一个 `aria-hidden` 的空盒子，flex 长写属性为内联值 | 无：它不绘制任何东西 |
+| `Divider` | `{ orientation? }` | 一个 `separator`，方向类承载那条线 | 一条 0.5px 发丝线，取中性 `--dsw-alias-border-*` token，横或竖 |
 
 图片的可访问名由调用方提供，因此两个原子都不持有回退文案。
 
