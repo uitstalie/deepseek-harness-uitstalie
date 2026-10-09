@@ -1,0 +1,18 @@
+/* A divider draws exactly one neutral hairline: 0.5px, horizontal or vertical,
+   and never beside an elevation shadow. */
+.divider {
+  flex: none;
+  border: 0;
+}
+
+.horizontal {
+  width: 100%;
+  height: 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.vertical {
+  width: 0;
+  align-self: stretch;
+  border-left: 0.5px solid var(--dsw-alias-border-l2);
+}
