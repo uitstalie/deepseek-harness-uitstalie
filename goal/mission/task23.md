@@ -131,6 +131,38 @@ Error: web boot: 1 entry did not activate
 
 **结论**：本轮除 invariant 机制外，**没有其他可回归项**——上游尚未提供我们当初补的那些能力。
 
+## 根因与修复（分支侧）：`$mount` 撞名 + 启动取数
+
+`assertEntriesActive` 不打 cause，于是用**我们自己的包**做临时探针（try/catch + console.error，抓完即撤），拿到真因：
+
+```
+Error: client api: namespace "modelsDev" conflicts with an existing Remote namespace
+  ❯ Proxy.validateContribution packages/api/gateway/src/client/index.ts:303
+```
+
+**装配层已按行安装每行生成物的 Remote 命名空间**，我们仍在 apply 里无条件 `ctx.remote.$mount(modelsDevRemote)` → 撞名 → 该 fiber `failed` → `bootClient` 抛错 → 所有装配 web roster 的规格连带失败（46 个）。
+
+两处分支侧修复：
+
+1. **缺了才挂**：`ctx.get('remote.modelsDev') === undefined ? await ctx.remote.$mount(...) : undefined`（`llmPlusAuth` 同）——符合平台"可选服务用 `ctx.get`"的约定，在"外壳不自动挂/按行装配已挂"两种装配下都正确；disposer 改为可选调用。
+2. **取数延后到首次打开页面**：`load()/loadOAuthRoutes()/loadMyRoutes()/startCatalogPolling()` 从 apply 移进注入面的 `activate()`，由 `ModelsDevSection` 首次挂载触发（`useEffect`）。装配态下没人打开页面 → **不读 Host** → 规格里 `settings/describe` 的调用计数恢复（3→2、1→0），并顺带消掉卸载后仍发布的 `Cannot update an unmounted root`。
+
+因此**上一步加的两行默认端点又被撤掉**（`50dae13310`）——共享默认表保持与上游**逐字一致**，顶层净原生改动只剩下规格里的分区清单那 1 行 ✓。
+
+## 最终验证
+
+`pnpm run test:gui`：**5 文件 / 5 测试失败，9776 通过**（rebase 后最初是 11 文件 / 50 失败；rebase 前是 7 文件 / 8 失败）。剩余 5 个全部已有归属：
+
+| 失败文件 | 归属 |
+|---|---|
+| `ui-theme/tests/elevation-styles`（9 处 1px 描边） | 我们 `ui-models-dev` 的既有 CSS → [task21](task21.md) |
+| `ui-theme/tests/corner-shape-styles`（`.badge`） | 同上 |
+| `ui-deliverables/tests/present-open` | 环境：Windows 无符号链接 |
+| `connection/tests/binary-rpc` | 环境（rebase 前即失败） |
+| `ui-trajectory/tests/client-bundle`（`[]` vs `['trajectory']`） | **上游包**按构建产物挂进裸 ring 的断言，与本分支内容无关；rebase 后（Vite 8 等升级）才出现，待单独诊断 |
+
+其余相关验证：`tsc` 两面干净 ✓、`pnpm run build` 359 artifact ✓、`packages/uitstalie` **11 文件 / 86 测试** ✓、`test:docs` 21 条全绿 ✓、依赖门禁 76 包 ✓、client 门禁 63 包 ✓、`gen-cordis-api` 119 artifact ✓。
+
 ## 验证（rebase 后）
 
 | 检查 | 结果 |
