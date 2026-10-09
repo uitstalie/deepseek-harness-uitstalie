@@ -132,11 +132,21 @@ registered package factory (a build-time externals drift …)
 
 **门禁缺口（值得单独跟进）**：这次漂移**没有任何门禁拦住**——`pnpm run build` 只打印警告并以 0 退出，`verify-client-packages` 与 bundle purity 规格也都没发现它，直到浏览器运行时模块表才拒绝。建议后续加一条"客户端 bundle 出现非平台种子的未解析裸导入即失败"的检查（或在 `clientBundle` 预设里把该警告升级为错误）。
 
+### 已完成（第九步：交互与外观收敛，用户目视确认）
+
+用户实测反馈三轮，逐条修完：
+
+1. **按钮应是图标而非文字** → 触发器改为标记式（先 `IconChecklistOutlineRegular`，后按用户要求改为**大写 R**），R 进 locale 字典（`glyph`），标记 `aria-hidden`，可访问名与 Tooltip 保留；
+2. **出现黑底** → 根因是 `Button variant="toolbar"` 带填充底；改回默认 `ghost` + `size="sm"`（与行内小按钮同级），面板关闭控件同样去填充；
+3. **二级面板与其它列表不一致且遮挡** → 根因是我**手搓**了固定定位 + 自造面板 CSS；改为**共用 `Menu`（规则列表）+ 共用 `Modal`（读规则）**，空态/失败态也在同一对话框作答，自身 CSS 只剩标记字重与正文排版（无颜色/描边/定位）。
+
+用户确认："现在插件暂时看起来没啥问题了"。同时定下常设规则：**分支自有 client 代码一律优先共用模板**（已入 [AGENTS.md](../AGENTS.md) 与 [theme-overlay.md](../theme-overlay.md)）。
+
 ### 下一步（按优先级）
 
-1. **人工视觉确认**：刷新 `http://127.0.0.1:3081/?token=…`，确认工作区行右侧的 rules 按钮与面板；若横幅仍在，说明浏览器缓存了旧 bundle（硬刷新）。
-2. 补"未解析裸导入即失败"的客户端构建门禁（上文缺口）。
-3. 修 `ui-models-dev` 的既有 CSS 违规（0.5px 中性边框 + `corner-shape`），让 `test:gui` 全绿；task15 检查层与 task17 的组合层迁移。
+1. 补"未解析裸导入即失败"的客户端构建门禁（第八步记录的缺口）。
+2. 样式合规专项：[task21](task21.md)（用户要求独立成任务，不与本任务单混做）。
+3. task15 检查层、task17 组合层迁移，以及模型工具在真实会话里的手工验证。
 
 ## 修改范围
 
