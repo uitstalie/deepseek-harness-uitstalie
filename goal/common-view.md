@@ -113,6 +113,20 @@ config  │ 子槽声明 + 我们提供的叶子组件        │   │        +
 
 **代码落点**：几何映射收敛在唯一一处 `src/client/units/spec.ts`（`UnitSpec` → `resolveUnit` → `emitUnit`）；`Row`/`Column` 只是它的**薄渲染器**（`spec.ts` 决定一切，组件文件只输出原生盒子）。后续新增单元 = 在 spec 里加一个 kind 与一处映射 ✓。
 
+## 三点八、原子 view（leaves）：`TextView` / `ImageView`（用户要求，2026/10/09）
+
+用户要求的基础原子：**textView 显示文本、imageView 显示 png/svg/其他图片**，二者只做**最基础的显示**——**不涉及 click、不涉及 stateful**。
+
+| 原子 | spec（组合层） | 回落（native emit） | 主题资源 |
+|---|---|---|---|
+| `TextView` | `TextSpec = { text, tone?, size? }` | `<span>` + 单元自身 CSS Module 的类；`font`/ink 以**内联组件局部属性**（`--dsh-common-view-text-font` / `-ink`）落入 CSS | `size` → **复合 `font` token**（`large`=`--dsw-font-base-16`、`body`=`--dsw-font-s-14`、`small`=`--dsw-font-xs-13`、`caption`=`--dsw-font-xxs-12`，**自带行高配对** ✓）；`tone` → `--dsw-alias-label-{primary,secondary,tertiary,caption}` |
+| `ImageView` | `ImageSpec = { src, alt, fit?, width?, height?, radius? }` | `<img>` + fit/尺寸以**内联属性**（`--dsh-common-view-image-fit`）落入 CSS；**圆角走类**（`radiusSm/Md/Lg` 用 `--dsw-radius-*`，`radiusFull` 用 `50%` + **`corner-shape: round` 配对**——必须让主题规格在 CSS 文本里看得见 ✓） | 无字面色；`fit` = `contain`/`cover`/`fill`/`none` |
+
+两条立规：
+
+1. **只显示**：两者都不接受 `onClick`、不持有状态、不发请求 ✓（用户明确要求）；
+2. **文案归属**：`ImageView` 的 `alt` 由**调用方**必填（装饰图传空串），原子自身**不持有任何回退文案** ✓（与"共用件要求完整 label props"一致 ✓）；`TextView` 的内容是**数据**，逐字显示 ✓。
+
 ## 四、切片计划（一个 view 一片）
 
 | 片 | 内容 | 说明 |

@@ -38,6 +38,17 @@ kind: "package-reference"
 
 几何属于组合层：视图由**布局单元**（`Row`、`Column`）组合而成，其 spec 解析一次后**回落为原生输出**——单元自身 CSS Module 提供的盒子类，加上组件局部自定义属性与内联轴值。DOM 里不出现任何外来约定，每个叶子都是共用控件。
 
+### 只显示的原子
+
+两个原子承载内容，各自从 spec 解析并回落为原生输出。二者都不接受交互 props，也不持有状态：
+
+| 原子 | spec | 回落为 | 主题资源 |
+|---|---|---|---|
+| `TextView` | `{ text, tone?, size? }` | 一个 `span`，字型角色与墨色以组件局部自定义属性传入 | `size` 取**复合 `font` token**（`large` `--dsw-font-base-16`、`body` `--dsw-font-s-14`、`small` `--dsw-font-xs-13`、`caption` `--dsw-font-xxs-12`，**自带行高配对**）；`tone` 取 `--dsw-alias-label-*` 别名 |
+| `ImageView` | `{ src, alt, fit?, width?, height?, radius? }` | 一个 `img`，fit 与盒子尺寸为内联值，圆角走类 | `fit` 为 `contain`/`cover`/`fill`/`none`；圆角类用 `--dsw-radius-*`，满圆情形配 `corner-shape: round` |
+
+图片的可访问名由调用方提供，因此两个原子都不持有回退文案。
+
 因为未声明 `config` 的行会把 `undefined` 交给浏览器半边，浏览器半边先经 `resolveCommonViewConfig` 解析收到的值；两侧的默认值都读自 `src/config.ts`。
 
 <a id="model-experience"></a>
