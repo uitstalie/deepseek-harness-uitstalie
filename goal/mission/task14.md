@@ -1,5 +1,29 @@
 # task14 — 工作区 .dsh/ 目录管理插件
 
+## 状态：已完成（2026/09/30 收尾）
+
+**交付面**（全部落地并经编译/测试/组合/目视四层验证）：
+
+| 面 | 内容 | 证据 |
+|---|---|---|
+| 路径层 | `.dsh` 相对路径拒绝矩阵（绝对/UNC/盘符、`..`、`~`/`$`/`%`、保留名、非法字符、段尾点空格、长度深度） | 10 个单测 |
+| 存储层 | `ensureStoreRoot` / `createStoreFolder` / `createStoreFile` / `queryStoreTarget` / `removeStoreTarget` | 9 个单测（真实 `LocalFileSystem`） |
+| 工具面 | 单个 `tool-dsh-store`（create/query/delete × file/folder）+ 会话策略门禁（写操作过门禁、`read-only` 用共享 `[sandbox: …]` 拒绝、查询不拦）+ `rules`/`skills` 命名空间写入前校验 | 11 个工具测试 |
+| 组合挂载 | 三个 agent preset 内的 host 行 + profile 级 client 行 + bundle 两个依赖 | `dump-config` 可见、bundle 组合测试 22 个绿 |
+| 只读读取面 | `remote.dshStore`（按工作区身份寻址、注册表围栏、列表复用 loader 的保留集合） | 4 个单测 + 浏览器 boot 载荷列出模块 |
+| 客户端 UI | 工作区行右侧的 R 标记按钮 → 共用 `Menu` 列规则 → 共用 `Modal` 读正文；空/失败态同对话框作答 | 6 个组件测试 + **用户目视确认** |
+| 真实组合 | YAML 组合启动 → 生产 Agent → 工具注册、pre-step 建空 `.dsh/`、调用真实落盘 | 1 个 Loader 组合测试 |
+
+**最终验收跑**（收尾时一次跑完）：`tsc` 两面干净 · `packages/uitstalie` + `ui-workspace` 测试全绿 · `pnpm run build` 351 artifact（无未解析模块警告）· `verify-package-dependencies` 75 包全过 · `pnpm run test:docs` 21 条门禁全绿。
+
+**已拆出/延期的遗留**（不在本任务单内，均已归属）：
+
+1. **客户端 bundle 的"未解析裸导入"门禁** → [task22](task22.md)（本轮 zod 漂移就是它漏掉的）；
+2. **样式合规专项** → [task21](task21.md)（用户要求独立成任务）；
+3. **手工验收：真实会话里模型调用 `tool-dsh-store` 建/查/删** → 未做，原因与前提：需要在**运行中的 harness + 一个真实会话**里由模型触发；本轮 dev server 由用户主动停掉，故留待下次启动时执行（功能面已由工具测试与 Loader 组合测试覆盖，缺的只是"模型确实调到它"的现场证据）。
+
+**明确的非目标**（当时即决定，非遗漏）：`mcp.json` 命名空间校验（**全仓库无消费者**，写校验等于发明约定，见第八步）；`fs-ssh` 后端不实现（远端协议改动，记在设计文档「已知限制」）；删除功能首版即开放（只有非空目录需要显式 `recursive`）。
+
 ## requirement
 
 为支持「目录形式的 rules」，先提供一个专门管理**工作区 `.dsh/` 目录**的插件：agent 只需要告诉插件「创建 / 查询 / 删除什么位置的文件和文件夹」，插件负责解析路径、执行操作、把结果按模型可读的形式返回。
