@@ -129,6 +129,30 @@ config  │ 子槽声明 + 我们提供的叶子组件        │   │        +
 1. **只显示**：两者都不接受 `onClick`、不持有状态、不发请求 ✓（用户明确要求）；
 2. **文案归属**：`ImageView` 的 `alt` 由**调用方**必填（装饰图传空串），原子自身**不持有任何回退文案** ✓（与"共用件要求完整 label props"一致 ✓）；`TextView` 的内容是**数据**，逐字显示 ✓。
 
+## 三点九、父 view 大布局脚手架 `AppScaffold`（用户要求，2026/10/09）
+
+用户要求：以**现在父 view 的大布局**（侧边栏位置、顶部位置、中间信息位置）做**最原始的脚手架**，方便后续验证时**直接在脚手架的布局上迭代**。
+
+**真实拓扑（现场读 `Slots.listSubTree` 得到，不是猜的）**：
+
+| 区域 | 真实 seat | kind | replaceRisk |
+|---|---|---|---|
+| 左侧栏 | `sidebar` | single | `shadows-shipped-ui`（可接管） |
+| 顶部 | `shell.leading`（窗口 chrome 座位） | single | 可接管 |
+| 中间 | `main`（按侧边栏条目 id 派发，已占 `conversation`） | keyed | 可接管 |
+| 整框 | `root`（**只有 shell 能渲染** ✗ 规则 1） | single | — |
+| 浮层 | `shell.overlay`（"Frame-wide floating layer, above every column"） | list | 可接管 |
+
+**脚手架的形态**：`AppScaffold` = **纯组合体**，只用本包的单元与叶子搭出大布局（`Row` 左列 + `Divider` 竖线 + `Column`［`Row` 顶栏 + `Divider` 横线 + 内容区］），三个区域各带 `TextView` 名称标签；两处尺寸（列宽、顶高）是插件 **Config**（`scaffoldSidebarWidth` / `scaffoldTopHeight`），以组件局部自定义属性内联落入 CSS ⇒ **布局实验 = 改配置** ✓。
+
+**挂载点与开关**：默认 `scaffold: false`（不进产品默认 ✓）；打开后注册进 `shell.overlay`（`id: common-view-scaffold` ✓），卸载即撤下 ✓。本地验证用 patch overlay（`tmp/scaffold.overlay.yml`，不入仓 ✓）：
+
+```
+pnpm run dev:web -- --skip-build --no-open --port 3081 --patch tmp/scaffold.overlay.yml
+```
+
+**记录到的通道限制（下一片要解）**：区域**子槽**（让脚手架的三个区域成为可被他人注入的 seat）目前走不通类型层——`SlotMap` 里 `shell.overlay` 的形状由 ui-layout 拥有，**外来插件无法给它合并新的 children 声明**（运行时接受 erased 形式的 `children`，但那是绕过类型 ✗）。因此区域子槽要么等上游在 `SlotMap` 里给出 children 位（原生最小插入），要么由本框架设计一条"自有父槽 + 子槽"的注册通道 ✓。
+
 ## 四、切片计划（一个 view 一片）
 
 | 片 | 内容 | 说明 |
