@@ -38,6 +38,7 @@ type RowTranslate = WorkspaceBrowserProps['t']
  * card is open.
  */
 type RowRenderSlots = PropsRenderSlots<
+  // uitstalie-k3, 2026/09/30, task14, 行组件需要渲染该 seat
   | 'sidebar.workspaces.row.action'
   | 'sidebar.workspaces.session.menu.item'
   | 'sidebar.workspaces.session.row.action'
@@ -218,6 +219,7 @@ function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' |
  * @returns the row element.
  */
 export function ProjectRowItem({
+  // uitstalie-k3, 2026/09/30, task14, 接收 seat 渲染器（浏览器根透传）
   group, containsCurrentDescendant = false, onToggle, onCreate, actions, drag, home, newShortcut, renderSlot, t,
 }: {
   group: GroupNode
@@ -231,12 +233,14 @@ export function ProjectRowItem({
   drag?: WorkspaceRowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
   home?: string | undefined
+  // BEGIN uitstalie-k3, 2026/09/30, task14, seat 渲染器（可选，便于直接构造 props 的测试）
   /**
    * Child-seat renderer for the workspace row's action list. The browser root
    * always passes it; optional so a direct-prop render (tests, stories) does not
    * have to stub a seat it does not exercise.
    */
   renderSlot?: RowRenderSlots | undefined
+  // END uitstalie-k3
   t: RowTranslate
 }) {
   const row = group
@@ -314,8 +318,10 @@ export function ProjectRowItem({
             <IconNewChatOutlineRegular />
           </button>
         </Tooltip>
+        {/* BEGIN uitstalie-k3, 2026/09/30, task14, 在新建会话按钮右侧渲染该 seat 的占用者 */}
         {row.workspaceId !== undefined && renderSlot !== undefined
           && renderSlot('sidebar.workspaces.row.action', { workspaceId: row.workspaceId, label })}
+        {/* END uitstalie-k3 */}
       </span>
     </div>
   )
