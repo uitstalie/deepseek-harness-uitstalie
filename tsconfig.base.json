@@ -342,6 +342,8 @@
       // BEGIN uitstalie-k3, 2026/10/09, task23, 组合测试运行时按组合清单 import '<pkg>/client'，缺该别名则整组组合规格失败
       "@deepseek-ai/dsh-client-ui-models-dev/client": ["./packages/uitstalie/ui-models-dev/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-tool-dsh-store/client": ["./packages/uitstalie/ui-tool-dsh-store/src/client/index.ts"],
+      "@deepseek-ai/dsh-client-common-view": ["./packages/uitstalie/common-view/src"],
+      "@deepseek-ai/dsh-client-common-view/client": ["./packages/uitstalie/common-view/src/client/index.ts"],
       // END uitstalie-k3
       // uitstalie-k3, 2026/09/30, task14, /types 子路径走手写别名：生成器只管根与 invariant；该模块声明 Remote 错误码，必须与消费方解析到同一个模块
       "@deepseek-ai/dsh-tool-dsh-store/types": ["./packages/uitstalie/tool-dsh-store/src/types.ts"],

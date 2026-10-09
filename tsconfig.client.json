@@ -149,6 +149,8 @@
     { "path": "./packages/uitstalie/ui-models-dev" },
     // END uitstalie-k3
     // uitstalie-k3, 2026/09/30, task14, 注册侧边栏 rules 按钮 client 包进 Client 聚合程序
-    { "path": "./packages/uitstalie/ui-tool-dsh-store" }
+    { "path": "./packages/uitstalie/ui-tool-dsh-store" },
+    // uitstalie-k3, 2026/10/09, task24, 注册 common-view overlay 包进 Client 聚合程序
+    { "path": "./packages/uitstalie/common-view" }
   ]
 }
