@@ -19,10 +19,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { Config as CommonViewConfig } from '../index.ts'
 import { resolveCommonViewConfig } from '../config.ts'
 import { en, zh, type CommonViewKey } from './locales.ts'
-import { MarkerButton } from './views/session-row-action/MarkerButton.tsx'
+import { ActionRow } from './views/session-row-action/ActionRow.tsx'
 import { TintedArchiveButton } from './views/session-row-action/TintedArchiveButton.tsx'
 
 export type { CommonViewKey } from './locales.ts'
+export type { ActionRowProps } from './views/session-row-action/ActionRow.tsx'
 export type { MarkerButtonProps } from './views/session-row-action/MarkerButton.tsx'
 export type { TintedArchiveButtonProps } from './views/session-row-action/TintedArchiveButton.tsx'
 
@@ -56,15 +57,22 @@ export function apply(ctx: Context, config?: Partial<CommonViewConfig>): void {
   const accent = resolved.accent
 
   // Grouping: one more item in the row's action list, between the native
-  // `archive` (order 100) and `pin` (order 200) entries.
+  // `archive` (order 100) and `pin` (order 200) entries. The item is a layout
+  // unit, so its geometry is an overlay input too.
   if (resolved.sessionRowAction) {
     ctx.slots.inject(SESSION_ROW_ACTION, () => ctx.slots.register({
       name: SESSION_ROW_ACTION,
       id: 'common-view-marker',
       order: 150,
       locale: NS,
-      inject: () => ({ t, accent }),
-    }, MarkerButton))
+      inject: () => ({
+        t,
+        accent,
+        gap: resolved.unitGap,
+        align: resolved.unitAlign,
+        justify: resolved.unitJustify,
+      }),
+    }, ActionRow))
   }
 
   // Replacement: the same cell the native `archive` item occupies, at a lower

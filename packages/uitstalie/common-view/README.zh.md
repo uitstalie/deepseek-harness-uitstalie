@@ -32,6 +32,11 @@ kind: "package-reference"
 | `sessionRowAction` | `true` | 把 overlay 的标记插入该行的动作列表，位置在原生 `archive`（`order` 100）与 `pin`（`order` 200）之间。 |
 | `takeoverArchive` | `false` | 以 `priority: -1` 注册原生 `archive` 所占据的同一 cell，于是由 overlay 的组件渲染，而原生注册仍然存活，可即时回退。 |
 | `accent` | `var(--dsw-alias-state-business-primary)` | 两项贡献所用的颜色。它以元素上内联设置的 `--dsh-common-view-accent` 自定义属性进入组件 CSS，绝不在样式表里写成字面色。 |
+| `unitGap` | `4px` | 布局单元子项之间的间距。 |
+| `unitAlign` | `center`（列单元为 `stretch`） | 布局单元内的交叉轴对齐。 |
+| `unitJustify` | `start` | 布局单元内的主轴分布。 |
+
+几何属于组合层：视图由**布局单元**（`Row`、`Column`）组合而成，其 spec 解析一次后**回落为原生输出**——单元自身 CSS Module 提供的盒子类，加上组件局部自定义属性与内联轴值。DOM 里不出现任何外来约定，每个叶子都是共用控件。
 
 因为未声明 `config` 的行会把 `undefined` 交给浏览器半边，浏览器半边先经 `resolveCommonViewConfig` 解析收到的值；两侧的默认值都读自 `src/config.ts`。
 

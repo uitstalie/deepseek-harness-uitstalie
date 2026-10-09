@@ -8,7 +8,7 @@
  * @module @deepseek-ai/dsh-client-common-view/config
  */
 
-/** One switch per adopted view, plus the accent the overlay paints with. */
+/** One switch per adopted view, plus the accent and unit geometry the overlay paints and lays out with. */
 export interface CommonViewConfig {
   /** Session-row action list: contribute our own item. */
   sessionRowAction: boolean
@@ -16,6 +16,12 @@ export interface CommonViewConfig {
   takeoverArchive: boolean
   /** Accent the overlay paints with: any CSS color value, by default a theme token. */
   accent: string
+  /** Gap between the layout units' children, as a CSS length. */
+  unitGap: string
+  /** Cross-axis placement inside the layout units. */
+  unitAlign: 'start' | 'center' | 'end' | 'stretch'
+  /** Along-axis distribution inside the layout units. */
+  unitJustify: 'start' | 'center' | 'end' | 'between'
 }
 
 /** Defaults of every field; the node half's schema and the browser half's resolver both read them here. */
@@ -27,6 +33,9 @@ export const COMMON_VIEW_DEFAULTS: CommonViewConfig = {
   sessionRowAction: false,
   takeoverArchive: false,
   accent: 'var(--dsw-alias-state-business-primary)',
+  unitGap: '4px',
+  unitAlign: 'center',
+  unitJustify: 'start',
 }
 
 /**
