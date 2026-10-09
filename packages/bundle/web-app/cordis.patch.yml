@@ -369,6 +369,10 @@
     - id: ui-tool-dsh-store
       name: '@deepseek-ai/dsh-client-ui-tool-dsh-store'
 
+    # uitstalie-k3, 2026/10/09, task24, common-view overlay：逐 view 接管原生视图（默认只开编组）
+    - id: ui-common-view
+      name: '@deepseek-ai/dsh-client-common-view'
+
     # Durable workflow lifecycle as an independent Chat node after the
     # existing generic workflow tool row.
     - id: ui-workflow-run
