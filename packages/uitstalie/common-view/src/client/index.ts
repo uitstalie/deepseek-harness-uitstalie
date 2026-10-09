@@ -12,6 +12,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: pulls the workspace's slot declarations into this program.
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+// Type-only: pulls the frame layout's slot declarations (the floating layer) into this program.
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only: pulls the locale service and namespace map into this program.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the `ctx.slots` service declaration into this program.
@@ -21,11 +23,13 @@ import { resolveCommonViewConfig } from '../config.ts'
 import { en, zh, type CommonViewKey } from './locales.ts'
 import { ActionRow } from './views/session-row-action/ActionRow.tsx'
 import { TintedArchiveButton } from './views/session-row-action/TintedArchiveButton.tsx'
+import { AppScaffold } from './views/scaffold/AppScaffold.tsx'
 
 export type { CommonViewKey } from './locales.ts'
 export type { ActionRowProps } from './views/session-row-action/ActionRow.tsx'
 export type { MarkerButtonProps } from './views/session-row-action/MarkerButton.tsx'
 export type { TintedArchiveButtonProps } from './views/session-row-action/TintedArchiveButton.tsx'
+export type { AppScaffoldProps } from './views/scaffold/AppScaffold.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -44,6 +48,9 @@ const NS = 'common-view'
 
 /** The first adopted view: the session row's action list (declared by ui-workspace). */
 const SESSION_ROW_ACTION = 'sidebar.workspaces.session.row.action'
+
+/** The frame-wide floating layer (declared by ui-layout); the scaffold mounts here. */
+const SHELL_OVERLAY = 'shell.overlay'
 
 /**
  * Register the overlay contributions the config asks for.
@@ -87,5 +94,22 @@ export function apply(ctx: Context, config?: Partial<CommonViewConfig>): void {
       locale: NS,
       inject: () => ({ t, accent }),
     }, TintedArchiveButton))
+  }
+
+  // The frame scaffold: the parent view's big layout, rebuilt as our own
+  // composition so layout iterations stay in this package. It mounts in the
+  // frame-wide floating layer, above the shell and reversible by unloading.
+  if (resolved.scaffold) {
+    ctx.slots.inject(SHELL_OVERLAY, () => ctx.slots.register({
+      name: SHELL_OVERLAY,
+      id: 'common-view-scaffold',
+      order: 900,
+      locale: NS,
+      inject: () => ({
+        t,
+        sidebarWidth: resolved.scaffoldSidebarWidth,
+        topHeight: resolved.scaffoldTopHeight,
+      }),
+    }, AppScaffold))
   }
 }

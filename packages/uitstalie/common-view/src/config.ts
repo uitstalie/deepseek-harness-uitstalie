@@ -22,6 +22,12 @@ export interface CommonViewConfig {
   unitAlign: 'start' | 'center' | 'end' | 'stretch'
   /** Along-axis distribution inside the layout units. */
   unitJustify: 'start' | 'center' | 'end' | 'between'
+  /** Whether the frame scaffold is mounted in the frame-wide floating layer. */
+  scaffold: boolean
+  /** Width of the scaffold's left column. */
+  scaffoldSidebarWidth: string
+  /** Height of the scaffold's top strip. */
+  scaffoldTopHeight: string
 }
 
 /** Defaults of every field; the node half's schema and the browser half's resolver both read them here. */
@@ -36,6 +42,11 @@ export const COMMON_VIEW_DEFAULTS: CommonViewConfig = {
   unitGap: '4px',
   unitAlign: 'center',
   unitJustify: 'start',
+  // Off by default: the scaffold is a layout sandbox for verification, never
+  // shipped UI.
+  scaffold: false,
+  scaffoldSidebarWidth: '280px',
+  scaffoldTopHeight: '44px',
 }
 
 /**
