@@ -52,8 +52,11 @@ export const inject = ['slots', 'locale', 'remote', 'remote.settings', 'remote.c
  * @returns 清理函数：摘除 Remote contribution（slots 注册随 fiber 自动摘除）。
  */
 export async function apply(ctx: ClientContext): Promise<() => void> {
-  const disposeModelsDev = await ctx.remote.$mount(modelsDevRemote)
-  const disposeLlmPlus = await ctx.remote.$mount(llmPlusRemote)
+  // 生成物由谁挂载取决于装配：Web 外壳不自动挂本包，按行装配的客户端测试运行时
+  // 已按行挂好。缺了才自己挂——重复挂载会被 Client Remote 网关按命名空间冲突拒绝
+  // （`client api: namespace "modelsDev" conflicts with an existing Remote namespace`）。
+  const disposeModelsDev = ctx.get('remote.modelsDev') === undefined ? await ctx.remote.$mount(modelsDevRemote) : undefined
+  const disposeLlmPlus = ctx.get('remote.llmPlusAuth') === undefined ? await ctx.remote.$mount(llmPlusRemote) : undefined
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-models-dev: copy dictionaries')
 
   const t = ctx.locale.bind(NS) as ModelsDevSectionInjected['t']
@@ -70,8 +73,21 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
     }
     const controllerInstance = new ModelsDevStore(wire)
     controller = controllerInstance
+    /** 首次打开本页才取数：装配态（如客户端测试运行时）不该为一个没人看的页面读 Host。 */
+    let activated = false
+    const activate = (): void => {
+      if (activated) return
+      activated = true
+      // 目录拉取是页面级一次性动作（失败进 error 态，页面可重试）；
+      // 之后 60s 后台轮询保持列表新鲜（缓存与 TTL 在 host 侧）
+      void controllerInstance.load()
+      void controllerInstance.loadOAuthRoutes()
+      void controllerInstance.loadMyRoutes()
+      controllerInstance.startCatalogPolling()
+    }
     const injected = (): ModelsDevSectionInjected => ({
       controller: controllerInstance,
+      activate,
       hooks: { snapshot: controllerInstance.store },
       t,
     })
@@ -84,17 +100,10 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       label: () => t('nav'),
       inject: injected,
     }, ModelsDevSection))
-
-    // 目录拉取是页面级一次性动作（失败进 error 态，页面可重试）；
-    // 之后 60s 后台轮询保持列表新鲜（缓存与 TTL 在 host 侧）
-    void controllerInstance.load()
-    void controllerInstance.loadOAuthRoutes()
-    void controllerInstance.loadMyRoutes()
-    controllerInstance.startCatalogPolling()
   })
   return () => {
     controller?.stopCatalogPolling()
-    disposeModelsDev()
-    disposeLlmPlus()
+    disposeModelsDev?.()
+    disposeLlmPlus?.()
   }
 }
