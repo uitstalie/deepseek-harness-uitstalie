@@ -3,9 +3,10 @@
 ## 阶段划分（用户要求分步走）
 
 1. **第一步：原生 Web UI 样式体系盘点（已交付）** → [ui-style-inventory.md](../ui-style-inventory.md)。只做统计与出处，不做修改；结论见该报告 §A–§G。
-2. **第二步：门禁级修正**——修 `ui-models-dev` 的 **11 项门禁级问题**（9 处中性描边 `1px → 0.5px`、`.badge` 补 `corner-shape: round`、`ProviderCard` 的 `"OAuth"` 入字典），目标：`elevation-styles` / `corner-shape-styles` / `verify-client-ui-i18n` 三条全绿。做法照报告 §F.4 的原生同类正解（`ui-settings-models/…/ModelsSection.module.css` 的 `.rowCard` 与 `.credentialDot`）。
-3. **第三步：评审级 + 技能级修正**——半径字面量换 token（`12px → --dsw-radius-md`、`8px → --dsw-radius-sm`）、去掉字面色兜底、`font-weight: 600 → ≤500`（含 `ui-tool-dsh-store` 的 `.mark`）。
-4. **第四步（待用户定）：把盲区补成门禁**——报告 §F.2 的三条盲区（半径门禁不含 `packages/uitstalie/**`、`test:gui` 不跑我们的测试、字面色无门禁）若要修，属于**原生门禁改动**，按分支规则需最小插入 + `uitstalie-` 标记 + 逐处登记，或另立任务单。
+2. **第二步（用户要求先做调研）：overlay 可行性（已交付）** → [overlay-feasibility.md](../overlay-feasibility.md)。逐条验证四类场景（覆盖组件属性 / 覆盖组件布局 / 新增自定义布局 / 组件替换）的机制、证据与缺口。**要点**：组件替换由 slot **shadowing** 支撑——同 cell 不同 `priority`、升序后**最低的活跃项渲染**（`ui-slots/src/index.ts:1278–1284`；同格同优先级才抛错），**无需原生改动**；属性/布局覆盖靠主题 token 与**组件局部自定义属性**（实测 70 个原生 CSS Module、319 条，可继承可覆盖）；而 **React props 无外部通道**、**类名是构建哈希**，两者都不能当 overlay 通道；组合层只能"insert 自己的行 + `disabled` 原生行"（patch 不能改 `name`）。
+3. **第三步：门禁级修正**——修 `ui-models-dev` 的 **11 项门禁级问题**（9 处中性描边 `1px → 0.5px`、`.badge` 补 `corner-shape: round`、`ProviderCard` 的 `"OAuth"` 入字典），目标：`elevation-styles` / `corner-shape-styles` / `verify-client-ui-i18n` 三条全绿。做法照 [ui-style-inventory.md](../ui-style-inventory.md) §F.4 的原生同类正解（`ui-settings-models/…/ModelsSection.module.css` 的 `.rowCard` 与 `.credentialDot`）。
+4. **第四步：评审级 + 技能级修正**——半径字面量换 token（`12px → --dsw-radius-md`、`8px → --dsw-radius-sm`）、去掉字面色兜底、`font-weight: 600 → ≤500`（含 `ui-tool-dsh-store` 的 `.mark`）。
+5. **第五步（待用户定）：把盲区补成门禁**——报告 §F.2 的三条盲区（半径门禁不含 `packages/uitstalie/**`、`test:gui` 不跑我们的测试、字面色无门禁）若要修，属于**原生门禁改动**，按分支规则需最小插入 + `uitstalie-` 标记 + 逐处登记，或另立任务单。
 
 每步的验证固定为：对应门禁原始输出 + 受影响包的聚焦测试 + `pnpm run build`。
 
