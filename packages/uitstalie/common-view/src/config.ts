@@ -20,7 +20,11 @@ export interface CommonViewConfig {
 
 /** Defaults of every field; the node half's schema and the browser half's resolver both read them here. */
 export const COMMON_VIEW_DEFAULTS: CommonViewConfig = {
-  sessionRowAction: true,
+  // Off by default: the session row's action strip is a composite row whose
+  // owner owns its layout, so contributing an item into its list cell is not a
+  // layout seam there. The switch stays for the mechanism sample and for cells
+  // that genuinely are item lists.
+  sessionRowAction: false,
   takeoverArchive: false,
   accent: 'var(--dsw-alias-state-business-primary)',
 }
