@@ -51,6 +51,10 @@ Two atoms carry content, each resolved from a spec and emitted natively. Neither
 
 The caller supplies an image's accessible name, so neither atom owns fallback copy.
 
+### The button capability
+
+A button is a capability with two halves: `ButtonSpec` is its data (identity, accessible name, label, icon, visual weight, size, availability) and `ButtonBindings` is its behaviour (`onClick`, `onHoverStart`, `onHoverEnd`, `onFocus`, `onBlur`). `resolveButton(spec, bindings, override?)` layers them explicitly, so an authority that owns a button can replace either half key by key while identity stays put. `deriveButton(base, derived, bindings?)` expresses a variant — outlined, icon-only, composed — as data, and `DefaultButton` renders the common case through the shared control, leaving material and theme to the tokens.
+
 ### The frame scaffold
 
 `AppScaffold` rebuilds the parent view's big layout — a left column, a top strip, and the middle region — as a composition of the units and leaves above, each region named by a text leaf. It exists so layout work iterates here rather than on native files: the column width and the strip height are config fields (`scaffoldSidebarWidth`, `scaffoldTopHeight`) that reach CSS as component-local custom properties. `scaffold` is off by default, and turning it on mounts the scaffold in the frame-wide floating layer, where unloading the plugin withdraws it again.

@@ -153,6 +153,21 @@ pnpm run dev:web -- --skip-build --no-open --port 3081 --patch tmp/scaffold.over
 
 **记录到的通道限制（下一片要解）**：区域**子槽**（让脚手架的三个区域成为可被他人注入的 seat）目前走不通类型层——`SlotMap` 里 `shell.overlay` 的形状由 ui-layout 拥有，**外来插件无法给它合并新的 children 声明**（运行时接受 erased 形式的 `children`，但那是绕过类型 ✗）。因此区域子槽要么等上游在 `SlotMap` 里给出 children 位（原生最小插入），要么由本框架设计一条"自有父槽 + 子槽"的注册通道 ✓。
 
+## 三点十、按钮能力 `Button` 与通用按钮 `DefaultButton`（用户要求，2026/10/09）
+
+用户要求：**button 是一个能力** —— 可配置 `onClick`/`onHover` 等函数调用，且**必要时可以复写**；先做出抽象能力。并指定：随后实现通用的 **`DefaultButton`**，其它注入若要 outline 风格、icon 风格，或"icon + text 由 row/column 组合"的按钮，**基于 DefaultButton 派生或自行编写**。
+
+**能力的两半（数据 / 逻辑分离，分支强制风格）**：
+
+| 半 | 类型 | 内容 |
+|---|---|---|
+| 数据 | `ButtonSpec` | `id`（身份，复写按它寻址）、`ariaLabel`（**调用方必填**，能力不持有文案 ✓）、`label?`、`icon?`、`variant?`、`size?`、`disabled?` |
+| 行为 | `ButtonBindings` | `onClick` / `onHoverStart` / `onHoverEnd` / `onFocus` / `onBlur`（纯回调 ✓） |
+
+**复写的显式解析**：`resolveButton(spec, bindings, override?)` —— override 对它声明的每个键获胜、其余键归调用点；**身份永不可被复写**（override 无法改靶 ✓）。派生同理：`deriveButton(base, derived, bindings?)` 让"outline 版 / icon 版 / 组合版"由**数据**表达，不必再开第二套能力 ✓。
+
+**`DefaultButton`** = 能力的最常见形态：由共用件 `ui-primitives` 的 `Button` 渲染 ✓（**不重绘材质**，于是主题与 overlay 的杠杆照旧 ✓）；只把解析后的数据半与行为半接上去 ✓。`icon + text` 的组合目前走共用件自己的 `icon` + children 布局 ✓；若某注入要自由组合内容（例如 row/column 拼出的复杂按钮），按用户要求**派生或自写**调用点，而不是把能力撑大 ✓。
+
 ## 四、切片计划（一个 view 一片）
 
 | 片 | 内容 | 说明 |

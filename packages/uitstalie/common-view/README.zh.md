@@ -51,6 +51,10 @@ kind: "package-reference"
 
 图片的可访问名由调用方提供，因此两个原子都不持有回退文案。
 
+### 按钮能力
+
+按钮是一个能力，分两半：`ButtonSpec` 是它的数据（身份、可访问名、标签、图标、视觉权重、尺寸、可用性），`ButtonBindings` 是它的行为（`onClick`、`onHoverStart`、`onHoverEnd`、`onFocus`、`onBlur`）。`resolveButton(spec, bindings, override?)` 显式地把两者叠起来，于是拥有该按钮的一方可以按键替换任一半，而身份保持不变。`deriveButton(base, derived, bindings?)` 把变体（描边、纯图标、组合）表达为数据；`DefaultButton` 通过共用控件渲染最常见的那一种，材质与主题仍归 token。
+
 ### 大布局脚手架
 
 `AppScaffold` 把父 view 的大布局——左列、顶部条、中间区域——按上面的单元与叶子重新组合，每个区域由一个文本叶子标名。它的存在是为了让布局工作在这里迭代而不动原生文件：列宽与顶高是配置字段（`scaffoldSidebarWidth`、`scaffoldTopHeight`），以组件局部自定义属性落入 CSS。`scaffold` 默认关闭；打开后脚手架挂进框架级浮层，卸载插件即撤下。

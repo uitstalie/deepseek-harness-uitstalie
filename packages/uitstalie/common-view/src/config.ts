@@ -43,7 +43,8 @@ export const COMMON_VIEW_DEFAULTS: CommonViewConfig = {
   unitAlign: 'center',
   unitJustify: 'start',
   // Off by default: the scaffold is a layout sandbox for verification, never
-  // shipped UI.
+  // shipped UI. The browser half cannot read the composition's row config, so
+  // the durable switch is the plugin's own settings channel.
   scaffold: false,
   scaffoldSidebarWidth: '280px',
   scaffoldTopHeight: '44px',
