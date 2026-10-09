@@ -83,5 +83,30 @@ describe('common-view overlay on the assembled web roster', () => {
       const c = await start()
       expect(idsIn(c)).toEqual(['archive', 'pin'])
     }, BOOT_TIMEOUT_MS)
+
+    itIdle('mounts no scaffold in the frame-wide floating layer', async ({ start }) => {
+      const c = await start()
+      expect(c.ctx.slots.entries('shell.overlay').map(entry => entry.options.id)).not.toContain('common-view-scaffold')
+    }, BOOT_TIMEOUT_MS)
+  })
+
+  describe('with the scaffold enabled', () => {
+    const itScaffold = overlayTest({ scaffold: true })
+
+    itScaffold('mounts the frame scaffold in the frame-wide floating layer', async ({ start }) => {
+      const c = await start()
+      const scaffold = c.ctx.slots.entries('shell.overlay').find(entry => entry.options.id === 'common-view-scaffold')
+      expect(scaffold).toBeDefined()
+      const injected = (scaffold?.inject as () => { sidebarWidth: string; topHeight: string })()
+      expect(injected.sidebarWidth).toBe('280px')
+      expect(injected.topHeight).toBe('44px')
+    }, BOOT_TIMEOUT_MS)
+
+    itScaffold('withdraws the scaffold when the plugin unloads', async ({ start }) => {
+      const c = await start()
+      await c.unload(SELF)
+      await c.flush()
+      expect(c.ctx.slots.entries('shell.overlay').map(entry => entry.options.id)).not.toContain('common-view-scaffold')
+    }, BOOT_TIMEOUT_MS)
   })
 })
