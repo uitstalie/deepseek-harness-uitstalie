@@ -1,6 +1,12 @@
 # task15 — 工作区 rules：常驻注入 + 交付前自检
 
-## requirement
+## 状态：已废弃（2026/09/30 用户判定）
+
+**废弃理由**：rules 的**注入层已经交付**，但**不是按本任务单的写法**——由 [task16](task16.md) 的 `dsh-agent-instructions-plus` 落地，且采用后来拍板的简化规格（`rules/**` 全量常驻、纯 Markdown 逐字注入、**不用 front-matter / globs / 激活元数据**；复用原生 loader 全部语义并禁用原生行以便退回）。用户据此判定：**本任务单废弃**，其中"交付前自检（机检层）"**暂不推进**，也不另立任务单。
+
+因此本文件只作为**历史记录**保留，不再作为待办；其中"规则文件规格（front-matter 的 `alwaysApply`/`globs`/`check`）"与"验证"两节描述的形态**已被否决**，读时应以 [rules.md](../rules.md) 的现状与 [task16](task16.md) 的实现为准。`agent/turn-stopping` + `Agent.steer` 的 hook 结论仍然是准确的实测记录，将来若重启机检层可直接引用本文。
+
+## requirement（原始，已不适用）
 
 为工作区提供 rules：执行本工作区的项目时**必须遵守的规则与必须执行的动作**，并在**每个 turn 交还给用户之前做一次自检**，未通过则强制再走一步。规则以目录形式维护在 `.dsh/rules/**`（多文件、可 glob 作用域），由 task14 的 `dsh` 工具负责写入与校验。
 

@@ -77,7 +77,7 @@
 
 ### 下一步
 
-Web 端到端确认需要从**本 checkout** 启动 harness（当前运行中的 GUI 是兄弟 checkout，其 node_modules 里没有 plus）——这需要用户决定时机，因为会与当前 3000 端口的 GUI 冲突。之后是 task14 的 `.dsh` 存储插件与 rules 侧边栏，以及 task15 的检查层。
+Web 端到端确认需要从**本 checkout** 启动 harness（当前运行中的 GUI 是兄弟 checkout，其 node_modules 里没有 plus）——这需要用户决定时机，因为会与当前 3000 端口的 GUI 冲突。此后计划里的 task14 的 `.dsh` 存储插件与 rules 侧边栏**均已完成**（见 [task14](task14.md) 状态总表）；task15 的检查层已由用户判定废弃，不做。
 
 ## 修改范围
 
