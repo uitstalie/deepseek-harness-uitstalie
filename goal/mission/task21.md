@@ -1,5 +1,14 @@
 # task21 — 分支自有 client 代码的样式合规专项
 
+## 阶段划分（用户要求分步走）
+
+1. **第一步：原生 Web UI 样式体系盘点（已交付）** → [ui-style-inventory.md](../ui-style-inventory.md)。只做统计与出处，不做修改；结论见该报告 §A–§G。
+2. **第二步：门禁级修正**——修 `ui-models-dev` 的 **11 项门禁级问题**（9 处中性描边 `1px → 0.5px`、`.badge` 补 `corner-shape: round`、`ProviderCard` 的 `"OAuth"` 入字典），目标：`elevation-styles` / `corner-shape-styles` / `verify-client-ui-i18n` 三条全绿。做法照报告 §F.4 的原生同类正解（`ui-settings-models/…/ModelsSection.module.css` 的 `.rowCard` 与 `.credentialDot`）。
+3. **第三步：评审级 + 技能级修正**——半径字面量换 token（`12px → --dsw-radius-md`、`8px → --dsw-radius-sm`）、去掉字面色兜底、`font-weight: 600 → ≤500`（含 `ui-tool-dsh-store` 的 `.mark`）。
+4. **第四步（待用户定）：把盲区补成门禁**——报告 §F.2 的三条盲区（半径门禁不含 `packages/uitstalie/**`、`test:gui` 不跑我们的测试、字面色无门禁）若要修，属于**原生门禁改动**，按分支规则需最小插入 + `uitstalie-` 标记 + 逐处登记，或另立任务单。
+
+每步的验证固定为：对应门禁原始输出 + 受影响包的聚焦测试 + `pnpm run build`。
+
 ## requirement
 
 用户判定（2026/09/30）：**样式问题作为独立专项任务处理**，不与当时正在进行的 task14（`.dsh` 存储插件）混在一起，两者不冲突、可各自推进。
