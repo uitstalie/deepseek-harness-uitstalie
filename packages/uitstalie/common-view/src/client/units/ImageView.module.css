@@ -1,0 +1,25 @@
+/* An image leaf owns its box only: fit arrives as a component-local custom
+   property, while the corner treatments stay literal here so the theme specs can
+   see the full-round pairing. */
+.image {
+  display: block;
+  object-fit: var(--dsh-common-view-image-fit, contain);
+  max-width: 100%;
+}
+
+.radiusSm {
+  border-radius: var(--dsw-radius-sm);
+}
+
+.radiusMd {
+  border-radius: var(--dsw-radius-md);
+}
+
+.radiusLg {
+  border-radius: var(--dsw-radius-lg);
+}
+
+.radiusFull {
+  border-radius: 50%;
+  corner-shape: round;
+}
