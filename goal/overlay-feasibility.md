@@ -13,7 +13,7 @@
 | **覆盖组件属性（外观）** | ① 主题 token（`--dsw-*`）；② **组件局部自定义属性**（可继承，祖先可设）；③ `ThemeDefinition` / `ctx.theme.overrideTokens` | **✅ 两条通道** | `docs/web-styling.md:11`（组件可定义局部自定义属性）、`:18`（特性用语义别名）；实测 **70 个原生 CSS Module 定义 319 条局部自定义属性**；`ui-theme/src/client/index.ts`（`register`/`overrideTokens`） |
 | **覆盖组件属性（React props）** | 无外部通道 ✗ | **❌**（除非该处本身有 owner props / slot 注入面，如我们的 seat 就带 `{workspaceId,label}`） | 组件 props 由渲染方给出，外部无法注入 |
 | **覆盖组件布局** | ① 组件暴露的 `className`/`contentLayoutClassName` 等钩子（**仅当你自己渲染该组件时**）；② 组件读取的自定义属性（几何）；③ 整块替换 | **✅（①受限、②③可行）** | primitives 几乎都收 className 类钩子（`DisclosureRow` 15、`FileTypeIcon` 21、`ConnectionIndicator` 9…）；几何类局部属性实测如 `--dsh-frame-top-clearance`（ui-layout 发布）、`--dsh-chat-flow-gap: 6px`、`--dsh-table-spare` |
-| **增加自定义布局** | slot 的 `children` **只能由声明者声明**（one declarer per slot）；无 seat 处插不进去 ✗ | **⚠️ 有 seat 才行** | `ui-slots/src/index.ts:1135–1136`（一个 slot 一个声明者）、`:1245`（重复声明抛错）。这正是 task14 必须**原生化**一个工作区行 seat 的原因 |
+| **增加自定义布局** | **注册**占用者：可以为既有 `list`/`keyed` 槽**追加**我们的一项（`id` 唯一）；**声明**新槽：只能由**渲染它的那个组件**声明（one declarer per slot），所以无法往别人的组件里新增一个"洞" | **⚠️ 分两件事**：进既有 seat ✅；在没有 seat 处新增 ❌（需原生化，或 shadow 一个既有 cell 自己排布） | `ui-slots/src/index.ts:1206`（未声明即注册抛错）、`:1135–1136` 与 `:1245`（一个槽一个声明者、重复声明抛错）；`ui-tool-dsh-store` 注册进 `ui-workspace` 的 seat 就是"跨包注册进既有 list 槽"的现成例子 |
 | **配置驱动 overlay** | 客户端插件 `Config`（schemastery）→ 设置页表单；运行时 `ctx.theme.overrideTokens` | **✅** | `ui-primitives` 的 `SettingsForm`/`settingsNumberField` 族；`ctx.theme.overrideTokens` |
 
 ## 关键机制细读
@@ -53,6 +53,27 @@ next.sort(spec.kind === 'list'
 | `--dsw-elevation-stroke-color`、`--dsh-scrollbar-thumb` | 组件在自己的容器上 rebind 主题 token | 逐面的材质/滚动条可被覆盖 ✓ |
 
 **实测规模**：`packages/client` 的 228 个 CSS Module 中，**70 个定义局部自定义属性，共 319 条**——这些就是 overlay 可用的稳定"旋钮"。
+
+## 声明 vs 注册：这是两件权限不同的事（回答"列表插槽能不能单独 add"）
+
+slot 机制里有两个动作，**权限完全不同**，overlay 的边界就出在这里：
+
+| 动作 | 谁可以做 | 规则与证据 |
+|---|---|---|
+| **声明**一个 slot（写进父注册的 `children` 表，并由该父组件 `renderSlot(name, ownerProps)` 渲染） | **只有渲染它的那个注册**（一个 slot 一个声明者） | 重复声明抛错：`ui-slots/src/index.ts:1245`（"already declared (by …)"）；渲染未声明的槽也失败（load 期校验） |
+| **注册**一个占用者进已声明的 slot（`slots.register({ name, id/order/priority, … })`） | **任何插件**都可以（只要它 inject 到该声明） | 未声明即注册抛错：`ui-slots/src/index.ts:1206`；`list` 项缺 `id` 抛错、`keyed` 缺 `key` 抛错 |
+
+所以：
+
+- **`list` 槽恰恰是"支持单独 add"的那一种**——它天生就是"多项并存"，任何插件都能 `register` 自己的一项（`id` 唯一 ✓，`order` 定显示次序 ✓，`priority` 定谁在 cell 里胜出 ✓）。本分支的 `ui-tool-dsh-store` 注册进 `ui-workspace` 的 `sidebar.workspaces.row.action`（`kind: 'list'`）就是现成例子 ✓；`settings.section`（`list`）今天挂着 5 个分区 ✓。
+- **做不到的不是"往 list 里加项"，而是"在别人的组件里新开一个槽"**：新槽必须由**渲染它的组件**声明并渲染；别人的组件不会调用 `renderSlot('我们的槽')`，因此那个位置**根本不存在可插入点** ✗。这正是 task14 要在 `ui-workspace` 里**原生化一个 seat** 的原因。
+- 对 **`single`** 槽：cell 就是槽本身，`priority` 更低者渲染 ⇒ shadowing 可以**整块接管一个区域**，然后在**自己**的组件里自由排布、并可**声明属于我们自己的新槽**（我们既是声明者也是渲染者 ✓✓）——这是"新增自定义布局"最干净的实现方式。
+
+### 因此"增加自定义布局"有三条可行路径
+
+1. **占用既有 `list` 槽**：追加我们的一项（最轻，能加项但不能改该列表的容器排布）；
+2. **shadow 一个既有 `single` cell**：整块区域归我们，内部随意布局 + 声明我们自己的子槽（**推荐**，无需原生改动）；
+3. **原生化一个新 seat**：仅当目标位置确实没有 seat 且无法用 1/2 变通时（按分支规则：最小插入 + `uitstalie-` 标记 + 任务单逐处登记；task14 是唯一先例）。
 
 ## 缺口与边界（必须知道）
 
