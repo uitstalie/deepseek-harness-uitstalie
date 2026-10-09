@@ -213,6 +213,11 @@
     - id: client-hmr
       name: '@deepseek-ai/dsh-client-hmr'
 
+    # uitstalie-k3, 2026/09/30, task17, models.dev 目录服务：分支自有包改由仓库组合层声明（原来是本机 profile patch 的 insert）
+    # 目录服务与设置页是全局的（不随 agent preset 变化），因此落在 profile 级。
+    - id: models-dev
+      name: '@deepseek-ai/dsh-models-dev'
+
     # ── browser plugin roster (dsh.client rows; node halves are layer-2 hosts) ──
 
     # Dual-face: the node half scans this tree, composes window.__DSH_BOOT__,
@@ -306,6 +311,10 @@
 
     - id: ui-settings-models
       name: '@deepseek-ai/dsh-client-ui-settings-models'
+
+    # uitstalie-k3, 2026/09/30, task17, models.dev 目录设置页：紧随 Models 设置页，分支自有 client 行改由仓库声明
+    - id: ui-models-dev
+      name: '@deepseek-ai/dsh-client-ui-models-dev'
 
     # Plugin management: the sidebar Plugins page installs, enables, disables,
     # and removes the profile's bundles through the `pluginManager` Remote.
