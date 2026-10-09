@@ -339,6 +339,10 @@
       "@deepseek-ai/dsh-client-ui-models-dev": ["./packages/uitstalie/ui-models-dev/src"],
       "@deepseek-ai/dsh-client-ui-tool-dsh-store": ["./packages/uitstalie/ui-tool-dsh-store/src"],
       // END uitstalie-k3
+      // BEGIN uitstalie-k3, 2026/10/09, task23, 组合测试运行时按组合清单 import '<pkg>/client'，缺该别名则整组组合规格失败
+      "@deepseek-ai/dsh-client-ui-models-dev/client": ["./packages/uitstalie/ui-models-dev/src/client/index.ts"],
+      "@deepseek-ai/dsh-client-ui-tool-dsh-store/client": ["./packages/uitstalie/ui-tool-dsh-store/src/client/index.ts"],
+      // END uitstalie-k3
       // uitstalie-k3, 2026/09/30, task14, /types 子路径走手写别名：生成器只管根与 invariant；该模块声明 Remote 错误码，必须与消费方解析到同一个模块
       "@deepseek-ai/dsh-tool-dsh-store/types": ["./packages/uitstalie/tool-dsh-store/src/types.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
@@ -404,7 +408,6 @@
       "@deepseek-ai/dsh-llm-mock-server": ["./packages/test-support/llm-mock-server/src"],
       "@deepseek-ai/dsh-llm-pi-ai": ["./packages/llm/llm-pi-ai/src"],
       "@deepseek-ai/dsh-llm-plus": ["./packages/uitstalie/llm-plus/src"],
-      "@deepseek-ai/dsh-llm-plus/invariant": ["./packages/uitstalie/llm-plus/src/invariant.ts"],
       "@deepseek-ai/dsh-llm-replay": ["./packages/test-support/llm-replay/src"],
       "@deepseek-ai/dsh-llm-retry": ["./packages/llm/llm-retry/src"],
       "@deepseek-ai/dsh-loader-smoke": ["./packages/test-support/loader-smoke/src"],
@@ -414,7 +417,6 @@
       "@deepseek-ai/dsh-mcp-resources": ["./packages/mcp/mcp-resources/src"],
       "@deepseek-ai/dsh-message-feedback": ["./packages/feedback/message-feedback/src"],
       "@deepseek-ai/dsh-models-dev": ["./packages/uitstalie/models-dev/src"],
-      "@deepseek-ai/dsh-models-dev/invariant": ["./packages/uitstalie/models-dev/src/invariant.ts"],
       "@deepseek-ai/dsh-native-command": ["./packages/util/native-command/src"],
       "@deepseek-ai/dsh-office-to-pdf": ["./packages/document/office-to-pdf/src"],
       "@deepseek-ai/dsh-output-retention": ["./packages/util/output-retention/src"],

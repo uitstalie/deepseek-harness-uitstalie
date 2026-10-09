@@ -1167,6 +1167,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'target', description: 'the resolved target to edit.' }, { name: 'edit', description: 'the literal search/replace request.' }, { name: 'expected', description: 'the version guard; omit for an unconditional edit.' }, { name: 'signal', description: 'aborts before atomic publication takes effect.' }, { name: 'sandboxPolicy', description: 'the per-call mode and workspace root this edit runs under; a sandboxing backend fences the edit by it, the bare backend ignores it. Omit to leave the backend its own default.' }],
         returns: 'the outcome, including the version the edit produced.',
       },
+      {
+        signature: 'mkdir(target: FsTarget, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy): Promise<void>',
+        description: 'Create a directory, including any missing parents. Idempotent when the directory exists.',
+        parameters: [{ name: 'target', description: 'the resolved directory to create.' }, { name: 'signal', description: 'aborts before the directory is created.' }, { name: 'sandboxPolicy', description: 'the per-call mode and workspace root this operation runs under; a sandboxing backend fences it, the bare backend ignores it.' }],
+        returns: 'a promise that settles once the directory exists.',
+        throws: ['FsError `FS_IO_ERROR` when the mounted backend does not implement directory creation.'],
+      },
+      {
+        signature: 'remove( target: FsTarget, options: FsRemoveOptions = {}, signal?: AbortSignal, sandboxPolicy?: SandboxExecutionPolicy, ): Promise<void>',
+        description: 'Remove a file, or a directory whose entries are cleared, through the filesystem seam.',
+        parameters: [{ name: 'target', description: 'the resolved target to remove.' }, { name: 'options', description: '`recursive: true` removes a directory with its entries; omission refuses a directory that still has entries.' }, { name: 'signal', description: 'aborts before the removal starts.' }, { name: 'sandboxPolicy', description: 'the per-call mode and workspace root this operation runs under; a sandboxing backend fences it, the bare backend ignores it.' }],
+        returns: 'a promise that settles once the target is gone.',
+        throws: ['FsError `FS_IO_ERROR` when the mounted backend does not implement removal.'],
+      },
     ],
   },
   {
@@ -1532,6 +1546,78 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Delete one item after checking its version; absence succeeds without an event.',
         parameters: [{ name: 'request', description: 'Session, message, and observed item version.' }],
         returns: 'the stable absent postcondition or an explicit failure.',
+      },
+    ],
+  },
+  {
+    key: 'modelsDev',
+    summary: 'models.dev 目录服务（Service 类插件形态：默认导出服务类即插件， Loader 以 `new ModelsDevCatalog(ctx, config)` 挂载；构造即向 ctx 注册 `modelsDev` 服务，fiber 卸载时自动摘除）。',
+    description: 'models.dev 目录服务（Service 类插件形态：默认导出服务类即插件， Loader 以 `new ModelsDevCatalog(ctx, config)` 挂载；构造即向 ctx 注册 `modelsDev` 服务，fiber 卸载时自动摘除）。\n\n内部状态三个一组：data（当前服务的目录）+ origin（来源）+ fetchedAt （时间戳），只在 adopt() 里一起换，保证读者永远看到自洽的一组。',
+    methods: [
+      {
+        signature: 'whenReady(): Promise<void>',
+        description: '等首次加载（网络或缓存兜底）结束；失败路径也在内部消化，不会 reject。',
+        parameters: [],
+      },
+      {
+        signature: 'listProviders(): string[]',
+        description: '目录里全部 provider id。',
+        parameters: [],
+        returns: '目录中的 provider id 列表，顺序与目录解析顺序一致。',
+      },
+      {
+        signature: '@Remote async listCatalogProviders(): Promise<CatalogProviderSummary[]>',
+        description: '目录提供商摘要列表（models.dev 设置页的列表数据源）。 按 id 排序，输出稳定；空目录返回空数组（origin=\'none\' 时 页面显示空态而不是报错——目录是 advisory 的）。',
+        parameters: [],
+        returns: '全部提供商的摘要（含协议方言/端点/凭据变量名/模型数）。',
+      },
+      {
+        signature: '@Remote async listCatalogModels(providerId: string): Promise<CatalogModelSummary[]>',
+        description: '一个提供商的目录模型摘要列表（设置页的模型子集勾选数据源）。',
+        parameters: [{ name: 'providerId', description: 'models.dev provider id。' }],
+        returns: '模型摘要（按 id 排序）；未知 provider 返回空数组。',
+      },
+      {
+        signature: 'getProvider(providerId: string): ModelsDevProvider | undefined',
+        description: '查一个 provider 条目。',
+        parameters: [{ name: 'providerId', description: 'models.dev provider id（如 "deepseek"）。' }],
+        returns: 'provider 条目；不存在返回 undefined。',
+      },
+      {
+        signature: 'getModel(providerId: string, modelId: string): ModelsDevModel | undefined',
+        description: '查一个模型条目。',
+        parameters: [{ name: 'providerId', description: 'models.dev provider id。' }, { name: 'modelId', description: '该 provider 下的模型 id。' }],
+        returns: '模型条目；不存在返回 undefined。',
+      },
+      {
+        signature: 'resolveRoute(route: string): string',
+        description: '把 harness provider 路由解析为 models.dev provider id。',
+        parameters: [{ name: 'route', description: 'harness 路由（如 "deepseek-official"）。' }],
+        returns: '别名命中返回映射值，否则原样返回 route。',
+      },
+      {
+        signature: 'resolveModelDefaults(route: string, modelId: string): ModelDefaults | undefined',
+        description: '把一个模型映射为 harness 形状默认值（上下文窗口、模态、reasoning 档位、 价格、协议方言提示）。',
+        parameters: [{ name: 'route', description: 'harness 路由或 models.dev provider id。' }, { name: 'modelId', description: '模型 id。' }],
+        returns: '映射结果；模型未知返回 undefined（不是空对象）。',
+      },
+      {
+        signature: 'resolveExtraParams(route: string, modelId: string, mode?: string): ExtraParams',
+        description: '解析一个路由/模型的额外请求参数。\n\n合并顺序（后者按 key 取胜）： 1. 数据集 experimental.modes[mode].provider（仅当调用方给了 mode）； 2. 用户配置 provider 级 extraParams； 3. 用户配置 model 级 extraParams。 用户配置优先于数据集——数据集是公共默认值，本地配置是部署意图。',
+        parameters: [{ name: 'route', description: 'harness 路由或 models.dev provider id。' }, { name: 'modelId', description: '模型 id。' }, { name: 'mode', description: '可选的 models.dev 实验模式名（如 "fast"）。' }],
+        returns: '合并后的 headers/body；无命中返回空对象。',
+      },
+      {
+        signature: 'configuredBodyKeys(route: string): string[]',
+        description: '列出一个路由配置过的全部 body 键（provider 级 + 所有 model 级的并集）。 写入方（deepseek-extra-params 插件）据此在启动时为每个键注册一个 顶层字段槽——注册必须在请求到来前完成，所以键集是启动时静态确定的， 只有用户配置贡献键（数据集的 mode 级 body 不参与自动注入）。',
+        parameters: [{ name: 'route', description: 'harness 路由或 models.dev provider id。' }],
+        returns: '去重排序后的键列表。',
+      },
+      {
+        signature: 'refresh(): Promise<void>',
+        description: '强制重拉（无视缓存 TTL）。并发调用共享同一次拉取；失败只记日志、 保留当前目录，不抛给调用方。',
+        parameters: [],
+        returns: '拉取（或失败消化）完成后 settle。',
       },
     ],
   },
@@ -4153,6 +4239,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'options', description: 'the full request. A LOOP-built request carries the process-local {@link markAgentLoopRequest} identity and arrives deep-frozen (mutation throws): its content is a pure function of the session log (the reconstructability Agent Note), so listeners read it, never rewrite it. Hand-built calls do not carry that marker; callers own their request inputs and must keep them unchanged until the stream settles.' }],
   },
   {
+    name: 'models-dev/updated',
+    mode: 'emit',
+    signature: '\'models-dev/updated\'(this: ModelsDevCatalog, origin: CatalogOrigin): void',
+    summary: '服务的目录被替换（启动加载或 refresh() 成功后）。 消费方（如未来的 UI）据此刷新模型列表。',
+    description: '服务的目录被替换（启动加载或 refresh() 成功后）。 消费方（如未来的 UI）据此刷新模型列表。',
+    parameters: [{ name: 'origin', description: '新目录的来源。' }],
+  },
+  {
     name: 'permission-presets/catalog-changed',
     mode: 'emit',
     signature: '\'permission-presets/catalog-changed\'(): void',
@@ -4753,6 +4847,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ButtonProps {\n    readonly label: string;\n    readonly hotkey?: string | undefined;\n    readonly disabled?: boolean | undefined;\n    readonly onPress?: (() => unknown) | undefined;\n}',
   },
   {
+    name: 'CatalogModelSummary',
+    declaration: 'export interface CatalogModelSummary {\n    id: string;\n    name?: string;\n    contextWindow?: number;\n    maxTokens?: number;\n    inputModalities?: string[];\n    reasoning?: boolean;\n}',
+  },
+  {
+    name: 'CatalogOrigin',
+    declaration: 'export type CatalogOrigin = \'network\' | \'cache\' | \'none\';',
+  },
+  {
+    name: 'CatalogProviderSummary',
+    declaration: 'export interface CatalogProviderSummary {\n    id: string;\n    name?: string;\n    npm?: string;\n    api?: string;\n    env?: string[];\n    modelCount: number;\n}',
+  },
+  {
     name: 'ChangeResult',
     declaration: 'export interface ChangeResult {\n    changed: boolean;\n    application: \'applied\' | \'restart-required\' | \'overridden\' | \'failed\' | \'cancelled\';\n    stage: \'install\' | \'enable\' | \'remove\';\n    target: string;\n    enabled?: boolean;\n    error?: ManagementError;\n    warnings?: string[];\n    packageResult?: PackageResult;\n    bundle?: string;\n    version?: string;\n    pendingBuilds?: string[];\n    approvedBuilds?: string[];\n    registries?: Registry[];\n    failedAt?: \'registry\' | \'spec-host\';\n}',
   },
@@ -5225,6 +5331,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EveryScheduleRecord {\n    readonly id: ScheduleId;\n    readonly kind: \'every\';\n    readonly title: string;\n    readonly prompt: string;\n    readonly everySeconds: number;\n    readonly scheduledAt: string;\n}',
   },
   {
+    name: 'ExtraParams',
+    declaration: 'export interface ExtraParams {\n    headers?: Record<string, string>;\n    body?: Record<string, JsonValue>;\n}',
+  },
+  {
     name: 'FeedbackCategory',
     declaration: 'export type FeedbackCategory = \'task-result\' | \'instruction-following\' | \'product-interaction\' | \'service-stability\' | \'resource-cost\' | \'security-privacy-permission\' | \'other\';',
   },
@@ -5295,6 +5405,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FsPathInfo',
     declaration: 'export interface FsPathInfo {\n    version: FsVersion;\n    type: \'file\' | \'directory\' | \'symlink\' | \'other\';\n    size?: number;\n}',
+  },
+  {
+    name: 'FsRemoveOptions',
+    declaration: 'export interface FsRemoveOptions {\n    recursive?: boolean;\n}',
   },
   {
     name: 'FsTarget',
@@ -5625,10 +5739,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type JsonSchemaType = \'object\' | \'array\' | \'string\' | \'number\' | \'integer\' | \'boolean\' | \'null\';',
   },
   {
-    name: 'JsonValue',
-    declaration: 'export type JsonValue = null | boolean | number | string | JsonValue[] | {\n    [key: string]: JsonValue;\n};',
-  },
-  {
     name: 'KvFacet',
     declaration: 'export interface KvFacet {\n    open(descriptor: KvUnitDescriptor): Promise<KvUnit>;\n}',
   },
@@ -5889,6 +5999,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelCatalogModel {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n    readonly reasoning?: ModelReasoning;\n}',
   },
   {
+    name: 'ModelDefaults',
+    declaration: 'export interface ModelDefaults {\n    contextWindow?: number;\n    maxInputTokens?: number;\n    maxTokens?: number;\n    inputModalities?: string[];\n    outputModalities?: string[];\n    reasoningEfforts?: string[];\n    reasoningToggle?: boolean;\n    reasoningBudget?: {\n        min?: number;\n        max?: number;\n    };\n    toolCall?: boolean;\n    structuredOutput?: boolean;\n    interleavedField?: string;\n    npm?: string;\n    shape?: string;\n    status?: string;\n    cost?: ModelsDevModel[\'cost\'];\n}',
+  },
+  {
     name: 'ModelMessageSource',
     declaration: 'export interface ModelMessageSource extends AssistantProviderMetadata {\n    kind: \'model\';\n}',
   },
@@ -5911,6 +6025,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModelReasoningEffort',
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
+  },
+  {
+    name: 'ModelsDevCatalog',
+    declaration: 'export default class ModelsDevCatalog extends TypertRemoteService {\n    static Config: z<Config>;\n    constructor(ctx: Context, config: Config);\n    whenReady(): Promise<void>;\n    get source(): CatalogOrigin;\n    get catalogFetchedAt(): number;\n    listProviders(): string[];\n    @Remote\n    async listCatalogProviders(): Promise<CatalogProviderSummary[]>;\n    @Remote\n    async listCatalogModels(providerId: string): Promise<CatalogModelSummary[]>;\n    getProvider(providerId: string): ModelsDevProvider | undefined;\n    getModel(providerId: string, modelId: string): ModelsDevModel | undefined;\n    resolveRoute(route: string): string;\n    resolveModelDefaults(route: string, modelId: string): ModelDefaults | undefined;\n    resolveExtraParams(route: string, modelId: string, mode?: string): ExtraParams;\n    configuredBodyKeys(route: string): string[];\n    refresh(): Promise<void>;\n}',
+  },
+  {
+    name: 'ModelsDevModel',
+    declaration: 'export interface ModelsDevModel {\n    id: string;\n    name?: string;\n    description?: string;\n    family?: string;\n    attachment?: boolean;\n    reasoning?: boolean;\n    reasoning_options?: ModelsDevReasoningOption[];\n    tool_call?: boolean;\n    structured_output?: boolean;\n    temperature?: boolean;\n    knowledge?: string;\n    release_date?: string;\n    last_updated?: string;\n    modalities?: {\n        input?: string[];\n        output?: string[];\n    };\n    open_weights?: boolean;\n    limit?: {\n        context?: number;\n        output?: number;\n        input?: number;\n    };\n    cost?: {\n        input?: number;\n        output?: number;\n        cache_read?: number;\n        cache_write?: number;\n        reasoning?: number;\n        [key: string]: unknown;\n    };\n    status?: \'alpha\' | \'beta\' | \'deprecated\' | (string & {});\n    interleaved?: boolean | {\n        field?: string;\n    };\n    provider?: {\n        npm?: string;\n        api?: string;\n        shape?: \'responses\' | \'completions\' | (string & {});\n    };\n    experimental?: {\n        modes?: Record<string, {\n            cost?: ModelsDevModel[\'cost\'];\n            provider?: ModelsDevModeProvider;\n        }>;\n    };\n}',
+  },
+  {
+    name: 'ModelsDevModeProvider',
+    declaration: 'export interface ModelsDevModeProvider {\n    headers?: Record<string, string>;\n    body?: Record<string, JsonValue>;\n}',
+  },
+  {
+    name: 'ModelsDevProvider',
+    declaration: 'export interface ModelsDevProvider {\n    id: string;\n    name?: string;\n    env?: string[];\n    npm?: string;\n    api?: string;\n    doc?: string;\n    models: Record<string, ModelsDevModel>;\n}',
+  },
+  {
+    name: 'ModelsDevReasoningOption',
+    declaration: 'export interface ModelsDevReasoningOption {\n    type: \'toggle\' | \'effort\' | \'budget_tokens\' | (string & {});\n    values?: string[];\n    min?: number;\n    max?: number;\n}',
   },
   {
     name: 'ModEvents',

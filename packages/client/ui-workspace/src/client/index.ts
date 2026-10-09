@@ -262,6 +262,7 @@ export function apply(ctx: Context): void {
       name: 'sidebar.workspaces',
       children: {
         'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' },
+        // uitstalie-k3, 2026/09/30, task14, 声明该 seat 后才允许占用
         'sidebar.workspaces.row.action': { kind: 'list', scope: 'root' },
         // Every row entry reads the menu's open state through a hook bound
         // from the row's render occurrence (the owner passes the state pair

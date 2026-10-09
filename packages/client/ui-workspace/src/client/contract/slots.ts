@@ -111,6 +111,7 @@ export interface SessionRowScheduleOwnerProps {
   readonly sessionId: SessionId
 }
 
+// BEGIN uitstalie-k3, 2026/09/30, task14, 工作区行 action seat 的 owner 份额
 /**
  * Owner share of the workspace-row action seat: the row passes the Workspace it
  * shows, so an occupant addresses that workspace's own data by identity.
@@ -121,6 +122,7 @@ export interface WorkspaceRowOwnerProps {
   /** Display label of the row, for occupant copy such as an accessible name. */
   readonly label: string
 }
+// END uitstalie-k3
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -128,12 +130,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
     'sidebar.workspaces.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
+    // BEGIN uitstalie-k3, 2026/09/30, task14, 声明逐工作区行动作 seat
     /**
      * Trailing action seat of one Workspace row, rendered inside the row's action
      * group directly after its new-session button. The ungrouped bucket shows no
      * Workspace, so it renders no occupant.
      */
     'sidebar.workspaces.row.action': { kind: 'list'; scope: 'root'; owner: WorkspaceRowOwnerProps }
+    // END uitstalie-k3
     /**
      * Leading decoration of one Session row, in the 16px cell before the title
      * that the row's own state dot otherwise occupies. A higher-priority state
@@ -472,6 +476,7 @@ export type WorkspaceBrowserProps =
   PropsRuntime<'sidebar.workspaces'>
   & PropsRenderSlots<
     | 'sidebar.workspaces.directoryFlow'
+    // uitstalie-k3, 2026/09/30, task14, 浏览器入口多渲染一个 seat
     | 'sidebar.workspaces.row.action'
     | 'sidebar.workspaces.session.menu.item'
     | 'sidebar.workspaces.session.row.action'
