@@ -1,4 +1,4 @@
-# task23 — rebase 到 upstream 5badb15009 + 移除 invariant 伴生入口
+# task23 — rebase 到 upstream 最新的 release 合并点 + 移除 invariant 伴生入口
 
 ## requirement
 
@@ -8,10 +8,10 @@
 
 | 项 | 值 |
 |---|---|
-| 目标基座 | `upstream/master` = **5badb15009**（release dsh 0.2.1-alpha.1，比 fork 镜像 `origin/master` 639ed01539 多 1 个提交） |
+| 目标基座 | `upstream/master` 的 release dsh 0.2.1-alpha.1 合并提交（比 fork 镜像 `origin/master` 多 1 个提交；具体 SHA 不写进文档，按规则以 `upstream/master` 指代） |
 | 重放提交 | **73 个**（我们一方），跨过上游 **266 个**新提交 |
-| rebase 前 HEAD | `c6ef5ea9fc`（备份：分支 `backup/cli-desktop-20261009-1030` + tag `backup-cli-desktop-20261009-1030`） |
-| rebase 后 HEAD | `dc38771c5a`（task21 报告那条提交，内容不变、父链更新） |
+| rebase 前 HEAD | 本地保底 tag `backup-cli-desktop-20261009-1030` 所指的那次提交（分支同名） |
+| rebase 后 HEAD | task21 报告那条提交（内容不变、父链更新） |
 | 冲突文件总量 | 35 个（与上游同期改动重叠的文件数）；实际停 6 次 |
 | 真源开启 | repo-local `rerere.enabled=true` + `rerere.autoupdate=true`（复用解法） |
 
@@ -66,7 +66,7 @@ rebase 后 `pnpm run test:gui` = **11 文件 / 50 测试失败**（此前 7 文�
 
 **对照实验（决定性）**：把工作树里 6 个分支相关 client 侧文件临时换回上游版本（ui-workspace 4 文件 + `web-app/cordis.patch.yml` + `tsconfig.base.json`）→ 同一规格 **9/9 通过**；只回退 `web-app/cordis.patch.yml` 一个文件 → **9/9 通过**；只回退 ui-workspace 四个文件 → 仍 8 失败（排除 slot 改动）；只回退 host 行或只回退 client 行 → 仍失败（说明是**组合行集合**而非单一行的作用）。
 
-**另修好了一层**：这些规格最初报的 `Cannot find package '@deepseek-ai/dsh-client-ui-models-dev/client'` 是**真缺口**——我们的 client 包在 `tsconfig.base.json` 只有根别名、没有 `/client` 子路径别名（上游 41 个 client 包都有）。已补（`dde7993a72`），该层错误消失，剩下的才是上面的 roster 语义冲突。
+**另修好了一层**：这些规格最初报的 `Cannot find package '@deepseek-ai/dsh-client-ui-models-dev/client'` 是**真缺口**——我们的 client 包在 `tsconfig.base.json` 只有根别名、没有 `/client` 子路径别名（上游 41 个 client 包都有）。已补（见"原生改动审计"一节的提交），该层错误消失，剩下的才是上面的 roster 语义冲突。
 
 ### 三个选项（需用户拍板）
 
@@ -147,7 +147,7 @@ Error: client api: namespace "modelsDev" conflicts with an existing Remote names
 1. **缺了才挂**：`ctx.get('remote.modelsDev') === undefined ? await ctx.remote.$mount(...) : undefined`（`llmPlusAuth` 同）——符合平台"可选服务用 `ctx.get`"的约定，在"外壳不自动挂/按行装配已挂"两种装配下都正确；disposer 改为可选调用。
 2. **取数延后到首次打开页面**：`load()/loadOAuthRoutes()/loadMyRoutes()/startCatalogPolling()` 从 apply 移进注入面的 `activate()`，由 `ModelsDevSection` 首次挂载触发（`useEffect`）。装配态下没人打开页面 → **不读 Host** → 规格里 `settings/describe` 的调用计数恢复（3→2、1→0），并顺带消掉卸载后仍发布的 `Cannot update an unmounted root`。
 
-因此**上一步加的两行默认端点又被撤掉**（`50dae13310`）——共享默认表保持与上游**逐字一致**，顶层净原生改动只剩下规格里的分区清单那 1 行 ✓。
+因此**上一步加的两行默认端点又被撤掉**（见"分支侧修复"那一节的提交）——共享默认表保持与上游**逐字一致**，顶层净原生改动只剩下规格里的分区清单那 1 行 ✓。
 
 ## 最终验证
 
@@ -182,8 +182,8 @@ Error: client api: namespace "modelsDev" conflicts with an existing Remote names
 
 ## 待办
 
-1. ~~**推送决策**~~ **已完成（2026/10/09，用户批准）**：`git push --force-with-lease origin cli-desktop` → `cc2b460221...3b16b6c2bc (forced update)` ✓；推送前的 typecheck 钩子通过，推送后远端 HEAD 与本地一致。
-   - 推送前核对：远端比本地多 27 个提交，`git cherry` 判定 24 个补丁等价、3 个"远端独有"（`d327daf684` tsconfig 登记、`1aa8dfcaa5` sandbox 段落、`3545a6a8ae` lockfile 恢复）——三者的**内容都已以改后形态存在于本地**（rebase 冲突解法的产物），因此没有唯一内容丢失。
+1. ~~**推送决策**~~ **已完成（2026/10/09，用户批准）**：以 `--force-with-lease` 推送 `cli-desktop`（远端报告 forced update）✓；推送前的 typecheck 钩子通过，推送后远端 HEAD 与本地一致。
+   - 推送前核对：远端比本地多 27 个提交，`git cherry` 判定 24 个补丁等价、3 个"远端独有"（tsconfig 登记、sandbox 段落、lockfile 恢复三条）——三者的**内容都已以改后形态存在于本地**（rebase 冲突解法的产物），因此没有唯一内容丢失。
    - 保底：远端被覆盖前的 tip 已在本机打 tag `backup-remote-cli-desktop-20261009`（另有 rebase 前的 `backup-cli-desktop-20261009-1030`）；如需回滚，`git push --force-with-lease origin backup-remote-cli-desktop-20261009:cli-desktop`。
 2. **`ui-trajectory/tests/client-bundle.client.spec.ts`**（`[]` vs `['trajectory']`）：上游包按构建产物挂进裸 ring 的断言，与本分支内容无关，rebase 后（Vite 8 等升级）才出现，待单独诊断。
 3. **38 个无标记原生文件的合规清扫**（见上，需用户定夺是否独立成任务）。
