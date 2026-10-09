@@ -2615,6 +2615,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-model-selection':
         specifier: workspace:*
         version: link:../../client/ui-model-selection
+      '@deepseek-ai/dsh-client-ui-models-dev':
+        specifier: workspace:*
+        version: link:../../uitstalie/ui-models-dev
       '@deepseek-ai/dsh-client-ui-open-in-app':
         specifier: workspace:*
         version: link:../../client/ui-open-in-app
@@ -2777,6 +2780,9 @@ importers:
       '@deepseek-ai/dsh-message-feedback':
         specifier: workspace:*
         version: link:../../feedback/message-feedback
+      '@deepseek-ai/dsh-models-dev':
+        specifier: workspace:*
+        version: link:../../uitstalie/models-dev
       '@deepseek-ai/dsh-office-to-pdf':
         specifier: workspace:*
         version: link:../../document/office-to-pdf
