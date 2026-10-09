@@ -1,0 +1,7 @@
+/* The column unit mirrors the row unit's geometry contract along the block axis. */
+.column {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--dsh-common-view-unit-gap, 4px);
+  min-width: 0;
+}

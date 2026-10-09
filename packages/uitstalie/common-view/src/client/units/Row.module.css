@@ -1,0 +1,8 @@
+/* The row unit owns geometry only: display mode, gap, and the two axes the
+   component sets inline. */
+.row {
+  display: inline-flex;
+  flex-direction: row;
+  gap: var(--dsh-common-view-unit-gap, 4px);
+  min-width: 0;
+}
