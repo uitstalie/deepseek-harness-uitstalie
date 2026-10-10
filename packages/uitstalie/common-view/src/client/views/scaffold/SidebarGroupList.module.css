@@ -1,0 +1,153 @@
+/* The replica mirrors the shipped sidebar's metrics exactly — a 34px workspace
+   row, a 32px session row, the 16x20 leading cell, and the 10/16 time cell —
+   while every colour stays a token. */
+.groupList {
+  display: flex;
+  flex-direction: column;
+}
+
+.groupRow {
+  height: 34px;
+  box-sizing: border-box;
+  padding-inline-start: 8px;
+  border-radius: var(--dsw-radius-sm);
+}
+
+.groupLead {
+  flex: none;
+  width: 16px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.groupFolder {
+  display: inline-flex;
+}
+
+/* Folder by default, expand arrow while the row is hovered (§ folder/chevron). */
+.groupArrow {
+  display: none;
+  transition: transform 150ms var(--ds-ease-in-out);
+}
+
+.groupRow:hover .groupArrow {
+  display: inline-flex;
+}
+
+.groupRow:hover .groupFolder {
+  display: none;
+}
+
+.groupArrowOpen {
+  transform: rotate(90deg);
+}
+
+.groupTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  margin: 0 6px 0 4px;
+}
+
+.sessionRow {
+  height: 32px;
+  box-sizing: border-box;
+  padding-inline-start: calc(8px + var(--dsh-common-view-indent, 0px));
+  border-radius: var(--dsw-radius-sm);
+}
+
+.sessionRowSelected {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.sessionLead {
+  flex: none;
+  width: 16px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.sessionDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-state-business-primary);
+}
+
+.sessionTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  margin: 0 6px 0 4px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.sessionTitleMuted {
+  color: var(--dsw-alias-label-caption);
+}
+
+.time {
+  flex: none;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.pin {
+  flex: none;
+  display: inline-flex;
+  width: 16px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* Trailing actions surface on hover only; bare 16px glyphs at a 10px gap. */
+.actions {
+  flex: none;
+  display: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.groupRow:hover .actions,
+.sessionRow:hover .actions {
+  display: inline-flex;
+}
+
+.glyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-xs);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.glyph:hover {
+  color: var(--dsw-alias-label-primary);
+}

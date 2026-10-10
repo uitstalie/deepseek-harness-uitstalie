@@ -4,6 +4,7 @@
  * `deriveButton`) or writes its own call site over the same capability.
  * @module @deepseek-ai/dsh-client-common-view/DefaultButton
  */
+import { forwardRef } from 'react'
 import { Button as SharedButton } from '@deepseek-ai/dsh-client-ui-primitives'
 import { resolveButton, type ButtonBindings, type ButtonOverride, type ButtonSpec } from './button-capability.ts'
 
@@ -21,13 +22,21 @@ export interface DefaultButtonProps {
 
 /**
  * Render the default button.
+ *
+ * The control's element is forwarded, so an anchoring surface (a tooltip, a
+ * hover card, a menu) can attach to it.
  * @param props - the data half, the behavior half, and an optional override.
+ * @param ref - the shared control's element.
  * @returns the shared control, wired to the resolved behavior.
  */
-export function DefaultButton({ spec, bindings, override }: DefaultButtonProps) {
+export const DefaultButton = forwardRef<HTMLButtonElement, DefaultButtonProps>(function DefaultButton(
+  { spec, bindings, override },
+  ref,
+) {
   const resolved = resolveButton(spec, bindings, override)
   return (
     <SharedButton
+      ref={ref}
       {...resolved.spec.variant === undefined ? {} : { variant: resolved.spec.variant }}
       {...resolved.spec.size === undefined ? {} : { size: resolved.spec.size }}
       {...resolved.spec.icon === undefined ? {} : { icon: resolved.spec.icon }}
@@ -42,4 +51,4 @@ export function DefaultButton({ spec, bindings, override }: DefaultButtonProps) 
       {resolved.spec.label ?? null}
     </SharedButton>
   )
-}
+})
