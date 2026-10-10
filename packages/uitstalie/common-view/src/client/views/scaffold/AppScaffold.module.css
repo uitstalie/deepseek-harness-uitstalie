@@ -16,6 +16,86 @@
   background: var(--dsw-alias-bg-layer-1);
 }
 
+.sidebarBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Sidebar chrome: the brand row at the head, the settings row at the foot. */
+.brandRow {
+  flex: none;
+  height: 44px;
+  box-sizing: border-box;
+  padding-inline: 4px;
+  gap: 0;
+}
+
+.brandButton {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.brandMark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brandName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.settingsRow {
+  flex: none;
+  height: 34px;
+  box-sizing: border-box;
+  padding-inline: 8px;
+  border-radius: var(--dsw-radius-sm);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.glyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-xs);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.glyph:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.settingsLabel {
+  font-size: 14px;
+  line-height: 20px;
+}
+
 .main {
   flex: 1 1 auto;
   min-width: 0;

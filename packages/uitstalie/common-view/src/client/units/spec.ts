@@ -71,7 +71,11 @@ export function resolveUnit(spec: UnitSpec): ResolvedUnit {
  * @param className - an optional extra class the composing caller owns.
  * @returns the class name and inline style DSH renders.
  */
-export function emitUnit(spec: UnitSpec, className?: string): { className: string; style: CSSProperties } {
+export function emitUnit(
+  spec: UnitSpec,
+  className?: string,
+  style?: CSSProperties,
+): { className: string; style: CSSProperties } {
   const resolved = resolveUnit(spec)
   const kindClass = spec.kind === 'row' ? rowCss.row : columnCss.column
   return {
@@ -86,6 +90,7 @@ export function emitUnit(spec: UnitSpec, className?: string): { className: strin
           : resolved.justify === 'end'
             ? 'flex-end'
             : resolved.justify,
+      ...style,
     } as CSSProperties,
   }
 }

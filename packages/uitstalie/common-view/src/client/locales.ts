@@ -13,6 +13,14 @@ export const en = {
   'scaffold.sidebar': 'Sidebar',
   'scaffold.top': 'Top',
   'scaffold.content': 'Content',
+  'scaffold.buttonSidebar': 'Toggle sidebar width',
+  'scaffold.buttonTop': 'Toggle top height',
+  'scaffold.newSession': 'New session',
+  'scaffold.rowMenu': 'Session actions',
+  'scaffold.rowArchive': 'Archive session',
+  'scaffold.brand': 'Local build',
+  'scaffold.settings': 'Settings',
+  'scaffold.toggleSidebar': 'Collapse sidebar',
 }
 
 /** Keys of the dictionary; the Chinese side must carry the same set. */
@@ -27,4 +35,12 @@ export const zh: typeof en = {
   'scaffold.sidebar': '侧边栏',
   'scaffold.top': '顶部',
   'scaffold.content': '内容区',
+  'scaffold.buttonSidebar': '切换侧栏宽度',
+  'scaffold.buttonTop': '切换顶栏高度',
+  'scaffold.newSession': '新会话',
+  'scaffold.rowMenu': '会话操作',
+  'scaffold.rowArchive': '归档会话',
+  'scaffold.brand': '本地构建',
+  'scaffold.settings': '设置',
+  'scaffold.toggleSidebar': '收起侧边栏',
 }

@@ -77,7 +77,7 @@ describe('common-view overlay on the assembled web roster', () => {
   })
 
   describe('with nothing enabled', () => {
-    const itIdle = overlayTest({})
+    const itIdle = overlayTest({ scaffold: false, sessionRowAction: false, takeoverArchive: false })
 
     itIdle('contributes nothing, so the cell keeps exactly its native items', async ({ start }) => {
       const c = await start()

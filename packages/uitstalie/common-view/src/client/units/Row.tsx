@@ -4,7 +4,7 @@
  * native box.
  * @module @deepseek-ai/dsh-client-common-view/Row
  */
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { emitUnit, type UnitAlign, type UnitJustify } from './spec.ts'
 
 export type { UnitAlign, UnitJustify } from './spec.ts'
@@ -19,16 +19,18 @@ export interface UnitProps {
   justify?: UnitJustify
   /** Extra class for the unit's own box. */
   className?: string | undefined
+  /** Inline component-local custom properties the composing caller sets. */
+  style?: CSSProperties | undefined
   /** The unit's children. */
   children?: ReactNode
 }
 
 /**
  * Render a horizontal layout unit.
- * @param props - gap, alignments, an optional class, and the children.
+ * @param props - gap, alignments, an optional class and inline values, and the children.
  * @returns the row element.
  */
-export function Row({ gap, align = 'center', justify = 'start', className, children }: UnitProps) {
-  const emitted = emitUnit({ kind: 'row', gap, align, justify }, className)
+export function Row({ gap, align = 'center', justify = 'start', className, style, children }: UnitProps) {
+  const emitted = emitUnit({ kind: 'row', gap, align, justify }, className, style)
   return <span className={emitted.className} style={emitted.style}>{children}</span>
 }
