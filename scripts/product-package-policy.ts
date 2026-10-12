@@ -47,4 +47,7 @@ export const PRODUCT_PACKAGE_POLICY: Readonly<Record<string, ProductPackagePolic
   'packages/client/web': { category: 'web-distribution', reason: 'Browser boot kernel bundled into the Web distribution.' },
   'packages/client/ui-dockkit': { category: 'web-distribution', reason: 'Layout library bundled into the Web distribution.' },
   'packages/util/package-manifest': { category: 'declarations', reason: 'Shared package metadata declarations have no runtime mount.' },
+  // BEGIN uitstalie-k3, 2026/10/12, task25, 分支的 base 组合用 llm-plus 行取代了 llm-pi-ai 行，该 provider 仍可由用户组合选用
+  'packages/llm/llm-pi-ai': { category: 'optional', reason: 'The branch base composition mounts the llm-plus twin; this provider stays selectable in a user composition.' },
+  // END uitstalie-k3
 }
