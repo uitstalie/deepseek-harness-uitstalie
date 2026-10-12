@@ -11,8 +11,9 @@
  * @module @deepseek-ai/dsh-agent-instructions-plus
  */
 
+import type {} from '@deepseek-ai/dsh-working-directory'
 import type { Context } from '@deepseek-ai/cordis'
-import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
+import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { FileSystem } from '@deepseek-ai/dsh-fs'
 import type { Session, UserMessage } from '@deepseek-ai/dsh-session'
@@ -34,8 +35,12 @@ import type { ResolvedRulesConfig } from './config.ts'
 import { scanWorkspaceRules } from './rules.ts'
 
 export const name = 'agent-instructions-plus'
-/** Same projection dependency as the reused loader: the turn boundary drives touches. */
-export const inject = ['sessionProjections']
+/**
+ * Same projection and directory dependencies as the reused loader: the turn
+ * boundary drives touches, and both chains scan the Session's current
+ * directory rather than its creation directory.
+ */
+export const inject = ['sessionProjections', 'workingDirectory']
 
 export { Config }
 export { resolveRulesConfig, DEFAULT_RULES_MAX_BYTES, DEFAULT_RULES_MAX_SOURCE_BYTES } from './config.ts'
@@ -66,13 +71,13 @@ export function apply(ctx: Context, config: Config): void {
 
   /** Render the rules segment for one session and return it with its set digest. */
   const rulesSegment = async (
-    session: Session,
+    agent: Agent,
     signal: AbortSignal,
   ): Promise<{ text: string; digest: string } | undefined> => {
     if (!rules.enabled || rules.maxBytes <= 0 || !Number.isFinite(rules.maxBytes)) return undefined
     const fileSystem = ctx.get('fs')
     if (fileSystem === undefined) return undefined
-    const cwd = session.header.cwd ?? process.cwd()
+    const cwd = await ctx.workingDirectory.ensure(agent, signal)
     const projectRoot = await findProjectRoot(cwd, resolved.projectRootMarkers, fileSystem, signal)
     const scan = await scanWorkspaceRules(fileSystem, {
       projectRoot,
@@ -95,16 +100,17 @@ export function apply(ctx: Context, config: Config): void {
    * Used only when the rules changed while the native loader had nothing to say.
    */
   const replacementBaseline = async (
-    session: Session,
+    agent: Agent,
     fileSystem: FileSystem,
     signal: AbortSignal,
     rulesText: string,
   ): Promise<UserMessage | undefined> => {
-    const cwd = session.header.cwd ?? process.cwd()
+    const cwd = await ctx.workingDirectory.ensure(agent, signal)
     const projectRoot = await findProjectRoot(cwd, resolved.projectRootMarkers, fileSystem, signal)
     const instructions = await loadBaselineInstructionSet({
       cwd,
       dshHome: resolved.dshHome,
+      agentsHome: resolved.agentsHome,
       projectRootMarkers: resolved.projectRootMarkers,
       maxBytes: resolved.maxBytes,
       maxSourceBytes: resolved.maxSourceBytes,
@@ -137,7 +143,7 @@ export function apply(ctx: Context, config: Config): void {
     if (!rules.enabled || decision.kind !== 'enter') return decision
     const fileSystem = ctx.get('fs')
     if (fileSystem === undefined) return decision
-    const segment = await rulesSegment(agent.session, signal)
+    const segment = await rulesSegment(agent, signal)
     if (segment === undefined) return decision
     const attachment = attachments.get(agent.session)
 
@@ -161,7 +167,7 @@ export function apply(ctx: Context, config: Config): void {
     }
 
     if (attachment !== undefined && attachment.digest === segment.digest) return decision
-    const replacement = await replacementBaseline(agent.session, fileSystem, signal, segment.text)
+    const replacement = await replacementBaseline(agent, fileSystem, signal, segment.text)
     if (replacement === undefined) return decision
     attachments.set(agent.session, { digest: segment.digest })
     if (decision.messages.length === 0) {
