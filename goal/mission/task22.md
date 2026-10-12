@@ -28,27 +28,34 @@ task14 在真实浏览器里暴露过一个**漂移**：`@deepseek-ai/dsh-client
 
 ## 交付记录（2026/10/12）
 
-**做法**：在共享客户端 preset 的**动态浏览器面**（`clientConfig`）里新增一个 rolldown 插件 `dsh-client-bundle-externals`，在 `generateBundle` 检查每个 chunk 的 `imports`/`dynamicImports`：跳过本 bundle 内的兄弟 chunk、跳过非裸说明符，剩下**既不是平台种子、也不是本包 `dsh.client.external`** 的裸导入即抛错，错误信息同时给出包名、模块名、产物文件名与两条修法（devDependencies 内联 / 声明 external 请求）。
+**做法**：在共享客户端 preset 的**动态浏览器面**（`clientConfig`）里新增一个 rolldown 插件 `dsh-client-bundle-externals`，以 **`resolveId` 的后置钩子**（`order: 'post'`）执行：对每个裸说明符，若它**不是**本包请求的模块表行，就用 bundler 自己的解析器问一次（`this.resolve(source, importer, { skipSelf: true })`）——解析不出结果即**抛错**，错误信息给出包名、模块名、导入方路径与两条修法（devDependencies 内联 / 声明 exact external 请求）。
 
 判据来自**唯一真源**：`isRequested()` 就是 preset 已有的 `clientExternals(id)`（= `PLATFORM_MODULES` + `PRELOADED_CLIENT_EXTERNALS` + 本包 `dsh.client.external`），与 `deps.alwaysBundle` 同源，不新增第二份清单。
 
+**为什么不是"把 rolldown 的 `UNRESOLVED_IMPORT` 警告升级为错误"**（先试过，弃用，两条实测证据）：
+
+1. **日志级别依赖**：实测 rolldown 只在 `logLevel` 阈值之上把日志投递给插件的 `onLog`。`logLevel: 'silent'`（本仓的脚本与规格大量使用）下**一条日志都不投递**，门禁随之静默失效——把不变量交给"日志开关"违背仓库"把可机械检查的不变量接入被执行的门禁"。
+2. **误报**：`scripts/browser-bundled-externals.ts` 的许可证分析构建**故意**把可解析的工作区包标成 external（实测 `dsh-api-gateway` 的 client 构建里 `@deepseek-ai/dsh-typert-protocol` 就是 external），"产物里任何非请求裸导入即失败"的判据会直接打断 `gen-third-party-notices`（pre-commit 钩子）。
+
+改为"解析不出才失败"后：可解析而被别的插件（如许可证 recorder）标成 external 的情况放行，而**真正解析不到的**（task14 的 `require("zod")` 那一类）在**任何日志级别下**都失败。
+
 **只加在动态面**：静态链接面（`staticLinked`）按契约 1 让**每个**裸说明符都保持 external，由 `apps/web` 的 Vite 构建解析——那里解析失败是**可见的构建失败**，不是浏览器里的一条警告，因此不需要（也不能）加这条门禁。
 
-**原生改动登记**（本次唯一原生改动，按分支规则带标记）：
+**原生改动登记**（本次原生改动，按分支规则带标记）：
 
 | 文件 | 位置 | 改动 | 标记 |
 |---|---|---|---|
-| `packages/client/tsdown.client.ts` | `clientConfig` 的 `plugins` 数组，紧接 `dsh-client-bundle-purity` 之后 | 新增 `dsh-client-bundle-externals` 插件（`generateBundle` 检查产物裸导入） | `// BEGIN/END uitstalie-k3, 2026/10/12, task22, …` |
-| `scripts/client-bundle-purity.spec.ts` | `client bundle experimental input isolation` 之前 | 新增 `client bundle externals gate` 规格块（4 个测试） | 同上 |
+| `packages/client/tsdown.client.ts` | `clientConfig` 之前新增工厂 `clientExternalsGate`；`clientConfig` 的 `plugins` 数组里紧接 `dsh-client-bundle-purity` 之后调用它 | 新增解析式产物门禁（后置 `resolveId`） | `// BEGIN/END uitstalie-k3, 2026/10/12, task22, …` |
+| `scripts/client-bundle-purity.spec.ts` | `client bundle experimental input isolation` 之前 | 新增 `client bundle externals gate` 规格块（5 个测试） | 同上 |
 
 **验证**：
 
 | 检查 | 结果 |
 |---|---|
-| `vitest run scripts/client-bundle-purity.spec.ts` | ✓ **46 测试**（新增 4：两条负例失败路径断言 + 正例声明 external 通过 + 全量 roster） |
+| `vitest run scripts/client-bundle-purity.spec.ts` | ✓ **47 测试**（新增 5：负例点名包与模块、**`logLevel: 'silent'` 下同样失败**、正例声明 external 照常放行、全量 roster） |
 | 全量 roster（规格内实测） | ✓ **78 个动态浏览器配置**全部带该插件；5 个静态链接包按设计跳过；分支三个包（`dsh-client-common-view`、`dsh-client-ui-models-dev`、`dsh-client-ui-tool-dsh-store`）在册 |
-| 负例 | ✓ `export … from "undeclared-fixture-library"` 与 `"client.terminal.js"` 兄弟 chunk 两种情况都验证过（后者证明兄弟 chunk 不被误判） |
-| `pnpm run build` | ✓ 363 client artifact（当前树**零**违规——本条是防回归门禁，不是修正在产问题） |
+| 误报对照 | ✓ `pnpm run build` 363 artifact 全过（无一处误报）；`tsx scripts/gen-third-party-notices.ts` ✓——即"可解析但被 recorder 标 external"的分析构建不受影响 |
 | 修复指引 | 错误文本同时点名 `devDependencies` 与 `dsh.client.external`，规格里有断言钉住 |
+| 其他 | `run-oxlint` ✓ 0 warning / 0 error |
 
 **仍未覆盖（如需请另立任务）**：本门禁只认动态面的产物；若某包**手写** tsdown 配置而不用 `clientBundle`，它不会经过该 preset（`verify-client-packages` 只要求"声明 `dsh.client` 或使用 staticLinked"二选一，不校验是否走共享 preset）。
