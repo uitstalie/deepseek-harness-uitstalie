@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "通用视图 overlay",
+    "description": "逐次接管一个原生视图，并通过 slot 与主题 token 提供它的 overlay。"
+  }
+}

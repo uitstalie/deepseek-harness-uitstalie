@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "LLM Plus 提供商",
+    "description": "把模型请求路由到你配置的提供商，支持订阅登录与 models.dev 目录默认值。"
+  }
+}

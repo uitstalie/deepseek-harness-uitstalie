@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "工作区指令",
+    "description": "沿用原生链加载 AGENTS.md 与 CLAUDE.md，并在同一条上下文消息里附带常开的 .dsh/rules。"
+  }
+}
