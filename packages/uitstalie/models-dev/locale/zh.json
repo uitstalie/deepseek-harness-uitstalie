@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "models.dev 目录",
+    "description": "拉取 models.dev 目录、落盘缓存，并把提供商与模型默认值提供给设置页。"
+  }
+}
