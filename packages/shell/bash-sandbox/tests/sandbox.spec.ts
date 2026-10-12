@@ -475,6 +475,7 @@ describe('per-call sandbox policy (the session and escalation carrier)', () => {
   })
 })
 
+// BEGIN uitstalie-k3, 2026/10/12, task26, 追溯补标记：task12 给该块每个用例补第三实参 writableRoots，并新增"需要路径证据"的用例
 describe('classifyDenial', () => {
   /** `read-only` grants no root, so no named path can contradict a matching phrase. */
   const READ_ONLY_ROOTS: readonly string[] = []
@@ -522,6 +523,7 @@ describe('classifyDenial', () => {
     expect(classifyDenial(runResult(1, `Access to the path '${spaced}/x' is denied.`), ['access to the path'], [...workspace, spaced])).toBe(false)
   })
 })
+// END uitstalie-k3
 
 describe('result facts', () => {
   it.each([126, 127])('keeps a successfully launched wrapped child exit %i as an ordinary outcome', async (exitCode) => {

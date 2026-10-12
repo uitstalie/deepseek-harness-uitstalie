@@ -459,6 +459,7 @@ describe('the windows-acl probe (runner invocation contract)', () => {
     expect(probeWindowsAcl).toHaveBeenCalledTimes(1)
     expect(confined.argv.slice(-4)).toEqual(['--mode', 'read-only', '--', 'true'])
     expect(confined.enforcement).toBe('partial')
+    // uitstalie-k3, 2026/10/12, task26, 追溯补标记：task12 把 windows-acl 的拒绝短语收窄为确实带路径证据的两条
     expect(confined.denialSignatures).toEqual(['access is denied', 'access to the path'])
     expect(confined.runnerFailureRules).toEqual([{ allowedExitCodes: [127], fatalSignatures: ['windows-acl-run: '] }])
   })
