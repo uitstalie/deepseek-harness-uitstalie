@@ -496,6 +496,45 @@ function nodeClientConfig(manifest: PackageManifest, entry: string): UserConfig 
   })
 }
 
+/**
+ * BEGIN uitstalie-k3, 2026/10/12, task22, 未解析裸导入从警告升级为构建错误（浏览器里只表现为模块表拒绝该行、整行插件不激活）
+ *
+ * Fail a dynamic client bundle that would keep an import the bundler cannot
+ * resolve. Such a specifier stays a `require()` the loader module table cannot
+ * answer, which reaches the user as an activation error while serialization
+ * only warns. The check runs as a last resolve step, so a plugin that
+ * externalizes a resolvable specifier (the license recorder does) keeps
+ * working; requests the table supplies are the caller's `isRequested`, the same
+ * list the browser dependency rules externalize from.
+ * @param id - package name, used in the diagnostic.
+ * @param isRequested - whether the loader module table answers this specifier.
+ * @returns the build plugin.
+ */
+function clientExternalsGate(id: string, isRequested: (specifier: string) => boolean): TsdownPlugin {
+  return {
+    name: 'dsh-client-bundle-externals',
+    resolveId: {
+      order: 'post',
+      async handler(this: Resolver, source: string, importer: string | undefined) {
+        if (importer === undefined || !isBareSpecifier(source) || isRequested(source)) return null
+        if (await this.resolve(source, importer, { skipSelf: true }) !== null) return null
+        const from = relative(REPOSITORY_ROOT, importer).split(sep).join('/')
+        throw new Error(
+          `client bundle externals (${id}): "${source}" imported by ${from} does not resolve, so it would stay a `
+          + 'module-table request at runtime that the loader cannot answer. Install it as a devDependency so this '
+          + 'bundle inlines it, or declare the exact specifier in dsh.client.external when the module table supplies it.',
+        )
+      },
+    },
+  }
+}
+
+/** The slice of the rolldown plugin context the externals gate resolves through. */
+interface Resolver {
+  resolve(source: string, importer: string, options: { skipSelf: boolean }): Promise<unknown>
+}
+// END uitstalie-k3
+
 function clientConfig(
   manifest: PackageManifest,
   entry: string,
@@ -576,7 +615,11 @@ function clientConfig(
           + '(type-only imports are erased and never reach this gate)',
         )
       },
-    }, tscSourceMapPlugin(), asyncChunkRequirePlugin(), isolation.plugin, {
+    },
+    // BEGIN uitstalie-k3, 2026/10/12, task22, 未解析裸导入从警告升级为构建错误（浏览器里只表现为模块表拒绝该行、整行插件不激活）
+    clientExternalsGate(id, isRequested),
+    // END uitstalie-k3
+    tscSourceMapPlugin(), asyncChunkRequirePlugin(), isolation.plugin, {
       name: 'dsh-css-modules-inline',
       resolveId(source: string, importer: string | undefined) {
         if (!source.endsWith('.module.css')) return null
