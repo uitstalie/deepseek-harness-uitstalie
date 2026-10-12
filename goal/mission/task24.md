@@ -38,7 +38,7 @@
 
 ## 状态：PENDING（2026/10/09 挂起）
 
-**已完成并推送**（`origin/cli-desktop` = `3121ccfad4`，分支侧改动全部在 `packages/uitstalie/common-view/` 内；原生改动只有早先一片登记行）：
+**已完成并推送**（`origin/cli-desktop` 的分支 tip，分支侧改动全部在 `packages/uitstalie/common-view/` 内；原生改动只有早先一片登记行）：
 
 | 层 | 内容 |
 |---|---|
