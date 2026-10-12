@@ -96,6 +96,6 @@ packages/llm/llm-pi-ai (@deepseek-ai/dsh-llm-pi-ai): no product runtime use; mou
 
 ## 待办
 
-1. **推送决策**：本地已重写 96 个提交，远端 `cli-desktop` 仍是旧链；需要用户批准后用 `--force-with-lease` 推送（保底分支 `backup/cli-desktop-*` 已在本地）。
+1. ~~**推送决策**~~ **已完成（2026/10/12，用户批准）**：`--force-with-lease` 推送 `cli-desktop`，远端报告 forced update ✓；推送前的 typecheck 钩子通过（44.5s），推送后本地与 `origin/cli-desktop` 一致。保底：rebase 前的 tip 与远端被覆盖前的 tip 是同一个提交，已在本地打保底分支 `backup/cli-desktop-*`；如需回滚，用该分支强制回推即可。
 2. task23 遗留的既有红项不受本次影响：`ui-trajectory/client-bundle`（上游包断言）、`ui-deliverables/present-open` 与 `connection/binary-rpc`（Windows 环境）、task21 第二步（门禁级样式修正）、task22（未解析裸导入门禁）、38 个无标记原生文件的合规清扫（需用户定夺）。
 3. [task24](task24.md) 的 PENDING 清单（common-view overlay 逐 view 复刻、设置通道开关等）继续有效。
