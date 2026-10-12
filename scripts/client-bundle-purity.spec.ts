@@ -2,13 +2,13 @@
  * Pins shared client-bundle preset rules: module-edge purity, source-map
  * chaining, and physical watch dependencies hidden behind virtual CSS Modules.
  */
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, globSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { dirname, join, relative, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build, type Rolldown, type TsdownBundle, type UserConfig } from 'tsdown'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { clientBundle, requestedExternals, staticLinked } from '../packages/client/tsdown.client.ts'
+import { clientBundle, isStaticLinkedConfig, requestedExternals, staticLinked } from '../packages/client/tsdown.client.ts'
 
 type ResolveId = (source: string) => null | { id: string; external: boolean }
 
@@ -291,6 +291,103 @@ describe('client bundle purity gate', () => {
     }
   })
 })
+
+// BEGIN uitstalie-k3, 2026/10/12, task22, 覆盖新增的产物裸导入门禁（未声明 external 的裸导入必须构建失败）
+describe('client bundle externals gate', () => {
+  const REQUESTING = '@deepseek-ai/dsh-api-session-controller'
+  const DECLARED = '@deepseek-ai/dsh-api-gateway/client'
+
+  /** Plugin names in a config, including the nested arrays a wrapping config may build. */
+  function pluginNames(plugins: unknown): string[] {
+    return (Array.isArray(plugins) ? plugins : []).flatMap(entry =>
+      Array.isArray(entry) ? pluginNames(entry) : [(entry as { name?: string }).name].filter(name => name !== undefined))
+  }
+
+  function externalsFixture(source: string): string {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-client-externals-'))
+    onTestFinished(() => { rmSync(root, { recursive: true, force: true }) })
+    const entry = join(root, 'lib/types/client/index.js')
+    mkdirSync(dirname(entry), { recursive: true })
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: REQUESTING, type: 'module' }))
+    writeFileSync(entry, source)
+    return root
+  }
+
+  async function bundleFixture(root: string): Promise<string> {
+    const config = clientConfigs(REQUESTING)[0]
+    if (config === undefined) throw new Error('client config missing')
+    let builds: TsdownBundle[] = []
+    try {
+      builds = await build({
+        ...config, cwd: root, config: false, tsconfig: false,
+        write: false, clean: false, exports: false, report: false, logLevel: 'silent',
+      })
+      return builds.flatMap(bundle => bundle.chunks.filter(chunk => chunk.type === 'chunk').map(chunk => chunk.code)).join('\n')
+    } finally {
+      for (const bundle of builds) await bundle[Symbol.asyncDispose]()
+    }
+  }
+
+  const unresolved = 'export { default as marker } from "undeclared-fixture-library"\n'
+
+  it('fails the build when a bare import stays unresolved, naming package and module', async () => {
+    const building = bundleFixture(externalsFixture(unresolved))
+
+    await expect(building).rejects.toThrow(/client bundle externals \(@deepseek-ai\/dsh-api-session-controller\)/)
+    await expect(building).rejects.toThrow(/"undeclared-fixture-library" imported by \S+ does not resolve/)
+  })
+
+  it('fails the build even when the caller silences build logs', async () => {
+    const root = externalsFixture(unresolved)
+    const config = clientConfigs(REQUESTING)[0]
+    if (config === undefined) throw new Error('client config missing')
+
+    await expect(build({
+      ...config, cwd: root, config: false, tsconfig: false,
+      write: false, clean: false, exports: false, report: false, logLevel: 'silent',
+    })).rejects.toThrow(/client bundle externals/)
+  })
+
+  it('names both corrections: declare the dependency, or request the module', async () => {
+    await expect(bundleFixture(externalsFixture(unresolved))).rejects.toThrow(/devDependency[\s\S]*dsh\.client\.external/)
+  })
+
+  it('keeps the requesting package\'s own declared module request external', async () => {
+    const root = externalsFixture(`export { value } from ${JSON.stringify(DECLARED)}\n`)
+
+    await expect(bundleFixture(root)).resolves.toContain(DECLARED)
+  })
+
+  it('guards every dynamic client package, the branch packages included', async () => {
+    const root = fileURLToPath(new URL('..', import.meta.url))
+    const configPaths = globSync('packages/*/*/tsdown.config.ts', { cwd: root }).map(path => path.replaceAll('\\', '/')).sort()
+    expect(configPaths.length).toBeGreaterThan(50)
+    const guarded = new Set<string>()
+    for (const configPath of configPaths) {
+      const loaded = await import(pathToFileURL(resolve(root, configPath)).href) as { default?: unknown }
+      if (typeof loaded.default !== 'function') continue
+      const configs = (loaded.default as (input: { env: Record<string, string> }) => UserConfig[])({
+        env: { DSH_BUILD_FACE: 'client' },
+      })
+      if (isStaticLinkedConfig(configs)) continue
+      for (const config of configs.filter(config => config.platform === 'browser')) {
+        const names = pluginNames(config.plugins)
+        expect(names, String(config.name)).toContain('dsh-client-bundle-externals')
+        if (typeof config.name === 'string') guarded.add(config.name)
+      }
+    }
+
+    expect(guarded.size).toBeGreaterThan(50)
+    for (const branch of [
+      '@deepseek-ai/dsh-client-common-view/client',
+      '@deepseek-ai/dsh-client-ui-models-dev/client',
+      '@deepseek-ai/dsh-client-ui-tool-dsh-store/client',
+    ]) {
+      expect([...guarded]).toContain(branch)
+    }
+  })
+})
+// END uitstalie-k3
 
 describe('client bundle experimental input isolation', () => {
   const experimental = '@deepseek-ai/dsh-experimental-client-ui-agent-team'
