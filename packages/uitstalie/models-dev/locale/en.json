@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "models.dev catalog",
+    "description": "Fetch the models.dev catalog, cache it on disk, and supply provider and model defaults to the settings page."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Workspace instructions",
+    "description": "Load AGENTS.md and CLAUDE.md through the native chain and add always-on .dsh/rules to the same context message."
+  }
+}

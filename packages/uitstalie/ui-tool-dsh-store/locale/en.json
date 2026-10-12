@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Workspace rules view",
+    "description": "Show the .dsh rules the instruction loader injects, per workspace, from the sidebar."
+  }
+}

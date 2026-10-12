@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": ".dsh store files",
+    "description": "Create, inspect, and delete files and folders inside a workspace's .dsh directory."
+  }
+}

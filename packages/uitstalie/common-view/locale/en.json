@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Common view overlay",
+    "description": "Adopt one native view at a time and contribute its overlay through slots and theme tokens."
+  }
+}
