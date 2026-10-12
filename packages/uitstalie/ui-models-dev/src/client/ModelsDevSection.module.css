@@ -23,7 +23,7 @@
 }
 
 .rowCard {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
   padding: 10px 12px;
   display: flex;
@@ -54,8 +54,9 @@
 }
 
 .badge {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 999px;
+  corner-shape: round;
   padding: 1px 8px;
   font-size: 11px;
   color: var(--dsw-alias-label-secondary);
@@ -65,7 +66,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
   padding-top: 8px;
 }
 
@@ -81,7 +82,7 @@
 }
 
 .input {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   padding: 6px 8px;
   background: var(--dsw-alias-bg-primary);
@@ -89,7 +90,7 @@
 }
 
 .textarea {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   padding: 6px 8px;
   background: var(--dsw-alias-bg-primary);
@@ -110,7 +111,7 @@
   gap: 4px;
   max-height: 200px;
   overflow-y: auto;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   padding: 6px 8px;
 }
@@ -127,7 +128,7 @@
 }
 
 .submitButton {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   padding: 6px 16px;
   background: var(--dsw-alias-bg-primary);
@@ -158,7 +159,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
   padding: 10px 12px;
 }
@@ -171,7 +172,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
   padding-top: 8px;
 }
 
