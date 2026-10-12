@@ -6,6 +6,7 @@
 - name: '@deepseek-ai/dsh-fs-local'
   config:
     cwd: '{{project}}'
+- name: '@deepseek-ai/dsh-working-directory'
 - name: '@deepseek-ai/dsh-agent'
 - name: '@deepseek-ai/dsh-agent-loop'
   config:

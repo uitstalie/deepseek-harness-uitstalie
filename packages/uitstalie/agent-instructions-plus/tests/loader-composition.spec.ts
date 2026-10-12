@@ -21,6 +21,7 @@ import * as SystemPromptPlugin from '@deepseek-ai/dsh-system-prompt'
 import * as ToolsPlugin from '@deepseek-ai/dsh-tools'
 import * as AgentLoopPlugin from '@deepseek-ai/dsh-agent-loop'
 import * as FsLocalPlugin from '@deepseek-ai/dsh-fs-local'
+import * as WorkingDirectoryPlugin from '@deepseek-ai/dsh-working-directory'
 import * as PlusPlugin from '../src/index.ts'
 
 let context: Context | undefined
@@ -50,6 +51,7 @@ async function boot(project: string): Promise<Context> {
     ['@deepseek-ai/dsh-system-prompt', SystemPromptPlugin],
     ['@deepseek-ai/dsh-tools', ToolsPlugin],
     ['@deepseek-ai/dsh-fs-local', FsLocalPlugin],
+    ['@deepseek-ai/dsh-working-directory', WorkingDirectoryPlugin],
     ['@deepseek-ai/dsh-agent', AgentPlugin],
     ['@deepseek-ai/dsh-agent-loop', AgentLoopPlugin],
     ['@deepseek-ai/dsh-agent-instructions-plus', PlusPlugin],

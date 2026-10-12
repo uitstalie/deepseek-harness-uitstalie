@@ -16,6 +16,7 @@ import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,
+  provideWorkingDirectoryFixture,
   type AgentLoopTestHarness,
 } from '@deepseek-ai/dsh-agent-loop-testkit'
 import * as Plus from '../src/index.ts'
@@ -48,6 +49,7 @@ async function mountLoader(plugin: Parameters<Context['plugin']>[0], config: obj
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
+  provideWorkingDirectoryFixture(ctx, project)
   await ctx.plugin(LocalFileSystem, { cwd: project })
   const harness = await mountAgentLoopTestHarness(ctx)
   await ctx.plugin(plugin, config)
