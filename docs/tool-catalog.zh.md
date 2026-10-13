@@ -32,6 +32,7 @@
 | `@deepseek-ai/dsh-tool-cordis` | `cordis_inspect_list`, `cordis_inspect_query` | `ctx.tools`, `ctx.cordisInspect` | `tool/call`, `tool/result` | - | 创造模式提供两个只读运行时检查工具。Cordis host runner 提供检查注册表；Client 查询需要已连接页面。持久化变更编写为组合包，再通过 plugin_manager 安装。 |
 | `@deepseek-ai/dsh-tool-bash-persistent` | `bash` | `ctx.workingDirectory`、`ctx.tools`、`ctx.terminals`、`an owning Agent at execution time` | `tool/call`、`PTY shell state`、`tool/result` | - | 一个按所有者隔离的持久 bash 工具；部署组合提供 PTY 后端，并可覆盖面向模型的环境描述。 |
 | `@deepseek-ai/dsh-tool-pwsh-persistent` | `pwsh` | `ctx.workingDirectory`、`ctx.tools`、`ctx.terminals`、`an owning Agent at execution time` | `tool/call`、`PTY shell state`、`tool/result` | - | 一个按所有者隔离的持久 pwsh 工具，持久 bash 工具的 Windows 对应物；部署组合提供 pwsh 方言的 PTY 后端，并可覆盖面向模型的环境描述。 |
+| `@deepseek-ai/dsh-tool-dsh-store` | `tool-dsh-store` | `ctx.tools`、`ctx.fs`、`an owning Agent session at execution time`、`ctx.sandboxPolicy in a confining composition` | `tool/call`、`fs/write-intent for create and delete`、`fs/observed after query presence/absence or successful mutation`、`tool/result` | - | 一个面向工作区 `<projectRoot>/.dsh` 的存储工具：插件会为可写会话按需创建该根目录（`read-only` 会话不动它，等模式改变后再重试），并在组合了工作区注册表时挂载只读 Remote 命名空间供 Web 侧边栏使用。执行时需要拥有它的 Agent 会话；项目根的发现方式与 skill 文件系统一致。 |
 | `@deepseek-ai/dsh-tool-str-replace-editor` | `str_replace_editor` | `ctx.tools`、`ctx.fs` | `tool/call`、`fs/observed after view presence/absence, edit absence, or successful mutation`、`tool/result` | - | 基于文件系统 seam 的独立查看／创建／唯一字面量替换／按行插入工具；可与任何 shell 或终端接口组合。 |
 | `@deepseek-ai/dsh-tool-fs` | `edit`、`read`、`read_image`、`write` | `ctx.workingDirectory`、`ctx.tools`、`ctx.fs`、`ctx.systemPrompt`、`ctx.attachments (image-tool registration)`、`ctx.llm + an image-capable route (image-tool execution)` | `tool/call`、`fs/write-intent or fs/edit-intent for mutations`、`fs/observed after read presence/absence or successful file operation`、`durable attachment (read_image)`、`tool/result` | - | 先读后写／编辑策略由 `@deepseek-ai/dsh-fs-observation-policy` 添加；它是一个 `fs/*` 事件门禁插件，不会改变 schema。加载这些工具的部署按预期也应加载该插件。没有 `ctx.attachments` 时图片工具不会注册；其 schema 与路由无关，执行时除非确切路由的模型声明图片输入，否则拒绝。 |
 | `@deepseek-ai/dsh-tool-fs-search` | `glob`、`grep` | `ctx.workingDirectory`、`ctx.tools`、`ctx.subprocess`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn 随包提供的 ripgrep 二进制文件（`@vscode/ripgrep`），并作为普通前台调用运行，绝不作为后台任务；无需在宿主机安装 `rg`，也不经过 shell 层。本目录使用 `sampleOverCapGlobResults: true`；部署必须显式选择该行为。结果超过上限时，会通过可选的 ctx.spillStore 后端保存完整的格式化列表；在共置部署中，如果后端公开本地路径，返回的定位信息可供后续读取／搜索。 |
@@ -743,7 +744,7 @@ bash 工具是 bash 执行器 seam 面向模型的消费方。组合中有 job �
 
 ### `pwsh`
 
-执行 PowerShell 命令（`pwsh -Command`）并返回 stdout/stderr。每次调用都在新的 pwsh 进程中运行；请传入 `workdir`，不要使用 `cd`。路径采用 Windows 原生形式（`C:\...`）；使用 `$env:NAME` 读取环境变量。托管的 `$env:DSH_*` 变量公开当前 harness 环境信息。较长的输出会截断，只保留尾部；如可用，完整输出会保存到文件并报告其路径。在 Windows 上，被强制终止的命令会以 `[exit code: 1]` 结算且不带信号标记，请将其视为中断，而不是命令失败。请在参数中先提供 `description`，再提供 `command`。在任何删除或移动之前，请确认解析后的绝对目标路径正是预期路径；绝不要对未经检查的计算路径执行此类操作。不要给 `$HOME` 等自动变量赋值；变量名不区分大小写，因此 `$home` 就是同一个只读变量。命令可能在文件沙箱中运行；被阻止的文件操作报告为 `[sandbox: file access denied under <mode> mode]`，这是策略拒绝：请勿换一种方式重试。
+执行 PowerShell 命令（`pwsh -Command`）并返回 stdout/stderr。每次调用都在新的 pwsh 进程中运行；请传入 `workdir`，不要使用 `cd`。路径采用 Windows 原生形式（`C:\...`）；使用 `$env:NAME` 读取环境变量。PowerShell 会重新解析命令行，它不是 bash：带引号、多行或含 `$` 的文本要写进文件再传路径（`git commit -F msg.txt`、`python script.py`）；`2>/dev/null` 在这里会被当成文件路径（Windows 上是 `D:\dev\null`，请写 `2>$null`），没有 heredoc，双引号里的 `\n` 是字面量（要写 `` `n ``）。原生命令的非零退出既不会中断链条、也不会让本次调用失败——当它的结果决定下一步时请检查 `$LASTEXITCODE`；`String.Replace()` 在没有任何匹配时原样返回，因此优先使用 `edit` 工具，或先断言匹配次数。托管的 `$env:DSH_*` 变量公开当前 harness 环境信息。较长的输出会截断，只保留尾部；如可用，完整输出会保存到文件并报告其路径。在 Windows 上，被强制终止的命令会以 `[exit code: 1]` 结算且不带信号标记，请将其视为中断，而不是命令失败。请在参数中先提供 `description`，再提供 `command`。在任何删除或移动之前，请确认解析后的绝对目标路径正是预期路径；绝不要对未经检查的计算路径执行此类操作。不要给 `$HOME` 等自动变量赋值；变量名不区分大小写，因此 `$home` 就是同一个只读变量。命令可能在文件沙箱中运行；被阻止的文件操作报告为 `[sandbox: file access denied under <mode> mode]`，这是策略拒绝：请勿换一种方式重试。
 
 ```json
 {
@@ -891,6 +892,59 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 来源：[`packages/shell/tool-pwsh-persistent/src/index.ts`](../packages/shell/tool-pwsh-persistent/src/index.ts)
 
 一个按所有者隔离的持久 pwsh 工具，持久 bash 工具的 Windows 对应物；部署组合提供 pwsh 方言的 PTY 后端，并可覆盖面向模型的环境描述。
+
+<a id="deepseek-aidsh-tool-dsh-store"></a>
+
+## `@deepseek-ai/dsh-tool-dsh-store`
+
+### `tool-dsh-store`
+
+在本工作区 `.dsh` 目录下创建、查看和删除文件与目录；该目录承载编辑器规则（`.dsh/rules`）、项目 skills 与运行时快照。路径相对于该目录给出。对 `.dsh` 内容请使用本工具，而不是通用的 write、edit 或 shell 工具，因为它会校验路径、拒绝与已有规则重复的规则或缺少 skill 所需 frontmatter 的 skill 文档，并报告删除了什么。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "create writes, query lists or reads, delete removes.",
+      "enum": [
+        "create",
+        "query",
+        "delete"
+      ]
+    },
+    "path": {
+      "type": "string",
+      "description": "Target path relative to `.dsh`, for example `rules/api.md`; an empty path names the store root."
+    },
+    "target": {
+      "type": "string",
+      "description": "What to create; required for create and ignored otherwise.",
+      "enum": [
+        "file",
+        "folder"
+      ]
+    },
+    "content": {
+      "type": "string",
+      "description": "Complete file text; required when creating a file."
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "Delete a folder together with its contents; a populated folder is refused without it."
+    }
+  },
+  "required": [
+    "action",
+    "path"
+  ]
+}
+```
+
+来源：[`packages/uitstalie/tool-dsh-store/src/tool.ts`](../packages/uitstalie/tool-dsh-store/src/tool.ts)
+
+一个面向工作区 `<projectRoot>/.dsh` 的存储工具：插件会为可写会话按需创建该根目录（`read-only` 会话不动它，等模式改变后再重试），并在组合了工作区注册表时挂载只读 Remote 命名空间供 Web 侧边栏使用。执行时需要拥有它的 Agent 会话；项目根的发现方式与 skill 文件系统一致。
 
 <a id="deepseek-aidsh-tool-str-replace-editor"></a>
 

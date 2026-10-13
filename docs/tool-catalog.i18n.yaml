@@ -9,8 +9,8 @@
   en: 6cc2cd9ced70bb09
   zh: 1c0e6cb4ba2ed637
 /tool-schema-catalog/tool-package-map:
-  en: e72ad7af437fa362
-  zh: d8f3683a4efe01b0
+  en: 207ec316fe192479
+  zh: 3de0b6d18c0dcb76
 /tool-schema-catalog/deepseek-ai-dsh-plugin-manager:
   en: e0143916bb634762
   zh: e0143916bb634762
@@ -90,8 +90,8 @@
   en: b222fc05f3f8ee4a
   zh: b222fc05f3f8ee4a
 /tool-schema-catalog/deepseek-ai-dsh-tool-pwsh/pwsh:
-  en: 00489572a7e8cb3e
-  zh: c0ecb3909392ee89
+  en: 9df6124194520539
+  zh: 251281db35c02f25
 /tool-schema-catalog/deepseek-ai-dsh-tool-cordis:
   en: 76c7c62f9029b6f5
   zh: 76c7c62f9029b6f5
@@ -111,8 +111,14 @@
   en: 40a053607298a4c5
   zh: 40a053607298a4c5
 /tool-schema-catalog/deepseek-ai-dsh-tool-pwsh-persistent/pwsh:
-  en: 214866b3419c8e12
-  zh: c23368fc61772d52
+  en: db59adabdf32e1b9
+  zh: a80d5fe1dc5c748d
+/tool-schema-catalog/deepseek-ai-dsh-tool-dsh-store:
+  en: 0b8dab662a32527b
+  zh: 0b8dab662a32527b
+/tool-schema-catalog/deepseek-ai-dsh-tool-dsh-store/tool-dsh-store:
+  en: 32c555c4d75d55d7
+  zh: dc7bc6f9b165b85b
 /tool-schema-catalog/deepseek-ai-dsh-tool-str-replace-editor:
   en: 591f6e54dbbc38fe
   zh: 591f6e54dbbc38fe

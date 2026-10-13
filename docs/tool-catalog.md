@@ -28,6 +28,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-cordis` | `cordis_inspect_list`, `cordis_inspect_query` | `ctx.tools`, `ctx.cordisInspect` | `tool/call`, `tool/result` | - | Creator mode provides two read-only runtime inspection tools. The Cordis host runner supplies the inspection registry; Client queries require a connected page. Author persistent changes as bundles and install them with plugin_manager. |
 | `@deepseek-ai/dsh-tool-bash-persistent` | `bash` | `ctx.workingDirectory`, `ctx.tools`, `ctx.terminals`, `an owning Agent at execution time` | `tool/call`, `PTY shell state`, `tool/result` | - | One owner-isolated persistent bash tool; deployment composition supplies the PTY backend and may override the model-facing environment description. |
 | `@deepseek-ai/dsh-tool-pwsh-persistent` | `pwsh` | `ctx.workingDirectory`, `ctx.tools`, `ctx.terminals`, `an owning Agent at execution time` | `tool/call`, `PTY shell state`, `tool/result` | - | One owner-isolated persistent pwsh tool, the Windows counterpart of the persistent bash tool; deployment composition supplies a pwsh-dialect PTY backend and may override the model-facing environment description. |
+| `@deepseek-ai/dsh-tool-dsh-store` | `tool-dsh-store` | `ctx.tools`, `ctx.fs`, `an owning Agent session at execution time`, `ctx.sandboxPolicy in a confining composition` | `tool/call`, `fs/write-intent for create and delete`, `fs/observed after query presence/absence or successful mutation`, `tool/result` | - | One workspace-scoped store tool over `<projectRoot>/.dsh`: the plugin creates that root on demand for a session that may write (a read-only session is left untouched and retried after its mode changes), and it mounts a read-only Remote namespace for the Web sidebar whenever a workspace registry is composed. Execution needs an owning Agent session; the project root is discovered the same way the skill filesystem discovers it. |
 | `@deepseek-ai/dsh-tool-str-replace-editor` | `str_replace_editor` | `ctx.tools`, `ctx.fs` | `tool/call`, `fs/observed after view presence/absence, edit absence, or successful mutation`, `tool/result` | - | Standalone view/create/unique literal replace/line insert tool over the filesystem seam; it composes with any shell or terminal API. |
 | `@deepseek-ai/dsh-tool-fs` | `edit`, `read`, `read_image`, `write` | `ctx.workingDirectory`, `ctx.tools`, `ctx.fs`, `ctx.systemPrompt`, `ctx.attachments (image-tool registration)`, `ctx.llm + an image-capable route (image-tool execution)` | `tool/call`, `fs/write-intent or fs/edit-intent for mutations`, `fs/observed after read presence/absence or successful file operation`, `durable attachment (read_image)`, `tool/result` | - | The read-before-write/edit policy is added by `@deepseek-ai/dsh-fs-observation-policy` (an `fs/*` event-gate plugin, no schema change); a deployment that loads these tools is expected to also load it. The image tool is not registered without `ctx.attachments`; its schema is route-independent, and execution refuses unless the exact routed model declares image input. |
 | `@deepseek-ai/dsh-tool-fs-search` | `glob`, `grep` | `ctx.workingDirectory`, `ctx.tools`, `ctx.subprocess`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments. |
@@ -739,7 +740,7 @@ Deliveries belong to the calling Session; Web ui-deliverables supplies source-fi
 
 ### `pwsh`
 
-Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. Each call runs in a fresh pwsh process; pass `workdir` instead of using `cd`. Paths use native Windows form (`C:\...`); read environment variables with `$env:NAME`. Managed `$env:DSH_*` variables expose current harness environment facts. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. On Windows a force-killed command settles as `[exit code: 1]` without a signal marker — treat it as an interruption, not a command failure. Provide `description` before `command` in the arguments. Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. Do not assign to automatic variables such as `$HOME`; variable names are case-insensitive, so `$home` is the same read-only variable. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.
+Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. Each call runs in a fresh pwsh process; pass `workdir` instead of using `cd`. Paths use native Windows form (`C:\...`); read environment variables with `$env:NAME`. PowerShell re-parses the command line and is not bash: put quoted, multi-line, or `$`-bearing text in a file and pass the path (`git commit -F msg.txt`, `python script.py`); `2>/dev/null` names a file instead (on Windows `D:\dev\null`, write `2>$null`), heredocs do not exist, and `\n` inside double quotes is literal (write `` `n ``). A native command's non-zero exit neither stops the chain nor fails this call — check `$LASTEXITCODE` when its result decides the next step — and `String.Replace()` returns the input unchanged when nothing matches, so prefer the `edit` tool or assert the match count first. Managed `$env:DSH_*` variables expose current harness environment facts. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. On Windows a force-killed command settles as `[exit code: 1]` without a signal marker — treat it as an interruption, not a command failure. Provide `description` before `command` in the arguments. Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. Do not assign to automatic variables such as `$HOME`; variable names are case-insensitive, so `$home` is the same read-only variable. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.
 
 ```json
 {
@@ -887,6 +888,59 @@ Run commands in a persistent PowerShell shell. State, including the current dire
 Source: [`packages/shell/tool-pwsh-persistent/src/index.ts`](../packages/shell/tool-pwsh-persistent/src/index.ts)
 
 One owner-isolated persistent pwsh tool, the Windows counterpart of the persistent bash tool; deployment composition supplies a pwsh-dialect PTY backend and may override the model-facing environment description.
+
+<a id="deepseek-aidsh-tool-dsh-store"></a>
+
+## `@deepseek-ai/dsh-tool-dsh-store`
+
+### `tool-dsh-store`
+
+Create, inspect, and delete files and folders under this workspace's `.dsh` directory, which carries editor rules (`.dsh/rules`), project skills, and runtime snapshots. Give a path relative to that directory. Use this tool instead of the generic write, edit, or shell tools for `.dsh` content, because it validates the path, refuses a rule that repeats an existing rule or a skill document missing the frontmatter a skill needs, and reports what it deleted.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "create writes, query lists or reads, delete removes.",
+      "enum": [
+        "create",
+        "query",
+        "delete"
+      ]
+    },
+    "path": {
+      "type": "string",
+      "description": "Target path relative to `.dsh`, for example `rules/api.md`; an empty path names the store root."
+    },
+    "target": {
+      "type": "string",
+      "description": "What to create; required for create and ignored otherwise.",
+      "enum": [
+        "file",
+        "folder"
+      ]
+    },
+    "content": {
+      "type": "string",
+      "description": "Complete file text; required when creating a file."
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "Delete a folder together with its contents; a populated folder is refused without it."
+    }
+  },
+  "required": [
+    "action",
+    "path"
+  ]
+}
+```
+
+Source: [`packages/uitstalie/tool-dsh-store/src/tool.ts`](../packages/uitstalie/tool-dsh-store/src/tool.ts)
+
+One workspace-scoped store tool over `<projectRoot>/.dsh`: the plugin creates that root on demand for a session that may write (a read-only session is left untouched and retried after its mode changes), and it mounts a read-only Remote namespace for the Web sidebar whenever a workspace registry is composed. Execution needs an owning Agent session; the project root is discovered the same way the skill filesystem discovers it.
 
 <a id="deepseek-aidsh-tool-str-replace-editor"></a>
 
