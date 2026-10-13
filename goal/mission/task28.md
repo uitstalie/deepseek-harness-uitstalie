@@ -60,6 +60,49 @@ tool or assert the match count first.
 
 **成本提示**：这两句会让每次请求的工具描述增加约 60 词（≈ 90 token，现有描述约 250 token，增幅约 35%）——按"不写就会做错"的判据，值得；若嫌重，可只加第 1 句（引号/重定向），把退出码那句并进系统提示段。
 
-## 状态
+## 状态：已批准并执行（2026/10/12）
 
-**待用户批准**（模型可见契约改动 + 原生文件）。批准后按上表执行并回填结果。
+用户裁决："**只加描述，需要落地到 skills 的保留为新 task 的 known limitation**"。据此：描述按上文两句升级；长尾只登记、不实现（见文末「已知限制」）。
+
+### 实际改动（均带 `uitstalie-k3, 2026/10/12, task28` 标记）
+
+| # | 文件 | 改动 |
+|---|---|---|
+| 1 | `packages/shell/tool-pwsh/src/index.ts` | `pwshDescription()` 增加上述两句方言规则（插在 `$env:NAME` 句之后、`Managed $env:DSH_*` 句之前） |
+| 2 | `scripts/gen-tool-catalog.ts` | **执行中发现的分支缺口**：`verify-tool-catalog` 原本就因 `1 tool package(s) not in the boot manifest: tool-dsh-store` 失败——我们的工具包从未进过 boot 清单。本次补上 import + `TOOL_PACKAGES` 条目（含 `requires`/`writes`/`note`），我们的工具首次进入公开工具目录 |
+| 3 | `docs/tool-catalog.md`（生成）+ `.zh.md`（镜像）+ `.i18n.yaml` | `pnpm run gen-tool-catalog` 重生成；中文侧手写镜像两条新句与新增的 `dsh-tool-dsh-store` 小节；重录配对 |
+| 4 | `packages/shell/tool-pwsh/README.md` + `.zh.md` + `.i18n.yaml` | "运行命令"一节补一句：描述里写明两条「失败时静默」的方言规则；重录配对 |
+| 5 | `snapshots/session/pwsh-tool-turn/tool-schemas.expected.json` | 侧车描述同步：**插入**这两句（不是整体替换）——目录生成时的 boot 没有挂约束执行器，因此目录里是「基础版描述」，而该场景的侧车还带 Windows 沙箱尾段；插入法保住了尾段 |
+
+### 验证
+
+| 检查 | 结果 |
+|---|---|
+| `pnpm run verify-tool-catalog` | ✓ **从红转绿**（此前因工具包缺失直接失败）；`docs/tool-catalog.md is up to date` |
+| `vitest run packages/shell/tool-pwsh` | ✓ 8 文件 / **154 测试**（含 tool-pwsh-persistent） |
+| `tsc -b tsconfig.client.json tsconfig.host.json` | ✓ 两面干净 |
+| `run-oxlint`（两个改动源文件） | ✓ 0 warning / 0 error |
+| `test:docs` | ✓ **21 条门禁全绿** |
+| `verify-translation-pairing` | ✓ 935 对一致（重录 `README.i18n.yaml`、`tool-catalog.i18n.yaml`） |
+| 快照复跑（`-t pwsh-tool-turn`） | ✓ **无 schema 差异**（侧车与实时注册一致）；该用例仍报 `{{cwd}}` 占位符未归一化——对照实测：**未被本次改动触碰**的 `text-turn`、`persistent-pwsh-tool-turn` 报同一个错，属本机（Windows）环境性失败，见下 |
+| 标记盘点 | `git grep -l "uitstalie-"` 80 → **82**（只新增上述两个原生文件；无丢失） |
+
+## 已知限制（Known Limitations）
+
+**1. 未进描述、待落成 skill 的情境化经验（用户裁决：保留为新 task 的 known limitation）**
+
+- `ssh` 的单引号/双引号语义（双引号会先由本地 PowerShell 展开 `$HOME`、甚至执行 `$(id -u)`）以及 `-o BatchMode=yes -o ConnectTimeout=20`；
+- `scp` 到 `~/` 的 realpath 报错，需先远端 `mkdir -p` 并传绝对路径；
+- 进程计数惯用法：`pgrep -f` 会自我匹配，`grep -c` 数的是行不是进程；
+- 非 ASCII 输出：跑 Python 前设 `$env:PYTHONIOENCODING='utf-8'`；
+- `Set-Content` 默认写 CRLF，推到 Linux 的脚本要在远端 `sed -i 's/\r$//'`；
+- `Select-String` 只留匹配行会把失败用例名与 `error TS` 过滤掉（要么看尾部、要么把失败模式显式列进 `-Pattern`）。
+
+这些属于"按需加载才划算"的情境经验：若将来新增分支 skill（新文件、非原生改动），应把它们整体搬过去，并在本任务单回填链接。
+
+**2. 本机（Windows）快照通道不可用**
+
+- `DSH_SNAPSHOT=refresh` 在本机跑全量会**写坏 fixture**（实测 221 个文件被写成未归一化的真实临时路径；已全部 `git checkout -- snapshots` 回退），录制正路需要 `DEEPSEEK_API_KEY`；因此侧车是**手工同步**的（用生成目录里的权威文本插入），并已用过滤复跑证明与实时注册一致；
+- `{{cwd}}` 占位符归一化在本机不成立，`text-turn` / `pwsh-tool-turn` / `persistent-pwsh-tool-turn` 都报同一处差异——该通道在 Windows 上不能全量通过，由 CI（macOS/Linux）负责这一路信号。
+
+**3. 维护者提醒（本次踩到）**：用 `String.prototype.replace(pattern, replacement)` 改 JSON 侧车时，替换串里的 `$` 序列会被解释（我们的新描述含 `` $` ``，它展开成"匹配之前的整段文本"，当场把侧车写坏一次）——脚本化改这类文本要用**替换函数**（`replace(pattern, () => text)`），改完必须逐行核 diff。
