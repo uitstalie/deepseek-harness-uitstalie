@@ -124,6 +124,14 @@ function pwshDescription(windowsSandbox: boolean): string {
   const base = 'Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. '
     + 'Each call runs in a fresh pwsh process; pass `workdir` instead of using `cd`. Paths use native Windows form (`C:\\...`); read environment '
     + 'variables with `$env:NAME`. '
+    // BEGIN uitstalie-k3, 2026/10/12, task28, 依据 PowerShell 实战踩坑记录补两条方言级规则（引号/文件化 + bash 惯性、退出码与 Replace 静默）
+    + 'PowerShell re-parses the command line and is not bash: put quoted, multi-line, or `$`-bearing text in a file and '
+    + 'pass the path (`git commit -F msg.txt`, `python script.py`); `2>/dev/null` names a file instead (on Windows '
+    + '`D:\\dev\\null`, write `2>$null`), heredocs do not exist, and `\\n` inside double quotes is literal (write `` `n ``). '
+    + 'A native command\'s non-zero exit neither stops the chain nor fails this call — check `$LASTEXITCODE` when its result '
+    + 'decides the next step — and `String.Replace()` returns the input unchanged when nothing matches, so prefer the '
+    + '`edit` tool or assert the match count first. '
+    // END uitstalie-k3
     + 'Managed `$env:DSH_*` variables expose current harness environment facts. '
     + 'Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. '
     + 'On Windows a force-killed command settles as `[exit code: 1]` without a signal marker — treat it as an interruption, not a command failure. '
