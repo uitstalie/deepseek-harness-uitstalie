@@ -58,6 +58,9 @@ import * as ToolPresent from '@deepseek-ai/dsh-tool-present'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
+// BEGIN uitstalie-k3, 2026/10/12, task28, 分支自有工具包 dsh-tool-dsh-store 此前未进目录清单，导致 verify-tool-catalog 直接失败
+import * as ToolDshStore from '@deepseek-ai/dsh-tool-dsh-store'
+// END uitstalie-k3
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
 import * as ToolGoal from '@deepseek-ai/dsh-tool-goal'
@@ -385,6 +388,26 @@ const TOOL_PACKAGES: ToolPackage[] = [
     note:
       'One owner-isolated persistent pwsh tool, the Windows counterpart of the persistent bash tool; deployment composition supplies a pwsh-dialect PTY backend and may override the model-facing environment description.',
   },
+  // BEGIN uitstalie-k3, 2026/10/12, task28, 把分支自有工具包登记进 boot 清单，使其 schema 进入公开的工具目录
+  {
+    pkg: '@deepseek-ai/dsh-tool-dsh-store',
+    dir: 'tool-dsh-store',
+    source: 'packages/uitstalie/tool-dsh-store/src/tool.ts',
+    requires: [
+      'ctx.tools', 'ctx.fs', 'an owning Agent session at execution time',
+      'ctx.sandboxPolicy in a confining composition',
+    ],
+    writes: [
+      'tool/call', 'fs/write-intent for create and delete',
+      'fs/observed after query presence/absence or successful mutation', 'tool/result',
+    ],
+    async mount(ctx) {
+      await ctx.plugin(ToolDshStore)
+    },
+    note:
+      'One workspace-scoped store tool over `<projectRoot>/.dsh`: the plugin creates that root on demand for a session that may write (a read-only session is left untouched and retried after its mode changes), and it mounts a read-only Remote namespace for the Web sidebar whenever a workspace registry is composed. Execution needs an owning Agent session; the project root is discovered the same way the skill filesystem discovers it.',
+  },
+  // END uitstalie-k3
   {
     pkg: '@deepseek-ai/dsh-tool-str-replace-editor',
     dir: 'tool-str-replace-editor',
