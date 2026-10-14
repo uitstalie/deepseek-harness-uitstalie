@@ -24,6 +24,7 @@ import { Spacer } from '../../units/Spacer.tsx'
 import { TextView } from '../../units/TextView.tsx'
 import { DefaultButton } from '../../capabilities/DefaultButton.tsx'
 import { deriveButton, type ButtonSpec } from '../../capabilities/button-capability.ts'
+import { ContentBody } from './ContentBody.tsx'
 import { ContentHeader } from './ContentHeader.tsx'
 import { SidebarGroupList } from './SidebarGroupList.tsx'
 import { SAMPLE_CONVERSATION } from './sample-conversation.ts'
@@ -125,9 +126,7 @@ export function AppScaffold({ t, sidebarWidth, topHeight }: AppScaffoldProps) {
             activeTab={activeTab}
             onSelectTab={setActiveTab}
           />
-          <Column gap="8px" className={css.contentBody}>
-            <TextView text={t('scaffold.content')} size="caption" tone="tertiary" />
-          </Column>
+          <ContentBody t={t} />
         </div>
       </Column>
     </div>

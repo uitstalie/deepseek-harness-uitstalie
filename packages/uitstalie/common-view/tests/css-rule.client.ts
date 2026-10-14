@@ -17,6 +17,9 @@ export const SIDEBAR_CSS = 'packages/uitstalie/common-view/src/client/views/scaf
 /** Workspace-relative path of the middle region's header stylesheet. */
 export const CONTENT_HEADER_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/ContentHeader.module.css'
 
+/** Workspace-relative path of the middle region's body stylesheet. */
+export const CONTENT_BODY_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/ContentBody.module.css'
+
 const sheets = new Map<string, string>()
 
 /**
