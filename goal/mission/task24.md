@@ -68,7 +68,9 @@
      - 字典新增 9 个键、值照原生 `ui-workspace` 的 `actions.*`/`menu.*`；CSS 只加一条 `.actionsOpen`（原有 `.actions`/`.glyph` 已与原生 `.rowActions`/`.iconButton` 逐条一致）；
      - 规格：`scaffold.client.spec.tsx` 加 2 例（按状态计数的动作条、菜单四行顺序），`sidebar-group-list.client.spec.tsx` 的旧标签断言同步更新。
    - **工作区（project）行动作条（已完成 2026/10/12）**——照原生 `Rows.tsx:251,281-324` 复刻：`⋯` 触发器（aria = `actions.workspace.aria` → 工作区"{name}"的操作）打开共用件 `Menu` 的 `items` 形态，两行 **rename（`IconEditOutlineRegular`，文案"重命名"）→ delete（`IconTrashOutlineRegular`，**`danger: true`**，文案"删除工作区"）**；其后是**新会话按钮**（tooltip = `actions.newSession`"新会话"，aria = `actions.newSession.aria` → 在"{name}"中新建会话，图标 `IconNewChatOutlineRegular` **不带 size**）。动作条同样 hover 显示、菜单打开时保持显示、吞掉点击。字典新增 4 键（值抄原生 `rename` / `delete.workspace` / `actions.workspace.aria` / `actions.newSession.aria`）；规格加 1 例断言菜单两行的顺序。
-   - **仍未复刻（本 view 内）**：project 行的 **`HoverCard`**（原生悬停 800ms 弹出工作区信息：label / 缩写 cwd / createdAt + 复制按钮，`HoverCard` 共用件 + `WorkspaceHoverContent`），以及工作区标题的**双击重命名**输入态（`.renameInput`）。
+   - **工作区行 HoverCard（已完成 2026/10/12）**——照原生 `Rows.tsx:162-176,331-344` 复刻：共用件 `HoverCard` 包住整行，`openDelayMs={800}`、`disabled={menuOpen}`（菜单打开时不弹卡）、`copyText=workspace.cwd` + 复制/已复制文案；卡内容三行 `.hoverContent`（`column` / `gap 8px`）：标题 14/20、目录 12/16 `word-break: break-all`、创建时间 12/16（`创建于 {date} {HH:mm}`，日期走字典 `scaffold.dateYmd`，时钟本地时区补零）。为此把菜单开合状态从动作条**上提到行组件**（`WorkspaceRow`），与原生的 `disabled={menuOpen}` 同构；样例数据补上 `cwd` 与 `createdAt`（工作区即数据）。规格加 1 例：假定时器 → `pointerEnter` → 800ms 后卡片出现且带目录与年份。
+   - **有一处刻意偏离原生**：卡内次要文字原生写死 `#CFD3D6`（深色卡上的次级灰），仓库无对应 token，本分支规则禁字面色 ⇒ 我们用「继承卡片白墨 + `opacity: .78`」表达同一层次。若要逐像素一致，需上游给 hover card 补一个次级墨色 token。
+   - **仍未复刻（本 view 内）**：工作区标题的**双击重命名**输入态（原生 `.renameInput`）、行拖拽（`draggable` + 插入标记）。
    - **仍未复刻（下一个 view）**：**中间信息区（对话流）**。注意上游本轮对 `ui-chat` 改动最多（194 次文件触碰），复刻前要先读当轮源码，别照 rebase 前的印象。
 5. **本包尚未提交的门禁收尾**：README 若再改需重录配对；`test:gui` 未在本轮跑过（本批未改原生 ✓）。
 
