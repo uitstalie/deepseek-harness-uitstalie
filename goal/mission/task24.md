@@ -67,7 +67,9 @@
      - 动作条自身 `display:none`、hover 或**菜单打开**时显示（原生 `.menuOpen` 同款），并吞掉点击避免触发行激活；
      - 字典新增 9 个键、值照原生 `ui-workspace` 的 `actions.*`/`menu.*`；CSS 只加一条 `.actionsOpen`（原有 `.actions`/`.glyph` 已与原生 `.rowActions`/`.iconButton` 逐条一致）；
      - 规格：`scaffold.client.spec.tsx` 加 2 例（按状态计数的动作条、菜单四行顺序），`sidebar-group-list.client.spec.tsx` 的旧标签断言同步更新。
-   - **仍未复刻**：工作区（project）行的 `⋯` 菜单（原生是 `items={[rename, delete]}` 形态）+ 行尾"新会话"按钮 + 我们 task14 的 seat 占位；以及**中间信息区（对话流）**。
+   - **工作区（project）行动作条（已完成 2026/10/12）**——照原生 `Rows.tsx:251,281-324` 复刻：`⋯` 触发器（aria = `actions.workspace.aria` → 工作区"{name}"的操作）打开共用件 `Menu` 的 `items` 形态，两行 **rename（`IconEditOutlineRegular`，文案"重命名"）→ delete（`IconTrashOutlineRegular`，**`danger: true`**，文案"删除工作区"）**；其后是**新会话按钮**（tooltip = `actions.newSession`"新会话"，aria = `actions.newSession.aria` → 在"{name}"中新建会话，图标 `IconNewChatOutlineRegular` **不带 size**）。动作条同样 hover 显示、菜单打开时保持显示、吞掉点击。字典新增 4 键（值抄原生 `rename` / `delete.workspace` / `actions.workspace.aria` / `actions.newSession.aria`）；规格加 1 例断言菜单两行的顺序。
+   - **仍未复刻（本 view 内）**：project 行的 **`HoverCard`**（原生悬停 800ms 弹出工作区信息：label / 缩写 cwd / createdAt + 复制按钮，`HoverCard` 共用件 + `WorkspaceHoverContent`），以及工作区标题的**双击重命名**输入态（`.renameInput`）。
+   - **仍未复刻（下一个 view）**：**中间信息区（对话流）**。注意上游本轮对 `ui-chat` 改动最多（194 次文件触碰），复刻前要先读当轮源码，别照 rebase 前的印象。
 5. **本包尚未提交的门禁收尾**：README 若再改需重录配对；`test:gui` 未在本轮跑过（本批未改原生 ✓）。
 
 **本地预览方式**（`--patch` 必须排在 web 自己的参数之前，否则会被转发给 web 的 commander 报 `unknown option` ✗）：
