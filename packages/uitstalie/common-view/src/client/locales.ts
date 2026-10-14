@@ -22,6 +22,12 @@ export const en = {
   'scaffold.groupMenu': 'Workspace actions for {name}',
   'scaffold.menuRenameWorkspace': 'Rename',
   'scaffold.menuDeleteWorkspace': 'Delete workspace',
+  // Hover-card copy: the shell reads `copy`/`hover.copied` from the shared
+  // locale namespace and formats the date through `date.ymd`.
+  'scaffold.copy': 'Copy',
+  'scaffold.copied': 'Copied',
+  'scaffold.createdAt': 'Created {time}',
+  'scaffold.dateYmd': '{y}-{m}-{d}',
   // Session-row action copy mirrors the shell's own keys: the tooltip takes the
   // short `actions.*` form, the accessible name the `menu.*` sentence.
   'scaffold.rowMenu': 'Session actions for {name}',
@@ -59,6 +65,10 @@ export const zh: typeof en = {
   'scaffold.groupMenu': '工作区“{name}”的操作',
   'scaffold.menuRenameWorkspace': '重命名',
   'scaffold.menuDeleteWorkspace': '删除工作区',
+  'scaffold.copy': '复制',
+  'scaffold.copied': '已复制',
+  'scaffold.createdAt': '创建于 {time}',
+  'scaffold.dateYmd': '{y}年{m}月{d}日',
   'scaffold.rowMenu': '会话“{name}”的操作',
   'scaffold.rowArchive': '归档会话',
   'scaffold.rowUnarchive': '取消归档',

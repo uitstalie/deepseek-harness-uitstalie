@@ -5,8 +5,8 @@
  * divider only between groups. Titles are data and render verbatim; the selected
  * row is distinguished by its ink token, not by a class.
  */
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { SidebarGroupList } from '../src/client/views/scaffold/SidebarGroupList.tsx'
 import { SAMPLE_GROUPS } from '../src/client/views/scaffold/sample-sidebar.ts'
 import type { CommonViewKey } from '../src/client/locales.ts'
@@ -17,6 +17,11 @@ afterEach(cleanup)
 /** Copy stub: assertions read keys instead of localized sentences. */
 function t(key: CommonViewKey): string {
   return key
+}
+
+/** Copy stub that keeps the parameters, so a formatted sentence stays assertable. */
+function tWithParams(key: CommonViewKey, params?: Record<string, string>): string {
+  return `${key} ${JSON.stringify(params ?? {})}`
 }
 
 describe('sidebar replica', () => {
@@ -65,5 +70,27 @@ describe('sidebar replica', () => {
     render(<SidebarGroupList t={t} groups={SAMPLE_GROUPS} />)
     const row = screen.getByText(SAMPLE_GROUPS[0]!.rows[0]!.title).closest('span')?.parentElement
     expect(row?.style.getPropertyValue('--dsh-common-view-indent')).toBe('12px')
+  })
+
+  it('opens the workspace hover card with its directory and creation time', () => {
+    vi.useFakeTimers()
+    try {
+      const workspace = SAMPLE_GROUPS[0]!
+      render(<SidebarGroupList t={tWithParams} groups={SAMPLE_GROUPS} />)
+      // The card's pointer handler sits on the wrapper the primitive owns: the
+      // direct parent of the workspace row.
+      const anchorRow = screen.getByText(workspace.title).closest('[class*="groupRow"]') as HTMLElement
+      fireEvent.pointerEnter(anchorRow.parentElement as HTMLElement)
+      // The shell opens the card only after its 800ms delay.
+      expect(screen.queryByText(workspace.cwd)).toBeNull()
+      act(() => { vi.advanceTimersByTime(800) })
+      expect(screen.getByText(workspace.cwd)).toBeDefined()
+      const created = screen.getByText(/scaffold\.createdAt/)
+      // The sentence is the localized one, carrying the formatted date key and year.
+      expect(created.textContent).toContain('scaffold.dateYmd')
+      expect(created.textContent).toContain(String(new Date(workspace.createdAt).getFullYear()))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

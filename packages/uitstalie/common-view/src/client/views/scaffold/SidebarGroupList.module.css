@@ -156,3 +156,33 @@
 .glyph:hover {
   color: var(--dsw-alias-label-primary);
 }
+
+/* Hover card body (native `.hoverContent/.hoverTitle/.hoverPath/.hoverTime`):
+   8px column, 14/20 title, 12/16 secondary lines. The card's own ink is white
+   on its dark material, and the native secondary grey (#CFD3D6) has no token,
+   so the secondary lines keep the inherited ink at reduced opacity instead of
+   introducing a literal colour. */
+.hoverContent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hoverTitle {
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: break-word;
+}
+
+.hoverPath {
+  font-size: 12px;
+  line-height: 16px;
+  opacity: 0.78;
+  word-break: break-all;
+}
+
+.hoverTime {
+  font-size: 12px;
+  line-height: 16px;
+  opacity: 0.78;
+}

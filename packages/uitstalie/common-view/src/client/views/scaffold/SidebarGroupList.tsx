@@ -22,6 +22,7 @@ import {
   IconTrashOutlineRegular,
   IconTriangleRightFillRegular,
   IconUnarchiveOutlineRegular,
+  HoverCard,
   Menu,
   MenuItemButton,
   Tooltip,
@@ -178,30 +179,33 @@ function SessionRow({ row, depth, t }: { row: SidebarRow; depth: number; t: Side
 /**
  * Render the actions a workspace row surfaces on hover: the "…" menu with the
  * rename and delete rows, then the new-session button, as the shell orders them.
- * @param props - the workspace title and the copy namespace.
+ * @param props - the workspace title, the copy namespace, and the menu state the row owns.
  * @returns the hover-only action strip.
  */
-function GroupRowActions({ title, t }: { title: string; t: SidebarGroupListInjected['t'] }) {
-  // Component-private: only this strip reads the open state.
-  const [menuOpen, setMenuOpen] = useState(false)
+function GroupRowActions({ title, t, open, onOpenChange }: {
+  title: string
+  t: SidebarGroupListInjected['t']
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   return (
-    <span className={classes(css.actions, menuOpen && css.actionsOpen)} onClick={(event) => { event.stopPropagation() }}>
+    <span className={classes(css.actions, open && css.actionsOpen)} onClick={(event) => { event.stopPropagation() }}>
       <Menu
-        open={menuOpen}
-        onClose={() => { setMenuOpen(false) }}
+        open={open}
+        onClose={() => { onOpenChange(false) }}
         portal
         closeOnPointerLeave
         items={[
           { id: 'rename', label: t('scaffold.menuRenameWorkspace'), icon: <IconEditOutlineRegular /> },
           { id: 'delete', label: t('scaffold.menuDeleteWorkspace'), icon: <IconTrashOutlineRegular />, danger: true },
         ]}
-        onSelect={() => { setMenuOpen(false) }}
+        onSelect={() => { onOpenChange(false) }}
         anchor={(
           <button
             type="button"
             className={css.glyph}
             aria-label={t('scaffold.groupMenu', { name: title })}
-            onClick={() => { setMenuOpen(current => !current) }}
+            onClick={() => { onOpenChange(!open) }}
           >
             <IconEllipsisOutlineRegular />
           </button>
@@ -216,6 +220,84 @@ function GroupRowActions({ title, t }: { title: string; t: SidebarGroupListInjec
   )
 }
 
+/** Two digits, as the shell pads a clock part. */
+function pad2(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+/**
+ * The workspace creation line, as the shell renders it: a localized date plus
+ * a 24-hour clock, both in local time.
+ * @param createdAt - creation time in epoch milliseconds.
+ * @param t - the copy namespace.
+ * @returns the created-at sentence.
+ */
+function createdLabel(createdAt: number, t: SidebarGroupListInjected['t']): string {
+  const date = new Date(createdAt)
+  const day = t('scaffold.dateYmd', {
+    y: String(date.getFullYear()),
+    m: String(date.getMonth() + 1),
+    d: String(date.getDate()),
+  })
+  return t('scaffold.createdAt', { time: `${day} ${pad2(date.getHours())}:${pad2(date.getMinutes())}` })
+}
+
+/**
+ * Render the hover card's body: workspace title, its directory, and its
+ * creation time, in the shell's order and measurements.
+ * @param props - the workspace fields and the copy namespace.
+ * @returns the card content.
+ */
+function WorkspaceHoverContent({ title, cwd, createdAt, t }: {
+  title: string
+  cwd: string
+  createdAt: number
+  t: SidebarGroupListInjected['t']
+}) {
+  return (
+    <div className={css.hoverContent}>
+      <div className={css.hoverTitle}>{title}</div>
+      <div className={css.hoverPath}>{cwd}</div>
+      <div className={css.hoverTime}>{createdLabel(createdAt, t)}</div>
+    </div>
+  )
+}
+
+/**
+ * Render one workspace row: its leading folder-or-arrow cell, its title, the
+ * hover actions, and the hover card the shell opens over it.
+ * @param props - the group and the copy namespace.
+ * @returns the workspace row.
+ */
+function WorkspaceRow({ group, t }: { group: SidebarGroup; t: SidebarGroupListInjected['t'] }) {
+  // The row owns the menu state: the card stays closed while the menu is open.
+  const [menuOpen, setMenuOpen] = useState(false)
+  return (
+    <HoverCard
+      anchor={(
+        <Row gap="0" className={css.groupRow}>
+          <span className={css.groupLead}>
+            <span className={css.groupFolder}>
+              {group.expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
+            </span>
+            <span className={classes(css.groupArrow, group.expanded && css.groupArrowOpen)}>
+              <IconTriangleRightFillRegular />
+            </span>
+          </span>
+          <span className={css.groupTitle}>{group.title}</span>
+          <GroupRowActions title={group.title} t={t} open={menuOpen} onOpenChange={setMenuOpen} />
+        </Row>
+      )}
+      content={<WorkspaceHoverContent title={group.title} cwd={group.cwd} createdAt={group.createdAt} t={t} />}
+      openDelayMs={800}
+      disabled={menuOpen}
+      copyText={group.cwd}
+      copyLabel={t('scaffold.copy')}
+      copiedLabel={t('scaffold.copied')}
+    />
+  )
+}
+
 /**
  * Render the sidebar replica.
  * @param props - the groups and the copy namespace.
@@ -227,18 +309,7 @@ export function SidebarGroupList({ t, groups }: SidebarGroupListProps) {
       {groups.map((group, index) => (
         <Fragment key={group.id}>
           {index > 0 ? <Divider /> : null}
-          <Row gap="0" className={css.groupRow}>
-            <span className={css.groupLead}>
-              <span className={css.groupFolder}>
-                {group.expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
-              </span>
-              <span className={classes(css.groupArrow, group.expanded && css.groupArrowOpen)}>
-                <IconTriangleRightFillRegular />
-              </span>
-            </span>
-            <span className={css.groupTitle}>{group.title}</span>
-            <GroupRowActions title={group.title} t={t} />
-          </Row>
+          <WorkspaceRow group={group} t={t} />
           {group.expanded
             ? group.rows.map(row => <SessionRow key={row.id} row={row} depth={1} t={t} />)
             : null}

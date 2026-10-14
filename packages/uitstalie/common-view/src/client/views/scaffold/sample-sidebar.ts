@@ -29,6 +29,10 @@ export interface SidebarGroup {
   id: string
   /** Workspace title, shown by the group row. */
   title: string
+  /** Workspace directory, shown by the hover card and copied from it. */
+  cwd: string
+  /** Creation time in epoch milliseconds, shown by the hover card. */
+  createdAt: number
   /** Whether the group lists its sessions. */
   expanded: boolean
   /** The sessions this group lists. */
@@ -40,6 +44,8 @@ export const SAMPLE_GROUPS: readonly SidebarGroup[] = [
   {
     id: 'deepseek-harness-uitstalie-dev',
     title: 'deepseek-harness-uitstalie-dev',
+    cwd: 'D:\\dqc\\deepseek-harness-uitstalie-dev',
+    createdAt: Date.UTC(2026, 8, 20, 6, 12),
     expanded: true,
     rows: [
       { id: 's-1', title: 'button 能力与 DefaultButton', time: 'now', selected: true, running: true },
@@ -51,6 +57,8 @@ export const SAMPLE_GROUPS: readonly SidebarGroup[] = [
   {
     id: 'deepseek-harness-uitstalie',
     title: 'deepseek-harness-uitstalie',
+    cwd: 'D:\\dqc\\deepseek-harness-uitstalie',
+    createdAt: Date.UTC(2026, 7, 28, 9, 41),
     expanded: false,
     rows: [
       { id: 's-5', title: 'task23：rebase 到上游并推送', time: 'Yest' },
