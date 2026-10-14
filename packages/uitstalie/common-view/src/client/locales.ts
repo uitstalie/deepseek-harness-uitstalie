@@ -28,6 +28,11 @@ export const en = {
   'scaffold.copied': 'Copied',
   'scaffold.createdAt': 'Created {time}',
   'scaffold.dateYmd': '{y}-{m}-{d}',
+  // Middle-region chrome: the breadcrumb nav's accessible name and the view tabs
+  // (the chat and trajectory views own their labels upstream).
+  'scaffold.sessionHierarchy': 'Session hierarchy',
+  'scaffold.tabChat': 'Chat',
+  'scaffold.tabTrajectory': 'Trajectory',
   // Session-row action copy mirrors the shell's own keys: the tooltip takes the
   // short `actions.*` form, the accessible name the `menu.*` sentence.
   'scaffold.rowMenu': 'Session actions for {name}',
@@ -69,6 +74,9 @@ export const zh: typeof en = {
   'scaffold.copied': '已复制',
   'scaffold.createdAt': '创建于 {time}',
   'scaffold.dateYmd': '{y}年{m}月{d}日',
+  'scaffold.sessionHierarchy': '会话层级',
+  'scaffold.tabChat': '对话',
+  'scaffold.tabTrajectory': '轨迹',
   'scaffold.rowMenu': '会话“{name}”的操作',
   'scaffold.rowArchive': '归档会话',
   'scaffold.rowUnarchive': '取消归档',

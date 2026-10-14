@@ -24,7 +24,9 @@ import { Spacer } from '../../units/Spacer.tsx'
 import { TextView } from '../../units/TextView.tsx'
 import { DefaultButton } from '../../capabilities/DefaultButton.tsx'
 import { deriveButton, type ButtonSpec } from '../../capabilities/button-capability.ts'
+import { ContentHeader } from './ContentHeader.tsx'
 import { SidebarGroupList } from './SidebarGroupList.tsx'
+import { SAMPLE_CONVERSATION } from './sample-conversation.ts'
 import { SAMPLE_GROUPS } from './sample-sidebar.ts'
 import css from './AppScaffold.module.css'
 import type { CommonViewKey } from '../../locales.ts'
@@ -57,6 +59,7 @@ export function AppScaffold({ t, sidebarWidth, topHeight }: AppScaffoldProps) {
   // Component-private layout experiments: only this component reads them.
   const [wideSidebar, setWideSidebar] = useState(true)
   const [tallTop, setTallTop] = useState(true)
+  const [activeTab, setActiveTab] = useState(SAMPLE_CONVERSATION.activeTab)
 
   const sidebarButton: ButtonSpec = { id: 'scaffold.sidebar', ariaLabel: t('scaffold.buttonSidebar'), label: t('scaffold.buttonSidebar') }
   // The second button is the same capability derived into another variant.
@@ -115,7 +118,14 @@ export function AppScaffold({ t, sidebarWidth, topHeight }: AppScaffoldProps) {
         </div>
         <Divider />
         <div className={css.content}>
-          <Column gap="8px">
+          <ContentHeader
+            t={t}
+            breadcrumbs={SAMPLE_CONVERSATION.breadcrumbs}
+            tabs={SAMPLE_CONVERSATION.tabs.map(tab => ({ id: tab.id, label: t(tab.labelKey) }))}
+            activeTab={activeTab}
+            onSelectTab={setActiveTab}
+          />
+          <Column gap="8px" className={css.contentBody}>
             <TextView text={t('scaffold.content')} size="caption" tone="tertiary" />
           </Column>
         </div>

@@ -1,0 +1,163 @@
+/* The middle region's header, measured from ui-conversation's
+   ConversationRoot.module.css: a 76px grid band whose bottom rule meets the
+   sidebar's, a 30px title row holding the breadcrumbs, and the view tab strip
+   below them. The shell shows the strip only from two views up. */
+.header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  flex: none;
+  box-sizing: border-box;
+  min-height: 76px;
+  padding: 10px 28px 0 20px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.headerLeading {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.titleRow {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-height: 30px;
+  /* Clears the frame's window-chrome band when it publishes one. */
+  padding-inline-start: max(0px, calc(var(--dsh-frame-leading-clearance, 0px) - 20px));
+}
+
+.titleCluster {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.crumbSeg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.crumbSep {
+  color: var(--dsw-alias-label-caption);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.crumb {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.crumb:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The current crumb is the title itself: full ink, no navigation. */
+.crumbCurrent {
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  cursor: default;
+}
+
+.headerActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.headerUtilities {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: 20px;
+}
+
+.headerUtilities:empty {
+  display: none;
+}
+
+/* The corner seat reaches 16px into the header's 28px right padding. */
+.headerCorner {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-left: 8px;
+  margin-right: -16px;
+}
+
+.headerCorner:empty {
+  display: none;
+}
+
+.tabs {
+  grid-column: 1 / -1;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 36px;
+  margin-top: 10px;
+  padding-left: 8px;
+}
+
+.tab {
+  position: relative;
+  padding: 0 0 9px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+/* The 2px bar reaches 1px past the tab's box to end flush with the header's rule. */
+.tab::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.tabActive {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.tabActive::after {
+  background: var(--dsw-alias-state-business-primary);
+}

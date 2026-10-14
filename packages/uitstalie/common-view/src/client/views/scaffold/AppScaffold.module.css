@@ -142,6 +142,14 @@
 .content {
   flex: 1 1 auto;
   min-height: 0;
-  padding: 12px;
+  display: flex;
+  flex-direction: column;
   background: var(--dsw-alias-bg-base);
+}
+
+/* The shell's view area: the scroller under the header, still empty here. */
+.contentBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 12px;
 }

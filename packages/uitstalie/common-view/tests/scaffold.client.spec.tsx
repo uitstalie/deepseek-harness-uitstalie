@@ -5,9 +5,9 @@
  * config, and the separators drawn by the divider atom.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { AppScaffold } from '../src/client/views/scaffold/AppScaffold.tsx'
+import { cssRule, SCAFFOLD_CSS } from './css-rule.client.ts'
 import type { CommonViewKey } from '../src/client/locales.ts'
 
 // This config does not enable vitest globals, so the DOM is torn down per case.
@@ -18,19 +18,6 @@ function t(key: CommonViewKey): string {
   return key
 }
 
-// jsdom serves modules over http, so the stylesheet is read from the workspace root.
-const SCAFFOLD_CSS = readFileSync(
-  'packages/uitstalie/common-view/src/client/views/scaffold/AppScaffold.module.css',
-  'utf8',
-)
-
-/** Declarations of one rule, so the shell's own measurements stay pinned. */
-function cssRule(selector: string): string {
-  const pattern = new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}\\s*\\{([^}]*)\\}`)
-  const body = pattern.exec(SCAFFOLD_CSS)?.[1]
-  if (body === undefined) throw new Error(`scaffold stylesheet: ${selector} rule missing`)
-  return body.replace(/\s+/gu, ' ')
-}
 
 describe('frame scaffold', () => {
   it('names the top and content regions and carries the sidebar chrome', () => {
@@ -86,27 +73,27 @@ describe('frame scaffold', () => {
 describe('scaffold sidebar chrome metrics', () => {
   it('keeps the shell\'s logo-row measurements', () => {
     // ui-sidebar `.logoRow`: a 60px row with an 8/4px pad, an 8px gap, and a 4px foot margin.
-    const logoRow = cssRule('.brandRow')
+    const logoRow = cssRule(SCAFFOLD_CSS, '.brandRow')
     expect(logoRow).toContain('height: 60px')
     expect(logoRow).toContain('gap: 8px')
     expect(logoRow).toContain('padding: 8px 0 8px 4px')
     expect(logoRow).toContain('margin-bottom: 4px')
     // The shell's local-build name is the 17px, 600-weight variant of the wordmark.
-    expect(cssRule('.brandName')).toContain('font-size: 17px')
-    expect(cssRule('.brandName')).toContain('font-weight: 600')
+    expect(cssRule(SCAFFOLD_CSS, '.brandName')).toContain('font-size: 17px')
+    expect(cssRule(SCAFFOLD_CSS, '.brandName')).toContain('font-weight: 600')
     // Its rail control is the shared 28px icon-button box.
-    expect(cssRule('.glyph')).toContain('width: 28px')
-    expect(cssRule('.glyph')).toContain('height: 28px')
+    expect(cssRule(SCAFFOLD_CSS, '.glyph')).toContain('width: 28px')
+    expect(cssRule(SCAFFOLD_CSS, '.glyph')).toContain('height: 28px')
   })
 
   it('keeps the shell\'s settings-trigger measurements', () => {
     // ui-settings-general `.trigger`: 42px tall, 10/8px pad, md radius, hover fill.
-    const trigger = cssRule('.settingsRow')
+    const trigger = cssRule(SCAFFOLD_CSS, '.settingsRow')
     expect(trigger).toContain('height: 42px')
     expect(trigger).toContain('padding: 0 10px 0 8px')
     expect(trigger).toContain('border-radius: var(--dsw-radius-md)')
-    expect(cssRule('.settingsRow:hover')).toContain('var(--dsw-alias-interactive-bg-hover)')
-    expect(cssRule('.settingsLabel')).toContain('line-height: 22px')
+    expect(cssRule(SCAFFOLD_CSS, '.settingsRow:hover')).toContain('var(--dsw-alias-interactive-bg-hover)')
+    expect(cssRule(SCAFFOLD_CSS, '.settingsLabel')).toContain('line-height: 22px')
   })
 })
 

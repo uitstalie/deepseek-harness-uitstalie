@@ -30,6 +30,7 @@ import {
 import { Column } from '../../units/Column.tsx'
 import { Divider } from '../../units/Divider.tsx'
 import { Row } from '../../units/Row.tsx'
+import { classes } from './classes.ts'
 import css from './SidebarGroupList.module.css'
 import type { CommonViewKey } from '../../locales.ts'
 import type { SidebarGroup, SidebarRow } from './sample-sidebar.ts'
@@ -47,11 +48,6 @@ export type SidebarGroupListProps = SidebarGroupListInjected
 
 /** The indent one nesting level adds, as the shipped list applies it. */
 const INDENT_PER_LEVEL_PX = 12
-
-/** Join the classes a row draws with, dropping the absent ones. */
-function classes(...parts: readonly (string | false | undefined)[]): string {
-  return parts.filter((part): part is string => typeof part === 'string' && part.length > 0).join(' ')
-}
 
 /**
  * One row of the session menu, in the shell's own order and with its icons:
