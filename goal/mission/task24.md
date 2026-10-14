@@ -79,7 +79,16 @@
      - `.tabs`（`grid-column: 1/-1`、gap **36px**、`margin-top: 10px`、`padding-left: 8px`）+ `.tab`（13/16、weight 500、tertiary）+ **`::after` 2px 指示条**（`bottom: -1px`）+ `.tabActive`/`.tabActive::after` 用 `state-business-primary`；**原生只在 ≥2 个视图时才显示 tab 条**（我们也照此）；`role="tablist"`/`role="tab"`/`aria-selected` 齐全；
      - 数据在 `sample-conversation.ts`（面包屑 = 会话血缘，当前项最后；两个 tab = 原生 `ui-chat` 的"对话"/`ui-trajectory` 的"轨迹"，字典键 `scaffold.tabChat`/`scaffold.tabTrajectory`）；选中态由 `AppScaffold` 持有。
    - **顺带做的整理**：`classes()` 提到 `views/scaffold/classes.ts`（两个复刻件共用）；规格里的"读 CSS 断言数字"helper 提到 `tests/css-rule.client.ts`（**必须带 `.client.` 后缀**，否则 `tsconfig.client.json` 的 include 模式收不到它，`tsc -b` 会报 TS6307 —— 已踩过）。
-   - **仍未复刻（本 view 内）**：`.headerBlank`/`.headerSessionless` 的空白态、`.crumbSubagent`（12/18）与 lineage 子槽、`conversation.session.header.actions|utilities|corner` 的真实占用者、以及**主体部分**（消息流 viewArea、滚动区、composer/InputBar、queue、EmptyHero、TodoPanel、ContextMeter、宽度控制）。
+   - **中间信息区：主体框架（已完成 2026/10/12 第二片）**——照 `ConversationRoot.module.css` + `InputBar.module.css` 复刻：
+     - 原生嵌套（`ConversationContent.tsx:188-203`）：`.body[data-conversation-content]` → `.scrollBody[data-conversation-scroll]` → { 视图, `.composerSeat[data-composer-seat]` }，宽度控制是 `.body` 的兄弟；
+     - `.body`：`position: relative`、flex 列、`flex: 1`、`min-height: 0` + **共享宽度轴**：`--dsh-chat-content-width: var(--dsh-chat-user-width, clamp(680px, calc(var(--dsh-conversation-column-width, 0px) * 0.64), 920px))`、`--dsh-composer-card-max-width: calc(内容宽 + 32px)`、`--dsh-composer-side-clearance: 16px`、`--dsh-composer-dock-inset: 8px`（我们的复刻没有列宽输入 ⇒ 按原生公式落到 **680px 下限**，已验证公式文本）；
+     - `.scrollBody`：`margin-right: 2px`（产品级 2px 滚动条偏移）、`overflow-y: auto`、**`scrollbar-gutter: stable`**，`::-webkit-scrollbar-track { margin: 2px }`；
+     - `.viewArea`（active 相：`flex: 1 0 auto; min-height: auto`）+ `.composerSeat`（`flex: none`、列、**`position: sticky; bottom: 0`**、`--dsh-composer-text-max-height: 336px`）+ `.composerStack`（`--dsh-composer-stack-gap: 6px`）；
+     - composer 盒：`InputBar .root`（`padding: 0 var(--dsh-composer-side-clearance) 4px`、居中）→ `.card`（**`padding-top: 8px`、`gap: 12px`、`max-width: var(--dsh-composer-card-max-width)`、`border-radius: var(--dsw-radius-panel)`、`background: var(--dsw-specific-input-major)`、`box-shadow: var(--dsw-elevation-soft)`**、描边走 `--dsw-elevation-stroke-color: var(--dsw-alias-border-l2)`、字号 `var(--dsh-content-font-size, 14px)` + `line-height: calc(24px + var(--dsh-content-font-delta, 0px))`、滚动条走 l2 对）→ `.input`（**`min-height: 36px`、`padding: 4px 8px 0 14px`**、`caret-color: state-business-primary`）+ `.placeholder`（**`position: absolute; inset: 4px 8px auto 14px`、caption 墨、单行 ellipsis、不接收指针**）+ `.row`（`padding: 2px 8px 6px`、gap 12、`container-type: inline-size`）；
+     - 占位文案照原生 `placeholder.default`（"发消息或创建任务, / 调用指令, @ 文件或对话" / "Message or run a task, / commands, @ files or sessions"）。
+     - 规格 `content-body.client.spec.tsx` 3 例（结构、滚动/座位度量、卡与输入行度量）。
+   - **仍未复刻（头部内）**：`.headerBlank`/`.headerSessionless` 的空白态、`.crumbSubagent`（12/18）与 lineage 子槽、`conversation.session.header.actions|utilities|corner` 的真实占用者。
+   - **仍未复刻（本 view 内）**：视图内容（消息流/轨迹）、`WidthControls` 宽度手柄、`conversation.input.dock`（queue）、`EmptyHero`/`HeroShell`、`TodoPanel`、`ContextMeter`、以及 composer 的**控件行内容**（模型选择/权限/发送等）。
 5. **本包尚未提交的门禁收尾**：README 若再改需重录配对；`test:gui` 未在本轮跑过（本批未改原生 ✓）。
 
 **本地预览方式**（`--patch` 必须排在 web 自己的参数之前，否则会被转发给 web 的 commander 报 `unknown option` ✗）：
