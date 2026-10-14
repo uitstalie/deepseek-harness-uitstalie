@@ -109,3 +109,26 @@ describe('scaffold sidebar chrome metrics', () => {
     expect(cssRule('.settingsLabel')).toContain('line-height: 22px')
   })
 })
+
+describe('scaffold session row actions', () => {
+  it('carries the shell\'s hover actions, state-flipped and archive-exclusive per row', () => {
+    render(<AppScaffold t={t} sidebarWidth="320px" topHeight="52px" />)
+    const named = (name: RegExp): number => screen.queryAllByRole('button', { name }).length
+    // Four session rows render: one pinned (s-2) and one archived (s-4).
+    expect(named(/scaffold\.rowMenu/)).toBe(4)
+    // The archive button flips its glyph and label on the archived row.
+    expect(named(/scaffold\.menuArchive/)).toBe(3)
+    expect(named(/scaffold\.menuUnarchive/)).toBe(1)
+    // Pin stays off the archived row, and the pinned row offers unpin.
+    expect(named(/scaffold\.menuPin/)).toBe(2)
+    expect(named(/scaffold\.menuUnpin/)).toBe(1)
+  })
+
+  it('opens the shell\'s session menu with pin, rename, fork, and archive', () => {
+    render(<AppScaffold t={t} sidebarWidth="320px" topHeight="52px" />)
+    fireEvent.click(screen.getAllByRole('button', { name: /scaffold\.rowMenu/ })[0] as HTMLElement)
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+      'scaffold.menuPin', 'scaffold.menuRename', 'scaffold.menuFork', 'scaffold.menuArchive',
+    ])
+  })
+})

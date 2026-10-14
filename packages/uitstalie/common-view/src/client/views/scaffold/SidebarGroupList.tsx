@@ -8,15 +8,22 @@
  * hover-only actions. Colours are tokens; the drawing owns no colour of its own.
  * @module @deepseek-ai/dsh-client-common-view/SidebarGroupList
  */
-import { Fragment, type CSSProperties } from 'react'
+import { Fragment, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   IconArchiveOutlineRegular,
+  IconBranchOutlineRegular,
+  IconEditOutlineRegular,
   IconEllipsisOutlineRegular,
   IconFolderCloseRegular,
   IconFolderOpenRegular,
   IconNewChatOutlineRegular,
   IconPinFillRegular,
+  IconPinOutlineRegular,
   IconTriangleRightFillRegular,
+  IconUnarchiveOutlineRegular,
+  Menu,
+  MenuItemButton,
+  Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Column } from '../../units/Column.tsx'
 import { Divider } from '../../units/Divider.tsx'
@@ -45,15 +52,96 @@ function classes(...parts: readonly (string | false | undefined)[]): string {
 }
 
 /**
- * Render the trailing actions of a row.
- * @param props - the accessible names and the activation behavior.
+ * One row of the session menu, in the shell's own order and with its icons:
+ * pin, rename, fork, archive (the state flips the pin and archive rows).
+ */
+interface SessionMenuItem {
+  /** Stable row id, also the React key. */
+  id: string
+  /** Leading glyph. */
+  icon: ReactNode
+  /** Localized label. */
+  label: string
+}
+
+/**
+ * Render the trailing icon buttons of a row: the plain `.iconButton` box with
+ * the shell's own tooltip settings.
+ * @param props - the accessible name, the tooltip sentence, and the glyph.
+ * @returns one trailing button.
+ */
+function RowIconButton({ label, tooltip, icon }: { label: string; tooltip: string; icon: ReactNode }) {
+  return (
+    <Tooltip label={tooltip} side="bottom" align="end" delayMs={500}>
+      <button type="button" className={css.glyph} aria-label={label}>{icon}</button>
+    </Tooltip>
+  )
+}
+
+/**
+ * Render the actions a session row surfaces on hover: the "…" menu trigger and
+ * the archive and pin buttons, in the shell's order and with its copy.
+ * @param props - the row's title and its pin and archive membership.
  * @returns the hover-only action strip.
  */
-function RowActions({ menuLabel, archiveLabel }: { menuLabel: string; archiveLabel: string }) {
+function SessionRowActions({ title, pinned, archived, t }: {
+  title: string
+  pinned: boolean
+  archived: boolean
+  t: SidebarGroupListInjected['t']
+}) {
+  // Component-private: only this strip reads the open state.
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuItems: readonly SessionMenuItem[] = [
+    pinned
+      ? { id: 'pin', icon: <IconPinFillRegular />, label: t('scaffold.menuUnpin') }
+      : { id: 'pin', icon: <IconPinOutlineRegular />, label: t('scaffold.menuPin') },
+    { id: 'rename', icon: <IconEditOutlineRegular />, label: t('scaffold.menuRename') },
+    { id: 'fork', icon: <IconBranchOutlineRegular />, label: t('scaffold.menuFork') },
+    archived
+      ? { id: 'archive', icon: <IconUnarchiveOutlineRegular />, label: t('scaffold.menuUnarchive') }
+      : { id: 'archive', icon: <IconArchiveOutlineRegular />, label: t('scaffold.menuArchive') },
+  ]
   return (
-    <span className={css.actions}>
-      <button type="button" className={css.glyph} aria-label={menuLabel}><IconEllipsisOutlineRegular /></button>
-      <button type="button" className={css.glyph} aria-label={archiveLabel}><IconArchiveOutlineRegular size={14} /></button>
+    // The strip's clicks stay in the strip, exactly as the shell keeps them out
+    // of the row's own activation.
+    <span className={classes(css.actions, menuOpen && css.actionsOpen)} onClick={(event) => { event.stopPropagation() }}>
+      <Menu
+        open={menuOpen}
+        onClose={() => { setMenuOpen(false) }}
+        portal
+        closeOnPointerLeave
+        anchor={(
+          <button
+            type="button"
+            className={css.glyph}
+            aria-label={t('scaffold.rowMenu', { name: title })}
+            onClick={() => { setMenuOpen(current => !current) }}
+          >
+            <IconEllipsisOutlineRegular />
+          </button>
+        )}
+      >
+        {menuItems.map(item => (
+          <MenuItemButton key={item.id} icon={item.icon} onSelect={() => { setMenuOpen(false) }}>
+            {item.label}
+          </MenuItemButton>
+        ))}
+      </Menu>
+      <RowIconButton
+        label={t(archived ? 'scaffold.menuUnarchive' : 'scaffold.menuArchive')}
+        tooltip={t(archived ? 'scaffold.rowUnarchive' : 'scaffold.rowArchive')}
+        icon={archived ? <IconUnarchiveOutlineRegular size={14} /> : <IconArchiveOutlineRegular size={14} />}
+      />
+      {/* Pin and archive are mutually exclusive on the Host, so the shell offers
+          no pin button on an archived row. */}
+      {archived ? null : (
+        <RowIconButton
+          label={t(pinned ? 'scaffold.menuUnpin' : 'scaffold.menuPin')}
+          tooltip={t(pinned ? 'scaffold.rowUnpin' : 'scaffold.rowPin')}
+          icon={pinned ? <IconPinFillRegular size={14} /> : <IconPinOutlineRegular size={14} />}
+        />
+      )}
     </span>
   )
 }
@@ -76,7 +164,12 @@ function SessionRow({ row, depth, t }: { row: SidebarRow; depth: number; t: Side
       <span className={classes(css.sessionTitle, row.archived === true && css.sessionTitleMuted)}>{row.title}</span>
       <span className={css.time}>{row.time}</span>
       {row.pinned === true ? <span className={css.pin}><IconPinFillRegular size={14} /></span> : null}
-      <RowActions menuLabel={t('scaffold.rowMenu')} archiveLabel={t('scaffold.rowArchive')} />
+      <SessionRowActions
+        title={row.title}
+        pinned={row.pinned === true}
+        archived={row.archived === true}
+        t={t}
+      />
     </Row>
   )
 }

@@ -33,12 +33,16 @@ describe('sidebar replica', () => {
     expect(screen.getAllByRole('separator')).toHaveLength(SAMPLE_GROUPS.length - 1)
   })
 
-  it('gives every group header and every row a new-session action', () => {
+  it('gives every group header its new-session action and every row the action strip', () => {
     render(<SidebarGroupList t={t} groups={SAMPLE_GROUPS} />)
-    const rows = SAMPLE_GROUPS.reduce((total, group) => total + (group.expanded ? group.rows.length : 0), 0)
+    const rows = SAMPLE_GROUPS.flatMap(group => group.expanded ? group.rows : [])
+    const archived = rows.filter(row => row.archived === true).length
     expect(screen.getAllByRole('button', { name: 'scaffold.newSession' })).toHaveLength(SAMPLE_GROUPS.length)
-    expect(screen.getAllByRole('button', { name: 'scaffold.rowMenu' })).toHaveLength(rows)
-    expect(screen.getAllByRole('button', { name: 'scaffold.rowArchive' })).toHaveLength(rows)
+    expect(screen.getAllByRole('button', { name: 'scaffold.rowMenu' })).toHaveLength(rows.length)
+    // The archive button flips to unarchive on an archived row, which also loses its pin.
+    expect(screen.getAllByRole('button', { name: 'scaffold.menuArchive' })).toHaveLength(rows.length - archived)
+    expect(screen.getAllByRole('button', { name: 'scaffold.menuUnarchive' })).toHaveLength(archived)
+    expect(screen.getAllByRole('button', { name: /scaffold\.menu(Un)?[pP]in/ })).toHaveLength(rows.length - archived)
   })
 
   it('lists a session only while its group is expanded, and shows each time label', () => {

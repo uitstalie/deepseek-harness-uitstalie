@@ -133,6 +133,11 @@
   display: inline-flex;
 }
 
+/* The shell keeps the strip on screen while its menu is open. */
+.actionsOpen {
+  display: inline-flex;
+}
+
 .glyph {
   flex: none;
   display: inline-flex;
