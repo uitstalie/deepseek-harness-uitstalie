@@ -51,7 +51,11 @@
 
 **待办（下次接手先看这里）**：
 
-1. **两处未核实的度量**（复刻保真度欠口）：`ui-sidebar` 的 `.logoRow` 真实高度/内边距；设置 seat 的实际渲染与文案键（我按 `.projectRow` 34px 类推、图标 `IconSlidersTwoOutlineRegular` 属推测）✓；
+1. ~~**两处未核实的度量**~~ **已完成（2026/10/12）：照原生源核对并修正** —— 出处与实测值：
+   - **`ui-sidebar` 的品牌行**（[`SidebarRoot.module.css`](../../packages/client/ui-sidebar/src/client/SidebarRoot.module.css#L219)）：expanded **60px** / rail 36px；`padding: 8px 0 8px 4px`；`gap: 8px`；`margin-bottom: 4px`（rail 12px）；`justify-content: flex-end`；品牌区 `.brandIdentity` 高 24 / gap 8；**本地构建名走 `.fallbackBrandName`：17px + 继承 600 字重 + 行高 24**（18px/600/`letter-spacing: .04em` 是默认 wordmark 变体）；行尾控件 `.iconButton` **28×28、radius-sm、hover `--dsw-alias-interactive-bg-hover`**，面板图标 expanded **16** / rail 18。我们此前用的 44px、14px、16×16 图标盒都是推测，已改。
+   - **设置 seat 的真正占用者是 [`ui-settings-general`](../../packages/client/ui-settings-general/src/client/index.ts#L198)**（不是 ui-settings）：行内容 [`chrome.tsx` 的 `TriggerContent`](../../packages/client/ui-settings-general/src/client/chrome.tsx#L22) ＝ **`IconSettingsOutlineMedium` size 16（rail 18）** + 仅宽栏显示的 `t('trigger')`（zh **设置** / en **Settings**）；外层 `.triggerRow`（gap 8、`width: calc(100% + 4px)`、`margin: 4px -2px`）+ `.trigger` **42px 高、`padding: 0 10px 0 8px`、radius-**md**、hover 填充、14px/22px**；rail 变体 36×36 / gap 0 / padding 0。我们此前的 `IconSlidersTwoOutlineRegular` 与 34px 是推测，已改。
+   - 落点：`packages/uitstalie/common-view/` 的 `AppScaffold.tsx` + `AppScaffold.module.css`；另加 2 条**读 CSS 模块断言数字**的规格（jsdom 量不到样式，这是把保真数字钉住的唯一机械手段）。
+   - **有意未复刻**：seat 同级的 `ConnectionIndicator` 与 `DesktopUpdateIndicator`（运行时状态，不属布局）；`.triggerRow` 的 ±2px 外扩属原生外壳自身内边距体制的细节。
 2. **脚手架开关的持久通道**：浏览器半边**收不到组合里的行 config**（启动载荷只带模块说明符 ✗，已实测），因此 `scaffold`/`sessionRowAction` 这类开关必须改走**插件 settings（`configForms`）** ✓ —— 做完才能把"临时默认打开"彻底移除 ✓；
 3. **区域子槽通道**：外来插件无法给 `shell.overlay` 合并 children 声明（`SlotMap` 形状归 ui-layout ✗）⇒ 脚手架的三个区域要么等上游给 children 位（原生最小插入），要么设计"自有父槽 + 子槽"注册通道 ✓；
 4. **继续逐 view 复刻**：中间信息区（对话流）、会话行的 hover 动作条（⋯ + 归档 + 图钉，正好接上 [views/01](../views/01-sidebar-session-row-action.md) 的研究与按钮能力）✓；
