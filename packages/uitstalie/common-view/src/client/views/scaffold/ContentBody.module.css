@@ -133,3 +133,89 @@
   padding: 2px 8px 6px;
   min-width: 0;
 }
+
+.composerTools,
+.composerModes,
+.composerTrailing {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Both gaps settled on 12 so the pill chips read as separate controls. */
+.composerTools,
+.composerModes {
+  gap: 12px;
+}
+
+/* The trailing group wraps to its own line when the card runs out of width. */
+.composerTrailing {
+  flex: none;
+  margin-left: auto;
+  gap: 12px;
+}
+
+.composerStandard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.composerActivity {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.composerActivity:empty {
+  display: none;
+}
+
+/* Attach circle: 28px on the selector fill, with the primary glyph. */
+.composerAttach {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-specific-selector);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.composerAttach:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+/* Send circle: 34px on the info fill, lifted 2px by transform so the row's own
+   2px pad shift leaves it in place while the smaller chips sit lower. Static
+   white, as the shell specifies it: the arrow stays white on the blue fill in
+   both themes, which the foreground token would not (design 34:10465). */
+.composerPrimary {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-button-info-fill);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 100ms ease;
+  transform: translateY(-2px);
+}
+
+.composerPrimary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-info-hover);
+}
+
+.composerPrimary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

@@ -45,8 +45,7 @@ describe('middle region body', () => {
     expect(body).toContain('clamp(680px, calc(var(--dsh-conversation-column-width, 0px) * 0.64), 920px)')
   })
 
-  it('keeps the shell\'s composer card and input-line measurements', () => {
-    const card = cssRule(CONTENT_BODY_CSS, '.composerCard')
+  it('keeps the shell\'s composer card and input-line measurements', () => {    const card = cssRule(CONTENT_BODY_CSS, '.composerCard')
     expect(card).toContain('padding-top: 8px')
     expect(card).toContain('gap: 12px')
     expect(card).toContain('max-width: var(--dsh-composer-card-max-width)')
@@ -63,5 +62,40 @@ describe('middle region body', () => {
     expect(placeholder).toContain('color: var(--dsw-alias-label-caption)')
     expect(placeholder).toContain('text-overflow: ellipsis')
     expect(cssRule(CONTENT_BODY_CSS, '.composerRow')).toContain('padding: 2px 8px 6px')
+  })
+
+  it('carries the attach control, the empty seats, and the send circle', () => {
+    const { container } = render(<ContentBody t={t} />)
+    expect(screen.getByRole('button', { name: 'scaffold.attach' })).toBeDefined()
+    const send = screen.getByRole('button', { name: 'scaffold.send' })
+    // The stand-in draft is empty, which is the state the shell disables it in.
+    expect(send.hasAttribute('disabled')).toBe(true)
+    // The mode, standard, and activity seats are present but unoccupied.
+    for (const seat of ['composerModes', 'composerStandard', 'composerActivity']) {
+      const found = container.querySelectorAll(`[class*="${seat}"]`)
+      expect(found).toHaveLength(1)
+      expect(found[0]?.textContent).toBe('')
+    }
+  })
+
+  it('keeps the shell\'s control-row and button measurements', () => {
+    const tools = cssRule(CONTENT_BODY_CSS, '.composerTools')
+    expect(tools).toContain('gap: 12px')
+    const trailing = cssRule(CONTENT_BODY_CSS, '.composerTrailing')
+    expect(trailing).toContain('margin-left: auto')
+    expect(trailing).toContain('gap: 12px')
+    // Attach circle: 28px on the selector fill.
+    const attach = cssRule(CONTENT_BODY_CSS, '.composerAttach')
+    expect(attach).toContain('width: 28px')
+    expect(attach).toContain('height: 28px')
+    expect(attach).toContain('background: var(--dsw-specific-selector)')
+    expect(attach).toContain('corner-shape: round')
+    // Send circle: 34px, lifted 2px, dimmed while disabled.
+    const primary = cssRule(CONTENT_BODY_CSS, '.composerPrimary')
+    expect(primary).toContain('width: 34px')
+    expect(primary).toContain('height: 34px')
+    expect(primary).toContain('background: var(--dsw-alias-button-info-fill)')
+    expect(primary).toContain('transform: translateY(-2px)')
+    expect(cssRule(CONTENT_BODY_CSS, '.composerPrimary:disabled')).toContain('opacity: 0.4')
   })
 })

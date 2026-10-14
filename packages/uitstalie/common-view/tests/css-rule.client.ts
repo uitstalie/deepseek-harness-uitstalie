@@ -23,20 +23,35 @@ export const CONTENT_BODY_CSS = 'packages/uitstalie/common-view/src/client/views
 const sheets = new Map<string, string>()
 
 /**
- * Declarations of one rule, whitespace-normalized.
+ * Every rule that names a selector, whitespace-normalized, in source order.
  * @param file - workspace-relative path of the stylesheet.
  * @param selector - exact selector of the rule.
- * @returns the rule's declarations.
+ * @returns the declarations of each matching rule.
  */
-export function cssRule(file: string, selector: string): string {
+function cssRules(file: string, selector: string): string[] {
   let sheet = sheets.get(file)
   if (sheet === undefined) {
     // Specs run with the workspace root as the working directory.
     sheet = readFileSync(file, 'utf8')
     sheets.set(file, sheet)
   }
-  const pattern = new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}\\s*\\{([^}]*)\\}`)
-  const body = pattern.exec(sheet)?.[1]
-  if (body === undefined) throw new Error(`${file}: no ${selector} rule`)
-  return body.replace(/\s+/gu, ' ')
+  const item = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  const pattern = new RegExp(`(?:^|,)\\s*${item}\\s*(?:,[^{}]*)?\\{([^}]*)\\}`, 'gmu')
+  const bodies = [...sheet.matchAll(pattern)].map(match => (match[1] ?? '').replace(/\s+/gu, ' '))
+  if (bodies.length === 0) throw new Error(`${file}: no ${selector} rule`)
+  return bodies
+}
+
+/**
+ * Declarations of every rule naming one selector, joined for assertion.
+ *
+ * The selector may be one item of a shared rule's selector list: a rule written
+ * as `.a, .b { … }` answers for both `.a` and `.b`, and a selector carrying two
+ * rules (a layout block and a gap block) answers with both.
+ * @param file - workspace-relative path of the stylesheet.
+ * @param selector - exact selector of the rule.
+ * @returns every matching rule's declarations, space-separated.
+ */
+export function cssRule(file: string, selector: string): string {
+  return cssRules(file, selector).join(' ')
 }

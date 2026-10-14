@@ -11,6 +11,7 @@
  * still placeholders: the message rows and the controls are separate slices.
  * @module @deepseek-ai/dsh-client-common-view/ContentBody
  */
+import { IconPlusOutlineMedium, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TextView } from '../../units/TextView.tsx'
 import css from './ContentBody.module.css'
 import type { CommonViewKey } from '../../locales.ts'
@@ -23,6 +24,54 @@ export interface ContentBodyInjected {
 
 /** Props the body renders from. */
 export type ContentBodyProps = ContentBodyInjected
+
+/**
+ * Render the composer's control row: the attach control on the left, the
+ * trailing group with the send circle on the right, and the seats the shell
+ * leaves for the mode, model, and activity occupants.
+ *
+ * The send circle is disabled because the stand-in draft is empty, which is the
+ * state the shell disables it in too. Its glyph is the shell's own arrow, drawn
+ * inline in `InputBar.tsx`; the shared `IconSendOutline*` is another glyph.
+ * @param props - the copy namespace.
+ * @returns the control row.
+ */
+function ComposerControls({ t }: ContentBodyProps) {
+  return (
+    <div className={css.composerRow}>
+      <div className={css.composerTools}>
+        <Tooltip label={t('scaffold.attach')} side="top" delayMs={500}>
+          <button
+            type="button"
+            className={css.composerAttach}
+            aria-label={t('scaffold.attach')}
+            aria-haspopup="listbox"
+            aria-expanded={false}
+          >
+            <IconPlusOutlineMedium size={14} />
+          </button>
+        </Tooltip>
+        {/* The permission and plan seats, empty without their occupants. */}
+        <div className={css.composerModes} />
+      </div>
+      <div className={css.composerTrailing}>
+        <div className={css.composerStandard} />
+        {/* The activity seat carries its own `:empty` rule in the shell. */}
+        <div className={css.composerActivity} />
+        <Tooltip label={t('scaffold.send')} side="top" delayMs={500}>
+          <button type="button" className={css.composerPrimary} aria-label={t('scaffold.send')} disabled>
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+              <path
+                d="M8.3125 0.980183C8.66767 1.0531 8.97902 1.20418 9.2627 1.43233C9.48724 1.61297 9.73029 1.85793 9.97949 2.10714L14.707 6.83468L13.293 8.24874L9 3.95577V15.0417H7V3.95577L2.70703 8.24874L1.29297 6.83468L6.02051 2.10714C6.26971 1.85793 6.51277 1.61297 6.7373 1.43233C6.97662 1.23986 7.28445 1.04402 7.6875 0.980183C7.8973 0.947006 8.1031 0.95516 8.3125 0.980183Z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+        </Tooltip>
+      </div>
+    </div>
+  )
+}
 
 /**
  * Render the middle region's body.
@@ -46,7 +95,7 @@ export function ContentBody({ t }: ContentBodyProps) {
               <div className={css.composerCard}>
                 <div className={css.composerInput} />
                 <span className={css.composerPlaceholder}>{t('scaffold.draft')}</span>
-                <div className={css.composerRow} />
+                <ComposerControls t={t} />
               </div>
             </div>
           </div>

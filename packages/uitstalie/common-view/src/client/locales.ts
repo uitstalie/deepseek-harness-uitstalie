@@ -35,6 +35,8 @@ export const en = {
   'scaffold.tabTrajectory': 'Trajectory',
   // The composer's resting placeholder, as the conversation view words it.
   'scaffold.draft': 'Message or run a task, / commands, @ files or sessions',
+  'scaffold.attach': 'Add files or run commands',
+  'scaffold.send': 'Send message',
   // Session-row action copy mirrors the shell's own keys: the tooltip takes the
   // short `actions.*` form, the accessible name the `menu.*` sentence.
   'scaffold.rowMenu': 'Session actions for {name}',
@@ -80,6 +82,8 @@ export const zh: typeof en = {
   'scaffold.tabChat': '对话',
   'scaffold.tabTrajectory': '轨迹',
   'scaffold.draft': '发消息或创建任务, / 调用指令, @ 文件或对话',
+  'scaffold.attach': '添加文件或调用指令',
+  'scaffold.send': '发送消息',
   'scaffold.rowMenu': '会话“{name}”的操作',
   'scaffold.rowArchive': '归档会话',
   'scaffold.rowUnarchive': '取消归档',
