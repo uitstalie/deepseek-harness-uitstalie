@@ -104,7 +104,16 @@
      - 文案照原生 `hero.headline`/`hero.preview`/`hero.chooseWorkspace`。
      - 规格：新增 `hero-shell.client.spec.tsx` 3 例；`content-body.client.spec.tsx` 增 1 例（hero 相位结构 + `.composerHero`/`.heroWorkspaceRow` 度量）。
    - **仍未复刻（hero 内）**：品牌标记的游动动画（SMIL 形变目标）、`conversation.hero.brand.mark` 子槽、hero 的落点/发光装饰。
-   - **仍未复刻（本 view 内）**：视图内容（消息流/轨迹）、`WidthControls` 宽度手柄、`conversation.input.dock`（queue）、`TodoPanel`、`ContextMeter`、以及控件行里那些 **seat 的真实占用者**（权限/plan/模型/activity/left/right）。
+   - **ContextMeter 上下文计量（已完成 2026/10/12 第五片）**——照 `ContextMeter.tsx` + `ContextMeter.module.css` 复刻，放在 composer 的 dock seat 里（原生 `InputBar` 的 `.dock`）：
+     - dock：`display: flex; align-items: center; justify-content: center; gap: 12px; max-width: 100%; padding-top: 4px`（hero 时 `:empty` 收起）；
+     - 触发器 `.trigger`：**`gap: 6px`、`padding: 1px 8px`、radius-sm、tertiary 墨**、字号 `var(--dsh-content-font-size-secondary, 13px)`、行高 `calc(20px + var(--dsh-content-font-delta-secondary, 0px))`、**`font-variant-numeric: tabular-nums`**；hover/展开 → `interactive-bg-hover` 底 + secondary 墨；`aria-haspopup="dialog"`；
+     - 圆环：**14px viewBox、2px 描边、r=5.5**（周长 2πr），`.track` 用 `border-l3`、`.fill` 用 tertiary 墨 + `stroke-linecap: round`、`rotate(-90 7 7)`，`strokeDashoffset = 周长 × (1 - 百分比)`；
+     - 面板（`createPortal` 到 body + 共用件 `useAnchoredPosition(side:'top', gap:8, margin:12)` + `useDismissOnOutsidePointer`）：**`width: min(264px, calc(100vw - 24px))`、`padding: 12px`、radius-lg、`--dsw-specific-menu` 底 + `backdrop-filter`、`--dsw-elevation-prominent`**；头部 = 本地化句子的两半 + 读数 + `~已用 / 窗口`（`~` 表示投影值）；`.bar`（**gap 1、`margin: 10px 0 12px`、高 4px、`999px` + `corner-shape: round`**）+ `.segment`（`min-width: 2px`）；`.rows`/`.row`（space-between、gap 12、`padding: 2px 0`）+ `.swatch`（**8×8、radius 2、`margin-right: 6px`**）；
+     - **读数在句子里的位置用 `\u0000` 占位切分**（原生 `READING_SLOT`）：zh「上下文已用 {percent}」→ 前半有字、后半空，en「{percent} of context used」→ 反之，`.headline:empty` 让空的一侧不占 gap ✓ 我们照此实现；
+     - 三色 tint 照原生：系统提示词 `--dsw-static-neutral-bluish-400`、工具定义 **`rgb(167, 139, 250)` 字面值**（原生注释：设计平台没有紫色静态 token）、对话消息 `--dsw-static-blue-450`；数字格式走我们字典里的 `scaffold.numberThousand/Million`（值同共用 `number.*`）；
+     - **依赖变更**：面板要 `createPortal`，而本包原先没声明 `react-dom` ⇒ 在 `devDependencies` 补 `react-dom` + `@types/react-dom`（版本对齐 `ui-conversation`），`pnpm install` 更新了 lockfile；`verify-package-dependencies` ✓ 77 包通过。
+     - 规格：新增 `context-meter.client.spec.tsx` 3 例（读数与圆环、展开面板三行与三段、度量与 tint）；注意**面板是 portal 到 body 的**，断言要用 `document` 而不是 render container。
+   - **仍未复刻（本 view 内）**：视图内容（消息流/轨迹）、`WidthControls` 宽度手柄、`conversation.input.dock`（queue 排队区）、`TodoPanel`、`conversation.composer.dock` 的其他占用者，以及控件行里那些 seat 的真实占用者。hero 的品牌标记游动动画亦未复刻。
 5. **本包尚未提交的门禁收尾**：README 若再改需重录配对；`test:gui` 未在本轮跑过（本批未改原生 ✓）。
 
 **本地预览方式**（`--patch` 必须排在 web 自己的参数之前，否则会被转发给 web 的 commander 报 `unknown option` ✗）：
