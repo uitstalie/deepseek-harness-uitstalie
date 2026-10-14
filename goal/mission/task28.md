@@ -100,7 +100,9 @@ tool or assert the match count first.
 
 这些属于"按需加载才划算"的情境经验：若将来新增分支 skill（新文件、非原生改动），应把它们整体搬过去，并在本任务单回填链接。
 
-**2. 本机（Windows）快照通道不可用**
+**2. 本机（Windows）快照通道不可用 —— 用户裁决（2026/10/12）：不在本机跑，不再纠结**
+
+该决定已升格为分支规则（[goal/AGENTS.md](../AGENTS.md)）：Windows 上不跑 `test:snapshot` / `test:snapshot:refresh` / `test:snapshot:record`，该信号归 CI（macOS/Linux）。背景证据：
 
 - `DSH_SNAPSHOT=refresh` 在本机跑全量会**写坏 fixture**（实测 221 个文件被写成未归一化的真实临时路径；已全部 `git checkout -- snapshots` 回退），录制正路需要 `DEEPSEEK_API_KEY`；因此侧车是**手工同步**的（用生成目录里的权威文本插入），并已用过滤复跑证明与实时注册一致；
 - `{{cwd}}` 占位符归一化在本机不成立，`text-turn` / `pwsh-tool-turn` / `persistent-pwsh-tool-turn` 都报同一处差异——该通道在 Windows 上不能全量通过，由 CI（macOS/Linux）负责这一路信号。
