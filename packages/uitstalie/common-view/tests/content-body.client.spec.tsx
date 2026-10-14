@@ -9,6 +9,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { ContentBody } from '../src/client/views/scaffold/ContentBody.tsx'
 import { cssRule, CONTENT_BODY_CSS } from './css-rule.client.ts'
 import type { ContextOccupancy } from '../src/client/views/scaffold/ContextMeter.tsx'
+import type { TranscriptMessage } from '../src/client/views/scaffold/ChatTranscript.tsx'
 import type { CommonViewKey } from '../src/client/locales.ts'
 
 // This config does not enable vitest globals, so the DOM is torn down per case.
@@ -27,10 +28,19 @@ const OCCUPANCY: ContextOccupancy = {
   breakdown: { systemTokens: 9_400, toolsTokens: 38_600, messageTokens: 84_000 },
 }
 
+/** One user row and one response, so both flow gaps are exercised. */
+const MESSAGES: readonly TranscriptMessage[] = [
+  { id: 'm-1', role: 'user', text: 'first' },
+  { id: 'm-2', role: 'assistant', text: 'second' },
+]
+
 describe('middle region body', () => {
-  it('holds the view stand-in and the composer card with its placeholder', () => {
-    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" occupancy={OCCUPANCY} />)
-    expect(screen.getByText('scaffold.content')).toBeDefined()
+  it('holds the transcript and the composer card with its placeholder', () => {
+    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" occupancy={OCCUPANCY} messages={MESSAGES} />)
+    // The active phase draws the transcript instead of the blank stand-in.
+    expect(screen.getByText('first')).toBeDefined()
+    expect(screen.getByText('second')).toBeDefined()
+    expect(screen.queryByText('scaffold.content')).toBeNull()
     expect(screen.getByText('scaffold.draft')).toBeDefined()
     // One scroll region, one composer seat: the shell's two structural boxes.
     expect(container.querySelectorAll('[class*="scrollBody"]')).toHaveLength(1)
@@ -74,7 +84,7 @@ describe('middle region body', () => {
   })
 
   it('carries the attach control, the empty seats, and the send circle', () => {
-    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" occupancy={OCCUPANCY} />)
+    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" occupancy={OCCUPANCY} messages={MESSAGES} />)
     expect(screen.getByRole('button', { name: 'scaffold.attach' })).toBeDefined()
     const send = screen.getByRole('button', { name: 'scaffold.send' })
     // The stand-in draft is empty, which is the state the shell disables it in.
@@ -88,7 +98,7 @@ describe('middle region body', () => {
   })
 
   it('centres the scroller and stacks the hero above the card on a blank Session', () => {
-    render(<ContentBody t={t} hero workspaceLabel="deepseek-harness-uitstalie-dev" occupancy={OCCUPANCY} />)
+    render(<ContentBody t={t} hero workspaceLabel="deepseek-harness-uitstalie-dev" occupancy={OCCUPANCY} messages={MESSAGES} />)
     expect(screen.getByText('scaffold.heroHeadline')).toBeDefined()
     expect(screen.getByRole('button', { name: 'scaffold.chooseWorkspace' })).toBeDefined()
     // The hero phase centres the scroller and caps the stack at the card width.

@@ -26,6 +26,9 @@ export const HERO_CSS = 'packages/uitstalie/common-view/src/client/views/scaffol
 /** Workspace-relative path of the context meter's stylesheet. */
 export const METER_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/ContextMeter.module.css'
 
+/** Workspace-relative path of the chat transcript's stylesheet. */
+export const CHAT_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/ChatTranscript.module.css'
+
 const sheets = new Map<string, string>()
 
 /**

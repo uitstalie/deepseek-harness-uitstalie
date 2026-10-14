@@ -12,6 +12,7 @@
  * @module @deepseek-ai/dsh-client-common-view/ContentBody
  */
 import { IconPlusOutlineMedium, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { ChatTranscript, type TranscriptMessage } from './ChatTranscript.tsx'
 import { ContextMeter, type ContextOccupancy } from './ContextMeter.tsx'
 import { HeroShell, WorkspaceChip } from './HeroShell.tsx'
 import { classes } from './classes.ts'
@@ -29,6 +30,8 @@ export interface ContentBodyInjected {
   workspaceLabel: string
   /** What the composer's context meter reports. */
   occupancy: ContextOccupancy
+  /** The transcript the active phase draws. */
+  messages: readonly TranscriptMessage[]
 }
 
 /** Props the body renders from. */
@@ -84,19 +87,25 @@ function ComposerControls({ t }: { t: ContentBodyInjected['t'] }) {
 
 /**
  * Render the middle region's body.
- * @param props - the copy namespace, the phase, the hero's workspace, and the occupancy.
+ * @param props - the copy namespace, the phase, the hero's workspace, the occupancy, and the rows.
  * @returns the scroll body with the composer seat at its end.
  */
-export function ContentBody({ t, hero, workspaceLabel, occupancy }: ContentBodyProps) {
+export function ContentBody({ t, hero, workspaceLabel, occupancy, messages }: ContentBodyProps) {
   return (
     <div className={css.body}>
       <div className={classes(css.scrollBody, hero && css.scrollBodyHero)}>
-        <div className={css.viewArea}>
-          {/* Auto margins center the stand-in without touching the view's own box. */}
-          <div className={css.transcript}>
-            <TextView text={t('scaffold.content')} size="caption" tone="tertiary" />
-          </div>
-        </div>
+        {/* The shell mounts the view only once a Session has content, and keeps
+            the stand-in for the phase where nothing has happened yet. */}
+        {hero
+          ? (
+            <div className={css.viewArea}>
+              {/* Auto margins center the stand-in without touching the view's own box. */}
+              <div className={css.transcript}>
+                <TextView text={t('scaffold.content')} size="caption" tone="tertiary" />
+              </div>
+            </div>
+          )
+          : <ChatTranscript messages={messages} />}
         {/* The composer chain's seat stays stuck to the scroll body's floor; on a
             blank Session the stack carries the hero above the card. */}
         <div className={css.composerSeat}>

@@ -1,0 +1,95 @@
+/* The chat transcript, measured from ui-chat's ChatView.module.css and
+   MessageItem.module.css: a clipped frame around the scroller, the centred
+   column capped at the shared content width, the flow gap between rows, and the
+   user's trailing bubble. */
+.frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  container-type: inline-size;
+}
+
+.root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: visible;
+  overflow-y: clip;
+}
+
+.scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Sides = composer clearance + 16px: the transcript stays exactly 32px
+     narrower than the input card. */
+  padding: 16px calc(var(--dsh-composer-side-clearance) + 16px);
+  container-type: inline-size;
+}
+
+.column {
+  max-width: var(--dsh-chat-content-width);
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.flowItem {
+  min-width: 0;
+}
+
+/* Consecutive rows sit 6px apart. */
+.column > .flowItem ~ .flowItem {
+  margin-top: var(--dsh-chat-flow-gap, 6px);
+}
+
+/* A response is separated from its neighbours by 12px, and from the row that
+   follows it too. */
+.flowItemResponse {
+  --dsh-chat-flow-gap: 12px;
+}
+
+.userRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.userStack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+  /* Figma's 525px cap held as a share of the width axis (525/748 ≈ 0.702). */
+  max-width: min(calc(var(--dsh-chat-content-width, 748px) * 0.702), 82%);
+}
+
+.bubble {
+  max-width: 100%;
+  background: var(--dsw-specific-bubble);
+  border-radius: var(--dsw-radius-xl);
+  /* A 42px single-line bubble: a 22px line plus 10px of padding each side. */
+  padding: 10px 16px;
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-primary);
+  /* The projected user text is inline runs; the bubble owns wrapping. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Stand-in for the Assistant's markdown surface, which is its own slice. */
+.assistantStandIn {
+  color: var(--dsw-alias-label-primary);
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
+  white-space: pre-wrap;
+  word-break: break-word;
+}

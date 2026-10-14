@@ -15,6 +15,7 @@ export const en = {
   'scaffold.content': 'Content',
   'scaffold.buttonSidebar': 'Toggle sidebar width',
   'scaffold.buttonTop': 'Toggle top height',
+  'scaffold.buttonPhase': 'Toggle session phase',
   'scaffold.newSession': 'New session',
   'scaffold.newSessionIn': 'New session in {name}',
   // Workspace-row menu copy, again split like the shell's: the trigger names the
@@ -82,6 +83,7 @@ export const zh: typeof en = {
   'scaffold.content': '内容区',
   'scaffold.buttonSidebar': '切换侧栏宽度',
   'scaffold.buttonTop': '切换顶栏高度',
+  'scaffold.buttonPhase': '切换会话相位',
   'scaffold.newSession': '新会话',
   'scaffold.newSessionIn': '在“{name}”中新建会话',
   'scaffold.groupMenu': '工作区“{name}”的操作',

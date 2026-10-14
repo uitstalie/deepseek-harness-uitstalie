@@ -119,3 +119,14 @@ describe('scaffold session row actions', () => {
     ])
   })
 })
+
+describe('scaffold session phase', () => {
+  it('swaps the middle region between the blank hero and the transcript', () => {
+    render(<AppScaffold t={t} sidebarWidth="320px" topHeight="52px" />)
+    // The sample Session starts blank, so the hero is up and no transcript row is.
+    expect(screen.getByText('scaffold.heroHeadline')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'scaffold.buttonPhase' }))
+    expect(screen.queryByText('scaffold.heroHeadline')).toBeNull()
+    expect(screen.getByText('把侧栏的会话行动作条照原生复刻一遍')).toBeDefined()
+  })
+})

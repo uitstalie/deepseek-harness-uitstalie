@@ -61,11 +61,17 @@ export function AppScaffold({ t, sidebarWidth, topHeight }: AppScaffoldProps) {
   const [wideSidebar, setWideSidebar] = useState(true)
   const [tallTop, setTallTop] = useState(true)
   const [activeTab, setActiveTab] = useState(SAMPLE_CONVERSATION.activeTab)
+  const [heroPhase, setHeroPhase] = useState(SAMPLE_CONVERSATION.hero)
 
   const sidebarButton: ButtonSpec = { id: 'scaffold.sidebar', ariaLabel: t('scaffold.buttonSidebar'), label: t('scaffold.buttonSidebar') }
   // The second button is the same capability derived into another variant.
   const topButton = deriveButton(
     { id: 'scaffold.top', ariaLabel: t('scaffold.buttonTop'), label: t('scaffold.buttonTop'), size: 'sm' },
+    { variant: 'outline' },
+  )
+  // The third button is the same capability carrying another demonstration.
+  const phaseButton = deriveButton(
+    { id: 'scaffold.phase', ariaLabel: t('scaffold.buttonPhase'), label: t('scaffold.buttonPhase'), size: 'sm' },
     { variant: 'outline' },
   )
 
@@ -115,6 +121,10 @@ export function AppScaffold({ t, sidebarWidth, topHeight }: AppScaffoldProps) {
             <TextView text={t('scaffold.top')} size="caption" tone="tertiary" />
             <DefaultButton spec={sidebarButton} bindings={{ onClick: () => { setWideSidebar(current => !current) } }} />
             <DefaultButton spec={topButton.spec} bindings={{ ...topButton.bindings, onClick: () => { setTallTop(current => !current) } }} />
+            <DefaultButton
+              spec={phaseButton.spec}
+              bindings={{ ...phaseButton.bindings, onClick: () => { setHeroPhase(current => !current) } }}
+            />
           </Row>
         </div>
         <Divider />
@@ -128,9 +138,10 @@ export function AppScaffold({ t, sidebarWidth, topHeight }: AppScaffoldProps) {
           />
           <ContentBody
             t={t}
-            hero={SAMPLE_CONVERSATION.hero}
+            hero={heroPhase}
             workspaceLabel={SAMPLE_GROUPS[0]?.title ?? ''}
             occupancy={SAMPLE_CONVERSATION.occupancy}
+            messages={SAMPLE_CONVERSATION.messages}
           />
         </div>
       </Column>
