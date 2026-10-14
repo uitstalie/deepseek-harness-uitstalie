@@ -16,6 +16,12 @@ export const en = {
   'scaffold.buttonSidebar': 'Toggle sidebar width',
   'scaffold.buttonTop': 'Toggle top height',
   'scaffold.newSession': 'New session',
+  'scaffold.newSessionIn': 'New session in {name}',
+  // Workspace-row menu copy, again split like the shell's: the trigger names the
+  // workspace, the rows carry the verb.
+  'scaffold.groupMenu': 'Workspace actions for {name}',
+  'scaffold.menuRenameWorkspace': 'Rename',
+  'scaffold.menuDeleteWorkspace': 'Delete workspace',
   // Session-row action copy mirrors the shell's own keys: the tooltip takes the
   // short `actions.*` form, the accessible name the `menu.*` sentence.
   'scaffold.rowMenu': 'Session actions for {name}',
@@ -49,6 +55,10 @@ export const zh: typeof en = {
   'scaffold.buttonSidebar': '切换侧栏宽度',
   'scaffold.buttonTop': '切换顶栏高度',
   'scaffold.newSession': '新会话',
+  'scaffold.newSessionIn': '在“{name}”中新建会话',
+  'scaffold.groupMenu': '工作区“{name}”的操作',
+  'scaffold.menuRenameWorkspace': '重命名',
+  'scaffold.menuDeleteWorkspace': '删除工作区',
   'scaffold.rowMenu': '会话“{name}”的操作',
   'scaffold.rowArchive': '归档会话',
   'scaffold.rowUnarchive': '取消归档',

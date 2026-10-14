@@ -19,6 +19,7 @@ import {
   IconNewChatOutlineRegular,
   IconPinFillRegular,
   IconPinOutlineRegular,
+  IconTrashOutlineRegular,
   IconTriangleRightFillRegular,
   IconUnarchiveOutlineRegular,
   Menu,
@@ -175,6 +176,47 @@ function SessionRow({ row, depth, t }: { row: SidebarRow; depth: number; t: Side
 }
 
 /**
+ * Render the actions a workspace row surfaces on hover: the "…" menu with the
+ * rename and delete rows, then the new-session button, as the shell orders them.
+ * @param props - the workspace title and the copy namespace.
+ * @returns the hover-only action strip.
+ */
+function GroupRowActions({ title, t }: { title: string; t: SidebarGroupListInjected['t'] }) {
+  // Component-private: only this strip reads the open state.
+  const [menuOpen, setMenuOpen] = useState(false)
+  return (
+    <span className={classes(css.actions, menuOpen && css.actionsOpen)} onClick={(event) => { event.stopPropagation() }}>
+      <Menu
+        open={menuOpen}
+        onClose={() => { setMenuOpen(false) }}
+        portal
+        closeOnPointerLeave
+        items={[
+          { id: 'rename', label: t('scaffold.menuRenameWorkspace'), icon: <IconEditOutlineRegular /> },
+          { id: 'delete', label: t('scaffold.menuDeleteWorkspace'), icon: <IconTrashOutlineRegular />, danger: true },
+        ]}
+        onSelect={() => { setMenuOpen(false) }}
+        anchor={(
+          <button
+            type="button"
+            className={css.glyph}
+            aria-label={t('scaffold.groupMenu', { name: title })}
+            onClick={() => { setMenuOpen(current => !current) }}
+          >
+            <IconEllipsisOutlineRegular />
+          </button>
+        )}
+      />
+      <RowIconButton
+        label={t('scaffold.newSessionIn', { name: title })}
+        tooltip={t('scaffold.newSession')}
+        icon={<IconNewChatOutlineRegular />}
+      />
+    </span>
+  )
+}
+
+/**
  * Render the sidebar replica.
  * @param props - the groups and the copy namespace.
  * @returns the group list.
@@ -195,11 +237,7 @@ export function SidebarGroupList({ t, groups }: SidebarGroupListProps) {
               </span>
             </span>
             <span className={css.groupTitle}>{group.title}</span>
-            <span className={css.actions}>
-              <button type="button" className={css.glyph} aria-label={t('scaffold.newSession')}>
-                <IconNewChatOutlineRegular />
-              </button>
-            </span>
+            <GroupRowActions title={group.title} t={t} />
           </Row>
           {group.expanded
             ? group.rows.map(row => <SessionRow key={row.id} row={row} depth={1} t={t} />)

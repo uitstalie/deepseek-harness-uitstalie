@@ -6,7 +6,7 @@
  * row is distinguished by its ink token, not by a class.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { SidebarGroupList } from '../src/client/views/scaffold/SidebarGroupList.tsx'
 import { SAMPLE_GROUPS } from '../src/client/views/scaffold/sample-sidebar.ts'
 import type { CommonViewKey } from '../src/client/locales.ts'
@@ -33,16 +33,26 @@ describe('sidebar replica', () => {
     expect(screen.getAllByRole('separator')).toHaveLength(SAMPLE_GROUPS.length - 1)
   })
 
-  it('gives every group header its new-session action and every row the action strip', () => {
+  it('gives every group header its workspace actions and every row the action strip', () => {
     render(<SidebarGroupList t={t} groups={SAMPLE_GROUPS} />)
     const rows = SAMPLE_GROUPS.flatMap(group => group.expanded ? group.rows : [])
     const archived = rows.filter(row => row.archived === true).length
-    expect(screen.getAllByRole('button', { name: 'scaffold.newSession' })).toHaveLength(SAMPLE_GROUPS.length)
+    // The workspace strip: the "…" trigger and the new-session button.
+    expect(screen.getAllByRole('button', { name: 'scaffold.groupMenu' })).toHaveLength(SAMPLE_GROUPS.length)
+    expect(screen.getAllByRole('button', { name: 'scaffold.newSessionIn' })).toHaveLength(SAMPLE_GROUPS.length)
     expect(screen.getAllByRole('button', { name: 'scaffold.rowMenu' })).toHaveLength(rows.length)
     // The archive button flips to unarchive on an archived row, which also loses its pin.
     expect(screen.getAllByRole('button', { name: 'scaffold.menuArchive' })).toHaveLength(rows.length - archived)
     expect(screen.getAllByRole('button', { name: 'scaffold.menuUnarchive' })).toHaveLength(archived)
     expect(screen.getAllByRole('button', { name: /scaffold\.menu(Un)?[pP]in/ })).toHaveLength(rows.length - archived)
+  })
+
+  it('opens the workspace menu with rename and the destructive delete', () => {
+    render(<SidebarGroupList t={t} groups={SAMPLE_GROUPS} />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'scaffold.groupMenu' })[0] as HTMLElement)
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+      'scaffold.menuRenameWorkspace', 'scaffold.menuDeleteWorkspace',
+    ])
   })
 
   it('lists a session only while its group is expanded, and shows each time label', () => {
