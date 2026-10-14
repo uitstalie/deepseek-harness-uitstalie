@@ -120,7 +120,20 @@
      - **相位切换**：原生空白会话不挂视图、非空才 `renderSlot('conversation.session')` ⇒ 我们按 `hero` 位切换（hero ⇒ 居中 hero 演示；active ⇒ 转写），并在顶部条加了**第三个演示按钮**（`DefaultButton` 派生 outline）在预览里来回切相位；规格加 1 例断言切换。
      - **未复刻且需注意**：助手消息体是 `AssistantMarkdown` 这一整套 markdown 面（本片用纯文本代替，标为待办）；工具卡、过程行、错误行、`turnSpacer`、`toBottom`、`older` 等同样是后续切片。
      - 规格：新增 `chat-transcript.client.spec.tsx` 2 例（行与 flow part、度量）。
-   - **仍未复刻（本 view 内）**：助手 markdown 面、工具/过程/错误行、`WidthControls` 宽度手柄、`conversation.input.dock`（queue 排队区）、`TodoPanel`、`conversation.composer.dock` 的其他占用者、控件行那些 seat 的真实占用者，以及 hero 的品牌标记游动动画。
+   - **queue 排队区（已完成 2026/10/12 第七片）**——照 `queue/QueueDock.module.css` + `QueueDock.tsx` 复刻，放在 composer 栈里输入卡**之前**（原生顺序：`conversation.input.dock` 的占用者 → InputBar）：
+     - `.dock`：**`width: calc(100% - 2×侧距 - 2×dock 内缩)`、`max-width: calc(卡上限 - 2×dock 内缩)`、`margin: 0 auto calc(0px - var(--dsh-composer-stack-gap) - 3px)`**（取消自身后的栈间距并塞到输入卡下方 3px，读作同一块面）、`padding: 0 var(--dsh-composer-dock-inset)`；
+     - `.panel`：`padding: 2px 0`、**`border-radius: lg lg 0 0`**（下方方角）、`::before` = `specific-menu` 底 + `menu-backdrop-filter`、**`::after` = 0.5px `border-l1` 描边且 `border-bottom: none`**（由输入卡自己的上边闭合）；
+     - 头部按钮：**`height: 36px`、`gap: 10px`、`padding: 4px 12px`、radius-md**，内容 = `IconQueueOutlineRegular` 前导 + 计数（**13/24、weight 500**，`font-family: Inter, var(--dsw-font-family)`）+ 展开箭头（**14×14 网格、tertiary**，`IconChevronDown/UpOutlineRegular` 随开合切换）；`aria-controls`/`aria-expanded` 齐全，**关闭时列表内容不再渲染**（原生 `{listVisible && …}`，我们照此，规格里也因此断言"关闭后文本消失"）；
+     - 列表：**`max-height: 180px`** + `overflow-y: auto`；行：**`min-height: 36px`、`gap: 10px`、`padding: 4px 5px 4px 12px`、radius-md**，行间 `box-shadow: inset 0 1px 0 var(--dsw-alias-border-l1)`；
+     - 文案照原生 `queue.count`（"{n} 条排队消息" / "{n} queued messages"）；**未复刻**：附件行、内联编辑器、发送回显行、单行时的前导图标规则。
+     - 规格：新增 `queue-dock.client.spec.tsx` 3 例（空队列不渲染、计数与就地展开/收起、dock/panel/header/row 度量）。
+   - **工具卡（已完成 2026/10/12 第八片）**——照 `ui-tool` 的 `ToolRow.tsx`（`ToolRow.module.css`）复刻**摘要行 + 展开体**：
+     - **行骨架直接复用共用件 `DisclosureRow`**（原生就是它：`icon`/`title`/`running`/`open`/`expandable`/`expandOnRowClick`/`keepContentWhenOpen`/`onToggle`/`collapsedContent` + `leadingClassName`/`titleClassName`/`rowClassName`），输出体复用共用件 **`CodeBlock`**（原生 IN/OUT 卡同样走它）——本包只自带原生那几处行内度量；
+     - `.root`（列）、`.leading`（`flex-shrink: 0`）、`.title`（**weight 400**；原生对 `cordis_*` 工具用 500，未复刻），摘要行的 `[16 前导] gap6 [标题 13/24] gap8 [2×2 点] gap8 [摘要占满+截断]`：`.sep` = **2×2、`border-radius: 1px`、`margin: 0 8px`、caption 墨**；`.summary` = `flex: 1 1 auto` + `min-width: 0` + ellipsis + nowrap + **`--dsh-content-font-size-secondary, 13px`** + `calc(24px + var(--dsh-content-font-delta))`；
+     - 转写数据加 `role: 'tool'`（带 `ToolCardModel`），流里按响应行处理（非用户行 ⇒ `data-chat-group-part="response"`，12px 间距）；
+     - **未复刻且已登记**：各工具的专属前导图标（我们用一个 16px 占位方块）、diff/read/search/web/image 等专属体、以及**视觉隐藏的状态句**（原生 `row.running|failed|stopped` 的文案来自共享命名空间，不在 `ui-tool` 字典里，未找到出处故未做）。
+     - 规格：新增 `tool-card.client.spec.tsx` 2 例（摘要可见、点开后出现 `<pre>` 输出且摘要保留；行度量）。
+   - **仍未复刻（本 view 内）**：助手 markdown 面、各工具专属体与过程/错误行、`WidthControls` 宽度手柄、`TodoPanel`、`conversation.composer.dock` 的其他占用者、控件行 seat 的真实占用者、hero 的品牌标记游动动画。
 5. **本包尚未提交的门禁收尾**：README 若再改需重录配对；`test:gui` 未在本轮跑过（本批未改原生 ✓）。
 
 **本地预览方式**（`--patch` 必须排在 web 自己的参数之前，否则会被转发给 web 的 commander 报 `unknown option` ✗）：
