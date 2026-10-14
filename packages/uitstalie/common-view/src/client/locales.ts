@@ -37,6 +37,10 @@ export const en = {
   'scaffold.draft': 'Message or run a task, / commands, @ files or sessions',
   'scaffold.attach': 'Add files or run commands',
   'scaffold.send': 'Send message',
+  // Hero chrome of a blank Session, as the conversation view words it.
+  'scaffold.heroHeadline': 'Into the Unknown',
+  'scaffold.heroPreview': 'Preview',
+  'scaffold.chooseWorkspace': 'Choose workspace',
   // Session-row action copy mirrors the shell's own keys: the tooltip takes the
   // short `actions.*` form, the accessible name the `menu.*` sentence.
   'scaffold.rowMenu': 'Session actions for {name}',
@@ -84,6 +88,9 @@ export const zh: typeof en = {
   'scaffold.draft': '发消息或创建任务, / 调用指令, @ 文件或对话',
   'scaffold.attach': '添加文件或调用指令',
   'scaffold.send': '发送消息',
+  'scaffold.heroHeadline': '探索未至之境',
+  'scaffold.heroPreview': '预览版',
+  'scaffold.chooseWorkspace': '选择工作区',
   'scaffold.rowMenu': '会话“{name}”的操作',
   'scaffold.rowArchive': '归档会话',
   'scaffold.rowUnarchive': '取消归档',

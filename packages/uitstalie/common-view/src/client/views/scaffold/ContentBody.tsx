@@ -12,6 +12,8 @@
  * @module @deepseek-ai/dsh-client-common-view/ContentBody
  */
 import { IconPlusOutlineMedium, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { HeroShell, WorkspaceChip } from './HeroShell.tsx'
+import { classes } from './classes.ts'
 import { TextView } from '../../units/TextView.tsx'
 import css from './ContentBody.module.css'
 import type { CommonViewKey } from '../../locales.ts'
@@ -20,6 +22,10 @@ import type { CommonViewKey } from '../../locales.ts'
 export interface ContentBodyInjected {
   /** Localized copy of the `common-view` namespace. */
   t: (key: CommonViewKey, params?: Record<string, string>) => string
+  /** Whether the Session is still blank, which is when the shell centres the hero. */
+  hero: boolean
+  /** The workspace the hero's chip names. */
+  workspaceLabel: string
 }
 
 /** Props the body renders from. */
@@ -36,7 +42,7 @@ export type ContentBodyProps = ContentBodyInjected
  * @param props - the copy namespace.
  * @returns the control row.
  */
-function ComposerControls({ t }: ContentBodyProps) {
+function ComposerControls({ t }: { t: ContentBodyInjected['t'] }) {
   return (
     <div className={css.composerRow}>
       <div className={css.composerTools}>
@@ -75,22 +81,31 @@ function ComposerControls({ t }: ContentBodyProps) {
 
 /**
  * Render the middle region's body.
- * @param props - the copy namespace.
+ * @param props - the copy namespace, the phase, and the workspace the hero names.
  * @returns the scroll body with the composer seat at its end.
  */
-export function ContentBody({ t }: ContentBodyProps) {
+export function ContentBody({ t, hero, workspaceLabel }: ContentBodyProps) {
   return (
     <div className={css.body}>
-      <div className={css.scrollBody}>
+      <div className={classes(css.scrollBody, hero && css.scrollBodyHero)}>
         <div className={css.viewArea}>
           {/* Auto margins center the stand-in without touching the view's own box. */}
           <div className={css.transcript}>
             <TextView text={t('scaffold.content')} size="caption" tone="tertiary" />
           </div>
         </div>
-        {/* The composer chain's seat stays stuck to the scroll body's floor. */}
+        {/* The composer chain's seat stays stuck to the scroll body's floor; on a
+            blank Session the stack carries the hero above the card. */}
         <div className={css.composerSeat}>
-          <div className={css.composerStack}>
+          <div className={classes(css.composerStack, hero && css.composerHero)}>
+            {hero ? <HeroShell t={t} /> : null}
+            {hero
+              ? (
+                <div className={css.heroWorkspaceRow}>
+                  <WorkspaceChip t={t} label={workspaceLabel} />
+                </div>
+              )
+              : null}
             <div className={css.composerRoot}>
               <div className={css.composerCard}>
                 <div className={css.composerInput} />

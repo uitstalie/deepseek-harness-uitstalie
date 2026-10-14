@@ -1,0 +1,114 @@
+/* The blank Session's hero, measured from ui-conversation's
+   HeroShell.module.css: a centred column capped at the composer card's width,
+   the mark and headline on one wrapping line, and the workspace chip. */
+.root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-width: 0;
+  padding: 0 24px;
+}
+
+/* Cap matches the InputBar card. Glow may paint past the sides. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  max-width: var(--dsh-composer-card-max-width);
+  overflow: visible;
+}
+
+/* The fish and the title group are two wrap units on one centred line; squeezed,
+   the mark takes its own line above the group, with more air than the 10px gap. */
+.headline {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  row-gap: 12px;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 500;
+}
+
+/* Keeps hover detection on a stationary box while the mark moves within it. */
+.mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-primary);
+}
+
+.titleGroup {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  column-gap: 7px;
+  row-gap: 4px;
+  min-width: 0;
+}
+
+/* A product addition outside the referenced design: a mono superscript pill. */
+.previewBadge {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 7px 0;
+  border: 0.5px solid var(--dsw-alias-interactive-bg-hover);
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-state-business-tertiary);
+  color: var(--dsw-alias-label-primary-bluish);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  overflow: visible;
+}
+
+.workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(100%, 360px);
+  min-height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.folder {
+  flex: none;
+}
+
+.workspaceLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  color: var(--dsw-alias-label-caption);
+}

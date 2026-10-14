@@ -27,4 +27,6 @@ export const SAMPLE_CONVERSATION = {
   ] as readonly ConversationTab[],
   /** The view the ledger has selected. */
   activeTab: 'chat',
+  /** Whether the Session is still blank, which is the phase the hero belongs to. */
+  hero: true,
 }

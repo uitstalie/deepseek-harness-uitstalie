@@ -36,6 +36,11 @@
   margin: 2px;
 }
 
+/* Hero phase: the composer sits inside the scroller, centred there. */
+.scrollBodyHero {
+  justify-content: center;
+}
+
 .viewArea {
   display: flex;
   flex: 1 0 auto;
@@ -62,6 +67,26 @@
   display: flex;
   flex-direction: column;
   gap: var(--dsh-composer-stack-gap);
+}
+
+/* Hero: the centred box keeps the card at the docked card's width, and its foot
+   floats the stack a little above true centre. */
+.composerHero {
+  align-self: center;
+  gap: 8px;
+  padding-bottom: 32px;
+  width: min(calc(var(--dsh-composer-card-max-width) + 2 * var(--dsh-composer-side-clearance)), 100%);
+  z-index: 1;
+}
+
+.heroWorkspaceRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin-top: 4px;
+  /* The chip's folder glyph lines up closer to the card's inner controls below. */
+  padding: 0 16px 0 20px;
 }
 
 .composerRoot {

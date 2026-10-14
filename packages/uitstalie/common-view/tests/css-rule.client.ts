@@ -20,6 +20,9 @@ export const CONTENT_HEADER_CSS = 'packages/uitstalie/common-view/src/client/vie
 /** Workspace-relative path of the middle region's body stylesheet. */
 export const CONTENT_BODY_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/ContentBody.module.css'
 
+/** Workspace-relative path of the blank Session's hero stylesheet. */
+export const HERO_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/HeroShell.module.css'
+
 const sheets = new Map<string, string>()
 
 /**

@@ -126,7 +126,11 @@ export function AppScaffold({ t, sidebarWidth, topHeight }: AppScaffoldProps) {
             activeTab={activeTab}
             onSelectTab={setActiveTab}
           />
-          <ContentBody t={t} />
+          <ContentBody
+            t={t}
+            hero={SAMPLE_CONVERSATION.hero}
+            workspaceLabel={SAMPLE_GROUPS[0]?.title ?? ''}
+          />
         </div>
       </Column>
     </div>

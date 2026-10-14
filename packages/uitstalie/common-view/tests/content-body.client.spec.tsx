@@ -20,7 +20,7 @@ function t(key: CommonViewKey): string {
 
 describe('middle region body', () => {
   it('holds the view stand-in and the composer card with its placeholder', () => {
-    const { container } = render(<ContentBody t={t} />)
+    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" />)
     expect(screen.getByText('scaffold.content')).toBeDefined()
     expect(screen.getByText('scaffold.draft')).toBeDefined()
     // One scroll region, one composer seat: the shell's two structural boxes.
@@ -65,7 +65,7 @@ describe('middle region body', () => {
   })
 
   it('carries the attach control, the empty seats, and the send circle', () => {
-    const { container } = render(<ContentBody t={t} />)
+    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" />)
     expect(screen.getByRole('button', { name: 'scaffold.attach' })).toBeDefined()
     const send = screen.getByRole('button', { name: 'scaffold.send' })
     // The stand-in draft is empty, which is the state the shell disables it in.
@@ -76,6 +76,23 @@ describe('middle region body', () => {
       expect(found).toHaveLength(1)
       expect(found[0]?.textContent).toBe('')
     }
+  })
+
+  it('centres the scroller and stacks the hero above the card on a blank Session', () => {
+    render(<ContentBody t={t} hero workspaceLabel="deepseek-harness-uitstalie-dev" />)
+    expect(screen.getByText('scaffold.heroHeadline')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'scaffold.chooseWorkspace' })).toBeDefined()
+    // The hero phase centres the scroller and caps the stack at the card width.
+    expect(cssRule(CONTENT_BODY_CSS, '.scrollBodyHero')).toContain('justify-content: center')
+    const heroStack = cssRule(CONTENT_BODY_CSS, '.composerHero')
+    expect(heroStack).toContain('align-self: center')
+    expect(heroStack).toContain('gap: 8px')
+    expect(heroStack).toContain('padding-bottom: 32px')
+    expect(heroStack).toContain('width: min(calc(var(--dsh-composer-card-max-width) + 2 * var(--dsh-composer-side-clearance)), 100%)')
+    const heroRow = cssRule(CONTENT_BODY_CSS, '.heroWorkspaceRow')
+    expect(heroRow).toContain('gap: 2px')
+    expect(heroRow).toContain('margin-top: 4px')
+    expect(heroRow).toContain('padding: 0 16px 0 20px')
   })
 
   it('keeps the shell\'s control-row and button measurements', () => {
