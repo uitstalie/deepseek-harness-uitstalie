@@ -95,7 +95,16 @@
      - 空占位状态照原生：草稿为空 ⇒ 发送钮**禁用**（原生 `primaryDisabled` 含 `empty`）；文案取自 `input.commands` / `input.send`。
      - **一处保真说明**：发送箭头用的是原生 `InputBar` 内联的那条 path（同一枚产品字形）；共用件里的 `IconSendOutline*` 是另一枚字形，未采用。
      - 规格：`content-body.client.spec.tsx` 扩到 5 例（结构、滚动/座位、卡与输入行、控件行与按钮、空 seat），并把测试 helper 升级为"同一选择器可跨多条规则/选择器列表"匹配（`.a, .b { }` 这种分组写法也能断言）。
-   - **仍未复刻（本 view 内）**：视图内容（消息流/轨迹）、`WidthControls` 宽度手柄、`conversation.input.dock`（queue）、`EmptyHero`/`HeroShell`、`TodoPanel`、`ContextMeter`、以及控件行里那些 **seat 的真实占用者**（权限/plan/模型/activity/left/right）。
+   - **空会话 Hero（已完成 2026/10/12 第四片）**——照 `EmptyHero.tsx` + `HeroShell.module.css` + `ConversationRoot.module.css` 的 `.composerHero`/`.heroWorkspaceRow` 复刻：
+     - 原生 hero 是"空白会话"相位：`.root[data-phase='hero'] .scrollBody { justify-content: center; overflow-y: auto }`（我们用一个 `hero` 数据位切换 `.scrollBodyHero`）；
+     - `.root`（flex 居中、**`height: 100%`**、`padding: 0 24px`）→ `.stack`（列、**gap 12**、`width: 100%`、**`max-width: var(--dsh-composer-card-max-width)`**、`overflow: visible`）；
+     - `.headline`（flex **wrap**、`column-gap: 10`、`row-gap: 12`、居中、**26/32、weight 500**）＝ 品牌标记（原生是 `conversation.hero.brand.mark` seat，回落一枚**带 SMIL 游动形变**的 `HeroFish`；我们未复刻动画，用共用件 `FishLogo` 34px 静态呈现）+ `.titleGroup`（wrap、`column-gap: 7`、`row-gap: 4`）＝ 标题 + `.previewBadge`（**`padding: 1px 7px 0`、`999px` + `corner-shape: round`、0.5px `interactive-bg-hover` 描边、`state-business-tertiary` 底、`label-primary-bluish` 墨、等宽字体 12/18、weight 500**）；
+     - 工作区 chip（`WorkspaceChip`，原生同样导出）：**`gap: 4px`、`max-width: min(100%, 360px)`、`min-height: 28px`、`padding: 0 8px`、radius-sm、13/20、weight 500**，含文件夹 16 + 标签（ellipsis）+ chevron 12（caption 墨）；无标签时显示"选择工作区"占位；
+     - hero 相位下的 composer 栈（`.composerHero`）：**`align-self: center`、gap 8、`padding-bottom: 32px`**（把整叠略抬到真中心之上）、`width: min(calc(卡上限 + 2×侧距), 100%)`、`z-index: 1`；工作区行 `.heroWorkspaceRow`（flex、`gap: 2px`、**`margin-top: 4px`**、**`padding: 0 16px 0 20px`**）排在 hero 与输入卡之间（原生顺序：HeroShell → 工作区行 → dock seat → InputBar）；
+     - 文案照原生 `hero.headline`/`hero.preview`/`hero.chooseWorkspace`。
+     - 规格：新增 `hero-shell.client.spec.tsx` 3 例；`content-body.client.spec.tsx` 增 1 例（hero 相位结构 + `.composerHero`/`.heroWorkspaceRow` 度量）。
+   - **仍未复刻（hero 内）**：品牌标记的游动动画（SMIL 形变目标）、`conversation.hero.brand.mark` 子槽、hero 的落点/发光装饰。
+   - **仍未复刻（本 view 内）**：视图内容（消息流/轨迹）、`WidthControls` 宽度手柄、`conversation.input.dock`（queue）、`TodoPanel`、`ContextMeter`、以及控件行里那些 **seat 的真实占用者**（权限/plan/模型/activity/left/right）。
 5. **本包尚未提交的门禁收尾**：README 若再改需重录配对；`test:gui` 未在本轮跑过（本批未改原生 ✓）。
 
 **本地预览方式**（`--patch` 必须排在 web 自己的参数之前，否则会被转发给 web 的 commander 报 `unknown option` ✗）：
