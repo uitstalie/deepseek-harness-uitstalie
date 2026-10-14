@@ -8,9 +8,15 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { ChatTranscript, type TranscriptMessage } from '../src/client/views/scaffold/ChatTranscript.tsx'
 import { cssRule, CHAT_CSS } from './css-rule.client.ts'
+import type { CommonViewKey } from '../src/client/locales.ts'
 
 // This config does not enable vitest globals, so the DOM is torn down per case.
 afterEach(cleanup)
+
+/** Copy stub: assertions read keys instead of localized sentences. */
+function t(key: CommonViewKey): string {
+  return key
+}
 
 const MESSAGES: readonly TranscriptMessage[] = [
   { id: 'm-1', role: 'user', text: 'first question' },
@@ -20,7 +26,7 @@ const MESSAGES: readonly TranscriptMessage[] = [
 
 describe('chat transcript', () => {
   it('draws every row, marking responses as their own flow part', () => {
-    const { container } = render(<ChatTranscript messages={MESSAGES} />)
+    const { container } = render(<ChatTranscript t={t} messages={MESSAGES} />)
     for (const message of MESSAGES) expect(screen.getByText(message.text)).toBeDefined()
     const parts = [...container.querySelectorAll('[data-chat-group-part]')]
     expect(parts).toHaveLength(1)

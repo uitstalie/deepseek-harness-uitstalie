@@ -12,21 +12,27 @@
  * stand-in, and tool, process, and error rows are separate slices.
  * @module @deepseek-ai/dsh-client-common-view/ChatTranscript
  */
+import { ToolCard, type ToolCardModel } from './ToolCard.tsx'
 import { classes } from './classes.ts'
 import css from './ChatTranscript.module.css'
+import type { CommonViewKey } from '../../locales.ts'
 
 /** One transcript row. */
 export interface TranscriptMessage {
   /** Stable identity of the message. */
   id: string
-  /** Who spoke. */
-  role: 'user' | 'assistant'
-  /** The message text. */
+  /** Who spoke, or the call the Session made. */
+  role: 'user' | 'assistant' | 'tool'
+  /** The message text; a tool row carries its summary instead. */
   text: string
+  /** The call a `tool` row draws. */
+  tool?: ToolCardModel | undefined
 }
 
 /** Injected share of the transcript. */
 export interface ChatTranscriptInjected {
+  /** Localized copy of the `common-view` namespace. */
+  t: (key: CommonViewKey, params?: Record<string, string>) => string
   /** The rows to draw, oldest first. */
   messages: readonly TranscriptMessage[]
 }
@@ -51,10 +57,10 @@ function UserMessage({ message }: { message: TranscriptMessage }) {
 
 /**
  * Render the transcript.
- * @param props - the rows to draw.
+ * @param props - the copy namespace and the rows to draw.
  * @returns the scroll frame holding the centred column.
  */
-export function ChatTranscript({ messages }: ChatTranscriptProps) {
+export function ChatTranscript({ t, messages }: ChatTranscriptProps) {
   return (
     <div className={css.frame}>
       <div className={css.root}>
@@ -63,12 +69,14 @@ export function ChatTranscript({ messages }: ChatTranscriptProps) {
             {messages.map(message => (
               <div
                 key={message.id}
-                className={classes(css.flowItem, message.role === 'assistant' && css.flowItemResponse)}
-                data-chat-group-part={message.role === 'assistant' ? 'response' : undefined}
+                className={classes(css.flowItem, message.role !== 'user' && css.flowItemResponse)}
+                data-chat-group-part={message.role === 'user' ? undefined : 'response'}
               >
-                {message.role === 'user'
-                  ? <UserMessage message={message} />
-                  : <div className={css.assistantStandIn}>{message.text}</div>}
+                {message.role === 'user' ? <UserMessage message={message} /> : null}
+                {message.role === 'assistant' ? <div className={css.assistantStandIn}>{message.text}</div> : null}
+                {message.role === 'tool' && message.tool !== undefined
+                  ? <ToolCard t={t} tool={message.tool} />
+                  : null}
               </div>
             ))}
           </div>

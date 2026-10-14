@@ -1,0 +1,44 @@
+/* The generic tool card's own row measurements, taken from ui-tool's
+   ToolRow.module.css. The row chrome itself is the shared DisclosureRow, and
+   the output block is the shared CodeBlock. */
+.root {
+  display: flex;
+  flex-direction: column;
+}
+
+.leading {
+  flex-shrink: 0;
+}
+
+/* Stands in for the per-tool leading glyph, which is its own slice. */
+.leadingGlyph {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--dsw-radius-xs);
+  background: var(--dsw-alias-label-tertiary);
+}
+
+.title {
+  font-weight: 400;
+}
+
+/* The 2px dot between the title and the summary. */
+.sep {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  margin: 0 8px;
+  background: var(--dsw-alias-label-caption);
+}
+
+.summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+}

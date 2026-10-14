@@ -51,6 +51,8 @@ export const en = {
   'scaffold.contextMessages': 'Messages',
   'scaffold.numberThousand': '{value}K',
   'scaffold.numberMillion': '{value}M',
+  // Queue dock: the header's count, as the conversation view words it.
+  'scaffold.queueCount': '{n} queued messages',
   // Session-row action copy mirrors the shell's own keys: the tooltip takes the
   // short `actions.*` form, the accessible name the `menu.*` sentence.
   'scaffold.rowMenu': 'Session actions for {name}',
@@ -109,6 +111,7 @@ export const zh: typeof en = {
   'scaffold.contextMessages': '对话消息',
   'scaffold.numberThousand': '{value}K',
   'scaffold.numberMillion': '{value}M',
+  'scaffold.queueCount': '{n} 条排队消息',
   'scaffold.rowMenu': '会话“{name}”的操作',
   'scaffold.rowArchive': '归档会话',
   'scaffold.rowUnarchive': '取消归档',

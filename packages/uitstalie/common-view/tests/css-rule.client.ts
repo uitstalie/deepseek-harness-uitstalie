@@ -29,6 +29,12 @@ export const METER_CSS = 'packages/uitstalie/common-view/src/client/views/scaffo
 /** Workspace-relative path of the chat transcript's stylesheet. */
 export const CHAT_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/ChatTranscript.module.css'
 
+/** Workspace-relative path of the queue dock's stylesheet. */
+export const QUEUE_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/QueueDock.module.css'
+
+/** Workspace-relative path of the generic tool card's stylesheet. */
+export const TOOL_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/ToolCard.module.css'
+
 const sheets = new Map<string, string>()
 
 /**

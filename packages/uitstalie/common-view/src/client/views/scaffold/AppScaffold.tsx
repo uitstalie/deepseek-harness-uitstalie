@@ -142,6 +142,7 @@ export function AppScaffold({ t, sidebarWidth, topHeight }: AppScaffoldProps) {
             workspaceLabel={SAMPLE_GROUPS[0]?.title ?? ''}
             occupancy={SAMPLE_CONVERSATION.occupancy}
             messages={SAMPLE_CONVERSATION.messages}
+            queued={SAMPLE_CONVERSATION.queue}
           />
         </div>
       </Column>

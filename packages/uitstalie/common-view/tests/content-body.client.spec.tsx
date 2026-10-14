@@ -34,9 +34,12 @@ const MESSAGES: readonly TranscriptMessage[] = [
   { id: 'm-2', role: 'assistant', text: 'second' },
 ]
 
+/** Two messages waiting in the queue dock. */
+const QUEUED: readonly string[] = ['queued one', 'queued two']
+
 describe('middle region body', () => {
   it('holds the transcript and the composer card with its placeholder', () => {
-    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" occupancy={OCCUPANCY} messages={MESSAGES} />)
+    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" occupancy={OCCUPANCY} messages={MESSAGES} queued={QUEUED} />)
     // The active phase draws the transcript instead of the blank stand-in.
     expect(screen.getByText('first')).toBeDefined()
     expect(screen.getByText('second')).toBeDefined()
@@ -84,7 +87,7 @@ describe('middle region body', () => {
   })
 
   it('carries the attach control, the empty seats, and the send circle', () => {
-    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" occupancy={OCCUPANCY} messages={MESSAGES} />)
+    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" occupancy={OCCUPANCY} messages={MESSAGES} queued={QUEUED} />)
     expect(screen.getByRole('button', { name: 'scaffold.attach' })).toBeDefined()
     const send = screen.getByRole('button', { name: 'scaffold.send' })
     // The stand-in draft is empty, which is the state the shell disables it in.
@@ -98,7 +101,7 @@ describe('middle region body', () => {
   })
 
   it('centres the scroller and stacks the hero above the card on a blank Session', () => {
-    render(<ContentBody t={t} hero workspaceLabel="deepseek-harness-uitstalie-dev" occupancy={OCCUPANCY} messages={MESSAGES} />)
+    render(<ContentBody t={t} hero workspaceLabel="deepseek-harness-uitstalie-dev" occupancy={OCCUPANCY} messages={MESSAGES} queued={QUEUED} />)
     expect(screen.getByText('scaffold.heroHeadline')).toBeDefined()
     expect(screen.getByRole('button', { name: 'scaffold.chooseWorkspace' })).toBeDefined()
     // The hero phase centres the scroller and caps the stack at the card width.

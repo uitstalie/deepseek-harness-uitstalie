@@ -15,6 +15,7 @@ import { IconPlusOutlineMedium, Tooltip } from '@deepseek-ai/dsh-client-ui-primi
 import { ChatTranscript, type TranscriptMessage } from './ChatTranscript.tsx'
 import { ContextMeter, type ContextOccupancy } from './ContextMeter.tsx'
 import { HeroShell, WorkspaceChip } from './HeroShell.tsx'
+import { QueueDock } from './QueueDock.tsx'
 import { classes } from './classes.ts'
 import { TextView } from '../../units/TextView.tsx'
 import css from './ContentBody.module.css'
@@ -32,6 +33,8 @@ export interface ContentBodyInjected {
   occupancy: ContextOccupancy
   /** The transcript the active phase draws. */
   messages: readonly TranscriptMessage[]
+  /** The messages waiting in the queue dock. */
+  queued: readonly string[]
 }
 
 /** Props the body renders from. */
@@ -87,10 +90,10 @@ function ComposerControls({ t }: { t: ContentBodyInjected['t'] }) {
 
 /**
  * Render the middle region's body.
- * @param props - the copy namespace, the phase, the hero's workspace, the occupancy, and the rows.
+ * @param props - the copy namespace, the phase, the hero's workspace, the occupancy, the rows, and the queue.
  * @returns the scroll body with the composer seat at its end.
  */
-export function ContentBody({ t, hero, workspaceLabel, occupancy, messages }: ContentBodyProps) {
+export function ContentBody({ t, hero, workspaceLabel, occupancy, messages, queued }: ContentBodyProps) {
   return (
     <div className={css.body}>
       <div className={classes(css.scrollBody, hero && css.scrollBodyHero)}>
@@ -105,7 +108,7 @@ export function ContentBody({ t, hero, workspaceLabel, occupancy, messages }: Co
               </div>
             </div>
           )
-          : <ChatTranscript messages={messages} />}
+          : <ChatTranscript t={t} messages={messages} />}
         {/* The composer chain's seat stays stuck to the scroll body's floor; on a
             blank Session the stack carries the hero above the card. */}
         <div className={css.composerSeat}>
@@ -118,6 +121,8 @@ export function ContentBody({ t, hero, workspaceLabel, occupancy, messages }: Co
                 </div>
               )
               : null}
+            {/* Native order: the queue dock sits above the input bar, in the same stack. */}
+            {hero || queued.length === 0 ? null : <QueueDock t={t} queued={queued} />}
             <div className={css.composerRoot}>
               <div className={css.composerCard}>
                 <div className={css.composerInput} />
