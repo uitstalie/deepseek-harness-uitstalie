@@ -113,7 +113,14 @@
      - 三色 tint 照原生：系统提示词 `--dsw-static-neutral-bluish-400`、工具定义 **`rgb(167, 139, 250)` 字面值**（原生注释：设计平台没有紫色静态 token）、对话消息 `--dsw-static-blue-450`；数字格式走我们字典里的 `scaffold.numberThousand/Million`（值同共用 `number.*`）；
      - **依赖变更**：面板要 `createPortal`，而本包原先没声明 `react-dom` ⇒ 在 `devDependencies` 补 `react-dom` + `@types/react-dom`（版本对齐 `ui-conversation`），`pnpm install` 更新了 lockfile；`verify-package-dependencies` ✓ 77 包通过。
      - 规格：新增 `context-meter.client.spec.tsx` 3 例（读数与圆环、展开面板三行与三段、度量与 tint）；注意**面板是 portal 到 body 的**，断言要用 `document` 而不是 render container。
-   - **仍未复刻（本 view 内）**：视图内容（消息流/轨迹）、`WidthControls` 宽度手柄、`conversation.input.dock`（queue 排队区）、`TodoPanel`、`conversation.composer.dock` 的其他占用者，以及控件行里那些 seat 的真实占用者。hero 的品牌标记游动动画亦未复刻。
+   - **消息流：转写框架 + 用户消息（已完成 2026/10/12 第六片）**——照 `ui-chat` 的 `ChatView.module.css` + `MessageItem.module.css` 复刻：
+     - 框架：`.frame`（relative、列、`flex: 1 1 auto`、**`container-type: inline-size`**）→ `.root`（**`overflow-x: visible; overflow-y: clip`**）→ `.scroll`（`overflow-y: auto`、**`padding: 16px calc(var(--dsh-composer-side-clearance) + 16px)`**（两侧＝composer 侧距 +16 ⇒ 转写恒比输入卡窄 32px）、`container-type: inline-size`）→ `.column`（**`max-width: var(--dsh-chat-content-width)`、`width: 100%`、`margin: 0 auto`**、列）；
+     - 行距：相邻 flow item **`margin-top: var(--dsh-chat-flow-gap, 6px)`**；响应用 `.flowItemResponse { --dsh-chat-flow-gap: 12px }`（原生还把它之后的下一行也抬到 12px，我们用自己的相邻选择器表达同一效果）；
+     - 用户消息：`.userRow`（列、**`align-items: flex-end`**、gap 6）→ `.userStack`（列、右对齐、**gap 8**、**`max-width: min(calc(var(--dsh-chat-content-width, 748px) * 0.702), 82%)`**，即 figma 525px 占宽度轴的比例）→ `.bubble`（**`background: var(--dsw-specific-bubble)`、`border-radius: var(--dsw-radius-xl)`、`padding: 10px 16px`**、字号 `var(--dsh-content-font-size, 14px)`、行高 `calc(22px + var(--dsh-content-font-delta, 0px))`（单行 42px 泡泡）、label-primary、`white-space: pre-wrap` + `word-break: break-word`）；
+     - **相位切换**：原生空白会话不挂视图、非空才 `renderSlot('conversation.session')` ⇒ 我们按 `hero` 位切换（hero ⇒ 居中 hero 演示；active ⇒ 转写），并在顶部条加了**第三个演示按钮**（`DefaultButton` 派生 outline）在预览里来回切相位；规格加 1 例断言切换。
+     - **未复刻且需注意**：助手消息体是 `AssistantMarkdown` 这一整套 markdown 面（本片用纯文本代替，标为待办）；工具卡、过程行、错误行、`turnSpacer`、`toBottom`、`older` 等同样是后续切片。
+     - 规格：新增 `chat-transcript.client.spec.tsx` 2 例（行与 flow part、度量）。
+   - **仍未复刻（本 view 内）**：助手 markdown 面、工具/过程/错误行、`WidthControls` 宽度手柄、`conversation.input.dock`（queue 排队区）、`TodoPanel`、`conversation.composer.dock` 的其他占用者、控件行那些 seat 的真实占用者，以及 hero 的品牌标记游动动画。
 5. **本包尚未提交的门禁收尾**：README 若再改需重录配对；`test:gui` 未在本轮跑过（本批未改原生 ✓）。
 
 **本地预览方式**（`--patch` 必须排在 web 自己的参数之前，否则会被转发给 web 的 commander 报 `unknown option` ✗）：
