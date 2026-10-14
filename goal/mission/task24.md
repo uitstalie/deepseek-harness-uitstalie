@@ -88,7 +88,14 @@
      - 占位文案照原生 `placeholder.default`（"发消息或创建任务, / 调用指令, @ 文件或对话" / "Message or run a task, / commands, @ files or sessions"）。
      - 规格 `content-body.client.spec.tsx` 3 例（结构、滚动/座位度量、卡与输入行度量）。
    - **仍未复刻（头部内）**：`.headerBlank`/`.headerSessionless` 的空白态、`.crumbSubagent`（12/18）与 lineage 子槽、`conversation.session.header.actions|utilities|corner` 的真实占用者。
-   - **仍未复刻（本 view 内）**：视图内容（消息流/轨迹）、`WidthControls` 宽度手柄、`conversation.input.dock`（queue）、`EmptyHero`/`HeroShell`、`TodoPanel`、`ContextMeter`、以及 composer 的**控件行内容**（模型选择/权限/发送等）。
+   - **composer 控件行（已完成 2026/10/12 第三片）**——照 `InputBar.tsx:439-518` + `InputBar.module.css` 复刻：
+     - 行：`.row`（`padding: 2px 8px 6px`、gap 12、`justify-content: space-between`、`container-type: inline-size`）；左组 `.tools`（gap 12）→ **`+` 按钮**（`.add`：28×28、`border-radius: 999px` + **`corner-shape: round`**、`background: var(--dsw-specific-selector)`、hover `interactive-bg-hover-solid`、图标 `IconPlusOutlineMedium size={14}`、`aria-haspopup="listbox"`、Tooltip"添加文件或调用指令"`side="top" delayMs=500`）+ `.modes`（权限/plan 两个 seat，空）；
+     - 右组 `.trailing`（`flex: none`、**`margin-left: auto`**、gap 12）→ `.standardControls`（right/model seat，空）+ `.activity`（`flex: none`、`:empty` 隐藏）+ **发送圆钮**（`.primary`：**34×34**、`999px` + `corner-shape: round`、`background: var(--dsw-alias-button-info-fill)`、hover `button-info-hover`、**`transform: translateY(-2px)`**（抵掉行的 2px 下移）、`:disabled { opacity: .4 }`）；
+     - **`color: #fff` 是原生明确写死的**（原生注释：箭头在蓝色填充上两种主题都保持白色，用前景 token 会翻色，design 34:10465）⇒ 我们照抄并在代码里保留该理由，属"抄原生既定值"而非自造色值；
+     - 空占位状态照原生：草稿为空 ⇒ 发送钮**禁用**（原生 `primaryDisabled` 含 `empty`）；文案取自 `input.commands` / `input.send`。
+     - **一处保真说明**：发送箭头用的是原生 `InputBar` 内联的那条 path（同一枚产品字形）；共用件里的 `IconSendOutline*` 是另一枚字形，未采用。
+     - 规格：`content-body.client.spec.tsx` 扩到 5 例（结构、滚动/座位、卡与输入行、控件行与按钮、空 seat），并把测试 helper 升级为"同一选择器可跨多条规则/选择器列表"匹配（`.a, .b { }` 这种分组写法也能断言）。
+   - **仍未复刻（本 view 内）**：视图内容（消息流/轨迹）、`WidthControls` 宽度手柄、`conversation.input.dock`（queue）、`EmptyHero`/`HeroShell`、`TodoPanel`、`ContextMeter`、以及控件行里那些 **seat 的真实占用者**（权限/plan/模型/activity/left/right）。
 5. **本包尚未提交的门禁收尾**：README 若再改需重录配对；`test:gui` 未在本轮跑过（本批未改原生 ✓）。
 
 **本地预览方式**（`--patch` 必须排在 web 自己的参数之前，否则会被转发给 web 的 commander 报 `unknown option` ✗）：
