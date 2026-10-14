@@ -24,13 +24,18 @@
   gap: 8px;
 }
 
-/* Sidebar chrome: the brand row at the head, the settings row at the foot. */
+/* Sidebar chrome: the brand row at the head, the settings row at the foot.
+   Measurements mirror the shell's own rules (ui-sidebar `.logoRow`, ui-settings-general
+   `.trigger`): the brand row is 60px with an 8/4px pad and a 4px foot margin, and the
+   settings row is the 42px trigger box with a 10/8px pad and the md radius. */
 .brandRow {
   flex: none;
-  height: 44px;
+  height: 60px;
   box-sizing: border-box;
-  padding-inline: 4px;
-  gap: 0;
+  gap: 8px;
+  padding: 8px 0 8px 4px;
+  margin-bottom: 4px;
+  overflow: hidden;
 }
 
 .brandButton {
@@ -54,46 +59,71 @@
   justify-content: center;
 }
 
+/* Local-build name variant: 17px at the wordmark's 600 weight and 24px line box. */
 .brandName {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 24px;
 }
 
 .settingsRow {
   flex: none;
-  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
   box-sizing: border-box;
-  padding-inline: 8px;
-  border-radius: var(--dsw-radius-sm);
-  color: var(--dsw-alias-label-secondary);
+  padding: 0 10px 0 8px;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
 }
 
+.settingsRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The 28px rail-control box the shell puts the panel toggle in. */
 .glyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.glyph:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.settingsLabel {
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+/* The seat's glyph is not its own hover target: the trigger row carries the hover. */
+.settingsGlyph {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 16px;
   height: 16px;
-  padding: 0;
-  border: none;
-  border-radius: var(--dsw-radius-xs);
-  background: transparent;
-  color: var(--dsw-alias-label-tertiary);
-  cursor: pointer;
-}
-
-.glyph:hover {
-  color: var(--dsw-alias-label-primary);
-}
-
-.settingsLabel {
-  font-size: 14px;
-  line-height: 20px;
+  color: inherit;
 }
 
 .main {

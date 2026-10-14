@@ -14,7 +14,7 @@ import { useState, type CSSProperties } from 'react'
 import {
   FishLogo,
   IconPanelLeftOutlineRegular,
-  IconSlidersTwoOutlineRegular,
+  IconSettingsOutlineMedium,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Column } from '../../units/Column.tsx'
@@ -93,9 +93,10 @@ export function AppScaffold({ t, sidebarWidth, topHeight }: AppScaffoldProps) {
           </Row>
           <SidebarGroupList t={t} groups={SAMPLE_GROUPS} />
           <Spacer grow />
-          {/* Foot: the settings row, exactly where the shell puts its seat. */}
+          {/* Foot: the settings row, exactly where the shell puts its seat —
+              the trigger box with the shell's own settings glyph and label. */}
           <Row gap="8px" className={css.settingsRow}>
-            <span className={css.glyph}><IconSlidersTwoOutlineRegular /></span>
+            <span className={css.settingsGlyph}><IconSettingsOutlineMedium size={16} /></span>
             <span className={css.settingsLabel}>{t('scaffold.settings')}</span>
           </Row>
         </Column>
