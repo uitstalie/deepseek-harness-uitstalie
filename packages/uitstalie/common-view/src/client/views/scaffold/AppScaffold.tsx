@@ -130,6 +130,7 @@ export function AppScaffold({ t, sidebarWidth, topHeight }: AppScaffoldProps) {
             t={t}
             hero={SAMPLE_CONVERSATION.hero}
             workspaceLabel={SAMPLE_GROUPS[0]?.title ?? ''}
+            occupancy={SAMPLE_CONVERSATION.occupancy}
           />
         </div>
       </Column>

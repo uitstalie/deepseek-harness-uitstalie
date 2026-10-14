@@ -12,6 +12,7 @@
  * @module @deepseek-ai/dsh-client-common-view/ContentBody
  */
 import { IconPlusOutlineMedium, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { ContextMeter, type ContextOccupancy } from './ContextMeter.tsx'
 import { HeroShell, WorkspaceChip } from './HeroShell.tsx'
 import { classes } from './classes.ts'
 import { TextView } from '../../units/TextView.tsx'
@@ -26,6 +27,8 @@ export interface ContentBodyInjected {
   hero: boolean
   /** The workspace the hero's chip names. */
   workspaceLabel: string
+  /** What the composer's context meter reports. */
+  occupancy: ContextOccupancy
 }
 
 /** Props the body renders from. */
@@ -81,10 +84,10 @@ function ComposerControls({ t }: { t: ContentBodyInjected['t'] }) {
 
 /**
  * Render the middle region's body.
- * @param props - the copy namespace, the phase, and the workspace the hero names.
+ * @param props - the copy namespace, the phase, the hero's workspace, and the occupancy.
  * @returns the scroll body with the composer seat at its end.
  */
-export function ContentBody({ t, hero, workspaceLabel }: ContentBodyProps) {
+export function ContentBody({ t, hero, workspaceLabel, occupancy }: ContentBodyProps) {
   return (
     <div className={css.body}>
       <div className={classes(css.scrollBody, hero && css.scrollBodyHero)}>
@@ -111,6 +114,11 @@ export function ContentBody({ t, hero, workspaceLabel }: ContentBodyProps) {
                 <div className={css.composerInput} />
                 <span className={css.composerPlaceholder}>{t('scaffold.draft')}</span>
                 <ComposerControls t={t} />
+              </div>
+              {/* The dock seat: the shell's own slot for composer-bar occupants,
+                  carrying the context meter. */}
+              <div className={css.composerDock}>
+                <ContextMeter t={t} occupancy={occupancy} />
               </div>
             </div>
           </div>

@@ -148,6 +148,21 @@
   user-select: none;
 }
 
+/* The composer's dock: the seat below the card that carries the context meter. */
+.composerDock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  max-width: 100%;
+  padding-top: 4px;
+}
+
+/* The hero's own dock collapses while it holds nothing. */
+.composerHero .composerDock:empty {
+  display: none;
+}
+
 /* The control row: its 2px top pad is the 2px moved off the card's bottom pad. */
 .composerRow {
   display: flex;

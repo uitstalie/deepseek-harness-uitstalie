@@ -41,6 +41,15 @@ export const en = {
   'scaffold.heroHeadline': 'Into the Unknown',
   'scaffold.heroPreview': 'Preview',
   'scaffold.chooseWorkspace': 'Choose workspace',
+  // Context meter: the sentence keeps the reading's slot so either language
+  // orders it its own way, and the compact counts reuse the shared templates.
+  'scaffold.contextAria': '{percent} of context used',
+  'scaffold.contextUsed': 'of context used',
+  'scaffold.contextSystem': 'System prompt',
+  'scaffold.contextTools': 'Tool definitions',
+  'scaffold.contextMessages': 'Messages',
+  'scaffold.numberThousand': '{value}K',
+  'scaffold.numberMillion': '{value}M',
   // Session-row action copy mirrors the shell's own keys: the tooltip takes the
   // short `actions.*` form, the accessible name the `menu.*` sentence.
   'scaffold.rowMenu': 'Session actions for {name}',
@@ -91,6 +100,13 @@ export const zh: typeof en = {
   'scaffold.heroHeadline': '探索未至之境',
   'scaffold.heroPreview': '预览版',
   'scaffold.chooseWorkspace': '选择工作区',
+  'scaffold.contextAria': '上下文已用 {percent}',
+  'scaffold.contextUsed': '上下文已用',
+  'scaffold.contextSystem': '系统提示词',
+  'scaffold.contextTools': '工具定义',
+  'scaffold.contextMessages': '对话消息',
+  'scaffold.numberThousand': '{value}K',
+  'scaffold.numberMillion': '{value}M',
   'scaffold.rowMenu': '会话“{name}”的操作',
   'scaffold.rowArchive': '归档会话',
   'scaffold.rowUnarchive': '取消归档',

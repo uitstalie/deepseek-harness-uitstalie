@@ -23,6 +23,9 @@ export const CONTENT_BODY_CSS = 'packages/uitstalie/common-view/src/client/views
 /** Workspace-relative path of the blank Session's hero stylesheet. */
 export const HERO_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/HeroShell.module.css'
 
+/** Workspace-relative path of the context meter's stylesheet. */
+export const METER_CSS = 'packages/uitstalie/common-view/src/client/views/scaffold/ContextMeter.module.css'
+
 const sheets = new Map<string, string>()
 
 /**

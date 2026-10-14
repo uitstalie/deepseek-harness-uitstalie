@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { ContentBody } from '../src/client/views/scaffold/ContentBody.tsx'
 import { cssRule, CONTENT_BODY_CSS } from './css-rule.client.ts'
+import type { ContextOccupancy } from '../src/client/views/scaffold/ContextMeter.tsx'
 import type { CommonViewKey } from '../src/client/locales.ts'
 
 // This config does not enable vitest globals, so the DOM is torn down per case.
@@ -18,9 +19,17 @@ function t(key: CommonViewKey): string {
   return key
 }
 
+/** The occupancy the body's meter renders from. */
+const OCCUPANCY: ContextOccupancy = {
+  percent: 45,
+  usedTokens: 132_000,
+  contextWindow: 256_000,
+  breakdown: { systemTokens: 9_400, toolsTokens: 38_600, messageTokens: 84_000 },
+}
+
 describe('middle region body', () => {
   it('holds the view stand-in and the composer card with its placeholder', () => {
-    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" />)
+    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" occupancy={OCCUPANCY} />)
     expect(screen.getByText('scaffold.content')).toBeDefined()
     expect(screen.getByText('scaffold.draft')).toBeDefined()
     // One scroll region, one composer seat: the shell's two structural boxes.
@@ -65,7 +74,7 @@ describe('middle region body', () => {
   })
 
   it('carries the attach control, the empty seats, and the send circle', () => {
-    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" />)
+    const { container } = render(<ContentBody t={t} hero={false} workspaceLabel="ws" occupancy={OCCUPANCY} />)
     expect(screen.getByRole('button', { name: 'scaffold.attach' })).toBeDefined()
     const send = screen.getByRole('button', { name: 'scaffold.send' })
     // The stand-in draft is empty, which is the state the shell disables it in.
@@ -79,7 +88,7 @@ describe('middle region body', () => {
   })
 
   it('centres the scroller and stacks the hero above the card on a blank Session', () => {
-    render(<ContentBody t={t} hero workspaceLabel="deepseek-harness-uitstalie-dev" />)
+    render(<ContentBody t={t} hero workspaceLabel="deepseek-harness-uitstalie-dev" occupancy={OCCUPANCY} />)
     expect(screen.getByText('scaffold.heroHeadline')).toBeDefined()
     expect(screen.getByRole('button', { name: 'scaffold.chooseWorkspace' })).toBeDefined()
     // The hero phase centres the scroller and caps the stack at the card width.

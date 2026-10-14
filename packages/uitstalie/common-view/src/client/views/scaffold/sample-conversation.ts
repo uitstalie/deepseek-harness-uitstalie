@@ -29,4 +29,11 @@ export const SAMPLE_CONVERSATION = {
   activeTab: 'chat',
   /** Whether the Session is still blank, which is the phase the hero belongs to. */
   hero: true,
+  /** Context occupancy the composer's meter reports. */
+  occupancy: {
+    percent: 45,
+    usedTokens: 132_000,
+    contextWindow: 256_000,
+    breakdown: { systemTokens: 9_400, toolsTokens: 38_600, messageTokens: 84_000 },
+  },
 }
