@@ -58,7 +58,16 @@
    - **有意未复刻**：seat 同级的 `ConnectionIndicator` 与 `DesktopUpdateIndicator`（运行时状态，不属布局）；`.triggerRow` 的 ±2px 外扩属原生外壳自身内边距体制的细节。
 2. **脚手架开关的持久通道**：浏览器半边**收不到组合里的行 config**（启动载荷只带模块说明符 ✗，已实测），因此 `scaffold`/`sessionRowAction` 这类开关必须改走**插件 settings（`configForms`）** ✓ —— 做完才能把"临时默认打开"彻底移除 ✓；
 3. **区域子槽通道**：外来插件无法给 `shell.overlay` 合并 children 声明（`SlotMap` 形状归 ui-layout ✗）⇒ 脚手架的三个区域要么等上游给 children 位（原生最小插入），要么设计"自有父槽 + 子槽"注册通道 ✓；
-4. **继续逐 view 复刻**：中间信息区（对话流）、会话行的 hover 动作条（⋯ + 归档 + 图钉，正好接上 [views/01](../views/01-sidebar-session-row-action.md) 的研究与按钮能力）✓；
+4. **继续逐 view 复刻**：
+   - **会话行 hover 动作条（已完成 2026/10/12）**——照原生 `Rows.tsx:680-706` 复刻：动作条内容为 **`⋯` 菜单触发器 + `archive`(order 100) + `pin`(order 200)**，每个都是 `.iconButton`（16×16、`radius-xs`、tertiary→primary hover）；其中
+     - `⋯` 是**真菜单**（共用件 `Menu`，`portal` + `closeOnPointerLeave`），四项按原生顺序 **pin(100) / rename(200) / fork(300) / archive(400)**，用 `MenuItemButton`（图标 + 文案）；
+     - `archive` 的图标/文案随状态翻转（`IconArchiveOutlineRegular` ↔ `IconUnarchiveOutlineRegular`），`pin` 同理（`IconPinOutlineRegular` ↔ `IconPinFillRegular size={14}`）；
+     - **归档行不提供 pin 按钮**（原生：pin 与 archive 在 Host 上互斥，`PinSessionRowButton` 在归档行返回 null）；
+     - `archive`/`pin` 都带 `Tooltip`（`side="bottom" align="end" delayMs={500}`），文案分两族：tooltip 用短式（`actions.archive|unarchive|pin|unpin` → 归档会话/取消归档/置顶会话/取消置顶），可访问名用句式（`menu.*Session`）；`⋯` 的 aria 是 `actions.session.aria`（会话"{name}"的操作）；
+     - 动作条自身 `display:none`、hover 或**菜单打开**时显示（原生 `.menuOpen` 同款），并吞掉点击避免触发行激活；
+     - 字典新增 9 个键、值照原生 `ui-workspace` 的 `actions.*`/`menu.*`；CSS 只加一条 `.actionsOpen`（原有 `.actions`/`.glyph` 已与原生 `.rowActions`/`.iconButton` 逐条一致）；
+     - 规格：`scaffold.client.spec.tsx` 加 2 例（按状态计数的动作条、菜单四行顺序），`sidebar-group-list.client.spec.tsx` 的旧标签断言同步更新。
+   - **仍未复刻**：工作区（project）行的 `⋯` 菜单（原生是 `items={[rename, delete]}` 形态）+ 行尾"新会话"按钮 + 我们 task14 的 seat 占位；以及**中间信息区（对话流）**。
 5. **本包尚未提交的门禁收尾**：README 若再改需重录配对；`test:gui` 未在本轮跑过（本批未改原生 ✓）。
 
 **本地预览方式**（`--patch` 必须排在 web 自己的参数之前，否则会被转发给 web 的 commander 报 `unknown option` ✗）：
