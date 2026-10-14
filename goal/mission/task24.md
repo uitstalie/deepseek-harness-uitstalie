@@ -71,7 +71,15 @@
    - **工作区行 HoverCard（已完成 2026/10/12）**——照原生 `Rows.tsx:162-176,331-344` 复刻：共用件 `HoverCard` 包住整行，`openDelayMs={800}`、`disabled={menuOpen}`（菜单打开时不弹卡）、`copyText=workspace.cwd` + 复制/已复制文案；卡内容三行 `.hoverContent`（`column` / `gap 8px`）：标题 14/20、目录 12/16 `word-break: break-all`、创建时间 12/16（`创建于 {date} {HH:mm}`，日期走字典 `scaffold.dateYmd`，时钟本地时区补零）。为此把菜单开合状态从动作条**上提到行组件**（`WorkspaceRow`），与原生的 `disabled={menuOpen}` 同构；样例数据补上 `cwd` 与 `createdAt`（工作区即数据）。规格加 1 例：假定时器 → `pointerEnter` → 800ms 后卡片出现且带目录与年份。
    - **有一处刻意偏离原生**：卡内次要文字原生写死 `#CFD3D6`（深色卡上的次级灰），仓库无对应 token，本分支规则禁字面色 ⇒ 我们用「继承卡片白墨 + `opacity: .78`」表达同一层次。若要逐像素一致，需上游给 hover card 补一个次级墨色 token。
    - **仍未复刻（本 view 内）**：工作区标题的**双击重命名**输入态（原生 `.renameInput`）、行拖拽（`draggable` + 插入标记）。
-   - **仍未复刻（下一个 view）**：**中间信息区（对话流）**。注意上游本轮对 `ui-chat` 改动最多（194 次文件触碰），复刻前要先读当轮源码，别照 rebase 前的印象。
+   - **中间信息区：头部结构（已完成 2026/10/12 第一片）**——照 `ui-conversation` 的 `ConversationRoot.module.css` + `ConversationSession.tsx`（`conversation.session.header` 占用者）复刻出该 view 的头：
+     - `.header`：`grid-template-columns: auto minmax(0,1fr)`、**`min-height: 76px`**、`padding: 10px 28px 0 20px`、`border-bottom: 0.5px solid var(--dsw-alias-border-l3)`（76px 是与侧栏 tab 条 + 头部各 38px 对齐的结果，见原生注释）；
+     - `.headerLeading`（grid 列 1，空占位）+ `.titleRow`（列 2、**`min-height: 30px`**、`padding-inline-start: max(0px, calc(var(--dsh-frame-leading-clearance, 0px) - 20px))`）；
+     - `.crumbs`（gap 4px、nowrap、overflow hidden）→ `.crumbSeg`（gap 4px）+ `.crumbSep`"/"（caption 色、14/20）+ `.crumb`（**`padding: 4px 8px`、`max-width: 220px`、radius-md、tertiary 墨、ellipsis**）；**祖先面包屑是 `button`（hover 有填充），当前项是纯文本 `.crumbCurrent`（`font-weight: 500` + label-primary）** —— 原生特意不用 disabled button（darwin 拖拽区会把它整块减掉）；
+     - `.headerActions` / `.headerUtilities`（`margin-left: 20px` + `:empty` 隐藏）/ `.headerCorner`（`margin-right: -16px` + `:empty` 隐藏）= 空 seat 占位，与原生同构；
+     - `.tabs`（`grid-column: 1/-1`、gap **36px**、`margin-top: 10px`、`padding-left: 8px`）+ `.tab`（13/16、weight 500、tertiary）+ **`::after` 2px 指示条**（`bottom: -1px`）+ `.tabActive`/`.tabActive::after` 用 `state-business-primary`；**原生只在 ≥2 个视图时才显示 tab 条**（我们也照此）；`role="tablist"`/`role="tab"`/`aria-selected` 齐全；
+     - 数据在 `sample-conversation.ts`（面包屑 = 会话血缘，当前项最后；两个 tab = 原生 `ui-chat` 的"对话"/`ui-trajectory` 的"轨迹"，字典键 `scaffold.tabChat`/`scaffold.tabTrajectory`）；选中态由 `AppScaffold` 持有。
+   - **顺带做的整理**：`classes()` 提到 `views/scaffold/classes.ts`（两个复刻件共用）；规格里的"读 CSS 断言数字"helper 提到 `tests/css-rule.client.ts`（**必须带 `.client.` 后缀**，否则 `tsconfig.client.json` 的 include 模式收不到它，`tsc -b` 会报 TS6307 —— 已踩过）。
+   - **仍未复刻（本 view 内）**：`.headerBlank`/`.headerSessionless` 的空白态、`.crumbSubagent`（12/18）与 lineage 子槽、`conversation.session.header.actions|utilities|corner` 的真实占用者、以及**主体部分**（消息流 viewArea、滚动区、composer/InputBar、queue、EmptyHero、TodoPanel、ContextMeter、宽度控制）。
 5. **本包尚未提交的门禁收尾**：README 若再改需重录配对；`test:gui` 未在本轮跑过（本批未改原生 ✓）。
 
 **本地预览方式**（`--patch` 必须排在 web 自己的参数之前，否则会被转发给 web 的 commander 报 `unknown option` ✗）：
