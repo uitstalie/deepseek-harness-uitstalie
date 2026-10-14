@@ -10,6 +10,7 @@
 - mission_id 对应 goal/mission/ 下的任务单文档，文件名即 mission_id，内容记录需求（requirement）与本次修改范围；修改原生文件前必须先与用户约定并建立任务单。每个任务先判断是新 mission 还是已有 mission 的变更；两种情况都必须创建新的任务单文档，无论变更范围和变化大小——变更已有 mission 时，新文档使用新的 mission_id，并注明变更自哪个原任务单。
 - 删除原生代码先逻辑删除（配置、cordis.yml 的 `disabled`、插件覆盖、标记注释包裹的提前返回块）；必须物理删除时删最小连续块，并在任务单中登记删除点与理由。
 - 分支自有文件与原生文件的修改分开提交；原生修改的提交保持少而集中。
+- **Windows 上不要跑快照通道（用户明确要求，2026/10/12）**：本机不跑 `pnpm run test:snapshot`、`test:snapshot:refresh`、`test:snapshot:record`——本机必然红（`headless` 通道不回传 `cwdAliases`，`{{cwd}}` 在 Windows 上归一化不上，**未经我们改动的场景同样红**），且无 key 的 `refresh` 会把 fixture 写成未归一化的真实路径（实测 221 个文件，已回退）。该信号归 CI（macOS/Linux）。确需更新快照侧车时，手工同步（用生成物里的权威文本），再用 `-t <场景名>` 过滤复跑证明与实时注册一致即可，不追求本机全绿。
 - 每次 rebase 到 master 后执行 `git grep -n "uitstalie-"` 盘点全部标记，逐处确认适配结果；即使出现破坏性 rebase，也凭标记与任务单快速梳理和恢复。
 - 代码风格偏好（用户明确要求，对分支自有代码强制）：函数最小化且可组合——小函数、可复用函数、函数的组合优先于大函数，让 debug 与组合更简单、逻辑更清楚；数据与逻辑分离——数据形状做成有名字的纯数据接口（data class），数据之间用组合方式构造，行为函数只读写这些数据而不把形状匿名内联。
 - **UI 一律优先共用模板（用户明确要求，2026/09/30，对分支自有 client 代码强制）**：有共用件就用共用件——`ui-primitives` 的 `Menu` / `Modal` / `Button` / `Tooltip` / `HoverCard` 等组件承担摆放、portal、材质、键盘与焦点，`ui-theme` 的 `--dsw-*` token 承担颜色与描边；**不手搓**定位、层级、材质或自造色值。理由与背景见 [theme-overlay.md](theme-overlay.md)：用户计划做 theme 插件与 overlay 插件（对特定组件或主题 config 做 overlay），只有组件是共用件、样式走 token，overlay 才有稳定的落点。
