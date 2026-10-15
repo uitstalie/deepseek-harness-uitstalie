@@ -35,11 +35,13 @@ beforeEach(() => {
   lastFetch = undefined
   sseByUrl = []
   vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input)
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    // 断言读的是 JSON 请求体；其它 BodyInit 形态不参与断言。
+    const rawBody = init?.body
     lastFetch = {
       url,
       headers: Object.fromEntries(new Headers(init?.headers).entries()),
-      body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+      body: JSON.parse(typeof rawBody === 'string' ? rawBody : '{}') as Record<string, unknown>,
     }
     const hit = sseByUrl.find(([prefix]) => url.includes(prefix))
     if (!hit) return new Response('no canned response for ' + url, { status: 500 })
@@ -56,7 +58,7 @@ async function mount(options?: { withCatalog?: boolean }): Promise<Context> {
   const ctx = new Context()
   // 凭据 stub：credentials seam 是本插件的唯一凭据路径（不读 process.env）
   ctx.root.provide('credentials', {
-    resolve: (ref: string) => Promise.resolve({ value: `key-for-${String(ref)}`, source: 'test' }),
+    resolve: (ref: string) => Promise.resolve({ value: `key-for-${ref}`, source: 'test' }),
   })
   await ctx.plugin(LlmRuntime)
   if (options?.withCatalog) {
@@ -361,6 +363,8 @@ test('adapter routes are removed with the plugin fiber', async () => {
   const ctx = await mount()
   // listProviders 返回 LlmProviderInfo[]（{id, name}），按 id 断言
   expect(ctx.root.llm.listProviders().map(provider => provider.id)).toContain('ds-plus')
+  // registry.delete 返回 thenable：必须等它摘完，否则下面的断言会看到旧注册。
+  // oxlint-disable-next-line typescript/await-thenable -- 该规则未识别 registry.delete 的 thenable 返回
   await ctx.root.registry.delete(llmPlus)
   expect(ctx.root.llm.listProviders().map(provider => provider.id)).not.toContain('ds-plus')
 })
@@ -379,6 +383,8 @@ test('every route registers a configurable-provider directory entry, removed wit
   expect(entries.filter(entry => entry.settingsNs === 'llm-plus').map(entry => entry.provider).sort())
     .toEqual(['claude-plus', 'ds-plus', 'gemini-plus', 'oa-plus'])
 
+  // registry.delete 返回 thenable：必须等它摘完，否则下面的断言会看到旧注册。
+  // oxlint-disable-next-line typescript/await-thenable -- 该规则未识别 registry.delete 的 thenable 返回
   await ctx.root.registry.delete(llmPlus)
   expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.settingsNs === 'llm-plus')).toBe(false)
 })
@@ -490,12 +496,12 @@ test('tool messages map to each protocol wire form', async () => {
     const route = resolveRoutes({ p: { protocol, baseURL } })[0]!
     const options = { provider: 'p', model: 'm', messages: history } as never
     const request = await (protocol === 'openai-completions'
-      ? (await import('../src/protocols/openai-completions.ts')).openAiCompletions.buildRequest(route as never, options, assets)
+      ? (await import('../src/protocols/openai-completions.ts')).openAiCompletions.buildRequest(route, options, assets)
       : protocol === 'openai-responses'
-        ? (await import('../src/protocols/openai-responses.ts')).openAiResponses.buildRequest(route as never, options, assets)
+        ? (await import('../src/protocols/openai-responses.ts')).openAiResponses.buildRequest(route, options, assets)
         : protocol === 'anthropic-messages'
-          ? (await import('../src/protocols/anthropic-messages.ts')).anthropicMessages.buildRequest(route as never, options, assets)
-          : (await import('../src/protocols/gemini.ts')).gemini.buildRequest(route as never, options, assets))
+          ? (await import('../src/protocols/anthropic-messages.ts')).anthropicMessages.buildRequest(route, options, assets)
+          : (await import('../src/protocols/gemini.ts')).gemini.buildRequest(route, options, assets))
     return request.body
   }
 
@@ -524,11 +530,11 @@ test('anthropic maps numeric reasoning effort to clamped budget_tokens', async (
   // 直接调协议实现（同包内部面）：数值 effort → budget_tokens，clamp 进预算范围
   const { anthropicMessages } = await import('../src/protocols/anthropic-messages.ts')
   const route = resolveRoutes({ c: { protocol: 'anthropic-messages', baseURL: 'http://x' } })[0]!
-  const build = (reasoningEffort: string) => anthropicMessages.buildRequest(route as never, {
+  const build = (reasoningEffort: string) => anthropicMessages.buildRequest(route, {
     provider: 'c',
     model: 'm',
     messages: [userMessage('hi')],
-    reasoningEffort: reasoningEffort as never,
+    reasoningEffort,
   } as never, { image: () => Promise.resolve(undefined), reasoning: { budget: { min: 1024, max: 8192 } } })
   expect((await build('100000')).body.thinking).toEqual({ type: 'enabled', budget_tokens: 8192 })
   expect((await build('512')).body.thinking).toEqual({ type: 'enabled', budget_tokens: 1024 })
@@ -555,7 +561,7 @@ test('anthropic serializer warns on replay degrade instead of forging history', 
   const route = resolveRoutes({ 'claude-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local' } })[0]!
   const reasons: string[] = []
   const misaligned = { kind: 'llm-plus', version: 1, protocol: 'anthropic-messages', response: {}, blocks: [null] }
-  await anthropicMessages.buildRequest(route as never, {
+  await anthropicMessages.buildRequest(route, {
     provider: 'claude-plus',
     model: 'claude-sonnet-5',
     messages: [
@@ -566,7 +572,7 @@ test('anthropic serializer warns on replay degrade instead of forging history', 
       }),
       userMessage('继续'),
     ],
-  } as never, {
+  }, {
     image: () => Promise.resolve(undefined),
     onReplayDegrade: reason => reasons.push(reason),
   })

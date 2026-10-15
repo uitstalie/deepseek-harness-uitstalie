@@ -97,7 +97,10 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
     signal.throwIfAborted()
     const onAbort = (): void => {
       clearTimeout(timeout)
-      reject(signal.reason)
+      // AbortSignal.reason 是 any：非 Error 的中止理由要包成 Error 再拒，
+      // 上层才能按 Error 分支处理并保留栈。
+      const reason: unknown = signal.reason
+      reject(reason instanceof Error ? reason : new Error('kimi-coding: the OAuth flow was aborted'))
     }
     const timeout = setTimeout(() => {
       signal.removeEventListener('abort', onAbort)
