@@ -5,6 +5,7 @@
  * that answer in the same dialog.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { RulesButton } from '../src/client/RulesButton.tsx'
@@ -13,6 +14,22 @@ import type { RulesButtonProps } from '../src/client/RulesButton.tsx'
 // This config does not enable vitest globals, so the DOM is torn down per case
 // instead of by the testing library's implicit global hook.
 afterEach(cleanup)
+
+const CSS = 'packages/uitstalie/ui-tool-dsh-store/src/client/RulesButton.module.css'
+
+/**
+ * Declarations of every rule naming a selector, whitespace-normalized.
+ * @param selector - exact selector of the rule.
+ * @returns each matching rule's declarations, space-separated.
+ */
+function cssRule(selector: string): string {
+  const sheet = readFileSync(CSS, 'utf8')
+  const item = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  const pattern = new RegExp(`(?:^|,)\\s*${item}\\s*(?:,[^{}]*)?\\{([^}]*)\\}`, 'gmu')
+  const bodies = [...sheet.matchAll(pattern)].map(match => (match[1] ?? '').replace(/\s+/gu, ' ').trim())
+  if (bodies.length === 0) throw new Error(`${CSS}: no ${selector} rule`)
+  return bodies.join(' ')
+}
 
 /** Copy stub: tests assert keys and parameters instead of localized sentences. */
 function t(key: string, params?: Record<string, string>): string {
@@ -103,5 +120,32 @@ describe('RulesButton', () => {
     // button); the footer one is the one with visible copy.
     fireEvent.click(screen.getByText('close'))
     await waitFor(() => { expect(screen.queryByText('Document public APIs.')).toBeNull() })
+  })
+
+  it('reads rule text through the shared code block, notices as plain copy', async () => {
+    const { unmount } = render(<RulesButton {...props()} />)
+    fireEvent.click(trigger())
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'rules/api.md' }))
+    await waitFor(() => { expect(document.querySelector('pre')).not.toBeNull() })
+    unmount()
+
+    // The empty listing answers as copy, not as a code block.
+    render(<RulesButton {...props({ loadRules: vi.fn(async () => listing([])) })} />)
+    fireEvent.click(trigger())
+    await waitFor(() => { expect(screen.getByText('empty emptyHint')).toBeDefined() })
+    expect(document.querySelector('pre')).toBeNull()
+  })
+
+  it('takes the row icon-button box and the caption mark step', () => {
+    expect(cssRule('.trigger.trigger')).toContain('width: 16px')
+    expect(cssRule('.trigger.trigger')).toContain('height: 16px')
+    expect(cssRule('.trigger.trigger')).toContain('border-radius: var(--dsw-radius-xs)')
+    expect(cssRule('.trigger.trigger')).toContain('color: var(--dsw-alias-label-tertiary)')
+    expect(cssRule('.trigger.trigger:hover')).toContain('color: var(--dsw-alias-label-primary)')
+    expect(cssRule('.mark')).toContain('font: var(--dsw-font-xxs-12)')
+    expect(cssRule('.mark')).toContain('font-weight: 500')
+    // The dialog's copy keeps its own tokens; the rule body is not styled here.
+    expect(cssRule('.noticeAlert')).toContain('color: var(--dsw-alias-state-error-primary)')
+    expect(readFileSync(CSS, 'utf8')).not.toContain('.ruleText')
   })
 })
