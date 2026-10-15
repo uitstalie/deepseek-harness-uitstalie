@@ -21,14 +21,6 @@
   color: var(--dsw-alias-label-primary);
 }
 
-/* The single capital that stands in for an icon, at the caption step. */
-.mark {
-  font: var(--dsw-font-xxs-12);
-  font-weight: 500;
-  line-height: 1;
-  color: inherit;
-}
-
 /* Dialog copy that is not rule text: the empty and pending notices, and the
    failures the reader must notice. Rule text itself renders through the shared
    CodeBlock, which owns its surface and scrolling. */

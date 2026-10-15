@@ -14,6 +14,7 @@ import { useRef, useState } from 'react'
 import {
   Button,
   CodeBlock,
+  IconChecklistOutlineRegular,
   Menu,
   Modal,
   Tooltip,
@@ -112,7 +113,7 @@ export function RulesButton({ workspaceId, label, t, loadRules, loadRule }: Rule
               size="sm"
               className={css.trigger}
               aria-label={t('buttonAria', { name: label })}
-              icon={<span className={css.mark} aria-hidden="true">{t('glyph')}</span>}
+              icon={<IconChecklistOutlineRegular size={14} />}
               onClick={(event) => { event.stopPropagation(); void openMenu() }}
             />
           </Tooltip>

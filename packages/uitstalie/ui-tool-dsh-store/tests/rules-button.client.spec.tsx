@@ -68,11 +68,11 @@ function trigger(): HTMLElement {
 }
 
 describe('RulesButton', () => {
-  it('renders a decorative mark named after the workspace it belongs to', () => {
+  it('renders the shared checklist icon named after the workspace it belongs to', () => {
     render(<RulesButton {...props()} />)
-    // The copy stub returns keys, so the mark reads as its own key here.
-    expect(trigger().textContent).toBe('glyph')
-    expect(trigger().querySelector('[aria-hidden="true"]')?.textContent).toBe('glyph')
+    // The mark is the shared glyph, not a letter: one decorative svg inside the trigger.
+    expect(trigger().querySelector('svg')).not.toBeNull()
+    expect(trigger().textContent).toBe('')
   })
 
   it('lists the workspace rules in the shared menu and reads one in the dialog', async () => {
@@ -142,10 +142,10 @@ describe('RulesButton', () => {
     expect(cssRule('.trigger.trigger')).toContain('border-radius: var(--dsw-radius-xs)')
     expect(cssRule('.trigger.trigger')).toContain('color: var(--dsw-alias-label-tertiary)')
     expect(cssRule('.trigger.trigger:hover')).toContain('color: var(--dsw-alias-label-primary)')
-    expect(cssRule('.mark')).toContain('font: var(--dsw-font-xxs-12)')
-    expect(cssRule('.mark')).toContain('font-weight: 500')
     // The dialog's copy keeps its own tokens; the rule body is not styled here.
     expect(cssRule('.noticeAlert')).toContain('color: var(--dsw-alias-state-error-primary)')
     expect(readFileSync(CSS, 'utf8')).not.toContain('.ruleText')
+    // The letter mark retired with the icon: no glyph copy, no mark rule.
+    expect(readFileSync(CSS, 'utf8')).not.toContain('.mark')
   })
 })
