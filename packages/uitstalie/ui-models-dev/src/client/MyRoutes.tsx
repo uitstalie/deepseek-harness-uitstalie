@@ -5,6 +5,7 @@
  * @module @deepseek-ai/dsh-client-ui-models-dev/MyRoutes
  */
 
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { OAuthFlowId, ProtocolName, RouteConfig } from '@deepseek-ai/dsh-llm-plus'
 import { JsonField, TextField } from './fields.tsx'
 import { type ModelsDevKey } from './locales.ts'
@@ -101,14 +102,14 @@ export function MyRoutes(props: MyRoutesProps) {
                 {isEditing
                   ? (
                     <>
-                      <button className={styles.submitButton} onClick={() => { props.onSaveEdit() }}>{t('routeSave')}</button>
-                      <button className={styles.submitButton} onClick={() => { props.onCancelEdit() }}>{t('oauthCancel')}</button>
+                      <Button variant="outline" onClick={() => { props.onSaveEdit() }}>{t('routeSave')}</Button>
+                      <Button variant="outline" onClick={() => { props.onCancelEdit() }}>{t('oauthCancel')}</Button>
                     </>
                   )
                   : (
                     <>
-                      <button className={styles.submitButton} onClick={() => { props.onStartEdit(routeId) }}>{t('routeEdit')}</button>
-                      <button className={styles.submitButton} onClick={() => { props.onDelete(routeId) }}>{t('routeDelete')}</button>
+                      <Button variant="outline" onClick={() => { props.onStartEdit(routeId) }}>{t('routeEdit')}</Button>
+                      <Button variant="outline" onClick={() => { props.onDelete(routeId) }}>{t('routeDelete')}</Button>
                     </>
                   )}
               </span>
