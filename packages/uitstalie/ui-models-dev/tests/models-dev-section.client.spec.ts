@@ -50,7 +50,7 @@ describe('models.dev section house pattern', () => {
   it('uses radius, type, and state tokens instead of literals', () => {
     expect(cssRule('.rowCard')).toContain('border-radius: var(--dsw-radius-md)')
     expect(cssRule('.oauthPanel')).toContain('border-radius: var(--dsw-radius-md)')
-    for (const selector of ['.input', '.textarea', '.modelList', '.submitButton']) {
+    for (const selector of ['.input', '.textarea', '.modelList']) {
       expect(cssRule(selector)).toContain('border-radius: var(--dsw-radius-sm)')
     }
     expect(cssRule('.rowMeta')).toContain('font: var(--dsw-font-xxs-12)')
@@ -64,5 +64,19 @@ describe('models.dev section house pattern', () => {
     const sheet = readFileSync(CSS, 'utf8')
     expect(/#[0-9a-fA-F]{3,6}/u.test(sheet)).toBe(false)
     expect(sheet).not.toContain('monospace')
+  })
+
+  it('draws its actions with the shared button, not a local one', () => {
+    const section = readFileSync('packages/uitstalie/ui-models-dev/src/client/ModelsDevSection.tsx', 'utf8')
+    const panel = readFileSync('packages/uitstalie/ui-models-dev/src/client/OAuthPanel.tsx', 'utf8')
+    const routes = readFileSync('packages/uitstalie/ui-models-dev/src/client/MyRoutes.tsx', 'utf8')
+    for (const source of [section, panel, routes]) {
+      expect(source).toContain("from '@deepseek-ai/dsh-client-ui-primitives'")
+      expect(source).not.toContain('<button')
+      expect(source).not.toContain('styles.submitButton')
+    }
+    // The page's own bar for its primary action stays; the button atom does not.
+    expect(cssRule('.submitBar')).toContain('justify-content: flex-end')
+    expect(readFileSync(CSS, 'utf8')).not.toContain('.submitButton')
   })
 })

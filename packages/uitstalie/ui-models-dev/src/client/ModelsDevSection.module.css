@@ -138,20 +138,6 @@
   justify-content: flex-end;
 }
 
-.submitButton {
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-sm);
-  padding: 6px 16px;
-  background: var(--dsw-alias-bg-primary);
-  color: var(--dsw-alias-label-primary);
-  cursor: pointer;
-}
-
-.submitButton:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .notice {
   color: var(--dsw-alias-label-secondary);
 }
