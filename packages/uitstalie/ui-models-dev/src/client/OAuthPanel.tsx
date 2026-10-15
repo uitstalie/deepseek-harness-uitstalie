@@ -70,9 +70,9 @@ function PromptForm(props: {
               type={prompt.kind === 'secret' ? 'password' : 'text'}
               value={props.answerDraft}
               {...(prompt.placeholder === undefined ? {} : { placeholder: prompt.placeholder })}
-              onChange={event => props.onAnswerDraft(prompt.promptId, event.target.value)}
+              onChange={(event) => { props.onAnswerDraft(prompt.promptId, event.target.value) }}
             />
-            <button className={styles.submitButton} onClick={() => props.onAnswer(props.routeId, prompt.promptId)}>
+            <button className={styles.submitButton} onClick={() => { props.onAnswer(props.routeId, prompt.promptId) }}>
               {t('submitAnswer')}
             </button>
           </div>
@@ -138,9 +138,9 @@ export function OAuthPanel(props: OAuthPanelProps) {
               {attempt !== undefined && <span className={styles.rowMeta}>{t(statusKey(attempt.status))}</span>}
               <span className={styles.rowAction}>
                 {running
-                  ? <button className={styles.submitButton} onClick={() => props.onCancel(route.routeId)}>{t('oauthCancel')}</button>
+                  ? <button className={styles.submitButton} onClick={() => { props.onCancel(route.routeId) }}>{t('oauthCancel')}</button>
                   : (
-                    <button className={styles.submitButton} onClick={() => props.onBegin(route.routeId)}>
+                    <button className={styles.submitButton} onClick={() => { props.onBegin(route.routeId) }}>
                       {route.configured ? t('oauthSignInAgain') : route.label}
                     </button>
                   )}

@@ -34,7 +34,7 @@ export function ProviderCard(props: ProviderCardProps) {
         <input
           type="checkbox"
           checked={draft !== undefined}
-          onChange={event => props.onToggle(event.target.checked)}
+          onChange={(event) => { props.onToggle(event.target.checked) }}
         />
         <span className={styles.rowTitle}>{provider.name ?? provider.id}</span>
         <span className={styles.rowMeta}>{provider.id}</span>
