@@ -15,13 +15,32 @@
 
 ## 改动（原生最小插入，带标记）
 
-`packages/sandbox/sandbox-local/src/index.ts` 的 `materializeAclGrant()` 里，工作区授权失败、清理成功后的 `throw error` **之前**插入一个带标记的判断块：当错误是 `Win32Error`、`api === 'SetNamedSecurityInfoW'`、`win32Code === 5`（ACCESS_DENIED）时，改抛一个**说明型 Error**（`cause` 保留原错误）：
+### 1) 运行期报错（`packages/sandbox/sandbox-local/src/index.ts`）
+
+`materializeAclGrant()` 里，工作区授权失败、清理成功后的 `throw error` **之前**插入一个带标记的判断块：当错误是 `Win32Error`、`api === 'SetNamedSecurityInfoW'`、`win32Code === 5`（ACCESS_DENIED）时，改抛一个**说明型 Error**（`cause` 保留原错误）：
 
 - 说清缺什么：Windows 要求登录用户在该目录上**同时**具备"改权限"和**"改所有者"**两项能力，而只从上级继承权限项的目录不会有后者；
 - 给下一步：对这条路径跑一次 `diagnose-windows-sandbox-acl` 技能（它会连同上级目录一起检查、只修它证明有问题的部分，并打印恢复旧权限的命令）；
 - 末尾附 `Original failure:` 原文（保留 Win32 证据）。
 
 约束：不引入新依赖（用 `instanceof Error` + `'api' in error` 结构判断，避免为 `Win32Error` 类加包依赖）；判断块与使用点**同一段连续代码**，便于 rebase 与 `git grep uitstalie-` 盘点。
+
+### 2) 文档侧指明 skill 入口（原生文档，带 HTML 注释标记）
+
+用户追加要求"skill 的指定补一下"。核查后：两份 README 的**正文**早已点名该技能（[`README.md:78`](../../packages/sandbox/sandbox-windows-acl/README.md#L78) / [`README.zh.md:80`](../../packages/sandbox/sandbox-windows-acl/README.zh.md#L80)，以及 `sandbox-local/README.md:83` 的注册说明），缺的是 **Known Limitations 里那条"被授权目录必须授予 `WRITE_OWNER`"限制本身没有入口** ⇒ 在该条末尾补一句"Windows 把这种拒绝报成 setup 阶段的 `SetNamedSecurityInfoW failed (Win32 5)`，对该工作区路径跑一次[内置技能](assets/diagnose-windows-sandbox-acl/SKILL.md)"，中英同步、各一行、每行用 `<!-- BEGIN/END uitstalie-k3, …, task34 -->` 包住：
+
+- `packages/sandbox/sandbox-windows-acl/README.md`（Known Limitations 的 `WRITE_OWNER` 条目）
+- `packages/sandbox/sandbox-windows-acl/README.zh.md`（同条）
+
+### 3) 双语 sidecar（生成物，登记而非手改）
+
+改完 README 后，文档门禁 `translation pairing` 会因配对摘要过期而失败（实测：把我的两处 README 改动 stash 掉即恢复通过 ⇒ 确系本次引起）。该摘要记录由它自己的命令机械重录：
+
+```sh
+pnpm run verify-translation-pairing --write packages/sandbox/sandbox-windows-acl/README.md
+```
+
+⇒ `packages/sandbox/sandbox-windows-acl/README.i18n.yaml` 被重录（per-section 的 en/zh 哈希）。**登记说明**：这是**生成物**、由门禁自带命令重录，非手工编辑，故按分支规则"不支持注释/生成物改为在任务单登记"处理，**不加** `uitstalie-` 标记（下次 `--write` 会整体重写，加标记只会产生噪声；`git grep uitstalie-` 的盘点以本任务单为准）。
 
 ## 验证
 
