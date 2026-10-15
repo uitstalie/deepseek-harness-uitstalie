@@ -1,30 +1,41 @@
-/* models.dev 目录设置页样式：全部颜色经 --dsw-alias-* 语义 token
- * （裸字面色会在暗色主题下保持亮色——token 是唯一入口）。 */
+/* models.dev 目录设置页样式：颜色一律走 --dsw-alias-* 语义 token（裸字面色会在
+ * 暗色主题下保持亮色）；半径走 --dsw-radius-*，字号走 --dsw-font-*-简写或与原生
+ * section 相同的字面值。section 的家规见 ui-settings-models 的 ModelsSection：
+ * 720px 宽、16/24 主标题 + 14/22 说明，内容靠面板自身的滚动列。 */
 
 .section {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 760px;
+  max-width: 720px;
   color: var(--dsw-alias-label-primary);
 }
 
-.subtitle {
+.title {
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
 }
 
+.intro {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 外层不做页内滚动：设置面板的内容列（SettingsRoot 的 .options）已经在滚。 */
 .list {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 60vh;
-  overflow-y: auto;
 }
 
 .rowCard {
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-md);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
@@ -39,17 +50,17 @@
 }
 
 .rowTitle {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .rowMeta {
   color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
+  font: var(--dsw-font-xxs-12);
 }
 
 .rowApi {
   color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
+  font: var(--dsw-font-xxs-12);
   word-break: break-all;
 }
 
@@ -58,7 +69,7 @@
   border-radius: 999px;
   corner-shape: round;
   padding: 1px 8px;
-  font-size: 11px;
+  font: var(--dsw-font-xxs-12);
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -77,13 +88,13 @@
 }
 
 .fieldLabel {
-  font-size: 12px;
+  font: var(--dsw-font-xxs-12);
   color: var(--dsw-alias-label-secondary);
 }
 
 .input {
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   padding: 6px 8px;
   background: var(--dsw-alias-bg-primary);
   color: var(--dsw-alias-label-primary);
@@ -91,11 +102,11 @@
 
 .textarea {
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   padding: 6px 8px;
   background: var(--dsw-alias-bg-primary);
   color: var(--dsw-alias-label-primary);
-  font-family: monospace;
+  font-family: var(--ds-font-family-code);
   resize: vertical;
 }
 
@@ -109,10 +120,10 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 200px;
+  max-height: 320px;
   overflow-y: auto;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   padding: 6px 8px;
 }
 
@@ -129,7 +140,7 @@
 
 .submitButton {
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   padding: 6px 16px;
   background: var(--dsw-alias-bg-primary);
   color: var(--dsw-alias-label-primary);
@@ -146,11 +157,11 @@
 }
 
 .errorText {
-  color: var(--dsw-alias-state-error-label, #d04437);
+  color: var(--dsw-alias-state-error-primary);
 }
 
 .okText {
-  color: var(--dsw-alias-state-success-label, #2e9e5b);
+  color: var(--dsw-alias-state-success-primary);
 }
 
 /* ---- OAuth 登录区 ---- */
@@ -160,7 +171,7 @@
   flex-direction: column;
   gap: 8px;
   border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-md);
   padding: 10px 12px;
 }
 
@@ -184,14 +195,14 @@
 }
 
 .noticeLink {
-  color: var(--dsw-alias-label-link, #3a6fd8);
+  color: var(--dsw-alias-state-business-primary);
   word-break: break-all;
 }
 
 .deviceCode {
-  font-family: monospace;
+  font-family: var(--ds-font-family-code);
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dsw-alias-label-primary);
 }
 
