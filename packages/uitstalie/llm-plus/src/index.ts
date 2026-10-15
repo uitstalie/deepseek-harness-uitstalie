@@ -144,7 +144,7 @@ export function apply(ctx: Context, config: PlusConfig): void {
     credentials: ctx.credentials,
     ...(attachments === undefined ? {} : { attachments }),
     // replay 降级告警走宿主 logger（对齐 pi-ai 的 onReplayDegrade 可观测性）
-    warn: message => ctx.logger.warn(message),
+    warn: (message) => { ctx.logger.warn(message) },
   })
 
   // 路由注册是惰性的：registerAdapter 的空初始集会抛，但注册后的

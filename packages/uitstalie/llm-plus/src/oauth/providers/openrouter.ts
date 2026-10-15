@@ -18,9 +18,9 @@ const EXCHANGE_TIMEOUT_MS = 30_000
 /** 交换：code → 长期 API key（OpenRouter 的 keys 端点）。 */
 async function exchangeAuthorizationCode(code: string, verifier: string, signal: AbortSignal): Promise<PlusOAuthCredential> {
   const controller = new AbortController()
-  const onAbort = (): void => controller.abort(signal.reason)
+  const onAbort = (): void => { controller.abort(signal.reason) }
   signal.addEventListener('abort', onAbort, { once: true })
-  const timeout = setTimeout(() => controller.abort(new Error('OpenRouter OAuth token exchange timed out')), EXCHANGE_TIMEOUT_MS)
+  const timeout = setTimeout(() => { controller.abort(new Error('OpenRouter OAuth token exchange timed out')) }, EXCHANGE_TIMEOUT_MS)
   try {
     const response = await fetch(TOKEN_URL, {
       method: 'POST',

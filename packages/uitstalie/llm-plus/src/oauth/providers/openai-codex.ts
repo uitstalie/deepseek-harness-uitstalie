@@ -145,8 +145,9 @@ async function pollDeviceAuth(device: CodexDeviceAuth, signal: AbortSignal): Pro
       const text = await response.text().catch(() => '')
       let errorCode: unknown
       try {
-        const parsed = JSON.parse(text) as { error?: { code?: unknown } | unknown }
-        errorCode = typeof parsed?.error === 'object' ? (parsed.error as { code?: unknown })?.code : parsed?.error
+        const parsed = JSON.parse(text) as { error?: unknown }
+        const error = parsed.error
+        errorCode = typeof error === 'object' && error !== null ? (error as { code?: unknown }).code : error
       } catch {
         // 非 JSON 错误体：errorCode 保持 undefined，走通用失败
       }

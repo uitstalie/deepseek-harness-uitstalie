@@ -91,7 +91,7 @@ async function serializeContents(options: GenerateOptions, assets: RequestAssets
       push(role, { functionCall: { name: call.name, args: parseJsonObject(call.arguments) } })
     }
   }
-  return out as JsonValue[]
+  return out
 }
 
 /** 请求序列化。 */

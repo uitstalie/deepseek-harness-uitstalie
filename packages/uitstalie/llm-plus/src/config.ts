@@ -212,10 +212,14 @@ export interface ResolvedRoute {
  * @throws {Error} 任一路由配置结构性非法。
  */
 export function resolveRoutes(routes: Record<string, RouteConfig>): ResolvedRoute[] {
+  // cordis.yml 属解析边界：schema 校验之后仍按运行时形状复查，为的是报出带路由名的
+  // 精确错误；静态类型来自 schema，运行时值仍是外部输入。
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- 边界复查，见上
   if (routes === null || typeof routes !== 'object' || Array.isArray(routes)) {
     throw new Error('llm-plus: routes must be an object keyed by route id')
   }
   return Object.entries(routes).map(([id, route]) => {
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- 边界复查，见上
     if (route === null || typeof route !== 'object') {
       throw new Error(`llm-plus: route ${JSON.stringify(id)} must be an object`)
     }
@@ -226,6 +230,7 @@ export function resolveRoutes(routes: Record<string, RouteConfig>): ResolvedRout
     // 在激活点 fail loud（与未知协议同级）
     if (route.models !== undefined) {
       const valid = Array.isArray(route.models)
+        // oxlint-disable-next-line typescript/no-unnecessary-condition -- 边界复查，见上
         && route.models.every(model => model !== null && typeof model === 'object' && typeof model.id === 'string' && model.id.length > 0)
       if (!valid) {
         throw new Error(`llm-plus: route ${JSON.stringify(id)} models must be an array of objects with a non-empty string id`)
