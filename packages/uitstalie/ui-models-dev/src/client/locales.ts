@@ -8,7 +8,8 @@
 /** English strings (the key-set source of truth for this pair). */
 export const en = {
   nav: 'Models.dev',
-  subtitle: 'Browse the fetched models.dev catalog and materialize providers as your own routes.',
+  title: 'Models.dev',
+  intro: 'Browse the fetched models.dev catalog and materialize providers as your own routes.',
   filterPlaceholder: 'Filter providers…',
   loading: 'Loading catalog…',
   loadFailed: 'Catalog failed to load: {message}',
@@ -67,7 +68,8 @@ export type ModelsDevKey = keyof typeof en
 /** Chinese strings (same keys as {@link en}). */
 export const zh: { [Key in keyof typeof en]: string } = {
   nav: '模型目录',
-  subtitle: '浏览已拉取的 models.dev 目录，勾选提供商并物化为你自己的路由。',
+  title: '模型目录',
+  intro: '浏览已拉取的 models.dev 目录，勾选提供商并物化为你自己的路由。',
   filterPlaceholder: '筛选提供商…',
   loading: '目录加载中…',
   loadFailed: '目录加载失败：{message}',
