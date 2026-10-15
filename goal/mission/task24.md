@@ -58,8 +58,9 @@
    - **有意未复刻**：seat 同级的 `ConnectionIndicator` 与 `DesktopUpdateIndicator`（运行时状态，不属布局）；`.triggerRow` 的 ±2px 外扩属原生外壳自身内边距体制的细节。
 2. **脚手架开关的持久通道**：浏览器半边**收不到组合里的行 config**（启动载荷只带模块说明符 ✗，已实测），因此 `scaffold`/`sessionRowAction` 这类开关必须改走**插件 settings（`configForms`）** ✓ —— 做完才能把"临时默认打开"彻底移除 ✓；
 3. **区域子槽通道**：外来插件无法给 `shell.overlay` 合并 children 声明（`SlotMap` 形状归 ui-layout ✗）⇒ 脚手架的三个区域要么等上游给 children 位（原生最小插入），要么设计"自有父槽 + 子槽"注册通道 ✓；
-4. **继续逐 view 复刻**：
-   - **会话行 hover 动作条（已完成 2026/10/12）**——照原生 `Rows.tsx:680-706` 复刻：动作条内容为 **`⋯` 菜单触发器 + `archive`(order 100) + `pin`(order 200)**，每个都是 `.iconButton`（16×16、`radius-xs`、tertiary→primary hover）；其中
+4. **继续逐 view 复刻 —— 已挂起（用户判断，2026/10/12）**：复刻买到的是"**证明能复刻**"（原生度量、slot 结构、行为细节，附 72 条测试里的度量钉子），但它**不交付能力**——静态样例数据画出的视觉副本，既未接真实会话数据（那等于重写 `ui-chat`），也未让本插件真正控制原生视图；而分支目标是 theme/overlay 要有**稳定落点**（token + 共用件 + slot）。因此**停止继续复刻**，已完成的八片保留为证据与参照，剩余项（助手 markdown 面、各工具专属体、宽度手柄、`TodoPanel`、各 seat 真实占用者、hero 游动动画）**不再排期**，仅作需要时的深挖素材。已完成清单：
+   - ① 侧栏 chrome 两处度量修正 / ② 会话行 hover 动作条 / ③ 工作区行动作条 / ④ 工作区行 HoverCard / ⑤ 中间区头部 / ⑥ 中间区主体（滚动区 + composer 卡）/ ⑦ composer 控件行 / ⑧ 空会话 Hero / ⑨ ContextMeter / ⑩ 消息流转写框架 + 用户气泡 / ⑪ queue 排队区 + 通用工具卡。明细见下文各条。
+   - 原始记录（会话行 hover 动作条）：照原生 `Rows.tsx:680-706` 复刻：动作条内容为 **`⋯` 菜单触发器 + `archive`(order 100) + `pin`(order 200)**，每个都是 `.iconButton`（16×16、`radius-xs`、tertiary→primary hover）；其中
      - `⋯` 是**真菜单**（共用件 `Menu`，`portal` + `closeOnPointerLeave`），四项按原生顺序 **pin(100) / rename(200) / fork(300) / archive(400)**，用 `MenuItemButton`（图标 + 文案）；
      - `archive` 的图标/文案随状态翻转（`IconArchiveOutlineRegular` ↔ `IconUnarchiveOutlineRegular`），`pin` 同理（`IconPinOutlineRegular` ↔ `IconPinFillRegular size={14}`）；
      - **归档行不提供 pin 按钮**（原生：pin 与 archive 在 Host 上互斥，`PinSessionRowButton` 在归档行返回 null）；
