@@ -420,6 +420,19 @@ export class LocalSandboxProvider extends SandboxProvider {
         } catch (cleanupError) {
           throw new AggregateError([error, cleanupError], 'sandbox-local windows-acl workspace grant failed and its cleanup also failed')
         }
+        // BEGIN uitstalie-k3, 2026/10/12, task34, 工作区授权失败时把 Win32 码翻成可执行的下一步
+        // （原生只抛 `SetNamedSecurityInfoW failed (Win32 N): grantWrite(<path>)`，用户看不出缺什么、该做什么）
+        if (error instanceof Error && error.name === 'Win32Error'
+          && 'api' in error && error.api === 'SetNamedSecurityInfoW'
+          && 'win32Code' in error && error.win32Code === 5) {
+          throw new Error(
+            `The sandbox cannot grant write access to this workspace at ${workspaceRoot}: Windows additionally requires the signed-in user to hold the change-owner right there, and a directory whose access entries are only inherited does not. `
+            + 'Run the diagnose-windows-sandbox-acl skill once for this path: it inspects the folder and every parent, repairs only what it proves, and prints the command that restores the previous permissions. '
+            + `Original failure: ${error.message}`,
+            { cause: error },
+          )
+        }
+        // END uitstalie-k3
         throw error
       }
       this.workspaceGrants.set(workspaceRoot, grant)
