@@ -13,6 +13,7 @@
 import { useRef, useState } from 'react'
 import {
   Button,
+  CodeBlock,
   Menu,
   Modal,
   Tooltip,
@@ -47,14 +48,17 @@ export type RulesButtonProps = RulesButtonOwnerProps & RulesButtonInjected
 /** The rule list while the menu is open; null keeps the menu closed. */
 type RuleMenu = readonly { path: string; size: number }[] | null
 
-/** One open modal: either an authoring notice or a rule being read. */
+/** One open modal: a rule being read, or a notice about the listing. */
 interface RuleModal {
   /** Dialog title: the workspace for a notice, the rule path for a rule. */
   title: string
-  /** Body text: the notice copy, the rule text, or a pending/failed message. */
+  /** Body text: the notice copy, or the rule text. */
   body: string
-  /** Whether the body is an error the reader must notice. */
-  alert: boolean
+  /**
+   * How the body reads: `rule` renders through the shared code block, `notice`
+   * is plain copy, and `alert` is a notice the reader must notice.
+   */
+  kind: 'rule' | 'notice' | 'alert'
 }
 
 /**
@@ -71,11 +75,11 @@ export function RulesButton({ workspaceId, label, t, loadRules, loadRule }: Rule
   const openMenu = async (): Promise<void> => {
     const result = await loadRules(workspaceId)
     if (!result.ok) {
-      setModal({ title: t('title', { name: label }), body: t('loadFailed', { message: result.error.message }), alert: true })
+      setModal({ title: t('title', { name: label }), body: t('loadFailed', { message: result.error.message }), kind: 'alert' })
       return
     }
     if (result.value.entries.length === 0) {
-      setModal({ title: t('title', { name: label }), body: `${t('empty')} ${t('emptyHint')}`, alert: false })
+      setModal({ title: t('title', { name: label }), body: `${t('empty')} ${t('emptyHint')}`, kind: 'notice' })
       return
     }
     setEntries(result.value.entries)
@@ -84,11 +88,11 @@ export function RulesButton({ workspaceId, label, t, loadRules, loadRule }: Rule
   /** Read one rule into the dialog; the menu closes first so focus returns to the mark. */
   const openRule = async (path: string): Promise<void> => {
     setEntries(null)
-    setModal({ title: path, body: t('loading'), alert: false })
+    setModal({ title: path, body: t('loading'), kind: 'notice' })
     const result = await loadRule(workspaceId, path)
     setModal(result.ok
-      ? { title: path, body: result.value.text, alert: false }
-      : { title: path, body: t('ruleFailed', { message: result.error.message }), alert: true })
+      ? { title: path, body: result.value.text, kind: 'rule' }
+      : { title: path, body: t('ruleFailed', { message: result.error.message }), kind: 'alert' })
   }
 
   return (
@@ -122,9 +126,16 @@ export function RulesButton({ workspaceId, label, t, loadRules, loadRule }: Rule
           title={modal.title}
           footer={<Button variant="outline" onClick={() => { setModal(null) }}>{t('close')}</Button>}
         >
-          {modal.alert
-            ? <div className={css.ruleText} role="alert">{modal.body}</div>
-            : <pre className={css.ruleText}>{modal.body}</pre>}
+          {modal.kind === 'rule'
+            ? <CodeBlock code={modal.body} copyLabel={t('copy')} copiedLabel={t('copied')} />
+            : (
+              <div
+                className={modal.kind === 'alert' ? `${css.notice} ${css.noticeAlert}` : css.notice}
+                {...modal.kind === 'alert' ? { role: 'alert' } : {}}
+              >
+                {modal.body}
+              </div>
+            )}
         </Modal>
       )}
     </>
