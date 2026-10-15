@@ -13,7 +13,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { AuthorizationInteraction, AuthorizationNotice, AuthorizationPrompt } from '@deepseek-ai/dsh-authorization'
-import type { AuthorizationService } from '@deepseek-ai/dsh-authorization'
 import { OAUTH_PROVIDERS, grantKeyFor } from './oauth/index.ts'
 import type { ResolvedRoute } from './config.ts'
 import type { AttemptNoticeView, AttemptPromptView, AttemptView, OAuthRouteInfo } from './remote-types.ts'
@@ -89,12 +88,12 @@ export class PlusAuthRemote extends TypertRemoteService {
    * @throws 路由无 oauth / 缝缺席 / 已有在途尝试（seam 的 ALREADY_IN_FLIGHT）。
    */
   @Remote
-  async beginFlow(routeId: string): Promise<{ attemptId: string }> {
+  beginFlow(routeId: string): Promise<{ attemptId: string }> {
     const route = this.routesNow().find(candidate => candidate.id === routeId)
     if (route?.oauth === undefined) {
       throw new Error(`llm-plus: route ${JSON.stringify(routeId)} declares no oauth flow`)
     }
-    const authorization = this.ctx.get('authorization', false) as AuthorizationService | undefined
+    const authorization = this.ctx.get('authorization', false)
     if (authorization === undefined) {
       throw new Error('llm-plus: the authorization capability is not mounted in this composition')
     }
@@ -107,7 +106,7 @@ export class PlusAuthRemote extends TypertRemoteService {
     }
     this.attempts.set(attempt.id, attempt)
     const interaction: AuthorizationInteraction = {
-      notify: notice => this.recordNotice(attempt, notice),
+      notify: (notice) => { this.recordNotice(attempt, notice) },
       prompt: prompt => this.askPrompt(attempt, prompt),
     }
     // begin 的结果落到尝试状态；失败消息进 error（文案回显给页面）
@@ -120,7 +119,7 @@ export class PlusAuthRemote extends TypertRemoteService {
     }).catch((error: unknown) => {
       this.settleAttempt(attempt, 'failed', error instanceof Error ? error.message : String(error))
     })
-    return { attemptId: attempt.id }
+    return Promise.resolve({ attemptId: attempt.id })
   }
 
   /**

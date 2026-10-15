@@ -145,7 +145,7 @@ export class PlusAdapter extends LlmAdapter {
   private async resolveAuth(route: ResolvedRoute, signal?: AbortSignal): Promise<{ apiKey?: string; baseURL?: string }> {
     if (route.apiKeyRef !== undefined) {
       const resolved = await this.deps.credentials.resolve(credentialRef(route.apiKeyRef))
-      const value = resolved?.value?.trim()
+      const value = resolved?.value.trim()
       if (value) return { apiKey: value }
       throw new LlmError(
         `llm-plus: route ${JSON.stringify(route.id)} needs credential ${route.apiKeyRef};`
@@ -189,7 +189,7 @@ export class PlusAdapter extends LlmAdapter {
     model: string,
     info: LlmResolvedModelInfo,
   ): { reasoning?: { efforts?: string[]; budget?: { min?: number; max?: number } } } {
-    const efforts = info.reasoning?.efforts.map(effort => effort.id as string)
+    const efforts = info.reasoning?.efforts.map(effort => effort.id)
     const budget = route.modelsDevProvider !== undefined && this.deps.catalog !== undefined
       ? this.deps.catalog.resolveModelDefaults(route.modelsDevProvider, model)?.reasoningBudget
       : undefined
@@ -351,7 +351,7 @@ export class PlusAdapter extends LlmAdapter {
       ...(auth.apiKey === undefined ? {} : { apiKey: auth.apiKey }),
       image: this.imageResolverFor(effectiveRoute, info),
       ...(warn === undefined ? {} : {
-        onReplayDegrade: (reason: string) => warn(`llm-plus: ${effectiveRoute.id}/${options.model}: ${reason}`),
+        onReplayDegrade: (reason: string) => { warn(`llm-plus: ${effectiveRoute.id}/${options.model}: ${reason}`) },
       }),
       ...this.reasoningAssets(effectiveRoute, options.model, info),
     }

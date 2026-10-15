@@ -60,7 +60,9 @@ async function serializeInput(options: GenerateOptions, assets: RequestAssets): 
       message.content.forEach((block, position) => {
         if (block.type !== 'reasoning' || !replayable) return
         const meta = envelope.blocks[position]
-        // reasoning item 必须带 id + encrypted_content 才能回带
+        // reasoning item 必须带 id + encrypted_content 才能回带；数组下标在
+        // noUncheckedIndexedAccess 下可能是 undefined，故可选链是必需的。
+        // oxlint-disable-next-line typescript/no-unnecessary-condition -- 该规则未计入 noUncheckedIndexedAccess 的下标 undefined
         if (typeof meta?.id === 'string' && typeof meta?.encrypted_content === 'string') {
           out.push({ type: 'reasoning', id: meta.id, encrypted_content: meta.encrypted_content })
         } else {

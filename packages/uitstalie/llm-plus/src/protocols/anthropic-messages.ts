@@ -98,7 +98,7 @@ async function serializeMessages(options: GenerateOptions, assets: RequestAssets
       push(role, { type: 'tool_use', id: call.id, name: call.name, input: parseJsonObject(call.arguments) })
     }
   }
-  return out as JsonValue[]
+  return out
 }
 
 /** 请求序列化。 */
@@ -247,7 +247,10 @@ class AnthropicTranslator extends BaseTranslator {
         // anthropic 的错误事件（如 overloaded）——抛出让 runtime 归一化为 error finish
         throw new Error(`anthropic stream error: ${event.data}`)
       }
-      // message_stop / ping 等无 chunk 产出
+      // message_stop / ping 等无 chunk 产出的帧（含缺席的 event 名）
+      default: {
+        break
+      }
     }
     return out
   }

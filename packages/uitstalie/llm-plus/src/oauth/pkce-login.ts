@@ -155,7 +155,7 @@ async function startCallbackServer(spec: CallbackServerSpec, expectedState: stri
         close: () => {},
       })
     })
-    const onAbort = (): void => settle(null)
+    const onAbort = (): void => { settle(null) }
     signal.addEventListener('abort', onAbort, { once: true })
     server.listen(spec.port ?? 0, host, () => {
       const address = server.address()
@@ -163,8 +163,8 @@ async function startCallbackServer(spec: CallbackServerSpec, expectedState: stri
       resolve({
         callbackUrl: `http://localhost:${port}${path}`,
         waitForCode: () => waiting,
-        cancelWait: () => settle(null),
-        close: () => server.close(),
+        cancelWait: () => { settle(null) },
+        close: () => { server.close() },
       })
     })
   })
@@ -179,7 +179,7 @@ export async function runPkceLogin(interaction: OAuthInteraction, spec: PkceLogi
   const expectedState = spec.stateFor(verifier)
   const server = await startCallbackServer(spec.server, expectedState, interaction.signal)
   const manualAbort = new AbortController()
-  const onAbort = (): void => server.cancelWait()
+  const onAbort = (): void => { server.cancelWait() }
   interaction.signal.addEventListener('abort', onAbort, { once: true })
   if (interaction.signal.aborted) onAbort()
   try {
@@ -194,6 +194,9 @@ export async function runPkceLogin(interaction: OAuthInteraction, spec: PkceLogi
     const manualPlaceholder = server.callbackUrl === '' ? spec.redirectUri : server.callbackUrl
     let manualInput: string | undefined
     let manualError: Error | undefined
+    // 手贴路径的失败由回调写入 manualError；经函数读取，避免上面那次检查把
+    // 等待之后的分支收窄成恒假（运行期 await 期间仍可能被写入）。
+    const lateFailure = (): Error | undefined => manualError
     const manualPromise = interaction.prompt({
       kind: 'text',
       message: spec.copy.promptMessage,
@@ -212,7 +215,8 @@ export async function runPkceLogin(interaction: OAuthInteraction, spec: PkceLogi
     let state = result?.state
     if (code === undefined) {
       await manualPromise
-      if (manualError) throw manualError
+      const late = lateFailure()
+      if (late) throw late
       if (manualInput !== undefined) {
         const parsed = parseAuthorizationInput(manualInput)
         if (parsed.state !== undefined && parsed.state !== expectedState) throw new Error('OAuth state mismatch')
