@@ -144,6 +144,12 @@
         routes: {}
     # END uitstalie-k3
 
+    # BEGIN uitstalie-k3, 2026/10/12, task33, models.dev 目录服务在非 web 组合里也默认挂载
+    # （客户端设置页仍只在 web 组合；此处只挂宿主侧目录服务）
+    - id: models-dev
+      name: '@deepseek-ai/dsh-models-dev'
+    # END uitstalie-k3
+
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
       config:
