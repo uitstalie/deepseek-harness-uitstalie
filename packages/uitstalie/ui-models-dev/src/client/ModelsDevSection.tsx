@@ -75,7 +75,8 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
 
   return (
     <div className={styles.section}>
-      <p className={styles.subtitle}>{t('subtitle')}</p>
+      <h2 className={styles.title}>{t('title')}</h2>
+      <p className={styles.intro}>{t('intro')}</p>
       <OAuthPanel
         routes={state.oauth.routes}
         attempts={state.oauth.attempts}
@@ -84,26 +85,24 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
         onBegin={routeId => void controller.beginLogin(routeId)}
         onCancel={routeId => void controller.cancelLogin(routeId)}
         onAnswer={(routeId, promptId) => void controller.answerPrompt(routeId, promptId)}
-        onAnswerDraft={(promptId, value) => controller.setAnswerDraft(promptId, value)}
+        onAnswerDraft={(promptId, value) => { controller.setAnswerDraft(promptId, value) }}
       />
-      {state.myRoutes && (
-        <MyRoutes
-          routes={state.myRoutes.routes}
-          editing={state.myRoutes.editing}
-          failure={state.myRoutes.failure}
-          t={t}
-          onStartEdit={(routeId) => { controller.startEditRoute(routeId) }}
-          onPatchDraft={(patch) => { controller.patchEditDraft(patch) }}
-          onSaveEdit={() => void controller.saveEditRoute()}
-          onCancelEdit={() => { controller.cancelEditRoute() }}
-          onDelete={routeId => void controller.deleteRoute(routeId)}
-        />
-      )}
+      <MyRoutes
+        routes={state.myRoutes.routes}
+        editing={state.myRoutes.editing}
+        failure={state.myRoutes.failure}
+        t={t}
+        onStartEdit={(routeId) => { controller.startEditRoute(routeId) }}
+        onPatchDraft={(patch) => { controller.patchEditDraft(patch) }}
+        onSaveEdit={() => void controller.saveEditRoute()}
+        onCancelEdit={() => { controller.cancelEditRoute() }}
+        onDelete={routeId => void controller.deleteRoute(routeId)}
+      />
       <input
         className={styles.input}
         value={state.filter}
         placeholder={t('filterPlaceholder')}
-        onChange={event => controller.setFilter(event.target.value)}
+        onChange={(event) => { controller.setFilter(event.target.value) }}
       />
       {visible.length === 0 && (
         <span className={styles.notice}>{state.providers.length === 0 ? t('empty') : t('emptyFilter')}</span>
@@ -116,10 +115,10 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
             draft={state.drafts[provider.id]}
             models={state.models[provider.id]}
             t={t}
-            onToggle={checked => controller.toggleProvider(provider, checked)}
-            onPatch={patch => controller.updateDraft(provider.id, patch)}
-            onModelMode={mode => controller.setModelMode(provider.id, mode)}
-            onToggleModel={(modelId, checked) => controller.toggleModel(provider.id, modelId, checked)}
+            onToggle={(checked) => { controller.toggleProvider(provider, checked) }}
+            onPatch={(patch) => { controller.updateDraft(provider.id, patch) }}
+            onModelMode={(mode) => { controller.setModelMode(provider.id, mode) }}
+            onToggleModel={(modelId, checked) => { controller.toggleModel(provider.id, modelId, checked) }}
           />
         ))}
       </div>
