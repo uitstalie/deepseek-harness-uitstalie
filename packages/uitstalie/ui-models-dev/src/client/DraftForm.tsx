@@ -38,7 +38,7 @@ function ModelPicker(props: DraftFormProps) {
         <input
           type="radio"
           checked={draft.modelMode === 'all'}
-          onChange={() => props.onModelMode('all')}
+          onChange={() => { props.onModelMode('all') }}
         />
         <span>{t('modelsAll')}</span>
       </label>
@@ -46,7 +46,7 @@ function ModelPicker(props: DraftFormProps) {
         <input
           type="radio"
           checked={draft.modelMode === 'subset'}
-          onChange={() => props.onModelMode('subset')}
+          onChange={() => { props.onModelMode('subset') }}
         />
         <span>{t('modelsSubset')}</span>
       </label>
@@ -59,7 +59,7 @@ function ModelPicker(props: DraftFormProps) {
                 <input
                   type="checkbox"
                   checked={draft.modelIds.includes(model.id)}
-                  onChange={event => props.onToggleModel(model.id, event.target.checked)}
+                  onChange={(event) => { props.onToggleModel(model.id, event.target.checked) }}
                 />
                 <span>{model.name ?? model.id}</span>
               </label>
@@ -75,30 +75,30 @@ export function DraftForm(props: DraftFormProps) {
   const { provider, draft, t, onPatch } = props
   return (
     <div className={styles.draftForm}>
-      <TextField label={t('fieldRouteId')} value={draft.routeId} onChange={routeId => onPatch({ routeId })} />
-      <TextField label={t('fieldDisplayName')} value={draft.displayName} onChange={displayName => onPatch({ displayName })} />
+      <TextField label={t('fieldRouteId')} value={draft.routeId} onChange={(routeId) => { onPatch({ routeId }) }} />
+      <TextField label={t('fieldDisplayName')} value={draft.displayName} onChange={(displayName) => { onPatch({ displayName }) }} />
       <label className={styles.field}>
         <span className={styles.fieldLabel}>{t('fieldProtocol')}</span>
         <select
           className={styles.input}
           value={draft.protocol}
-          onChange={event => onPatch({ protocol: event.target.value as ProviderDraft['protocol'] })}
+          onChange={(event) => { onPatch({ protocol: event.target.value as ProviderDraft['protocol'] }) }}
         >
           <option value="">{t('protocolChoose')}</option>
           {PROTOCOLS.map(protocol => <option key={protocol} value={protocol}>{protocol}</option>)}
         </select>
       </label>
-      <TextField label={t('fieldBaseURL')} value={draft.baseURL} onChange={baseURL => onPatch({ baseURL })} />
+      <TextField label={t('fieldBaseURL')} value={draft.baseURL} onChange={(baseURL) => { onPatch({ baseURL }) }} />
       {provider.api?.includes('${') && (
         <span className={styles.notice}>{fill(t('interpolatedUrl'), {})}</span>
       )}
-      <TextField label={t('fieldApiKeyRef')} value={draft.apiKeyRef} onChange={apiKeyRef => onPatch({ apiKeyRef })} />
+      <TextField label={t('fieldApiKeyRef')} value={draft.apiKeyRef} onChange={(apiKeyRef) => { onPatch({ apiKeyRef }) }} />
       <label className={styles.field}>
         <span className={styles.fieldLabel}>{t('fieldOAuth')}</span>
         <select
           className={styles.input}
           value={draft.oauth}
-          onChange={event => onPatch({ oauth: event.target.value as OAuthFlowId | '' })}
+          onChange={(event) => { onPatch({ oauth: event.target.value as OAuthFlowId | '' }) }}
         >
           <option value="">{t('oauthNone')}</option>
           {OAUTH_FLOW_CHOICES.map(flow => <option key={flow} value={flow}>{flow}</option>)}
@@ -109,10 +109,10 @@ export function DraftForm(props: DraftFormProps) {
         type="password"
         value={draft.apiKey}
         placeholder={t('apiKeyPlaceholder')}
-        onChange={apiKey => onPatch({ apiKey })}
+        onChange={(apiKey) => { onPatch({ apiKey }) }}
       />
-      <JsonField label={t('fieldHeaders')} value={draft.headersText} onChange={headersText => onPatch({ headersText })} />
-      <JsonField label={t('fieldBody')} value={draft.bodyText} onChange={bodyText => onPatch({ bodyText })} />
+      <JsonField label={t('fieldHeaders')} value={draft.headersText} onChange={(headersText) => { onPatch({ headersText }) }} />
+      <JsonField label={t('fieldBody')} value={draft.bodyText} onChange={(bodyText) => { onPatch({ bodyText }) }} />
       <ModelPicker {...props} />
     </div>
   )

@@ -103,7 +103,8 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
   })
   return () => {
     controller?.stopCatalogPolling()
-    disposeModelsDev?.()
-    disposeLlmPlus?.()
+    // 两个 disposer 都是异步的；fiber 的清理回调本身同步，故显式丢弃它们的 promise。
+    void disposeModelsDev?.()
+    void disposeLlmPlus?.()
   }
 }
