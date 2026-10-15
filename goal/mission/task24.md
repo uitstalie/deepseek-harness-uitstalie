@@ -51,6 +51,8 @@
 
 **待办（下次接手先看这里）**：
 
+> **状态（2026/10/12，用户决定）：本任务单的 PENDING 1–5 暂时放弃。** 已完成的 `common-view` 切片与本包维持现状（默认全关，不影响产品）；继续复刻的代码停在支线 `overlay-view-replica`（`43e3d02b9a`，已推远端），需要时从那里接。
+
 1. **两处未核实的度量**（复刻保真度欠口）：`ui-sidebar` 的 `.logoRow` 真实高度/内边距；设置 seat 的实际渲染与文案键（我按 `.projectRow` 34px 类推、图标 `IconSlidersTwoOutlineRegular` 属推测）✓；
 2. **脚手架开关的持久通道**：浏览器半边**收不到组合里的行 config**（启动载荷只带模块说明符 ✗，已实测），因此 `scaffold`/`sessionRowAction` 这类开关必须改走**插件 settings（`configForms`）** ✓ —— 做完才能把"临时默认打开"彻底移除 ✓；
 3. **区域子槽通道**：外来插件无法给 `shell.overlay` 合并 children 声明（`SlotMap` 形状归 ui-layout ✗）⇒ 脚手架的三个区域要么等上游给 children 位（原生最小插入），要么设计"自有父槽 + 子槽"注册通道 ✓；
