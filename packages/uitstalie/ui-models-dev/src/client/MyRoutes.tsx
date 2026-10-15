@@ -113,7 +113,7 @@ export function MyRoutes(props: MyRoutesProps) {
                   )}
               </span>
             </div>
-            {isEditing && editing !== undefined && (
+            {isEditing && (
               <RouteEditForm draft={editing.draft} t={t} onPatch={props.onPatchDraft} />
             )}
           </div>

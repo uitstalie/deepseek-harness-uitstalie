@@ -160,11 +160,22 @@ export class ModelsDevStore {
     if (this.polling) return
     this.polling = true
     void (async () => {
-      while (this.polling) {
+      while (this.isPolling()) {
         await new Promise(resolve => setTimeout(resolve, 60_000))
-        if (this.polling) await this.load(true)
+        if (this.isPolling()) await this.load(true)
       }
     })()
+  }
+
+  /**
+   * Whether the poll loop is still armed.
+   *
+   * Read through a call so the loop re-reads the flag after each wait instead of
+   * using the narrowing its own condition produced.
+   * @returns whether polling is armed.
+   */
+  private isPolling(): boolean {
+    return this.polling
   }
 
   /** 停止轮询循环（页面 fiber 摘除时调用）。 */
@@ -418,8 +429,14 @@ export class ModelsDevStore {
     // 本地校验：协议必选、JSON 字段必须合法（一个非法整体不写）
     for (const [id, draft] of entries) {
       const error = draftError(draft)
-      if (error === 'protocol') return fail({ kind: 'protocol', provider: id })
-      if (error === 'headers' || error === 'body') return fail({ kind: 'invalidJson', field: error, provider: id })
+      if (error === 'protocol') {
+        fail({ kind: 'protocol', provider: id })
+        return
+      }
+      if (error === 'headers' || error === 'body') {
+        fail({ kind: 'invalidJson', field: error, provider: id })
+        return
+      }
     }
     const ops: SettingsPathOpView[] = entries.map(([id, draft]) => {
       const loaded = snapshot.models[id]
@@ -433,7 +450,8 @@ export class ModelsDevStore {
     // 冲突场景由 host 的 settings/conflict 兜住语义，v1 不做乐观锁）
     const response = await this.wire.settings.mutate('llm-plus', ops, undefined)
     if (!response.ok) {
-      return fail(response.error.code === 'settings/conflict' ? { kind: 'conflict' } : { kind: 'message', message: response.error.message })
+      fail(response.error.code === 'settings/conflict' ? { kind: 'conflict' } : { kind: 'message', message: response.error.message })
+      return
     }
     // 一次性密钥：逐个写凭据服务（密钥不经过 settings，也不在本页持久化）
     for (const [, draft] of entries) {
@@ -441,7 +459,10 @@ export class ModelsDevStore {
       const key = draft.apiKey.trim()
       if (ref === '' || key === '') continue
       const stored = await this.wire.credentials.set(ref, key)
-      if (!stored.ok) return fail({ kind: 'message', message: stored.error.message })
+      if (!stored.ok) {
+        fail({ kind: 'message', message: stored.error.message })
+        return
+      }
     }
     const added = ops.flatMap(op => op.path[1] === undefined ? [] : [op.path[1]])
     this.store.update((draft) => {
