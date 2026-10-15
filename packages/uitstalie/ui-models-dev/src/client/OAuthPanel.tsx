@@ -6,6 +6,7 @@
  * @module @deepseek-ai/dsh-client-ui-models-dev/OAuthPanel
  */
 
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AttemptPromptView, AttemptView, OAuthRouteInfo } from '@deepseek-ai/dsh-llm-plus/types'
 import type { ModelsDevKey } from './locales.ts'
 import styles from './ModelsDevSection.module.css'
@@ -49,9 +50,9 @@ function PromptForm(props: {
         ? (
           <div className={styles.promptOptions}>
             {prompt.options?.map(option => (
-              <button
+              <Button
                 key={option.id}
-                className={styles.submitButton}
+                variant="outline"
                 onClick={() => {
                   // select 的回答直接是 option id，不走文本草稿
                   props.onAnswerDraft(prompt.promptId, option.id)
@@ -59,7 +60,7 @@ function PromptForm(props: {
                 }}
               >
                 {option.label}
-              </button>
+              </Button>
             ))}
           </div>
         )
@@ -72,9 +73,9 @@ function PromptForm(props: {
               {...(prompt.placeholder === undefined ? {} : { placeholder: prompt.placeholder })}
               onChange={(event) => { props.onAnswerDraft(prompt.promptId, event.target.value) }}
             />
-            <button className={styles.submitButton} onClick={() => { props.onAnswer(props.routeId, prompt.promptId) }}>
+            <Button variant="outline" onClick={() => { props.onAnswer(props.routeId, prompt.promptId) }}>
               {t('submitAnswer')}
-            </button>
+            </Button>
           </div>
         )}
     </div>
@@ -138,11 +139,11 @@ export function OAuthPanel(props: OAuthPanelProps) {
               {attempt !== undefined && <span className={styles.rowMeta}>{t(statusKey(attempt.status))}</span>}
               <span className={styles.rowAction}>
                 {running
-                  ? <button className={styles.submitButton} onClick={() => { props.onCancel(route.routeId) }}>{t('oauthCancel')}</button>
+                  ? <Button variant="outline" onClick={() => { props.onCancel(route.routeId) }}>{t('oauthCancel')}</Button>
                   : (
-                    <button className={styles.submitButton} onClick={() => { props.onBegin(route.routeId) }}>
+                    <Button variant="outline" onClick={() => { props.onBegin(route.routeId) }}>
                       {route.configured ? t('oauthSignInAgain') : route.label}
-                    </button>
+                    </Button>
                   )}
               </span>
             </div>

@@ -8,6 +8,7 @@
  */
 
 import { useEffect } from 'react'
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { fill, type ModelsDevKey } from './locales.ts'
@@ -60,7 +61,7 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
       <div className={styles.section}>
         <span className={styles.errorText}>{fill(t('loadFailed'), { message: state.error ?? '' })}</span>
         <div className={styles.submitBar}>
-          <button className={styles.submitButton} onClick={() => void controller.load()}>{t('retry')}</button>
+          <Button variant="outline" onClick={() => void controller.load()}>{t('retry')}</Button>
         </div>
       </div>
     )
@@ -124,13 +125,13 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
       </div>
       {selectedCount > 0 && (
         <div className={styles.submitBar}>
-          <button
-            className={styles.submitButton}
+          <Button
+            variant="primary"
             disabled={state.submitting}
             onClick={() => void controller.submit()}
           >
             {state.submitting ? t('adding') : fill(t('addSelected'), { count: String(selectedCount) })}
-          </button>
+          </Button>
         </div>
       )}
       {state.submitError !== null && <span className={styles.errorText}>{failureText(state.submitError, t)}</span>}
