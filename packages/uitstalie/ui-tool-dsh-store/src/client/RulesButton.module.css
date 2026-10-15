@@ -1,18 +1,41 @@
-/* The trigger only claims its mark's weight; the shared Button supplies the rest
-   of its chrome, and the shared Menu and Modal supply their own surfaces. */
-.trigger {
+/* The trigger takes the row's own icon-button box — the same 16px, radius-xs,
+   tertiary-into-primary treatment the row's other actions use — while the shared
+   Button still supplies the element, its type, and the token family. The doubled
+   class outranks the primitive's size variant, which merges ahead of it. */
+.trigger.trigger {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-xs);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
 }
 
+.trigger.trigger:hover {
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The single capital that stands in for an icon, at the caption step. */
 .mark {
-  font-weight: 600;
+  font: var(--dsw-font-xxs-12);
+  font-weight: 500;
   line-height: 1;
+  color: inherit;
 }
 
-.ruleText {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 360px;
-  overflow: auto;
+/* Dialog copy that is not rule text: the empty and pending notices, and the
+   failures the reader must notice. Rule text itself renders through the shared
+   CodeBlock, which owns its surface and scrolling. */
+.notice {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.noticeAlert {
+  color: var(--dsw-alias-state-error-primary);
 }

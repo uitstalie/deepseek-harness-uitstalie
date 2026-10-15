@@ -17,6 +17,9 @@ export const en = {
   emptyHint: 'Rules live in .dsh/rules and every Markdown file there is always in context.',
   ruleFailed: 'Rule failed to load: {message}',
   close: 'Close',
+  /** The rule block's copy affordance, matching the shared code block's labels. */
+  copy: 'Copy',
+  copied: 'Copied',
 }
 
 /** Chinese strings, same keys. */
@@ -31,6 +34,8 @@ export const zh: typeof en = {
   emptyHint: '规则放在 .dsh/rules，那里的每个 Markdown 文件都始终进入上下文。',
   ruleFailed: '规则读取失败：{message}',
   close: '关闭',
+  copy: '复制',
+  copied: '已复制',
 }
 
 /** Key set of the rules dictionary. */
