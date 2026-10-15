@@ -32,7 +32,8 @@
 1. **`models-dev` 在 base（CLI/headless/acp/sdk 走这条）里没有** ⇒ **本次补上**：在 `packages/bundle/base/cordis.patch.yml` 的 `llm-plus` 行之后插入带标记的一行（宿主侧目录服务；浏览器设置页仍只在 web 组合）。清单侧需要在 `packages/bundle/base/package.json` 的 `dependencies` 增加 `"@deepseek-ai/dsh-models-dev": "workspace:*"`（JSON 无注释，故在此登记：文件 `packages/bundle/base/package.json`，`dependencies` 段，位置在 `@deepseek-ai/dsh-agent-instructions` 之后，原因＝新挂载行的包解析）。
 2. **rules 链（`agent-instructions-plus` + `tool-dsh-store`）在非 web 组合里没有，且不能简单补**：`verify-cordis-config` 的**平面规则**明确拒绝"同一行同时活在宿主平面（profile 级）与 agent 平面（preset 的 `plugins` 列表）"——
    - 我最初把这两行挂到 base profile 级，门禁报 `row "agent-instructions-plus" is also active in the host composition; a row belongs to exactly one plane`（×3 个 web preset）✗；
-   - 非 web 组合没有 preset 层（headless 只是个 runner；preset 只有 `bundle/web-app/presets/*.yml`）⇒ 要让 CLI 也默认带 rules，只有两条路：**(a)** 给非 web 组合引入 agent-preset 层（较大的原生改动，属上游形状）；**(b)** 把这套从 web preset 迁到 profile 级（等于改掉 web 的平面归属）✗。**本次不动，留给用户决定。**
+   - 非 web 组合没有 preset 层（headless 只是个 runner；preset 只有 `bundle/web-app/presets/*.yml`）⇒ 要让 CLI 也默认带 rules，只有两条路：**(a)** 给非 web 组合引入 agent-preset 层（较大的原生改动，属上游形状）；**(b)** 把这套从 web preset 迁到 profile 级（等于改掉 web 的平面归属）✗。
+   - **用户已决定：不要（2026/10/12）** ⇒ rules 链**保持只在 web preset 平面**，非 web 组合继续用原生 `agent-instructions`（无工作区 rules）。本条不再作为待办。
 
 ## 验证
 
