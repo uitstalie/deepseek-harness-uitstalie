@@ -66,9 +66,11 @@ cmd /c "echo permission denied 1>&2 & exit 1"
 
 ## 待办
 
-- 各包 README 的契约描述尚未同步（`dsh-sandbox`、`dsh-bash-sandbox`、`dsh-pwsh-sandbox`、`dsh-sandbox-local`、`dsh-ptc-runtime-node` 及其 `README.zh.md` 双语对）。
+- ~~各包 README 的契约描述尚未同步（`dsh-sandbox`、`dsh-bash-sandbox`、`dsh-pwsh-sandbox`、`dsh-sandbox-local`、`dsh-ptc-runtime-node` 及其 `README.zh.md` 双语对）~~ **已办**（见下节；2026/10/12 由 [task36](task36.md) 逐处复核确认无需改动）。
 
 ## 文档同步（已完成）
+
+本项由 [task36](task36.md) 复核确认无需改动（2026/10/12）。
 
 已同步 `dsh-sandbox`、`dsh-bash-sandbox`、`dsh-pwsh-sandbox`、`dsh-sandbox-local` 的 README 与 `README.zh.md`，以及子系统页 `docs/subsystems/sandbox.md` 与 `.zh.md`，并重录五个 `*.i18n.yaml` 配对记录。`dsh-ptc-runtime-node` 的 README 未描述分类细节，无需改动。
 
