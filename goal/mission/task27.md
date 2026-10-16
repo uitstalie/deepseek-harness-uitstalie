@@ -26,7 +26,7 @@
 | `ui-tool-dsh-store` | Workspace rules view / 工作区规则视图 | 侧边栏按工作区展示注入的 `.dsh` 规则 |
 | `common-view` | Common view overlay / 通用视图 overlay | 逐次接管一个原生视图，用 slot 与 token 提供 overlay |
 
-**未做**：图标（manifest `icon` 或 `./icon` 导出）。需要品牌图形，属设计决策，等用户确认再做。
+**未做**：~~图标（manifest `icon` 或 `./icon` 导出）~~ **已完成**（2026/10/12，用户选定"7 个元信息包全补"）：见 [task38](task38.md) B 段——7 个包各加自绘 `icon.svg`，manifest 增 `icon`、`./icon` 导出与 `files` 条目，真实解析器实测 7/7 解析成功。
 
 ## 验证
 
