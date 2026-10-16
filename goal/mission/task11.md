@@ -82,5 +82,6 @@ SACL，避免整棵树 eager 重传播），但不应据此认为 Win32 5 已被
 
 ### 待办
 
-- `approval-policy-guard` 插件尚未实现（审批噪音收敛部分）。
-- `escalationHintMarker` 在工作区内也追加的两处收敛尚未实现。
+- ~~`approval-policy-guard` 插件尚未实现（审批噪音收敛部分）~~ **已作废**：[task12](task12.md) 判定不该做（拦到后回 `allowed-once` 等于自动批准升到 `danger-full-access`，是安全回退）；[task39](task39.md) 复核确认包未建。
+- ~~`escalationHintMarker` 在工作区内也追加的两处收敛尚未实现~~ **已作废**：[task12](task12.md) 判定不成立（工作区内写不会走到 `mapError`）；[task39](task39.md) 复核确认两处原生文件无改动。
+- 修 (a)（`sandbox-windows-acl` 的 token/ACL）：**已由上游后续工作修掉**（受限 token 默认 DACL 补 restricting SID 的 ACE，见 [`token.ts:112`](../../packages/sandbox/sandbox-windows-acl/src/token.ts#L112) 与 [`src/index.ts:304`](../../packages/sandbox/sandbox-windows-acl/src/index.ts#L304)）；`Win32 5` 属环境前置，已在本文档实测定性，并由 [task34](task34.md) 补上运行期提示。详见 [task39](task39.md)。
