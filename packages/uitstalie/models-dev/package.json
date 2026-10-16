@@ -2,6 +2,7 @@
   "name": "@deepseek-ai/dsh-models-dev",
   "description": "models.dev catalog service: startup fetch with disk-cache TTL fallback, harness-shaped model defaults, and a user-facing write location for extra request params",
   "version": "0.0.0",
+  "icon": "./icon.svg",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
@@ -30,6 +31,7 @@
     },
     "./src/*": "./src/*",
     "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
     "./package.json": "./package.json"
   },
   "files": [
@@ -42,6 +44,7 @@
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
     "lib/typert.remote-client.d.ts",
+    "icon.svg",
     "locale/*.json"
   ],
   "license": "MIT",
