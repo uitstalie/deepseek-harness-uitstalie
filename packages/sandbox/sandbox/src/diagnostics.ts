@@ -1,5 +1,8 @@
 /** Classify observed sandbox runner failures and file-effect denials. */
-import { accessSync, constants, statSync } from 'node:fs'
+import { accessSync, constants, realpathSync, statSync } from 'node:fs'
+// BEGIN uitstalie-k3, 2026/10/12, task37, 路径证据按解析后真实路径判定需要拼路径
+import { basename, dirname, join } from 'node:path'
+// END uitstalie-k3
 import type { RunnerFailureRule } from './index.ts'
 
 /** Node-local spawn codes proven to identify executable resolution or permission failure. */
@@ -125,14 +128,45 @@ function namedAbsolutePaths(line: string): string[] {
 
 /** Collapse a path to the comparison spelling: unified separators, no trailing separator. */
 function comparisonPath(path: string): string {
-  return path.replaceAll('/', '\\').toLowerCase().replace(/\\+$/, '')
+  return stripExtendedPrefix(path).replaceAll('/', '\\').toLowerCase().replace(/\\+$/, '')
+}
+
+// uitstalie-k3, 2026/10/12, task37, 判定改用解析后的真实路径：区内 junction 指向区外时，
+// 拒绝信息里的字面路径仍在区内，纯字面比较会漏判（task13 记录的假阴性）。
+/** Strip the Windows extended-length prefix so a resolved path compares with a literal one. */
+function stripExtendedPrefix(path: string): string {
+  if (path.startsWith('\\\\?\\UNC\\')) return `\\\\${path.slice('\\\\?\\UNC\\'.length)}`
+  return path.startsWith('\\\\?\\') ? path.slice('\\\\?\\'.length) : path
+}
+
+/**
+ * Resolve a path to its real target for comparison. A denial message can name a
+ * path that does not exist yet, so resolution falls back to the nearest existing
+ * ancestor with the remaining segments re-appended, and finally to the input.
+ * @param path - a path named by a denial message, or a granted root.
+ * @returns the real path when resolvable, otherwise the input spelling.
+ */
+function resolvedPath(path: string): string {
+  let current = path
+  const trailing: string[] = []
+  for (;;) {
+    try {
+      const resolved = realpathSync.native(current)
+      return trailing.length === 0 ? resolved : join(resolved, ...trailing.reverse())
+    } catch {
+      const parent = dirname(current)
+      if (parent === current) return path
+      trailing.push(basename(current))
+      current = parent
+    }
+  }
 }
 
 /** Whether `path` is one of `roots` or sits under one, on a segment boundary. */
 function isUnderAnyRoot(path: string, roots: readonly string[]): boolean {
-  const candidate = comparisonPath(path)
+  const candidate = comparisonPath(resolvedPath(path))
   return roots.some((root) => {
-    const normalized = comparisonPath(root)
+    const normalized = comparisonPath(resolvedPath(root))
     return candidate === normalized || candidate.startsWith(`${normalized}\\`)
   })
 }
