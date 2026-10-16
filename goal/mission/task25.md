@@ -100,3 +100,4 @@ packages/llm/llm-pi-ai (@deepseek-ai/dsh-llm-pi-ai): no product runtime use; mou
 2. **门禁级收尾已完成（2026/10/12，用户指定顺序：task21 先行、task22 随后）**：交付记录见 [task21 第三步](task21.md) 与 [task22](task22.md)；`pnpm run test:gui` 现只剩**两处环境性失败**（`connection/binary-rpc` 5s 超时、`ui-deliverables/present-open` 的 Windows 无符号链接权限），task23 记录的 `ui-trajectory/client-bundle` 在本次 rebase + clean + build 后**已转绿**。
 3. ~~**仍需用户定夺**：38 个无标记原生文件的合规清扫（本任务单未做，按分支规则属独立任务）~~ **已办**：由 [task26](task26.md) 完成补标记/登记；2026/10/12 由 [task38](task38.md) 复核标记纪律（85 个标记文件，此后新增原生改动无一漏标）。
 4. [task24](task24.md) 的 PENDING 清单（common-view overlay 逐 view 复刻、设置通道开关等）继续有效。
+5. **残留的"环境性失败"已逐条定性（2026/10/12，[task39](task39.md)）**，都不改代码：`ui-deliverables/present-open` 需要符号链接特权（本机 `core.symlinks=false`，当前实跑复现 EPERM）；`connection/binary-rpc` 的 5s 超时是负载性抖动（单独跑即绿）；`verify-cordis-config` 的 acp 档案因索引里是 mode 120000 符号链接而在本机检出为普通文本。三条的信号都归 Linux/macOS CI。
