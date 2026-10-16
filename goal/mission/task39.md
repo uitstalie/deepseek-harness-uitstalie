@@ -31,3 +31,7 @@
 ## 验证
 
 本次为只读取证：`git grep`（标记与包清单）、`git ls-files -s` + `git config`（符号链接环境）、`vitest` 精跑两条规格（present-open ✗ 环境、binary-rpc ✓）、以及 task37 已记录的 `sandbox-windows-acl` 199 测试全绿。除本任务单与两份旧任务单的状态行外，**无任何代码或文档内容改动**。
+
+## 后续去向
+
+本任务单与 [task11](task11.md)、[task25](task25.md) 的残留项已全部了结；其余**有意接受**或**本机无法了结**的事项统一登记在分支限制台账 [goal/limitations.md](../limitations.md)（2026/10/12 建立，用户指定"先记录到文档里，不进 jira"）。
