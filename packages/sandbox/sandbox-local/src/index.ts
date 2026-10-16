@@ -214,7 +214,11 @@ const DENIAL_SIGNATURES = {
   // "EACCES: permission denied" 都会命中，把与沙盒无关的命令失败误报成沙盒拒绝，
   // 再经升级提示诱导模型升权。Windows 的两条措辞保留，且分类还会要求拒绝信息里
   // 出现工作区外的路径（见 dsh-sandbox diagnostics 的 classifyDenial）。
-  'windows-acl': ['access is denied', 'access to the path'],
+  // uitstalie-k3, 2026/10/12, task37, 两条通用短语按方言需要恢复：沙盒内 Node 自身的
+  // EPERM/EACCES 正是这两个措辞，只读路径没有路径证据可依，删掉即漏判（task13 实测
+  // ptc-runtime-node 的只读用例）。workspace-write 侧的误报仍由路径证据挡住，恢复不会
+  // 重演当初的审批噪音。
+  'windows-acl': ['access is denied', 'access to the path', 'permission denied', 'operation not permitted'],
   runnerCommand: ['read-only file system', 'permission denied'],
 } as const satisfies Record<SelectedRunner['runner'] | 'runnerCommand', readonly string[]>
 

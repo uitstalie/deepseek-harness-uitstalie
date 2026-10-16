@@ -43,7 +43,9 @@ describe('windows-acl win32 chain (LocalSandboxProvider)', () => {
     ])
     expect(confined.enforcement).toBe('partial')
     // uitstalie-k3, 2026/10/12, task26, 追溯补标记：task12 把 windows-acl 的拒绝短语收窄为确实带路径证据的两条
-    expect(confined.denialSignatures).toEqual(['access is denied', 'access to the path'])
+    // uitstalie-k3, 2026/10/12, task37, 两条通用短语按方言恢复（沙盒内 Node 的 EPERM/EACCES 就这两句，
+    // 只读路径无路径证据可依）；workspace-write 侧的误报仍由路径证据挡住。
+    expect(confined.denialSignatures).toEqual(['access is denied', 'access to the path', 'permission denied', 'operation not permitted'])
     expect(confined.runnerFailureRules).toEqual([{ allowedExitCodes: [127], fatalSignatures: ['windows-acl-run: '] }])
     // A sole candidate is selected unprobed.
     expect(probeWindowsAcl).not.toHaveBeenCalled()
