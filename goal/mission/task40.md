@@ -89,6 +89,6 @@
 
 ## 待办
 
-1. **推送决策**：`--force-with-lease` 推送 `cli-desktop`（远端旧 tip 已在本地保底分支 `backup/cli-desktop-20261020-1025`）。
+1. **推送决策** ~~未决~~ **已完成（2026/10/20）**：`--force-with-lease=cli-desktop:<推送前远端 tip>` 推送 `cli-desktop`，远端报告 forced update；推送前 typecheck 钩子 5 项 gate 通过（12.5s），推送后 `origin/cli-desktop` 与本地 HEAD 一致。保底：rebase 前/推送前的 tip 都在本地分支 `backup/cli-desktop-20261020-1025`，回滚用该分支强制回推即可。
 2. **hygiene 的 5 项既有红灯**（runtime closure / unknown casts / constraints / publint / rescope）：是否立项修，需用户定夺；与本次 rebase 无关。
 3. [limitations](../limitations.md) 已追加「本机 hygiene 红灯」一条，指回本任务单。
