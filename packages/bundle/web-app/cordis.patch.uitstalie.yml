@@ -1,5 +1,16 @@
-# uitstalie 分支组合层（DH-1）：挂在 dsh-web-app 的 dsh.bundle.patch 列表末尾，
-# 只追加浏览器侧的行；models-dev 的宿主服务由 base 层提供，这里不再重复声明。
+# uitstalie 分支组合层（DH-1 / DH-5）：挂在 dsh-web-app 的 dsh.bundle.patch 列表末尾。
+#
+# 宿主侧：`.dsh` 基础接口（tool-dsh-store）与常驻上下文切面
+# （agent-instructions-plus，原生 instruction loader 仍按自己的行运行）。
+# 浏览器侧：models-dev 设置页、rules 按钮、common-view overlay。
 - insert:
+    - id: tool-dsh-store
+      name: '@deepseek-ai/dsh-tool-dsh-store'
+    - id: agent-instructions-plus
+      name: '@deepseek-ai/dsh-agent-instructions-plus'
     - id: ui-models-dev
       name: '@deepseek-ai/dsh-client-ui-models-dev'
+    - id: ui-tool-dsh-store
+      name: '@deepseek-ai/dsh-client-ui-tool-dsh-store'
+    - id: ui-common-view
+      name: '@deepseek-ai/dsh-client-common-view'
