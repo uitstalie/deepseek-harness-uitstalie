@@ -40,7 +40,7 @@
 - 优先通过配置、cordis.yml 的 `disabled`、新增插件覆盖、或标记注释包裹的提前返回块来实现"不启用"，把删除转化为新增，不触碰原生文件。
 - 必须物理删除时，删除最小的连续块，用标记注释说明，并在任务单中登记删除点与理由。
 
-## 标记注释与任务单
+## 标记注释与 jira 任务
 
 每一处对原生文件的修改或删除都要带标记注释，使全部分支改动可以被一条命令枚举：`git grep -n "uitstalie-"`。
 
@@ -62,20 +62,20 @@ int example = 0; // uitstalie-${llm_model_name}, ${yyyy/MM/dd}, ${mission_id}, $
 
 - `llm_model_name`：执行本次修改的模型名称，便于区分不同 agent 的改动。
 - `yyyy/MM/dd`：修改日期。
-- `mission_id`：与用户约定的任务单文档名。任务单维护在 goal/mission/ 目录，文件名即 mission_id，内容记录需求（requirement）与本次修改范围——作用类似 Jira 单，但本质是在本地维护的系统。修改原生文件前必须先建立对应任务单。
+- `mission_id`：对应 jira issue key（如 `DH-1`）。任务维护在 dsh-jira 台账的 `DH` 项目（设计见插件仓库的 `DESIGN.md`），在修改原生文件前必须先建好对应 issue；`goal/mission/task1–task40` 自 2026/10/20 起冻结，只作历史档案（见 [mission/FROZEN.md](mission/FROZEN.md)）。
 - 修改原因简述：一句话说明为什么改。
 
-任务单的创建规则：每个任务先判断是新 mission 还是已有 mission 的变更；两种情况都必须创建新的任务单文档，无论变更范围和变化大小。变更已有 mission 时，新文档使用新的 mission_id，并注明变更自哪个原任务单，形成溯源链。
+任务的创建规则：每个任务（含对已有任务的变更）都在 jira 新建一条 issue，无论变更范围和变化大小。变更已有任务时，新 issue 用 link 或正文注明变更自哪条 issue，形成溯源链。
 
-任务单系统纯本地维护，不引入 GitHub Issues 等外部票据系统：标记注释必须在 rebase 冲突现场离线可解析，任务单同时兼任原生修改登记表，这两类数据都必须随分支存在于 git 中。
+jira 台账在分支 git 之外（跨会话、跨机器共享），标记注释里的 issue key 就是冲突现场的回查凭据；原生改动的逐处登记（文件、位置、原因）写进对应 issue 的正文或评论，而不是仓库内的任务文档。
 
-不支持注释的文件类型（如 JSON）无法内嵌标记，改为在任务单中逐处登记文件、位置与原因。
+不支持注释的文件类型（如 JSON）无法内嵌标记，改为在对应 jira issue 中逐处登记文件、位置与原因。
 
 ## 提交与 rebase 约定
 
 - 分支自有文件（goal/、新包、新 bundle）与原生文件的修改分开提交；原生修改的提交保持少而集中。
 - rebase 到 master 时，冲突只会出现在登记过的原生文件上；goal/ 与全部新增路径永远干净。
-- 每次 rebase 后执行 `git grep -n "uitstalie-"` 盘点全部标记，逐处确认适配结果；即使出现破坏性 rebase，也能凭标记与任务单快速梳理和恢复。
+- 每次 rebase 后执行 `git grep -n "uitstalie-"` 盘点全部标记，逐处确认适配结果；即使出现破坏性 rebase，也能凭标记与 jira issue 快速梳理和恢复。
 
 ## 示例
 
