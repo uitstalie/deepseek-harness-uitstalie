@@ -1,0 +1,5 @@
+# uitstalie 分支组合层（DH-1）：挂在 dsh-web-app 的 dsh.bundle.patch 列表末尾，
+# 只追加浏览器侧的行；models-dev 的宿主服务由 base 层提供，这里不再重复声明。
+- insert:
+    - id: ui-models-dev
+      name: '@deepseek-ai/dsh-client-ui-models-dev'

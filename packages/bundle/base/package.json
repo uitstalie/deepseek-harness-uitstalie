@@ -30,7 +30,10 @@
   "license": "MIT",
   "dsh": {
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": [
+        "./cordis.patch.yml",
+        "./cordis.patch.uitstalie.yml"
+      ]
     }
   },
   "dependencies": {

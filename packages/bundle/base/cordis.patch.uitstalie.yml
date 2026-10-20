@@ -1,0 +1,16 @@
+# uitstalie 分支组合层（DH-1）：挂在 dsh-base 的 dsh.bundle.patch 列表末尾，
+# 随每个 base-backed profile 生效；上游的 cordis.patch.yml 不再包含这些行。
+#
+# 替换关系：原生 llm-pi-ai 行保持上游的位置与内容，由本层按 id 禁用；llm-plus 以
+# 零路由休眠挂载，路由表留给用户 settings 的 `llm-plus:` 段。models-dev 目录服务在
+# 所有 base-backed 组合里都挂宿主侧（web 设置页仍只在 web 组合）。
+- id: llm-pi-ai
+  disabled: true
+
+- insert:
+    - id: llm-plus
+      name: '@deepseek-ai/dsh-llm-plus'
+      config:
+        routes: {}
+    - id: models-dev
+      name: '@deepseek-ai/dsh-models-dev'
