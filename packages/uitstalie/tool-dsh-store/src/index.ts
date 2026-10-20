@@ -1,32 +1,23 @@
 /**
- * `.dsh` store plugin: registers the `tool-dsh-store` tool and keeps the
- * workspace store root present for each session.
+ * The `.dsh` store plugin: provides the base interface (`ctx.dshStore`), the
+ * model-facing `tool-dsh-store` tool, the read-only sidebar Remote, and the
+ * per-session store-root preparation.
  *
- * The root is `<projectRoot>/.dsh`, discovered the same way
- * `dsh-skill-filesystem` discovers it (`cwd` upward to a `.git` marker, `cwd`
- * when no marker exists). Creating it is a write, so a `read-only` session skips
- * it and retries once the session's mode allows writes.
+ * The store service is the base interface for `.dsh` management: path
+ * confinement, the four operations, namespace authoring checks, and the session
+ * policy gate live there, so every consumer drives one implementation.
  * @module @deepseek-ai/dsh-tool-dsh-store
  */
 
-import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type { Session } from '@deepseek-ai/dsh-session'
-import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
-import { findProjectRoot } from '@deepseek-ai/dsh-agent-instructions'
-import { STORE_DIR_NAME } from './paths.ts'
-import { ensureStoreRoot } from './store-ops.ts'
+import { createDshStore } from './service.ts'
 import { defineStoreTool } from './tool.ts'
 import StoreRulesRemote from './remote.ts'
 
 export const name = 'tool-dsh-store'
 /** The tool registry and the filesystem every store call writes through. */
 export const inject = ['tools', 'fs']
-
-/** Project-root markers; the same convention `dsh-skill-filesystem` applies. */
-const PROJECT_ROOT_MARKERS = ['.git']
 
 /** Store plugin configuration. */
 export interface Config {
@@ -70,53 +61,26 @@ export type {
   StoreQueryResult,
   StoreRemoveResult,
 } from './store-ops.ts'
-export { resolveStorePolicy } from './policy.ts'
+export { resolveSessionStorePolicy, resolveStorePolicy } from './policy.ts'
 export type { StorePolicy } from './policy.ts'
+export { createDshStore } from './service.ts'
+export type { DshStore, StoreCallOptions, StoreRemoveOptions } from './service.ts'
 export { defineStoreTool } from './tool.ts'
 export type { StoreToolOptions, StoreToolValue } from './tool.ts'
 export { storeRelativePath, storeRootOfWorkspace, workspaceRootOf } from './remote.ts'
 export type { StoreRuleEntry, StoreRulesListing, StoreRuleText } from './types.ts'
 
 /**
- * Register the store tool and the per-session root preparation.
+ * Register the store service, the tool, the Remote, and the per-session root preparation.
  * @param ctx - plugin context carrying the tool registry and filesystem.
  * @param config - whether a session creates the store root on demand.
  */
 export function apply(ctx: Context, config: Config): void {
   const ensureRoot = config.ensureRoot ?? true
-  const roots = new WeakMap<Session, string>()
-  const ensured = new WeakSet<Session>()
+  const store = createDshStore(ctx, ensureRoot)
+  ctx.provide('dshStore', store)
 
-  /** The session's `.dsh` root, resolved once per session. */
-  const rootOf = async (session: Session, signal?: AbortSignal): Promise<string> => {
-    const cached = roots.get(session)
-    if (cached !== undefined) return cached
-    const cwd = session.header.cwd ?? process.cwd()
-    const projectRoot = await findProjectRoot(cwd, PROJECT_ROOT_MARKERS, ctx.fs, signal)
-    const root = join(projectRoot, STORE_DIR_NAME)
-    roots.set(session, root)
-    return root
-  }
-
-  /** The session's `.dsh` root, created first unless the session may not write. */
-  const prepare = async (session: Session, signal?: AbortSignal): Promise<string> => {
-    const root = await rootOf(session, signal)
-    if (ensured.has(session)) return root
-    const policy: SandboxExecutionPolicy | undefined = ctx.get('sandboxPolicy')?.resolve({ session })
-    // A read-only session is deliberately not marked as prepared: its mode can
-    // change later in the same session, and the next call then creates the root.
-    if (policy?.mode === 'read-only') return root
-    await ensureStoreRoot(ctx.fs, root, signal, policy)
-    ensured.add(session)
-    return root
-  }
-
-  ctx.tools.register(defineStoreTool(ctx, {
-    resolveRoot: async (exec: ToolExecution): Promise<string> => {
-      if (exec.agent === undefined) throw new Error('tool-dsh-store requires an owning agent session')
-      return prepare(exec.agent.session, exec.signal)
-    },
-  }))
+  ctx.tools.register(defineStoreTool(ctx, { store }))
 
   // The read-only Remote namespace the Web sidebar consumes. It waits for the
   // workspace registry on its own fiber, so a composition without one keeps the
@@ -126,7 +90,7 @@ export function apply(ctx: Context, config: Config): void {
   if (!ensureRoot) return
   ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
     try {
-      await prepare(agent.session, signal)
+      await store.prepare(agent.session, signal)
     } catch (error: unknown) {
       // Preparing the store root is housekeeping rather than part of the step: a
       // failure here is reported, and the tool call that needs the store reports
