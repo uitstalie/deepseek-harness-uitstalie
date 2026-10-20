@@ -1,16 +1,16 @@
 /**
- * Plus loader: the native workspace-instruction chain plus always-on
- * `<projectRoot>/.dsh/rules` Markdown, delivered in one `agent-instructions`
- * message so the model sees a single chain.
+ * Plus loader: appends the always-on context sources to the native
+ * workspace-instruction baseline, in one `agent-instructions` message.
  *
- * The native loader is mounted below a decorator listener rather than copied:
- * the decorator wraps whatever the native loader produced, appending the rules
- * segment to its baseline message, and emits a replacement baseline of its own
- * only when the rules set changed while the native chain stayed put.
- *
+ * This is a seam, not a general injection layer: the sources today are workspace
+ * rules, and memory or personality can register later through
+ * `ctx.agentContextSources`. Skills keep their own injection through the skill
+ * seam. The native loader stays mounted on its own row; this plugin only
+ * decorates the baseline it produced.
  * @module @deepseek-ai/dsh-agent-instructions-plus
  */
 
+import { createHash } from 'node:crypto'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
@@ -18,25 +18,23 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { FileSystem } from '@deepseek-ai/dsh-fs'
 import type { Session, UserMessage } from '@deepseek-ai/dsh-session'
 import {
-  Config as NativeConfigSchema,
-  apply as applyNative,
   baselineInstructionState,
   findProjectRoot,
-  inject as nativeInject,
-  loadBaselineInstructionSet,
-  name as nativeName,
-  renderAgentInstructions,
   resolveConfig,
   workspaceBaselineIdentity,
 } from '@deepseek-ai/dsh-agent-instructions'
 import type { ResolvedConfig } from '@deepseek-ai/dsh-agent-instructions'
 import { Config, resolveRulesConfig } from './config.ts'
 import type { ResolvedRulesConfig } from './config.ts'
-import { scanWorkspaceRules } from './rules.ts'
+import { createRulesSource } from './rules-source.ts'
+import { createAgentContextSources } from './sources.ts'
+
+/** Baseline identity fields the shipped presets configure for the native loader. */
+const NATIVE_BASELINE_MAX_BYTES = 65536
 
 export const name = 'agent-instructions-plus'
 /**
- * Same projection and directory dependencies as the reused loader: the turn
+ * Same projection and directory dependencies as the native loader: the turn
  * boundary drives touches, and both chains scan the Session's current
  * directory rather than its creation directory.
  */
@@ -47,103 +45,110 @@ export { resolveRulesConfig, DEFAULT_RULES_MAX_BYTES, DEFAULT_RULES_MAX_SOURCE_B
 export type { ResolvedRulesConfig, RulesConfig } from './config.ts'
 export { RULES_DIRECTORY, rulesScanChanged, scanWorkspaceRules } from './rules.ts'
 export type { RulesScan, RulesScanOptions } from './rules.ts'
+export { createAgentContextSources } from './sources.ts'
+export type { AgentContextContribution, AgentContextInput, AgentContextSource, AgentContextSources } from './sources.ts'
+export { createRulesSource } from './rules-source.ts'
 
-/** Per-session bookkeeping for the rules segment. */
-interface RulesAttachment {
-  /** Digest of the retained rules set at the last baseline this plugin touched. */
+/** Per-session bookkeeping for the rendered source segment. */
+interface SourceAttachment {
+  /** Digest of the retained source set at the last baseline this plugin touched. */
   digest: string
 }
 
-/** A message the reused loader produced as its durable workspace-instruction baseline. */
+/** A message the native loader produced as its durable workspace-instruction baseline. */
 function isBaselineMessage(message: UserMessage): boolean {
   return message.source.kind === 'agent-instructions' && message.source.baseline === true
 }
 
 /**
- * Register the plus loader.
- * @param ctx - plugin context; the decorator is registered before the reused loader mounts.
- * @param config - native loader configuration plus the rules section.
+ * Register the plus loader and its source seam.
+ * @param ctx - plugin context carrying the working directory and filesystem.
+ * @param config - the always-on sources this seam contributes.
  */
 export function apply(ctx: Context, config: Config): void {
-  const resolved: ResolvedConfig = resolveConfig(config.agentInstructions)
   const rules: ResolvedRulesConfig = resolveRulesConfig(config.rules)
-  const attachments = new WeakMap<Session, RulesAttachment>()
+  const native: ResolvedConfig = resolveConfig({ maxBytes: NATIVE_BASELINE_MAX_BYTES })
+  const sources = createAgentContextSources()
+  ctx.provide('agentContextSources', sources)
+  sources.register(createRulesSource(rules))
+  const attachments = new WeakMap<Session, SourceAttachment>()
 
-  /** Render the rules segment for one session and return it with its set digest. */
-  const rulesSegment = async (
+  /**
+   * Render every registered source for one agent step.
+   * @param agent - the agent being prepared.
+   * @param fileSystem - provider used by the sources.
+   * @param signal - cancellation for the step.
+   * @returns the joined segment and its set digest, or undefined when no source applies.
+   */
+  const renderSources = async (
     agent: Agent,
+    fileSystem: FileSystem,
     signal: AbortSignal,
   ): Promise<{ text: string; digest: string } | undefined> => {
-    if (!rules.enabled || rules.maxBytes <= 0 || !Number.isFinite(rules.maxBytes)) return undefined
-    const fileSystem = ctx.get('fs')
-    if (fileSystem === undefined) return undefined
+    const registered = sources.list()
+    if (registered.length === 0) return undefined
     const cwd = await ctx.workingDirectory.ensure(agent, signal)
-    const projectRoot = await findProjectRoot(cwd, resolved.projectRootMarkers, fileSystem, signal)
-    const scan = await scanWorkspaceRules(fileSystem, {
-      projectRoot,
-      maxSourceBytes: rules.maxSourceBytes,
-      signal,
-    })
-    if (scan.files.length === 0) return { text: '', digest: scan.digest }
-    const rendered = renderAgentInstructions(scan.files, { maxBytes: rules.maxBytes })
-    return { text: rendered.text, digest: scan.digest }
+    const projectRoot = await findProjectRoot(cwd, native.projectRootMarkers, fileSystem, signal)
+    const retained: { name: string; text: string; digest: string }[] = []
+    for (const source of registered) {
+      const contribution = await source.render({ agent, fileSystem, projectRoot, signal })
+      if (contribution === undefined) continue
+      retained.push({ name: source.name, ...contribution })
+    }
+    if (retained.length === 0) return undefined
+    const hash = createHash('sha1')
+    for (const contribution of retained) {
+      hash.update(contribution.name)
+      hash.update('\0')
+      hash.update(contribution.digest)
+      hash.update('\n')
+    }
+    return {
+      text: retained.filter(contribution => contribution.text.length > 0).map(contribution => contribution.text).join('\n\n'),
+      digest: hash.digest('hex'),
+    }
   }
 
-  /** Append the rules segment to a baseline message, keeping its durable source facts. */
+  /** Append the source segment to a baseline message, keeping its durable source facts. */
   const appendSegment = (message: UserMessage, text: string): UserMessage => createUserMessage({
     content: [...message.content, { type: 'text', text }],
     source: message.source,
   })
 
   /**
-   * Emit a replacement baseline carrying the native chain and the rules segment.
-   * Used only when the rules changed while the native loader had nothing to say.
+   * Emit a replacement baseline carrying the source segment.
+   * Used only when the sources changed while the native loader had nothing to say.
    */
   const replacementBaseline = async (
     agent: Agent,
     fileSystem: FileSystem,
     signal: AbortSignal,
-    rulesText: string,
+    text: string,
   ): Promise<UserMessage | undefined> => {
-    const cwd = await ctx.workingDirectory.ensure(agent, signal)
-    const projectRoot = await findProjectRoot(cwd, resolved.projectRootMarkers, fileSystem, signal)
-    const instructions = await loadBaselineInstructionSet({
-      cwd,
-      dshHome: resolved.dshHome,
-      agentsHome: resolved.agentsHome,
-      projectRootMarkers: resolved.projectRootMarkers,
-      maxBytes: resolved.maxBytes,
-      maxSourceBytes: resolved.maxSourceBytes,
-      instructionFileCandidates: resolved.instructionFileCandidates,
-      localInstructionFileCandidates: resolved.localInstructionFileCandidates,
-      projectRoot,
-      replacePreviousBaseline: true,
-      signal,
-    }, fileSystem)
-    const text = [instructions?.rendered.text ?? '', rulesText].filter(part => part.length > 0).join('\n\n')
     if (text.length === 0) return undefined
+    const cwd = await ctx.workingDirectory.ensure(agent, signal)
+    const projectRoot = await findProjectRoot(cwd, native.projectRootMarkers, fileSystem, signal)
     return createUserMessage({
       content: [{ type: 'text', text }],
       source: {
         kind: 'agent-instructions',
         form: 'instructions',
         baseline: true,
-        baselineIdentity: workspaceBaselineIdentity(resolved, cwd, projectRoot),
-        changes: [...baselineInstructionState(instructions?.included ?? []).changes.values()],
+        baselineIdentity: workspaceBaselineIdentity(native, cwd, projectRoot),
+        changes: [...baselineInstructionState([]).changes.values()],
       },
     })
   }
 
-  // Registered before the reused loader mounts, so this listener wraps it: the
-  // waterfall reaches the native loader through `next()`, and the rules segment
-  // joins whichever channel that loader used for its baseline — the batch it
-  // returned, or the pending inbox it kept when the batch owned no step.
+  // The native loader registers its own listener on its preset row; this
+  // listener wraps whichever decision comes out of the chain and only adds the
+  // source segment, so the AGENTS portion stays byte-identical to native.
   ctx.on('agent/pre-step', async ({ agent, messages, signal }, next): Promise<PreStepDecision> => {
     const decision = await next()
-    if (!rules.enabled || decision.kind !== 'enter') return decision
+    if (decision.kind !== 'enter') return decision
     const fileSystem = ctx.get('fs')
     if (fileSystem === undefined) return decision
-    const segment = await rulesSegment(agent, signal)
+    const segment = await renderSources(agent, fileSystem, signal)
     if (segment === undefined) return decision
     const attachment = attachments.get(agent.session)
 
@@ -180,12 +185,4 @@ export function apply(ctx: Context, config: Config): void {
       messages: decision.messages.toSpliced(lastClaimedIndex + 1, 0, replacement),
     }
   })
-
-  // Mount the reused loader beneath the decorator with the user's native section.
-  void ctx.plugin({
-    name: nativeName,
-    inject: nativeInject,
-    Config: NativeConfigSchema,
-    apply: applyNative,
-  }, config.agentInstructions)
 }
