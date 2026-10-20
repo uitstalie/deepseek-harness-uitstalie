@@ -2,7 +2,7 @@
 
 ## 状态
 
-- **注入层：已交付**——实现是 [task16](mission/task16.md) 的 `dsh-agent-instructions-plus`（复用原生 `agent-instructions` 全部语义，禁用原生行以免重复投递，在同一条消息里追加 `.dsh/rules/**`，独立 16 KiB 预算）。
+- **注入层：已交付（2026/10/20 重塑）**——实现是 [task16](mission/task16.md) 的 `dsh-agent-instructions-plus`，现为常驻上下文切面：原生 `agent-instructions` 行保持启用并产出基线链，本插件在 profile 层包裹它的 `agent/pre-step`，把 `ctx.agentContextSources` 注册的来源（内置 `.dsh/rules/**`，独立 16 KiB 预算）追加进同一条消息；memory、personality 等后续来源从同一注册表接入。组合行由 web-app 分支层挂载（DH-5），不再改动 preset，也不再有"禁用原生行"这一步。
 - **机检层（交付前自检）：暂不推进**——用户判定（2026/09/30）[task15](mission/task15.md) **废弃**，不另立任务单。本文下面的机检层设计与 hook 实测结论**保留作为将来重启时的起点**，但当前没有任何实现计划。
 
 本文件定义 rules 的语义、可用的 hook 点、自检的两种模式、规则文件规格与复用面。设计与任务单的分工：任务单登记需求与范围，设计细节在这里。

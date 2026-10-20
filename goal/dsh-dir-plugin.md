@@ -4,14 +4,14 @@
 
 ## 目标与非目标
 
-**目标**：agent 用一句话告诉插件「创建 / 查询 / 删除 `.dsh/` 下的什么文件和文件夹」，插件负责路径解析、越界拒绝、策略门禁、结果渲染。它是 `.dsh/` 的唯一写入面，为 `.dsh/rules/**`、`.dsh/skills/**` 这类项目级内容提供受控的创建与清理能力。
+**目标**：agent 用一句话告诉插件「创建 / 查询 / 删除 `.dsh/` 下的什么文件和文件夹」，插件负责路径解析、越界拒绝、策略门禁、结果渲染。它是 `.dsh/` 的唯一写入面，为 `.dsh/rules/**`、`.dsh/skills/**` 这类项目级内容提供受控的创建与清理能力。这些能力同时暴露为 `dshStore` Cordis 服务（`projectRootFor` / `rootFor` / `prepare` + 每个操作一个方法），模型工具与侧边栏 Remote 都是它的消费者；组合行由 web-app 分支层挂载（DH-5），不再写进 preset。
 
 **非目标**：不做规则语义（不解析 rules 内容、不注入上下文，那是后续任务单）；不做任意工作区路径的通用文件管理（通用路径已有 `tool-fs`）；不做 `.dsh/` 之外的位置。
 
 ## 根目录与布局
 
 - 根 = `<projectRoot>/.dsh`，**根名锁定、不做配置项**（用户已定）。project root 的判定与 [skill-filesystem](../packages/skill/skill-filesystem/src/index.ts) 一致：从会话 cwd 向上找 `.git` 标记，找不到则退化为 cwd（标记同样不做配置项，保持与 skill 同源）。这样 `.dsh/rules` 与既有 `.dsh/skills`、`~/.dsh/skills` 的归属完全对齐。
-- **默认创建根目录**：挂载后若 `<projectRoot>/.dsh` 不存在，就建一个空目录（`createRoot` 默认 true）。它是一次写操作，所以受策略门禁约束：`read-only` 会话下跳过并记录，不报错。这条保证 `.dsh/` 作为"工作区级约定目录"总是存在，agent 与 UI 不需要先判断再创建。
+- **默认创建根目录**：挂载后若 `<projectRoot>/.dsh` 不存在，就建一个空目录（`ensureRoot` 默认 true）。它是一次写操作，所以受策略门禁约束：`read-only` 会话下跳过并记录，不报错。这条保证 `.dsh/` 作为"工作区级约定目录"总是存在，agent 与 UI 不需要先判断再创建。
 - 其余配置项：`maxPathLength`、`maxDepth`、`maxReadBytes`（query 读文件的上限）。
 - 布局示例：`.dsh/rules/*.md`、`.dsh/skills/<name>/SKILL.md`、`.dsh/runtime.json`。
 
@@ -141,16 +141,18 @@
 
 **状态（2026/09/30）**：P0–P5 均已完成，见 [task14](mission/task14.md) 的状态总表与该任务单各步记录；P6 按上表结论处理。本文以下各节保留为设计依据，不再是待办。
 
+**状态（2026/10/20）**：本包已服务化为 `ctx.dshStore`（基础接口，工具与 Remote 是消费者），组合行改由 web-app 分支层挂载，preset 不再被改动（DH-5）；P0–P5 的结论不变。
+
 提交拆分：host 包、client 包、docs 各自独立提交（分支自有文件）；原生登记（`tsconfig.host.json`、`tsconfig.client.json`、`tsconfig.base.json` 手写别名）单独一个提交，带 `uitstalie-` 标记。
 
 ## 与 rules 加载器（[task16](mission/task16.md)）的衔接
 
 加载器**不改** `agent-instructions`（它的候选过滤只支持同目录文件名），而是新插件/新模块，复用同一套注入框架：
 
-- 扫描 `<projectRoot>/.dsh/rules/**/*.md`（可配置 glob 与扩展名），按路径深度「宽 → 具体」排序，与 `agent-instructions` 的优先级方向一致。
-- 注入形态沿用它的契约：**带来源的 user 消息**、`<system-reminder>` 框架、`maxBytes` 预算（先丢宽文件、再截断最具体的文件并输出预算通知）、内容去重、变更/移除通知、`</system-reminder>` 转义、会话日志可完整重建。
-- 可选增强：front-matter 里的 `globs`/`alwaysApply` 决定是否注入（这是「目录形式 rules」相对单文件 AGENTS.md 的主要收益）。
-- 刷新：本插件发出的 `fs/observed` + 成功读写的触达，正好是加载器需要的变更信号。
+- 注入层现为常驻上下文切面（DH-5）：原生 `agent-instructions` 行保持启用并产出基线链，`agent-instructions-plus` 在 profile 层包裹它的 `agent/pre-step`，把 `ctx.agentContextSources` 注册的来源追加进同一条消息；不再禁用原生行，也不在插件里重挂原生 loader。
+- 内置来源扫描 `<projectRoot>/.dsh/rules/**/*.md`，按路径深度「宽 → 具体」排序，与 `agent-instructions` 的优先级方向一致；注入形态沿用它的契约：**带来源的 user 消息**、`<system-reminder>` 框架、`maxBytes` 预算（先丢宽文件、再截断最具体的文件并输出预算通知）、内容去重、变更/移除通知、`</system-reminder>` 转义、会话日志可完整重建。
+- 来源通过 `ctx.agentContextSources.register({ name, render })` 接入，返回 `{ text, digest }`；后续 memory、personality 等项目上下文走同一注册表，skills 仍走自己的注入点。
+- 刷新：本插件的 `fs/observed` + 成功读写的触达，正好是加载器需要的变更信号。
 
 ## 未决问题（需用户拍板）
 

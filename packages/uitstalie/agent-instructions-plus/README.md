@@ -1,5 +1,5 @@
 ---
-description: "The workspace-instruction loader with .dsh rules support, for users and maintainers sizing or debugging what reaches the model."
+description: "The always-on agent-context seam: appends registered sources (workspace rules today) to the native instruction baseline, for users and maintainers sizing or debugging what reaches the model."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-agent-instructions-plus` is the branch's workspace-instruction loader. It mounts the native `dsh-agent-instructions` loader unchanged and appends one more always-on source: every Markdown file under `<projectRoot>/.dsh/rules`, rendered into the same durable baseline message. Compositions disable the native row and mount this one instead, so the same chain is never delivered twice.
+`dsh-agent-instructions-plus` is the branch's always-on agent-context seam. It does not replace the native instruction loader: the native row keeps producing the baseline chain, and this package appends the registered context sources to that same durable message. The built-in source is every Markdown file under `<projectRoot>/.dsh/rules`; memory, personality, and similar project context can register later through the same seam. Skills keep their own injection and are not routed here.
 
 ## Table of Contents
 
@@ -26,21 +26,32 @@ English | [中文](README.zh.md)
 
 ### What it adds
 
-The native chain — `$DSH_HOME/AGENTS.md` plus the project chain of `AGENTS.md`, `CLAUDE.md`, and their local overlays — is delivered exactly as before. This package adds the workspace rules: every `.md` file under `.dsh/rules`, nested directories included, in path order.
+The native chain — `$DSH_HOME/AGENTS.md` plus the project chain of `AGENTS.md`, `CLAUDE.md`, and their local overlays — is delivered exactly as before, by its own row. This package appends the workspace rules: every `.md` file under `.dsh/rules`, nested directories included, in path order, as `Instructions from: .dsh/rules/<name>` sections of the same message.
 
 ### Configuration
 
-The native section is the native loader's own schema, so its fields and defaults stay its own; the rules section adds one independent budget.
+The native loader keeps its own row and schema; this package configures only the sources it contributes.
 
 ```yaml
 - id: agent-instructions-plus
   name: '@deepseek-ai/dsh-agent-instructions-plus'
   config:
-    agentInstructions:
-      maxBytes: 65536
     rules:
       maxBytes: 16384
 ```
+
+Other plugins add sources through the registry the plugin provides:
+
+```ts
+ctx.agentContextSources.register({
+  name: 'memory',
+  async render({ agent, fileSystem, projectRoot, signal }) {
+    return { text: '…', digest: '…' }
+  },
+})
+```
+
+Sources render in registration order and join the same baseline message; a source is disposed with the plugin that registered it.
 
 ### Authoring rules
 
@@ -54,7 +65,7 @@ A rule is plain Markdown with no front-matter and no activation metadata: every 
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The plugin mounts the native loader as a child plugin and registers its own `agent/pre-step` listener *before* that mount, so the listener wraps the native one: the waterfall reaches the native loader through `next()`, and the rules segment joins whichever channel the native loader used for its baseline — the batch it returned, or the pending inbox it keeps when the batch owns no step. The native rendering is reused verbatim, so the AGENTS portion stays byte-identical to a native-only composition; a rules edit the native chain does not react to emits a replacement baseline of its own.
+The plugin is mounted at the profile level, so its `agent/pre-step` listener registers before any Agent exists and wraps the native loader's listener: the waterfall reaches the native loader through `next()`, and the joined source segment is appended to whichever channel the native loader used for its baseline — the batch it returned, or the pending inbox it keeps when the batch owns no step. The native rendering is reused verbatim, so the AGENTS portion stays byte-identical to a native-only composition; a source-set change the native chain does not react to emits a replacement baseline of its own. Each contribution carries its own digest, and the combined digest detects any add, remove, or edit.
 
 </details>
 
@@ -85,7 +96,7 @@ These limits describe current behavior.
 
 - **Rules are always on** — there is no per-file scope, glob, or activation flag; a rule that applies only in some situations has to say so in its own text.
 - **Deduplication is by content, not intent** — two rules that say the same thing in different words are both delivered; only trimmed-equal content collapses.
-- **The native loader is reused, not copied** — its entry exports the internals this plugin composes, which keeps the two implementations from drifting but ties this package to that export list.
+- **The seam carries always-on context only** — skills and per-turn reminders keep their own injection points; this registry is for project context that must be present from the first request.
 
 <a id="dev-note"></a>
 ### Dev Note

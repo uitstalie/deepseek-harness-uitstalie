@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/agent-instructions-plus/README.md
 /:
-  en: e106e7ecb4e8b249
-  zh: 5ff584e3ca616ea1
+  en: 5c08f2848644ecac
+  zh: f5d98931d22c79d1
 /deepseek-ai-dsh-agent-instructions-plus:
   en: aad5ed3076beb97d
   zh: e11b3f53c94ba88d
 /deepseek-ai-dsh-agent-instructions-plus/summary:
-  en: a0d4d502b3189120
-  zh: e2914c337afaf5f8
+  en: c6849e93d02a72a1
+  zh: a1b9d99aa76592a4
 /deepseek-ai-dsh-agent-instructions-plus/table-of-contents:
   en: 76368b6b1da79c80
   zh: 52384aee991ac542
@@ -18,17 +18,17 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-agent-instructions-plus/use-this-package/what-it-adds:
-  en: 1a5d69c0a572f4fe
-  zh: 96d67a1fb0741868
+  en: 45e490252ca890b0
+  zh: 21bd9110fce7031a
 /deepseek-ai-dsh-agent-instructions-plus/use-this-package/configuration:
-  en: caaf7d449b91b95d
-  zh: 2d51d49572caf85d
+  en: 289d6c84dec9342d
+  zh: b5d4eb8b96ae5a3c
 /deepseek-ai-dsh-agent-instructions-plus/use-this-package/authoring-rules:
   en: 3489eca1d196ed16
   zh: 3d18824448fad11c
 /deepseek-ai-dsh-agent-instructions-plus/understand-the-implementation:
-  en: be79d02642c670b1
-  zh: 2c4c57944e5424a1
+  en: 96926bc184fbf513
+  zh: 22e986cdc6fc3f00
 /deepseek-ai-dsh-agent-instructions-plus/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -45,8 +45,8 @@
   en: e381db6d9cf710d9
   zh: 843eb23e317fdc11
 /deepseek-ai-dsh-agent-instructions-plus/known-limitations-and-deferred-work:
-  en: 0ca1547d022c924d
-  zh: 51bb63b607e57339
+  en: 0d121b1d59e5ebbe
+  zh: 06a158c5be69a6c7
 /deepseek-ai-dsh-agent-instructions-plus/known-limitations-and-deferred-work/dev-note:
   en: 3088abf73c5acffd
   zh: 3f18887de4388160
