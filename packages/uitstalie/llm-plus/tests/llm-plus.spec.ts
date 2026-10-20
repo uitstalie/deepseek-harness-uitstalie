@@ -10,10 +10,22 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { createMessage, createToolResultMessage, createUserMessage, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import ModelsDevCatalog from '@deepseek-ai/dsh-models-dev'
+import ModelsDevCatalog, { type JsonValue } from '@deepseek-ai/dsh-models-dev'
 import { liveConfig } from '../../../settings/settings/tests/live-config.ts'
 import * as llmPlus from '@deepseek-ai/dsh-llm-plus'
 import { resolveRoutes } from '../src/config.ts'
+
+/** 断言并读出请求体里的 JSON 数组；测试只消费形状，不信任未校验的数据。 */
+function jsonArray(value: JsonValue | undefined): JsonValue[] {
+  if (!Array.isArray(value)) throw new Error('expected a JSON array')
+  return value
+}
+
+/** 断言并读出请求体里的 JSON 对象。 */
+function jsonObject(value: JsonValue | undefined): Record<string, JsonValue> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('expected a JSON object')
+  return value
+}
 
 // models-dev 的测试夹具（deepseek provider，两个模型）
 const FIXTURE_URL = pathToFileURL(
@@ -507,22 +519,22 @@ test('tool messages map to each protocol wire form', async () => {
 
   // openai-completions：独立的 role:'tool' 消息，带 tool_call_id
   const completions = await build('openai-completions', 'http://test.local/v1')
-  expect((completions.messages as unknown as Record<string, unknown>[])[1])
+  expect(jsonObject(jsonArray(completions.messages)[1]))
     .toEqual({ role: 'tool', tool_call_id: 'call_1', content: 'ls output' })
 
   // openai-responses：function_call_output item
   const responses = await build('openai-responses', 'http://test.local/v1')
-  expect((responses.input as unknown as Record<string, unknown>[])[1])
+  expect(jsonObject(jsonArray(responses.input)[1]))
     .toEqual({ type: 'function_call_output', call_id: 'call_1', output: 'ls output' })
 
   // anthropic-messages：user 消息里的 tool_result 块
   const anthropic = await build('anthropic-messages', 'http://test.local')
-  expect((anthropic.messages as unknown as { content: Record<string, unknown>[] }[])[1]!.content[0])
+  expect(jsonObject(jsonArray(jsonObject(jsonArray(anthropic.messages)[1]).content)[0]))
     .toEqual({ type: 'tool_result', tool_use_id: 'call_1', content: 'ls output' })
 
   // gemini：functionResponse 需要函数名——从先前的 tool-call 块反查
   const geminiBody = await build('gemini', 'http://test.local')
-  expect((geminiBody.contents as unknown as { parts: Record<string, unknown>[] }[])[1]!.parts[0])
+  expect(jsonObject(jsonArray(jsonObject(jsonArray(geminiBody.contents)[1]).parts)[0]))
     .toEqual({ functionResponse: { name: 'bash', response: { result: 'ls output' } } })
 })
 

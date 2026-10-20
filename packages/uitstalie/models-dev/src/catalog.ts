@@ -294,11 +294,17 @@ export function parseCatalog(text: string, onDrop?: (entry: string, reason: stri
       }
       models[modelId] = model
     }
+    const env = asStringArray(providerRaw.env)
     data[providerId] = {
-      ...(providerRaw as unknown as ModelsDevProvider),
       // provider.id 缺失时以外层键兜底（数据集规范上两者一致）
       id: typeof providerRaw.id === 'string' ? providerRaw.id : providerId,
       models,
+      // 可选字段逐项收窄；数据集里的未知字段不进入带类型的目录
+      ...(typeof providerRaw.name === 'string' ? { name: providerRaw.name } : {}),
+      ...(typeof providerRaw.npm === 'string' ? { npm: providerRaw.npm } : {}),
+      ...(typeof providerRaw.api === 'string' ? { api: providerRaw.api } : {}),
+      ...(typeof providerRaw.doc === 'string' ? { doc: providerRaw.doc } : {}),
+      ...(env === undefined ? {} : { env }),
     }
   }
   return data
