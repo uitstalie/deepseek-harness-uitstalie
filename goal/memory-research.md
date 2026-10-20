@@ -70,3 +70,32 @@
 ## 来源与可信度
 
 本环境无法直连 GitHub（DNS 解析到非公网地址），因此 claude-mem 的事实取自其发布文档镜像（[introduction](https://mintlify.wiki/thedotmack/claude-mem/introduction)、[architecture](https://mintlify.wiki/thedotmack/claude-mem/architecture/overview)），mem0 取自[官方文档](https://docs.mem0.ai/open-source/overview)，Cline 取自[官方文档](https://docs.cline.bot/best-practices/memory-bank)，Letta 与 Basic Memory 取自各自文档站；其余项目（Zep/Graphiti、Cognee、Cursor/Windsurf、Anthropic memory tool）基于检索结果与公开资料，star 数、许可证等未逐一核实。设计前如需精确引用，应在可直连 GitHub 的环境复核。
+
+## DSH 现状核查（2026/10/20）
+
+用户提出的三层模型：**L1 会话全文 → L2 会话摘要（可自己 drop）→ L3 模型用工具查历史**。逐层核对现有实现：
+
+| 层 | 现状 | 位置 |
+|---|---|---|
+| L1 会话全文 | **已实现**：每个会话事件持久化到 JSONL；`session-query-sqlite` 建立 SQLite 全文索引，base 层默认挂载，服务为 `ctx.sessionQuery` | `packages/core/session`、`packages/session-query/session-query-sqlite` |
+| L2 会话摘要 | **部分实现**：`compaction-basic` 在 token 压力、上下文溢出或 `/compact` 时把最旧历史压成一条摘要，持久化为 `compaction/summary` 事件，携带 `shadowedRange`/`shadowedSeqs`/`shadowedTokenCount`/provider/model/usage，再用 `surfaceOp: replace` 的 checkpoint 消息替换被遮罩区间；再次压缩会把更早的摘要一并遮罩——**"摘要自己 drop"在单会话内已成立**。但这是会话内的上下文压缩，不是跨会话的摘要记忆，也没有 TTL/衰减 | `packages/compaction/compaction-basic/src/region.ts` |
+| L3 工具查历史 | **已有但默认关闭**：实验包 `dsh-tool-session-query` 提供 5 个只读工具——`session_search`、`session_event_search`、`session_trace`、`session_event_trace`、`session_event_read`；跨会话访问要求目标会话 `cwd` 与调用者完全相等，搜索排除调用者自身会话；**未挂进任何 bundle**，只能显式 opt-in | `packages/experimental/tool-session-query` |
+
+结论：三层所需的原语都在，缺的是把它们组织成 memory 层的插件：
+
+- **跨会话摘要缺失**：compaction 摘要只服务当前会话的上下文；没有"会话结束时生成摘要、下次会话注入最近 N 条"的机制。
+- **摘要生命周期缺失**：摘要事件永久留在日志里，被遮罩只是不进模型上下文；跨会话摘要需要自己的条数/TTL/升级策略（概括进 jira KB 后可丢弃）。
+- **L3 默认不开**：web 与 headless 组合都没有挂 `tool-session-query`；且它排除调用者自身会话，当前会话早期内容只能靠 `session_event_search` 的部分能力。
+- **没有 memory 存储**：`.dsh` 只有 rules/skills 两个命名空间；jira KB 是另一套策展记忆。
+
+### 新插件的最小形态（设计输入）
+
+- **L2 生产**：会话结束（或 `/compact` 之后）把最近一次 `compaction/summary` 落盘；没有摘要时生成一条"会话摘要"（标题复用 `session-title`）。落盘位置候选：`.dsh/memory/sessions/<id>.md`（frontmatter: sessionId/title/cwd/startedAt/updatedAt/tokens/sourceSeqs/status）或 jira KB（全局）。
+- **L2 注入**：`agentContextSources` 的 memory 源注入最近 N 条摘要/上次会话摘要，小预算（~2–4 KiB）。
+- **L2 丢弃**：按条数/TTL/被取代折叠；摘要只是工作记忆，沉淀为"已验证知识"后进 jira KB，然后可从 memory 里 drop。
+- **L3 接线**：memory 插件启用时挂 `dsh-tool-session-query`（或薄包装），把全文检索能力交给模型；当前会话的读取限制需要单独评估（`session_event_read`/`session_event_search`）。
+- **与 jira KB 的分工**：KB 是长期语义记忆（事实、决策、runbook）；`.dsh/memory` 是项目工作记忆；L2 摘要是两者之间的过渡层。
+
+### 外部对照
+
+用户的三层模型与 claude-mem 最接近（原始观察 → 压缩摘要 → 三层检索工具），但 claude-mem 的 L2 是自动压缩、需要后台 worker；Letta 的结构相反（核心记忆块常驻、原始消息可检索）。DSH 的原语天然对应：`compaction/summary` 事件就是 L2 的现成产物，`session-query-sqlite` 是 L1 的索引，`tool-session-query` 是 L3 的雏形——因此新插件应"组合现有原语"，而不是新建一套存储与检索。
