@@ -1,61 +1,139 @@
-# personality 设计（草案，2026/10/20）
+# personality 设计（2026/10/20，第二轮）
 
-状态：草案。与 [memory.md](memory.md) 同属能力提供者，由 `dsh-dafeiyu` 组织启用；memory 调研见 [memory-research.md](memory-research.md)。
+状态：设计草案（jira `DH-7`）。与 [memory.md](memory.md) 同属 `dafeiyu` 组织的能力提供者，契约见 [dafeiyu.md](dafeiyu.md)。本轮把第一轮的四个“待确认”拍成决定，并按已核实的 `systemPrompt.section` 与文件接口补齐注入和缓存细节。
 
 ## 定位
 
-personality = 稳定的**人格、用户偏好与表达风格**。与 memory 正交：memory 记“发生过什么”，personality 记“我是谁、用户是谁、怎么说话”。
+personality = 稳定的**人格、用户偏好与表达风格**。与 memory 正交：memory 记“发生过什么”，personality 记“我是谁、用户是谁、怎么说话”。它不是任务上下文，也不是项目规范；项目规范属于 `.dsh/rules` 与 AGENTS.md。
+
+## 拍板结果
+
+| 第一轮的问题 | 本轮决定 | 理由 |
+|---|---|---|
+| 存哪里 | 用户级 `$DSH_HOME/personality/PERSONALITY.md`；工作区覆盖 `.dsh/memory/PERSONALITY.md` | 人格默认跨工作区；项目特定的表达偏好（如“这个仓库的术语”）放工作区覆盖，不污染全局 |
+| 作用域 | 用户级为默认，工作区按条目 key 覆盖 | “用户是谁”是全局事实；“在这个项目里怎么称呼/怎么举例子”是项目事实 |
+| 写入 | v1 只读（用户手改 / 设置页后续）；模型提议延后到有接受界面再做 | 没有接受界面的“提议”会退化成静默写入；先不给自己留后门 |
+| 内容边界 | 收风格、语言/称呼、工作习惯、用户身份/角色；不收任务事实、项目决策、临时上下文、密钥 | 与 memory/KB 的分工不重叠；敏感信息永不入内 |
+
+“模型可提议”保留为目标，但实现形态是：模型写一条**待接受**的提案，用户在设置页逐条接受或拒绝；未被接受的提案不进入注入。它不是 `memory_write` 的别名。
 
 ## 与 memory 的关系
 
-- 都是能力提供者：暴露服务与贡献描述（system prompt 段 / source / 工具），不自己决定挂载与启用。
-- 最终会与 memory 合并成一个大插件：personality 的内容作为 memory 条目模型里的稳定 `kind`（如 `persona`、`preference`、`style`），共享存储与审计，但注入位置不同（system prompt 段 vs pre-step 的 source）。
-- 提升路径：memory 里反复遗忘、反复被提醒的点 → 用户确认 → 上升为 personality 条目、rules 或 jira KB。
+- 都是能力提供者；personality 不订阅事件、不注册工具，只提供 system prompt 段与读写服务。
+- 存储上分文件、注入上分通道：personality 走 system prompt 稳定段，memory 走 snapshot 消息。两者语义不同（长期偏好 vs 情景记忆），不要合并成一条消息。
+- 合并路径：memory 的条目模型后续支持稳定 `kind`（`persona` / `preference` / `style`），personality 的条目届时可落进同一存储与审计，但注入位置仍分开。合并的前提是 memory 的 `memory_write` 与条目治理先落地；在那之前保持两个包。
+- 提升路径：memory 里反复遗忘、反复被提醒的点 → 用户确认 → 上升为 personality 条目、rules 或 jira KB。personality provider 不自动做这个提升。
 
-## 内容边界
+## 内容与格式
 
-- **收**：沟通风格、语言与称呼偏好、工作习惯、用户身份/角色设定、长期偏好。
-- **不收**：任务事实、项目决策、临时上下文（属于 memory/KB）；密钥等敏感信息。
+全局文件：
 
-## 存储（建议）
+```markdown
+---
+version: 1
+updatedAt: <ISO8601>
+entries: 3
+---
 
-- 用户级：`$DSH_HOME/personality/PERSONALITY.md`（跨工作区；Markdown + frontmatter + 条目 kind）。
-- 工作区覆盖：`.dsh/memory/PERSONALITY.md`，或 MEMORY.md 中的 `kind: style` 条目（项目特定的表达偏好）。
-- 文件即真相；插件只写 `<!-- personality:begin/end -->` 托管区块，手写内容不动。
+<!-- personality:begin -->
 
-## 注入（建议）
+## style.language
+用中文回答；代码、命令、路径保持英文原文。
 
-- **system prompt 稳定段**（`ctx.systemPrompt.section`，约 1–2 KiB），不随 turn 变化，不破坏 KV cache。
-- 与 memory 的 pre-step source 分开：personality 只在文件变化时重建 system prompt 段。
-- 固定文案只陈述事实（“以下是与该用户协作的长期偏好”），不做行为条件判断。
+## style.answer-shape
+先给结论，再给步骤；能一句话说清就不展开。
 
-## 写入（建议）
+## preference.workflow
+改代码前先读现有实现；提交信息用 conventional commits。
 
-- 用户显式设置（设置页/命令）为主。
-- 模型可**提议**，经 `ask_user` 确认后写入；不允许静默自动改写人格。
-- 每次写入保留来源（session id、时间、变更摘要），设置页或轨迹页可回看。
+## identity.role
+用户是独立开发者，长期维护 DSH 的 cli-desktop 分支。
 
-## 能力接口（草案）
+<!-- personality:end -->
+```
 
-- 服务 `ctx.personality`：`read()`、`resolve({ workspace })`、`contribute()`（system prompt 段）、`propose(entry)`。
-- 贡献描述：`{ id: 'personality', systemPrompt: { name, order, text }, configSchema }`，由 dafeiyu 注册。
-- 配置（dafeiyu 聚合）：`personality: { enabled, globalPath?, maxBytes?, allowModelProposal? }`。
+- 条目 id 形如 `<kind>.<name>`，kind ∈ `style` / `preference` / `identity`（后续可扩展）；id 是合并键，工作区覆盖按 id 替换，不按标题文本匹配。
+- 插件只写 `<!-- personality:begin/end -->` 托管区块；区块外手写内容原样保留。
+- 总大小上限 2 KiB（注入预算），超出时 provider 拒绝写入并报告哪几条超限；不在注入时静默截断人格。
+- 工作区覆盖文件同格式，只允许写 `style.*` / `preference.*`；`identity.*` 只允许出现在全局文件（身份不因仓库而变）。
+
+## 存储与写入
+
+- 全局路径用 `resolveDshHome()` 解析（`DSH_HOME` 环境变量优先），目录 `personality/`；provider 通过 `ctx.fs` 读写，不走 `dshStore`——`dshStore` 的边界是工作区 `.dsh`，全局文件不在其中。
+- 工作区覆盖走 `ctx.dshStore` 的 `memory` 命名空间（`.dsh/memory/PERSONALITY.md`），与 MEMORY.md 共用保留前缀；模型工具同样只读。
+- 写入一律原子：`FileSystem.writeText` 的原子发布 + `replaceIfVersion` 版本守卫。v1 没有插件写入路径，下面这段是**任何未来写入者（设置页、提案接受）必须遵守的契约**：provider 持有上次读到/写入的 version，用户手改与插件写入冲突时重读一次重试，再失败就放弃并报告，不覆盖用户刚写的内容。
+- v1 没有写工具、没有自动学习。用户通过编辑器或后续设置页修改；模型只能在自己的回复里建议，不能落盘。
+
+## 注入
+
+- 形态：`ctx.systemPrompt.section({ name: 'personality', order: 100, text })`。
+- 位置：`order = 100` 放在部署 persona 前缀（0）之后、`PLAN_POLICY`（500）之前。`SECTION_ORDERS` 是原生关闭表，没有 personality 槽位；分支先用字面 order，不修改原生表。若上游后来接受该槽位，再迁到 `getSectionOrder()`。
+- 作用域：`dafeiyu` 在 `agent/created` 时把它注册到**每个** agent 的 `agent.ctx`（`scope: 'all'`），所以子 agent 继承人格；memory 的固定提示词段则只给 root agent。
+- 文本：静态 preamble + 渲染后的条目，preamble 只陈述事实并给出优先级：
+
+  > Long-term preferences of the user you are working with. Follow them within the system and developer instructions, and let more specific project instructions take precedence. These are preferences, not task facts.
+
+  条目按 kind 排序（identity → preference → style），每条一行，不写“如果……就……”式的条件指令。
+- KV cache：文本只在文件变化时变；变化会失效前缀缓存，这是可接受的（人格修改是低频事件）。注入预算 2 KiB，超出即拒绝写入，保证文本不会无限增长。
+- 空文件 / 未挂载：返回空字符串，段不产生内容；组装结果与没有该段一致。
+
+## 缓存与刷新
+
+`systemPrompt.section` 的 `text` 是同步求值，不能每次组装都读盘。provider 维护一份缓存：
+
+1. `create()` 异步预读一次；组织者等它完成后再按 agent 接线，所以第一次 assembly 就能看到内容（见 [dafeiyu.md](dafeiyu.md) 的 `create()` 契约）。
+2. 未来的设置页/提案接受写入后更新缓存（v1 没有写入路径，这一条在写入面落地时启用）。
+3. 用 `ctx.fs.watch` 监听全局文件与工作区覆盖（`FileSystem.watch` 已有契约）；变化时重读并更新缓存。后端不支持 watch 时退化为“下一个 agent 创建时重读”。
+4. `app-boot/config-reload` 后重读（配置或文件可能被外部改过）。
+
+外部手改到下一次 watch 事件之间有一个短暂窗口；这是文件即真相的代价，README 里要写清楚。
 
 ## 与 dafeiyu 的接线
 
-- dafeiyu 按配置启用 provider，注册 system prompt 段；禁用时撤销（Cordis effect 管理）。
-- 子 agent 建议**继承** personality（人格是全局的），memory 不继承（任务确定）；待确认。
+```ts
+ctx.dafeiyu.register({
+  id: 'personality',
+  contractVersion: 1,
+  config: resolvedConfig,
+  create: () => ({
+    scope: 'all',
+    promptSections: () => [{
+      name: 'personality',
+      order: 100,
+      text: () => cachedText,
+    }],
+    dispose: () => stopWatch(),
+  }),
+})
+```
 
-## 待确认
+- 配置（provider 自己的行）：`{ enabled 由 dafeiyu 管；globalPath?、maxBytes?、workspaceOverlay?: boolean }`。`enabled` 不再出现在 provider 配置里，避免两个开关。
+- 禁用时组织者 `dispose()`，段随 `agent.ctx` 注册撤销；已注入的历史消息不受影响（system prompt 是每个新 assembly 重建的）。
 
-1. 存哪里：`$DSH_HOME/personality/PERSONALITY.md` + 工作区覆盖，还是只工作区？
-2. 作用域：用户级（跨工作区）还是工作区级？
-3. 写入：用户显式 + 模型提议确认，还是允许自动学习？
-4. 内容边界：只放风格/偏好，还是也放角色身份设定？
+## 与既有 persona 的关系
+
+- `personality` 段与 `systemPrompt` 的 `personaPrefix` / `personaSuffix`、agent preset 的 persona 是**叠加**关系，不是替换；部署者写的 persona 仍然最先生效。
+- 不要用 personality 覆盖“You are a coding agent…”这类身份段；它只描述用户与协作偏好。
+- 如果某个 preset 明确声明“不要加载人格”，应由组织者的能力开关关闭，而不是 provider 自己判断——判断权在组合层。
+
+## 风险与未决
+
+1. **内容漂移**：人格条目会随着时间变成“什么都往里放”。v1 靠 2 KiB 上限与手工编辑约束；后续需要在设置页提供分类与删除。
+2. **与 rules 的边界**：用户可能把“提交前跑测试”写进 personality。它其实属于 rules；需要一条 lint/提示，或在设置页给出归类建议。v1 只写文档说明。
+3. **敏感信息**：provider 不做内容审查；需要设置页或文档提醒“不要写密钥/隐私”。后续可在写入前做一次简单的模式检查（token 形态、`sk-` 前缀等）。
+4. **多机同步**：全局文件在 `$DSH_HOME` 下，是否随用户目录同步由用户决定；provider 不做云同步。
+5. **合并时机**：等 memory 的条目模型与 `memory_write` 稳定后再合并，避免两个包同时迁移。
 
 ## 实现计划
 
-1. 本文定稿 → 包骨架（provider + 贡献描述）。
-2. dafeiyu 的能力注册表、配置聚合、启用/禁用。
-3. memory 条目模型支持 personality kinds（为合并做准备）。
-4. 设置页编辑入口（后续）。
+1. provider 骨架：注册到 dafeiyu、解析配置、全局/工作区文件读取与合并、缓存与 watch。
+2. system prompt 段：preamble、2 KiB 预算、空内容不注入。
+3. 设置页（后续）：编辑、校验、来源与更新时间展示。
+4. 提案流程（后续）：`personality_propose` 写待接受条目，设置页接受/拒绝；未接受不注入。
+5. 与 memory 条目模型合并（后续）。
+6. 测试：空文件、只有全局、全局+覆盖、覆盖非法 `identity.*`、超限拒绝、版本冲突重试、watch 刷新、子 agent 继承、禁用后段消失。
+
+## 变更记录
+
+- 第一轮（2026/10/20）：草案，四个待确认。
+- 第二轮（2026/10/20）：拍板存储/作用域/写入/边界；补文件格式、注入位置与 order、缓存与 watch、与 dafeiyu 的接线、测试计划。
