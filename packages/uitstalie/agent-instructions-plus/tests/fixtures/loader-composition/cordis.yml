@@ -13,7 +13,8 @@
     agents: []
 - name: '@deepseek-ai/dsh-agent-instructions-plus'
   config:
-    agentInstructions:
-      maxBytes: 65536
     rules:
       maxBytes: 16384
+- name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536

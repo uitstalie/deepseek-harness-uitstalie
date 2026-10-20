@@ -45,14 +45,19 @@ async function write(relativePath: string, content: string): Promise<void> {
 }
 
 /** Mount a context owning the loader under test plus its loop prerequisites. */
-async function mountLoader(plugin: Parameters<Context['plugin']>[0], config: object): Promise<{ ctx: Context; harness: AgentLoopTestHarness }> {
+async function mountLoader(
+  plugin?: Parameters<Context['plugin']>[0],
+  config: object = {},
+): Promise<{ ctx: Context; harness: AgentLoopTestHarness }> {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
   provideWorkingDirectoryFixture(ctx, project)
   await ctx.plugin(LocalFileSystem, { cwd: project })
   const harness = await mountAgentLoopTestHarness(ctx)
-  await ctx.plugin(plugin, config)
+  // Plus registers its decorator first, so its listener wraps the native one.
+  if (plugin !== undefined) await ctx.plugin(plugin, config)
+  await ctx.plugin(AgentInstructions, { maxBytes: MAX_BYTES })
   return { ctx, harness }
 }
 
@@ -95,10 +100,9 @@ test('composes the native chain and the rules into one message', async () => {
   await write('.dsh/rules/nested/style.md', 'Two-space indentation.')
 
   const { ctx, harness } = await mountLoader(Plus, {
-    agentInstructions: { maxBytes: MAX_BYTES },
     rules: { maxBytes: 4096 },
   })
-  const native = await mountLoader(AgentInstructions, { maxBytes: MAX_BYTES })
+  const native = await mountLoader()
 
   const agent = await createAgent(harness, 'plus-1')
   const nativeAgent = await createAgent(native.harness, 'native-1')
@@ -121,8 +125,8 @@ test('composes the native chain and the rules into one message', async () => {
 
 test('an absent rules directory leaves the native text unchanged', async () => {
   await write('AGENTS.md', '# Repo rules')
-  const { ctx, harness } = await mountLoader(Plus, { agentInstructions: { maxBytes: MAX_BYTES } })
-  const native = await mountLoader(AgentInstructions, { maxBytes: MAX_BYTES })
+  const { ctx, harness } = await mountLoader(Plus, { rules: { maxBytes: 4096 } })
+  const native = await mountLoader()
   const agent = await createAgent(harness, 'plus-2')
   const nativeAgent = await createAgent(native.harness, 'native-2')
   await drivePreStep(ctx, agent)
@@ -135,7 +139,6 @@ test('a rules edit after the baseline emits a replacement baseline', async () =>
   await write('AGENTS.md', '# Repo rules')
   await write('.dsh/rules/api.md', 'First rule text.')
   const { ctx, harness } = await mountLoader(Plus, {
-    agentInstructions: { maxBytes: MAX_BYTES },
     rules: { maxBytes: 4096 },
   })
   const agent = await createAgent(harness, 'plus-3')
@@ -154,4 +157,22 @@ test('a rules edit after the baseline emits a replacement baseline', async () =>
   expect(text).toContain('Second rule text.')
   expect(text).not.toContain('First rule text.')
   expect(replacement[0]!.source.kind === 'agent-instructions' && replacement[0]!.source.baseline).toBe(true)
+})
+
+test('a registered source joins the same baseline after the rules', async () => {
+  await write('AGENTS.md', '# Repo rules')
+  await write('.dsh/rules/api.md', 'Always document public APIs.')
+  const { ctx, harness } = await mountLoader(Plus)
+  ctx.agentContextSources.register({
+    name: 'memory',
+    render: async () => ({ text: 'Remember the user prefers concise replies.', digest: 'memory-1' }),
+  })
+  const agent = await createAgent(harness, 'plus-4')
+  await drivePreStep(ctx, agent)
+
+  const text = messageText(pendingInstructions(agent)[0]!)
+  expect(text).toContain('Instructions from: .dsh/rules/api.md')
+  expect(text).toContain('Remember the user prefers concise replies.')
+  expect(text.indexOf('Always document public APIs.'))
+    .toBeLessThan(text.indexOf('Remember the user prefers concise replies.'))
 })

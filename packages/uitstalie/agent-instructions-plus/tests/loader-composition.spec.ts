@@ -22,6 +22,7 @@ import * as ToolsPlugin from '@deepseek-ai/dsh-tools'
 import * as AgentLoopPlugin from '@deepseek-ai/dsh-agent-loop'
 import * as FsLocalPlugin from '@deepseek-ai/dsh-fs-local'
 import * as WorkingDirectoryPlugin from '@deepseek-ai/dsh-working-directory'
+import * as AgentInstructionsPlugin from '@deepseek-ai/dsh-agent-instructions'
 import * as PlusPlugin from '../src/index.ts'
 
 let context: Context | undefined
@@ -54,6 +55,7 @@ async function boot(project: string): Promise<Context> {
     ['@deepseek-ai/dsh-working-directory', WorkingDirectoryPlugin],
     ['@deepseek-ai/dsh-agent', AgentPlugin],
     ['@deepseek-ai/dsh-agent-loop', AgentLoopPlugin],
+    ['@deepseek-ai/dsh-agent-instructions', AgentInstructionsPlugin],
     ['@deepseek-ai/dsh-agent-instructions-plus', PlusPlugin],
   ])
   ctx.loader.internal = {
@@ -101,14 +103,12 @@ test('the composed row delivers the native chain and the rules in one message', 
   expect(text).toContain('Always document public APIs.')
 })
 
-test('every agent preset swaps the native row for the plus row', async () => {
+test('the branch layer mounts the plus row and the presets stay native', async () => {
   for (const preset of ['standard', 'ptc', 'cordis']) {
     const text = await readFile(new URL(`../../../bundle/web-app/presets/${preset}.patch.yml`, import.meta.url), 'utf8')
-    const block = text.slice(text.indexOf('# BEGIN uitstalie-k3'), text.indexOf('# END uitstalie-k3'))
-    expect(block, preset).toContain("name: '@deepseek-ai/dsh-agent-instructions'")
-    expect(block, preset).toContain('disabled: true')
-    expect(block, preset).toContain("name: '@deepseek-ai/dsh-agent-instructions-plus'")
-    expect(block, preset).toContain('agentInstructions:')
-    expect(block, preset).toContain('rules:')
+    expect(text, preset).not.toContain('uitstalie')
   }
+  const layer = await readFile(new URL('../../../bundle/web-app/cordis.patch.uitstalie.yml', import.meta.url), 'utf8')
+  expect(layer).toContain("name: '@deepseek-ai/dsh-agent-instructions-plus'")
+  expect(layer).toContain("name: '@deepseek-ai/dsh-tool-dsh-store'")
 })
