@@ -134,21 +134,6 @@
     # document.
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
-      disabled: true # uitstalie-k3, 2026/09/14, task9, 灰度替换：llm-plus 接替 pi-ai，先逻辑禁用验证一轮再物理删除
-
-    # BEGIN uitstalie-k3, 2026/09/14, task9, 灰度替换：挂载 llm-plus 接替上方禁用的 llm-pi-ai；
-    # 路由表留给用户 settings 文档（llm-plus: 段），组合层零路由休眠挂载
-    - id: llm-plus
-      name: '@deepseek-ai/dsh-llm-plus'
-      config:
-        routes: {}
-    # END uitstalie-k3
-
-    # BEGIN uitstalie-k3, 2026/10/12, task33, models.dev 目录服务在非 web 组合里也默认挂载
-    # （客户端设置页仍只在 web 组合；此处只挂宿主侧目录服务）
-    - id: models-dev
-      name: '@deepseek-ai/dsh-models-dev'
-    # END uitstalie-k3
 
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
