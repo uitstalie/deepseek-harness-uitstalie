@@ -1,5 +1,5 @@
 ---
-description: "支持 .dsh 规则的工作区指令加载器，面向衡量或排查进入模型内容的用户与维护者。"
+description: "常驻的 Agent 上下文切面：把注册的来源（当前是工作区规则）追加到原生指令基线，面向衡量或排查进入模型内容的用户与维护者。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-agent-instructions-plus` 是本分支的工作区指令加载器。它原样挂载原生 `dsh-agent-instructions` 加载器，并追加一路始终在线的来源：`<projectRoot>/.dsh/rules` 下的每个 Markdown 文件，渲染进同一条持久基线消息。组合层会禁用原生行、改挂本包，因此同一条链不会被投递两次。
+`dsh-agent-instructions-plus` 是本分支的常驻 Agent 上下文切面。它不替换原生指令加载器：原生行继续产出基线链，本包把注册的上下文来源追加到同一条持久消息。内置来源是 `<projectRoot>/.dsh/rules` 下的每个 Markdown 文件；memory、personality 之类的项目上下文以后从同一切面注册。skills 仍走自己的注入点，不经过这里。
 
 ## 目录
 
@@ -26,21 +26,32 @@ kind: "package-reference"
 
 ### 它增加了什么
 
-原生链——`$DSH_HOME/AGENTS.md` 加上项目链上的 `AGENTS.md`、`CLAUDE.md` 及各自的本地覆盖文件——与以往完全一致。本包增加的是工作区规则：`.dsh/rules` 下的每个 `.md` 文件（含嵌套目录），按路径顺序。
+原生链——`$DSH_HOME/AGENTS.md` 加上项目链上的 `AGENTS.md`、`CLAUDE.md` 及各自的本地覆盖文件——仍由它自己的行完全一致地投递。本包追加的是工作区规则：`.dsh/rules` 下的每个 `.md` 文件（含嵌套目录），按路径顺序，渲染为同一条消息里的 `Instructions from: .dsh/rules/<name>` 段。
 
 ### 配置
 
-原生段就是原生加载器自己的 schema，因此它的字段与默认值仍归它自己；规则段增加一份独立预算。
+原生加载器保留自己的行与 schema；本包只配置它贡献的来源。
 
 ```yaml
 - id: agent-instructions-plus
   name: '@deepseek-ai/dsh-agent-instructions-plus'
   config:
-    agentInstructions:
-      maxBytes: 65536
     rules:
       maxBytes: 16384
 ```
+
+其他插件通过本包提供的注册表添加来源：
+
+```ts
+ctx.agentContextSources.register({
+  name: 'memory',
+  async render({ agent, fileSystem, projectRoot, signal }) {
+    return { text: '…', digest: '…' }
+  },
+})
+```
+
+来源按注册顺序渲染并进入同一条基线消息；来源随注册它的插件一起销毁。
 
 ### 规则撰写约定
 
@@ -54,7 +65,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-插件把原生加载器作为子插件挂载，并在挂载**之前**注册自己的 `agent/pre-step` 监听器，因此该监听器包裹原生监听器：瀑布经 `next()` 到达原生加载器，规则段再并入原生加载器投递基线所用的那条通道——它返回的批次，或它在批次不拥有 step 时保留的 pending inbox。原生渲染被逐字复用，因此 AGENTS 部分与"只挂原生"的组合保持逐字一致；原生链不反应的规则改动会由本插件自己发出替换基线。
+插件挂在 profile 层，因此它的 `agent/pre-step` 监听器在任何 Agent 出现之前就已注册，并包裹原生加载器的监听器：瀑布经 `next()` 到达原生加载器，合并后的来源段再并入原生加载器投递基线所用的那条通道——它返回的批次，或它在批次不拥有 step 时保留的 pending inbox。原生渲染被逐字复用，因此 AGENTS 部分与"只挂原生"的组合保持逐字一致；原生链不反应的来源集合改动会由本插件自己发出替换基线。每份贡献各自带 digest，合并 digest 能检测任意新增、删除或编辑。
 
 </details>
 
@@ -85,7 +96,7 @@ kind: "package-reference"
 
 - **规则始终生效**——没有逐文件作用域、glob 或激活开关；只在某些场合适用的规则必须在正文里自己说明。
 - **按内容去重，而不是按意图**——用不同措辞表达同一件事的两条规则都会被投递；只有去除首尾空白后完全相同的才会合并。
-- **复用原生加载器而非复制**——它的入口导出了本插件所组合的内部实现，这避免了两份实现漂移，但也让本包依赖那份导出清单。
+- **切面只承载常驻上下文**——skills 与逐轮提醒保留各自的注入点；这个注册表用于首次请求起就必须在场的项目上下文。
 
 <a id="dev-note"></a>
 ### 开发备注

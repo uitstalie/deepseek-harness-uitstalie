@@ -1,5 +1,5 @@
 ---
-description: "The workspace .dsh store for users and maintainers who need its path refusal matrix, store operations, and the model-facing store tool."
+description: "The .dsh base interface: a dshStore service for path-confined store operations, plus the model-facing store tool and a read-only sidebar Remote."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-dsh-store` owns the `.dsh` directory of a workspace — the project-level convention that already holds project skills and runtime snapshots. It validates a `.dsh`-relative path against a fixed refusal matrix, performs four store operations through the `ctx.fs` service, and registers one model-facing tool that performs them on request. It also keeps the store root present for each session, skipping that creation while the session may not write, and serves a read-only Remote namespace (`remote.dshStore`) that lets the Web sidebar list and read a workspace's rules without a session.
+`dsh-tool-dsh-store` owns the `.dsh` directory of a workspace — the project-level convention that already holds project skills and runtime snapshots. It is the base interface for `.dsh` management: a `dshStore` Cordis service owns project-root discovery, path confinement, the four store operations, the namespace authoring checks, and the session policy gate, while the model-facing tool and the read-only Remote are consumers. The plugin also keeps the store root present for each session, skipping that creation while the session may not write, and serves the Remote namespace (`remote.dshStore`) that lets the Web sidebar list and read a workspace's rules without a session.
 
 ## Table of Contents
 
@@ -26,7 +26,7 @@ English | [中文](README.zh.md)
 
 ### The .dsh directory is the store
 
-`.dsh` is already this repository's project-level convention: project skills live under `.dsh/skills`, workspace rules live under `.dsh/rules`, and test fixtures write `.dsh/runtime.json`. The store owns that one directory, so a caller names a target relative to `.dsh` instead of assembling an absolute path.
+`.dsh` is already this repository's project-level convention: project skills live under `.dsh/skills`, workspace rules live under `.dsh/rules`, and test fixtures write `.dsh/runtime.json`. The store owns that one directory, so a caller names a target relative to `.dsh` instead of assembling an absolute path. The `dshStore` service is the base interface other plugins consume: `projectRootFor`, `rootFor`, `prepare`, and one method per store operation, each with the same refusals; the tool below is its main consumer.
 
 ### What the tool does
 
@@ -56,7 +56,7 @@ Every operation takes an absolute path that the path layer already confined to t
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`src/paths.ts` holds the refusal matrix as pure functions that never touch the filesystem, which is why every row of the matrix is pinned by a unit test instead of an integration case. `src/store-ops.ts` maps the four operations onto `FileSystem.mkdir`, `writeText`, `stat`/`listDir`/`readText`, and `remove`, and returns named result records so callers read data rather than filesystem state. `src/policy.ts` resolves the per-session policy once per mutating call and refuses a `read-only` session with the shared denial marker; a query is not gated, because reading the store does not write it. `src/tool.ts` defines the tool and restricts the `rules` namespace, and `src/index.ts` resolves `<projectRoot>/.dsh` per session — `cwd` upward to a `.git` marker, `cwd` when no marker exists — and creates it once the session may write. `src/remote.ts` is the read-only Remote namespace the sidebar uses: it is addressed by workspace root because a workspace row may have no session, it checks that root against the Host's workspace registry before reading anything, and its listing is the instruction loader's own retained set, so the panel shows exactly what reaches the model.
+`src/paths.ts` holds the refusal matrix as pure functions that never touch the filesystem, which is why every row of the matrix is pinned by a unit test instead of an integration case. `src/store-ops.ts` maps the four operations onto `FileSystem.mkdir`, `writeText`, `stat`/`listDir`/`readText`, and `remove`, and returns named result records so callers read data rather than filesystem state. `src/policy.ts` resolves the per-session policy once per mutating call and refuses a `read-only` session with the shared denial marker; a query is not gated, because reading the store does not write it. `src/service.ts` is the `dshStore` base interface: it owns project-root discovery, the `.dsh` root, the four operations, the namespace checks, and the policy gate, and `src/tool.ts` builds the tool as its consumer. `src/index.ts` provides the service, registers the tool and the Remote, and prepares the root on each step once the session may write; the tool is registered at the profile level, so every agent in the profile can call it. `src/remote.ts` is the read-only Remote namespace the sidebar uses: it is addressed by workspace root because a workspace row may have no session, it checks that root against the Host's workspace registry before reading anything, and its listing is the instruction loader's own retained set, so the panel shows exactly what reaches the model.
 
 </details>
 
@@ -88,6 +88,7 @@ These limits describe what the package deliberately does not do.
 - **Namespace checks cover `rules` and `skills`** — a `mcp.json` namespace is deliberately not checked, because no plugin in the harness reads one; validating it would invent a convention instead of protecting an existing consumer.
 - **The root is fixed to `.dsh`** — it is not configurable, so one workspace has exactly one store.
 - **A read-only session keeps no store root** — creating it is a write, so it appears the first time the session may write, and a query placed before that reports the root as missing.
+- **The tool is visible profile-wide** — it is registered at the profile level, so every agent in the profile (including the `minimal` preset) sees it; the store root described above still follows each session.
 
 <a id="dev-note"></a>
 ### Dev Note

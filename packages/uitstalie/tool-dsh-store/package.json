@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-tool-dsh-store",
-  "description": "Workspace .dsh/ store tool: create, inspect, and delete files and folders under a workspace's .dsh directory",
+  "description": ".dsh base interface: a dshStore service for path-confined store operations, plus the model-facing store tool and a read-only sidebar Remote",
   "version": "0.0.0",
   "icon": "./icon.svg",
   "private": true,

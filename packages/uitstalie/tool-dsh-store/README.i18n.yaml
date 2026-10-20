@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/tool-dsh-store/README.md
 /:
-  en: 716e761bd4b4d495
-  zh: a6e35899f776b977
+  en: 93330002c3883edb
+  zh: b6648614b1ed275f
 /deepseek-ai-dsh-tool-dsh-store:
   en: 1821d1628f167bdb
   zh: d11dc28046b7206a
 /deepseek-ai-dsh-tool-dsh-store/summary:
-  en: dbd6e3b74a0f5de1
-  zh: 79d5dc2ac85b8e71
+  en: f9960b3697f0d2b5
+  zh: d031b3ff55e9165a
 /deepseek-ai-dsh-tool-dsh-store/table-of-contents:
   en: 76368b6b1da79c80
   zh: 52384aee991ac542
@@ -18,8 +18,8 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-tool-dsh-store/use-this-package/the-dsh-directory-is-the-store:
-  en: 0f890a993095406a
-  zh: 75c962dba900b80c
+  en: 70aaebfb435afdb4
+  zh: 2710d24db9747f5b
 /deepseek-ai-dsh-tool-dsh-store/use-this-package/what-the-tool-does:
   en: 7d1b156c9ce4ac77
   zh: 46e85881f06565cb
@@ -30,8 +30,8 @@
   en: 2f274738c2044227
   zh: 300c7591e8a88ebf
 /deepseek-ai-dsh-tool-dsh-store/understand-the-implementation:
-  en: d3b19826be016ef1
-  zh: 28df22bed0e74636
+  en: 105a14828d067b6a
+  zh: baae853343643f01
 /deepseek-ai-dsh-tool-dsh-store/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -48,8 +48,8 @@
   en: ba2c29346f3b9873
   zh: daa3e477eb17847c
 /deepseek-ai-dsh-tool-dsh-store/known-limitations-and-deferred-work:
-  en: f77c597adf88369a
-  zh: 86c1092032f19215
+  en: 4f86ec15393ec5ac
+  zh: 301fe127f1ccac75
 /deepseek-ai-dsh-tool-dsh-store/known-limitations-and-deferred-work/dev-note:
   en: c5ed1d010b81d173
   zh: 110d2b2c24460c9b
