@@ -1,30 +1,17 @@
 /**
  * The single model-facing `tool-dsh-store` tool: create, query, and delete files
- * and folders under a workspace's `.dsh` directory. Paths are validated before
- * use, mutations pass the session policy gate, and the `rules` namespace is
- * checked for authoring rules before anything is written.
+ * and folders under a workspace's `.dsh` directory.
+ *
+ * The tool is a consumer of the `.dsh` base interface (`ctx.dshStore`), which
+ * owns project-root discovery, path confinement, the store operations, the
+ * namespace authoring checks, and the session policy gate.
  * @module @deepseek-ai/dsh-tool-dsh-store/tool
  */
 
-import { dirname } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import type { FileSystem } from '@deepseek-ai/dsh-fs'
-import { trimmedInstructionDigest } from '@deepseek-ai/dsh-agent-instructions'
-import { scanWorkspaceRules } from '@deepseek-ai/dsh-agent-instructions-plus'
-import { normalizeStorePath, resolveStoreTarget, STORE_DIR_NAME } from './paths.ts'
-import { isRulesPath, validateNamespaceContent } from './namespaces.ts'
-import {
-  createStoreFile,
-  createStoreFolder,
-  queryStoreTarget,
-  removeStoreTarget,
-} from './store-ops.ts'
-import { resolveStorePolicy } from './policy.ts'
-
-/** The per-file cap applied when the rules namespace is scanned for duplicates. */
-const RULE_SOURCE_MAX_BYTES = 256 * 1024
+import { STORE_DIR_NAME } from './paths.ts'
+import type { DshStore } from './service.ts'
 
 /** What one store call reports back to the model. */
 export interface StoreToolValue {
@@ -42,51 +29,18 @@ export interface StoreToolValue {
 
 /** Inputs of the tool definition. */
 export interface StoreToolOptions {
-  /**
-   * Resolve the absolute `.dsh` root of the calling session, creating it when
-   * the configuration asks for that.
-   */
-  resolveRoot(exec: ToolExecution): Promise<string>
-}
-
-/**
- * Refuse a rule whose text repeats one the store already holds.
- *
- * Rules are always-on and deduplicated by content when they load, so a copy
- * under another name would silently disappear from the loaded set. The check
- * runs before the write, and the pure shape checks live in
- * {@link validateNamespaceContent}.
- * @param fileSystem - provider used to scan the existing rules.
- * @param root - absolute `.dsh` root.
- * @param content - the text about to be written.
- * @param signal - cancellation for the scan.
- * @throws Error naming the rule that already carries this text; nothing is written.
- */
-async function validateRuleDuplicate(
-  fileSystem: FileSystem,
-  root: string,
-  content: string,
-  signal?: AbortSignal,
-): Promise<void> {
-  const scan = await scanWorkspaceRules(fileSystem, {
-    projectRoot: dirname(root),
-    maxSourceBytes: RULE_SOURCE_MAX_BYTES,
-    ...signal === undefined ? {} : { signal },
-  })
-  const digest = trimmedInstructionDigest(content)
-  const duplicate = scan.files.find(file => trimmedInstructionDigest(file.content) === digest)
-  if (duplicate !== undefined) {
-    throw new Error(`duplicate rule: ${duplicate.displayPath} already carries this text; edit that file instead of adding a copy`)
-  }
+  /** The `.dsh` base interface this tool drives. */
+  store: DshStore
 }
 
 /**
  * Build the `tool-dsh-store` tool definition.
- * @param ctx - plugin context carrying the filesystem and sandbox-policy services.
- * @param options - root resolution for the calling session.
+ * @param ctx - plugin context (kept for the tool's presentation and future consumers).
+ * @param options - the store service the tool drives.
  * @returns the tool definition to register on `ctx.tools`.
  */
 export function defineStoreTool(ctx: Context, options: StoreToolOptions) {
+  void ctx
   return defineTool({
     name: 'tool-dsh-store',
     description:
@@ -147,19 +101,13 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions) {
       render: (_args, value) => [{ type: 'text', text: renderStoreValue(value) }],
     },
     async execute(args, exec): Promise<StoreToolValue> {
-      const fileSystem = ctx.fs
-      const root = await options.resolveRoot(exec)
-      const normalized = normalizeStorePath(args.path)
-      const absolutePath = resolveStoreTarget(root, normalized)
-      const displayPath = normalized.displayPath
+      const session = exec.agent?.session
+      if (session === undefined) throw new Error('tool-dsh-store requires an owning agent session')
 
       // Querying reads the store, so a read-only session may still inspect it;
-      // only create and delete pass the write gate.
+      // only create and delete pass the write gate inside the store service.
       if (args.action === 'query') {
-        const queried = await queryStoreTarget(fileSystem, absolutePath, displayPath, {
-          readText: true,
-          signal: exec.signal,
-        })
+        const queried = await options.store.query(session, args.path, { signal: exec.signal })
         return {
           action: 'query',
           path: queried.path,
@@ -169,37 +117,21 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions) {
         }
       }
 
-      const policy = resolveStorePolicy(ctx, exec)
-
       if (args.action === 'create') {
         if (args.target === 'folder') {
-          await createStoreFolder(fileSystem, absolutePath, displayPath, exec.signal, policy.execution)
-          return { action: 'create', path: displayPath, kind: 'directory' }
+          const created = await options.store.createFolder(session, args.path, { signal: exec.signal })
+          return { action: 'create', path: created.path, kind: 'directory' }
         }
         if (args.target !== 'file') throw new Error('invalid create: `target` must be `file` or `folder`')
         if (args.content === undefined) throw new Error('invalid create: creating a file requires `content`')
-        validateNamespaceContent(displayPath, args.content)
-        if (isRulesPath(displayPath)) {
-          await validateRuleDuplicate(fileSystem, root, args.content, exec.signal)
-        }
-        await createStoreFile(fileSystem, absolutePath, displayPath, args.content, exec.signal, policy.execution)
-        return { action: 'create', path: displayPath, kind: 'file' }
+        const created = await options.store.createFile(session, args.path, args.content, { signal: exec.signal })
+        return { action: 'create', path: created.path, kind: 'file' }
       }
 
-      const existing = await fileSystem.stat(
-        await fileSystem.resolve(absolutePath, { signal: exec.signal }),
-        exec.signal,
-      )
-      if (existing === undefined) throw new Error(`not found: ${STORE_DIR_NAME}/${displayPath}`)
-      if (displayPath.length === 0) throw new Error(`refusing to delete the ${STORE_DIR_NAME} root`)
-      const removed = await removeStoreTarget(
-        fileSystem,
-        absolutePath,
-        displayPath,
-        args.recursive === true,
-        exec.signal,
-        policy.execution,
-      )
+      const removed = await options.store.remove(session, args.path, {
+        recursive: args.recursive === true,
+        signal: exec.signal,
+      })
       return { action: 'delete', path: removed.path, kind: removed.kind === 'directory' ? 'directory' : 'file' }
     },
     presentCall: args => ({ card: 'generic', title: `.dsh store: ${args.action}`, kind: 'other', rawInput: args }),
