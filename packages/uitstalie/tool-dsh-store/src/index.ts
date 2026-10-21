@@ -65,7 +65,14 @@ export type {
 export { resolveSessionStorePolicy, resolveStorePolicy } from './policy.ts'
 export type { StorePolicy } from './policy.ts'
 export { createDshStore } from './service.ts'
-export type { DshStore, StoreCallOptions, StoreRemoveOptions, StoreWriteOptions, StoreWriteResult } from './service.ts'
+export type {
+  DshStore,
+  StoreCallOptions,
+  StoreReadResult,
+  StoreRemoveOptions,
+  StoreWriteOptions,
+  StoreWriteResult,
+} from './service.ts'
 export { defineStoreTool } from './tool.ts'
 export type { StoreToolOptions, StoreToolValue } from './tool.ts'
 export { storeRelativePath, storeRootOfWorkspace, workspaceRootOf } from './remote.ts'

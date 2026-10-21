@@ -60,8 +60,33 @@ test('writeFile writes content and returns the store-relative path', async () =>
   expect(await readFile(absolute('memory/sessions/MEMORY.md'), 'utf8')).toBe('first')
 })
 
-test('a guarded write accepts the observed version and rejects a stale one', async () => {
-  const first = await store.writeFile(session, 'memory/MEMORY.md', 'first')
+test('readFile returns the text and version a guarded write can expect', async () => {
+  const written = await store.writeFile(session, 'memory/sessions/MEMORY.md', 'hello')
+  const read = await store.readFile(session, 'memory/sessions/MEMORY.md')
+  expect(read).toEqual({
+    path: 'memory/sessions/MEMORY.md',
+    text: 'hello',
+    version: versionOf(written),
+  })
+})
+
+test('readFile reports an absent or non-file target without text', async () => {
+  expect(await store.readFile(session, 'memory/sessions/MEMORY.md')).toEqual({
+    path: 'memory/sessions/MEMORY.md',
+  })
+  await store.createFolder(session, 'memory')
+  expect(await store.readFile(session, 'memory')).toEqual({ path: 'memory' })
+})
+
+test('a read-only session can still read the store', async () => {
+  await store.writeFile(session, 'memory/sessions/MEMORY.md', 'readable')
+  await ctx.plugin(SessionProjectionPlugin)
+  await ctx.plugin(SandboxPolicyService, { mode: 'read-only', workspaceRoot: project })
+  const read = await store.readFile(session, 'memory/sessions/MEMORY.md')
+  expect(read.text).toBe('readable')
+})
+
+test('a guarded write accepts the observed version and rejects a stale one', async () => {  const first = await store.writeFile(session, 'memory/MEMORY.md', 'first')
   const guarded = await store.writeFile(session, 'memory/MEMORY.md', 'second', { expected: versionOf(first) })
   expect(guarded.path).toBe('memory/MEMORY.md')
   expect(await readFile(absolute('memory/MEMORY.md'), 'utf8')).toBe('second')
