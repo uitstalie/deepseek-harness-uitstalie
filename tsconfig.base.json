@@ -450,6 +450,7 @@
       "@deepseek-ai/dsh-lsp-stdio": ["./packages/lsp/lsp-stdio/src"],
       "@deepseek-ai/dsh-mcp-client": ["./packages/mcp/mcp-client/src"],
       "@deepseek-ai/dsh-mcp-resources": ["./packages/mcp/mcp-resources/src"],
+      "@deepseek-ai/dsh-memory": ["./packages/uitstalie/memory/src"],
       "@deepseek-ai/dsh-message-feedback": ["./packages/feedback/message-feedback/src"],
       "@deepseek-ai/dsh-models-dev": ["./packages/uitstalie/models-dev/src"],
       "@deepseek-ai/dsh-native-command": ["./packages/util/native-command/src"],
