@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-dsh-store` owns the `.dsh` directory of a workspace — the project-level convention that already holds project skills and runtime snapshots. It is the base interface for `.dsh` management: a `dshStore` Cordis service owns project-root discovery, path confinement, the four store operations, the namespace authoring checks, and the session policy gate, while the model-facing tool and the read-only Remote are consumers. The plugin also keeps the store root present for each session, skipping that creation while the session may not write, and serves the Remote namespace (`remote.dshStore`) that lets the Web sidebar list and read a workspace's rules without a session.
+`dsh-tool-dsh-store` owns a workspace's `.dsh` directory — the project-level convention holding project skills and runtime snapshots. The `ctx.dshStore` service is the base interface for `.dsh` management, owning project-root discovery, path confinement, the store operations including the version-guarded `writeFile`, namespace authoring checks, and the session policy gate; the model-facing tool and read-only Remote consume it. `.dsh/memory` is reserved for the memory capability, which writes it through the service while the tool may only read it. The plugin also keeps each session's store root present and serves `remote.dshStore`, letting the Web sidebar list and read a workspace's rules without a session.
 
 ## Table of Contents
 
@@ -43,10 +43,11 @@ The registered `tool-dsh-store` tool takes an `action` of `create`, `query`, or 
 | Ensure the root exists | `ensureStoreRoot` | Whether this call created it |
 | Create a folder | `createStoreFolder` | `{ path, kind: 'directory' }` |
 | Create a file | `createStoreFile` | `{ path, kind: 'file' }` |
+| Write a file with an optional version guard (service only) | `writeFile` | `{ path, version }`; a stale `expected` rejects with `FS_STALE_VERSION` |
 | Query a target | `queryStoreTarget` | Target kind, direct children, and optionally file text |
 | Remove a target | `removeStoreTarget` | `{ path, kind }`; a populated directory requires `recursive` |
 
-Every operation takes an absolute path that the path layer already confined to the root plus the `FileSystem` service, and a mutation also receives the calling session's resolved policy, so a confining provider fences the same call.
+The `store-ops` helpers take an absolute path that the path layer has already confined to the root plus the `FileSystem` service; `writeFile` takes the `.dsh`-relative path and resolves it itself, and it is the write path for a plugin that owns a namespace. Every mutation receives the calling session's resolved policy, so a confining provider fences the same call. The `memory/**` area is writable through the service but read-only for the tool: `query` reaches it while `create` and `delete` are refused.
 
 -----
 
@@ -56,7 +57,7 @@ Every operation takes an absolute path that the path layer already confined to t
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`src/paths.ts` holds the refusal matrix as pure functions that never touch the filesystem, which is why every row of the matrix is pinned by a unit test instead of an integration case. `src/store-ops.ts` maps the four operations onto `FileSystem.mkdir`, `writeText`, `stat`/`listDir`/`readText`, and `remove`, and returns named result records so callers read data rather than filesystem state. `src/policy.ts` resolves the per-session policy once per mutating call and refuses a `read-only` session with the shared denial marker; a query is not gated, because reading the store does not write it. `src/service.ts` is the `dshStore` base interface: it owns project-root discovery, the `.dsh` root, the four operations, the namespace checks, and the policy gate, and `src/tool.ts` builds the tool as its consumer. `src/index.ts` provides the service, registers the tool and the Remote, and prepares the root on each step once the session may write; the tool is registered at the profile level, so every agent in the profile can call it. `src/remote.ts` is the read-only Remote namespace the sidebar uses: it is addressed by workspace root because a workspace row may have no session, it checks that root against the Host's workspace registry before reading anything, and its listing is the instruction loader's own retained set, so the panel shows exactly what reaches the model.
+`src/paths.ts` holds the refusal matrix as pure functions that never touch the filesystem, which is why every row of the matrix is pinned by a unit test instead of an integration case. `src/store-ops.ts` maps the store primitives onto `FileSystem.mkdir`, `writeText`, `stat`/`listDir`/`readText`, and `remove`, and returns named result records so callers read data rather than filesystem state. `src/namespaces.ts` holds the namespace authoring checks plus `isMemoryPath`, whose first-segment comparison is case-insensitive because Windows and macOS fold case. `src/policy.ts` resolves the per-session policy once per mutating call and refuses a `read-only` session with the shared denial marker; a query is not gated, because reading the store does not write it. `src/service.ts` is the `dshStore` base interface: it owns project-root discovery, the `.dsh` root, the store operations, the namespace checks, and the policy gate; `writeFile` maps `expected` to `writeText`'s `replaceIfVersion` guard, while an omitted `expected` is the unconditional write and `createIfAbsent` stays unexposed. `src/tool.ts` builds the tool as its consumer and holds the `memory` reservation: it refuses `create` and `delete` on that prefix, so the reservation lives in the tool layer while the service stays writable. `src/index.ts` provides the service, registers the tool and the Remote, and prepares the root on each step once the session may write; the tool is registered at the profile level, so every agent in the profile can call it. `src/remote.ts` is the read-only Remote namespace the sidebar uses: it is addressed by workspace root because a workspace row may have no session, it checks that root against the Host's workspace registry before reading anything, and its listing is the instruction loader's own retained set, so the panel shows exactly what reaches the model.
 
 </details>
 
@@ -85,10 +86,12 @@ Prefix-stable while the definition and visibility are unchanged. Results are ord
 
 These limits describe what the package deliberately does not do.
 
-- **Namespace checks cover `rules` and `skills`** — a `mcp.json` namespace is deliberately not checked, because no plugin in the harness reads one; validating it would invent a convention instead of protecting an existing consumer.
+- **Content checks cover `rules` and `skills`** — a `mcp.json` namespace is deliberately not checked, because no plugin in the harness reads one; validating it would invent a convention instead of protecting an existing consumer.
+- **`memory/` is matched without case** — on a case-insensitive filesystem `Memory/...` aliases `memory/...`, so the tool refuses `memory`, `Memory`, and every descendant; the service stays writable for the memory capability.
 - **The root is fixed to `.dsh`** — it is not configurable, so one workspace has exactly one store.
 - **A read-only session keeps no store root** — creating it is a write, so it appears the first time the session may write, and a query placed before that reports the root as missing.
 - **The tool is visible profile-wide** — it is registered at the profile level, so every agent in the profile (including the `minimal` preset) sees it; the store root described above still follows each session.
+- **Omitting `expected` makes `writeFile` unconditional** — it creates or replaces whatever is there without a staleness check; the `createIfAbsent` guard is a separate `FileSystem.writeText` mapping that the store service does not expose yet.
 
 <a id="dev-note"></a>
 ### Dev Note
