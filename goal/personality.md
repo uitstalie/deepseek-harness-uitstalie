@@ -6,16 +6,25 @@
 
 personality = 稳定的**人格、用户偏好与表达风格**。与 memory 正交：memory 记“发生过什么”，personality 记“我是谁、用户是谁、怎么说话”。它不是任务上下文，也不是项目规范；项目规范属于 `.dsh/rules` 与 AGENTS.md。
 
+## 双向：理解输入与个性化回复
+
+personality 是**双向**的，两侧都只陈述事实：
+
+- **输入侧（`understanding`）**：帮助模型按这个用户的习惯理解输入——语言与术语、简称与口头禅、常见意图、歧义时该怎么澄清、哪些话是背景而不是指令。目标不是“猜”，而是让模型在读不懂时有依据地问，而不是按通用默认硬解。
+- **输出侧（`expression`）**：帮助模型以这个用户的偏好回复——语气、结构、长度、语言、举例方式、称呼。
+
+两侧共用一个 system prompt 段（同段两节：How this user communicates / How to respond），或按需拆成两个 section；条目 kind 分开，来源与漂移审阅也按侧统计。`identity` 仍属于输入侧的一部分（用户是谁），但写入必须用户确认。
+
 ## 拍板结果
 
 | 第一轮的问题 | 本轮决定 | 理由 |
 |---|---|---|
 | 存哪里 | 用户级 `$DSH_HOME/personality/PERSONALITY.md`；工作区覆盖 `.dsh/memory/PERSONALITY.md` | 人格默认跨工作区；项目特定的表达偏好（如“这个仓库的术语”）放工作区覆盖，不污染全局 |
 | 作用域 | 用户级为默认，工作区按条目 key 覆盖 | “用户是谁”是全局事实；“在这个项目里怎么称呼/怎么举例子”是项目事实 |
-| 写入 | 用户显式设置为主；保留自动学习：仅 `style`/`preference` 自动写入并标 `source: auto`，`identity.*` 必须用户确认 | 显式设置保证可控；低风险偏好自动学习减少手工维护；身份漂移不可接受 |
-| 内容边界 | 收风格、语言/称呼、工作习惯、用户身份/角色；不收任务事实、项目决策、临时上下文、密钥 | 与 memory/KB 的分工不重叠；敏感信息永不入内 |
+| 写入 | 用户显式设置为主；保留自动学习：仅 `understanding`/`style`/`preference` 自动写入并标 `source: auto`，`identity.*` 必须用户确认 | 显式设置保证可控；低风险偏好自动学习减少手工维护；身份漂移不可接受 |
+| 内容边界 | 收对用户输入的解读习惯（`understanding`）、风格、语言/称呼、工作习惯、用户身份/角色；不收任务事实、项目决策、临时上下文、密钥 | 与 memory/KB 的分工不重叠；敏感信息永不入内 |
 
-“模型可提议”保留为目标，实现形态分两级：低风险 `style`/`preference` 条目由自动学习直接写入并标 `source: auto`（全部进入漂移审阅）；`identity.*` 与角色设定只写**待接受**提案，用户在设置页逐条接受或拒绝；未接受的提案不进入注入。它不是 `memory_write` 的别名。
+“模型可提议”保留为目标，实现形态分两级：低风险 `understanding`/`style`/`preference` 条目由自动学习直接写入并标 `source: auto`（全部进入漂移审阅）；`identity.*` 与角色设定只写**待接受**提案，用户在设置页逐条接受或拒绝；未接受的提案不进入注入。它不是 `memory_write` 的别名。
 
 ## 与 memory 的关系
 
@@ -53,7 +62,7 @@ entries: 3
 <!-- personality:end -->
 ```
 
-- 条目 id 形如 `<kind>.<name>`，kind ∈ `style` / `preference` / `identity`（后续可扩展）；id 是合并键，工作区覆盖按 id 替换，不按标题文本匹配。
+- 条目 id 形如 `<kind>.<name>`，kind ∈ `understanding` / `style` / `preference` / `identity`（后续可扩展）；id 是合并键，工作区覆盖按 id 替换，不按标题文本匹配。
 - 插件只写 `<!-- personality:begin/end -->` 托管区块；区块外手写内容原样保留。
 - 总大小上限 2 KiB（注入预算），超出时 provider 拒绝写入并报告哪几条超限；不在注入时静默截断人格。
 - 工作区覆盖文件同格式，只允许写 `style.*` / `preference.*`；`identity.*` 只允许出现在全局文件（身份不因仓库而变）。
@@ -63,7 +72,7 @@ entries: 3
 - 全局路径用 `resolveDshHome()` 解析（`DSH_HOME` 环境变量优先），目录 `personality/`；provider 通过 `ctx.fs` 读写，不走 `dshStore`——`dshStore` 的边界是工作区 `.dsh`，全局文件不在其中。
 - 工作区覆盖走 `ctx.dshStore` 的 `memory` 命名空间（`.dsh/memory/PERSONALITY.md`），与 MEMORY.md 共用保留前缀；模型工具同样只读。
 - 写入一律原子：`FileSystem.writeText` 的原子发布 + `replaceIfVersion` 版本守卫。所有写入者（用户设置、自动学习、提案接受）都遵守这条契约：provider 持有上次读到/写入的 version，与用户手改冲突时重读一次重试，再失败就放弃并报告，不覆盖用户刚写的内容。
-- 写入路径：用户显式设置（编辑器/设置页）；自动学习（仅 `style`/`preference`，标 `source: auto`，受每条目/每会话预算约束）；`identity.*` 与角色设定走提案接受（设置页）。模型不直接写文件，全部经 provider 的写入接口做格式、预算与版本校验。
+- 写入路径：用户显式设置（编辑器/设置页）；自动学习（仅 `understanding`/`style`/`preference`，标 `source: auto`，受每条目/每会话预算约束）；`identity.*` 与角色设定走提案接受（设置页）。模型不直接写文件，全部经 provider 的写入接口做格式、预算与版本校验。
 - 历史：每次写入追加一条版本记录到 `PERSONALITY.history.jsonl`（版本号、时间、`source: user/auto/proposal`、来源 session、按条目 id 的 diff、**托管区块全文** ≤2 KiB）；回退直接取该行全文替换托管区块，不重放 diff。
 
 ## 漂移检查
@@ -78,11 +87,11 @@ entries: 3
 - 形态：`ctx.systemPrompt.section({ name: 'personality', order: 100, text })`。
 - 位置：`order = 100` 放在部署 persona 前缀（0）之后、`PLAN_POLICY`（500）之前。`SECTION_ORDERS` 是原生关闭表，没有 personality 槽位；分支先用字面 order，不修改原生表。若上游后来接受该槽位，再迁到 `getSectionOrder()`。
 - 作用域：`dafeiyu` 在 `agent/created` 时把它注册到**每个** agent 的 `agent.ctx`（`scope: 'all'`），所以子 agent 继承人格；memory 的固定提示词段则只给 root agent。
-- 文本：静态 preamble + 渲染后的条目，preamble 只陈述事实并给出优先级：
+- 文本：静态 preamble + 渲染后的条目，分两节；preamble 只陈述事实并给出优先级：
 
-  > Long-term preferences of the user you are working with. Follow them within the system and developer instructions, and let more specific project instructions take precedence. These are preferences, not task facts.
+  > Long-term preferences of the user you are working with. The first part describes how this user communicates; use it to interpret their input. The second describes how they prefer replies. Follow them within the system and developer instructions, and let more specific project instructions take precedence. These are preferences, not task facts.
 
-  条目按 kind 排序（identity → preference → style），每条一行，不写“如果……就……”式的条件指令。
+  条目按 kind 排序（identity → understanding → preference → style），每条一行，不写“如果……就……”式的条件指令。
 - KV cache：文本只在文件变化时变；变化会失效前缀缓存，这是可接受的（人格修改是低频事件）。注入预算 2 KiB，超出即拒绝写入，保证文本不会无限增长。
 - 空文件 / 未挂载：返回空字符串，段不产生内容；组装结果与没有该段一致。
 
@@ -147,3 +156,4 @@ ctx.dafeiyu.register({
 - 第一轮（2026/10/20）：草案，四个待确认。
 - 第二轮（2026/10/20）：拍板存储/作用域/写入/边界；补文件格式、注入位置与 order、缓存与 watch、与 dafeiyu 的接线、测试计划。
 - 第三轮（2026/10/21）：按用户决定改为“显式设置为主 + 保留自动学习（仅 `style`/`preference`）+ 漂移审阅（版本快照/diff/回退）”；补写入路径、历史文件与自动学习预算；kind 注册表与 memory 共享，漂移审阅走命令入口，history 采用 JSONL + 每版全文。
+- 第四轮（2026/10/21）：明确 personality **双向**——输入侧 `understanding`（按用户习惯理解输入、歧义时怎么澄清）+ 输出侧 `expression`（个性化回复）；两类 kind 分开、共享同一 system prompt 段与漂移审阅。
