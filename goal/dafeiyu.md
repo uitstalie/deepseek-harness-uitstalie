@@ -1,6 +1,6 @@
 # dafeiyu：能力组织者（设计）
 
-状态：设计草案（jira `DH-7`），2026/10/20 第二轮。与 [memory.md](memory.md)、[personality.md](personality.md) 同批；这两份文档里的“provider 只提供能力、接线在组织者”在本文件落成可实现的契约。
+状态：设计草案（jira `DH-7`），2026/10/21 第三轮。与 [memory.md](memory.md)、[personality.md](personality.md) 同批；这两份文档里的“provider 只提供能力、接线在组织者”在本文件落成可实现的契约。第三轮拍板包名、v1 配置面、注入预算与失败通知。
 
 ## 一句话
 
@@ -19,7 +19,7 @@ provider 自己挂载也能跑通，但会立刻产生四个重复点：
 
 ## 组合位置
 
-- 新包 `packages/uitstalie/dafeiyu`，host 侧，挂在 `packages/bundle/web-app/cordis.patch.uitstalie.yml` 的分支层，行顺序在 provider 之前。
+- 新包 `packages/uitstalie/dafeiyu`（包名 `@deepseek-ai/dsh-dafeiyu`），host 侧，挂在 `packages/bundle/web-app/cordis.patch.uitstalie.yml` 的分支层，行顺序在 provider 之前。
 - provider 行（`dsh-memory`、`dsh-personality`）由同一层挂载，`inject: ['dafeiyu', ...]`；Cordis 的注入等待保证组织者先就绪，不需要手工排 Loader 行序。这条依赖是硬依赖：组织者行缺失时 provider 行会停在 inactive，组合层必须成对出现。
 - 只挂 `web-app` 分支层：与 memory/personality 的作用面一致；CLI/headless 组合没有 preset 平面，见 [limitations.md](limitations.md) 第 8 条。组织者本身不阻止未来在别的组合里挂载，但那需要那条组合也有 agent preset 层。
 
@@ -157,9 +157,23 @@ interface CapabilityStatus {
 | 卸载 | 插件卸载后 agent 级注册全部撤销，无残留工具 |
 | 组合 | web-app 分支层含 dafeiyu 与两个 provider 行；CLI/headless 不含 |
 
+## 拍板结果（2026/10/21）
+
+| 问题 | 决定 |
+|---|---|
+| 包名 | `@deepseek-ai/dsh-dafeiyu`，目录 `packages/uitstalie/dafeiyu` |
+| v1 配置面 | 只通过 profile 的 `cordis.patch.yml`（`capabilities.<id>.enabled` + 各 provider 自己的行）；设置页后续 |
+| 注入总预算 | v1 各 provider 自守（memory 4 KiB、personality 2 KiB），组织者不统一核算；等两份能力落地后有实测再评估 |
+| 失败通知 | 留给 provider（memory append notice；personality 只记状态）；组织者只维护 `status()` 与日志，不统一写会话 |
+
 ## 未决
 
-1. **名字**：`dafeiyu` 是工作名，包名按 `@deepseek-ai/dsh-dafeiyu` 还是 `dsh-capabilities` 待定；目录暂用 `packages/uitstalie/dafeiyu`。
-2. **设置面**：v1 通过 profile 的 `cordis.patch.yml` 配置，不单独做 client 包与页面；每能力一行的配置仍走各自的 row 配置页（后续）。
-3. **全局预算**：注入总量（memory 的 4 KiB、personality 的 2 KiB）是否需要组织者统一核算。v1 不做，等两份能力都落地后再看是否需要。
-4. **失败是否 model-visible**：当前留给 provider；如果未来多个 provider 都需要“失败通知”，可以提升成组织者的统一 notice，但那要先解决噪声问题。
+1. `contractVersion` 的演进策略：什么时候升 2、旧 provider 如何被拒绝但保留 `status`。
+2. 配置重载语义：`app-boot/config-reload` 后是全部 `dispose` 重建，还是按能力 diff。
+3. 组织者自身是否需要一个只读的 `/capabilities` 状态命令（v1 仅 `status()`）。
+
+## 变更记录
+
+- 第一轮（2026/10/20）：草案，契约、生命周期、启用门、状态与测试。
+- 第二轮（2026/10/20）：与 memory/personality 对齐，补组合位置与失败隔离。
+- 第三轮（2026/10/21）：拍板包名、v1 配置面、注入预算与失败通知。
