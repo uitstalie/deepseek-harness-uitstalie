@@ -82,6 +82,7 @@ entries: 3
 - 版本快照：每次写入记录 version 与按条目 id 的 diff；历史文件见“存储与写入”。
 - 审阅入口：v1 用 `/personality show` 列出当前条目（kind、source、更新时间），`/personality diff` 看当前与上一版，`/personality revert <version>` 回退；自动学习条目以 `source: auto` 标出，回退本身也记一条版本。设置页面板后续。
 - 自动学习入口：模型通过 `personality_learn({ kind, content, evidence })` 提交；仅用户明确纠正可自动写入，模型推断只生成提案；`evidence` 记录触发它的会话消息 seq，供漂移审阅回查。
+- v1 的 `identity`：`personality_learn` 直接拒绝并说明“身份设定需要用户确认后手改 PERSONALITY.md”；不落待接受文件，接受流程等设置页。
 - 自动学习预算：单次会话自动写入条数与字节设上限（初始建议每会话 3 条、512 B），超限转为提案；避免人格在一次长会话里被悄悄改写。
 - 用户手改优先：版本守卫冲突时重读重试，仍失败则放弃写入并报告。
 
@@ -149,7 +150,7 @@ ctx.dafeiyu.register({
 
 1. provider 骨架：注册到 dafeiyu、解析配置、全局/工作区文件读取与合并、缓存与 watch。
 2. system prompt 段：preamble、2 KiB 预算、空内容不注入。
-3. 写入面：用户设置、`personality_learn`（仅明确纠正自动写，其余提案）、`identity` 提案接受；版本快照与 `PERSONALITY.history.jsonl`。
+3. 写入面：用户设置、`personality_learn`（仅明确纠正自动写；`identity` v1 拒绝并提示手改）；版本快照与 `PERSONALITY.history.jsonl`。
 4. 漂移审阅：`/personality show`、diff、auto 来源标记、回退（命令入口）。
 5. 与 memory 条目模型合并（后续）。
 6. 测试：空文件、只有全局、全局+覆盖、覆盖非法 `identity.*`、超限拒绝、版本冲突重试、watch 刷新、子 agent 继承、禁用后段消失、自动学习预算、diff/回退。
@@ -159,4 +160,4 @@ ctx.dafeiyu.register({
 - 第一轮（2026/10/20）：草案，四个待确认。
 - 第二轮（2026/10/20）：拍板存储/作用域/写入/边界；补文件格式、注入位置与 order、缓存与 watch、与 dafeiyu 的接线、测试计划。
 - 第三轮（2026/10/21）：按用户决定改为“显式设置为主 + 保留自动学习（仅 `style`/`preference`）+ 漂移审阅（版本快照/diff/回退）”；补写入路径、历史文件与自动学习预算；kind 注册表与 memory 共享，漂移审阅走命令入口，history 采用 JSONL + 每版全文。
-- 第四轮（2026/10/21）：明确 personality **双向**——输入侧 `understanding`（按用户习惯理解输入、歧义时怎么澄清）+ 输出侧 `expression`（个性化回复）；两类 kind 分开、共享同一 system prompt 段与漂移审阅；补“仅明确纠正自动学习”、`personality_learn` 写入工具、`/personality show` 与边界声明。
+- 第四轮（2026/10/21）：明确 personality **双向**——输入侧 `understanding`（按用户习惯理解输入、歧义时怎么澄清）+ 输出侧 `expression`（个性化回复）；两类 kind 分开、共享同一 system prompt 段与漂移审阅；补“仅明确纠正自动学习”、`personality_learn` 写入工具、`/personality show` 与边界声明；v1 的 `identity` 写入直接拒绝并提示手改。
