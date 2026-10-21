@@ -4,7 +4,7 @@
  * per-session store-root preparation.
  *
  * The store service is the base interface for `.dsh` management: path
- * confinement, the four operations, namespace authoring checks, and the session
+ * confinement, the store operations, namespace authoring checks, and the session
  * policy gate live there, so every consumer drives one implementation.
  * @module @deepseek-ai/dsh-tool-dsh-store
  */
@@ -40,6 +40,7 @@ export {
 } from './paths.ts'
 export type { NormalizedStorePath, StorePathLimits, StorePathRejection } from './paths.ts'
 export {
+  isMemoryPath,
   isRulesPath,
   isSkillsPath,
   RULES_NAMESPACE_PATTERN,
@@ -64,7 +65,7 @@ export type {
 export { resolveSessionStorePolicy, resolveStorePolicy } from './policy.ts'
 export type { StorePolicy } from './policy.ts'
 export { createDshStore } from './service.ts'
-export type { DshStore, StoreCallOptions, StoreRemoveOptions } from './service.ts'
+export type { DshStore, StoreCallOptions, StoreRemoveOptions, StoreWriteOptions, StoreWriteResult } from './service.ts'
 export { defineStoreTool } from './tool.ts'
 export type { StoreToolOptions, StoreToolValue } from './tool.ts'
 export { storeRelativePath, storeRootOfWorkspace, workspaceRootOf } from './remote.ts'

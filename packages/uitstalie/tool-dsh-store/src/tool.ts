@@ -10,7 +10,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { STORE_DIR_NAME } from './paths.ts'
+import { normalizeStorePath, STORE_DIR_NAME } from './paths.ts'
+import { isMemoryPath } from './namespaces.ts'
 import type { DshStore } from './service.ts'
 
 /** What one store call reports back to the model. */
@@ -45,7 +46,8 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions) {
     name: 'tool-dsh-store',
     description:
       `Create, inspect, and delete files and folders under this workspace's \`${STORE_DIR_NAME}\` directory, `
-      + `which carries editor rules (\`${STORE_DIR_NAME}/rules\`), project skills, and runtime snapshots. `
+      + `which carries editor rules (\`${STORE_DIR_NAME}/rules\`), project skills, and runtime snapshots; `
+      + `\`${STORE_DIR_NAME}/memory\` is managed by the memory capability and read-only for this tool. `
       + 'Give a path relative to that directory. Use this tool instead of the generic write, edit, or shell '
       + `tools for \`${STORE_DIR_NAME}\` content, because it validates the path, refuses a rule that repeats an `
       + 'existing rule or a skill document missing the frontmatter a skill needs, and reports what it deleted.',
@@ -104,6 +106,11 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions) {
       const session = exec.agent?.session
       if (session === undefined) throw new Error('tool-dsh-store requires an owning agent session')
 
+      // The memory capability owns its namespace and writes it through the store
+      // service; this tool may read that area but not mutate it. Checking before
+      // the policy gate keeps that explanation even for a read-only session.
+      if (args.action !== 'query') refuseMemoryPath(args.path)
+
       // Querying reads the store, so a read-only session may still inspect it;
       // only create and delete pass the write gate inside the store service.
       if (args.action === 'query') {
@@ -136,6 +143,20 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions) {
     },
     presentCall: args => ({ card: 'generic', title: `.dsh store: ${args.action}`, kind: 'other', rawInput: args }),
   })
+}
+
+/**
+ * Refuse a model-side create or delete inside the managed-memory area. The
+ * memory capability owns that area and persists it through the store service;
+ * this tool may only query it.
+ * @param path - the model-supplied store-relative path.
+ * @throws Error when the normalized path is `memory` or below it.
+ */
+function refuseMemoryPath(path: string): void {
+  if (!isMemoryPath(normalizeStorePath(path).displayPath)) return
+  throw new Error(
+    `refusing to modify ${STORE_DIR_NAME}/memory: memory is managed by the memory capability; use its tools instead`,
+  )
 }
 
 /** Render one store result as the model-visible text. */

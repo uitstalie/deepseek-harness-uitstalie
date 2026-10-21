@@ -228,6 +228,42 @@ test('refuses skill documents the skill root would ignore', async () => {
   await expect(stat(join(project, '.dsh', 'skills'))).rejects.toThrow()
 })
 
+test('reserves the memory namespace for the memory capability', async () => {
+  const { ctx, agent } = await mount()
+
+  const created = await call(ctx, agent, { action: 'create', target: 'file', path: 'memory/x.md', content: 'text' })
+  expect(created.isError).toBe(true)
+  expect(text(created)).toContain('memory is managed by the memory capability')
+  await expect(stat(join(project, '.dsh', 'memory', 'x.md'))).rejects.toThrow()
+
+  const folder = await call(ctx, agent, { action: 'create', target: 'folder', path: 'memory' })
+  expect(folder.isError).toBe(true)
+  expect(text(folder)).toContain('memory is managed by the memory capability')
+
+  const deleted = await call(ctx, agent, { action: 'delete', path: 'memory' })
+  expect(deleted.isError).toBe(true)
+  expect(text(deleted)).toContain('memory is managed by the memory capability')
+  await expect(stat(join(project, '.dsh', 'memory'))).rejects.toThrow()
+
+  // The store service stays writable for the memory provider, and the tool may
+  // still query the area it may not modify.
+  await ctx.dshStore.writeFile(agent.session, 'memory/sessions/MEMORY.md', 'summary')
+  const listing = await call(ctx, agent, { action: 'query', path: 'memory/' })
+  expect(listing.isError).toBe(false)
+  expect(text(listing)).toContain('- directory .dsh/memory/sessions')
+  const read = await call(ctx, agent, { action: 'query', path: 'memory/sessions/MEMORY.md' })
+  expect(read.isError).toBe(false)
+  expect(text(read)).toContain('summary')
+})
+
+test('a read-only session still gets the memory-namespace refusal for a create', async () => {
+  const { ctx, agent } = await mount('read-only')
+  const refused = await call(ctx, agent, { action: 'create', target: 'file', path: 'memory/x.md', content: 'text' })
+  expect(refused.isError).toBe(true)
+  expect(text(refused)).toContain('memory is managed by the memory capability')
+  expect(text(refused)).not.toContain('[sandbox:')
+})
+
 test('a read-only session refuses every mutation with the shared denial marker', async () => {
   const { ctx, agent } = await mount('read-only')
   const refused = await call(ctx, agent, {
