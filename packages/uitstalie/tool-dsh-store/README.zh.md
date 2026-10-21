@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-dsh-store` 拥有工作区的 `.dsh` 目录——这个项目级约定已经在承载项目技能与运行时快照。它是 `.dsh` 管理的基础接口：`dshStore` Cordis 服务负责项目根解析、路径限定、四个存储操作、命名空间撰写校验与会话策略门禁，模型工具与只读 Remote 都是它的消费者。插件同时负责让每个会话的存储根存在，并在会话不可写时跳过这次创建；此外提供 Remote 命名空间（`remote.dshStore`），让 Web 侧边栏**无需会话**即可列出并读取某工作区的规则。
+`dsh-tool-dsh-store` 拥有工作区的 `.dsh` 目录——这个项目级约定承载着项目技能与运行时快照。`ctx.dshStore` 服务是 `.dsh` 管理的基础接口，负责项目根解析、路径限定、存储操作（包括带版本守卫的 `writeFile`）、命名空间撰写校验与会话策略门禁；模型工具与只读 Remote 都是它的消费者。`.dsh/memory` 保留给 memory 能力，该能力通过服务写入这片区域，而工具只能读取它。插件同时让每个会话的存储根保持存在，并提供 `remote.dshStore` 命名空间，让 Web 侧边栏**无需会话**即可列出并读取某工作区的规则。
 
 ## 目录
 
@@ -43,10 +43,11 @@ kind: "package-reference"
 | 确保根存在 | `ensureStoreRoot` | 本次调用是否创建了根目录 |
 | 建目录 | `createStoreFolder` | `{ path, kind: 'directory' }` |
 | 写文件 | `createStoreFile` | `{ path, kind: 'file' }` |
+| 带可选版本守卫写文件（仅服务侧可用） | `writeFile` | `{ path, version }`；`expected` 过期时以 `FS_STALE_VERSION` 拒绝 |
 | 查询目标 | `queryStoreTarget` | 目标类型、直接子项，以及可选的正文 |
 | 删除目标 | `removeStoreTarget` | `{ path, kind }`；非空目录需要 `recursive` |
 
-每个操作接收的绝对路径都已由路径层限定在根内，配合 `FileSystem` 服务使用；写操作还会带上调用会话解析出的策略，因此限定型后端围栏的是同一次调用。
+`store-ops` 辅助函数接收的绝对路径已由路径层限定在根内，并配合 `FileSystem` 服务使用；`writeFile` 直接接收 `.dsh` 相对路径并自行解析，是拥有某个命名空间的插件所用的写路径。每次写操作都会带上调用会话解析出的策略，因此限定型后端围栏的是同一次调用。`memory/**` 区域可经服务写入，但对工具只读：`query` 可以到达，而 `create` 与 `delete` 会被拒绝。
 
 -----
 
@@ -56,7 +57,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-`src/paths.ts` 把拒绝矩阵实现为不触碰文件系统的纯函数，因此矩阵的每一行都由单测钉住，而不是靠集成用例覆盖。`src/store-ops.ts` 把四个操作映射到 `FileSystem.mkdir`、`writeText`、`stat`/`listDir`/`readText` 与 `remove`，并返回具名的结果记录，让调用方读数据而不是读文件系统状态。`src/policy.ts` 在每次写操作前解析一次会话策略，并用共享的拒绝标记拒绝 `read-only` 会话；查询不过这道门禁，因为读取不会写存储区。`src/service.ts` 是 `dshStore` 基础接口：项目根解析、`.dsh` 根、四个操作、命名空间校验与策略门禁都在这里，`src/tool.ts` 把工具实现为它的消费者。`src/index.ts` 提供服务、注册工具与 Remote，并在会话可写后于每个 step 准备根目录；工具注册在 profile 层，因此 profile 里每个 agent 都能调用它。`src/remote.ts` 是侧边栏使用的只读 Remote 命名空间：因为工作区行可能还没有会话，它按**工作区根**寻址；读取前先拿宿主的工作区注册表核对该根；它的列表就是指令加载器自己的保留集合，因此面板显示的正是进入模型的那一组。
+`src/paths.ts` 把拒绝矩阵实现为不触碰文件系统的纯函数，因此矩阵的每一行都由单测钉住，而不是靠集成用例覆盖。`src/store-ops.ts` 把各存储原语映射到 `FileSystem.mkdir`、`writeText`、`stat`/`listDir`/`readText` 与 `remove`，并返回具名的结果记录，让调用方读数据而不是读文件系统状态。`src/namespaces.ts` 持有命名空间撰写校验与 `isMemoryPath`，后者对首段做不区分大小写的比较，因为 Windows 与 macOS 会折叠大小写。`src/policy.ts` 在每次写操作前解析一次会话策略，并用共享的拒绝标记拒绝 `read-only` 会话；查询不过这道门禁，因为读取不会写存储区。`src/service.ts` 是 `dshStore` 基础接口：项目根解析、`.dsh` 根、各存储操作、命名空间校验与策略门禁都在这里；`writeFile` 把 `expected` 映射为 `writeText` 的 `replaceIfVersion` 守卫，省略 `expected` 则是无条件写入，`createIfAbsent` 尚未暴露。`src/tool.ts` 把工具实现为它的消费者，并持有 `memory` 保留规则：该工具拒绝该前缀上的 `create` 与 `delete`，因此保留规则位于工具层，而服务本身仍可写。`src/index.ts` 提供服务、注册工具与 Remote，并在会话可写后于每个 step 准备根目录；工具注册在 profile 层，因此 profile 里每个 agent 都能调用它。`src/remote.ts` 是侧边栏使用的只读 Remote 命名空间：因为工作区行可能还没有会话，它按**工作区根**寻址；读取前先拿宿主的工作区注册表核对该根；它的列表就是指令加载器自己的保留集合，因此面板显示的正是进入模型的那一组。
 
 </details>
 
@@ -85,10 +86,12 @@ kind: "package-reference"
 
 这些限制说明本包当前**有意不做**的事。
 
-- **命名空间校验覆盖 `rules` 与 `skills`**——`mcp.json` 刻意不校验：harness 里没有任何插件读它，为它写校验等于凭空发明一个约定，而不是保护已有消费者。
+- **内容校验覆盖 `rules` 与 `skills`**——`mcp.json` 刻意不校验：harness 里没有任何插件读它，为它写校验等于凭空发明一个约定，而不是保护已有消费者。
+- **`memory/` 不区分大小写地匹配**——在大小写不敏感的文件系统上，`Memory/...` 与 `memory/...` 指向同一处，因此工具会拒绝 `memory`、`Memory` 及其所有子路径；服务本身仍为 memory 能力保留写入权限。
 - **根目录固定为 `.dsh`**——不做配置项，因此一个工作区只有一个存储区。
 - **只读会话不保留存储根**——创建它属于写操作，因此根会在会话首次可写时出现；在此之前查询会如实报告根不存在。
 - **工具在 profile 内全局可见**——它注册在 profile 层，因此 profile 里每个 agent（含 `minimal` preset）都能看到它；上面描述的存储根仍随各自的会话解析。
+- **省略 `expected` 时 `writeFile` 是无条件写入**——它直接创建或替换现有内容，不做过期校验；`createIfAbsent` 守卫是 `FileSystem.writeText` 的另一条映射，存储服务尚未暴露。
 
 <a id="dev-note"></a>
 ### 开发备注
