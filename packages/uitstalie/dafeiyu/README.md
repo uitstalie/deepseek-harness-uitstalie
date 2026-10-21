@@ -11,7 +11,7 @@ English | [中文](README.zh.md)
 
 `dafeiyu` is the host-side organizer for optional capabilities such as memory and personality. It owns the capability registry, the enable gate, per-agent wiring, completed-turn dispatch, failure isolation, and disposal, so a provider only declares what it contributes. Providers do not subscribe to lifecycle events, register tools, or edit the system prompt themselves; the organizer performs those steps at one place with one decision for child agents and cancelled turns.
 
-The organizer provides `ctx.dafeiyu` and has no model surface of its own. In the v1 composition it is mounted by the `web-app` branch layer before the provider rows, and providers declare `inject: ['dafeiyu']`.
+It provides `ctx.dafeiyu` and has no model surface. The v1 composition mounts it in the `web-app` branch layer before provider rows; providers declare `inject: ['dafeiyu']`.
 
 ## Use this package
 
