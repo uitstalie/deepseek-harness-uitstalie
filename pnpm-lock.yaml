@@ -3107,6 +3107,9 @@ importers:
       '@deepseek-ai/dsh-cordis-host-runner':
         specifier: workspace:*
         version: link:../../extensions/cordis-host-runner
+      '@deepseek-ai/dsh-dafeiyu':
+        specifier: workspace:*
+        version: link:../../uitstalie/dafeiyu
       '@deepseek-ai/dsh-file-reference':
         specifier: workspace:*
         version: link:../../context/file-reference
@@ -15235,6 +15238,31 @@ importers:
       react:
         specifier: ^18.2.0
         version: 18.3.1
+
+  packages/uitstalie/dafeiyu:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:*
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-agent-loop-testkit':
+        specifier: workspace:*
+        version: link:../../test-support/agent-loop-testkit
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:*
+        version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:*
+        version: link:../../core/tools
 
   packages/uitstalie/llm-plus:
     dependencies:

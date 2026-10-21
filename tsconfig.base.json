@@ -413,6 +413,7 @@
       "@deepseek-ai/dsh-config-editor": ["./packages/boot/config-editor/src"],
       "@deepseek-ai/dsh-credentials": ["./packages/credentials/credentials/src"],
       "@deepseek-ai/dsh-credentials-local": ["./packages/credentials/credentials-local/src"],
+      "@deepseek-ai/dsh-dafeiyu": ["./packages/uitstalie/dafeiyu/src"],
       "@deepseek-ai/dsh-deepseek-llm-api-extensions": ["./packages/llm/deepseek-llm-api-extensions/src"],
       "@deepseek-ai/dsh-deque": ["./packages/util/deque/src"],
       "@deepseek-ai/dsh-file-reference": ["./packages/context/file-reference/src"],
