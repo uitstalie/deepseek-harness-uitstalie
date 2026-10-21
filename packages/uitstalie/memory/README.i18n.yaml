@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/memory/README.md
+/:
+  en: 786b9d72d04c13bd
+  zh: f98a950760747ab0
+/deepseek-ai-dsh-memory:
+  en: 451d0d0b45211d36
+  zh: 98cef595909ea324
+/deepseek-ai-dsh-memory/summary:
+  en: 180a3d6103dd3339
+  zh: 9ef5b8ab2cabf97c
+/deepseek-ai-dsh-memory/use-this-package:
+  en: 74caaa074605645a
+  zh: 3283bda44ecaf40e
+/deepseek-ai-dsh-memory/understand-the-implementation:
+  en: f3d430c3c74d5259
+  zh: 67f5389f9079e3bc
+/deepseek-ai-dsh-memory/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section:
+  en: c0ac6604a97c662a
+  zh: 4409508acbe18181
+/deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/what-the-model-sees:
+  en: e400b4629ecb0cdf
+  zh: c0bba003ed8160fd
+/deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/what-the-model-sees/fixed-memory-section-text:
+  en: 7852e132e880ee31
+  zh: f73a669cb32b47f5
+/deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/token-effect:
+  en: 120292c9ca5c01de
+  zh: 108bff9ebaa28316
+/deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/kv-cache-effect:
+  en: d486025ccb8721af
+  zh: d08ba56c6fd29ece
+/deepseek-ai-dsh-memory/model-experience/memory-tools:
+  en: b160ca92da193ddb
+  zh: ac8fae468916718e
+/deepseek-ai-dsh-memory/model-experience/memory-tools/what-the-model-sees:
+  en: a14ce5c697cfaa1a
+  zh: 1e791f0b1ba325a2
+/deepseek-ai-dsh-memory/model-experience/memory-tools/token-effect:
+  en: 1cc58f85881ab2b8
+  zh: ddf196dd8cd8e936
+/deepseek-ai-dsh-memory/model-experience/memory-tools/kv-cache-effect:
+  en: 9336f6c9c92be6fc
+  zh: bed1c1dc049fde5c
+/deepseek-ai-dsh-memory/known-limitations-and-deferred-work:
+  en: b6db6d080ecb165c
+  zh: 7a4f4ec63aa82df8

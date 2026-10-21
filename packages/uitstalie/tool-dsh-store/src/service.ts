@@ -64,6 +64,16 @@ export interface StoreWriteResult {
   version?: string
 }
 
+/** Result of a store file read. */
+export interface StoreReadResult {
+  /** Read path relative to `.dsh`. */
+  path: string
+  /** File text; absent unless the target is an existing regular file. */
+  text?: string
+  /** Opaque version of the observed file; pass it as the next write's `expected`. */
+  version?: string
+}
+
 /**
  * The `.dsh` base interface. Every method is session-scoped: the store root is
  * derived from the session's project, never from a caller-supplied path.
@@ -116,6 +126,21 @@ export interface DshStore {
    *   `FS_STALE_VERSION` when `expected` no longer matches the file.
    */
   writeFile(session: Session, path: string, content: string, options?: StoreWriteOptions): Promise<StoreWriteResult>
+  /**
+   * Read one store file without the session policy gate, because reading is
+   * allowed in every mode.
+   *
+   * The returned version is the value a later guarded `writeFile` passes as
+   * `expected`. A provider reads the file, composes the next text, and writes
+   * it back with that version, so a concurrent writer surfaces as
+   * `FS_STALE_VERSION` instead of a silent overwrite.
+   * @param session - session whose project owns the store.
+   * @param path - store-relative target path.
+   * @param options - cancellation.
+   * @returns the target path plus the text and version when it is a regular file.
+   * @throws StorePathError when the path leaves the store root.
+   */
+  readFile(session: Session, path: string, options?: StoreCallOptions): Promise<StoreReadResult>
   /**
    * Create a folder below the store root.
    * @param session - session whose policy gates the write.
@@ -239,6 +264,20 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
         : { kind: 'replaceIfVersion' as const, version: FsVersion(options.expected) }
       const outcome = await ctx.fs.writeText(target, content, expected, options.signal, policy)
       return { path: normalized.displayPath, version: outcome.version }
+    },
+    async readFile(
+      session: Session,
+      path: string,
+      options: StoreCallOptions = {},
+    ): Promise<StoreReadResult> {
+      const root = await rootFor(session, options.signal)
+      const normalized = normalizeStorePath(path)
+      const resolveOptions = options.signal === undefined ? {} : { signal: options.signal }
+      const target = await ctx.fs.resolve(resolveStoreTarget(root, normalized), resolveOptions)
+      const info = await ctx.fs.stat(target, options.signal)
+      if (info === undefined || info.type !== 'file') return { path: normalized.displayPath }
+      const text = await ctx.fs.readText(target, options.signal)
+      return { path: normalized.displayPath, text, version: info.version }
     },
     async createFolder(session: Session, path: string, options: StoreCallOptions = {}): Promise<StoreCreateResult> {
       const root = await rootFor(session, options.signal)
