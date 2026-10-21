@@ -2,8 +2,8 @@
  * The `.dsh` store service (`ctx.dshStore`): the base interface other branch
  * plugins use to read and manage a workspace's `.dsh` directory.
  *
- * The service owns project-root discovery, `.dsh` path confinement, the four
- * store operations, the rules-namespace authoring checks, and the per-session
+ * The service owns project-root discovery, `.dsh` path confinement, the store
+ * operations, the rules-namespace authoring checks, and the per-session
  * sandbox policy gate. The model-facing tool and the sidebar Remote are
  * consumers of this interface, so a new consumer never re-assembles a store
  * path or re-implements the refusal matrix.
@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
+import { FsVersion } from '@deepseek-ai/dsh-fs'
 import { findProjectRoot, trimmedInstructionDigest } from '@deepseek-ai/dsh-agent-instructions'
 import { scanWorkspaceRules } from '@deepseek-ai/dsh-agent-instructions-plus'
 import { STORE_DIR_NAME, normalizeStorePath, resolveStoreTarget } from './paths.ts'
@@ -44,6 +45,23 @@ export interface StoreCallOptions {
 export interface StoreRemoveOptions extends StoreCallOptions {
   /** Remove a populated directory and its contents. */
   recursive?: boolean
+}
+
+/** Options of a store file write. */
+export interface StoreWriteOptions extends StoreCallOptions {
+  /**
+   * Version the file must still carry, as returned by an earlier write; omit
+   * for an unconditional create-or-overwrite.
+   */
+  expected?: string
+}
+
+/** Result of a store file write. */
+export interface StoreWriteResult {
+  /** Written path relative to `.dsh`. */
+  path: string
+  /** Opaque version of the file after the write; pass it as the next `expected`. */
+  version?: string
 }
 
 /**
@@ -81,6 +99,23 @@ export interface DshStore {
    * @returns the created target record.
    */
   createFile(session: Session, path: string, content: string, options?: StoreCallOptions): Promise<StoreCreateResult>
+  /**
+   * Write one file below the store root with an optional version guard.
+   *
+   * This is the provider-facing write: it skips the `rules` and `skills`
+   * authoring checks, because a plugin that owns a namespace persists its own
+   * content there and no model-authoring rule applies to it.
+   * @param session - session whose policy gates the write.
+   * @param path - store-relative target path; the root itself is refused.
+   * @param content - complete file text.
+   * @param options - cancellation and the version the file must still carry.
+   * @returns the written path and the version a later guarded write can expect.
+   * @throws Error when the path is empty, because the store root is a directory.
+   * @throws StorePathError when the path leaves the store root.
+   * @throws FsError `FS_SANDBOX_DENIED` for a read-only session, or
+   *   `FS_STALE_VERSION` when `expected` no longer matches the file.
+   */
+  writeFile(session: Session, path: string, content: string, options?: StoreWriteOptions): Promise<StoreWriteResult>
   /**
    * Create a folder below the store root.
    * @param session - session whose policy gates the write.
@@ -184,6 +219,26 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
       validateNamespaceContent(normalized.displayPath, content)
       const policy: SandboxExecutionPolicy | undefined = resolveSessionStorePolicy(ctx, session)
       return await createStoreFile(ctx.fs, target, normalized.displayPath, content, options.signal, policy)
+    },
+    async writeFile(
+      session: Session,
+      path: string,
+      content: string,
+      options: StoreWriteOptions = {},
+    ): Promise<StoreWriteResult> {
+      const root = await rootFor(session, options.signal)
+      const normalized = normalizeStorePath(path)
+      if (normalized.displayPath.length === 0) {
+        throw new Error(`refusing to write the ${STORE_DIR_NAME} root: a file path is required`)
+      }
+      const resolveOptions = options.signal === undefined ? {} : { signal: options.signal }
+      const target = await ctx.fs.resolve(resolveStoreTarget(root, normalized), resolveOptions)
+      const policy: SandboxExecutionPolicy | undefined = resolveSessionStorePolicy(ctx, session)
+      const expected = options.expected === undefined
+        ? undefined
+        : { kind: 'replaceIfVersion' as const, version: FsVersion(options.expected) }
+      const outcome = await ctx.fs.writeText(target, content, expected, options.signal, policy)
+      return { path: normalized.displayPath, version: outcome.version }
     },
     async createFolder(session: Session, path: string, options: StoreCallOptions = {}): Promise<StoreCreateResult> {
       const root = await rootFor(session, options.signal)

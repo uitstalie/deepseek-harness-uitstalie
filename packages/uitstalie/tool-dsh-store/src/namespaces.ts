@@ -3,7 +3,8 @@
  * consume: `rules`, read by the workspace-instruction loader, and `skills`, read
  * by the project skill root. Both refuse at write time, so a file that the
  * consumer would ignore — or that duplicates one already loaded — never reaches
- * the store.
+ * the store. The same module names the `memory` area the memory capability owns
+ * and the model-facing store tool must not modify.
  * @module @deepseek-ai/dsh-tool-dsh-store/namespaces
  */
 
@@ -30,6 +31,20 @@ export function isRulesPath(displayPath: string): boolean {
 /** Whether a `.dsh`-relative path names something inside the skill namespace. */
 export function isSkillsPath(displayPath: string): boolean {
   return displayPath === 'skills' || displayPath.startsWith('skills/')
+}
+
+/**
+ * Whether a `.dsh`-relative path names the managed-memory area or something
+ * under it. The memory capability owns that area; the store tool may query it
+ * but never writes or removes it, while the store service still can.
+ * @param displayPath - the `.dsh`-relative target path.
+ * @returns `true` for `memory` itself and every path below it.
+ */
+export function isMemoryPath(displayPath: string): boolean {
+  // Compare case-insensitively: Windows and macOS fold case, so `Memory/x.md`
+  // aliases `memory/x.md` there and must be refused too.
+  const [segment] = displayPath.split('/', 1)
+  return segment?.toLowerCase() === 'memory'
 }
 
 /**
