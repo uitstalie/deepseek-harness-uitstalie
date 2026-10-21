@@ -21,6 +21,7 @@ personality = 稳定的**人格、用户偏好与表达风格**。与 memory 正
 
 - 都是能力提供者；personality 不订阅事件、不注册工具，只提供 system prompt 段与读写服务。
 - 存储上分文件、注入上分通道：personality 走 system prompt 稳定段，memory 走 snapshot 消息。两者语义不同（长期偏好 vs 情景记忆），不要合并成一条消息。
+- kind 注册表由 memory 提供并共享：memory 注册 `decision` / `files` / `open` / `preference`，personality 注册 `persona` / `style` / `preference`；文件与注入位置仍分开。
 - 合并路径：memory 的条目模型后续支持稳定 `kind`（`persona` / `preference` / `style`），personality 的条目届时可落进同一存储与审计，但注入位置仍分开。合并的前提是 memory 的 `memory_write` 与条目治理先落地；在那之前保持两个包。
 - 提升路径：memory 里反复遗忘、反复被提醒的点 → 用户确认 → 上升为 personality 条目、rules 或 jira KB。personality provider 不自动做这个提升。
 
@@ -63,12 +64,12 @@ entries: 3
 - 工作区覆盖走 `ctx.dshStore` 的 `memory` 命名空间（`.dsh/memory/PERSONALITY.md`），与 MEMORY.md 共用保留前缀；模型工具同样只读。
 - 写入一律原子：`FileSystem.writeText` 的原子发布 + `replaceIfVersion` 版本守卫。所有写入者（用户设置、自动学习、提案接受）都遵守这条契约：provider 持有上次读到/写入的 version，与用户手改冲突时重读一次重试，再失败就放弃并报告，不覆盖用户刚写的内容。
 - 写入路径：用户显式设置（编辑器/设置页）；自动学习（仅 `style`/`preference`，标 `source: auto`，受每条目/每会话预算约束）；`identity.*` 与角色设定走提案接受（设置页）。模型不直接写文件，全部经 provider 的写入接口做格式、预算与版本校验。
-- 历史：每次写入追加一条版本记录到 `PERSONALITY.history.jsonl`（版本号、时间、`source: user/auto/proposal`、来源 session、按条目 id 的变更 diff）；正文不放历史。
+- 历史：每次写入追加一条版本记录到 `PERSONALITY.history.jsonl`（版本号、时间、`source: user/auto/proposal`、来源 session、按条目 id 的 diff、**托管区块全文** ≤2 KiB）；回退直接取该行全文替换托管区块，不重放 diff。
 
 ## 漂移检查
 
 - 版本快照：每次写入记录 version 与按条目 id 的 diff；历史文件见“存储与写入”。
-- 审阅入口：设置页/命令查看当前版本与上一版的 diff，自动学习条目以 `source: auto` 标出；可一键回退到任意版本，回退本身也记一条版本。
+- 审阅入口：v1 用命令 `/personality diff` 看当前与上一版，`/personality revert <version>` 回退；自动学习条目以 `source: auto` 标出，回退本身也记一条版本。设置页面板后续。
 - 自动学习预算：单次会话自动写入条数与字节设上限（初始建议每会话 3 条、512 B），超限转为提案；避免人格在一次长会话里被悄悄改写。
 - 用户手改优先：版本守卫冲突时重读重试，仍失败则放弃写入并报告。
 
@@ -145,4 +146,4 @@ ctx.dafeiyu.register({
 
 - 第一轮（2026/10/20）：草案，四个待确认。
 - 第二轮（2026/10/20）：拍板存储/作用域/写入/边界；补文件格式、注入位置与 order、缓存与 watch、与 dafeiyu 的接线、测试计划。
-- 第三轮（2026/10/21）：按用户决定改为“显式设置为主 + 保留自动学习（仅 `style`/`preference`）+ 漂移审阅（版本快照/diff/回退）”；补写入路径、历史文件与自动学习预算。
+- 第三轮（2026/10/21）：按用户决定改为“显式设置为主 + 保留自动学习（仅 `style`/`preference`）+ 漂移审阅（版本快照/diff/回退）”；补写入路径、历史文件与自动学习预算；kind 注册表与 memory 共享，漂移审阅走命令入口，history 采用 JSONL + 每版全文。

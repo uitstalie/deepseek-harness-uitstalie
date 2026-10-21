@@ -105,7 +105,7 @@ sessions:
 memory 的注入不是“每个 pre-step 重新渲染一个 source”，而是**由写入事件驱动**：job 成功写完 MEMORY.md 后，向会话 append 一条 snapshot 消息，替换上一条 memory snapshot。
 
 - 消息形态：`user/message`，`source: { kind: 'memory', form: 'snapshot', sections: [{ name: 'memory', text }] }`。`form: 'snapshot'` 的语义是“当前状态，后一条同来源消息取代前一条”，与 UI 的 context 投影一致。provider 在模块里 merge `MessageSourceMap` 声明 `memory` 来源（checkpoint 另带 `window: { from, to, tier }` 字段），这样重启后能只靠 surface 事件重建自己的节点映射。
-- 内容：当前会话已压缩 turn 的摘要（每段一行标题 + 一句要点）+ 最近 10 个其他会话的一行索引 + 一句“原文可检索”的说明；总预算 4 KiB，按段截断。
+- 内容：窗口清单（哪些 turn 已压缩、各在哪个 tier）+ 最近 10 个其他会话的一行索引（标题 + 一句要点）+ 一句“原文可检索”的说明；**不重复**每个 turn 的摘要正文（细节由各自的 checkpoint 承担）。总预算 4 KiB，按段截断。
 - 替换：找到当前 surface 上最后一条 `source.kind === 'memory' && form === 'snapshot'` 的节点，用 `surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq }` 替换，并在 `sourceEventSeqs` 里引用被替换的节点；找不到（首次注入、或已被 compaction 清掉）就 append。替换失败（区间已变）就退回 append，下个 turn 再收敛。
 - 恢复：provider 进程重启后不依赖内存里的 seq，直接扫 live surface 的 `user/message` 事件、按 `source.kind` 找最后一条 snapshot，作为下一次替换的目标。
 - 子 agent：不注入。`agent.parentAgent !== undefined` 时 provider 的贡献不会被组织者创建。
@@ -150,7 +150,7 @@ v1 三个工具：两个只读查询 + 一个固定 schema 的写入。由 provi
 
 | 工具 | 输入 | 输出 |
 |---|---|---|
-| `memory_search` | `query`、可选 `sessionId`、可选 `limit`（默认 10，上限 10） | 每行 `sessionId#seq · 时间 · 片段`；同时搜会话全文与 MEMORY.md，标来源；总字节上限 8 KiB |
+| `memory_search` | `query`、可选 `sessionId`、可选 `limit`（默认 10，上限 10） | 每行 `标题 · sessionId#seq · 时间 · 片段`（标题取 `session-title`，缺失退化为 sessionId）；同时搜会话全文与 MEMORY.md，标来源；总字节上限 8 KiB |
 | `memory_read` | 可选 `sessionId`（默认当前）、`turn` 或 `seq`、可选 `before`/`after` | 指定 turn/区间的对话面：user/assistant 文本（每条截断 2 KiB）+ 工具名与状态行，不返回工具输出正文；总字节上限 16 KiB |
 | `memory_write` | `kind`（注册表：`decision` / `files` / `open` / `preference`）、`content`、可选 `tags` | 写入当前会话当前 turn 的摘要条目；成功返回条目 id 与 turn；未知 kind 报错并列出可用值；超预算拒绝 |
 
@@ -191,7 +191,7 @@ provider 注册一个稳定的 system prompt 段，只对 root agent 注册（�
 
 ## 风险与未决
 
-1. **snapshot 与 checkpoint 的信息重复**：snapshot 汇总已压缩 turn，checkpoint 也各自带摘要，模型会看到两份。v1 接受（总量 4 KiB 封顶），后续可把 snapshot 缩成“窗口清单 + 跨会话索引”。
+1. **snapshot 与 checkpoint 的分工**：snapshot 只给窗口清单 + 跨会话索引，不含每个 turn 的摘要正文；细节由 checkpoint 承担。后续如果模型反馈“需要一次看全”，再评估是否把详情并回 snapshot。
 2. **搜索没有 turn 号**：`session_search` 的命中只有 seq；要 turn 号得读整条会话。v1 不承诺，等 `memory_read` 的 turn 映射成为主要路径后再评估。
 3. **subagent 与 personality 的边界**：memory 明确不继承；personality 继承（见 [personality.md](personality.md)）。
 4. **多进程**：工作区锁是进程内的；同一工作区开两个 Host 时靠文件 version 守卫兜底（冲突者重读重试一次，再失败放弃）。

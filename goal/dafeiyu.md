@@ -165,12 +165,13 @@ interface CapabilityStatus {
 | v1 配置面 | 只通过 profile 的 `cordis.patch.yml`（`capabilities.<id>.enabled` + 各 provider 自己的行）；设置页后续 |
 | 注入总预算 | v1 各 provider 自守（memory 4 KiB、personality 2 KiB），组织者不统一核算；等两份能力落地后有实测再评估 |
 | 失败通知 | 留给 provider（memory append notice；personality 只记状态）；组织者只维护 `status()` 与日志，不统一写会话 |
+| 契约版本 | 整数 `contractVersion: 1`，精确匹配；未来破坏性变更升 2，不匹配的 provider 拒绝注册并在 `status()` 报 `failed` |
+| 配置重载 | 收到 `app-boot/config-reload` 后对全部能力 `dispose()` + 重新 `create()`（不做按能力 diff） |
+| 状态命令 | v1 不加 `/capabilities`，只提供 `status()`；等设置页一起做可视状态 |
 
 ## 未决
 
-1. `contractVersion` 的演进策略：什么时候升 2、旧 provider 如何被拒绝但保留 `status`。
-2. 配置重载语义：`app-boot/config-reload` 后是全部 `dispose` 重建，还是按能力 diff。
-3. 组织者自身是否需要一个只读的 `/capabilities` 状态命令（v1 仅 `status()`）。
+v1 没有未决项；以下留到后续版本：设置页面板与运行态开关、多设备/多进程下的能力状态同步、`contractVersion` 升 2 的迁移说明。
 
 ## 变更记录
 
