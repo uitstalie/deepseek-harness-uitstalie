@@ -1,17 +1,18 @@
 /**
  * Real-composition harness shared by the memory provider specs: the real agent
  * loop, agent and session registries, tool runtime, session query service, local
- * filesystem, `.dsh` store, and the dafeiyu organizer with the memory capability
- * mounted.
+ * filesystem, `.dsh` store, local job registry, and the dafeiyu organizer with
+ * the memory capability mounted.
  *
  * Only the search backend is substituted: it has no index, so session search
  * returns nothing while every exact surface read still walks the live corpus.
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
+import { createAssistantMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
+import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionId as SessionIdValue, SessionSeq, UserMessage } from '@deepseek-ai/dsh-session'
 import SessionQueryEngine from '@deepseek-ai/dsh-session-query'
@@ -33,6 +34,7 @@ import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
 import { join } from 'node:path'
 import * as Memory from '../src/index.ts'
 import { isMemorySnapshotSource } from '../src/index.ts'
+import type { Config } from '../src/config.ts'
 import type { MemorySnapshotSource } from '../src/index.ts'
 
 /** Signal for tool calls that are not cancelled. */
@@ -81,14 +83,38 @@ export interface MemoryTestHarness {
   readonly project: string
 }
 
-/** Mount the real services and the memory provider into a caller-owned context. */
-export async function mountMemory(ctx: Context, project: string): Promise<MemoryTestHarness> {
+/** What one mounted memory composition enables. */
+export interface MemoryMountOptions {
+  /** Mount the local job registry; absent mounts it. */
+  readonly jobs?: boolean
+  /** Attach a job controller serving the fixture agents; absent attaches one. */
+  readonly controller?: boolean
+  /** Raw provider configuration; absent uses schema defaults. */
+  readonly config?: Config
+}
+
+/**
+ * Mount the real services and the memory provider into a caller-owned context.
+ * @param ctx - caller-owned context that will own every mounted service.
+ * @param project - fixture workspace root.
+ * @param options - which services to mount and the provider configuration.
+ * @returns the mounted services, the memory fiber, and the fixture workspace.
+ */
+export async function mountMemory(
+  ctx: Context,
+  project: string,
+  options: MemoryMountOptions = {},
+): Promise<MemoryTestHarness> {
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(LocalFileSystem, { cwd: project })
   await ctx.plugin(TestSessionQueryEngine)
+  if (options.jobs !== false) {
+    await ctx.plugin(LocalJobRegistry, {})
+    if (options.controller !== false) ctx.jobs.attachController('memory-test')
+  }
   ctx.provide('dshStore', createDshStore(ctx, false))
   await ctx.plugin(Dafeiyu)
-  const memoryFiber = await ctx.plugin(Memory, {})
+  const memoryFiber = await ctx.plugin(Memory, options.config ?? {})
   await settle()
   const harness = await mountAgentLoopTestHarness(ctx)
   return { ctx, harness, memoryFiber, project }
@@ -132,10 +158,58 @@ export async function createRoot(
   mounted: MemoryTestHarness,
   id = 'memory-root',
   turn = 1,
+  options: AgentOptions = {},
 ): Promise<Agent> {
-  const root = await mounted.harness.create(SessionId(id), {}, { cwd: mounted.project })
+  const root = await mounted.harness.create(SessionId(id), options, { cwd: mounted.project })
   root.session.append('turn/start', { turn })
   return root
+}
+
+/** Append one user text message to the session's model surface. */
+export function appendUserText(agent: Agent, text: string): void {
+  agent.session.append('user/message', createUserMessage({
+    content: [{ type: 'text', text }],
+    source: { kind: 'user' },
+  }), { surfaceOp: 'append' })
+}
+
+/** Append one assistant text message to the session's model surface. */
+export function appendAssistantText(
+  agent: Agent,
+  turn: number,
+  text: string,
+  provider = 'stub',
+  model = 'stub',
+): void {
+  agent.session.append('assistant/message', {
+    turn,
+    step: 1,
+    message: createAssistantMessage({
+      content: [{ type: 'text', text }],
+      source: { provider, model },
+    }),
+    stream: [],
+  }, { surfaceOp: 'append' })
+}
+
+/**
+ * Poll a read until it returns a defined value.
+ * @param read - value supplier; undefined keeps waiting.
+ * @param timeoutMs - maximum wait before failing the spec.
+ * @returns the first defined value.
+ * @throws Error when the value stays undefined past the timeout.
+ */
+export async function waitForValue<T>(
+  read: () => T | undefined | Promise<T | undefined>,
+  timeoutMs = 3000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const value = await read()
+    if (value !== undefined) return value
+    if (Date.now() >= deadline) throw new Error(`condition was not met within ${String(timeoutMs)}ms`)
+    await new Promise<void>((resolve) => { setTimeout(resolve, 5) })
+  }
 }
 
 /** Read every memory snapshot from one session's current model surface, in surface order. */
@@ -152,6 +226,18 @@ export async function memorySnapshots(
     snapshots.push({ seq: event.seq, message: event.data, source })
   }
   return snapshots
+}
+
+/** Read every one-off memory notice from one session's current model surface. */
+export async function memoryNotices(ctx: Context, sessionId: SessionIdValue): Promise<UserMessage[]> {
+  const surface = await ctx.sessionQuery.readSurface(sessionId)
+  const notices: UserMessage[] = []
+  for (const event of surface.events) {
+    if (event.type !== 'user/message') continue
+    const source = event.data.source
+    if (source.kind === 'memory' && source.form === 'notice') notices.push(event.data)
+  }
+  return notices
 }
 
 /** Extract the text blocks of one message. */

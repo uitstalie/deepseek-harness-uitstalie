@@ -13,12 +13,15 @@
  * last memory snapshot instead of remembering a seq. A replacement whose target
  * left the surface falls back to an append, so a compaction that removed the
  * node never fails the write.
+ *
+ * The `memory` source is a union: a one-off `notice` reports a failed summary
+ * and supersedes nothing, so only `form: 'snapshot'` is a replacement target.
  * @module @deepseek-ai/dsh-memory/snapshot
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextSnapshotSection, MessageSource, UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import { readMemoryDocument } from './memory-file.ts'
@@ -26,7 +29,7 @@ import type { MemoryDocument, MemorySection, MemorySessionRecord, MemoryTier, Me
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
-    memory: MemorySnapshotSource
+    memory: MemorySnapshotSource | MemoryNoticeSource
   }
 }
 
@@ -38,6 +41,16 @@ export interface MemorySnapshotSource {
   readonly form: 'snapshot'
   /** The rendered snapshot, one section named {@link MEMORY_SNAPSHOT_SECTION_NAME}. */
   readonly sections: readonly ContextSnapshotSection[]
+}
+
+/** Message source carried by a one-off memory failure notice. */
+export interface MemoryNoticeSource {
+  /** Producer identity shared with the memory snapshot. */
+  readonly kind: 'memory'
+  /** One-off account that supersedes nothing. */
+  readonly form: 'notice'
+  /** One-line account of the failure, bounded like every notice summary. */
+  readonly summary: string
 }
 
 /** Total UTF-8 byte budget of one snapshot text. */
@@ -81,13 +94,33 @@ interface MemorySnapshotIndexEntry {
 /**
  * Test whether a persisted message source identifies a memory snapshot.
  *
- * The memory producer declares one form, so the source kind discriminates its
- * snapshot. Adding another memory form makes that form part of the test.
+ * The memory producer emits both a snapshot and a one-off failure notice, so
+ * the source kind alone no longer discriminates; the form selects the durable
+ * state message that a later snapshot replaces.
  * @param source - source restored from a surface user message.
  * @returns whether the source is the memory producer's snapshot source.
  */
 export function isMemorySnapshotSource(source: MessageSource): source is MemorySnapshotSource {
-  return source.kind === 'memory'
+  return source.kind === 'memory' && source.form === 'snapshot'
+}
+
+/**
+ * Append one memory failure notice to a session's surface.
+ *
+ * A notice supersedes nothing: it is an ordinary appended user message that
+ * reports a one-off failure, unlike the snapshot that a later snapshot
+ * replaces.
+ * @param session - session that receives the notice.
+ * @param text - model-visible notice text; longer text is ellipsized to the
+ *   shared 120-character notice bound.
+ * @returns after the message landed on the surface.
+ */
+export function appendMemoryNotice(session: Session, text: string): void {
+  const notice = boundContextSummary(text)
+  session.append('user/message', createUserMessage({
+    content: [{ type: 'text', text: notice }],
+    source: { kind: 'memory', form: 'notice', summary: notice },
+  }), { surfaceOp: 'append' })
 }
 
 /**

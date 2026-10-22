@@ -47,7 +47,7 @@ export type MemoryEntryKind = typeof MEMORY_ENTRY_KINDS[number]
 export type MemoryTier = 'detail' | 'brief'
 
 /** Outcome codes a MEMORY.md read or write can report. */
-export type MemoryDocumentErrorCode = 'invalid-document' | 'unknown-kind' | 'budget-exceeded'
+export type MemoryDocumentErrorCode = 'invalid-document' | 'unknown-kind' | 'budget-exceeded' | 'empty-summary'
 
 /** Typed MEMORY.md failure; `code` is stable for callers and logs. */
 export class MemoryDocumentError extends Error {
@@ -174,6 +174,36 @@ export interface MemoryEntryInput {
   readonly seq: readonly [number, number]
   /** Section tier to join; defaults to `detail`. */
   readonly tier?: MemoryTier
+}
+
+/** One turn's detail summary to append as a single managed-block section. */
+export interface MemoryTurnSummaryInput {
+  /** Turn number from the session log. */
+  readonly turn: number
+  /** Inclusive seq range of the turn's events. */
+  readonly seq: readonly [number, number]
+  /** Validated entries produced by the summary job. */
+  readonly entries: readonly MemoryEntry[]
+}
+
+/** Options of one turn-summary append. */
+export interface MemoryTurnSummaryOptions {
+  /** Window thresholds recorded when the append creates the document. */
+  readonly window?: MemoryWindow
+  /** Maximum managed-block body size in UTF-8 bytes. */
+  readonly maxBytes?: number
+}
+
+/** Result of one turn-summary append. */
+export interface MemoryTurnSummaryResult {
+  /** Store-relative path that was written. */
+  readonly path: string
+  /** Version of the written file, when the store reported one. */
+  readonly version?: string
+  /** Turn whose detail entries were appended. */
+  readonly turn: number
+  /** Number of entries appended. */
+  readonly entries: number
 }
 
 /** Options of one append. */
@@ -349,6 +379,69 @@ export async function appendMemoryEntry(
     return {
       path: written.path,
       kind,
+      ...written.version === undefined ? {} : { version: written.version },
+    }
+  }
+  try {
+    return await append()
+  } catch (error: unknown) {
+    if (!isStaleVersion(error)) throw error
+    return await append()
+  }
+}
+
+/**
+ * Append one turn's detail summary to the managed block of the workspace MEMORY.md.
+ *
+ * The entries form one section covering the turn. A section for the same
+ * session whose last turn is this turn or the turn immediately before it is
+ * extended, so consecutive summarized turns share one `turn N–M（detail）`
+ * heading. The frontmatter turn record is replaced with this turn's seq range
+ * and tier, and the write is version-guarded exactly like
+ * {@link appendMemoryEntry}: one stale-version conflict is retried after a
+ * re-read.
+ * @param ctx - context carrying `dshStore`.
+ * @param session - session the summary belongs to; its project owns the file.
+ * @param summary - the turn, its seq range, and its validated entries.
+ * @param signal - cancellation for the store read and write.
+ * @param options - window thresholds for a new document and the body budget.
+ * @returns the written path, the new version, and the entry count.
+ * @throws MemoryDocumentError `empty-summary` when no entries are supplied,
+ *   `unknown-kind` for an invalid entry kind, or `budget-exceeded` when the body
+ *   would exceed the budget.
+ * @throws FsError when the guarded write fails twice or the store refuses the write.
+ */
+export async function appendTurnSummary(
+  ctx: Context,
+  session: Session,
+  summary: MemoryTurnSummaryInput,
+  signal?: AbortSignal,
+  options: MemoryTurnSummaryOptions = {},
+): Promise<MemoryTurnSummaryResult> {
+  if (summary.entries.length === 0) {
+    throw new MemoryDocumentError('a turn summary needs at least one entry', 'empty-summary')
+  }
+  const entries = summary.entries.map(entry => ({
+    kind: assertMemoryEntryKind(entry.kind),
+    text: entry.text,
+  }))
+  const window = options.window ?? DEFAULT_MEMORY_WINDOW
+  const maxBytes = options.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES
+  const append = async (): Promise<MemoryTurnSummaryResult> => {
+    const current = await readMemoryDocument(ctx, session, signal)
+    const document = current.document ?? createMemoryDocument(window)
+    const next = appendTurnToDocument(document, session, summary, entries)
+    assertBodyBudget(next, maxBytes)
+    const written = await ctx.dshStore.writeFile(
+      session,
+      MEMORY_STORE_PATH,
+      renderMemoryDocument(next),
+      writeOptions(signal, current.version),
+    )
+    return {
+      path: written.path,
+      turn: summary.turn,
+      entries: entries.length,
       ...written.version === undefined ? {} : { version: written.version },
     }
   }
@@ -591,8 +684,22 @@ function appendToDocument(
   const tier = entry.tier ?? 'detail'
   return {
     ...document,
-    sessions: recordTurn(document.sessions, session, entry, tier),
+    sessions: recordTurn(document.sessions, session, entry.turn, entry.seq, tier),
     sections: appendSectionEntry(document.sections, session.id, entry, kind, tier),
+  }
+}
+
+/** Compose the next document from the current one and one turn summary. */
+function appendTurnToDocument(
+  document: MemoryDocument,
+  session: Session,
+  summary: MemoryTurnSummaryInput,
+  entries: readonly MemoryEntry[],
+): MemoryDocument {
+  return {
+    ...document,
+    sessions: recordTurn(document.sessions, session, summary.turn, summary.seq, 'detail'),
+    sections: appendSummaryEntries(document.sections, session.id, summary.turn, entries),
   }
 }
 
@@ -618,15 +725,44 @@ function appendSectionEntry(
   }]
 }
 
+/** Extend the trailing detail section of consecutive turns, or start the turn's section. */
+function appendSummaryEntries(
+  sections: readonly MemorySection[],
+  sessionId: string,
+  turn: number,
+  entries: readonly MemoryEntry[],
+): readonly MemorySection[] {
+  const appended = entries.map(entry => ({ kind: entry.kind, text: entry.text }))
+  const last = sections.at(-1)
+  if (last !== undefined
+    && last.sessionId === sessionId
+    && last.tier === 'detail'
+    && (last.endTurn === turn || last.endTurn === turn - 1)) {
+    return [...sections.slice(0, -1), {
+      ...last,
+      endTurn: turn,
+      entries: [...last.entries, ...appended],
+    }]
+  }
+  return [...sections, {
+    sessionId,
+    startTurn: turn,
+    endTurn: turn,
+    tier: 'detail',
+    entries: appended,
+  }]
+}
+
 /** Record the turn in the frontmatter session list, creating the session when needed. */
 function recordTurn(
   sessions: readonly MemorySessionRecord[],
   session: Session,
-  entry: MemoryEntryInput,
+  turnNumber: number,
+  seq: readonly [number, number],
   tier: MemoryTier,
 ): readonly MemorySessionRecord[] {
   const updatedAt = new Date().toISOString()
-  const turn: MemoryTurnRecord = { turn: entry.turn, seq: [entry.seq[0], entry.seq[1]], tier }
+  const turn: MemoryTurnRecord = { turn: turnNumber, seq: [seq[0], seq[1]], tier }
   const existing = sessions.find(record => record.id === session.id)
   if (existing === undefined) {
     return [...sessions, {
@@ -636,7 +772,7 @@ function recordTurn(
       turns: [turn],
     }]
   }
-  const turns = [...existing.turns.filter(record => record.turn !== entry.turn), turn]
+  const turns = [...existing.turns.filter(record => record.turn !== turnNumber), turn]
     .sort((left, right) => left.turn - right.turn)
   return sessions.map(record => record === existing ? { ...existing, updatedAt, turns } : record)
 }

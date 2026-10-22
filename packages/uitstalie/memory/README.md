@@ -1,5 +1,5 @@
 ---
-description: "Memory capability provider: the workspace MEMORY.md summary file, a durable memory snapshot message, a fixed system-prompt section for the forgetting window, and the memory_search/memory_read/memory_write tools."
+description: "Memory capability provider: the workspace MEMORY.md file, the completed-turn detail summary job, a durable memory snapshot message, a fixed system-prompt section for the forgetting window, and the memory_search/memory_read/memory_write tools."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-memory` is the memory capability provider. It registers one capability with the `dafeiyu` organizer, which wires a fixed system-prompt section and three tools onto root agents and forwards completed turns back to the provider. The provider owns the forgetting window, the workspace `.dsh/memory/sessions/MEMORY.md` file, the summary-entry model, the durable snapshot message that replaces itself after a write, and the tool surface. This step ships the fixed prompt section, the version-guarded `MEMORY.md` repository, the 4 KiB snapshot, a working `memory_write`, a working `memory_search`, and a registered but deferred `memory_read`.
+`dsh-memory` is the memory capability provider. It registers one capability with the `dafeiyu` organizer, which wires a fixed system-prompt section and three tools onto root agents and forwards completed turns back to the provider. The provider owns the forgetting window, the workspace `.dsh/memory/sessions/MEMORY.md` file, the summary-entry model, the durable snapshot message that replaces itself after a write, a per-session background summary job, and the tool surface. This step ships the fixed prompt section, the version-guarded `MEMORY.md` repository, the 4 KiB snapshot, the detail summary job, a working `memory_write`, a working `memory_search`, and a registered but deferred `memory_read`.
 
 ## Use this package
 
@@ -38,7 +38,7 @@ Every field has a default, so an empty `config` is valid:
 | `summarizationModel` | `""` | Summary-job model; empty follows the routed model. |
 | `maxBytes` | `4096` | Managed-block body budget in UTF-8 bytes. |
 
-The window thresholds must strictly increase from `detail` to `brief` to `forget`, and the summary provider and model must both be set or both be empty; a load that violates either rule fails instead of silently degrading. The provider is a hard composition dependency on four services: `ctx.dafeiyu` (the organizer), `ctx.dshStore` (the `.dsh` store), `ctx.fs` (the filesystem behind it), and `ctx.sessionQuery` (session history for search). A composition that omits one of them leaves this row inactive.
+The window thresholds must strictly increase from `detail` to `brief` to `forget`, and the summary provider and model must both be set or both be empty; a load that violates either rule fails instead of silently degrading. The provider is a hard composition dependency on six services: `ctx.dafeiyu` (the organizer), `ctx.dshStore` (the `.dsh` store), `ctx.fs` (the filesystem behind it), `ctx.sessionQuery` (session history for search and summarization), `ctx.jobs` (the background job registry, with an attached controller serving the agent), and `ctx.llm` (the summary model call). A composition that omits one of them leaves this row inactive.
 
 The organized contribution is `scope: 'root'`, so root agents receive the prompt section and the three tools while subagents receive neither. The organizer, not this package, decides which agents are wired and which completed turns reach `onTurnEnd`.
 
@@ -49,10 +49,15 @@ The provider is a function plugin: `src/index.ts` exports `name`, `inject`, `Con
 - `src/config.ts` holds the schemastery `Config` and an explicit `resolveConfig(config): MemorySettings` step. Defaults are applied there once, and the two cross-field rules (increasing thresholds, paired summary model) are checked before anything registers.
 - `src/memory-file.ts` is the MEMORY.md repository. The file has a YAML frontmatter holding machine state (`version`, `window`, and per-session `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`) and a managed block between `<!-- memory:begin -->` and `<!-- memory:end -->` holding one `- [kind] text` entry per line under `## <sessionId> · turn N–M（tier）` headings. Text outside the managed block is hand-written and round-trips byte for byte; the managed block is provider-owned and rewritten.
 - `src/prompt.ts` holds the one fixed prompt section: name `memory`, order `2350` (between the session-query tools at `2300` and the goal tools at `2400`), and static text that never varies per turn or per agent.
-- `src/snapshot.ts` declares the `memory` message source through `MessageSourceMap` (`kind: 'memory'`, `form: 'snapshot'`, and the rendered `sections`), renders the snapshot text, and appends or replaces the durable user message on the live surface.
+- `src/snapshot.ts` declares the `memory` message source through `MessageSourceMap` as a `{ form: 'snapshot' } | { form: 'notice' }` union, renders the snapshot text, and appends or replaces the durable user message on the live surface.
+- `src/summary.ts` owns the per-session summary job: turn extraction, model selection, strict-JSON parsing, the detail append, snapshot refresh, failure containment, and the one-time notice.
 - `src/tools.ts` builds `memory_write`, `memory_search`, and `memory_read`, folds the current turn number and seq range from the live session log, and refreshes the snapshot after a successful write.
 
-Writes are version-guarded. `appendMemoryEntry` reads the file and its version, composes the next text, and writes with `expected: version`; the store maps that to the filesystem's `replaceIfVersion` guard. A conflicting write surfaces as `FS_STALE_VERSION`; the append re-reads once and retries, and a second conflict is thrown with the previous file untouched. The managed-body budget is enforced on the complete rendered body before the write, so an oversized append fails without touching the file.
+Writes are version-guarded. `appendMemoryEntry` reads the file and its version, composes the next text, and writes with `expected: version`; the store maps that to the filesystem's `replaceIfVersion` guard. A conflicting write surfaces as `FS_STALE_VERSION`; the append re-reads once and retries, and a second conflict is thrown with the previous file untouched. The managed-body budget is enforced on the complete rendered body before the write, so an oversized append fails without touching the file. `appendTurnSummary` adds one turn's detail entries with the same guard: it records the turn's seq range and tier in the frontmatter and extends the trailing detail section when the turns are consecutive.
+
+The summary job starts from `onTurnEnd`, which the organizer calls only for `completed` turns of root agents. The provider starts one `kind: 'memory'` job owned by the session with label `memory summary`; while it runs, a newer completed turn only updates one pending input, and the pass settles into exactly one follow-up pass for the latest turn, so passes for one session never overlap. The job claims its own settlement with `ctx.jobs.wait`, so this internal job never reaches the model as a `tool-jobs` completion notice and never wakes an idle owner; after settlement the provider removes the record, so `job_list` does not accumulate internal rows. A missing registry, or one without an attached controller, logs at debug and skips the turn instead of failing it.
+
+One pass reads the turn's events through `ctx.sessionQuery.observeSession` and keeps only the conversation surface: user text, assistant text, and tool names with `ok`/`error` status. Tool output, reasoning, system prompts, and memory's own messages are omitted; each text is truncated to 2 KiB and the transcript to 24 KiB with a truncation note. The model is `summarizationProvider`/`summarizationModel` when both are configured, otherwise the latest `request/header` config, otherwise the agent's explicit provider and model. The reply must be strict JSON entries of `decision`, `files`, `open`, or `preference`; invalid entries are dropped, and an unparseable reply becomes one `decision` entry holding the raw output (at most 300 characters). The entries are written by `appendTurnSummary`, then `refreshMemorySnapshot` updates the snapshot; a snapshot failure is logged and does not fail the job. Any other failure keeps the previous MEMORY.md, logs the turn, input bytes, model, and duration, and appends one `form: 'notice'` message per session.
 
 The snapshot is the durable model-facing view of the file. After every successful `memory_write`, `refreshMemorySnapshot` reads MEMORY.md, renders the text, and scans `ctx.sessionQuery.readSurface` for the last surface message whose source is a memory snapshot. That node is replaced in place with `surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq }` and `sourceEventSeqs: [seq]`; with no node, the message is appended. When the surface rejects the replacement because the target left it, the message is appended instead and a later refresh replaces that node. A snapshot failure is logged and never changes the already-committed write result.
 
@@ -110,12 +115,26 @@ At most 4 KiB of text per request, and no message at all while the workspace doc
 
 The snapshot sits at the tail of the surface when written. A replacement keeps the prefix before that node unchanged, so the system prompt and earlier turns stay cached; the snapshot text and everything after it are re-tokenized.
 
+### Memory failure notice
+
+#### What the model sees
+
+After the first failed summary in a provider session, the surface carries one additional `user/message` whose source is `{ kind: 'memory', form: 'notice', summary }` and whose text is `Memory summary failed; the previous memory is still in effect.` Later failures for the same session only log. The notice supersedes nothing: it is not a snapshot, and it never replaces the snapshot node.
+
+#### Token effect
+
+At most one notice of about 60 characters per session, ever. A successful summary or another failure adds no second notice.
+
+#### KV Cache effect
+
+Appended at the tail, so it invalidates no earlier cached prefix; the following snapshot replacement keeps the notice in place.
+
 ## Known Limitations and Deferred Work
 
 - **`memory_read` is deferred** — the schema is final, but the handler returns a status line; the exact-turn reader arrives with the window job.
 - **A fresh session starts without a snapshot** — the startup hook skips a session with no surface, because a user message appended there would precede the system prompt. The first successful write supplies the snapshot; a resumed session gets one at startup.
-- **No summary job yet** — `onTurnEnd` validates the turn number and returns. MEMORY.md changes only through `memory_write`, so the snapshot reports recorded conclusions without automatic detail or brief summaries.
-- **The window is recorded, not enforced** — the frontmatter stores turn tiers and seq ranges, and `forgottenThrough` is parsed, re-rendered, and reported by the snapshot, but no code migrates a turn between tiers or advances the forgotten pointer.
+- **Only the detail tier is written** — the summary job records each completed turn at `detail`; no code moves a turn to `brief`, advances `forgottenThrough`, replaces a turn with a surface checkpoint, or drops a summary body at the forget age. The frontmatter stores turn tiers and seq ranges, and the snapshot reports what it finds.
+- **A summary pass is one turn** — the pending mechanism covers the latest completed turn only; turns that complete while a pass runs are not batched into it, and a session summarized on every completed turn performs one model call per turn.
 - **`maxBytes` covers the managed block only** — the default is 4 KiB for the provider-owned body. The design's 16 KiB total-body budget belongs to a later step; the snapshot has its own fixed 4 KiB budget (`MEMORY_SNAPSHOT_MAX_BYTES`).
 - **`tags` are accepted and dropped** — the tool accepts the optional field so the schema is stable, but the managed-block entry format stores only `kind` and text.
 - **Session hits carry no turn number** — `memory_search` returns the event seq from the search backend, matching the design's note that search hits do not resolve to a turn; `memory_read` is the future turn-oriented path.

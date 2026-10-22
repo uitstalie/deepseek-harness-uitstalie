@@ -17,8 +17,8 @@ import {
   memoryFilePath,
   mountMemory,
   searchRequests,
-  settle,
   textOf,
+  waitForValue,
 } from './harness.ts'
 import type { MemoryTestHarness } from './harness.ts'
 
@@ -155,11 +155,12 @@ test('unloading the provider removes the capability and its tools', async () => 
   expect(mounted.ctx.tools.get('memory_write', root)).toBeUndefined()
 })
 
-test('a completed turn is dispatched but leaves MEMORY.md absent', async () => {
+test('a completed turn is dispatched and leaves MEMORY.md absent when there is no surface to summarize', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
   root.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-  await settle()
+  await waitForValue(() =>
+    root.session.snapshotEvents().some(event => event.type === 'job/settled') ? true : undefined)
 
   expect(mounted.ctx.dafeiyu.status()[0]?.lastTurnAt).toEqual(expect.any(Number))
   await expect(stat(memoryFilePath(project))).rejects.toThrow()
