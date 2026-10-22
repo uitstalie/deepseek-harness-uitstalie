@@ -30,6 +30,12 @@
       "path": "../../fs/fs"
     },
     {
+      "path": "../../jobs/jobs"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
       "path": "../../session-query/session-query"
     },
     {

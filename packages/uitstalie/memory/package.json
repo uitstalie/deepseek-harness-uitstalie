@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-memory",
-  "description": "Memory capability provider: the workspace MEMORY.md summary file, a fixed system prompt section for the forgetting window, and the memory_search/memory_read/memory_write tools",
+  "description": "Memory capability provider: the workspace MEMORY.md file, the completed-turn detail summary job, a durable memory snapshot message, a fixed system prompt section for the forgetting window, and the memory_search/memory_read/memory_write tools",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -33,11 +33,14 @@
     "@deepseek-ai/dsh-dafeiyu": "workspace:*",
     "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-fs-local": "workspace:*",
+    "@deepseek-ai/dsh-jobs": "workspace:*",
+    "@deepseek-ai/dsh-jobs-local": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-session-query": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tool-dsh-store": "workspace:*",
+    "@deepseek-ai/dsh-tool-jobs": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*"
   }
 }

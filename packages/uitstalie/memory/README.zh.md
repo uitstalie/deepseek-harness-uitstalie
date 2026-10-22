@@ -1,5 +1,5 @@
 ---
-description: "memory 能力提供者：工作区 MEMORY.md 摘要文件、持久 memory snapshot 消息、描述遗忘窗口的固定系统提示词段，以及 memory_search/memory_read/memory_write 三个工具。"
+description: "memory 能力提供者：工作区 MEMORY.md 文件、把完成的 turn 摘要成 detail 条目的后台 job、持久 memory snapshot 消息、描述遗忘窗口的固定系统提示词段，以及 memory_search/memory_read/memory_write 三个工具。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-memory` 是 memory 能力提供者。它向 `dafeiyu` 组织者注册一个能力，由组织者把一段固定系统提示词与三个工具接到 root agent 上，并把完成的 turn 转回提供者。提供者拥有遗忘窗口、工作区 `.dsh/memory/sessions/MEMORY.md` 文件、摘要条目模型、写入后自我替换的持久 snapshot 消息，以及工具面。本步交付固定提示词段、带版本守卫写入的 `MEMORY.md` 仓库、4 KiB 的 snapshot、可用的 `memory_write`、可用的 `memory_search`，以及已注册但延期的 `memory_read`。
+`dsh-memory` 是 memory 能力提供者。它向 `dafeiyu` 组织者注册一个能力，由组织者把一段固定系统提示词与三个工具接到 root agent 上，并把完成的 turn 转回提供者。提供者拥有遗忘窗口、工作区 `.dsh/memory/sessions/MEMORY.md` 文件、摘要条目模型、写入后自我替换的持久 snapshot 消息、按会话后台运行的摘要 job，以及工具面。本步交付固定提示词段、带版本守卫写入的 `MEMORY.md` 仓库、4 KiB 的 snapshot、detail 摘要 job、可用的 `memory_write`、可用的 `memory_search`，以及已注册但延期的 `memory_read`。
 
 ## 使用本包
 
@@ -38,7 +38,7 @@ kind: "package-reference"
 | `summarizationModel` | `""` | 摘要 job 的 model；为空表示跟随当前路由。 |
 | `maxBytes` | `4096` | 托管区块正文的字节预算（UTF-8）。 |
 
-窗口阈值必须从 `detail` 到 `brief` 再到 `forget` 严格递增；摘要 provider 与 model 必须同时设置或同时为空；违反任一条的加载直接失败，而不是静默降级。提供者对四个服务是硬组合依赖：`ctx.dafeiyu`（组织者）、`ctx.dshStore`（`.dsh` 存储）、`ctx.fs`（其背后的文件系统）与 `ctx.sessionQuery`（搜索用的会话历史）。组合里缺少任一个时本行保持 inactive。
+窗口阈值必须从 `detail` 到 `brief` 再到 `forget` 严格递增；摘要 provider 与 model 必须同时设置或同时为空；违反任一条的加载直接失败，而不是静默降级。提供者对六个服务是硬组合依赖：`ctx.dafeiyu`（组织者）、`ctx.dshStore`（`.dsh` 存储）、`ctx.fs`（其背后的文件系统）、`ctx.sessionQuery`（搜索与摘要用的会话历史）、`ctx.jobs`（后台 job 注册表，且需有服务该 agent 的 controller），以及 `ctx.llm`（摘要模型调用）。组合里缺少任一个时本行保持 inactive。
 
 组织者接线的贡献是 `scope: 'root'`：root agent 得到提示词段与三个工具，子 agent 两者都没有。哪些 agent 被接线、哪些完成的 turn 进入 `onTurnEnd`，由组织者而不是本包决定。
 
@@ -49,10 +49,15 @@ kind: "package-reference"
 - `src/config.ts` 持有 schemastery `Config` 与显式的 `resolveConfig(config): MemorySettings` 步骤。默认值只在那里补一次，两条跨字段规则（阈值递增、摘要模型成对）在注册之前检查。
 - `src/memory-file.ts` 是 MEMORY.md 仓库。文件的 YAML frontmatter 存机器状态（`version`、`window`，以及每个会话的 `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`）；`<!-- memory:begin -->` 与 `<!-- memory:end -->` 之间的托管区块按 `## <sessionId> · turn N–M（tier）` 标题分组，每行一个 `- [kind] text` 条目。托管区块之外的手写内容逐字节原样往返；托管区块归提供者所有，写入时整体重写。
 - `src/prompt.ts` 持有唯一的固定提示词段：名字 `memory`，顺序 `2350`（在 `2300` 的 session-query 工具与 `2400` 的 goal 工具之间），文本静态，不随 turn 或 agent 变化。
-- `src/snapshot.ts` 通过 `MessageSourceMap` 声明 `memory` 消息来源（`kind: 'memory'`、`form: 'snapshot'` 与渲染后的 `sections`），渲染 snapshot 文本，并把持久 user 消息 append 或 replace 到 live surface 上。
+- `src/snapshot.ts` 通过 `MessageSourceMap` 把 `memory` 消息来源声明为 `{ form: 'snapshot' } | { form: 'notice' }` 联合，渲染 snapshot 文本，并把持久 user 消息 append 或 replace 到 live surface 上。
+- `src/summary.ts` 拥有按会话运行的摘要 job：turn 提取、模型选择、严格 JSON 解析、detail 追加、snapshot 刷新、失败隔离，以及每会话一次的 notice。
 - `src/tools.ts` 构造 `memory_write`、`memory_search` 与 `memory_read`，从 live 会话日志折出当前 turn 号与 seq 区间，并在写入成功后刷新 snapshot。
 
-写入带版本守卫。`appendMemoryEntry` 先读文件与其版本，拼出下一版文本，再带 `expected: version` 写入；存储层把它映射为文件系统的 `replaceIfVersion` 守卫。冲突写入表现为 `FS_STALE_VERSION`；追加会重读一次并重试，第二次冲突直接抛出，旧文件保持不变。托管正文字节预算在写入前按完整渲染结果校验，因此超限追加失败且不碰文件。
+写入带版本守卫。`appendMemoryEntry` 先读文件与其版本，拼出下一版文本，再带 `expected: version` 写入；存储层把它映射为文件系统的 `replaceIfVersion` 守卫。冲突写入表现为 `FS_STALE_VERSION`；追加会重读一次并重试，第二次冲突直接抛出，旧文件保持不变。托管正文字节预算在写入前按完整渲染结果校验，因此超限追加失败且不碰文件。`appendTurnSummary` 用同一守卫追加一个 turn 的 detail 条目：在 frontmatter 记录该 turn 的 seq 区间与 tier，并在 turn 连续时延长末尾的 detail 区块。
+
+摘要 job 由 `onTurnEnd` 触发，组织者只会对 root agent 的 `completed` turn 调用它。提供者启动一个 `kind: 'memory'`、owner 为会话、label 为 `memory summary` 的 job；它运行期间，更新的完成 turn 只更新一个 pending 输入，本次 pass 结束后只再跑一次覆盖最新 turn 的 pass，因此同一会话的 pass 永不重叠。job 用 `ctx.jobs.wait` 认领自己的结算，所以这个内部 job 不会作为 `tool-jobs` 完成通知到达模型，也不会唤醒空闲 owner；结算后提供者删除该记录，因此 `job_list` 不会累积内部任务行。缺少注册表，或注册表没有已附加的 controller 时，只记 debug 日志并跳过该 turn，不让 turn 失败。
+
+一次 pass 通过 `ctx.sessionQuery.observeSession` 读取该 turn 的事件，只保留对话面：user 文本、assistant 文本，以及带 `ok`/`error` 状态的工具名。工具输出、reasoning、系统提示词与 memory 自己的消息都不取；每段文本截断到 2 KiB，整段 transcript 截断到 24 KiB 并带截断说明。模型选择：两个 `summarizationProvider`/`summarizationModel` 都配置时用配置值，否则用最新的 `request/header` config，再否则用 agent 显式的 provider 与 model。回复必须是 `decision`、`files`、`open`、`preference` 的严格 JSON 条目；非法条目被丢弃，无法解析的回复变成一条 `decision` 条目，正文取原始输出（最多 300 字符）。条目经 `appendTurnSummary` 写入，随后 `refreshMemorySnapshot` 更新 snapshot；snapshot 失败只记日志，不让 job 失败。其他失败保留旧 MEMORY.md，记录 turn、输入字节、模型与耗时，并按会话追加一条 `form: 'notice'` 消息。
 
 snapshot 是文件面向模型的持久视图。每次 `memory_write` 成功后，`refreshMemorySnapshot` 读取 MEMORY.md、渲染文本，并用 `ctx.sessionQuery.readSurface` 扫出 surface 上最后一条来源为 memory snapshot 的消息。找到就用 `surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq }` 与 `sourceEventSeqs: [seq]` 原地替换该节点；找不到就 append。surface 因目标已离开而拒绝替换时退回 append，由下一次刷新替换该节点。snapshot 失败只记日志，不改变已经提交的写入结果。
 
@@ -110,12 +115,26 @@ root agent 可见这些工具时，每次请求的固定 schema 成本。结果�
 
 snapshot 写入时位于 surface 尾部。替换会保留该节点之前的前缀，因此系统提示词与更早的 turn 仍在缓存中；snapshot 文本及其后的内容会重新分词。
 
+### memory 失败 notice
+
+#### 模型看到什么
+
+一个 provider 会话里第一次摘要失败后，surface 会多出一条 `user/message`，来源是 `{ kind: 'memory', form: 'notice', summary }`，文本是 `Memory summary failed; the previous memory is still in effect.`。同一会话后续失败只记日志。notice 不取代任何东西：它不是 snapshot，也永远不会替换 snapshot 节点。
+
+#### Token 影响
+
+每个会话最多一条约 60 字符的 notice，不会更多。后续摘要成功或再次失败都不会追加第二条。
+
+#### KV 缓存影响
+
+追加在尾部，不让更早的缓存前缀失效；其后的 snapshot 替换会保留该 notice 节点。
+
 ## 已知限制与延期工作
 
 - **`memory_read` 已延期** — schema 已是最终形态，但处理器只返回一行状态；精确读取 turn 的实现在窗口 job 里落地。
 - **全新会话启动时没有 snapshot** — 启动钩子跳过没有 surface 的会话，因为此时追加的 user 消息会排在系统提示词之前。第一次成功写入会送出 snapshot；恢复的会话在启动时就有。
-- **还没有摘要 job** — `onTurnEnd` 只校验 turn 号后返回。MEMORY.md 只通过 `memory_write` 变化，因此 snapshot 报告的是已记录结论，没有自动的 detail 或 brief 摘要。
-- **窗口只记录、不执行** — frontmatter 记录 turn 的 tier 与 seq 区间，`forgottenThrough` 会被解析、重新渲染并由 snapshot 报告，但没有代码在 tier 之间迁移 turn，也没有推进遗忘指针。
+- **只写 detail tier** — 摘要 job 把每个完成的 turn 记为 `detail`；没有代码把 turn 迁移到 `brief`、推进 `forgottenThrough`、把 turn 替换成 surface checkpoint，或在遗忘年龄删除摘要正文。frontmatter 记录 turn 的 tier 与 seq 区间，snapshot 报告它读到的状态。
+- **一次 pass 只覆盖一个 turn** — pending 机制只覆盖最新完成的 turn；pass 运行期间完成的 turn 不会合并进本次，因此每完成一个 turn 就会产生一次模型调用。
 - **`maxBytes` 只覆盖托管区块** — 默认 4 KiB 是提供者拥有的正文预算。设计里的 16 KiB 总正文预算属于后续步骤；snapshot 有自己的固定 4 KiB 预算（`MEMORY_SNAPSHOT_MAX_BYTES`）。
 - **`tags` 只接收、不落盘** — 工具保留该可选字段以稳定 schema，但托管区块的条目格式只存 `kind` 与正文。
 - **会话命中不带 turn 号** — `memory_search` 返回搜索后端给出的事件 seq，这与设计里“搜索命中有 seq、没有 turn 号”的说明一致；面向 turn 的路径是后续的 `memory_read`。

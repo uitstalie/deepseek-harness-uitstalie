@@ -14,17 +14,20 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution, CapabilityRuntime, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import type {} from '@deepseek-ai/dsh-fs'
+import type {} from '@deepseek-ai/dsh-jobs'
+import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-tool-dsh-store'
 import { resolveConfig } from './config.ts'
 import type { Config } from './config.ts'
 import { MEMORY_PROMPT_SECTION } from './prompt.ts'
 import { refreshMemorySnapshot } from './snapshot.ts'
+import { MemorySummaryRunner } from './summary.ts'
 import { memoryTools } from './tools.ts'
 
 export const name = 'memory'
-/** The organizer, the store, filesystem access, and session history the capability reports on. */
-export const inject = ['dafeiyu', 'dshStore', 'fs', 'sessionQuery']
+/** The organizer, the store, filesystem access, session history, model calls, and the job registry. */
+export const inject = ['dafeiyu', 'dshStore', 'fs', 'sessionQuery', 'jobs', 'llm']
 
 /** Stable capability id this provider registers with the organizer. */
 export const MEMORY_CAPABILITY_ID = 'memory'
@@ -37,6 +40,7 @@ export { resolveConfig } from './config.ts'
 export type { MemorySettings } from './config.ts'
 export {
   appendMemoryEntry,
+  appendTurnSummary,
   assertMemoryEntryKind,
   createMemoryDocument,
   DEFAULT_MEMORY_MAX_BYTES,
@@ -68,10 +72,14 @@ export type {
   MemorySessionRecord,
   MemoryTier,
   MemoryTurnRecord,
+  MemoryTurnSummaryInput,
+  MemoryTurnSummaryOptions,
+  MemoryTurnSummaryResult,
   MemoryWindow,
 } from './memory-file.ts'
 export { MEMORY_PROMPT_ORDER, MEMORY_PROMPT_SECTION, MEMORY_PROMPT_SECTION_NAME, MEMORY_PROMPT_TEXT } from './prompt.ts'
 export {
+  appendMemoryNotice,
   isMemorySnapshotSource,
   MEMORY_SNAPSHOT_HINT,
   MEMORY_SNAPSHOT_MAX_BYTES,
@@ -81,7 +89,17 @@ export {
   renderMemorySnapshot,
   syncMemorySnapshot,
 } from './snapshot.ts'
-export type { MemorySnapshotSource } from './snapshot.ts'
+export type { MemoryNoticeSource, MemorySnapshotSource } from './snapshot.ts'
+export {
+  MEMORY_SUMMARY_ENTRY_MAX_CHARS,
+  MEMORY_SUMMARY_FAILURE_NOTICE,
+  MEMORY_SUMMARY_INPUT_MAX_BYTES,
+  MEMORY_SUMMARY_JOB_KIND,
+  MEMORY_SUMMARY_JOB_LABEL,
+  MEMORY_SUMMARY_TEXT_MAX_BYTES,
+  MemorySummaryRunner,
+  parseSummaryEntries,
+} from './summary.ts'
 export { memoryTools } from './tools.ts'
 export type { MemoryReadValue, MemorySearchItem, MemorySearchValue, TurnFacts } from './tools.ts'
 
@@ -93,6 +111,10 @@ export type { MemoryReadValue, MemorySearchItem, MemorySearchValue, TurnFacts } 
  * filtering, so the contribution only declares what it provides. Tool closures
  * capture this plugin's context, whose `inject` declaration admits the services
  * the tools read; the organizer's runtime context does not declare them.
+ *
+ * One {@link MemorySummaryRunner} per registration owns the per-session summary
+ * jobs. A completed turn starts a job whose failure stays contained to a notice
+ * message; the registration signal aborts in-flight work on unload.
  *
  * A root agent resumed over a workspace that already holds memory entries gets
  * its snapshot from the registration's agent hook, so a restarted provider
@@ -111,28 +133,35 @@ export function apply(ctx: Context, config: Config): void {
     id: MEMORY_CAPABILITY_ID,
     contractVersion: MEMORY_CONTRACT_VERSION,
     config: settings,
-    create: (runtime: CapabilityRuntime): CapabilityContribution => ({
-      scope: 'root',
-      promptSections: () => [MEMORY_PROMPT_SECTION],
-      tools: () => memoryTools(ctx, settings),
-      onAgentCreated: (agent: Agent) => {
-        // A resumed session already has a surface; a fresh one is empty until
-        // its first step, and a user message must not precede the system prompt.
-        if (agent.session.surface.nodes.length === 0) return
-        void refreshMemorySnapshot(ctx, agent, runtime.signal)
-      },
-      onTurnEnd: (input) => { validateTurnEnd(input) },
-    }),
+    create: (runtime: CapabilityRuntime): CapabilityContribution => {
+      const summaries = new MemorySummaryRunner(ctx, settings, runtime.signal)
+      return {
+        scope: 'root',
+        promptSections: () => [MEMORY_PROMPT_SECTION],
+        tools: () => memoryTools(ctx, settings),
+        onAgentCreated: (agent: Agent) => {
+          // A resumed session already has a surface; a fresh one is empty until
+          // its first step, and a user message must not precede the system prompt.
+          if (agent.session.surface.nodes.length === 0) return
+          void refreshMemorySnapshot(ctx, agent, runtime.signal)
+        },
+        onTurnEnd: (input) => {
+          validateTurnEnd(input)
+          summaries.onTurnEnd(input)
+        },
+        dispose: () => { summaries.dispose() },
+      }
+    },
   })
   ctx.effect(() => registration, 'memory.register()')
 }
 
 /**
- * Validate one completed turn before the summary job exists.
+ * Validate one completed turn before the summary job reads the log.
  *
  * The organizer already filters turn outcomes and resolves the live agent; this
  * checks the one value read from the durable event, so a malformed turn number
- * fails loudly instead of being recorded into MEMORY.md later.
+ * fails loudly instead of being recorded into MEMORY.md.
  * @param input - the completed turn dispatched by the organizer.
  * @throws Error when the turn number is not a non-negative safe integer.
  */

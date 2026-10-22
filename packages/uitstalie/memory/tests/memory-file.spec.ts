@@ -15,6 +15,7 @@ import type { DshStore } from '@deepseek-ai/dsh-tool-dsh-store'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import {
   appendMemoryEntry,
+  appendTurnSummary,
   assertMemoryEntryKind,
   createMemoryDocument,
   MEMORY_BLOCK_BEGIN,
@@ -164,6 +165,49 @@ test('appends in the same turn share one section; a later turn starts another', 
   parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
   expect(parsed.sections).toHaveLength(2)
   expect(parsed.sessions[0]?.turns.map(turn => turn.turn)).toEqual([3, 4])
+})
+
+test('a turn summary appends one detail section and extends consecutive turns', async () => {
+  const first = await appendTurnSummary(ctx, session, {
+    turn: 3,
+    seq: [10, 20],
+    entries: [
+      { kind: 'decision', text: 'keep the version guard' },
+      { kind: 'files', text: 'src/summary.ts' },
+    ],
+  })
+  expect(first).toMatchObject({ path: MEMORY_STORE_PATH, turn: 3, entries: 2 })
+  let parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections).toEqual([{
+    sessionId: 'session-a',
+    startTurn: 3,
+    endTurn: 3,
+    tier: 'detail',
+    entries: [
+      { kind: 'decision', text: 'keep the version guard' },
+      { kind: 'files', text: 'src/summary.ts' },
+    ],
+  }])
+  expect(parsed.sessions[0]?.turns).toEqual([{ turn: 3, seq: [10, 20], tier: 'detail' }])
+
+  await appendTurnSummary(ctx, session, {
+    turn: 4,
+    seq: [21, 30],
+    entries: [{ kind: 'open', text: 'next step' }],
+  })
+  parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections).toHaveLength(1)
+  expect(parsed.sections[0]).toMatchObject({ startTurn: 3, endTurn: 4 })
+  expect(parsed.sections[0]?.entries.map(entry => entry.text))
+    .toEqual(['keep the version guard', 'src/summary.ts', 'next step'])
+  expect(parsed.sessions[0]?.turns.map(turn => [turn.turn, turn.seq]))
+    .toEqual([[3, [10, 20]], [4, [21, 30]]])
+})
+
+test('a turn summary without entries is rejected before touching the file', async () => {
+  await expect(appendTurnSummary(ctx, session, { turn: 1, seq: [1, 2], entries: [] }))
+    .rejects.toMatchObject({ code: 'empty-summary' })
+  await expect(readMemoryDocument(ctx, session)).resolves.toEqual({ path: MEMORY_STORE_PATH })
 })
 
 test('an unknown kind rejects with the registry list', () => {
