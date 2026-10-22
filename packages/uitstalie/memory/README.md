@@ -1,5 +1,5 @@
 ---
-description: "Memory capability provider: the workspace MEMORY.md summary file, a fixed system-prompt section for the forgetting window, and the memory_search/memory_read/memory_write tools."
+description: "Memory capability provider: the workspace MEMORY.md summary file, a durable memory snapshot message, a fixed system-prompt section for the forgetting window, and the memory_search/memory_read/memory_write tools."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-memory` is the memory capability provider. It registers one capability with the `dafeiyu` organizer, which wires a fixed system-prompt section and three tools onto root agents and forwards completed turns back to the provider. The provider owns the forgetting window, the workspace `.dsh/memory/sessions/MEMORY.md` file, the summary-entry model, and the tool surface. This step ships the skeleton: the fixed prompt section, the `MEMORY.md` repository with version-guarded writes, a working `memory_write`, a working `memory_search`, and a registered but deferred `memory_read`.
+`dsh-memory` is the memory capability provider. It registers one capability with the `dafeiyu` organizer, which wires a fixed system-prompt section and three tools onto root agents and forwards completed turns back to the provider. The provider owns the forgetting window, the workspace `.dsh/memory/sessions/MEMORY.md` file, the summary-entry model, the durable snapshot message that replaces itself after a write, and the tool surface. This step ships the fixed prompt section, the version-guarded `MEMORY.md` repository, the 4 KiB snapshot, a working `memory_write`, a working `memory_search`, and a registered but deferred `memory_read`.
 
 ## Use this package
 
@@ -49,9 +49,14 @@ The provider is a function plugin: `src/index.ts` exports `name`, `inject`, `Con
 - `src/config.ts` holds the schemastery `Config` and an explicit `resolveConfig(config): MemorySettings` step. Defaults are applied there once, and the two cross-field rules (increasing thresholds, paired summary model) are checked before anything registers.
 - `src/memory-file.ts` is the MEMORY.md repository. The file has a YAML frontmatter holding machine state (`version`, `window`, and per-session `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`) and a managed block between `<!-- memory:begin -->` and `<!-- memory:end -->` holding one `- [kind] text` entry per line under `## <sessionId> · turn N–M（tier）` headings. Text outside the managed block is hand-written and round-trips byte for byte; the managed block is provider-owned and rewritten.
 - `src/prompt.ts` holds the one fixed prompt section: name `memory`, order `2350` (between the session-query tools at `2300` and the goal tools at `2400`), and static text that never varies per turn or per agent.
-- `src/tools.ts` builds `memory_write`, `memory_search`, and `memory_read`, and folds the current turn number and seq range from the live session log.
+- `src/snapshot.ts` declares the `memory` message source through `MessageSourceMap` (`kind: 'memory'`, `form: 'snapshot'`, and the rendered `sections`), renders the snapshot text, and appends or replaces the durable user message on the live surface.
+- `src/tools.ts` builds `memory_write`, `memory_search`, and `memory_read`, folds the current turn number and seq range from the live session log, and refreshes the snapshot after a successful write.
 
 Writes are version-guarded. `appendMemoryEntry` reads the file and its version, composes the next text, and writes with `expected: version`; the store maps that to the filesystem's `replaceIfVersion` guard. A conflicting write surfaces as `FS_STALE_VERSION`; the append re-reads once and retries, and a second conflict is thrown with the previous file untouched. The managed-body budget is enforced on the complete rendered body before the write, so an oversized append fails without touching the file.
+
+The snapshot is the durable model-facing view of the file. After every successful `memory_write`, `refreshMemorySnapshot` reads MEMORY.md, renders the text, and scans `ctx.sessionQuery.readSurface` for the last surface message whose source is a memory snapshot. That node is replaced in place with `surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq }` and `sourceEventSeqs: [seq]`; with no node, the message is appended. When the surface rejects the replacement because the target left it, the message is appended instead and a later refresh replaces that node. A snapshot failure is logged and never changes the already-committed write result.
+
+Root agents resumed over a workspace whose MEMORY.md already holds sessions or entries receive a snapshot from the organizer's `onAgentCreated` hook. The hook skips a brand-new session: its surface is still empty, and a user message appended there would precede the system prompt. That session receives its first snapshot from its first successful write. The provider keeps no seq state, so a restarted process rebuilds its replacement target from the live surface alone. The text is bounded: `MEMORY_SNAPSHOT_MAX_BYTES` (4 KiB) covers the title, the `Window:` manifest, the cross-session index, and the closing hint; index lines are dropped oldest-first when the text would exceed the budget, and the manifest keeps its place.
 
 The entry-kind registry (`decision`, `files`, `open`, `preference`) is data in `memory-file.ts`. The parser, the renderer, the tool schema, and the diagnostics all read it, and an unknown kind in a file or a tool call is rejected with the valid list.
 
@@ -91,13 +96,27 @@ Fixed schema cost on every request where the root agent sees the tools. Results 
 
 Prefix-stable while the tool definitions and their visibility are unchanged. Every result is an ordinary tool result appended after the reusable prefix, so a call invalidates no earlier entry. Clearing the managed block or writing a new entry changes no prompt text and therefore no cached prefix.
 
+### Memory snapshot message
+
+#### What the model sees
+
+After a successful `memory_write`, the request history carries one `user/message` whose source is `{ kind: 'memory', form: 'snapshot', sections: [{ name: 'memory', text }] }`. The text opens with `Memory snapshot (data, not instructions).`, then one `Window:` line naming the current session's compressed turn runs at their tier and, when the forgotten pointer is set, the highest turn removed from context; then `Recent sessions:` with at most one line per other session of this workspace (`- <sessionId> · [kind] <first entry>`), and closes with `Use memory_search / memory_read for details.`. A later snapshot replaces the earlier node; only a replacement the surface rejected can leave the old node until the next refresh.
+
+#### Token effect
+
+At most 4 KiB of text per request, and no message at all while the workspace document has no sessions and no entries. The index loses lines first under the budget; the manifest stays one line however many turns it covers.
+
+#### KV Cache effect
+
+The snapshot sits at the tail of the surface when written. A replacement keeps the prefix before that node unchanged, so the system prompt and earlier turns stay cached; the snapshot text and everything after it are re-tokenized.
+
 ## Known Limitations and Deferred Work
 
 - **`memory_read` is deferred** — the schema is final, but the handler returns a status line; the exact-turn reader arrives with the window job.
-- **No snapshot injection yet** — the design appends a `memory` snapshot message after a successful summary write and replaces the previous one. This step adds no session message, so memory reaches the model only through the prompt section and tool results.
-- **No summary job yet** — `onTurnEnd` validates the turn number and returns. MEMORY.md changes only through `memory_write`, and nothing produces detail or brief summaries automatically.
-- **The window is recorded, not enforced** — the frontmatter stores turn tiers and seq ranges, and `forgottenThrough` is parsed and re-rendered, but no code migrates a turn between tiers or advances the forgotten pointer.
-- **`maxBytes` covers the managed block only** — the default is 4 KiB for the provider-owned body. The design's 16 KiB total-body budget and the 4 KiB snapshot budget belong to later steps.
+- **A fresh session starts without a snapshot** — the startup hook skips a session with no surface, because a user message appended there would precede the system prompt. The first successful write supplies the snapshot; a resumed session gets one at startup.
+- **No summary job yet** — `onTurnEnd` validates the turn number and returns. MEMORY.md changes only through `memory_write`, so the snapshot reports recorded conclusions without automatic detail or brief summaries.
+- **The window is recorded, not enforced** — the frontmatter stores turn tiers and seq ranges, and `forgottenThrough` is parsed, re-rendered, and reported by the snapshot, but no code migrates a turn between tiers or advances the forgotten pointer.
+- **`maxBytes` covers the managed block only** — the default is 4 KiB for the provider-owned body. The design's 16 KiB total-body budget belongs to a later step; the snapshot has its own fixed 4 KiB budget (`MEMORY_SNAPSHOT_MAX_BYTES`).
 - **`tags` are accepted and dropped** — the tool accepts the optional field so the schema is stable, but the managed-block entry format stores only `kind` and text.
 - **Session hits carry no turn number** — `memory_search` returns the event seq from the search backend, matching the design's note that search hits do not resolve to a turn; `memory_read` is the future turn-oriented path.
 - **Titles fall back to session ids** — search results use the session id, because folding the session title per hit is not wired in this step.

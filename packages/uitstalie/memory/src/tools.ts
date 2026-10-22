@@ -2,9 +2,10 @@
  * The three model-facing memory tools.
  *
  * `memory_write` appends one summary entry to this workspace's MEMORY.md through
- * the store's version-guarded write. `memory_search` searches this workspace's
- * session history and managed memory notes. `memory_read` is registered with its
- * final schema but returns a status message in this step; the exact-turn reader
+ * the store's version-guarded write and refreshes the durable memory snapshot
+ * after the write commits. `memory_search` searches this workspace's session
+ * history and managed memory notes. `memory_read` is registered with its final
+ * schema but returns a status message in this step; the exact-turn reader
  * arrives with the window job.
  *
  * Every tool derives the caller's workspace from the owning agent session and
@@ -28,6 +29,7 @@ import {
   readMemoryDocument,
 } from './memory-file.ts'
 import type { MemoryEntryKind, MemorySection } from './memory-file.ts'
+import { refreshMemorySnapshot } from './snapshot.ts'
 
 /** Maximum `content` of one `memory_write` entry, in UTF-8 bytes. */
 const MEMORY_WRITE_CONTENT_MAX_BYTES = 8 * 1024
@@ -157,6 +159,7 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings): ToolDefi
         turn: facts.turn,
         seq: facts.seq,
       }, exec.signal, { window: settings.window, maxBytes: settings.maxBytes })
+      await refreshMemorySnapshot(ctx, exec.agent, exec.signal)
       return {
         path: written.path,
         kind: written.kind,
