@@ -30,6 +30,9 @@
       "path": "../../fs/fs"
     },
     {
+      "path": "../../interaction/commands"
+    },
+    {
       "path": "../../util/home-paths"
     },
     {

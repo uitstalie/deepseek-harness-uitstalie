@@ -3,23 +3,29 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/personality/README.md
 /:
-  en: 23caa124943eb531
-  zh: 295d156d1ed08b25
+  en: 9ed5d758acdf4087
+  zh: 65f6dfeaf5279066
 /deepseek-ai-dsh-personality:
   en: ad977fbc16ef41cc
   zh: 7bef7af091f1a40e
 /deepseek-ai-dsh-personality/summary:
-  en: 0df373212587b320
-  zh: e1b362d7c6d12f1f
+  en: 31815bfc9fcdada6
+  zh: d00479f0372b6377
 /deepseek-ai-dsh-personality/table-of-contents:
   en: cbfb676bb9a7a2de
   zh: 17e4d900900759b6
 /deepseek-ai-dsh-personality/use-this-package:
   en: 83f9789212d68145
   zh: 11ac6cb5a5523544
+/deepseek-ai-dsh-personality/use-this-package/drift-review-commands:
+  en: 8011b31a61c882d4
+  zh: 7bf68f8a3ccb47a3
+/deepseek-ai-dsh-personality/use-this-package/watch-refresh:
+  en: c6313bf49f5a1644
+  zh: debe9cf5f4823fbe
 /deepseek-ai-dsh-personality/understand-the-implementation:
-  en: f792e192115247d4
-  zh: 44f898a763344463
+  en: 544279741823e522
+  zh: 0507b19f68f068bd
 /deepseek-ai-dsh-personality/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -51,8 +57,8 @@
   en: c2810b6f8b91e6f9
   zh: 7388290ec2f5761e
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work:
-  en: c3f06e9df8449c53
-  zh: 022b7fcd07b83bbb
+  en: 12682c28445d9529
+  zh: 45bdf4ade1192f1d
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work/dev-note:
   en: a4a55bbbef7c1347
   zh: 5b332322161bb08d
