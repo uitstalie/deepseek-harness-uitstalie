@@ -183,6 +183,35 @@ export interface PersonalityHistoryRecord {
   readonly block: string
 }
 
+/** Contents of one version history file. */
+export interface PersonalityHistoryRead {
+  /** Path of the history file in the form its backend uses. */
+  readonly path: string
+  /** Parsed records in file order. */
+  readonly records: readonly PersonalityHistoryRecord[]
+}
+
+/** Outcome of restoring one global history record's managed block. */
+export type PersonalityRevertOutcome =
+  | {
+    /** The block was restored and a new revision written. */
+    readonly kind: 'reverted'
+    /** Absolute path of the written profile. */
+    readonly path: string
+    /** Document revision the write produced. */
+    readonly revision: number
+    /** History version whose block was restored. */
+    readonly restored: number
+    /** By-id changes between the replaced block and the restored block. */
+    readonly diff: readonly PersonalityEntryChange[]
+  }
+  | {
+    /** The profile already carries the requested version, so nothing was written. */
+    readonly kind: 'current'
+    /** Version that made the revert a no-op. */
+    readonly version: number
+  }
+
 /** One personality file together with its history file. */
 export interface PersonalityFileTarget {
   /** Whether the file is the global profile or the workspace overlay. */
@@ -333,6 +362,37 @@ export function renderPersonalityBlock(entries: readonly PersonalityEntry[]): st
   return `${PERSONALITY_BLOCK_BEGIN}${renderPersonalityBody(entries)}${PERSONALITY_BLOCK_END}`
 }
 
+/**
+ * Parse one complete managed block, markers included, into its entries.
+ *
+ * History records store the block so a revert replaces it without replaying a
+ * diff. This validates a stored block at the durable-file boundary before a
+ * revert writes it back.
+ * @param block - complete managed block text.
+ * @returns the entries the block carries, in file order.
+ * @throws PersonalityDocumentError `invalid-document` when a marker is missing
+ *   or text lies outside the managed block.
+ */
+export function parsePersonalityBlock(block: string): readonly PersonalityEntry[] {
+  const split = splitManagedBlock(block)
+  if (split.frame.before.trim().length > 0 || split.frame.after.trim().length > 0) {
+    throw new PersonalityDocumentError(
+      'history block carries text outside the personality:begin/end markers',
+      'invalid-document',
+    )
+  }
+  return parseManagedBody(split.body)
+}
+
+/**
+ * Build the global profile target, including its history path.
+ * @param settings - resolved provider settings.
+ * @returns the global profile file and the history file beside it.
+ */
+export function personalityGlobalTarget(settings: PersonalitySettings): PersonalityFileTarget {
+  return { scope: 'global', path: settings.globalPath, historyPath: settings.globalHistoryPath }
+}
+
 /** Render the managed-block body without its markers. */
 function renderPersonalityBody(entries: readonly PersonalityEntry[]): string {
   if (entries.length === 0) return '\n\n'
@@ -426,6 +486,28 @@ export async function readPersonality(
 }
 
 /**
+ * Read the global version history that drift review reads.
+ *
+ * Every global write appends one line and nothing rewrites the file. A missing
+ * file is an empty history; a malformed line fails with `invalid-document`
+ * naming the line, because a revert would otherwise write an unvalidated block.
+ * @param ctx - context carrying `fs`.
+ * @param settings - resolved provider settings.
+ * @param signal - cancellation for the read.
+ * @returns the history path and every parsed record in file order.
+ * @throws PersonalityDocumentError when an existing history file is not a
+ *   regular file or a line is not a valid record.
+ */
+export async function readGlobalPersonalityHistory(
+  ctx: Context,
+  settings: PersonalitySettings,
+  signal?: AbortSignal,
+): Promise<PersonalityHistoryRead> {
+  const current = await readGlobalHistoryText(ctx, settings.globalHistoryPath, signal)
+  return { path: settings.globalHistoryPath, records: parseHistoryRecords(current.text) }
+}
+
+/**
  * Write one entry to the file that owns its kind.
  *
  * Identity entries are rejected before any I/O because the user must confirm
@@ -500,6 +582,76 @@ export async function writePersonalityEntry(
       entry: stored,
       ...written.version === undefined ? {} : { version: written.version },
     }
+  }
+  try {
+    return await write()
+  } catch (error: unknown) {
+    if (!isStaleWrite(error)) throw error
+    return await write()
+  }
+}
+
+/**
+ * Restore one history record's managed block into the global profile.
+ *
+ * The current file's hand-written frame and version are read, the stored block
+ * is parsed and budget-checked, and the rebuilt document is written with the
+ * observed version. One stale conflict is retried after a re-read. A successful
+ * write appends a history line with `source: 'user'`, so a revert is itself
+ * reviewable; a history failure is logged and does not fail the revert.
+ * Restoring the version the file already carries writes nothing.
+ * @param ctx - context carrying `fs`.
+ * @param session - session that requested the revert; recorded in the new history line.
+ * @param settings - resolved provider settings, including the global path and budget.
+ * @param record - history record whose managed block to restore.
+ * @param signal - cancellation for the reads, the write, and the history append.
+ * @returns the written revision, or that the requested version is already current.
+ * @throws PersonalityDocumentError when the stored block is malformed or would
+ *   exceed the managed-body budget.
+ * @throws FsError when the guarded write fails twice or the backend refuses the write.
+ */
+export async function revertGlobalPersonality(
+  ctx: Context,
+  session: Session,
+  settings: PersonalitySettings,
+  record: PersonalityHistoryRecord,
+  signal?: AbortSignal,
+): Promise<PersonalityRevertOutcome> {
+  const entries = parsePersonalityBlock(record.block)
+  assertBodyBudget(entries, settings.maxBytes)
+  const target = personalityGlobalTarget(settings)
+  const write = async (): Promise<PersonalityRevertOutcome> => {
+    const current = await readGlobalPersonality(ctx, settings, signal)
+    if (current.document?.version === record.version) {
+      return { kind: 'current', version: record.version }
+    }
+    const revision = (current.document?.version ?? 0) + 1
+    const document: PersonalityDocument = {
+      version: revision,
+      updatedAt: new Date().toISOString(),
+      entries,
+      frame: current.document?.frame ?? DEFAULT_PERSONALITY_FRAME,
+    }
+    const written = await writeTargetFile(ctx, session, target, document, current.version, signal)
+    const diff = personalityEntryChanges(current.document?.entries ?? [], entries)
+    const history: PersonalityHistoryRecord = {
+      version: revision,
+      at: document.updatedAt,
+      source: 'user',
+      session: session.id,
+      diff,
+      block: renderPersonalityBlock(entries),
+    }
+    try {
+      await appendHistory(ctx, session, target, history, signal)
+    } catch (error: unknown) {
+      ctx.logger.warn(
+        'personality: reverted %s but could not append the version history: %s',
+        written.path,
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+    return { kind: 'reverted', path: written.path, revision, restored: record.version, diff }
   }
   try {
     return await write()
@@ -630,6 +782,64 @@ function parseManagedBody(body: string): readonly PersonalityEntry[] {
     })
 }
 
+/** Parse every non-empty history line, validating each record. */
+function parseHistoryRecords(text: string): readonly PersonalityHistoryRecord[] {
+  const records: PersonalityHistoryRecord[] = []
+  for (const [index, rawLine] of text.split('\n').entries()) {
+    const line = rawLine.trim()
+    if (line.length === 0) continue
+    records.push(parseHistoryRecord(line, index + 1))
+  }
+  return records
+}
+
+/** Validate one JSONL history line at the durable-file boundary. */
+function parseHistoryRecord(line: string, lineNumber: number): PersonalityHistoryRecord {
+  const subject = `${PERSONALITY_HISTORY_FILE_NAME} line ${String(lineNumber)}`
+  let data: unknown
+  try {
+    data = JSON.parse(line)
+  } catch (error: unknown) {
+    throw new PersonalityDocumentError(
+      `${subject} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      'invalid-document',
+    )
+  }
+  const record = asRecord(data, subject)
+  const at = requireString(record, 'at', subject)
+  if (Number.isNaN(Date.parse(at))) {
+    throw new PersonalityDocumentError(`${subject}.at must be an ISO-8601 timestamp`, 'invalid-document')
+  }
+  const source = record['source']
+  if (source !== 'user' && source !== 'auto') {
+    throw new PersonalityDocumentError(`${subject}.source must be "user" or "auto"`, 'invalid-document')
+  }
+  return {
+    version: requireInteger(record, 'version', subject, PERSONALITY_INITIAL_VERSION),
+    at,
+    source,
+    session: requireString(record, 'session', subject),
+    diff: parseHistoryDiff(record['diff'], subject),
+    block: requireString(record, 'block', subject),
+  }
+}
+
+/** Validate the by-id change list of one history record. */
+function parseHistoryDiff(value: unknown, subject: string): readonly PersonalityEntryChange[] {
+  if (!Array.isArray(value)) {
+    throw new PersonalityDocumentError(`${subject}.diff must be an array`, 'invalid-document')
+  }
+  return value.map((entry, index) => {
+    const item = `${subject}.diff[${String(index)}]`
+    const record = asRecord(entry, item)
+    const change = record['change']
+    if (change !== 'added' && change !== 'updated' && change !== 'removed') {
+      throw new PersonalityDocumentError(`${item}.change must be added, updated, or removed`, 'invalid-document')
+    }
+    return { id: requireString(record, 'id', item), change }
+  })
+}
+
 /** Compose the next entry list, replacing the entry with the same id. */
 function upsertPersonalityEntry(
   entries: readonly PersonalityEntry[],
@@ -663,7 +873,7 @@ function personalityFileTarget(settings: PersonalitySettings, kind: PersonalityE
   const workspace = settings.workspaceOverlay && (kind === 'style' || kind === 'preference')
   return workspace
     ? { scope: 'workspace', path: settings.workspaceStorePath, historyPath: settings.workspaceHistoryStorePath }
-    : { scope: 'global', path: settings.globalPath, historyPath: settings.globalHistoryPath }
+    : personalityGlobalTarget(settings)
 }
 
 /** Read the file a write targets, validating overlay restrictions for the overlay. */
@@ -743,12 +953,21 @@ async function readHistory(
       ...read.version === undefined ? {} : { version: read.version },
     }
   }
-  const resolved = await ctx.fs.resolve(target.historyPath, signalOptions(signal))
+  return await readGlobalHistoryText(ctx, target.historyPath, signal)
+}
+
+/** Read the accumulated global history text and its version. */
+async function readGlobalHistoryText(
+  ctx: Context,
+  path: string,
+  signal: AbortSignal | undefined,
+): Promise<{ text: string; version?: string }> {
+  const resolved = await ctx.fs.resolve(path, signalOptions(signal))
   const info = await ctx.fs.stat(resolved, signal)
   if (info === undefined) return { text: '' }
   if (info.type !== 'file') {
     throw new PersonalityDocumentError(
-      `personality history path ${JSON.stringify(target.historyPath)} is not a regular file`,
+      `personality history path ${JSON.stringify(path)} is not a regular file`,
       'invalid-document',
     )
   }

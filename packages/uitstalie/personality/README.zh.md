@@ -1,5 +1,5 @@
 ---
-description: "personality 能力提供者：全局 PERSONALITY.md 人格档案与工作区覆盖、描述用户如何表达与如何回复的固定系统提示词段，以及 personality_learn 自动学习工具。"
+description: "personality 能力提供者：全局 PERSONALITY.md 人格档案与工作区覆盖、描述用户如何表达与如何回复的固定系统提示词段、文件 watch 刷新、personality_learn 自动学习工具，以及 /personality 漂移审阅命令。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-personality` 让 agent 拥有一份稳定、由用户拥有的人格档案。harness home 下的全局 `PERSONALITY.md` 记录用户是谁、如何表达需求、偏好怎样的回复；工作区覆盖可以为某个项目替换 style 与 preference 条目。一个系统提示词段把档案分成两部分呈现，`personality_learn` 工具在每会话预算内记录用户明确的纠正。identity 条目只允许手改。每次写入都带版本守卫，并向 `PERSONALITY.history.jsonl` 追加一行，供后续漂移审阅。
+`dsh-personality` 让 agent 拥有一份稳定、由用户拥有的人格档案。harness home 下的全局 `PERSONALITY.md` 记录用户是谁、如何表达需求、偏好怎样的回复；工作区覆盖可以为某个项目替换 style 与 preference 条目。一个系统提示词段把档案分成两部分呈现，`personality_learn` 工具在每会话预算内记录用户明确的纠正。identity 条目只允许手改。每次写入都带版本守卫并追加历史记录，供 `/personality diff` 与 `revert` 审阅；`show` 视图报告合并后的档案，文件 watcher 会刷新缓存的提示词文本。
 
 ## 目录
 
@@ -47,17 +47,34 @@ kind: "package-reference"
 
 提供者对 `ctx.dafeiyu`（组织者）、`ctx.dshStore`（工作区覆盖）与 `ctx.fs`（全局档案）是硬组合依赖；组合里缺少任一个时本行保持 inactive。组织者接线的贡献是 `scope: 'all'`，因此子 agent 继承提示词段与工具；哪些 agent 被接线、哪些完成的 turn 进入 `onTurnEnd`，仍由组织者决定。
 
+### 漂移审阅命令
+
+一个 `/personality` 命令通过可选的 `ctx.inject(['commands'])` 子上下文注册，因此没有命令注册表的组合仍能拿到提示词段和工具。命令语法把斜杠行拆成一个名字加原样输入，三个子命令共用这一次注册：
+
+| 子命令 | 行为 |
+|---|---|
+| `/personality show` | 渲染合并后的全局与覆盖条目（`id`、kind、一行文本）和两个文档版本。文件不存在视作空档案，不报错。 |
+| `/personality diff` | 对全局 `PERSONALITY.history.jsonl` 最近两条记录渲染行级 diff，标注各自的版本与 `source: user` 或 `source: auto`。少于两条记录只报告，不失败。 |
+| `/personality revert <version>` | 用该记录保存的托管区块替换全局托管区块，写入走版本守卫，随后追加一条 `source: user` 的新历史记录。非法参数、未知版本与回退到当前版本都只报告，不写入。 |
+
+本版本的历史审阅只覆盖全局文件：工作区覆盖有自己的历史，该命令既不 diff 也不回退它。`show` 始终读取合并视图。
+
+### Watch 刷新
+
+一个 `ctx.fs.watch` 注册监听全局档案。变化发生时重读文件，更新每个存活 agent 的提示词段 getter 读取的缓存文本，并刷新后续 agent 启动时使用的预读文本；下一次组装无需重启 agent 就能看到新档案。工作区覆盖仍在该 agent 创建时读取，因此覆盖文件的修改需要新 agent 才可见。不支持 watch 的后端退化为这种按 agent 读取，并以 debug 级别记录原因；能力卸载时关闭 watcher。外部修改与 watcher 通知之间有一段短暂间隔，落在这个间隔里的组装仍可能看到旧文本。
+
 ## 理解实现
 
 提供者是函数插件：`src/index.ts` 导出 `name`、`inject`、`Config` 与 `apply`，并只注册一个 `contractVersion: 1`、`id: 'personality'` 的能力。
 
 - `src/config.ts` 持有 schemastery `Config` 与显式的 `resolveConfig(config): PersonalitySettings` 步骤。默认值只在那里补一次：全局路径变为 `<DSH_HOME>/personality/PERSONALITY.md`，历史路径从 `globalPath` 推出，工作区覆盖的两个文件路径是 store 相对常量。
-- `src/personality-file.ts` 是仓库。YAML frontmatter 记录 `version`（文档修订号，每次写入递增）、`updatedAt` 与 `entries`；`<!-- personality:begin -->` 与 `<!-- personality:end -->` 之间的托管区块按条目保存 `## <kind>.<name>` 标题加一段正文。区块之外的内容逐字节往返。条目 id 形如 `<kind>.<lower-kebab-name>`，kind 为 `understanding`、`style`、`preference`、`identity`；覆盖文件只允许 `style.*` 与 `preference.*`。
+- `src/personality-file.ts` 是仓库。YAML frontmatter 记录 `version`（文档修订号，每次写入递增）、`updatedAt` 与 `entries`；`<!-- personality:begin -->` 与 `<!-- personality:end -->` 之间的托管区块按条目保存 `## <kind>.<name>` 标题加一段正文。区块之外的内容逐字节往返。条目 id 形如 `<kind>.<lower-kebab-name>`，kind 为 `understanding`、`style`、`preference`、`identity`；覆盖文件只允许 `style.*` 与 `preference.*`。同一个模块负责读取、校验 `PERSONALITY.history.jsonl`，并把一条记录中的区块恢复到全局文件。
 - 读取时按条目 id 合并全局档案与覆盖文件：覆盖条目替换同 id 的全局条目，新 id 追加在后面。全局文件经 `ctx.fs` 读取，覆盖文件经 `ctx.dshStore` 读取，文件不存在不算错误。
-- `src/prompt.ts` 持有固定 preamble、两个部分的标题与规范 kind 顺序。由于提示词段的文本是同步求值的，`src/index.ts` 按 agent 缓存渲染结果：`create()` 预读全局档案，让第一次组装就能看到内容；接线一个 agent 时再异步读取该 agent 的合并视图。
+- `src/prompt.ts` 持有固定 preamble、两个部分的标题与规范 kind 顺序。由于提示词段的文本是同步求值的，`src/index.ts` 按 agent 缓存渲染结果：`create()` 预读全局档案并启动 watcher，接线一个 agent 时再异步读取该 agent 的合并视图。watch 到变化时重读全局档案，同时刷新预读回退文本与每个存活 agent 的缓存文本；该段的 getter 在每次组装时求值，因此不需要额外的变更通知。
+- `src/commands.ts` 持有 `/personality` 命令：子命令解析、`show`/`diff`/`revert` 渲染与注册辅助函数。`revert` 把版本守卫写入与新历史记录委托给 `src/personality-file.ts`；handler 显式接收 context 与 session，因此无需启动命令运行时也能运行。
 - `src/tools.ts` 构造 `personality_learn`。它校验 kind、要求 evidence 指向一个正的会话事件 seq，并用内存里的每会话用量记录执行 `autoLearn` 预算。`understanding`、`style`、`preference` 条目以 `source: 'auto'` 写入；`identity` 按手改说明拒绝，预算耗尽时报告剩余条数与字节数。拒绝是规范的返回值，不是工具错误。
 
-写入带版本守卫。`writePersonalityEntry` 先读目标文件与其版本，拼出下一版文本，再带 `expected: version` 写入（store 映射为 `replaceIfVersion`，全局文件直接使用文件系统的写入意图）。冲突写入表现为 `FS_STALE_VERSION`；写入会重读一次并重试，第二次冲突直接抛出，旧文件保持不变。写入成功后，`appendHistory` 在同一个目录的 `PERSONALITY.history.jsonl` 追加一行 JSON，记录修订号、时间、来源、会话、按 id 的 diff 与完整托管区块。历史追加失败只记录日志，不会把条目写入报告为失败。
+写入带版本守卫。`writePersonalityEntry` 先读目标文件与其版本，拼出下一版文本，再带 `expected: version` 写入（store 映射为 `replaceIfVersion`，全局文件直接使用文件系统的写入意图）。冲突写入表现为 `FS_STALE_VERSION`；写入会重读一次并重试，第二次冲突直接抛出，旧文件保持不变。写入成功后，`appendHistory` 在同一个目录的 `PERSONALITY.history.jsonl` 追加一行 JSON，记录修订号、时间、来源、会话、按 id 的 diff 与完整托管区块。历史追加失败只记录日志，不会把条目写入报告为失败。`revertGlobalPersonality` 保留当前手写边框，走同一套带一次 stale 重试的版本守卫写入；它的历史行记录 `source: 'user'` 与恢复的按 id diff，因此回退本身和普通写入一样可审阅。
 
 ## 模型体验
 
@@ -105,13 +122,13 @@ How to respond:
 
 ## 已知限制与延期工作
 
-- **identity 条目必须手改** — `personality_learn` 拒绝 `identity.*`；提案与接受流程等设置页。
-- **自动学习有预算且只在内存里** — 每次能力注册为每个会话保留最多 `autoLearn.entries` 条写入与 `autoLearn.bytes` 字节；能力重载后计数清零。
-- **还没有命令或设置页** — `/personality show`、`diff` 与 `revert` 延期，也没有审阅自动学习条目的界面。
-- **没有文件 watch** — 外部修改两个文件后，要等下一个 agent 创建时才被读取，agent 存活期间不会刷新。新 agent 的覆盖读取是异步的，与它竞争的组装只能看到预读的全局档案。
+- **identity 提案等设置页** — `personality_learn` 拒绝 `identity.*`；还没有提案队列或设置页，identity 修改仍需手改。
+- **自动学习有预算、只在内存里、且由模型触发** — 每次能力注册为每个会话保留最多 `autoLearn.entries` 条写入与 `autoLearn.bytes` 字节；能力重载后计数清零。只有模型调用的 `personality_learn` 工具会自动写入；没有 `onTurnEnd` 自动学习触发器。
+- **覆盖文件没有 watcher** — 工作区覆盖在 agent 创建时读取，因此覆盖文件的修改对新 agent 可见，对存活 agent 不可见。
+- **watch 通知滞后于外部修改** — 手改与 watcher 事件之间，组装仍可能读到旧的缓存文本；文件仍是下一次刷新的真相来源。
 - **`maxBytes` 按文件计算** — 每个文件的托管正文都受预算约束并在读取时复查，但全局加覆盖合并后的文本可能接近两倍预算。
-- **历史只追加、无上限** — 每次写入都会加一行 JSON，内含完整托管区块；还没有轮转、保留上限或回退实现。
-- **文件非法时该段为空** — 解析失败、覆盖文件出现不允许的 kind，或手改正文超出预算，都会记录警告并且不产生提示词文本，直到文件修好。
+- **历史只追加、无上限** — 每次写入都会加一行 JSON，内含完整托管区块；还没有轮转或保留上限。回退只恢复一条已保存的区块，且只读取全局历史。
+- **文件非法时该段为空** — 解析失败、覆盖文件出现不允许的 kind，或手改正文超出预算，都会记录警告并且不产生提示词文本，直到文件修好。watch 刷新失败时保留上一版文本，而不是清空该段。
 
 ### 开发备注
 

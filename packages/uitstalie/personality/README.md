@@ -1,5 +1,5 @@
 ---
-description: "Personality capability provider: a global PERSONALITY.md profile with a workspace overlay, one stable system-prompt section for how the user communicates and how to reply, and the personality_learn auto-learning tool."
+description: "Personality capability provider: a global PERSONALITY.md profile with a workspace overlay, one stable system-prompt section for how the user communicates and how to reply, file-watch refresh, the personality_learn auto-learning tool, and the /personality drift-review command."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-personality` gives an agent a stable, user-owned profile. The global `PERSONALITY.md` under the harness home holds who the user is, how they word requests, and how they prefer replies; a workspace overlay may replace style and preference entries for one project. One system-prompt section presents the profile in two parts, and the `personality_learn` tool records explicit user corrections within a per-session budget. Identity entries stay manual. Every write is version-guarded and appends a line to `PERSONALITY.history.jsonl` for later drift review.
+`dsh-personality` gives an agent a stable, user-owned profile. The global `PERSONALITY.md` under the harness home holds who the user is, how they word requests, and how they prefer replies; a workspace overlay may replace style and preference entries for one project. One system-prompt section presents the profile in two parts, and the `personality_learn` tool records explicit user corrections within a per-session budget. Identity entries stay manual. Every write is version-guarded and appends history for `/personality diff` and `revert`, the `show` view reports the merged profile, and a file watcher refreshes the cached prompt text.
 
 ## Table of Contents
 
@@ -47,17 +47,34 @@ Every field has a default, so an empty `config` is valid:
 
 The provider is a hard composition dependency on `ctx.dafeiyu` (the organizer), `ctx.dshStore` (the workspace overlay), and `ctx.fs` (the global profile). A composition that omits one of them leaves this row inactive. The organized contribution is `scope: 'all'`, so child agents inherit the prompt section and the tool; the organizer still decides which agents are wired and which completed turns reach `onTurnEnd`.
 
+### Drift-review commands
+
+One `/personality` command registers through an optional `ctx.inject(['commands'])` child, so a composition without a command registry still receives the prompt section and the tool. The command grammar splits a slash line into one name plus verbatim input, so the three subcommands ride that one registration:
+
+| Subcommand | Behavior |
+|---|---|
+| `/personality show` | Render the merged global and overlay entries (`id`, kind, one line of text) and both document versions. A missing file is an empty profile, not an error. |
+| `/personality diff` | Render a line diff of the two latest records in the global `PERSONALITY.history.jsonl`, labelled with each version and `source: user` or `source: auto`. A history with fewer than two records is reported, not failed. |
+| `/personality revert <version>` | Replace the global managed block with that record's stored block through the version-guarded write, then append a new `source: user` history record. An invalid argument, an unknown version, and reverting to the current version are reported without a write. |
+
+History review is global-only in this version: the workspace overlay keeps its own history and this command neither diffs nor reverts it. `show` always reads the merged view.
+
+### Watch refresh
+
+One `ctx.fs.watch` registration observes the global profile. A change re-reads the file, updates the cached text every live agent's section getter reads, and refreshes the preloaded text later agents start from; the next assembly sees the new profile without restarting the agent. The workspace overlay is still read when an agent is created, so overlay edits need a new agent. A backend that cannot watch degrades to that per-agent read and logs the reason at debug; disposing the capability closes the watcher. External edits and the watcher's notification are separated by a short window, so a request assembled inside that window can still see the previous text.
+
 ## Understand the implementation
 
 The provider is a function plugin: `src/index.ts` exports `name`, `inject`, `Config`, and `apply`, and registers exactly one `contractVersion: 1` capability with `id: 'personality'`.
 
 - `src/config.ts` holds the schemastery `Config` and an explicit `resolveConfig(config): PersonalitySettings` step. Defaults are applied there once: the global path becomes `<DSH_HOME>/personality/PERSONALITY.md`, the history path derives from `globalPath`, and the two file paths of the workspace overlay are store-relative constants.
-- `src/personality-file.ts` is the repository. The YAML frontmatter carries `version` (the document revision, incremented on every write), `updatedAt`, and `entries`; the managed block between `<!-- personality:begin -->` and `<!-- personality:end -->` holds one `## <kind>.<name>` heading followed by one paragraph per entry. Text outside the block round-trips byte for byte. Entry ids are `<kind>.<lower-kebab-name>` with `understanding`, `style`, `preference`, and `identity` kinds; the overlay may only carry `style.*` and `preference.*`.
+- `src/personality-file.ts` is the repository. The YAML frontmatter carries `version` (the document revision, incremented on every write), `updatedAt`, and `entries`; the managed block between `<!-- personality:begin -->` and `<!-- personality:end -->` holds one `## <kind>.<name>` heading followed by one paragraph per entry. Text outside the block round-trips byte for byte. Entry ids are `<kind>.<lower-kebab-name>` with `understanding`, `style`, `preference`, and `identity` kinds; the overlay may only carry `style.*` and `preference.*`. The same module reads and validates `PERSONALITY.history.jsonl` and restores one recorded block into the global file.
 - Reads merge the global profile and the overlay by entry id, with the overlay replacing a global entry and appending any new id. The global file is read through `ctx.fs`, the overlay through `ctx.dshStore`, and a missing file is not an error.
-- `src/prompt.ts` holds the static preamble, the two part headings, and the canonical kind order. `src/index.ts` caches the rendered text per agent because a prompt section's text is evaluated synchronously: `create()` preloads the global profile so the first assembly sees it, and wiring an agent starts an asynchronous read of that agent's merged view.
+- `src/prompt.ts` holds the static preamble, the two part headings, and the canonical kind order. `src/index.ts` caches the rendered text per agent because a prompt section's text is evaluated synchronously: `create()` preloads the global profile and starts the watcher, and wiring an agent starts an asynchronous read of that agent's merged view. A watched change re-reads the global profile and refreshes both the preloaded fallback and every live agent's cached text; the section's getter is evaluated at each assembly, so no extra change notification is needed.
+- `src/commands.ts` holds the `/personality` command: subcommand parsing, the `show`/`diff`/`revert` renderers, and the registration helper. `revert` delegates the guarded write and its new history record to `src/personality-file.ts`; the handlers take the context and session explicitly so they run without the command runtime.
 - `src/tools.ts` builds `personality_learn`. It validates the kind, requires evidence naming a positive session event seq, and enforces `autoLearn` from an in-memory per-session usage record. `understanding`, `style`, and `preference` entries are written with `source: 'auto'`; `identity` is refused with the manual-edit guidance, and an exhausted budget is refused with the remaining entries and bytes. Refusals are canonical results, not tool errors.
 
-Writes are version-guarded. `writePersonalityEntry` reads the target file and its version, composes the next text, and writes with `expected: version` (the store maps that to `replaceIfVersion`; the global file uses the filesystem intent directly). A conflicting write surfaces as `FS_STALE_VERSION`; the write re-reads once and retries, and a second conflict is thrown with the previous file untouched. After a successful write, `appendHistory` adds one JSON line to `PERSONALITY.history.jsonl` beside the written file, recording the revision, time, source, session, by-id diff, and the complete managed block. A history failure is logged and does not report the entry write as failed.
+Writes are version-guarded. `writePersonalityEntry` reads the target file and its version, composes the next text, and writes with `expected: version` (the store maps that to `replaceIfVersion`; the global file uses the filesystem intent directly). A conflicting write surfaces as `FS_STALE_VERSION`; the write re-reads once and retries, and a second conflict is thrown with the previous file untouched. After a successful write, `appendHistory` adds one JSON line to `PERSONALITY.history.jsonl` beside the written file, recording the revision, time, source, session, by-id diff, and the complete managed block. A history failure is logged and does not report the entry write as failed. `revertGlobalPersonality` keeps the current hand-written frame and uses the same guarded write with one stale retry; its history line records `source: 'user'` and the by-id diff of the restore, so a revert is reviewable like any other write.
 
 ## Model Experience
 
@@ -105,13 +122,13 @@ Prefix-stable while the tool definition is unchanged. A successful write changes
 
 ## Known Limitations and Deferred Work
 
-- **Identity entries need a manual edit** — `personality_learn` refuses `identity.*`; the proposal-and-accept flow waits for the settings page.
-- **Auto-learning is budgeted and in-memory** — one capability registration keeps at most `autoLearn.entries` writes and `autoLearn.bytes` bytes per session; the counters reset when the capability reloads.
-- **No commands or settings page yet** — `/personality show`, `diff`, and `revert` are deferred, and there is no UI for reviewing auto-learned entries.
-- **No filesystem watch** — external edits to either file are picked up when the next agent is created, not while an agent lives. A new agent's overlay read is asynchronous, so an assembly that races it sees the preloaded global profile only.
+- **Identity proposals need a settings page** — `personality_learn` refuses `identity.*`; there is no proposal queue or settings page yet, so identity changes stay manual edits.
+- **Auto-learning is budgeted, in-memory, and model-triggered** — one capability registration keeps at most `autoLearn.entries` writes and `autoLearn.bytes` bytes per session; the counters reset when the capability reloads. Only the model-called `personality_learn` tool writes automatically; there is no `onTurnEnd` learning trigger.
+- **The overlay has no watcher** — the workspace overlay is read when an agent is created, so an overlay edit is visible to a new agent, not to a live one.
+- **A watch notification lags the external edit** — between a hand edit and the watcher event, an assembly can still read the previous cached text; the file remains the source of truth for the next refresh.
 - **`maxBytes` applies per file** — the managed body of each file is budgeted and re-checked on read, but the merged global-plus-overlay text can approach twice the budget.
-- **The history is append-only and unbounded** — every write adds one JSON line with the complete managed block; there is no rotation, retention limit, or revert implementation yet.
-- **An invalid file empties the section** — a parse failure, a disallowed overlay kind, or an oversized hand-edited body is logged as a warning and contributes no prompt text until the file is fixed.
+- **The history is append-only and unbounded** — every write adds one JSON line with the complete managed block; there is no rotation or retention limit. Revert restores one stored block, but the global history is the only history it reads.
+- **An invalid file empties the section** — a parse failure, a disallowed overlay kind, or an oversized hand-edited body is logged as a warning and contributes no prompt text until the file is fixed. A failed watch refresh keeps the previous text instead of emptying the section.
 
 ### Dev Note
 

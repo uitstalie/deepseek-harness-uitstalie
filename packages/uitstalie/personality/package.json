@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-personality",
-  "description": "Personality capability provider: the global PERSONALITY.md profile with a workspace overlay, a stable system-prompt section, and the personality_learn auto-learning tool",
+  "description": "Personality capability provider: the global PERSONALITY.md profile with a workspace overlay, a stable system-prompt section, file-watch refresh, the personality_learn auto-learning tool, and the /personality drift-review command",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -18,19 +18,27 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-commands": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-commands": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-home-paths": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
+    "diff": "^9.0.0",
     "yaml": "^2.4.2"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-agent": "workspace:*",
     "@deepseek-ai/dsh-agent-loop-testkit": "workspace:*",
+    "@deepseek-ai/dsh-commands": "workspace:*",
     "@deepseek-ai/dsh-dafeiyu": "workspace:*",
     "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-fs-local": "workspace:*",
