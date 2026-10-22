@@ -11,6 +11,14 @@ English | [中文](README.zh.md)
 
 `dsh-personality` gives an agent a stable, user-owned profile. The global `PERSONALITY.md` under the harness home holds who the user is, how they word requests, and how they prefer replies; a workspace overlay may replace style and preference entries for one project. One system-prompt section presents the profile in two parts, and the `personality_learn` tool records explicit user corrections within a per-session budget. Identity entries stay manual. Every write is version-guarded and appends a line to `PERSONALITY.history.jsonl` for later drift review.
 
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
 ## Use this package
 
 Mount the provider in the same web profile patch layer that mounts the organizer, after the `dafeiyu` row:
@@ -104,3 +112,15 @@ Prefix-stable while the tool definition is unchanged. A successful write changes
 - **`maxBytes` applies per file** — the managed body of each file is budgeted and re-checked on read, but the merged global-plus-overlay text can approach twice the budget.
 - **The history is append-only and unbounded** — every write adds one JSON line with the complete managed block; there is no rotation, retention limit, or revert implementation yet.
 - **An invalid file empties the section** — a parse failure, a disallowed overlay kind, or an oversized hand-edited body is logged as a warning and contributes no prompt text until the file is fixed.
+
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+This Dev Note is non-authoritative working context: open questions and directions that are not decided. Shipped behavior and accepted rationale live in the sections above and in the package code.
+
+- **Whether the overlay should be able to suppress a global entry** — the current merge only replaces by id; a deletion marker would need a durable representation and a consumer for the removal.
+- **Whether history should rotate by size or by revision** — every write carries the complete managed block, so an unbounded file grows with both entry count and edit frequency.
+
+</details>

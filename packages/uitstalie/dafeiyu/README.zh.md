@@ -13,6 +13,14 @@ kind: "package-reference"
 
 组织者提供 `ctx.dafeiyu`，自身没有模型面。在 v1 组合里它由 `web-app` 分支层挂在 provider 行之前，provider 用 `inject: ['dafeiyu']` 声明依赖。
 
+## 目录
+
+- [使用本包](#use-this-package)
+- [理解实现](#understand-the-implementation)
+- [模型体验](#model-experience)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
 ## 使用本包
 
 在挂载组织者的同一个 profile patch 里配置它的门：
@@ -91,3 +99,14 @@ const off = ctx.dafeiyu.register({
 - **不追溯接线** — 组织者只监听 `agent/created`；能力注册时已经存在的 agent 不会收到它的贡献。
 - **同名冲突落到后注册的能力** — 两个能力注册同一个工具名或 prompt 段名时组织者不做仲裁；后注册的抛错并变为 `failed`，先注册的保留。
 - **dispose 按契约是同步的** — `CapabilityContribution.dispose` 返回 `void`；provider 若返回 promise，其拒绝只会被记录，没有调用方等待它。
+
+### 开发备注
+
+<details>
+<summary>面向维护者的工作上下文——点击展开</summary>
+
+本开发备注是非权威的工作上下文：尚未决定的问题与方向。已发布行为与已确认的理由在上文各节与包内代码里。
+
+- **settle 中的注册是否需要独立状态值** — 当前四态契约在 `create()` 未 settle 时报 `disabled`；增加 `pending` 会改变 wire 可见状态，需要先有消费者。
+
+</details>

@@ -13,6 +13,14 @@ English | [中文](README.zh.md)
 
 It provides `ctx.dafeiyu` and has no model surface. The v1 composition mounts it in the `web-app` branch layer before provider rows; providers declare `inject: ['dafeiyu']`.
 
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
 ## Use this package
 
 Configure the organizer's gate in the same profile patch that mounts it:
@@ -91,3 +99,14 @@ No effect of its own. The provider that contributes a stable prompt section or t
 - **No retroactive wiring** — the organizer listens to `agent/created` only; agents that already exist when a capability registers do not receive its contributions.
 - **Shared names fail the later capability** — two capabilities that register the same tool or prompt-section name are not arbitrated; the later registration throws, that capability becomes `failed`, and the earlier one stays.
 - **Disposal is synchronous by contract** — `CapabilityContribution.dispose` returns `void`; a provider that returns a promise has its rejection logged, but no caller waits for it.
+
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+This Dev Note is non-authoritative working context: open questions and directions that are not decided. Shipped behavior and accepted rationale live in the sections above and in the package code.
+
+- **Whether a settling registration needs its own status value** — the current four-state contract reports `disabled` while `create()` is unsettled; a `pending` value would be a wire-visible status change and needs a consumer first.
+
+</details>

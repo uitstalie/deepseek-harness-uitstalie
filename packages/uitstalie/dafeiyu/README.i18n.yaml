@@ -11,6 +11,9 @@
 /deepseek-ai-dsh-dafeiyu/summary:
   en: 6ac8e6c807eff37b
   zh: 63f6d34cf947a661
+/deepseek-ai-dsh-dafeiyu/table-of-contents:
+  en: cbfb676bb9a7a2de
+  zh: 17e4d900900759b6
 /deepseek-ai-dsh-dafeiyu/use-this-package:
   en: b2dc8dad0ea6a1d6
   zh: ca43cebbb85fda1c
@@ -35,3 +38,6 @@
 /deepseek-ai-dsh-dafeiyu/known-limitations-and-deferred-work:
   en: 702d14809f882e0f
   zh: 4cf0fa5b2b67ac4c
+/deepseek-ai-dsh-dafeiyu/known-limitations-and-deferred-work/dev-note:
+  en: 7490fb0761c18111
+  zh: e2a58c1bc890e583
