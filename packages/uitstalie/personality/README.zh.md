@@ -11,6 +11,14 @@ kind: "package-reference"
 
 `dsh-personality` 让 agent 拥有一份稳定、由用户拥有的人格档案。harness home 下的全局 `PERSONALITY.md` 记录用户是谁、如何表达需求、偏好怎样的回复；工作区覆盖可以为某个项目替换 style 与 preference 条目。一个系统提示词段把档案分成两部分呈现，`personality_learn` 工具在每会话预算内记录用户明确的纠正。identity 条目只允许手改。每次写入都带版本守卫，并向 `PERSONALITY.history.jsonl` 追加一行，供后续漂移审阅。
 
+## 目录
+
+- [使用本包](#use-this-package)
+- [理解实现](#understand-the-implementation)
+- [模型体验](#model-experience)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
 ## 使用本包
 
 在挂载组织者的同一个 web profile patch 层里、`dafeiyu` 行之后挂载提供者：
@@ -104,3 +112,15 @@ How to respond:
 - **`maxBytes` 按文件计算** — 每个文件的托管正文都受预算约束并在读取时复查，但全局加覆盖合并后的文本可能接近两倍预算。
 - **历史只追加、无上限** — 每次写入都会加一行 JSON，内含完整托管区块；还没有轮转、保留上限或回退实现。
 - **文件非法时该段为空** — 解析失败、覆盖文件出现不允许的 kind，或手改正文超出预算，都会记录警告并且不产生提示词文本，直到文件修好。
+
+### 开发备注
+
+<details>
+<summary>面向维护者的工作上下文——点击展开</summary>
+
+本开发备注是非权威的工作上下文：尚未决定的问题与方向。已发布行为与已确认的理由在上文各节与包内代码里。
+
+- **覆盖文件是否应该能屏蔽全局条目** — 当前合并只按 id 替换；删除标记需要持久表示和消费它的读取方。
+- **历史应按大小还是按修订号轮转** — 每次写入都带完整托管区块，因此文件会同时随条目数与编辑频率增长。
+
+</details>
