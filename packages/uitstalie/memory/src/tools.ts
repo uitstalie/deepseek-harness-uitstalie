@@ -4,9 +4,9 @@
  * `memory_write` appends one summary entry to this workspace's MEMORY.md through
  * the store's version-guarded write and refreshes the durable memory snapshot
  * after the write commits. `memory_search` searches this workspace's session
- * history and managed memory notes. `memory_read` is registered with its final
- * schema but returns a status message in this step; the exact-turn reader
- * arrives with the window job.
+ * history and managed memory notes. `memory_read` renders one turn of a
+ * workspace-authorized session as a bounded conversation surface; its turn
+ * resolution, authorization, and rendering live in `read.ts`.
  *
  * Every tool derives the caller's workspace from the owning agent session and
  * never accepts a workspace argument, so a call can only reach the caller's own
@@ -29,6 +29,7 @@ import {
   readMemoryDocument,
 } from './memory-file.ts'
 import type { MemoryEntryKind, MemorySection } from './memory-file.ts'
+import { readMemoryWindow } from './read.ts'
 import { refreshMemorySnapshot } from './snapshot.ts'
 
 /** Maximum `content` of one `memory_write` entry, in UTF-8 bytes. */
@@ -44,9 +45,6 @@ const MEMORY_SEARCH_LIMIT = 10
 
 /** Maximum rendered size of one `memory_search` result, in UTF-8 bytes. */
 const MEMORY_SEARCH_MAX_BYTES = 8 * 1024
-
-/** Text `memory_read` returns until the exact-turn reader lands. */
-const MEMORY_READ_DEFERRED = 'memory_read is not implemented in this step. Use memory_search for indexed excerpts from this workspace; the exact turn reader lands with the memory window job.'
 
 /** Turn number and inclusive seq range folded from a session log. */
 export interface TurnFacts {
@@ -82,14 +80,6 @@ export interface MemorySearchValue {
   readonly truncated?: boolean
 }
 
-/** Canonical output value of `memory_read` until the exact-turn reader lands. */
-export interface MemoryReadValue {
-  /** Marker the model can recognize without treating the call as a tool failure. */
-  readonly status: 'not-implemented'
-  /** One line explaining what is available instead. */
-  readonly message: string
-}
-
 /**
  * Build the memory tool definitions for one root agent.
  * @param ctx - context carrying `dshStore` and `sessionQuery`.
@@ -100,7 +90,7 @@ export function memoryTools(ctx: Context, settings: MemorySettings): readonly To
   return [
     defineMemoryWriteTool(ctx, settings),
     defineMemorySearchTool(ctx),
-    defineMemoryReadTool(),
+    defineMemoryReadTool(ctx),
   ]
 }
 
@@ -239,48 +229,44 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
   })
 }
 
-/** Build `memory_read`: schema final, handler deferred to the window job. */
-function defineMemoryReadTool(): ToolDefinition {
+/** Build `memory_read`: render one authorized session turn as a bounded transcript. */
+function defineMemoryReadTool(ctx: Context): ToolDefinition {
   return defineTool({
     name: 'memory_read',
     description:
-      'Read exact conversation turns from this workspace\'s session history. '
-      + 'Deferred in this build: calls return a status message instead of content.',
+      'Read one completed turn from this workspace\'s session history as a conversation transcript. '
+      + 'With no turn, it reads the latest completed turn; `seq` reads the turn containing that event. '
+      + 'User and assistant text is kept, tool calls and results appear as status lines without payloads, '
+      + 'and the result is capped at 16 KiB.',
     parameters: {
       sessionId: {
         type: 'string',
-        description: 'Session to read; defaults to the current one.',
+        description: 'Session to read; defaults to the current session.',
       },
       turn: {
         type: 'integer',
-        description: 'Turn number to read.',
+        description: 'Completed turn number to read; defaults to the latest completed turn.',
       },
       seq: {
         type: 'integer',
-        description: 'Event seq to read around, for a precise jump from a search result.',
+        description: 'Event seq whose containing turn to read, typically from a memory_search hit.',
       },
       before: {
         type: 'integer',
-        description: 'Number of events to include before the anchor.',
+        description: 'Neighboring events to include before the turn, from 0 to 10; defaults to 0.',
       },
       after: {
         type: 'integer',
-        description: 'Number of events to include after the anchor.',
+        description: 'Neighboring events to include after the turn, from 0 to 10; defaults to 0.',
       },
     },
     output: {
-      schema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          status: { type: 'string', required: true, enum: ['not-implemented'] },
-          message: { type: 'string', required: true },
-        },
-      },
-      render: (_args, value) => [{ type: 'text', text: value.message }],
+      schema: { type: 'string' },
+      render: (_args, value) => [{ type: 'text', text: value }],
     },
-    execute(): Promise<MemoryReadValue> {
-      return Promise.resolve({ status: 'not-implemented', message: MEMORY_READ_DEFERRED })
+    execute(args, exec) {
+      const session = requireSession(exec.agent?.session, 'memory_read')
+      return readMemoryWindow(ctx, session, args, exec.signal)
     },
   })
 }

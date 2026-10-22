@@ -1,7 +1,7 @@
 /**
  * Provider tests: the real plugin mounted over a real AgentLoop, organizer, and
  * store. They assert the root-only contribution, the fixed prompt section, the
- * three tool schemas, the working append path, and the deferred surfaces.
+ * three tool schemas, the working append path, and the completed-turn dispatch.
  */
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
@@ -132,16 +132,6 @@ test('memory_search returns managed-block matches inside this workspace', async 
   expect(textOf(result)).toContain('the store path stays relative')
   expect(searchRequests).toHaveLength(1)
   expect(searchRequests[0]?.sessionFilters).toEqual([{ kind: 'cwd', values: [project] }])
-})
-
-test('memory_read returns a not-implemented message without failing', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-
-  const result = await callTool(mounted.ctx, root, 'memory_read', { turn: 1 })
-
-  expect(result.isError).toBe(false)
-  expect(textOf(result)).toContain('not implemented in this step')
 })
 
 test('unloading the provider removes the capability and its tools', async () => {
