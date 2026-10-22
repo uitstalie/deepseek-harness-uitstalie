@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/personality/README.md
+/:
+  en: 23caa124943eb531
+  zh: 295d156d1ed08b25
+/deepseek-ai-dsh-personality:
+  en: ad977fbc16ef41cc
+  zh: 7bef7af091f1a40e
+/deepseek-ai-dsh-personality/summary:
+  en: 0df373212587b320
+  zh: e1b362d7c6d12f1f
+/deepseek-ai-dsh-personality/use-this-package:
+  en: 83f9789212d68145
+  zh: 11ac6cb5a5523544
+/deepseek-ai-dsh-personality/understand-the-implementation:
+  en: f792e192115247d4
+  zh: 44f898a763344463
+/deepseek-ai-dsh-personality/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-section:
+  en: 8ed0d3c34fca2514
+  zh: 2b8d25676e9f52f1
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-section/what-the-model-sees:
+  en: 7687be3c96b1608a
+  zh: 49cf944210500045
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-section/what-the-model-sees/the-fixed-preamble-and-entry-layout:
+  en: a4bbb753dbe0cbc7
+  zh: 10ca2bb81dc31879
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-section/token-effect:
+  en: 6f077262b2cf8b38
+  zh: c17622107a8aec9e
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-section/kv-cache-effect:
+  en: c4560e4106f7b750
+  zh: ea9f87353224a66f
+/deepseek-ai-dsh-personality/model-experience/the-personality-learn-tool:
+  en: b54e314004929ca4
+  zh: cfd19b1c87b8f63c
+/deepseek-ai-dsh-personality/model-experience/the-personality-learn-tool/what-the-model-sees:
+  en: ff65f61e6c5e1d40
+  zh: 72793b436c03a57d
+/deepseek-ai-dsh-personality/model-experience/the-personality-learn-tool/token-effect:
+  en: 6c41d17be6f4f165
+  zh: aa2696d4efa44d3b
+/deepseek-ai-dsh-personality/model-experience/the-personality-learn-tool/kv-cache-effect:
+  en: c2810b6f8b91e6f9
+  zh: 7388290ec2f5761e
+/deepseek-ai-dsh-personality/known-limitations-and-deferred-work:
+  en: c3f06e9df8449c53
+  zh: 022b7fcd07b83bbb
