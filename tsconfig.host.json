@@ -583,5 +583,8 @@
     // BEGIN uitstalie-k3, 2026/10/21, DH-7, 注册 memory 能力提供者进 Host 聚合程序
     { "path": "./packages/uitstalie/memory" },
     // END uitstalie-k3
+    // BEGIN uitstalie-k3, 2026/10/22, DH-7, 注册 personality 能力提供者进 Host 聚合程序
+    { "path": "./packages/uitstalie/personality" },
+    // END uitstalie-k3
   ]
 }
