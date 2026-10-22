@@ -11,13 +11,15 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { CapabilityContribution, CapabilityRuntime, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-tool-dsh-store'
 import { resolveConfig } from './config.ts'
 import type { Config } from './config.ts'
 import { MEMORY_PROMPT_SECTION } from './prompt.ts'
+import { refreshMemorySnapshot } from './snapshot.ts'
 import { memoryTools } from './tools.ts'
 
 export const name = 'memory'
@@ -69,6 +71,17 @@ export type {
   MemoryWindow,
 } from './memory-file.ts'
 export { MEMORY_PROMPT_ORDER, MEMORY_PROMPT_SECTION, MEMORY_PROMPT_SECTION_NAME, MEMORY_PROMPT_TEXT } from './prompt.ts'
+export {
+  isMemorySnapshotSource,
+  MEMORY_SNAPSHOT_HINT,
+  MEMORY_SNAPSHOT_MAX_BYTES,
+  MEMORY_SNAPSHOT_SECTION_NAME,
+  MEMORY_SNAPSHOT_TITLE,
+  refreshMemorySnapshot,
+  renderMemorySnapshot,
+  syncMemorySnapshot,
+} from './snapshot.ts'
+export type { MemorySnapshotSource } from './snapshot.ts'
 export { memoryTools } from './tools.ts'
 export type { MemoryReadValue, MemorySearchItem, MemorySearchValue, TurnFacts } from './tools.ts'
 
@@ -80,6 +93,13 @@ export type { MemoryReadValue, MemorySearchItem, MemorySearchValue, TurnFacts } 
  * filtering, so the contribution only declares what it provides. Tool closures
  * capture this plugin's context, whose `inject` declaration admits the services
  * the tools read; the organizer's runtime context does not declare them.
+ *
+ * A root agent resumed over a workspace that already holds memory entries gets
+ * its snapshot from the registration's agent hook, so a restarted provider
+ * injects the current state before the first write of the new process. A
+ * brand-new session has no surface yet; injecting there would place the snapshot
+ * ahead of the system prompt, so it receives its first snapshot from the first
+ * successful write instead.
  * @param ctx - plugin context carrying the organizer and services.
  * @param config - raw provider configuration from the Loader row.
  * @throws Error when the window thresholds or summary model pair are invalid,
@@ -91,10 +111,16 @@ export function apply(ctx: Context, config: Config): void {
     id: MEMORY_CAPABILITY_ID,
     contractVersion: MEMORY_CONTRACT_VERSION,
     config: settings,
-    create: (): CapabilityContribution => ({
+    create: (runtime: CapabilityRuntime): CapabilityContribution => ({
       scope: 'root',
       promptSections: () => [MEMORY_PROMPT_SECTION],
       tools: () => memoryTools(ctx, settings),
+      onAgentCreated: (agent: Agent) => {
+        // A resumed session already has a surface; a fresh one is empty until
+        // its first step, and a user message must not precede the system prompt.
+        if (agent.session.surface.nodes.length === 0) return
+        void refreshMemorySnapshot(ctx, agent, runtime.signal)
+      },
       onTurnEnd: (input) => { validateTurnEnd(input) },
     }),
   })
