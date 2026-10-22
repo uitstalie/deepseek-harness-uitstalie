@@ -115,8 +115,14 @@ export {
   parseBriefEntries,
   parseSummaryEntries,
 } from './summary.ts'
+export {
+  MEMORY_READ_MAX_BYTES,
+  MEMORY_READ_NARROW_HINT,
+  MEMORY_READ_TEXT_MAX_BYTES,
+  MEMORY_READ_WINDOW_MAX_EVENTS,
+} from './read.ts'
 export { memoryTools } from './tools.ts'
-export type { MemoryReadValue, MemorySearchItem, MemorySearchValue, TurnFacts } from './tools.ts'
+export type { MemorySearchItem, MemorySearchValue, TurnFacts } from './tools.ts'
 export { planTierMigrations } from './window.ts'
 export type {
   MemoryWindowSnapshot,
