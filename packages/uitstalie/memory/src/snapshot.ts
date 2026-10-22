@@ -14,8 +14,11 @@
  * left the surface falls back to an append, so a compaction that removed the
  * node never fails the write.
  *
- * The `memory` source is a union: a one-off `notice` reports a failed summary
- * and supersedes nothing, so only `form: 'snapshot'` is a replacement target.
+ * The `memory` source is a union. A snapshot is the global state message that a
+ * later snapshot replaces. A `notice` is either a one-off failure report with no
+ * replacement target or a tier checkpoint carrying `window`; the checkpoint
+ * helper owns that node, while this module's snapshot predicate still selects
+ * only `form: 'snapshot'`.
  * @module @deepseek-ai/dsh-memory/snapshot
  */
 
@@ -24,6 +27,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextSnapshotSection, MessageSource, UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import type { MemoryCheckpointWindow } from './checkpoint.ts'
 import { readMemoryDocument } from './memory-file.ts'
 import type { MemoryDocument, MemorySection, MemorySessionRecord, MemoryTier, MemoryTurnRecord } from './memory-file.ts'
 
@@ -43,14 +47,22 @@ export interface MemorySnapshotSource {
   readonly sections: readonly ContextSnapshotSection[]
 }
 
-/** Message source carried by a one-off memory failure notice. */
+/** Message source carried by a memory failure notice or a turn checkpoint. */
 export interface MemoryNoticeSource {
   /** Producer identity shared with the memory snapshot. */
   readonly kind: 'memory'
-  /** One-off account that supersedes nothing. */
+  /** One-off node; a checkpoint carries `window`, a failure report does not. */
   readonly form: 'notice'
-  /** One-line account of the failure, bounded like every notice summary. */
+  /** One-line account shown by consumers that do not expand the node. */
   readonly summary: string
+  /**
+   * Turn window this notice replaces, present only on a tier checkpoint.
+   *
+   * A checkpoint shares the notice form so a reader that knows only the
+   * snapshot/notice union still treats it as a one-off node, while the window
+   * lets the provider rebuild its turn-to-node map from the live surface.
+   */
+  readonly window?: MemoryCheckpointWindow
 }
 
 /** Total UTF-8 byte budget of one snapshot text. */
