@@ -459,6 +459,7 @@
       "@deepseek-ai/dsh-package-manifest": ["./packages/util/package-manifest/src"],
       "@deepseek-ai/dsh-permission-presets": ["./packages/interaction/permission-presets/src"],
       "@deepseek-ai/dsh-persona": ["./packages/preset/persona/src"],
+      "@deepseek-ai/dsh-personality": ["./packages/uitstalie/personality/src"],
       "@deepseek-ai/dsh-plan-mode": ["./packages/plan/plan-mode/src"],
       "@deepseek-ai/dsh-plugin-market": ["./packages/boot/plugin-market/src"],
       "@deepseek-ai/dsh-plugin-market-index": ["./packages/util/plugin-market-index/src"],
