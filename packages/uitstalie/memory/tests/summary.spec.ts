@@ -16,9 +16,12 @@ import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepse
 import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import {
   appendMemoryEntry,
+  appendTurnSummary,
+  isMemoryCheckpointSource,
   MEMORY_SUMMARY_FAILURE_NOTICE,
   MEMORY_SUMMARY_JOB_KIND,
   MEMORY_SUMMARY_JOB_LABEL,
+  parseBriefEntries,
   parseMemoryDocument,
   parseSummaryEntries,
 } from '../src/index.ts'
@@ -438,6 +441,61 @@ test('the internal summary settlement never reaches the model as a job notice', 
     event.type === 'user/message' && event.data.source.kind === 'tool-jobs')
   expect(jobNotices).toEqual([])
   expect(await memoryNotices(mounted.ctx, root.id)).toEqual([])
+})
+
+test('a later completed turn compresses an old detail section into a brief checkpoint', async () => {
+  const mounted = await mount()
+  const adapter = new SummaryAdapter(call => call === 1
+    ? jsonReply([{ kind: 'decision', text: 'turn seventeen detail' }])
+    : jsonReply([{ kind: 'decision', text: 'brief turn one' }]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+  const start = root.session.snapshotEvents().find(event => event.type === 'turn/start')
+  expect(start).toBeDefined()
+  if (start === undefined) throw new Error('expected a turn start event')
+  appendUserText(root, 'turn one request')
+  appendAssistantText(root, 1, 'turn one answer')
+  await appendTurnSummary(mounted.ctx, root.session, {
+    turn: 1,
+    seq: [start.seq, root.session.seq - 1],
+    entries: [{ kind: 'decision', text: 'old detail' }],
+  })
+
+  root.session.append('turn/start', { turn: 17 })
+  completeTurn(root, 17)
+  await waitForSettledJobs(root, 1)
+
+  const text = await readFile(memoryFilePath(project), 'utf8')
+  const document = parseMemoryDocument(text)
+  expect(document.sections).toHaveLength(2)
+  expect(document.sections[0]).toMatchObject({ startTurn: 1, endTurn: 1, tier: 'brief' })
+  expect(document.sections[0]?.entries).toEqual([{ kind: 'decision', text: 'brief turn one' }])
+  expect(document.sections[1]).toMatchObject({ startTurn: 17, endTurn: 17, tier: 'detail' })
+  expect(document.sessions[0]?.turns[0]).toMatchObject({ turn: 1, tier: 'brief' })
+  expect(document.sessions[0]?.turns[0]?.checkpointSeq).toEqual(expect.any(Number))
+  expect(adapter.requests).toHaveLength(2)
+  const briefPrompt = adapter.requests[1]?.messages.at(-1)?.content[0]
+  expect(briefPrompt?.type === 'text' ? briefPrompt.text : '').toContain('- [decision] old detail')
+
+  const surface = await mounted.ctx.sessionQuery.readSurface(root.id)
+  const checkpoint = surface.events.find(event =>
+    event.type === 'user/message' && isMemoryCheckpointSource(event.data.source))
+  expect(checkpoint).toBeDefined()
+  expect(await memorySnapshots(mounted.ctx, root.id)).toHaveLength(1)
+})
+
+test('parseBriefEntries keeps two entries and the 160-character budget', () => {
+  const entries = parseBriefEntries(JSON.stringify({
+    entries: [
+      { kind: 'decision', text: 'a'.repeat(120) },
+      { kind: 'open', text: 'b'.repeat(120) },
+      { kind: 'files', text: 'dropped' },
+    ],
+  }))
+  expect(entries).toHaveLength(2)
+  expect(entries.map(entry => entry.kind)).toEqual(['decision', 'open'])
+  expect(entries.reduce((total, entry) => total + entry.text.length, 0)).toBe(160)
+  expect(() => parseBriefEntries('no json here')).toThrow(/no valid entries/)
 })
 
 test('parseSummaryEntries accepts fenced JSON, drops invalid entries, and bounds the count', () => {

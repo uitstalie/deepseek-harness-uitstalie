@@ -47,12 +47,15 @@ export {
   DEFAULT_MEMORY_WINDOW,
   MEMORY_BLOCK_BEGIN,
   MEMORY_BLOCK_END,
+  MEMORY_BRIEF_MAX_CHARS,
+  MEMORY_BRIEF_MAX_ENTRIES,
   MEMORY_DOCUMENT_VERSION,
   MEMORY_ENTRY_KINDS,
   MEMORY_KIND_REGISTRY,
   MEMORY_STORE_PATH,
   MemoryDocumentError,
   memoryKindDefinition,
+  migrateMemoryTiers,
   parseMemoryDocument,
   readMemoryDocument,
   renderMemoryDocument,
@@ -71,12 +74,23 @@ export type {
   MemorySection,
   MemorySessionRecord,
   MemoryTier,
+  MemoryTierCompressor,
+  MemoryTierMigrationOptions,
+  MemoryTierMigrationResult,
   MemoryTurnRecord,
   MemoryTurnSummaryInput,
   MemoryTurnSummaryOptions,
   MemoryTurnSummaryResult,
   MemoryWindow,
 } from './memory-file.ts'
+export {
+  isMemoryCheckpointSource,
+  replaceSurfaceRange,
+} from './checkpoint.ts'
+export type {
+  MemoryCheckpointWindow,
+  SurfaceCheckpoint,
+} from './checkpoint.ts'
 export { MEMORY_PROMPT_ORDER, MEMORY_PROMPT_SECTION, MEMORY_PROMPT_SECTION_NAME, MEMORY_PROMPT_TEXT } from './prompt.ts'
 export {
   appendMemoryNotice,
@@ -98,10 +112,18 @@ export {
   MEMORY_SUMMARY_JOB_LABEL,
   MEMORY_SUMMARY_TEXT_MAX_BYTES,
   MemorySummaryRunner,
+  parseBriefEntries,
   parseSummaryEntries,
 } from './summary.ts'
 export { memoryTools } from './tools.ts'
 export type { MemoryReadValue, MemorySearchItem, MemorySearchValue, TurnFacts } from './tools.ts'
+export { planTierMigrations } from './window.ts'
+export type {
+  MemoryWindowSnapshot,
+  TierMigrationConfig,
+  TierMigrationPlan,
+  TurnRange,
+} from './window.ts'
 
 /**
  * Register the memory capability with the organizer.

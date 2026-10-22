@@ -3,20 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/memory/README.md
 /:
-  en: da5cc036eef4adda
-  zh: 1e57994f31e3df5f
+  en: e414c0a19db8cbff
+  zh: 6ee5f9015163749b
 /deepseek-ai-dsh-memory:
   en: 451d0d0b45211d36
   zh: 98cef595909ea324
 /deepseek-ai-dsh-memory/summary:
-  en: 03c407fd2aadcd38
-  zh: a65f563a644e15e1
+  en: e0b8a4475069cad0
+  zh: c107cee91852e1e1
+/deepseek-ai-dsh-memory/table-of-contents:
+  en: cbfb676bb9a7a2de
+  zh: 17e4d900900759b6
 /deepseek-ai-dsh-memory/use-this-package:
   en: 416b0c3b4336d9d2
   zh: bff6feb3b240142f
 /deepseek-ai-dsh-memory/understand-the-implementation:
-  en: fe80e2f93194962c
-  zh: 07e0a3e17b5fb994
+  en: 5479eea33dbbf46c
+  zh: a3a96bafb96fb5b2
 /deepseek-ai-dsh-memory/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -59,6 +62,18 @@
 /deepseek-ai-dsh-memory/model-experience/memory-snapshot-message/kv-cache-effect:
   en: a22f6602370ccdc3
   zh: d0e8b06da57bf809
+/deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints:
+  en: c65f1ca009d1dc17
+  zh: fe34d093608adbda
+/deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/what-the-model-sees:
+  en: dec74820c206761a
+  zh: e467d34910f741c7
+/deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/token-effect:
+  en: a99ecdb86321e0b9
+  zh: afc0d8bf3eb9ab05
+/deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/kv-cache-effect:
+  en: 167c231b4afac8bc
+  zh: f6d8042d46eff1a9
 /deepseek-ai-dsh-memory/model-experience/memory-failure-notice:
   en: 181b494f66f3b14a
   zh: dbd8abbaae67e3b0
@@ -72,5 +87,8 @@
   en: 3fd317b042a59673
   zh: d3339d2cedef32c7
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work:
-  en: 24744c7064614bf5
-  zh: 53b691e2625ba287
+  en: 26945b7451ee62da
+  zh: 7064d6adc5fe3cc7
+/deepseek-ai-dsh-memory/known-limitations-and-deferred-work/dev-note:
+  en: d159553b3405eabc
+  zh: ca9427324c732bb9

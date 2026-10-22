@@ -15334,12 +15334,21 @@ importers:
       '@deepseek-ai/dsh-agent-loop-testkit':
         specifier: workspace:*
         version: link:../../test-support/agent-loop-testkit
+      '@deepseek-ai/dsh-compaction':
+        specifier: workspace:*
+        version: link:../../compaction/compaction
       '@deepseek-ai/dsh-dafeiyu':
         specifier: workspace:*
         version: link:../dafeiyu
       '@deepseek-ai/dsh-fs-local':
         specifier: workspace:*
         version: link:../../fs/fs-local
+      '@deepseek-ai/dsh-jobs':
+        specifier: workspace:*
+        version: link:../../jobs/jobs
+      '@deepseek-ai/dsh-jobs-local':
+        specifier: workspace:*
+        version: link:../../jobs/jobs-local
       '@deepseek-ai/dsh-llm':
         specifier: workspace:*
         version: link:../../llm/llm
@@ -15355,6 +15364,9 @@ importers:
       '@deepseek-ai/dsh-tool-dsh-store':
         specifier: workspace:*
         version: link:../tool-dsh-store
+      '@deepseek-ai/dsh-tool-jobs':
+        specifier: workspace:*
+        version: link:../../jobs/tool-jobs
 
   packages/uitstalie/models-dev:
     dependencies:

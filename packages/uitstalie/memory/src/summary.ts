@@ -8,12 +8,14 @@
  * pass. Each pass reads only the turn's conversation surface (user text,
  * assistant text, and tool names with status), asks the routed or configured
  * model for strict JSON entries, appends them through the version-guarded
- * repository, and refreshes the durable snapshot.
+ * repository, migrates aged sections through the same model target, and
+ * refreshes the durable snapshot.
  *
- * Failures are contained. A model, repository, or write failure leaves the
- * previous MEMORY.md in place and appends one notice message per session;
- * cancellation writes nothing. The job owns no model surface of its own, so its
- * output ring stays empty.
+ * Failures are contained. A model or repository failure before the detail append
+ * leaves the previous MEMORY.md in place and appends one notice message per
+ * session; a migration failure after a committed detail append keeps that
+ * summary and only logs. Cancellation before a write leaves no new state. The
+ * job owns no model surface of its own, so its output ring stays empty.
  * @module @deepseek-ai/dsh-memory/summary
  */
 
@@ -26,9 +28,16 @@ import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, FinishReason, GenerateOptions } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { MemorySettings } from './config.ts'
-import { MEMORY_ENTRY_KINDS, appendTurnSummary } from './memory-file.ts'
+import {
+  MEMORY_BRIEF_MAX_CHARS,
+  MEMORY_BRIEF_MAX_ENTRIES,
+  MEMORY_ENTRY_KINDS,
+  appendTurnSummary,
+  migrateMemoryTiers,
+} from './memory-file.ts'
 import type { MemoryEntry } from './memory-file.ts'
 import { appendMemoryNotice, refreshMemorySnapshot } from './snapshot.ts'
+import type { TurnRange } from './window.ts'
 
 declare module '@deepseek-ai/dsh-jobs' {
   interface JobKindMap {
@@ -85,6 +94,19 @@ const SUMMARY_INSTRUCTION = [
   'Record only durable conclusions. Do not speculate beyond the transcript and do not restate task facts that will not matter later. If the turn recorded nothing durable, return one decision entry saying so.',
   '',
   'Turn transcript:',
+  '',
+].join('\n')
+
+/** The compression instruction delivered with one section's detail entries. */
+const BRIEF_INSTRUCTION = [
+  'You compress the stored detail summary of one turn range into a brief memory checkpoint.',
+  '',
+  'Return STRICT JSON only, without prose or a code fence, in this form:',
+  '{"entries":[{"kind":"decision","text":"..."}]}',
+  '',
+  `Use one or two entries whose texts total at most ${String(MEMORY_BRIEF_MAX_CHARS)} characters. Keep durable decisions, files, and open work; drop repetition and task detail. The allowed kinds are decision, files, open, and preference.`,
+  '',
+  'Detail entries:',
   '',
 ].join('\n')
 
@@ -254,6 +276,28 @@ export class MemorySummaryRunner {
         seq: conversation.seq,
         entries,
       }, signal, { window: this.settings.window, maxBytes: this.settings.maxBytes })
+      try {
+        await migrateMemoryTiers(
+          this.ctx,
+          input.session,
+          input.turn,
+          (range, detail, migrationSignal) => compressBriefEntries(
+            this.ctx,
+            resolved,
+            range,
+            detail,
+            input.session.id,
+            migrationSignal,
+          ),
+          signal,
+          { window: this.settings.window, maxBytes: this.settings.maxBytes },
+        )
+      } catch (error: unknown) {
+        if (signal.aborted) return { status: 'killed' }
+        // The detail summary is already committed; a migration failure leaves
+        // that section in place instead of failing the pass that wrote it.
+        this.ctx.logger.warn('memory: tier migration failed after turn %d: %s', input.turn, errorMessage(error))
+      }
       await refreshMemorySnapshot(this.ctx, input.agent, signal)
       this.ctx.logger.debug(
         'memory: summarized turn %d (%d input bytes, model %s, %d ms)',
@@ -418,7 +462,7 @@ function boundConversation(lines: readonly string[]): string {
   return kept.join('\n')
 }
 
-/** Run one one-shot summarization call and return the assembled text. */
+/** Run one one-shot summary call and return the assembled text. */
 async function streamSummary(
   ctx: Context,
   target: SummaryTarget,
@@ -426,16 +470,45 @@ async function streamSummary(
   sessionId: SessionId,
   signal: AbortSignal,
 ): Promise<string> {
+  return streamInstruction(ctx, target, `${SUMMARY_INSTRUCTION}\n${conversation}`, sessionId, signal)
+}
+
+/** Compress one detail section with the same model target as the summary job. */
+async function compressBriefEntries(
+  ctx: Context,
+  target: SummaryTarget,
+  range: TurnRange,
+  entries: readonly MemoryEntry[],
+  sessionId: SessionId,
+  signal: AbortSignal | undefined,
+): Promise<readonly MemoryEntry[]> {
+  const detail = entries.map(entry => `- [${entry.kind}] ${entry.text}`).join('\n')
+  const span = range.startTurn === range.endTurn
+    ? `turn ${String(range.startTurn)}`
+    : `turns ${String(range.startTurn)}–${String(range.endTurn)}`
+  const text = `${BRIEF_INSTRUCTION}${span}\n\n${detail}`
+  const raw = await streamInstruction(ctx, target, text, sessionId, signal)
+  return parseBriefEntries(raw)
+}
+
+/** Run one one-shot model call returning the assembled text. */
+async function streamInstruction(
+  ctx: Context,
+  target: SummaryTarget,
+  instruction: string,
+  sessionId: SessionId,
+  signal: AbortSignal | undefined,
+): Promise<string> {
   const assembler = new BlockAssembler()
   const options: GenerateOptions = {
     provider: target.provider,
     model: target.model,
     messages: [{
       role: 'user',
-      content: [{ type: 'text', text: `${SUMMARY_INSTRUCTION}\n${conversation}` }],
+      content: [{ type: 'text', text: instruction }],
     }],
     sessionId,
-    signal,
+    ...signal === undefined ? {} : { signal },
   }
   for await (const chunk of ctx.llm.stream(options)) assembler.push(chunk)
   const failure = finishError(assembler.finish)
@@ -487,6 +560,34 @@ export function parseSummaryEntries(text: string): readonly MemoryEntry[] {
   }
   if (entries.length > 0) return entries
   return [{ kind: 'decision', text: fallbackEntryText(text) }]
+}
+
+/**
+ * Parse a brief compression reply into bounded entries.
+ *
+ * At most {@link MEMORY_BRIEF_MAX_ENTRIES} entries survive, and their texts total
+ * at most {@link MEMORY_BRIEF_MAX_CHARS} characters; longer text is ellipsized.
+ * A reply with no valid entry throws so the caller keeps the detail section.
+ * @param text - raw model output.
+ * @returns one or two entries within the brief bounds.
+ * @throws Error when the output carries no valid entry.
+ */
+export function parseBriefEntries(text: string): readonly MemoryEntry[] {
+  const candidates = summaryCandidates(parseSummaryJson(text))
+  const entries: MemoryEntry[] = []
+  let characters = 0
+  for (const candidate of candidates) {
+    if (entries.length === MEMORY_BRIEF_MAX_ENTRIES) break
+    const remaining = MEMORY_BRIEF_MAX_CHARS - characters
+    if (remaining <= 0) break
+    const entry = parseSummaryEntry(candidate)
+    if (entry === undefined) continue
+    const bounded = entry.text.length <= remaining ? entry.text : truncateChars(entry.text, remaining)
+    entries.push({ kind: entry.kind, text: bounded })
+    characters += bounded.length
+  }
+  if (entries.length === 0) throw new Error('memory: brief compression returned no valid entries')
+  return entries
 }
 
 /** Parse the first JSON object or array in the output, tolerating fences and prose. */
@@ -546,6 +647,13 @@ function singleLine(text: string): string {
 /** Count UTF-8 bytes. */
 function byteLength(text: string): number {
   return Buffer.byteLength(text, 'utf8')
+}
+
+/** Truncate text to a character budget, appending an ellipsis when shortened. */
+function truncateChars(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  if (maxChars <= 1) return '…'.slice(0, maxChars)
+  return `${text.slice(0, maxChars - 1)}…`
 }
 
 /** Truncate text to a byte budget, appending an ellipsis when shortened. */
