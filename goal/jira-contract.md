@@ -1,6 +1,6 @@
 # jira 能力契约（设计）
 
-状态：契约草案（2026/10/23，DH-12 后续）。输入：`D:\dqc\dsh-plugin-multidevice-jira\{MIGRATION,DESIGN,HANDOVER}.md`、[capability-layers.md](capability-layers.md)、[dafeiyu.md](dafeiyu.md)。**本文定稿前不写代码。**
+状态：**定稿**（2026/10/23，DH-13）。输入：`D:\dqc\dsh-plugin-multidevice-jira\{MIGRATION,DESIGN,HANDOVER}.md`、[capability-layers.md](capability-layers.md)、[dafeiyu.md](dafeiyu.md)。契约定稿后，阶段 0 可在外仓开工。
 
 ## 1. 包与依赖边界
 
@@ -108,10 +108,10 @@ ctx.dafeiyu.register({
 - **阶段 1（进仓）**：五包 + bundle；包名 `@deepseek-ai/dsh-jira-*`；跨包边界规则；每包测试；干净 profile 装 bundle 后工具/命令/技能/UI 全出现。
 - **阶段 2（dafeiyu）**：descriptor 注册、设置段、enable 门、单一 bundle 组合（不重复 insert 行）；旧插件 shim 只调用新包。
 
-## 8. 未决
+## 8. 已定决策（2026/10/23 定稿）
 
-1. `jira-agent` 与 `jira-service` 是否合并为一个 provider 能力（当前：同一能力、两个包；dafeiyu 只见 `jira`）。
-2. `onTurnEnd` settle 与 push 的关系：settle 后自动排队，还是只由显式 `sync()`/CLI 触发。
-3. `remote.jira` 用 TypertRemoteService 还是普通 remote 命名空间；鉴权粒度。
-4. dafeiyu 关闭 `enabled` 时，UI 的看板是否仍可见（建议：可见只读，模型面隐藏）。
-5. 旧插件 shim 的退出时间点与条件。
+1. **一个能力、两个包**：`jira-service` 与 `jira-agent` 同属 provider `jira`；dafeiyu 只看到 `jira` 一个能力，两个包是边界手段，不是两个能力。
+2. **settle 与 push**：`onTurnEnd` 只做 settle（扫描 + 重生成 + 提交）；settle 成功后按 `push.enabled` 排队 push，失败写入 `status().lastSync` 并在 UI 可见；显式 `sync()` 与 CLI 仍可手动触发。
+3. **remote 形态**：`remote.jira` 用 `TypertRemoteService`，与现有 UI remote 一致；只读方法（board/list/get/kbSearch/status），不暴露写。
+4. **dafeiyu 关闭 enabled**：模型面（工具/提示段）隐藏；看板与详情仍可只读访问（`jira-service` 随 bundle 运行）。
+5. **旧插件 shim 退出条件**：阶段 2 验收通过（新 bundle 在干净 profile 安装后工具/命令/技能/UI 全出现、702 测试与 smoke 33/33、账本数据未改）后，移除旧插件行并归档旧仓；退出前 shim 只做兼容转发，不持有第二份 sync。
