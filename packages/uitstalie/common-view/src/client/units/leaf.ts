@@ -159,6 +159,12 @@ export function emitDivider(spec: DividerSpec): {
   }
 }
 
+/**
+ * Emit the native image box: the composed source and alt text become the
+ * rendered image's attributes, with lazy decoding fixed here.
+ * @param spec - the image as composed.
+ * @returns the class name, inline style, and image attributes DSH renders.
+ */
 export function emitImage(spec: ImageSpec): {
   className: string
   style: CSSProperties

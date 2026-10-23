@@ -61,6 +61,8 @@ const ERROR_HTML = '<!doctype html><title>Sign-in failed</title><p>Authenticatio
  *
  * exactOptionalPropertyTypes：返回类型的字段显式允许 undefined
  * （URL 参数缺失时值为 undefined 而非缺席）。
+ * @param input - 用户粘贴的原始文本。
+ * @returns 解析出的 code 与 state，缺席的字段不出现。
  */
 export function parseAuthorizationInput(input: string): { code?: string | undefined; state?: string | undefined } {
   const value = input.trim()
@@ -173,6 +175,9 @@ async function startCallbackServer(spec: CallbackServerSpec, expectedState: stri
 /**
  * 执行一次 PKCE 登录：起回调服务器 → 展示授权 URL → 浏览器回调与手贴
  * code 竞速（赢家取消输家）→ 交换凭据。取消/摘除经 signal 全程可中止。
+ * @param interaction - 用户交互（notify/prompt）与取消信号。
+ * @param spec - 该 flow 的授权页、回调与凭据交换参数。
+ * @returns 登录得到的 OAuth 凭据。
  */
 export async function runPkceLogin(interaction: OAuthInteraction, spec: PkceLoginSpec): Promise<PlusOAuthCredential> {
   const { verifier, challenge } = await generatePKCE()

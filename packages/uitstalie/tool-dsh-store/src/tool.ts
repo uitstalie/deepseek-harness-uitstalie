@@ -9,7 +9,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { normalizeStorePath, STORE_DIR_NAME } from './paths.ts'
 import { isMemoryPath } from './namespaces.ts'
 import type { DshStore } from './service.ts'
@@ -40,7 +40,7 @@ export interface StoreToolOptions {
  * @param options - the store service the tool drives.
  * @returns the tool definition to register on `ctx.tools`.
  */
-export function defineStoreTool(ctx: Context, options: StoreToolOptions) {
+export function defineStoreTool(ctx: Context, options: StoreToolOptions): ToolDefinition {
   void ctx
   return defineTool({
     name: 'tool-dsh-store',

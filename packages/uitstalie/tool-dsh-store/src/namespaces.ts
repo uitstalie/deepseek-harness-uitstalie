@@ -23,12 +23,20 @@ const LEGACY_SKILL_KEYS: ReadonlyArray<readonly [string, string]> = [
   ['userInvocable', 'user-invocable'],
 ]
 
-/** Whether a `.dsh`-relative path names a rule file. */
+/**
+ * Whether a `.dsh`-relative path names a rule file.
+ * @param displayPath - the `.dsh`-relative target path.
+ * @returns `true` for `rules` itself and every path below it.
+ */
 export function isRulesPath(displayPath: string): boolean {
   return displayPath === 'rules' || displayPath.startsWith('rules/')
 }
 
-/** Whether a `.dsh`-relative path names something inside the skill namespace. */
+/**
+ * Whether a `.dsh`-relative path names something inside the skill namespace.
+ * @param displayPath - the `.dsh`-relative target path.
+ * @returns `true` for `skills` itself and every path below it.
+ */
 export function isSkillsPath(displayPath: string): boolean {
   return displayPath === 'skills' || displayPath.startsWith('skills/')
 }

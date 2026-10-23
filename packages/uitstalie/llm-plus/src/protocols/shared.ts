@@ -53,7 +53,11 @@ export function extractImages(message: { readonly content: readonly ContentBlock
   return message.content.filter((block): block is ImageBlock => block.type === 'image')
 }
 
-/** image 块的占位文本（转发 harness 的稳定词汇，协议实现统一用它）。 */
+/**
+ * image 块的占位文本（转发 harness 的稳定词汇，协议实现统一用它）。
+ * @param block - 被文本化的 image 块。
+ * @returns harness 的稳定占位文本。
+ */
 export function imagePlaceholder(block: ImageBlock): string {
   return textOnlyImageText(block.attachment)
 }
@@ -62,6 +66,8 @@ export function imagePlaceholder(block: ImageBlock): string {
  * 解析模型产出的 raw JSON 字符串（tool-call arguments）为对象。
  * anthropic 的 tool_use.input 与 gemini 的 functionCall.args 都必须是对象；
  * 解析失败回退空对象（畸形的调用本来也会被执行层拒绝）。
+ * @param raw - 模型产出的 JSON 字符串。
+ * @returns 解析出的对象；非对象或解析失败时为空对象。
  */
 export function parseJsonObject(raw: string): JsonValue {
   try {
@@ -79,6 +85,11 @@ const MAX_ERROR_BODY_CHARS = 4096
  * 模型列表 interrogation 的共享 GET：JSON 响应原样返回，非 2xx 抛带
  * 状态码与截断正文的 Error（由 llm 的 discoverModels 归一化为
  * model-discovery-failed 报给设置页）。
+ * @param url - 要读取的端点。
+ * @param headers - 随请求发送的头（含认证）。
+ * @param signal - 调用方的取消信号。
+ * @returns 端点返回的 JSON 值。
+ * @throws {Error} 响应状态非 2xx。
  */
 export async function getJson(url: string, headers: Record<string, string>, signal?: AbortSignal): Promise<unknown> {
   const response = await fetch(url, { headers, signal: signal ?? null })
@@ -92,6 +103,9 @@ export async function getJson(url: string, headers: Record<string, string>, sign
 /**
  * 把数值 reasoning 预算 clamp 进目录声明的范围（无范围原样通过——
  * 端点是最终仲裁者，clamp 只纠正目录已知的越界）。
+ * @param value - 目录外传入的预算值。
+ * @param budget - 目录声明的可选上下界。
+ * @returns 落在声明范围内的值。
  */
 export function clampBudget(value: number, budget?: { min?: number; max?: number }): number {
   if (budget?.min !== undefined && value < budget.min) return budget.min
@@ -102,6 +116,9 @@ export function clampBudget(value: number, budget?: { min?: number; max?: number
 /**
  * openai 系 reasoning effort 透传前的档位校验：模型声明了档位池时，
  * 池外的值 fail loud（比 provider 400 更可行动；池未知则放行透传）。
+ * @param effort - 请求的 reasoning effort 档位。
+ * @param pool - 模型声明的档位池；缺席表示目录未给出。
+ * @param model - 用于失败文案的模型名。
  * @returns 可透传的 effort 字符串。
  * @throws {Error} effort 不在声明的档位池内。
  */

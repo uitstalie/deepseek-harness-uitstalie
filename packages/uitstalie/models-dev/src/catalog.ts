@@ -362,6 +362,9 @@ export function modelDefaults(model: ModelsDevModel, providerNpm?: string): Mode
  * 合并两份 extra params；override 按 key 取胜。
  * headers 与 body 分别做浅合并（key 级覆盖），不做深合并——
  * body 值是用户声明的完整字段值，深合并会制造出乎意料的半成品对象。
+ * @param base - 目录提供的参数。
+ * @param override - 用户路径提供的参数。
+ * @returns 合并后的 headers 与 body。
  */
 export function mergeExtraParams(base: ExtraParams, override: ExtraParams): ExtraParams {
   return {

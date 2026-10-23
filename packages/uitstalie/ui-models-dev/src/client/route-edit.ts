@@ -33,7 +33,11 @@ export interface RouteDraft {
 /** OAuth flow 选项（与 llm-plus 的六家一致；'' = 不走 OAuth）。 */
 export const OAUTH_FLOW_CHOICES: readonly OAuthFlowId[] = ['anthropic', 'openai-codex', 'github-copilot', 'openrouter', 'kimi-coding', 'xai']
 
-/** 路由配置 → 编辑草稿（models/modelsDevProvider 不在 v1 编辑面内，原样保留不丢）。 */
+/**
+ * 路由配置 → 编辑草稿（models/modelsDevProvider 不在 v1 编辑面内，原样保留不丢）。
+ * @param route - 当前生效的路由配置。
+ * @returns 该路由的编辑草稿。
+ */
 export function routeToDraft(route: RouteConfig): RouteDraft {
   return {
     displayName: route.displayName ?? '',
@@ -47,7 +51,11 @@ export function routeToDraft(route: RouteConfig): RouteDraft {
   }
 }
 
-/** 草稿校验：返回首个错误的定位键；通过返回 undefined。 */
+/**
+ * 草稿校验：返回首个错误的定位键；通过返回 undefined。
+ * @param draft - 待保存的路由草稿。
+ * @returns 首个错误字段的定位键；全部合法时为 undefined。
+ */
 export function routeDraftError(draft: RouteDraft): 'headers' | 'body' | 'maxTokens' | undefined {
   try {
     parseJsonObjectField(draft.headersText)
@@ -69,6 +77,8 @@ export function routeDraftError(draft: RouteDraft): 'headers' | 'body' | 'maxTok
 /**
  * 草稿物化为路由配置。不在编辑面内的字段（models/modelsDevProvider/
  * retryPolicy/requestImagePolicy）由调用方从原路由原样带回（见调用点）。
+ * @param draft - 编辑表单里的路由草稿。
+ * @returns 写进 llm-plus 命名空间的路由值。
  */
 export function draftToRoute(draft: RouteDraft): Record<string, JsonValue> {
   const route: Record<string, JsonValue> = { protocol: draft.protocol }
