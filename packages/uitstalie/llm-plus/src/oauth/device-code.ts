@@ -60,6 +60,7 @@ export interface DevicePollOptions<T> {
 
 /**
  * 驱动 device-code 轮询直到 complete/failed/超时。
+ * @param options - 设备码起点响应、取消信号与单次轮询回调。
  * @returns complete 的 value。
  * @throws 取消（固定文案）、失败（provider 消息）、超时（含时钟漂移变体）。
  */

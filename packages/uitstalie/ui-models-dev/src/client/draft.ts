@@ -57,7 +57,11 @@ export interface ProviderDraft {
   modelIds: readonly string[]
 }
 
-/** models.dev 的 npm 方言 → llm-plus 协议（映射不上的返回 '' 由用户手选）。 */
+/**
+ * models.dev 的 npm 方言 → llm-plus 协议（映射不上的返回 '' 由用户手选）。
+ * @param npm - 目录里该提供商的 npm 包名。
+ * @returns 可识别出的 wire 协议；无法映射时为 ''。
+ */
 export function defaultProtocol(npm: string | undefined): ProtocolName | '' {
   if (npm === undefined) return ''
   if (npm.includes('anthropic')) return 'anthropic-messages'
@@ -67,12 +71,20 @@ export function defaultProtocol(npm: string | undefined): ProtocolName | '' {
   return ''
 }
 
-/** 路由 id 净化：小写字母/数字/连字符，其余折叠为连字符（POSIX 标识符风格）。 */
+/**
+ * 路由 id 净化：小写字母/数字/连字符，其余折叠为连字符（POSIX 标识符风格）。
+ * @param raw - 候选路由 id（通常是目录 provider id）。
+ * @returns 净化后的路由 id。
+ */
 export function sanitizeRouteId(raw: string): string {
   return raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
-/** 为一个提供商生成初始草稿（全部默认值就位，用户只需勾选+填密钥）。 */
+/**
+ * 为一个提供商生成初始草稿（全部默认值就位，用户只需勾选+填密钥）。
+ * @param provider - 目录里的提供商摘要。
+ * @returns 该提供商的完整初始草稿。
+ */
 export function defaultDraft(provider: CatalogProviderSummary): ProviderDraft {
   return {
     routeId: sanitizeRouteId(provider.id),
@@ -89,7 +101,12 @@ export function defaultDraft(provider: CatalogProviderSummary): ProviderDraft {
   }
 }
 
-/** 解析 JSON 对象文本字段；空文本返回 undefined，非对象抛错（由调用方归一化文案）。 */
+/**
+ * 解析 JSON 对象文本字段；空文本返回 undefined，非对象抛错（由调用方归一化文案）。
+ * @param text - 用户输入的 JSON 对象文本。
+ * @returns 解析出的对象；空文本时为 undefined。
+ * @throws {Error} 文本不是 JSON 或不是对象。
+ */
 export function parseJsonObjectField(text: string): Record<string, JsonValue> | undefined {
   const trimmed = text.trim()
   if (trimmed === '') return undefined
@@ -105,6 +122,9 @@ export function parseJsonObjectField(text: string): Record<string, JsonValue> | 
  * 空字符串字段一律缺席——由 route schema 的缺省与协议默认端点接管；
  * subset 模式把勾选的目录模型物化为手工 models 表（整体覆盖目录数据）。
  * @param providerId - 目录 provider id（modelsDevProvider 字段：路由与目录的链接）。
+ * @param draft - 页面上的提供商草稿。
+ * @param models - 该提供商可物化的目录模型。
+ * @returns 写进 llm-plus 命名空间的路由值。
  */
 export function materializeRoute(
   providerId: string,
@@ -137,7 +157,11 @@ export function materializeRoute(
   return route
 }
 
-/** 草稿校验：返回首个错误的定位键（由调用方映射文案）；通过返回 undefined。 */
+/**
+ * 草稿校验：返回首个错误的定位键（由调用方映射文案）；通过返回 undefined。
+ * @param draft - 待提交的提供商草稿。
+ * @returns 首个错误字段的定位键；全部合法时为 undefined。
+ */
 export function draftError(draft: ProviderDraft): 'protocol' | 'headers' | 'body' | undefined {
   if (draft.protocol === '') return 'protocol'
   try {

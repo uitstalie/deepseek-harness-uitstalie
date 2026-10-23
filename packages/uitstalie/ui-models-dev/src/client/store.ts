@@ -111,7 +111,10 @@ export class ModelsDevStore {
 
   constructor(private readonly wire: ModelsDevWire) {}
 
-  /** 拉取目录提供商列表（挂载时一次 + 失败重试共用此入口；后台刷新不打断现状）。 */
+  /**
+   * 拉取目录提供商列表（挂载时一次 + 失败重试共用此入口；后台刷新不打断现状）。
+   * @param background - 后台刷新时不进入 loading 态，也不覆盖已有错误。
+   */
   async load(background = false): Promise<void> {
     // 后台轮询时不清空现有列表（避免闪烁）；只有首次/显式重试才进 loading 态
     if (!background) {
@@ -183,14 +186,21 @@ export class ModelsDevStore {
     this.polling = false
   }
 
-  /** 更新筛选串。 */
+  /**
+   * 更新筛选串。
+   * @param filter - 新的筛选串（小写匹配 id/name/npm）。
+   */
   setFilter(filter: string): void {
     this.store.update((draft) => {
       draft.filter = filter
     })
   }
 
-  /** 勾选/取消一个提供商；勾选时以目录默认值生成草稿。 */
+  /**
+   * 勾选/取消一个提供商；勾选时以目录默认值生成草稿。
+   * @param provider - 目录里的提供商摘要。
+   * @param checked - 勾选为 true，取消为 false。
+   */
   toggleProvider(provider: CatalogProviderSummary, checked: boolean): void {
     this.store.update((draft) => {
       if (checked) draft.drafts[provider.id] = defaultDraft(provider)
@@ -198,7 +208,11 @@ export class ModelsDevStore {
     })
   }
 
-  /** 更新一个草稿的局部字段（组件按字段名派发）。 */
+  /**
+   * 更新一个草稿的局部字段（组件按字段名派发）。
+   * @param id - 目录 provider id。
+   * @param patch - 要覆盖的草稿字段。
+   */
   updateDraft(id: string, patch: Partial<ProviderDraft>): void {
     this.store.update((draft) => {
       const current = draft.drafts[id]
@@ -206,7 +220,10 @@ export class ModelsDevStore {
     })
   }
 
-  /** 惰性拉取一个提供商的模型列表（subset 模式与模型数展示用）。 */
+  /**
+   * 惰性拉取一个提供商的模型列表（subset 模式与模型数展示用）。
+   * @param id - 目录 provider id。
+   */
   async ensureModels(id: string): Promise<void> {
     if (this.store.getSnapshot().models[id] !== undefined) return
     this.store.update((draft) => {
@@ -224,7 +241,11 @@ export class ModelsDevStore {
     })
   }
 
-  /** 切换模型子集模式；进入 subset 时默认全选（数据未到则待 ensureModels 铺）。 */
+  /**
+   * 切换模型子集模式；进入 subset 时默认全选（数据未到则待 ensureModels 铺）。
+   * @param id - 目录 provider id。
+   * @param mode - 目标子集模式。
+   */
   setModelMode(id: string, mode: ProviderDraft['modelMode']): void {
     this.store.update((draft) => {
       const current = draft.drafts[id]
@@ -236,7 +257,12 @@ export class ModelsDevStore {
     if (mode === 'subset') void this.ensureModels(id)
   }
 
-  /** subset 模式下勾选一个模型。 */
+  /**
+   * subset 模式下勾选一个模型。
+   * @param id - 目录 provider id。
+   * @param modelId - 目录里的模型 id。
+   * @param checked - 勾选为 true，取消为 false。
+   */
   toggleModel(id: string, modelId: string, checked: boolean): void {
     this.store.update((draft) => {
       const current = draft.drafts[id]
@@ -273,7 +299,10 @@ export class ModelsDevStore {
     }
   }
 
-  /** 发起一次登录尝试并驱动轮询直到终态。 */
+  /**
+   * 发起一次登录尝试并驱动轮询直到终态。
+   * @param routeId - 要登录的路由 id。
+   */
   async beginLogin(routeId: string): Promise<void> {
     const result = await this.wire.llmPlusAuth.beginFlow(routeId)
     if (!result.ok) {
@@ -298,7 +327,11 @@ export class ModelsDevStore {
     await this.loadOAuthRoutes()
   }
 
-  /** 回答待答 prompt（文本框草稿随回答清除）。 */
+  /**
+   * 回答待答 prompt（文本框草稿随回答清除）。
+   * @param routeId - 该尝试所属的路由 id。
+   * @param promptId - 待答 prompt 的 id。
+   */
   async answerPrompt(routeId: string, promptId: string): Promise<void> {
     const attemptId = this.store.getSnapshot().oauth.attempts[routeId]?.id ?? ''
     const value = this.store.getSnapshot().oauth.answerDrafts[promptId] ?? ''
@@ -310,14 +343,21 @@ export class ModelsDevStore {
     }
   }
 
-  /** 更新 prompt 回答的输入框草稿。 */
+  /**
+   * 更新 prompt 回答的输入框草稿。
+   * @param promptId - 待答 prompt 的 id。
+   * @param value - 输入框的当前文本。
+   */
   setAnswerDraft(promptId: string, value: string): void {
     this.store.update((draft) => {
       draft.oauth.answerDrafts[promptId] = value
     })
   }
 
-  /** 取消一次在途尝试。 */
+  /**
+   * 取消一次在途尝试。
+   * @param routeId - 该尝试所属的路由 id。
+   */
   async cancelLogin(routeId: string): Promise<void> {
     const attemptId = this.store.getSnapshot().oauth.attempts[routeId]?.id
     if (attemptId === undefined) return
@@ -340,7 +380,10 @@ export class ModelsDevStore {
     })
   }
 
-  /** 进入一条路由的编辑（草稿从当前配置生成）。 */
+  /**
+   * 进入一条路由的编辑（草稿从当前配置生成）。
+   * @param routeId - 要编辑的路由 id。
+   */
   startEditRoute(routeId: string): void {
     const route = this.store.getSnapshot().myRoutes.routes[routeId]
     if (route === undefined) return
@@ -350,7 +393,10 @@ export class ModelsDevStore {
     })
   }
 
-  /** 更新编辑草稿的局部字段。 */
+  /**
+   * 更新编辑草稿的局部字段。
+   * @param patch - 要覆盖的草稿字段。
+   */
   patchEditDraft(patch: Partial<RouteDraft>): void {
     this.store.update((draft) => {
       const current = draft.myRoutes.editing
@@ -397,7 +443,10 @@ export class ModelsDevStore {
     if (response.ok) await this.loadMyRoutes()
   }
 
-  /** 删除一条路由（mutate unset）。 */
+  /**
+   * 删除一条路由（mutate unset）。
+   * @param routeId - 要删除的路由 id。
+   */
   async deleteRoute(routeId: string): Promise<void> {
     const response = await this.wire.settings.mutate('llm-plus', [{ op: 'unset', path: ['routes', routeId] }], undefined)
     this.store.update((draft) => {

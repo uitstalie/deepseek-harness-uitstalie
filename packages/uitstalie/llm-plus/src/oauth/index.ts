@@ -12,7 +12,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { AuthorizationFlow } from '@deepseek-ai/dsh-authorization'
-import { credentialKey, type CredentialProvider, type CredentialRecord } from '@deepseek-ai/dsh-credentials'
+import { credentialKey, type CredentialKey, type CredentialProvider, type CredentialRecord } from '@deepseek-ai/dsh-credentials'
 import { anthropicOAuth } from './providers/anthropic.ts'
 import { githubCopilotOAuth } from './providers/github-copilot.ts'
 import { kimiCodingOAuth } from './providers/kimi-coding.ts'
@@ -36,8 +36,12 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
 /** flow id 集合（配置校验用）。 */
 export const OAUTH_FLOW_IDS: readonly string[] = Object.keys(OAUTH_PROVIDERS)
 
-/** 路由的 grant 记录地址（scope 段是插件注册名——seam 的所有权约束）。 */
-export function grantKeyFor(routeId: string) {
+/**
+ * 路由的 grant 记录地址（scope 段是插件注册名——seam 的所有权约束）。
+ * @param routeId - 配置里的路由 id。
+ * @returns 该路由在凭据 seam 里的记录键。
+ */
+export function grantKeyFor(routeId: string): CredentialKey {
   return credentialKey('llm-plus', routeId)
 }
 
@@ -57,7 +61,10 @@ function readGrantPayload(record: CredentialRecord | undefined): PlusOAuthCreden
 
 /**
  * OAuth 凭据携带的账号实际可用模型集（目前只有 github-copilot 在登录/刷新
- * 时枚举）。@returns 非空 id 列表；无凭据/无清单返回 undefined（回落目录）。
+ * 时枚举）。
+ * @param credentials - 凭据 seam。
+ * @param routeId - 配置里的路由 id。
+ * @returns 非空 id 列表；无凭据/无清单返回 undefined（回落目录）。
  */
 export async function oauthAvailableModelIds(
   credentials: CredentialProvider,
@@ -70,6 +77,10 @@ export async function oauthAvailableModelIds(
 
 /**
  * 请求期解析一个 OAuth 路由的认证：读记录 → 临期在锁内刷新 → 推导 Bearer。
+ * @param credentials - 凭据 seam。
+ * @param def - 该 flow 的 provider 行为定义。
+ * @param routeId - 配置里的路由 id。
+ * @param signal - 刷新请求的取消信号。
  * @returns undefined = 没有已登录凭据（调用方报可行动的重登错误）。
  */
 export async function resolveOAuthAuth(
@@ -94,7 +105,11 @@ export async function resolveOAuthAuth(
   return def.toAuth(credential)
 }
 
-/** 刷新失败（凭据被判死）：删记录 + 抛可行动的重登错误。 */
+/**
+ * 刷新失败（凭据被判死）：删记录 + 抛可行动的重登错误。
+ * @param credentials - 凭据 seam。
+ * @param routeId - 配置里的路由 id。
+ */
 export async function dropDeadGrant(credentials: CredentialProvider, routeId: string): Promise<void> {
   await credentials.deleteRecord(grantKeyFor(routeId))
 }
@@ -106,6 +121,9 @@ export async function dropDeadGrant(credentials: CredentialProvider, routeId: st
  * 两条独立时间线——`current` 是唯一权威集，缝激活时同步的是**当时的**
  * current，之后每次路由变化在已激活的缝上增量同步。
  *
+ * @param ctx - 装配 OAuth 流的插件上下文。
+ * @param initialRouteIds - 初始已有 flow 的路由集。
+ * @param flowIdOf - 路由 id → flow id 的映射。
  * @returns 同步函数：路由集变化时增量注册/摘除（onChange 调用）。
  */
 export function registerOAuthFlows(

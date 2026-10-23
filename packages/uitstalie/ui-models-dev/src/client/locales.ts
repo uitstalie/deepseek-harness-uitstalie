@@ -125,6 +125,9 @@ export const zh: { [Key in keyof typeof en]: string } = {
 /**
  * {param} 插值（字典文案的占位符替换；locale 的 t 只做查表，
  * 动态片段由调用方经本函数填充）。
+ * @param text - 含 `{name}` 占位符的字典文案。
+ * @param params - 占位符名到替换值的映射。
+ * @returns 替换后的文案。
  */
 export function fill(text: string, params: Record<string, string>): string {
   let out = text

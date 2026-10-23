@@ -69,6 +69,7 @@ export function resolveUnit(spec: UnitSpec): ResolvedUnit {
  * custom properties and axes, and nothing else.
  * @param spec - the unit as composed.
  * @param className - an optional extra class the composing caller owns.
+ * @param style - optional caller-owned inline properties merged into the emitted style.
  * @returns the class name and inline style DSH renders.
  */
 export function emitUnit(

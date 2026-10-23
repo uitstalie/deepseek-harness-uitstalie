@@ -53,7 +53,11 @@ export function storeRootOfWorkspace(workspace: Pick<Workspace, 'path'> | undefi
   return join(workspaceRootOf(workspace, workspaceId), STORE_DIR_NAME)
 }
 
-/** Drop the store directory prefix from a loader display path (`rules/x.md`). */
+/**
+ * Drop the store directory prefix from a loader display path (`rules/x.md`).
+ * @param displayPath - the loader's store-prefixed display path.
+ * @returns the path relative to the store directory.
+ */
 export function storeRelativePath(displayPath: string): string {
   const prefix = `${STORE_DIR_NAME}/`
   return displayPath.startsWith(prefix) ? displayPath.slice(prefix.length) : displayPath

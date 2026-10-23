@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/README.md
+/:
+  en: 9fc62397da80731a
+  zh: 7fd9673bdacff8bc
+/uitstalie-branch-owned-capability-family:
+  en: d79aa217d046e484
+  zh: d74ace0e32f68114
+/uitstalie-branch-owned-capability-family/summary:
+  en: 070c18d7b53b712f
+  zh: 56b1248c436d1e25
+/uitstalie-branch-owned-capability-family/table-of-contents:
+  en: 1eb35b015a6c423f
+  zh: a8a3dceee2c9e943
+/uitstalie-branch-owned-capability-family/packages:
+  en: 0b802d786619d3e8
+  zh: a52e6dfcd027f7e2
+/uitstalie-branch-owned-capability-family/related-documentation:
+  en: 5e6b4d2d766da508
+  zh: bc8aa7537a0f77a1
+/uitstalie-branch-owned-capability-family/dev-note:
+  en: 60b4326f055bad4a
+  zh: 457fa3ba4dfb98be

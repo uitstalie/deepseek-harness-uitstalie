@@ -33,7 +33,7 @@ export interface SseEvent {
  * - 流尾若还有没有空行收尾的残帧，补发一次（部分网关会这样截断）。
  *
  * @param body - fetch 响应的 ReadableStream。
- * @yields 解析出的事件帧，按到达顺序。
+ * @returns 解析出的事件帧，按到达顺序。
  */
 export async function* parseSse(body: ReadableStream<Uint8Array>): AsyncGenerator<SseEvent> {
   const reader = body.getReader()

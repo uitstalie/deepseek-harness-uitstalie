@@ -104,12 +104,18 @@ export class PlusAdapter extends LlmAdapter {
     this.routes = routes
   }
 
-  /** 当前路由 id 集（初始注册与诊断用）。 */
+  /**
+   * 当前路由 id 集（初始注册与诊断用）。
+   * @returns 按注册顺序排列的路由 id。
+   */
   routeIds(): string[] {
     return this.routes.map(route => route.id)
   }
 
-  /** 当前解析后的路由表（目录条目映射用；与 routeIds 同一来源）。 */
+  /**
+   * 当前解析后的路由表（目录条目映射用；与 routeIds 同一来源）。
+   * @returns 当前路由表。
+   */
   resolvedRoutes(): readonly ResolvedRoute[] {
     return this.routes
   }

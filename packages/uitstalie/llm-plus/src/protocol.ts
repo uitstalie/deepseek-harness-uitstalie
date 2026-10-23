@@ -315,7 +315,11 @@ export abstract class BaseTranslator implements StreamTranslator {
   }
 }
 
-/** 把 provider 的原始 stop 原因映射为 harness finish chunk 的公共查表。 */
+/**
+ * 把 provider 的原始 stop 原因映射为 harness finish chunk 的公共查表。
+ * @param raw - provider 返回的 stop 原因；缺席表示断流收尾。
+ * @returns 带 harness 停止类别的 finish chunk。
+ */
 export function mapFinishReason(raw: string | undefined | null): FinishChunk {
   const kind = raw === 'length' || raw === 'max_tokens' || raw === 'MAX_TOKENS'
     ? 'max-tokens'

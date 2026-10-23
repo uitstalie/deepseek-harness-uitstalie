@@ -12,7 +12,10 @@ function base64urlEncode(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
-/** 生成 PKCE code verifier 与 S256 challenge。 */
+/**
+ * 生成 PKCE code verifier 与 S256 challenge。
+ * @returns verifier 及其 S256 challenge（均为 base64url）。
+ */
 export async function generatePKCE(): Promise<{ verifier: string; challenge: string }> {
   const verifierBytes = new Uint8Array(32)
   crypto.getRandomValues(verifierBytes)
