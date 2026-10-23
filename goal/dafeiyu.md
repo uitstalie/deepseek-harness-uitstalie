@@ -1,10 +1,14 @@
 # dafeiyu：能力组织者（设计）
 
-状态：设计草案（jira `DH-7`），2026/10/21 第三轮。与 [memory.md](memory.md)、[personality.md](personality.md) 同批；这两份文档里的“provider 只提供能力、接线在组织者”在本文件落成可实现的契约。第三轮拍板包名、v1 配置面、注入预算与失败通知。
+状态：设计草案（jira `DH-7`），2026/10/21 第三轮。与 [memory.md](memory.md)、[personality.md](personality.md) 同批；这两份文档里的“provider 只提供能力、接线在组织者”在本文件落成可实现的契约。第三轮拍板包名、v1 配置面、注入预算与失败通知。2026/10/23 起按三层架构扩展：见 [capability-layers.md](capability-layers.md)。
 
 ## 一句话
 
 `dafeiyu` 是 host 侧的组织者：它持有能力注册表、启用门、贡献接线、agent/turn 生命周期分发与失败隔离；`memory` / `personality` 只是向它注册的能力提供者，自己不订阅事件、不注册工具、不改 system prompt。
+
+## 三层架构定位（2026/10/23）
+
+在三层架构里，dafeiyu 只做 **UI 总代 + 全局 enable/disable**：能力注册表、状态、开关、设置入口聚合；具体配置仍由各 provider 自己的设置页拥有；底层读写与复用由 atom（例如 `.dsh` scoped store）承担。完整定义见 [capability-layers.md](capability-layers.md)。本文的契约（register/status/贡献/生命周期）是该架构的 L2/L3 接口，后续按 descriptor v2 增加 UI 元数据（label、description、settings.sectionId），不接管 provider 的配置 schema。
 
 ## 为什么需要组织者
 
