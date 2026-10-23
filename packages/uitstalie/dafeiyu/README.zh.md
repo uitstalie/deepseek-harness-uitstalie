@@ -21,6 +21,8 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+<a id="use-this-package"></a>
+
 ## 使用本包
 
 在挂载组织者的同一个 profile patch 里配置它的门：
@@ -63,6 +65,8 @@ const off = ctx.dafeiyu.register({
 | 组织者门 | `config.capabilities.<id>.enabled` | provider 存在，但不调用 `create()`，能力保持 `disabled` |
 | provider 配置 | provider 自己那一行 | 只由 provider 解释；组织者从不读取 |
 
+<a id="understand-the-implementation"></a>
+
 ## 理解实现
 
 `src/index.ts` 是 `Dafeiyu` 服务；`src/types.ts` 存放 provider、贡献、turn 与状态类型。服务为每个 provider 保留一条注册记录，内容包括 provider 声明、解析后的门、一个 `AbortController`、缓存的贡献、最近一次失败摘要，以及按 agent 保存的 disposer。
@@ -74,6 +78,8 @@ const off = ctx.dafeiyu.register({
 收到 `session/event` 中 `reason.kind === 'completed'` 的 `turn/end` 时，组织者用 `ctx.agents.get(session.id)` 取得 live agent，套用同样的 scope 过滤，并在同一 session 内串行调用各 `onTurnEnd`；不同 session 并行分发。取消、报错、blocked、max-token、interrupted 与 forked 的 turn 一律跳过。每个钩子失败都会被捕获、摘要并记为 `failed`，后续能力照常执行。
 
 卸载时先 dispose 各贡献，再执行保留的 agent 级 disposer，最后清空注册表。调用单个 `register()` 的 disposer 也走同一套卸载流程；两者都先 abort 注册的 `AbortController`，让在途的 `create()` 与钩子工作可以停止。
+
+<a id="model-experience"></a>
 
 ## 模型体验
 
@@ -91,6 +97,8 @@ const off = ctx.dafeiyu.register({
 
 自身没有影响。贡献稳定 prompt 段或工具 schema 的 provider 自己负责由此产生的前缀行为，组织者从不改写已有贡献。
 
+<a id="known-limitations-and-deferred-work"></a>
+
 ## 已知限制与延期工作
 
 - **没有设置面或命令** — v1 只提供 `status()`；配置写在 profile patch 里，`/capabilities` 等到设置页一起做。
@@ -99,6 +107,8 @@ const off = ctx.dafeiyu.register({
 - **不追溯接线** — 组织者只监听 `agent/created`；能力注册时已经存在的 agent 不会收到它的贡献。
 - **同名冲突落到后注册的能力** — 两个能力注册同一个工具名或 prompt 段名时组织者不做仲裁；后注册的抛错并变为 `failed`，先注册的保留。
 - **dispose 按契约是同步的** — `CapabilityContribution.dispose` 返回 `void`；provider 若返回 promise，其拒绝只会被记录，没有调用方等待它。
+
+<a id="dev-note"></a>
 
 ### 开发备注
 

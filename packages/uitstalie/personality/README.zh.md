@@ -19,6 +19,8 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+<a id="use-this-package"></a>
+
 ## 使用本包
 
 在挂载组织者的同一个 web profile patch 层里、`dafeiyu` 行之后挂载提供者：
@@ -63,6 +65,8 @@ kind: "package-reference"
 
 一个 `ctx.fs.watch` 注册监听全局档案。变化发生时重读文件，更新每个存活 agent 的提示词段 getter 读取的缓存文本，并刷新后续 agent 启动时使用的预读文本；下一次组装无需重启 agent 就能看到新档案。工作区覆盖仍在该 agent 创建时读取，因此覆盖文件的修改需要新 agent 才可见。不支持 watch 的后端退化为这种按 agent 读取，并以 debug 级别记录原因；能力卸载时关闭 watcher。外部修改与 watcher 通知之间有一段短暂间隔，落在这个间隔里的组装仍可能看到旧文本。
 
+<a id="understand-the-implementation"></a>
+
 ## 理解实现
 
 提供者是函数插件：`src/index.ts` 导出 `name`、`inject`、`Config` 与 `apply`，并只注册一个 `contractVersion: 1`、`id: 'personality'` 的能力。
@@ -75,6 +79,8 @@ kind: "package-reference"
 - `src/tools.ts` 构造 `personality_learn`。它校验 kind、要求 evidence 指向一个正的会话事件 seq，并用内存里的每会话用量记录执行 `autoLearn` 预算。`understanding`、`style`、`preference` 条目以 `source: 'auto'` 写入；`identity` 按手改说明拒绝，预算耗尽时报告剩余条数与字节数。拒绝是规范的返回值，不是工具错误。
 
 写入带版本守卫。`writePersonalityEntry` 先读目标文件与其版本，拼出下一版文本，再带 `expected: version` 写入（store 映射为 `replaceIfVersion`，全局文件直接使用文件系统的写入意图）。冲突写入表现为 `FS_STALE_VERSION`；写入会重读一次并重试，第二次冲突直接抛出，旧文件保持不变。写入成功后，`appendHistory` 在同一个目录的 `PERSONALITY.history.jsonl` 追加一行 JSON，记录修订号、时间、来源、会话、按 id 的 diff 与完整托管区块。历史追加失败只记录日志，不会把条目写入报告为失败。`revertGlobalPersonality` 保留当前手写边框，走同一套带一次 stale 重试的版本守卫写入；它的历史行记录 `source: 'user'` 与恢复的按 id diff，因此回退本身和普通写入一样可审阅。
+
+<a id="model-experience"></a>
 
 ## 模型体验
 
@@ -120,6 +126,8 @@ How to respond:
 
 在工具定义不变时前缀稳定。成功写入会改变提示词段的文本，因此下一次请求的前缀缓存失效；工具结果本身是追加在可复用前缀之后的普通结果。
 
+<a id="known-limitations-and-deferred-work"></a>
+
 ## 已知限制与延期工作
 
 - **identity 提案等设置页** — `personality_learn` 拒绝 `identity.*`；还没有提案队列或设置页，identity 修改仍需手改。
@@ -129,6 +137,8 @@ How to respond:
 - **`maxBytes` 按文件计算** — 每个文件的托管正文都受预算约束并在读取时复查，但全局加覆盖合并后的文本可能接近两倍预算。
 - **历史只追加、无上限** — 每次写入都会加一行 JSON，内含完整托管区块；还没有轮转或保留上限。回退只恢复一条已保存的区块，且只读取全局历史。
 - **文件非法时该段为空** — 解析失败、覆盖文件出现不允许的 kind，或手改正文超出预算，都会记录警告并且不产生提示词文本，直到文件修好。watch 刷新失败时保留上一版文本，而不是清空该段。
+
+<a id="dev-note"></a>
 
 ### 开发备注
 

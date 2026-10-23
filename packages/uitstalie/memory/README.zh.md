@@ -19,6 +19,8 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+<a id="use-this-package"></a>
+
 ## 使用本包
 
 在挂载组织者的同一个 web profile patch 层里、`dafeiyu` 行之后挂载提供者：
@@ -49,6 +51,8 @@ kind: "package-reference"
 窗口阈值必须从 `detail` 到 `brief` 再到 `forget` 严格递增；摘要 provider 与 model 必须同时设置或同时为空；违反任一条的加载直接失败，而不是静默降级。提供者对六个服务是硬组合依赖：`ctx.dafeiyu`（组织者）、`ctx.dshStore`（`.dsh` 存储）、`ctx.fs`（其背后的文件系统）、`ctx.sessionQuery`（搜索、摘要与 turn 读取用的会话历史）、`ctx.jobs`（后台 job 注册表，且需有服务该 agent 的 controller），以及 `ctx.llm`（摘要模型调用）。组合里缺少任一个时本行保持 inactive。
 
 组织者接线的贡献是 `scope: 'root'`：root agent 得到提示词段与三个工具，子 agent 两者都没有。哪些 agent 被接线、哪些完成的 turn 进入 `onTurnEnd`，由组织者而不是本包决定。
+
+<a id="understand-the-implementation"></a>
 
 ## 理解实现
 
@@ -83,6 +87,8 @@ snapshot 是文件面向模型的持久视图。每次 `memory_write` 成功后�
 在 MEMORY.md 已有会话或条目的工作区里恢复的 root agent，会在组织者的 `onAgentCreated` 钩子里收到一条 snapshot。该钩子跳过全新会话：此时 surface 仍为空，追加的 user 消息会排在系统提示词之前。全新会话由第一次成功写入送出 snapshot。提供者不保存 seq 状态，因此进程重启后仅凭 live surface 重建替换目标。文本有预算：`MEMORY_SNAPSHOT_MAX_BYTES`（4 KiB）覆盖标题、`Window:` 清单、跨会话索引与结尾提示；超出预算时从最旧的索引行开始丢弃，清单保持原位。
 
 条目 kind 注册表（`decision`、`files`、`open`、`preference`）是 `memory-file.ts` 里的数据。解析器、渲染器、工具 schema 与诊断都读它；文件或工具调用里出现未知 kind 时，错误会带上可用列表。
+
+<a id="model-experience"></a>
 
 ## 模型体验
 
@@ -162,6 +168,8 @@ brief checkpoint 用最多 160 字符加 `- [kind]` 前缀替换原始 turn；�
 
 追加在尾部，不让更早的缓存前缀失效；其后的 snapshot 替换会保留该 notice 节点。
 
+<a id="known-limitations-and-deferred-work"></a>
+
 ## 已知限制与延期工作
 
 - **`memory_read` 一次只读一个 turn** — `before` 与 `after` 各最多向相邻事件扩展十条，且没有跨 turn 区间参数；读取更长跨度需要按 turn 分多次调用。
@@ -176,6 +184,8 @@ brief checkpoint 用最多 160 字符加 `- [kind]` 前缀替换原始 turn；�
 - **搜索与读取都只覆盖本工作区** — `memory_search` 的会话半边按 `cwd` 完全相等过滤，`memory_read` 拒绝 header `cwd` 与调用者不一致的目标，记忆半边读本工作区自己的文件，因此都到不了其他工作区的历史。
 - **手改托管区块会明确报错** — 解析器拒绝格式错误的标题或条目行而不是猜测；`memory_search` 记录解析失败并保留会话半边，写入则把错误报给调用方。
 - **多进程写入只重试一次** — 两个进程写同一工作区会竞争；失败方重读并重试一次，随后带旧文件原样失败。没有跨进程锁。
+
+<a id="dev-note"></a>
 
 ### 开发备注
 
