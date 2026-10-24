@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-jira-agent",
-  "description": "The jira ledger's model surface: the jira_issue, jira_list and jira_kb tool runners and schemas, the caller guard, the /jira command and the bundled skills",
+  "description": "The jira ledger's model surface: the jira capability provider registering the jira_issue, jira_list and jira_kb tools, the write guard, the /jira command, the bundled skills and the turn-end settle",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -20,8 +20,24 @@
     "skills"
   ],
   "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
   "dependencies": {
-    "@deepseek-ai/dsh-jira-core": "workspace:*"
+    "@deepseek-ai/dsh-jira-core": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-agent": "workspace:*",
+    "@deepseek-ai/dsh-commands": "workspace:*",
+    "@deepseek-ai/dsh-dafeiyu": "workspace:*",
+    "@deepseek-ai/dsh-jira-service": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

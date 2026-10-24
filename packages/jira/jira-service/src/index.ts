@@ -103,12 +103,18 @@ export class JiraService extends Service implements JiraServiceApi {
   /** The resolved ledger root, or the empty string when it could not be resolved. */
   readonly root: string
 
-  readonly #config: Readonly<Config>
-  #opened: Promise<Opened> | undefined
-  #machineId = 'local'
-  #queue: ReturnType<typeof push.createPushQueue> | undefined
-  #lastSync: SyncRecord | null = null
-  readonly #listeners = new Set<(change: ChangeNotice) => void>()
+  /**
+   * Cordis hands a service to callers through a tracing proxy that overlays `ctx`, so a service
+   * method runs with that proxy as `this`. ES `#private` fields brand-check the receiver and fail
+   * there; these members are TypeScript-private instead, which is why the class can be a service
+   * at all. Their one external reader is the constructor's own teardown closure.
+   */
+  private readonly config: Readonly<Config>
+  private opened: Promise<Opened> | undefined
+  private resolvedMachineId = 'local'
+  private queue: ReturnType<typeof push.createPushQueue> | undefined
+  private lastSync: SyncRecord | null = null
+  private readonly listeners = new Set<(change: ChangeNotice) => void>()
 
   /**
    * @param ctx - the context the service is registered on.
@@ -116,7 +122,7 @@ export class JiraService extends Service implements JiraServiceApi {
    */
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'jira')
-    this.#config = config
+    this.config = config
     const configured = coreConfig.configuredRootOf(config.root)
     const resolved = coreConfig.resolveStoreRoot({
       ...(configured === undefined ? {} : { configured }),
@@ -126,14 +132,14 @@ export class JiraService extends Service implements JiraServiceApi {
     // The queue is created lazily, so the disposer reads it at teardown rather than capturing a
     // value that does not exist yet.
     ctx.effect(() => () => {
-      this.#queue?.dispose()
-      this.#listeners.clear()
+      this.queue?.dispose()
+      this.listeners.clear()
     })
   }
 
   /** This machine's identity in the ledger's counter blocks. */
   get machineId(): string {
-    return this.#machineId
+    return this.resolvedMachineId
   }
 
   /**
@@ -141,7 +147,7 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns the root, identity, push switch, last push outcome and whether a push is armed.
    */
   status(): JiraStatus {
-    return statusOf(this.root, this.#machineId, this.#config.push?.enabled === true, this.#lastSync, this.#queue?.isPending() === true)
+    return statusOf(this.root, this.resolvedMachineId, this.config.push?.enabled === true, this.lastSync, this.queue?.isPending() === true)
   }
 
   /**
@@ -150,7 +156,7 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns the grouped list, or the error that prevented reading it.
    */
   async list(query: ListQuery): Promise<JiraResult<IssueList>> {
-    const opened = await this.#open()
+    const opened = await this.open()
     if (!opened.store.ok) return opened.store
     const vocab = await coreStore.loadVocab(opened.store.value)
     if (!vocab.ok) return vocab
@@ -164,7 +170,7 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns the decoded issue, or `not-found`.
    */
   async get(key: IssueKey): Promise<JiraResult<Issue>> {
-    const opened = await this.#open()
+    const opened = await this.open()
     if (!opened.store.ok) return opened.store
     const decoded = await io.readIssue(opened.store.value.files, key)
     if (!decoded.ok) return decoded
@@ -185,7 +191,7 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns the report, or the error that prevented reading the store.
    */
   async doctor(at?: Timestamp): Promise<JiraResult<DoctorReport>> {
-    const opened = await this.#open()
+    const opened = await this.open()
     if (!opened.store.ok) return opened.store
     const snapshot = await inspect.readSnapshot(opened.root)
     return result.ok(doctor.checkStore(snapshot, at))
@@ -198,7 +204,7 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns the hits with their `file:line`, or the error that prevented searching.
    */
   async searchKnowledge(query: string, topK?: number): Promise<JiraResult<KbSearch>> {
-    const opened = await this.#open()
+    const opened = await this.open()
     if (!opened.store.ok) return opened.store
     return kbstore.searchKnowledgeIn(opened.store.value, query, topK)
   }
@@ -211,7 +217,7 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns the created issue and its commit.
    */
   async create(project: string, input: NewIssueInput, actor: Actor): Promise<JiraResult<Created>> {
-    const opened = await this.#open()
+    const opened = await this.open()
     if (!opened.store.ok) return opened.store
     const created = await coreStore.createInStore(opened.store.value, project, actor, input)
     if (created.ok) this.notifyWrite(created.value.key)
@@ -234,7 +240,7 @@ export class JiraService extends Service implements JiraServiceApi {
     actor: Actor,
     options?: TransactOptions,
   ): Promise<JiraResult<Transaction>> {
-    const opened = await this.#open()
+    const opened = await this.open()
     if (!opened.store.ok) return opened.store
     const done = await coreStore.transact(opened.store.value, key, actor, mutate, what, options)
     if (done.ok) this.notifyWrite(key)
@@ -248,9 +254,9 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns the written entry and its commit.
    */
   async kbCreate(input: NewKnowledge, actor: Actor): Promise<JiraResult<WrittenKnowledge>> {
-    const opened = await this.#open()
+    const opened = await this.open()
     if (!opened.store.ok) return opened.store
-    const origin = kbstore.originFromIdentity(actor.by, this.#machineId)
+    const origin = kbstore.originFromIdentity(actor.by, this.resolvedMachineId)
     const written = await kbstore.createKnowledge(opened.store.value, actor, origin, input)
     if (written.ok) this.notifyWrite(written.value.entry.key)
     return written
@@ -264,9 +270,9 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns the written entry and its commit.
    */
   async kbUpdate(key: KnowledgeKey, patch: KnowledgePatch, actor: Actor): Promise<JiraResult<WrittenKnowledge>> {
-    const opened = await this.#open()
+    const opened = await this.open()
     if (!opened.store.ok) return opened.store
-    const origin = kbstore.originFromIdentity(actor.by, this.#machineId)
+    const origin = kbstore.originFromIdentity(actor.by, this.resolvedMachineId)
     const written = await kbstore.updateKnowledge(opened.store.value, key, actor, origin, patch)
     if (written.ok) this.notifyWrite(key)
     return written
@@ -277,12 +283,12 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns what the flush did, or the error that stopped it.
    */
   async sync(): Promise<JiraResult<PushOutcome>> {
-    const opened = await this.#open()
+    const opened = await this.open()
     if (opened.queue === undefined) return result.err(errors.ioFailed('the ledger root could not be resolved'))
     const outcome = await opened.queue.flushNow({ settle: true })
     if (outcome.kind === 'failed') return result.err(outcome.error)
     // The flush settled and pushed already; re-arming the queue here would push again forever.
-    this.#emit('sync')
+    this.emitChange('sync')
     return result.ok(outcome)
   }
 
@@ -292,12 +298,12 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns the ledger root-relative paths it rewrote, or the error that stopped it.
    */
   async settle(): Promise<JiraResult<readonly string[]>> {
-    const opened = await this.#open()
+    const opened = await this.open()
     if (!opened.store.ok) return opened.store
     const settled = await generateStore.regenerateAndCommit(opened.store.value, now())
     if (!settled.ok) return settled
-    this.#emit('settle')
-    if (this.#config.push?.enabled === true) opened.queue?.schedule()
+    this.emitChange('settle')
+    if (this.config.push?.enabled === true) opened.queue?.schedule()
     return settled
   }
 
@@ -307,11 +313,10 @@ export class JiraService extends Service implements JiraServiceApi {
    * @param listener - called after each commit.
    * @returns the unsubscribe function.
    */
-  on(event: 'changed', listener: (change: ChangeNotice) => void): () => void {
-    if (event !== 'changed') return () => {}
-    this.#listeners.add(listener)
+  on(_event: 'changed', listener: (change: ChangeNotice) => void): () => void {
+    this.listeners.add(listener)
     return () => {
-      this.#listeners.delete(listener)
+      this.listeners.delete(listener)
     }
   }
 
@@ -321,7 +326,7 @@ export class JiraService extends Service implements JiraServiceApi {
    * @returns the store, or the error that prevented resolving its root.
    */
   async store(): Promise<JiraResult<Store>> {
-    return (await this.#open()).store
+    return (await this.open()).store
   }
 
   /**
@@ -330,8 +335,8 @@ export class JiraService extends Service implements JiraServiceApi {
    * @param key - the affected key, when the write concerned one.
    */
   notifyWrite(key?: string): void {
-    this.#emit('write', key)
-    if (this.#config.push?.enabled === true) this.#queue?.schedule()
+    this.emitChange('write', key)
+    if (this.config.push?.enabled === true) this.queue?.schedule()
   }
 
   /**
@@ -340,13 +345,13 @@ export class JiraService extends Service implements JiraServiceApi {
    * @param kind - what produced the change.
    * @param key - the affected key, when the change concerns one.
    */
-  #emit(kind: ChangeNotice['kind'], key?: string): void {
+  private emitChange(kind: ChangeNotice['kind'], key?: string): void {
     const change: ChangeNotice = Object.freeze({
       kind,
       ...(key === undefined ? {} : { key }),
       at: now(),
     })
-    for (const listener of this.#listeners) {
+    for (const listener of this.listeners) {
       try {
         listener(change)
       } catch {
@@ -356,46 +361,46 @@ export class JiraService extends Service implements JiraServiceApi {
   }
 
   /** Open the ledger once: resolve the root, read the machine identity, create the store and queue. */
-  #open = async (): Promise<Opened> => {
-    this.#opened ??= this.#openOnce()
-    return this.#opened
+  private readonly open = async (): Promise<Opened> => {
+    this.opened ??= this.openOnce()
+    return this.opened
   }
 
-  #openOnce = async (): Promise<Opened> => {
-    const configured = coreConfig.configuredRootOf(this.#config.root)
+  private readonly openOnce = async (): Promise<Opened> => {
+    const configured = coreConfig.configuredRootOf(this.config.root)
     const resolved = coreConfig.resolveStoreRoot({
       ...(configured === undefined ? {} : { configured }),
       env: process.env,
     })
-    if (!resolved.ok) return Object.freeze({ root: '', machineId: this.#machineId, store: resolved })
+    if (!resolved.ok) return Object.freeze({ root: '', machineId: this.resolvedMachineId, store: resolved })
 
     const machineId = await machine.resolveMachineId({
-      ...(this.#config.machine_id === undefined ? {} : { configured: this.#config.machine_id }),
+      ...(this.config.machine_id === undefined ? {} : { configured: this.config.machine_id }),
       env: process.env,
       fallbackRoot: resolved.value,
     })
-    this.#machineId = machineId.ok ? machineId.value.id : 'local'
+    this.resolvedMachineId = machineId.ok ? machineId.value.id : 'local'
 
     // Joining the shared repository is local: set the origin, never clone or fetch here.
-    if (this.#config.remote !== undefined) await provision.ensureRemote(resolved.value, this.#config.remote)
+    if (this.config.remote !== undefined) await provision.ensureRemote(resolved.value, this.config.remote)
 
     const store = coreStore.createStore({
       root: resolved.value,
-      machineId: this.#machineId,
-      host: this.#config.host ?? system.system.hostName(process.env),
+      machineId: this.resolvedMachineId,
+      host: this.config.host ?? system.system.hostName(process.env),
     })
     const queue = push.createPushQueue({
       root: resolved.value,
-      ...(this.#config.push?.enabled === undefined ? {} : { enabled: this.#config.push.enabled }),
-      ...(this.#config.push?.debounce_ms === undefined ? {} : { debounceMs: this.#config.push.debounce_ms }),
+      ...(this.config.push?.enabled === undefined ? {} : { enabled: this.config.push.enabled }),
+      ...(this.config.push?.debounce_ms === undefined ? {} : { debounceMs: this.config.push.debounce_ms }),
       pull: async () => rebase.pullRebase(store, { by: PULL_IDENTITY, at: now() }),
       settle: async () => generateStore.regenerateAndCommit(store, now()),
       onOutcome: (outcome) => {
-        this.#lastSync = recordOf(outcome)
+        this.lastSync = recordOf(outcome)
       },
     })
-    this.#queue = queue
-    return Object.freeze({ root: resolved.value, machineId: this.#machineId, store: result.ok(store), queue })
+    this.queue = queue
+    return Object.freeze({ root: resolved.value, machineId: this.resolvedMachineId, store: result.ok(store), queue })
   }
 }
 

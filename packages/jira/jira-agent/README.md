@@ -1,37 +1,43 @@
 # @deepseek-ai/dsh-jira-agent
 
-The jira ledger's model surface, moved here from the standalone plugin package: the three resident tools' parameter schemas, output schemas and runners (`jira_issue` with its ten verbs, `jira_list`, `jira_kb`), the caller adapter that decides who is asking, the `/jira` read-only command, the three bundled skills and the session-close-out bookkeeping.
+The jira ledger's model surface: a dafeiyu capability provider that registers the three resident tools (`jira_issue` with its ten verbs, `jira_list`, `jira_kb`), the `[store] jira · …` awareness line, the monotonic write guard, the `/jira` command, the three bundled skills and the turn-end settle.
 
-The runners work on an opened store; `jira-service` owns that store and hands it over. Registration — tools, command, skills, write guard, awareness line, settle effect — is the Cordis plugin this package does not have yet; see [Known Limitations](#known-limitations-and-deferred-work).
+The plugin injects the ledger service (`ctx.jira`), the tool registry and the organizer (`ctx.dafeiyu`). The command and skill registries are optional: a composition without one keeps the tools and loses only that surface. The ledger's location, machine identity and push queue belong to the `jira-service` row, so this row has no configuration of its own.
 
 ## Model Experience
 
-The tools are resident: their descriptions and schemas are in the request on every turn, which is why the schemas stay small and the results render as text. Results are JSON on the wire (snake_case) and camelCase entities inside; the envelope converts once at the boundary. A write is refused with an ordinary tool result when the session may not write, and the guard refuses it earlier so no handler ever runs.
+The three tools are resident in the request on every turn of a **root** agent: their descriptions and schemas stay small and their results render as text. A child agent gets neither the tools nor the awareness line — `scope: 'root'` keeps a delegated session out of the ledger surface — and the write guard still refuses a delegated caller's write if a call reaches one.
 
-The awareness line (`[store] jira · …`) is a `PromptContext`, not a prompt section: its counts change, and a changing section would invalidate the KV cache on every change. An empty ledger injects nothing.
+The awareness section (`jira:store`, order 700) is one line: the store's name, how many projects, knowledge entries and open issues it holds, plus the count of machine-anchored read-only projects. It renders nothing for an empty ledger, and it is recomputed only when the ledger commits (`changed`), never per model step.
+
+A write is refused with an ordinary tool result when the session may not write, and the guard denies it earlier so no handler runs. `/jira` is read-only except for `new` and `sync`; `sync` flushes the service's own queue rather than starting a second one.
+
+Every completed turn of a writable root agent settles the ledger: the derived files are regenerated and committed, then the session close-out records the commits the session made on the issues they mention. A successful settle schedules a push only when the service row enabled the push switch.
 
 ## Contents
 
 | Module | Owns |
 |---|---|
-| `toolIssue.ts` | `jira_issue` — ten verbs, read/write action split, timeouts, concurrency safety |
-| `toolList.ts` | `jira_list` — the filtered list the model reads |
-| `toolKb.ts` | `jira_kb` — knowledge get/search/create/update |
-| `envelope.ts` | the wire/entity conversion and the frozen `me` identity |
-| `caller.ts` | who is asking: agent or human, read-only session, subagent |
-| `command.ts` | `/jira` — the read-only status/list/board/show/tags surface |
-| `skills.ts` | the three bundled skills and their registration |
-| `sessionRecord.ts` | the close-out scan: `sessions/<id>.md`, per-issue comments, push-failure record |
-| `host.ts` | the host shapes the runners were written against |
-
-`deferred/` keeps the previous registration module and the tests that drove it (`index.ts`, `index.test.ts`, `schema.test.ts`, `bundle.test.ts`) plus the CLI/tool parity test `surfaces.test.ts`. They are outside `src` on purpose: they encode the old duck-typed host, and the next pass rewrites them against the typed tool registry rather than porting them.
+| `index.ts` | the plugin entry: `name` / `inject` / `Config` / `apply`, and the controlled re-exports |
+| `contribution.ts` | the dafeiyu capability: scope, tools, sections, agent hook, turn-end settle, dispose |
+| `tools.ts` | the three registry definitions and the per-call store/caller resolution |
+| `awareness.ts` | the `jira:store` prompt section and its `changed`-driven refresh |
+| `wiring.ts` | the write guard, the `/jira` command registration and the skill registration |
+| `toolIssue.ts` / `toolList.ts` / `toolKb.ts` | the tool schemas, descriptions and runners |
+| `envelope.ts` / `caller.ts` | the wire/entity conversion, the identity tuple, who is asking |
+| `command.ts` / `skills.ts` | the `/jira` subcommands and the three bundled skills |
+| `sessionRecord.ts` | the close-out scan, the push-failure record and the per-apply session recorder |
+| `testing/host.ts` | the real-composition harness the wiring suites mount |
 
 ## Tests
 
-`pnpm test` runs `node --test "src/**/*.test.ts"` — the caller, command and skills suites, moved unchanged from the standalone package and still on the Node test runner. The wiring suites are the deferred ones above.
+`pnpm test` runs `node --test "src/**/*.test.ts"`. The wiring suites (`index`, `schema`, `surfaces`, `messages`) mount the shipped services through a real Cordis context — system prompt, tools, dafeiyu, commands, skills and `jira-service` — so they exercise the real registrations rather than a hand-built host.
+
+The suites resolve the workspace packages through their package roots, which is the built `lib/` entry. Run `pnpm run build:artifacts` before them in a source checkout.
 
 ## Known Limitations and Deferred Work
 
-- **No plugin entry yet.** `src/index.ts` re-exports the surfaces; it exports no `apply`. Until it does, the `jira-agent` row in the jira bundle stays disabled, and a profile that installs the bundle gets the ledger service but no tools.
-- **Every module imports `jira-core` by deep path** (`@deepseek-ai/dsh-jira-core/store.ts`). The contract wants the agent to see types and the service only; moving the runners onto `ctx.jira` is what removes those imports, and it is the same change that adds the plugin entry.
-- The tool definitions still carry JSON Schema records built by `objectSchema`, not the registry's schemastery/zod shapes; the registration rewrite is where that conversion happens.
+- **No browser surface yet.** `ui-jira` exports the settings-section contract only; the board, issue and knowledge views are unwritten, and its bundle row stays disabled.
+- **The runner modules still import `jira-core` by deep path.** The phase-1 bridge opens the store through `ctx.jira.store()`; moving the runners onto the service's own read/write methods is the phase-2 follow-up.
+- **The CLI-parity assertion is split.** The standalone package compared the tool verbs with the CLI's command names in one test. `jira-agent` may not depend on `jira-cli`, so the CLI keeps its own table/handler/usage tests and the mapping between the two surfaces is unguarded.
+- **The awareness line no longer names the workspace binding.** The contract's section names the store and its counts; the workspace→project phrase was a context source in the standalone plugin.

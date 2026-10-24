@@ -31,9 +31,9 @@ before(async () => {
   await runGit(root, ['config', '--local', 'user.email', 'tester@example.invalid'])
   options = Object.freeze({
     root: () => ({ ok: true, value: root } as const),
-    machineId: 'command-machine',
+    machineId: () => 'command-machine',
     host: 'command-host',
-    identity: 'human:tester',
+    identity: () => 'human:tester',
     now: () => '2026-10-15T12:00:00Z',
   })
 })
@@ -158,24 +158,20 @@ describe('/jira: the read-only pair decision 83 names', () => {
   })
 })
 
-describe('/jira: sync goes through the plugin queue (decision 166)', () => {
-  it('asks the queue to settle, which is what makes the push safe', async () => {
-    // A bare `createPushQueue` here meant `/jira sync` neither rebased nor refreshed the derived files,
-    // and it did not cancel the debounce the last write had armed.
-    let seen: unknown
-    const queue = {
-      schedule: () => undefined,
-      flushNow: async (options?: { settle?: boolean }) => {
-        seen = options
-        return Object.freeze({ kind: 'nothing-to-do', reason: 'the store has no remote' })
+describe('/jira: sync goes through the service\'s own queue (decision 166)', () => {
+  it('asks the ledger service to flush, which is what makes the push safe', async () => {
+    // A second queue here meant `/jira sync` neither rebased nor refreshed the derived files, and
+    // it did not cancel the debounce the last write had armed. The service owns the one queue.
+    let asked = 0
+    const result = await runJiraCommand('sync', {
+      ...options,
+      sync: async () => {
+        asked += 1
+        return Object.freeze({ ok: true, value: Object.freeze({ kind: 'nothing-to-do', reason: 'the store has no remote' }) } as const)
       },
-      isPending: () => false,
-      failures: () => 0,
-      dispose: () => undefined,
-    }
-    const result = await runJiraCommand('sync', { ...options, queue })
+    })
     assert.equal(result.kind, 'success', result.text)
-    assert.deepEqual(seen, { settle: true }, 'the flush was asked to settle')
+    assert.equal(asked, 1, 'the flush went through the service')
     assert.match(result.text, /推送：/u)
   })
 })
