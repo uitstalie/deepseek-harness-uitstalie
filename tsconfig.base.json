@@ -378,6 +378,11 @@
       // END uitstalie-k3
       // uitstalie-k3, 2026/09/30, task14, /types 子路径走手写别名：生成器只管根与 invariant；该模块声明 Remote 错误码，必须与消费方解析到同一个模块
       "@deepseek-ai/dsh-tool-dsh-store/types": ["./packages/uitstalie/tool-dsh-store/src/types.ts"],
+      // BEGIN uitstalie-k3, 2026/10/24, DH-13, 迁移后的 jira 包需要按包深路径解析（jira-cli 直接用 jira-core 的原子模块；生成器只产根别名）
+      "@deepseek-ai/dsh-jira-core/*": ["./packages/jira/jira-core/src/*"],
+      // client 包名（dsh-client-ui-*）与目录名 ui-jira 不吻合，生成器无法推断，手写根别名（同 ui-models-dev 的先例）
+      "@deepseek-ai/dsh-client-ui-jira": ["./packages/jira/ui-jira/src"],
+      // END uitstalie-k3
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],
@@ -432,6 +437,11 @@
       "@deepseek-ai/dsh-hooks-claude-code": ["./packages/experimental/hooks-claude-code/src"],
       "@deepseek-ai/dsh-hooks-codex": ["./packages/experimental/hooks-codex/src"],
       "@deepseek-ai/dsh-http-proxy": ["./packages/util/http-proxy/src"],
+      "@deepseek-ai/dsh-jira-agent": ["./packages/jira/jira-agent/src"],
+      "@deepseek-ai/dsh-jira-app": ["./packages/bundle/jira-app/src"],
+      "@deepseek-ai/dsh-jira-cli": ["./packages/jira/jira-cli/src"],
+      "@deepseek-ai/dsh-jira-core": ["./packages/jira/jira-core/src"],
+      "@deepseek-ai/dsh-jira-service": ["./packages/jira/jira-service/src"],
       "@deepseek-ai/dsh-jobs": ["./packages/jobs/jobs/src"],
       "@deepseek-ai/dsh-jobs-local": ["./packages/jobs/jobs-local/src"],
       "@deepseek-ai/dsh-launch-environment": ["./packages/util/launch-environment/src"],

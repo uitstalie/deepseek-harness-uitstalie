@@ -1,0 +1,33 @@
+{
+  "name": "@deepseek-ai/dsh-jira-cli",
+  "description": "The jira ledger's human surface: the `jira` command with its 23 subcommands, driving jira-core directly with no host context",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "jira": "lib/index.js"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/**/*.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/dsh-jira-core": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test \"src/**/*.test.ts\""
+  }
+}
