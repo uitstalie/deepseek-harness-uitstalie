@@ -1,0 +1,11 @@
+# Test-only composition: boot the ledger service alone over a temporary store root.
+#
+# The spec substitutes the root, then hands this file to the real Loader. Nothing else is mounted:
+# `jira-service` may only depend on Cordis and `jira-core`, and this fixture is where that claim is
+# executed rather than asserted.
+- name: '@deepseek-ai/dsh-jira-service'
+  config:
+    root: '{{ledgerRoot}}'
+    machine_id: 'a1b2c3d4'
+    push:
+      enabled: false

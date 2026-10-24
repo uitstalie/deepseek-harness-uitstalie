@@ -27,8 +27,12 @@ Two methods are the phase-1 bridge to the agent's existing tool runners: `store(
 
 The vocabulary (statuses, transitions, priorities, types, resolutions) is **not** configuration here: it lives in the ledger's `config.md`, where git versions it.
 
+## Tests
+
+`tests/composition.spec.ts` boots the service through the real Loader: a test-only [`tests/fixtures/cordis.yml`](tests/fixtures/cordis.yml) inserts this one row over a temporary ledger, and the spec asserts that `ctx.jira` opens it, reports the resolved root and identity, and reads an issue and the board. Run it with `pnpm exec vitest run packages/jira/jira-service`.
+
 ## Known Limitations and Deferred Work
 
-- No unit test yet: the class needs a Cordis context and a git store, and the behaviour it wraps is already covered by `jira-core`'s suites. An integration test through a test-only `cordis.yml` belongs with the bundle wiring.
-- `store()`, `notifyWrite()` and `pushQueue()` are the bridge described above, not part of the long-term contract.
+- `store()`, `notifyWrite()` and `pushQueue()` are the phase-1 bridge described above, not part of the long-term contract.
 - `.volatile()` (live reconfiguration from the settings page) is not declared on the config schema.
+- The composition test covers the read surface; the write methods, `sync` and `settle` are exercised through `jira-core`'s suites and the agent's wiring suites.
