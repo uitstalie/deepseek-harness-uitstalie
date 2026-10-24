@@ -1,7 +1,8 @@
 # uitstalie 分支组合层（DH-1 / DH-5）：挂在 dsh-web-app 的 dsh.bundle.patch 列表末尾。
 #
-# 宿主侧：`.dsh` 基础接口（tool-dsh-store）与常驻上下文切面
-# （agent-instructions-plus，原生 instruction loader 仍按自己的行运行）。
+# 宿主侧：`.dsh` 基础接口（tool-dsh-store）、常驻上下文切面
+# （agent-instructions-plus，原生 instruction loader 仍按自己的行运行），以及 jira 账本
+# （jira-service 提供服务，jira-agent 把工具/命令/技能/守卫/收尾接到 dafeiyu）。
 # 浏览器侧：models-dev 设置页、rules 按钮、common-view overlay。
 - insert:
     - id: dafeiyu
@@ -12,6 +13,13 @@
       name: '@deepseek-ai/dsh-personality'
     - id: tool-dsh-store
       name: '@deepseek-ai/dsh-tool-dsh-store'
+    - id: jira-service
+      name: '@deepseek-ai/dsh-jira-service'
+      config:
+        push:
+          enabled: false
+    - id: jira-agent
+      name: '@deepseek-ai/dsh-jira-agent'
     - id: agent-instructions-plus
       name: '@deepseek-ai/dsh-agent-instructions-plus'
     - id: ui-models-dev

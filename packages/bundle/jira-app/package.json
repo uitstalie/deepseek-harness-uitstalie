@@ -26,6 +26,8 @@
     }
   },
   "dependencies": {
+    "@deepseek-ai/dsh-client-ui-jira": "workspace:*",
+    "@deepseek-ai/dsh-jira-agent": "workspace:*",
     "@deepseek-ai/dsh-jira-service": "workspace:*"
   }
 }

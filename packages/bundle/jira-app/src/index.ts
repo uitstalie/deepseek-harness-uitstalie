@@ -9,7 +9,7 @@
 /** The rows this bundle inserts, in patch order. */
 export const JIRA_BUNDLE_ROWS = Object.freeze([
   Object.freeze({ id: 'jira-service', name: '@deepseek-ai/dsh-jira-service', enabled: true }),
-  Object.freeze({ id: 'jira-agent', name: '@deepseek-ai/dsh-jira-agent', enabled: false }),
+  Object.freeze({ id: 'jira-agent', name: '@deepseek-ai/dsh-jira-agent', enabled: true }),
   Object.freeze({ id: 'jira-ui', name: '@deepseek-ai/dsh-client-ui-jira', enabled: false }),
 ] as const)
 
