@@ -34,3 +34,18 @@ export * as rebase from './rebase.ts'
 export * as result from './result.ts'
 export * as store from './store.ts'
 export * as system from './system/index.ts'
+
+// The named types a consumer states in its own signatures. They are re-exported by name, not only
+// reachable through the namespaces above, because the type-graph generator resolves a package
+// reference by looking for that name among the package root's exports.
+export type { DoctorReport } from './doctor.ts'
+export type { Identity, Issue, IssueKey, LinkType, Timestamp } from './entity.ts'
+export type { JiraError } from './errors.ts'
+export type { KnowledgeEntry, KnowledgeKey } from './kb.ts'
+export type { KbSearch } from './kbsearch.ts'
+export type { KnowledgePatch, NewKnowledge, WrittenKnowledge } from './kbstore.ts'
+export type { ListQuery, ListResult } from './list.ts'
+export type { NewIssueInput } from './mutate.ts'
+export type { PushOutcome, PushQueue } from './push.ts'
+export type { Result } from './result.ts'
+export type { Actor, Created, Mutation, Store, Transaction, TransactOptions } from './store.ts'

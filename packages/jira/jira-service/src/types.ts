@@ -9,70 +9,39 @@
  * @module @deepseek-ai/dsh-jira-service/types
  */
 
-import type { doctor, entities, errors, kb, kbsearch, kbstore, list, mutate, push, result, store } from '@deepseek-ai/dsh-jira-core'
+import type { Actor, Created, DoctorReport, Identity, Issue, IssueKey, JiraError, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, ListResult, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Result, Store, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from '@deepseek-ai/dsh-jira-core'
+
+export type {
+  Actor,
+  Created,
+  DoctorReport,
+  Identity,
+  Issue,
+  IssueKey,
+  JiraError,
+  KbSearch,
+  KnowledgeKey,
+  KnowledgePatch,
+  ListQuery,
+  Mutation,
+  NewIssueInput,
+  NewKnowledge,
+  PushOutcome,
+  Store,
+  Timestamp,
+  Transaction,
+  TransactOptions,
+  WrittenKnowledge,
+}
 
 /** A ledger operation's outcome: a value, or the failure to produce one. */
-export type JiraResult<T> = result.Result<T, errors.JiraError>
-
-/** The opened ledger: root paths, identity and the vocabulary it loaded. */
-export type Store = store.Store
-
-/** Who is writing, for the audit fields and for the lock owner. */
-export type Actor = store.Actor
-
-/** One issue mutation applied inside the write lock. */
-export type Mutation = store.Mutation
-
-/** What a completed write transaction produced: the issue and the commit it made. */
-export type Transaction = store.Transaction
-
-/** Compare-and-set and identity options a write may carry. */
-export type TransactOptions = store.TransactOptions
-
-/** A freshly created issue plus the commit that recorded it. */
-export type Created = store.Created
-
-/** A branded issue key, `DH-13`. */
-export type IssueKey = entities.IssueKey
-
-/** A UTC second-precision timestamp. */
-export type Timestamp = entities.Timestamp
-
-/** One decoded issue. */
-export type Issue = entities.Issue
-
-/** The filter a list or a board is built with. */
-export type ListQuery = list.ListQuery
+export type JiraResult<T> = Result<T, JiraError>
 
 /** Issues grouped by status, with the counts the renderers print. */
-export type IssueList = list.ListResult
+export type IssueList = ListResult
 
 /** The board is the list's grouping, named for the surface that shows it. */
-export type Board = list.ListResult
-
-/** The consistency report the doctor produces. */
-export type DoctorReport = doctor.DoctorReport
-
-/** Hits for a knowledge search, each carrying its `file:line`. */
-export type KbSearch = kbsearch.KbSearch
-
-/** The draft a new issue is created from. */
-export type NewIssueInput = mutate.NewIssueInput
-
-/** The draft a new knowledge entry is created from. */
-export type NewKnowledge = kbstore.NewKnowledge
-
-/** The fields an existing knowledge entry may change. */
-export type KnowledgePatch = kbstore.KnowledgePatch
-
-/** A knowledge entry as it was written, with its key and commit. */
-export type WrittenKnowledge = kbstore.WrittenKnowledge
-
-/** A knowledge key, `KB-7`. */
-export type KnowledgeKey = kb.KnowledgeKey
-
-/** What the push queue did with its last flush. */
-export type PushOutcome = push.PushOutcome
+export type Board = ListResult
 
 /** One ledger change, emitted after the commit that made it. */
 export interface ChangeNotice {
@@ -217,12 +186,6 @@ export interface JiraServiceApi {
    * @returns the store, or the error that prevented resolving its root.
    */
   store(): Promise<JiraResult<Store>>
-  /**
-   * The push queue this service owns, so `/jira sync` reuses it instead of racing a second queue.
-   * Part of the same phase-1 bridge.
-   * @returns the queue, or `undefined` until the ledger root has opened.
-   */
-  pushQueue(): push.PushQueue | undefined
   /**
    * Record that a write happened outside this service's own methods (the tool runners' writes),
    * so the `changed` event still fires and the push queue still arms.

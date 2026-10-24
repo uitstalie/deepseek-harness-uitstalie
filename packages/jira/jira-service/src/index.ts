@@ -30,7 +30,7 @@ import {
   store as coreStore,
   system,
 } from '@deepseek-ai/dsh-jira-core'
-import type { ChangeNotice, Issue, IssueKey, IssueList, Board, JiraResult, JiraServiceApi, JiraStatus, DoctorReport, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, TransactOptions, Transaction, Actor, Created, Mutation, WrittenKnowledge } from './types.ts'
+import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, JiraResult, JiraServiceApi, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 
 export type * from './types.ts'
 
@@ -63,14 +63,14 @@ export interface Config {
  * The pull's audit identity. The literal is non-empty, so `asIdentity` returns it unchanged; the
  * brand is asserted instead of re-parsed (§2: the service records an actor, it does not judge one).
  */
-const PULL_IDENTITY = 'human:dsh-jira' as entities.Identity
+const PULL_IDENTITY = 'human:dsh-jira' as Identity
 
 /** What opening the ledger produced; a failed root still answers `status()` without a store. */
 interface Opened {
   readonly root: string
   readonly machineId: string
   readonly store: JiraResult<Store>
-  readonly queue?: push.PushQueue
+  readonly queue?: ReturnType<typeof push.createPushQueue>
 }
 
 const CONFIG_SCHEMA: z<Config> = z.object({
@@ -85,7 +85,7 @@ const CONFIG_SCHEMA: z<Config> = z.object({
 })
 
 /** A timestamp for now, in the ledger's UTC second precision. */
-const now = (): entities.Timestamp => entities.utcTimestamp(new Date())
+const now = (): Timestamp => entities.utcTimestamp(new Date())
 
 /** The one comment in this module that is not JSDoc: `status()` needs a frozen snapshot. */
 const statusOf = (root: string, machineId: string, pushEnabled: boolean, lastSync: SyncRecord | null, pending: boolean): JiraStatus =>
@@ -106,7 +106,7 @@ export class JiraService extends Service implements JiraServiceApi {
   readonly #config: Readonly<Config>
   #opened: Promise<Opened> | undefined
   #machineId = 'local'
-  #queue: push.PushQueue | undefined
+  #queue: ReturnType<typeof push.createPushQueue> | undefined
   #lastSync: SyncRecord | null = null
   readonly #listeners = new Set<(change: ChangeNotice) => void>()
 
@@ -184,7 +184,7 @@ export class JiraService extends Service implements JiraServiceApi {
    * @param at - the timestamp the report is dated with; absent means now.
    * @returns the report, or the error that prevented reading the store.
    */
-  async doctor(at?: entities.Timestamp): Promise<JiraResult<DoctorReport>> {
+  async doctor(at?: Timestamp): Promise<JiraResult<DoctorReport>> {
     const opened = await this.#open()
     if (!opened.store.ok) return opened.store
     const snapshot = await inspect.readSnapshot(opened.root)
@@ -323,14 +323,6 @@ export class JiraService extends Service implements JiraServiceApi {
     return (await this.#open()).store
   }
 
-  /**
-   * The push queue this service owns, so `/jira sync` reuses it instead of racing a second queue.
-   * Part of the same phase-1 bridge.
-   * @returns the queue, or `undefined` until the ledger root has opened.
-   */
-  pushQueue(): push.PushQueue | undefined {
-    return this.#queue
-  }
 
   /**
    * Record that a write happened outside this service's own methods (the tool runners' writes),
