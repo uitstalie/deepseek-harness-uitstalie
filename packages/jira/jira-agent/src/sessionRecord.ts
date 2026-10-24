@@ -17,22 +17,34 @@ import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core/io.ts'
 import { machineStateDir } from '@deepseek-ai/dsh-jira-core/machine.ts'
 import { ensureSessionRecord, readWatermark, scanWatermarkPath, sessionScan, writeWatermark } from '@deepseek-ai/dsh-jira-core/session.ts'
 import { type Actor, type Store } from '@deepseek-ai/dsh-jira-core/store.ts'
-import { type HostEnv } from './host.ts'
+import { type HostEnv } from './env.ts'
 
 /** How many times a failing session record is retried before it is given up (decision 177). */
 const SESSION_RECORD_ATTEMPTS = 3
 
 export type SessionFacts = Readonly<{ tool: string; model?: string; toolEvidence?: string; stateDir: string }>
 
+/** The per-apply memory of which sessions have been recorded, and how often a write failed. */
+export interface SessionRecorder {
+  /**
+   * Record a session at its first write, at most once per store.
+   * @param store - the store the session's writes went to.
+   * @param actor - who wrote, for the record's audit fields.
+   * @param sessionId - the host session id.
+   * @param facts - what identified the writing tool.
+   * @returns a promise that settles when the record was attempted.
+   */
+  recordOnce(store: Store, actor: Actor, sessionId: string, facts: SessionFacts): Promise<void>
+}
+
 /**
  * Decisions 10/119/177 + 183: the bookkeeping lives in a **per-apply closure**, not at module level —
  * module state survives a reload (decision 166) and leaks across stores, so a second `apply` (or a
  * second root) would inherit "already recorded" and the session would never land in the new store.
  * The key is `root | sessionId`: one recorder may still serve two stores.
+ * @returns the recorder this plugin instance owns.
  */
-export const createSessionRecorder = (): Readonly<{
-  recordOnce: (store: Store, actor: Actor, sessionId: string, facts: SessionFacts) => Promise<void>
-}> => {
+export const createSessionRecorder = (): SessionRecorder => {
   /** Sessions already recorded by **this** recorder: the file is the authority, this just avoids re-reading. */
   const recordedSessions = new Set<string>()
   /** Attempts so far, per (store, session) (decision 177): "attempted" is not "recorded". */

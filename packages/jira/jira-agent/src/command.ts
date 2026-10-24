@@ -23,14 +23,12 @@ import {
   syncPushLine,
   unknownTagsAction,
 } from '@deepseek-ai/dsh-jira-core/messages.ts'
-import { pullRebase } from '@deepseek-ai/dsh-jira-core/rebase.ts'
-import { regenerateAndCommit } from '@deepseek-ai/dsh-jira-core/generateStore.ts'
 import { listIssues, queryIssues, readSnapshot } from '@deepseek-ai/dsh-jira-core/inspect.ts'
 import { readIssue } from '@deepseek-ai/dsh-jira-core/io.ts'
 import { loadTags, readComments } from '@deepseek-ai/dsh-jira-core/store.ts'
 import { lintTags, renderTagsLint } from '@deepseek-ai/dsh-jira-core/tagsLint.ts'
 import { asIssueKey, isProjectKey } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { type PushQueue, createPushQueue } from '@deepseek-ai/dsh-jira-core/push.ts'
+import { type PushOutcome } from '@deepseek-ai/dsh-jira-core/push.ts'
 import { renderBoard, renderIssueHuman, renderIssueList } from '@deepseek-ai/dsh-jira-core/render.ts'
 import { type Result } from '@deepseek-ai/dsh-jira-core/result.ts'
 import { createInStore, createStore } from '@deepseek-ai/dsh-jira-core/store.ts'
@@ -46,31 +44,28 @@ export type CommandInvocation = Readonly<{
 }>
 
 export type CommandDefinition = Readonly<{
-  definitionId?: string
   name: string
   description: string
   input?: Readonly<{ hint: string; attachments: boolean }>
   handler: (invocation: CommandInvocation) => CommandResult | Promise<CommandResult>
 }>
 
-export type CommandsHost = Readonly<{
-  commands?: Readonly<{ register(definition: CommandDefinition): () => void }>
-}>
-
 export type CommandOptions = Readonly<{
   /** Resolve the store root lazily, so a misconfigured plugin answers instead of throwing. */
   root: () => Result<string, JiraError>
-  machineId: string
+  /** The **resolved** machine identity, read at call time: the service resolves it when it opens. */
+  machineId: () => string
   /** The lock owner's `host` — the same value the plugin's own store uses (decision 181). */
   host: string
-  identity: string
+  /** The identity a `/jira new` write is recorded under; resolved at call time like `machineId`. */
+  identity: () => string
   now: () => string
   /**
-   * The plugin's own push queue (decision 166). `/jira sync` must **reuse** it: a fresh queue here
-   * would not cancel the debounce timer the last write armed (two pushes racing), and it would not
-   * carry the pull/settle hooks the queue was built with.
+   * Flush the ledger's push queue now (decision 166). The service owns the one queue
+   * (contract §2), so `/jira sync` asks it to rebase, settle and push instead of building a
+   * second queue that would race the debounce the last write armed.
    */
-  queue?: PushQueue
+  sync?: () => Promise<Result<PushOutcome, JiraError>>
   /**
    * One line answering "may this session write?" (decision 177). The plugin knows (it has the caller);
    * the command surface does not, and a hardcoded "yes" misled every read-only session.
@@ -124,7 +119,7 @@ export const runJiraCommand = async (rawInput: string, options: CommandOptions):
 
   const root = options.root()
   if (!root.ok) return failure(root.error)
-  const store = createStore({ root: root.value, machineId: options.machineId, host: options.host })
+  const store = createStore({ root: root.value, machineId: options.machineId(), host: options.host })
 
   switch (subcommand) {
     case 'status': {
@@ -204,7 +199,7 @@ export const runJiraCommand = async (rawInput: string, options: CommandOptions):
         return failure(invalidInput(invalidProjectKey(project), { project }))
       }
       if (summary === undefined || summary === '') return failure(invalidInput(NEW_NEEDS_SUMMARY))
-      const actor: Actor = Object.freeze({ by: options.identity as never, at: options.now() as never })
+      const actor: Actor = Object.freeze({ by: options.identity() as never, at: options.now() as never })
       const created = await createInStore(store, project, actor, { issueType: 'task', summary })
       if (!created.ok) return failure(created.error)
       return success(createdMessage(created.value.key, created.value.committed))
@@ -216,25 +211,24 @@ export const runJiraCommand = async (rawInput: string, options: CommandOptions):
     }
 
     case 'sync': {
-      // Decision 166: the same three steps the CLI's `sync` takes — pull --rebase, refresh the derived
-      // files, then push — so a two-machine push is not rejected as non-fast-forward and what leaves
-      // the machine agrees with its sources. The plugin passes its own queue in (so this also cancels
-      // whatever debounce the last write armed); without one, build an equivalent queue here.
-      const store = createStore({ root: root.value, machineId: options.machineId, host: options.host })
-      const actor: Actor = Object.freeze({ by: options.identity as never, at: options.now() as never })
-      const queue = options.queue ?? createPushQueue({
-        root: root.value,
-        pull: () => pullRebase(store, actor),
-        settle: () => regenerateAndCommit(store, actor.at),
-      })
-      const outcome = await queue.flushNow({ settle: true })
+      // Decision 166: pull --rebase, refresh the derived files, then push — so a two-machine push
+      // is not rejected as non-fast-forward and what leaves the machine agrees with its sources.
+      // The service owns that one queue, so the command asks it instead of building a second one
+      // that would race the debounce the last write armed.
+      const outcome = options.sync === undefined
+        ? undefined
+        : await options.sync()
       const remote = await hasRemote(root.value)
       const status = await runGit(root.value, ['status', '--porcelain'])
-      const detail = outcome.kind === 'pushed'
-        ? 'pushed'
-        : outcome.kind === 'failed'
-          ? formatError(outcome.error)
-          : outcome.reason
+      const detail = outcome === undefined
+        ? 'this composition has no ledger service to sync through'
+        : outcome.ok
+          ? outcome.value.kind === 'pushed'
+            ? 'pushed'
+            : outcome.value.kind === 'failed'
+              ? formatError(outcome.value.error)
+              : outcome.value.reason
+          : formatError(outcome.error)
       return success([
         syncPushLine(detail),
         `remote：${remote ? '有' : '无'}`,
@@ -249,22 +243,8 @@ export const runJiraCommand = async (rawInput: string, options: CommandOptions):
 
 export const createJiraCommand = (options: CommandOptions): CommandDefinition =>
   Object.freeze({
-    definitionId: '@uitstalie/dsh-jira:command',
     name: 'jira',
     description: '读写本地 issue 账本：status / list / board / new / doctor / sync',
     input: Object.freeze({ hint: '[status|list|board|new|doctor|sync]', attachments: false }),
     handler: (invocation: CommandInvocation) => runJiraCommand(invocation.rawInput, options),
   })
-
-/** Register the command if the host exposes the registry; a missing registry is not an error. */
-/**
- * Register the command, and hand back the host's own disposer (decision 166).
- *
- * Returning it is the whole point: a live config reload re-runs `apply`, and a registration that
- * cannot be undone is a duplicate command with a stale closure behind it.
- */
-export const registerCommand = (ctx: CommandsHost, options: CommandOptions): (() => void) | undefined => {
-  if (ctx.commands === undefined) return undefined
-  const unregister = ctx.commands.register(createJiraCommand(options))
-  return typeof unregister === 'function' ? unregister as () => void : undefined
-}
