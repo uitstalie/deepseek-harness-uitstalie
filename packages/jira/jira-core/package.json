@@ -1,0 +1,27 @@
+{
+  "name": "@deepseek-ai/dsh-jira-core",
+  "description": "jira ledger atoms: entities, codec, store transactions, git/push/lock primitives, derivation, doctor and knowledge base search, with no host dependency",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./*": "./src/*.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "fixtures"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test \"src/**/*.test.ts\""
+  }
+}

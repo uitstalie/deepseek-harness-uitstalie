@@ -1,0 +1,29 @@
+/**
+ * The jira ledger's public module surface.
+ *
+ * Every entry is a namespace re-export of one atom module, so a consumer imports
+ * `{ store, entities } from '@deepseek-ai/dsh-jira-core'` instead of reaching into `src/`.
+ * Inside the package, modules keep importing each other by relative path; the `./*` export map
+ * and the matching tsconfig alias exist only for `jira-cli`, which deliberately drives the same
+ * atoms the service does.
+ *
+ * @module @deepseek-ai/dsh-jira-core
+ */
+
+export * as codec from './codec.ts'
+export * as doctor from './doctor.ts'
+export * as entities from './entity.ts'
+export * as errors from './errors.ts'
+export * as generate from './generate.ts'
+export * as generateStore from './generateStore.ts'
+export * as git from './git.ts'
+export * as kb from './kb.ts'
+export * as kbsearch from './kbsearch.ts'
+export * as kbstore from './kbstore.ts'
+export * as lock from './lock.ts'
+export * as messages from './messages.ts'
+export * as push from './push.ts'
+export * as rebase from './rebase.ts'
+export * as result from './result.ts'
+export * as store from './store.ts'
+export * as system from './system/index.ts'
