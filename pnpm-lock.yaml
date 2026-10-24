@@ -2713,6 +2713,12 @@ importers:
         specifier: workspace:*
         version: link:../../subagent/subagent
 
+  packages/bundle/jira-app:
+    dependencies:
+      '@deepseek-ai/dsh-jira-service':
+        specifier: workspace:*
+        version: link:../../jira/jira-service
+
   packages/bundle/sdk-app:
     dependencies:
       '@deepseek-ai/dsh-cmdline':
@@ -11048,6 +11054,39 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:*
         version: link:../../typert/protocol
+
+  packages/jira/jira-agent:
+    dependencies:
+      '@deepseek-ai/dsh-jira-core':
+        specifier: workspace:*
+        version: link:../jira-core
+
+  packages/jira/jira-cli:
+    dependencies:
+      '@deepseek-ai/dsh-jira-core':
+        specifier: workspace:*
+        version: link:../jira-core
+
+  packages/jira/jira-core: {}
+
+  packages/jira/jira-service:
+    dependencies:
+      '@deepseek-ai/dsh-jira-core':
+        specifier: workspace:*
+        version: link:../jira-core
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+
+  packages/jira/ui-jira:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
 
   packages/jobs/jobs:
     devDependencies:
