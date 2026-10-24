@@ -1,0 +1,24 @@
+# The jira ledger over whatever profile this bundle is installed into.
+#
+# Stage 1 installs the service row: it opens the ledger, owns the push queue and answers
+# `ctx.jira`. The agent row (tools, /jira, skills, guard, settle) and the browser row
+# (settings section, board) are declared disabled until their packages export a plugin:
+# enabling a row whose package has no `apply` fails at load, and a row that silently does
+# nothing is worse than one that is visibly off.
+
+- insert:
+    - id: jira-service
+      name: '@deepseek-ai/dsh-jira-service'
+      config:
+        push:
+          enabled: false
+
+    # Pending: `packages/jira/jira-agent` exports the model surface but not yet the plugin.
+    - id: jira-agent
+      name: '@deepseek-ai/dsh-jira-agent'
+      disabled: true
+
+    # Pending: `packages/jira/ui-jira` owns the settings section id and order, not yet the plugin.
+    - id: jira-ui
+      name: '@deepseek-ai/dsh-client-ui-jira'
+      disabled: true
