@@ -281,7 +281,8 @@ export class JiraService extends Service implements JiraServiceApi {
     if (opened.queue === undefined) return result.err(errors.ioFailed('the ledger root could not be resolved'))
     const outcome = await opened.queue.flushNow({ settle: true })
     if (outcome.kind === 'failed') return result.err(outcome.error)
-    this.notifyWrite()
+    // The flush settled and pushed already; re-arming the queue here would push again forever.
+    this.#emit('sync')
     return result.ok(outcome)
   }
 
@@ -295,8 +296,8 @@ export class JiraService extends Service implements JiraServiceApi {
     if (!opened.store.ok) return opened.store
     const settled = await generateStore.regenerateAndCommit(opened.store.value, now())
     if (!settled.ok) return settled
+    this.#emit('settle')
     if (this.#config.push?.enabled === true) opened.queue?.schedule()
-    this.notifyWrite()
     return settled
   }
 
@@ -323,15 +324,25 @@ export class JiraService extends Service implements JiraServiceApi {
     return (await this.#open()).store
   }
 
-
   /**
    * Record that a write happened outside this service's own methods (the tool runners' writes),
    * so the `changed` event still fires and the push queue still arms.
    * @param key - the affected key, when the write concerned one.
    */
   notifyWrite(key?: string): void {
+    this.#emit('write', key)
+    if (this.#config.push?.enabled === true) this.#queue?.schedule()
+  }
+
+  /**
+   * Hand one notice to every subscriber. A throwing subscriber is contained: the commit it
+   * reports already happened, and one bad listener must not hide the change from the others.
+   * @param kind - what produced the change.
+   * @param key - the affected key, when the change concerns one.
+   */
+  #emit(kind: ChangeNotice['kind'], key?: string): void {
     const change: ChangeNotice = Object.freeze({
-      kind: 'write' as const,
+      kind,
       ...(key === undefined ? {} : { key }),
       at: now(),
     })
@@ -342,7 +353,6 @@ export class JiraService extends Service implements JiraServiceApi {
         // A failing subscriber must not stop the others or the write that already committed.
       }
     }
-    if (this.#config.push?.enabled === true) this.#queue?.schedule()
   }
 
   /** Open the ledger once: resolve the root, read the machine identity, create the store and queue. */
