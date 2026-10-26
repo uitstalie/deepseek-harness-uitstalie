@@ -86,7 +86,7 @@ root agent（智能体）的每次请求都带三个工具：`jira_issue`（十�
 
 - **浏览器面属于 `ui-jira`，不属于本包。** agent 拥有工具、注入行与写守卫；`jira` 设置页通过 `remote.jira` 读同一个账本，关闭能力只隐藏模型面。
 - **runner 模块仍按深路径 import `jira-core`。** phase-1 桥通过 `ctx.jira.store()` 打开存储；把 runner 迁到服务自己的读/写方法是 phase-2 的后续工作。
-- **CLI 一致性断言被拆开。** 独立包在一个测试里比较工具动词与 CLI 命令名。`jira-agent` 不得依赖 `jira-cli`，因此 CLI 保留自己的表/处理函数/用法测试，两个面之间的映射不再受守卫。
+- **CLI 一致性断言在本包之外。** `packages/jira/tests/parity.spec.ts` 是不依赖任一运行时的一侧：同时读取本包的工具动词与 `jira-cli` 的命令表，因此两个面得到比较，而无须让任一包依赖另一个。
 - **注入行不再写 workspace 绑定。** 约定里的这一段只写存储及其计数；workspace→project 的说法在独立插件里是 context source。
 
 <a id="dev-note"></a>
