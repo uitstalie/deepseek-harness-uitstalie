@@ -39,7 +39,7 @@ kind: "package-reference"
 
 没有出现在 `capabilities` 里的 id 跟随 provider 自己的默认值：v2 描述符的 `enabledByDefault`，v1 provider 一律视为 `true`。这个门是组织者的运行态开关，而不是卸载包的方式：关掉 provider 的 Loader 行会让 provider 完全不存在，`status()` 把该 id 报为 `missing`；关掉组织者门则保留 provider，但销毁它的贡献，并且不再给新 agent 接线。
 
-`capabilities` 是 volatile 配置引用：对 `capabilities.<id>.enabled` 的设置写入会替换快照并触发 Loader 的 `loader/volatile-update`，组织者因此销毁该能力或重新调用 `create()`，不重挂任何插件行。其他配置变化仍然照常重挂这一行。
+`capabilities` 是 volatile 配置引用：对 `capabilities.<id>.enabled` 的设置写入会替换快照并触发 Loader 的 `loader/volatile-update`，组织者因此销毁该能力或重新调用 `create()`，不重挂任何插件行。一次配置重载完成后会发出 `app-boot/config-reload`；组织者随后销毁全部贡献，对每个开门的能力重新调用 `create()`，并把此前已接线的 agent 重新接线，不做按能力 diff——重载可能改变任意 provider 的配置。
 
 v2 provider 把贡献与能力列表要渲染的元数据一起注册：
 

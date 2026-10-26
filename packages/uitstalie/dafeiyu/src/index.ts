@@ -24,6 +24,7 @@ import type { Session, SessionId, SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
+import type {} from '@deepseek-ai/dsh-app-boot'
 import z from '@deepseek-ai/schemastery'
 import type {
   CapabilityConfig,
@@ -128,6 +129,7 @@ export class Dafeiyu extends Service {
     ctx.on('agent/disposed', ({ agent }) => { this.forgetAgent(agent) })
     ctx.on('session/event', (session, event) => { this.observeSession(session, event) })
     ctx.on('loader/volatile-update', () => { this.reconcileGates() })
+    ctx.on('app-boot/config-reload', () => { this.reloadRegistrations() })
     ctx.effect(() => () => { this.shutdown() }, 'dafeiyu.shutdown()')
     void ctx.plugin(DafeiyuRemote)
   }
@@ -315,6 +317,8 @@ export class Dafeiyu extends Service {
       try {
         await contribution.onTurnEnd(input)
       } catch (error: unknown) {
+        // A reload or a disabled gate aborts the hook; the abort is not a capability failure.
+        if (input.signal.aborted) return
         this.fail(registration, `onTurnEnd() for turn ${event.data.turn}`, error)
       }
     }
@@ -458,6 +462,45 @@ export class Dafeiyu extends Service {
     this.disposeRegistrations(registration)
     registration.state = 'disabled'
     registration.settleReady()
+  }
+
+  /**
+   * Rebuild every capability after the profile configuration reloaded.
+   *
+   * The call disposes each contribution and its agent-level registrations, then
+   * calls `create()` again for the registrations whose gate is open and re-wires
+   * the agents that were already wired. It makes no per-capability diff: the
+   * reload may have changed any provider's configuration, and re-creating one
+   * capability at a time would leave the rest reading the previous profile.
+   */
+  private reloadRegistrations(): void {
+    if (this.disposed) return
+    const agents = this.ctx.get('agents')
+    for (const registration of this.registrations.values()) {
+      const wired = [...registration.registrations.keys()]
+      registration.controller.abort()
+      this.disposeContribution(registration, registration.contribution)
+      registration.contribution = undefined
+      this.disposeRegistrations(registration)
+      const enabled = this.gateFor(registration.provider)
+      registration.enabled = enabled
+      if (!enabled) {
+        registration.state = 'disabled'
+        registration.settleReady()
+        continue
+      }
+      this.activateRegistration(registration)
+      void registration.ready.then(() => {
+        if (this.disposed || registration.retired) return
+        const contribution = registration.contribution
+        if (registration.state !== 'active' || contribution === undefined) return
+        for (const agent of wired) {
+          // An agent disposed during the rebuild must not receive the new contribution.
+          if (agents?.get(agent.session.id) !== agent) continue
+          this.wire(registration, agent, contribution)
+        }
+      })
+    }
   }
 }
 

@@ -191,6 +191,36 @@ test('serializes turn-end hooks within one session', async () => {
   await until(() => active === 0 && started.length === 2)
 })
 
+test('a profile config reload disposes and recreates every capability and re-wires live agents', async () => {
+  const dispose = vi.fn()
+  let created = 0
+  const ctx = new Context()
+  contexts.push(ctx)
+  await mountAgentLoopTestDependencies(ctx)
+  await ctx.plugin(Dafeiyu, {})
+  const harness = await mountAgentLoopTestHarness(ctx)
+  ctx.dafeiyu.register({
+    id: 'memory',
+    contractVersion: 1,
+    config: {},
+    create: () => {
+      created += 1
+      return { ...surfaceContribution(), dispose }
+    },
+  })
+  await settle()
+  const root = await harness.create(SessionId('reload-root'))
+  expect(created).toBe(1)
+  expect(ctx.tools.get('memory_probe', root)).toBeDefined()
+
+  ctx.emit('app-boot/config-reload')
+  await until(() => created === 2 && ctx.tools.get('memory_probe', root) !== undefined)
+
+  expect(dispose).toHaveBeenCalledTimes(1)
+  expect(ctx.tools.get('memory_probe', root)).toBeDefined()
+  expect(ctx.dafeiyu.status()).toContainEqual(expect.objectContaining({ id: 'memory', state: 'active' }))
+})
+
 test('disposing the service revokes agent-level contributions', async () => {
   const { ctx, harness, serviceFiber } = await mount({}, surfaceContribution())
   const root = await harness.create(SessionId('root'))

@@ -37,7 +37,7 @@ Configure the organizer's gate in the same profile patch that mounts it:
 
 An id absent from `capabilities` follows the provider's own default: `enabledByDefault` from a v2 descriptor, and `true` for every v1 provider. The gate is the organizer's runtime switch, not a way to unload a package: turning off a provider's Loader row removes the provider entirely and makes `status()` report that id as `missing`; closing the organizer gate keeps the provider loaded but disposes its contribution and stops wiring new agents.
 
-`capabilities` is a volatile configuration reference: a settings write to `capabilities.<id>.enabled` swaps the snapshot and the Loader emits `loader/volatile-update`, so the organizer tears the capability down or calls `create()` again without remounting any plugin row. Every other configuration change still remounts the row as usual.
+`capabilities` is a volatile configuration reference: a settings write to `capabilities.<id>.enabled` swaps the snapshot and the Loader emits `loader/volatile-update`, so the organizer tears the capability down or calls `create()` again without remounting any plugin row. A completed profile reload emits `app-boot/config-reload`; the organizer then disposes every contribution, calls `create()` again for each open gate, and re-wires the agents it had already wired, with no per-capability diff — the reload may have changed any provider's configuration.
 
 A v2 provider registers its contribution together with the metadata the capability list renders:
 
