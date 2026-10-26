@@ -98,6 +98,11 @@ const USAGE = `jira —— 本地 issue 账本
   /jira doctor          检查账本健康
   /jira sync            推送已提交内容并报告状态`
 
+/** The `/jira` subcommands this command understands; the parity test pins this list against the CLI surface. */
+export const JIRA_SUBCOMMANDS: readonly string[] = Object.freeze([
+  'status', 'list', 'board', 'show', 'tags', 'new', 'doctor', 'sync',
+])
+
 const failure = (error: JiraError): CommandResult =>
   Object.freeze({ kind: 'error', text: formatError(error) })
 

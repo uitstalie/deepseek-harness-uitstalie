@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import { COMMAND_NAMES } from '../jira-cli/src/main.ts'
 import { ISSUE_PARAMETERS, LIST_TOOL_NAME, KB_PARAMETERS } from '../jira-agent/src/index.ts'
+import { JIRA_SUBCOMMANDS } from '../jira-agent/src/command.ts'
 
 /** Issue tool verbs and the CLI command each one must be reachable through. */
 const ISSUE_COMMANDS: Readonly<Record<string, string>> = Object.freeze({
@@ -83,6 +84,10 @@ describe('jira CLI and tool surface parity', () => {
   it('keeps the knowledge actions aligned with the kb command', () => {
     expect([...kbVerbs()].sort()).toEqual([...KB_ACTIONS].sort())
     expect(COMMAND_NAMES).toContain('kb')
+  })
+
+  it('pins the /jira subcommands to the documented set', () => {
+    expect([...JIRA_SUBCOMMANDS]).toEqual(['status', 'list', 'board', 'show', 'tags', 'new', 'doctor', 'sync'])
   })
 
   it('keeps the list tool and the list command on the same name', () => {
