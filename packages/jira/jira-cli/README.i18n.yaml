@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/jira/jira-cli/README.md
+/:
+  en: 5fc2713d58fc0e8b
+  zh: 57a58b8f01af18d4
+/deepseek-ai-dsh-jira-cli:
+  en: 7db37def68b27784
+  zh: c761efe2fab90d5b
+/deepseek-ai-dsh-jira-cli/summary:
+  en: aa13407c2cf127c0
+  zh: 6b5bfe49c0cd65fb
+/deepseek-ai-dsh-jira-cli/table-of-contents:
+  en: 952f733c89a22efc
+  zh: 04d18177b451b8ec
+/deepseek-ai-dsh-jira-cli/commands:
+  en: 71244daa53502ad4
+  zh: e0f49f829a668156
+/deepseek-ai-dsh-jira-cli/tests:
+  en: 3b39b24991f760ae
+  zh: 75bf2402cb84d74e
+/deepseek-ai-dsh-jira-cli/model-experience:
+  en: 72f6e225d55c4c9f
+  zh: 55ee77f24458babf
+/deepseek-ai-dsh-jira-cli/model-experience/kv-cache-effect:
+  en: 1b720e9ba42dcb89
+  zh: 38ccd189d88600ed
+/deepseek-ai-dsh-jira-cli/known-limitations-and-deferred-work:
+  en: 12cd9355da0b46a9
+  zh: 9c16fe32440025eb
+/deepseek-ai-dsh-jira-cli/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

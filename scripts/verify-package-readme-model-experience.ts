@@ -265,6 +265,13 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/uitstalie/ui-tool-dsh-store': { kind: 'none', reason: 'Browser-side sidebar panel that only reads rules through the store Remote namespace; it contributes no request content and writes nothing.' },
   'packages/uitstalie/common-view': { kind: 'none', reason: 'Browser-side overlay framework: it registers view contributions through slots and custom properties and contributes no request content.' },
   // END uitstalie-k3
+  // BEGIN jira, 2026/10/26, DH-13, single-sentence Model Experience entries for the migrated packages (the audit conclusion is the reason).
+  'packages/bundle/jira-app': { kind: 'indirect', reason: 'The bundle is a patch-list carrier; the jira-agent row it inserts owns the tool schemas and the awareness line, and the jira-service row owns push behavior.' },
+  'packages/jira/jira-core': { kind: 'none', reason: 'The atom layer renders nothing itself; jira-agent composes its functions into model tools and owns their descriptions and results.' },
+  'packages/jira/jira-cli': { kind: 'none', reason: 'The CLI is a human shell surface; its jira_* equivalents in jira-agent own every model-visible schema and result.' },
+  'packages/jira/jira-service': { kind: 'none', reason: 'The writer owns the store, the push queue and the remote read model; jira-agent owns every model-visible schema and result.' },
+  'packages/jira/ui-jira': { kind: 'none', reason: 'The browser settings section reads remote.jira and writes nothing; the model surface belongs to jira-agent.' },
+  // END jira
 }
 
 interface Failure {

@@ -1,0 +1,55 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/jira/jira-agent/README.md
+/:
+  en: 34ee56c068f45200
+  zh: 22141eaea161c752
+/deepseek-ai-dsh-jira-agent:
+  en: 594808e8ae085902
+  zh: ced69017ae5a3c51
+/deepseek-ai-dsh-jira-agent/summary:
+  en: 3c7beddfc856b93a
+  zh: 5fff48f99b750687
+/deepseek-ai-dsh-jira-agent/table-of-contents:
+  en: 0da18700a9c78dfd
+  zh: 2e76184b7bb77e61
+/deepseek-ai-dsh-jira-agent/contents:
+  en: 22804d4e9ade32b1
+  zh: 6e2a4cf4fa88d2b9
+/deepseek-ai-dsh-jira-agent/tests:
+  en: d8f6a5e7558ddbc8
+  zh: 2242a28906eeba15
+/deepseek-ai-dsh-jira-agent/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-jira-agent/model-experience/the-three-resident-jira-tools:
+  en: de031993ddf3f858
+  zh: ec45de7b74597c87
+/deepseek-ai-dsh-jira-agent/model-experience/the-three-resident-jira-tools/what-the-model-sees:
+  en: 5ea3a8fce6f7ccd4
+  zh: 1470ab7108966f15
+/deepseek-ai-dsh-jira-agent/model-experience/the-three-resident-jira-tools/token-effect:
+  en: 88f8a16d2fd4f7a3
+  zh: 7b59d45d94427b44
+/deepseek-ai-dsh-jira-agent/model-experience/the-three-resident-jira-tools/kv-cache-effect:
+  en: d939f14b34513625
+  zh: c8282e678a8fb244
+/deepseek-ai-dsh-jira-agent/model-experience/the-jira-store-awareness-line:
+  en: b6b880d44130fb4e
+  zh: a2dcc1557ffd0649
+/deepseek-ai-dsh-jira-agent/model-experience/the-jira-store-awareness-line/what-the-model-sees:
+  en: 7e87943e77fbecb7
+  zh: 459233699856a81e
+/deepseek-ai-dsh-jira-agent/model-experience/the-jira-store-awareness-line/token-effect:
+  en: bd37679778efaf71
+  zh: 4fea34bbf4a99c21
+/deepseek-ai-dsh-jira-agent/model-experience/the-jira-store-awareness-line/kv-cache-effect:
+  en: 2aba27679cd9c96c
+  zh: 2042ddbef5ac8e7f
+/deepseek-ai-dsh-jira-agent/known-limitations-and-deferred-work:
+  en: fc57d23ef77081ea
+  zh: 4236a2c507c1b5b5
+/deepseek-ai-dsh-jira-agent/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

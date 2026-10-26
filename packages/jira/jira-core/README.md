@@ -1,16 +1,27 @@
 ---
-kind: package
+description: "The jira ledger's atom layer: entities, the issue/v1 codec, the locked write transaction, git and push primitives, derivation, the knowledge base, doctor and lint reports, and the read-only queries the CLI and the service share."
+kind: "package-reference"
 ---
 
 # @deepseek-ai/dsh-jira-core
 
-The jira ledger's atom layer: the domain model, the on-disk encoding, the locked write transaction, the git primitives, derivation and the read-only queries. It imports `node:*` and its own relative modules only — no `@deepseek-ai` package — so the CLI and the tests run it directly, with no host context.
+English | [中文](README.zh.md)
 
-The ledger itself is a separate git repository of Markdown files. `DESIGN.md` (the decision log) and `HANDOVER.md` (the operator notes) sit one directory up in `packages/jira/` because the error-code test reads the decision row as its definition.
+## Summary
 
-## Model Experience
+`dsh-jira-core` holds the jira ledger's atoms: the issue, project, machine and tag model, the `issue/v1` frontmatter codec, the two-level `mkdir` lock and compare-and-set write transaction, git, rebase and debounce-push primitives, the derived `BOARD.md`/`index.md`/`log.md` files, doctor and lint reports, the knowledge base, and the read-only queries the CLI and the service share. It imports `node:*` and its own relative modules only — no `@deepseek-ai` package — so the CLI and the tests run it directly with no host context. `jira-agent` composes these atoms into the model's tools, and the human-facing Chinese sentences live in one `messages` module both surfaces import.
 
-Nothing here reaches a model. `jira-agent` composes these atoms into tools; the human-facing Chinese sentences live in [`src/messages.ts`](src/messages.ts) and the renderers so both surfaces import the same string.
+## Table of Contents
+
+- [Modules](#modules)
+- [Tests](#tests)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+The ledger itself is a separate git repository of Markdown files. [DESIGN.md](../DESIGN.md) (the decision log) and [HANDOVER.md](../HANDOVER.md) (the operator notes) sit one directory up in `packages/jira/`, and the error-code test reads the decision row as its definition.
+
+<a id="modules"></a>
 
 ## Modules
 
@@ -28,13 +39,38 @@ Nothing here reaches a model. `jira-agent` composes these atoms into tools; the 
 
 `src/index.ts` is the controlled re-export surface. The package also exposes `./*` to its own `src/*.ts`; only `jira-cli` uses that, because a CLI command needs the same atoms the service does.
 
+<a id="tests"></a>
+
 ## Tests
 
 `pnpm test` runs `node --test "src/**/*.test.ts"` — the suite moved here unchanged from the standalone plugin repository and stays on the Node test runner. Migrating it to the repository's vitest setup is pending.
 
 `fixtures/config.md` is a verbatim copy of the ledger repository's `config.md`; the two must change together (decision 189).
 
+<a id="model-experience"></a>
+
+## Model Experience
+
+None, as nothing here reaches a model: `jira-agent` composes these atoms into tools, and the human-facing Chinese sentences live in [`src/messages.ts`](src/messages.ts) and the renderers so both surfaces import the same string.
+
+#### KV Cache effect
+
+None; the package assembles no request and contributes no prompt text, tool schema, or message.
+
 ## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
 
 - `messages.test.ts` (decision 184: neither surface may restate a message literally) stays behind until `jira-cli` and `jira-agent` are both in place, because it reads both source trees.
 - `surfaces.test.ts` (the CLI ⊇ tool-verb parity map) spans `jira-cli` and `jira-agent` and needs a home outside either package.
+
+<a id="dev-note"></a>
+
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

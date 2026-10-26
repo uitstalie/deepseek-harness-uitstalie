@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/jira/README.md
+/:
+  en: f98da24521dd948f
+  zh: a8b66564ad775657
+/jira-the-multi-machine-issue-ledger:
+  en: cc3a8f4b0f8c7357
+  zh: 363ca15575ca465f
+/jira-the-multi-machine-issue-ledger/summary:
+  en: 4fb1546f32e42505
+  zh: 4ad14f1777886a99
+/jira-the-multi-machine-issue-ledger/table-of-contents:
+  en: 1eb35b015a6c423f
+  zh: a8a3dceee2c9e943
+/jira-the-multi-machine-issue-ledger/packages:
+  en: 0c9cc1cec5fa12f2
+  zh: 3635971e9d484af5
+/jira-the-multi-machine-issue-ledger/related-documentation:
+  en: 1be476e3e09f9b98
+  zh: afe0a8532ef00fc8
+/jira-the-multi-machine-issue-ledger/dev-note:
+  en: 6e46d39aeac78eed
+  zh: 8d48c855e9d7cb97

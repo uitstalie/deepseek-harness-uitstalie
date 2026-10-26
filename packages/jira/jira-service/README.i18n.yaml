@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/jira/jira-service/README.md
+/:
+  en: 63fc73659ecfb48a
+  zh: def0505ceb95269e
+/deepseek-ai-dsh-jira-service:
+  en: ff9165ae10acc42c
+  zh: 27198bb4f13f1ee7
+/deepseek-ai-dsh-jira-service/summary:
+  en: a3c573a596f86777
+  zh: fa0df424d2c44359
+/deepseek-ai-dsh-jira-service/table-of-contents:
+  en: 376f3a2de7412b7e
+  zh: a3b02809bfb2dff4
+/deepseek-ai-dsh-jira-service/service:
+  en: 7c070684823087e8
+  zh: 906db0984ce4c2f7
+/deepseek-ai-dsh-jira-service/remote:
+  en: 00d05f75f94f08f9
+  zh: 2ff041ec08103966
+/deepseek-ai-dsh-jira-service/configuration:
+  en: 4c4cca0ca72a58b7
+  zh: 18db11b7802894f1
+/deepseek-ai-dsh-jira-service/tests:
+  en: c64c688513d8dff2
+  zh: 89471af1f8708eff
+/deepseek-ai-dsh-jira-service/model-experience:
+  en: 31237285fae0018e
+  zh: 24f3f4078eed3550
+/deepseek-ai-dsh-jira-service/model-experience/kv-cache-effect:
+  en: fd51c3e0ddd3c804
+  zh: dbc05b58bbf765e2
+/deepseek-ai-dsh-jira-service/known-limitations-and-deferred-work:
+  en: 880a6bc153482f8f
+  zh: d50a0c264aab827b
+/deepseek-ai-dsh-jira-service/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98
