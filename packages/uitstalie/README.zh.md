@@ -29,11 +29,13 @@ kind: "package-group"
 | [`agent-instructions-plus`](agent-instructions-plus/README.zh.md) | 把注册的常驻上下文来源（首先是 `.dsh/rules`）追加到原生指令基线 | `ctx.agentContextSources` |
 | [`common-view`](common-view/README.zh.md) | overlay 框架：一次接管一个原生 Web 视图，贡献 slot、主题 token 与元素级自定义属性 | 客户端 slot 与主题 token |
 | [`dafeiyu`](dafeiyu/README.zh.md) | 能力组织者：注册表、启用门、按 agent（智能体）接线、轮次分发与失败隔离 | `ctx.dafeiyu` |
+| [`home-backup`](home-backup/README.zh.md) | 把 sessions、storages 与 profile 配置定时快照到 `$DSH_HOME` 之外，并保留有限份数 | 宿主定时器；不注册 `ctx` 键 |
 | [`llm-plus`](llm-plus/README.zh.md) | 自有的多协议 LLM 适配器，带 OAuth 登录流与热更新的路由 | 注册到 `ctx.llm` |
 | [`memory`](memory/README.zh.md) | 记忆能力提供者：固定提示词段、快照、轮次摘要任务与 `memory_*` 工具 | 注册到 `ctx.dafeiyu` |
 | [`models-dev`](models-dev/README.zh.md) | models.dev 目录服务：启动拉取、磁盘缓存回落、路由默认值与额外请求参数 | `ctx.modelsDev` |
 | [`personality`](personality/README.zh.md) | 人格能力提供者：全局档案加工作区覆盖、`personality_learn` 与 `/personality` 审阅 | 注册到 `ctx.dafeiyu` |
 | [`tool-dsh-store`](tool-dsh-store/README.zh.md) | `.dsh` 基础接口、面向模型的存储工具，以及只读的 rules Remote | `ctx.dshStore` |
+| [`ui-dafeiyu`](ui-dafeiyu/README.zh.md) | 能力设置段：列出组织者的 provider、切换其启用门，并链接到每个 provider 的设置页 | 设置页段落 |
 | [`ui-models-dev`](ui-models-dev/README.zh.md) | Web 设置页段落：浏览目录并把选中的提供商物化为 `llm-plus` 路由 | 设置页段落 |
 | [`ui-tool-dsh-store`](ui-tool-dsh-store/README.zh.md) | Web 侧栏按钮：列出并读取工作区的 `.dsh/rules` | 工作区行菜单 |
 

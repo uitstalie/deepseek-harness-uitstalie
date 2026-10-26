@@ -415,6 +415,10 @@
       // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-15, 组合测试运行时按组合清单 import '<pkg>/client'，缺该别名则整组组合规格失败
       "@deepseek-ai/dsh-client-ui-jira/client": ["./packages/jira/ui-jira/src/client/index.ts"],
       // END uitstalie-deepseek-flash
+      // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-12, 能力总代 client 包（根 + /client 子路径）按包名解析
+      "@deepseek-ai/dsh-client-ui-dafeiyu": ["./packages/uitstalie/ui-dafeiyu/src"],
+      "@deepseek-ai/dsh-client-ui-dafeiyu/client": ["./packages/uitstalie/ui-dafeiyu/src/client/index.ts"],
+      // END uitstalie-deepseek-flash
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],
@@ -466,6 +470,7 @@
       "@deepseek-ai/dsh-goal-round-driver": ["./packages/goal/goal-round-driver/src"],
       "@deepseek-ai/dsh-harness-dev-context": ["./packages/context/harness-dev-context/src"],
       "@deepseek-ai/dsh-headless": ["./packages/bundle/headless/src"],
+      "@deepseek-ai/dsh-home-backup": ["./packages/uitstalie/home-backup/src"],
       "@deepseek-ai/dsh-home-paths": ["./packages/util/home-paths/src"],
       "@deepseek-ai/dsh-hook-protocol": ["./packages/experimental/hook-protocol/src"],
       "@deepseek-ai/dsh-hooks-claude-code": ["./packages/experimental/hooks-claude-code/src"],

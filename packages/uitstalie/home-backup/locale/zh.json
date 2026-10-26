@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "主目录备份",
+    "description": "定时把 sessions、storages 与 profile 配置备份到 harness 主目录之外。"
+  }
+}

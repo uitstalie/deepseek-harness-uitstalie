@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/ui-dafeiyu/README.md
+/:
+  en: f46bef7aedbc8160
+  zh: a6ad6ca412f71fc5
+/deepseek-ai-dsh-client-ui-dafeiyu:
+  en: 5767b17f9b2bc2b1
+  zh: b7ca384ff91d36de
+/deepseek-ai-dsh-client-ui-dafeiyu/summary:
+  en: 7dcae2b8711a4df1
+  zh: f1cc6d059afa1ae0
+/deepseek-ai-dsh-client-ui-dafeiyu/table-of-contents:
+  en: cbfb676bb9a7a2de
+  zh: 528864635b577290
+/deepseek-ai-dsh-client-ui-dafeiyu/use-this-package:
+  en: b68ebc67b4f317e2
+  zh: fd968a998db4cac3
+/deepseek-ai-dsh-client-ui-dafeiyu/understand-the-implementation:
+  en: 080be671c4f0f985
+  zh: da5b6f5ae708f4bd
+/deepseek-ai-dsh-client-ui-dafeiyu/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-client-ui-dafeiyu/model-experience/no-model-surface:
+  en: 99debe53518d5938
+  zh: a9d3f2298aa0a3c5
+/deepseek-ai-dsh-client-ui-dafeiyu/model-experience/no-model-surface/what-the-model-sees:
+  en: b8dc4034f7f03f11
+  zh: f1dd2372c9bcd7cb
+/deepseek-ai-dsh-client-ui-dafeiyu/model-experience/no-model-surface/token-effect:
+  en: 68c2db03b554d78d
+  zh: 59b18f0020fb517d
+/deepseek-ai-dsh-client-ui-dafeiyu/model-experience/no-model-surface/kv-cache-effect:
+  en: 90f9b2393f2b364c
+  zh: f36c45ad030aa624
+/deepseek-ai-dsh-client-ui-dafeiyu/known-limitations-and-deferred-work:
+  en: f50b8fa176fcdc55
+  zh: bcec80970f86349e
+/deepseek-ai-dsh-client-ui-dafeiyu/known-limitations-and-deferred-work/dev-note:
+  en: 7b64663646ffeddd
+  zh: 1166492378757d14

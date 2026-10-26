@@ -16,6 +16,10 @@
       name: '@deepseek-ai/dsh-personality'
     - id: tool-dsh-store
       name: '@deepseek-ai/dsh-tool-dsh-store'
+    - id: home-backup
+      name: '@deepseek-ai/dsh-home-backup'
+      config:
+        destination: 'D:\dsh-backups'
     - id: jira-service
       name: '@deepseek-ai/dsh-jira-service'
       config:
@@ -29,6 +33,8 @@
       name: '@deepseek-ai/dsh-client-ui-models-dev'
     - id: ui-tool-dsh-store
       name: '@deepseek-ai/dsh-client-ui-tool-dsh-store'
+    - id: ui-dafeiyu
+      name: '@deepseek-ai/dsh-client-ui-dafeiyu'
     - id: jira-ui
       name: '@deepseek-ai/dsh-client-ui-jira'
     - id: ui-common-view

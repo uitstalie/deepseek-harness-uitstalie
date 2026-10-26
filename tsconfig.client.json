@@ -177,5 +177,8 @@
     // BEGIN uitstalie-k3, 2026/10/26, DH-13, ui-jira 是 settings 页的 client 双面包，注册进 Client 聚合程序
     { "path": "./packages/jira/ui-jira/tsconfig.client.json" },
     // END uitstalie-k3
+    // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-12, 注册能力总代设置段进 Client 聚合程序
+    { "path": "./packages/uitstalie/ui-dafeiyu/tsconfig.client.json" },
+    // END uitstalie-deepseek-flash
   ]
 }

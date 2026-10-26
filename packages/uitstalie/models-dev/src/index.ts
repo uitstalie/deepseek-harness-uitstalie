@@ -51,7 +51,12 @@ export interface ExtraParamsConfig {
   /** 额外顶层请求体字段。 */
   body?: Record<string, JsonValue>
   /** 按模型的覆盖，与 provider 级浅合并（模型级取胜）。 */
-  models?: Record<string, { headers?: Record<string, string>; body?: Record<string, JsonValue> }>
+  models?: Record<string, {
+    /** 该模型专属的额外 HTTP 头，覆盖 provider 级同名字段。 */
+    headers?: Record<string, string>
+    /** 该模型专属的额外顶层请求体字段，覆盖 provider 级同名字段。 */
+    body?: Record<string, JsonValue>
+  }>
 }
 
 /** 插件配置（全部可选；缺省值由 schema 的 .default() 在 cordis 校验期物化，

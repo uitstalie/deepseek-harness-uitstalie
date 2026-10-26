@@ -29,11 +29,13 @@ Each row names the package's contribution and the `ctx` key or surface it attach
 | [`agent-instructions-plus`](agent-instructions-plus/README.md) | Appends registered always-on context sources, starting with `.dsh/rules`, to the native instruction baseline | `ctx.agentContextSources` |
 | [`common-view`](common-view/README.md) | Overlay framework that adopts one native Web view and contributes slots, theme tokens, and element-local custom properties | client slots and theme tokens |
 | [`dafeiyu`](dafeiyu/README.md) | Capability organizer: registry, enable gate, per-agent wiring, turn dispatch, and failure isolation | `ctx.dafeiyu` |
+| [`home-backup`](home-backup/README.md) | Scheduled snapshots of sessions, storages, and profile configuration outside `$DSH_HOME`, with a retention window | host timers; no `ctx` key |
 | [`llm-plus`](llm-plus/README.md) | Self-owned multi-protocol LLM adapter with OAuth flows and live-configured routes | registers on `ctx.llm` |
 | [`memory`](memory/README.md) | Memory capability provider: fixed prompt section, snapshot, turn-summary job, and the `memory_*` tools | registers on `ctx.dafeiyu` |
 | [`models-dev`](models-dev/README.md) | models.dev catalog service: startup fetch, disk-cache fallback, route defaults, and extra request params | `ctx.modelsDev` |
 | [`personality`](personality/README.md) | Personality capability provider: global profile with workspace overlay, `personality_learn`, and `/personality` review | registers on `ctx.dafeiyu` |
 | [`tool-dsh-store`](tool-dsh-store/README.md) | `.dsh` base interface, the model-facing store tool, and the read-only rules Remote | `ctx.dshStore` |
+| [`ui-dafeiyu`](ui-dafeiyu/README.md) | Capabilities settings section that lists the organizer's providers, switches their gate, and links each provider page | settings section |
 | [`ui-models-dev`](ui-models-dev/README.md) | Web settings section that browses the catalog and materializes chosen providers as `llm-plus` routes | settings section |
 | [`ui-tool-dsh-store`](ui-tool-dsh-store/README.md) | Web sidebar button that lists and reads a workspace's `.dsh/rules` | workspace row menu |
 
