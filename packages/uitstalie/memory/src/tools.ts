@@ -26,6 +26,7 @@ import {
   MEMORY_ENTRY_KINDS,
   MEMORY_KIND_REGISTRY,
   MemoryDocumentError,
+  normalizeEntryTags,
   readMemoryDocument,
 } from './memory-file.ts'
 import type { MemoryEntryKind, MemorySection } from './memory-file.ts'
@@ -117,7 +118,7 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings): ToolDefi
       tags: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Optional labels; accepted but not persisted in this step.',
+        description: 'Optional labels recorded beside the entry, in write order; up to 8 labels of 64 characters.',
       },
     },
     output: {
@@ -146,6 +147,7 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings): ToolDefi
       const written = await appendMemoryEntry(ctx, session, {
         kind: args.kind,
         text: content,
+        tags: normalizeEntryTags(args.tags ?? []),
         turn: facts.turn,
         seq: facts.seq,
       }, exec.signal, { window: settings.window, maxBytes: settings.maxBytes })

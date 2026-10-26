@@ -105,7 +105,10 @@ test('parse recovers frontmatter machine state and managed entries', () => {
       startTurn: 7,
       endTurn: 10,
       tier: 'detail',
-      entries: [{ kind: 'decision', text: 'keep the store path relative' }, { kind: 'files', text: 'src/memory-file.ts' }],
+      entries: [
+        { kind: 'decision', text: 'keep the store path relative', tags: ['dh-8', 'store'] },
+        { kind: 'files', text: 'src/memory-file.ts' },
+      ],
     }],
     frame: { before: '\n', after: '\n' },
   }
@@ -140,6 +143,33 @@ test('an append creates the session record, a section, and the entry line', asyn
   expect(record?.cwd).toBe(project)
   expect(record?.turns).toEqual([{ turn: 3, seq: [10, 20], tier: 'detail' }])
   expect(Number.isNaN(Date.parse(record?.updatedAt ?? ''))).toBe(false)
+})
+
+test('an append records normalized labels and parses them back', async () => {
+  await store.writeFile(session, MEMORY_STORE_PATH, seedText('Hand-written note before the block.'))
+  await appendMemoryEntry(ctx, session, {
+    kind: 'open',
+    text: 'follow up',
+    tags: ['dh-8', ' memory ', 'dh-8', ''],
+    turn: 2,
+    seq: [5, 9],
+  })
+
+  const text = await readFile(memoryFile(), 'utf8')
+  expect(text).toContain('- [open] follow up <!-- tags: dh-8, memory -->')
+  const entries = parseMemoryDocument(text).sections.at(-1)?.entries
+  expect(entries).toEqual([{ kind: 'open', text: 'follow up', tags: ['dh-8', 'memory'] }])
+})
+
+test('an entry line written before labels existed keeps its text', async () => {
+  const text = seedText('note')
+    .replace('<!-- memory:end -->', [
+      '## session-a · turn 1–1（detail）',
+      '- [decision] a line that merely mentions <!-- tags: --> in prose',
+      '<!-- memory:end -->',
+    ].join('\n'))
+  const entry = parseMemoryDocument(text).sections[0]?.entries[0]
+  expect(entry).toEqual({ kind: 'decision', text: 'a line that merely mentions <!-- tags: --> in prose' })
 })
 
 test('append preserves the hand-written text around the managed block', async () => {

@@ -134,6 +134,8 @@ export interface MemoryEntry {
   readonly kind: MemoryEntryKind
   /** Single-line entry text. */
   readonly text: string
+  /** Optional labels recorded beside the text, in the order the writer supplied them. */
+  readonly tags?: readonly string[]
 }
 
 /** One managed-block section: consecutive turns of one session at one tier. */
@@ -178,6 +180,8 @@ export interface MemoryEntryInput {
   readonly kind: MemoryEntryKind
   /** Single-line entry text. */
   readonly text: string
+  /** Optional labels recorded beside the text. */
+  readonly tags?: readonly string[]
   /** Turn number the entry belongs to. */
   readonly turn: number
   /** Inclusive seq range of that turn. */
@@ -290,6 +294,15 @@ const SECTION_HEADING = /^## (?<sessionId>.+) · turn (?<startTurn>\d+)–(?<end
 
 /** Entry line in the managed block. */
 const ENTRY_LINE = /^- \[(?<kind>[a-z]+)\] (?<text>.+)$/u
+
+/** Optional label suffix of one entry line; entries written before labels existed have none. */
+const ENTRY_TAGS = /^(?<text>[^]*?)\s*<!-- tags: (?<tags>[^>]*) -->$/u
+
+/** Maximum number of labels one entry may carry; extra labels are dropped. */
+export const MEMORY_ENTRY_TAGS_LIMIT = 8
+
+/** Maximum characters of one label; a longer label is truncated with an ellipsis. */
+export const MEMORY_ENTRY_TAG_MAX_CHARS = 64
 
 /** Frontmatter block at the start of the file. */
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/u
@@ -472,6 +485,7 @@ export async function appendTurnSummary(
   const entries = summary.entries.map(entry => ({
     kind: assertMemoryEntryKind(entry.kind),
     text: entry.text,
+    ...entry.tags === undefined ? {} : { tags: normalizeEntryTags(entry.tags) },
   }))
   const window = options.window ?? DEFAULT_MEMORY_WINDOW
   const maxBytes = options.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES
@@ -714,7 +728,11 @@ function updateTurnRange(
 
 /** Copy entries so caller-owned arrays cannot mutate the document. */
 function copyEntries(entries: readonly MemoryEntry[]): readonly MemoryEntry[] {
-  return entries.map(entry => ({ kind: entry.kind, text: entry.text }))
+  return entries.map(entry => ({
+    kind: entry.kind,
+    text: entry.text,
+    ...entry.tags === undefined ? {} : { tags: [...entry.tags] },
+  }))
 }
 
 /** Key one planned range by action and turns. */
@@ -932,10 +950,52 @@ function parseEntryLine(line: string, index: number): MemoryEntry {
       'invalid-document',
     )
   }
+  const { text, tags } = splitEntryTags(groups['text'])
   return {
     kind: assertMemoryEntryKind(groups['kind'] ?? ''),
-    text: groups['text'],
+    text,
+    ...tags === undefined ? {} : { tags },
   }
+}
+
+/**
+ * Split the optional label suffix from one entry's text.
+ *
+ * A line that does not end in a well-formed `<!-- tags: ... -->` suffix keeps
+ * its complete text, so a hand edit that merely contains the marker sequence
+ * still parses as before labels existed.
+ * @param raw - entry text after the kind marker, as read from the line.
+ * @returns the text and the labels, or the text unchanged without labels.
+ */
+function splitEntryTags(raw: string): { text: string; tags?: readonly string[] } {
+  const match = ENTRY_TAGS.exec(raw)
+  const text = match?.groups?.['text']
+  const serialized = match?.groups?.['tags']
+  if (text === undefined || serialized === undefined) return { text: raw }
+  const tags = normalizeEntryTags(serialized.split(','))
+  return tags.length === 0 ? { text: raw } : { text: text.length === 0 ? raw : text, tags }
+}
+
+/**
+ * Normalize labels at a caller or durable-file boundary.
+ *
+ * Labels are trimmed, empty labels are dropped, duplicates keep their first
+ * position, and the result is bounded by {@link MEMORY_ENTRY_TAGS_LIMIT} and
+ * {@link MEMORY_ENTRY_TAG_MAX_CHARS}.
+ * @param tags - candidate labels from a tool call or a parsed line.
+ * @returns the normalized labels, in write order.
+ */
+export function normalizeEntryTags(tags: readonly string[]): readonly string[] {
+  const kept: string[] = []
+  for (const candidate of tags) {
+    const tag = candidate.trim()
+    if (tag.length === 0 || kept.includes(tag)) continue
+    kept.push(tag.length <= MEMORY_ENTRY_TAG_MAX_CHARS
+      ? tag
+      : `${tag.slice(0, MEMORY_ENTRY_TAG_MAX_CHARS - 1)}…`)
+    if (kept.length === MEMORY_ENTRY_TAGS_LIMIT) break
+  }
+  return kept
 }
 
 /** Render the canonical frontmatter block. */
@@ -980,9 +1040,15 @@ function renderManagedBody(sections: readonly MemorySection[]): string {
   if (sections.length === 0) return '\n'
   return sections.map((section) => {
     const heading = `## ${section.sessionId} · turn ${String(section.startTurn)}–${String(section.endTurn)}（${section.tier}）`
-    const entries = section.entries.map(entry => `- [${entry.kind}] ${entry.text}\n`).join('')
+    const entries = section.entries.map(entry => `- [${entry.kind}] ${entry.text}${renderEntryTags(entry.tags)}\n`).join('')
     return `\n${heading}\n${entries}`
   }).join('')
+}
+
+/** Render the optional label suffix of one entry; absent or empty labels render nothing. */
+function renderEntryTags(tags: readonly string[] | undefined): string {
+  const normalized = normalizeEntryTags(tags ?? [])
+  return normalized.length === 0 ? '' : ` <!-- tags: ${normalized.join(', ')} -->`
 }
 
 /** Compose the next document from the current one and one entry. */
@@ -1022,7 +1088,12 @@ function appendSectionEntry(
   kind: MemoryEntryKind,
   tier: MemoryTier,
 ): readonly MemorySection[] {
-  const appended = { kind, text: entry.text }
+  const tags = normalizeEntryTags(entry.tags ?? [])
+  const appended: MemoryEntry = {
+    kind,
+    text: entry.text,
+    ...tags.length === 0 ? {} : { tags },
+  }
   const last = sections.at(-1)
   if (last !== undefined && last.sessionId === sessionId && last.endTurn === entry.turn && last.tier === tier) {
     return [...sections.slice(0, -1), { ...last, entries: [...last.entries, appended] }]
@@ -1043,7 +1114,11 @@ function appendSummaryEntries(
   turn: number,
   entries: readonly MemoryEntry[],
 ): readonly MemorySection[] {
-  const appended = entries.map(entry => ({ kind: entry.kind, text: entry.text }))
+  const appended = entries.map(entry => ({
+    kind: entry.kind,
+    text: entry.text,
+    ...entry.tags === undefined ? {} : { tags: normalizeEntryTags(entry.tags) },
+  }))
   const last = sections.at(-1)
   if (last !== undefined
     && last.sessionId === sessionId

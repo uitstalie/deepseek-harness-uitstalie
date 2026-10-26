@@ -59,7 +59,7 @@ kind: "package-reference"
 提供者是函数插件：`src/index.ts` 导出 `name`、`inject`、`Config` 与 `apply`，并只注册一个 `contractVersion: 2`、`id: 'memory'` 的能力，带 `label: 'Memory'` 与一句能力列表用的 description。
 
 - `src/config.ts` 持有 schemastery `Config` 与显式的 `resolveConfig(config): MemorySettings` 步骤。默认值只在那里补一次，两条跨字段规则（阈值递增、摘要模型成对）在注册之前检查。
-- `src/memory-file.ts` 是 MEMORY.md 仓库与文件侧迁移 pass。文件的 YAML frontmatter 存机器状态（`version`、`window`，以及每个会话的 `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`）；`<!-- memory:begin -->` 与 `<!-- memory:end -->` 之间的托管区块按 `## <sessionId> · turn N–M（tier）` 标题分组，每行一个 `- [kind] text` 条目。托管区块之外的手写内容逐字节原样往返；托管区块归提供者所有，写入时整体重写。
+- `src/memory-file.ts` 是 MEMORY.md 仓库与文件侧迁移 pass。文件的 YAML frontmatter 存机器状态（`version`、`window`，以及每个会话的 `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`）；`<!-- memory:begin -->` 与 `<!-- memory:end -->` 之间的托管区块按 `## <sessionId> · turn N–M（tier）` 标题分组，每行一个 `- [kind] text` 条目，条目可带一个行尾标签后缀 `<!-- tags: a, b -->`。托管区块之外的手写内容逐字节原样往返；托管区块归提供者所有，写入时整体重写。
 - `src/window.ts` 是纯规划器。它按最新完成的 turn 计算每个 turn 的相对年龄，返回应转为 brief 或遗忘的区块，并报告 frontmatter 的窗口值，不触碰存储、模型或 surface。
 - `src/checkpoint.ts` 构造 memory checkpoint 消息，并用它替换 live surface 上的一段区间。来源是 memory 生产者的 `form: 'notice'` 加 `window: { from, to, tier }` 字段；这既把它与 snapshot 区分开，也让重启后的提供者找到自己的上一个节点。
 - `src/prompt.ts` 持有唯一的固定提示词段：名字 `memory`，顺序 `2350`（在 `2300` 的 session-query 工具与 `2400` 的 goal 工具之间），文本静态，不随 turn 或 agent 变化。
@@ -178,7 +178,7 @@ brief checkpoint 用最多 160 字符加 `- [kind]` 前缀替换原始 turn；�
 - **被跳过的 surface checkpoint 不重试** — live 区间缺失、不连续、包含 snapshot 或包含 compaction checkpoint 时，surface 替换被跳过，但文件仍记录新的 tier。原始 turn 可能留在 surface 上，直到 compaction 移除它。
 - **一次 pass 只覆盖一个 turn** — pending 机制只覆盖最新完成的 turn；pass 运行期间完成的 turn 不会合并进本次，因此每完成一个 turn 会产生一次摘要调用，另外每个跨过 brief 年龄的区块各产生一次压缩调用。
 - **`maxBytes` 只覆盖托管区块** — 默认 4 KiB 是提供者拥有的正文预算。设计里的 16 KiB 总正文预算属于后续步骤；snapshot 有自己的固定 4 KiB 预算（`MEMORY_SNAPSHOT_MAX_BYTES`）。
-- **`tags` 只接收、不落盘** — 工具保留该可选字段以稳定 schema，但托管区块的条目格式只存 `kind` 与正文。
+- **`tags` 内联存储** — 带标签的条目渲染为 `- [kind] 正文 <!-- tags: a, b -->`，手改时删掉后缀也就删掉了标签。标签出现之前写入的文件照常解析；标签只是元数据，`memory_search` 不匹配标签文本。
 - **会话命中不带 turn 号** — `memory_search` 返回搜索后端给出的事件 seq；把该 seq 传给 `memory_read`，它会选中包含该事件的 turn 并打印 turn 与 seq 区间。
 - **标题退化为会话 id** — 搜索结果使用会话 id，因为本步没有接线逐条折叠会话标题。
 - **搜索与读取都只覆盖本工作区** — `memory_search` 的会话半边按 `cwd` 完全相等过滤，`memory_read` 拒绝 header `cwd` 与调用者不一致的目标，记忆半边读本工作区自己的文件，因此都到不了其他工作区的历史。
