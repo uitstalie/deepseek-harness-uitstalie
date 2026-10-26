@@ -2,7 +2,7 @@
  * `.dsh/` 路径解析与拒绝矩阵：把模型给出的 `.dsh/` 相对路径规范化成安全段，
  * 绝对路径、盘符、UNC、`..` 逃逸、环境变量展开、Windows 保留名与非法字符一律拒绝。
  * 本模块是纯函数、不触碰文件系统，因此整张矩阵可以逐行钉在单测里。
- * @module @deepseek-ai/dsh-tool-dsh-store/paths
+ * @module @deepseek-ai/dsh-store-atom/paths
  */
 
 import { isAbsolute, join, relative, resolve } from 'node:path'

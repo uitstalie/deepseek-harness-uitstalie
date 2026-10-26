@@ -24,6 +24,7 @@ import * as ToolExecutorNativePlugin from '@deepseek-ai/dsh-tool-executor-native
 import * as AgentLoopPlugin from '@deepseek-ai/dsh-agent-loop'
 import * as FsLocalPlugin from '@deepseek-ai/dsh-fs-local'
 import * as StorePlugin from '../src/index.ts'
+import * as StoreAtomPlugin from '@deepseek-ai/dsh-store-atom'
 
 let context: Context | undefined
 let root: string | undefined
@@ -56,6 +57,7 @@ async function boot(project: string): Promise<Context> {
     ['@deepseek-ai/dsh-fs-local', FsLocalPlugin],
     ['@deepseek-ai/dsh-agent', AgentPlugin],
     ['@deepseek-ai/dsh-agent-loop', AgentLoopPlugin],
+    ['@deepseek-ai/dsh-store-atom', StoreAtomPlugin],
     ['@deepseek-ai/dsh-tool-dsh-store', StorePlugin],
   ])
   const internal: ModuleLoaderV2 = {

@@ -5,7 +5,7 @@
  * consumer would ignore — or that duplicates one already loaded — never reaches
  * the store. The same module names the `memory` area the memory capability owns
  * and the model-facing store tool must not modify.
- * @module @deepseek-ai/dsh-tool-dsh-store/namespaces
+ * @module @deepseek-ai/dsh-store-atom/namespaces
  */
 
 import { parse as parseYaml } from 'yaml'

@@ -29,6 +29,7 @@
   "dependencies": {
     "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-home-paths": "workspace:*",
+    "@deepseek-ai/dsh-store-atom": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
     "diff": "^9.0.0",
@@ -45,7 +46,7 @@
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
-    "@deepseek-ai/dsh-tool-dsh-store": "workspace:*",
+    "@deepseek-ai/dsh-store-atom": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*"
   }
 }

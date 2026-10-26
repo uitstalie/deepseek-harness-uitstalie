@@ -20,6 +20,7 @@ import {
   type AgentLoopTestHarness,
 } from '@deepseek-ai/dsh-agent-loop-testkit'
 import * as Store from '../src/index.ts'
+import * as StoreAtom from '@deepseek-ai/dsh-store-atom'
 
 const signal = new AbortController().signal
 
@@ -48,7 +49,8 @@ async function mount(mode?: 'read-only' | 'workspace-write'): Promise<{ ctx: Con
   await ctx.plugin(LocalFileSystem, { cwd: project })
   if (mode !== undefined) await ctx.plugin(SandboxPolicyService, { mode, workspaceRoot: project })
   const harness: AgentLoopTestHarness = await mountAgentLoopTestHarness(ctx)
-  await ctx.plugin(Store, {})
+  await ctx.plugin(StoreAtom, {})
+  await ctx.plugin(Store)
   const agent = await harness.create(SessionId(`store-${++callCounter}`), {}, { cwd: project })
   return { ctx, agent }
 }

@@ -34,7 +34,8 @@ kind: "package-group"
 | [`memory`](memory/README.zh.md) | 记忆能力提供者：固定提示词段、快照、轮次摘要任务与 `memory_*` 工具 | 注册到 `ctx.dafeiyu` |
 | [`models-dev`](models-dev/README.zh.md) | models.dev 目录服务：启动拉取、磁盘缓存回落、路由默认值与额外请求参数 | `ctx.modelsDev` |
 | [`personality`](personality/README.zh.md) | 人格能力提供者：全局档案加工作区覆盖、`personality_learn` 与 `/personality` 审阅 | 注册到 `ctx.dafeiyu` |
-| [`tool-dsh-store`](tool-dsh-store/README.zh.md) | `.dsh` 基础接口、面向模型的存储工具，以及只读的 rules Remote | `ctx.dshStore` |
+| [`store-atom`](store-atom/README.zh.md) | `.dsh` 存储原子：`dshStore` 基础接口，含项目根发现、路径围栏、命名空间撰写校验与带版本守卫的读写 | `ctx.dshStore` |
+| [`tool-dsh-store`](tool-dsh-store/README.zh.md) | 面向模型的存储工具，以及基于存储原子的只读 rules Remote | `ctx.dshStore` 消费方 |
 | [`ui-dafeiyu`](ui-dafeiyu/README.zh.md) | 能力设置段：列出组织者的 provider、切换其启用门，并链接到每个 provider 的设置页 | 设置页段落 |
 | [`ui-models-dev`](ui-models-dev/README.zh.md) | Web 设置页段落：浏览目录并把选中的提供商物化为 `llm-plus` 路由 | 设置页段落 |
 | [`ui-tool-dsh-store`](ui-tool-dsh-store/README.zh.md) | Web 侧栏按钮：列出并读取工作区的 `.dsh/rules` | 工作区行菜单 |

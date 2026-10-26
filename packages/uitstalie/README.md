@@ -34,7 +34,8 @@ Each row names the package's contribution and the `ctx` key or surface it attach
 | [`memory`](memory/README.md) | Memory capability provider: fixed prompt section, snapshot, turn-summary job, and the `memory_*` tools | registers on `ctx.dafeiyu` |
 | [`models-dev`](models-dev/README.md) | models.dev catalog service: startup fetch, disk-cache fallback, route defaults, and extra request params | `ctx.modelsDev` |
 | [`personality`](personality/README.md) | Personality capability provider: global profile with workspace overlay, `personality_learn`, and `/personality` review | registers on `ctx.dafeiyu` |
-| [`tool-dsh-store`](tool-dsh-store/README.md) | `.dsh` base interface, the model-facing store tool, and the read-only rules Remote | `ctx.dshStore` |
+| [`store-atom`](store-atom/README.md) | `.dsh` store atom: the `dshStore` base interface with project-root discovery, path confinement, namespace authoring checks, and version-guarded reads and writes | `ctx.dshStore` |
+| [`tool-dsh-store`](tool-dsh-store/README.md) | Model-facing store tool and the read-only rules Remote over the store atom | `ctx.dshStore` consumer |
 | [`ui-dafeiyu`](ui-dafeiyu/README.md) | Capabilities settings section that lists the organizer's providers, switches their gate, and links each provider page | settings section |
 | [`ui-models-dev`](ui-models-dev/README.md) | Web settings section that browses the catalog and materializes chosen providers as `llm-plus` routes | settings section |
 | [`ui-tool-dsh-store`](ui-tool-dsh-store/README.md) | Web sidebar button that lists and reads a workspace's `.dsh/rules` | workspace row menu |

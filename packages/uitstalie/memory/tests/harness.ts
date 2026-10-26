@@ -24,7 +24,7 @@ import type {
   SessionSearchPage,
   SessionSearchRequest,
 } from '@deepseek-ai/dsh-session-query'
-import { createDshStore } from '@deepseek-ai/dsh-tool-dsh-store'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom'
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,

@@ -41,6 +41,9 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
   'packages/util/official-bundles': 'The package only lists bundle package names and their display metadata; the loaded plugin tree owns model context.',
   'packages/util/code-language': 'The package only maps a filename suffix to a syntax-highlighting language id; the read consumer owns the persisted hint.',
   'packages/uitstalie/home-backup': 'The plugin copies harness files on host-owned timers and contributes no model context, tool, or Session event.',
+  // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-12, 存储原子没有模型面
+  'packages/uitstalie/store-atom': 'The atom only provides the store service that other plugins drive; it registers no tools, prompt sections, or Session events of its own.',
+  // END uitstalie-deepseek-flash
 }
 
 /**

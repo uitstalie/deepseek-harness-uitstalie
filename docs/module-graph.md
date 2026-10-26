@@ -485,6 +485,7 @@ flowchart TD
     pkg_memory["memory"]
     pkg_models_dev["models-dev"]
     pkg_personality["personality"]
+    pkg_store_atom["store-atom"]
     pkg_tool_dsh_store["tool-dsh-store"]
   end
   subgraph group_workflow["packages/workflow"]
@@ -1672,6 +1673,7 @@ flowchart TD
 | [`dafeiyu`](../packages/uitstalie/dafeiyu) | `uitstalie` | — |
 | [`home-backup`](../packages/uitstalie/home-backup) | `uitstalie` | — |
 | [`memory`](../packages/uitstalie/memory) | `uitstalie` | — |
+| [`store-atom`](../packages/uitstalie/store-atom) | `uitstalie` | — |
 | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | `uitstalie` | — |
 | [`session`](../packages/core/session) | `core` | [`scope`](../packages/core/scope) |
 | [`system-prompt`](../packages/core/system-prompt) | `core` | [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope) |

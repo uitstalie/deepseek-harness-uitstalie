@@ -17,7 +17,7 @@ import { FsError } from '@deepseek-ai/dsh-fs'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { createInboxStub } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { Session, SessionId, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
-import { createDshStore } from '@deepseek-ai/dsh-tool-dsh-store'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom'
 import { resolveConfig } from '../src/config.ts'
 import type { PersonalitySettings } from '../src/config.ts'
 import {

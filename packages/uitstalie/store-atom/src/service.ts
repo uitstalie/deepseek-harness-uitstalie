@@ -7,7 +7,7 @@
  * sandbox policy gate. The model-facing tool and the sidebar Remote are
  * consumers of this interface, so a new consumer never re-assembles a store
  * path or re-implements the refusal matrix.
- * @module @deepseek-ai/dsh-tool-dsh-store/service
+ * @module @deepseek-ai/dsh-store-atom/service
  */
 
 import { join } from 'node:path'

@@ -3,7 +3,7 @@
  *
  * 本模块只接收已解析、已确认位于根内的绝对路径，因此路径拒绝矩阵与会话策略门禁都不在这里：
  * 它只描述每种操作的可观察结果，数据形状与执行逻辑分开。
- * @module @deepseek-ai/dsh-tool-dsh-store/store-ops
+ * @module @deepseek-ai/dsh-store-atom/store-ops
  */
 
 import type { FileSystem, FsTarget } from '@deepseek-ai/dsh-fs'

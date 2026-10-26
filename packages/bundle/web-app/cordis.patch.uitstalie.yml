@@ -14,6 +14,8 @@
       name: '@deepseek-ai/dsh-memory'
     - id: personality
       name: '@deepseek-ai/dsh-personality'
+    - id: store-atom
+      name: '@deepseek-ai/dsh-store-atom'
     - id: tool-dsh-store
       name: '@deepseek-ai/dsh-tool-dsh-store'
     - id: home-backup

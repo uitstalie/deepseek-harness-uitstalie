@@ -10,9 +10,12 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { normalizeStorePath, STORE_DIR_NAME } from './paths.ts'
-import { isMemoryPath } from './namespaces.ts'
-import type { DshStore } from './service.ts'
+import {
+  isMemoryPath,
+  normalizeStorePath,
+  STORE_DIR_NAME,
+  type DshStore,
+} from '@deepseek-ai/dsh-store-atom'
 
 /** What one store call reports back to the model. */
 export interface StoreToolValue {

@@ -10,8 +10,8 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { Session, SessionId, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
-import { createDshStore } from '@deepseek-ai/dsh-tool-dsh-store'
-import type { DshStore } from '@deepseek-ai/dsh-tool-dsh-store'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom'
+import type { DshStore } from '@deepseek-ai/dsh-store-atom'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import {
   appendMemoryEntry,

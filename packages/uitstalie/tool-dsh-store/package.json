@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-tool-dsh-store",
-  "description": ".dsh base interface: a dshStore service for path-confined store operations, plus the model-facing store tool and a read-only sidebar Remote",
+  "description": "The model-facing .dsh store tool and the read-only sidebar Remote over the store atom's dshStore service",
   "version": "0.0.0",
   "icon": "./icon.svg",
   "private": true,
@@ -45,40 +45,27 @@
     "@deepseek-ai/cordis": "workspace:~"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-agent-instructions": "workspace:*",
     "@deepseek-ai/dsh-agent-instructions-plus": "workspace:*",
-    "@deepseek-ai/dsh-fs": "workspace:*",
-    "@deepseek-ai/dsh-sandbox": "workspace:*",
-    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-store-atom": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
-    "@deepseek-ai/dsh-workspace": "workspace:*",
-    "@deepseek-ai/schemastery": "workspace:~",
-    "yaml": "^2.4.2",
-    "zod": "^4.4.3"
+    "@deepseek-ai/dsh-workspace": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-agent": "workspace:*",
-    "@deepseek-ai/dsh-agent-instructions": "workspace:*",
-    "@deepseek-ai/dsh-agent-instructions-plus": "workspace:*",
     "@deepseek-ai/dsh-agent-loop": "workspace:*",
     "@deepseek-ai/dsh-agent-loop-testkit": "workspace:*",
-    "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-fs-local": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
-    "@deepseek-ai/dsh-sandbox": "workspace:*",
     "@deepseek-ai/dsh-sandbox-policy": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-session-projection": "workspace:*",
-    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-store-atom": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tool-executor-native": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
-    "@deepseek-ai/dsh-workspace": "workspace:*",
-    "@deepseek-ai/schemastery": "workspace:~",
-    "yaml": "^2.4.2",
-    "zod": "^4.4.3"
+    "@deepseek-ai/dsh-workspace": "workspace:*"
   }
 }

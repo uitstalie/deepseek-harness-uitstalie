@@ -1,5 +1,5 @@
 ---
-description: "The .dsh base interface: a dshStore service for path-confined store operations, plus the model-facing store tool and a read-only sidebar Remote."
+description: "The model-facing .dsh store tool and the read-only sidebar Remote over the store atom's dshStore service."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-dsh-store` owns a workspace's `.dsh` directory — the project-level convention holding project skills and runtime snapshots. The `ctx.dshStore` service is the base interface for `.dsh` management, owning project-root discovery, path confinement, the store operations including the version-guarded `writeFile`, namespace authoring checks, and the session policy gate; the model-facing tool and read-only Remote consume it. `.dsh/memory` is reserved for the memory capability, which writes it through the service while the tool may only read it. The plugin also keeps each session's store root present and serves `remote.dshStore`, letting the Web sidebar list and read a workspace's rules without a session.
+`dsh-tool-dsh-store` is the model-facing and sidebar surface over a workspace's `.dsh` directory — the project-level convention holding project skills and runtime snapshots. The store implementation (`ctx.dshStore`, path confinement, the version-guarded `writeFile`, namespace authoring checks, and the session policy gate) lives in [`@deepseek-ai/dsh-store-atom`](../store-atom/README.md); this package consumes it. The registered `tool-dsh-store` tool creates, queries, and deletes `.dsh` content with the namespace checks applied, `.dsh/memory` stays writable for the memory capability but read-only for the tool, and the plugin serves `remote.dshStore` so the Web sidebar can list and read a workspace's rules without a session.
 
 ## Table of Contents
 
@@ -26,7 +26,7 @@ English | [中文](README.zh.md)
 
 ### The .dsh directory is the store
 
-`.dsh` is already this repository's project-level convention: project skills live under `.dsh/skills`, workspace rules live under `.dsh/rules`, and test fixtures write `.dsh/runtime.json`. The store owns that one directory, so a caller names a target relative to `.dsh` instead of assembling an absolute path. The `dshStore` service is the base interface other plugins consume: `projectRootFor`, `rootFor`, `prepare`, and one method per store operation, each with the same refusals; the tool below is its main consumer.
+`.dsh` is already this repository's project-level convention: project skills live under `.dsh/skills`, workspace rules live under `.dsh/rules`, and test fixtures write `.dsh/runtime.json`. The store owns that one directory, so a caller names a target relative to `.dsh` instead of assembling an absolute path. The `dshStore` service is provided by [`@deepseek-ai/dsh-store-atom`](../store-atom/README.md) and injected here; the tool below is its main model-facing consumer.
 
 ### What the tool does
 
@@ -57,7 +57,7 @@ The `store-ops` helpers take an absolute path that the path layer has already co
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`src/paths.ts` holds the refusal matrix as pure functions that never touch the filesystem, which is why every row of the matrix is pinned by a unit test instead of an integration case. `src/store-ops.ts` maps the store primitives onto `FileSystem.mkdir`, `writeText`, `stat`/`listDir`/`readText`, and `remove`, and returns named result records so callers read data rather than filesystem state. `src/namespaces.ts` holds the namespace authoring checks plus `isMemoryPath`, whose first-segment comparison is case-insensitive because Windows and macOS fold case. `src/policy.ts` resolves the per-session policy once per mutating call and refuses a `read-only` session with the shared denial marker; a query is not gated, because reading the store does not write it. `src/service.ts` is the `dshStore` base interface: it owns project-root discovery, the `.dsh` root, the store operations, the namespace checks, and the policy gate; `writeFile` maps `expected` to `writeText`'s `replaceIfVersion` guard, while an omitted `expected` is the unconditional write and `createIfAbsent` stays unexposed. `src/tool.ts` builds the tool as its consumer and holds the `memory` reservation: it refuses `create` and `delete` on that prefix, so the reservation lives in the tool layer while the service stays writable. `src/index.ts` provides the service, registers the tool and the Remote, and prepares the root on each step once the session may write; the tool is registered at the profile level, so every agent in the profile can call it. `src/remote.ts` is the read-only Remote namespace the sidebar uses: it is addressed by workspace root because a workspace row may have no session, it checks that root against the Host's workspace registry before reading anything, and its listing is the instruction loader's own retained set, so the panel shows exactly what reaches the model.
+The path layer, the store operations, the namespace authoring checks, the policy gate, and the `dshStore` service live in [`@deepseek-ai/dsh-store-atom`](../store-atom/README.md), whose README documents them; this package keeps two consumers. `src/tool.ts` builds the tool and holds the `memory` reservation: it refuses `create` and `delete` on that prefix, so the reservation lives in the tool layer while the service stays writable. `src/remote.ts` is the read-only Remote namespace the sidebar uses: it is addressed by workspace root because a workspace row may have no session, it checks that root against the Host's workspace registry before reading anything, and its listing is the instruction loader's own retained set, so the panel shows exactly what reaches the model. `src/index.ts` injects `ctx.dshStore`, registers the tool, and mounts the Remote; the tool is registered at the profile level, so every agent in the profile can call it.
 
 </details>
 

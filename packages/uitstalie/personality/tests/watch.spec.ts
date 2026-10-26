@@ -22,7 +22,7 @@ import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsTarget } from '@deepseek-ai/dsh-fs'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { createDshStore } from '@deepseek-ai/dsh-tool-dsh-store'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom'
 import * as Personality from '../src/index.ts'
 import {
   PERSONALITY_FILE_NAME,

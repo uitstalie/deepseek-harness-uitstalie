@@ -97,3 +97,10 @@ interface CapabilityProvider {
 3. provider 设置页的 sectionId 命名与 order 需要注册约定，否则 dafeiyu 的“打开设置”链接会漂移。
 4. jira 的 git 台账写入与 atom 版本守卫如何共存（git commit 不是文件系统版本）需要在迁移设计里单独定。
 5. 旧 jira 插件 shim 的退出条件与时间点。
+
+## 落地状态（2026-10-26，DH-12）
+
+- **目录落点改为 `packages/uitstalie/store-atom/`**：仓库的包门禁（`verify-package-meta`、`verify-package-dependencies`、`package-graph`、`gen-tsconfig-paths` 等）只枚举 `packages/*/*`，`atoms/<name>/` 会落在所有包级检查的盲区；包名仍是 `@deepseek-ai/dsh-store-atom`。后续 atom 沿用这个两层目录约定。
+- 首个 atom 已抽出：`tool-dsh-store` 不再提供 `ctx.dshStore`，改为 `inject: ['dshStore']` 后消费；memory/personality 的 workspace 读写随之走 atom（行为不变，160 个相关测试通过）。
+- **`global` scope 未实现**：personality 的 `globalPath` 允许指向 `$DSH_HOME` 之外（见 [personality.md](personality.md) 的存储决定），与“global 根 = `$DSH_HOME`”冲突；在拍板这条契约前，personality 的全局档案继续走 `ctx.fs`，atom 只承载 workspace scope。
+- 接口暂未加 `scope` 参数：先完成抽包、保持 `DshStore` 形状不变，避免一次跨包接口变更与抽包同时发生（对应上面的风险 2）；`scope` 与 `global` 一起作为下一步。

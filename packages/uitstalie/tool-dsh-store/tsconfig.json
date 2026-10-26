@@ -15,10 +15,10 @@
       "path": "../../../vendor/schemastery"
     },
     {
-      "path": "../../context/agent-instructions"
+      "path": "../agent-instructions-plus"
     },
     {
-      "path": "../agent-instructions-plus"
+      "path": "../store-atom"
     },
     {
       "path": "../../fs/fs"

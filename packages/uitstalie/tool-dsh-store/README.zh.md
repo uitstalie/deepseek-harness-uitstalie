@@ -1,5 +1,5 @@
 ---
-description: ".dsh 基础接口：dshStore 服务负责路径限定内的存储操作，另含模型可见工具与只读侧边栏 Remote。"
+description: "面向模型的 .dsh 存储工具与只读侧边栏 Remote，驱动存储原子包提供的 dshStore 服务。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-dsh-store` 拥有工作区的 `.dsh` 目录——这个项目级约定承载着项目技能与运行时快照。`ctx.dshStore` 服务是 `.dsh` 管理的基础接口，负责项目根解析、路径限定、存储操作（包括带版本守卫的 `writeFile`）、命名空间撰写校验与会话策略门禁；模型工具与只读 Remote 都是它的消费者。`.dsh/memory` 保留给 memory 能力，该能力通过服务写入这片区域，而工具只能读取它。插件同时让每个会话的存储根保持存在，并提供 `remote.dshStore` 命名空间，让 Web 侧边栏**无需会话**即可列出并读取某工作区的规则。
+`dsh-tool-dsh-store` 是工作区 `.dsh` 目录（承载项目技能与运行时快照的项目级约定）的模型面与侧边栏面。存储实现（`ctx.dshStore`、路径限定、带版本守卫的 `writeFile`、命名空间撰写校验与会话策略门禁）位于 [`@deepseek-ai/dsh-store-atom`](../store-atom/README.zh.md)，本包消费它。注册的 `tool-dsh-store` 工具在应用命名空间校验的前提下创建、查询与删除 `.dsh` 内容；`.dsh/memory` 对 memory 能力可写、对工具只读；插件同时提供 `remote.dshStore`，让 Web 侧边栏**无需会话**即可列出并读取某工作区的规则。
 
 ## 目录
 
@@ -26,7 +26,7 @@ kind: "package-reference"
 
 ### .dsh 目录就是存储区
 
-`.dsh` 已经是本仓库的项目级约定：项目技能在 `.dsh/skills` 下，工作区规则在 `.dsh/rules` 下，测试夹具写 `.dsh/runtime.json`。存储层只拥有这一个目录，调用方给出相对 `.dsh` 的目标，而不是自己拼绝对路径。`dshStore` 服务是供其他插件消费的基础接口：`projectRootFor`、`rootFor`、`prepare`，以及每个存储操作一个方法，拒绝规则一致；下面的工具是它的主要消费者。
+`.dsh` 已经是本仓库的项目级约定：项目技能在 `.dsh/skills` 下，工作区规则在 `.dsh/rules` 下，测试夹具写 `.dsh/runtime.json`。存储层只拥有这一个目录，调用方给出相对 `.dsh` 的目标，而不是自己拼绝对路径。`dshStore` 服务由 [`@deepseek-ai/dsh-store-atom`](../store-atom/README.zh.md) 提供并在此注入；下面的工具是它主要的模型面消费者。
 
 ### 工具做什么
 
@@ -57,7 +57,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-`src/paths.ts` 把拒绝矩阵实现为不触碰文件系统的纯函数，因此矩阵的每一行都由单测钉住，而不是靠集成用例覆盖。`src/store-ops.ts` 把各存储原语映射到 `FileSystem.mkdir`、`writeText`、`stat`/`listDir`/`readText` 与 `remove`，并返回具名的结果记录，让调用方读数据而不是读文件系统状态。`src/namespaces.ts` 持有命名空间撰写校验与 `isMemoryPath`，后者对首段做不区分大小写的比较，因为 Windows 与 macOS 会折叠大小写。`src/policy.ts` 在每次写操作前解析一次会话策略，并用共享的拒绝标记拒绝 `read-only` 会话；查询不过这道门禁，因为读取不会写存储区。`src/service.ts` 是 `dshStore` 基础接口：项目根解析、`.dsh` 根、各存储操作、命名空间校验与策略门禁都在这里；`writeFile` 把 `expected` 映射为 `writeText` 的 `replaceIfVersion` 守卫，省略 `expected` 则是无条件写入，`createIfAbsent` 尚未暴露。`src/tool.ts` 把工具实现为它的消费者，并持有 `memory` 保留规则：该工具拒绝该前缀上的 `create` 与 `delete`，因此保留规则位于工具层，而服务本身仍可写。`src/index.ts` 提供服务、注册工具与 Remote，并在会话可写后于每个 step 准备根目录；工具注册在 profile 层，因此 profile 里每个 agent 都能调用它。`src/remote.ts` 是侧边栏使用的只读 Remote 命名空间：因为工作区行可能还没有会话，它按**工作区根**寻址；读取前先拿宿主的工作区注册表核对该根；它的列表就是指令加载器自己的保留集合，因此面板显示的正是进入模型的那一组。
+路径层、存储操作、命名空间撰写校验、策略门禁与 `dshStore` 服务都位于 [`@deepseek-ai/dsh-store-atom`](../store-atom/README.zh.md)，由该包的 README 记录；本包保留两个消费者。`src/tool.ts` 构建工具并持有 `memory` 保留规则：它拒绝该前缀上的 `create` 与 `delete`，因此保留规则位于工具层，而服务本身仍可写。`src/remote.ts` 是侧边栏使用的只读 Remote 命名空间：因为工作区行可能还没有会话，它按**工作区根**寻址；读取前先拿宿主的工作区注册表核对该根；它的列表就是指令加载器自己的保留集合，因此面板显示的正是进入模型的那一组。`src/index.ts` 注入 `ctx.dshStore`、注册工具并挂载 Remote；工具注册在 profile 层，因此 profile 里每个 agent 都能调用它。
 
 </details>
 

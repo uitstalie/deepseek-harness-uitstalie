@@ -571,6 +571,7 @@
       "@deepseek-ai/dsh-storage-domain": ["./packages/storage/storage-domain/src"],
       "@deepseek-ai/dsh-storage-json": ["./packages/storage/storage-json/src"],
       "@deepseek-ai/dsh-storage-sqlite": ["./packages/storage/storage-sqlite/src"],
+      "@deepseek-ai/dsh-store-atom": ["./packages/uitstalie/store-atom/src"],
       "@deepseek-ai/dsh-subagent": ["./packages/subagent/subagent/src"],
       "@deepseek-ai/dsh-subagent-acp": ["./packages/subagent/subagent-acp/src"],
       "@deepseek-ai/dsh-subagent-claude-code": ["./packages/subagent/subagent-claude-code/src"],

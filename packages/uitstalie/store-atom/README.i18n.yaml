@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/store-atom/README.md
+/:
+  en: e712b55c4dc47408
+  zh: 34d7cceb0ff303b9
+/deepseek-ai-dsh-store-atom:
+  en: cc9f2e9ed914d087
+  zh: 9d325247d5cc2ed5
+/deepseek-ai-dsh-store-atom/summary:
+  en: 1f3f0dbcc556bb1d
+  zh: c9643154743e915e
+/deepseek-ai-dsh-store-atom/table-of-contents:
+  en: b5a30705c7a4793d
+  zh: df83a97af8718454
+/deepseek-ai-dsh-store-atom/use-this-package:
+  en: 6f63370f58e6cbb2
+  zh: 042ee623d4778ff3
+/deepseek-ai-dsh-store-atom/understand-the-implementation:
+  en: d13870aefbfd416d
+  zh: 084cb54a87cfc4ff
+/deepseek-ai-dsh-store-atom/known-limitations-and-deferred-work:
+  en: f515c83bcbd9e497
+  zh: 73e121a8cad2f1f5
+/deepseek-ai-dsh-store-atom/dev-note:
+  en: 70b9dc2569d18eb6
+  zh: c7aaa3516c953997

@@ -2,7 +2,7 @@
  * Session policy gate for store mutations: resolve the calling session's policy
  * and refuse a mutating action under `read-only` with the shared sandbox denial
  * marker, so a blocked store call reads exactly like a blocked write or edit.
- * @module @deepseek-ai/dsh-tool-dsh-store/policy
+ * @module @deepseek-ai/dsh-store-atom/policy
  */
 
 import type { Context } from '@deepseek-ai/cordis'

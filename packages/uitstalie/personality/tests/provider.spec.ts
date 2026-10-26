@@ -15,7 +15,7 @@ import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { createDshStore } from '@deepseek-ai/dsh-tool-dsh-store'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom'
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,

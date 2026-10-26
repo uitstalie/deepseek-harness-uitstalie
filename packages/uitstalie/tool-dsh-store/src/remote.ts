@@ -16,9 +16,13 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 // Type-only: resolves the workspace-registry service declaration.
 import { WorkspaceId, type Workspace } from '@deepseek-ai/dsh-workspace'
 import { scanWorkspaceRules } from '@deepseek-ai/dsh-agent-instructions-plus'
-import { normalizeStorePath, resolveStoreTarget, STORE_DIR_NAME } from './paths.ts'
-import { isRulesPath } from './namespaces.ts'
-import { queryStoreTarget } from './store-ops.ts'
+import {
+  normalizeStorePath,
+  resolveStoreTarget,
+  STORE_DIR_NAME,
+} from '@deepseek-ai/dsh-store-atom'
+import { isRulesPath } from '@deepseek-ai/dsh-store-atom'
+import { queryStoreTarget } from '@deepseek-ai/dsh-store-atom'
 import type { StoreRuleEntry, StoreRulesListing, StoreRuleText } from './types.ts'
 
 /** Per-file cap applied when the rule set is scanned and read. */

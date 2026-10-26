@@ -22,7 +22,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { FsError, FsVersion } from '@deepseek-ai/dsh-fs'
 import { parse as parseYaml } from 'yaml'
-import type { StoreWriteOptions } from '@deepseek-ai/dsh-tool-dsh-store'
+import type { StoreWriteOptions } from '@deepseek-ai/dsh-store-atom'
 import type { PersonalitySettings } from './config.ts'
 
 /** Default file name of the global personality profile. */
