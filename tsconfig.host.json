@@ -228,6 +228,8 @@
     "apps/desktop-host/tests/**/*.ts",
     "benchmarks/**/*.ts",
     "packages/*/*/tests/**/*.ts",
+    // Group-level suites live one directory above a package suite.
+    "packages/*/tests/**/*.ts",
     "packages/experimental/cua-macos/native/generate-protocol.ts",
     "packages/experimental/claude-code-mods/examples/*/index.ts",
     "packages/experimental/inspector/scripts/**/*.ts",
