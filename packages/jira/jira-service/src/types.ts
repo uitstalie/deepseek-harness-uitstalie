@@ -80,6 +80,18 @@ export interface JiraStatus {
 }
 
 /** The ledger facade `ctx.jira` provides to the agent, the UI and the CLI. */
+/** Project, knowledge and open-issue counts for the awareness line. */
+export interface JiraCounts {
+  /** Projects the ledger knows (a project.md or at least one issue). */
+  readonly projects: number
+  /** Knowledge entries across all domains. */
+  readonly knowledge: number
+  /** Issues in a non-closed status. */
+  readonly openIssues: number
+  /** Projects the ledger marks read-only. */
+  readonly readOnlyProjects: number
+}
+
 export interface JiraServiceApi {
   /** The resolved ledger root. */
   readonly root: string
@@ -91,6 +103,11 @@ export interface JiraServiceApi {
    */
   status(): JiraStatus
 
+  /**
+   * Count the ledger's projects, knowledge entries and open issues.
+   * @returns the counts, or the error that prevented reading the store.
+   */
+  counts(): Promise<Result<JiraCounts, JiraError>>
   /**
    * Read the ledger's issues with a filter.
    * @param query - the filter; every field is optional.

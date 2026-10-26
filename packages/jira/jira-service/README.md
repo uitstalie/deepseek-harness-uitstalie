@@ -29,7 +29,7 @@ One `jira-service` row owns one ledger: it resolves the root, reads this machine
 
 A second consumer — a UI, another capability, a shell — shares this service through `ctx.jira`; nobody else pushes. Across processes the store's own file locks are the guard, so the CLI can commit while a host session is open.
 
-`ctx.jira` implements the contract in [`src/types.ts`](src/types.ts): read methods (`list`, `get`, `board`, `doctor`, `searchKnowledge`), write methods (`create`, `transact`, `kbCreate`, `kbUpdate`), `sync` and `settle`, plus the `changed` subscription. Every method returns a `Result`; errors are `JiraError` with one of the twelve codes, and permission is not decided here — the guard in `jira-agent` refuses a write before it reaches the ledger.
+`ctx.jira` implements the contract in [`src/types.ts`](src/types.ts): read methods (`list`, `get`, `board`, `doctor`, `searchKnowledge`, `counts`), write methods (`create`, `transact`, `kbCreate`, `kbUpdate`), `sync` and `settle`, plus the `changed` subscription. Every method returns a `Result`; errors are `JiraError` with one of the twelve codes, and permission is not decided here — the guard in `jira-agent` refuses a write before it reaches the ledger.
 
 Two methods are the phase-1 bridge to the agent's existing tool runners: `store()` hands back the opened store, and `notifyWrite()` records a write those runners made directly, so `changed` still fires and the queue still arms. Both disappear when the tools move onto the write methods above.
 

@@ -32,7 +32,8 @@ import {
   store as coreStore,
   system,
 } from '@deepseek-ai/dsh-jira-core'
-import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, JiraResult, JiraServiceApi, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
+import { countStore } from '@deepseek-ai/dsh-jira-core/injection.ts'
+import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, JiraCounts, JiraResult, JiraServiceApi, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 import JiraRemote from './remote.ts'
 
 export type * from './types.ts'
@@ -227,6 +228,23 @@ export class JiraService extends Service implements JiraServiceApi {
       this.lastSync,
       this.queue?.isPending() === true,
     )
+  }
+
+  /**
+   * Count the ledger's projects, knowledge entries and open issues.
+   * @returns the counts, or the error that prevented reading the store.
+   */
+  async counts(): Promise<JiraResult<JiraCounts>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const counts = await countStore(opened.store.value)
+    if (!counts.ok) return counts
+    return result.ok(Object.freeze({
+      projects: counts.value.projects,
+      knowledge: counts.value.knowledge,
+      openIssues: counts.value.openIssues,
+      readOnlyProjects: counts.value.readOnlyProjects,
+    }))
   }
 
   /**

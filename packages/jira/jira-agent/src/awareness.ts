@@ -15,7 +15,7 @@
  */
 
 import { basename } from 'node:path'
-import { countStore, injectionLine } from '@deepseek-ai/dsh-jira-core/injection.ts'
+import { injectionLine } from '@deepseek-ai/dsh-jira-core/injection.ts'
 import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 
@@ -29,7 +29,7 @@ export const JIRA_AWARENESS_SECTION_NAME = 'jira:store'
 export const JIRA_AWARENESS_ORDER = 700
 
 /** What the awareness line needs from the ledger service. */
-export type AwarenessSource = Pick<JiraServiceApi, 'on' | 'store'>
+export type AwarenessSource = Pick<JiraServiceApi, 'on' | 'counts' | 'root'>
 
 /** The registered section plus the bookkeeping that keeps its text current. */
 export interface StoreAwareness {
@@ -61,14 +61,9 @@ export const createStoreAwareness = (jira: AwarenessSource): StoreAwareness => {
    * a stale count would describe a store the reader cannot reach.
    */
   const recompute = async (): Promise<void> => {
-    const opened = await jira.store()
-    if (!opened.ok) {
-      text = ''
-      return
-    }
-    const counts = await countStore(opened.value)
+    const counts = await jira.counts()
     text = counts.ok
-      ? injectionLine(counts.value, { storeLabel: basename(opened.value.files.root) })
+      ? injectionLine(counts.value, { storeLabel: basename(jira.root) })
       : ''
   }
 
