@@ -1,13 +1,6 @@
 # dsh-jira 设计备忘（讨论稿 v3）
 
-> 状态：**讨论稿 v3**（82 条已确认决策）。
-> 已做过**两轮**全文一致性自检：第一轮修正 22 处；第二轮针对决策 41–82 的落地（两路独立复核，修掉 P0 九条 / P1 十七条 / 排版四处）。
-> **唯一未验证的事实：§2.7 的 spike（tool 在 `dsh web` 里的可见性）——已降级为非阻塞**（§11.2）。
-> **已无暂停的话题**：KB 检索已定案（**不做向量、不做 RAG、不引入本地 ML 模型**，关键字检索直接扫文本；
-> 见 §11.1、决策 37）——该案连同既有实现的审计已于 2026-10 完成。
-> 本文所有 DSH 侧结论均来自**文档与清单文件**（`docs/**/*.md`、各包 `README.md`、`package.json`、`*.yml`、生成的 catalog），
-> 未读取任何 `src/*.ts` 实现。引用均给出路径与行号，便于复核。
-> 本文档已迁入**插件源码仓库** `dsh-plugin-multidevice-jira`（两机路径不同：Windows 是 `D:\dqc\…`，Fedora 是 `~/桌面/dsh/…`；见 `HANDOVER.md` §5。GitHub 私有）。
+> 状态：**讨论稿 v3**（82 条已确认决策）。 已做过**两轮**全文一致性自检：第一轮修正 22 处；第二轮针对决策 41–82 的落地（两路独立复核，修掉 P0 九条 / P1 十七条 / 排版四处）。 **唯一未验证的事实：§2.7 的 spike（tool 在 `dsh web` 里的可见性）——已降级为非阻塞**（§11.2）。 **已无暂停的话题**：KB 检索已定案（**不做向量、不做 RAG、不引入本地 ML 模型**，关键字检索直接扫文本； 见 §11.1、决策 37）——该案连同既有实现的审计已于 2026-10 完成。 本文所有 DSH 侧结论均来自**文档与清单文件**（`docs/**/*.md`、各包 `README.md`、`package.json`、`*.yml`、生成的 catalog）， 未读取任何 `src/*.ts` 实现。引用均给出路径与行号，便于复核。 本文档已迁入**插件源码仓库** `dsh-plugin-multidevice-jira`（两机路径不同：Windows 是 `D:\dqc\…`，Fedora 是 `~/桌面/dsh/…`；见 `HANDOVER.md` §5。GitHub 私有）。
 
 ---
 
@@ -33,45 +26,28 @@ DSH 已有的能力，决定了本插件不该重复造什么：
 
 > **不需要**：sprint 排期、权限模型、报表。（这些是**我的建议**，不是文档结论。）
 >
-> 但**状态机是可配置的**——见 §4.2 的结论修正：那属于你的领域模型，
-> 不受 DSH 核心 surface 的"最小化"取向约束。
+> 但**状态机是可配置的**——见 §4.2 的结论修正：那属于你的领域模型， 不受 DSH 核心 surface 的"最小化"取向约束。
 
 ---
 
 ## 2. 事实基础（已核实的 DSH 扩展点）
 
-> **核对基线（决策 98/157）**：本节的每一条结论，以及下文所有引用宿主 **源码 / 文档 / 告警原文** 的地方，
-> 都核对于 **`@deepseek-ai/dsh-root@0.2.1-alpha.2`**（checkout commit `2946bfe41b`）。
-> 宿主一升级，这些结论就可能不成立 —— **引用处的版本号是「这条结论当时对得上哪一版」的凭据**，
-> 所以凡新增对宿主的断言，请就地标版本；改动时同步更新这一行（决策 98 的由来：曾经只写「查宿主源码确认」，
-> 过一版之后没人知道那句还成不成立）。
+> **核对基线（决策 98/157）**：本节的每一条结论，以及下文所有引用宿主 **源码 / 文档 / 告警原文** 的地方， 都核对于 **`@deepseek-ai/dsh-root@0.2.1-alpha.2`**（checkout 于提交「docs(goal): register the branch's known limitations (task39)」）。 宿主一升级，这些结论就可能不成立 —— **引用处的版本号是「这条结论当时对得上哪一版」的凭据**， 所以凡新增对宿主的断言，请就地标版本；改动时同步更新这一行（决策 98 的由来：曾经只写「查宿主源码确认」， 过一版之后没人知道那句还成不成立）。
 
 ### 2.1 插件如何被安装与加载
 
-- 插件 = npm 包，声明 `"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`。
-  patch 是 YAML 数组，`insert` 若干 `{ id, name, config, disabled }` 行，`name` 是模块说明符（可带子路径，如 `pkg/tools`）。
-  → `docs/user/develop/basic/publish.md:13,20-44,56-64`
-- 安装：`dsh plugin --profile <name> add <spec>`（转发给 pnpm）。首个 bundle 自动追加进 `dsh.profile.bundles`。
-  → `docs/user/develop/basic/publish.md:77-101`
-- 分层顺序：各 bundle patch（按 `bundles` 顺序）→ profile 的 `cordis.patch.yml` → `$DSH_HOME/cordis.patch.yml` → `--patch` 覆盖层。
-  **后层整行覆盖 `config`（不深合并）**。→ `docs/user/develop/basic/publish.md:118-132`
-- 开发期：`link:` 安装本地 checkout；`--patch` 可直接指向绝对路径的 TS 源码（源码运行时）。
-  → `docs/user/develop/basic/index.md:48-64`、`publish.md:80-107`
+- 插件 = npm 包，声明 `"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`。 patch 是 YAML 数组，`insert` 若干 `{ id, name, config, disabled }` 行，`name` 是模块说明符（可带子路径，如 `pkg/tools`）。 → `docs/user/develop/basic/publish.md:13,20-44,56-64`
+- 安装：`dsh plugin --profile <name> add <spec>`（转发给 pnpm）。首个 bundle 自动追加进 `dsh.profile.bundles`。 → `docs/user/develop/basic/publish.md:77-101`
+- 分层顺序：各 bundle patch（按 `bundles` 顺序）→ profile 的 `cordis.patch.yml` → `$DSH_HOME/cordis.patch.yml` → `--patch` 覆盖层。 **后层整行覆盖 `config`（不深合并）**。→ `docs/user/develop/basic/publish.md:118-132`
+- 开发期：`link:` 安装本地 checkout；`--patch` 可直接指向绝对路径的 TS 源码（源码运行时）。 → `docs/user/develop/basic/index.md:48-64`、`publish.md:80-107`
 
 ### 2.2 依赖与版本兼容
 
-- DSH 官方包**已发布到 npm**：`@deepseek-ai/dsh-tools` 的 `alpha` tag = `0.2.1-alpha.2`，与本 checkout 版本一致（`publishConfig.access: public`）。
-  已核对 npm registry 元数据。
-- **安装与启动都会校验 peer 范围**，与本运行时版本不符会被拒，需要显式登记 exact-version 豁免
-  （`plugin-manager` 的 `list_version_exemptions` / `set_version_exemption`，或 CLI `dsh plugin allow-version`）。
-  → `apps/cli/README.md`（Profiles 节）、`packages/boot/plugin-manager/README.md:66-75`
-- 规则：**必须与宿主共享实例的 DSH 包同时写进 `peerDependencies` 和 `devDependencies`**；独立第三方依赖放 `dependencies`。
-  → `docs/user/develop/basic/publish.md:103`
+- DSH 官方包**已发布到 npm**：`@deepseek-ai/dsh-tools` 的 `alpha` tag = `0.2.1-alpha.2`，与本 checkout 版本一致（`publishConfig.access: public`）。 已核对 npm registry 元数据。
+- **安装与启动都会校验 peer 范围**，与本运行时版本不符会被拒，需要显式登记 exact-version 豁免 （`plugin-manager` 的 `list_version_exemptions` / `set_version_exemption`，或 CLI `dsh plugin allow-version`）。 → `apps/cli/README.md`（Profiles 节）、`packages/boot/plugin-manager/README.md:66-75`
+- 规则：**必须与宿主共享实例的 DSH 包同时写进 `peerDependencies` 和 `devDependencies`**；独立第三方依赖放 `dependencies`。 → `docs/user/develop/basic/publish.md:103`
 
-> **已定（决策 63）**：peer 与 dev **同时钉当前宿主实际装的版本**——本机实测 `@deepseek-ai/dsh-tools` = **`0.2.0-rc.2`**；
-> `engines` **跟随 DSH 自己的声明**：实测本机 DSH checkout 写的是 `node: "^22.19.0 || >=24.0.0"`（`dsh-tools` 自己不带 engines）。
-> **并且"换机器要重核版本"**：本机是 `0.2.0-rc.2`，而文档别处记的是 `0.2.1-alpha.2`（§11.2 待核）—— → **已查明（本轮）**：`0.2.1-alpha.2` 来自**第二个 checkout** `D:\dqc\deepseek-harness-uitstalie-dev`（分支 `cli-desktop`）；**正在跑 GUI 的是** `D:\dqc\deepseek-harness-uitstalie`（`master`，**0.2.0-rc.2**，用 `tsx` 直跑源码），全局 npm 装的也是 0.2.0-rc.2。结论见**决策 95**（peer 用同时接受两者的 range）。
-> 决策 33 已定"部署机不保证有 gh"，**同理部署机也不保证版本一致**，所以 peer 范围必须按**那台机器实际装的**写。
+> **已定（决策 63）**：peer 与 dev **同时钉当前宿主实际装的版本**——本机实测 `@deepseek-ai/dsh-tools` = **`0.2.0-rc.2`**； `engines` **跟随 DSH 自己的声明**：实测本机 DSH checkout 写的是 `node: "^22.19.0 || >=24.0.0"`（`dsh-tools` 自己不带 engines）。 **并且"换机器要重核版本"**：本机是 `0.2.0-rc.2`，而文档别处记的是 `0.2.1-alpha.2`（§11.2 待核）—— → **已查明（本轮）**：`0.2.1-alpha.2` 来自**第二个 checkout** `D:\dqc\deepseek-harness-uitstalie-dev`（分支 `cli-desktop`）；**正在跑 GUI 的是** `D:\dqc\deepseek-harness-uitstalie`（`master`，**0.2.0-rc.2**，用 `tsx` 直跑源码），全局 npm 装的也是 0.2.0-rc.2。结论见**决策 95**（peer 用同时接受两者的 range）。 决策 33 已定"部署机不保证有 gh"，**同理部署机也不保证版本一致**，所以 peer 范围必须按**那台机器实际装的**写。
 
 
 ### 2.3 Agent 能力注册点
@@ -100,35 +76,27 @@ DSH 已有的能力，决定了本插件不该重复造什么：
 | 文档从未声明第三方插件可用（也未禁止） | 属未授权区域，随时可能变 |
 | storage `root` **故意不给默认值** | 无约定可蹭，必须自定 |
 
-→ `packages/storage/storage-json/README.md:141`、`packages/storage/storage-domain/README.md:146-148`、
-`docs/subsystems/storage.md:47,126`、`docs/config-catalog.md:3203-3209`
+→ `packages/storage/storage-json/README.md:141`、`packages/storage/storage-domain/README.md:146-148`、 `docs/subsystems/storage.md:47,126`、`docs/config-catalog.md:3203-3209`
 
 **结论：自己管文件反而是文档支持度最高、依赖最少的路线**——我们需要的能力（版本化、跨进程锁、人可读、审计）恰好全是 `ctx.storage` 明确不提供的。
 
 ### 2.5 其他核实到的约束
 
-- **`appendPluginRecord` / `PluginRecordMap` 明令禁止外部插件使用**：`packages/core/session/README.md:70`
-  明确"本仓库之外的插件也不得调用"。会话日志集成**只有** declaration-merge `SessionEventMap` 一条合法路径（`docs/subsystems/session.md:749`）。
+- **`appendPluginRecord` / `PluginRecordMap` 明令禁止外部插件使用**：`packages/core/session/README.md:70` 明确"本仓库之外的插件也不得调用"。会话日志集成**只有** declaration-merge `SessionEventMap` 一条合法路径（`docs/subsystems/session.md:749`）。
 - **`Workspace` 实体没有扩展槽**（`docs/subsystems/workspace.md:32-113`），"项目 ↔ 工作区"映射必须自存。
-- **`SessionHeader.cwd` 是创建时不可变的原始项目路径**，`working-directory/change` 只改会话内有效目录、不改项目归属
-  （`docs/subsystems/working-directory.md:5,11`）——这是自动归属 project 的可靠依据。
+- **`SessionHeader.cwd` 是创建时不可变的原始项目路径**，`working-directory/change` 只改会话内有效目录、不改项目归属 （`docs/subsystems/working-directory.md:5,11`）——这是自动归属 project 的可靠依据。
 - **上游没有任何 git-backed 记录存储**；`ctx.worktrees` 是实验性的、只管代码 checkout（`docs/subsystems/worktrees.md:5,11`）。
-- `.dsh/` 约定由 `packages/uitstalie/`（本 fork 的私有包组）拥有，**不是上游扩展点**，不蹭。
-  → `packages/uitstalie/tool-dsh-store/README.md:29,33-37,59`
-- **Host 插件代码在 workspace 沙箱之外、进程内执行**（`packages/boot/plugin-manager/README.md:31`），
-  因此写 `$DSH_HOME` 下的自有数据目录不受文件沙箱限制。
-- profile `web` 的 `patchReload: live`：**改 YAML 热重载，改 JS 模块需重启进程**
-  （`packages/boot/plugin-manager/README.md:140`）。
+- `.dsh/` 约定由 `packages/uitstalie/`（本 fork 的私有包组）拥有，**不是上游扩展点**，不蹭。 → `packages/uitstalie/tool-dsh-store/README.md:29,33-37,59`
+- **Host 插件代码在 workspace 沙箱之外、进程内执行**（`packages/boot/plugin-manager/README.md:31`）， 因此写 `$DSH_HOME` 下的自有数据目录不受文件沙箱限制。
+- profile `web` 的 `patchReload: live`：**改 YAML 热重载，改 JS 模块需重启进程** （`packages/boot/plugin-manager/README.md:140`）。
 
 ### 2.6 重要：上游已有一个实验性的"任务板" —— `agent-team`
 
 `packages/experimental/agent-team` 已经实现了相当接近 mini-Jira 的东西：
 
 - 实体 `TeamTaskSnapshot { id(task-<n>), revision, subject, description, status, ownerId?, blockedBy[], writeScopes[] }`
-- 工具 `team_task_create / get / list / update`，`update` 用动词枚举
-  `claim|release|edit|set_dependencies|complete|reopen|reassign|delete`（`docs/tool-catalog.md:2323-2488`）
-- **CAS 并发**：每次变更存完整快照，`revision` 是 compare-and-set 值，过期即报 `TEAM_TASK_STALE_REVISION`
-  （`docs/subsystems/agent-team.md:58,74`）
+- 工具 `team_task_create / get / list / update`，`update` 用动词枚举 `claim|release|edit|set_dependencies|complete|reopen|reassign|delete`（`docs/tool-catalog.md:2323-2488`）
+- **CAS 并发**：每次变更存完整快照，`revision` 是 compare-and-set 值，过期即报 `TEAM_TASK_STALE_REVISION` （`docs/subsystems/agent-team.md:58,74`）
 - Web GUI 投影：`SessionProjectionMap.agentTeam` 把非删除的任务广播给浏览器
 - 完整的 Model Experience / Known Limitations / Agent Note 文档
 
@@ -147,24 +115,18 @@ DSH 已有的能力，决定了本插件不该重复造什么：
 | 稳定性 | README 自述 "**Experimental prototype with no stability promise**" | 我们自主控制 |
 | 跨进程 | "**concurrent processes over one Team are unsupported**" | lockfile 协调 |
 
-> **设计姿态：不替代 `agent-team`，而是它的持久层。**
-> 长期可以设想：`agent-team` 的板是"实时视图"，本插件的仓库是"总账"。
-> 但 MVP 阶段两者**互不依赖**，本插件必须能独立工作。
+> **设计姿态：不替代 `agent-team`，而是它的持久层。** 长期可以设想：`agent-team` 的板是"实时视图"，本插件的仓库是"总账"。 但 MVP 阶段两者**互不依赖**，本插件必须能独立工作。
 
 **必须复用它的三个机制**（这些是上游用真金白银换来的结论）：
 
 1. **CAS + `revision`**：每次变更存完整快照，`expected_revision` 不匹配即拒绝。别用 last-write-wins。
 2. **id 永不复用**：耗尽时返回类型化错误（`TEAM_TASK_LIMIT` 的做法），不要回绕。
-3. **声明完整结果 schema，渲染为紧凑 JSON**：上游 Agent Note **明确否决**了"返回无类型 JSON"
-   （`.agents/notes/implemented/feature/2026-08-05-agent-teams.md:67-79`）。
+3. **声明完整结果 schema，渲染为紧凑 JSON**：上游 Agent Note **明确否决**了"返回无类型 JSON" （`.agents/notes/implemented/feature/2026-08-05-agent-teams.md:67-79`）。
 
 **还要注意它踩过的坑**：
 
-- "**No automatic ownership release**" —— 不活动、被中断、进程退出都**不会**释放 owner。
-  所以"认领"必须有显式的 lease/超时设计，否则任务会永久卡在某人名下。
-- "**Advisory write scopes**" 而非锁 —— 上游明确拒绝了把 owner/writeScopes 当互斥锁：
-  "外部写者会绕过它、崩溃的 owner 会永久持有、路径前缀重叠无法证明语义独立。
-  **虚假的互斥比显式警告更危险**。" 这条判断我们要继承。
+- "**No automatic ownership release**" —— 不活动、被中断、进程退出都**不会**释放 owner。 所以"认领"必须有显式的 lease/超时设计，否则任务会永久卡在某人名下。
+- "**Advisory write scopes**" 而非锁 —— 上游明确拒绝了把 owner/writeScopes 当互斥锁： "外部写者会绕过它、崩溃的 owner 会永久持有、路径前缀重叠无法证明语义独立。 **虚假的互斥比显式警告更危险**。" 这条判断我们要继承。
 - "每个变更把完整看板（含描述）广播给每个浏览器" —— 描述变长后 token/带宽成本失控。我们不做广播式投影。
 
 ### 2.7 关键技术风险：tool 在 `dsh web` 里到底可不可见
@@ -178,14 +140,9 @@ DSH 已有的能力，决定了本插件不该重复造什么：
 
 这是全案最大的不确定性，文档给出的是一幅**有裂缝的图景**：
 
-- **一方面**：`packages/bundle/web-app/README.md:103` 说 "base 把 per-agent 的 tool 行**在这里禁用**，
-  由 preset roster 接管"；`packages/boot/plugin-manager/README.md:33` 印证——
-  "没有 agent preset 的部署才在 profile patch 里启用；**preset 驱动的会话用的是它自己 preset 里的那一行**"。
-- **另一方面**：官方入门教程就是往 profile 层 `insert` 一行，然后 `pnpm dsh web --patch ...` 工具就可见
-  （`docs/user/develop/basic/index.md:48-64`、`tool.md:42-46`）。
-- **机制上**：`packages/preset/agent-preset-registry/README.md:56` ——
-  "Plugin registrations inherit the preset scope, and the Agent scope's parent link controls visibility"。
-  即**宿主层注册的 tool 属于全局 scope、沿父链可见**；preset 行只在显式 `ctx.tools.restrict({allow,deny})` 时遮蔽。
+- **一方面**：`packages/bundle/web-app/README.md:103` 说 "base 把 per-agent 的 tool 行**在这里禁用**， 由 preset roster 接管"；`packages/boot/plugin-manager/README.md:33` 印证—— "没有 agent preset 的部署才在 profile patch 里启用；**preset 驱动的会话用的是它自己 preset 里的那一行**"。
+- **另一方面**：官方入门教程就是往 profile 层 `insert` 一行，然后 `pnpm dsh web --patch ...` 工具就可见 （`docs/user/develop/basic/index.md:48-64`、`tool.md:42-46`）。
+- **机制上**：`packages/preset/agent-preset-registry/README.md:56` —— "Plugin registrations inherit the preset scope, and the Agent scope's parent link controls visibility"。 即**宿主层注册的 tool 属于全局 scope、沿父链可见**；preset 行只在显式 `ctx.tools.restrict({allow,deny})` 时遮蔽。
 
 > **① 的回退已定（决策 97，用户裁定）**：「**如果实在不行的话，转内置插件，然后看情况合并到 dev 去得了**」——即 patch / `insert` 若在 `dsh web` 里不可见（或要靠**冻结 preset roster** 才能可见，而那是每次 DSH 升级手工同步上百行的代价），就**把 `dsh-jira` 做成内置插件放进 fork**（`-dev` 仓），走仓库自己的构建与加载，稳定后再决定是否并回 dev。
 >
@@ -204,25 +161,16 @@ DSH 已有的能力，决定了本插件不该重复造什么：
 | ③ 新增自己的 preset | `insert` 一个 `@deepseek-ai/dsh-agent-preset` 行 | 不覆盖、不冻结 | 会话必须显式选它；默认 `standard` 里没有 |
 | ④ **`preset:` patch** | `docs/architecture.md:25` 说存在"在 declaration 的 `config.plugins` 内施加操作"的 preset patch | 理论上正解：只追加、不重述 | **全仓库没有任何 YAML 示例**（文档只此一句散文），行为未经验证 |
 
-> **行动项：做一个 20 行的 hello-tool spike，验证 ① 和 ④。**
-> **不必先于业务代码**——它只决定**分发方式**，而分发已推后（§11.2）；但越早验越省事。
-> 问题一：宿主层 `insert` 后，`dsh web` 会话里模型能否真的调用它？
-> 问题二：`preset:` patch 语法是否可用？
-> 这两个答案直接决定分发方式，属于"先验证再投入"的关键路径。
+> **行动项：做一个 20 行的 hello-tool spike，验证 ① 和 ④。** **不必先于业务代码**——它只决定**分发方式**，而分发已推后（§11.2）；但越早验越省事。 问题一：宿主层 `insert` 后，`dsh web` 会话里模型能否真的调用它？ 问题二：`preset:` patch 语法是否可用？ 这两个答案直接决定分发方式，属于"先验证再投入"的关键路径。
 >
-> **待核（Windows 机实测）**：本机 checkout 里**方案 ④ 的唯一出处 `docs/architecture.md:25` 不存在**
-> （该行讲的是 `dsh-base` 各 bundle；`docs/**` 与 `.agents/**` 搜不到 `preset patch`），
-> 所以 ④ 在核对前**视为无依据**。详见 §11.2。
+> **待核（Windows 机实测）**：本机 checkout 里**方案 ④ 的唯一出处 `docs/architecture.md:25` 不存在** （该行讲的是 `dsh-base` 各 bundle；`docs/**` 与 `.agents/**` 搜不到 `preset patch`）， 所以 ④ 在核对前**视为无依据**。详见 §11.2。
 
 ---
 
 ## 3. 分层架构（为"将来并入内置"留门）
 
-约束：先独立仓库开发，日后可能并入魔改 DSH。据此分层
-（**包结构已定案（决策 64）**：**单包多入口**——一个 npm 包内部三层目录，用 `exports` 暴露 `.`（DSH 插件）与 `./cli` 两个入口；边界靠 **AST 边界检查器**守住，抄上游 `enginev2_boundary_check` 的做法）：
-> **为什么不是 monorepo（决策 64）**：三个包能带来"没声明就 import 不到"的硬边界，但代价是三份 `package.json`、
-> workspace 配置、构建编排与版本同步——而 `core` 目前**只有你自己用**（§3 的原始理由）。
-> 边界改用**机器守卫**：一条 AST 检查（`core` 不得 import DSH、`cli` 不得 import 插件层），进 CI，退出码非 0 即违规。
+约束：先独立仓库开发，日后可能并入魔改 DSH。据此分层 （**包结构已定案（决策 64）**：**单包多入口**——一个 npm 包内部三层目录，用 `exports` 暴露 `.`（DSH 插件）与 `./cli` 两个入口；边界靠 **AST 边界检查器**守住，抄上游 `enginev2_boundary_check` 的做法）：
+> **为什么不是 monorepo（决策 64）**：三个包能带来"没声明就 import 不到"的硬边界，但代价是三份 `package.json`、 workspace 配置、构建编排与版本同步——而 `core` 目前**只有你自己用**（§3 的原始理由）。 边界改用**机器守卫**：一条 AST 检查（`core` 不得 import DSH、`cli` 不得 import 插件层），进 CI，退出码非 0 即违规。
 
 ```
 dsh-plugin-multidevice-jira/   ← **单包多入口**（决策 64）
@@ -278,8 +226,7 @@ function renderIssue(issue: Issue, comments: readonly Comment[]): string
 async function writeIssue(store: FileStore, issue: Issue): Promise<void>
 ```
 
-**评审口径（以后 review 代码只问这三句）**：① 这个函数有隐藏状态吗？② 这段逻辑是在**组合**已有的原子，还是在**重写**一遍？③ 这个原子能**单独测**吗？
-天然满足"不依赖内部实现"。
+**评审口径（以后 review 代码只问这三句）**：① 这个函数有隐藏状态吗？② 这段逻辑是在**组合**已有的原子，还是在**重写**一遍？③ 这个原子能**单独测**吗？ 天然满足"不依赖内部实现"。
 > **给下一个人/agent 的工具注意（本轮踩了三次）**：用 PowerShell 批量改设计文档时，**`.Replace(@'...'@ -replace ..., ...)` 这种"把 here-string 直接当方法参数"的写法会失败**（PowerShell 会把它当 culture 参数）；而**在返回值函数里用 `Write-Output` 打日志会把日志行混进返回值**（本轮一度把 `src/plugin/index.ts` 写坏）。规矩：**先把 here-string 赋给变量再传**；**日志用 `Write-Host`**；每次批量改完**立刻 `tsc` + 跑测试 + 看文件首行**。
 
 ---
@@ -320,28 +267,15 @@ Tag:      name（唯一 key）· description（必填）· aliases[] · created_
 
 > **注意：Issue 上没有 `parent` 字段**——层级走 `links` 里的 `parent`（§4.15）。
 >
-> **评论与事件怎么落盘（决策 42，已定案）**：Issue 上**没有** `comments[]` / `events[]` 两个字段——
-> 评论是**单独文件** `comments/<KEY>.md`（§4.4）；需要"记一条事件"的地方（租约过期、override 认领）
-> **一律写成一条评论**；列表里的评论数**渲染时现算**，不落盘（读不写，决策 38）。
-> **MVP 不做 `events.jsonl`**（§4.5）。将来若真需要机器可查的审计流，形态必须是**每机一份**
-> `events/<machine_id>.jsonl`——绝不能是一个全局文件，那又是一个共享可变文件、多机冲突热点。
-> **在 §11.6 的 A3 / A37 定案之前，不要照这一行实现。**
-> **命名约定（决策 41）**：本文件以及所有落盘文件的**字段名一律 `snake_case`**；
-> 代码内部用驼峰没关系，转换集中发生在 `core` 的编解码层。文档里仍出现的驼峰是**外部名字**
-> （DSH 的 `deferLoading` / `PromptContext`、上游的 `writeScopes`、人的 `GitHub`），**不要改**。
+> **评论与事件怎么落盘（决策 42，已定案）**：Issue 上**没有** `comments[]` / `events[]` 两个字段—— 评论是**单独文件** `comments/<KEY>.md`（§4.4）；需要"记一条事件"的地方（租约过期、override 认领） **一律写成一条评论**；列表里的评论数**渲染时现算**，不落盘（读不写，决策 38）。 **MVP 不做 `events.jsonl`**（§4.5）。将来若真需要机器可查的审计流，形态必须是**每机一份** `events/<machine_id>.jsonl`——绝不能是一个全局文件，那又是一个共享可变文件、多机冲突热点。 **在 §11.6 的 A3 / A37 定案之前，不要照这一行实现。** **命名约定（决策 41）**：本文件以及所有落盘文件的**字段名一律 `snake_case`**； 代码内部用驼峰没关系，转换集中发生在 `core` 的编解码层。文档里仍出现的驼峰是**外部名字** （DSH 的 `deferLoading` / `PromptContext`、上游的 `writeScopes`、人的 `GitHub`），**不要改**。
 
 
 ### 4.2 状态机：单一全局 workflow，可配置流转
 
 **两次结论修正（保留记录，避免以后绕回来）**
 
-1. 早期版本写"一旦开始配置状态机，就是跑偏了"——**那是我个人的判断，不是文档结论**，
-   而且套错了位置：DSH 核心 surface 的最小化取向（`todo_write` 刻意最小、`goal` "intentionally absent"、
-   `plan` "soft guidance, not enforcement"）**不约束插件自己的领域模型**。
-2. 我随后提出的"固定 category"**也不必要**。用户定下的前提是
-   **"暂时所有 project 共用一个状态机"**——而我要 category 的唯一理由是
-   "通用代码无法理解每个 project 各自的状态语义"，只有一个状态机时**这个理由自动消失**。
-   名字自由的风险也随之消失（单人操作，不会乱命名）。
+1. 早期版本写"一旦开始配置状态机，就是跑偏了"——**那是我个人的判断，不是文档结论**， 而且套错了位置：DSH 核心 surface 的最小化取向（`todo_write` 刻意最小、`goal` "intentionally absent"、 `plan` "soft guidance, not enforcement"）**不约束插件自己的领域模型**。
+2. 我随后提出的"固定 category"**也不必要**。用户定下的前提是 **"暂时所有 project 共用一个状态机"**——而我要 category 的唯一理由是 "通用代码无法理解每个 project 各自的状态语义"，只有一个状态机时**这个理由自动消失**。 名字自由的风险也随之消失（单人操作，不会乱命名）。
 
 **形态**
 
@@ -356,30 +290,23 @@ config.md                       # type: config（OKF Concept，store 内唯一�
   resolutions: [ fixed, invalid, limitation, abandoned ]   # 关闭集合内一律必填（§4.16）
 ```
 
-**所有"词表"集中在同一个文件**，因为它们性质相同：低频变更、只增不删、都由 git 版本化，
-且都由同一套 CI 校验。将来若真要分而治之，`workflow: <name>` 字段已预留。
+**所有"词表"集中在同一个文件**，因为它们性质相同：低频变更、只增不删、都由 git 版本化， 且都由同一套 CI 校验。将来若真要分而治之，`workflow: <name>` 字段已预留。
 
-- **一个 `closed` 字段就替掉了整套 category**：`jira_list` 只显示不在 `closed` 里的，
-  归档只作用于 `closed` 里的。
-- 所有 project **默认引用 `default`**；project 上的 `workflow: <name>` 是**可选**的——
-  现在不用，将来想分而治之时零成本打开。
+- **一个 `closed` 字段就替掉了整套 category**：`jira_list` 只显示不在 `closed` 里的， 归档只作用于 `closed` 里的。
+- 所有 project **默认引用 `default`**；project 上的 `workflow: <name>` 是**可选**的—— 现在不用，将来想分而治之时零成本打开。
 
 **演进模型（用户提出，关键收益）：只增不删 + 改边下线 ⇒ 零数据迁移**
 
 - `statuses[]` **只增不删**——名字一旦从列表里删掉，老 issue 的 `status` 立刻变成非法值，CI 会红。
-- **下线一个状态 = 摘掉指向它的边（+ 打 `deprecated: true`）**：
-  老数据仍然合法（CI 不红），新流转到不了它，BOARD 里单独归到"已下线"分组，
-  残留一眼可见、可手工处理。
+- **下线一个状态 = 摘掉指向它的边（+ 打 `deprecated: true`）**： 老数据仍然合法（CI 不红），新流转到不了它，BOARD 里单独归到"已下线"分组， 残留一眼可见、可手工处理。
 - 因此**不需要任何数据迁移**——这直接消掉了 §2.4 里"storage-domain 无迁移"那类担忧。
 
 **唯一一处"共享可变文件"的例外**
 
-`config.md` 是全 store 共享且可变的，违反 §4.4「不设共享可变索引」原则。
-**接受这个例外**，理由是：
+`config.md` 是全 store 共享且可变的，违反 §4.4「不设共享可变索引」原则。 **接受这个例外**，理由是：
 
 - 工作流变更是**低频**的（与 tag / issue 的创建不同量级）
-- 它**由 git 版本化**：冲突可见、可回退、可排查
-  （用户原话："反正你都是 commit 配置的，自己回退排查呗"）
+- 它**由 git 版本化**：冲突可见、可回退、可排查 （用户原话："反正你都是 commit 配置的，自己回退排查呗"）
 
 **三条约束**
 
@@ -389,8 +316,7 @@ config.md                       # type: config（OKF Concept，store 内唯一�
 
 **下线的表达方式（已确认）**：`statuses[]` 里的条目打 **`deprecated: true`** 并摘掉指向它的入边。
 - 老数据**合法**（CI 不红）、新流转**到不了**、BOARD 单独归到"已下线"分组。
-- 不采用"纯靠图结构推断不可达"（无法区分"故意下线"与"暂时没连边"），
-  也不允许直接从 `statuses[]` 删除（那会把校验从严格降成警告，与 §5 的"写入侧严格"冲突）。
+- 不采用"纯靠图结构推断不可达"（无法区分"故意下线"与"暂时没连边"）， 也不允许直接从 `statuses[]` 删除（那会把校验从严格降成警告，与 §5 的"写入侧严格"冲突）。
 
 ### 4.3 assignee 值域
 
@@ -400,19 +326,11 @@ human:<name>                                   人类（§4.9：git user.name，
 null                                           未认领
 ```
 
-> **值域共用（决策 69）**：**`Comment.author` 与 `assignee` 用同一值域**——就是上面这三行的形式，
-> 一个概念一套格式，解析 / 校验 / 渲染都只写一份。
+> **值域共用（决策 69）**：**`Comment.author` 与 `assignee` 用同一值域**——就是上面这三行的形式， 一个概念一套格式，解析 / 校验 / 渲染都只写一份。
 
-Jira 里 assignee 是同事；这里 assignee 是 **agent 会话 / 子代理**。
-这让"多 agent 认领"成为一等公民，而不是硬塞进评论里。
+Jira 里 assignee 是同事；这里 assignee 是 **agent 会话 / 子代理**。 这让"多 agent 认领"成为一等公民，而不是硬塞进评论里。
 
-> **修正记录**：本节早期写的是 `agent:session:<id>` / `agent:role:<role>`，
-> 那是引入 `tool` 与 `machine_id` 维度（§4.11、§4.12）**之前**的形式，已废弃。
-> **分隔符：用 `|`（决策 48）**。原形 `agent:<model>/<tool>/<machine_id>/<session_id>` 里的 `/` 与
-> 模型名 / 工具名可能出现的分隔符冲突；改用 `|` 后**分量内禁止出现 `|`**（写入校验直接拒绝），
-> **因此不需要任何转义**，串仍然人可读。
-> ⚠️ 书写注意：`|` 出现在 **Markdown 表格**里必须写成 `\|`，否则会把表格切碎——本文档里的表格行已如此处理。
-> 跨机器时只有 session_id 会撞，所以机器维度是必需的。
+> **修正记录**：本节早期写的是 `agent:session:<id>` / `agent:role:<role>`， 那是引入 `tool` 与 `machine_id` 维度（§4.11、§4.12）**之前**的形式，已废弃。 **分隔符：用 `|`（决策 48）**。原形 `agent:<model>/<tool>/<machine_id>/<session_id>` 里的 `/` 与 模型名 / 工具名可能出现的分隔符冲突；改用 `|` 后**分量内禁止出现 `|`**（写入校验直接拒绝）， **因此不需要任何转义**，串仍然人可读。 ⚠️ 书写注意：`|` 出现在 **Markdown 表格**里必须写成 `\|`，否则会把表格切碎——本文档里的表格行已如此处理。 跨机器时只有 session_id 会撞，所以机器维度是必需的。
 
 ### 4.4 落地形态：**唯一权威的目录树**
 
@@ -465,13 +383,9 @@ Jira 里 assignee 是同事；这里 assignee 是 **agent 会话 / 子代理**�
 > <!-- generated by dsh-jira | generated_at: 2026-10-15T08:30:00Z | source_tree: <hash> | do not edit by hand -->
 > ```
 >
-> `source_tree` = 对"纳入生成的源文件集合"做**确定性哈希**（相对路径 + 内容 sha256，按路径排序后再哈希）——
-> **不依赖 git 命令**，因此离线可用，且能反映**未提交的工作区内容**。
+> `source_tree` = 对"纳入生成的源文件集合"做**确定性哈希**（相对路径 + 内容 sha256，按路径排序后再哈希）—— **不依赖 git 命令**，因此离线可用，且能反映**未提交的工作区内容**。
 >
-> 版式（最小可用）：`BOARD.md` 按 `statuses[].order` 分节、行内标 `conflicted` 与"被阻塞"、已下线状态单独一节；
-> **版式已细化（决策 87）**：`BOARD.md` 每状态一节（按 `statuses[].order`）、表列 `key\|summary\|priority\|assignee\|updated`、`conflicted` 标 ⚠️、被阻塞另起一节放最后、末尾计数行；`index.md` 只到"域/项目"层级、**不列单条**；`log.md` 最近 100 条带 key 的提交；`tags/index.md` 字母序 + 描述 + 次数；`jira board --html` 为 **P1**（共用同一份分组逻辑，不引模板引擎）。
-> `index.md` 列 projects 与 knowledge 域 + 计数 + 入口链接；`log.md` 只列**最近 100 条带 key 的提交**；
-> `tags/index.md` 字母序 + `description` + 使用次数。
+> 版式（最小可用）：`BOARD.md` 按 `statuses[].order` 分节、行内标 `conflicted` 与"被阻塞"、已下线状态单独一节； **版式已细化（决策 87）**：`BOARD.md` 每状态一节（按 `statuses[].order`）、表列 `key\|summary\|priority\|assignee\|updated`、`conflicted` 标 ⚠️、被阻塞另起一节放最后、末尾计数行；`index.md` 只到"域/项目"层级、**不列单条**；`log.md` 最近 100 条带 key 的提交；`tags/index.md` 字母序 + 描述 + 次数；`jira board --html` 为 **P1**（共用同一份分组逻辑，不引模板引擎）。 `index.md` 列 projects 与 knowledge 域 + 计数 + 入口链接；`log.md` 只列**最近 100 条带 key 的提交**； `tags/index.md` 字母序 + `description` + 使用次数。
 >
 > 新鲜度断言两条：**CI 重跑生成后 `git diff` 必须为空**（决策 66）；`/jira` 体检比对 `source_tree`（决策 39）。
 
@@ -484,15 +398,11 @@ Jira 里 assignee 是同事；这里 assignee 是 **agent 会话 / 子代理**�
 
 最后一条是重点：块分配（§5）如果把计数器放一个文件里，它立刻变成**唯一的 git 冲突热点**；
 
-- `counters/<machine_id>.json` 的形态（决策 74）：`{ "schema": "counters/v1", "machine_id": "…", "next": 1, "blocks": [[1,100]] }`——**块大小 100**；`next` 是"已领到的上界"，`blocks` 记已领区间（便于审计与判断手里还剩多少号）；新 store 第一台机器从 **1** 开始，下一台机器从"全仓 counters 里最大块末尾 +1"继续（读全仓 counters + 拿 store 锁，毫秒级）。
-拆成每机一份之后，**key 分配在 git 层面冲突面归零**，且完全支持离线创建。
+- `counters/<machine_id>.json` 的形态（决策 74）：`{ "schema": "counters/v1", "machine_id": "…", "next": 1, "blocks": [[1,100]] }`——**块大小 100**；`next` 是"已领到的上界"，`blocks` 记已领区间（便于审计与判断手里还剩多少号）；新 store 第一台机器从 **1** 开始，下一台机器从"全仓 counters 里最大块末尾 +1"继续（读全仓 counters + 拿 store 锁，毫秒级）。 拆成每机一份之后，**key 分配在 git 层面冲突面归零**，且完全支持离线创建。
 
-**唯一真正的例外是 `config.md`**（全 store 共享且可变）——低频变更、git 版本化，
-理由见 §4.2。
+**唯一真正的例外是 `config.md`**（全 store 共享且可变）——低频变更、git 版本化， 理由见 §4.2。
 
-**为什么是"文件 + git"而不是别的**：git 友好（小 diff、可按 issue review）、
-人可读可手改、**并行写不同 issue 天然不冲突**、GitHub 网页直接能看 diff 与历史。
-（备选是纯 JSON，MD + frontmatter 胜在人能直接读改；真要严格 schema 时再由 CI 承担校验。）
+**为什么是"文件 + git"而不是别的**：git 友好（小 diff、可按 issue review）、 人可读可手改、**并行写不同 issue 天然不冲突**、GitHub 网页直接能看 diff 与历史。 （备选是纯 JSON，MD + frontmatter 胜在人能直接读改；真要严格 schema 时再由 CI 承担校验。）
 
 **评论（已确认）**：单独文件 `comments/<KEY>.md`，**追加式**。收益有两层：
 
@@ -509,12 +419,9 @@ Jira 里 assignee 是同事；这里 assignee 是 **agent 会话 / 子代理**�
 > - 极端情形（同一实例被离线复活后重号）：由 §11.5 的归并流程处理，不在这里发明机制。
 
 1. 评论**不污染 issue 主体的 diff**——主体只承载标量字段，diff 干净好读。
-2. 它是**专用的追加文件**，所以能在 `.gitattributes` 里单独声明 `merge=union`：
-   **两台机器离线各自追加评论，git 自己就能合，零人工干预。**
-   若把评论塞进 issue 正文（同文件里既有标量又有追加），union 就用不上，冲突只能人工处理。
+2. 它是**专用的追加文件**，所以能在 `.gitattributes` 里单独声明 `merge=union`： **两台机器离线各自追加评论，git 自己就能合，零人工干预。** 若把评论塞进 issue 正文（同文件里既有标量又有追加），union 就用不上，冲突只能人工处理。
 
-其余默认（如需改动请说）：评论**可编辑**（带 `revision`，学 feedback 的 `ifVersion` 协议）、
-**不可删除**（append-only 才叫审计）。
+其余默认（如需改动请说）：评论**可编辑**（带 `revision`，学 feedback 的 `ifVersion` 协议）、 **不可删除**（append-only 才叫审计）。
 
 ### 4.5 审计轨迹：不自己实现，交给 git
 
@@ -557,8 +464,7 @@ DH-15: created [task] 补齐 CLI 的 board 命令
 | **workflow** | "选项拼错必须**大声杀掉脚本**，不能降解成一次普通的子代理失败" | — |
 | **deliverables** | `present` 是**持久声明**，而 workspace-changes 只活在宿主进程内 —— 对照理解"什么该持久" | — |
 
-**结果渲染建议**：声明完整 schema + 紧凑 JSON（学 agent-team），
-但"创建/更新单条"这类高频操作可只回计数式摘要（学 todo）以省 token。
+**结果渲染建议**：声明完整 schema + 紧凑 JSON（学 agent-team）， 但"创建/更新单条"这类高频操作可只回计数式摘要（学 todo）以省 token。
 
 ### 4.7 并发控制：CAS（`revision`）
 
@@ -566,31 +472,21 @@ DH-15: created [task] 补齐 CLI 的 board 命令
 
 **写入时 `revision` 是可选参数（已确认）**：
 
-- 带了 `expected_revision` 而实际已变 → 返回类型化错误 `STALE_REVISION` **并附上当前值**，
-  让调用方重读重试，**绝不静默覆盖**。
+- 带了 `expected_revision` 而实际已变 → 返回类型化错误 `STALE_REVISION` **并附上当前值**， 让调用方重读重试，**绝不静默覆盖**。
 - 不带 → 视为"接受当前状态"，直接写入（单人自用场景下这是常见路径）。
 
-> **为什么仍必须保留 CAS**：文件锁只解决"同一时刻的写入交错"，
-> **CAS 解决的是"两个 agent 基于同一份旧状态各自做决定"**——那才是并行 agent 真正的危险。
+> **为什么仍必须保留 CAS**：文件锁只解决"同一时刻的写入交错"， **CAS 解决的是"两个 agent 基于同一份旧状态各自做决定"**——那才是并行 agent 真正的危险。
 
 ### 4.8 认领（assignee）必须有租约，不能永久持有
 
-上游 `agent-team` 的明确教训："**No automatic ownership release** —— 不活动、被中断、进程退出都不会释放 owner"。
-我们如果照抄，任务会永久卡在死掉的会话名下。所以：
+上游 `agent-team` 的明确教训："**No automatic ownership release** —— 不活动、被中断、进程退出都不会释放 owner"。 我们如果照抄，任务会永久卡在死掉的会话名下。所以：
 
-- `assignee` 附 `claimed_at` + `lease_expires_at`（**不做心跳**，见决策 61 的参数）。
-  **参数（决策 61）**：默认 `lease_expires_at = claimed_at + 2 h`；**不另起心跳**，但**对该 issue 的任何写操作都顺带续租**（零额外写放大）；
-  过期只降级为"可重新认领" + 写一条评论，**不硬阻塞**。
-  > **动作形态（决策 50）**：原 `claim` / `release` 两个动词**已合并成一个 `assignee`**——
-  > 指向**自己**（`self`）= 认领并起租约；指向 **`null`** = 释放并清租约。
+- `assignee` 附 `claimed_at` + `lease_expires_at`（**不做心跳**，见决策 61 的参数）。 **参数（决策 61）**：默认 `lease_expires_at = claimed_at + 2 h`；**不另起心跳**，但**对该 issue 的任何写操作都顺带续租**（零额外写放大）； 过期只降级为"可重新认领" + 写一条评论，**不硬阻塞**。
+  > **动作形态（决策 50）**：原 `claim` / `release` 两个动词**已合并成一个 `assignee`**—— 指向**自己**（`self`）= 认领并起租约；指向 **`null`** = 释放并清租约。
   >
-  > **修正记录（用户订正）**：本节曾把认领说成"只有一个 agent 时它只是个标记"——**那个前提不成立**：
-  > 用户**确实会并行跑多个 agent**（多个会话、多个工具同时开工）。因此 `assignee` + 租约是**必需机制**，
-  > 不是可选装饰：它同时承担"别撞车"与"谁在做"两件事，而租约是为了避免任务永久卡在死掉的会话名下（上游教训）。
+  > **修正记录（用户订正）**：本节曾把认领说成"只有一个 agent 时它只是个标记"——**那个前提不成立**： 用户**确实会并行跑多个 agent**（多个会话、多个工具同时开工）。因此 `assignee` + 租约是**必需机制**， 不是可选装饰：它同时承担"别撞车"与"谁在做"两件事，而租约是为了避免任务永久卡在死掉的会话名下（上游教训）。
 - 过期只**回给模型**"已过期、可重新认领"；**写成评论这件事只发生在写事务里**（决策 38/71 的规则：读路径不落盘，见 §5）。
-- 但**不要**把 assignee 当互斥锁：上游的结论是"虚假的互斥比显式警告更危险"
-  （`.agents/notes/implemented/feature/2026-08-05-agent-teams.md:67-79`）。
-  所以过期只是提示 + 可抢占，不做硬阻塞。
+- 但**不要**把 assignee 当互斥锁：上游的结论是"虚假的互斥比显式警告更危险" （`.agents/notes/implemented/feature/2026-08-05-agent-teams.md:67-79`）。 所以过期只是提示 + 可抢占，不做硬阻塞。
 
 ### 4.9 文档空白 → 我们必须自己定义（上游从未有过）
 
@@ -609,8 +505,7 @@ DH-15: created [task] 补齐 CLI 的 board 命令
 
 ### 4.10 项目识别：锚在 git 远程地址，不锚在路径
 
-用户约定（已确认）：**一般每个工作区 = 一个 project**；但 project 会被复用，
-尤其跨机器时"工作区内容没变，只是换了个位置"，**这种工作区必须有 GitHub / GitLab 之类的远程仓库**。
+用户约定（已确认）：**一般每个工作区 = 一个 project**；但 project 会被复用， 尤其跨机器时"工作区内容没变，只是换了个位置"，**这种工作区必须有 GitHub / GitLab 之类的远程仓库**。
 
 因此项目身份 = **规范化后的 git 远程地址**，不是本地路径：
 
@@ -625,43 +520,26 @@ DH-15: created [task] 补齐 CLI 的 board 命令
 1. 取该会话 `SessionHeader.cwd`（**创建时不可变的原始项目路径**，见 §2.5）下的 `git remote -v`。
 2. 规范化 → 在**扫描 `projects/*/project.md` 派生的索引**（§4.4，不再有 `projects.json`）里按 `remotes[]` 查找。
 3. 命中 → 复用该项目（**哪怕路径完全不同**，即用户说的跨机器/换位置场景）。
-4. 未命中 → 用仓库名派生默认 key（大写、去非字母数字、截断），冲突则追加数字；
-   登记为一个新 project，并把当前路径 append 进 `paths[]`。
-5. **没有远程仓库的工作区** → 无法跨机器识别。**已确认**降级为
-   `agent_write_policy: 'owner-machine'`（§4.11）：其他机器的 **agent 只读**，人类仍可改。
+4. 未命中 → 用仓库名派生默认 key（大写、去非字母数字、截断），冲突则追加数字； 登记为一个新 project，并把当前路径 append 进 `paths[]`。
+5. **没有远程仓库的工作区** → 无法跨机器识别。**已确认**降级为 `agent_write_policy: 'owner-machine'`（§4.11）：其他机器的 **agent 只读**，人类仍可改。
 
 **key 派生**要稳：从仓库 basename 派生，不用路径、不用机器名。
 
-> **`project.md` 的形状（决策 77）**：**`key` 只由目录名承载**（`projects/DH/`），frontmatter **不重复存**——
-> 两处不一致时"谁说了算"是只会出错不会加分的规定。字段：`schema: project/v1` · `type: project` · `name` ·
-> `remotes[]` · `paths[]`（纯缓存）· `agent_write_policy` · `owner_machine?`。
+> **`project.md` 的形状（决策 77）**：**`key` 只由目录名承载**（`projects/DH/`），frontmatter **不重复存**—— 两处不一致时"谁说了算"是只会出错不会加分的规定。字段：`schema: project/v1` · `type: project` · `name` · `remotes[]` · `paths[]`（纯缓存）· `agent_write_policy` · `owner_machine?`。
 >
-> **`remotes[]` 规范化完整规则**：**统一小写 + 去协议/认证/端口 + 剥 `.git` 后缀 + 保留 host 与完整 path**
-> （GitLab 子组 `gitlab.x/group/sub/proj` 天然支持）；**多 remote 全部保留**（供 rebind 与镜像），
-> 但取**优先级最高**者作身份：**`upstream` > `origin` > 其它**——这条同时定下了原先挂着的 B21（fork 场景）。
-`deepseek-harness` → `DH`；`dsh-jira` → `DJ`。允许多个 remote（GitHub + GitLab 镜像）都指向同一 project。
+> **`remotes[]` 规范化完整规则**：**统一小写 + 去协议/认证/端口 + 剥 `.git` 后缀 + 保留 host 与完整 path** （GitLab 子组 `gitlab.x/group/sub/proj` 天然支持）；**多 remote 全部保留**（供 rebind 与镜像）， 但取**优先级最高**者作身份：**`upstream` > `origin` > 其它**——这条同时定下了原先挂着的 B21（fork 场景）。 `deepseek-harness` → `DH`；`dsh-jira` → `DJ`。允许多个 remote（GitHub + GitLab 镜像）都指向同一 project。
 
-**多 remote 的取舍（fork 场景）**：一个 checkout 可能有 `origin`（你的 fork）
-与 `upstream`（原项目）。**建议优先取 `upstream`**，这样"在 fork 里干活"和
-"在原项目里干活"归到**同一个 project**；否则同一个代码库会分裂成两个 project。
+**多 remote 的取舍（fork 场景）**：一个 checkout 可能有 `origin`（你的 fork） 与 `upstream`（原项目）。**建议优先取 `upstream`**，这样"在 fork 里干活"和 "在原项目里干活"归到**同一个 project**；否则同一个代码库会分裂成两个 project。
 
-> **状态（决策 77 已定案）**：`upstream` > `origin` > 其它作身份锚——原写"我的建议，尚未确认"，现已确认。
-> 已核对：你当前 checkout **只有 `origin`、没有 `upstream`**，所以这条规则现在不影响任何东西（遇到 fork 再加）。
+> **状态（决策 77 已定案）**：`upstream` > `origin` > 其它作身份锚——原写"我的建议，尚未确认"，现已确认。 已核对：你当前 checkout **只有 `origin`、没有 `upstream`**，所以这条规则现在不影响任何东西（遇到 fork 再加）。
 
 **remote 改名 / 迁移**：`remotes[]` 保留历史，另提供 `jira project rebind` 手动重绑。
 
-**key 不可变**：创建后不可改（改了等于把 `DH-12` 全部重编号）；只允许改 display name。
-派生撞车（`deepseek-harness` 与 `deep-harness` 都 → `DH`）时追加数字并打印提示。
+**key 不可变**：创建后不可改（改了等于把 `DH-12` 全部重编号）；只允许改 display name。 派生撞车（`deepseek-harness` 与 `deep-harness` 都 → `DH`）时追加数字并打印提示。
 
-> 附带好处：同一仓库在本机的两个 clone、或 `git worktree` 出来的副本，会**自动归到同一个 project**，
-> 不需要任何手工配置。
+> 附带好处：同一仓库在本机的两个 clone、或 `git worktree` 出来的副本，会**自动归到同一个 project**， 不需要任何手工配置。
 
-> **修正记录（独立实例，§8 决策 35）**：本节的身份锚定（`remotes[]`）**只在"共享同一个 store 的机器"之间成立**。
-> 若某台机器上是**从零建的空实例**，它看不到别处的 `projects/*/project.md`，
-> 于是"同一个工作区"会在两台机器上各自登记成**两条独立记录**，`paths[]` / `remotes[]` 各写各的。
-> 这不是缺陷，而是刻意接受的分叉；**代价是归并时没有可靠的自动依据**——
-> 只能靠两边是否写了同一个 `remotes[]`，或人工判断，才能把它们认成同一个 project。
-> 因此归并必须人工，且两边都要保留来源机器（`machines/` + `reporter`）以便追溯。详见 §11.5。
+> **修正记录（独立实例，§8 决策 35）**：本节的身份锚定（`remotes[]`）**只在"共享同一个 store 的机器"之间成立**。 若某台机器上是**从零建的空实例**，它看不到别处的 `projects/*/project.md`， 于是"同一个工作区"会在两台机器上各自登记成**两条独立记录**，`paths[]` / `remotes[]` 各写各的。 这不是缺陷，而是刻意接受的分叉；**代价是归并时没有可靠的自动依据**—— 只能靠两边是否写了同一个 `remotes[]`，或人工判断，才能把它们认成同一个 project。 因此归并必须人工，且两边都要保留来源机器（`machines/` + `reporter`）以便追溯。详见 §11.5。
 
 ### 4.11 机器身份与"仅本机可写"策略
 
@@ -675,28 +553,14 @@ machine_id = md5( os + '\0' + currentUser + '\0' + normalizedSN )
 
 > **归类**：`machines/` / `sessions/` / `counters/` / `tags/` / `knowledge/` 是**有意共享的审计数据**，留在 store 内（需要跨机可见）；只有"本机私有状态（machine-id）"与"可重建派生数据（索引/缓存）"才放到 store 之外或 `var/`。
 >
-> **规范化与文件位置（决策 73）**
-> 取不到 SN 时的**回退身份文件固定在 `$DSH_HOME/dsh-jira/machine-id`——故意放在 store 之外**。
-> 理由：store root 是可配置的（§5 决策 57 的 `root`），身份文件若跟着 store 走，**改一次 `root` 就变成"另一台机器"**，
-> 而身份漂移会把自己的项目误判成"外来"→ 退化成只读（§4.11 早已警告过这条失败方向）。
-> 同时确定两类派生数据的落点：**本机私有状态（不得随 store 走、不得进 git）→ `$DSH_HOME/dsh-jira/`**；
-> **可重建的派生数据（索引 / 缓存）→ store 内的 `var/`（已 gitignore）**。
-`machines/<machine_id>.md`（一机一文件，同样遵循 §4.4「不设共享可变索引」）登记
-`{ id, label?, os?, first_seen, last_seen }`；`label` 由人写（"笔记本" / "工作站"），让看板可读。
+> **规范化与文件位置（决策 73）** 取不到 SN 时的**回退身份文件固定在 `$DSH_HOME/dsh-jira/machine-id`——故意放在 store 之外**。 理由：store root 是可配置的（§5 决策 57 的 `root`），身份文件若跟着 store 走，**改一次 `root` 就变成"另一台机器"**， 而身份漂移会把自己的项目误判成"外来"→ 退化成只读（§4.11 早已警告过这条失败方向）。 同时确定两类派生数据的落点：**本机私有状态（不得随 store 走、不得进 git）→ `$DSH_HOME/dsh-jira/`**； **可重建的派生数据（索引 / 缓存）→ store 内的 `var/`（已 gitignore）**。 `machines/<machine_id>.md`（一机一文件，同样遵循 §4.4「不设共享可变索引」）登记 `{ id, label?, os?, first_seen, last_seen }`；`label` 由人写（"笔记本" / "工作站"），让看板可读。
 
 **四个决定"稳定还是天天漂移"的工程细节：**
 
-1. **`os` 只用平台，绝不带版本。** 用 `process.platform`（`linux` / `darwin` / `win32`）即可。
-   一旦把发行版或内核版本掺进 hash，**系统升级就会把这台机器变成"一台新机器"**。
-2. **SN 在虚拟机 / 容器 / 受限权限下经常取不到。** 已确认不会跑在容器里，
-   但获取链仍要做全，按 **Fedora → Windows** 顺序：
-   `/sys/class/dmi/id/product_serial`（Linux，常需 root）→
-   PowerShell `Get-CimInstance Win32_BIOS | Select SerialNumber`（Windows 10/11）→
-   **取不到就回退**为首次运行时生成并持久化的随机 id（`$DSH_HOME/dsh-jira/machine-id`）。
-   无 macOS，不需要 `system_profiler` / `ioreg`。
+1. **`os` 只用平台，绝不带版本。** 用 `process.platform`（`linux` / `darwin` / `win32`）即可。 一旦把发行版或内核版本掺进 hash，**系统升级就会把这台机器变成"一台新机器"**。
+2. **SN 在虚拟机 / 容器 / 受限权限下经常取不到。** 已确认不会跑在容器里， 但获取链仍要做全，按 **Fedora → Windows** 顺序： `/sys/class/dmi/id/product_serial`（Linux，常需 root）→ PowerShell `Get-CimInstance Win32_BIOS | Select SerialNumber`（Windows 10/11）→ **取不到就回退**为首次运行时生成并持久化的随机 id（`$DSH_HOME/dsh-jira/machine-id`）。 无 macOS，不需要 `system_profiler` / `ioreg`。
 3. **首次算出后必须持久化。** 即使 SN 之后变得不可读、或用户名被改，id 也不该漂移。
-4. **失败方向是安全的**：万一 id 变了，本机会把自己的机器级项目误判成"外来" → 退化为只读。
-   只是烦人，不会误放行。但**必须大声报出来**，否则用户会莫名其妙。
+4. **失败方向是安全的**：万一 id 变了，本机会把自己的机器级项目误判成"外来" → 退化为只读。 只是烦人，不会误放行。但**必须大声报出来**，否则用户会莫名其妙。
 
 **写权限策略挂在 project 上：**
 
@@ -705,35 +569,23 @@ machine_id = md5( os + '\0' + currentUser + '\0' + normalizedSN )
 | 有远程仓库（身份锚在 remote） | `shared` | 可写 |
 | 无远程仓库（身份锚在本机） | `owner-machine` + `owner_machine` | **只读**，拒绝写入 |
 
-拒绝时返回类型化错误（如 `FOREIGN_MACHINE_READ_ONLY`），并明确说明"该项目属于机器 X"，
-**同时给出如何改判的指引**（比如补一个远程仓库后重新识别）。
+拒绝时返回类型化错误（如 `FOREIGN_MACHINE_READ_ONLY`），并明确说明"该项目属于机器 X"， **同时给出如何改判的指引**（比如补一个远程仓库后重新识别）。
 
 **这是工具策略，不是安全边界——而且我们接受这个边界。**（用户明确表态）
 
 拦截点放在**工具层**，共三层：
 
-1. **写入类工具 / CLI 命令直接拒绝**，返回类型化错误 `FOREIGN_MACHINE_READ_ONLY`，
-   并说明"该项目属于机器 X"。
+1. **写入类工具 / CLI 命令直接拒绝**，返回类型化错误 `FOREIGN_MACHINE_READ_ONLY`， 并说明"该项目属于机器 X"。
 2. **规则写进工具 `description`**，让模型事先知道有这么条规则。
-3. **动态部分注入到读结果**：`jira_list` / `jira_issue` 的返回里带
-   `writable: false, reason: 'owner-machine:<label>'`。
-   工具 description 是**静态**的，而项目归属是**动态**的——
-   所以"能不能写"必须在每次读的时候告诉模型，否则模型只能靠撞墙学会。
+3. **动态部分注入到读结果**：`jira_list` / `jira_issue` 的返回里带 `writable: false, reason: 'owner-machine:<label>'`。 工具 description 是**静态**的，而项目归属是**动态**的—— 所以"能不能写"必须在每次读的时候告诉模型，否则模型只能靠撞墙学会。
 
-**bash 层绕过不防。** 用户原话："bash 层面那你非要绕过去我也没办法。"
-插件是 Host 进程内代码、持有完整文件系统权限，任何能跑 bash 的 agent 都能直接改仓库文件。
-这条规则防的是"agent 误改别的机器的项目"，不是"恶意 agent"。
+**bash 层绕过不防。** 用户原话："bash 层面那你非要绕过去我也没办法。" 插件是 Host 进程内代码、持有完整文件系统权限，任何能跑 bash 的 agent 都能直接改仓库文件。 这条规则防的是"agent 误改别的机器的项目"，不是"恶意 agent"。
 
-**人类天然不受影响**：人走 GitHub 网页或本地编辑器，根本不经过插件，
-所以"人类仍然可以改"自动成立，不需要任何额外机制。这正是把这条规则做在插件层而不是 git 层的理由。
+**人类天然不受影响**：人走 GitHub 网页或本地编辑器，根本不经过插件， 所以"人类仍然可以改"自动成立，不需要任何额外机制。这正是把这条规则做在插件层而不是 git 层的理由。
 
-**顺带增强审计**：有了 machine_id 与 tool，`assignee` 记为
-`agent:<model>|<tool>|<machine_id>|<session_id>`，`reporter` 记为 `{ model, tool, machine, session }`。
+**顺带增强审计**：有了 machine_id 与 tool，`assignee` 记为 `agent:<model>|<tool>|<machine_id>|<session_id>`，`reporter` 记为 `{ model, tool, machine, session }`。
 
-> **在独立实例上（§8 决策 35）这条策略的形态不同**：那台机器上根本没有"别的机器的 project"，
-> 所有 project 都是本机创建的，于是 `agent_write_policy` 实际恒为"本机可写"，
-> 只读拦截在那台机器上**不生效**（也无害）。本节的作用域是**共享同一个 store 的多机**。
-> 反过来，若将来把别处的 store 手工导入本机当参考，那些 project 才需要落到 `owner-machine` 只读。
+> **在独立实例上（§8 决策 35）这条策略的形态不同**：那台机器上根本没有"别的机器的 project"， 所有 project 都是本机创建的，于是 `agent_write_policy` 实际恒为"本机可写"， 只读拦截在那台机器上**不生效**（也无害）。本节的作用域是**共享同一个 store 的多机**。 反过来，若将来把别处的 store 手工导入本机当参考，那些 project 才需要落到 `owner-machine` 只读。
 
 ### 4.12 `tool` 维度：谁在驱动这个 DSH
 
@@ -749,40 +601,30 @@ machine_id = md5( os + '\0' + currentUser + '\0' + normalizedSN )
 **`tool` 探测链**（顺序即优先级）：
 
 1. **显式配置 `config.tool`** —— 探测错了能人工纠正，这个口子必须留。
-2. **外来工具的环境标记**：
-   `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` → `claude-code`；
-   `TRAE_*` → `trae`；`CODEX_*` → `codex`；`CURSOR_TRACE_ID` → `cursor`。
+2. **外来工具的环境标记**： `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` → `claude-code`； `TRAE_*` → `trae`；`CODEX_*` → `codex`；`CURSOR_TRACE_ID` → `cursor`。
 3. `DSH_*` → `dsh`。
 4. 都没有 → `unknown`。
 
-> **顺序很关键：`DSH_*` 必须放在外来标记之后判定。**
-> DSH 自己的 bash 工具会给子进程注入 `DSH_*`；若先查自己，
-> 被 Claude Code / Trae 拉起来的 DSH 会被统统误判成 `dsh`，这个维度就废了。
+> **顺序很关键：`DSH_*` 必须放在外来标记之后判定。** DSH 自己的 bash 工具会给子进程注入 `DSH_*`；若先查自己， 被 Claude Code / Trae 拉起来的 DSH 会被统统误判成 `dsh`，这个维度就废了。
 
 **三个实现要求：**
 
 1. **每个会话只探测一次**，结果在**首次写事务时**持久化进 `sessions/<session_id>.md`（读路径只缓存内存，不落盘；决策 38）。否则后续 env 漂移会持续改写审计历史。
 2. **同时记录原始证据**，如 `tool_evidence: "CLAUDECODE=1"`。探测错时这是唯一能定位原因的东西。
-3. **身份串反规范化存储**（issue 里直接存完整串），这样 `sessions/` 被清理后审计串仍可读。
-   审计信息必须比会话记录活得久。
+3. **身份串反规范化存储**（issue 里直接存完整串），这样 `sessions/` 被清理后审计串仍可读。 审计信息必须比会话记录活得久。
 
-**已定（决策 56）**：`jira_list` 的返回里**一律**带上"我是谁"（`{ model, tool, machine, session }`）——不再是可选项。
-让 agent 能自我解释"这条 issue 是谁在什么工具里改的"。成本几乎为零。
+**已定（决策 56）**：`jira_list` 的返回里**一律**带上"我是谁"（`{ model, tool, machine, session }`）——不再是可选项。 让 agent 能自我解释"这条 issue 是谁在什么工具里改的"。成本几乎为零。
 
 ### 4.13 知识库（KB）与 OKF 规范
 
-用户计划的知识库（原 `dsh-common-storage`）定位是**跨 OS 共享的 agent 经验知识**
-（"共享在不同 OS 上的经验知识"），采用 **OKF（Open Knowledge Format，Google）** 规范组织。
-§5「跨平台硬约束」里那 12 条，就是这个知识库最自然的第一批条目。
+用户计划的知识库（原 `dsh-common-storage`）定位是**跨 OS 共享的 agent 经验知识** （"共享在不同 OS 上的经验知识"），采用 **OKF（Open Knowledge Format，Google）** 规范组织。 §5「跨平台硬约束」里那 12 条，就是这个知识库最自然的第一批条目。
 
 **OKF 要点**（据规范与公开解读）：
 
 - 一个知识点 = 一个 Markdown 文件（**Concept**）；一堆 Concept 放在一个目录里（**Bundle**）
-- 正文纯 Markdown；顶部 YAML frontmatter，**唯一必填字段是 `type`**，
-  推荐 `title` / `description` / `resource`（外部资产 URI）/ `tags` / `timestamp`
+- 正文纯 Markdown；顶部 YAML frontmatter，**唯一必填字段是 `type`**， 推荐 `title` / `description` / `resource`（外部资产 URI）/ `tags` / `timestamp`
 - 两个保留文件：**`index.md`**（渐进式披露的目录）与 **`log.md`**（审计日志）
-- **宽容消费模型**：消费方不得因缺可选字段、自定义 `type`、坏交叉链接而拒绝解析，
-  应退化为通用文档继续读取
+- **宽容消费模型**：消费方不得因缺可选字段、自定义 `type`、坏交叉链接而拒绝解析， 应退化为通用文档继续读取
 
 **三处与既有设计的冲突及其解法：**
 
@@ -798,14 +640,9 @@ machine_id = md5( os + '\0' + currentUser + '\0' + normalizedSN )
 - 每条记录带**来源四件套**：`machine_id` / `os` / `tool` / `captured_at`（**必填**，决策 75）
 - 与 issue **双向引用**：issue 解决时沉淀为 KB 条目；KB 条目被 issue 引用
 
-> **加强（审计佐证，见 §11.1）**：来源字段**必填**——`machine_id` / `os` / `tool` / `captured_at`，
-> 若来自文件再加 `source_sha256`。并且**禁止"事后猜来源"回填**：上游用启发式脚本给缺
-> provenance 的页面补来源，结果 **9 篇不同文档全部指向同一份 993 B 的 raw 文件**。
-> 血缘是"跨 OS 经验"的核心资产，**它坏了这套系统的价值就坏了一半**。
+> **加强（审计佐证，见 §11.1）**：来源字段**必填**——`machine_id` / `os` / `tool` / `captured_at`， 若来自文件再加 `source_sha256`。并且**禁止"事后猜来源"回填**：上游用启发式脚本给缺 来源字段的页面补来源，结果 **9 篇不同文档全部指向同一份 993 B 的 raw 文件**。 血缘是"跨 OS 经验"的核心资产，**它坏了这套系统的价值就坏了一半**。
 
-> **为什么 Issue 用 `summary` 而 KB 用 `title`（刻意不统一）**：Issue 的 `summary` 是**任务摘要**（一行、给列表与看板，
-> 渲染时当 OKF 的 `title` 用，决策 43）；KB 条目是**纯 OKF Concept**，`title` 就是 OKF 的推荐字段。
-> 两者是不同实体、不同用途，**不要为了"看起来统一"而硬凑一个字段名**。
+> **为什么 Issue 用 `summary` 而 KB 用 `title`（刻意不统一）**：Issue 的 `summary` 是**任务摘要**（一行、给列表与看板， 渲染时当 OKF 的 `title` 用，决策 43）；KB 条目是**纯 OKF Concept**，`title` 就是 OKF 的推荐字段。 两者是不同实体、不同用途，**不要为了"看起来统一"而硬凑一个字段名**。
 
 > **字段清单（决策 75）**
 >
@@ -828,38 +665,23 @@ machine_id = md5( os + '\0' + currentUser + '\0' + normalizedSN )
 >
 > **双向引用**：KB 侧写 `issues: [DH-12]`；**issue 侧写 `kb_refs: [KB-7]`**（§4.1 的实体块已补该字段）。
 
-> **域目录名（决策 76）**：**小写 kebab-case**（`^[a-z0-9][a-z0-9-]{0,31}$`），与 §4.14 的 tag 命名**同一套规则**，
-> 禁中文 / 空格 / 大写——目录名同样受 §5 跨平台硬约束（大小写不敏感、需清洗）。
-> 因为文件名跟 key 走（决策 75），原先要定的"concept slug 规则"**已经不需要了**。
+> **域目录名（决策 76）**：**小写 kebab-case**（`^[a-z0-9][a-z0-9-]{0,31}$`），与 §4.14 的 tag 命名**同一套规则**， 禁中文 / 空格 / 大写——目录名同样受 §5 跨平台硬约束（大小写不敏感、需清洗）。 因为文件名跟 key 走（决策 75），原先要定的"concept slug 规则"**已经不需要了**。
 
-> **写入侧校验的边界（决策 49）**：**未知 frontmatter 键 = 写入拒绝**（类型化错误 + 列出未知键），必填键缺失同理；
-> **读取侧仍然宽容**（未知键不报错、降级继续读并标注）。这条把 §4.13 的两侧分工钉死：
-> 写入侧严格是为了**不让拼错的字段名静默吃掉数据**，读取侧宽容是为了**一条坏记录不拖垮整库读取**。
+> **写入侧校验的边界（决策 49）**：**未知 frontmatter 键 = 写入拒绝**（类型化错误 + 列出未知键），必填键缺失同理； **读取侧仍然宽容**（未知键不报错、降级继续读并标注）。这条把 §4.13 的两侧分工钉死： 写入侧严格是为了**不让拼错的字段名静默吃掉数据**，读取侧宽容是为了**一条坏记录不拖垮整库读取**。
 
-**Bundle 边界（已确认）**：**方案一** —— 每个 project 一个 Bundle（含该项目的 issues），
-KB 单独成 Bundle；且**全局 KB bundle 可能不止一个**（按知识域切分）。
+**Bundle 边界（已确认）**：**方案一** —— 每个 project 一个 Bundle（含该项目的 issues）， KB 单独成 Bundle；且**全局 KB bundle 可能不止一个**（按知识域切分）。
 
-**目录树以 §4.4 为唯一权威版本**，本节只补充 OKF 相关的部分：
-每个 Bundle 都有 `index.md`（渐进式披露入口）与 `log.md`（由 git 生成），
-`knowledge/<domain>/` 下每条知识是一个 Concept。
+**目录树以 §4.4 为唯一权威版本**，本节只补充 OKF 相关的部分： 每个 Bundle 都有 `index.md`（渐进式披露入口）与 `log.md`（由 git 生成）， `knowledge/<domain>/` 下每条知识是一个 Concept。
 
 **由此推出一条必须遵守的设计原则：**
 
-> **目录切分只有一个维度，而知识是多维的**（OS × 主题 × 类型）。
-> 所以顶层 bundle 要**少而稳**——它决定渐进式披露的骨架；
-> 多维分类交给 frontmatter 的 `type` + `tags`。
-> **目录只管"在哪找"，元数据管"是什么"。** 这是 OKF 的关键用法，
-> 也是"分块做得好就易于扩展"的具体含义：新增一个域 = 新增一个目录 + 一个 `index.md`，
-> 不动任何既有结构。
+> **目录切分只有一个维度，而知识是多维的**（OS × 主题 × 类型）。 所以顶层 bundle 要**少而稳**——它决定渐进式披露的骨架； 多维分类交给 frontmatter 的 `type` + `tags`。 **目录只管"在哪找"，元数据管"是什么"。** 这是 OKF 的关键用法， 也是"分块做得好就易于扩展"的具体含义：新增一个域 = 新增一个目录 + 一个 `index.md`， 不动任何既有结构。
 
-**issue 也是 OKF Concept**（`type: issue`）：OKF 只要求 `type` 必填、其余字段宽容，
-所以我们的 `status` / `assignee` / `revision` 等字段可以自由叠加，两者不冲突。
+**issue 也是 OKF Concept**（`type: issue`）：OKF 只要求 `type` 必填、其余字段宽容， 所以我们的 `status` / `assignee` / `revision` 等字段可以自由叠加，两者不冲突。
 
 ### 4.14 标签注册表与"tag 爆炸"
 
-用户明确指出：领域/主题靠**目录**切分，**跨域查询与关联靠 `tags`**；
-但 tags 会**爆炸**，只能靠 agent 之间共用与复用。
-所以 tag 必须是**带描述的注册表**（`name` 唯一 key + `description` 解释用途），而不是自由字符串。
+用户明确指出：领域/主题靠**目录**切分，**跨域查询与关联靠 `tags`**； 但 tags 会**爆炸**，只能靠 agent 之间共用与复用。 所以 tag 必须是**带描述的注册表**（`name` 唯一 key + `description` 解释用途），而不是自由字符串。
 
 **Tag 实体**（一个 tag 一个文件）：
 
@@ -872,29 +694,21 @@ Tag:  name（唯一 key，小写 kebab-case）
 
 存放 `tags/<name>.md`（`type: tag`），`tags/` 本身是一个 Bundle：
 
-- **一个 tag 一个文件**，遵循 §4.4「不设共享可变索引」原则 →
-  **两台机器离线各自新建 tag 也不会冲突**（若挤在一个 registry 文件里，必然冲突）。
-`tags/index.md` 由 **Action 或插件的本地生成路径**生成（决策 15/34）
+- **一个 tag 一个文件**，遵循 §4.4「不设共享可变索引」原则 → **两台机器离线各自新建 tag 也不会冲突**（若挤在一个 registry 文件里，必然冲突）。 `tags/index.md` 由 **Action 或插件的本地生成路径**生成（决策 15/34）
 
-**关键简化：issue 的 `tags` 与 KB 的 `tags` 共用同一套命名空间，只有一份全局注册表。**
-不要做两套机制——否则既难复用又难治理。
+**关键简化：issue 的 `tags` 与 KB 的 `tags` 共用同一套命名空间，只有一份全局注册表。** 不要做两套机制——否则既难复用又难治理。
 
-**为什么"必须有 description"能防爆炸**：描述是**复用判断的唯一依据**。
-agent 要决定"用现成的还是新建"，只能看描述；没有描述它只能凭 name 猜，
-于是宁可新建——**这正是爆炸的生成机制**。`aliases` 是第二道兜底。
+**为什么"必须有 description"能防爆炸**：描述是**复用判断的唯一依据**。 agent 要决定"用现成的还是新建"，只能看描述；没有描述它只能凭 name 猜， 于是宁可新建——**这正是爆炸的生成机制**。`aliases` 是第二道兜底。
 
 **防爆炸的强制力放在工具层（已确认）**：
 
 1. **`tag-create` 是独立动作，`description` 必填** —— 没描述的 tag 无法创建。
-2. **打 tag 只接受已存在的 name**；未知 name → **报错**，并返回**最相似的 3 个候选**，
-   同时指引用 `tag-create`。多一步摩擦，但把爆炸遏制在源头。
+2. **打 tag 只接受已存在的 name**；未知 name → **报错**，并返回**最相似的 3 个候选**， 同时指引用 `tag-create`。多一步摩擦，但把爆炸遏制在源头。
 3. `aliases[]` 作为第二道兜底（`win` → `windows`）。
 4. **`/jira tags lint` 体检**：报告"只用过一次的 tag""没有 description 的""高度相似的一对"，
-> **算法与阈值（决策 86）**：零依赖纯函数（alias 精确 → 前缀 → **Dice ≥ 0.5** 取前 3）；`tags lint` 三段报告，阈值 count ≤ 1 / Dice ≥ 0.7；**只报告不自动改**。
-   **只报告、不自动改** —— 合并决定权在人。
+> **算法与阈值（决策 86）**：零依赖纯函数（alias 精确 → 前缀 → **Dice ≥ 0.5** 取前 3）；`tags lint` 三段报告，阈值 count ≤ 1 / Dice ≥ 0.7；**只报告不自动改**。 **只报告、不自动改** —— 合并决定权在人。
 
-> 与 §4.11「只读策略放工具层」是同一个思路：
-> **能在工具层便宜地拦住的事，不要指望靠纪律。**
+> 与 §4.11「只读策略放工具层」是同一个思路： **能在工具层便宜地拦住的事，不要指望靠纪律。**
 
 ### 4.15 关系：固定的 `link` 与开放的 `tag` 分工
 
@@ -914,48 +728,33 @@ agent 要决定"用现成的还是新建"，只能看描述；没有描述它只
 | `is_blocked_by` | 有向 | 存 | 被另一条阻塞 |
 | `parent` | 有向 | 存（写在**子任务**上） | 指向父任务 |
 
-**派生反侧**（不存、渲染时计算）：`children`（← `parent`）、`blocks`（← `is_blocked_by`）、
-`duplicated by`（← `duplicate`）。
+**派生反侧**（不存、渲染时计算）：`children`（← `parent`）、`blocks`（← `is_blocked_by`）、 `duplicated by`（← `duplicate`）。
 
 **这个分工同时解决两件事：**
 
-1. **tag 不再承担结构语义** → 少一类爆炸源。结构关系数量有限，
-   而"关联/阻塞"这类词恰恰最容易被随手做成 tag。
+1. **tag 不再承担结构语义** → 少一类爆炸源。结构关系数量有限， 而"关联/阻塞"这类词恰恰最容易被随手做成 tag。
 2. **结构语义可被代码理解** → 队列、认领、看板能做真正的判断，而不是靠字符串猜。
 
 **三条设计要点：**
 
 - **只存单向，反向派生（关键规则）。** 有向 link 只写在语义的主侧，反侧在渲染/查询时派生：
   - `is_blocked_by` 只写在被阻塞方 → `blocks` 派生
-- **`parent` 只写在子任务上 → `children` 派生（已确认）。**
-  子任务里写 `parent`；`children` 在 `BOARD.md` 与 `jira_issue get` 的输出里**渲染**出来。
-  机器层面保持单一真相源，多机离线零冲突；人该看到的地方（看板、工具输出）都看得到。
+- **`parent` 只写在子任务上 → `children` 派生（已确认）。** 子任务里写 `parent`；`children` 在 `BOARD.md` 与 `jira_issue get` 的输出里**渲染**出来。 机器层面保持单一真相源，多机离线零冲突；人该看到的地方（看板、工具输出）都看得到。
 
-  两侧各存一份必然发散，且在多机下必然冲突。**具体冲突例**：
-  机器 1 把 B 挂到 A 下、机器 2 把 C 挂到 A 下——只存 `parent` 时改的是 B、C 两个文件，
-  **零冲突**；两边都存则 A 的 `children` 必冲突。
-- **`resolution` 仍然需要**（见 §4.16）。早期我判断"`duplicate` 变成 link 之后 `resolution` 就多余了"，
-  **那是错的**：link 表达的是**关系**，resolution 表达的是**结论**，两者不是一回事。
+  两侧各存一份必然发散，且在多机下必然冲突。**具体冲突例**： 机器 1 把 B 挂到 A 下、机器 2 把 C 挂到 A 下——只存 `parent` 时改的是 B、C 两个文件， **零冲突**；两边都存则 A 的 `children` 必冲突。
+- **`resolution` 仍然需要**（见 §4.16）。早期我判断"`duplicate` 变成 link 之后 `resolution` 就多余了"， **那是错的**：link 表达的是**关系**，resolution 表达的是**结论**，两者不是一回事。
 - **落盘形状（决策 70）**：`links:` 是一个**数组**，每项 `{ type, target }`，例：`links: [{ type: is_blocked_by, target: DH-5 }, { type: parent, target: DH-1 }]`。形状统一、易校验、**保留顺序**；`type` 只能是闭集四种。**解除一条 = 删掉数组里那一项**（集合型冲突按 §5 走"并集 + 打 `conflicted`"）。
 - **`link` 是闭集、加一种是代码改动**——刻意的摩擦，与"tag 开放"形成对照。
 
 **`is_blocked_by` 是否拦认领（已确认，按使用者分）**：
 
-- **对人类：只是一个标记。** 人直接改文件，插件拦不住也不该拦——
-  与 §4.11「只读策略」完全同一个原则：**拦截只对走工具的那条路有意义**。
-- **对 agent：显式拦截 + 显式覆盖。**
-  `assignee`（认领到 `self`）默认**拒绝**并**点名缺哪一条**（哪个 key 还没关闭）；
-  提供显式 `override` 放行，并**写成一条评论**（审计"明知被阻塞仍认领"；决策 42）。
-  `jira_list` 把被阻塞的单独成组：可见、标 `not ready`。
-- **CI 的职责界线**：只管**结构合法性**（`status` 不在 `statuses[]` 里 → 红），
-  **不管策略状态**（被阻塞却已认领 → 不报错）。否则 CI 会误报，慢慢就没人信它了。
+- **对人类：只是一个标记。** 人直接改文件，插件拦不住也不该拦—— 与 §4.11「只读策略」完全同一个原则：**拦截只对走工具的那条路有意义**。
+- **对 agent：显式拦截 + 显式覆盖。** `assignee`（认领到 `self`）默认**拒绝**并**点名缺哪一条**（哪个 key 还没关闭）； 提供显式 `override` 放行，并**写成一条评论**（审计"明知被阻塞仍认领"；决策 42）。 `jira_list` 把被阻塞的单独成组：可见、标 `not ready`。
+- **CI 的职责界线**：只管**结构合法性**（`status` 不在 `statuses[]` 里 → 红）， **不管策略状态**（被阻塞却已认领 → 不报错）。否则 CI 会误报，慢慢就没人信它了。
 
 ### 4.16 `resolution`：完成时的结论（用户纠正后的形态）
 
-**先记一次我的过度设计**：我最初把 `limitation` 理解成"原 issue 上的一个遗留事项记录"，
-给它设计了 `status: open | resolved | wontfix` 生命周期、甚至"可提升为 issue"。
-**用户纠正：`limitation` 是 issue/task 完成时的状态之一**，与 `fixed`、`invalid` 并列。
-于是它回到最简形态——**一个 `resolution` 字段，不需要任何生命周期**。
+**先记一次我的过度设计**：我最初把 `limitation` 理解成"原 issue 上的一个遗留事项记录"， 给它设计了 `status: open | resolved | wontfix` 生命周期、甚至"可提升为 issue"。 **用户纠正：`limitation` 是 issue/task 完成时的状态之一**，与 `fixed`、`invalid` 并列。 于是它回到最简形态——**一个 `resolution` 字段，不需要任何生命周期**。
 
 ```
 resolution: fixed | invalid | limitation | abandoned   # 仅在进入关闭集合里的状态时才有意义（且必填）
@@ -968,38 +767,24 @@ resolution: fixed | invalid | limitation | abandoned   # 仅在进入关闭集�
 | `limitation` | **有限地解决了**：技术债、缺依赖/权限/信息、明确遗留 |
 | `abandoned` | **中止**：环境没了 / 不做了 / 优先级被砍——**与 `cancelled` 配对**（落地数据仓时按"关闭集合内一律必填"的读法新增，见本节修正记录） |
 
-**为什么这个字段值得存在**：它是"**打折完成**"的唯一机器可读信号。
-审计时能直接查出"哪些活是带着遗留关掉的"——这正是用户要的可发现性。
-埋在评论里就只能靠人回忆，不是审计。
+**为什么这个字段值得存在**：它是"**打折完成**"的唯一机器可读信号。 审计时能直接查出"哪些活是带着遗留关掉的"——这正是用户要的可发现性。 埋在评论里就只能靠人回忆，不是审计。
 
-**`limitation` 不只是一个状态词**：它通常还需要一句**文字说明**留了什么尾巴。
-所以 `resolution` 是"值 + 可选说明"，而 **`limitation` 时该说明应为必填**。
+**`limitation` 不只是一个状态词**：它通常还需要一句**文字说明**留了什么尾巴。 所以 `resolution` 是"值 + 可选说明"，而 **`limitation` 时该说明应为必填**。
 
 **取值可配置，关闭时必填（已确认）**：
 >
-> **重开时清空（决策 72）**：`switch_state` **离开关闭集合**时，把 `resolution` 与 `resolution_note` **清空**，
-> 并**自动写一条评论**记下"重开前结论是 X"。理由：`resolution` 的语义是"这条关闭时的结论"，
-> 带着它回到未关闭状态会让所有"未关闭"查询与看板**误读**；留痕交给评论 + git 历史。
+> **重开时清空（决策 72）**：`switch_state` **离开关闭集合**时，把 `resolution` 与 `resolution_note` **清空**， 并**自动写一条评论**记下"重开前结论是 X"。理由：`resolution` 的语义是"这条关闭时的结论"， 带着它回到未关闭状态会让所有"未关闭"查询与看板**误读**；留痕交给评论 + git 历史。
 
-- `resolutions[]` 与 `issue_types[]` / `statuses[]` **同源、同样只增不删**（用户：可配置，但基本固定）。
-  默认 `fixed | invalid | limitation`。
-- **进入 `closed` 集合里任何状态时 `resolution` 必填**（读法 ①，见下方修正记录），
-  必填是关键：不填就分不清"真解决"和"打折解决"，而审计价值全部落在那个区分上。
+- `resolutions[]` 与 `issue_types[]` / `statuses[]` **同源、同样只增不删**（用户：可配置，但基本固定）。 默认 `fixed | invalid | limitation`。
+- **进入 `closed` 集合里任何状态时 `resolution` 必填**（读法 ①，见下方修正记录）， 必填是关键：不填就分不清"真解决"和"打折解决"，而审计价值全部落在那个区分上。
 
-> **修正记录（2026-10，落地数据仓时定案）**：上面那句里的 "`closed`" 有两种读法——
-> ① §4.2 `closed[]` 那个**关闭集合**；② 名叫 `closed` 的**那一个状态**。
-> 只有一个关闭状态时两者等价，所以一直没暴露；**加入 `cancelled` 之后才分开**。
+> **修正记录（2026-10，落地数据仓时定案）**：上面那句里的 "`closed`" 有两种读法—— ① §4.2 `closed[]` 那个**关闭集合**；② 名叫 `closed` 的**那一个状态**。 只有一个关闭状态时两者等价，所以一直没暴露；**加入 `cancelled` 之后才分开**。
 >
-> **用户裁定读法 ①：关闭集合内一律必填。** 理由：让**每一条关闭记录都统一带一个结论字段**，
-> 查询与审计口径一致——"为什么关的"永远在同一个字段里，不必先看状态再决定去哪找。
+> **用户裁定读法 ①：关闭集合内一律必填。** 理由：让**每一条关闭记录都统一带一个结论字段**， 查询与审计口径一致——"为什么关的"永远在同一个字段里，不必先看状态再决定去哪找。
 >
-> **配套（不可少）**：`resolutions[]` **新增取值 `abandoned`**（中止：环境没了 / 不做了 / 被砍）。
-> 若不给它一个新取值，`cancelled` 只能借用 `invalid`——而 `invalid` 的语义是"**判断过了**、不是问题"，
-> 于是"中止"与"结论"又糊在一起，加 `cancelled` 这个状态就白加了。
+> **配套（不可少）**：`resolutions[]` **新增取值 `abandoned`**（中止：环境没了 / 不做了 / 被砍）。 若不给它一个新取值，`cancelled` 只能借用 `invalid`——而 `invalid` 的语义是"**判断过了**、不是问题"， 于是"中止"与"结论"又糊在一起，加 `cancelled` 这个状态就白加了。
 >
-> **被否掉的读法 ②**：新增字段 `resolutionRequiredIn: [closed]`，把必填绑到具体状态上。
-> 好处是 `cancelled` 不必编结论；否决原因是**它给 config 引入一个只为单个状态服务的字段**，
-> 而"每个关闭记录都有结论"这个统一性更值钱。
+> **被否掉的读法 ②**：新增字段 `resolutionRequiredIn: [closed]`，把必填绑到具体状态上。 好处是 `cancelled` 不必编结论；否决原因是**它给 config 引入一个只为单个状态服务的字段**， 而"每个关闭记录都有结论"这个统一性更值钱。
 
 > **`is_blocked_by` 拦认领的规则属于 §4.15**（它讲的是 link 的行为），不在这里重复。
 
@@ -1029,11 +814,9 @@ resolution: fixed | invalid | limitation | abandoned   # 仅在进入关闭集�
 - push 失败（离线/无权限）**不是错误**，降级为"本地已保存，待推送"，并在下次 sync 重试。
 - **`fetch` / `pull --rebase` 失败（无网络）同样静默降级**（**超时 15 s**，决策 84）：会话启动时的那次拉取**不得阻塞会话**，离线机器必须照常开工（§8 决策 34）。
 
-> **并发画像（用户澄清）**：**单个人 · 多个 agent · 甚至可能同时在多台机器上**；
-> 但**主场景是"一个人在一台电脑上同时跑多个 project"**（dsh / claude-code / opencode / trae 都支持这么干）。
+> **并发画像（用户澄清）**：**单个人 · 多个 agent · 甚至可能同时在多台机器上**； 但**主场景是"一个人在一台电脑上同时跑多个 project"**（dsh / claude-code / opencode / trae 都支持这么干）。
 >
-> **直接后果**：**同机多会话 / 多进程是高频路径，不是罕见路径**——于是"锁粒度"从"可以后写"
-> **升级为必须先定**（原 §11.6 的 B2）。一把 store 级锁会让"多个 project 同时干活"互相等待，而那恰好是主场景。
+> **直接后果**：**同机多会话 / 多进程是高频路径，不是罕见路径**——于是"锁粒度"从"可以后写" **升级为必须先定**（原 §11.6 的 B2）。一把 store 级锁会让"多个 project 同时干活"互相等待，而那恰好是主场景。
 
 > **两级锁（决策 58）**
 >
@@ -1042,37 +825,21 @@ resolution: fixed | invalid | limitation | abandoned   # 仅在进入关闭集�
 > | **issue 级** | `.jira/locks/<KEY>.lock` | 单条的"读-改-写"（同一条被两个 agent 改时排队；不同条目**零等待**） |
 > | **store 级** | `.jira/lock` | **只**保护 `git add/commit`、`counters` 分配、`config.md` 写入——**毫秒级临界区** |
 >
-> 两条纪律：① **取锁顺序固定**——先 issue 锁、再 store 锁（防死锁）；
-> ② **持 store 锁期间绝不跑 LLM、不联网、不做长 IO**——上游"握着锁去等另一个要锁的人"的死锁就是这么来的（§11.1 反面教训）。
+> 两条纪律：① **取锁顺序固定**——先 issue 锁、再 store 锁（防死锁）； ② **持 store 锁期间绝不跑 LLM、不联网、不做长 IO**——上游"握着锁去等另一个要锁的人"的死锁就是这么来的（§11.1 反面教训）。
 
-> **原语与参数（决策 59）**：用 **`mkdir` 作原语**（两个平台都原子，且不受 Windows 杀软/索引器持句柄影响），
-> 锁目录里放一个 **owner 文件**记 `{ pid, host, machine_id, at }`，供 stale 判定与"谁拿着"诊断；
-> 默认 **stale 60 s**、**获取超时 10 s**、**100 ms 退避 + 抖动**——三个数都走 Config（`lock.stale_ms` / `lock.timeout_ms`，决策 57）。
+> **原语与参数（决策 59）**：用 **`mkdir` 作原语**（两个平台都原子，且不受 Windows 杀软/索引器持句柄影响）， 锁目录里放一个 **owner 文件**记 `{ pid, host, machine_id, at }`，供 stale 判定与"谁拿着"诊断； 默认 **stale 60 s**、**获取超时 10 s**、**100 ms 退避 + 抖动**——三个数都走 Config（`lock.stale_ms` / `lock.timeout_ms`，决策 57）。
 
 ### 人类编辑是一等公民
 
 已确认"人需要看板，也不排除人上去修改"。这让三件事从"可选"变成"必须"：
 
-1. **绝不丢弃人的改动。** 写事务前若检测到工作树有未提交改动：
-   **先把它们作为一个独立 commit 提交掉**（作者保留为人类），再继续自己的写入。
-   任何时候都**不允许** `checkout --force` / `reset --hard` / `clean`。这是红线。
-   **落地记录（2026-10-17）**：本条此前**只有文字、没有实现**（§11.6/§11.8 也没把它记为缺口）。
-   现在由 `core/store.ts` 的 `adoptHumanChanges` 实现：`transact` 在**写入之前**、`regenerateAndCommit`
-   在**重生成之前**先收编脏工作区，作者用 `--author` 保留为人类（决策 146 的回退兜底）。见**决策 147**。
-2. **每次操作都从磁盘重读，不维护长驻内存索引。** 人在 GitHub 网页或本地编辑后，
-   进程内缓存必然过期。这个量级下重读几十上百个小文件是毫秒级的事，用简单换正确。
-3. **格式必须手改友好且坏数据要吵。** 用 Markdown + YAML frontmatter（而非严格 JSON）：
-   **落地形状（决策 80）**：读结果里带 **`rejected: [{ file, reason }]`**——**只报文件名与原因、不回坏内容**，
-   同时在 `message` 里说明"部分记录被跳过"；写路径遇到同类问题**直接报 `INVALID_INPUT` 拒绝**（决策 49）。
-   于是读取侧**宽容但不静默**、写入侧**严格**，两侧分工彻底钉死。
-   人能直接读懂、改得动，且 diff 极小。但"宽容"不等于"静默吞掉"——
-   载入时校验不合法的记录要**大声报错并跳过**（学 `agent-team` 的 `failure` 字段：
-   把被拒绝的记录摆在最后一个有效状态旁边），而不是当它不存在。
+1. **绝不丢弃人的改动。** 写事务前若检测到工作树有未提交改动： **先把它们作为一个独立 commit 提交掉**（作者保留为人类），再继续自己的写入。 任何时候都**不允许** `checkout --force` / `reset --hard` / `clean`。这是红线。 **落地记录（2026-10-17）**：本条此前**只有文字、没有实现**（§11.6/§11.8 也没把它记为缺口）。 现在由 `core/store.ts` 的 `adoptHumanChanges` 实现：`transact` 在**写入之前**、`regenerateAndCommit` 在**重生成之前**先收编脏工作区，作者用 `--author` 保留为人类（决策 146 的回退兜底）。见**决策 147**。
+2. **每次操作都从磁盘重读，不维护长驻内存索引。** 人在 GitHub 网页或本地编辑后， 进程内缓存必然过期。这个量级下重读几十上百个小文件是毫秒级的事，用简单换正确。
+3. **格式必须手改友好且坏数据要吵。** 用 Markdown + YAML frontmatter（而非严格 JSON）： **落地形状（决策 80）**：读结果里带 **`rejected: [{ file, reason }]`**——**只报文件名与原因、不回坏内容**， 同时在 `message` 里说明"部分记录被跳过"；写路径遇到同类问题**直接报 `INVALID_INPUT` 拒绝**（决策 49）。 于是读取侧**宽容但不静默**、写入侧**严格**，两侧分工彻底钉死。 人能直接读懂、改得动，且 diff 极小。但"宽容"不等于"静默吞掉"—— 载入时校验不合法的记录要**大声报错并跳过**（学 `agent-team` 的 `failure` 字段： 把被拒绝的记录摆在最后一个有效状态旁边），而不是当它不存在。
 
 ### 多机并发与 key 分配（跨机器场景的核心难点）
 
-已确认多机。真正的冲突不在同一台机器（有 lockfile 串行化），而在**两台机器各自离线创建了新 issue**。
-`max(现有文件名)+1` 在离线时会撞号。三种方案：
+已确认多机。真正的冲突不在同一台机器（有 lockfile 串行化），而在**两台机器各自离线创建了新 issue**。 `max(现有文件名)+1` 在离线时会撞号。三种方案：
 
 | 方案 | 机制 | 代价 |
 |---|---|---|
@@ -1080,130 +847,57 @@ resolution: fixed | invalid | limitation | abandoned   # 仅在进入关闭集�
 | B. 创建必须联网 | `create` 前强制 `fetch + rebase` | 完全离线不能建 issue；但创建本就是低频操作 |
 | C. 随机后缀 | `DH-a3f2` | 永远不冲突、完全离线，**但人读起来痛苦**，失去 `<KEY>-<n>` 的价值 |
 
-**已确认采用 A（块分配）。** 必要才联网更新 store。
-另外，因为 store 本身托管在 GitHub 上，**提交本身就顺带成为版本回退工具**——
-`git revert` / `git show` 直接就是 undo，不需要我们再实现撤销逻辑（见 §4.5）。
-所以日常高频路径（改状态、加评论）可以完全离线，后续 rebase 推送即可。
+**已确认采用 A（块分配）。** 必要才联网更新 store。 另外，因为 store 本身托管在 GitHub 上，**提交本身就顺带成为版本回退工具**—— `git revert` / `git show` 直接就是 undo，不需要我们再实现撤销逻辑（见 §4.5）。 所以日常高频路径（改状态、加评论）可以完全离线，后续 rebase 推送即可。
 
-**推送前一律 `pull --rebase`**：因为远程可能被人类或另一台机器改过。
-文件粒度 = issue 粒度，冲突面很小；真冲突时**保留双方并标注**，绝不自动择一。
+**推送前一律 `pull --rebase`**：因为远程可能被人类或另一台机器改过。 文件粒度 = issue 粒度，冲突面很小；真冲突时**保留双方并标注**，绝不自动择一。
 
 ### 跨平台（Fedora KDE ↔ Windows 10/11）的硬约束
 
-已确认目标平台是 **Fedora KDE + Windows 10/11，无 macOS**。这带来十二条必须处理的坑
-（1–4 是骨架，5–11 同样致命），任何一条漏掉都会让"git 仓库当数据库"在双系统之间崩掉：
+已确认目标平台是 **Fedora KDE + Windows 10/11，无 macOS**。这带来十二条必须处理的坑 （1–4 是骨架，5–11 同样致命），任何一条漏掉都会让"git 仓库当数据库"在双系统之间崩掉：
 
-1. **行尾必须锁死 LF。** Windows 的 `core.autocrlf` 会把文件检出成 CRLF，
-   于是同一份数据在两台机器上"每次都是全文件改动"，diff 全废、rebase 必冲突。
-   → store 仓库根目录必须有 `.gitattributes`：`* text=auto eol=lf`。
-   **这是要加进仓库的第一个文件，优先于任何代码。**
-2. **Windows 没有 `flock`。** 不能照抄 POSIX 文件锁。
-   → 用跨平台原子原语 **`mkdir`（唯一原语，决策 59）**，配合 stale 检测（owner 文件记 `{ pid, host, machine_id, at }`）。**不用第三方锁库。**
-3. **Windows 上 `rename` 不是可靠的原子操作。** libuv 走 `MoveFileExW(REPLACE_EXISTING)`，
-   当目标被编辑器 / 杀毒软件 / 索引器持有句柄时会**失败**。
-   → 原子写必须带**重试退避**，最终失败时**明确报错**，而不是静默丢写。
-4. **大小写不敏感 + 保留字。** Windows 上 `DH-12.md` 与 `dh-12.md` 是同一个文件；
-   文件名不能含 `: * ? " < > |`、不能以点或空格结尾、长路径有 260 限制。
-   → key 一律大写；slug 必须清洗；目录层级保持浅。
+1. **行尾必须锁死 LF。** Windows 的 `core.autocrlf` 会把文件检出成 CRLF， 于是同一份数据在两台机器上"每次都是全文件改动"，diff 全废、rebase 必冲突。 → store 仓库根目录必须有 `.gitattributes`：`* text=auto eol=lf`。 **这是要加进仓库的第一个文件，优先于任何代码。**
+2. **Windows 没有 `flock`。** 不能照抄 POSIX 文件锁。 → 用跨平台原子原语 **`mkdir`（唯一原语，决策 59）**，配合 stale 检测（owner 文件记 `{ pid, host, machine_id, at }`）。**不用第三方锁库。**
+3. **Windows 上 `rename` 不是可靠的原子操作。** libuv 走 `MoveFileExW(REPLACE_EXISTING)`， 当目标被编辑器 / 杀毒软件 / 索引器持有句柄时会**失败**。 → 原子写必须带**重试退避**，最终失败时**明确报错**，而不是静默丢写。
+4. **大小写不敏感 + 保留字。** Windows 上 `DH-12.md` 与 `dh-12.md` 是同一个文件； 文件名不能含 `: * ? " < > |`、不能以点或空格结尾、长路径有 260 限制。 → key 一律大写；slug 必须清洗；目录层级保持浅。
 
-5. **绝不用人类可读的 `git log` 输出做解析。** Windows 控制台可能是 GBK/CP936，
-   捕获到的输出还带 `\r\n`，中文 commit message 会乱码，解析结果随之错。
-   → 改用 plumbing：`git rev-list` / `git cat-file` / `--format` 配 **NUL（`-z`）分隔**。
+5. **绝不用人类可读的 `git log` 输出做解析。** Windows 控制台可能是 GBK/CP936， 捕获到的输出还带 `\r\n`，中文 commit message 会乱码，解析结果随之错。 → 改用 plumbing：`git rev-list` / `git cat-file` / `--format` 配 **NUL（`-z`）分隔**。
 6. **统一 UTF-8 无 BOM。** Windows 编辑器很容易加 BOM，一加就污染 diff。CI 里检测并拒绝。
-7. **评论文件声明 `merge=union`。** 追加型冲突（见下文裁决规则）可以靠 git 自身
-   **零人工自动解决**——在 `.gitattributes` 里给评论文件加 union 合并属性。
-   **这让最常见的冲突类型直接消失**，是收益最高的一条属性设置。
-8. **绝不把 store 放进 OneDrive / Dropbox / 网盘同步目录。** 云同步会与 git 争抢文件，
-   制造大量伪冲突。用纯本地路径。
-9. **仓库内固定编码与模式**：`i18n.commitEncoding=utf-8`；Windows 侧 `core.fileMode=false`（无 exec 位，否则产生无意义的 mode 变更）。
-   **由谁写（决策 81）**：**插件在初始化 store / 首次写事务前幂等写入**这两项——**只补缺失的键，绝不覆盖用户已设的值**；
-   并在 `/jira` 体检里报告当前值。理由："能在工具层便宜拦住的事不要靠纪律"（§4.14 同源），而 Windows 上这两项**默认可疑**。
+7. **评论文件声明 `merge=union`。** 追加型冲突（见下文裁决规则）可以靠 git 自身 **零人工自动解决**——在 `.gitattributes` 里给评论文件加 union 合并属性。 **这让最常见的冲突类型直接消失**，是收益最高的一条属性设置。
+8. **绝不把 store 放进 OneDrive / Dropbox / 网盘同步目录。** 云同步会与 git 争抢文件， 制造大量伪冲突。用纯本地路径。
+9. **仓库内固定编码与模式**：`i18n.commitEncoding=utf-8`；Windows 侧 `core.fileMode=false`（无 exec 位，否则产生无意义的 mode 变更）。 **由谁写（决策 81）**：**插件在初始化 store / 首次写事务前幂等写入**这两项——**只补缺失的键，绝不覆盖用户已设的值**； 并在 `/jira` 体检里报告当前值。理由："能在工具层便宜拦住的事不要靠纪律"（§4.14 同源），而 Windows 上这两项**默认可疑**。
 10. **凭据只依赖系统 git 配置**（SSH key / Git Credential Manager），**插件不存任何 token**。
-11. **长路径**：Windows 默认 260 上限。启动时检测 store 根路径深度，超限直接报明确错误，
-    而不是在后面某次 rename 时诡异失败。
-12. **路径不得从 `URL.pathname` 推导。** `pathname` 保持**百分号编码**，所以包一旦位于非 ASCII 目录
-    （如 `~/桌面/…`）下，解析出的路径**根本不存在**，而失败方式是**静默跳过**——最难发现的一类。
-    一律用 **`fileURLToPath`**。
-    > **Fedora 侧实测抓获（2026-10-15 夜）**：包根目录正是这么算的，于是三个随包技能**全部被跳过**，
-    > 而工具列表与界面上**没有任何提示**（内部只有一条 `skipped`）。
-    > Windows 的 `D:\dqc\…` 是纯 ASCII，**永远测不到**；**CI 也测不到**（runner 的检出路径是 ASCII）
-    > ——只有"构造非 ASCII 路径"的测试能守住，见 `src/plugin/skills.test.ts`。
+11. **长路径**：Windows 默认 260 上限。启动时检测 store 根路径深度，超限直接报明确错误， 而不是在后面某次 rename 时诡异失败。
+12. **路径不得从 `URL.pathname` 推导。** `pathname` 保持**百分号编码**，所以包一旦位于非 ASCII 目录 （如 `~/桌面/…`）下，解析出的路径**根本不存在**，而失败方式是**静默跳过**——最难发现的一类。 一律用 **`fileURLToPath`**。
+    > **Fedora 侧实测抓获（2026-10-15 夜）**：包根目录正是这么算的，于是三个随包技能**全部被跳过**， 而工具列表与界面上**没有任何提示**（内部只有一条 `skipped`）。 Windows 的 `D:\dqc\…` 是纯 ASCII，**永远测不到**；**CI 也测不到**（runner 的检出路径是 ASCII） ——只有"构造非 ASCII 路径"的测试能守住，见 `src/plugin/skills.test.ts`。
 
-> 这十二条不是"优化"，是**能不能跑起来**的问题。
-> 其中 **1 / 3 / 5 / 7 / 12 最容易漏，且症状最难回溯**（分别是全文件 diff、
-> 偶发写入失败、乱码导致解析错、冲突爆炸、**非 ASCII 路径下静默跳过**）。
+> 这十二条不是"优化"，是**能不能跑起来**的问题。 其中 **1 / 3 / 5 / 7 / 12 最容易漏，且症状最难回溯**（分别是全文件 diff、 偶发写入失败、乱码导致解析错、冲突爆炸、**非 ASCII 路径下静默跳过**）。
 >
-> **跨平台行为只能靠 CI 验证**：GitHub Actions 加 `windows-latest` 矩阵跑同一套测试——
-> 在 Fedora 上无法验证 Windows 行为，这是唯一手段。另外 Action 里做 **CRLF 与 BOM 检测**，
-> 这是防止行尾/编码污染扩散的自动防线。
+> **跨平台行为只能靠 CI 验证**：GitHub Actions 加 `windows-latest` 矩阵跑同一套测试—— 在 Fedora 上无法验证 Windows 行为，这是唯一手段。另外 Action 里做 **CRLF 与 BOM 检测**， 这是防止行尾/编码污染扩散的自动防线。
 >
-> **CI 的具体形态（决策 66）**：测试用 **`node:test`**（Node 内置、零依赖），覆盖 `core` 的纯函数——
-> 状态机、CAS、校验、key 分配、扫文本检索；CI 跑**两条 job**：
-> ① **`ubuntu-latest` + `windows-latest` 矩阵**跑同一套测试（跨平台只能这么验）；
-> ② **产物与文档检查**：BOM / CRLF 检测、frontmatter 校验、**生成物重跑后 `git diff` 必须为空**
-> （这就是决策 39 要求的"新鲜度断言"——上游正是因为没有它，`index.md` 陈旧两个月无人发现）。
+> **CI 的具体形态（决策 66）**：测试用 **`node:test`**（Node 内置、零依赖），覆盖 `core` 的纯函数—— 状态机、CAS、校验、key 分配、扫文本检索；CI 跑**两条 job**： ① **`ubuntu-latest` + `windows-latest` 矩阵**跑同一套测试（跨平台只能这么验）； ② **产物与文档检查**：BOM / CRLF 检测、frontmatter 校验、**生成物重跑后 `git diff` 必须为空** （这就是决策 39 要求的"新鲜度断言"——上游正是因为没有它，`index.md` 陈旧两个月无人发现）。
 >
-> **落地状态（2026-10-15）**：`.github/workflows/ci.yml` 已提交。
-> **job ①** = `ubuntu-latest` + `windows-latest` × Node **`22.19.0` / `24`**。
-> 下限必须实测、不能从 DSH 抄：`node --test` 跑 `.ts` 依赖 Node 自带的类型剥离，
-> 这比抄来的 engines 范围年轻——Fedora 上验过 **275/275**（22.19.0 与 25.9.0 各一次）。
-> **job ②** = `scripts/check-text.mjs`（只用 LF、无 BOM）与 `scripts/check-build.mjs`
-> （构建产物必须包含 manifest 声明的每个路径——正是 2026-10-15"没构建就装不上"的直接守卫）。
-> 两个脚本都做过**变异验证**：拿掉 `dist` → 报 4 个路径缺失；注入 CRLF → 精确定位到行号。
+> **落地状态（2026-10-15）**：`.github/workflows/ci.yml` 已提交。 **job ①** = `ubuntu-latest` + `windows-latest` × Node **`22.19.0` / `24`**。 下限必须实测、不能从 DSH 抄：`node --test` 跑 `.ts` 依赖 Node 自带的类型剥离， 这比抄来的 engines 范围年轻——Fedora 上验过 **275/275**（22.19.0 与 25.9.0 各一次）。 **job ②** = `scripts/check-text.mjs`（只用 LF、无 BOM）与 `scripts/check-build.mjs` （构建产物必须包含 manifest 声明的每个路径——正是 2026-10-15"没构建就装不上"的直接守卫）。 两个脚本都做过**变异验证**：拿掉 `dist` → 报 4 个路径缺失；注入 CRLF → 精确定位到行号。
 >
-> **首次运行（2026-10-15）**：5 个 job **全部 success**。随后把三个 action 升到当前大版本
-> （`actions/checkout@v7` / `actions/setup-node@v7` / `pnpm/action-setup@v6`）——
-> 原用的 v4 跑在**已被弃用的 Node 20** 上（GitHub 已强制改跑 24 并告警）。
+> **首次运行（2026-10-15）**：5 个 job **全部 success**。随后把三个 action 升到当前大版本 （`actions/checkout@v7` / `actions/setup-node@v7` / `pnpm/action-setup@v6`）—— 原用的 v4 跑在**已被弃用的 Node 20** 上（GitHub 已强制改跑 24 并告警）。
 >
-> **job ② 的状态（2026-10-16 更新）**：**frontmatter 校验**与**生成物新鲜度断言**（决策 39）**仍然缺**，
-> 但原因已经不同了——生成器**已经接线**：
-`
-jira generate
-`
- /
-`
-generate --check
-`
- 会写出并核对四份工件 ✓，
+> **job ② 的状态（2026-10-16 更新）**：**frontmatter 校验**与**生成物新鲜度断言**（决策 39）**仍然缺**， 但原因已经不同了——生成器**已经接线**： ` jira generate ` / ` generate --check ` 会写出并核对四份工件 ✓，
 >
-`
-doctor
-`
- 也会报
-`
-generated-stale
-`
- ✓，真机实测
-`
-generate --check
-`
- 退出码 0 ✓。
-> 缺的是**这两项属于 store 仓库的 CI，而 store 仓库现在根本没有
-`
-.github/
-`
-** ✗（决策 66 把 job ① ② 给了本包，
-> frontmatter 与新鲜度断言点名给 store）→ 已记入 **C12**。
+` doctor ` 也会报 ` generated-stale ` ✓，真机实测 ` generate --check ` 退出码 0 ✓。
+> 缺的是**这两项属于 store 仓库的 CI，而 store 仓库现在根本没有 ` .github/ ` ** ✗（决策 66 把 job ① ② 给了本包， frontmatter 与新鲜度断言点名给 store）→ 已记入 **C12**。
 
 ### 时间戳与历史不可变：git 当审计的两个前提
 
 **前提一：先后与时间以 git 为准，不信本机时钟。** 多机时钟必然有偏移。
-> **格式已定（决策 47）**：所有时间字段一律 **UTC + ISO-8601 到秒**（`2026-10-15T08:30:00Z`，不带毫秒）。
-> 理由：无时区歧义、**字典序即时间序**（`BOARD.md` 与列表可直接排）、跨机租约判定不会因时差误判；
-> 人能读的本地时间由工具与看板**在显示时转换**，不落盘。
-issue 里仍然写 `updated`（本机时钟，给人看），但**排序、"谁先谁后"一律以
-commit 的拓扑顺序与 `committer date` 为准**。
+> **格式已定（决策 47）**：所有时间字段一律 **UTC + ISO-8601 到秒**（`2026-10-15T08:30:00Z`，不带毫秒）。 理由：无时区歧义、**字典序即时间序**（`BOARD.md` 与列表可直接排）、跨机租约判定不会因时差误判； 人能读的本地时间由工具与看板**在显示时转换**，不落盘。 issue 里仍然写 `updated`（本机时钟，给人看），但**排序、"谁先谁后"一律以 commit 的拓扑顺序与 `committer date` 为准**。
 
-**前提二：git 当审计的前提是历史不可变，而 force-push 可以重写历史。**
-这不是理论问题，一次误操作就能让整个"审计轨迹"失效。两道防线：
+**前提二：git 当审计的前提是历史不可变，而 force-push 可以重写历史。** 这不是理论问题，一次误操作就能让整个"审计轨迹"失效。两道防线：
 
 1. **GitHub 侧给 store 仓库默认分支开分支保护、禁止 force-push**（最有效）。
 2. 插件侧**检测到历史分叉或远程历史被重写时大声告警**，而不是默默 `reset` 跟随。
 
 ### 真冲突的裁决规则
 
-CAS（§4.7）只能挡住**在线**并发；两台机器各自离线改同一条 issue，冲突会在 rebase 时暴露。
-裁决要按字段性质分开，不能一刀切：
+CAS（§4.7）只能挡住**在线**并发；两台机器各自离线改同一条 issue，冲突会在 rebase 时暴露。 裁决要按字段性质分开，不能一刀切：
 
 | 字段性质 | 例子 | 规则 |
 |---|---|---|
@@ -1213,18 +907,12 @@ CAS（§4.7）只能挡住**在线**并发；两台机器各自离线改同一�
 
 > 底线是**绝不自动择一后不留痕迹**。你在 GitHub 上看到高亮后手工定夺。
 
-> **修正记录（§8 决策 35：独立实例不适用本节）**：本节裁决规则的前提是**两台机器共享同一个 git 仓库**
-> （有远程、能 rebase）。但离线机上是**空的独立实例**——它们的 `DH-12` 是**两条毫不相干的 issue**，
-> 没有共同祖先，任何"取较新 commit / 取并集"都无从判断，git 也帮不上忙。
-> 所以跨实例归并**是人工程序**：插件只应产出**差异报告**（哪些 key 撞了、哪些 project 疑似同一个、
-> 哪些评论与链接需要改写），**绝不做自动合并**。归并工具形态见 §11.5。
+> **修正记录（§8 决策 35：独立实例不适用本节）**：本节裁决规则的前提是**两台机器共享同一个 git 仓库** （有远程、能 rebase）。但离线机上是**空的独立实例**——它们的 `DH-12` 是**两条毫不相干的 issue**， 没有共同祖先，任何"取较新 commit / 取并集"都无从判断，git 也帮不上忙。 所以跨实例归并**是人工程序**：插件只应产出**差异报告**（哪些 key 撞了、哪些 project 疑似同一个、 哪些评论与链接需要改写），**绝不做自动合并**。归并工具形态见 §11.5。
 
 > **`conflicted` 的生命周期（决策 71，同时解掉 A35）**
 >
-> - **检测时机**：**只在 `pull --rebase` 之后或写事务内**判定并打标记——**读路径绝不写**（决策 38）。
->   这条把原先 A35 指出的"打标记就是写"与决策 38 的冲突彻底划清。
-> - **打上标记后**：**读照常**；**写需要显式确认**——`update` / `switch_state` 必须带 `ack_conflict: true` 才改得动，
->   **改完自动清除标记**（写操作本身就是对冲突的显式选定）。
+> - **检测时机**：**只在 `pull --rebase` 之后或写事务内**判定并打标记——**读路径绝不写**（决策 38）。 这条把原先 A35 指出的"打标记就是写"与决策 38 的冲突彻底划清。
+> - **打上标记后**：**读照常**；**写需要显式确认**——`update` / `switch_state` 必须带 `ack_conflict: true` 才改得动， **改完自动清除标记**（写操作本身就是对冲突的显式选定）。
 > - 于是"标记不清就不许静默改"，而且标记**不会永久粘住**（那正是 A10 原本担心的结局）。
 
 ---
@@ -1241,11 +929,7 @@ CAS（§4.7）只能挡住**在线**并发；两台机器各自离线改同一�
 
 **已确认：以 C（CLI + skill）为地基，A 保留一小而必要的一组，并用 `deferLoading` 扩展。**
 
-> **`deferLoading: true` 改变了 A 与 C 的性价比。** 工具的 `ToolSchema` 带 `deferLoading` 字段：
-> 注册后**不进入 prompt 装配**，直到被显式加载
-> （`docs/subsystems/llm-streaming.md:672-683`、`packages/core/tools/README.md:240`）。
-> 于是"工具数量"与"常驻 token"不再互斥——冷门能力也可以做成 tool 并 defer，
-> 不必为了省 token 把它们全塞进 CLI。
+> **`deferLoading: true` 改变了 A 与 C 的性价比。** 工具的 `ToolSchema` 带 `deferLoading` 字段： 注册后**不进入 prompt 装配**，直到被显式加载 （`docs/subsystems/llm-streaming.md:672-683`、`packages/core/tools/README.md:240`）。 于是"工具数量"与"常驻 token"不再互斥——冷门能力也可以做成 tool 并 defer， 不必为了省 token 把它们全塞进 CLI。
 
 **常驻 tool（3 个，schema 精简）**
 
@@ -1255,8 +939,7 @@ CAS（§4.7）只能挡住**在线**并发；两台机器各自离线改同一�
 | `jira_list` | 按 project / status / tags / assignee / link 查询；兼任"我该做什么"。**排序分组（决策 53）**：先 project → 再 status（按 `statuses[].order`），组内 `priority` 升序（S1 最先）→ 同级按 `updated` 倒序；**被阻塞的抽出单独一组放最后**；`limit` 默认 20、上限 100，超限只给"还有 N 条"的计数 |
 | `jira_kb` | 知识条目的 get / create / update / search。**search 返回（决策 54）**：每条命中给 `{ key, title, file, line, snippet }`——**片段旁必须带 `file:line`**（可回溯引用），片段封顶约 200 字；`top_k` 默认 10、上限 50；排序"标题命中优先 → 命中次数 → `updated` 倒序"；**绝不回整篇正文**（§6.2 的体积约束） |
 
-> **`jira_queue` 已改名为 `jira_list`**：单人自用没有"派工队列"语义，
-> 而议程注入也已被否掉（§6.4）——"queue"这个名字会误导。
+> **`jira_queue` 已改名为 `jira_list`**：单人自用没有"派工队列"语义， 而议程注入也已被否掉（§6.4）——"queue"这个名字会误导。
 
 > **参数与输出 schema（决策 82）**
 >
@@ -1265,15 +948,12 @@ CAS（§4.7）只能挡住**在线**并发；两台机器各自离线改同一�
 > | tool | 参数 | 输出 |
 > |---|---|---|
 `comment?{body,id?}` · `ack_conflict?`（顶层参数，决策 71 要求 `update`/`switch_state`/`comment` 都可能需要）
-> | `jira_list` | `project?` · `status?` · `tags?` · `assignee?` · `link?` · `limit?` · `include_closed?` | `{ items, groups, counts, truncated, writable, me }` |
-> | `jira_kb` | `action`(get/create/update/search) · `key?` · `query?` · `top_k?` · `data?` | `{ hits?, item?, rejected?, writable, me }` |
+> | `jira_list` | `project?` · `status?` · `tags?` · `assignee?` · `link?` · `limit?` · `include_closed?` | `{ items, groups, counts, truncated, writable, me }` | | `jira_kb` | `action`(get/create/update/search) · `key?` · `query?` · `top_k?` · `data?` | `{ hits?, item?, rejected?, writable, me }` |
 
 **defer 的 tool**：`jira_sync`、`jira_tag`、`jira_project`、批量查询与看板、历史回读、导出。
 
 **仍走 CLI 的部分**：人机共用的批量操作、脚本化、离线场景。**逻辑只在 `core` 写一次**，
-> **命令集合已定（决策 83）**：CLI 与 tool 的七个动词**一一对应**（`jira issue …`），另加 `list` / `kb` / 运维类（`board` `lint` `tags lint` `doctor` `hooks` `sync` `verify-commit-msg`）；`/jira` 只暴露**给人看的只读**子命令（`board` / `list` / `show` / `tags lint` / `doctor`）。
-> 另有管理域命令（决策 91/92 引出）：`jira machines [list|label]`、`jira project [list|bind|rebind]`。
-CLI 与 tool 都只是它的薄包装。
+> **命令集合已定（决策 83）**：CLI 与 tool 的七个动词**一一对应**（`jira issue …`），另加 `list` / `kb` / 运维类（`board` `lint` `tags lint` `doctor` `hooks` `sync` `verify-commit-msg`）；`/jira` 只暴露**给人看的只读**子命令（`board` / `list` / `show` / `tags lint` / `doctor`）。 另有管理域命令（决策 91/92 引出）：`jira machines [list|label]`、`jira project [list|bind|rebind]`。 CLI 与 tool 都只是它的薄包装。
 
 ### 6.2 Tool 契约（逐条对齐上游文档）
 
@@ -1291,69 +971,38 @@ CLI 与 tool 都只是它的薄包装。
 | 权限 | tool **不声明**权限；需要审批就用 `sandbox_permissions` + `justification` 参数对 | `adding-a-tool.md:59`、`docs/subsystems/shell.md:169` |
 | 配置 | `export const Config = Schema.object({...})`（**Schemastery**）；动态字段用 `.volatile()` + `loader/volatile-update` | `docs/user/develop/basic/config.md:11-45`、`adding-a-settings-card.md:9-30` |
 
-> **可选宿主服务必须用 `ctx.get(name)` 读，绝不能写成 `ctx.<name>`。**（2026-10-15 Fedora 真机抓获）
-> 宿主对"未在 `inject` 里声明的服务"做**属性读取**会直接抛
-> `cannot get property "<name>" without inject`；而把 `commands` / `skills` 声明成必需，
-> 又会让**没有这两种注册表的 profile 连工具都装不上**。官方正解见
-> `docs/user/develop/framework/service.md:95` —— "Optional: omit inject and query with `ctx.get()`
-> at the use site."
+> **可选宿主服务必须用 `ctx.get(name)` 读，绝不能写成 `ctx.<name>`。**（2026-10-15 Fedora 真机抓获） 宿主对"未在 `inject` 里声明的服务"做**属性读取**会直接抛 `cannot get property "<name>" without inject`；而把 `commands` / `skills` 声明成必需， 又会让**没有这两种注册表的 profile 连工具都装不上**。官方正解见 `docs/user/develop/framework/service.md:95` —— "Optional: omit inject and query with `ctx.get()` at the use site."
 >
-> **为什么单元测试当时抓不到它**：决策 108 让适配层用自声明的最小 ctx，而测试喂的是**普通对象
-> 假 ctx**——属性读取不抛。于是"**274 测试全绿**"与"**真机装不上**"可以同时成立；
-> 这正是决策 108 写下"宿主漂移只能靠真机集成测试暴露"的那笔代价，本次兑现了一次。
+> **为什么单元测试当时抓不到它**：决策 108 让适配层用自声明的最小 ctx，而测试喂的是**普通对象 假 ctx**——属性读取不抛。于是"**274 测试全绿**"与"**真机装不上**"可以同时成立； 这正是决策 108 写下"宿主漂移只能靠真机集成测试暴露"的那笔代价，本次兑现了一次。
 >
-> **已补两道防线，让这一类不再只能靠真机抓**（2026-10-15，且都做了变异验证）：
-> ① **类型**——不可达的服务**从 `JiraHostContext` 里删掉**，`tsc` 直接拒绝属性读取
->    （注入该写法 → `TS2339: Property 'commands' does not exist`）；
-> ② **测试**——`index.test.ts` 的假 ctx 改为**代理式**，对未声明的服务属性读取抛与宿主**同样的错**
->    （绕过类型强制转型后 → **20 个测试失败**，打印 `cannot get property "commands" without inject`）。
+> **已补两道防线，让这一类不再只能靠真机抓**（2026-10-15，且都做了变异验证）： ① **类型**——不可达的服务**从 `JiraHostContext` 里删掉**，`tsc` 直接拒绝属性读取 （注入该写法 → `TS2339: Property 'commands' does not exist`）； ② **测试**——`index.test.ts` 的假 ctx 改为**代理式**，对未声明的服务属性读取抛与宿主**同样的错** （绕过类型强制转型后 → **20 个测试失败**，打印 `cannot get property "commands" without inject`）。
 
-> 结果体积那条对本案有直接约束：**issue 的 description 不要整段回给模型**，
-> 只回 summary + 计数式摘要（学 `todo_write` 只回 `N pending, M in progress`）。
+> 结果体积那条对本案有直接约束：**issue 的 description 不要整段回给模型**， 只回 summary + 计数式摘要（学 `todo_write` 只回 `N pending, M in progress`）。
 
-**错误码的单一来源（决策 52）**：12 个错误码在 `core` 里**只定义一次**（一张常量表 + 统一形状 `{ code, message, context? }`）：
-`STALE_REVISION` · `INVALID_TRANSITION` · `RESOLUTION_REQUIRED` · `UNKNOWN_TAG` · `BLOCKED_BY_OPEN` ·
-`FOREIGN_MACHINE_READ_ONLY` · `NOT_FOUND` · `LOCK_TIMEOUT` · `WRITE_FAILED`（= 任何 IO 失败；决策 111） · `KEY_EXHAUSTED` · `INVALID_INPUT` · `READ_ONLY_SESSION`。
-tool / CLI / `/jira` 命令都从它取；并且**有一条测试断言"本文档列出的码集合 == 代码里的码集合"**——
-这正是 §11.1 从上游学来的做法（`params.py::FIELDS` 声明一次 + 测试守三处一致），避免"文档写了一套、代码是另一套"。
+**错误码的单一来源（决策 52）**：12 个错误码在 `core` 里**只定义一次**（一张常量表 + 统一形状 `{ code, message, context? }`）： `STALE_REVISION` · `INVALID_TRANSITION` · `RESOLUTION_REQUIRED` · `UNKNOWN_TAG` · `BLOCKED_BY_OPEN` · `FOREIGN_MACHINE_READ_ONLY` · `NOT_FOUND` · `LOCK_TIMEOUT` · `WRITE_FAILED`（= 任何 IO 失败；决策 111） · `KEY_EXHAUSTED` · `INVALID_INPUT` · `READ_ONLY_SESSION`。 tool / CLI / `/jira` 命令都从它取；并且**有一条测试断言"本文档列出的码集合 == 代码里的码集合"**—— 这正是 §11.1 从上游学来的做法（`params.py::FIELDS` 声明一次 + 测试守三处一致），避免"文档写了一套、代码是另一套"。
 
-**输出语言（决策 55）**：**面向模型的一律英文**——tool description、工具返回值、错误 `message`、注入的存储意识行；
-**面向人的一律中文**——`BOARD.md`、CLI 帮助与输出、`/jira` 命令输出、README 与设计文档。
-理由：与 DSH 生态（英文工具面）一致、错误码本就是英文、token 更省；而看板与帮助是给你自己看的。
+**输出语言（决策 55）**：**面向模型的一律英文**——tool description、工具返回值、错误 `message`、注入的存储意识行； **面向人的一律中文**——`BOARD.md`、CLI 帮助与输出、`/jira` 命令输出、README 与设计文档。 理由：与 DSH 生态（英文工具面）一致、错误码本就是英文、token 更省；而看板与帮助是给你自己看的。
 
-**读结果的统一外壳（决策 56）**：每次读都带 **`writable`**（+ `reason?`，§4.11 要求"动态地在每次读里告诉模型"）
-与 **`me`**（`{ model, tool, machine, session }`，§4.12 说其成本几乎为零）；**不重复 store 摘要**——
-那是 §6.4 注入行的职责，重复就是白花 token。
+**读结果的统一外壳（决策 56）**：每次读都带 **`writable`**（+ `reason?`，§4.11 要求"动态地在每次读里告诉模型"） 与 **`me`**（`{ model, tool, machine, session }`，§4.12 说其成本几乎为零）；**不重复 store 摘要**—— 那是 §6.4 注入行的职责，重复就是白花 token。
 
 **插件 Config 的字段（决策 57）**：只保留五组"已经实现、且确实需要按环境调"的键——`root` · `tool` ·
-> **体积与超时的常量（决策 84）**：`summary` ≤ **120 字符**（超长**写入侧拒绝**，不静默截）；正文不限长但**列表只回 summary**，`get` 超长时给"前 8 K 字符 + 共 N 字符"的显式标记；tool `timeoutMs` **读 5 s / 写 30 s**；`presentationMeta` 不做（P2）。
-`push { enabled, debounce_ms }` · `lock { timeout_ms, stale_ms }` · `list { default_limit, max_limit }`。
-**值还没定的键一律不加**：写了没人读的配置就是治理幻觉（§11.1 反面教训第 4 条）。
+> **体积与超时的常量（决策 84）**：`summary` ≤ **120 字符**（超长**写入侧拒绝**，不静默截）；正文不限长但**列表只回 summary**，`get` 超长时给"前 8 K 字符 + 共 N 字符"的显式标记；tool `timeoutMs` **读 5 s / 写 30 s**；`presentationMeta` 不做（P2）。 `push { enabled, debounce_ms }` · `lock { timeout_ms, stale_ms }` · `list { default_limit, max_limit }`。 **值还没定的键一律不加**：写了没人读的配置就是治理幻觉（§11.1 反面教训第 4 条）。
 
 ### 6.3 skill 决定采纳率
 
-DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"和"决定一切"的。skill 正文必须明确回答
-"**什么时候必须记一条 issue**"，否则再好的系统 agent 也没理由用。
+DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"和"决定一切"的。skill 正文必须明确回答 "**什么时候必须记一条 issue**"，否则再好的系统 agent 也没理由用。
 
-**分发方式：让 bundle 自己带 `skills/` 目录**，用 `skill-filesystem` 的 `customSkillDirs` 挂载——
-这是上游 preset 自己用的做法（`packages/bundle/web-app/presets/cordis.patch.yml:145-148`：
-用 `!!js` + `node:path.join` 指向包内 `skills/`）。
+**分发方式：让 bundle 自己带 `skills/` 目录**，用 `skill-filesystem` 的 `customSkillDirs` 挂载—— 这是上游 preset 自己用的做法（`packages/bundle/web-app/presets/cordis.patch.yml:145-148`： 用 `!!js` + `node:path.join` 指向包内 `skills/`）。
 
-**不要覆盖 shipped 的 `skill-filesystem` 行**——按 id 覆盖会**整行替换 `config`**，必须重述别人的键。
-**应该新插一行**：不同 `id`、`providerName` 自取、`includeDefaultRoots: false`、
-`customSkillDirs: [<本包 skills 目录>]`。既不覆盖上游、又随包版本走，且在任何工作区都可用。
+**不要覆盖 shipped 的 `skill-filesystem` 行**——按 id 覆盖会**整行替换 `config`**，必须重述别人的键。 **应该新插一行**：不同 `id`、`providerName` 自取、`includeDefaultRoots: false`、 `customSkillDirs: [<本包 skills 目录>]`。既不覆盖上游、又随包版本走，且在任何工作区都可用。
 
-备选是程序化注册 `ctx.skills.register(...)` / 自建 `SkillProvider`
-（`docs/subsystems/skills.md:9-62,164-171`），但**文档没有任何第三方 provider 的示例**，所以 file-based 更稳。
+备选是程序化注册 `ctx.skills.register(...)` / 自建 `SkillProvider` （`docs/subsystems/skills.md:9-62,164-171`），但**文档没有任何第三方 provider 的示例**，所以 file-based 更稳。
 
 ### 6.4 注入的是"存储存在且可读"，不是待办议程
 
-**用户明确否掉了"注入待办列表"这个做法**：把 agent 的待办排进上下文没有意义——
-会话通常是人为了某个明确目的开的，一份议程多半是噪声；而 Jira 是**记录**，不是调度器。
-（本文档早期把"注入队列"称为"价值支点"，**那是错的**，已按此更正。）
+**用户明确否掉了"注入待办列表"这个做法**：把 agent 的待办排进上下文没有意义—— 会话通常是人为了某个明确目的开的，一份议程多半是噪声；而 Jira 是**记录**，不是调度器。 （本文档早期把"注入队列"称为"价值支点"，**那是错的**，已按此更正。）
 
-**真正需要注入的是"意识"**：告诉 agent 这个 store 存在、有多大、能不能读。
-它自己会在需要时去查——人问"上次那个 Windows git 的问题怎么解的"，它知道有 KB 可查。
+**真正需要注入的是"意识"**：告诉 agent 这个 store 存在、有多大、能不能读。 它自己会在需要时去查——人问"上次那个 Windows git 的问题怎么解的"，它知道有 KB 可查。
 
 拟注入的一行（用 `PromptContext`，cache-safe）：
 
@@ -1364,13 +1013,9 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 - **只是索引，不是议程**——不含任何任务内容，token 几乎为零。
 - 仍要报"未关闭 issue"的总数：让 agent 知道有活可领，**但不告诉它该做什么**。
 - **只读项目数必须标出来**，否则 agent 会去写只读项目然后撞墙（§4.11）。
-- **必须用 `PromptContext` 而非 `section()`**：计数会变，动态 section 每变一次就击穿一次 KV cache
-  （依据 `docs/subsystems/system-prompt.md:44-76`）。
+- **必须用 `PromptContext` 而非 `section()`**：计数会变，动态 section 每变一次就击穿一次 KV cache （依据 `docs/subsystems/system-prompt.md:44-76`）。
 
-**落地形态（决策 78）**：格式固定为 `[store] {n} projects · {m} knowledge · {k} open issues`（英文，决策 55），
-只读项目非零时追加 ` | read-only: {r}`——**英文且可被测试断言**。计数口径：`projects/*/project.md` 个数、
-`knowledge/**/KB-*.md` 个数、status 不在 `closed` 集合里的条数。**空 store 不注入**。
-注册名 **`jira:store`**；5 s 内复用上次扫描结果（扫一次约 1.5 ms，节流只是避免每一步都做 IO）。
+**落地形态（决策 78）**：格式固定为 `[store] {n} projects · {m} knowledge · {k} open issues`（英文，决策 55）， 只读项目非零时追加 ` | read-only: {r}`——**英文且可被测试断言**。计数口径：`projects/*/project.md` 个数、 `knowledge/**/KB-*.md` 个数、status 不在 `closed` 集合里的条数。**空 store 不注入**。 注册名 **`jira:store`**；5 s 内复用上次扫描结果（扫一次约 1.5 ms，节流只是避免每一步都做 IO）。
 
 ### 6.5 生命周期集成（分阶段）
 
@@ -1387,10 +1032,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 
 ### 6.6 人类界面：`/jira` 斜杠命令（零模型 token）
 
-`ctx.commands.register({ name: 'jira', description, handler })` 的 handler
-**直接对 agent 执行、不产生模型消息**（`packages/interaction/commands/README.md:41`），
-所以看板、列表、状态这类"给人看"的输出**完全不消耗模型 token**——
-这正是上游 `/goal` 的做法（"Reading status, mutating a goal, or receiving a direct command error adds no model tokens"）。
+`ctx.commands.register({ name: 'jira', description, handler })` 的 handler **直接对 agent 执行、不产生模型消息**（`packages/interaction/commands/README.md:41`）， 所以看板、列表、状态这类"给人看"的输出**完全不消耗模型 token**—— 这正是上游 `/goal` 的做法（"Reading status, mutating a goal, or receiving a direct command error adds no model tokens"）。
 
 于是人机分工变得很干净：
 
@@ -1404,8 +1046,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 
 ### 6.7 提交绑定：commit ⇄ issue（用户要求的硬约束）
 
-**用户要求**：插件上线后，本地 git 的每次提交**都必须绑定到某个 task/issue**；
-未绑定的提交视为大问题，**必须拦截**。
+**用户要求**：插件上线后，本地 git 的每次提交**都必须绑定到某个 task/issue**； 未绑定的提交视为大问题，**必须拦截**。
 
 **三个可能的拦截位置（只有这三个）：**
 
@@ -1417,32 +1058,20 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 
 **推荐组合：**
 
-1. **`commit-msg` hook 是主拦截点**——唯一能看到"最终提交信息"的地方，
-   且对 agent 与人是同一道门。实现为一个**薄脚本**，调用
-   `jira verify-commit-msg <msgfile>`，校验逻辑放在插件里（单点真相）。
-2. **`prepare-commit-msg` hook 从分支名自动填 key**（`DH-12-fix-oauth` → 前缀 `DH-12: `）。
-   **这一步是关键**：它把"拦截"变成"几乎不会被触发"。
-   好的约束不该靠频繁拒绝体现，而该靠**默认路径就合规**。
+1. **`commit-msg` hook 是主拦截点**——唯一能看到"最终提交信息"的地方， 且对 agent 与人是同一道门。实现为一个**薄脚本**，调用 `jira verify-commit-msg <msgfile>`，校验逻辑放在插件里（单点真相）。
+2. **`prepare-commit-msg` hook 从分支名自动填 key**（`DH-12-fix-oauth` → 前缀 `DH-12: `）。 **这一步是关键**：它把"拦截"变成"几乎不会被触发"。 好的约束不该靠频繁拒绝体现，而该靠**默认路径就合规**。
 3. **豁免规则**（否则会打断正常流程）：
    - **merge / rebase 产生的提交豁免**（`commit-msg` 对它们同样触发）
-   - 未绑定时**要求显式 `[no-issue]` 标记**：不是放行，而是**必须声明意图**。
-     于是"未绑定"不可能悄悄发生，且 `[no-issue]` 提交**事后可检索审计**。
+   - 未绑定时**要求显式 `[no-issue]` 标记**：不是放行，而是**必须声明意图**。 于是"未绑定"不可能悄悄发生，且 `[no-issue]` 提交**事后可检索审计**。
 4. **校验 key 真实存在**，不只是格式匹配——否则打错一个字母就成了假绑定。
 
-**必须诚实说明**：hook 是**速度障碍，不是墙**（`--no-verify` 可绕），
-与 §4.11 同一性质。真正的墙是服务端 CI（上表第三行）——那是第二阶段的事，
-且会给每个项目仓库引入 CI。
+**必须诚实说明**：hook 是**速度障碍，不是墙**（`--no-verify` 可绕）， 与 §4.11 同一性质。真正的墙是服务端 CI（上表第三行）——那是第二阶段的事， 且会给每个项目仓库引入 CI。
 
-**安装方式**：由 `jira hooks install / uninstall` **显式**写入工作区 `.git/hooks/`，
-**不偷偷改你的仓库**、可逆；若已存在同名 hook，**链式调用**而不是覆盖。
+**安装方式**：由 `jira hooks install / uninstall` **显式**写入工作区 `.git/hooks/`， **不偷偷改你的仓库**、可逆；若已存在同名 hook，**链式调用**而不是覆盖。
 
-**拦截组合（已确认）**：**只做本地 hook 拦截**，暂不加服务端 CI 兜底。
-即 `commit-msg` 拦截 + `prepare-commit-msg` 自动填 key + merge/rebase 豁免 + `[no-issue]` 显式声明。
-服务端 CI 留作后续可选加固（每个项目仓库都要装，成本不低）。
+**拦截组合（已确认）**：**只做本地 hook 拦截**，暂不加服务端 CI 兜底。 即 `commit-msg` 拦截 + `prepare-commit-msg` 自动填 key + merge/rebase 豁免 + `[no-issue]` 显式声明。 服务端 CI 留作后续可选加固（每个项目仓库都要装，成本不低）。
 
-**只拦未来，不追溯历史（已确认）**：hook 仅校验**安装之后的新提交**。
-历史里已有的未绑定提交（或压根没有 issue 的仓库）**不予追究、不告警、不补录**。
-因此不需要"扫描历史 commit"这类功能——省掉一大块工作量，也避免上线第一天就淹在存量告警里。
+**只拦未来，不追溯历史（已确认）**：hook 仅校验**安装之后的新提交**。 历史里已有的未绑定提交（或压根没有 issue 的仓库）**不予追究、不告警、不补录**。 因此不需要"扫描历史 commit"这类功能——省掉一大块工作量，也避免上线第一天就淹在存量告警里。
 
 > **落地细则（决策 67）**
 >
@@ -1455,8 +1084,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 > - **链式调用**：安装时若已存在同名 hook，**重命名为 `<name>.jira-backup` 并链式调用**（原 hook 失败则不继续），卸载时还原。
 > - **store root 解析**：走 `root` 配置或 `JIRA_ROOT` 环境变量，**绝不硬编码路径**。
 
-**会话结束时的自动挂载（已确认）**：扫描本次会话期间工作区的 `git log`，
-用 `\b([A-Z][A-Z0-9]{1,5}-\d+)\b` 匹配出涉及的 issue（决策 67 的正则）
+**会话结束时的自动挂载（已确认）**：扫描本次会话期间工作区的 `git log`， 用 `\b([A-Z][A-Z0-9]{1,5}-\d+)\b` 匹配出涉及的 issue（决策 67 的正则）
 - 只要在分支名或 commit message 里顺手带上 key，台账就自动有了关联记录。
 - **写进评论文件**（§4.4）而不是 issue 主体 → 直接复用 `merge=union`，**零冲突**。
 
@@ -1476,16 +1104,11 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | npm 包名 | **已定**：`@uitstalie/dsh-jira`（profile 补丁与包 manifest 都用的这个名字；分发仍推后，但名字不再是待定项） |
 | 可见性 | **两个仓库都是 private**（已确认）；只计划后续暴露 public 镜像 |
 
-- **开发期**用 `link:` 挂本地 checkout，无需发布：
-  `pnpm dsh plugin --profile web add <本仓库绝对路径>`
-  （旧稿此处写 `/home/uitstalie/桌面/dsh/dsh-jira`：**那是从前的目录名，且只有 Fedora 那台的路径**；
-  两机实际路径不同，见 `HANDOVER.md` §5。目录改名后旧名已失效。）
-- **无网络的机器必须装得上**（§8 决策 34）：npm 分发在离线机器上装不了，
-  所以离线路径是：**`tsc` 编译出的 `dist/` + `package.json` + `skills/` 整个包目录拷到目标机，再 `dsh plugin add <本地路径>`**（决策 65）。**不用 esbuild 打包**：peer 必须保持 external，否则会打出第二份 DSH 实例、破坏"共享实例"（§2.2）。
+- **开发期**用 `link:` 挂本地 checkout，无需发布： `pnpm dsh plugin --profile web add <本仓库绝对路径>` （旧稿此处写 `/home/uitstalie/桌面/dsh/dsh-jira`：**那是从前的目录名，且只有 Fedora 那台的路径**； 两机实际路径不同，见 `HANDOVER.md` §5。目录改名后旧名已失效。）
+- **无网络的机器必须装得上**（§8 决策 34）：npm 分发在离线机器上装不了， 所以离线路径是：**`tsc` 编译出的 `dist/` + `package.json` + `skills/` 整个包目录拷到目标机，再 `dsh plugin add <本地路径>`**（决策 65）。**不用 esbuild 打包**：peer 必须保持 external，否则会打出第二份 DSH 实例、破坏"共享实例"（§2.2）。
   > 之所以能这么简单：**我们用不到任何 native 依赖**（决策 37 的文本扫描，不引 sqlite / faiss），编译产物跨 Fedora / Windows 直接可用。
 - **分发**：发 npm（预构建产物，用户无需授权构建脚本）。
-- **不要走 git 安装**：git 安装拉的是源码，需要 `prepare` 脚本 + 用户 `allowBuilds` 授权，
-  等于让用户批准在本机执行代码，体验与安全都差。→ `docs/user/develop/basic/publish.md:159-184`
+- **不要走 git 安装**：git 安装拉的是源码，需要 `prepare` 脚本 + 用户 `allowBuilds` 授权， 等于让用户批准在本机执行代码，体验与安全都差。→ `docs/user/develop/basic/publish.md:159-184`
 - 数据仓库**必须私有**。
 - 备选：数据作为插件仓库的一个 orphan branch（少一个仓库，但权限/CI 混在一起）。
 
@@ -1494,11 +1117,9 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 插件退化为薄适配层（`gh issue create/list/comment`）。
 
 - **白送**：UI、评论、标签、搜索、权限、通知、历史、blame。
-- **代价**：每次操作要联网；状态模型受限于 label/column；离线不可用；写入慢一个数量级；
-  **硬依赖 `gh`（或等价的 GitHub API 客户端）**——而按 §8 决策 33，部署 / 使用电脑上不保证有它。
+- **代价**：每次操作要联网；状态模型受限于 label/column；离线不可用；写入慢一个数量级； **硬依赖 `gh`（或等价的 GitHub API 客户端）**——而按 §8 决策 33，部署 / 使用电脑上不保证有它。
 
-**判断标准**：若主要诉求是"给人看 + 可追溯"，B 用 1/10 成本拿到 80% 效果；
-若 agent 需**高频、离线、批量**读写自身任务状态，则选 A。
+**判断标准**：若主要诉求是"给人看 + 可追溯"，B 用 1/10 成本拿到 80% 效果； 若 agent 需**高频、离线、批量**读写自身任务状态，则选 A。
 
 > 环境已核实：`gh` 已登录 `uitstalie`（SSH 协议），SSH 密钥就位，自动 push 可行。
 
@@ -1514,99 +1135,34 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | **P1** | `jira board --html` 生成静态 HTML，可本地打开或走 **GitHub Pages** | 低 | ✓✓（真看板布局） | ✗ |
 | **P2** | 真 Web GUI 面板（client face 插件） | **高** | ✓✓ | ✓ |
 
-**（原结论已被本节末尾的修正记录推翻，此处保留原文以示记录）：`BOARD.md` 由 GitHub Action 在 push 时生成**。
-当初紧接着写的"**不是**插件在本地生成"——那半句在**离线机器上不成立**（决策 34）。
-现在的要求是：**两层都要有**，且生成代码在 `core` 里**只写一次**。
+**（原结论已被本节末尾的修正记录推翻，此处保留原文以示记录）：`BOARD.md` 由 GitHub Action 在 push 时生成**。 当初紧接着写的"**不是**插件在本地生成"——那半句在**离线机器上不成立**（决策 34）。 现在的要求是：**两层都要有**，且生成代码在 `core` 里**只写一次**。
 
-> **（决策 15 已推翻另一半）** 原论证是"人在 GitHub 网页直接改也会触发 push，Action 随即重写看板，
-于是**看板永远与数据一致**；而插件本地生成会滞后（人改完后插件可能根本没运行）。
+> **（决策 15 已推翻另一半）** 原论证是"人在 GitHub 网页直接改也会触发 push，Action 随即重写看板， 于是**看板永远与数据一致**；而插件本地生成会滞后（人改完后插件可能根本没运行）。
 - 于是**打开仓库首页就是看板**——零额外基础设施、零后端、零部署。
 - 人类直接点进 issue 文件就能改（GitHub 网页编辑天然产生一次 commit，正好被 §5 接住）。
-- 同一个 Action **顺便做校验**：检查 frontmatter 必填字段、key 与文件名一致、
-  状态值合法、key 大小写规范。**人手工建 issue 写错了，CI 立刻红**——
-  这比让插件事后报错更早、更便宜。
+- 同一个 Action **顺便做校验**：检查 frontmatter 必填字段、key 与文件名一致、 状态值合法、key 大小写规范。**人手工建 issue 写错了，CI 立刻红**—— 这比让插件事后报错更早、更便宜。
 - （**决策 15 已改写**）Action 用 `GITHUB_TOKEN` 提交不会再次触发工作流，**不会死循环**；
 - （**决策 15 已推翻此句**）原写法是"插件因此**不需要**实现 BOARD 生成逻辑"——现在要求 **Action 与插件都能生成、生成代码在 `core` 里只写一次**。
 
-**P2 的 Web 面板只有在确认"必须在不离开 GUI 的情况下改"时才做。** 在此之前，
-`BOARD.md` + GitHub 网页已经覆盖了"看"和"改"两个需求。
+**P2 的 Web 面板只有在确认"必须在不离开 GUI 的情况下改"时才做。** 在此之前， `BOARD.md` + GitHub 网页已经覆盖了"看"和"改"两个需求。
 
 文件头按**决策 79** 写统一 HTML 注释（`generated by dsh-jira | generated_at | source_tree | do not edit hand`），并说明可能由 Action 或插件本地生成（决策 15/34/79）
 > 插件不写它，所以不存在"与人改动纠缠"的问题——这正是选 Action 的额外好处。
 
-> **修正记录（离线约束，§8 决策 34 推翻本节的一半）**：本节早期把 `BOARD.md` **只**交给
-> GitHub Action 生成（决策 15），理由是"人在网页改完，插件可能根本没运行"。
-> 但目标机器**可能永远连不上云端**——那时 Action 永远不会跑，**看板就不存在了**，
-> 与决策 34「离线可用是硬要求」直接冲突。同样只活在 Action 里的还有
-> `frontmatter 校验`、`index.md` / `log.md` / `tags/index.md` 的生成。
-> **修正方向：两层都保留，不二选一**——
+> **修正记录（离线约束，§8 决策 34 推翻本节的一半）**：本节早期把 `BOARD.md` **只**交给 GitHub Action 生成（决策 15），理由是"人在网页改完，插件可能根本没运行"。 但目标机器**可能永远连不上云端**——那时 Action 永远不会跑，**看板就不存在了**， 与决策 34「离线可用是硬要求」直接冲突。同样只活在 Action 里的还有 `frontmatter 校验`、`index.md` / `log.md` / `tags/index.md` 的生成。 **修正方向：两层都保留，不二选一**——
 > - Action 在 push 时生成（权威，且能接住"人在 GitHub 网页上的改动"）；
-> - **插件 / CLI 也必须能本地生成**同样的文件（离线路径），
->   **生成代码在 `core` 里只写一次**，Action 与插件共用，避免两份实现漂移；
+> - **插件 / CLI 也必须能本地生成**同样的文件（离线路径）， **生成代码在 `core` 里只写一次**，Action 与插件共用，避免两份实现漂移；
 > - 校验同理：CI 是服务端兜底，本地也要有 `jira lint`（写入侧严格，§4.13）。
 >
 > **已定案（用户确认）**：决策 15 的表述正式改为"**Action 与插件都能生成，生成代码在 `core` 里只写一次**"。
 
-> **修正记录（2026-10-17，用户裁定：定时生成不得脱离 DSH 进程）**：本轮把"Action 生成"实现成了
-> **GitHub Actions 的 `schedule`（每夜 cron）**——同一个 job 内、只在定时/手动时重生成并提交，
-> 理由是"既落实决策 15，又不与 agent 的 push 抢跑"。**用户裁定这是失败改动**：
-> 定时任务在 **DSH 进程之外**跑，**账本的生成权不交给脱钩的外部定时器**。
-> 已用 `git revert` 回退（store 的 `ledger.yml` 回到**只检查、什么都不写**，权限回到 `contents: read`）。
-> **因此当前事实**：上面第 1534 行"Action 在 push 时生成（权威）"**并未实现**；
-> store 的 CI 只做 `lint` / `generate --check` / 提交绑定，**没有任何一步写文件**；
-> 生成只有 **DSH 进程内的那条路径**（`jira generate`，离线可用）。
-> **由此留下的缺口，以及它的答案（2026-10-17 用户裁定）**：人在 GitHub 网页上改了一个 issue 时
-> **没有 DSH 在跑**，服务器侧又不许生成，那么这一格只能由**下一次 DSH 运行**来接。
-> 用户裁定：**在会话结束时重生**（而不是每次写入）——理由是频率低则**跨机冲突少**
-> （生成物没有 `merge=union`，两台机器各自生成会在合并时冲突）。
-> **落地**：`src/plugin/index.ts` 的会话结束 effect 里，在 `queue.flushNow()` **之前**调用
-> `core/generateStore.ts` 的 `regenerateAndCommit`（core 只写一次，决策 15 的那半条），
-> **只读会话跳过**（决策 89/93——只读会话连这里也不写）。
-> 放在 flush 之前是关键：**推出去的必须与源一致**，否则 store 的新鲜度门禁必红。
-> 两个用例都做过变异验证（拿掉重生成 → 用例失败；拿掉只读门禁 → 只读用例失败）。
+> **修正记录（2026-10-17，用户裁定：定时生成不得脱离 DSH 进程）**：本轮把"Action 生成"实现成了 **GitHub Actions 的 `schedule`（每夜 cron）**——同一个 job 内、只在定时/手动时重生成并提交， 理由是"既落实决策 15，又不与 agent 的 push 抢跑"。**用户裁定这是失败改动**： 定时任务在 **DSH 进程之外**跑，**账本的生成权不交给脱钩的外部定时器**。 已用 `git revert` 回退（store 的 `ledger.yml` 回到**只检查、什么都不写**，权限回到 `contents: read`）。 **因此当前事实**：上面第 1534 行"Action 在 push 时生成（权威）"**并未实现**； store 的 CI 只做 `lint` / `generate --check` / 提交绑定，**没有任何一步写文件**； 生成只有 **DSH 进程内的那条路径**（`jira generate`，离线可用）。 **由此留下的缺口，以及它的答案（2026-10-17 用户裁定）**：人在 GitHub 网页上改了一个 issue 时 **没有 DSH 在跑**，服务器侧又不许生成，那么这一格只能由**下一次 DSH 运行**来接。 用户裁定：**在会话结束时重生**（而不是每次写入）——理由是频率低则**跨机冲突少** （生成物没有 `merge=union`，两台机器各自生成会在合并时冲突）。 **落地**：`src/plugin/index.ts` 的会话结束 effect 里，在 `queue.flushNow()` **之前**调用 `core/generateStore.ts` 的 `regenerateAndCommit`（core 只写一次，决策 15 的那半条）， **只读会话跳过**（决策 89/93——只读会话连这里也不写）。 放在 flush 之前是关键：**推出去的必须与源一致**，否则 store 的新鲜度门禁必红。 两个用例都做过变异验证（拿掉重生成 → 用例失败；拿掉只读门禁 → 只读用例失败）。
 
-> **修正记录（2026-10-17 深夜，用户裁定：时机从"会话结束"改为"每次推送之前"——决策 148）**：
-> 上一条修正记录把重生成定在**会话结束**，理由是"频率低则跨机冲突少"。当晚实测推翻了它的前提：
-> **推送并不等到会话结束**——一次收编提交 5 秒内就被防抖队列推走。于是"有会话在跑"的整段时间里，
-> 每次推送都带着**陈旧的生成物**（写一条 issue 就让 6 个生成物过期），store 的 `generate --check`
-> 门禁基本常红——正是我们最不想要的那种"红了没人看"。
-> 用户先裁定"折进**每次写入的那个提交**"，实施中撞到两件**实测**事实，使它要么不可能、要么代价过高：
-> ① **写入提交自己带 keyed 主题（`DH-1: …`），而 `log.md` 列的就是 keyed 提交**，所以它一提交，
-> `log.md` 立刻过期——文件不可能包含自己所在提交的哈希，"同一个提交里带刷新的生成物"对 `log.md`
-> **不可能**（实测：一次写入之后，只剩 `log.md` 与 `projects/DH/log.md` 过期，其余四个已被折进去）。
-> 可行形式只能是**每次写入两个提交**（写入提交 + 紧随一个 unkeyed 的生成物提交）。
-> ② 那样每个生成物提交都要参与跨机 rebase 合并，而**生成物必然两边不同**（头部带 `generated_at`
-> 与 `source_tree`）→ `pull --rebase` 会停在生成物上（实测：旧用例"两边各改一处、应当干净合并"
-> 的那次 pull 直接停住，报"无法应用 DH-1: update (rev 2)"）。
-> **用户改选方案 B**：重生成放到**推送的收口点**，顺序固定 `pull --rebase` → **重生成+提交** → push。
-> 于是**推出去的每个 HEAD 都保证与自己的源一致**（生成物提交是 unkeyed 的，不会再让 `log.md` 过期），
-> 跨机冲突面回到"只有离线堆了生成物提交时"才出现，不比原来更大。
-> **代价（用户已知并接受）**：本地工作区在"写入之后、下次推送之前"仍可能过期；无 remote 或
-> `push.enabled: false` 的 store 不在每次防抖里重生成（会话结束那次照旧会）。
-> **落地**：`core/push.ts` 的 `settle` 钩子（排在 `pull` 之后、`push` 之前；失败**拦住推送**，
-> 不把门禁必红的提交推出去），插件与 CLI `sync` 各接一处；`settle` 是**每次 flush 的参数**而不是队列属性，
-> 因为"能不能写"是**调用者**的属性（决策 89/93）：防抖那条路必然可写（它只由已成功的写入武装），
-> 会话结束那条把 `writable` 原样传进来。
-> **同一夜 CI 又抓出第二个真 bug（决策 146 的适用范围）**：新写的端到端用例在**本机全绿、在 CI 四个 job 上全红**。
-> 原因是 `git pull --rebase` 要**重放**提交，而重放会**创建**提交 → 它和 `git commit` 一样需要**提交者身份**；
-> 决策 146 只给了 `git commit` 按次注入的回退，**没给 rebase**。于是在 git **猜不出**身份的环境（CI runner、
-> 全新容器、`user.useConfigOnly=true`）上：rebase 以「提交者身份未知」停住、**把账本留在 rebase 中途**
-> （HEAD 分离、被重放的改动停在暂存区）、推送**永远不发生**——本机之所以全绿，只是因为我这台机器的
-> git 能从 GECOS/主机名猜出身份。复现：`GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
-> git -c … pull --rebase`（本仓用 `user.useConfigOnly=true` 钉住这个条件，见 `plugin/index.test.ts` 顶部）。
-> **修法**：`core/git.ts` 导出 `identityArgs`，`core/rebase.ts` 的 `pull --rebase` 与提交走同一套按次注入
-> （**绝不写进仓库配置**，决策 81/146 的理由不变）。**这条在决策 148 之后才致命**：settle 排在 pull 之后，
-> 所以 pull 一停，**连生成物也不会刷新、推送也不会发生**。
-> **顺带修掉一处从写下就是死代码的钩子**：插件推送队列的 `pull`（决策 134）注释与代码落在**同一行**，
-> `//` 把整个钩子吞了（`db7743e` 起）——插件的推送**从来不 pull**，两台机器时会被拒为
-> non-fast-forward 并无限重试；只有 CLI 的 `sync` 有。已修，并**变异验证**：把钩子重新注释掉，
-> 新端到端用例立刻失败（36/37）。
+> **修正记录（2026-10-17 深夜，用户裁定：时机从"会话结束"改为"每次推送之前"——决策 148）**： 上一条修正记录把重生成定在**会话结束**，理由是"频率低则跨机冲突少"。当晚实测推翻了它的前提： **推送并不等到会话结束**——一次收编提交 5 秒内就被防抖队列推走。于是"有会话在跑"的整段时间里， 每次推送都带着**陈旧的生成物**（写一条 issue 就让 6 个生成物过期），store 的 `generate --check` 门禁基本常红——正是我们最不想要的那种"红了没人看"。 用户先裁定"折进**每次写入的那个提交**"，实施中撞到两件**实测**事实，使它要么不可能、要么代价过高： ① **写入提交自己带 keyed 主题（`DH-1: …`），而 `log.md` 列的就是 keyed 提交**，所以它一提交， `log.md` 立刻过期——文件不可能包含自己所在提交的哈希，"同一个提交里带刷新的生成物"对 `log.md` **不可能**（实测：一次写入之后，只剩 `log.md` 与 `projects/DH/log.md` 过期，其余四个已被折进去）。 可行形式只能是**每次写入两个提交**（写入提交 + 紧随一个 unkeyed 的生成物提交）。 ② 那样每个生成物提交都要参与跨机 rebase 合并，而**生成物必然两边不同**（头部带 `generated_at` 与 `source_tree`）→ `pull --rebase` 会停在生成物上（实测：旧用例"两边各改一处、应当干净合并" 的那次 pull 直接停住，报"无法应用 DH-1: update (rev 2)"）。 **用户改选方案 B**：重生成放到**推送的收口点**，顺序固定 `pull --rebase` → **重生成+提交** → push。 于是**推出去的每个 HEAD 都保证与自己的源一致**（生成物提交是 unkeyed 的，不会再让 `log.md` 过期）， 跨机冲突面回到"只有离线堆了生成物提交时"才出现，不比原来更大。 **代价（用户已知并接受）**：本地工作区在"写入之后、下次推送之前"仍可能过期；无 remote 或 `push.enabled: false` 的 store 不在每次防抖里重生成（会话结束那次照旧会）。 **落地**：`core/push.ts` 的 `settle` 钩子（排在 `pull` 之后、`push` 之前；失败**拦住推送**， 不把门禁必红的提交推出去），插件与 CLI `sync` 各接一处；`settle` 是**每次 flush 的参数**而不是队列属性， 因为"能不能写"是**调用者**的属性（决策 89/93）：防抖那条路必然可写（它只由已成功的写入武装）， 会话结束那条把 `writable` 原样传进来。 **同一夜 CI 又抓出第二个真 bug（决策 146 的适用范围）**：新写的端到端用例在**本机全绿、在 CI 四个 job 上全红**。 原因是 `git pull --rebase` 要**重放**提交，而重放会**创建**提交 → 它和 `git commit` 一样需要**提交者身份**； 决策 146 只给了 `git commit` 按次注入的回退，**没给 rebase**。于是在 git **猜不出**身份的环境（CI runner、 全新容器、`user.useConfigOnly=true`）上：rebase 以「提交者身份未知」停住、**把账本留在 rebase 中途** （HEAD 分离、被重放的改动停在暂存区）、推送**永远不发生**——本机之所以全绿，只是因为我这台机器的 git 能从 GECOS/主机名猜出身份。复现：`GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null git -c … pull --rebase`（本仓用 `user.useConfigOnly=true` 钉住这个条件，见 `plugin/index.test.ts` 顶部）。 **修法**：`core/git.ts` 导出 `identityArgs`，`core/rebase.ts` 的 `pull --rebase` 与提交走同一套按次注入 （**绝不写进仓库配置**，决策 81/146 的理由不变）。**这条在决策 148 之后才致命**：settle 排在 pull 之后， 所以 pull 一停，**连生成物也不会刷新、推送也不会发生**。 **顺带修掉一处从写下就是死代码的钩子**：插件推送队列的 `pull`（决策 134）注释与代码落在**同一行**， `//` 把整个钩子吞了（`db7743e` 起）——插件的推送**从来不 pull**，两台机器时会被拒为 non-fast-forward 并无限重试；只有 CLI 的 `sync` 有。已修，并**变异验证**：把钩子重新注释掉， 新端到端用例立刻失败（36/37）。
 
 ### 7.4 forge 可替换性：哪几处绑了 GitHub（用户已表态"可能要换"）
 
-**先分清两层**：**Git 是本地工具**（不需要账号、不需要联网）；**GitHub / GitLab 是托管平台（forge）**。
-它们之间没有技术互斥——同一仓库可以同时挂多个 remote（§4.10 已经利用这一点）。
-所以设计必须分清"**只用 git 能力**"与"**依赖某家 forge 的产品功能**"，后者要可替换。
+**先分清两层**：**Git 是本地工具**（不需要账号、不需要联网）；**GitHub / GitLab 是托管平台（forge）**。 它们之间没有技术互斥——同一仓库可以同时挂多个 remote（§4.10 已经利用这一点）。 所以设计必须分清"**只用 git 能力**"与"**依赖某家 forge 的产品功能**"，后者要可替换。
 
 **只用 git、三家通吃（换平台零改动）**
 
@@ -1633,13 +1189,9 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | 6 | **数据仓 CI 要读插件仓**：`.github/workflows/ledger.yml` 检出并构建插件（决策 66 的 frontmatter 校验与新鲜度断言都要 CLI），私仓需要 secret `PLUGIN_TOKEN`（fine-grained PAT，**必须手动加 Contents: Read-only**——新建时是零权限，`GET /repos` 返回 200 只证明 Metadata） | 换 forge 时要重建这个**跨仓凭据**（GitLab 的 project access token / deploy token）；或者让插件仓公开、退回默认 token | 跨仓凭据是新的运维面：过期、被撤销、权限漏配都会让门禁**静默停在"读不到插件"**——因此 workflow 里那步预检是必须的 |
 | 5 | **CI**（决策 66 的两条 job：双平台矩阵测试 + 产物/文档检查） | 改为 **GitLab CI**（`.gitlab-ci.yml`） | 未知同第 1 行：**自托管 GitLab 不一定给 runner**；没有就退回"本地跑同一套测试 + 提交前断言" |
 
-**"私有"的含义不同（重要）**：GitHub 的 private = 数据在**微软云**上；公司自托管 GitLab = 数据在**公司内网**。
-同一份内容放两处**性质不同**——`kb-llm` 审计里那些真实 JIRA 单号、员工姓名、未发布产品结论，
-放内网 GitLab 属"访问控制内"，放 GitHub private 则是另一回事（§11.1 已记该警告）。
-另有一条不属于技术范畴：把**个人项目**的数据放到**公司**内网 GitLab 上，涉及公司资产与合规边界。
+**"私有"的含义不同（重要）**：GitHub 的 private = 数据在**微软云**上；公司自托管 GitLab = 数据在**公司内网**。 同一份内容放两处**性质不同**——`kb-llm` 审计里那些真实 JIRA 单号、员工姓名、未发布产品结论， 放内网 GitLab 属"访问控制内"，放 GitHub private 则是另一回事（§11.1 已记该警告）。 另有一条不属于技术范畴：把**个人项目**的数据放到**公司**内网 GitLab 上，涉及公司资产与合规边界。
 
-**因此当前姿态**：store 先按 §7.1 放 **GitHub private**（决策 8 不变），但**把上表当替换清单**——
-真要换 GitLab，只需替换这四处 + 换用 `glab`，**其余设计不动**（决策 40）。
+**因此当前姿态**：store 先按 §7.1 放 **GitHub private**（决策 8 不变），但**把上表当替换清单**—— 真要换 GitLab，只需替换这四处 + 换用 `glab`，**其余设计不动**（决策 40）。
 
 ---
 
@@ -1743,7 +1295,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | 92 | `paths[]` 与 `rebind` | `paths[]` 规范化 = **绝对路径 + Windows 下统一小写 + 斜杠统一为 `\`**，且**只作缓存、绝不参与身份**（身份只看 `remotes[]`，决策 77）；**`jira project rebind` = 手动把一个 checkout 重新绑到另一个 project key**（只改 `paths[]`，不碰任何 issue 数据）（§4.1、§4.10） |
 | 93 | 只读会话**默认拒绝写** | ✅ **已实现（决策 134）**：spike 查明——原来认的环境变量**宿主从不设置** ✗，真正的可读信号是 `agent.options.agentPreset`（宿主自己的预设标签是 `preset.readOnly`/`preset.workspaceWrite`）；现在 `describeCaller` 把只读预设也判为只读（reason `dsh-read-only` ✓），读照常；测试断言只读会话写被拒、读成功、普通会话照写。**已知边界**：按预设**名字**匹配是启发式（名字由部署方定），且宿主文件沙箱**不约束**进程内插件（§2.5）——所以这是插件在**遵从会话意图**，不是沙箱在拦 |
 | 94 | 归并工具 | **MVP 不做归并工具**（独立实例默认不合并，决策 36）——只给两块支撑：`jira lint` 报**悬空引用**（重编号后能查漏改）+ 一份 **key 集合对比清单**。§11.5 的 5 点定清：① 粒度 = **按 project 搬**（连带 issue / 评论 / `kb_refs`），tag 先合注册表、KB 撞号同样重编号 · ② **映射表进 store**（`_merge/<UTC>-from-<machine_id>.md`）——commit message 里的旧 key 永远改不了，只能靠它解释 · ③ 不另造"归并事件"，靠 `reporter` / `machines/` + 映射表头部说明来源 · ④ 差异报告四类（疑似同一 project / 同 key 不同内容 / tag 撞名或同义 / KB 撞号）· ⑤ **一次性搬迁，明确不做长期双向**（§11.5、§4.4） |
-| 95 | peer 版本策略（修正 63） | **本机有两个宿主 checkout，版本不同**：`deepseek-harness-uitstalie`（**0.2.0-rc.2**，分支 master，**正在跑 3080 的 GUI**，`tsx apps/cli/src/bin.ts web` 直跑源码）与 `deepseek-harness-uitstalie-dev`（**0.2.1-alpha.2**，分支 cli-desktop，正在 build）；全局 npm 装的也是 0.2.0-rc.2。所以 peer **不能只钉一个精确版本**——改为**同时接受两个宿主的 range**（并留 `dsh plugin allow-version` 作兜底），**"换机器重核"仍然成立**（决策 63 的其余部分不变）**并且宿主会漂移**：`-dev`（最新魔改版）会不定期同步到跑 3080 的 checkout → **peer 的主目标版本是 dev 的**，master 的 `0.2.0-rc.2` 只是当前宿主**实现细节（必须照做）**：peer 范围要**显式枚举两个版本**（如 `"0.2.0-rc.2 || 0.2.1-alpha.2"`）——因为 semver 的 **prerelease 排除规则**会让 `>=0.2.0-rc.2 <0.2.2` **匹配不到 `0.2.1-alpha.2`**（带预发布的版本只有在**同一 [major,minor,patch] 元组**上有预发布比较符时才匹配），写成范围会导致 `compatibility-preflight` 静默把我们的行 `disabled: true`（§2.2、§11.2、HANDOVER §5）**修正（2026-10-17）**：本机现在**只有一个**宿主 checkout（`deepseek-harness-uitstalie`，**0.2.1-alpha.2**，commit `2946bfe41b`），`-dev` 那个已经不在；peer 范围仍按本条**显式枚举**（兼容旧机器），但「主目标」现在就是 alpha.2。（宿主 0.2.1-alpha.2） |
+| 95 | peer 版本策略（修正 63） | **本机有两个宿主 checkout，版本不同**：`deepseek-harness-uitstalie`（**0.2.0-rc.2**，分支 master，**正在跑 3080 的 GUI**，`tsx apps/cli/src/bin.ts web` 直跑源码）与 `deepseek-harness-uitstalie-dev`（**0.2.1-alpha.2**，分支 cli-desktop，正在 build）；全局 npm 装的也是 0.2.0-rc.2。所以 peer **不能只钉一个精确版本**——改为**同时接受两个宿主的 range**（并留 `dsh plugin allow-version` 作兜底），**"换机器重核"仍然成立**（决策 63 的其余部分不变）**并且宿主会漂移**：`-dev`（最新魔改版）会不定期同步到跑 3080 的 checkout → **peer 的主目标版本是 dev 的**，master 的 `0.2.0-rc.2` 只是当前宿主**实现细节（必须照做）**：peer 范围要**显式枚举两个版本**（如 `"0.2.0-rc.2 || 0.2.1-alpha.2"`）——因为 semver 的 **prerelease 排除规则**会让 `>=0.2.0-rc.2 <0.2.2` **匹配不到 `0.2.1-alpha.2`**（带预发布的版本只有在**同一 [major,minor,patch] 元组**上有预发布比较符时才匹配），写成范围会导致 `compatibility-preflight` 静默把我们的行 `disabled: true`（§2.2、§11.2、HANDOVER §5）**修正（2026-10-17）**：本机现在**只有一个**宿主 checkout（`deepseek-harness-uitstalie`，**0.2.1-alpha.2**，提交「docs(goal): register the branch's known limitations (task39)」），`-dev` 那个已经不在；peer 范围仍按本条**显式枚举**（兼容旧机器），但「主目标」现在就是 alpha.2。（宿主 0.2.1-alpha.2） |
 | 96 | `ctx.tools.guard`（全局**单调**拦截点） | ✅ **已实现（决策 141）**：查宿主源码确认 API 存在且语义正是设计要的——「任何 guard 都可以拒绝，**没有任何 guard 能强制放行**」（`ToolGuard` = (execution) => string | undefined ✓）；插件注册**恰好一个** guard：写动作 + 不可写会话（只读/子代理）→ 返回理由拒绝。handler 内仍各自拒绝（纵深防御 ✓）。测试断言：拒写 ✓、放读 ✓、放普通会话 ✓、不管别的工具 ✓（宿主 0.2.1-alpha.2） |
 | 97 | spike ① 失败时的回退（用户裁定） | **若"插件"这条路实在不行，就转内置插件，然后看情况合并到 dev**：把 `dsh-jira` 放进 fork 仓库（`-dev`，分支 `cli-desktop`），走仓库自己的构建与加载，稳定后再决定是否并回 dev。**触发条件**：spike ① 得出"patch / `insert` 在 `dsh web` 里不可见或不可靠"，或"要可见就必须冻结 preset roster（每次 DSH 升级手工同步上百行）"。**之所以便宜**：`core`（纯逻辑、零 DSH 依赖）**两条路径共用**，外部插件与内置插件只是**薄适配层的两种宿主方式**——转内置不是重写。**连带变化**：决策 63/95 的 peer 版本问题**消失**（同仓构建）；决策 18/65 的"分发与离线安装"变成"连 fork 一起拷/用 fork 产物"；代价是插件与 fork **版本绑死**，且插件代码要提交进 fork 仓库（多一个落点）（§2.7、§7.1、§7.2） |
 | 98 | 引用 DSH 源码的标注规则 | **凡在本文档/HANDOVER 里引用 DSH 源码位置，必须标版本**（`rc.2` = `deepseek-harness-uitstalie` / `alpha.2` = `-dev`）。理由：本机**两个宿主版本并存**（决策 95），且 `-dev` 会不定期同步到跑 3080 的那个 checkout——**不标版本的 `file:line` 会随宿主漂移而变成假证据**。已实测的差异例：`Session.header` 在 rc.2 是 `packages/core/session/src/index.ts:464`、在 alpha.2 是 `:540`；`ctx.subagents` 的方法名两版不同（`startContinuable` → `startActivation`，**breaking**，本项目当前不需要它）（§11.2、决策 95） |
@@ -1805,7 +1357,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | 154 | **第 4 档第三片：三个潜伏项收口**（注释转义 / union 属性反向断言 / `_merge/` 的边界） | ① `core/frontmatter.ts` 的注释里那个 `\t` 曾被渲染成**真 TAB**（读出来是 `	ransitions:`）——改成纯散文，不再靠转义。② `.gitattributes` 的 `merge=union` **只属于评论文件**：原测试只正向断言「评论文件是 union」，现在**反向**断言 issue / `config.md` / `BOARD.md` 都是 `unspecified` —— 给 issue 加 union 会把两台机器的改动拼成一份不可读的 frontmatter，正是决策 5 要防的事（变异验证：把模式改成 `*.md merge=union` → 用例失败）。③ `_merge/` 是**归并时由人自建的约定目录**（决策 94 明说 MVP 不做归并工具，工具不得替人建），所以把 `keyset` 报告那句「映射表写在 _merge/」改成**精确的约定**（`_merge/<UTC>-from-<machine_id>.md`，并写明目录自建），三处断言同步更新。④ 测试仍 **577** 全绿。（决策 5/70/94/105、§11.5） |
 | 155 | **`/jira` 补 `show <KEY>` 与 `tags lint`**（决策 83 的只读集合补齐） | ① 两个子命令都**只读**（决策 38）：`show` = `readIssue` + `readComments` + `renderIssueHuman(…, 'zh')`（人面中文，工具面仍英文，决策 55）；`tags lint` = `lintTags` + `renderTagsLint`，输出自带「只报告，绝不改写」。② 顺带修掉一处**参数面**的结构问题：`/jira` 一直是「子命令 + 0 个位置参数」，所以 `show DH-1` 会被解析器拒绝；现在 `show`/`tags` 各允许**一个**位置参数，其它子命令仍是 0（多写的词继续报错，不被静默忽略）。③ 用例断言两件事：非 key 报错、以及**读不写**——而且不只看 `git status`（提交型写入会让它变干净！），还比较 `HEAD` 是否前进；变异验证：让 `show` 打一个空提交 → 用例失败。④ 测试 577 → **579**。（决策 38/55/83、§6.1） |
 | 156 | **长路径：启动时报错那一半落地**（决策 60/240 的收口） | ① 原来只有 `io.writeTextAtomic` 里的一句 `process.emitWarning`，加上一条只按平台硬上限告警的启动提示 —— 而设计要的是「**超限启动时报错**」。现在判据落在 `core/config.resolveStoreRoot`（**一处**，CLI 与插件共用）：根路径 ≥ 平台上限（`exceedsPathLimit`：win32 260 / darwin 1024 / linux 4096）→ `INVALID_INPUT`，点名长度、上限与平台。② 两级阈值的分工写清了：**≥240 是警告**（`approachesPathLimit`，CLI 启动时提醒，路径本身还能用），**≥平台上限是拒绝**（`resolveStoreRoot`）。③ 新建 `core/config.test.ts`（文件此前**零测试**）：优先级三档、无配置时的错误、超限被拒（并断言同一条字符串在 linux 上合法——规则不是固定数字）、以及「接近但未超限」必须放行。④ 测试 579 → **583**；变异验证：去掉长度检查 → 用例失败。（决策 60/153/240、§5 第 11 条） |
-| 157 | **凡引用宿主必须标版本**（决策 98 的落地） | ① §2 开头加**核对基线**一行：本节与下文所有引用宿主源码/文档/告警原文的地方，核对于 **`@deepseek-ai/dsh-root@0.2.1-alpha.2`**（commit `2946bfe41b`）。② §8 里**点名宿主源码/文档/平面**的 7 条（84/95/96/99/100/101/141）就地补上「（宿主 0.2.1-alpha.2）」。③ 顺手修掉一处会自相矛盾的事实：决策 95 说「本机有两个宿主 checkout，一个 rc.2 一个 alpha.2」，实际现在只剩一个、版本是 **alpha.2** —— 已在该行留修正记录（peer 范围仍显式枚举两个版本以兼容旧机器）。④ 这是**文档纪律**不是行为改动，但它是审计点名的 S2 类（决策 98 的原话：凡引用必须标版本，否则过一版没人知道还成不成立）。（决策 95/98/153） |
+| 157 | **凡引用宿主必须标版本**（决策 98 的落地） | ① §2 开头加**核对基线**一行：本节与下文所有引用宿主源码/文档/告警原文的地方，核对于 **`@deepseek-ai/dsh-root@0.2.1-alpha.2`**（提交「docs(goal): register the branch's known limitations (task39)」）。② §8 里**点名宿主源码/文档/平面**的 7 条（84/95/96/99/100/101/141）就地补上「（宿主 0.2.1-alpha.2）」。③ 顺手修掉一处会自相矛盾的事实：决策 95 说「本机有两个宿主 checkout，一个 rc.2 一个 alpha.2」，实际现在只剩一个、版本是 **alpha.2** —— 已在该行留修正记录（peer 范围仍显式枚举两个版本以兼容旧机器）。④ 这是**文档纪律**不是行为改动，但它是审计点名的 S2 类（决策 98 的原话：凡引用必须标版本，否则过一版没人知道还成不成立）。（决策 95/98/153） |
 | 158 | **号段有上限，`KEY_EXHAUSTED` 因此可达**（决策 52 的收口） | ① 起因：`counters.ts` 的 `claimKey` 永远能领到新块，所以决策 52 那 12 个错误码里的 `KEY_EXHAUSTED` **永远不可能发生** —— 一条永不发生的码是分类表里的小谎（审计点名的行）。② 现在一个 project 的号到 **9999** 为止（`MAX_KEY_NUMBER`）：再往下走 `claimKey` 返回 `KEY_EXHAUSTED`，点名 project、上限与"本会给到几号"。选有限空间而不是无限，还有第二个好处：**counters 被写坏时**不会造出 `DEMO-999999999` 这种没人想敲的号。③ 判据放在**发号前**（`start`/`next` 与上限比），不是放在块的末尾 —— 块是提前领的，否则一个块会悄悄跨过上限。④ 测试 583 → **586**（单元：超限被拒并点名三个事实、最后一个号照发；集成：磁盘上已有 `DEMO-9999` 时 `allocateKey` 返回 `KEY_EXHAUSTED`，不造 `DEMO-10000`）；变异验证：去掉上限 → 两条用例都失败。（决策 6/52/74/114、§5） |
 | 159 | **JSON / 工具返回键一律 snake_case**（决策 41 的落地） | ① 一个转换点：`core/render.ts` 的 `toWire` **递归**把键改成 snake_case（只改键、**绝不改值** —— summary、身份串、路径里出现 camelCase 是内容，不是结构）。② 三个出口都走它：`renderIssueJson`、三个 tool 的**返回值边界**（`plugin/index.ts` 的 `wire`，包在 `execute` 的返回上而不是每个 builder 上 —— 新字段/新工具因此不可能漏网）、CLI 的 `--json`（`say` 的对象分支一处收口）。③ 实体内部**仍是 camelCase**（决策 41 原话：代码内部可自由用驼峰，转换发生在边界），所以 CLI 的人面文本没有一处要改。④ 三份 skill 文档**不需要改**：它们写的是**参数名**，本来就已是 snake。⑤ 测试 586 → **589**：`toWire` 的单元用例（含"值不被改写"）+ `renderIssueJson` 的键断言 + **一条走真实取值的守卫**（get / 拒读 / list / kb 四种形状，逐个键断言 `^[a-z0-9_]+$`）。⑥ 两处变异验证：把 list 工具的 `wire` 拿掉、把 `renderIssueJson` 的 `toWire` 拿掉 → 相应用例各自失败。⑥ **修正（2026-10-17 20:50，活体当场炸了）**：`wire` 把值变成 snake_case 之后，**宿主的 `output.render` 仍然按实体（camelCase）读** —— `renderIssueHuman` 读 `issue.kbRefs.length` 拿到 `undefined`，于是**每一次 `jira_issue get` 都失败**（`tool "jira_issue" returned invalid output: output.render failed: Cannot read properties of undefined (reading 'length')`），而 589 个测试全绿：**没有任何一个测试渲染过"已经 wire 过的值"**。修法：`fromWire`（对称的反变换）在三个 render 的开头还原成实体再渲染；并补上那条缺失的守卫——**对真实取值调用 `output.render`**（get / 拒读 / list / kb 四种形状），变异验证：把 render 里的 `fromWire` 拿掉 → 用例报出与活体一字不差的错误。590 测试全绿。**教训**：边界变换必须**两个方向都存在**，而且守卫要打在"宿主真正走的那条路"上，不是打在数据形状上。（决策 41/55/56/82/149） |
 | 160 | **锁回收是安全的，持锁者有心跳**（DPMJ-2 / S1 的落地） | ① 问题（审计发现）：`acquireLock` 原来是「`stat` 判 stale → `rm -rf` 按路径删」，中间可以换手 —— 原持有者释放、别人刚拿到新锁，回收者的 rm 就把**新锁**删了，两个写者同时进临界区（静默丢更新；`expected_revision` 只在调用方传了才兜底）。② 现在回收**先拿 `<lock>.reclaim` 这个 mkdir 标记**（序列化回收者），拿到后**再读一次 `owner.json` 并比对**，只删「我判为 stale 的那一份」；标记若因回收者崩溃而留下，按 stale 清理并**在同一次调用内重试一次**（只在下次调用再试，会让中间所有写者超时）。③ **心跳**：`withLock` 持锁期间每 `staleMs/3` 写一次 `<lock>/heartbeat`，`staleSince` 取「目录 mtime 与心跳 mtime 的**较新者**」—— 临界区含多次 git 子进程，Windows+杀软下可能超过 60 s，以前会被误判为遗弃（这正是丢更新的根因）。心跳**只在本锁仍属于自己时**才写（丢了锁的进程不能替新主人续命），定时器 `unref` 并在 `finally` 清理（不能因为握着锁就让进程活着）。④ 顺手（审计的 S3）：`owner.json` 写失败时把刚 `mkdir` 的目录删掉 —— 否则留下一个「新鲜但无主」的锁，没人会回收它，所有写者只能超时。⑤ 测试 590 → **592**（标记被占时不得删锁 + 崩溃遗留的标记可清理并重试；心跳让慢临界区不被回收，含"目录很旧但心跳新鲜"）；两处变异验证：改回按路径删 → 标记用例失败；忽略心跳 → 心跳用例失败。（决策 58/59/61、§5、账本 DPMJ-2） |
@@ -1861,8 +1413,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 
 ### 待验证（不是决策，是事实）
 
-- ~~§2.7 的 spike~~ → ✅ **已结案（决策 101）**：宿主平面 `insert` 可见、安装单元是 bundle 包。
-  方案 ④（`preset:` patch）因出处不存在（§11.2）**不入方案**；若当初不行则转内置插件（决策 97）。
+- ~~§2.7 的 spike~~ → ✅ **已结案（决策 101）**：宿主平面 `insert` 可见、安装单元是 bundle 包。 方案 ④（`preset:` patch）因出处不存在（§11.2）**不入方案**；若当初不行则转内置插件（决策 97）。
 - ~~插件能否读当前会话的 `SessionHeader`~~ → ✅ **已查明（决策 96）**：`exec.agent.session.header` 直接可读（`origin` / `parentSession` / `delegationDepth`）。
 - ~~DSH 有没有会话级 seam~~ → ✅ **已查明（决策 100）**：有——`agent/created` 时注册的 `agent.ctx.effect(async)`（被 await、在写句柄关闭前）；`session/disposed` 只是不 await 的兜底。
 
@@ -1872,23 +1423,16 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 
 **技术风险**
 
-1. **~~tool 是否被 agent preset 白名单拦截~~ → 已定性，见 §2.7。**
-   结论：`dsh web` 里由 preset roster 决定可见性，但宿主层注册的 tool 属于全局 scope、理论上沿父链可见。
-   **建议做 spike 验证（① 宿主层 insert / ④ `preset:` patch）**——但它**只影响分发方式、非阻塞**（§11.2 已据此重新定性）。
-2. **多机离线创建撞号**（§5）。用**每机一份** `counters/<machine_id>.json` 的块分配化解——
-   连计数器文件都不冲突；真正可能冲突的只剩低频的 `config.md`。
-3. **人类编辑与自动提交纠缠**。红线：永不 `checkout --force` / `reset --hard` / `clean`；
-   检测到脏工作树就先作为独立 commit 提交掉。这条要有测试覆盖，不能只靠自觉。
-4. storage 相关 seam 对第三方插件**未授权也未禁止**（`appendPluginRecord` 是唯一明确禁止项）。
-   → 本案不用它们，规避。
-5. 插件绕过 workspace 文件沙箱在进程内执行（Host 插件语义）。写自有数据目录是合理的，
-   但**写用户工作区需谨慎**，且只读会话下 `.dsh` 不可写。
+1. **~~tool 是否被 agent preset 白名单拦截~~ → 已定性，见 §2.7。** 结论：`dsh web` 里由 preset roster 决定可见性，但宿主层注册的 tool 属于全局 scope、理论上沿父链可见。 **建议做 spike 验证（① 宿主层 insert / ④ `preset:` patch）**——但它**只影响分发方式、非阻塞**（§11.2 已据此重新定性）。
+2. **多机离线创建撞号**（§5）。用**每机一份** `counters/<machine_id>.json` 的块分配化解—— 连计数器文件都不冲突；真正可能冲突的只剩低频的 `config.md`。
+3. **人类编辑与自动提交纠缠**。红线：永不 `checkout --force` / `reset --hard` / `clean`； 检测到脏工作树就先作为独立 commit 提交掉。这条要有测试覆盖，不能只靠自觉。
+4. storage 相关 seam 对第三方插件**未授权也未禁止**（`appendPluginRecord` 是唯一明确禁止项）。 → 本案不用它们，规避。
+5. 插件绕过 workspace 文件沙箱在进程内执行（Host 插件语义）。写自有数据目录是合理的， 但**写用户工作区需谨慎**，且只读会话下 `.dsh` 不可写。
 
 **文档空白（需我们在自己 README 里定义并写清）**
 
 1. 无"插件数据目录"约定 → 自定 `root`，默认 `$DSH_HOME/jira`。
-2. 无非会话 JSONL 的 schema/迁移策略 → **每个文件都带 `schema: <kind>/v<N>`**（决策 46，含 `config.md` 的 `schema: config/v1`）；
-   并靠"只增不删 + `deprecated`"策略**从根上避免数据迁移**（§4.2）。
+2. 无非会话 JSONL 的 schema/迁移策略 → **每个文件都带 `schema: <kind>/v<N>`**（决策 46，含 `config.md` 的 `schema: config/v1`）； 并靠"只增不删 + `deprecated`"策略**从根上避免数据迁移**（§4.2）。
 3. 无公开的原子写/fsync 助手 → 自己实现（temp + fsync + rename）。
 4. 无 Workspace 扩展点 → 自存映射。
 5. 无 per-user 分区模型 → 单用户假设，多用户暂不支持。
@@ -1916,8 +1460,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 
 **四条定案（决策 37）**
 
-1. **关键字检索：要，但不要索引——直接扫真相源文本。**
-   实测（Node 24，本机，`domains/` = 上游正式库）：
+1. **关键字检索：要，但不要索引——直接扫真相源文本。** 实测（Node 24，本机，`domains/` = 上游正式库）：
 
    | 语料 | 文件数 | 体量 | 全量读入 | 单次全量扫描 |
    |---|---|---|---|---|
@@ -1925,42 +1468,23 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
    | `KB-LLM-WIKI/`（全仓含 raw/staging） | 135 | 351 KB | 26 ms | **1.5 ms** |
    | 外推 3000 个同类文件 | 3000 | ~8 MB | ~0.6–1 s | 数十 ms |
 
-   → 本插件的 store 只会更小。**检索 = 遍历 store 里的 `.md` 做子串 / 正则匹配**，
-   不建索引、不引数据库。收益：**永远与真相源一致**（不存在"索引过期"）、零依赖、
-   离线天然可用（决策 34）、Fedora / Windows 行为一致、实现量近乎为零。
+   → 本插件的 store 只会更小。**检索 = 遍历 store 里的 `.md` 做子串 / 正则匹配**， 不建索引、不引数据库。收益：**永远与真相源一致**（不存在"索引过期"）、零依赖、 离线天然可用（决策 34）、Fedora / Windows 行为一致、实现量近乎为零。
 
-2. **向量检索：不做。** 上游实测体量是**全部 30 篇知识 = 430 个 chunk**，为此付出
-   **458 MB 模型 + faiss**、全量重建 4.6–5.7 s、冷启动 6–8 s（上游 `README.md` §B/§C）。
-   而且 V1 的向量腿本身带两个已确认缺陷：**512 字符定长切片 → 96.8% 的 chunk 被模型
-   128 token 窗口静默截断**（`task/0028` R7，评级"高"）；`IndexFlatIP` 打在**未归一化**向量上
-   （语义上不是余弦），且排序里**相似度根本不参与**。再加上**离线机下不了模型**
-   （内网到不了 huggingface.co，只能走镜像）——与决策 34 直接冲突。
+2. **向量检索：不做。** 上游实测体量是**全部 30 篇知识 = 430 个 chunk**，为此付出 **458 MB 模型 + faiss**、全量重建 4.6–5.7 s、冷启动 6–8 s（上游 `README.md` §B/§C）。 而且 V1 的向量腿本身带两个已确认缺陷：**512 字符定长切片 → 96.8% 的 chunk 被模型 128 token 窗口静默截断**（`task/0028` R7，评级"高"）；`IndexFlatIP` 打在**未归一化**向量上 （语义上不是余弦），且排序里**相似度根本不参与**。再加上**离线机下不了模型** （内网到不了 huggingface.co，只能走镜像）——与决策 34 直接冲突。
 
-3. **RAG 管线：不做。** 本插件的 KB 是"给人 / agent 找到条目"，不是"生成答案"。
-   上游 V2 的 `rerank` 插槽至今是 `_NotImplementedStage`（一调用就抛错）、没有生成环节，
-   且 `expand` 未做文档级配额 → 实测 top-10 里 **76% 是同一篇文档的不同块**（`task/0040`），
-   所以它自己都还没上生产（生产配置里没有 `enginev2:` 段）。
+3. **RAG 管线：不做。** 本插件的 KB 是"给人 / agent 找到条目"，不是"生成答案"。 上游 V2 的 `rerank` 插槽至今是 `_NotImplementedStage`（一调用就抛错）、没有生成环节， 且 `expand` 未做文档级配额 → 实测 top-10 里 **76% 是同一篇文档的不同块**（`task/0040`）， 所以它自己都还没上生产（生产配置里没有 `enginev2:` 段）。
 
-4. **本地 CPU 模型做辅助预测：明确不做。** 上游在"域 / 项目检测、图片语义"这些辅助预测上
-   **全部是启发式规则、零 ML 模型**（`utils/project_detector.py:1-13` 明写"不调用 LLM，
-   纯 keyword 匹配保证速度"）；唯一引入的本地神经模型是 embedding，而 `Qwen3-Embedding-0.6B`
-   在无 GPU 机器上 1.6 块/秒被**淘汰出局**（`task/0038:160-166`）。
-   这是别人用实测换来的结论，不必再交一遍学费。
+4. **本地 CPU 模型做辅助预测：明确不做。** 上游在"域 / 项目检测、图片语义"这些辅助预测上 **全部是启发式规则、零 ML 模型**（`utils/project_detector.py:1-13` 明写"不调用 LLM， 纯 keyword 匹配保证速度"）；唯一引入的本地神经模型是 embedding，而 `Qwen3-Embedding-0.6B` 在无 GPU 机器上 1.6 块/秒被**淘汰出局**（`task/0038:160-166`）。 这是别人用实测换来的结论，不必再交一遍学费。
 
-   > **修正记录**：本节上一版写着"'用本地 CPU 模型辅助预测'与离线要求天然契合——选型时应给它加分"。
-   > **那个加分是错的**：离线要求只说"必须本地"，不说明"必须用模型"。上游的实测结论是
-   > **辅助预测用规则就够，模型反而是纯粹的负担**。结论按上表改为"不做"。
+   > **修正记录**：本节上一版写着"'用本地 CPU 模型辅助预测'与离线要求天然契合——选型时应给它加分"。 **那个加分是错的**：离线要求只说"必须本地"，不说明"必须用模型"。上游的实测结论是 **辅助预测用规则就够，模型反而是纯粹的负担**。结论按上表改为"不做"。
 
 **关键字检索的做法（唯一还需要定的技术细节）**
 
 - **首选纯文本扫描**；规模真的上千条以上再谈 SQLite FTS5。
 > **何时该换**（决策 85）：**p95 > 200 ms** 或 **文件数 > 5000** —— 由 `jira doctor` 报告这两个量，**不拍硬阈值**。
-- 若将来上 FTS5：实测本机 Node 24（SQLite 3.50.4）**支持 `fts5(tokenize='trigram')`**，
-  中文**无需分词器**、零外部依赖。但它的边界必须写进设计：
+- 若将来上 FTS5：实测本机 Node 24（SQLite 3.50.4）**支持 `fts5(tokenize='trigram')`**， 中文**无需分词器**、零外部依赖。但它的边界必须写进设计：
   - 3 字及以上才命中，且是**子串匹配不是语义匹配**（"充电状态"在文中不连续出现就不命中）；
-  - **2 字查询必然不命中**（实测 `"耗电"` / `"帧率"` / `"充电"` 全部 0 命中）——而中文技术词
-    大量是两个字。上游把这条写成已知边界（`enginev2/store/db.py:9-11`）。
-  → **即使将来上 FTS5，也必须保留短查询的子串兜底**。这也再次说明"直接扫文本"才是本场景正解。
+  - **2 字查询必然不命中**（实测 `"耗电"` / `"帧率"` / `"充电"` 全部 0 命中）——而中文技术词 大量是两个字。上游把这条写成已知边界（`enginev2/store/db.py:9-11`）。 → **即使将来上 FTS5，也必须保留短查询的子串兜底**。这也再次说明"直接扫文本"才是本场景正解。
 - 排序可用 bm25（`bm25()` 返回**负值**，越负越相关——上游 `store/db.py:213-222` 的做法）。
 
 **要抄的工程做法（来自上游 `enginev2/`，按价值排序）**
@@ -1977,67 +1501,29 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 
 **明确不抄（反面教训，每条都有实测代价）**
 
-1. **查询会写真相源**：上游**每次查询**都起后台线程写 `domains/*/_vitality.yaml`
-   （`engines/query.py:284-302`；`MCP.md:489` 把它列为已知限制："同一句查询会改数据仓，
-   所以'昨天能查到、今天排序变了'是正常现象"）。→ 我们**读操作绝不写任何文件**（决策 38）。
-2. **知识代际 / 活力分（G0–G3 + `_vitality.yaml`）**：自造复杂度，实测**已停摆**
-   （cron 缺 `PYTHONPATH`、多数文档恒 G0），并被迫退化为"默认不过滤"
-   （`query.py:105-110` 注释：旧行为"等于一个只降不升、慢慢把知识变成查不到的系统"）。
-   单人单用户**不需要知识老化**，最多用 `updated` 做排序微调。
+1. **查询会写真相源**：上游**每次查询**都起后台线程写 `domains/*/_vitality.yaml` （`engines/query.py:284-302`；`MCP.md:489` 把它列为已知限制："同一句查询会改数据仓， 所以'昨天能查到、今天排序变了'是正常现象"）。→ 我们**读操作绝不写任何文件**（决策 38）。
+2. **知识代际 / 活力分（G0–G3 + `_vitality.yaml`）**：自造复杂度，实测**已停摆** （cron 缺 `PYTHONPATH`、多数文档恒 G0），并被迫退化为"默认不过滤" （`query.py:105-110` 注释：旧行为"等于一个只降不升、慢慢把知识变成查不到的系统"）。 单人单用户**不需要知识老化**，最多用 `updated` 做排序微调。
 3. **`pickle` 存索引**（V1 的 `chunks.pkl`，反序列化即任意代码执行）→ 派生数据只用 JSON / JSONL。
-4. **死配置**：`#POLICY.yaml` 的 `similarity_threshold` / `max_raw_text_chars` /
-   `require_human_confirm` **三处没有任何代码读取**，其中 `require_human_confirm: true`
-   与 `auto_promote` 默认 `True` 并存 → "看起来有人工批准，实际全自动"。
-   **声明式配置必须有代码引用 + 测试，否则就是治理幻觉。**
-5. **"跳过 = 通过"**：上游专门为此让 `schema_found` 参与阻断判据
-   （`okf_validator.py:298-307`）——**契约文件找不到时，绝不能把"没有报错"读成"合规"**。
-6. **只报告、无人消费的 lint**：上游六项 lint 质量不低，但 CLI 恒 `return 0`、无 CI、无 hook，
-   cron 写的报告在仓里根本不存在。→ **要么做成门禁，要么别做**（与 §4.14 的 `/jira tags lint`
-   "只报告不改"有区别：那是**有意让人定夺**，上游那条是**没人看**）。
-7. **以 IP 当用户身份**（`utils/client_identity.py`；实测同一个人两块网卡被拆成两行统计）
-   → 身份必须稳定（§4.11 / §4.12 的 machine_id + tool 正是为此）。
-8. **生成物与手写物同文件、靠魔法字符串分段**（`log.md` 的 `## 事件流` 段由引擎重写）
-   → 我们的生成物必须单独成文件（§4.4 已如此）。
-9. **key 事后反查兜底**（`promotion_service.py:52-88` 三级模糊匹配）→ key 必须在创建时固定
-   （§4.10「key 不可变」已覆盖，此处是外部佐证）。
+4. **死配置**：`#POLICY.yaml` 的 `similarity_threshold` / `max_raw_text_chars` / `require_human_confirm` **三处没有任何代码读取**，其中 `require_human_confirm: true` 与 `auto_promote` 默认 `True` 并存 → "看起来有人工批准，实际全自动"。 **声明式配置必须有代码引用 + 测试，否则就是治理幻觉。**
+5. **"跳过 = 通过"**：上游专门为此让 `schema_found` 参与阻断判据 （`okf_validator.py:298-307`）——**契约文件找不到时，绝不能把"没有报错"读成"合规"**。
+6. **只报告、无人消费的 lint**：上游六项 lint 质量不低，但 CLI 恒 `return 0`、无 CI、无 hook， cron 写的报告在仓里根本不存在。→ **要么做成门禁，要么别做**（与 §4.14 的 `/jira tags lint` "只报告不改"有区别：那是**有意让人定夺**，上游那条是**没人看**）。
+7. **以 IP 当用户身份**（`utils/client_identity.py`；实测同一个人两块网卡被拆成两行统计） → 身份必须稳定（§4.11 / §4.12 的 machine_id + tool 正是为此）。
+8. **生成物与手写物同文件、靠魔法字符串分段**（`log.md` 的 `## 事件流` 段由引擎重写） → 我们的生成物必须单独成文件（§4.4 已如此）。
+9. **key 事后反查兜底**（`promotion_service.py:52-88` 三级模糊匹配）→ key 必须在创建时固定 （§4.10「key 不可变」已覆盖，此处是外部佐证）。
 
-> **架构约束不变**：万一将来真要引入向量 / 索引，**它必须是可重建的派生物、进 `.gitignore`，
-> 绝不能是真相源**（OKF 文本才是）。这一条与上面"不做"并不矛盾——那是引入的前置条件。
+> **架构约束不变**：万一将来真要引入向量 / 索引，**它必须是可重建的派生物、进 `.gitignore`， 绝不能是真相源**（OKF 文本才是）。这一条与上面"不做"并不矛盾——那是引入的前置条件。
 
 **数据与派生层的实况（同一审计的第二条线）**
 
-- **真相源 = Markdown**：上游数据仓里**只有文本**；9 个 SQLite（SAG / 任务状态机 / LLM 作业队列 /
-  公共总线 / 打点 / token 用量 / 建域申请 …）与 2 组文件型索引（faiss+pickle、enginev2 四件套）
-  **全部落在仓库之外的 `<install>/var/`**，`.gitignore` 的原话是"**可重建，不入 review**"。
-  → 与 §4.4 的做法一致，**我们的方向是对的**。
-- **体量确认**：数据仓 **5.54 MB / 178 文件**，其中正文文本只有 **261 KB / 8.5k 行**
-  （`domains/` 正式库 59 文件 / 116 KB，内容 33 篇 / 4 个域 / CJK 占 36%）。
-  → 再次印证决策 37：这个量级不需要索引。
-- **反面教材（V1 的"位置即身份"）**：faiss 第 i 行 == `chunks.pkl` 第 i 项，**两个独立文件、
-  没有任何跨文件校验和**，只靠"维度相等"当护栏；版本一旦错配就**静默返回错的文本**。
-  → 派生数据必须像 V2 那样**自描述 + 对账（sha256）**，对不上**直接抛错**。
-- **上游没有迁移框架**：索引"对不上账就丢弃重建"；SQLite 用 `CREATE IF NOT EXISTS` +
-  `ALTER TABLE ADD COLUMN` 吞异常。→ 我们的"只增不删 + 改边下线 ⇒ 零迁移"（§4.2）更省事，保持。
-- **生成物会悄悄腐烂（实证）**：上游 `index.md` / `log.md` 由 **ingest 进程内的 hook** 重写，
-  而这条链被 `except Exception: warning` 包着 → `index.md` 的生成日期停在 **2026-08-04**，
-  而 `systemui` 域是 **2026-10-09** 才加的，**整域缺失两个月无人发现**。→ 由此得到决策 39。
-- **`log.md` 是"上段手写 + 下段生成"**，切分点是一个魔法字符串 `## 事件流`：
-  **人一旦改了这个标题，整段手写历史就会被当成事件流覆盖掉**。→ 生成物与手写物**必须分文件**
-  （§4.4 已经如此）。
-- **血缘字段过窄的代价（实证）**：上游 `provenance` 只有 `file / page / section`，
-  **没有来源机器 / OS / 工具 / 采集时间 / 原文哈希**；缺口靠一个"猜来源"脚本回填
-  （标题关键词命中 → 日期就近匹配），结果 **power 域 9 篇不同文档全部指向同一份 993 B 的 raw 文件**
-  ——覆盖率数字好看，**血缘分辨率不可信**。→ 我们的 KB 条目必须把
-  `machine_id / os / tool / captured_at`（必要时 `source_sha256`）**做成必填**，
-  且**禁止事后启发式回填**（§4.13 已定，此处是外部佐证）。
-- **一份可直接用的检查清单**：上游 `.gitignore` 只挡了 `*.sqlite`、**没挡 `*.db`**
-  （`sag.db` 靠单独一行才被挡住）；数据仓**根本没有 `.gitattributes`**，而 `#POLICY.yaml`
-  的注释却声称"git 跟踪需要在仓根配 .gitattributes"。→ 我们的 `.gitignore` / `.gitattributes`
-  必须**按模式覆盖全部扩展名**，且**注释不得与事实不符**。
-- **敏感内容警告**：那份审计对象在**公司内网 GitLab** 上，里面含真实 JIRA 单号（`BERYLV-*`）、
-  员工姓名、内部项目代号与未发布产品的功耗结论。`D:\dqc\kb-llm` 现在是一份
-  **纯文本、可整体复制的内部数据快照**——**本插件若要拿它做测试或演示，必须先脱敏。**
-  （密钥没有泄漏：`config.yaml` / `tokens.yaml` 都被 gitignore，模板里只有 `@PLACEHOLDER@`。）
+- **真相源 = Markdown**：上游数据仓里**只有文本**；9 个 SQLite（SAG / 任务状态机 / LLM 作业队列 / 公共总线 / 打点 / token 用量 / 建域申请 …）与 2 组文件型索引（faiss+pickle、enginev2 四件套） **全部落在仓库之外的 `<install>/var/`**，`.gitignore` 的原话是"**可重建，不入 review**"。 → 与 §4.4 的做法一致，**我们的方向是对的**。
+- **体量确认**：数据仓 **5.54 MB / 178 文件**，其中正文文本只有 **261 KB / 8.5k 行** （`domains/` 正式库 59 文件 / 116 KB，内容 33 篇 / 4 个域 / CJK 占 36%）。 → 再次印证决策 37：这个量级不需要索引。
+- **反面教材（V1 的"位置即身份"）**：faiss 第 i 行 == `chunks.pkl` 第 i 项，**两个独立文件、 没有任何跨文件校验和**，只靠"维度相等"当护栏；版本一旦错配就**静默返回错的文本**。 → 派生数据必须像 V2 那样**自描述 + 对账（sha256）**，对不上**直接抛错**。
+- **上游没有迁移框架**：索引"对不上账就丢弃重建"；SQLite 用 `CREATE IF NOT EXISTS` + `ALTER TABLE ADD COLUMN` 吞异常。→ 我们的"只增不删 + 改边下线 ⇒ 零迁移"（§4.2）更省事，保持。
+- **生成物会悄悄腐烂（实证）**：上游 `index.md` / `log.md` 由 **ingest 进程内的 hook** 重写， 而这条链被 `except Exception: warning` 包着 → `index.md` 的生成日期停在 **2026-08-04**， 而 `systemui` 域是 **2026-10-09** 才加的，**整域缺失两个月无人发现**。→ 由此得到决策 39。
+- **`log.md` 是"上段手写 + 下段生成"**，切分点是一个魔法字符串 `## 事件流`： **人一旦改了这个标题，整段手写历史就会被当成事件流覆盖掉**。→ 生成物与手写物**必须分文件** （§4.4 已经如此）。
+- **血缘字段过窄的代价（实证）**：上游的来源字段只有 `file / page / section`， **没有来源机器 / OS / 工具 / 采集时间 / 原文哈希**；缺口靠一个"猜来源"脚本回填 （标题关键词命中 → 日期就近匹配），结果 **power 域 9 篇不同文档全部指向同一份 993 B 的 raw 文件** ——覆盖率数字好看，**血缘分辨率不可信**。→ 我们的 KB 条目必须把 `machine_id / os / tool / captured_at`（必要时 `source_sha256`）**做成必填**， 且**禁止事后启发式回填**（§4.13 已定，此处是外部佐证）。
+- **一份可直接用的检查清单**：上游 `.gitignore` 只挡了 `*.sqlite`、**没挡 `*.db`** （`sag.db` 靠单独一行才被挡住）；数据仓**根本没有 `.gitattributes`**，而 `#POLICY.yaml` 的注释却声称"git 跟踪需要在仓根配 .gitattributes"。→ 我们的 `.gitignore` / `.gitattributes` 必须**按模式覆盖全部扩展名**，且**注释不得与事实不符**。
+- **敏感内容警告**：那份审计对象在**公司内网 GitLab** 上，里面含真实 JIRA 单号（`BERYLV-*`）、 员工姓名、内部项目代号与未发布产品的功耗结论。`D:\dqc\kb-llm` 现在是一份 **纯文本、可整体复制的内部数据快照**——**本插件若要拿它做测试或演示，必须先脱敏。** （密钥没有泄漏：`config.yaml` / `tokens.yaml` 都被 gitignore，模板里只有 `@PLACEHOLDER@`。）
 
 ### 11.2 tool 可见性 spike：**已结案**（§2.7 / 决策 101）
 
@@ -2048,14 +1534,9 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 > - **alpha.2 的 breaking 改名**：`ctx.subagents` 的 `startContinuable` → `startActivation`、`drainContinuable*` → `drainDescendants`/`drainChildren`。**本项目不用它**，但将来若用要按版本写。
 > - **`mode: "external"`**：alpha.2 的 `SubagentCatalogEntry.mode` 多了 `"external"`，且这类条目**不能打开子会话**——所以"进程外子代理不受 `origin`/`delegationDepth` 判定约束"这条限定**在 alpha.2 更明确**。
 
-**✅ 已结案（决策 101）**：`dsh web` 里**宿主平面 `insert` 可见**；安装单元必须是 **bundle 包**
-（声明 `dsh.bundle.patch`），且实测 `dsh plugin add <路径>` **自己就会把包加进 `dsh.profile.bundles`**——
-**手工再 insert 一遍是重复来源**（实测无害，但违反单一来源，已清理）。
-方案 ④（`preset:` patch）**不入方案**：其唯一出处 `docs/architecture.md:25` 在本版本不存在（见下）。
+**✅ 已结案（决策 101）**：`dsh web` 里**宿主平面 `insert` 可见**；安装单元必须是 **bundle 包** （声明 `dsh.bundle.patch`），且实测 `dsh plugin add <路径>` **自己就会把包加进 `dsh.profile.bundles`**—— **手工再 insert 一遍是重复来源**（实测无害，但违反单一来源，已清理）。 方案 ④（`preset:` patch）**不入方案**：其唯一出处 `docs/architecture.md:25` 在本版本不存在（见下）。
 
-> **待核（Windows 机实测，DSH `0.2.0-rc.2`）**：本机 checkout 的 `package.json` 与
-> `$DSH_HOME/profiles/node_modules/@deepseek-ai/dsh` **都是 `0.2.0-rc.2`**，
-> 而 §2.2 与本文抬头记录的是 `0.2.1-alpha.2`。逐条核对设计所依赖的 seam：
+> **待核（Windows 机实测，DSH `0.2.0-rc.2`）**：本机 checkout 的 `package.json` 与 `$DSH_HOME/profiles/node_modules/@deepseek-ai/dsh` **都是 `0.2.0-rc.2`**， 而 §2.2 与本文抬头记录的是 `0.2.1-alpha.2`。逐条核对设计所依赖的 seam：
 >
 > | 依据 | 本机结果 |
 > |---|---|
@@ -2066,17 +1547,11 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 > | preset scope 可见性判据 | ✅ 逐字命中（`packages/preset/agent-preset-registry/README.md:56`） |
 > | **§2.7 方案 ④ 的出处** | ❌ **`docs/architecture.md:25` 不存在**，且 `docs/**` 与 `.agents/**` 搜不到 `preset patch` / `` `preset:` `` |
 >
-> **✅ 已核实（2026-10-16，本机把两个 checkout 都查了）——是版本差，不是文档搬走**：
-> `docs/architecture.md` **两版都存在**（rc.2 166 行 / alpha.2 165 行），但**第 25 行的内容不同**：
+> **✅ 已核实（2026-10-16，本机把两个 checkout 都查了）——是版本差，不是文档搬走**： `docs/architecture.md` **两版都存在**（rc.2 166 行 / alpha.2 165 行），但**第 25 行的内容不同**：
 > * `0.2.0-rc.2` 的第 25 行讲 `dsh-base` 与各 bundle 的层叠，**没有** preset patch；
-> * `0.2.1-alpha.2` 的第 25 行**明确写着** preset patch：*"A `preset` patch applies these operations
->   inside that declaration's `config.plugins`, with the same layer precedence."*
+> * `0.2.1-alpha.2` 的第 25 行**明确写着** preset patch：*"A `preset` patch applies these operations inside that declaration's `config.plugins`, with the same layer precedence."*
 >
-> 而 preset 机制的**文件**（`packages/bundle/web-app/presets/cordis.patch.yml`）**两版都在**——
-> 所以机制两版都有，只是 rc.2 的文档没写它。**方案 ④ 仍按决策 101 不入方案**（① 已实测可用），
-> 这条"待核"就此结案。
-> 另：**peer 版本与豁免（§2.2）已经与本文无关**——决策 109 之后本包**不声明任何 peer**，
-> 所以"按部署机的版本写 peer"这个待办自动消失（`engines` 仍跟 DSH 的 Node 范围）。
+> 而 preset 机制的**文件**（`packages/bundle/web-app/presets/cordis.patch.yml`）**两版都在**—— 所以机制两版都有，只是 rc.2 的文档没写它。**方案 ④ 仍按决策 101 不入方案**（① 已实测可用）， 这条"待核"就此结案。 另：**peer 版本与豁免（§2.2）已经与本文无关**——决策 109 之后本包**不声明任何 peer**， 所以"按部署机的版本写 peer"这个待办自动消失（`engines` 仍跟 DSH 的 Node 范围）。
 
 ### 11.3 尚未问完的设计点（**已全部结清**）
 
@@ -2092,8 +1567,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 ### 11.4 正确性红线（实现时不可忘）
 
 1. **绝不** `checkout --force` / `reset --hard` / `clean`；脏工作树先作为独立 commit 提交掉（§5）
-2. **`.gitattributes` 是仓库的第一个文件**：`* text=auto eol=lf`；评论文件 `merge=union`（§5）
-锁用 **`mkdir`（唯一原语，决策 59）**，**不用 `flock`，也不引第三方锁库**
+2. **`.gitattributes` 是仓库的第一个文件**：`* text=auto eol=lf`；评论文件 `merge=union`（§5） 锁用 **`mkdir`（唯一原语，决策 59）**，**不用 `flock`，也不引第三方锁库**
 4. **不解析人类可读的 `git log` 输出**，用 plumbing + NUL 分隔（§5）
 5. 写事务里**绝不 push**；**绝不隐式 pull**（§5）
 6. 提交绑定要**校验 key 真实存在**，不只看格式（§6.7）
@@ -2101,9 +1575,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 
 ### 11.5 独立实例的归并（由决策 35 / 36 推出）
 
-离线机是**空的本地实例**，与主 store 之间**没有共享历史、也没有共同祖先**。
-**默认状态下两者不合并**——独立实例相当于一个"新分支"，key 空间各自从 `1` 开始，
-所以**不需要预留号段，也不需要把机器维度编进 key**（决策 36）。
+离线机是**空的本地实例**，与主 store 之间**没有共享历史、也没有共同祖先**。 **默认状态下两者不合并**——独立实例相当于一个"新分支"，key 空间各自从 `1` 开始， 所以**不需要预留号段，也不需要把机器维度编进 key**（决策 36）。
 
 只有两种例外，且都必须**显式发起**：
 
@@ -2126,15 +1598,11 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 > **结论（决策 94）**：① 粒度 **按 project**（连带 issue / 评论 / `kb_refs`；tag 先合注册表、KB 撞号同样重编号）· ② 映射表**进 store**：`_merge/<UTC>-from-<machine_id>.md`（**不是临时产物**——commit message 里的旧 key 改不了，只能靠它解释）· ③ **不另造归并事件**，靠 `reporter` / `machines/` + 映射表头部 · ④ 差异报告四类 · ⑤ **一次性搬迁，不做长期双向**。**工具：MVP 不做**（只给 `jira lint` 的悬空引用检查 + 一份 key 集合对比清单）。
 ### 11.6 实现前的未决清单（穷尽清点）
 
-> **起因**：我曾说"只差 §11.3 那批就能开写"——**用户当场否掉："
-> 你确定？应该还差一堆问题吧"。**他是对的，而且差得比我以为的多得多。**
-> 本节是第一轮逐节重扫 + 一路**独立复核**（另一 agent 通读全文）合并后的完整清单。
+> **起因**：我曾说"只差 §11.3 那批就能开写"——**用户当场否掉：" 你确定？应该还差一堆问题吧"。**他是对的，而且差得比我以为的多得多。** 本节是第一轮逐节重扫 + 一路**独立复核**（另一 agent 通读全文）合并后的完整清单。
 >
-> **这里的数字是数出来的，不是估出来的**：A 类 **42 条**（✅ **全部定案** → 0 条待定）／B 类 **30 条**（已定 10 → **20 条待定**）／
-已定 22 条，**待定 48 条**（A17 收窄后仍挂着参数与输出 schema）。
+> **这里的数字是数出来的，不是估出来的**：A 类 **42 条**（✅ **全部定案** → 0 条待定）／B 类 **30 条**（已定 10 → **20 条待定**）／ 已定 22 条，**待定 48 条**（A17 收窄后仍挂着参数与输出 schema）。
 >
-> **使用规则**：每定掉一条，写进 §8 决策表或对应章节，**同时删掉这里的那一行并挪进下面的"已定"表**，
-> 于是"还剩多少没定"永远可以数出来。
+> **使用规则**：每定掉一条，写进 §8 决策表或对应章节，**同时删掉这里的那一行并挪进下面的"已定"表**， 于是"还剩多少没定"永远可以数出来。
 
 #### 已定（从清单移出）
 
@@ -2197,9 +1665,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | B28 hook 链式安装 | 已被决策 67 覆盖（改名 `*.jira-backup` 后链式调用，卸载还原） | 决策 67 |
 | B26 `paths[]` 与 rebind | 规范化（绝对/小写/`\`）+ 只作缓存；`project rebind` = 手动重绑 | 决策 92、§4.10 |
 
-| B27 只读会话 | 拒绝写（`READ_ONLY_SESSION`，reason `dsh-read-only`），读照常，**无降级写** | 决策 93、§9 |
-| B19 归并/复写工具 | **MVP 不做工具**；5 点定清（按 project 搬、映射表进 `_merge/`、不造归并事件、四类差异报告、只做一次性） | 决策 94、§11.5 |
-| B20 spike 三项 | ① **可见**（宿主平面 insert + bundle 包；"gate"其实是仓库 CI 不变量）② **有**会话级 seam（`agent/created` + `agent.ctx.effect`）③ **能**读 `SessionHeader`（`exec.agent.session.header`） | 决策 101 / 100 / 96（+98 引用标版本） |
+| B27 只读会话 | 拒绝写（`READ_ONLY_SESSION`，reason `dsh-read-only`），读照常，**无降级写** | 决策 93、§9 | | B19 归并/复写工具 | **MVP 不做工具**；5 点定清（按 project 搬、映射表进 `_merge/`、不造归并事件、四类差异报告、只做一次性） | 决策 94、§11.5 | | B20 spike 三项 | ① **可见**（宿主平面 insert + bundle 包；"gate"其实是仓库 CI 不变量）② **有**会话级 seam（`agent/created` + `agent.ctx.effect`）③ **能**读 `SessionHeader`（`exec.agent.session.header`） | 决策 101 / 100 / 96（+98 引用标版本） |
 #### D 类：文档自相矛盾 / 过期（**不修就会各按一半实现**）
 
 | # | 位置 | 问题 | 状态 |
@@ -2216,8 +1682,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 
 #### A 类：不定就没法动手（**A1–A42 全部定案**）
 
-> 42 条已全部结清——逐条见上面的「已定」表与 §8 决策 **41–82**。原先按五个子组列出的空表已删除：
-> 自检发现"表头计数（16/7/5/6/5=39）与实际编号（A1–A42）对不上"，索性不留会再次失准的空壳。
+> 42 条已全部结清——逐条见上面的「已定」表与 §8 决策 **41–82**。原先按五个子组列出的空表已删除： 自检发现"表头计数（16/7/5/6/5=39）与实际编号（A1–A42）对不上"，索性不留会再次失准的空壳。
 
 #### B 类：可以先写、迟早要定（30 条，**已全部结清**）
 
@@ -2240,9 +1705,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | C11 | ~~§4.10 后半段：解析出"未命中"后只在提示里说，首次写入并不登记~~ | ✅ **已实现（决策 133）**：首次写入即登记（派生 key、remote、`paths[]`、policy/owner），注入行那句 "on first write" 现在**是事实** | 决策 77/92/131/133 |
 | C12 | ~~**store 仓库没有 CI**~~ ✅ **已结（2026-10-16）**：`.github/workflows/ledger.yml` 现在跑 `lint`（**含 frontmatter 校验**——解码失败即 `file-unreadable` 报错，已实测：删掉必填 `priority` → exit 1）、`generate --check`（**新鲜度断言**）与提交信息绑定（决策 67）。**踩过的三个坑都记在 workflow 注释里**：① `github:` 依赖走 ssh 且插件无 `prepare`，git 安装拿不到 `dist/`→ 改为检出插件后构建；② 默认 `GITHUB_TOKEN` 读不了另一个私仓 → 需要 secret `PLUGIN_TOKEN`（fine-grained PAT **必须手动加 Contents: Read-only**，新建时是零权限；`GET /repos` 返回 200 只证明 Metadata，不证明能 clone）；③ `verify-commit-msg` 必须带 `--root`，否则 CLI 报"无法确定账本根目录"而把每条合规消息判成不合规。**首个全绿 run：38925421455** | 决策 39/66/120 |
 
-> **C 类已结案的四条**（C1–C4）见上表历史；**C6 已并入决策 125 ⑤**（`/jira` 保留写命令）。
-> **C9 里的两个量**（p95 与文件数）是决策 85 明确要求 `doctor` 报出的，属于"该不该上索引"的唯一依据，
-> 实现 `doctor` 时不要漏。
+> **C 类已结案的四条**（C1–C4）见上表历史；**C6 已并入决策 125 ⑤**（`/jira` 保留写命令）。 **C9 里的两个量**（p95 与文件数）是决策 85 明确要求 `doctor` 报出的，属于"该不该上索引"的唯一依据， 实现 `doctor` 时不要漏。
 
 #### 过题顺序（**已执行完毕**）
 
@@ -2257,17 +1720,14 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | 尾轮 | 三个 tool 的完整 schema（原 A17） | ✅ 决策 82 |
 | **剩余** | ~~B 类 20 条~~ → **B 类 30 条已全部结清**（见上表；该计数是早期快照，已过期） | ✅ 本条于 2026-10-16 修正 |
 
-**诚实结论（已更新）**：A 类已清零，B 类 20 条都是"可以先写、迟早要定"的性质。
-当初"只剩 §11.3"的判断**漏了 55+ 条**——这条记录保留在此，提醒下次不要把"我扫到的"当成"全部"。
+**诚实结论（已更新）**：A 类已清零，B 类 20 条都是"可以先写、迟早要定"的性质。 当初"只剩 §11.3"的判断**漏了 55+ 条**——这条记录保留在此，提醒下次不要把"我扫到的"当成"全部"。
 
-> **改动前先查影响面**：高扇出的决策（命名 / schema / 读不写 / 身份 / 锁 / 评论 / tool schema …）
-> 在 **§11.7** 有一张"改了会牵动谁"的索引——**常例：以后每条新决策都要在那里留一行**。
+> **改动前先查影响面**：高扇出的决策（命名 / schema / 读不写 / 身份 / 锁 / 评论 / tool schema …） 在 **§11.7** 有一张"改了会牵动谁"的索引——**常例：以后每条新决策都要在那里留一行**。
 
 
 ### 11.7 改动影响面索引（高扇出的决策）
 
-> **为什么有这一节**（用户原话，本轮）：「多问是好事，能尽量想清楚设计目标是好的，**即使后面改变了
-> 也知道谁会被影响到**，而不是现在这种拍脑袋处理。」
+> **为什么有这一节**（用户原话，本轮）：「多问是好事，能尽量想清楚设计目标是好的，**即使后面改变了 也知道谁会被影响到**，而不是现在这种拍脑袋处理。」
 >
 > **用法**：改下面任何一条之前，先看它的"会牵动谁"，**别只看它自己那一节**。
 >
@@ -2303,108 +1763,15 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | **91** | label 缺失时显示短 id | §4.11 的 machines 文件、决策 79 的看板列宽、决策 83 的 CLI（新增 `machines label`）、工具输出（决策 82） |
 
 | **92** | `paths[]` 规范化 + 手动 rebind | §4.1/§4.10 的 paths、决策 77（**身份只看 remotes**）、决策 83 的 CLI（新增 `project rebind`）、决策 8/9（只读策略与该缓存的关系） |
-> **不在索引里的决策**：影响面就是它自己那一节（例如 §4.9 归档推迟、§4.14 tag 相似度算法、
-| **93** | 只读会话拒绝写（无降级路径） | 决策 52 的 `READ_ONLY_SESSION`、决策 56 的 `writable/reason`、决策 89（子代理只读——**同一错误码、不同 reason**）、§9 风险 5、skill 正文（要告诉 agent"读到只读就别试写"） |
-| **94** | 归并：不做工具 + 5 点定清 | §11.5 的 5 个未决点、§4.4 目录树（新增 `_merge/`）、决策 83 的 CLI（`lint` 要含悬空引用检查）、决策 36（复写 vs 归并）、决策 39（`_merge/` 里的映射表是**人写**的，不是生成物，不受新鲜度断言约束） |
-| **95** | peer 版本 range（两个宿主） | 决策 63（原"钉精确版本"）、§2.2 的 peer 说明、CI 矩阵（两个宿主版本都要跑）、`dsh plugin allow-version` 豁免机制、HANDOVER §5 的环境事实 |
-| **96** | subagent 只读的判据（`exec.agent.session.header`） | 决策 89（它才让这条落地）、决策 5/9 的作用域限定、决策 52 的 `READ_ONLY_SESSION`、决策 56 的 `writable/reason`、§2.2 的 peer/dev 依赖清单（新增两个宿主包）、tool 层 guard 与 `restrict` 的相互作用 |
-| **97** | 转内置插件的回退 | §2.7（① 的结论）、**决策 18/63/64/65/95**（peer 与分发在内置路径下消失或变形）、§7.1/§7.2（安装方式）、§3（分层：`core` 必须保持零 DSH 依赖，否则回退就要重写）、HANDOVER §5（多一个代码落点：fork 仓）、CI（内置则跟 fork 的 CI 一起跑） |
-| **98** | 引用 DSH 源码必须标版本 | 全文所有 DSH `file:line` 引用、§11.2 的差异表、§2.7 的 patch 引述、未来的所有证据链（**不标版本 = 宿主一同步就可能变成假证据**） |
-| **99** | 安装单元 = bundle 包 | §7.1/§7.2（安装方式）、决策 65（离线安装）、决策 97（内置回退时这条作废）、§2.7（patch 可见性）、包的 `exports`/`files` 字段（要带 `cordis.patch.yml`）、CI（bundle 结构校验） |
-| **100** | 会话收尾 seam（`agent.ctx.effect`） | 决策 31（会话结束扫 `git log`）、§6.5 的 P1 行、决策 73（水位线放 `$DSH_HOME/dsh-jira/`）、决策 38（读不写——收尾是写事务，不冲突）、决策 52 的错误码（收尾失败要有码）、幂等设计（重复评论的判据） |
-| **101** | spike ① 结论：宿主平面 insert / bundle 包 / 不走 preset | **§2.7（风险已消）**、决策 99（bundle 形态与安装器）、决策 97（内置回退的触发条件不再成立，但保留）、决策 95（两个 checkout 与 peer range）、§7.1/§7.2（安装与离线）、**仓库 CI 的"一个 row 只属于一个平面"不变量**（走内置路径时才受约束） |
-| **102** | 编码原则（原子化 / 组合 / data class） | **§3 的全部实现**、决策 64（分层 + AST 边界检查）、决策 65（零运行时依赖）、决策 66（`node:test` 只测纯函数）、**决策 97（转内置之所以便宜，正因为 `core` 是原子化纯逻辑）**、以及以后每一次 code review 的口径 |
-| **103/104** | 第一刀竖切 + 自写最小 Result | §3.1 的实现顺序、§7.1/§7.2（bundle 包与安装）、决策 101（可见性实测）、决策 52（错误码形状）、决策 65（离线安装与依赖取舍 → C1） |
-| **105** | frontmatter 自写受限解析器 | §4.1 的 frontmatter 形态、`config.md` 的读取、决策 65（离线安装不受影响）、决策 49/80（写入严格 / 读取宽容）、CI 的"全库在子集内"断言、以及**将来换成成熟解析器的成本 = 一个函数** |
-| **106/107** | 子集加一层 flow map；`key` 不落盘 | §4.1 与 §4.13 的实体写法、决策 70（links 形状）、决策 75（KB 示例）、决策 77（同一套"不存重复身份"的理由）、决策 105（子集边界）、`codec.ts`/`frontmatter.ts` 的实现与测试 |
-| **108** | 适配层零 host 依赖 | §3 的分层、决策 64（AST 边界检查要放行 plugin 的"零宿主 import"）、决策 65（离线安装与 devDeps）、决策 96（谱系 seam 用 duck-typing）、决策 97（内置路径下本条作废）、**集成测试是唯一守卫** |
-| **109/110** | 不声明 peer；工具 schema 用标准方言 | 决策 95（peer 写法收窄）、决策 99（bundle 安装）、决策 108（自建 schema 的代价）、§2.7 的实测记录、`core/schema.ts` 与 `plugin/index.ts` 的输出形态、打包测试（不得出现 peerDependencies） |
-| **111** | `WRITE_FAILED` = IO 失败 | 决策 52 的码清单与"文档==代码"测试（不变）、§6.2 的码清单说明、`core/errors.ts` 的 `ioFailed`、`core/io.ts` 的两处调用、新加的 C4 断言 |
-| **112** | 子集加一层嵌套（因为 config.md 读不出来） | 决策 105/106 的子集边界、`fixtures/config.md`（真实词表的夹具，store 仍是真相源）、`core/frontmatter.ts` 的 parse/render 对称性、未来任何手写文件的形状 |
-| **113** | 评论锚 author 含 `|` 要加引号 | 决策 48（身份串分隔符）与 68（锚字段分隔符）的交叉、`core/comments.ts` 的渲染与解析、以及所有"两个冻结格式互相嵌套"的地方（以后遇到先想分隔符） |
-| **114/115** | counters 按 project 分桶；git 层（自动 init + 提交在 store 锁里 + 失败要响 + 防抖推送队列） | 决策 74/58/60/81 的落地、`core/counters.ts`/`core/git.ts`/`core/push.ts`、`core/store.ts` 的事务尾部、§5 的常量说明、以及"以后要碰"git" 或"计号"时先看这两条" |
-| **116** | 首次领号的种子取自磁盘；提交按 git 的清单；store 级数据进版本；提交失败要响 | `core/store.ts`（`highestExistingKey`/`commitWrite`）、`core/git.ts`（`stageAndCommit`）、`core/counters.ts`（`seed`）、插件把 `commitError` 映射成 `rejected`；以后任何"我们要提交什么"的改动都先看这条 |
-| **117/118** | 锁按 mtime 判废；/jira 命令 + 三技能 + CLI 十命令 + 会话结束有界冲刷 + ack 顺序 + doctor 评论 id 作用域 | `core/lock.ts`（`staleSince`）、`src/cli/*`、`src/plugin/command.ts`/`skills.ts`、`skills/*.md`、`core/doctor.ts`、`core/store.ts` 的提交清单；以后改"人看到的界面"或"锁的判定"都先看这两条 |
-| **119** | store 是云端仓的克隆；机器身份在 store 之外；插件只指远端 | `core/machine.ts`、`core/provision.ts`、`cli/main.ts` 的 `init --remote`、插件 `config.remote`、profile 的 `cordis.patch.yml`；以后任何"新机器怎么加入"、"身份放哪"、"要不要联网"的问题都先看这条 |
-| **120** | 第 11 个 CLI 子命令 `generate`（幂等 + `--check` + doctor 新鲜度）；生成物必须被两处排除；**知识域计数必须从 `listKnowledge` 的同一份 listing 派生**（第三处排除，2026-10-16） | `core/generateStore.ts`、`cli/main.ts`、`core/doctor.ts`/`inspect.ts`、`core/store.ts` 的 `loadTags`、`core/io.ts` 的 `isGeneratedInput`、`core/kbstore.ts` 的 `KnowledgeListing.domains`；以后**任何枚举 store 文件的代码**（读注册表、算哈希、做统计）都要先问一句「生成物排除干净了吗」——**这条预测在 2026-10-16 兑现了**：`domainRows` 自己扫 `knowledge/<域>/` 递归数 `.md`，把生成的 `index.md`/`log.md` 数成知识条目 → 根索引对只有 1 条条目的域报 **3 条**，且那个数字只在第一次生成**之后**才出现，于是**单次 `generate` 不是不动点**（CI 的"重跑后 diff 为空"会挂）。教训：坑不在排除本身，而在**同一件事的第二份实现**——让计数跟着已经排除干净的那份数据走 |
-| **121** | `jira_list` 的实现契约（排序全序 / 阻塞复用 / counts 描述全集 / tags 收窄 / 只读） | `core/list.ts`、`plugin/index.ts` 的第二个注册、`cli/main.ts` 的 `list`、`core/inspect.ts` 的 `IssueQuery` 扩展；以后加过滤条件时先想"它属于收窄还是放宽" |
-| **124** | `jira_kb` 落地（key/域独立、来源由 store 记录、读宽容写严格、counts 对齐、生成物不当条目） | `core/kb.ts`/`kbsearch.ts`/`kbstore.ts`、`plugin/index.ts` 的第三个注册、`core/errors.ts` 的 `notFound`、`core/store.ts` 泛化出的 `commitStoreWrite`；以后加实体时先想"key 与目录是否一一对应"、"哪些字段该由 store 记录而不是让模型填" |
-| **123** | 宿主不导出 DSH_HOME；link 进来的包缓存在进程里（配置热、代码要换进程） | 决策 57 的 `root` 解析、决策 119 的 `init --remote`、决策 101/110 的"静默不激活"排查、HANDOVER §5/§6、以及以后所有"为什么 GUI 里没生效"的问题 |
-| **125** | CLI 的 `update`/`kb`；知识 key 按号段判；`/jira` 保留写命令 | 决策 83 的命令集合与"只读"表述、决策 82 的 tool 参数（两处要一致）、决策 75 的双向引用、决策 94 的悬空引用检查（C8）、决策 124 的 `asKnowledgeKey` 语义 |
-| **126** | lint 只管结构 / machines 注册表与显示规则 / doctor 报出索引触发条件 | 决策 94 的"CI 只管结构"、决策 86 的 `tags lint`（未做）、决策 85 的两个阈值、决策 91 的 label 与短 id 显示、决策 73 的 `machines/` 落点、以及所有"人看到的机器名"与"CI 该不该红"的地方 |
-| **127** | 提交绑定（hook 薄壳 + shebang/嵌入 shell）、tags lint、project、doctor 的一致性检查 | 决策 67 的 §6.7、决策 86 的 tag 治理、决策 77/92 的 `project.md`、决策 75 的双向引用、决策 91 的机器登记；**以后任何"改提交消息格式"或"加 hook"的改动**都要同时看 `core/commitmsg.ts`、`core/hooks.ts` 与 store 仓库里已装的那份 shim（重装一次即更新） |
-| **128** | CLI 的混合式命令形状、tool↔CLI 的命名映射、缺的两个动词已补 | 决策 83 的"超集"表述、§6.1 的命令清单、决策 50/82 的 tool schema（两边要能一一对上）、`src/surfaces.test.ts` 的漂移防护；**以后加/改命令**先跑一次那个测试 |
-| **129** | `lint --keys` 的 key 清单与冲突分类、`board --html` 的自包含与转义、`pnpm smoke` 这条可重复的端到端检查 | 决策 94 的归并支撑、决策 87 的生成物版式（HTML 刻意不在"四份生成物"里）、决策 38 的"读不写"（烟测第一段只读 ✓）、决策 67 的提交绑定（第三段 ✓）；**以后任何改动**都可以先跑 `pnpm smoke` 再谈别的 |
-| **130** | 注入行的实现与计数口径修正；`jira:store` 的注册与 5 s 缓存 | §6.4 的原文（口径已按本条修正）、决策 78、决策 55（英文固定格式）、决策 38（注入只读）、以及**任何改计数口径或改注册名**的改动 |
-| **131** | 注入行含"账本名 + 工作区→项目"；§4.10 的只读解析与 key 派生 | `core/workspace.ts`、`core/injection.ts` 的格式与按 cwd 缓存、`plugin/caller.ts` 的 `callerCwd`、`scripts/smoke.mjs` 的工作区步骤；**以后任何改注入行格式、改 key 派生、或让工作区自动登记项目**的改动都要同时看这三处（以及 C11） |
-| **148** | 重生成的时机 = **每次推送之前**（pull → 重生成+提交 → push） | `core/push.ts` 的推送队列（`settle` 钩子与它前面的 `pull`）、插件 `index.ts` 的队列接线与会话结束 flush、CLI 的 `sync`、`core/generateStore.ts` 的 `regenerateAndCommit`、决策 15/34/39/60/66/79/119/134/147，以及**以后任何"什么时候生成"的问题**；**它同时是一条红线**：门禁必红的提交宁可**不推**（settle 失败即拦）。**又因为它把 pull 变成每次写入的必经之路**，决策 146 的身份回退也必须覆盖 `git pull --rebase`（`core/rebase.ts`）——否则身份缺失的机器上整条链静默停住 |
-| **199** | 不变量要进守卫：`core/` 的 fs/子进程只有 io/git/lock/hooks 的 IO 白名单，`check-boundaries` 每次 check 都查 | `scripts/check-boundaries.mjs` 的 `IO_ALLOWED` 与 20 条自检、`core/project.ts` 的 `io.exists`；**以后定任何"只写在文档里"的边界**：当天就把它写进守卫脚本，否则它只是愿望 |
-| **198** | 引用必须成对：知识条目引用 issue → 自动回填该 issue 的 `kb_refs`（幂等，部分失败显式上报） | `core/kbstore.ts` 的 `mirrorKnowledgeRefs` 与 create/update 的接线、`plugin/toolKb.ts` 的 `mirror` 字段、`cli/commands/kb.ts` 的回填提示；**以后任何"双向引用"的字段**：写入侧自动补另一面，补不了就说出来（doctor 的 one-sided 检查是兜底，不是设计） |
-| **197** | doctor 只说事实：关闭态的历史租约不算"可认领"，summary 的计数来自磁盘而不是常量 | `core/doctor.ts` 的租约过滤与 `summary.tags`、`core/inspect.ts` 的 tags 计数、人面摘要行模板；**以后往 doctor 里加检查**：先问"这条对什么状态才成立"，并按快照里真实有的数据计数（不许写死） |
-| **196** | `batch_close`：多键关闭，全成或全不成；预验复用写入规则；部分结果显式上报 | `core/batch.ts` 的 `closeMany`/`refusalFor`、`plugin/toolIssue.ts` 的 `batch_close` 与 `keys` 参数、`cli/commands/batch.ts` 与命令表/USAGE、`surfaces.test.ts`/`index.test.ts` 的清单、`core/batch.test.ts`；**以后做"批量"**：预验先行、规则不复述、部分结果必须显式上报 |
-| **195** | 体验批：本地时间、`project_created`、短身份、空结果计数、kb 回执路径、何时 sync | `core/render.ts` 的 `withLocalTime`/空列表、`core/list.ts` 的 `shortIdentity`/空结果、`plugin/toolIssue.ts` 的 `project_created`、`plugin/toolKb.ts` 的 `file`、`skills/jira-work.md`；**以后人面输出与机器面输出的分界**：人面可以本地化/缩短，机器面（JSON、`get`）保持全量与 UTC |
-| **194** | 知识键空间 `KB-` 与项目键空间不许撞车；悬空引用提前到写入时 | `core/project.ts` 的 `RESERVED_PROJECT_KEYS`/`assertProjectNameFree`、`core/store.ts` 的 `createInStore` 前置校验、`core/kbstore.ts` 的 `assertIssueReferences`（只拒"引用知识条目"）、`project.test.ts`/`kbstore.test.ts`；**以后新增一套 key 空间先问"会不会和项目键同形"** |
-| **193** | 复合动作 `close`：迁移 + 评论一次事务，状态机与 resolution 规则照跑 | `core/mutate.ts` 的 `applyClose`、`plugin/toolIssue.ts` 的 `close` 动词、`cli/commands/close.ts` 与 `cli/main.ts` 的命令表/USAGE、`core/messages.ts` 的 `CLOSE_NEEDS_RESOLUTION`、`surfaces.test.ts` 的两张清单；**以后做复合动作**：组合已有原子操作、不绕过它们，且测试要断言"只多一个提交" |
-| **192** | 工具面必须能创建标签；`UNKNOWN_TAG` 要带全量注册表与创建途径 | `plugin/toolIssue.ts` 的 `tag_create`/`TAG_CREATE_FIELDS`/描述、`core/errors.ts` 的 `unknownTag`（`registered`+`hint`）、`core/validate.ts` 的传参、`surfaces.test.ts` 的映射表、`skills/jira-{work,triage}.md`；**以后工具面新增动词：先问"CLI 有没有对应命令"（surfaces 会替你问），并检查错误消息是否给出了下一步** |
-| **191** | 失败的 flush 必须重试（有上限）且必须留痕 | `core/push.ts` 的 `scheduleRetry`/`MAX_PUSH_RETRIES`/`retryDelayMs`、`plugin/sessionRecord.ts` 的 `recordPushOutcome`/`readPushFailure`/`pushFailurePath`、`plugin/index.ts` 的 `onOutcome`/`pushStatus`、`plugin/command.ts` 的 status 输出；**以后凡是"发出去之后没人看返回值"的异步步骤，要么重试到成功，要么把结果写到人能看到的地方** |
-| **190** | 先校验、后分配：被拒的 create 不烧号，回执带 `keyAllocated: false` | `core/mutate.ts` 的 `validateNewIssue`、`core/kb.ts` 的 `validateKnowledgeDraft`、`store.ts` 的 `createInStore` 与 `kbstore.ts` 的 `createKnowledge` 的顺序、`core/errors.ts` 的 `withContext`；**以后任何"发号"的地方**：校验永远排在分配前面（决策 158 的空间有限 + 这条的断号审计） |
-| **189** | 关闭必须经过 in_progress（todo→closed 边不存在）；词表只增不删的 TODO 裁定；知识与 issue 是两个键空间 | 账本仓 `config.md` 的 transitions/状态机表/TODO、`fixtures/config.md`（必须与账本逐字一致——它是测试里的词表）、DPMJ-214 的复合 close（内部要完成 claim+in_progress+closed）；**以后改词表两件事一起改**：账本 config.md + 插件仓 fixture |
-| **188** | 审查发现要分类：该修的修（broken 结构化、renderKbEntry、import 风格），核实后不修的写明理由（emitWarning、pid、checkStore、字段装配） | `core/inspect.ts` 的 `BrokenFile`、`core/kbsearch.ts` 的 `renderKbEntry`、`core/args.ts` 的 `./` import、`plugin/toolList.ts` 删掉考古；**以后审查清单的每一项只有两种结局：修，或写下不修的理由**——不许挂着 |
-| **187** | CLI 是状态机表不是 switch：每命令一个 handler 文件，写命令走 writeCommand、可选旗走 optFlags | `cli/runtime.ts`、`cli/commands/`（21 个文件 + 注册表）、`core/args.ts` 的 `optFlags`、`commands.test.ts` 的表↔文件一致性守卫；**以后加 CLI 命令 = commands/ 加一个文件 + COMMANDS 表加一行**——不碰 main.ts |
-| **186** | plugin/index.ts 是接线层：宿主声明在 host.ts、信封在 envelope.ts、三个工具各一个文件、会话在 sessionRecord.ts；apply 由命名步骤组合 | `plugin/` 的六个新文件、index.ts 的 re-export 兼容层与 `registerTool` 组合子、bundle.test.ts 的行数/结构守卫；**以后给插件加能力**：新工具开新文件（照 toolIssue.ts），新注册项进 apply 的一个命名步骤并过 `keep` |
-| **185** | store.ts 是装配点不是仓库：提交编排在 commit.ts、键分配在 counters.ts、store.ts 只剩配置/读模型/transact/创建 | `core/commit.ts`、`core/counters.ts`、`core/store.ts` 的 re-export 兼容层、`entity.ts` 的 `assertProjectKey`、store.test.ts 的「同一函数对象」守卫；**以后给 store 加职责时先问它属于哪个话题**——提交去 commit.ts、计数去 counters.ts，store.ts 只做装配 |
-| **184** | 人面文案单一出处：命令级中文消息在 `core/messages.ts`，两面只引用 | `core/messages.ts` 的 9 条消息、`cli/main.ts` 与 `plugin/command.ts` 的 13 处替换点、`messages.test.ts` 的零副本守卫；**以后给人看的命令级消息都进这张表**——字面量出现在 CLI/插件源码里守卫会红 |
-| **183** | 插件注册项无一漏网：会话状态进闭包（键含 root）、context 过 keep、injection 不 throw | `plugin/index.ts` 的 `createSessionRecorder`/`keep`/injection read 回调、`core/entity.ts` 的 `isProjectKey` 复用；**以后 apply 里出现的任何状态都必须属于某次 apply 的闭包**——模块级可变状态 = 热重载后的幽灵 |
-| **182** | 路径规则只有一个出处：实体相对路径在 `entity.ts`（posix），拼 root 只在 `io.ts` | `entity.ts` 的 `issueRelPath`/`commentRelPath`/`projectRelPath`、`io.ts` 的 `issuePath`/`commentsPath`/`projectPath`、`pathRules.test.ts` 的守卫；**以后任何"拼出账本里某个文件的路径"都先用这三条规则**——手拼在守卫测试下会红 |
-| **181** | 锁语义只有一个出处：`lockOwnerOf`/`lockOptionsOf`/`networkLockPath` 在 lock.ts；`host` = OS 主机名（三处入口都接线） | `core/lock.ts` 的三个原子、`core/system/env.ts` 的 `hostName`、store/kbstore/machines/project/rebase 的调用点、`cli/main.ts` 与 `plugin/command.ts` 的 createStore 传参；**以后任何"拿锁"的地方都用这两个原子**——owner 的 host 字段只剩一个来源，审计字段才可信 |
-| **180** | 副作用收敛是真的：文件 IO 只有 `io` 一个口（`exists`/`listDir`/`listDirEntries`/`mkdirp`/`readText`/`writeTextAtomic`） | `core/io.ts` 的四个新原子、13 个下沉文件（store/generateStore/injection/inspect/kbstore/machine/machines/perf/project/provision/scaffold/session/tagstore）、`hooks.ts` 的边界注释；**以后任何读目录/探存在/建目录的需求都先用 io 的原子**——没有就加，不许裸 `readdir`（裸写还会绕过 BOM/CR 校验） |
-| **179** | 引用必须能真的打开：`file:line` 数**文件绝对行**；评论没有 `comment/v1`；手工 push 只报警、不装钩子 | `core/frontmatter.ts` 的 `ParsedDocument.bodyLine`、`core/kb.ts` 的 `KnowledgeEntry.bodyLine`、`core/kbsearch.ts` 的 `hitFor`、`core/kbstore.ts` 的 create 往返、`core/doctor.ts` 的 stale 文案、`cli/main.ts` 的 doctor 提示；**以后任何"产出 file:line"的地方都数绝对行**，任何"派生文件会陈旧"的路径都要有一条人看得见的警告（装钩子这条路已被决策 15 关掉） |
-| **178** | 已落地行为必须有测试；临时目录用同一份 `removeTree`；"声称>实际"要改真 | `src/testing/removeTree.ts`（唯一实现）、`core/push.test.ts`/`core/doctor.test.ts`/`core/git.test.ts`/`core/render.test.ts` 的新用例、`plugin/index.test.ts` 的 blocked-last 与 `kbstore.test.ts` 的注释断言、`main.test.ts`/`skills.test.ts` 的措辞；**以后写测试**：先问"这段在测试里能不能失败"（变异验证），清理一律 `removeTree`，注释里不写没断言的事 |
-| **177** | 会话记录失败要重试（而不是标记成做过）；`/jira status` 的可写性由调用者提供 | `plugin/index.ts` 的 `recordSessionOnce`/`SESSION_RECORD_ATTEMPTS`/`sessionFailures`、`plugin/command.ts` 的 `CommandOptions.writable` 与 status 输出、工具超时的说明注释；**以后任何"只试一次就记成已完成"的簿记都要区分"试过"与"成了"** |
-| **176** | 分配号必须看盘上实际有什么（种子/手抄/重置的机器）；`git init` 在锁内 | `core/counters.ts` 的 `claimKey`（块内也取 `max(next, seed+1)`、顶出块时开新块）、`core/store.ts` 的 `commitStoreWrite`（`initializeRepository` 进锁）、`store-create.test.ts` 的种子用例；**以后任何"号/序号"分配都要以持久化状态为准，不能只信计数器** |
-| **175** | `.jira/` 下的运行时状态不许入库；`.gitignore` 需要迁移 | `core/git.ts` 的 `GITIGNORE`/`migrateGitignore`/`initializeRepository`、`core/store.ts` 的 `commitStoreWrite` 路径过滤、账本仓的 `.gitignore` 与一次 `git rm --cached`；**以后往仓库目录里放锁/缓存/临时状态前，先确认 ignore 模式已存在且旧账本能升级** |
-| **174** | 零碎 S3：一条规则一个定义、过期注释要改、二进制判定、兜底链与文件地图 | `core/entity.ts` 的 `projectOf`（`store.ts`/`io.ts` 只做别名）、`.github/workflows/ci.yml`、`scripts/check-text.mjs`、`src/cli/main.ts` 的 USAGE、`HANDOVER.md` 的文件地图；**以后"同一规则第二份实现"要当场并掉**，**"将来再做"的注释要么删要么变成一条 issue** |
-| **173** | 守卫质量：smoke 的"空串可绿"、陈旧 dist、CI 只查最后一个提交 | `scripts/smoke.mjs`（注入行断言、dist 新鲜度、board.html 外链）、账本仓 `.github/workflows/ledger.yml` 的 range 选择；**以后写"守卫"时的自检**：断言要能失败（空值/陈旧输入必须红），探测范围要覆盖全部输入而不是末一个 |
-| **172** | 文档纪律：i18n 重复键守卫、决策表严格升序、错引用、skill 与工具描述补齐 | `scripts/i18n-{tests,human}.mjs` 的重复键守卫与 `--selftest`、`package.json` 的 `check:text`、`DESIGN.md` 的决策 153/149/146/124 行、`skills/jira-work.md` 的 `jira_kb` 段、`plugin/index.ts` 的 `ISSUE_DESCRIPTION`；**以后往 i18n 表里加键**：重复键会在脚本运行时立刻报错，不再静默 |
-| **171** | 网络步骤（pull/push）与提交分开互斥；被拒可重试；落后要出声 | `core/store.ts` 的 `networkLockPath`、`core/rebase.ts` 的 `pullRebase`（锁 + 重试）、`cli/main.ts` 的 `sync` 漂移报告；**以后任何"会碰远端"的步骤都要走这把网络锁**，任何"看起来只是慢"的失败都要有可见出口 |
-| **170** | 测试面：inspect/validate 直接测试、恰等边界、写重试、临时目录清零 | 新增 `core/inspect.test.ts`/`core/validate.test.ts`/`core/inspect-paths.test.ts`、`core/io.test.ts`/`core/lock.test.ts`/`cli/main.test.ts`/`core/store.test.ts`/`plugin/index.test.ts` 的清理钩子；**以后写测试**：边界要测"恰好等于"、期望值从数据派生、临时资源登记后清理、`bothPlatforms` 用于任何平台相关的规则 |
-| **169** | io 的错误契约：喂哈希的树读不全就报错；args 的空值/重复/单横线/未闭合引号不再静默 | `core/io.ts` 的 `sourceTreeEntries`（`Result` + ENOENT 例外）、`core/generateStore.ts` 的 `currentSourceTree`/`planGenerated`、`core/inspect.ts` 的 `sourceTree` 条件填充、`core/args.ts` 的 `parseArgs`/`splitTokens`、`core/config.ts` 的 trim；**以后"喂哈希/喂判断的读操作"不许静默跳过**——跳过的部分正是判断会错的地方 |
-| **168** | `log.md` 的提交窗口只数带 key 的提交（无 key 提交不占位） | `core/generateStore.ts` 的 `readCommitRows`（`--grep` 先过滤再 `-n`）、`LOG_COMMIT_LIMIT`；**以后任何"取最近 N 条再过滤"的地方都要先过滤再取**，否则无 key 的提交会悄悄改变派生文件 |
-| **167** | System/CLI：环境变量大小写、长路径口径、文件名消毒（一个实现） | `core/system/git.ts` 的 `gitEnvFor`、`core/system/env.ts` 的 `homeDir`、`core/system/paths.ts` 的 `safeFileName`、`core/session.ts` 的 `sessionPath`、`core/io.ts` 的 240 常量、CLI 的长路径提示与 `claimNotice`；**以后任何"把 id 变成文件名"的地方都用 `safeFileName`**，任何"路径多长算太长"的判断都看 `system.facts` |
-| **166** | 插件生命周期：`apply` 的注册项全部可撤销、机器身份只有一个、`/jira sync` 走插件队列 | `plugin/index.ts` 的 `apply`/`keep`/dispose、`plugin/command.ts` 的 `registerCommand`/`CommandOptions.queue`/sync、`plugin/skills.ts` 的 `unregister`、`core/push.ts` 的 `dispose`；**以后在 `apply` 里注册任何东西都必须 `keep(...)`**，否则热重载会叠加 |
-| **165** | git 写路径：收编排除在途写入与临时文件、锁内校验 source_tree、push 有超时 | `core/git.ts` 的 `stageAllExceptAndCommit`/`GITIGNORE`/`push`/`runGit`、`core/store.ts` 的 `adoptHumanChanges`/`inFlightPaths`/`commitStoreWrite` 的 `beforeCommit`、`core/generateStore.ts` 的 `regenerateAndCommit`；**以后任何"扫全部未提交文件"的动作都要先排除在途写入与临时文件** |
-| **164** | 边界守卫按语句扫描 + 自带自检（多行/动态 import 都能抓） | `scripts/check-boundaries.mjs` 的分词器 / `specifiersIn` / `resolveShort` / `SELF_TEST`、`pnpm check`；**以后新增任何"源码扫描"类守卫都照这个模式**：按语句而不是按行，并带一张形状表每次一起跑 |
-| **163** | `COMMANDS` 命令表加载即自检（多一个键就炸） | `cli/main.ts` 的 `COMMANDS` 与它下面的自检循环、`parseArgs` 的两条入口（CLI 与 `/jira` 共用）、以及每一个 spec；**以后往命令表里加键之前先看这条**——只允许 `maxPositionals` 与 `flags`，任何"想加个新维度"的念头都要先改这个自检 |
-| **162** | 项目键是路径片段：先校验，再拼任何路径 | `core/entity` 的 `PROJECT_KEY_PATTERN`/`isProjectKey`、`core/store` 的 `createInStore`/`allocateKey`、CLI 与 `/jira` 的 `new`、`project.ts` 的派生（派生出来的键也必须过同一模式）；**以后任何"把用户输入当目录名"的地方都照这条办**（校验放在拼路径之前，且放在 core） |
-| **161** | 会话结束时"收尾扫描"必须和"重生成"用同一个写权限 | `plugin/index.ts` 的会话结束 effect（`mayWrite` 分支）、`core/session.ts` 的 `sessionScan`/watermark、`index.test.ts` 的成对用例与 `effectHost.deliver()`；**以后任何"会话结束时顺手做点什么"的副作用都要先问一句它写不写盘** |
-| **160** | 锁回收安全（标记 + 再比对）与心跳 | `core/lock.ts` 的 `reclaimLock`/`tryCreate`/`staleSince`/`withLock`；**以后任何"删别人的东西"的重放路径都要先拿标记再比对**，任何"可能超过 stale 窗口"的临界区都要心跳 |
-| **159** | 线上 JSON 一律 snake_case，转换只在边界（`toWire`） | `core/render.ts` 的 `toWire`/`renderIssueJson`、`plugin/index.ts` 的 `wire` 与三个 `execute` 出口、`cli/main.ts` 的 `say`、以及那两处"逐个键"的守卫；**以后新增实体字段或新工具时，不需要在 builder 里手动改名——但必须确认自己走的是边界转换**（漏了就有专门用例报错） |
-| **158** | 一个 project 的号到 9999 为止，超了 `KEY_EXHAUSTED` | `core/counters.ts` 的 `MAX_KEY_NUMBER`/`claimKey`、`core/errors.ts` 的 `keyExhausted`、`allocateKey` 的种子路径（`highestExistingKey`）、决策 52 的错误码分类表；**以后任何"发号"的地方都要记住空间是有限的** |
-| **157** | 凡引用宿主必须标版本（基线在 §2 开头） | `DESIGN.md` §2 的核对基线行、§8 里点名宿主的 7 条、决策 95 的修正记录；**以后任何对宿主的断言（API、行为、告警原文）都要就地标版本**，否则过一版无法判断还成不成立 |
-| **156** | 长路径：≥240 警告、≥平台上限拒绝，判据在 `core/config` 一处 | `core/config.ts` 的 `resolveStoreRoot`/`acceptRoot`、CLI 启动处的警告、`core/system/paths.ts` 的两个阈值、`config.test.ts`；**以后任何「路径太长会炸」的问题都先看这条**（根路径只是代理，真正受限的是它下面拼出来的文件） |
-| **155** | `/jira` 的只读子命令补 `show` / `tags lint`，且子命令可带一个位置参数 | `src/plugin/command.ts` 的 `USAGE` 与分发、`parseArgs` 的 `maxPositionals`（**以后新增带参数的子命令必须改这里**）、`command.test.ts` 的「读不写」断言（同时看 `git status` 与 `HEAD`）；`/jira` 与 CLI 的**只读集合**要对齐（决策 83） |
-| **154** | `merge=union` 只属于评论文件；`_merge/` 是人的约定而不是工具建的目录 | `core/git.ts` 的 `GITATTRIBUTES`、`git.test.ts` 的正反两向断言、`keyset` 的四类差异报告与它的三处断言、§11.5 的归并约定；**以后任何 `merge=union` 的扩张都要先问「两份改动被拼起来还可读吗」** |
-| **150** | 机器显示规则接线 + 一次性提示 | `core/machines.ts` 的 `renderMachines`/`machinesHint`/`machineDisplayName`、`core/machine.ts` 的 `machineStateDir`、CLI 的 `machines list`、插件里那份被删掉的私有 `stateDirOf`；**以后任何"给机器起名字/显示机器"的地方**都要走这条规则，任何"只提示一次"的提示都照这个标记模式 |
-| **149** | 结果信封统一：失败带 `me`、部分读取带 `message`、`rejected.file` 是真路径 | 三个 tool 的**所有**返回值构造点（`okValue` / `failure` / `jira_list` / `jira_kb` ×3）、三个输出 schema 的 `required`、`plugin/index.test.ts` 的信封用例、以及**以后任何新增 tool**：新工具必须走同一套信封（失败也要 `me`，跳过文件也要 `message`） |
-| **147** | 收编人的未提交改动（§4.13 规则 1 的落地） | 所有写路径（`transact`、`regenerateAndCommit`）、`core/git.ts` 的 `stageAllAndCommit`/`humanAuthorOf`、决策 79/39 的新鲜度断言、决策 15/34 的会话结束重生成、决策 146（作者回退）、`git-dirty` 警告与 `sync` 的 dirty 报告；**以后任何"先写文件再提交"的路径**都要先问一句"工作区干净吗" |
-| **146** | store 的提交身份在缺失时按次注入，不进仓库配置 | 所有写路径（`core/git.ts` 的 `stageAndCommit`）、决策 81 的"只补缺失键"、§4.9 的 `human:<name>`（因此**不能**写进仓库配置）、决策 115④ 的"提交失败必须响"、决策 79/87 的 `log.md`（它靠提交列表）、以及 CI 的四个测试 job |
-| **15** | 生成权必须在 **DSH 进程内**（2026-10-17 用户裁定：脱离 DSH 的定时生成 = 失败改动）；时机 = **会话结束时、flush 之前** | `ledger.yml` 只检查不生成、决策 15/34、§7.3 的两条修正记录、§4.4 的树注释与 §7.3 P0 表（"Action 在 push 时生成"这两处**尚未实现**）、`src/plugin/index.ts` 的 `pushFlush` effect + `core/generateStore.regenerateAndCommit`、决策 89/93 的只读跳过；以及以后**任何想做自动生成**的人——先确认它在 DSH 进程内、且**在 flush 之前**，否则就是失败改动 |
-> 各种阈值常量）——改它们只需确认对应章节自己的表述。
+> **不在索引里的决策**：影响面就是它自己那一节（例如 §4.9 归档推迟、§4.14 tag 相似度算法、 | **93** | 只读会话拒绝写（无降级路径） | 决策 52 的 `READ_ONLY_SESSION`、决策 56 的 `writable/reason`、决策 89（子代理只读——**同一错误码、不同 reason**）、§9 风险 5、skill 正文（要告诉 agent"读到只读就别试写"） | | **94** | 归并：不做工具 + 5 点定清 | §11.5 的 5 个未决点、§4.4 目录树（新增 `_merge/`）、决策 83 的 CLI（`lint` 要含悬空引用检查）、决策 36（复写 vs 归并）、决策 39（`_merge/` 里的映射表是**人写**的，不是生成物，不受新鲜度断言约束） | | **95** | peer 版本 range（两个宿主） | 决策 63（原"钉精确版本"）、§2.2 的 peer 说明、CI 矩阵（两个宿主版本都要跑）、`dsh plugin allow-version` 豁免机制、HANDOVER §5 的环境事实 | | **96** | subagent 只读的判据（`exec.agent.session.header`） | 决策 89（它才让这条落地）、决策 5/9 的作用域限定、决策 52 的 `READ_ONLY_SESSION`、决策 56 的 `writable/reason`、§2.2 的 peer/dev 依赖清单（新增两个宿主包）、tool 层 guard 与 `restrict` 的相互作用 | | **97** | 转内置插件的回退 | §2.7（① 的结论）、**决策 18/63/64/65/95**（peer 与分发在内置路径下消失或变形）、§7.1/§7.2（安装方式）、§3（分层：`core` 必须保持零 DSH 依赖，否则回退就要重写）、HANDOVER §5（多一个代码落点：fork 仓）、CI（内置则跟 fork 的 CI 一起跑） | | **98** | 引用 DSH 源码必须标版本 | 全文所有 DSH `file:line` 引用、§11.2 的差异表、§2.7 的 patch 引述、未来的所有证据链（**不标版本 = 宿主一同步就可能变成假证据**） | | **99** | 安装单元 = bundle 包 | §7.1/§7.2（安装方式）、决策 65（离线安装）、决策 97（内置回退时这条作废）、§2.7（patch 可见性）、包的 `exports`/`files` 字段（要带 `cordis.patch.yml`）、CI（bundle 结构校验） | | **100** | 会话收尾 seam（`agent.ctx.effect`） | 决策 31（会话结束扫 `git log`）、§6.5 的 P1 行、决策 73（水位线放 `$DSH_HOME/dsh-jira/`）、决策 38（读不写——收尾是写事务，不冲突）、决策 52 的错误码（收尾失败要有码）、幂等设计（重复评论的判据） | | **101** | spike ① 结论：宿主平面 insert / bundle 包 / 不走 preset | **§2.7（风险已消）**、决策 99（bundle 形态与安装器）、决策 97（内置回退的触发条件不再成立，但保留）、决策 95（两个 checkout 与 peer range）、§7.1/§7.2（安装与离线）、**仓库 CI 的"一个 row 只属于一个平面"不变量**（走内置路径时才受约束） | | **102** | 编码原则（原子化 / 组合 / data class） | **§3 的全部实现**、决策 64（分层 + AST 边界检查）、决策 65（零运行时依赖）、决策 66（`node:test` 只测纯函数）、**决策 97（转内置之所以便宜，正因为 `core` 是原子化纯逻辑）**、以及以后每一次 code review 的口径 | | **103/104** | 第一刀竖切 + 自写最小 Result | §3.1 的实现顺序、§7.1/§7.2（bundle 包与安装）、决策 101（可见性实测）、决策 52（错误码形状）、决策 65（离线安装与依赖取舍 → C1） | | **105** | frontmatter 自写受限解析器 | §4.1 的 frontmatter 形态、`config.md` 的读取、决策 65（离线安装不受影响）、决策 49/80（写入严格 / 读取宽容）、CI 的"全库在子集内"断言、以及**将来换成成熟解析器的成本 = 一个函数** | | **106/107** | 子集加一层 flow map；`key` 不落盘 | §4.1 与 §4.13 的实体写法、决策 70（links 形状）、决策 75（KB 示例）、决策 77（同一套"不存重复身份"的理由）、决策 105（子集边界）、`codec.ts`/`frontmatter.ts` 的实现与测试 | | **108** | 适配层零 host 依赖 | §3 的分层、决策 64（AST 边界检查要放行 plugin 的"零宿主 import"）、决策 65（离线安装与 devDeps）、决策 96（谱系 seam 用 duck-typing）、决策 97（内置路径下本条作废）、**集成测试是唯一守卫** | | **109/110** | 不声明 peer；工具 schema 用标准方言 | 决策 95（peer 写法收窄）、决策 99（bundle 安装）、决策 108（自建 schema 的代价）、§2.7 的实测记录、`core/schema.ts` 与 `plugin/index.ts` 的输出形态、打包测试（不得出现 peerDependencies） | | **111** | `WRITE_FAILED` = IO 失败 | 决策 52 的码清单与"文档==代码"测试（不变）、§6.2 的码清单说明、`core/errors.ts` 的 `ioFailed`、`core/io.ts` 的两处调用、新加的 C4 断言 | | **112** | 子集加一层嵌套（因为 config.md 读不出来） | 决策 105/106 的子集边界、`fixtures/config.md`（真实词表的夹具，store 仍是真相源）、`core/frontmatter.ts` 的 parse/render 对称性、未来任何手写文件的形状 | | **113** | 评论锚 author 含 `|` 要加引号 | 决策 48（身份串分隔符）与 68（锚字段分隔符）的交叉、`core/comments.ts` 的渲染与解析、以及所有"两个冻结格式互相嵌套"的地方（以后遇到先想分隔符） | | **114/115** | counters 按 project 分桶；git 层（自动 init + 提交在 store 锁里 + 失败要响 + 防抖推送队列） | 决策 74/58/60/81 的落地、`core/counters.ts`/`core/git.ts`/`core/push.ts`、`core/store.ts` 的事务尾部、§5 的常量说明、以及"以后要碰"git" 或"计号"时先看这两条" | | **116** | 首次领号的种子取自磁盘；提交按 git 的清单；store 级数据进版本；提交失败要响 | `core/store.ts`（`highestExistingKey`/`commitWrite`）、`core/git.ts`（`stageAndCommit`）、`core/counters.ts`（`seed`）、插件把 `commitError` 映射成 `rejected`；以后任何"我们要提交什么"的改动都先看这条 | | **117/118** | 锁按 mtime 判废；/jira 命令 + 三技能 + CLI 十命令 + 会话结束有界冲刷 + ack 顺序 + doctor 评论 id 作用域 | `core/lock.ts`（`staleSince`）、`src/cli/*`、`src/plugin/command.ts`/`skills.ts`、`skills/*.md`、`core/doctor.ts`、`core/store.ts` 的提交清单；以后改"人看到的界面"或"锁的判定"都先看这两条 | | **119** | store 是云端仓的克隆；机器身份在 store 之外；插件只指远端 | `core/machine.ts`、`core/provision.ts`、`cli/main.ts` 的 `init --remote`、插件 `config.remote`、profile 的 `cordis.patch.yml`；以后任何"新机器怎么加入"、"身份放哪"、"要不要联网"的问题都先看这条 | | **120** | 第 11 个 CLI 子命令 `generate`（幂等 + `--check` + doctor 新鲜度）；生成物必须被两处排除；**知识域计数必须从 `listKnowledge` 的同一份 listing 派生**（第三处排除，2026-10-16） | `core/generateStore.ts`、`cli/main.ts`、`core/doctor.ts`/`inspect.ts`、`core/store.ts` 的 `loadTags`、`core/io.ts` 的 `isGeneratedInput`、`core/kbstore.ts` 的 `KnowledgeListing.domains`；以后**任何枚举 store 文件的代码**（读注册表、算哈希、做统计）都要先问一句「生成物排除干净了吗」——**这条预测在 2026-10-16 兑现了**：`domainRows` 自己扫 `knowledge/<域>/` 递归数 `.md`，把生成的 `index.md`/`log.md` 数成知识条目 → 根索引对只有 1 条条目的域报 **3 条**，且那个数字只在第一次生成**之后**才出现，于是**单次 `generate` 不是不动点**（CI 的"重跑后 diff 为空"会挂）。教训：坑不在排除本身，而在**同一件事的第二份实现**——让计数跟着已经排除干净的那份数据走 | | **121** | `jira_list` 的实现契约（排序全序 / 阻塞复用 / counts 描述全集 / tags 收窄 / 只读） | `core/list.ts`、`plugin/index.ts` 的第二个注册、`cli/main.ts` 的 `list`、`core/inspect.ts` 的 `IssueQuery` 扩展；以后加过滤条件时先想"它属于收窄还是放宽" | | **124** | `jira_kb` 落地（key/域独立、来源由 store 记录、读宽容写严格、counts 对齐、生成物不当条目） | `core/kb.ts`/`kbsearch.ts`/`kbstore.ts`、`plugin/index.ts` 的第三个注册、`core/errors.ts` 的 `notFound`、`core/store.ts` 泛化出的 `commitStoreWrite`；以后加实体时先想"key 与目录是否一一对应"、"哪些字段该由 store 记录而不是让模型填" | | **123** | 宿主不导出 DSH_HOME；link 进来的包缓存在进程里（配置热、代码要换进程） | 决策 57 的 `root` 解析、决策 119 的 `init --remote`、决策 101/110 的"静默不激活"排查、HANDOVER §5/§6、以及以后所有"为什么 GUI 里没生效"的问题 | | **125** | CLI 的 `update`/`kb`；知识 key 按号段判；`/jira` 保留写命令 | 决策 83 的命令集合与"只读"表述、决策 82 的 tool 参数（两处要一致）、决策 75 的双向引用、决策 94 的悬空引用检查（C8）、决策 124 的 `asKnowledgeKey` 语义 | | **126** | lint 只管结构 / machines 注册表与显示规则 / doctor 报出索引触发条件 | 决策 94 的"CI 只管结构"、决策 86 的 `tags lint`（未做）、决策 85 的两个阈值、决策 91 的 label 与短 id 显示、决策 73 的 `machines/` 落点、以及所有"人看到的机器名"与"CI 该不该红"的地方 | | **127** | 提交绑定（hook 薄壳 + shebang/嵌入 shell）、tags lint、project、doctor 的一致性检查 | 决策 67 的 §6.7、决策 86 的 tag 治理、决策 77/92 的 `project.md`、决策 75 的双向引用、决策 91 的机器登记；**以后任何"改提交消息格式"或"加 hook"的改动**都要同时看 `core/commitmsg.ts`、`core/hooks.ts` 与 store 仓库里已装的那份 shim（重装一次即更新） | | **128** | CLI 的混合式命令形状、tool↔CLI 的命名映射、缺的两个动词已补 | 决策 83 的"超集"表述、§6.1 的命令清单、决策 50/82 的 tool schema（两边要能一一对上）、`src/surfaces.test.ts` 的漂移防护；**以后加/改命令**先跑一次那个测试 | | **129** | `lint --keys` 的 key 清单与冲突分类、`board --html` 的自包含与转义、`pnpm smoke` 这条可重复的端到端检查 | 决策 94 的归并支撑、决策 87 的生成物版式（HTML 刻意不在"四份生成物"里）、决策 38 的"读不写"（烟测第一段只读 ✓）、决策 67 的提交绑定（第三段 ✓）；**以后任何改动**都可以先跑 `pnpm smoke` 再谈别的 | | **130** | 注入行的实现与计数口径修正；`jira:store` 的注册与 5 s 缓存 | §6.4 的原文（口径已按本条修正）、决策 78、决策 55（英文固定格式）、决策 38（注入只读）、以及**任何改计数口径或改注册名**的改动 | | **131** | 注入行含"账本名 + 工作区→项目"；§4.10 的只读解析与 key 派生 | `core/workspace.ts`、`core/injection.ts` 的格式与按 cwd 缓存、`plugin/caller.ts` 的 `callerCwd`、`scripts/smoke.mjs` 的工作区步骤；**以后任何改注入行格式、改 key 派生、或让工作区自动登记项目**的改动都要同时看这三处（以及 C11） | | **148** | 重生成的时机 = **每次推送之前**（pull → 重生成+提交 → push） | `core/push.ts` 的推送队列（`settle` 钩子与它前面的 `pull`）、插件 `index.ts` 的队列接线与会话结束 flush、CLI 的 `sync`、`core/generateStore.ts` 的 `regenerateAndCommit`、决策 15/34/39/60/66/79/119/134/147，以及**以后任何"什么时候生成"的问题**；**它同时是一条红线**：门禁必红的提交宁可**不推**（settle 失败即拦）。**又因为它把 pull 变成每次写入的必经之路**，决策 146 的身份回退也必须覆盖 `git pull --rebase`（`core/rebase.ts`）——否则身份缺失的机器上整条链静默停住 | | **199** | 不变量要进守卫：`core/` 的 fs/子进程只有 io/git/lock/hooks 的 IO 白名单，`check-boundaries` 每次 check 都查 | `scripts/check-boundaries.mjs` 的 `IO_ALLOWED` 与 20 条自检、`core/project.ts` 的 `io.exists`；**以后定任何"只写在文档里"的边界**：当天就把它写进守卫脚本，否则它只是愿望 | | **198** | 引用必须成对：知识条目引用 issue → 自动回填该 issue 的 `kb_refs`（幂等，部分失败显式上报） | `core/kbstore.ts` 的 `mirrorKnowledgeRefs` 与 create/update 的接线、`plugin/toolKb.ts` 的 `mirror` 字段、`cli/commands/kb.ts` 的回填提示；**以后任何"双向引用"的字段**：写入侧自动补另一面，补不了就说出来（doctor 的 one-sided 检查是兜底，不是设计） | | **197** | doctor 只说事实：关闭态的历史租约不算"可认领"，summary 的计数来自磁盘而不是常量 | `core/doctor.ts` 的租约过滤与 `summary.tags`、`core/inspect.ts` 的 tags 计数、人面摘要行模板；**以后往 doctor 里加检查**：先问"这条对什么状态才成立"，并按快照里真实有的数据计数（不许写死） | | **196** | `batch_close`：多键关闭，全成或全不成；预验复用写入规则；部分结果显式上报 | `core/batch.ts` 的 `closeMany`/`refusalFor`、`plugin/toolIssue.ts` 的 `batch_close` 与 `keys` 参数、`cli/commands/batch.ts` 与命令表/USAGE、`surfaces.test.ts`/`index.test.ts` 的清单、`core/batch.test.ts`；**以后做"批量"**：预验先行、规则不复述、部分结果必须显式上报 | | **195** | 体验批：本地时间、`project_created`、短身份、空结果计数、kb 回执路径、何时 sync | `core/render.ts` 的 `withLocalTime`/空列表、`core/list.ts` 的 `shortIdentity`/空结果、`plugin/toolIssue.ts` 的 `project_created`、`plugin/toolKb.ts` 的 `file`、`skills/jira-work.md`；**以后人面输出与机器面输出的分界**：人面可以本地化/缩短，机器面（JSON、`get`）保持全量与 UTC | | **194** | 知识键空间 `KB-` 与项目键空间不许撞车；悬空引用提前到写入时 | `core/project.ts` 的 `RESERVED_PROJECT_KEYS`/`assertProjectNameFree`、`core/store.ts` 的 `createInStore` 前置校验、`core/kbstore.ts` 的 `assertIssueReferences`（只拒"引用知识条目"）、`project.test.ts`/`kbstore.test.ts`；**以后新增一套 key 空间先问"会不会和项目键同形"** | | **193** | 复合动作 `close`：迁移 + 评论一次事务，状态机与 resolution 规则照跑 | `core/mutate.ts` 的 `applyClose`、`plugin/toolIssue.ts` 的 `close` 动词、`cli/commands/close.ts` 与 `cli/main.ts` 的命令表/USAGE、`core/messages.ts` 的 `CLOSE_NEEDS_RESOLUTION`、`surfaces.test.ts` 的两张清单；**以后做复合动作**：组合已有原子操作、不绕过它们，且测试要断言"只多一个提交" | | **192** | 工具面必须能创建标签；`UNKNOWN_TAG` 要带全量注册表与创建途径 | `plugin/toolIssue.ts` 的 `tag_create`/`TAG_CREATE_FIELDS`/描述、`core/errors.ts` 的 `unknownTag`（`registered`+`hint`）、`core/validate.ts` 的传参、`surfaces.test.ts` 的映射表、`skills/jira-{work,triage}.md`；**以后工具面新增动词：先问"CLI 有没有对应命令"（surfaces 会替你问），并检查错误消息是否给出了下一步** | | **191** | 失败的 flush 必须重试（有上限）且必须留痕 | `core/push.ts` 的 `scheduleRetry`/`MAX_PUSH_RETRIES`/`retryDelayMs`、`plugin/sessionRecord.ts` 的 `recordPushOutcome`/`readPushFailure`/`pushFailurePath`、`plugin/index.ts` 的 `onOutcome`/`pushStatus`、`plugin/command.ts` 的 status 输出；**以后凡是"发出去之后没人看返回值"的异步步骤，要么重试到成功，要么把结果写到人能看到的地方** | | **190** | 先校验、后分配：被拒的 create 不烧号，回执带 `keyAllocated: false` | `core/mutate.ts` 的 `validateNewIssue`、`core/kb.ts` 的 `validateKnowledgeDraft`、`store.ts` 的 `createInStore` 与 `kbstore.ts` 的 `createKnowledge` 的顺序、`core/errors.ts` 的 `withContext`；**以后任何"发号"的地方**：校验永远排在分配前面（决策 158 的空间有限 + 这条的断号审计） | | **189** | 关闭必须经过 in_progress（todo→closed 边不存在）；词表只增不删的 TODO 裁定；知识与 issue 是两个键空间 | 账本仓 `config.md` 的 transitions/状态机表/TODO、`fixtures/config.md`（必须与账本逐字一致——它是测试里的词表）、DPMJ-214 的复合 close（内部要完成 claim+in_progress+closed）；**以后改词表两件事一起改**：账本 config.md + 插件仓 fixture | | **188** | 审查发现要分类：该修的修（broken 结构化、renderKbEntry、import 风格），核实后不修的写明理由（emitWarning、pid、checkStore、字段装配） | `core/inspect.ts` 的 `BrokenFile`、`core/kbsearch.ts` 的 `renderKbEntry`、`core/args.ts` 的 `./` import、`plugin/toolList.ts` 删掉考古；**以后审查清单的每一项只有两种结局：修，或写下不修的理由**——不许挂着 | | **187** | CLI 是状态机表不是 switch：每命令一个 handler 文件，写命令走 writeCommand、可选旗走 optFlags | `cli/runtime.ts`、`cli/commands/`（21 个文件 + 注册表）、`core/args.ts` 的 `optFlags`、`commands.test.ts` 的表↔文件一致性守卫；**以后加 CLI 命令 = commands/ 加一个文件 + COMMANDS 表加一行**——不碰 main.ts | | **186** | plugin/index.ts 是接线层：宿主声明在 host.ts、信封在 envelope.ts、三个工具各一个文件、会话在 sessionRecord.ts；apply 由命名步骤组合 | `plugin/` 的六个新文件、index.ts 的 re-export 兼容层与 `registerTool` 组合子、bundle.test.ts 的行数/结构守卫；**以后给插件加能力**：新工具开新文件（照 toolIssue.ts），新注册项进 apply 的一个命名步骤并过 `keep` | | **185** | store.ts 是装配点不是仓库：提交编排在 commit.ts、键分配在 counters.ts、store.ts 只剩配置/读模型/transact/创建 | `core/commit.ts`、`core/counters.ts`、`core/store.ts` 的 re-export 兼容层、`entity.ts` 的 `assertProjectKey`、store.test.ts 的「同一函数对象」守卫；**以后给 store 加职责时先问它属于哪个话题**——提交去 commit.ts、计数去 counters.ts，store.ts 只做装配 | | **184** | 人面文案单一出处：命令级中文消息在 `core/messages.ts`，两面只引用 | `core/messages.ts` 的 9 条消息、`cli/main.ts` 与 `plugin/command.ts` 的 13 处替换点、`messages.test.ts` 的零副本守卫；**以后给人看的命令级消息都进这张表**——字面量出现在 CLI/插件源码里守卫会红 | | **183** | 插件注册项无一漏网：会话状态进闭包（键含 root）、context 过 keep、injection 不 throw | `plugin/index.ts` 的 `createSessionRecorder`/`keep`/injection read 回调、`core/entity.ts` 的 `isProjectKey` 复用；**以后 apply 里出现的任何状态都必须属于某次 apply 的闭包**——模块级可变状态 = 热重载后的幽灵 | | **182** | 路径规则只有一个出处：实体相对路径在 `entity.ts`（posix），拼 root 只在 `io.ts` | `entity.ts` 的 `issueRelPath`/`commentRelPath`/`projectRelPath`、`io.ts` 的 `issuePath`/`commentsPath`/`projectPath`、`pathRules.test.ts` 的守卫；**以后任何"拼出账本里某个文件的路径"都先用这三条规则**——手拼在守卫测试下会红 | | **181** | 锁语义只有一个出处：`lockOwnerOf`/`lockOptionsOf`/`networkLockPath` 在 lock.ts；`host` = OS 主机名（三处入口都接线） | `core/lock.ts` 的三个原子、`core/system/env.ts` 的 `hostName`、store/kbstore/machines/project/rebase 的调用点、`cli/main.ts` 与 `plugin/command.ts` 的 createStore 传参；**以后任何"拿锁"的地方都用这两个原子**——owner 的 host 字段只剩一个来源，审计字段才可信 | | **180** | 副作用收敛是真的：文件 IO 只有 `io` 一个口（`exists`/`listDir`/`listDirEntries`/`mkdirp`/`readText`/`writeTextAtomic`） | `core/io.ts` 的四个新原子、13 个下沉文件（store/generateStore/injection/inspect/kbstore/machine/machines/perf/project/provision/scaffold/session/tagstore）、`hooks.ts` 的边界注释；**以后任何读目录/探存在/建目录的需求都先用 io 的原子**——没有就加，不许裸 `readdir`（裸写还会绕过 BOM/CR 校验） | | **179** | 引用必须能真的打开：`file:line` 数**文件绝对行**；评论没有 `comment/v1`；手工 push 只报警、不装钩子 | `core/frontmatter.ts` 的 `ParsedDocument.bodyLine`、`core/kb.ts` 的 `KnowledgeEntry.bodyLine`、`core/kbsearch.ts` 的 `hitFor`、`core/kbstore.ts` 的 create 往返、`core/doctor.ts` 的 stale 文案、`cli/main.ts` 的 doctor 提示；**以后任何"产出 file:line"的地方都数绝对行**，任何"派生文件会陈旧"的路径都要有一条人看得见的警告（装钩子这条路已被决策 15 关掉） | | **178** | 已落地行为必须有测试；临时目录用同一份 `removeTree`；"声称>实际"要改真 | `src/testing/removeTree.ts`（唯一实现）、`core/push.test.ts`/`core/doctor.test.ts`/`core/git.test.ts`/`core/render.test.ts` 的新用例、`plugin/index.test.ts` 的 blocked-last 与 `kbstore.test.ts` 的注释断言、`main.test.ts`/`skills.test.ts` 的措辞；**以后写测试**：先问"这段在测试里能不能失败"（变异验证），清理一律 `removeTree`，注释里不写没断言的事 | | **177** | 会话记录失败要重试（而不是标记成做过）；`/jira status` 的可写性由调用者提供 | `plugin/index.ts` 的 `recordSessionOnce`/`SESSION_RECORD_ATTEMPTS`/`sessionFailures`、`plugin/command.ts` 的 `CommandOptions.writable` 与 status 输出、工具超时的说明注释；**以后任何"只试一次就记成已完成"的簿记都要区分"试过"与"成了"** | | **176** | 分配号必须看盘上实际有什么（种子/手抄/重置的机器）；`git init` 在锁内 | `core/counters.ts` 的 `claimKey`（块内也取 `max(next, seed+1)`、顶出块时开新块）、`core/store.ts` 的 `commitStoreWrite`（`initializeRepository` 进锁）、`store-create.test.ts` 的种子用例；**以后任何"号/序号"分配都要以持久化状态为准，不能只信计数器** | | **175** | `.jira/` 下的运行时状态不许入库；`.gitignore` 需要迁移 | `core/git.ts` 的 `GITIGNORE`/`migrateGitignore`/`initializeRepository`、`core/store.ts` 的 `commitStoreWrite` 路径过滤、账本仓的 `.gitignore` 与一次 `git rm --cached`；**以后往仓库目录里放锁/缓存/临时状态前，先确认 ignore 模式已存在且旧账本能升级** | | **174** | 零碎 S3：一条规则一个定义、过期注释要改、二进制判定、兜底链与文件地图 | `core/entity.ts` 的 `projectOf`（`store.ts`/`io.ts` 只做别名）、`.github/workflows/ci.yml`、`scripts/check-text.mjs`、`src/cli/main.ts` 的 USAGE、`HANDOVER.md` 的文件地图；**以后"同一规则第二份实现"要当场并掉**，**"将来再做"的注释要么删要么变成一条 issue** | | **173** | 守卫质量：smoke 的"空串可绿"、陈旧 dist、CI 只查最后一个提交 | `scripts/smoke.mjs`（注入行断言、dist 新鲜度、board.html 外链）、账本仓 `.github/workflows/ledger.yml` 的 range 选择；**以后写"守卫"时的自检**：断言要能失败（空值/陈旧输入必须红），探测范围要覆盖全部输入而不是末一个 | | **172** | 文档纪律：i18n 重复键守卫、决策表严格升序、错引用、skill 与工具描述补齐 | `scripts/i18n-{tests,human}.mjs` 的重复键守卫与 `--selftest`、`package.json` 的 `check:text`、`DESIGN.md` 的决策 153/149/146/124 行、`skills/jira-work.md` 的 `jira_kb` 段、`plugin/index.ts` 的 `ISSUE_DESCRIPTION`；**以后往 i18n 表里加键**：重复键会在脚本运行时立刻报错，不再静默 | | **171** | 网络步骤（pull/push）与提交分开互斥；被拒可重试；落后要出声 | `core/store.ts` 的 `networkLockPath`、`core/rebase.ts` 的 `pullRebase`（锁 + 重试）、`cli/main.ts` 的 `sync` 漂移报告；**以后任何"会碰远端"的步骤都要走这把网络锁**，任何"看起来只是慢"的失败都要有可见出口 | | **170** | 测试面：inspect/validate 直接测试、恰等边界、写重试、临时目录清零 | 新增 `core/inspect.test.ts`/`core/validate.test.ts`/`core/inspect-paths.test.ts`、`core/io.test.ts`/`core/lock.test.ts`/`cli/main.test.ts`/`core/store.test.ts`/`plugin/index.test.ts` 的清理钩子；**以后写测试**：边界要测"恰好等于"、期望值从数据派生、临时资源登记后清理、`bothPlatforms` 用于任何平台相关的规则 | | **169** | io 的错误契约：喂哈希的树读不全就报错；args 的空值/重复/单横线/未闭合引号不再静默 | `core/io.ts` 的 `sourceTreeEntries`（`Result` + ENOENT 例外）、`core/generateStore.ts` 的 `currentSourceTree`/`planGenerated`、`core/inspect.ts` 的 `sourceTree` 条件填充、`core/args.ts` 的 `parseArgs`/`splitTokens`、`core/config.ts` 的 trim；**以后"喂哈希/喂判断的读操作"不许静默跳过**——跳过的部分正是判断会错的地方 | | **168** | `log.md` 的提交窗口只数带 key 的提交（无 key 提交不占位） | `core/generateStore.ts` 的 `readCommitRows`（`--grep` 先过滤再 `-n`）、`LOG_COMMIT_LIMIT`；**以后任何"取最近 N 条再过滤"的地方都要先过滤再取**，否则无 key 的提交会悄悄改变派生文件 | | **167** | System/CLI：环境变量大小写、长路径口径、文件名消毒（一个实现） | `core/system/git.ts` 的 `gitEnvFor`、`core/system/env.ts` 的 `homeDir`、`core/system/paths.ts` 的 `safeFileName`、`core/session.ts` 的 `sessionPath`、`core/io.ts` 的 240 常量、CLI 的长路径提示与 `claimNotice`；**以后任何"把 id 变成文件名"的地方都用 `safeFileName`**，任何"路径多长算太长"的判断都看 `system.facts` | | **166** | 插件生命周期：`apply` 的注册项全部可撤销、机器身份只有一个、`/jira sync` 走插件队列 | `plugin/index.ts` 的 `apply`/`keep`/dispose、`plugin/command.ts` 的 `registerCommand`/`CommandOptions.queue`/sync、`plugin/skills.ts` 的 `unregister`、`core/push.ts` 的 `dispose`；**以后在 `apply` 里注册任何东西都必须 `keep(...)`**，否则热重载会叠加 | | **165** | git 写路径：收编排除在途写入与临时文件、锁内校验 source_tree、push 有超时 | `core/git.ts` 的 `stageAllExceptAndCommit`/`GITIGNORE`/`push`/`runGit`、`core/store.ts` 的 `adoptHumanChanges`/`inFlightPaths`/`commitStoreWrite` 的 `beforeCommit`、`core/generateStore.ts` 的 `regenerateAndCommit`；**以后任何"扫全部未提交文件"的动作都要先排除在途写入与临时文件** | | **164** | 边界守卫按语句扫描 + 自带自检（多行/动态 import 都能抓） | `scripts/check-boundaries.mjs` 的分词器 / `specifiersIn` / `resolveShort` / `SELF_TEST`、`pnpm check`；**以后新增任何"源码扫描"类守卫都照这个模式**：按语句而不是按行，并带一张形状表每次一起跑 | | **163** | `COMMANDS` 命令表加载即自检（多一个键就炸） | `cli/main.ts` 的 `COMMANDS` 与它下面的自检循环、`parseArgs` 的两条入口（CLI 与 `/jira` 共用）、以及每一个 spec；**以后往命令表里加键之前先看这条**——只允许 `maxPositionals` 与 `flags`，任何"想加个新维度"的念头都要先改这个自检 | | **162** | 项目键是路径片段：先校验，再拼任何路径 | `core/entity` 的 `PROJECT_KEY_PATTERN`/`isProjectKey`、`core/store` 的 `createInStore`/`allocateKey`、CLI 与 `/jira` 的 `new`、`project.ts` 的派生（派生出来的键也必须过同一模式）；**以后任何"把用户输入当目录名"的地方都照这条办**（校验放在拼路径之前，且放在 core） | | **161** | 会话结束时"收尾扫描"必须和"重生成"用同一个写权限 | `plugin/index.ts` 的会话结束 effect（`mayWrite` 分支）、`core/session.ts` 的 `sessionScan`/watermark、`index.test.ts` 的成对用例与 `effectHost.deliver()`；**以后任何"会话结束时顺手做点什么"的副作用都要先问一句它写不写盘** | | **160** | 锁回收安全（标记 + 再比对）与心跳 | `core/lock.ts` 的 `reclaimLock`/`tryCreate`/`staleSince`/`withLock`；**以后任何"删别人的东西"的重放路径都要先拿标记再比对**，任何"可能超过 stale 窗口"的临界区都要心跳 | | **159** | 线上 JSON 一律 snake_case，转换只在边界（`toWire`） | `core/render.ts` 的 `toWire`/`renderIssueJson`、`plugin/index.ts` 的 `wire` 与三个 `execute` 出口、`cli/main.ts` 的 `say`、以及那两处"逐个键"的守卫；**以后新增实体字段或新工具时，不需要在 builder 里手动改名——但必须确认自己走的是边界转换**（漏了就有专门用例报错） | | **158** | 一个 project 的号到 9999 为止，超了 `KEY_EXHAUSTED` | `core/counters.ts` 的 `MAX_KEY_NUMBER`/`claimKey`、`core/errors.ts` 的 `keyExhausted`、`allocateKey` 的种子路径（`highestExistingKey`）、决策 52 的错误码分类表；**以后任何"发号"的地方都要记住空间是有限的** | | **157** | 凡引用宿主必须标版本（基线在 §2 开头） | `DESIGN.md` §2 的核对基线行、§8 里点名宿主的 7 条、决策 95 的修正记录；**以后任何对宿主的断言（API、行为、告警原文）都要就地标版本**，否则过一版无法判断还成不成立 | | **156** | 长路径：≥240 警告、≥平台上限拒绝，判据在 `core/config` 一处 | `core/config.ts` 的 `resolveStoreRoot`/`acceptRoot`、CLI 启动处的警告、`core/system/paths.ts` 的两个阈值、`config.test.ts`；**以后任何「路径太长会炸」的问题都先看这条**（根路径只是代理，真正受限的是它下面拼出来的文件） | | **155** | `/jira` 的只读子命令补 `show` / `tags lint`，且子命令可带一个位置参数 | `src/plugin/command.ts` 的 `USAGE` 与分发、`parseArgs` 的 `maxPositionals`（**以后新增带参数的子命令必须改这里**）、`command.test.ts` 的「读不写」断言（同时看 `git status` 与 `HEAD`）；`/jira` 与 CLI 的**只读集合**要对齐（决策 83） | | **154** | `merge=union` 只属于评论文件；`_merge/` 是人的约定而不是工具建的目录 | `core/git.ts` 的 `GITATTRIBUTES`、`git.test.ts` 的正反两向断言、`keyset` 的四类差异报告与它的三处断言、§11.5 的归并约定；**以后任何 `merge=union` 的扩张都要先问「两份改动被拼起来还可读吗」** | | **150** | 机器显示规则接线 + 一次性提示 | `core/machines.ts` 的 `renderMachines`/`machinesHint`/`machineDisplayName`、`core/machine.ts` 的 `machineStateDir`、CLI 的 `machines list`、插件里那份被删掉的私有 `stateDirOf`；**以后任何"给机器起名字/显示机器"的地方**都要走这条规则，任何"只提示一次"的提示都照这个标记模式 | | **149** | 结果信封统一：失败带 `me`、部分读取带 `message`、`rejected.file` 是真路径 | 三个 tool 的**所有**返回值构造点（`okValue` / `failure` / `jira_list` / `jira_kb` ×3）、三个输出 schema 的 `required`、`plugin/index.test.ts` 的信封用例、以及**以后任何新增 tool**：新工具必须走同一套信封（失败也要 `me`，跳过文件也要 `message`） | | **147** | 收编人的未提交改动（§4.13 规则 1 的落地） | 所有写路径（`transact`、`regenerateAndCommit`）、`core/git.ts` 的 `stageAllAndCommit`/`humanAuthorOf`、决策 79/39 的新鲜度断言、决策 15/34 的会话结束重生成、决策 146（作者回退）、`git-dirty` 警告与 `sync` 的 dirty 报告；**以后任何"先写文件再提交"的路径**都要先问一句"工作区干净吗" | | **146** | store 的提交身份在缺失时按次注入，不进仓库配置 | 所有写路径（`core/git.ts` 的 `stageAndCommit`）、决策 81 的"只补缺失键"、§4.9 的 `human:<name>`（因此**不能**写进仓库配置）、决策 115④ 的"提交失败必须响"、决策 79/87 的 `log.md`（它靠提交列表）、以及 CI 的四个测试 job | | **15** | 生成权必须在 **DSH 进程内**（2026-10-17 用户裁定：脱离 DSH 的定时生成 = 失败改动）；时机 = **会话结束时、flush 之前** | `ledger.yml` 只检查不生成、决策 15/34、§7.3 的两条修正记录、§4.4 的树注释与 §7.3 P0 表（"Action 在 push 时生成"这两处**尚未实现**）、`src/plugin/index.ts` 的 `pushFlush` effect + `core/generateStore.regenerateAndCommit`、决策 89/93 的只读跳过；以及以后**任何想做自动生成**的人——先确认它在 DSH 进程内、且**在 flush 之前**，否则就是失败改动 | 各种阈值常量）——改它们只需确认对应章节自己的表述。
 
 ### 11.8 实现覆盖清点（第二轮独立审计，2026-10-16）
 
-> **为什么有这一节**：用户说"检查一下吧，估计还有不少漏掉的"，于是派了 **5 个独立 subagent** 分块审计
-> （数据模型 / 写路径 / 界面 / 决策 1–65 / 决策 66–131），每条都要给出 `file:line` 证据与设计原文。
-> **结论：漏得不少**——而且**根因是我自己的流程错误**：§11.6 的三张表清的是"**决定已定**"，
-> 我却把它当成"**已经实现**"，于是一度报出"开放项 0"。这两件事从来不是一回事。
+> **为什么有这一节**：用户说"检查一下吧，估计还有不少漏掉的"，于是派了 **5 个独立 subagent** 分块审计 （数据模型 / 写路径 / 界面 / 决策 1–65 / 决策 66–131），每条都要给出 `file:line` 证据与设计原文。 **结论：漏得不少**——而且**根因是我自己的流程错误**：§11.6 的三张表清的是"**决定已定**"， 我却把它当成"**已经实现**"，于是一度报出"开放项 0"。这两件事从来不是一回事。
 >
-> 用法同 §11.6：**每补掉一条，就把状态改成 ✅ 并写上落点**，于是"还剩多少没做"永远可以数出来。
-> 状态：✅ 已实现 · ⚠️ 部分 · ❌ 未实现。
+> 用法同 §11.6：**每补掉一条，就把状态改成 ✅ 并写上落点**，于是"还剩多少没做"永远可以数出来。 状态：✅ 已实现 · ⚠️ 部分 · ❌ 未实现。
 >
-> **2026-10-19 批量翻状态（DPMJ-104）**：十余行"已实现但仍标 ❌/⚠️"逐行对着代码复核后翻转，
-> 每条都写了落点决策号；仍属实的缺口（57/59 的 Config 组、58 锁内长 IO、81 已存在 clone 的幂等写、
-> 82 的 `comment.id`、29 的 deferLoading、102 的副作用收敛、46/49 的残余、67 的 rebase 豁免、
-> 73/119 的回退位置）保持 ❌/⚠️ 并更新了证据。决策 64 的"AST"措辞同批修正（见 §8 该行）。
+> **2026-10-19 批量翻状态（DPMJ-104）**：十余行"已实现但仍标 ❌/⚠️"逐行对着代码复核后翻转， 每条都写了落点决策号；仍属实的缺口（57/59 的 Config 组、58 锁内长 IO、81 已存在 clone 的幂等写、 82 的 `comment.id`、29 的 deferLoading、102 的副作用收敛、46/49 的残余、67 的 rebase 豁免、 73/119 的回退位置）保持 ❌/⚠️ 并更新了证据。决策 64 的"AST"措辞同批修正（见 §8 该行）。
 
 #### A. 正确性与写入纪律（最优先，属 §11.4 红线精神）
 
@@ -2455,8 +1822,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | C11 | ~~§4.10 后半段：解析出"未命中"后只在提示里说，首次写入并不登记~~ | ✅ **已实现（决策 133）**：首次写入即登记（派生 key、remote、`paths[]`、policy/owner），注入行那句 "on first write" 现在**是事实** | 决策 77/92/131/133 |
 | C12 | ~~store 仓库没有 CI~~ ✅ **已结（2026-10-16）**：lint + `generate --check` + 提交绑定都进了门禁（见 §11.6 的 C12 行） |
 
-> ~~**待补**：界面层审计与逐条决策覆盖三份报告仍在跑~~ → **已落定**：即下方的 E / F / G 三组。
-> "已实现"清单也已在各组内以 ✅ 行列出。
+> ~~**待补**：界面层审计与逐条决策覆盖三份报告仍在跑~~ → **已落定**：即下方的 E / F / G 三组。 "已实现"清单也已在各组内以 ✅ 行列出。
 
 #### E. 界面层（第三份审计：tools / CLI / /jira / 技能 / 守卫 / 消息）
 
@@ -2480,14 +1846,11 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | 52 | 12 个错误码都可达 | ✅ **已收口**：`BLOCKED_BY_OPEN` 由决策 136 产出（`mutate.ts` 的认领规则）；`KEY_EXHAUSTED` 由决策 158 产出（一个 project 的号到 9999 为止）；集成用例证明后者能从磁盘上已有的 `DEMO-9999` 走到 |
 | 91 | 缺 label 的提示**只出现一次** | ✅ **已实现（决策 150）**：句子是纯函数，"只出现一次"由 CLI 的标记文件负责（`<机器状态目录>/notices/machines-label-<id>.seen`）；显示规则也真的接线了；用例 + 变异验证 |
 
-> **界面层审计也确认了 A/B/C 组的多条**（STALE_REVISION、会话收尾、Config 分组、只读与异机拦截），
-> 三份报告互相印证。逐条覆盖（F/G 组）也已落定；2026-10-19 复核（DPMJ-104）后各组状态见表内。
+> **界面层审计也确认了 A/B/C 组的多条**（STALE_REVISION、会话收尾、Config 分组、只读与异机拦截）， 三份报告互相印证。逐条覆盖（F/G 组）也已落定；2026-10-19 复核（DPMJ-104）后各组状态见表内。
 
 #### F. 逐条覆盖：决策 1–65（第四份审计）
 
-> **65 行里 20 行有缺口**（2026-10-19 复核后：**剩 6 行**，见下表 ⚠️/❌）。四份审计**独立**指向同一批（租约 61、认领阻塞 24、会话收尾 31、
-> 异机降级 5、人面语言 55、Config 57、锁配置 59、未知键/版本 46/49、JSON 命名 41、锁临界区 58、
-> 长路径 60、`STALE_REVISION` 16），互相印证——这批**已全部落地**（决策 132-164）。
+> **65 行里 20 行有缺口**（2026-10-19 复核后：**剩 6 行**，见下表 ⚠️/❌）。四份审计**独立**指向同一批（租约 61、认领阻塞 24、会话收尾 31、 异机降级 5、人面语言 55、Config 57、锁配置 59、未知键/版本 46/49、JSON 命名 41、锁临界区 58、 长路径 60、`STALE_REVISION` 16），互相印证——这批**已全部落地**（决策 132-164）。
 
 | 决策 | 缺口 | 状态 |
 |---|---|---|
@@ -2512,9 +1875,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | 61 | ~~**认领租约完全不存在**~~ | ✅ **已实现（决策 135）**：起租/续租/过期可接管全链路，见 B 组 |
 | 64 | ~~**没有 AST 边界检查器**，CI 也没这一步~~ | ✅ **已实现（决策 164，措辞已修）**：`scripts/check-boundaries.mjs` 按**语句**扫描（多行/动态 import/`console[` 都抓得住）+ 13 条形状表自检，每次 `pnpm check` 都跑——原行写的「AST」是设计意图，交付物是语句级分词扫描，见 §8 决策 64 的修正 |
 
-> 该审计明确排除的（不是缺口）：**18** 分发暂不考虑 · **62** 归档 MVP 不做 · **32** 身份机制已被决策 73
-> 的固定外部身份文件取代 · **63** peer 已被决策 108/109 撤回且由 `bundle.test.ts` 守着 ·
-> **15** 生成 BOARD 的 Action 属于另一个仓库（本包这半边 `jira generate` 已在）。
+> 该审计明确排除的（不是缺口）：**18** 分发暂不考虑 · **62** 归档 MVP 不做 · **32** 身份机制已被决策 73 的固定外部身份文件取代 · **63** peer 已被决策 108/109 撤回且由 `bundle.test.ts` 守着 · **15** 生成 BOARD 的 Action 属于另一个仓库（本包这半边 `jira generate` 已在）。
 
 #### G. 逐条覆盖：决策 66–131（第五份审计）
 
@@ -2538,7 +1899,7 @@ DSH 的 skill **按需加载、零常驻开销**，所以它同时是"零成本"
 | 82 | 三个工具的**失败分支都不带 `me`** | ✅ **已实现（决策 149）**：同上一行——`failure()` 带 `me`，`required` 里也有它 |
 | 80 | 部分读取带 `rejected` 但**没有 `message`** 说明"有文件被跳过" | ✅ **已实现（决策 149）**：`skipped()` 同时产出 `rejected` 与一句英文 `message`（读=回答是部分的；写=数据在盘上但提交失败）；`jira_list` 的 `rejected.file` 也从 `'issues'` 改成真路径；用例 + 变异验证都有 |
 | 96 | `ctx.tools.guard`（全局**单调**拦截点） | ✅ **已实现（决策 141）**：查宿主源码确认 API 存在且语义正是设计要的——「任何 guard 都可以拒绝，**没有任何 guard 能强制放行**」（`ToolGuard` = (execution) => string | undefined ✓）；插件注册**恰好一个** guard：写动作 + 不可写会话（只读/子代理）→ 返回理由拒绝。handler 内仍各自拒绝（纵深防御 ✓）。测试断言：拒写 ✓、放读 ✓、放普通会话 ✓、不管别的工具 ✓ |
-| 98 | 决策 99/101 引用的宿主源码位置**没有标版本**（该行要求凡引用必须标 rc.2/alpha.2） | ✅ **已实现（决策 157）**：§2 开头有核对基线（`0.2.1-alpha.2` @ `2946bfe41b`），§8 里点名宿主的 7 条就地标了版本；顺带修正决策 95 的过期事实（本机现在只有一个宿主 checkout） |
+| 98 | 决策 99/101 引用的宿主源码位置**没有标版本**（该行要求凡引用必须标 rc.2/alpha.2） | ✅ **已实现（决策 157）**：§2 开头有核对基线（`0.2.1-alpha.2` @ 提交「docs(goal): register the branch's known limitations (task39)」），§8 里点名宿主的 7 条就地标了版本；顺带修正决策 95 的过期事实（本机现在只有一个宿主 checkout） |
 | 87 | ~~`tags/index.md` 渲染 `（N）` 而非 `（N 次）`~~ | ✅ **已实现**：`generate.ts` 渲染 `（N 次）`（`generate.test.ts` 有断言 ✓） |
 | 131 | ~~无 remote 的绑定算出来了、也注入了，但**没有任何写路径消费它**（= C10）~~ | ✅ **已实现（决策 133）**：`assertProjectWritable` 消费它，工具与 CLI 写路径都拦 |
 | 83 | ~~`/jira` 缺 `show <KEY>` 与 `tags lint`（同 E 组）~~ | ✅ **已实现（决策 155）**：两个只读子命令都已落地 |
