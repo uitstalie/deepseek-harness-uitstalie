@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { type JiraError, ioFailed } from '@deepseek-ai/dsh-jira-core/errors.ts'
 import { type Result, err, ok } from '@deepseek-ai/dsh-jira-core/result.ts'
 
+/** One skill as the host's registry takes it: name, catalogue description, Markdown body and source. */
 export type SkillDefinition = Readonly<{
   name: string
   description: string
@@ -20,6 +21,7 @@ export type SkillDefinition = Readonly<{
   source: string
 }>
 
+/** The slice of the host context this plugin needs (decision 108): an optional skill registry. */
 export type SkillsHost = Readonly<{
   skills?: Readonly<{ register(definition: SkillDefinition): () => void }>
 }>
@@ -40,9 +42,20 @@ export const SKILL_CATALOGUE: readonly Readonly<{ name: string; description: str
   }),
 ])
 
-/** `skills/` sits beside `src/` and `dist/`, so this resolves in both layouts. */
+/**
+ * `skills/` sits beside `src/` and `dist/`, so this resolves in both layouts.
+ * @param name - the skill name, without the `.md` suffix.
+ * @param base - the package root the `skills/` directory hangs under.
+ * @returns the path of the skill's Markdown file.
+ */
 export const skillPath = (name: string, base: string): string => `${base}/skills/${name}.md`
 
+/**
+ * Read one shipped skill's Markdown body.
+ * @param name - the skill name, without the `.md` suffix.
+ * @param base - the package root the `skills/` directory hangs under.
+ * @returns the file's text, or an I/O error naming the path that could not be read.
+ */
 export const readSkillBody = async (name: string, base: string): Promise<Result<string, JiraError>> => {
   try {
     return ok(await readFile(skillPath(name, base), 'utf8'))
@@ -54,6 +67,9 @@ export const readSkillBody = async (name: string, base: string): Promise<Result<
 /**
  * Register what the package ships. A skill whose file is missing is skipped rather than
  * crashing the plugin: a broken skill must never stop the tools from working.
+ * @param ctx - the host slice whose `skills` registry receives the definitions.
+ * @param base - the package root the `skills/` directory hangs under.
+ * @returns the registered and skipped skill names, plus the undo that removes them again.
  */
 export const registerSkills = async (
   ctx: SkillsHost,
@@ -106,6 +122,8 @@ export const registerSkills = async (
  * under a non-ASCII directory (a `桌面` clone, say) resolved to a path that does not exist and
  * every shipped skill was skipped in silence. `fileURLToPath` also owns the Windows `/D:/…`
  * form that this used to fix up by hand.
+ * @param moduleUrl - the `import.meta.url` of a module inside the package.
+ * @returns the package root path, with no trailing separator.
  */
 export const packageRootFrom = (moduleUrl: string): string =>
   fileURLToPath(new URL('../', moduleUrl)).replace(/[\\/]$/u, '')

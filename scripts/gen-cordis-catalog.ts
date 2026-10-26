@@ -157,22 +157,27 @@ export const SERVICE_PAGE: Record<string, string> = {
 }
 
 /**
- * Context keys declared in `interface Context` merges that the rendering
- * projection cannot see, each with the reason and its documentation owner.
- * The scan that enforces this list reads EVERY `declare module '@deepseek-ai/cordis'`
- * Context merge under `packages/x/x/src/**` — any depth, not only root
- * `index.ts` files with a same-named service class — so a new service can
- * never silently join this blind spot: it either enters {@link SERVICE_PAGE}
- * or names itself here. Client-face keys (the projection analyzes the host
- * face only) name the package README that owns their surface.
+ * Context keys declared in `interface Context` merges that either the rendering
+ * projection cannot see or that are deliberately documented outside
+ * `docs/subsystems` (branch-owned services), each with the reason and its
+ * documentation owner. The scan that enforces this list reads EVERY
+ * `declare module '@deepseek-ai/cordis'` Context merge under
+ * `packages/x/x/src/**` — any depth, not only root `index.ts` files with a
+ * same-named service class — so a new service can never silently join this
+ * blind spot: it either enters {@link SERVICE_PAGE} or names itself here.
+ * Client-face keys (the projection analyzes the host face only) name the
+ * package README that owns their surface.
  *
- * Two categories remain, and neither is a projection gap a scanning rule could
+ * Three categories remain, and none is a projection gap a scanning rule could
  * close. An OPTIONAL key (`key?: X`) is a value the launcher or boot code
  * installs before the tree mounts, which the analyzer skips by rule because no
  * plugin provides it and `inject` cannot reach it. A client-face key belongs to
  * the browser Context, which this host-face program never sees; the browser
  * surface has its own generated catalog (`scripts/gen-client-catalog.ts`, served
- * to a model as `cordis_runtime_inspect what:"client"`).
+ * to a model as `cordis_runtime_inspect what:"client"`). A branch-owned rendered
+ * service stays out of every page's generated region because its contract lives
+ * in `goal/` or a package README; it remains in the model-facing runtime
+ * catalog and its entry here names that owner.
  */
 export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   invocation: 'not a service: per-call accessor (RemoteInvocation | undefined) the Gateway derives for each Remote call — packages/api/gateway/README.md owns the contract',
@@ -185,6 +190,13 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   dshHomePath: 'not a service: boot-provided root accessor function (typeof dshHomePath | undefined) for Loader !!js config expressions — packages/boot/app-boot/README.md owns the boot contract',
   launchEnvironment: 'not a service: launcher-provided root accessor value (LaunchEnvironmentSnapshot | undefined) — packages/util/launch-environment/README.md owns this launcher contract',
   pluginPackages: 'profile-boot-owned package resolver service used by optional consumers — packages/boot/app-boot/README.md owns this internal API',
+  // Branch-owned services documented outside docs/subsystems.
+  agentContextSources: 'branch-owned agent-context source registry — goal/rules.md owns the rule-source contract',
+  dafeiyu: 'branch-owned capability organizer — goal/dafeiyu.md owns the provider and status contracts',
+  dafeiyuRemote: 'branch-owned capability-status Remote — goal/dafeiyu.md owns the status contract',
+  dshStore: 'branch-owned .dsh store service — packages/uitstalie/tool-dsh-store/README.md owns the store API',
+  jira: 'branch-owned ledger service — packages/jira/jira-service/README.md owns the service API',
+  jiraRemote: 'branch-owned read-only ledger Remote — packages/jira/jira-service/README.md owns the API (the projection cannot walk it because src/index.ts does not re-export the module)',
   fileUpload: 'client-side browser upload service — packages/client/file-upload/README.md owns the API',
   uiRenderer: 'client-side interface-typed browser service — packages/client/ui-renderer/README.md owns the API',
   uiSession: 'client-side Session source adapter — packages/client/ui-session/README.md owns the API',
@@ -1040,6 +1052,47 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   ModelDefaults: 'harness-shaped model defaults are owned by packages/uitstalie/models-dev/src/catalog.ts',
   ExtraParams: 'extra request params are owned by packages/uitstalie/models-dev/src/catalog.ts',
   // END uitstalie-k3
+  // BEGIN uitstalie-cordis-catalog, 2026/10/26, branch-owned capability, store, and ledger contracts documented outside docs/subsystems
+  // dafeiyu capability contracts (goal/dafeiyu.md)
+  CapabilityProvider: 'capability provider registration contract is owned by goal/dafeiyu.md',
+  CapabilityStatus: 'capability status snapshot is owned by goal/dafeiyu.md',
+  // rules instruction sources (goal/rules.md)
+  AgentContextSource: 'workspace-rules source registration is owned by goal/rules.md',
+  // .dsh store service (packages/uitstalie/tool-dsh-store/README.md)
+  StoreCallOptions: 'store operation cancellation options are owned by packages/uitstalie/tool-dsh-store/README.md',
+  StoreCreateResult: 'store create result is owned by packages/uitstalie/tool-dsh-store/README.md',
+  StoreQueryResult: 'store query result is owned by packages/uitstalie/tool-dsh-store/README.md',
+  StoreReadResult: 'store file read result is owned by packages/uitstalie/tool-dsh-store/README.md',
+  StoreRemoveOptions: 'recursive store removal options are owned by packages/uitstalie/tool-dsh-store/README.md',
+  StoreRemoveResult: 'store removal result is owned by packages/uitstalie/tool-dsh-store/README.md',
+  StoreWriteOptions: 'version-guarded store write options are owned by packages/uitstalie/tool-dsh-store/README.md',
+  StoreWriteResult: 'versioned store write result is owned by packages/uitstalie/tool-dsh-store/README.md',
+  // jira ledger atoms (packages/jira/jira-core/README.md)
+  Actor: 'ledger write actor is owned by packages/jira/jira-core/README.md',
+  Created: 'issue creation result is owned by packages/jira/jira-core/README.md',
+  DoctorReport: 'store doctor verdict is owned by packages/jira/jira-core/README.md',
+  Issue: 'stored issue record is owned by packages/jira/jira-core/README.md',
+  IssueKey: 'branded issue key is owned by packages/jira/jira-core/README.md',
+  KbSearch: 'knowledge search result is owned by packages/jira/jira-core/README.md',
+  KnowledgeKey: 'branded knowledge key is owned by packages/jira/jira-core/README.md',
+  KnowledgePatch: 'knowledge update patch is owned by packages/jira/jira-core/README.md',
+  ListQuery: 'ledger list filter is owned by packages/jira/jira-core/README.md',
+  Mutation: 'transaction mutation callback is owned by packages/jira/jira-core/README.md',
+  NewIssueInput: 'new issue input fields are owned by packages/jira/jira-core/README.md',
+  NewKnowledge: 'new knowledge input fields are owned by packages/jira/jira-core/README.md',
+  PushOutcome: 'push flush outcome is owned by packages/jira/jira-core/README.md',
+  Store: 'opened ledger store is owned by packages/jira/jira-core/README.md',
+  Timestamp: 'branded ledger timestamp is owned by packages/jira/jira-core/README.md',
+  Transaction: 'ledger transaction result is owned by packages/jira/jira-core/README.md',
+  TransactOptions: 'ledger transaction options are owned by packages/jira/jira-core/README.md',
+  WrittenKnowledge: 'knowledge write result is owned by packages/jira/jira-core/README.md',
+  // jira service API (packages/jira/jira-service/README.md)
+  Board: 'grouped ledger board is owned by packages/jira/jira-service/README.md',
+  ChangeNotice: 'ledger change notice is owned by packages/jira/jira-service/README.md',
+  IssueList: 'grouped ledger issue list is owned by packages/jira/jira-service/README.md',
+  JiraResult: 'ledger operation result envelope is owned by packages/jira/jira-service/README.md',
+  JiraStatus: 'ledger service status snapshot is owned by packages/jira/jira-service/README.md',
+  // END uitstalie-cordis-catalog
 }
 
 /** Repository data policy consumed by the Cordis catalog projector. */
@@ -1175,12 +1228,14 @@ export function localizePageRegion(region: string, pageRel: string, scanRoot: st
 /**
  * Judge the rendered API and the independent AST scan against the curated
  * partition maps, fail-closed in both directions for services AND events: a
- * rendered key/scope must be mapped to a page, a mapped key/scope must still
- * render, and — the backstop — a DECLARED key/event the projection cannot see
- * must carry a named walk exemption (a rendered one must not). A third
- * direction guards the scan itself: everything rendered must also be declared
- * to the scan, so a scan blind spot cannot decay silently. Pure so the
- * acceptance paths are provable without running the projection.
+ * rendered service must be mapped to a page unless it carries a named walk
+ * exemption (a branch-owned service documented outside the folder), a rendered
+ * event scope must be mapped to a page, a mapped key/scope must still render,
+ * and — the backstop — a DECLARED key/event the projection cannot see must
+ * carry a named walk exemption. A final direction guards the scan itself:
+ * everything rendered must also be declared to the scan, so a scan blind spot
+ * cannot decay silently. Pure so the acceptance paths are provable without
+ * running the projection.
  * @param input - rendered API plus the declared-key/event scans.
  * @param maps - the curated page maps and walk exemptions.
  * @returns one message per violation, empty when the partition holds.
@@ -1188,7 +1243,8 @@ export function localizePageRegion(region: string, pageRel: string, scanRoot: st
 export function walkPartitionProblems(input: WalkPartitionInput, maps: WalkPartitionMaps): string[] {
   const problems: string[] = []
   for (const [key, source] of input.renderedKeys) {
-    if (!Object.hasOwn(maps.servicePage, key)) problems.push(`service ctx.${key} (${source}) has no SERVICE_PAGE entry; every service maps to exactly one subsystems page.`)
+    if (Object.hasOwn(maps.serviceWalkExemptions, key)) continue
+    if (!Object.hasOwn(maps.servicePage, key)) problems.push(`service ctx.${key} (${source}) has no SERVICE_PAGE entry; every service maps to exactly one subsystems page or names its owner in SERVICE_WALK_EXEMPTIONS.`)
   }
   for (const scope of [...input.renderedScopes].sort()) {
     if (!Object.hasOwn(maps.eventScopePage, scope)) problems.push(`event scope '${scope}/*' has no EVENT_SCOPE_PAGE entry; every event scope maps to exactly one subsystems page.`)
@@ -1200,16 +1256,18 @@ export function walkPartitionProblems(input: WalkPartitionInput, maps: WalkParti
     if (!input.renderedScopes.has(scope)) problems.push(`EVENT_SCOPE_PAGE maps '${scope}/*' but the projection discovers no such scope; remove the stale entry.`)
   }
   // The rendering projection only sees a Context key it can resolve to a
-  // documented service class. The independent scan reads EVERY Context merge
+  // documented service class. The independent scan reads EVERY Context merge,
   // so a key the projection cannot render must either be rendered (mapped) or
-  // carry a named SERVICE_WALK_EXEMPTIONS reason — never vanish silently.
+  // carry a named SERVICE_WALK_EXEMPTIONS reason — never vanish silently. A
+  // rendered branch-owned service may also be exempted when its contract lives
+  // outside docs/subsystems; then it stays out of every page's generated region
+  // but remains in the model-facing runtime catalog.
   for (const [key, rel] of input.declaredKeys) {
     const rendered = input.renderedKeys.has(key)
     const exempt = Object.hasOwn(maps.serviceWalkExemptions, key)
     if (!rendered && !exempt) {
       problems.push(`ctx.${key} (${rel}) is declared in a Context merge but invisible to the rendering projection; map it in SERVICE_PAGE (after making it renderable) or name it in SERVICE_WALK_EXEMPTIONS with its documentation owner.`)
     }
-    if (rendered && exempt) problems.push(`ctx.${key} is rendered by the projection but still listed in SERVICE_WALK_EXEMPTIONS; remove the stale exemption.`)
   }
   for (const key of Object.keys(maps.serviceWalkExemptions)) {
     if (!input.declaredKeys.has(key)) problems.push(`SERVICE_WALK_EXEMPTIONS names 'ctx.${key}' but no Context merge declares it; remove the stale exemption.`)

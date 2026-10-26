@@ -55,6 +55,7 @@ export const initialStatus = (vocab: Vocab): string => {
   return sorted[0]?.name ?? 'todo'
 }
 
+/** Everything a create may supply; validation fills in the defaults and refuses unknown fields. */
 export type NewIssueInput = Readonly<{
   key: string
   issueType: string

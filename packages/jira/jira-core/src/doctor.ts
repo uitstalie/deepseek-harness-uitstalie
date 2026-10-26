@@ -71,6 +71,7 @@ export type StoreSummary = Readonly<{
   generatedStale: number
 }>
 
+/** The doctor's verdict over one snapshot: whether the store is healthy, what is wrong, and what it holds. */
 export type DoctorReport = Readonly<{
   ok: boolean
   problems: readonly Problem[]

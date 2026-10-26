@@ -88,6 +88,7 @@ export const asIdentity = (value: string): Identity | undefined => {
 
 /** The closed link vocabulary — adding one is a code change (decision 70). */
 export const LINK_TYPES = ['related', 'duplicate', 'is_blocked_by', 'parent'] as const
+/** One of the closed link verbs; adding a verb is a code change (decision 70). */
 export type LinkType = (typeof LINK_TYPES)[number]
 
 export const isLinkType = (value: string): value is LinkType =>
@@ -106,6 +107,7 @@ export type Comment = Readonly<{
   body: string
 }>
 
+/** One issue as the ledger stores it: the frontmatter fields plus the Markdown body (decision 43). */
 export type Issue = Readonly<{
   key: IssueKey
   project: string

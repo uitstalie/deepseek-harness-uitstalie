@@ -305,9 +305,25 @@ flowchart LR
   pkg_cordis_host_runner["cordis-host-runner"]
   svc_dynamicCordisRunner["ctx.dynamicCordisRunner<br/>Dynamic Cordis package host runner"]
   svc_cordisInspect["ctx.cordisInspect<br/>Dynamic Cordis inspect registry"]
+  pkg_agent_instructions_plus["agent-instructions-plus"]
+  svc_agentContextSources["ctx.agentContextSources<br/>Always-on agent context source registry"]
+  pkg_dafeiyu["dafeiyu"]
+  svc_dafeiyu["ctx.dafeiyu<br/>Capability organizer and enable gate"]
+  pkg_memory["memory"]
+  pkg_personality["personality"]
+  pkg_jira_agent["jira-agent"]
+  svc_dafeiyuRemote["ctx.dafeiyuRemote<br/>Capability status Remote"]
+  pkg_client_ui_dafeiyu["client-ui-dafeiyu"]
+  pkg_tool_dsh_store["tool-dsh-store"]
+  svc_dshStore["ctx.dshStore<br/>.dsh store base interface"]
+  pkg_jira_service["jira-service"]
+  svc_jira["ctx.jira<br/>Jira ledger single writer"]
+  pkg_models_dev["models-dev"]
+  svc_modelsDev["ctx.modelsDev<br/>models.dev catalog service"]
   pkg_action_cards --> svc_actionCards
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
+  pkg_agent_instructions_plus --> svc_agentContextSources
   pkg_agent_loop --> svc_agentLoop
   pkg_agent_preset_registry --> svc_agentPresets
   pkg_api_gateway --> svc_typertGateway
@@ -346,6 +362,8 @@ flowchart LR
   pkg_credentials --> svc_credentials
   pkg_credentials_local --> svc_credentials
   pkg_cua --> svc_cuaAccess
+  pkg_dafeiyu --> svc_dafeiyu
+  pkg_dafeiyu --> svc_dafeiyuRemote
   pkg_deepseek_account --> svc_deepseekAccount
   pkg_deepseek_account_platform --> svc_deepseekAccount
   pkg_deepseek_llm_api_extensions --> svc_deepseekLlmApiExtensions
@@ -378,6 +396,7 @@ flowchart LR
   pkg_host_product_telemetry_otel --> svc_productTelemetry
   pkg_host_webserver --> svc_webServer
   pkg_inspector --> svc_inspector
+  pkg_jira_service --> svc_jira
   pkg_jobs --> svc_jobs
   pkg_jobs_local --> svc_jobs
   pkg_llm --> svc_llm
@@ -389,6 +408,7 @@ flowchart LR
   pkg_mcp_client --> svc_mcpResources
   pkg_mcp_resources --> svc_mcpResources
   pkg_message_feedback --> svc_messageFeedback
+  pkg_models_dev --> svc_modelsDev
   pkg_office_to_pdf --> svc_officeToPdf
   pkg_otel --> svc_otel
   pkg_permission_presets --> svc_permissionPresets
@@ -448,6 +468,7 @@ flowchart LR
   pkg_terminal --> svc_terminals
   pkg_terminal_bash --> svc_terminals
   pkg_token_meter --> svc_tokenMeter
+  pkg_tool_dsh_store --> svc_dshStore
   pkg_tool_subagent --> svc_subagentModelSelection
   pkg_tools --> svc_tools
   pkg_typert_registry --> svc_typert
@@ -500,16 +521,23 @@ flowchart LR
   svc_credentials --> pkg_llm_deepseek
   svc_credentials --> pkg_llm_pi_ai
   svc_cuaAccess --> pkg_cua
+  svc_dafeiyu --> pkg_jira_agent
+  svc_dafeiyu --> pkg_memory
+  svc_dafeiyu --> pkg_personality
+  svc_dafeiyuRemote --> pkg_client_ui_dafeiyu
   svc_deepseekAccount --> pkg_api_account_controller
   svc_deepseekAccount --> pkg_llm_deepseek
   svc_deepseekLlmApiExtensions --> pkg_llm_deepseek
   svc_directoryPicker --> pkg_api_workspace_controller
+  svc_dshStore --> pkg_memory
+  svc_dshStore --> pkg_personality
   svc_dynamicCordisRunner --> pkg_tool_cordis
   svc_fileReferences --> pkg_api_session_controller
   svc_fileUploads --> pkg_api_session_controller
   svc_fs --> pkg_tool_fs
   svc_headlessStartup --> pkg_headless
   svc_hmr --> pkg_app_boot
+  svc_jira --> pkg_jira_agent
   svc_jobs --> pkg_api_job_controller
   svc_jobs --> pkg_tool_bash
   svc_jobs --> pkg_tool_jobs
@@ -734,5 +762,11 @@ flowchart LR
 | `ctx.lsp` | `seam` | [`lsp`](../packages/lsp/lsp) | [`lsp-stdio`](../packages/lsp/lsp-stdio) | [`tool-lsp`](../packages/lsp/tool-lsp) | - | Provider registration and selection plus normalized query execution over exactly four operations; the seam offers no protocol escape hatch, so a backend translates into the normalized request and result. |
 | `ctx.dynamicCordisRunner` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | Owns the in-memory definition registry, the vm sandbox for host halves, and the request-run round trip; browser pages reach the same service over the wire through its remote namespace. |
 | `ctx.cordisInspect` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport. |
+| `ctx.agentContextSources` | `service` | [`agent-instructions-plus`](../packages/uitstalie/agent-instructions-plus) | - | - | - | Collects sources whose rendered text joins the native instruction baseline; registration order and the per-source digest are the contract. |
+| `ctx.dafeiyu` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality), [`jira-agent`](../packages/jira/jira-agent) | - | Registers capability providers, gates their create() calls, and dispatches tools, prompt sections, and turn-end hooks per agent. |
+| `ctx.dafeiyuRemote` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`client-ui-dafeiyu`](../packages/uitstalie/ui-dafeiyu) | - | Publishes the read-only remote.dafeiyu status snapshot; it cannot register, enable, or disable a capability. |
+| `ctx.dshStore` | `service` | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality) | - | Owns path-confined .dsh store operations and the per-session policy gate; the store tool and sidebar Remote consume it. |
+| `ctx.jira` | `service` | [`jira-service`](../packages/jira/jira-service) | - | [`jira-agent`](../packages/jira/jira-agent) | - | Owns the one ledger writer, read and write methods, push queue, and changed notices; the browser reads it through remote.jira. |
+| `ctx.modelsDev` | `service` | [`models-dev`](../packages/uitstalie/models-dev) | - | - | - | Serves the models.dev provider and model catalog, route resolution, and harness-shaped model defaults and extra params. |
 
 Maintenance mode: hybrid: services are discovered from Cordis declarations; interface/implementation/consumer roles are classified in `scripts/gen-doc-graphs.ts` with a completeness guard.

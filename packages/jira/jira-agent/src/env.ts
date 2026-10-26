@@ -24,5 +24,8 @@ export type HostEnv = Readonly<Record<string, string | undefined>>
 export const readOnlySession = (env: HostEnv): boolean =>
   env.DSH_READ_ONLY_SESSION !== undefined && env.DSH_READ_ONLY_SESSION !== '0'
 
-/** The process environment, unless there is no process (a non-Node host). */
+/**
+ * The process environment, unless there is no process (a non-Node host).
+ * @returns the environment the `core` helpers read their `DSH_*` facts from.
+ */
 export const defaultEnv = (): HostEnv => (typeof process === 'undefined' ? {} : process.env)

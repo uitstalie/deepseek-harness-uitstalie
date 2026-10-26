@@ -20,6 +20,12 @@
     "fixtures"
   ],
   "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --test \"src/**/*.test.ts\""

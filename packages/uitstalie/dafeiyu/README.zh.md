@@ -43,7 +43,7 @@ kind: "package-reference"
 
 v2 provider 把贡献与能力列表要渲染的元数据一起注册：
 
-```ts
+```text
 const off = ctx.dafeiyu.register({
   id: 'memory',
   contractVersion: 2,
@@ -70,7 +70,7 @@ const off = ctx.dafeiyu.register({
 
 浏览器通过只读的 Remote 命名空间读取同一份快照：
 
-```ts
+```text
 const statuses = await ctx.remote.dafeiyu.status()
 ```
 

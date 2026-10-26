@@ -447,11 +447,17 @@ export function checkExperimentalNameExceptions(manifests: readonly WorkspaceMan
   return errors
 }
 
+function isBranchOwnedDirectory(dir: string): boolean {
+  // uitstalie-deepseek-flash, 2026/10/20, DH-3, 分支自有包不发布：发布成员规则（版本/公开仓库/files 清单）只约束上游发布成员
+  if (dir.startsWith('packages/uitstalie/')) return true
+  // uitstalie-deepseek-flash, 2026/10/26, DH-13, 分支自有包不发布：迁入分支的 jira 五包与 jira-app 组合沿用同一豁免
+  return dir.startsWith('packages/jira/') || dir === 'packages/bundle/jira-app'
+}
+
 function isReleaseMemberDirectory(dir: string): boolean {
   // The SSH carrier is distributed as executable archives, never as an npm application.
   if (dir === 'packages/ssh/ssh-helper-runtime') return false
-  // uitstalie-deepseek-flash, 2026/10/20, DH-3, 分支自有包不发布：发布成员规则（版本/公开仓库/files 清单）只约束上游发布成员
-  if (dir.startsWith('packages/uitstalie/')) return false
+  if (isBranchOwnedDirectory(dir)) return false
   return standardReleaseMemberDirectory.test(dir) || isPublicExperimentalPackageDirectory(dir)
 }
 
@@ -486,7 +492,7 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
   const errors = checkExperimentalManifest({ dir, manifest })
   const label = manifest.name ?? dir
   // uitstalie-deepseek-flash, 2026/10/20, DH-3, 分支自有包不发布：不跟随上游 release 版本与发布文件清单
-  const isBranchPackage = dir.startsWith('packages/uitstalie/')
+  const isBranchPackage = isBranchOwnedDirectory(dir)
   const familyVersionError = isBranchPackage ? undefined : checkDshFamilyVersion(manifest, repositoryVersion)
   if (familyVersionError !== undefined) errors.push(familyVersionError)
   const isNativePackageDir = dir.startsWith('native/system/packages/')

@@ -307,9 +307,28 @@ flowchart LR
   pkg_cordis_host_runner["cordis-host-runner"]
   svc_dynamicCordisRunner["ctx.dynamicCordisRunner<br/>Dynamic Cordis package host runner"]
   svc_cordisInspect["ctx.cordisInspect<br/>Dynamic Cordis inspect registry"]
+<<<<<<< HEAD
   pkg_action_cards --> svc_actionCards
+=======
+  pkg_agent_instructions_plus["agent-instructions-plus"]
+  svc_agentContextSources["ctx.agentContextSources<br/>Always-on agent context source registry"]
+  pkg_dafeiyu["dafeiyu"]
+  svc_dafeiyu["ctx.dafeiyu<br/>Capability organizer and enable gate"]
+  pkg_memory["memory"]
+  pkg_personality["personality"]
+  pkg_jira_agent["jira-agent"]
+  svc_dafeiyuRemote["ctx.dafeiyuRemote<br/>Capability status Remote"]
+  pkg_client_ui_dafeiyu["client-ui-dafeiyu"]
+  pkg_tool_dsh_store["tool-dsh-store"]
+  svc_dshStore["ctx.dshStore<br/>.dsh store base interface"]
+  pkg_jira_service["jira-service"]
+  svc_jira["ctx.jira<br/>Jira ledger single writer"]
+  pkg_models_dev["models-dev"]
+  svc_modelsDev["ctx.modelsDev<br/>models.dev catalog service"]
+>>>>>>> de68a26432 (fix(branch): clear the workspace and documentation gates)
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
+  pkg_agent_instructions_plus --> svc_agentContextSources
   pkg_agent_loop --> svc_agentLoop
   pkg_agent_preset_registry --> svc_agentPresets
   pkg_api_gateway --> svc_typertGateway
@@ -347,7 +366,12 @@ flowchart LR
   pkg_cordis_host_runner --> svc_dynamicCordisRunner
   pkg_credentials --> svc_credentials
   pkg_credentials_local --> svc_credentials
+<<<<<<< HEAD
   pkg_cua --> svc_cuaAccess
+=======
+  pkg_dafeiyu --> svc_dafeiyu
+  pkg_dafeiyu --> svc_dafeiyuRemote
+>>>>>>> de68a26432 (fix(branch): clear the workspace and documentation gates)
   pkg_deepseek_account --> svc_deepseekAccount
   pkg_deepseek_account_platform --> svc_deepseekAccount
   pkg_deepseek_llm_api_extensions --> svc_deepseekLlmApiExtensions
@@ -380,6 +404,7 @@ flowchart LR
   pkg_host_product_telemetry_otel --> svc_productTelemetry
   pkg_host_webserver --> svc_webServer
   pkg_inspector --> svc_inspector
+  pkg_jira_service --> svc_jira
   pkg_jobs --> svc_jobs
   pkg_jobs_local --> svc_jobs
   pkg_llm --> svc_llm
@@ -391,6 +416,7 @@ flowchart LR
   pkg_mcp_client --> svc_mcpResources
   pkg_mcp_resources --> svc_mcpResources
   pkg_message_feedback --> svc_messageFeedback
+  pkg_models_dev --> svc_modelsDev
   pkg_office_to_pdf --> svc_officeToPdf
   pkg_otel --> svc_otel
   pkg_permission_presets --> svc_permissionPresets
@@ -450,6 +476,7 @@ flowchart LR
   pkg_terminal --> svc_terminals
   pkg_terminal_bash --> svc_terminals
   pkg_token_meter --> svc_tokenMeter
+  pkg_tool_dsh_store --> svc_dshStore
   pkg_tool_subagent --> svc_subagentModelSelection
   pkg_tools --> svc_tools
   pkg_typert_registry --> svc_typert
@@ -501,17 +528,27 @@ flowchart LR
   svc_credentials --> pkg_api_settings_controller
   svc_credentials --> pkg_llm_deepseek
   svc_credentials --> pkg_llm_pi_ai
+<<<<<<< HEAD
   svc_cuaAccess --> pkg_cua
+=======
+  svc_dafeiyu --> pkg_jira_agent
+  svc_dafeiyu --> pkg_memory
+  svc_dafeiyu --> pkg_personality
+  svc_dafeiyuRemote --> pkg_client_ui_dafeiyu
+>>>>>>> de68a26432 (fix(branch): clear the workspace and documentation gates)
   svc_deepseekAccount --> pkg_api_account_controller
   svc_deepseekAccount --> pkg_llm_deepseek
   svc_deepseekLlmApiExtensions --> pkg_llm_deepseek
   svc_directoryPicker --> pkg_api_workspace_controller
+  svc_dshStore --> pkg_memory
+  svc_dshStore --> pkg_personality
   svc_dynamicCordisRunner --> pkg_tool_cordis
   svc_fileReferences --> pkg_api_session_controller
   svc_fileUploads --> pkg_api_session_controller
   svc_fs --> pkg_tool_fs
   svc_headlessStartup --> pkg_headless
   svc_hmr --> pkg_app_boot
+  svc_jira --> pkg_jira_agent
   svc_jobs --> pkg_api_job_controller
   svc_jobs --> pkg_tool_bash
   svc_jobs --> pkg_tool_jobs
@@ -736,5 +773,11 @@ flowchart LR
 | `ctx.lsp` | `seam` | [`lsp`](../packages/lsp/lsp) | [`lsp-stdio`](../packages/lsp/lsp-stdio) | [`tool-lsp`](../packages/lsp/tool-lsp) | - | 提供方注册与选择，加上恰好四种操作的标准化查询执行；该 seam 不提供协议逃生口，后端必须转换为标准化请求和结果。 |
 | `ctx.dynamicCordisRunner` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | 拥有内存定义注册表、Host 半的 vm 沙箱和 request-run 往返流程；浏览器页面通过其 Remote 命名空间在线访问同一服务。 |
 | `ctx.cordisInspect` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | 注册 Host inspect 提供方、镜像 Client 提供方 manifest，并通过动态 Cordis 传输路由 Client 查询。 |
+| `ctx.agentContextSources` | `service` | [`agent-instructions-plus`](../packages/uitstalie/agent-instructions-plus) | - | - | - | 收集把渲染文本并入原生指令基线的来源；注册顺序与每个来源的 digest 就是契约。 |
+| `ctx.dafeiyu` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality), [`jira-agent`](../packages/jira/jira-agent) | - | 注册能力提供者、为它们的 create() 调用把关，并按 agent 分发工具、prompt 段与轮末钩子。 |
+| `ctx.dafeiyuRemote` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`client-ui-dafeiyu`](../packages/uitstalie/ui-dafeiyu) | - | 发布只读的 remote.dafeiyu 状态快照；它不能注册、启用或停用能力。 |
+| `ctx.dshStore` | `service` | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality) | - | 拥有受路径约束的 .dsh 存储操作与按会话的策略门；存储工具与侧栏 Remote 消费它。 |
+| `ctx.jira` | `service` | [`jira-service`](../packages/jira/jira-service) | - | [`jira-agent`](../packages/jira/jira-agent) | - | 拥有唯一的账本写入者、读写方法、推送队列与变更通知；浏览器经 remote.jira 读取。 |
+| `ctx.modelsDev` | `service` | [`models-dev`](../packages/uitstalie/models-dev) | - | - | - | 提供 models.dev 的 provider 与模型目录、路由解析，以及 harness 形状的模型默认值与额外参数。 |
 
 维护模式：混合模式。服务从 Cordis 声明中发现；接口、实现和消费方角色在 `scripts/gen-doc-graphs.ts` 中分类，并设有完整性守卫。

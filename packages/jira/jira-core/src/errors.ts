@@ -22,10 +22,12 @@ export const ERROR_CODES = [
   'READ_ONLY_SESSION',
 ] as const
 
+/** The frozen set of wire codes (decision 52); every failure carries exactly one. */
 export type ErrorCode = (typeof ERROR_CODES)[number]
 
 export type ErrorContext = Readonly<Record<string, unknown>>
 
+/** The one error shape every surface renders: a frozen code, a message, and optional context. */
 export type JiraError = Readonly<{
   code: ErrorCode
   message: string

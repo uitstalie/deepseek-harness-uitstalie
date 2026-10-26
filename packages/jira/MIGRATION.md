@@ -183,7 +183,7 @@ bundle 的 `cordis.patch.yml` 形如（照 `packages/bundle/web-app/cordis.patch
 
 这是迁移的**核心契约**。建议接口（TypeScript，示意）：
 
-```ts
+```text
 interface JiraService {
   /** 解析后的账本根（绝对路径） */
   readonly root: string
@@ -267,7 +267,7 @@ interface JiraService {
 
 ### 6.2 设置页字段（建议）
 
-```ts
+```text
 // jira-service 的 Config
 static Config = z.object({
   root: z.string().optional(),          // 账本根；空 = 按优先级自动解析

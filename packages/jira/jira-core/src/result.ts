@@ -13,6 +13,7 @@
 
 export type Ok<T> = Readonly<{ ok: true; value: T }>
 export type Err<E> = Readonly<{ ok: false; error: E }>
+/** A value or a typed error, never both: the composition primitive every core function returns. */
 export type Result<T, E> = Ok<T> | Err<E>
 
 export const ok = <T>(value: T): Ok<T> => Object.freeze({ ok: true, value })

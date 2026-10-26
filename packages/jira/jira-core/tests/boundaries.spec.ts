@@ -256,23 +256,23 @@ function checkFile(file: string, text: string): string[] {
  * missing one fails the self-check below.
  */
 const SELF_TEST: readonly (readonly [string, string, boolean])[] = [
-  ['packages/jira/jira-core/src/a.ts', "import { x } from '@deepseek-ai/dsh-tools'\n", true],
-  ['packages/jira/jira-core/src/a.ts', "import {\n  x,\n  y,\n} from '@deepseek-ai/dsh-tools'\n", true],
-  ['packages/jira/jira-core/src/a.ts', "export { x } from '../../jira-cli/src/main.ts'\n", true],
-  ['packages/jira/jira-core/src/a.ts', "await import('@deepseek-ai/dsh-tools')\n", true],
-  ['packages/jira/jira-core/src/a.ts', "const m = require('left-pad')\n", true],
-  ['packages/jira/jira-core/src/a.ts', "console['log']('x')\n", true],
-  ['packages/jira/jira-core/src/a.ts', "import { x } from './b.ts'\nimport 'node:path'\n", false],
-  ['packages/jira/jira-core/src/a.ts', "// import { x } from '@deepseek-ai/dsh-tools'\n", false],
-  ['packages/jira/jira-core/src/a.ts', 'throw new Error(`cannot import from "${from}"`)\n', false],
-  ['packages/jira/jira-core/src/a.ts', "const url = 'https://example.invalid/x'\n", false],
-  ['packages/jira/jira-core/src/a.ts', "/* import {\n  x,\n} from '@deepseek-ai/dsh-tools' */\n", false],
-  ['packages/jira/jira-agent/src/a.ts', "import { x } from '../../jira-cli/src/main.ts'\n", true],
-  ['packages/jira/jira-agent/src/a.ts', "import { x } from '@deepseek-ai/dsh-jira-cli'\n", true],
-  ['packages/jira/jira-cli/src/a.ts', "import { x } from '../../jira-agent/src/index.ts'\n", true],
-  ['packages/jira/jira-cli/src/a.ts', "import { x } from '../../jira-core/src/store.ts'\n", false],
-  ['packages/jira/jira-agent/src/a.ts', "import { x } from '../../jira-core/src/store.ts'\n", false],
-  ['packages/jira/jira-agent/src/a.ts', "import { x } from '../../jira-service/src/index.ts'\n", false],
+  ['packages/jira/jira-core/src/store.ts', "import { x } from '@deepseek-ai/dsh-tools'\n", true],
+  ['packages/jira/jira-core/src/store.ts', "import {\n  x,\n  y,\n} from '@deepseek-ai/dsh-tools'\n", true],
+  ['packages/jira/jira-core/src/store.ts', "export { x } from '../../jira-cli/src/main.ts'\n", true],
+  ['packages/jira/jira-core/src/store.ts', "await import('@deepseek-ai/dsh-tools')\n", true],
+  ['packages/jira/jira-core/src/store.ts', "const m = require('left-pad')\n", true],
+  ['packages/jira/jira-core/src/store.ts', "console['log']('x')\n", true],
+  ['packages/jira/jira-core/src/store.ts', "import { x } from './b.ts'\nimport 'node:path'\n", false],
+  ['packages/jira/jira-core/src/store.ts', "// import { x } from '@deepseek-ai/dsh-tools'\n", false],
+  ['packages/jira/jira-core/src/store.ts', 'throw new Error(`cannot import from "${from}"`)\n', false],
+  ['packages/jira/jira-core/src/store.ts', "const url = 'https://example.invalid/x'\n", false],
+  ['packages/jira/jira-core/src/store.ts', "/* import {\n  x,\n} from '@deepseek-ai/dsh-tools' */\n", false],
+  ['packages/jira/jira-agent/src/index.ts', "import { x } from '../../jira-cli/src/main.ts'\n", true],
+  ['packages/jira/jira-agent/src/index.ts', "import { x } from '@deepseek-ai/dsh-jira-cli'\n", true],
+  ['packages/jira/jira-cli/src/main.ts', "import { x } from '../../jira-agent/src/index.ts'\n", true],
+  ['packages/jira/jira-cli/src/main.ts', "import { x } from '../../jira-core/src/store.ts'\n", false],
+  ['packages/jira/jira-agent/src/index.ts', "import { x } from '../../jira-core/src/store.ts'\n", false],
+  ['packages/jira/jira-agent/src/index.ts', "import { x } from '../../jira-service/src/index.ts'\n", false],
   ['packages/jira/jira-core/src/project.ts', "import { access } from 'node:fs/promises'\n", true],
   ['packages/jira/jira-core/src/store.ts', "import { readFile } from 'node:fs'\n", true],
   ['packages/jira/jira-core/src/testing/removeTree.ts', "import { rm } from 'node:fs/promises'\n", false],
@@ -282,8 +282,8 @@ const SELF_TEST: readonly (readonly [string, string, boolean])[] = [
   ['packages/jira/jira-cli/src/index.ts', "import { readFile } from 'node:fs/promises'\n", false],
 ]
 
-const repoRoot = resolve(import.meta.dirname, '../../..')
-const groupRoot = resolve(import.meta.dirname, '..')
+const repoRoot = resolve(import.meta.dirname, '../../../..')
+const groupRoot = resolve(import.meta.dirname, '../..')
 const JIRA_PACKAGES = ['jira-core', 'jira-cli', 'jira-agent', 'jira-service', 'ui-jira'] as const
 
 /**

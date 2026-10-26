@@ -44,6 +44,7 @@ export type StoreConfig = Readonly<{
   env?: LockEnvironment
 }>
 
+/** One open ledger: its file access, the writing machine, the lock owner and the resolved lock budget. */
 export type Store = Readonly<{
   files: FileStore
   machineId: string
@@ -157,8 +158,10 @@ export const readComments = async (store: Store, key: IssueKey): Promise<Result<
   return ok(parsed.value.comments)
 }
 
+/** The pure change a transaction applies to the issue it read under the lock. */
 export type Mutation = (issue: Issue, ctx: ChangeContext) => Result<Change, JiraError>
 
+/** What a transaction did: the change, the comments it appended, and the write's commit outcome. */
 export type Transaction = Readonly<{
   change: Change
   /** The comments this transaction appended, ids included. */
@@ -171,6 +174,7 @@ export type Transaction = Readonly<{
   commitError?: JiraError
 }>
 
+/** Who is writing and when: the identity every write records and the clock it stamps. */
 export type Actor = Readonly<{ by: Identity; at: Timestamp }>
 
 const appendPendingComments = async (
@@ -312,6 +316,7 @@ export const transact = async (
 
 /* ── creation (decisions 6, 58, 74, 114) ─────────────────────────────────────────────── */
 
+/** What creating an issue returned: its key, the change that made it, and whether it committed. */
 export type Created = Readonly<{ key: IssueKey; change: Change; committed: boolean; commitError?: JiraError }>
 
 /**

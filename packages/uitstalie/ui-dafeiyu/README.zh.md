@@ -52,7 +52,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-什么都没有。本页是设置面；它不注册工具、prompt 段、context source 或会话消息，也从不写会话。它列出的能力工具与 prompt 段属于各 provider，只能经组织者到达 agent。
+什么都没有。本页是设置面；它自己的贡献只有 `settings.capabilities` 文案字典与该页读取的 `remote.dafeiyu` 状态，因此不注册工具、prompt 段、context source 或会话消息，也从不写会话。它列出的能力工具与 prompt 段属于各 provider，只能经组织者到达 agent。
 
 #### Token 影响
 

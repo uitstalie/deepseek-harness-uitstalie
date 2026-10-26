@@ -151,6 +151,7 @@ const assertIssueReferences = async (
   ))
 }
 
+/** The fields a new knowledge entry supplies; the store provides the key, schema and lineage. */
 export type NewKnowledge = Readonly<{
   domain: string
   kbType: string
@@ -162,6 +163,7 @@ export type NewKnowledge = Readonly<{
   sourceSha256?: string
 }>
 
+/** The outcome of writing an entry: the stored value, whether it committed, and the citation mirror. */
 export type WrittenKnowledge = Readonly<{
   entry: KnowledgeEntry
   committed: boolean
@@ -306,6 +308,7 @@ export const createKnowledge = async (
   return ok(Object.freeze({ ...written.value, ...(mirror === undefined ? {} : { mirror }) }))
 }
 
+/** A partial update: absent fields keep their stored value, `null` clears a source. */
 export type KnowledgePatch = Readonly<{
   title?: string
   kbType?: string

@@ -41,7 +41,7 @@ An id absent from `capabilities` follows the provider's own default: `enabledByD
 
 A v2 provider registers its contribution together with the metadata the capability list renders:
 
-```ts
+```text
 const off = ctx.dafeiyu.register({
   id: 'memory',
   contractVersion: 2,
@@ -68,7 +68,7 @@ const off = ctx.dafeiyu.register({
 
 The browser reads the same snapshot through the read-only Remote namespace:
 
-```ts
+```text
 const statuses = await ctx.remote.dafeiyu.status()
 ```
 

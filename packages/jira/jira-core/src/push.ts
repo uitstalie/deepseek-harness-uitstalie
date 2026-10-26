@@ -21,6 +21,7 @@ import { type Result } from './result.ts'
 
 export const DEFAULT_PUSH_DEBOUNCE_MS = 500
 
+/** How one flush ended: pushed, nothing to push, or failed with the error that stopped it. */
 export type PushOutcome =
   | Readonly<{ kind: 'pushed' }>
   | Readonly<{ kind: 'nothing-to-do'; reason: string }>
@@ -36,6 +37,7 @@ export type PushOutcome =
  */
 export type FlushOptions = Readonly<{ settle?: boolean }>
 
+/** The debounced pusher one store owns: schedule a push, flush on demand, inspect the timer. */
 export type PushQueue = Readonly<{
   /** Ask for a push soon; repeated calls inside the window collapse into one. */
   schedule: () => void

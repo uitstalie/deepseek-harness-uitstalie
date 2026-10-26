@@ -21,7 +21,7 @@ import { type Result } from '@deepseek-ai/dsh-jira-core/result.ts'
 import { scaffoldStore } from '@deepseek-ai/dsh-jira-core/scaffold.ts'
 import { createInStore, createStore, storePaths } from '@deepseek-ai/dsh-jira-core/store.ts'
 import { removeTree } from '@deepseek-ai/dsh-jira-core/testing/removeTree.ts'
-import { runCli, type CliEnv } from '../jira-cli/src/main.ts'
+import { runCli, type CliEnv } from '../src/main.ts'
 
 /** One in-process CLI invocation's exit code and captured output. */
 interface CliResult {
@@ -30,7 +30,7 @@ interface CliResult {
   err: readonly string[]
 }
 
-const CONFIG_FIXTURE = await readFile(new URL('../jira-core/fixtures/config.md', import.meta.url), 'utf8')
+const CONFIG_FIXTURE = await readFile(new URL('../../jira-core/fixtures/config.md', import.meta.url), 'utf8')
 const TAG_FIXTURE = '---\ntype: tag\nname: demo\ndescription: demo tag\n---\n'
 const SMOKE_IDENTITY = asIdentity('human:smoke')
 if (SMOKE_IDENTITY === undefined) throw new Error('the smoke identity must be a human identity')

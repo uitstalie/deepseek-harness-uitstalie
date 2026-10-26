@@ -32,6 +32,7 @@ import { type TransactOptions, createInStore, projectOf, readComments, readIssue
 import { resolveWorkspace } from '@deepseek-ai/dsh-jira-core/workspace.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, okValue } from './envelope.ts'
 
+/** The tool name the host registry and the shipped skills refer to. */
 export const TOOL_NAME = 'jira_issue'
 
 const ACTIONS = ['get', 'create', 'update', 'switch_state', 'comment', 'assignee', 'link', 'tag_create', 'close', 'batch_close'] as const
@@ -42,6 +43,7 @@ export const READ_ACTIONS: readonly string[] = ACTIONS.filter(action => !WRITE_A
 
 /** Decision 84: a read must not be allowed to hang as long as a write. */
 export const READ_TIMEOUT_MS = 5_000
+/** How long a write may run: the settle's git work is included in the budget. */
 export const WRITE_TIMEOUT_MS = 30_000
 
 const CREATE_FIELDS = ['issue_type', 'summary', 'priority', 'status', 'tags', 'note', 'assignee', 'description'] as const
@@ -49,6 +51,7 @@ const CREATE_FIELDS = ['issue_type', 'summary', 'priority', 'status', 'tags', 'n
 const TAG_CREATE_FIELDS = ['name', 'description', 'alias'] as const
 const UPDATE_FIELDS = ['summary', 'issue_type', 'priority', 'tags', 'note', 'description', 'kb_refs'] as const
 
+/** `jira_issue`'s argument schema, validated before any action runs. */
 export const ISSUE_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
   action: {
     type: 'string',
@@ -94,6 +97,7 @@ export const ISSUE_DESCRIPTION =
   + 'attempting a write you will be refused. '
   + 'Tags must exist before an issue can use them: `tag_create` registers one (decision 192).'
 
+/** The envelope `jira_issue` advertises to the host, with `ok`, `writable` and `me` always present. */
 export const ISSUE_OUTPUT_SCHEMA = Object.freeze({
   type: 'object',
   additionalProperties: true,
@@ -111,7 +115,13 @@ export const ISSUE_OUTPUT_SCHEMA = Object.freeze({
   required: Object.freeze(['ok', 'writable', 'me']),
 })
 
-/** Everything the tool does, as a function of (args, caller, store, clock). */
+/**
+ * Validate the arguments, run the requested action, and answer in the shared envelope.
+ * @param args - the raw tool arguments, validated against `ISSUE_PARAMETERS`.
+ * @param options - the store, caller verdict, clock and write hooks for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @returns the action's value, or the refusal as a failed envelope.
+ */
 export const runIssueTool = async (
   args: unknown,
   options: RunOptions,

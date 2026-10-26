@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 `dsh-home-backup` 按固定间隔把 harness 主目录里的持久数据复制到 `$DSH_HOME` 之外的目录，并只保留有限份快照。一份快照完整复制配置的主目录条目——默认是 `sessions` 和 `storages`——加上每个 profile 的配置文件，凭据文件仅在明确开启时才复制。插件只运行在宿主侧：不提供工具、不注入提示词段落、不写 Session 事件，并为每份快照写一个 `manifest.json`，让恢复方知道快照里有什么。
 

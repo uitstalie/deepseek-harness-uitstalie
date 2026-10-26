@@ -214,7 +214,7 @@ dsh-plugin-multidevice-jira/   ← **单包多入口**（决策 64）
 
 **形状示例（照这个写）**：
 
-```ts
+```text
 // core：纯函数 + data class（无副作用、无隐藏状态）
 type Issue = Readonly<{ key: IssueKey; status: Status; summary: string; revision: number /* … */ }>
 function parseIssue(text: string): Result<Issue, ParseError>                                  // 解析 = 一个原子

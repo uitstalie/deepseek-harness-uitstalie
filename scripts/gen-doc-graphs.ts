@@ -935,6 +935,53 @@ const SERVICE_ROLES: ServiceRole[] = [
     consumers: ['tool-cordis'],
     note: 'Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport.',
   },
+  // Branch-owned services documented outside docs/subsystems.
+  {
+    key: 'agentContextSources',
+    pkg: 'agent-instructions-plus',
+    title: 'Always-on agent context source registry',
+    mode: 'service',
+    note: 'Collects sources whose rendered text joins the native instruction baseline; registration order and the per-source digest are the contract.',
+  },
+  {
+    key: 'dafeiyu',
+    pkg: 'dafeiyu',
+    title: 'Capability organizer and enable gate',
+    mode: 'service',
+    consumers: ['memory', 'personality', 'jira-agent'],
+    note: 'Registers capability providers, gates their create() calls, and dispatches tools, prompt sections, and turn-end hooks per agent.',
+  },
+  {
+    key: 'dafeiyuRemote',
+    pkg: 'dafeiyu',
+    title: 'Capability status Remote',
+    mode: 'service',
+    consumers: ['client-ui-dafeiyu'],
+    note: 'Publishes the read-only remote.dafeiyu status snapshot; it cannot register, enable, or disable a capability.',
+  },
+  {
+    key: 'dshStore',
+    pkg: 'tool-dsh-store',
+    title: '.dsh store base interface',
+    mode: 'service',
+    consumers: ['memory', 'personality'],
+    note: 'Owns path-confined .dsh store operations and the per-session policy gate; the store tool and sidebar Remote consume it.',
+  },
+  {
+    key: 'jira',
+    pkg: 'jira-service',
+    title: 'Jira ledger single writer',
+    mode: 'service',
+    consumers: ['jira-agent'],
+    note: 'Owns the one ledger writer, read and write methods, push queue, and changed notices; the browser reads it through remote.jira.',
+  },
+  {
+    key: 'modelsDev',
+    pkg: 'models-dev',
+    title: 'models.dev catalog service',
+    mode: 'service',
+    note: 'Serves the models.dev provider and model catalog, route resolution, and harness-shaped model defaults and extra params.',
+  },
 ]
 
 function generatedHeader(title: string): string[] {

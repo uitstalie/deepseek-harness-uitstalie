@@ -297,6 +297,14 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-user-approval` | yes | User-approval seam (ctx.approval) for the DeepSeek Harness: one-shot permission decisions dispatched to composed answerers over the approval/request waterfall, fail-closed by default |
 | `@deepseek-ai/dsh-user-questions` | no | Abstract user-questions seam (ctx.userQuestions) for asking the human during agent runs |
 
+## jira
+
+| Package | Config | Description |
+|---|---|---|
+| `@deepseek-ai/dsh-client-ui-jira` | no | The jira ledger's browser surface: the settings section that owns the ledger root, host and push switch, and the read-only board, issue and knowledge views |
+| `@deepseek-ai/dsh-jira-agent` | yes | The jira ledger's model surface: the jira capability provider registering the jira_issue, jira_list and jira_kb tools, the write guard, the /jira command, the bundled skills and the turn-end settle |
+| `@deepseek-ai/dsh-jira-service` | yes | The jira ledger's single writer: resolves the root, opens the store, owns the push queue and settle, and registers the ctx.jira service |
+
 ## jobs
 
 | Package | Config | Description |
@@ -502,6 +510,23 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | Package | Config | Description |
 |---|---|---|
 | `@deepseek-ai/dsh-typert-loader` | yes | Loader integration for generated Typert package contributions |
+
+## uitstalie
+
+| Package | Config | Description |
+|---|---|---|
+| `@deepseek-ai/dsh-agent-instructions-plus` | yes | Always-on agent-context seam: appends registered sources (workspace rules today) to the native AGENTS.md/CLAUDE.md baseline, with a registry for memory and personality context |
+| `@deepseek-ai/dsh-client-common-view` | no | Common-view overlay plugin: adopts one native view at a time and contributes its overlay through slots, theme tokens, and component-local custom properties |
+| `@deepseek-ai/dsh-client-ui-dafeiyu` | no | The capability list's browser surface: a settings section that lists every dafeiyu provider with its state, its enable switch, and a link to the provider's own settings page |
+| `@deepseek-ai/dsh-client-ui-models-dev` | no | models.dev catalog settings section: browse fetched providers, pick some, customize, and materialize them as llm-plus routes |
+| `@deepseek-ai/dsh-client-ui-tool-dsh-store` | no | Web sidebar rules button: per-workspace read-only view of the .dsh rules the instruction loader injects |
+| `@deepseek-ai/dsh-dafeiyu` | yes | Host-side capability organizer: registry, enable gate, per-agent wiring, turn-end dispatch, failure isolation, and the read-only capability status list for capability providers |
+| `@deepseek-ai/dsh-home-backup` | yes | Scheduled snapshots of the harness home: sessions, storages, and profile configuration copied outside $DSH_HOME with a retention window |
+| `@deepseek-ai/dsh-llm-plus` | yes | Self-owned multi-protocol LLM adapter (openai-completions / anthropic-messages / gemini) with models.dev catalog integration and native extra-params injection |
+| `@deepseek-ai/dsh-memory` | yes | Memory capability provider: the workspace MEMORY.md file, the completed-turn detail summary job, a durable memory snapshot message, a fixed system prompt section for the forgetting window, and the memory_search/memory_read/memory_write tools |
+| `@deepseek-ai/dsh-models-dev` | yes | models.dev catalog service: startup fetch with disk-cache TTL fallback, harness-shaped model defaults, and a user-facing write location for extra request params |
+| `@deepseek-ai/dsh-personality` | yes | Personality capability provider: the global PERSONALITY.md profile with a workspace overlay, a stable system-prompt section, file-watch refresh, the personality_learn auto-learning tool, and the /personality drift-review command |
+| `@deepseek-ai/dsh-tool-dsh-store` | yes | .dsh base interface: a dshStore service for path-confined store operations, plus the model-facing store tool and a read-only sidebar Remote |
 
 ## web
 

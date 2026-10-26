@@ -46,7 +46,7 @@ Rows show the descriptor label and description for contract version 2 providers,
 
 #### What the model sees
 
-Nothing. The page is a settings surface; it registers no tool, prompt section, context source, or session message, and it never writes the session. The capability tools and prompt sections it lists belong to the providers and reach agents only through the organizer.
+Nothing. The page is a settings surface; its only own contributions are the `settings.capabilities` copy dictionary and the `remote.dafeiyu` status it reads, so it registers no tool, prompt section, context source, or session message, and it never writes the session. The capability tools and prompt sections it lists belong to the providers and reach agents only through the organizer.
 
 #### Token effect
 

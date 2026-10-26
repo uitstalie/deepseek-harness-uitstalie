@@ -13,12 +13,14 @@ import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-ji
 import { system } from '@deepseek-ai/dsh-jira-core/system/index.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, skipped } from './envelope.ts'
 
+/** The registered tool name for the knowledge half of the ledger. */
 export const KB_TOOL_NAME = 'jira_kb'
 
 const KB_ACTIONS = ['get', 'create', 'update', 'search'] as const
 const KB_CREATE_FIELDS = ['domain', 'type', 'title', 'tags', 'body', 'issues', 'source', 'source_sha256'] as const
 const KB_UPDATE_FIELDS = ['title', 'type', 'tags', 'body', 'issues', 'source', 'source_sha256'] as const
 
+/** `jira_kb`'s argument schema, validated before any action runs. */
 export const KB_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
   action: {
     type: 'string',
@@ -37,12 +39,14 @@ export const KB_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze(
   },
 })
 
+/** The description the host shows for `jira_kb`: what each action does and who may use it. */
 export const KB_DESCRIPTION =
   'Read or add knowledge entries under knowledge/<domain>/KB-<n>.md (runbooks, pitfalls, how-tos, '
   + 'concepts). `search` scans the text and returns snippets with file:line so a claim can be traced '
   + 'back; it never returns a whole entry. Reading is open to every session; create and update need a '
   + 'writable one.'
 
+/** The envelope `jira_kb` advertises to the host, with `ok`, `writable` and `me` always present. */
 export const KB_OUTPUT_SCHEMA = Object.freeze({
   type: 'object',
   additionalProperties: true,
@@ -61,7 +65,13 @@ export const KB_OUTPUT_SCHEMA = Object.freeze({
   required: Object.freeze(['ok', 'writable', 'me']),
 })
 
-/** `jira_kb`: the knowledge half of the ledger. Reads are open; writes obey the same guard. */
+/**
+ * `jira_kb`: the knowledge half of the ledger. Reads are open; writes obey the same guard.
+ * @param args - the raw tool arguments, validated against `KB_PARAMETERS`.
+ * @param options - the store, caller verdict, clock and write hooks for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @returns the entry or the search hits, or the refusal as a failed envelope.
+ */
 export const runKbTool = async (args: unknown, options: RunOptions, me: unknown): Promise<ToolValue> => {
   const { store, caller } = options
 

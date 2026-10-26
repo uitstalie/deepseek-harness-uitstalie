@@ -13,8 +13,10 @@ import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-ji
 import { loadVocab } from '@deepseek-ai/dsh-jira-core/store.ts'
 import { type RunOptions, type ToolValue, asString, asStringList, failure, skipped } from './envelope.ts'
 
+/** The registered tool name for the read-only ledger view. */
 export const LIST_TOOL_NAME = 'jira_list'
 
+/** `jira_list`'s filter schema; every field narrows the view. */
 export const LIST_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
   project: { type: 'string', description: 'Only issues of this project, e.g. DH.' },
   status: { type: 'string', description: 'Only issues in this status.' },
@@ -25,12 +27,14 @@ export const LIST_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freez
   include_closed: { type: 'boolean', description: 'Also list issues in a closed status. Default false.' },
 })
 
+/** The description the host shows for `jira_list`: the ordering, the counts and its read-only nature. */
 export const LIST_DESCRIPTION =
   'List issues in the local dsh-jira ledger, ready first and blocked last. Ordered by project, '
   + 'then the vocabulary\'s status order, then priority (S1 first), then most recently updated. '
   + 'The counts describe everything that matched, so a truncated answer does not look like a '
   + 'small store. Read-only, and available to every session including subagents.'
 
+/** The envelope `jira_list` advertises to the host, with `ok`, `writable` and `me` always present. */
 export const LIST_OUTPUT_SCHEMA = Object.freeze({
   type: 'object',
   additionalProperties: true,
@@ -51,7 +55,13 @@ export const LIST_OUTPUT_SCHEMA = Object.freeze({
   required: Object.freeze(['ok', 'writable', 'me']),
 })
 
-/** `jira_list`: a view over the ledger. Read-only, so it never consults the write guard. */
+/**
+ * `jira_list`: a view over the ledger. Read-only, so it never consults the write guard.
+ * @param args - the raw tool arguments, validated against `LIST_PARAMETERS`.
+ * @param options - the store, caller verdict and clock for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @returns the ordered items and groups with their counts.
+ */
 export const runListTool = async (args: unknown, options: RunOptions, me: unknown): Promise<ToolValue> => {
   const { store, caller } = options
 

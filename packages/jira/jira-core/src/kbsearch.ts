@@ -46,6 +46,7 @@ export type KbHit = Readonly<{
   capturedAt: string
 }>
 
+/** The result of one knowledge search: ranked hits, how many entries matched, and whether the cap hid some. */
 export type KbSearch = Readonly<{
   hits: readonly KbHit[]
   /** Entries with at least one match, before `top_k`. */

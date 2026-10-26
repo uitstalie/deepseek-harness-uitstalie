@@ -35,14 +35,17 @@ import { createInStore, createStore } from '@deepseek-ai/dsh-jira-core/store.ts'
 import { parseVocab } from '@deepseek-ai/dsh-jira-core/vocab.ts'
 import { type Actor } from '@deepseek-ai/dsh-jira-core/store.ts'
 
+/** What the command surface prints back: one rendered message, marked success or error. */
 export type CommandResult = Readonly<{ kind: 'success' | 'error'; text: string }>
 
+/** One invocation as the host delivers it: the raw text after `/jira`, plus the calling agent. */
 export type CommandInvocation = Readonly<{
   /** The exact text after the command name, including leading whitespace. */
   rawInput: string
   agent?: unknown
 }>
 
+/** The command as the host registers it: its name, description, input hint and handler. */
 export type CommandDefinition = Readonly<{
   name: string
   description: string
@@ -50,6 +53,7 @@ export type CommandDefinition = Readonly<{
   handler: (invocation: CommandInvocation) => CommandResult | Promise<CommandResult>
 }>
 
+/** What the plugin supplies to one run: where the store is, who writes, and the service hooks. */
 export type CommandOptions = Readonly<{
   /** Resolve the store root lazily, so a misconfigured plugin answers instead of throwing. */
   root: () => Result<string, JiraError>
@@ -105,6 +109,12 @@ const vocabularyOf = (configText: string | undefined) => {
   return parsed.ok ? parsed.value : undefined
 }
 
+/**
+ * Parse and run one `/jira` invocation, returning the text the host shows the person.
+ * @param rawInput - the exact text after the command name, split by the shared argument parser.
+ * @param options - the store root, identity, clock and service hooks this composition provides.
+ * @returns the rendered result; a failure result whenever parsing or the store refuses.
+ */
 export const runJiraCommand = async (rawInput: string, options: CommandOptions): Promise<CommandResult> => {
   const tokens = splitTokens(rawInput)
   if (!tokens.ok) return failure(tokens.error)
@@ -241,6 +251,11 @@ export const runJiraCommand = async (rawInput: string, options: CommandOptions):
   }
 }
 
+/**
+ * Build the `/jira` command definition the plugin registers.
+ * @param options - the store root, identity, clock and service hooks every invocation uses.
+ * @returns the frozen definition the host's command registry consumes.
+ */
 export const createJiraCommand = (options: CommandOptions): CommandDefinition =>
   Object.freeze({
     name: 'jira',

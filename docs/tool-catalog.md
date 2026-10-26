@@ -940,7 +940,7 @@ One owner-isolated persistent pwsh tool, the Windows counterpart of the persiste
 
 ### `tool-dsh-store`
 
-Create, inspect, and delete files and folders under this workspace's `.dsh` directory, which carries editor rules (`.dsh/rules`), project skills, and runtime snapshots. Give a path relative to that directory. Use this tool instead of the generic write, edit, or shell tools for `.dsh` content, because it validates the path, refuses a rule that repeats an existing rule or a skill document missing the frontmatter a skill needs, and reports what it deleted.
+Create, inspect, and delete files and folders under this workspace's `.dsh` directory, which carries editor rules (`.dsh/rules`), project skills, and runtime snapshots; `.dsh/memory` is managed by the memory capability and read-only for this tool. Give a path relative to that directory. Use this tool instead of the generic write, edit, or shell tools for `.dsh` content, because it validates the path, refuses a rule that repeats an existing rule or a skill document missing the frontmatter a skill needs, and reports what it deleted.
 
 ```json
 {

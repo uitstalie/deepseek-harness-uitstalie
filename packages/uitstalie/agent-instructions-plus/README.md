@@ -42,7 +42,7 @@ The native loader keeps its own row and schema; this package configures only the
 
 Other plugins add sources through the registry the plugin provides:
 
-```ts
+```text
 ctx.agentContextSources.register({
   name: 'memory',
   async render({ agent, fileSystem, projectRoot, signal }) {

@@ -51,6 +51,7 @@ export type KnowledgeSource = Readonly<{
   sourceSha256?: string
 }>
 
+/** One knowledge entry as the ledger stores it: frontmatter fields, lineage and the Markdown body. */
 export type KnowledgeEntry = Readonly<{
   key: KnowledgeKey
   domain: string

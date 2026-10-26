@@ -332,7 +332,7 @@ export class JiraService extends Service implements JiraServiceApi {
 
   /**
    * Subscribe to ledger changes.
-   * @param event - the only event, `changed`.
+   * @param _event - the only event, `changed`.
    * @param listener - called after each commit.
    * @returns the unsubscribe function.
    */

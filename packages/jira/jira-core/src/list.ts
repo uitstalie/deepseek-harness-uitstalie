@@ -19,6 +19,7 @@ import { type Vocab, statusOrder } from './vocab.ts'
 export const DEFAULT_LIST_LIMIT = 20
 export const MAX_LIST_LIMIT = 100
 
+/** `jira_list`'s filters: the issue query plus the caller-resolved assignee and the result cap. */
 export type ListQuery = IssueQuery & Readonly<{
   /** `'me'` is resolved by the caller (only it knows who is asking). */
   assignee?: string
@@ -59,6 +60,7 @@ export type ListCounts = Readonly<{
   blocked: number
 }>
 
+/** What `jira_list` returns: ordered items, the blocked group last, and counts over everything matched. */
 export type ListResult = Readonly<{
   items: readonly ListItem[]
   groups: readonly ListGroup[]

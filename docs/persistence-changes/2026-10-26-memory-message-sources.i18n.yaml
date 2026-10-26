@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-26-memory-message-sources.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-10-26-memory-message-sources.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-10-26-memory-message-sources:
+  en: bd95f3c55116ae17
+  zh: 064e3d913ba1e3d4
+/2026-10-26-memory-message-sources/summary:
+  en: bfb76a94e82c789b
+  zh: 4285dd68c049774f
+/2026-10-26-memory-message-sources/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-10-26-memory-message-sources/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-10-26-memory-message-sources/compatibility:
+  en: 203645c28a739be5
+  zh: 88ef505a9dc15519
+/2026-10-26-memory-message-sources/verification:
+  en: ab7c93ecb72d360b
+  zh: c218be1d39206bb5
+/2026-10-26-memory-message-sources/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

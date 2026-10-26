@@ -23,6 +23,12 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
   "dependencies": {
     "@deepseek-ai/dsh-jira-core": "workspace:*"
   },

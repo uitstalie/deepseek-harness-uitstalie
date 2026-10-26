@@ -42,7 +42,7 @@ kind: "package-reference"
 
 其他插件通过本包提供的注册表添加来源：
 
-```ts
+```text
 ctx.agentContextSources.register({
   name: 'memory',
   async render({ agent, fileSystem, projectRoot, signal }) {

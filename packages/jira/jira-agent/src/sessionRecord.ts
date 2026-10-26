@@ -22,6 +22,7 @@ import { type HostEnv } from './env.ts'
 /** How many times a failing session record is retried before it is given up (decision 177). */
 const SESSION_RECORD_ATTEMPTS = 3
 
+/** What identifies the writing tool when its session is first recorded (decisions 10/119). */
 export type SessionFacts = Readonly<{ tool: string; model?: string; toolEvidence?: string; stateDir: string }>
 
 /** The per-apply memory of which sessions have been recorded, and how often a write failed. */
@@ -85,7 +86,11 @@ export const createSessionRecorder = (): SessionRecorder => {
   return Object.freeze({ recordOnce })
 }
 
-/** Decision 10: the raw evidence that identified the tool — recorded, not guessed later. */
+/**
+ * Decision 10: the raw evidence that identified the tool — recorded, not guessed later.
+ * @param env - the process environment, read only for the presence of the listed names.
+ * @returns the first set variable as `NAME=1`, or `none` when none is set.
+ */
 export const toolEvidenceOf = (env: HostEnv): string => {
   for (const name of ['DSH_HOME', 'DSH_MACHINE_ID', 'DSH_SESSION_ID', 'CLAUDECODE', 'DEEPSEEK_API_KEY']) {
     if (env[name] !== undefined && env[name] !== '') return `${name}=1`
@@ -93,12 +98,22 @@ export const toolEvidenceOf = (env: HostEnv): string => {
   return 'none'
 }
 
-/** The machine-local state directory — one implementation, in `core/machine` (decision 150). */
+/**
+ * The machine-local state directory — one implementation, in `core/machine` (decision 150).
+ * @param env - the process environment that may name a state home.
+ * @param root - the store root, used when the environment names none.
+ * @returns the directory this machine keeps scan watermarks and push alarms in.
+ */
 export const stateDirOf = (env: HostEnv, root: string): string => machineStateDir(env, root)
 
 /**
  * Decisions 31/100: at the session's end, walk the commits it made and record them on the issues
  * they mention — bounded, idempotent (the comment carries the sha), and never fatal.
+ * @param store - the store whose commits are scanned.
+ * @param sessionId - the host session id, which names the watermark file.
+ * @param headAtStart - the HEAD the session started at, used before any watermark exists.
+ * @param stateDir - the machine-local state directory holding the watermark.
+ * @param at - the timestamp recorded on the comments the scan appends.
  */
 export const closeOutSession = async (
   store: Store,
@@ -136,6 +151,12 @@ export const pushFailurePath = (stateDir: string): string => join(stateDir, 'pus
 
 export type PushFailure = Readonly<{ at: string; message: string }>
 
+/**
+ * Record the last failed push, or clear the alarm when the flush succeeded (decision 191).
+ * @param stateDir - the machine-local state directory holding the alarm file.
+ * @param outcome - the flush outcome; only `failed` with an error is recorded.
+ * @param at - the timestamp `/jira status` and `jira doctor` show with the failure.
+ */
 export const recordPushOutcome = async (
   stateDir: string,
   outcome: Readonly<{ kind: string; error?: { message: string } }>,
@@ -154,6 +175,11 @@ export const recordPushOutcome = async (
   }
 }
 
+/**
+ * Read the machine's record of the last push that failed (decision 191).
+ * @param stateDir - the machine-local state directory holding the alarm file.
+ * @returns the recorded failure and its time, or undefined when there is none.
+ */
 export const readPushFailure = async (stateDir: string): Promise<PushFailure | undefined> => {
   try {
     const parsed = JSON.parse(await readFile(pushFailurePath(stateDir), 'utf8')) as PushFailure
