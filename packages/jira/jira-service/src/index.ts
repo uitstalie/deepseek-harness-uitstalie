@@ -10,7 +10,9 @@
  * @module @deepseek-ai/dsh-jira-service
  */
 
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context, Service, type Volatile } from '@deepseek-ai/cordis'
+// Type-only: the Loader's `loader/volatile-update` event declaration.
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import z from '@deepseek-ai/schemastery'
 import {
   config as coreConfig,
@@ -44,20 +46,36 @@ declare module '@deepseek-ai/cordis' {
 /** What a `jira-service` row may configure: where the ledger is, who writes, whether to push. */
 export interface Config {
   /** Ledger root; absent means resolve through `$JIRA_ROOT`, `$DSH_HOME/jira`, then the profile. */
-  root?: string
+  root: Volatile<string | undefined>
   /** The `owner.host` audit field; absent means this machine's hostname. */
-  host?: string
+  host: Volatile<string | undefined>
   /** Override the machine identity; absent means `$DSH_HOME/dsh-jira/machine-id`. */
-  machine_id?: string
+  machine_id: string | undefined
   /** Git remote to join on load; a local, offline operation that never clones or fetches. */
-  remote?: string
+  remote: string | undefined
   /** Push switch and debounce for the queue this service owns. */
-  push?: {
+  push: {
     /** Whether a settle schedules a push. Absent means false: everything stays local. */
-    enabled?: boolean
+    enabled: Volatile<boolean>
     /** Debounce window in milliseconds; absent means the core's default. */
-    debounce_ms?: number
+    debounce_ms: number | undefined
   }
+}
+
+/**
+ * Read one live row value.
+ *
+ * A Loader-validated row hands this service `Volatile` references; a caller that mounts the
+ * class directly (tests) may hand plain values, so both forms are accepted.
+ * @param value - the configured value, a live reference, or undefined.
+ * @returns the current plain value.
+ */
+function current<T>(value: Volatile<T> | T | undefined): T | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === 'object' && value !== null && typeof (value as { get?: unknown }).get === 'function') {
+    return (value as Volatile<T>).get() as T
+  }
+  return value as T
 }
 
 /**
@@ -74,13 +92,13 @@ interface Opened {
   readonly queue?: ReturnType<typeof push.createPushQueue>
 }
 
-const CONFIG_SCHEMA: z<Config> = z.object({
-  root: z.string(),
-  host: z.string(),
+const CONFIG_SCHEMA = z.object({
+  root: z.string().volatile(),
+  host: z.string().volatile(),
   machine_id: z.string(),
   remote: z.string(),
   push: z.object({
-    enabled: z.boolean().default(false),
+    enabled: z.boolean().default(false).volatile(),
     debounce_ms: z.number().step(1).min(0),
   }).default({ enabled: false }),
 })
@@ -106,13 +124,16 @@ const statusOf = (
  */
 export class JiraService extends Service implements JiraServiceApi {
   /** Row configuration, so a profile can move the ledger without a rebuild. */
-  static Config: z<Config> = CONFIG_SCHEMA
+  static Config = CONFIG_SCHEMA
 
-  /** The resolved ledger root, or the empty string when it could not be resolved. */
-  readonly root: string
+  /** The resolved ledger root, or the empty string when it could not be resolved. Live-updated. */
+  root: string
 
-  /** The `owner.host` audit value every write through this service carries. */
-  readonly host: string
+  /** The `owner.host` audit value every write through this service carries. Live-updated. */
+  host: string
+
+  /** The push switch the queue was created with; live-updated with the row configuration. */
+  private pushEnabled = false
 
   /**
    * Cordis hands a service to callers through a tracing proxy that overlays `ctx`, so a service
@@ -125,23 +146,24 @@ export class JiraService extends Service implements JiraServiceApi {
   private resolvedMachineId = 'local'
   private queue: ReturnType<typeof push.createPushQueue> | undefined
   private lastSync: SyncRecord | null = null
+  /** Bumped by a live configuration change so an in-flight open cannot publish a stale queue. */
+  private generation = 0
   private readonly listeners = new Set<(change: ChangeNotice) => void>()
 
   /**
    * @param ctx - the context the service is registered on.
-   * @param config - the row configuration; every field is optional.
+   * @param config - the row configuration after schema validation, with defaults filled.
    */
-  constructor(ctx: Context, config: Config = {}) {
+  constructor(ctx: Context, config: Config) {
     super(ctx, 'jira')
     this.config = config
-    const configured = coreConfig.configuredRootOf(config.root)
-    const resolved = coreConfig.resolveStoreRoot({
-      ...(configured === undefined ? {} : { configured }),
-      env: process.env,
-    })
-    this.root = resolved.ok ? resolved.value : ''
+    this.root = this.resolveRoot()
     // Resolved once: the store's audit fields and `status()` must agree on the host writes carry.
-    this.host = config.host ?? system.system.hostName(process.env)
+    this.host = current(config.host) ?? system.system.hostName(process.env)
+    this.pushEnabled = current(config.push.enabled) === true
+    // The Loader commits volatile changes into the same references without remounting; a root,
+    // host or push change therefore reopens the ledger and rebuilds the queue lazily.
+    ctx.on('loader/volatile-update', () => { this.reconfigure() })
     // The queue is created lazily, so the disposer reads it at teardown rather than capturing a
     // value that does not exist yet.
     ctx.effect(() => () => {
@@ -151,6 +173,40 @@ export class JiraService extends Service implements JiraServiceApi {
     // The browser face reads through this service, so it is mounted by the row that owns the
     // ledger: one row resolves one root, and no second row can answer from a different ledger.
     void ctx.plugin(JiraRemote)
+  }
+
+  /** Resolve the configured root through the shared precedence, without opening the store. */
+  private resolveRoot(): string {
+    const configured = coreConfig.configuredRootOf(current(this.config.root))
+    const resolved = coreConfig.resolveStoreRoot({
+      ...(configured === undefined ? {} : { configured }),
+      env: process.env,
+    })
+    return resolved.ok ? resolved.value : ''
+  }
+
+  /**
+   * Re-read the volatile fields after a Loader commit.
+   *
+   * A changed root or host invalidates the open store (its audit identity and files live under
+   * the old root); a changed push switch invalidates the queue created with the old value. The
+   * next operation reopens lazily, and the generation bump keeps a concurrent open from
+   * publishing a queue built for the previous configuration.
+   */
+  private reconfigure(): void {
+    const root = this.resolveRoot()
+    const host = current(this.config.host) ?? system.system.hostName(process.env)
+    const pushEnabled = current(this.config.push.enabled) === true
+    if (root === this.root && host === this.host && pushEnabled === this.pushEnabled) return
+    this.root = root
+    this.host = host
+    this.pushEnabled = pushEnabled
+    this.generation += 1
+    const queue = this.queue
+    this.queue = undefined
+    this.opened = undefined
+    this.lastSync = null
+    queue?.dispose()
   }
 
   /** This machine's identity in the ledger's counter blocks. */
@@ -167,7 +223,7 @@ export class JiraService extends Service implements JiraServiceApi {
       this.root,
       this.resolvedMachineId,
       this.host,
-      this.config.push?.enabled === true,
+      this.pushEnabled,
       this.lastSync,
       this.queue?.isPending() === true,
     )
@@ -326,7 +382,7 @@ export class JiraService extends Service implements JiraServiceApi {
     const settled = await generateStore.regenerateAndCommit(opened.store.value, now())
     if (!settled.ok) return settled
     this.emitChange('settle')
-    if (this.config.push?.enabled === true) opened.queue?.schedule()
+    if (this.pushEnabled) opened.queue?.schedule()
     return settled
   }
 
@@ -359,7 +415,7 @@ export class JiraService extends Service implements JiraServiceApi {
    */
   notifyWrite(key?: string): void {
     this.emitChange('write', key)
-    if (this.config.push?.enabled === true) this.queue?.schedule()
+    if (this.pushEnabled) this.queue?.schedule()
   }
 
   /**
@@ -390,7 +446,8 @@ export class JiraService extends Service implements JiraServiceApi {
   }
 
   private readonly openOnce = async (): Promise<Opened> => {
-    const configured = coreConfig.configuredRootOf(this.config.root)
+    const generation = this.generation
+    const configured = coreConfig.configuredRootOf(current(this.config.root))
     const resolved = coreConfig.resolveStoreRoot({
       ...(configured === undefined ? {} : { configured }),
       env: process.env,
@@ -412,17 +469,20 @@ export class JiraService extends Service implements JiraServiceApi {
       machineId: this.resolvedMachineId,
       host: this.host,
     })
+    const pushEnabled = current(this.config.push.enabled)
     const queue = push.createPushQueue({
       root: resolved.value,
-      ...(this.config.push?.enabled === undefined ? {} : { enabled: this.config.push.enabled }),
-      ...(this.config.push?.debounce_ms === undefined ? {} : { debounceMs: this.config.push.debounce_ms }),
+      ...(pushEnabled === undefined ? {} : { enabled: pushEnabled }),
+      ...(this.config.push.debounce_ms === undefined ? {} : { debounceMs: this.config.push.debounce_ms }),
       pull: async () => rebase.pullRebase(store, { by: PULL_IDENTITY, at: now() }),
       settle: async () => generateStore.regenerateAndCommit(store, now()),
       onOutcome: (outcome) => {
         this.lastSync = recordOf(outcome)
       },
     })
-    this.queue = queue
+    // A volatile change during open already invalidated this generation; do not publish its queue.
+    if (generation === this.generation) this.queue = queue
+    else queue.dispose()
     return Object.freeze({ root: resolved.value, machineId: this.resolvedMachineId, store: result.ok(store), queue })
   }
 }

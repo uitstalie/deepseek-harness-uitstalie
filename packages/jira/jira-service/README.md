@@ -55,11 +55,11 @@ There are no write methods: writes go through the model's tools, which the agent
 
 | Key | Effect |
 |---|---|
-| `root` | Ledger root; absent resolves through `$JIRA_ROOT`, then `$DSH_HOME/jira`, then the profile's `.dsh/jira` |
-| `host` | The `owner.host` audit field; absent is this machine's hostname |
+| `root` | Ledger root; absent resolves through `$JIRA_ROOT`, then `$DSH_HOME/jira`, then the profile's `.dsh/jira`. Volatile: a settings write reopens the ledger without a remount |
+| `host` | The `owner.host` audit field; absent is this machine's hostname. Volatile, like `root` |
 | `machine_id` | Overrides `$DSH_HOME/dsh-jira/machine-id` (never stored in the ledger) |
 | `remote` | Git remote to join on load; local only, it never clones or fetches |
-| `push.enabled` | Whether a settle schedules a push; default false keeps everything local |
+| `push.enabled` | Whether a settle schedules a push; default false keeps everything local. Volatile: the switch applies without a restart |
 | `push.debounce_ms` | Debounce window; absent is the core default |
 
 The vocabulary (statuses, transitions, priorities, types, resolutions) is **not** configuration here: it lives in the ledger's `config.md`, where git versions it.
@@ -85,7 +85,6 @@ None of its own; a commit it makes changes ledger data, and only `jira-agent` de
 <a id="known-limitations-and-deferred-work"></a>
 
 - `store()`, `notifyWrite()` and `pushQueue()` are the phase-1 bridge described above, not part of the long-term contract.
-- `.volatile()` (live reconfiguration from the settings page) is not declared on the config schema, so a browser settings page can display the effective values but cannot write the row: the settings service only edits fields a plugin declares volatile, keyed by the profile entry id (`jira-service`).
 - `status()` is synchronous and reports `machineId` as `local` until the service first opens the ledger; a client that shows the identity reads `board()` (or any other method) first.
 - The composition test covers the read surface; the write methods, `sync` and `settle` are exercised through `jira-core`'s suites and the agent's wiring suites.
 

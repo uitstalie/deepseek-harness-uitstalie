@@ -55,11 +55,11 @@ kind: "package-reference"
 
 | 键 | 作用 |
 |---|---|
-| `root` | 账本根目录；缺省时依次经 `$JIRA_ROOT`、`$DSH_HOME/jira`、profile 的 `.dsh/jira` 解析 |
-| `host` | `owner.host` 审计字段；缺省时是本机主机名 |
+| `root` | 账本根目录；缺省时依次经 `$JIRA_ROOT`、`$DSH_HOME/jira`、profile 的 `.dsh/jira` 解析。volatile：设置写入后无需重挂载即可重新打开账本 |
+| `host` | `owner.host` 审计字段；缺省时是本机主机名。与 `root` 一样是 volatile |
 | `machine_id` | 覆盖 `$DSH_HOME/dsh-jira/machine-id`（从不写进账本） |
 | `remote` | 加载时接入的 git remote；仅在本地，绝不 clone 或 fetch |
-| `push.enabled` | settle 是否安排 push；默认 false，一切留在本地 |
+| `push.enabled` | settle 是否安排 push；默认 false，一切留在本地。volatile：开关无需重启即可生效 |
 | `push.debounce_ms` | 防抖窗口；缺省时用 core 的默认值 |
 
 词表（statuses、transitions、priorities、types、resolutions）在这里**不是**配置：它在账本的 `config.md` 里，由 git 管理版本。
@@ -85,7 +85,6 @@ kind: "package-reference"
 <a id="known-limitations-and-deferred-work"></a>
 
 - `store()`、`notifyWrite()` 与 `pushQueue()` 是上面描述的 phase-1 桥，不属于长期约定。
-- 配置 schema 上没有声明 `.volatile()`（从设置页热更新），因此浏览器设置页可以显示生效值，但不能写这一行：设置服务只编辑插件声明为 volatile 的字段，按 profile 条目 id（`jira-service`）索引。
 - `status()` 是同步的，在服务首次打开账本之前把 `machineId` 报为 `local`；要显示身份的客户端先读 `board()`（或任意其他方法）。
 - 组合测试覆盖读面；写方法、`sync` 与 `settle` 由 `jira-core` 的套件与 agent 的接线套件覆盖。
 

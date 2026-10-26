@@ -1,9 +1,8 @@
 /**
  * The ledger's own block: the three `jira-service` row fields and what the service reports.
  *
- * The fields are read-only here. The settings service edits only fields a plugin declares
- * volatile, keyed by the profile entry id, and this row's schema declares none, so the page shows
- * the effective values and says where they live instead of offering a write it cannot make.
+ * The values are the effective row configuration; the editable form lives in the settings block
+ * beside this one, because a status read and a staged edit have different lifetimes.
  *
  * @module @deepseek-ai/dsh-client-ui-jira/LedgerStatus
  */
@@ -61,7 +60,6 @@ export function LedgerStatus({ status, error, t }: LedgerStatusProps) {
               value={status.pending ? t('pendingArmed') : t('pendingIdle')}
             />
           </dl>
-          <p className={styles.note}>{t('settingsNote')}</p>
         </>
       )}
     </section>

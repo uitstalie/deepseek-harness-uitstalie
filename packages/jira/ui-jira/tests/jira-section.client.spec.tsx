@@ -213,7 +213,6 @@ it('renders the ledger status and the board the host answered', async () => {
   expect(screen.getByText('/srv/ledger')).toBeDefined()
   expect(screen.getByText('fixture-host')).toBeDefined()
   expect(screen.getByText('lastSyncNever')).toBeDefined()
-  expect(screen.getByText('settingsNote')).toBeDefined()
 })
 
 it('opens one issue detail from the board and closes it', async () => {

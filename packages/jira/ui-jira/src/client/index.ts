@@ -22,6 +22,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import jiraRemote from '@deepseek-ai/dsh-jira-service/remote'
 import { JiraSection } from './JiraSection.tsx'
 import type { JiraSectionInjected } from './JiraSection.tsx'
+import { JiraLedgerSettingsController, type JiraLedgerSettings } from './ledger-settings.ts'
 import { en, zh, type JiraKey } from './locales.ts'
 import { JiraStore } from './store.ts'
 import { JIRA_SETTINGS_ORDER, JIRA_SETTINGS_SECTION } from '../section.ts'
@@ -59,6 +60,10 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
 
   ctx.inject(['slots', 'remote.jira'], (scoped) => {
     const controller = new JiraStore(scoped.remote.jira)
+    const ledgerSettings = new JiraLedgerSettingsController(
+      scoped.get('configForms')?.get<JiraLedgerSettings>('jira-service'),
+    )
+    scoped.effect(() => () => { ledgerSettings.dispose() }, 'ui-jira: ledger settings form')
     scoped.slots.inject('settings.section', () => scoped.slots.register({
       name: 'settings.section',
       id: JIRA_SETTINGS_SECTION,
@@ -68,7 +73,8 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       inject: (): JiraSectionInjected => ({
         controller,
         activate: () => { void controller.load() },
-        hooks: { snapshot: controller.store },
+        ledgerSettings: { controller: ledgerSettings, store: ledgerSettings.store },
+        hooks: { snapshot: controller.store, ledgerSettings: ledgerSettings.store },
         t,
       }),
     }, JiraSection))

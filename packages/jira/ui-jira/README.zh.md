@@ -1,5 +1,5 @@
 ---
-description: "jira 账本的浏览器面：显示账本行并读取看板、单个 issue 详情与知识搜索的设置页段落，自身没有写路径。"
+description: "jira 账本的浏览器面：编辑账本行并读取看板、单个 issue 详情与知识搜索的设置页段落；账本本身在这里仍然只读。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-jira` 提供 jira 账本的浏览器面：一个设置页段落（`id: 'jira'`、`order: 200`），显示账本行并读取账本本身——按 status 分组的看板、一个 issue 的详情，以及知识搜索。所有视图都是只读：写操作留给模型的工具，设置页会说明这一点，而不是提供一个它无法兑现的控件。`dafeiyu` 的 Capabilities 列表按 id 链接到这个段落，因此 id 与 order 是两面都从同一个模块读取的约定。
+`dsh-client-ui-jira` 提供 jira 账本的浏览器面：一个设置页段落（`id: 'jira'`、`order: 200`），编辑账本行并读取账本本身——按 status 分组的看板、一个 issue 的详情，以及知识搜索。账本视图仍然只读（写操作留给模型的工具）；行字段可编辑，因为 `jira-service` 把它们声明为 volatile，保存后无需重启即可生效。`dafeiyu` 的 Capabilities 列表按 id 链接到这个段落，因此 id 与 order 是两面都从同一个模块读取的约定。
 
 ## 目录
 
@@ -28,14 +28,12 @@ kind: "package-reference"
 
 | 区块 | 数据 | 写入 |
 |---|---|---|
-| 账本 | `remote.jira.status()`：根目录、审计 host、push 开关、最近一次 push、排队中的 push | 无 |
+| 账本 | `remote.jira.status()`：根目录、审计 host、push 开关、最近一次 push、排队中的 push | 经设置服务写 `root`、`host`、`push.enabled` |
 | 看板 | `remote.jira.board()`：按 status 分组的 issue，blocked 组最后，带计数 | 无 |
 | Issue 详情 | `remote.jira.get(key)`：frontmatter 字段与 Markdown 正文 | 无 |
 | 知识 | `remote.jira.kbSearch(query)`：排序后的命中及其 `file:line` | 无 |
 
-三个行字段（`root`、`host`、`push.enabled`）只展示、不编辑：它们是 `jira-service` 行的配置，而设置服务只写插件声明为 `.volatile()` 的字段。页面说明这一点，而不是提供一个它无法兑现的控件。
-
-写入留给模型：agent 的工具是通向账本唯一的路，`jira-agent` 的守卫约束它们。这里不读文件，也不写提交。
+三个行字段（`root`、`host`、`push.enabled`）在设置区块里编辑。保存经设置服务写入 `jira-service` 的 profile 行；开关立即写入，服务无需重启即可按新值重新打开账本。账本写入仍留给模型：agent 的工具是通向账本唯一的路，`jira-agent` 的守卫约束它们。这里不读账本文件，也不写提交。
 
 <a id="faces"></a>
 
@@ -68,7 +66,6 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **设置写路径：** 页面显示 `root`、`host` 与 `push.enabled`，但无法修改它们。要在这里写，需要 `jira-service` 的 schema 把这些字段声明为 `.volatile()`；在那之前，设置服务没有该行的命名空间，会拒绝写入。
 - **看板位置：** 看板、详情与知识搜索渲染在设置页段落内。dock/侧栏看板会是第二个注册（以及设计师的布局），而不是这个段落的另一页。
 - **dafeiyu Capabilities 列表：** Jira 行的标签、状态与「打开设置」跳转是 DH-12 的工作；本包只拥有它们链接到的段落。
 

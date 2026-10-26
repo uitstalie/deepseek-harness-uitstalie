@@ -1,5 +1,5 @@
 ---
-description: "The jira ledger's browser surface: the settings section that shows the ledger row and reads the board, one issue's detail and the knowledge search, with no write path of its own."
+description: "The jira ledger's browser surface: the settings section that edits the ledger row and reads the board, one issue's detail and the knowledge search; the ledger itself stays read-only here."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-jira` adds the jira ledger's browser surface: one settings section (`id: 'jira'`, `order: 200`) that shows the ledger row and reads the ledger itself — the board grouped by status, one issue's detail, and the knowledge search. Every view is read-only: writes stay with the model's tools, and the section says so instead of offering controls it cannot honor. The `dafeiyu` Capabilities list links to the section by id, so the id and order are a contract both halves read from one module.
+`dsh-client-ui-jira` adds the jira ledger's browser surface: one settings section (`id: 'jira'`, `order: 200`) that edits the ledger row and reads the ledger itself — the board grouped by status, one issue's detail, and the knowledge search. The ledger views are read-only (writes stay with the model's tools); the row fields are editable because `jira-service` declares them volatile, so a save applies without a restart. The `dafeiyu` Capabilities list links to the section by id, so the id and order are a contract both halves read from one module.
 
 ## Table of Contents
 
@@ -28,14 +28,12 @@ English | [中文](README.zh.md)
 
 | Block | Data | Writes |
 |---|---|---|
-| Ledger | `remote.jira.status()`: root, audit host, push switch, last push, queued push | none |
+| Ledger | `remote.jira.status()`: root, audit host, push switch, last push, queued push | `root`, `host`, `push.enabled` through the settings service |
 | Board | `remote.jira.board()`: issues grouped by status, blocked group last, counts | none |
 | Issue detail | `remote.jira.get(key)`: frontmatter fields and the Markdown body | none |
 | Knowledge | `remote.jira.kbSearch(query)`: ranked hits with their `file:line` | none |
 
-The three row fields (`root`, `host`, `push.enabled`) are shown, not edited: they are the `jira-service` row configuration, and the settings service writes only fields a plugin declares `.volatile()`. The page says so instead of offering a control it cannot honor.
-
-Writes stay with the model: the agent's tools are the only path to the ledger, and the guard in `jira-agent` constrains them. Nothing here reads a file or writes a commit.
+The three row fields (`root`, `host`, `push.enabled`) are edited in the settings block. Saving writes the `jira-service` profile row through the settings service; the switch writes immediately, and the service reopens the ledger against the new values without a restart. Every ledger write stays with the model: the agent's tools are the only path to the ledger, and the guard in `jira-agent` constrains them. Nothing here reads a ledger file or writes a commit.
 
 <a id="faces"></a>
 
@@ -58,7 +56,7 @@ Run them with `pnpm exec vitest run packages/jira/ui-jira`.
 
 ## Model Experience
 
-None, as nothing here reaches a model: the page reads the same service the tools write, so what a reader sees and what a model changed cannot disagree, and the UI has no write path of its own.
+None, as nothing here reaches a model: the page reads the same service the tools write, so what a reader sees and what a model changed cannot disagree; its only writes are the `jira-service` row fields.
 
 #### KV Cache effect
 
@@ -68,7 +66,6 @@ None; the page assembles no request and contributes no prompt text, tool schema,
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Settings write path:** the page displays `root`, `host` and `push.enabled` but cannot change them. Writing them from here needs the `jira-service` schema to declare those fields `.volatile()`; until then the settings service exposes no namespace for the row and would refuse the write.
 - **Board seat:** the board, detail and knowledge search render inside the settings section. A dock/sidebar board would be a second registration (and a designer's layout) rather than another page of this section.
 - **dafeiyu Capabilities list:** the Jira row's label, state and "open settings" jump are DH-12's work; this package only owns the section they link to.
 
