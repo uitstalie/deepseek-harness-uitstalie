@@ -4,9 +4,8 @@
  * Each definition keeps the shape the standalone plugin handed its duck-typed host: the frozen
  * JSON Schema `objectSchema` builds, an output schema the registry validates, a text renderer,
  * the declared timeout and the concurrency classification. What changed with the move into the
- * repository is where the store comes from: `ctx.jira.store()` resolves it once per call, and a
- * write reports itself through `ctx.jira.notifyWrite()` so the service's `changed` event and push
- * queue stay the single source of truth.
+ * repository is where the ledger comes from: every runner calls `ctx.jira`, and the service owns
+ * the store, the locks, the `changed` event and the push queue.
  *
  * The model-facing names, verbs and descriptions are the standalone plugin's, unchanged.
  *
@@ -15,13 +14,12 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { type Issue } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { formatError, ioFailed } from '@deepseek-ai/dsh-jira-core/errors.ts'
+import { formatError } from '@deepseek-ai/dsh-jira-core/errors.ts'
 import { type KnowledgeEntry } from '@deepseek-ai/dsh-jira-core/kb.ts'
 import { type KbSearch, renderKbSearch } from '@deepseek-ai/dsh-jira-core/kbsearch.ts'
 import { type ListResult, renderIssueListForModel } from '@deepseek-ai/dsh-jira-core/list.ts'
 import { clampText, fromWire, renderIssueHuman, toWire } from '@deepseek-ai/dsh-jira-core/render.ts'
 import { type FieldSpec, objectSchema } from '@deepseek-ai/dsh-jira-core/schema.ts'
-import { type Store } from '@deepseek-ai/dsh-jira-core/store.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { assertSupportedJsonSchema, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
@@ -56,10 +54,8 @@ export interface ToolHost {
 
 /** The resolved store, caller and identity of one call. */
 export interface CallContext {
-  /** The ledger service every migrated runner calls. */
+  /** The ledger service every runner calls. */
   readonly jira: JiraServiceApi
-  /** The store this call reads and writes through. */
-  readonly store: Store
   /** Who is asking, and whether they may write. */
   readonly caller: Caller
   /** The frozen identity tuple every result carries, successful or refused. */
@@ -110,29 +106,13 @@ export const identityOf = (host: Pick<ToolHost, 'ctx'>, agent: unknown): Readonl
   })
 }
 
-/** Resolve the store and the caller for one call; `undefined` when the root cannot be resolved. */
-const resolveCall = async (host: ToolHost, exec: ToolRunContext): Promise<CallContext | undefined> => {
-  const opened = await host.ctx.jira.store()
-  if (!opened.ok) return undefined
-  return Object.freeze({
-    jira: host.ctx.jira,
-    store: opened.value,
-    caller: callerOf(host, exec.agent),
-    me: identityOf(host, exec.agent),
-  })
-}
+/** Resolve the service and the caller for one call. */
+const resolveCall = (host: ToolHost, exec: ToolRunContext): CallContext => Object.freeze({
+  jira: host.ctx.jira,
+  caller: callerOf(host, exec.agent),
+  me: identityOf(host, exec.agent),
+})
 
-/** The envelope an unresolved ledger produces: the same fields a handler refusal carries. */
-const unresolved = (host: ToolHost, exec: ToolRunContext): ToolValue => {
-  const caller = callerOf(host, exec.agent)
-  return Object.freeze({
-    ok: false,
-    error: ioFailed('cannot resolve the store root'),
-    writable: caller.writable,
-    ...(caller.reason === undefined ? {} : { reason: caller.reason }),
-    me: identityOf(host, exec.agent),
-  })
-}
 
 /** Every tool result crosses into JSON here: entities are camelCase inside, the wire snake_case. */
 const wire = (value: ToolValue): ToolValue => toWire(value) as ToolValue
@@ -147,10 +127,8 @@ const sessionFactsOf = (host: ToolHost, root: string): SessionFacts => Object.fr
 /** The options the three runners share. */
 const runOptionsOf = (host: ToolHost, call: CallContext) => Object.freeze({
   jira: call.jira,
-  store: call.store,
   caller: call.caller,
   at: nowUtc(host.clock),
-  onWrote: () => { host.ctx.jira.notifyWrite() },
 })
 
 /**
@@ -184,8 +162,7 @@ const defineJiraTool = (host: ToolHost, spec: Spec): ToolDefinition => {
     timeoutMs: spec.timeoutMs,
     isConcurrencySafe: spec.isConcurrencySafe,
     execute: async (args, exec) => {
-      const call = await resolveCall(host, exec)
-      if (call === undefined) return wire(unresolved(host, exec))
+      const call = resolveCall(host, exec)
       return wire(await spec.run(args, call, exec))
     },
   }

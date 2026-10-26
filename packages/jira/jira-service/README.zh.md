@@ -29,9 +29,9 @@ kind: "package-reference"
 
 第二个消费方——UI、另一个能力、一个 shell——通过 `ctx.jira` 共享这个服务；其他任何人都不 push。跨进程时，存储自身的文件锁就是守卫，因此 CLI 可以在宿主会话打开时提交。
 
-`ctx.jira` 实现 [`src/types.ts`](src/types.ts) 里的约定：读方法（`list`、`get`、`board`、`doctor`、`searchKnowledge`、`counts`）、写方法（`create`、`transact`、`kbCreate`、`kbUpdate`）、`sync` 与 `settle`，以及 `changed` 订阅。每个方法返回 `Result`；错误是带十二个错误码之一的 `JiraError`；权限不在这里判定——`jira-agent` 的守卫在写入到达账本之前就拒绝它。
+`ctx.jira` 实现 [`src/types.ts`](src/types.ts) 里的约定：读方法（`list`、`listWithRejected`、`get`、`readIssue`、`board`、`doctor`、`searchKnowledge`、`kbGet`、`counts`）、写方法（`create`、`createIssue`、`mutateIssue`、`batchClose`、`createTag`、`transact`、`kbCreate`、`kbUpdate`）、`gitHead`、`recordSession`、`closeOutSession`、`sync` 与 `settle`，以及 `changed` 订阅。每个方法返回 `Result`；错误是带十二个错误码之一的 `JiraError`；权限不在这里判定——`jira-agent` 的守卫在写入到达账本之前就拒绝它。
 
-有两个方法是通往 agent 既有工具 runner 的 phase-1 桥：`store()` 交回已打开的存储，`notifyWrite()` 记录那些 runner 直接做出的写入，因此 `changed` 仍会触发，队列仍会武装。等工具迁到上面的写方法后，两者都会消失。
+工具 runner 不再持有存储：它们调用 `ctx.jira`，由服务自己记录每次写入，因此 `changed` 与 push 队列无法被绕过。`/jira` 的人类视图仍直接打开存储；那一面单独跟踪（DH-205）。
 
 <a id="remote"></a>
 
@@ -84,7 +84,7 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- `store()`、`notifyWrite()` 与 `pushQueue()` 是上面描述的 phase-1 桥，不属于长期约定。
+- `/jira`（人类命令面）仍直接经 `jira-core` 读取；迁到服务上由 DH-205 跟踪。
 - `status()` 是同步的，在服务首次打开账本之前把 `machineId` 报为 `local`；要显示身份的客户端先读 `board()`（或任意其他方法）。
 - 组合测试覆盖读面；写方法、`sync` 与 `settle` 由 `jira-core` 的套件与 agent 的接线套件覆盖。
 

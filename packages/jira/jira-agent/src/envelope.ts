@@ -10,7 +10,7 @@
 
 import { type Identity, type Timestamp } from '@deepseek-ai/dsh-jira-core/entity.ts'
 import { type JiraError } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { type Actor, type Store } from '@deepseek-ai/dsh-jira-core/store.ts'
+import { type Actor } from '@deepseek-ai/dsh-jira-core/store.ts'
 import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
 import { type Caller } from './caller.ts'
 import { type SessionFacts } from './sessionRecord.ts'
@@ -112,11 +112,8 @@ export const asStringList = (value: unknown): readonly string[] | undefined =>
 /** Everything a tool run needs: the store, the caller's verdict, the clock, and the write hooks. */
 export type RunOptions = Readonly<{
   jira: JiraServiceApi
-  store: Store
   caller: Caller
   at: Timestamp
-  /** Called after a write lands, so the commit can be pushed soon (decision 60). */
-  onWrote?: () => void
   /** Decision 84: declaring `timeoutMs` promises we honour `exec.signal`. */
   signal?: AbortSignal
   /** Decisions 10/119: what to record about this session, written once at its first write. */

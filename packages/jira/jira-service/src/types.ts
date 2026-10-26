@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-jira-service/types
  */
 
-import type { Actor, Created, DoctorReport, ErrorCode, Identity, Issue, IssueKey, JiraError, KbSearch, KnowledgeEntry, KnowledgeKey, KnowledgePatch, ListQuery, ListResult, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Result, Store, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from '@deepseek-ai/dsh-jira-core'
+import type { Actor, Created, DoctorReport, ErrorCode, Identity, Issue, IssueKey, JiraError, KbSearch, KnowledgeEntry, KnowledgeKey, LinkType, KnowledgePatch, ListQuery, ListResult, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Result, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from '@deepseek-ai/dsh-jira-core'
 
 export type {
   Actor,
@@ -21,6 +21,7 @@ export type {
   JiraError,
   KbSearch,
   KnowledgeEntry,
+  LinkType,
   KnowledgeKey,
   KnowledgePatch,
   ListQuery,
@@ -28,7 +29,6 @@ export type {
   NewIssueInput,
   NewKnowledge,
   PushOutcome,
-  Store,
   Timestamp,
   Transaction,
   TransactOptions,
@@ -101,6 +101,104 @@ export interface KnowledgeDetail {
   readonly warnings: readonly string[]
 }
 
+/** One comment as the tool surface returns it. */
+export interface IssueComment {
+  readonly id: string
+  readonly author: Identity
+  readonly revision: number
+  readonly createdAt: Timestamp
+  readonly body: string
+}
+
+/** A read of one issue with its comments and decode warnings. */
+export interface IssueRead {
+  readonly issue: Issue
+  readonly warnings: readonly string[]
+  readonly comments?: readonly IssueComment[]
+}
+
+/** The fields `update` may change; absent fields are untouched. */
+export interface IssueUpdatePatch {
+  readonly summary?: string
+  readonly issueType?: string
+  readonly priority?: string
+  readonly tags?: readonly string[]
+  readonly note?: string | null
+  readonly body?: string
+  readonly kbRefs?: readonly string[]
+}
+
+/** One issue write the tool surface can request. */
+export type IssueMutation =
+  | Readonly<{ action: 'update'; patch: IssueUpdatePatch }>
+  | Readonly<{ action: 'switch_state'; to: string; resolution?: string; resolutionNote?: string }>
+  | Readonly<{ action: 'close'; to?: string; resolution?: string; resolutionNote?: string; comment?: string }>
+  | Readonly<{ action: 'comment'; body: string }>
+  | Readonly<{ action: 'assignee'; value: 'self' | 'none' }>
+  | Readonly<{ action: 'link'; type: LinkType; target: IssueKey; op: 'add' | 'remove' }>
+
+/** Compare-and-set and conflict acknowledgement for one mutation. */
+export interface IssueMutationOptions {
+  readonly expectedRevision?: number
+  readonly ackConflict?: boolean
+  readonly override?: boolean
+}
+
+/** The transaction a mutation produced, with the issue's comments after it. */
+export interface IssueMutationResult {
+  readonly transaction: Transaction
+  readonly comments?: readonly IssueComment[]
+}
+
+/** A draft for creating one issue. */
+export interface IssueDraft {
+  readonly issueType: string
+  readonly summary: string
+  readonly priority?: string
+  readonly status?: string
+  readonly tags?: readonly string[]
+  readonly note?: string
+  readonly assignee?: string
+  readonly body?: string
+}
+
+/** A created issue, the project it landed in, and whether the project was new. */
+export interface IssueCreateResult {
+  readonly created: Created
+  readonly project: string
+  readonly projectCreated: boolean
+}
+
+/** The options one batch close accepts. */
+export interface IssueBatchCloseOptions {
+  readonly to?: string
+  readonly resolution: string
+  readonly resolutionNote?: string
+  readonly comment?: string
+}
+
+/** The input one tag registration accepts. */
+export interface TagCreateInput {
+  readonly name: string
+  readonly description: string
+  readonly alias?: string
+}
+
+/** The result of one tag registration. */
+export interface TagCreateResult {
+  readonly tag: unknown
+  readonly committed: boolean
+}
+
+/** The all-or-nothing batch close result. */
+export interface IssueBatchCloseResult {
+  readonly closed: readonly IssueKey[]
+  readonly partial?: Readonly<{
+    readonly closed: readonly IssueKey[]
+    readonly failed: Readonly<{ readonly key: IssueKey; readonly error: JiraError }>
+  }>
+}
+
 /** Project, knowledge and open-issue counts for the awareness line. */
 export interface JiraCounts {
   /** Projects the ledger knows (a project.md or at least one issue). */
@@ -129,6 +227,51 @@ export interface JiraServiceApi {
    * @returns the commit the close-out scan starts from.
    */
   gitHead(): Promise<string>
+  /**
+   * Read one issue with its comments and decode warnings.
+   * @param key - the issue key.
+   * @returns the issue, or `not-found`.
+   */
+  readIssue(key: IssueKey): Promise<JiraResult<IssueRead>>
+  /**
+   * Apply one issue mutation under the issue lock.
+   * @param key - the issue key.
+   * @param mutation - the action and its fields.
+   * @param actor - who is writing, for the audit fields.
+   * @param options - compare-and-set and conflict acknowledgement.
+   * @returns the transaction and the comments after it.
+   */
+  mutateIssue(
+    key: IssueKey,
+    mutation: IssueMutation,
+    actor: Actor,
+    options?: IssueMutationOptions,
+  ): Promise<JiraResult<IssueMutationResult>>
+  /**
+   * Create one issue, inferring the project from a checkout when it is omitted.
+   * @param project - the project key, or undefined to infer it from `cwd`.
+   * @param cwd - the checkout whose registered project should be used.
+   * @param draft - the issue fields.
+   * @param actor - who is writing.
+   * @returns the created issue and whether the project was registered by this call.
+   */
+  createIssue(project: string | undefined, cwd: string | undefined, draft: IssueDraft, actor: Actor): Promise<JiraResult<IssueCreateResult>>
+  /**
+   * Close several issues in one all-or-nothing call.
+   * @param keys - the issue keys.
+   * @param options - the target status, resolution and optional comment.
+   * @param actor - who is writing.
+   * @returns the closed keys, or every refusal.
+   */
+  batchClose(keys: readonly IssueKey[], options: IssueBatchCloseOptions, actor: Actor): Promise<JiraResult<IssueBatchCloseResult>>
+  /**
+   * Register one tag.
+   * @param actor - who is writing.
+   * @param input - the tag name, description and optional alias.
+   * @returns the created tag and whether it committed.
+   */
+  createTag(actor: Actor, input: TagCreateInput): Promise<JiraResult<TagCreateResult>>
+
   /**
    * Record a session at its first write, at most once per ledger.
    * @param sessionId - the session to record.
@@ -254,19 +397,6 @@ export interface JiraServiceApi {
    */
   on(event: 'changed', listener: (change: ChangeNotice) => void): () => void
 
-  /**
-   * Open the store this service holds, for the tool runners that still work on the raw store.
-   * This is the phase-1 bridge between the service and `jira-agent`; the tools move onto the
-   * methods above in phase 2.
-   * @returns the store, or the error that prevented resolving its root.
-   */
-  store(): Promise<JiraResult<Store>>
-  /**
-   * Record that a write happened outside this service's own methods (the tool runners' writes),
-   * so the `changed` event still fires and the push queue still arms.
-   * @param key - the affected key, when the write concerned one.
-   */
-  notifyWrite(key?: string): void
 }
 
 /*

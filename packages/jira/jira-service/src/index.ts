@@ -34,8 +34,22 @@ import {
   system,
 } from '@deepseek-ai/dsh-jira-core'
 import { countStore } from '@deepseek-ai/dsh-jira-core/injection.ts'
+import type { Store } from '@deepseek-ai/dsh-jira-core'
 import { ensureSessionRecord, readWatermark, scanWatermarkPath, sessionScan, writeWatermark } from '@deepseek-ai/dsh-jira-core/session.ts'
-import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, JiraCounts, JiraResult, JiraServiceApi, KnowledgeDetail, SessionRecordFacts, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
+import { decodeIssue } from '@deepseek-ai/dsh-jira-core/codec.ts'
+import { blockersOf } from '@deepseek-ai/dsh-jira-core/inspect.ts'
+import { invalidInput, staleRevision } from '@deepseek-ai/dsh-jira-core/errors.ts'
+import {
+  applyAckConflict, applyAssignee, applyClose, applyComment, applyLink, applyTransition, applyUpdate, combineChanges,
+} from '@deepseek-ai/dsh-jira-core/mutate.ts'
+import { assertProjectWritable, ensureWorkspaceProject } from '@deepseek-ai/dsh-jira-core/project.ts'
+import { createTag as createTagInStore } from '@deepseek-ai/dsh-jira-core/tagstore.ts'
+import { err, ok } from '@deepseek-ai/dsh-jira-core/result.ts'
+import { closeMany } from '@deepseek-ai/dsh-jira-core/batch.ts'
+import { resolveWorkspace } from '@deepseek-ai/dsh-jira-core/workspace.ts'
+import { access } from 'node:fs/promises'
+import { join } from 'node:path'
+import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraResult, JiraServiceApi, KnowledgeDetail, SessionRecordFacts, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 import JiraRemote from './remote.ts'
 
 export type * from './types.ts'
@@ -230,6 +244,171 @@ export class JiraService extends Service implements JiraServiceApi {
       this.lastSync,
       this.queue?.isPending() === true,
     )
+  }
+
+  /**
+   * Read one issue with its comments and decode warnings.
+   * @param key - the issue key.
+   * @returns the issue, or `not-found`.
+   */
+  async readIssue(key: IssueKey): Promise<JiraResult<IssueRead>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const text = await coreStore.readIssueText(opened.store.value, key)
+    if (!text.ok) return text
+    const decoded = decodeIssue(text.value, key)
+    if (!decoded.ok) return decoded
+    const comments = await coreStore.readComments(opened.store.value, key)
+    return result.ok(Object.freeze({
+      issue: decoded.value.issue,
+      warnings: decoded.value.warnings,
+      ...(comments.ok ? { comments: comments.value } : {}),
+    }))
+  }
+
+  /**
+   * Apply one issue mutation under the issue lock.
+   * @param key - the issue key.
+   * @param mutation - the action and its fields.
+   * @param actor - who is writing, for the audit fields.
+   * @param options - compare-and-set and conflict acknowledgement.
+   * @returns the transaction and the comments after it.
+   */
+  async mutateIssue(
+    key: IssueKey,
+    mutation: IssueMutation,
+    actor: Actor,
+    options: IssueMutationOptions = {},
+  ): Promise<JiraResult<IssueMutationResult>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const mutate = (original: Parameters<typeof applyUpdate>[0], ctx: Parameters<typeof applyUpdate>[2]) => {
+      const expected = options.expectedRevision
+      if (expected !== undefined && expected !== original.revision) return err(staleRevision(expected, original.revision))
+      if (original.conflicted === true && options.ackConflict !== true) {
+        return err(invalidInput(`${original.key} is marked conflicted; pass ack_conflict to overwrite it deliberately`, {
+          key: original.key,
+        }))
+      }
+      const acked = original.conflicted === true && options.ackConflict === true
+        ? applyAckConflict(original, ctx)
+        : ok(Object.freeze({ issue: original, comments: Object.freeze([]) }))
+      if (!acked.ok) return acked
+      const issue = acked.value.issue
+      const finish = (change: ReturnType<typeof applyUpdate>) =>
+        change.ok ? ok(combineChanges(acked.value, change.value)) : change
+      switch (mutation.action) {
+        case 'update':
+          return finish(applyUpdate(issue, mutation.patch, ctx))
+        case 'switch_state':
+          return finish(applyTransition(issue, mutation.to, {
+            ...(mutation.resolution === undefined ? {} : { resolution: mutation.resolution }),
+            ...(mutation.resolutionNote === undefined ? {} : { resolutionNote: mutation.resolutionNote }),
+          }, ctx))
+        case 'close':
+          return finish(applyClose(issue, {
+            ...(mutation.to === undefined ? {} : { to: mutation.to }),
+            ...(mutation.resolution === undefined ? {} : { resolution: mutation.resolution }),
+            ...(mutation.resolutionNote === undefined ? {} : { resolutionNote: mutation.resolutionNote }),
+            ...(mutation.comment === undefined ? {} : { comment: mutation.comment }),
+          }, ctx))
+        case 'comment':
+          return finish(applyComment(issue, mutation.body, ctx))
+        case 'assignee':
+          return finish(applyAssignee(issue, mutation.value === 'none' ? null : (ctx.by as Identity), ctx))
+        case 'link':
+          return finish(applyLink(issue, { type: mutation.type, target: mutation.target, op: mutation.op }, ctx))
+      }
+    }
+    const allowed = await assertProjectWritable(opened.store.value, coreStore.projectOf(key), String(actor.by))
+    if (!allowed.ok) return allowed
+    let writeOptions: TransactOptions = {}
+    if (mutation.action === 'assignee' && mutation.value === 'self') {
+      const blockers = await blockersOf(opened.store.value, key)
+      if (!blockers.ok) return blockers
+      writeOptions = { blockers: blockers.value, override: options.override === true }
+    }
+    const done = await coreStore.transact(opened.store.value, key, actor, mutate, mutation.action, writeOptions)
+    if (!done.ok) return done
+    this.notifyWrite(key)
+    const comments = await coreStore.readComments(opened.store.value, key)
+    return result.ok(Object.freeze({
+      transaction: done.value,
+      ...(comments.ok ? { comments: comments.value } : {}),
+    }))
+  }
+
+  /**
+   * Create one issue, inferring the project from a checkout when it is omitted.
+   * @param project - the project key, or undefined to infer it from `cwd`.
+   * @param cwd - the checkout whose registered project should be used.
+   * @param draft - the issue fields.
+   * @param actor - who is writing.
+   * @returns the created issue and whether the project was registered by this call.
+   */
+  async createIssue(
+    project: string | undefined,
+    cwd: string | undefined,
+    draft: IssueDraft,
+    actor: Actor,
+  ): Promise<JiraResult<IssueCreateResult>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const store = opened.store.value
+    let chosen = project?.toUpperCase() ?? ''
+    if (chosen === '') {
+      if (cwd === undefined) return err(invalidInput('create needs project: this session has no checkout to infer one from', { project: chosen }))
+      const binding = await resolveWorkspace(store, cwd)
+      if (!binding.ok) return binding
+      const ensured = await ensureWorkspaceProject(store, actor, binding.value, store.machineId)
+      if (!ensured.ok) return ensured
+      chosen = ensured.value.key
+    }
+    if (!entities.isProjectKey(chosen)) return err(invalidInput('create needs `project`, e.g. "DH"', { project: chosen }))
+    const existed = await access(join(store.files.root, 'projects', chosen)).then(() => true).catch(() => false)
+    const created = await coreStore.createInStore(store, chosen, actor, draft)
+    if (!created.ok) return created
+    this.notifyWrite(created.value.key)
+    return result.ok(Object.freeze({ created: created.value, project: chosen, projectCreated: !existed }))
+  }
+
+  /**
+   * Close several issues in one all-or-nothing call.
+   * @param keys - the issue keys.
+   * @param options - the target status, resolution and optional comment.
+   * @param actor - who is writing.
+   * @returns the closed keys, or every refusal.
+   */
+  async batchClose(
+    keys: readonly IssueKey[],
+    options: IssueBatchCloseOptions,
+    actor: Actor,
+  ): Promise<JiraResult<IssueBatchCloseResult>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const closed = await closeMany(opened.store.value, keys, actor, options)
+    if (!closed.ok) return closed
+    this.notifyWrite(keys[0] ?? '')
+    return closed
+  }
+
+  /**
+   * Register one tag.
+   * @param actor - who is writing.
+   * @param input - the tag name, description and optional alias.
+   * @returns the created tag and whether it committed.
+   */
+  async createTag(actor: Actor, input: TagCreateInput): Promise<JiraResult<TagCreateResult>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const created = await createTagInStore(opened.store.value, actor, {
+      name: input.name,
+      description: input.description,
+      ...(input.alias === undefined ? {} : { aliases: [input.alias] }),
+    })
+    if (!created.ok) return created
+    this.notifyWrite(input.name)
+    return result.ok(Object.freeze({ tag: created.value.tag, committed: created.value.committed }))
   }
 
   /**
@@ -518,21 +697,14 @@ export class JiraService extends Service implements JiraServiceApi {
     }
   }
 
-  /**
-   * Open the store this service holds, for the tool runners that still work on the raw store.
-   * This is the phase-1 bridge to `jira-agent`; moving them onto the methods above is phase 2.
-   * @returns the store, or the error that prevented resolving its root.
-   */
-  async store(): Promise<JiraResult<Store>> {
-    return (await this.open()).store
-  }
+
 
   /**
    * Record that a write happened outside this service's own methods (the tool runners' writes),
    * so the `changed` event still fires and the push queue still arms.
    * @param key - the affected key, when the write concerned one.
    */
-  notifyWrite(key?: string): void {
+  private notifyWrite(key?: string): void {
     this.emitChange('write', key)
     if (this.pushEnabled) this.queue?.schedule()
   }

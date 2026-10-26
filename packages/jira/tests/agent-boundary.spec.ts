@@ -20,10 +20,12 @@ const FORBIDDEN = new Set([
   'vocab', 'workspace',
 ])
 
-/** Files that still open the store directly; shrink this set as the migration completes. */
+/**
+ * Files that still open the store directly; shrink this set as the migration completes.
+ * `command.ts` is the human `/jira` surface, tracked by DH-205.
+ */
 const PENDING = new Set([
   'command.ts',
-  'toolIssue.ts',
 ])
 
 const SRC = join(import.meta.dirname, '..', 'jira-agent', 'src')
@@ -70,6 +72,11 @@ describe('jira-agent store-access boundary', () => {
 
   it('keeps the pending ratchet exact, so migrated files are removed from it', () => {
     expect(violations.map(entry => entry.file)).toEqual([...PENDING].sort())
+  })
+
+  it('detects a runtime store import and ignores a type-only one', () => {
+    expect(violationsOf("import { x } from '@deepseek-ai/dsh-jira-core/store.ts'")).toEqual(['store'])
+    expect(violationsOf("import type { Store } from '@deepseek-ai/dsh-jira-core/store.ts'")).toEqual([])
   })
 
   it('reads types and the awareness line without opening the store', () => {

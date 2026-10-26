@@ -29,9 +29,9 @@ One `jira-service` row owns one ledger: it resolves the root, reads this machine
 
 A second consumer — a UI, another capability, a shell — shares this service through `ctx.jira`; nobody else pushes. Across processes the store's own file locks are the guard, so the CLI can commit while a host session is open.
 
-`ctx.jira` implements the contract in [`src/types.ts`](src/types.ts): read methods (`list`, `get`, `board`, `doctor`, `searchKnowledge`, `counts`), write methods (`create`, `transact`, `kbCreate`, `kbUpdate`), `sync` and `settle`, plus the `changed` subscription. Every method returns a `Result`; errors are `JiraError` with one of the twelve codes, and permission is not decided here — the guard in `jira-agent` refuses a write before it reaches the ledger.
+`ctx.jira` implements the contract in [`src/types.ts`](src/types.ts): read methods (`list`, `listWithRejected`, `get`, `readIssue`, `board`, `doctor`, `searchKnowledge`, `kbGet`, `counts`), write methods (`create`, `createIssue`, `mutateIssue`, `batchClose`, `createTag`, `transact`, `kbCreate`, `kbUpdate`), `gitHead`, `recordSession`, `closeOutSession`, `sync` and `settle`, plus the `changed` subscription. Every method returns a `Result`; errors are `JiraError` with one of the twelve codes, and permission is not decided here — the guard in `jira-agent` refuses a write before it reaches the ledger.
 
-Two methods are the phase-1 bridge to the agent's existing tool runners: `store()` hands back the opened store, and `notifyWrite()` records a write those runners made directly, so `changed` still fires and the queue still arms. Both disappear when the tools move onto the write methods above.
+The tool runners no longer hold the store: they call `ctx.jira`, and the service records each write itself, so `changed` and the push queue cannot be bypassed. `/jira` still opens the store for its human-facing views; that surface is tracked separately (DH-205).
 
 <a id="remote"></a>
 
@@ -84,7 +84,7 @@ None of its own; a commit it makes changes ledger data, and only `jira-agent` de
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- `store()`, `notifyWrite()` and `pushQueue()` are the phase-1 bridge described above, not part of the long-term contract.
+- `/jira` (the human command surface) still reads through `jira-core` directly; moving it onto the service is DH-205.
 - `status()` is synchronous and reports `machineId` as `local` until the service first opens the ledger; a client that shows the identity reads `board()` (or any other method) first.
 - The composition test covers the read surface; the write methods, `sync` and `settle` are exercised through `jira-core`'s suites and the agent's wiring suites.
 
