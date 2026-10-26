@@ -11,7 +11,7 @@ packages/jira/
   jira-agent/    @deepseek-ai/dsh-jira-agent     模型面：三工具、/jira、skills、guard、会话收尾、注入段
   jira-cli/      @deepseek-ai/dsh-jira-cli       人面 CLI（bin: jira），不依赖宿主，直接使用 jira-core
   ui-jira/       @deepseek-ai/dsh-client-ui-jira 浏览器面：看板/详情/KB/设置
-packages/bundle/jira-app/  一个 bundle patch：组合 jira-service / jira-agent / ui-jira 三行
+packages/bundle/web-app/cordis.patch.uitstalie.yml  分支层单一组合：jira-service / jira-agent / ui-jira 三行（jira-app 已按 DH-203 移除）
 ```
 
 依赖方向单向：`jira-core ← jira-service ← jira-agent`；`ui-jira → remote`；`jira-cli → jira-core`。`jira-agent` 只能 import `jira-core` 的类型与 `jira-service` 的注入类型，不碰内部模块。
@@ -106,7 +106,7 @@ ctx.dafeiyu.register({
 
 - **阶段 0（外仓）**：`jira-core/service.ts` seam；plugin/cli 只经服务访问账本；边界守卫加“不得直接 import core 内部模块”；验收 702 测试 + smoke 33/33 + 守卫。
 - **阶段 1（进仓）**：五包 + bundle；包名 `@deepseek-ai/dsh-jira-*`；跨包边界规则；每包测试；干净 profile 装 bundle 后工具/命令/技能/UI 全出现。
-- **阶段 2（dafeiyu）**：descriptor 注册、设置段、enable 门、单一 bundle 组合（不重复 insert 行）；旧插件 shim 只调用新包。
+- **阶段 2（dafeiyu）**：descriptor 注册、设置段、enable 门、单一组合（web-app 分支层，不再有 jira-app 重复 insert）；旧插件 shim 只调用新包。
 
 ## 8. 已定决策（2026/10/23 定稿）
 

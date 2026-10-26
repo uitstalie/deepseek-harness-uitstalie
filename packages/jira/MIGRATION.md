@@ -88,8 +88,7 @@ packages/jira/
   jira-agent/       @uitstalie/dsh-jira-agent     模型面 + /jira + skills + guard + 会话收尾 + 注入行
   jira-cli/         @uitstalie/dsh-jira-cli       人类面 CLI（bin: jira），不依赖宿主
   ui-jira/          @uitstalie/dsh-jira-ui        浏览器面（client 插件：看板/详情/KB/设置）
-packages/bundle/
-  jira-app/         @uitstalie/dsh-jira-app       一个 bundle patch：插入上面需要成行的包
+packages/bundle/web-app/cordis.patch.uitstalie.yml  分支层组合：插入上面需要成行的包（阶段 2 决定不单独发布 jira-app，DH-203）
 ```
 
 依赖方向（**单向**）：
@@ -362,7 +361,7 @@ node D:\dqc\dsh-plugin-multidevice-jira\dist\cli\index.js generate --root C:\Use
 | `src/plugin/toolIssue.ts` / `toolList.ts` / `toolKb.ts` / `envelope.ts` / `host.ts` / `caller.ts` / `sessionRecord.ts` / `command.ts` / `skills.ts` | `jira-agent/src/**` |
 | `src/cli/**` + `src/cli/commands/**` | `jira-cli/src/**` |
 | `skills/*.md` | `jira-agent/skills/` |
-| `cordis.patch.yml` | `packages/bundle/jira-app/cordis.patch.yml` |
+| `cordis.patch.yml` | `packages/bundle/web-app/cordis.patch.uitstalie.yml` 的三行（DH-203 移除独立 bundle） |
 | `scripts/check-boundaries.mjs` | 仓根 `scripts/`（改成按包 + 跨包规则） |
 | `scripts/smoke.mjs` | 仓根 `scripts/`（构建 `jira-cli` + `jira-agent` 后跑） |
 | `fixtures/config.md` | `jira-core/fixtures/config.md` |

@@ -450,8 +450,8 @@ export function checkExperimentalNameExceptions(manifests: readonly WorkspaceMan
 function isBranchOwnedDirectory(dir: string): boolean {
   // uitstalie-deepseek-flash, 2026/10/20, DH-3, 分支自有包不发布：发布成员规则（版本/公开仓库/files 清单）只约束上游发布成员
   if (dir.startsWith('packages/uitstalie/')) return true
-  // uitstalie-deepseek-flash, 2026/10/26, DH-13, 分支自有包不发布：迁入分支的 jira 五包与 jira-app 组合沿用同一豁免
-  return dir.startsWith('packages/jira/') || dir === 'packages/bundle/jira-app'
+  // uitstalie-deepseek-flash, 2026/10/26, DH-13, 分支自有包不发布：迁入分支的 jira 五包沿用同一豁免（jira-app 已按 DH-203 移除）
+  return dir.startsWith('packages/jira/')
 }
 
 function isReleaseMemberDirectory(dir: string): boolean {
@@ -625,6 +625,9 @@ function checkHierarchyShape(): string[] {
       if (!pkg.isDirectory()) continue
       if (localArtifactDirs.has(pkg.name)) continue
       const pkgRel = join(groupRel, pkg.name)
+      // BEGIN uitstalie-deepseek-flash, 2026/10/27, DH-201, 组级测试目录（packages/<group>/tests）不是包
+      if (pkg.name === 'tests') continue
+      // END uitstalie-deepseek-flash
       if (!existsSync(join(packagesRoot, group.name, pkg.name, 'package.json'))) {
         errors.push(`${pkgRel}: expected a package here (no package.json found) — the hierarchy is exactly packages/<group>/<pkg>, no deeper nesting`)
       }

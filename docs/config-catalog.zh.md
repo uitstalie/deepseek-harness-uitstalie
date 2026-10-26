@@ -1866,25 +1866,26 @@ export type Config = Readonly<Record<never, never>>
 
 ## `@deepseek-ai/dsh-jira-service`
 
-- `source`: [`packages/jira/jira-service/src/index.ts:45`](../packages/jira/jira-service/src/index.ts)
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/jira/jira-service/src/index.ts:64`](../packages/jira/jira-service/src/index.ts)
 
 ```ts config-catalog
 /** What a `jira-service` row may configure: where the ledger is, who writes, whether to push. */
 export interface Config {
   /** Ledger root; absent means resolve through `$JIRA_ROOT`, `$DSH_HOME/jira`, then the profile. */
-  root?: string
+  root: Volatile<string | undefined>
   /** The `owner.host` audit field; absent means this machine's hostname. */
-  host?: string
+  host: Volatile<string | undefined>
   /** Override the machine identity; absent means `$DSH_HOME/dsh-jira/machine-id`. */
-  machine_id?: string
+  machine_id: string | undefined
   /** Git remote to join on load; a local, offline operation that never clones or fetches. */
-  remote?: string
+  remote: string | undefined
   /** Push switch and debounce for the queue this service owns. */
-  push?: {
+  push: {
     /** Whether a settle schedules a push. Absent means false: everything stays local. */
-    enabled?: boolean
+    enabled: Volatile<boolean>
     /** Debounce window in milliseconds; absent means the core's default. */
-    debounce_ms?: number
+    debounce_ms: number | undefined
   }
 }
 ```
@@ -5159,7 +5160,6 @@ export interface Config {
 | `@deepseek-ai/dsh-home-paths` | — | [`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts) |
 | `@deepseek-ai/dsh-hook-protocol` | — | [`packages/experimental/hook-protocol/src/index.ts`](../packages/experimental/hook-protocol/src/index.ts) |
 | `@deepseek-ai/dsh-http-proxy` | — | [`packages/util/http-proxy/src/index.ts`](../packages/util/http-proxy/src/index.ts) |
-| `@deepseek-ai/dsh-jira-app` | — | [`packages/bundle/jira-app/src/index.ts`](../packages/bundle/jira-app/src/index.ts) |
 | `@deepseek-ai/dsh-jira-cli` | — | [`packages/jira/jira-cli/src/index.ts`](../packages/jira/jira-cli/src/index.ts) |
 | `@deepseek-ai/dsh-jira-core` | — | [`packages/jira/jira-core/src/index.ts`](../packages/jira/jira-core/src/index.ts) |
 | `@deepseek-ai/dsh-launch-environment` | — | [`packages/util/launch-environment/src/index.ts`](../packages/util/launch-environment/src/index.ts) |

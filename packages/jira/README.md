@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`jira` is the package group behind the multi-machine issue ledger: a local git repository of Markdown files that DSH agents read and write across sessions and machines. `jira-core` holds the domain and git atoms, `jira-service` is the single writer that owns sync and the `ctx.jira` service, `jira-agent` exposes the ledger to the model through three tools plus the awareness line and write guard, `jira-cli` gives a person the `jira` command, `ui-jira` adds the browser section, and `jira-app` composes the three rows into an installable bundle.
+`jira` is the package group behind the multi-machine issue ledger: a local git repository of Markdown files that DSH agents read and write across sessions and machines. `jira-core` holds the domain and git atoms, `jira-service` is the single writer that owns sync and the `ctx.jira` service, `jira-agent` exposes the ledger to the model through three tools plus the awareness line and write guard, `jira-cli` gives a person the `jira` command, and `ui-jira` adds the browser section. The branch's `web-app` layer mounts the three rows as one composition.
 
 ## Table of Contents
 
@@ -32,7 +32,6 @@ Each row names the package's contribution and the row, entry, or bundle that mou
 | [`jira-agent`](jira-agent/README.md) | Model surface: the three jira tools, the awareness line, the write guard, `/jira`, the skills, and the turn-end settle | row `jira-agent` |
 | [`jira-cli`](jira-cli/README.md) | Human surface: the `jira` command with its 23 subcommands, exit codes, and Chinese output | `jira` bin; no row |
 | [`ui-jira`](ui-jira/README.md) | Browser surface: the `jira` settings section with the ledger status, read-only board, issue detail, and knowledge search | row `jira-ui` |
-| [`jira-app`](../bundle/jira-app/README.md) | Profile bundle: inserts the service, agent, and browser rows over an installed profile | bundle patch |
 
 -----
 
@@ -59,6 +58,6 @@ Each row names the package's contribution and the row, entry, or bundle that mou
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-The group is mounted by `packages/bundle/jira-app/cordis.patch.yml` and by the three-row patch in `packages/bundle/web-app/cordis.patch.uitstalie.yml`. The packages are private, so their APIs carry no upstream compatibility promise; the ledger data repository keeps its own history and CI.
+The group is mounted by the three-row patch in `packages/bundle/web-app/cordis.patch.uitstalie.yml`, the single composition since the unused standalone bundle was removed (DH-203). The packages are private, so their APIs carry no upstream compatibility promise; the ledger data repository keeps its own history and CI.
 
 </details>

@@ -2875,22 +2875,6 @@ importers:
         specifier: workspace:*
         version: link:../../interaction/user-approval
 
-  packages/bundle/jira-app:
-    dependencies:
-      '@deepseek-ai/dsh-client-ui-jira':
-        specifier: workspace:*
-        version: link:../../jira/ui-jira
-      '@deepseek-ai/dsh-jira-agent':
-        specifier: workspace:*
-        version: link:../../jira/jira-agent
-      '@deepseek-ai/dsh-jira-service':
-        specifier: workspace:*
-        version: link:../../jira/jira-service
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:~
-        version: link:../../../vendor/cordis
-
   packages/bundle/sdk-app:
     dependencies:
       '@deepseek-ai/dsh-client-connection':

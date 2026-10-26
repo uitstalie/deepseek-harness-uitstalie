@@ -477,7 +477,6 @@
       "@deepseek-ai/dsh-hooks-codex": ["./packages/experimental/hooks-codex/src"],
       "@deepseek-ai/dsh-http-proxy": ["./packages/util/http-proxy/src"],
       "@deepseek-ai/dsh-jira-agent": ["./packages/jira/jira-agent/src"],
-      "@deepseek-ai/dsh-jira-app": ["./packages/bundle/jira-app/src"],
       "@deepseek-ai/dsh-jira-cli": ["./packages/jira/jira-cli/src"],
       "@deepseek-ai/dsh-jira-core": ["./packages/jira/jira-core/src"],
       "@deepseek-ai/dsh-jira-service": ["./packages/jira/jira-service/src"],
