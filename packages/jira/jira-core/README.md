@@ -61,8 +61,8 @@ None; the package assembles no request and contributes no prompt text, tool sche
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- `messages.test.ts` (decision 184: neither surface may restate a message literally) stays behind until `jira-cli` and `jira-agent` are both in place, because it reads both source trees.
-- `surfaces.test.ts` (the CLI ⊇ tool-verb parity map) spans `jira-cli` and `jira-agent` and needs a home outside either package.
+- `messages.test.ts` (decision 184: neither surface may restate a message literally) lives in `jira-agent/src/messages.test.ts`, because it reads both source trees.
+- `surfaces.test.ts` (the CLI ⊇ tool-verb parity map) lives in `jira-agent/src/surfaces.test.ts`, because it spans `jira-cli` and `jira-agent`.
 
 <a id="dev-note"></a>
 

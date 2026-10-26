@@ -61,8 +61,8 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- `messages.test.ts`（决策 184：两面都不得逐字重述文案）要等 `jira-cli` 与 `jira-agent` 都就位后才搬走，因为它要读两棵源树。
-- `surfaces.test.ts`（CLI ⊇ 工具动词的对照表）横跨 `jira-cli` 与 `jira-agent`，需要一个不属于任何一方的落点。
+- `messages.test.ts`（决策 184：两面都不得逐字重述文案）位于 `jira-agent/src/messages.test.ts`，因为它要读两棵源树。
+- `surfaces.test.ts`（CLI ⊇ 工具动词的对照表）位于 `jira-agent/src/surfaces.test.ts`，因为它横跨 `jira-cli` 与 `jira-agent`。
 
 <a id="dev-note"></a>
 
