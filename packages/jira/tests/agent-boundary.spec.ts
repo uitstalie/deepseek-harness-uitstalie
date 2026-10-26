@@ -23,7 +23,6 @@ const FORBIDDEN = new Set([
 /** Files that still open the store directly; shrink this set as the migration completes. */
 const PENDING = new Set([
   'command.ts',
-  'contribution.ts',
   'sessionRecord.ts',
   'toolIssue.ts',
   'toolList.ts',

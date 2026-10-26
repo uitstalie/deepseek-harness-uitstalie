@@ -13,12 +13,11 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
-import { runGit } from '@deepseek-ai/dsh-jira-core/git.ts'
 import { createStoreAwareness } from './awareness.ts'
 import { callerSessionId } from './caller.ts'
 import { type HostEnv } from './env.ts'
 import { nowUtc } from './envelope.ts'
-import { type SessionRecorder, closeOutSession, stateDirOf } from './sessionRecord.ts'
+import { type SessionRecorder, stateDirOf } from './sessionRecord.ts'
 import { callerOf, jiraTools } from './tools.ts'
 
 /** Stable capability id this provider registers with the organizer. */
@@ -59,12 +58,7 @@ export interface ContributionHost {
  * @param host - the contribution host whose ledger service resolves the root.
  * @returns the starting commit, or the empty string when there is no repository to ask.
  */
-const headAtStart = async (host: ContributionHost): Promise<string> => {
-  const opened = await host.ctx.jira.store()
-  if (!opened.ok) return ''
-  const head = await runGit(opened.value.files.root, ['rev-parse', 'HEAD'])
-  return head.code === 0 ? head.stdout.trim() : ''
-}
+const headAtStart = (host: ContributionHost): Promise<string> => host.ctx.jira.gitHead()
 
 /**
  * Refresh the derived files, commit them and record what this session touched.
@@ -90,8 +84,6 @@ export const settleCompletedTurn = async (
   head: string,
 ): Promise<void> => {
   if (!callerOf(host, agent).writable) return
-  const opened = await host.ctx.jira.store()
-  if (!opened.ok) return
   const settled = await host.ctx.jira.settle()
   if (!settled.ok) {
     host.ctx.logger.warn('jira: settle after turn %d failed: %s', turn, settled.error.message)
@@ -99,11 +91,10 @@ export const settleCompletedTurn = async (
   }
   const sessionId = callerSessionId(agent)
   if (sessionId === undefined) return
-  await closeOutSession(
-    opened.value,
+  await host.ctx.jira.closeOutSession(
     sessionId,
     head,
-    stateDirOf(host.env, opened.value.files.root),
+    stateDirOf(host.env, host.ctx.jira.root),
     nowUtc(host.clock),
   )
 }

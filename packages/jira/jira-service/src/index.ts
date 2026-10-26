@@ -20,6 +20,7 @@ import {
   entities,
   errors,
   generateStore,
+  git,
   inspect,
   io,
   kbstore,
@@ -33,6 +34,7 @@ import {
   system,
 } from '@deepseek-ai/dsh-jira-core'
 import { countStore } from '@deepseek-ai/dsh-jira-core/injection.ts'
+import { readWatermark, scanWatermarkPath, sessionScan, writeWatermark } from '@deepseek-ai/dsh-jira-core/session.ts'
 import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, JiraCounts, JiraResult, JiraServiceApi, KnowledgeDetail, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 import JiraRemote from './remote.ts'
 
@@ -228,6 +230,46 @@ export class JiraService extends Service implements JiraServiceApi {
       this.lastSync,
       this.queue?.isPending() === true,
     )
+  }
+
+  /**
+   * The ledger repository's current HEAD, or an empty string when it cannot be read.
+   * @returns the commit the close-out scan starts from.
+   */
+  async gitHead(): Promise<string> {
+    const opened = await this.open()
+    if (!opened.store.ok) return ''
+    const head = await git.runGit(opened.store.value.files.root, ['rev-parse', 'HEAD'])
+    return head.code === 0 ? head.stdout.trim() : ''
+  }
+
+  /**
+   * Scan the session from its starting commit, then advance the scan watermark.
+   * A close-out failure is swallowed: it must not turn a good session into a bad one.
+   * @param sessionId - the session that just completed a turn.
+   * @param headAtStart - the commit the session started from.
+   * @param stateDir - the machine-local state directory holding the watermark.
+   * @param at - the scan timestamp.
+   */
+  async closeOutSession(sessionId: string, headAtStart: string, stateDir: string, at: Timestamp): Promise<void> {
+    try {
+      const opened = await this.open()
+      if (!opened.store.ok) return
+      const watermarkPath = scanWatermarkPath(stateDir, sessionId)
+      const watermark = await readWatermark(watermarkPath)
+      const scanned = await sessionScan(
+        opened.store.value,
+        { by: `human:${this.resolvedMachineId}` as Identity, at },
+        { sessionId, from: watermark.lastSha ?? headAtStart },
+      )
+      if (!scanned.ok) return
+      const head = await git.runGit(opened.store.value.files.root, ['rev-parse', 'HEAD'])
+      if (head.code === 0) {
+        await writeWatermark(watermarkPath, { lastSha: head.stdout.trim(), scans: watermark.scans + 1 })
+      }
+    } catch {
+      // A close-out that fails must not turn a good session into a bad one (decision 100).
+    }
   }
 
   /**

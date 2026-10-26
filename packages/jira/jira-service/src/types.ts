@@ -112,6 +112,21 @@ export interface JiraServiceApi {
   status(): JiraStatus
 
   /**
+   * The ledger repository's current HEAD, or an empty string when it cannot be read.
+   * @returns the commit the close-out scan starts from.
+   */
+  gitHead(): Promise<string>
+  /**
+   * Scan the session from its starting commit, then advance the scan watermark.
+   * @param sessionId - the session that just completed a turn.
+   * @param headAtStart - the commit the session started from.
+   * @param stateDir - the machine-local state directory holding the watermark.
+   * @param at - the scan timestamp.
+   * @returns a promise that settles once the scan and watermark write finish.
+   */
+  closeOutSession(sessionId: string, headAtStart: string, stateDir: string, at: Timestamp): Promise<void>
+
+  /**
    * Count the ledger's projects, knowledge entries and open issues.
    * @returns the counts, or the error that prevented reading the store.
    */
