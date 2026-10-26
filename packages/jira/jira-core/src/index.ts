@@ -40,7 +40,7 @@ export * as system from './system/index.ts'
 // reference by looking for that name among the package root's exports.
 export type { DoctorReport } from './doctor.ts'
 export type { Identity, Issue, IssueKey, LinkType, Timestamp } from './entity.ts'
-export type { JiraError } from './errors.ts'
+export type { ErrorCode, JiraError } from './errors.ts'
 export type { KnowledgeEntry, KnowledgeKey } from './kb.ts'
 export type { KbSearch } from './kbsearch.ts'
 export type { KnowledgePatch, NewKnowledge, WrittenKnowledge } from './kbstore.ts'

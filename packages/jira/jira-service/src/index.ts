@@ -31,6 +31,7 @@ import {
   system,
 } from '@deepseek-ai/dsh-jira-core'
 import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, JiraResult, JiraServiceApi, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
+import JiraRemote from './remote.ts'
 
 export type * from './types.ts'
 
@@ -135,6 +136,9 @@ export class JiraService extends Service implements JiraServiceApi {
       this.queue?.dispose()
       this.listeners.clear()
     })
+    // The browser face reads through this service, so it is mounted by the row that owns the
+    // ledger: one row resolves one root, and no second row can answer from a different ledger.
+    void ctx.plugin(JiraRemote)
   }
 
   /** This machine's identity in the ledger's counter blocks. */

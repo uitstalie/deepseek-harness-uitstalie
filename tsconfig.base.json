@@ -409,6 +409,8 @@
       "@deepseek-ai/dsh-jira-core/*": ["./packages/jira/jira-core/src/*"],
       // client 包名（dsh-client-ui-*）与目录名 ui-jira 不吻合，生成器无法推断，手写根别名（同 ui-models-dev 的先例）
       "@deepseek-ai/dsh-client-ui-jira": ["./packages/jira/ui-jira/src"],
+      // jira-service/types 声明 Remote 错误码，客户端必须与宿主解析到同一个模块（同 tool-dsh-store 的先例）
+      "@deepseek-ai/dsh-jira-service/types": ["./packages/jira/jira-service/src/types.ts"],
       // END uitstalie-k3
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
