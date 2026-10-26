@@ -80,7 +80,7 @@ Every package lives in exactly one group; new packages join existing groups, and
 | [`client/`](client/README.md) | Web-GUI browser half: shell, wire, object services, slots, `ui-*` plugins |
 | [`test-support/`](test-support/README.md) | Test infrastructure (testkits, replay, Loader smokes) |
 | [`util/`](util/README.md) | Low-level utilities and data-only package lists shared across groups (`Branded<B>`, home/path helpers, timeout, retention, official bundle lists) |
-
+| [`uitstalie/`](uitstalie/README.md) | Branch-owned capability family: instruction sources, the `.dsh` store, the LLM adapter, the memory and personality providers, and their Web surfaces | <!-- uitstalie-k3, 2026/10/26, DH-11, 分支自有包组登记 -->
 -----
 
 <a id="release-expectations"></a>
