@@ -11,12 +11,18 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 
-/** One capability provider registered with the organizer. */
-export interface CapabilityProvider {
+/** Where a v2 provider's own settings page sits in the settings navigation. */
+export interface CapabilitySettings {
+  /** Settings section the provider owns; the capability list opens it. */
+  readonly sectionId: string
+  /** Sort order inside the settings navigation. */
+  readonly order: number
+}
+
+/** What every capability contract version declares. */
+interface CapabilityProviderBase {
   /** Stable capability name, for example `memory` or `personality`. */
   readonly id: string
-  /** Contract version the provider implements; the organizer accepts exactly `1`. */
-  readonly contractVersion: 1
   /** Provider-owned configuration the organizer stores but never interprets. */
   readonly config: unknown
   /**
@@ -27,6 +33,29 @@ export interface CapabilityProvider {
    */
   create(runtime: CapabilityRuntime): CapabilityContribution | Promise<CapabilityContribution>
 }
+
+/** Contract version 1: a contribution with no UI metadata. */
+export interface CapabilityProviderV1 extends CapabilityProviderBase {
+  /** Contract version the provider implements; the organizer accepts `1` and `2`. */
+  readonly contractVersion: 1
+}
+
+/** Contract version 2: a contribution plus the metadata the capability list renders. */
+export interface CapabilityProviderV2 extends CapabilityProviderBase {
+  /** Contract version the provider implements; the organizer accepts `1` and `2`. */
+  readonly contractVersion: 2
+  /** Display name in the capability list. */
+  readonly label: string
+  /** One sentence describing what the capability does. */
+  readonly description: string
+  /** Gate value used when the organizer's configuration omits this capability. Defaults to `true`. */
+  readonly enabledByDefault?: boolean
+  /** The provider's own settings page, when it has one. */
+  readonly settings?: CapabilitySettings
+}
+
+/** One capability provider registered with the organizer. */
+export type CapabilityProvider = CapabilityProviderV1 | CapabilityProviderV2
 
 /** Execution environment of one capability registration. */
 export interface CapabilityRuntime {
@@ -99,16 +128,22 @@ export interface CapabilityStatus {
   readonly failure?: string
   /** Timestamp of the last completed turn dispatched to this capability. */
   readonly lastTurnAt?: number
+  /** Display name from a v2 descriptor; absent for v1 providers and missing ids. */
+  readonly label?: string
+  /** One-sentence description from a v2 descriptor. */
+  readonly description?: string
+  /** The provider's own settings page from a v2 descriptor. */
+  readonly settings?: CapabilitySettings
 }
 
 /** Per-capability organizer configuration. */
 export interface CapabilityConfig {
-  /** Whether the organizer creates and wires this capability. Absent means enabled. */
+  /** Whether the organizer creates and wires this capability. Absent means the provider default. */
   enabled?: boolean
 }
 
-/** Organizer configuration. */
+/** Organizer configuration as written in a profile row. */
 export interface Config {
-  /** Per-capability switches keyed by capability id; an absent entry means enabled. */
+  /** Per-capability switches keyed by capability id; an absent entry means the provider default. */
   capabilities?: Record<string, CapabilityConfig>
 }

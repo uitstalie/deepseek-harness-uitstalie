@@ -56,7 +56,7 @@ kind: "package-reference"
 
 ## 理解实现
 
-提供者是函数插件：`src/index.ts` 导出 `name`、`inject`、`Config` 与 `apply`，并只注册一个 `contractVersion: 1`、`id: 'memory'` 的能力。
+提供者是函数插件：`src/index.ts` 导出 `name`、`inject`、`Config` 与 `apply`，并只注册一个 `contractVersion: 2`、`id: 'memory'` 的能力，带 `label: 'Memory'` 与一句能力列表用的 description。
 
 - `src/config.ts` 持有 schemastery `Config` 与显式的 `resolveConfig(config): MemorySettings` 步骤。默认值只在那里补一次，两条跨字段规则（阈值递增、摘要模型成对）在注册之前检查。
 - `src/memory-file.ts` 是 MEMORY.md 仓库与文件侧迁移 pass。文件的 YAML frontmatter 存机器状态（`version`、`window`，以及每个会话的 `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`）；`<!-- memory:begin -->` 与 `<!-- memory:end -->` 之间的托管区块按 `## <sessionId> · turn N–M（tier）` 标题分组，每行一个 `- [kind] text` 条目。托管区块之外的手写内容逐字节原样往返；托管区块归提供者所有，写入时整体重写。

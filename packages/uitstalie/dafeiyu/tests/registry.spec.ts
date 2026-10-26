@@ -4,11 +4,13 @@
  */
 import { afterEach, expect, test, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Dafeiyu from '../src/index.ts'
 import type {
   CapabilityContribution,
   CapabilityProvider,
   CapabilityRuntime,
+  CapabilitySettings,
   Config,
 } from '../src/index.ts'
 
@@ -35,16 +37,29 @@ interface ProviderOptions {
   readonly id?: string
   readonly contractVersion?: number
   readonly create?: (runtime: CapabilityRuntime) => CapabilityContribution | Promise<CapabilityContribution>
+  readonly label?: string
+  readonly description?: string
+  readonly enabledByDefault?: boolean
+  readonly settings?: CapabilitySettings
 }
 
 /** Build a provider whose declaration can deliberately violate the contract. */
 function provider(options: ProviderOptions = {}): CapabilityProvider {
-  return {
+  const version = options.contractVersion ?? 1
+  const base = {
     id: options.id ?? 'memory',
-    contractVersion: options.contractVersion ?? 1,
     config: {},
     create: options.create ?? (() => ({})),
-  } as CapabilityProvider
+  }
+  if (version !== 2) return { ...base, contractVersion: version } as CapabilityProvider
+  return {
+    ...base,
+    contractVersion: 2,
+    label: options.label ?? 'Memory',
+    description: options.description ?? 'Session memory',
+    ...options.enabledByDefault === undefined ? {} : { enabledByDefault: options.enabledByDefault },
+    ...options.settings === undefined ? {} : { settings: options.settings },
+  }
 }
 
 test('register creates the contribution once and status lists it', async () => {
@@ -70,10 +85,87 @@ test('rejects a duplicate capability id and names it', async () => {
 test('rejects an unsupported contract version and names the capability', async () => {
   const ctx = await mount()
   const create = vi.fn(() => ({}))
-  expect(() => ctx.dafeiyu.register(provider({ id: 'legacy-memory', contractVersion: 2, create })))
-    .toThrow(/capability "legacy-memory" declares contractVersion 2; expected 1/)
+  expect(() => ctx.dafeiyu.register(provider({ id: 'legacy-memory', contractVersion: 3, create })))
+    .toThrow(/capability "legacy-memory" declares contractVersion 3; expected 1 or 2/)
   expect(create).not.toHaveBeenCalled()
   expect(ctx.dafeiyu.status()).toEqual([])
+})
+
+test('a v2 descriptor contributes its list metadata to status', async () => {
+  const ctx = await mount()
+  ctx.dafeiyu.register(provider({
+    id: 'jira',
+    contractVersion: 2,
+    label: 'Jira',
+    description: 'Workspace issue ledger',
+    settings: { sectionId: 'jira', order: 200 },
+  }))
+  await settle()
+  expect(ctx.dafeiyu.status()).toEqual([{
+    id: 'jira',
+    present: true,
+    enabled: true,
+    state: 'active',
+    label: 'Jira',
+    description: 'Workspace issue ledger',
+    settings: { sectionId: 'jira', order: 200 },
+  }])
+})
+
+test('rejects a v2 descriptor without the list metadata', async () => {
+  const ctx = await mount()
+  expect(() => ctx.dafeiyu.register(provider({ id: 'jira', contractVersion: 2, label: ' ' })))
+    .toThrow(/capability "jira" declares contractVersion 2 without a label/)
+  expect(() => ctx.dafeiyu.register(provider({ id: 'jira', contractVersion: 2, description: '' })))
+    .toThrow(/capability "jira" declares contractVersion 2 without a description/)
+  expect(ctx.dafeiyu.status()).toEqual([])
+})
+
+test('enabledByDefault closes the gate only while configuration omits the capability', async () => {
+  const closed = await mount()
+  const createClosed = vi.fn(() => ({}))
+  closed.dafeiyu.register(provider({ contractVersion: 2, enabledByDefault: false, create: createClosed }))
+  expect(createClosed).not.toHaveBeenCalled()
+  expect(closed.dafeiyu.status()[0]).toMatchObject({ enabled: false, state: 'disabled' })
+
+  const opened = await mount({ capabilities: { memory: { enabled: true } } })
+  const createOpened = vi.fn(() => ({}))
+  opened.dafeiyu.register(provider({ contractVersion: 2, enabledByDefault: false, create: createOpened }))
+  await settle()
+  expect(createOpened).toHaveBeenCalledTimes(1)
+  expect(opened.dafeiyu.status()[0]).toMatchObject({ enabled: true, state: 'active' })
+})
+
+test('a volatile gate write tears the capability down and rebuilds it without a remount', async () => {
+  const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(Loader)
+  const name = 'dafeiyu-live'
+  ctx.loader.builtins[name] = Dafeiyu
+  const id = await ctx.loader.create({
+    name: `cordis:${name}`,
+    config: { capabilities: { memory: { enabled: true } } },
+  })
+  const entry = ctx.loader.resolve(id)
+  const fiberUid = entry.fiber?.uid
+  await entry.fiber?.await()
+  const dispose = vi.fn()
+  const create = vi.fn(() => ({ dispose }))
+  ctx.dafeiyu.register(provider({ create }))
+  await settle()
+  expect(create).toHaveBeenCalledTimes(1)
+
+  await entry.update({ config: { capabilities: { memory: { enabled: false } } } })
+  await entry.fiber?.await()
+  expect(entry.fiber?.uid).toBe(fiberUid)
+  expect(dispose).toHaveBeenCalledTimes(1)
+  expect(ctx.dafeiyu.status()).toEqual([{ id: 'memory', present: true, enabled: false, state: 'disabled' }])
+
+  await entry.update({ config: { capabilities: { memory: { enabled: true } } } })
+  await entry.fiber?.await()
+  await settle()
+  expect(create).toHaveBeenCalledTimes(2)
+  expect(ctx.dafeiyu.status()).toEqual([{ id: 'memory', present: true, enabled: true, state: 'active' }])
 })
 
 test('closed gate skips create and reports disabled', async () => {

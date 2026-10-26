@@ -4,10 +4,15 @@
  * dispatch, failure isolation, and disposal; providers only declare what they
  * contribute.
  *
- * The organizer is a composition-level service: it provides `ctx.dafeiyu` and
- * has no model surface of its own. Capability tools and prompt sections reach
- * agents through each provider's contribution, so a provider never subscribes
- * to lifecycle events or assembles a store path by itself.
+ * The organizer is a composition-level service: it provides `ctx.dafeiyu`,
+ * mounts the read-only `remote.dafeiyu` status face, and has no model surface
+ * of its own. Capability tools and prompt sections reach agents through each
+ * provider's contribution, so a provider never subscribes to lifecycle events
+ * or assembles a store path by itself.
+ *
+ * The enable gate is a volatile configuration reference: a settings write to
+ * `capabilities.<id>.enabled` swaps the snapshot and the organizer disposes or
+ * rebuilds that capability without remounting any plugin row.
  *
  * @module @deepseek-ai/dsh-dafeiyu
  */
@@ -18,29 +23,49 @@ import type { Agent, AgentRegistry } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionId, SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import z from '@deepseek-ai/schemastery'
 import type {
   CapabilityConfig,
   CapabilityContribution,
   CapabilityProvider,
+  CapabilityProviderV2,
   CapabilityRuntime,
   CapabilityStatus,
-  Config,
   TurnEndInput,
 } from './types.ts'
+import DafeiyuRemote from './remote.ts'
 
 export type {
   CapabilityConfig,
   CapabilityContribution,
   CapabilityProvider,
+  CapabilityProviderV1,
+  CapabilityProviderV2,
   CapabilityRuntime,
+  CapabilitySettings,
   CapabilityStatus,
   Config,
   TurnEndInput,
 } from './types.ts'
+export { default as DafeiyuRemote } from './remote.ts'
 
-/** The only capability contract version this organizer understands. */
-const CONTRACT_VERSION = 1
+/**
+ * The organizer's row schema. `capabilities` is a volatile reference: a
+ * settings write swaps the snapshot and emits `loader/volatile-update`, so the
+ * service re-reads the gate instead of remounting the row.
+ */
+export const ConfigSchema = z.object({
+  capabilities: z.dict(z.object({
+    enabled: z.boolean().default(true),
+  })).default({}).volatile(),
+})
+
+/** Resolved organizer configuration: `capabilities` is the live reference. */
+export type ResolvedConfig = ReturnType<typeof ConfigSchema>
+
+/** Capability contract versions this organizer understands. */
+const CONTRACT_VERSIONS: readonly number[] = [1, 2]
 
 /** Upper bound of one failure summary reported through `status()`. */
 const FAILURE_SUMMARY_MAX_LENGTH = 240
@@ -51,13 +76,13 @@ type RegistrationState = 'activating' | 'active' | 'disabled' | 'failed'
 /** Everything the organizer retains for one registered provider. */
 interface Registration {
   readonly provider: CapabilityProvider
-  /** Resolved enable gate at registration time. */
-  readonly enabled: boolean
+  /** Resolved enable gate, re-read on every volatile configuration update. */
+  enabled: boolean
   /** Cancels the provider's `create()` and every hook it contributes. */
-  readonly controller: AbortController
+  controller: AbortController
   /** Resolves after `create()` settles, fails, or the registration is removed. */
-  readonly ready: Promise<void>
-  readonly settleReady: () => void
+  ready: Promise<void>
+  settleReady: () => void
   contribution: CapabilityContribution | undefined
   state: RegistrationState
   failure: string | undefined
@@ -84,13 +109,9 @@ declare module '@deepseek-ai/cordis' {
  * per session, and records failures without stopping other capabilities.
  */
 export class Dafeiyu extends Service {
-  static Config: z<Config> = z.object({
-    capabilities: z.dict(z.object({
-      enabled: z.boolean().default(true),
-    })).default({}),
-  })
+  static Config = ConfigSchema
 
-  private readonly capabilities: Record<string, CapabilityConfig>
+  private readonly config: ResolvedConfig
   private readonly registrations = new Map<string, Registration>()
   private readonly turnChains = new Map<SessionId, Promise<void>>()
   private readonly warnedMissing = new Set<string>()
@@ -98,33 +119,40 @@ export class Dafeiyu extends Service {
 
   /**
    * @param ctx - plugin context; `agents` is optional because the registry can be mounted before an agent service exists.
-   * @param config - per-capability enable switches.
+   * @param config - per-capability enable switches and their live reference.
    */
-  constructor(ctx: Context, config: Config = {}) {
+  constructor(ctx: Context, config: ResolvedConfig) {
     super(ctx, 'dafeiyu')
-    this.capabilities = config.capabilities ?? {}
+    this.config = config
     ctx.on('agent/created', ({ agent }) => this.admitAgent(agent).then(() => undefined))
     ctx.on('agent/disposed', ({ agent }) => { this.forgetAgent(agent) })
     ctx.on('session/event', (session, event) => { this.observeSession(session, event) })
+    ctx.on('loader/volatile-update', () => { this.reconcileGates() })
     ctx.effect(() => () => { this.shutdown() }, 'dafeiyu.shutdown()')
+    void ctx.plugin(DafeiyuRemote)
   }
 
   /**
    * Register one capability provider.
    *
-   * `create()` runs immediately when the enable gate is open; a duplicate id or
-   * an unsupported contract version is rejected with an error naming the id.
+   * `create()` runs immediately when the enable gate is open; a duplicate id,
+   * an unsupported contract version, or an invalid v2 descriptor is rejected
+   * with an error naming the id.
    * @param provider - the capability declaration to register.
    * @returns the disposer that removes the registration and its contributions.
    * @throws Error when the service is disposed, the id is already registered,
-   *   or `contractVersion` is not `1`.
+   *   `contractVersion` is neither `1` nor `2`, or a v2 descriptor lacks its
+   *   list metadata.
    */
   register(provider: CapabilityProvider): () => void {
     if (this.disposed) throw new Error('dafeiyu: cannot register a capability after the organizer unloaded')
     const version: number = provider.contractVersion
-    if (version !== CONTRACT_VERSION) {
-      throw new Error(`dafeiyu: capability "${provider.id}" declares contractVersion ${version}; expected ${CONTRACT_VERSION}`)
+    if (!CONTRACT_VERSIONS.includes(version)) {
+      throw new Error(
+        `dafeiyu: capability "${provider.id}" declares contractVersion ${version}; expected ${CONTRACT_VERSIONS.join(' or ')}`,
+      )
     }
+    assertDescriptor(provider)
     if (this.registrations.has(provider.id)) {
       throw new Error(`dafeiyu: capability "${provider.id}" is already registered`)
     }
@@ -141,7 +169,7 @@ export class Dafeiyu extends Service {
    */
   status(): readonly CapabilityStatus[] {
     const statuses = [...this.registrations.values()].map(registration => statusOf(registration))
-    for (const [id, config] of Object.entries(this.capabilities)) {
+    for (const [id, config] of Object.entries(this.gates())) {
       if (this.registrations.has(id)) continue
       statuses.push({
         id,
@@ -156,7 +184,7 @@ export class Dafeiyu extends Service {
   /** Build the retained state and start activation when the gate is open. */
   private createRegistration(provider: CapabilityProvider): Registration {
     const { promise, resolve } = Promise.withResolvers<void>()
-    const enabled = this.capabilities[provider.id]?.enabled ?? true
+    const enabled = this.gateFor(provider)
     const registration: Registration = {
       provider,
       enabled,
@@ -378,7 +406,7 @@ export class Dafeiyu extends Service {
 
   /** Warn once per configured id that has no provider, after composition has settled. */
   private warnMissingCapabilities(): void {
-    for (const id of Object.keys(this.capabilities)) {
+    for (const id of Object.keys(this.gates())) {
       if (this.registrations.has(id) || this.warnedMissing.has(id)) continue
       this.warnedMissing.add(id)
       this.ctx.logger.warn(
@@ -386,6 +414,50 @@ export class Dafeiyu extends Service {
         id,
       )
     }
+  }
+
+  /** The live capability switches, read through the volatile reference on every use. */
+  private gates(): Readonly<Record<string, CapabilityConfig>> {
+    return this.config.capabilities.get()
+  }
+
+  /** Resolve one provider's gate: explicit configuration wins over the descriptor default. */
+  private gateFor(provider: CapabilityProvider): boolean {
+    const configured = this.gates()[provider.id]?.enabled
+    return configured ?? enabledByDefaultOf(provider)
+  }
+
+  /** Apply a swapped gate snapshot without remounting any plugin row. */
+  private reconcileGates(): void {
+    if (this.disposed) return
+    for (const registration of this.registrations.values()) {
+      const enabled = this.gateFor(registration.provider)
+      if (enabled === registration.enabled) continue
+      registration.enabled = enabled
+      if (enabled) this.activateRegistration(registration)
+      else this.disableRegistration(registration)
+    }
+  }
+
+  /** Rebuild one registration whose gate reopened: a fresh abort scope and a fresh `create()`. */
+  private activateRegistration(registration: Registration): void {
+    const { promise, resolve } = Promise.withResolvers<void>()
+    registration.ready = promise
+    registration.settleReady = resolve
+    registration.controller = new AbortController()
+    registration.state = 'activating'
+    registration.failure = undefined
+    void this.activate(registration)
+  }
+
+  /** Tear one registration down while the provider stays registered; agents created later receive nothing. */
+  private disableRegistration(registration: Registration): void {
+    registration.controller.abort()
+    this.disposeContribution(registration, registration.contribution)
+    registration.contribution = undefined
+    this.disposeRegistrations(registration)
+    registration.state = 'disabled'
+    registration.settleReady()
   }
 }
 
@@ -400,6 +472,39 @@ function statusOf(registration: Registration): CapabilityStatus {
     state: publicState(registration.state),
     ...registration.failure === undefined ? {} : { failure: registration.failure },
     ...registration.lastTurnAt === undefined ? {} : { lastTurnAt: registration.lastTurnAt },
+    ...metadataOf(registration.provider),
+  }
+}
+
+/** The v2 list metadata carried onto a status record; v1 providers contribute none. */
+function metadataOf(provider: CapabilityProvider): Partial<CapabilityStatus> {
+  if (provider.contractVersion !== 2) return {}
+  return {
+    label: provider.label,
+    description: provider.description,
+    ...provider.settings === undefined ? {} : {
+      settings: { sectionId: provider.settings.sectionId, order: provider.settings.order },
+    },
+  }
+}
+
+/** Whether the descriptor's gate opens when the organizer's configuration omits the capability. */
+function enabledByDefaultOf(provider: CapabilityProvider): boolean {
+  return provider.contractVersion === 2 ? provider.enabledByDefault ?? true : true
+}
+
+/** Reject a v2 descriptor that cannot render in the capability list. */
+function assertDescriptor(provider: CapabilityProvider): void {
+  if (provider.contractVersion !== 2) return
+  const descriptor = provider as CapabilityProviderV2
+  if (typeof descriptor.label !== 'string' || descriptor.label.trim() === '') {
+    throw new Error(`dafeiyu: capability "${descriptor.id}" declares contractVersion 2 without a label`)
+  }
+  if (typeof descriptor.description !== 'string' || descriptor.description.trim() === '') {
+    throw new Error(`dafeiyu: capability "${descriptor.id}" declares contractVersion 2 without a description`)
+  }
+  if (descriptor.settings !== undefined && (typeof descriptor.settings.sectionId !== 'string' || descriptor.settings.sectionId === '')) {
+    throw new Error(`dafeiyu: capability "${descriptor.id}" declares settings without a sectionId`)
   }
 }
 

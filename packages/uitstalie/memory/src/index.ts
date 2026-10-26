@@ -32,8 +32,14 @@ export const inject = ['dafeiyu', 'dshStore', 'fs', 'sessionQuery', 'jobs', 'llm
 /** Stable capability id this provider registers with the organizer. */
 export const MEMORY_CAPABILITY_ID = 'memory'
 
-/** Contract version the provider implements. */
-export const MEMORY_CONTRACT_VERSION = 1
+/** Contract version the provider implements: contribution plus capability-list metadata. */
+export const MEMORY_CONTRACT_VERSION = 2
+
+/** Display name in the organizer's capability list. */
+export const MEMORY_CAPABILITY_LABEL = 'Memory'
+
+/** One-sentence capability-list description. */
+export const MEMORY_CAPABILITY_DESCRIPTION = 'Session summaries, searchable history, and tiered forgetting'
 
 export { Config } from './config.ts'
 export { resolveConfig } from './config.ts'
@@ -160,6 +166,8 @@ export function apply(ctx: Context, config: Config): void {
   const registration = ctx.dafeiyu.register({
     id: MEMORY_CAPABILITY_ID,
     contractVersion: MEMORY_CONTRACT_VERSION,
+    label: MEMORY_CAPABILITY_LABEL,
+    description: MEMORY_CAPABILITY_DESCRIPTION,
     config: settings,
     create: (runtime: CapabilityRuntime): CapabilityContribution => {
       const summaries = new MemorySummaryRunner(ctx, settings, runtime.signal)

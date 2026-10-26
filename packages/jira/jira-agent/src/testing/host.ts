@@ -79,7 +79,7 @@ export const mountJira = async (root: string, options: MountOptions = {}): Promi
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
-  await ctx.plugin(Dafeiyu, options.enabled === undefined ? {} : { capabilities: { jira: { enabled: options.enabled } } })
+  await ctx.plugin(Dafeiyu, { capabilities: { jira: { enabled: options.enabled ?? true } } })
   await ctx.plugin(CommandRuntime)
   await ctx.plugin(SkillRegistry)
   await ctx.plugin(JiraService, { root, machine_id: MACHINE })

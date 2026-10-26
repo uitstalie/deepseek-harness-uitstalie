@@ -186,9 +186,14 @@ test('an unsupported watch degrades to the per-agent read and logs at debug', as
     message.type === 'debug' && String(message.args[0]).includes('filesystem watch is unavailable')))
   expect(mounted.calls).toHaveLength(0)
   expect(mounted.closeCount()).toBe(0)
-  expect(mounted.ctx.dafeiyu.status()).toEqual([
-    { id: 'personality', present: true, enabled: true, state: 'active' },
-  ])
+  expect(mounted.ctx.dafeiyu.status()).toEqual([{
+    id: 'personality',
+    present: true,
+    enabled: true,
+    state: 'active',
+    label: Personality.PERSONALITY_CAPABILITY_LABEL,
+    description: Personality.PERSONALITY_CAPABILITY_DESCRIPTION,
+  }])
   expect(await promptText(mounted.ctx, root)).toContain('预读文本。')
 
   // A new agent still reads the file even though no watcher exists.

@@ -162,9 +162,14 @@ test('registers an active all-agent capability with the stable prompt section', 
   const mounted = await mount()
   const root = await createRoot(mounted)
 
-  expect(mounted.ctx.dafeiyu.status()).toEqual([
-    { id: 'personality', present: true, enabled: true, state: 'active' },
-  ])
+  expect(mounted.ctx.dafeiyu.status()).toEqual([{
+    id: 'personality',
+    present: true,
+    enabled: true,
+    state: 'active',
+    label: Personality.PERSONALITY_CAPABILITY_LABEL,
+    description: Personality.PERSONALITY_CAPABILITY_DESCRIPTION,
+  }])
   expect(await promptText(mounted.ctx, root)).toBe(renderPersonalityPrompt(entries))
   expect(PERSONALITY_PROMPT_ORDER).toBe(100)
   expect(PERSONALITY_PROMPT_SECTION_NAME).toBe('personality')

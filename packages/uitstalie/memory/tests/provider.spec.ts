@@ -10,7 +10,9 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { MEMORY_PROMPT_ORDER, MEMORY_PROMPT_TEXT, resolveConfig } from '../src/index.ts'
+import {
+  MEMORY_CAPABILITY_DESCRIPTION, MEMORY_CAPABILITY_LABEL, MEMORY_PROMPT_ORDER, MEMORY_PROMPT_TEXT, resolveConfig,
+} from '../src/index.ts'
 import {
   callTool,
   createRoot,
@@ -50,9 +52,14 @@ test('registers an active root-scoped capability with the fixed prompt section',
   const mounted = await mount()
   const root = await createRoot(mounted)
 
-  expect(mounted.ctx.dafeiyu.status()).toEqual([
-    { id: 'memory', present: true, enabled: true, state: 'active' },
-  ])
+  expect(mounted.ctx.dafeiyu.status()).toEqual([{
+    id: 'memory',
+    present: true,
+    enabled: true,
+    state: 'active',
+    label: MEMORY_CAPABILITY_LABEL,
+    description: MEMORY_CAPABILITY_DESCRIPTION,
+  }])
   const assembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))
   const section = assembly.sections.find(entry => entry.name === 'memory')
   expect(section?.text).toBe(MEMORY_PROMPT_TEXT)

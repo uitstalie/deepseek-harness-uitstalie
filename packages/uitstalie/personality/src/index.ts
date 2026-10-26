@@ -42,8 +42,14 @@ export const inject = ['dafeiyu', 'dshStore', 'fs']
 /** Stable capability id this provider registers with the organizer. */
 export const PERSONALITY_CAPABILITY_ID = 'personality'
 
-/** Contract version the provider implements. */
-export const PERSONALITY_CONTRACT_VERSION = 1
+/** Contract version the provider implements: contribution plus capability-list metadata. */
+export const PERSONALITY_CONTRACT_VERSION = 2
+
+/** Display name in the organizer's capability list. */
+export const PERSONALITY_CAPABILITY_LABEL = 'Personality'
+
+/** One-sentence capability-list description. */
+export const PERSONALITY_CAPABILITY_DESCRIPTION = 'User-authored working preferences and learned habits applied to every session'
 
 export { Config } from './config.ts'
 export { DEFAULT_AUTO_LEARN_BUDGET, resolveConfig } from './config.ts'
@@ -134,6 +140,8 @@ export function apply(ctx: Context, config: Config): void {
   const registration = ctx.dafeiyu.register({
     id: PERSONALITY_CAPABILITY_ID,
     contractVersion: PERSONALITY_CONTRACT_VERSION,
+    label: PERSONALITY_CAPABILITY_LABEL,
+    description: PERSONALITY_CAPABILITY_DESCRIPTION,
     config: settings,
     create: runtime => createContribution(ctx, settings, runtime),
   })

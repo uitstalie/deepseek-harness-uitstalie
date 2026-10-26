@@ -7,6 +7,9 @@
 - insert:
     - id: dafeiyu
       name: '@deepseek-ai/dsh-dafeiyu'
+      config:
+        capabilities:
+          jira: { enabled: true }
     - id: memory
       name: '@deepseek-ai/dsh-memory'
     - id: personality

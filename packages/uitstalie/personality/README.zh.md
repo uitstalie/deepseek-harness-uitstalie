@@ -69,7 +69,7 @@ kind: "package-reference"
 
 ## 理解实现
 
-提供者是函数插件：`src/index.ts` 导出 `name`、`inject`、`Config` 与 `apply`，并只注册一个 `contractVersion: 1`、`id: 'personality'` 的能力。
+提供者是函数插件：`src/index.ts` 导出 `name`、`inject`、`Config` 与 `apply`，并只注册一个 `contractVersion: 2`、`id: 'personality'` 的能力，带 `label: 'Personality'` 与一句能力列表用的 description。
 
 - `src/config.ts` 持有 schemastery `Config` 与显式的 `resolveConfig(config): PersonalitySettings` 步骤。默认值只在那里补一次：全局路径变为 `<DSH_HOME>/personality/PERSONALITY.md`，历史路径从 `globalPath` 推出，工作区覆盖的两个文件路径是 store 相对常量。
 - `src/personality-file.ts` 是仓库。YAML frontmatter 记录 `version`（文档修订号，每次写入递增）、`updatedAt` 与 `entries`；`<!-- personality:begin -->` 与 `<!-- personality:end -->` 之间的托管区块按条目保存 `## <kind>.<name>` 标题加一段正文。区块之外的内容逐字节往返。条目 id 形如 `<kind>.<lower-kebab-name>`，kind 为 `understanding`、`style`、`preference`、`identity`；覆盖文件只允许 `style.*` 与 `preference.*`。同一个模块负责读取、校验 `PERSONALITY.history.jsonl`，并把一条记录中的区块恢复到全局文件。

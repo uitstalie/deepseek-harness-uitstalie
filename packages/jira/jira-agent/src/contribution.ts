@@ -24,8 +24,20 @@ import { callerOf, jiraTools } from './tools.ts'
 /** Stable capability id this provider registers with the organizer. */
 export const JIRA_CAPABILITY_ID = 'jira'
 
-/** Contract version the provider implements; the organizer accepts exactly `1`. */
-export const JIRA_CONTRACT_VERSION = 1
+/** Contract version the provider implements: contribution plus capability-list metadata. */
+export const JIRA_CONTRACT_VERSION = 2
+
+/** Display name in the organizer's capability list. */
+export const JIRA_CAPABILITY_LABEL = 'Jira'
+
+/** One-sentence capability-list description. */
+export const JIRA_CAPABILITY_DESCRIPTION = 'Workspace issue ledger and knowledge base'
+
+/** The section `ui-jira` owns, linked from the capability list. */
+export const JIRA_SETTINGS_SECTION = 'jira'
+
+/** Sort order of that section inside the settings navigation. */
+export const JIRA_SETTINGS_ORDER = 200
 
 /** The services and process facts one contribution is built from. */
 export interface ContributionHost {

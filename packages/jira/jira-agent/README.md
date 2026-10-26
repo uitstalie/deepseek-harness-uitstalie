@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-jira-agent` is the ledger's model surface: a dafeiyu capability provider that registers the three resident tools (`jira_issue` with its ten verbs, `jira_list`, `jira_kb`), the one-line `jira:store` awareness section, the monotonic write guard, the `/jira` command, three bundled skills, and the turn-end settle. It injects `ctx.jira`, the tool registry, and `ctx.dafeiyu`; commands and skills are optional, so a composition without those registries keeps the tools. The ledger's location, machine identity, and push queue belong to the `jira-service` row, so this row carries no configuration of its own.
+`dsh-jira-agent` is the ledger's model surface: a dafeiyu capability provider that registers the three resident tools (`jira_issue` with its ten verbs, `jira_list`, `jira_kb`), the one-line `jira:store` awareness section, the monotonic write guard, the `/jira` command, three skills, and the turn-end settle. It injects `ctx.jira`, the tool registry, and `ctx.dafeiyu`; commands and skills are optional, so a composition without those registries keeps the tools. It registers contract version 2 with `enabledByDefault: false` and `settings.sectionId: 'jira'` for the capabilities list. The ledger's location, machine identity, and push queue belong to the `jira-service` row, so this row carries no configuration of its own.
 
 ## Table of Contents
 

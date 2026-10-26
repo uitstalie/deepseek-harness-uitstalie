@@ -65,7 +65,7 @@ One `ctx.fs.watch` registration observes the global profile. A change re-reads t
 
 ## Understand the implementation
 
-The provider is a function plugin: `src/index.ts` exports `name`, `inject`, `Config`, and `apply`, and registers exactly one `contractVersion: 1` capability with `id: 'personality'`.
+The provider is a function plugin: `src/index.ts` exports `name`, `inject`, `Config`, and `apply`, and registers exactly one `contractVersion: 2` capability with `id: 'personality'`, `label: 'Personality'`, and a one-sentence description that the capabilities settings list renders.
 
 - `src/config.ts` holds the schemastery `Config` and an explicit `resolveConfig(config): PersonalitySettings` step. Defaults are applied there once: the global path becomes `<DSH_HOME>/personality/PERSONALITY.md`, the history path derives from `globalPath`, and the two file paths of the workspace overlay are store-relative constants.
 - `src/personality-file.ts` is the repository. The YAML frontmatter carries `version` (the document revision, incremented on every write), `updatedAt`, and `entries`; the managed block between `<!-- personality:begin -->` and `<!-- personality:end -->` holds one `## <kind>.<name>` heading followed by one paragraph per entry. Text outside the block round-trips byte for byte. Entry ids are `<kind>.<lower-kebab-name>` with `understanding`, `style`, `preference`, and `identity` kinds; the overlay may only carry `style.*` and `preference.*`. The same module reads and validates `PERSONALITY.history.jsonl` and restores one recorded block into the global file.

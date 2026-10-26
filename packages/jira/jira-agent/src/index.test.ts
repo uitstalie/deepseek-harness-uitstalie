@@ -252,7 +252,11 @@ describe('agent: the capability and its surfaces (contract §3)', () => {
       assert.ok(harness.ctx.tools.get(TOOL_NAME, agent) !== undefined)
 
       await fiber.dispose()
-      assert.deepEqual(harness.ctx.dafeiyu.status(), [], 'the capability is gone')
+      assert.deepEqual(
+        harness.ctx.dafeiyu.status(),
+        [{ id: 'jira', present: false, enabled: true, state: 'missing' }],
+        'the capability is gone; the configured gate is the only trace left',
+      )
       assert.equal(harness.ctx.tools.get(TOOL_NAME, agent), undefined, 'the tools are gone')
       const commands = harness.ctx.commands.list(agent).map(command => command.name)
       assert.equal(commands.includes('jira'), false, 'the command is gone')

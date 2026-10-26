@@ -21,7 +21,15 @@ import type { CapabilityContribution, CapabilityRuntime } from '@deepseek-ai/dsh
 import type {} from '@deepseek-ai/dsh-jira-service'
 import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
-import { JIRA_CAPABILITY_ID, JIRA_CONTRACT_VERSION, createJiraContribution } from './contribution.ts'
+import {
+  JIRA_CAPABILITY_DESCRIPTION,
+  JIRA_CAPABILITY_ID,
+  JIRA_CAPABILITY_LABEL,
+  JIRA_CONTRACT_VERSION,
+  JIRA_SETTINGS_ORDER,
+  JIRA_SETTINGS_SECTION,
+  createJiraContribution,
+} from './contribution.ts'
 import type { ContributionHost } from './contribution.ts'
 import { defaultEnv } from './env.ts'
 import { createSessionRecorder } from './sessionRecord.ts'
@@ -75,6 +83,10 @@ export function apply(ctx: Context, config: Config): void {
   const registration = ctx.dafeiyu.register({
     id: JIRA_CAPABILITY_ID,
     contractVersion: JIRA_CONTRACT_VERSION,
+    label: JIRA_CAPABILITY_LABEL,
+    description: JIRA_CAPABILITY_DESCRIPTION,
+    enabledByDefault: false,
+    settings: { sectionId: JIRA_SETTINGS_SECTION, order: JIRA_SETTINGS_ORDER },
     config: Object.freeze({ ...config }),
     create: (_runtime: CapabilityRuntime): CapabilityContribution => createJiraContribution(host),
   })
@@ -99,7 +111,16 @@ export {
   createJiraCommand,
   runJiraCommand,
 } from './command.ts'
-export { JIRA_CAPABILITY_ID, JIRA_CONTRACT_VERSION, createJiraContribution, settleCompletedTurn } from './contribution.ts'
+export {
+  JIRA_CAPABILITY_DESCRIPTION,
+  JIRA_CAPABILITY_ID,
+  JIRA_CAPABILITY_LABEL,
+  JIRA_CONTRACT_VERSION,
+  JIRA_SETTINGS_ORDER,
+  JIRA_SETTINGS_SECTION,
+  createJiraContribution,
+  settleCompletedTurn,
+} from './contribution.ts'
 export type { ContributionHost } from './contribution.ts'
 export { type HostEnv, defaultEnv, readOnlySession } from './env.ts'
 export { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, nowUtc, okValue, skipped } from './envelope.ts'

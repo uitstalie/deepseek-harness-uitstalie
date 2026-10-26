@@ -52,7 +52,7 @@ The organized contribution is `scope: 'root'`, so root agents receive the prompt
 
 ## Understand the implementation
 
-The provider is a function plugin: `src/index.ts` exports `name`, `inject`, `Config`, and `apply`, and registers exactly one `contractVersion: 1` capability with `id: 'memory'`.
+The provider is a function plugin: `src/index.ts` exports `name`, `inject`, `Config`, and `apply`, and registers exactly one `contractVersion: 2` capability with `id: 'memory'`, `label: 'Memory'`, and a one-sentence description that the capabilities settings list renders.
 
 - `src/config.ts` holds the schemastery `Config` and an explicit `resolveConfig(config): MemorySettings` step. Defaults are applied there once, and the two cross-field rules (increasing thresholds, paired summary model) are checked before anything registers.
 - `src/memory-file.ts` is the MEMORY.md repository and the file-side migration pass. The file has a YAML frontmatter holding machine state (`version`, `window`, and per-session `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`) and a managed block between `<!-- memory:begin -->` and `<!-- memory:end -->` holding one `- [kind] text` entry per line under `## <sessionId> · turn N–M（tier）` headings. Text outside the managed block is hand-written and round-trips byte for byte; the managed block is provider-owned and rewritten.

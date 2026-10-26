@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-jira-agent` 是账本的模型面：一个 dafeiyu 能力提供者，注册三个常驻工具（带十个动词的 `jira_issue`、`jira_list`、`jira_kb`）、一行 `jira:store` 注入段、单调递增的写守卫、`/jira` 命令、三个随包 skill，以及 turn 结束时的 settle。它注入 `ctx.jira`、工具注册表与 `ctx.dafeiyu`；命令与 skill 注册表是可选的，因此缺少这些注册表的组合仍保留工具。账本的位置、机器身份与 push 队列属于 `jira-service` 行，因此这一行没有自己的配置。
+`dsh-jira-agent` 是账本的模型面：一个 dafeiyu 能力提供者，注册三个常驻工具（带十个动词的 `jira_issue`、`jira_list`、`jira_kb`）、一行 `jira:store` 注入段、单调递增的写守卫、`/jira` 命令、三个 skill，以及 turn 结束时的 settle。它注入 `ctx.jira`、工具注册表与 `ctx.dafeiyu`；命令与 skill 注册表是可选的，因此缺少这些注册表的组合仍保留工具。它按契约版本 2 注册，带 `enabledByDefault: false` 与 `settings.sectionId: 'jira'` 供能力列表使用。账本的位置、机器身份与 push 队列属于 `jira-service` 行，因此这一行没有自己的配置。
 
 ## 目录
 
@@ -32,7 +32,7 @@ kind: "package-reference"
 | `wiring.ts` | 写守卫、`/jira` 命令注册与 skill 注册 |
 | `toolIssue.ts` / `toolList.ts` / `toolKb.ts` | 工具 schema、描述与 runner |
 | `envelope.ts` / `caller.ts` | wire 与实体转换、身份元组、谁在提问 |
-| `command.ts` / `skills.ts` | `/jira` 子命令与三个随包 skill |
+| `command.ts` / `skills.ts` | `/jira` 子命令与三个 skill |
 | `sessionRecord.ts` | 收尾扫描、push 失败记录与按 apply 的会话记录器 |
 | `testing/host.ts` | 接线套件挂载的真实组合测试 harness |
 

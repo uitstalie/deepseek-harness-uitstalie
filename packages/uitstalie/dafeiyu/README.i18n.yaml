@@ -3,41 +3,41 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/dafeiyu/README.md
 /:
-  en: 533421105f653edd
-  zh: 8af67066d1862fa5
+  en: 87cceb943e9691f0
+  zh: f8a3284ea0681a73
 /deepseek-ai-dsh-dafeiyu:
   en: 9e2dfd6324744fc4
   zh: 9bf42299d70f612b
 /deepseek-ai-dsh-dafeiyu/summary:
-  en: 6ac8e6c807eff37b
-  zh: 63f6d34cf947a661
+  en: 197c251d07e2fc9b
+  zh: 692581bd5c65bc19
 /deepseek-ai-dsh-dafeiyu/table-of-contents:
   en: cbfb676bb9a7a2de
   zh: 528864635b577290
 /deepseek-ai-dsh-dafeiyu/use-this-package:
-  en: b2dc8dad0ea6a1d6
-  zh: 00af3da03bea4d3d
+  en: 224482cd506040a1
+  zh: e6d808c6a921f71f
 /deepseek-ai-dsh-dafeiyu/understand-the-implementation:
-  en: f754080fa333f5c6
-  zh: 012f8884df4f7030
+  en: 605037d2c5564cbe
+  zh: 0a90f914888eee21
 /deepseek-ai-dsh-dafeiyu/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
-/deepseek-ai-dsh-dafeiyu/model-experience/no-model-surface-in-v1:
-  en: fcf5fcb5605c362e
-  zh: bb153e788479f93d
-/deepseek-ai-dsh-dafeiyu/model-experience/no-model-surface-in-v1/what-the-model-sees:
+/deepseek-ai-dsh-dafeiyu/model-experience/no-model-surface:
+  en: 99debe53518d5938
+  zh: a9d3f2298aa0a3c5
+/deepseek-ai-dsh-dafeiyu/model-experience/no-model-surface/what-the-model-sees:
   en: b60f222ec6a4c899
   zh: d14308a88fedf30c
-/deepseek-ai-dsh-dafeiyu/model-experience/no-model-surface-in-v1/token-effect:
+/deepseek-ai-dsh-dafeiyu/model-experience/no-model-surface/token-effect:
   en: 6be409ff62212572
   zh: 60774e03b41eb545
-/deepseek-ai-dsh-dafeiyu/model-experience/no-model-surface-in-v1/kv-cache-effect:
+/deepseek-ai-dsh-dafeiyu/model-experience/no-model-surface/kv-cache-effect:
   en: e9b6bb39e3b1de89
   zh: e896115b47f9adcd
 /deepseek-ai-dsh-dafeiyu/known-limitations-and-deferred-work:
-  en: 702d14809f882e0f
-  zh: 374ee644facb9c18
+  en: 53286531567b3d2c
+  zh: f0aa23cca214c929
 /deepseek-ai-dsh-dafeiyu/known-limitations-and-deferred-work/dev-note:
   en: 7490fb0761c18111
   zh: e2a58c1bc890e583
