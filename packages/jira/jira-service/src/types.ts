@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-jira-service/types
  */
 
-import type { Actor, Created, DoctorReport, ErrorCode, Identity, Issue, IssueKey, JiraError, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, ListResult, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Result, Store, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from '@deepseek-ai/dsh-jira-core'
+import type { Actor, Created, DoctorReport, ErrorCode, Identity, Issue, IssueKey, JiraError, KbSearch, KnowledgeEntry, KnowledgeKey, KnowledgePatch, ListQuery, ListResult, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Result, Store, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from '@deepseek-ai/dsh-jira-core'
 
 export type {
   Actor,
@@ -20,6 +20,7 @@ export type {
   IssueKey,
   JiraError,
   KbSearch,
+  KnowledgeEntry,
   KnowledgeKey,
   KnowledgePatch,
   ListQuery,
@@ -80,6 +81,13 @@ export interface JiraStatus {
 }
 
 /** The ledger facade `ctx.jira` provides to the agent, the UI and the CLI. */
+/** One knowledge entry with its file path and warnings. */
+export interface KnowledgeDetail {
+  readonly entry: KnowledgeEntry
+  readonly path: string
+  readonly warnings: readonly string[]
+}
+
 /** Project, knowledge and open-issue counts for the awareness line. */
 export interface JiraCounts {
   /** Projects the ledger knows (a project.md or at least one issue). */
@@ -178,6 +186,12 @@ export interface JiraServiceApi {
    * @returns the written entry and its commit.
    */
   kbUpdate(key: KnowledgeKey, patch: KnowledgePatch, actor: Actor): Promise<JiraResult<WrittenKnowledge>>
+  /**
+   * Read one knowledge entry.
+   * @param key - the knowledge key.
+   * @returns the entry with its file path and warnings, or `not-found`.
+   */
+  kbGet(key: KnowledgeKey): Promise<JiraResult<KnowledgeDetail>>
 
   /**
    * Flush the push queue now: pull --rebase, refresh the derived files, push.

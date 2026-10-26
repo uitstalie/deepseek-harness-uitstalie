@@ -7,10 +7,8 @@
 
 import { type KnowledgeKey, asKnowledgeKey, knowledgePath } from '@deepseek-ai/dsh-jira-core/kb.ts'
 import { TOP_K_DEFAULT, TOP_K_MAX } from '@deepseek-ai/dsh-jira-core/kbsearch.ts'
-import { createKnowledge, findKnowledge, originFromIdentity, searchKnowledgeIn, updateKnowledge } from '@deepseek-ai/dsh-jira-core/kbstore.ts'
 import { formatError, invalidInput, readOnlySession } from '@deepseek-ai/dsh-jira-core/errors.ts'
 import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-jira-core/schema.ts'
-import { system } from '@deepseek-ai/dsh-jira-core/system/index.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, skipped } from './envelope.ts'
 
 /** The registered tool name for the knowledge half of the ledger. */
@@ -73,7 +71,7 @@ export const KB_OUTPUT_SCHEMA = Object.freeze({
  * @returns the entry or the search hits, or the refusal as a failed envelope.
  */
 export const runKbTool = async (args: unknown, options: RunOptions, me: unknown): Promise<ToolValue> => {
-  const { store, caller } = options
+  const { jira, caller } = options
 
   const validated = validateArgs(KB_PARAMETERS, args)
   if (!validated.ok) return failure(validated.error, caller, me)
@@ -85,12 +83,10 @@ export const runKbTool = async (args: unknown, options: RunOptions, me: unknown)
     return failure(readOnlySession(caller.reason ?? 'session'), caller, me)
   }
 
-  const origin = originFromIdentity(caller.identity, store.machineId, 'dsh', system.facts.platform)
-
   if (action === 'search') {
     const query = asString(input.query)
     if (query === undefined) return failure(invalidInput('search needs `query`'), caller, me)
-    const result = await searchKnowledgeIn(store, query, typeof input.top_k === 'number' ? input.top_k : undefined)
+    const result = await jira.searchKnowledge(query, typeof input.top_k === 'number' ? input.top_k : undefined)
     if (!result.ok) return failure(result.error, caller, me)
     return Object.freeze({
       ok: true,
@@ -117,7 +113,7 @@ export const runKbTool = async (args: unknown, options: RunOptions, me: unknown)
 
   if (action === 'get') {
     // knowledgeKey is proven above; the cast only re-states that for the compiler.
-    const found = await findKnowledge(store, knowledgeKey as KnowledgeKey)
+    const found = await jira.kbGet(knowledgeKey as KnowledgeKey)
     if (!found.ok) return failure(found.error, caller, me)
     const rejected = found.value.warnings.map(reason => Object.freeze({ file: found.value.path, reason }))
     return Object.freeze({
@@ -147,7 +143,7 @@ export const runKbTool = async (args: unknown, options: RunOptions, me: unknown)
   }
 
   const written = action === 'create'
-    ? await createKnowledge(store, { by: actorFor(options, caller), at: options.at }, origin, {
+    ? await jira.kbCreate({
       domain: asString(fields.value.domain) ?? '',
       kbType: asString(fields.value.type) ?? '',
       title: asString(fields.value.title) ?? '',
@@ -158,11 +154,10 @@ export const runKbTool = async (args: unknown, options: RunOptions, me: unknown)
       ...(asString(fields.value.source_sha256) === undefined
         ? {}
         : { sourceSha256: asString(fields.value.source_sha256) as string }),
-    })
-    : await updateKnowledge(store, knowledgeKey as KnowledgeKey, { by: actorFor(options, caller), at: options.at }, origin, patch)
+    }, { by: actorFor(options, caller), at: options.at })
+    : await jira.kbUpdate(knowledgeKey as KnowledgeKey, patch, { by: actorFor(options, caller), at: options.at })
   if (!written.ok) return failure(written.error, caller, me)
 
-  options.onWrote?.()
   const rejected = written.value.commitError === undefined
     ? undefined
     : Object.freeze([Object.freeze({ file: 'git', reason: formatError(written.value.commitError) })])

@@ -26,7 +26,6 @@ const PENDING = new Set([
   'contribution.ts',
   'sessionRecord.ts',
   'toolIssue.ts',
-  'toolKb.ts',
   'toolList.ts',
 ])
 

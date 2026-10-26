@@ -24,6 +24,7 @@ import { type FieldSpec, objectSchema } from '@deepseek-ai/dsh-jira-core/schema.
 import { type Store } from '@deepseek-ai/dsh-jira-core/store.ts'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { assertSupportedJsonSchema, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
 import { type Caller, callerSessionId, describeCaller } from './caller.ts'
 import { type HostEnv, readOnlySession } from './env.ts'
 import { type ToolValue, nowUtc } from './envelope.ts'
@@ -55,6 +56,8 @@ export interface ToolHost {
 
 /** The resolved store, caller and identity of one call. */
 export interface CallContext {
+  /** The ledger service every migrated runner calls. */
+  readonly jira: JiraServiceApi
   /** The store this call reads and writes through. */
   readonly store: Store
   /** Who is asking, and whether they may write. */
@@ -112,6 +115,7 @@ const resolveCall = async (host: ToolHost, exec: ToolRunContext): Promise<CallCo
   const opened = await host.ctx.jira.store()
   if (!opened.ok) return undefined
   return Object.freeze({
+    jira: host.ctx.jira,
     store: opened.value,
     caller: callerOf(host, exec.agent),
     me: identityOf(host, exec.agent),
@@ -142,6 +146,7 @@ const sessionFactsOf = (host: ToolHost, store: Store): SessionFacts => Object.fr
 
 /** The options the three runners share. */
 const runOptionsOf = (host: ToolHost, call: CallContext) => Object.freeze({
+  jira: call.jira,
   store: call.store,
   caller: call.caller,
   at: nowUtc(host.clock),

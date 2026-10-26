@@ -11,6 +11,7 @@
 import { type Identity, type Timestamp } from '@deepseek-ai/dsh-jira-core/entity.ts'
 import { type JiraError } from '@deepseek-ai/dsh-jira-core/errors.ts'
 import { type Actor, type Store } from '@deepseek-ai/dsh-jira-core/store.ts'
+import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
 import { type Caller } from './caller.ts'
 import { type SessionFacts } from './sessionRecord.ts'
 
@@ -110,6 +111,7 @@ export const asStringList = (value: unknown): readonly string[] | undefined =>
 
 /** Everything a tool run needs: the store, the caller's verdict, the clock, and the write hooks. */
 export type RunOptions = Readonly<{
+  jira: JiraServiceApi
   store: Store
   caller: Caller
   at: Timestamp
@@ -128,12 +130,12 @@ export type RunOptions = Readonly<{
 
 /**
  * Turn a caller into the identity a write is recorded under (decision 48).
- * @param options - the run, whose store supplies the machine id for the human fallback.
+ * @param options - the run, whose service supplies the machine id for the human fallback.
  * @param caller - the caller whose identity wins when the host supplied one.
  * @returns the identity the transaction records.
  */
 export const actorFor = (options: RunOptions, caller: Caller): Identity =>
-  caller.identity ?? (`human:${options.store.machineId}` as Identity)
+  caller.identity ?? (`human:${options.jira.machineId}` as Identity)
 
 /**
  * A successful call's value, in the shared envelope (decisions 56/80).

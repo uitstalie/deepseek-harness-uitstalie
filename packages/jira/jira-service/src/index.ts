@@ -33,7 +33,7 @@ import {
   system,
 } from '@deepseek-ai/dsh-jira-core'
 import { countStore } from '@deepseek-ai/dsh-jira-core/injection.ts'
-import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, JiraCounts, JiraResult, JiraServiceApi, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
+import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, JiraCounts, JiraResult, JiraServiceApi, KnowledgeDetail, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 import JiraRemote from './remote.ts'
 
 export type * from './types.ts'
@@ -304,6 +304,23 @@ export class JiraService extends Service implements JiraServiceApi {
     const opened = await this.open()
     if (!opened.store.ok) return opened.store
     return kbstore.searchKnowledgeIn(opened.store.value, query, topK)
+  }
+
+  /**
+   * Read one knowledge entry.
+   * @param key - the knowledge key.
+   * @returns the entry with its file path and warnings, or `not-found`.
+   */
+  async kbGet(key: KnowledgeKey): Promise<JiraResult<KnowledgeDetail>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const found = await kbstore.findKnowledge(opened.store.value, key)
+    if (!found.ok) return found
+    return result.ok(Object.freeze({
+      entry: found.value.entry,
+      path: found.value.path,
+      warnings: found.value.warnings,
+    }))
   }
 
   /**
