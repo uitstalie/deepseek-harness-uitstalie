@@ -14,7 +14,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { removeTree } from '@deepseek-ai/dsh-jira-core/testing/removeTree.ts'
 import {
@@ -36,7 +35,7 @@ import {
   createJiraContribution,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
-import { concurrencySafe, createLedgerFixture, mountJira, testAgent } from './testing/host.ts'
+import { concurrencySafe, createLedgerFixture, dispatchTool, mountJira, testAgent } from './testing/host.ts'
 
 const actionEnum = (parameters: Readonly<Record<string, { enum?: readonly string[] }>>): readonly string[] =>
   parameters.action?.enum ?? []
@@ -118,13 +117,7 @@ describe('surfaces: the monotonic write guard (decision 96)', () => {
         await harness.ctx.serial('agent/created', { agent, source: 'startup' })
         let denied = 0
         for (const action of WRITE_ACTIONS) {
-          const result = await harness.ctx.tools.execute({
-            name: TOOL_NAME,
-            callId: ToolCallId(`guard-${action}`),
-            arguments: { action, key: 'DH-12' },
-            agent,
-            signal: new AbortController().signal,
-          })
+          const result = await dispatchTool(harness, agent, TOOL_NAME, { action, key: 'DH-12' }, `guard-${action}`)
           assert.equal(result.isError, true, `${action} must be denied`)
           assert.match(
             result.content.filter(block => block.type === 'text').map(block => block.text).join(''),
@@ -134,13 +127,7 @@ describe('surfaces: the monotonic write guard (decision 96)', () => {
         }
         assert.equal(denied, WRITE_ACTIONS.length, 'every write verb was covered')
 
-        const read = await harness.ctx.tools.execute({
-          name: TOOL_NAME,
-          callId: ToolCallId('guard-read'),
-          arguments: { action: 'get', key: 'DH-12' },
-          agent,
-          signal: new AbortController().signal,
-        })
+        const read = await dispatchTool(harness, agent, TOOL_NAME, { action: 'get', key: 'DH-12' }, 'guard-read')
         assert.equal(read.isError, false, 'reads pass the guard')
       } finally {
         await fiber.dispose()
@@ -168,13 +155,7 @@ describe('surfaces: the monotonic write guard (decision 96)', () => {
           output: { schema: { type: 'object' }, render: () => [{ type: 'text', text: 'ok' }] },
           execute: () => Promise.resolve({}),
         })
-        const result = await harness.ctx.tools.execute({
-          name: 'another_tool',
-          callId: ToolCallId('guard-other'),
-          arguments: { action: 'update' },
-          agent,
-          signal: new AbortController().signal,
-        })
+        const result = await dispatchTool(harness, agent, 'another_tool', { action: 'update' }, 'guard-other')
         assert.equal(result.isError, false, 'other tools are not ours to police')
       } finally {
         await fiber.dispose()

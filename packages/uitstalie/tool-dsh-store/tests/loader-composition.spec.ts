@@ -20,6 +20,7 @@ import * as SessionPlugin from '@deepseek-ai/dsh-session'
 import * as SessionProjectionPlugin from '@deepseek-ai/dsh-session-projection'
 import * as SystemPromptPlugin from '@deepseek-ai/dsh-system-prompt'
 import * as ToolsPlugin from '@deepseek-ai/dsh-tools'
+import * as ToolExecutorNativePlugin from '@deepseek-ai/dsh-tool-executor-native'
 import * as AgentLoopPlugin from '@deepseek-ai/dsh-agent-loop'
 import * as FsLocalPlugin from '@deepseek-ai/dsh-fs-local'
 import * as StorePlugin from '../src/index.ts'
@@ -51,6 +52,7 @@ async function boot(project: string): Promise<Context> {
     ['@deepseek-ai/dsh-session-projection', SessionProjectionPlugin],
     ['@deepseek-ai/dsh-system-prompt', SystemPromptPlugin],
     ['@deepseek-ai/dsh-tools', ToolsPlugin],
+    ['@deepseek-ai/dsh-tool-executor-native', ToolExecutorNativePlugin],
     ['@deepseek-ai/dsh-fs-local', FsLocalPlugin],
     ['@deepseek-ai/dsh-agent', AgentPlugin],
     ['@deepseek-ai/dsh-agent-loop', AgentLoopPlugin],
@@ -89,18 +91,23 @@ test('the composed row registers the tool and prepares the store root', async ()
 
   await agentEvents(ctx, agent).waterfall(
     'agent/pre-step',
-    { messages: [], turn: 1, step: 1, signal: new AbortController().signal },
+    { messages: [], turn: 1, step: 1, signal: new AbortController().signal, modelSelection: { provider: 'test', model: 'test' } },
     async () => ({ kind: 'enter' as const, messages: [] }),
   )
   expect((await stat(join(project, '.dsh'))).isDirectory()).toBe(true)
 
-  const created = await ctx.tools.execute({
+  const batch = await ctx.tools.execute({
     signal: new AbortController().signal,
-    callId: ToolCallId('store-loader-call-1'),
-    name: 'tool-dsh-store',
-    arguments: { action: 'create', target: 'file', path: 'rules/api.md', content: 'Document public APIs.' },
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId('store-loader-call-1'),
+      name: 'tool-dsh-store',
+      arguments: JSON.stringify({ action: 'create', target: 'file', path: 'rules/api.md', content: 'Document public APIs.' }),
+    }],
     agent,
   })
+  const created = batch.results[0]?.result
+  if (created === undefined) throw new Error('the store tool settled no result')
   expect(created.isError).toBe(false)
   expect(text(created)).toBe('Created file .dsh/rules/api.md.')
   expect(await readFile(join(project, '.dsh', 'rules', 'api.md'), 'utf8')).toBe('Document public APIs.')

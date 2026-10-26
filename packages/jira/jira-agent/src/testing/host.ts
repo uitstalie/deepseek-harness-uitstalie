@@ -25,12 +25,14 @@ import { join } from 'node:path'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
 import JiraService from '@deepseek-ai/dsh-jira-service'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, Session, SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as ToolExecutorNative from '@deepseek-ai/dsh-tool-executor-native'
 import { type HostEnv } from '../env.ts'
-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import type { ToolDefinition, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { createSessionRecorder } from '../sessionRecord.ts'
 import type { ToolHost } from '../tools.ts'
 
@@ -61,6 +63,36 @@ export interface JiraHarness {
   dispose(): Promise<void>
 }
 
+/**
+ * Dispatch one tool call through the real registry and return its settled result.
+ *
+ * A batch carries the raw model block: its arguments are the JSON string the model would
+ * have produced, and the single result is correlated by the call id we chose.
+ * @param harness - the mounted composition owning the tool registry.
+ * @param agent - the agent whose scope and identity the call runs under.
+ * @param name - the registered tool name.
+ * @param args - the lossless JSON arguments to serialize into the model block.
+ * @param callId - the correlation id for this call.
+ * @returns the settled execution result.
+ * @throws when the registry settles no result for the call.
+ */
+export const dispatchTool = async (
+  harness: JiraHarness,
+  agent: Agent,
+  name: string,
+  args: unknown,
+  callId: string,
+): Promise<ToolExecutionResult> => {
+  const batch = await harness.ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(callId), name, arguments: JSON.stringify(args) }],
+    agent,
+    signal: new AbortController().signal,
+  })
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error(`tool "${name}" settled no result`)
+  return result
+}
+
 /** What one mount may vary. */
 export interface MountOptions {
   /** Process facts the plugin reads; defaults to an empty environment. */
@@ -79,6 +111,7 @@ export const mountJira = async (root: string, options: MountOptions = {}): Promi
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(ToolExecutorNative)
   await ctx.plugin(Dafeiyu, { capabilities: { jira: { enabled: options.enabled ?? true } } })
   await ctx.plugin(CommandRuntime)
   await ctx.plugin(SkillRegistry)

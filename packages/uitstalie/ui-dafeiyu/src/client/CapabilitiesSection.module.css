@@ -10,7 +10,7 @@
 .title {
   margin: 0;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .intro {
@@ -65,12 +65,13 @@
 
 .name {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .badge {
   padding: 1px 8px;
   border-radius: 999px;
+  corner-shape: round;
   font-size: 11px;
   font-weight: 500;
   color: var(--dsw-alias-label-tertiary);
@@ -120,6 +121,7 @@
   padding: 4px 8px;
   border: none;
   border-radius: 999px;
+  corner-shape: round;
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
   background: transparent;
@@ -137,6 +139,7 @@
   width: 28px;
   height: 16px;
   border-radius: 999px;
+  corner-shape: round;
   background: var(--dsw-alias-border-l2, var(--dsw-alias-border-l1));
   transition: background 0.15s ease;
 }
@@ -152,6 +155,7 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
+  corner-shape: round;
   background: var(--dsw-alias-bg-layer-1);
   transition: transform 0.15s ease;
 }

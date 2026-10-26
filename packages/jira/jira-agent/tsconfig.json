@@ -40,6 +40,9 @@
     },
     {
       "path": "../jira-service"
+    },
+    {
+      "path": "../../core/tool-executor-native"
     }
   ]
 }

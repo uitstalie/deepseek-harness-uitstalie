@@ -162,6 +162,7 @@ function stubAgent(): Agent {
     id: session.id,
     options: {},
     session,
+    model: { current: () => undefined, select: () => {} },
     inbox,
     ctx: new Context(),
     get status() { return status },

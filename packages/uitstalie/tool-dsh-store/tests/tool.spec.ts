@@ -13,6 +13,7 @@ import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
+import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,
@@ -53,14 +54,20 @@ async function mount(mode?: 'read-only' | 'workspace-write'): Promise<{ ctx: Con
 }
 
 /** Invoke the registered tool through the real tool runtime. */
-function call(ctx: Context, agent: Agent, args: Record<string, unknown>) {
-  return ctx.tools.execute({
+async function call(ctx: Context, agent: Agent, args: Record<string, unknown>): Promise<ToolExecutionResult> {
+  const batch = await ctx.tools.execute({
     signal,
-    callId: ToolCallId(`call-${++callCounter}`),
-    name: 'tool-dsh-store',
-    arguments: args,
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`call-${++callCounter}`),
+      name: 'tool-dsh-store',
+      arguments: JSON.stringify(args),
+    }],
     agent,
   })
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('the store tool settled no result')
+  return result
 }
 
 /** Text blocks of one tool result. */
@@ -72,7 +79,7 @@ function text(result: { content: { type: string; text?: string }[] }): string {
 async function drivePreStep(ctx: Context, agent: Agent): Promise<void> {
   await agentEvents(ctx, agent).waterfall(
     'agent/pre-step',
-    { messages: [], turn: 1, step: 1, signal },
+    { messages: [], turn: 1, step: 1, signal, modelSelection: { provider: 'test', model: 'test' } },
     async () => ({ kind: 'enter' as const, messages: [] }),
   )
 }

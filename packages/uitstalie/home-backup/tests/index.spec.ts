@@ -9,12 +9,15 @@ import * as HomeBackup from '../src/index.ts'
 const roots: string[] = []
 const originalDshHome = process.env.DSH_HOME
 const originalUserProfile = process.env.USERPROFILE
+const originalHome = process.env.HOME
 
 afterEach(async () => {
   if (originalDshHome === undefined) delete process.env.DSH_HOME
   else process.env.DSH_HOME = originalDshHome
   if (originalUserProfile === undefined) delete process.env.USERPROFILE
   else process.env.USERPROFILE = originalUserProfile
+  if (originalHome === undefined) delete process.env.HOME
+  else process.env.HOME = originalHome
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
@@ -97,6 +100,9 @@ describe('home-backup plugin', () => {
     await seedHome()
     const root = await tempRoot()
     process.env.USERPROFILE = root
+    // `os.homedir()` reads HOME on POSIX and USERPROFILE on Windows; set both so the
+    // default-destination fallback is exercised on either lane.
+    process.env.HOME = root
     const destination = join(root, 'dsh-backups')
     const ctx = new Context()
     // The destination, retention, and profile selection are omitted, so this

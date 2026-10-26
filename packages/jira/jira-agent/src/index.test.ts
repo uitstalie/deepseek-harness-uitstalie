@@ -17,7 +17,6 @@ import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { checkGenerated } from '@deepseek-ai/dsh-jira-core/generateStore.ts'
 import { initializeRepository, runGit, stageAllAndCommit } from '@deepseek-ai/dsh-jira-core/git.ts'
 import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core/io.ts'
@@ -37,6 +36,7 @@ import {
   type JiraHarness,
   MACHINE,
   createLedgerFixture,
+  dispatchTool,
   mountJira,
   testAgent,
   waitFor,
@@ -115,13 +115,7 @@ const call = async (
   name: string = TOOL_NAME,
 ): Promise<Record<string, unknown>> => {
   calls += 1
-  const result = await harness.ctx.tools.execute({
-    name,
-    callId: ToolCallId(`call-${String(calls)}`),
-    arguments: args,
-    agent,
-    signal: new AbortController().signal,
-  })
+  const result = await dispatchTool(harness, agent, name, args, `call-${String(calls)}`)
   return envelopeOf(result)
 }
 
@@ -273,13 +267,7 @@ describe('agent: the write guard (decision 96)', () => {
     try {
       const { harness, agent } = await mountWired(root, { env: { DSH_READ_ONLY_SESSION: '1' } })
       try {
-        const denied = await harness.ctx.tools.execute({
-          name: TOOL_NAME,
-          callId: ToolCallId('guard-1'),
-          arguments: { action: 'update', key: 'DH-12', data: { summary: 'nope' } },
-          agent,
-          signal: new AbortController().signal,
-        })
+        const denied = await dispatchTool(harness, agent, TOOL_NAME, { action: 'update', key: 'DH-12', data: { summary: 'nope' } }, 'guard-1')
         assert.equal(denied.isError, true)
         assert.match(textOf(denied), /writes the ledger, and this session may not write \(dsh-read-only\)/u)
       } finally {
@@ -474,13 +462,7 @@ describe('agent: reading, writing and the envelope', () => {
       assert.equal(read.writable, false)
       assert.equal(read.reason, 'subagent')
 
-      const denied = await harness.ctx.tools.execute({
-        name: TOOL_NAME,
-        callId: ToolCallId('guard-subagent'),
-        arguments: { action: 'update', key: 'DH-12', data: { summary: 'nope' } },
-        agent: child,
-        signal: new AbortController().signal,
-      })
+      const denied = await dispatchTool(harness, child, TOOL_NAME, { action: 'update', key: 'DH-12', data: { summary: 'nope' } }, 'guard-subagent')
       assert.equal(denied.isError, true)
       assert.match(textOf(denied), /may not write \(subagent\)/u)
     } finally {
@@ -678,13 +660,7 @@ describe('agent: the wire and the render path (decisions 41/159)', () => {
     const { harness, agent } = await mountWired(root)
     try {
       const render = async (args: unknown, name: string): Promise<string> => {
-        const result = await harness.ctx.tools.execute({
-          name,
-          callId: ToolCallId(`render-${String(++calls)}`),
-          arguments: args,
-          agent,
-          signal: new AbortController().signal,
-        })
+        const result = await dispatchTool(harness, agent, name, args, `render-${String(++calls)}`)
         assert.equal(result.isError, false, textOf(result))
         const text = textOf(result)
         assert.ok(text.length > 0, `${name} must render something`)

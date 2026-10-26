@@ -128,14 +128,20 @@ async function until(condition: () => boolean): Promise<void> {
 }
 
 /** Invoke one registered tool through the real tool runtime. */
-function call(ctx: Context, agent: Agent, name: string, args: Record<string, unknown>) {
-  return ctx.tools.execute({
+async function call(ctx: Context, agent: Agent, name: string, args: Record<string, unknown>) {
+  const batch = await ctx.tools.execute({
     signal,
-    callId: ToolCallId(`call-${++callCounter}`),
-    name,
-    arguments: args,
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`call-${++callCounter}`),
+      name,
+      arguments: JSON.stringify(args),
+    }],
     agent,
   })
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error(`tool "${name}" settled no result`)
+  return result
 }
 
 /** Text blocks of one tool result. */

@@ -307,9 +307,6 @@ flowchart LR
   pkg_cordis_host_runner["cordis-host-runner"]
   svc_dynamicCordisRunner["ctx.dynamicCordisRunner<br/>Dynamic Cordis package host runner"]
   svc_cordisInspect["ctx.cordisInspect<br/>Dynamic Cordis inspect registry"]
-<<<<<<< HEAD
-  pkg_action_cards --> svc_actionCards
-=======
   pkg_agent_instructions_plus["agent-instructions-plus"]
   svc_agentContextSources["ctx.agentContextSources<br/>Always-on agent context source registry"]
   pkg_dafeiyu["dafeiyu"]
@@ -325,7 +322,7 @@ flowchart LR
   svc_jira["ctx.jira<br/>Jira ledger single writer"]
   pkg_models_dev["models-dev"]
   svc_modelsDev["ctx.modelsDev<br/>models.dev catalog service"]
->>>>>>> de68a26432 (fix(branch): clear the workspace and documentation gates)
+  pkg_action_cards --> svc_actionCards
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
   pkg_agent_instructions_plus --> svc_agentContextSources
@@ -366,12 +363,9 @@ flowchart LR
   pkg_cordis_host_runner --> svc_dynamicCordisRunner
   pkg_credentials --> svc_credentials
   pkg_credentials_local --> svc_credentials
-<<<<<<< HEAD
   pkg_cua --> svc_cuaAccess
-=======
   pkg_dafeiyu --> svc_dafeiyu
   pkg_dafeiyu --> svc_dafeiyuRemote
->>>>>>> de68a26432 (fix(branch): clear the workspace and documentation gates)
   pkg_deepseek_account --> svc_deepseekAccount
   pkg_deepseek_account_platform --> svc_deepseekAccount
   pkg_deepseek_llm_api_extensions --> svc_deepseekLlmApiExtensions
@@ -528,14 +522,11 @@ flowchart LR
   svc_credentials --> pkg_api_settings_controller
   svc_credentials --> pkg_llm_deepseek
   svc_credentials --> pkg_llm_pi_ai
-<<<<<<< HEAD
   svc_cuaAccess --> pkg_cua
-=======
   svc_dafeiyu --> pkg_jira_agent
   svc_dafeiyu --> pkg_memory
   svc_dafeiyu --> pkg_personality
   svc_dafeiyuRemote --> pkg_client_ui_dafeiyu
->>>>>>> de68a26432 (fix(branch): clear the workspace and documentation gates)
   svc_deepseekAccount --> pkg_api_account_controller
   svc_deepseekAccount --> pkg_llm_deepseek
   svc_deepseekLlmApiExtensions --> pkg_llm_deepseek

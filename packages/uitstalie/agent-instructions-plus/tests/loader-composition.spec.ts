@@ -91,7 +91,7 @@ test('the composed row delivers the native chain and the rules in one message', 
   const agent: Agent = await ctx.agentLoop.create(SessionId('plus-loader-1'), {}, { cwd: project })
   await agentEvents(ctx, agent).waterfall(
     'agent/pre-step',
-    { messages: [], turn: 1, step: 1, signal: new AbortController().signal },
+    { messages: [], turn: 1, step: 1, signal: new AbortController().signal, modelSelection: { provider: 'test', model: 'test' } },
     async () => ({ kind: 'enter' as const, messages: [] }),
   )
 

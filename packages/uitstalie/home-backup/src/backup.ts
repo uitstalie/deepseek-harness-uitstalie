@@ -223,6 +223,11 @@ export async function runBackup(request: BackupRequest): Promise<BackupResult> {
     }
     await writeFile(join(staging, MANIFEST_FILENAME), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
     const size = await measureTree(staging)
+    // POSIX rename replaces an empty target directory while Windows refuses it; refuse the
+    // collision ourselves so a replayed clock cannot silently replace an existing snapshot.
+    if (await exists(directory)) {
+      throw new Error(`home-backup: snapshot directory already exists: ${directory}`)
+    }
     await rename(staging, directory)
     const pruned = await pruneSnapshots(request.destination, request.retain)
     return { snapshot: { name, directory, ...size }, pruned }

@@ -8,7 +8,7 @@ import type { Fiber } from '@deepseek-ai/cordis'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session, TurnEndReason } from '@deepseek-ai/dsh-session'
-import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,

@@ -10,7 +10,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { objectSchema, type FieldSpec } from '@deepseek-ai/dsh-jira-core/schema.ts'
 import {
   assertSupportedJsonSchema,
@@ -18,7 +17,7 @@ import {
   type ToolDefinition,
 } from '@deepseek-ai/dsh-tools'
 import { KB_TOOL_NAME, LIST_TOOL_NAME, TOOL_NAME, createJiraContribution } from './index.ts'
-import { createLedgerFixture, mountJira, testAgent, type JiraHarness } from './testing/host.ts'
+import { createLedgerFixture, dispatchTool, mountJira, testAgent, type JiraHarness } from './testing/host.ts'
 import { removeTree } from '@deepseek-ai/dsh-jira-core/testing/removeTree.ts'
 
 /** The three definitions one contribution contributes. */
@@ -61,13 +60,7 @@ describe('schema: what we register belongs to the host subset', () => {
         [KB_TOOL_NAME, { action: 'search', query: 'nothing' }],
       ]
       for (const [index, [name, args]] of probes.entries()) {
-        const result = await harness.ctx.tools.execute({
-          name,
-          callId: ToolCallId(`schema-${name}-${String(index)}`),
-          arguments: args,
-          agent,
-          signal: new AbortController().signal,
-        })
+        const result = await dispatchTool(harness, agent, name, args, `schema-${name}-${String(index)}`)
         assert.equal(result.isError, false, name)
         const definition = definitions.find(entry => entry.name === name)
         assert.ok(definition !== undefined)

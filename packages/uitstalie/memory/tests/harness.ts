@@ -133,19 +133,25 @@ export function memoryFilePath(project: string): string {
 let callCounter = 0
 
 /** Invoke one registered tool through the real tool runtime. */
-export function callTool(
+export async function callTool(
   ctx: Context,
   agent: Agent,
   name: string,
   args: Record<string, unknown>,
-) {
-  return ctx.tools.execute({
+): Promise<import('@deepseek-ai/dsh-tools').ToolExecutionResult> {
+  const batch = await ctx.tools.execute({
     signal,
-    callId: ToolCallId(`call-${String(++callCounter)}`),
-    name,
-    arguments: args,
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`call-${String(++callCounter)}`),
+      name,
+      arguments: JSON.stringify(args),
+    }],
     agent,
   })
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error(`tool "${name}" settled no result`)
+  return result
 }
 
 /** Text blocks of one tool result. */
