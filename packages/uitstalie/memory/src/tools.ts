@@ -61,6 +61,8 @@ export interface MemorySearchItem {
   readonly source: 'session' | 'memory'
   /** Session the excerpt belongs to. */
   readonly sessionId: string
+  /** Latest log-backed session title; absent when the session has none. */
+  readonly title?: string
   /** Event seq of the best match, for session results. */
   readonly seq?: number
   /** Turn number of the matching section's last turn, for memory results. */
@@ -198,6 +200,7 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
               properties: {
                 source: { type: 'string', required: true, enum: ['session', 'memory'] },
                 sessionId: { type: 'string', required: true },
+                title: { type: 'string' },
                 seq: { type: 'integer' },
                 turn: { type: 'integer' },
                 time: { type: 'integer' },
@@ -222,9 +225,14 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
       }, { signal: exec.signal })
       const sessionItems = page.items.map(sessionSearchItem)
       const memoryItems = await searchMemoryEntries(ctx, session, query, exec.signal)
+      const items = [...sessionItems, ...memoryItems].slice(0, limit)
+      const titles = await searchTitles(ctx, items.map(item => item.sessionId), exec.signal)
       return boundSearchValue({
         query,
-        items: [...sessionItems, ...memoryItems].slice(0, limit),
+        items: items.map((item) => {
+          const title = titles.get(item.sessionId)
+          return title === undefined ? item : { ...item, title }
+        }),
         ...page.nextCursor === undefined ? {} : { truncated: true },
       }, MEMORY_SEARCH_MAX_BYTES)
     },
@@ -353,6 +361,34 @@ function sessionSearchItem(hit: SessionSearchHit): MemorySearchItem {
   }
 }
 
+/**
+ * Fold the latest title for each hit's session.
+ *
+ * Titles are display metadata: a session whose log cannot be read, or that has
+ * no title event yet, simply contributes no title and the hit renders its id.
+ * @param ctx - context carrying `sessionQuery`.
+ * @param sessionIds - session ids of the current hit list, duplicates included.
+ * @param signal - cancellation for the corpus observation.
+ * @returns title text by session id, for the sessions that carry one.
+ */
+async function searchTitles(
+  ctx: Context,
+  sessionIds: readonly string[],
+  signal: AbortSignal,
+): Promise<ReadonlyMap<string, string>> {
+  const ids = [...new Set(sessionIds)]
+  if (ids.length === 0) return new Map()
+  const observations = await ctx.sessionQuery.readTitleSnapshots(ids.map(id => SessionId(id)), signal)
+  const titles = new Map<string, string>()
+  ids.forEach((id, index) => {
+    const observation = observations[index]
+    if (observation === undefined || observation.status === 'rejected') return
+    const title = observation.value.title?.title
+    if (title !== undefined) titles.set(id, title)
+  })
+  return titles
+}
+
 /** Search the managed block of this workspace's MEMORY.md. */
 async function searchMemoryEntries(
   ctx: Context,
@@ -408,10 +444,15 @@ function boundSearchValue(value: MemorySearchValue, maxBytes: number): MemorySea
 function renderMemorySearch(value: MemorySearchValue): string {
   if (value.items.length === 0) return `No memory matches for ${JSON.stringify(value.query)} in this workspace.`
   const lines = value.items.map(item => item.source === 'memory'
-    ? `- [memory] ${item.sessionId} · turn ${String(item.turn ?? 0)} · ${item.snippet}`
-    : `- [session] ${item.sessionId}#${String(item.seq ?? 0)} · ${formatTime(item.time)} · ${item.snippet}`)
+    ? `- [memory] ${searchLabel(item)} · turn ${String(item.turn ?? 0)} · ${item.snippet}`
+    : `- [session] ${searchLabel(item)}#${String(item.seq ?? 0)} · ${formatTime(item.time)} · ${item.snippet}`)
   if (value.truncated === true) lines.push('(results truncated; narrow the query or lower `limit`)')
   return lines.join('\n')
+}
+
+/** Render a hit's label: its title, with the session id kept when a title exists. */
+function searchLabel(item: MemorySearchItem): string {
+  return item.title === undefined ? item.sessionId : `${item.title} (${item.sessionId})`
 }
 
 /** Render one event time; an absent time renders as a dash. */

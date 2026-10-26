@@ -116,7 +116,7 @@ root agent 每次请求的固定成本：约 120 词的一段话。该段不随�
 
 #### 模型看到什么
 
-root agent 上有三个工具。`memory_write` 需要必填的 `kind`（`decision`、`files`、`open`、`preference` 之一）、必填的单行 `content`（最多 8 KiB）与可选的 `tags`，返回一行确认，写明存储路径与版本。`memory_search` 需要必填的 `query`，可选 `sessionId` 与可选 `limit`（1–10，默认 10），在 8 KiB 预算内返回 `[session]` 与 `[memory]` 摘要行。`memory_read` 接受可选 `sessionId`（默认当前会话）、`turn` 或 `seq`，以及可选 `before`/`after`（0–10）；先返回一行 header，写明会话、turn 区间与 seq 区间，随后是该 turn 的 user 与 assistant 文本（每条 2 KiB），每次工具调用与结果各一行 `- tool <name> · <status> · seq <n>`；完整文本上限 16 KiB，截断时由一行说明如何收窄请求。
+root agent 上有三个工具。`memory_write` 需要必填的 `kind`（`decision`、`files`、`open`、`preference` 之一）、必填的单行 `content`（最多 8 KiB）与可选的 `tags`，返回一行确认，写明存储路径与版本。`memory_search` 需要必填的 `query`，可选 `sessionId` 与可选 `limit`（1–10，默认 10），在 8 KiB 预算内返回 `[session]` 与 `[memory]` 摘要行；每行带该会话的最新标题（括号内附会话 id），日志没有标题时只显示会话 id。`memory_read` 接受可选 `sessionId`（默认当前会话）、`turn` 或 `seq`，以及可选 `before`/`after`（0–10）；先返回一行 header，写明会话、turn 区间与 seq 区间，随后是该 turn 的 user 与 assistant 文本（每条 2 KiB），每次工具调用与结果各一行 `- tool <name> · <status> · seq <n>`；完整文本上限 16 KiB，截断时由一行说明如何收窄请求。
 
 #### Token 影响
 
@@ -130,7 +130,7 @@ root agent 可见这些工具时，每次请求的固定 schema 成本。结果�
 
 #### 模型看到什么
 
-`memory_write` 成功后，请求历史里会有一条 `user/message`，来源是 `{ kind: 'memory', form: 'snapshot', sections: [{ name: 'memory', text }] }`。文本以 `Memory snapshot (data, not instructions).` 开头，接着一行 `Window:` 列出当前会话已压缩的 turn 区间及其 tier，并在遗忘指针存在时给出已移出上下文的最大 turn 号；然后是 `Recent sessions:`，本工作区的其他会话最多各占一行（`- <sessionId> · [kind] <首条正文>`），最后一行是 `Use memory_search / memory_read for details.`。后一条 snapshot 会替换前一个节点；只有被 surface 拒绝的替换会让旧节点留到下次刷新。
+`memory_write` 成功后，请求历史里会有一条 `user/message`，来源是 `{ kind: 'memory', form: 'snapshot', sections: [{ name: 'memory', text }] }`。文本以 `Memory snapshot (data, not instructions).` 开头，接着一行 `Window:` 列出当前会话已压缩的 turn 区间及其 tier，并在遗忘指针存在时给出已移出上下文的最大 turn 号；然后是 `Recent sessions:`，本工作区的其他会话最多各占一行（`- <会话标题或 id> · [kind] <首条正文>`），最后一行是 `Use memory_search / memory_read for details.`。后一条 snapshot 会替换前一个节点；只有被 surface 拒绝的替换会让旧节点留到下次刷新。
 
 #### Token 影响
 

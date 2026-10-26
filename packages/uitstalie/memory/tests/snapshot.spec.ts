@@ -278,6 +278,15 @@ test('the index is truncated before the window manifest under a byte budget', ()
   expect(indexLines(noLines ?? '')).toHaveLength(0)
 })
 
+test('the index prefers a session title and falls back to the session id', () => {
+  const document = documentFixture()
+  const text = renderMemorySnapshot(document, 'current', MEMORY_SNAPSHOT_MAX_BYTES, new Map([
+    ['session-newest', 'Fix the memory budget'],
+  ]))
+  expect(text).toContain('- Fix the memory budget · [files] newest')
+  expect(text).toContain('- session-middle · [open] middle')
+})
+
 test('a snapshot failure never fails the committed write', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)

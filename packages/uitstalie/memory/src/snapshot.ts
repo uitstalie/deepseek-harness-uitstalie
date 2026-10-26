@@ -26,7 +26,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextSnapshotSection, MessageSource, UserMessage } from '@deepseek-ai/dsh-llm'
-import type { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { MemoryCheckpointWindow } from './checkpoint.ts'
 import { readMemoryDocument } from './memory-file.ts'
 import type { MemoryDocument, MemorySection, MemorySessionRecord, MemoryTier, MemoryTurnRecord } from './memory-file.ts'
@@ -99,6 +100,8 @@ interface MemorySnapshotWindow {
 interface MemorySnapshotIndexEntry {
   /** Session the outline belongs to. */
   readonly sessionId: string
+  /** Latest log-backed title of that session; absent when it has none. */
+  readonly title?: string
   /** One-line outline of that session's latest summarized turn. */
   readonly text: string
 }
@@ -145,17 +148,19 @@ export function appendMemoryNotice(session: Session, text: string): void {
  * @param document - parsed workspace MEMORY.md.
  * @param sessionId - session the manifest is rendered for.
  * @param maxBytes - total UTF-8 byte budget of the returned text.
+ * @param titles - latest session titles by id; a session without one renders its id.
  * @returns the bounded text, or undefined when the document holds nothing to report.
  */
 export function renderMemorySnapshot(
   document: MemoryDocument,
   sessionId: string,
   maxBytes: number = MEMORY_SNAPSHOT_MAX_BYTES,
+  titles: ReadonlyMap<string, string> = new Map(),
 ): string | undefined {
   if (document.sessions.length === 0 && document.sections.length === 0) return undefined
   return composeSnapshot(
     sessionWindow(document.sessions, sessionId),
-    sessionIndex(document, sessionId),
+    sessionIndex(document, sessionId, titles),
     maxBytes,
   )
 }
@@ -177,12 +182,47 @@ export async function syncMemorySnapshot(ctx: Context, agent: Agent, signal?: Ab
   signal?.throwIfAborted()
   const read = await readMemoryDocument(ctx, agent.session, signal)
   if (read.document === undefined) return
-  const text = renderMemorySnapshot(read.document, agent.session.id)
+  const titles = await snapshotTitles(ctx, read.document, agent.session.id, signal)
+  const text = renderMemorySnapshot(read.document, agent.session.id, MEMORY_SNAPSHOT_MAX_BYTES, titles)
   if (text === undefined) return
   signal?.throwIfAborted()
   const target = await findSnapshotSeq(ctx, agent.session.id)
   signal?.throwIfAborted()
   appendSnapshot(ctx, agent.session, text, target)
+}
+
+/**
+ * Fold the latest titles for the sessions the cross-session index will show.
+ *
+ * Titles are display metadata: a session without a title event, or whose log
+ * cannot be observed, contributes no entry and its line renders the session id.
+ * @param ctx - context carrying `sessionQuery`.
+ * @param document - parsed workspace MEMORY.md supplying the candidate sessions.
+ * @param currentSessionId - session already covered by the window manifest.
+ * @param signal - cancellation for the corpus observation.
+ * @returns title text by session id, for the sessions that carry one.
+ */
+async function snapshotTitles(
+  ctx: Context,
+  document: MemoryDocument,
+  currentSessionId: string,
+  signal: AbortSignal | undefined,
+): Promise<ReadonlyMap<string, string>> {
+  const ids = document.sessions
+    .filter(session => session.id !== currentSessionId)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .slice(0, document.window.sessions)
+    .map(session => SessionId(session.id))
+  if (ids.length === 0) return new Map()
+  const observations = await ctx.sessionQuery.readTitleSnapshots(ids, signal)
+  const titles = new Map<string, string>()
+  ids.forEach((id, index) => {
+    const observation = observations[index]
+    if (observation === undefined || observation.status === 'rejected') return
+    const title = observation.value.title?.title
+    if (title !== undefined) titles.set(id, title)
+  })
+  return titles
 }
 
 /**
@@ -240,17 +280,25 @@ function foldRanges(turns: readonly MemoryTurnRecord[]): readonly MemorySnapshot
  * each remaining session contributes at most one line, taken from its latest
  * non-empty section, so turn summaries are never duplicated.
  */
-function sessionIndex(document: MemoryDocument, sessionId: string): readonly MemorySnapshotIndexEntry[] {
+function sessionIndex(
+  document: MemoryDocument,
+  sessionId: string,
+  titles: ReadonlyMap<string, string> = new Map(),
+): readonly MemorySnapshotIndexEntry[] {
   return document.sessions
     .map((session, order) => ({ session, order }))
     .filter(candidate => candidate.session.id !== sessionId)
     .sort((left, right) =>
       right.session.updatedAt.localeCompare(left.session.updatedAt) || right.order - left.order)
     .slice(0, document.window.sessions)
-    .map(candidate => ({
-      sessionId: candidate.session.id,
-      text: sessionOutline(document.sections, candidate.session.id),
-    }))
+    .map((candidate) => {
+      const title = titles.get(candidate.session.id)
+      return {
+        sessionId: candidate.session.id,
+        ...title === undefined ? {} : { title },
+        text: sessionOutline(document.sections, candidate.session.id),
+      }
+    })
 }
 
 /** Read the first entry of one session's latest non-empty section. */
@@ -277,7 +325,7 @@ function composeSnapshot(
   const indexHeader = 'Recent sessions:'
   const indexLines: string[] = []
   for (const entry of index) {
-    const line = `- ${entry.sessionId} · ${entry.text}`
+    const line = `- ${entry.title ?? entry.sessionId} · ${entry.text}`
     const candidate = [...lines, indexHeader, ...indexLines, line, MEMORY_SNAPSHOT_HINT].join('\n')
     if (byteLength(candidate) > maxBytes) break
     indexLines.push(line)
