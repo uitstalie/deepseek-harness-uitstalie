@@ -47,6 +47,10 @@ type PanelProps = {
   activeId: string | undefined
   onSelect: (id: string) => void
   onClose: () => void
+  // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-14, 设置段可跳到兄弟段
+  /** Open another registered section from inside one section. */
+  onOpenSection: (id: string) => void
+  // END uitstalie-deepseek-flash
 }
 
 /**
@@ -54,7 +58,9 @@ type PanelProps = {
  * header button, a mask click, and document-level Escape (mounted only while
  * open, so the listener lifetime is the panel's).
  */
-function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelProps) {
+// BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-14, 设置段可跳到兄弟段
+function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose, onOpenSection }: PanelProps) {
+// END uitstalie-deepseek-flash
   // Entries can unmount underneath the requested id, so the render-time
   // projection falls back to the first row when the id is gone.
   const active = rows.find(r => r.id === activeId)?.id ?? rows[0]?.id
@@ -94,15 +100,23 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
             ))}
           </div>
         </nav>
-        <div className={css.header}>
-          <div className={css.actions}>{renderSlot('settings.action', {})}</div>
-          <button type="button" className={css.close} onClick={onClose}>
-            <IconCloseOutlineRegular size={14} />
-            <span className={css.hiddenLabel}>{renderSlot('settings.close', {})}</span>
-          </button>
-        </div>
-        <div className={css.options}>
-          {active !== undefined && renderSlot('settings.section', { close: onClose }, { only: active })}
+        <div className={css.content}>
+          <div className={css.header}>
+            <div className={css.actions}>{renderSlot('settings.action', {})}</div>
+            <button type="button" className={css.close} onClick={onClose}>
+              <IconCloseOutlineRegular size={14} />
+              <span className={css.hiddenLabel}>{renderSlot('settings.close', {})}</span>
+            </button>
+          </div>
+          <div className={css.options}>
+            {/* BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-14, 设置段可跳到兄弟段 */}
+            {active !== undefined && renderSlot(
+              'settings.section',
+              { close: onClose, openSection: onOpenSection },
+              { only: active },
+            )}
+            {/* END uitstalie-deepseek-flash */}
+          </div>
         </div>
       </div>
     </div>
@@ -249,13 +263,16 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
           t={t} view={desktopUpdate} onOpen={openDesktopUpdate} />
       </div>
       {open && (
+        // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-14, 设置段可跳到兄弟段
         <SettingsPanel
           rows={rows}
           renderSlot={renderSlot}
           activeId={activeId}
           onSelect={actions.select}
           onClose={close}
+          onOpenSection={openSection}
         />
+        // END uitstalie-deepseek-flash
       )}
       {/* Dialog chrome and `#root` inert ownership live inside each step's
           visible branch. A step still deciding (private facts loading)

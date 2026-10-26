@@ -116,17 +116,22 @@ export interface SettingsHeaderOwnerProps {
   children?: never
 }
 
+// BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-14, 设置段 owner 增加 openSection
 /**
  * Owner share of a settings section entry. The shell owns modal visibility
  * and navigation; a section's data arrives through its own inject faces and
- * stores. `close` is the one shell affordance a section receives, for flows
- * that leave settings altogether (starting a session from a section) — the
- * onboarding coordinator's `openSection`/`complete` precedent, inverted.
+ * stores. `close` leaves settings altogether (starting a session from a
+ * section); `openSection`, when the shell passes it, switches to a sibling
+ * section — the onboarding coordinator's `openSection`/`complete` precedent,
+ * now available here too.
  */
 export interface SettingsSectionOwnerProps {
   /** Close the settings panel (the shell owns the open state). */
   close: () => void
+  /** Open another registered section, e.g. a capability's own settings page. */
+  openSection?: (id: string) => void
 }
+// END uitstalie-deepseek-flash
 
 /** Owner share of the currently active settings-backed onboarding step. */
 export interface SettingsOnboardingOwnerProps {
