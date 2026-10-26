@@ -7,10 +7,8 @@
 
 import { type LinkType, isLinkType } from '@deepseek-ai/dsh-jira-core/entity.ts'
 import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { listIssues } from '@deepseek-ai/dsh-jira-core/inspect.ts'
-import { DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, buildIssueList } from '@deepseek-ai/dsh-jira-core/list.ts'
+import { DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT } from '@deepseek-ai/dsh-jira-core/list.ts'
 import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-jira-core/schema.ts'
-import { loadVocab } from '@deepseek-ai/dsh-jira-core/store.ts'
 import { type RunOptions, type ToolValue, asString, asStringList, failure, skipped } from './envelope.ts'
 
 /** The registered tool name for the read-only ledger view. */
@@ -63,17 +61,11 @@ export const LIST_OUTPUT_SCHEMA = Object.freeze({
  * @returns the ordered items and groups with their counts.
  */
 export const runListTool = async (args: unknown, options: RunOptions, me: unknown): Promise<ToolValue> => {
-  const { store, caller } = options
+  const { jira, caller } = options
 
   const validated = validateArgs(LIST_PARAMETERS, args)
   if (!validated.ok) return failure(validated.error, caller, me)
   const input = validated.value
-
-  // A list is a view over the vocabulary: without it there is no status order and no closed set,
-  // so answering would mean inventing one.
-  const vocab = await loadVocab(store)
-  if (!vocab.ok) return failure(vocab.error, caller, me)
-  const listed = await listIssues(store.files.root)
 
   const rawAssignee = asString(input.assignee)
   const assignee = rawAssignee === 'me' ? caller.identity : rawAssignee
@@ -92,7 +84,7 @@ export const runListTool = async (args: unknown, options: RunOptions, me: unknow
     link = Object.freeze({ type, target })
   }
 
-  const result = buildIssueList(listed.issues, vocab.value, {
+  const listed = await jira.listWithRejected({
     ...(asString(input.project) === undefined ? {} : { project: asString(input.project) as string }),
     ...(asString(input.status) === undefined ? {} : { status: asString(input.status) as string }),
     ...(asStringList(input.tags) === undefined ? {} : { tags: asStringList(input.tags) as readonly string[] }),
@@ -101,10 +93,10 @@ export const runListTool = async (args: unknown, options: RunOptions, me: unknow
     includeClosed: input.include_closed === true,
     ...(typeof input.limit === 'number' ? { limit: input.limit } : {}),
   })
+  if (!listed.ok) return failure(listed.error, caller, me)
 
-  // Decision 80 wants both halves of a broken file, and the reader needs the path to act on it —
-  // `listIssues` carries them structured (DPMJ-211), so there is nothing to split back apart here.
-  const rejected = listed.broken.map(entry => Object.freeze({ file: entry.path, reason: entry.reason }))
+  const result = listed.value.list
+  const rejected = listed.value.rejected
   return Object.freeze({
     ok: true,
     writable: caller.writable,

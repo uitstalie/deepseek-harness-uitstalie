@@ -34,8 +34,8 @@ import {
   system,
 } from '@deepseek-ai/dsh-jira-core'
 import { countStore } from '@deepseek-ai/dsh-jira-core/injection.ts'
-import { readWatermark, scanWatermarkPath, sessionScan, writeWatermark } from '@deepseek-ai/dsh-jira-core/session.ts'
-import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, JiraCounts, JiraResult, JiraServiceApi, KnowledgeDetail, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
+import { ensureSessionRecord, readWatermark, scanWatermarkPath, sessionScan, writeWatermark } from '@deepseek-ai/dsh-jira-core/session.ts'
+import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, JiraCounts, JiraResult, JiraServiceApi, KnowledgeDetail, SessionRecordFacts, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Store, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 import JiraRemote from './remote.ts'
 
 export type * from './types.ts'
@@ -233,6 +233,30 @@ export class JiraService extends Service implements JiraServiceApi {
   }
 
   /**
+   * Record a session at its first write, at most once per ledger.
+   * @param sessionId - the session to record.
+   * @param facts - the tool, model and evidence to record.
+   * @param actor - who is writing, for the audit fields.
+   * @returns whether the record was written, or the error that prevented it.
+   */
+  async recordSession(
+    sessionId: string,
+    facts: SessionRecordFacts,
+    actor: Actor,
+  ): Promise<JiraResult<Readonly<{ written: boolean }>>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    return ensureSessionRecord(opened.store.value, actor, {
+      id: sessionId,
+      tool: facts.tool,
+      ...(facts.model === undefined ? {} : { model: facts.model }),
+      machineId: opened.store.value.machineId,
+      startedAt: actor.at,
+      ...(facts.toolEvidence === undefined ? {} : { toolEvidence: facts.toolEvidence }),
+    })
+  }
+
+  /**
    * The ledger repository's current HEAD, or an empty string when it cannot be read.
    * @returns the commit the close-out scan starts from.
    */
@@ -301,6 +325,24 @@ export class JiraService extends Service implements JiraServiceApi {
     if (!vocab.ok) return vocab
     const issues = await inspect.listIssues(opened.root)
     return result.ok(list.buildIssueList(issues.issues, vocab.value, query))
+  }
+
+  /**
+   * Read the list together with the files it had to skip.
+   * @param query - the filter; every field is optional.
+   * @returns the grouped list and the skipped files, or the error that prevented reading.
+   */
+  async listWithRejected(query: ListQuery): Promise<JiraResult<DetailedIssueList>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const vocab = await coreStore.loadVocab(opened.store.value)
+    if (!vocab.ok) return vocab
+    const issues = await inspect.listIssues(opened.root)
+    const rejected = issues.broken.map(entry => Object.freeze({ file: entry.path, reason: entry.reason }))
+    return result.ok(Object.freeze({
+      list: list.buildIssueList(issues.issues, vocab.value, query),
+      rejected: Object.freeze(rejected),
+    }))
   }
 
   /**

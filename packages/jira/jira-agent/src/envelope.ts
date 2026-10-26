@@ -125,7 +125,7 @@ export type RunOptions = Readonly<{
    * The recorder `apply` injects (decision 183: per-apply state, not module level). Without it the
    * session is simply not recorded — direct callers of this function own their own bookkeeping.
    */
-  recordSession?: (store: Store, actor: Actor, sessionId: string, facts: SessionFacts) => Promise<void>
+  recordSession?: (jira: JiraServiceApi, actor: Actor, sessionId: string, facts: SessionFacts) => Promise<void>
 }>
 
 /**

@@ -1,22 +1,19 @@
 /**
  * plugin/sessionRecord — session bookkeeping at the plugin boundary (decisions 10/31/100/119).
  *
- * Split out of `index.ts` under decision 186. Two jobs:
- *   - {@link createSessionRecorder}: write `sessions/<id>.md` **once per session**, at its first
- *     write, retrying a transient failure a few times (decision 177);
- *   - {@link closeOutSession}: at the session's end, walk the commits it made and record them on
- *     the issues they mention — bounded, idempotent (the comment carries the sha), never fatal.
+ * Split out of `index.ts` under decision 186. It records the session **once per session**, at its
+ * first write, retrying a transient failure a few times (decision 177), and it owns the
+ * machine-local push-failure alarm. Both write through the ledger service or the machine state
+ * directory; neither opens the store.
  */
 
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { type Identity, type Timestamp } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { runGit } from '@deepseek-ai/dsh-jira-core/git.ts'
 import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core/io.ts'
 import { machineStateDir } from '@deepseek-ai/dsh-jira-core/machine.ts'
-import { ensureSessionRecord, readWatermark, scanWatermarkPath, sessionScan, writeWatermark } from '@deepseek-ai/dsh-jira-core/session.ts'
-import { type Actor, type Store } from '@deepseek-ai/dsh-jira-core/store.ts'
+import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
+import { type Actor } from '@deepseek-ai/dsh-jira-core/store.ts'
 import { type HostEnv } from './env.ts'
 
 /** How many times a failing session record is retried before it is given up (decision 177). */
@@ -29,13 +26,13 @@ export type SessionFacts = Readonly<{ tool: string; model?: string; toolEvidence
 export interface SessionRecorder {
   /**
    * Record a session at its first write, at most once per store.
-   * @param store - the store the session's writes went to.
+   * @param jira - the ledger service the session's writes went to.
    * @param actor - who wrote, for the record's audit fields.
    * @param sessionId - the host session id.
    * @param facts - what identified the writing tool.
    * @returns a promise that settles when the record was attempted.
    */
-  recordOnce(store: Store, actor: Actor, sessionId: string, facts: SessionFacts): Promise<void>
+  recordOnce(jira: JiraServiceApi, actor: Actor, sessionId: string, facts: SessionFacts): Promise<void>
 }
 
 /**
@@ -52,26 +49,23 @@ export const createSessionRecorder = (): SessionRecorder => {
   const sessionFailures = new Map<string, number>()
 
   const recordOnce = async (
-    store: Store,
+    jira: JiraServiceApi,
     actor: Actor,
     sessionId: string,
     facts: SessionFacts,
   ): Promise<void> => {
-    const key = `${store.files.root}|${sessionId}`
+    const key = `${jira.root}|${sessionId}`
     if (recordedSessions.has(key)) return
     // Decision 177: one failure used to mark the session "done", so a transient IO error meant the
     // whole session never got a record. Try a few times, then give up — and never let the record's
     // problems reach the write that triggered it: the issue is the job.
     if ((sessionFailures.get(key) ?? 0) >= SESSION_RECORD_ATTEMPTS) return
     try {
-      const recorded = await ensureSessionRecord(store, actor, {
-        id: sessionId,
+      const recorded = await jira.recordSession(sessionId, {
         tool: facts.tool,
         ...(facts.model === undefined ? {} : { model: facts.model }),
-        machineId: store.machineId,
-        startedAt: actor.at,
         ...(facts.toolEvidence === undefined ? {} : { toolEvidence: facts.toolEvidence }),
-      })
+      }, actor)
       if (recorded.ok) {
         recordedSessions.add(key)
         sessionFailures.delete(key)
@@ -106,39 +100,7 @@ export const toolEvidenceOf = (env: HostEnv): string => {
  */
 export const stateDirOf = (env: HostEnv, root: string): string => machineStateDir(env, root)
 
-/**
- * Decisions 31/100: at the session's end, walk the commits it made and record them on the issues
- * they mention — bounded, idempotent (the comment carries the sha), and never fatal.
- * @param store - the store whose commits are scanned.
- * @param sessionId - the host session id, which names the watermark file.
- * @param headAtStart - the HEAD the session started at, used before any watermark exists.
- * @param stateDir - the machine-local state directory holding the watermark.
- * @param at - the timestamp recorded on the comments the scan appends.
- */
-export const closeOutSession = async (
-  store: Store,
-  sessionId: string,
-  headAtStart: string,
-  stateDir: string,
-  at: Timestamp,
-): Promise<void> => {
-  try {
-    const watermarkPath = scanWatermarkPath(stateDir, sessionId)
-    const watermark = await readWatermark(watermarkPath)
-    const scanned = await sessionScan(
-      store,
-      { by: `human:${store.machineId}` as Identity, at },
-      { sessionId, from: watermark.lastSha ?? headAtStart },
-    )
-    if (!scanned.ok) return
-    const head = await runGit(store.files.root, ['rev-parse', 'HEAD'])
-    if (head.code === 0) {
-      await writeWatermark(watermarkPath, { lastSha: head.stdout.trim(), scans: watermark.scans + 1 })
-    }
-  } catch {
-    // A close-out that fails must not turn a good session into a bad one (decision 100).
-  }
-}
+
 
 /**
  * Where the machine remembers the last push that did **not** happen (decision 191).

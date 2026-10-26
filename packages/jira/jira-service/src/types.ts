@@ -44,6 +44,12 @@ export type IssueList = ListResult
 /** The board is the list's grouping, named for the surface that shows it. */
 export type Board = ListResult
 
+/** A list plus the files it had to skip (decision 80: the answer says it is partial). */
+export interface DetailedIssueList {
+  readonly list: IssueList
+  readonly rejected: readonly Readonly<{ file: string; reason: string }>[]
+}
+
 /** One ledger change, emitted after the commit that made it. */
 export interface ChangeNotice {
   /** Why the notice fired. `write` is a transaction, `settle` the derived refresh, `sync` a flush. */
@@ -81,6 +87,13 @@ export interface JiraStatus {
 }
 
 /** The ledger facade `ctx.jira` provides to the agent, the UI and the CLI. */
+/** What the ledger records about the tool that first wrote in a session. */
+export interface SessionRecordFacts {
+  readonly tool: string
+  readonly model?: string
+  readonly toolEvidence?: string
+}
+
 /** One knowledge entry with its file path and warnings. */
 export interface KnowledgeDetail {
   readonly entry: KnowledgeEntry
@@ -117,6 +130,14 @@ export interface JiraServiceApi {
    */
   gitHead(): Promise<string>
   /**
+   * Record a session at its first write, at most once per ledger.
+   * @param sessionId - the session to record.
+   * @param facts - the tool, model and evidence to record.
+   * @param actor - who is writing, for the audit fields.
+   * @returns whether the record was written, or the error that prevented it.
+   */
+  recordSession(sessionId: string, facts: SessionRecordFacts, actor: Actor): Promise<JiraResult<Readonly<{ written: boolean }>>>
+  /**
    * Scan the session from its starting commit, then advance the scan watermark.
    * @param sessionId - the session that just completed a turn.
    * @param headAtStart - the commit the session started from.
@@ -137,6 +158,12 @@ export interface JiraServiceApi {
    * @returns the grouped list, or the error that prevented reading it.
    */
   list(query: ListQuery): Promise<JiraResult<IssueList>>
+  /**
+   * Read the list together with the files it had to skip.
+   * @param query - the filter; every field is optional.
+   * @returns the grouped list and the skipped files, or the error that prevented reading.
+   */
+  listWithRejected(query: ListQuery): Promise<JiraResult<DetailedIssueList>>
   /**
    * Read one issue.
    * @param key - the issue key.

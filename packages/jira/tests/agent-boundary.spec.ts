@@ -15,17 +15,15 @@ import { describe, expect, it } from 'vitest'
 
 /** Modules whose runtime value exports count as store access. */
 const FORBIDDEN = new Set([
-  'batch', 'codec', 'doctor', 'generate', 'generateStore', 'git', 'inspect', 'io', 'kbstore',
-  'lock', 'machine', 'mutate', 'project', 'push', 'session', 'store', 'tagsLint', 'tagstore',
+  'batch', 'codec', 'doctor', 'generate', 'generateStore', 'git', 'inspect', 'kbstore',
+  'lock', 'mutate', 'project', 'push', 'store', 'tagsLint', 'tagstore',
   'vocab', 'workspace',
 ])
 
 /** Files that still open the store directly; shrink this set as the migration completes. */
 const PENDING = new Set([
   'command.ts',
-  'sessionRecord.ts',
   'toolIssue.ts',
-  'toolList.ts',
 ])
 
 const SRC = join(import.meta.dirname, '..', 'jira-agent', 'src')

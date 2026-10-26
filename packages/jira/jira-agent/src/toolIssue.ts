@@ -179,7 +179,7 @@ export const runIssueTool = async (
     // Decisions 10/119: the session record lands once, at its first write. The recorder comes from
     // `apply`'s closure (decision 183) — no module-level memory survives a reload.
     if (options.session !== undefined && caller.sessionId !== undefined && options.recordSession !== undefined) {
-      await options.recordSession(options.store, actor, caller.sessionId, options.session)
+      await options.recordSession(options.jira, actor, caller.sessionId, options.session)
     }
     return okValue(caller, me, {
       ...created.value.change.issue,

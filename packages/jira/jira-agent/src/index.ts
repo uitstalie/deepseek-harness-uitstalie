@@ -125,7 +125,6 @@ export type { ContributionHost } from './contribution.ts'
 export { type HostEnv, defaultEnv, readOnlySession } from './env.ts'
 export { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, nowUtc, okValue, skipped } from './envelope.ts'
 export {
-  closeOutSession,
   createSessionRecorder,
   readPushFailure,
   recordPushOutcome,

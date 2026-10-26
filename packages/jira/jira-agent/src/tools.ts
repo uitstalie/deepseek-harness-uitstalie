@@ -138,10 +138,10 @@ const unresolved = (host: ToolHost, exec: ToolRunContext): ToolValue => {
 const wire = (value: ToolValue): ToolValue => toWire(value) as ToolValue
 
 /** The session facts one write records about the session that made it. */
-const sessionFactsOf = (host: ToolHost, store: Store): SessionFacts => Object.freeze({
+const sessionFactsOf = (host: ToolHost, root: string): SessionFacts => Object.freeze({
   tool: 'dsh',
   toolEvidence: toolEvidenceOf(host.env),
-  stateDir: stateDirOf(host.env, store.files.root),
+  stateDir: stateDirOf(host.env, root),
 })
 
 /** The options the three runners share. */
@@ -219,8 +219,8 @@ export const jiraTools = (host: ToolHost): readonly ToolDefinition[] => {
     run: (args, call, exec) => runIssueTool(args, {
       ...runOptionsOf(host, call),
       signal: exec.signal,
-      session: sessionFactsOf(host, call.store),
-      recordSession: (store, actor, sessionId, facts) => host.recorder.recordOnce(store, actor, sessionId, facts),
+      session: sessionFactsOf(host, call.jira.root),
+      recordSession: (jira, actor, sessionId, facts) => host.recorder.recordOnce(jira, actor, sessionId, facts),
     }, call.me),
   }
 
