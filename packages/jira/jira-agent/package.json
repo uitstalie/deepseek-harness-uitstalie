@@ -38,10 +38,11 @@
     "@deepseek-ai/dsh-skill": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tool-executor-native": "workspace:*",
-    "@deepseek-ai/dsh-tools": "workspace:*"
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "tsx": "^4.23.13"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --test \"src/**/*.test.ts\""
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
   }
 }

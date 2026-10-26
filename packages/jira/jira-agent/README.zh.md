@@ -44,9 +44,9 @@ kind: "package-reference"
 
 ## 测试
 
-`pnpm test` 运行 `node --test "src/**/*.test.ts"`。接线套件（`index`、`schema`、`surfaces`、`messages`）通过真实 Cordis 上下文挂载已发布的服务——system prompt、tools、dafeiyu、commands、skills 与 `jira-service`——因此它们演练真实的注册，而不是手工搭的宿主。
+`pnpm test` 运行 `node --import tsx --test "src/**/*.test.ts"`。接线套件（`index`、`schema`、`surfaces`、`messages`）通过真实 Cordis 上下文挂载已发布的服务——system prompt、tools、dafeiyu、commands、skills 与 `jira-service`——因此它们演练真实的注册，而不是手工搭的宿主。
 
-这些套件通过包的根入口解析 workspace 包，也就是构建后的 `lib/` 入口。在源码 checkout 里先运行 `pnpm run build:artifacts`。
+tsx loader 经仓库的 tsconfig paths 解析 workspace 包，所以源码 checkout 不需要先构建。在仓库根运行 `pnpm run test:jira` 会执行全部 jira `node:test` 套件与包级 vitest spec；CI 静态门禁运行 `test:jira:node`，vitest spec 由 coverage lane 覆盖。
 
 <a id="model-experience"></a>
 

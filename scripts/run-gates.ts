@@ -508,6 +508,9 @@ function ciStaticGates(options: { ownsBuild: boolean }): Gate[] {
       docsBuildScript: 'docs:build:mpa',
     }),
     pnpmScript('module-graph', 'verify-module-graph', { label: 'module graph' }),
+    // BEGIN uitstalie-deepseek-flash, 2026/10/27, DH-201, jira 的 node:test 套件进 CI 静态门禁
+    pnpmScript('jira-tests', 'test:jira:node', { label: 'jira node tests' }),
+    // END uitstalie-deepseek-flash
   ]
 }
 

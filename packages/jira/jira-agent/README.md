@@ -44,9 +44,9 @@ Every completed turn of a writable root agent settles the ledger: the derived fi
 
 ## Tests
 
-`pnpm test` runs `node --test "src/**/*.test.ts"`. The wiring suites (`index`, `schema`, `surfaces`, `messages`) mount the shipped services through a real Cordis context — system prompt, tools, dafeiyu, commands, skills and `jira-service` — so they exercise the real registrations rather than a hand-built host.
+`pnpm test` runs `node --import tsx --test "src/**/*.test.ts"`. The wiring suites (`index`, `schema`, `surfaces`, `messages`) mount the shipped services through a real Cordis context — system prompt, tools, dafeiyu, commands, skills and `jira-service` — so they exercise the real registrations rather than a hand-built host.
 
-The suites resolve the workspace packages through their package roots, which is the built `lib/` entry. Run `pnpm run build:artifacts` before them in a source checkout.
+The tsx loader resolves workspace packages through the repository's tsconfig paths, so a source checkout needs no build. From the repository root, `pnpm run test:jira` runs every jira `node:test` suite and the package-level vitest specs; the CI static gate runs `test:jira:node` while the coverage lane runs the vitest specs.
 
 <a id="model-experience"></a>
 

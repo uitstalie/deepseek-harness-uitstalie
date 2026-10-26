@@ -12366,6 +12366,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:*
         version: link:../../core/tools
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
 
   packages/jira/jira-cli:
     dependencies:
