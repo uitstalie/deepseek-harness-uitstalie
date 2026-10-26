@@ -1,8 +1,8 @@
 # @deepseek-ai/dsh-jira-app
 
-The jira ledger's standalone profile bundle. Installing it inserts the ledger rows over whatever profile it targets: `jira-service` (the ledger's single writer) and `jira-agent` (the dafeiyu capability with the tools, `/jira`, the skills, the guard and the turn-end settle). The browser row is declared and disabled until `ui-jira` exports a client plugin.
+The jira ledger's standalone profile bundle. Installing it inserts the ledger rows over whatever profile it targets: `jira-service` (the ledger's single writer), `jira-agent` (the dafeiyu capability with the tools, `/jira`, the skills, the guard and the turn-end settle) and `ui-jira` (the browser row: the `jira` settings section with the ledger status, the read-only board, the issue detail and the knowledge search).
 
-The same two rows are mounted by `packages/bundle/web-app/cordis.patch.uitstalie.yml`, so a `dsh --profile web` built from this checkout carries the ledger without installing this bundle.
+The same three rows are mounted by `packages/bundle/web-app/cordis.patch.uitstalie.yml`, so a `dsh --profile web` built from this checkout carries the ledger without installing this bundle.
 
 ## Model Experience
 
@@ -24,6 +24,6 @@ The row configuration is the `jira-service` schema: `root`, `host`, `machine_id`
 
 ## Known Limitations and Deferred Work
 
-- **The browser row is declared, not shipped.** `ui-jira` exports the settings-section contract only; enabling its row would fail at load because the package has no `apply`.
+- **The browser page shows the row configuration; it does not write it.** `root`, `host` and `push.enabled` are read-only there until the `jira-service` schema declares them `.volatile()`.
 - **dafeiyu v1 has no UI metadata.** The capability registers with `contractVersion: 1`, so the organizer's list shows the id and state without a `label` or a `settings.sectionId` link; the descriptor-v2 upgrade is the contract's stage 2 follow-up.
 - **The row list and the patch are compared by `tests/bundle.spec.ts`.** Adding a row means updating both, and the test fails when they drift.

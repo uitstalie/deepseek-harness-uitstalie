@@ -89,8 +89,15 @@ const CONFIG_SCHEMA: z<Config> = z.object({
 const now = (): Timestamp => entities.utcTimestamp(new Date())
 
 /** The one comment in this module that is not JSDoc: `status()` needs a frozen snapshot. */
-const statusOf = (root: string, machineId: string, pushEnabled: boolean, lastSync: SyncRecord | null, pending: boolean): JiraStatus =>
-  Object.freeze({ root, machineId, pushEnabled, lastSync, pending })
+const statusOf = (
+  root: string,
+  machineId: string,
+  host: string,
+  pushEnabled: boolean,
+  lastSync: SyncRecord | null,
+  pending: boolean,
+): JiraStatus =>
+  Object.freeze({ root, machineId, host, pushEnabled, lastSync, pending })
 
 /**
  * The ledger facade. Read methods return the decoded data; write methods run inside the core's
@@ -103,6 +110,9 @@ export class JiraService extends Service implements JiraServiceApi {
 
   /** The resolved ledger root, or the empty string when it could not be resolved. */
   readonly root: string
+
+  /** The `owner.host` audit value every write through this service carries. */
+  readonly host: string
 
   /**
    * Cordis hands a service to callers through a tracing proxy that overlays `ctx`, so a service
@@ -130,6 +140,8 @@ export class JiraService extends Service implements JiraServiceApi {
       env: process.env,
     })
     this.root = resolved.ok ? resolved.value : ''
+    // Resolved once: the store's audit fields and `status()` must agree on the host writes carry.
+    this.host = config.host ?? system.system.hostName(process.env)
     // The queue is created lazily, so the disposer reads it at teardown rather than capturing a
     // value that does not exist yet.
     ctx.effect(() => () => {
@@ -148,10 +160,17 @@ export class JiraService extends Service implements JiraServiceApi {
 
   /**
    * A synchronous view of the ledger's state.
-   * @returns the root, identity, push switch, last push outcome and whether a push is armed.
+   * @returns the root, identity, audit host, push switch, last push outcome and whether a push is armed.
    */
   status(): JiraStatus {
-    return statusOf(this.root, this.resolvedMachineId, this.config.push?.enabled === true, this.lastSync, this.queue?.isPending() === true)
+    return statusOf(
+      this.root,
+      this.resolvedMachineId,
+      this.host,
+      this.config.push?.enabled === true,
+      this.lastSync,
+      this.queue?.isPending() === true,
+    )
   }
 
   /**
@@ -391,7 +410,7 @@ export class JiraService extends Service implements JiraServiceApi {
     const store = coreStore.createStore({
       root: resolved.value,
       machineId: this.resolvedMachineId,
-      host: this.config.host ?? system.system.hostName(process.env),
+      host: this.host,
     })
     const queue = push.createPushQueue({
       root: resolved.value,

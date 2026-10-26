@@ -591,7 +591,8 @@
     { "path": "./packages/jira/jira-cli" },
     { "path": "./packages/jira/jira-service" },
     { "path": "./packages/jira/jira-agent" },
-    { "path": "./packages/jira/ui-jira" },
+    // ui-jira 是 client 双面包（dsh.client），编译面在 tsconfig.client.json
+    { "path": "./packages/jira/ui-jira/tsconfig.host.json" },
     { "path": "./packages/bundle/jira-app" },
     // END uitstalie-k3
   ]

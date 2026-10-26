@@ -69,6 +69,8 @@ export interface JiraStatus {
   readonly root: string
   /** This machine's identity in the ledger's counter blocks. */
   readonly machineId: string
+  /** The `owner.host` audit value writes carry: the row's host, or this machine's hostname. */
+  readonly host: string
   /** Whether a successful settle schedules a push. */
   readonly pushEnabled: boolean
   /** The most recent push attempt, or `null` before the first one. */
@@ -85,7 +87,7 @@ export interface JiraServiceApi {
   readonly machineId: string
   /**
    * A synchronous view of the ledger's state.
-   * @returns the root, identity, push switch and the last push outcome.
+   * @returns the root, identity, audit host, push switch and the last push outcome.
    */
   status(): JiraStatus
 
@@ -216,6 +218,8 @@ export interface JiraStatusView {
   readonly root: string
   /** This machine's identity in the ledger's counter blocks. */
   readonly machineId: string
+  /** The `owner.host` audit value writes carry. */
+  readonly host: string
   /** Whether a successful settle schedules a push. */
   readonly pushEnabled: boolean
   /** The most recent push attempt, or `null` before the first one. */

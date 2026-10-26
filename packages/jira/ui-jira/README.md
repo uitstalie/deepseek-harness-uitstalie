@@ -1,19 +1,41 @@
 # @deepseek-ai/dsh-client-ui-jira
 
-The jira ledger's browser surface. What it owns today is the settings section's identity: `sectionId: 'jira'`, `order: 200`, and the three row fields it edits (`root`, `host`, `push.enabled`). `dafeiyu`'s Capabilities list links to that section by id, so the id cannot drift; the section reads and writes the `jira-service` row instead of keeping a second copy of the ledger's location.
+The jira ledger's browser surface: one settings section (`id: 'jira'`, `order: 200`) that shows the ledger's `jira-service` row and reads the ledger itself — the board grouped by status, one issue's detail, and the knowledge search.
 
-The read-only views are not written yet: the board (issues grouped by status), one issue's detail, and the knowledge search with its `file:line` hits. They read through the `remote.jira` projection of `ctx.jira`, never from files, and they never write — writes go through the model's tools.
+`dafeiyu`'s Capabilities list links to the section by id (`settings.sectionId: 'jira'`), so the id and order are a contract. Both halves read them from [`src/section.ts`](src/section.ts).
+
+## The page
+
+| Block | Data | Writes |
+|---|---|---|
+| Ledger | `remote.jira.status()`: root, audit host, push switch, last push, queued push | none |
+| Board | `remote.jira.board()`: issues grouped by status, blocked group last, counts | none |
+| Issue detail | `remote.jira.get(key)`: frontmatter fields and the Markdown body | none |
+| Knowledge | `remote.jira.kbSearch(query)`: ranked hits with their `file:line` | none |
+
+The three row fields (`root`, `host`, `push.enabled`) are shown, not edited: they are the `jira-service` row configuration, and the settings service writes only fields a plugin declares `.volatile()`. The page says so instead of offering a control it cannot honor.
+
+Writes stay with the model: the agent's tools are the only path to the ledger, and the guard in `jira-agent` constrains them. Nothing here reads a file or writes a commit.
+
+## Faces
+
+- `src/index.ts` — the host entry: an empty plugin body plus the section identity, so the `jira-ui` row loads through this package.
+- `src/client/index.ts` — the browser entry: mounts `remote.jira` (the generated Host-for-Client artifact of `jira-service`), registers the `settings.jira` copy dictionary, and contributes the page to `settings.section`.
+- `src/client/store.ts` — the page controller: one board read, one detail read per selection, one knowledge search per query. It publishes plain data; structured failures reach the components as messages, and copy stays in the dictionary.
 
 ## Model Experience
 
-Nothing here reaches a model. Client code affects the model only indirectly: a settings change is written back to the `jira-service` row, and the board's data comes from the same service the tools use, so the two cannot disagree.
+Nothing here reaches a model. The page reads the same service the tools write, so what a reader sees and what a model changed cannot disagree; the UI has no write path of its own.
 
 ## Tests
 
-None yet — there is no client program to test. When the section and board land they follow the client-plugin test conventions (components under `tests/`, locale-owned copy).
+- `tests/jira-section.client.spec.tsx` — registration (section id/order/label, disposal) and rendering: the status block, a board row, opening and closing the detail, the knowledge search's `file:line` hit, and a failed board read with retry. Remote data is scripted through the store's narrow `JiraWire`, so the assertions are about what the reader sees.
+- `tests/entry.host.spec.ts` — the host entry loads as an inert plugin and publishes the section identity.
+
+Run them with `pnpm exec vitest run packages/jira/ui-jira`.
 
 ## Known Limitations and Deferred Work
 
-- No client plugin entry, no `client/` directory, no locale files: this package currently exports constants only. The `jira-ui` row in the jira bundle is declared disabled for that reason.
-- The board, issue detail and knowledge views are undesigned here beyond the contract's read-only rule; they need a designer-derived layout rather than a first guess.
-- The settings form is not wired to the profile's patch write-back; `.volatile()` on the service schema is the other half of that feature.
+- **Settings write path:** the page displays `root`, `host` and `push.enabled` but cannot change them. Writing them from here needs the `jira-service` schema to declare those fields `.volatile()`; until then the settings service exposes no namespace for the row and would refuse the write.
+- **Board seat:** the board, detail and knowledge search render inside the settings section. A dock/sidebar board would be a second registration (and a designer's layout) rather than another page of this section.
+- **dafeiyu Capabilities list:** the Jira row's label, state and "open settings" jump are DH-12's work; this package only owns the section they link to.

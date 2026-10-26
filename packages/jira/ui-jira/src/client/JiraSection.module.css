@@ -1,0 +1,252 @@
+/* The page column: the settings content column already owns width and scrolling. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 960px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.intro {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* One section of the page: the ledger, the board, the detail, the knowledge search. */
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.heading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.detailHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Label/value rows. The value wraps instead of truncating: a ledger path is the
+   one string a reader came here to copy. */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.rowLabel {
+  flex: none;
+  min-width: 112px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.rowValue {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+
+.note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.notice {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.errorText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.failure {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Board columns: one per status, wrapping on a narrow panel rather than
+   scrolling sideways. */
+.columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.column {
+  flex: 1 1 240px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.columnTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A row is a button so the whole line is the hit target; the primitive supplies
+   the element and its focus treatment, these rules set the internal layout. */
+.item.item {
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.itemKey {
+  flex: none;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.itemSummary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemMeta {
+  flex: none;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.counts {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.detailSummary {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.bodyText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-2);
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+}
+
+.hits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hitHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hitTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.hitLocation {
+  flex: none;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.hitSnippet {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+}

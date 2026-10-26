@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Jira 台账页面",
+    "description": "展示 jira 台账状态，并只读浏览看板、单条 issue 与知识库。"
+  }
+}

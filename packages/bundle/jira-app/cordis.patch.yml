@@ -2,9 +2,8 @@
 #
 # The service row opens the ledger, owns the push queue and answers `ctx.jira`; the agent row
 # registers the capability (three tools, the awareness line, the write guard, `/jira`, the three
-# skills and the turn-end settle) with dafeiyu. The browser row stays declared and disabled until
-# `ui-jira` exports a client plugin: enabling a row whose package has no `apply` fails at load, and
-# a row that silently does nothing is worse than one that is visibly off.
+# skills and the turn-end settle) with dafeiyu. The browser row contributes the `jira` settings
+# section (ledger status, read-only board, issue detail, knowledge search) over `remote.jira`.
 
 - insert:
     - id: jira-service
@@ -16,7 +15,5 @@
     - id: jira-agent
       name: '@deepseek-ai/dsh-jira-agent'
 
-    # Pending: `packages/jira/ui-jira` owns the settings section id and order, not yet the plugin.
     - id: jira-ui
       name: '@deepseek-ai/dsh-client-ui-jira'
-      disabled: true

@@ -3,7 +3,7 @@
 # 宿主侧：`.dsh` 基础接口（tool-dsh-store）、常驻上下文切面
 # （agent-instructions-plus，原生 instruction loader 仍按自己的行运行），以及 jira 账本
 # （jira-service 提供服务，jira-agent 把工具/命令/技能/守卫/收尾接到 dafeiyu）。
-# 浏览器侧：models-dev 设置页、rules 按钮、common-view overlay。
+# 浏览器侧：models-dev 设置页、rules 按钮、jira 台账设置页、common-view overlay。
 - insert:
     - id: dafeiyu
       name: '@deepseek-ai/dsh-dafeiyu'
@@ -26,5 +26,7 @@
       name: '@deepseek-ai/dsh-client-ui-models-dev'
     - id: ui-tool-dsh-store
       name: '@deepseek-ai/dsh-client-ui-tool-dsh-store'
+    - id: jira-ui
+      name: '@deepseek-ai/dsh-client-ui-jira'
     - id: ui-common-view
       name: '@deepseek-ai/dsh-client-common-view'

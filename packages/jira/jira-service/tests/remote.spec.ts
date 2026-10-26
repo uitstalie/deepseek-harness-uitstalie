@@ -13,6 +13,9 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import JiraService from '@deepseek-ai/dsh-jira-service'
+// The mounted class: the Context augmentation alone is not in the package's declaration output,
+// because the root entry only uses the class as a value.
+import type JiraRemote from '@deepseek-ai/dsh-jira-service/remote.ts'
 import { asIdentity, utcTimestamp } from '@deepseek-ai/dsh-jira-core/entity.ts'
 import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core/io.ts'
 import { createKnowledge, originFromIdentity } from '@deepseek-ai/dsh-jira-core/kbstore.ts'
@@ -58,7 +61,7 @@ const createLedger = async (): Promise<string> => {
 }
 
 /** The mounted Remote face, once its fiber has activated. */
-const remoteOf = async (ctx: Context) => {
+const remoteOf = async (ctx: Context): Promise<JiraRemote> => {
   await vi.waitFor(() => { expect(ctx.get('jiraRemote')).toBeDefined() })
   return ctx.jiraRemote
 }
@@ -80,6 +83,7 @@ const boot = async (): Promise<{ ctx: Context; remote: Awaited<ReturnType<typeof
   await ctx.plugin(JiraService, {
     root: ledger,
     machine_id: MACHINE,
+    host: 'fixture-host',
     push: { enabled: false },
   }).await()
   return { ctx, remote: await remoteOf(ctx) }
@@ -106,6 +110,7 @@ describe('remote.jira', () => {
     const status = remote.status()
     expect(status.root.replaceAll('\\', '/')).toBe((ledger ?? '').replaceAll('\\', '/'))
     expect(status.machineId).toBe(MACHINE)
+    expect(status.host).toBe('fixture-host')
     expect(status.pushEnabled).toBe(false)
     expect(status.pending).toBe(false)
     expect(status.lastSync).toBeNull()

@@ -20,7 +20,7 @@ Two methods are the phase-1 bridge to the agent's existing tool runners: `store(
 
 | Method | Returns |
 |---|---|
-| `status()` | root, machine identity, push switch, last push outcome, whether a push is armed |
+| `status()` | root, audit host, machine identity, push switch, last push outcome, whether a push is armed |
 | `board()` | issues grouped by status, blocked group last, with counts |
 | `list(query)` | the same result narrowed by `project`, `status`, `tag`, `tags`, `assignee`, `includeClosed`, `limit` |
 | `get(key)` | one issue's frontmatter fields and Markdown body |

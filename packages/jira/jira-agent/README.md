@@ -37,7 +37,7 @@ The suites resolve the workspace packages through their package roots, which is 
 
 ## Known Limitations and Deferred Work
 
-- **No browser surface yet.** `ui-jira` exports the settings-section contract only; the board, issue and knowledge views are unwritten, and its bundle row stays disabled.
+- **The browser surface is `ui-jira`'s, not this package's.** The agent owns the tools, the awareness line and the write guard; the `jira` settings section reads the same ledger through `remote.jira`, and disabling the capability hides only the model surface.
 - **The runner modules still import `jira-core` by deep path.** The phase-1 bridge opens the store through `ctx.jira.store()`; moving the runners onto the service's own read/write methods is the phase-2 follow-up.
 - **The CLI-parity assertion is split.** The standalone package compared the tool verbs with the CLI's command names in one test. `jira-agent` may not depend on `jira-cli`, so the CLI keeps its own table/handler/usage tests and the mapping between the two surfaces is unguarded.
 - **The awareness line no longer names the workspace binding.** The contract's section names the store and its counts; the workspace→project phrase was a context source in the standalone plugin.

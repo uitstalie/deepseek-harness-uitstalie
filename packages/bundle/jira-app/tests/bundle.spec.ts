@@ -47,11 +47,11 @@ describe('dsh-jira-app bundle', () => {
     )
   })
 
-  it('enables the service and the agent, and keeps the browser row visibly off', () => {
+  it('enables the service, the agent and the browser row', () => {
     const rows = patch[0]?.insert ?? []
     expect(rows.find(row => row.id === 'jira-service')?.disabled).toBeUndefined()
     expect(rows.find(row => row.id === 'jira-agent')?.disabled).toBeUndefined()
-    expect(rows.find(row => row.id === 'jira-ui')?.disabled).toBe(true)
+    expect(rows.find(row => row.id === 'jira-ui')?.disabled).toBeUndefined()
   })
 
   it('keeps the ledger local by default: the push queue starts disabled', () => {

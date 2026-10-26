@@ -44,6 +44,7 @@ export const syncViewOf = (record: SyncRecord): JiraSyncView => Object.freeze({
 export const statusViewOf = (status: JiraStatus): JiraStatusView => Object.freeze({
   root: status.root,
   machineId: status.machineId,
+  host: status.host,
   pushEnabled: status.pushEnabled,
   lastSync: status.lastSync === null ? null : syncViewOf(status.lastSync),
   pending: status.pending,
