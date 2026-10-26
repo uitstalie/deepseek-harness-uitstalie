@@ -412,6 +412,9 @@
       // jira-service/types 声明 Remote 错误码，客户端必须与宿主解析到同一个模块（同 tool-dsh-store 的先例）
       "@deepseek-ai/dsh-jira-service/types": ["./packages/jira/jira-service/src/types.ts"],
       // END uitstalie-k3
+      // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-15, 组合测试运行时按组合清单 import '<pkg>/client'，缺该别名则整组组合规格失败
+      "@deepseek-ai/dsh-client-ui-jira/client": ["./packages/jira/ui-jira/src/client/index.ts"],
+      // END uitstalie-deepseek-flash
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],

@@ -42,8 +42,13 @@ const CHILD_NAMES = Object.keys(CHILD_SPECS) as Array<keyof typeof CHILD_SPECS>
  * ui-settings-models, ui-settings-plugins, and ui-agent-preset. A plugin
  * adding a section changes this list.
  * uitstalie-k3, 2026/10/09, task23: ui-models-dev adds `models-dev` at order 12.
+ * uitstalie-deepseek-flash, 2026/10/26, DH-15: ui-jira adds `jira` at order 200.
  */
-const PRODUCT_SECTIONS: readonly string[] = ['general', 'models', 'models-dev', 'plugins', 'agent-presets']
+// BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-15, 分支 jira 设置段进入 roster
+const PRODUCT_SECTIONS: readonly string[] = [
+  'general', 'models', 'models-dev', 'plugins', 'agent-presets', 'jira',
+]
+// END uitstalie-deepseek-flash
 /** Onboarding steps the web-app roster registers, in coordinator order; both come from ui-settings-models. */
 const PRODUCT_ONBOARDING: readonly { id: string; order: number }[] = [
   { id: 'welcome-notice', order: -100 },
