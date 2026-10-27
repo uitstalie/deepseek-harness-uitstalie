@@ -129,6 +129,38 @@ function textOf(message: UserMessage): string {
   return message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
 }
 
+test('aborting while the surface read is pending publishes no checkpoint (DH-304)', async () => {
+  const mounted = await mount()
+  const seeded = await seedDetail(mounted)
+  const gate = Promise.withResolvers<undefined>()
+  const original = mounted.ctx.sessionQuery.readSurface.bind(mounted.ctx.sessionQuery)
+  let readStarted = false
+  vi.spyOn(mounted.ctx.sessionQuery, 'readSurface').mockImplementation(async (sessionId) => {
+    readStarted = true
+    await gate.promise
+    return await original(sessionId)
+  })
+  const controller = new AbortController()
+
+  const running = migrateMemoryTiers(mounted.ctx, seeded.root.session, 17, () => Promise.resolve(BRIEF), controller.signal, {
+    window: { detail: 6, brief: 16, forget: 21, sessions: 10 },
+  })
+  for (let attempt = 0; attempt < 200 && !readStarted; attempt += 1) {
+    await new Promise<void>((resolve) => { setTimeout(resolve, 1) })
+  }
+  controller.abort()
+  gate.resolve(undefined)
+  const result = await running
+
+  // The document commit still records the brief tier, and the next pass may replace the
+  // surface; the invariant is that no checkpoint was published after the abort.
+  expect(result).toMatchObject({ briefed: 1 })
+  expect(await checkpoints(mounted, 'memory-root')).toHaveLength(0)
+  const document = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
+  expect(document.sections[0]).toMatchObject({ tier: 'brief' })
+  expect(document.sessions[0]?.turns[0]?.checkpointSeq).toBeUndefined()
+})
+
 test('a brief migration replaces the raw turn range with a checkpoint', async () => {
   const mounted = await mount()
   const seeded = await seedDetail(mounted)

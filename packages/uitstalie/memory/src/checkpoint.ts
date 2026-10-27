@@ -58,11 +58,14 @@ type SurfaceTargetResult =
  * target must be a non-empty contiguous run that contains no memory snapshot
  * and no compaction checkpoint. The append is attempted once; a surface refusal
  * skips the range without appending, and the next pass recomputes from the live
- * surface.
+ * surface. A cancellation checked before the surface read and again before the
+ * append skips the range: this function never publishes a checkpoint for a
+ * caller that is unloading.
  * @param ctx - context carrying `sessionQuery` and the logger.
  * @param session - session whose surface receives the checkpoint.
  * @param range - turn run and its recorded checkpoint seq, when known.
  * @param checkpoint - summary text and tier to publish.
+ * @param signal - cancellation checked before the surface read and before the append.
  * @returns the new checkpoint seq, or undefined when the range was skipped.
  */
 export async function replaceSurfaceRange(
@@ -70,7 +73,12 @@ export async function replaceSurfaceRange(
   session: Session,
   range: TurnRange,
   checkpoint: SurfaceCheckpoint,
+  signal?: AbortSignal,
 ): Promise<SessionSeq | undefined> {
+  // A local check keeps every post-await read fresh; a direct property comparison
+  // would be narrowed by the earlier check across the awaits.
+  const aborted = (): boolean => signal?.aborted === true
+  if (aborted()) return undefined
   if (checkpoint.text.trim().length === 0) {
     ctx.logger.debug(
       'memory: skipping checkpoint for turns %d–%d because its text is empty',
@@ -80,6 +88,8 @@ export async function replaceSurfaceRange(
     return undefined
   }
   const surface = await ctx.sessionQuery.readSurface(session.id)
+  // The read can be the slow step (a projected surface), so re-check before the first durable mutation.
+  if (aborted()) return undefined
   const resolved = resolveSurfaceTarget(surface.events, range)
   if (!resolved.ok) {
     ctx.logger.debug(
@@ -92,6 +102,7 @@ export async function replaceSurfaceRange(
   }
   const message = createCheckpointMessage(range, checkpoint)
   const target = resolved.target
+  if (aborted()) return undefined
   try {
     return session.append('user/message', message, {
       surfaceOp: { op: 'replace', startSeq: target.start, endSeq: target.end },

@@ -567,17 +567,19 @@ export async function migrateMemoryTiers(
     if (plan.toBrief.length === 0 && plan.toForget.length === 0 && plan.retry.length === 0) return undefined
     const briefs = await compressBriefs(ctx, current.document, session, plan, compress, compressed, signal)
     if (briefs.length === 0 && plan.toForget.length === 0 && plan.retry.length === 0) return undefined
-    await checkpointMigrations(ctx, current.document, session, plan, briefs, checkpoints)
+    await checkpointMigrations(ctx, current.document, session, plan, briefs, checkpoints, signal)
     const retried = plan.retry.filter(retry => checkpoints.has(rangeKey(retry.action, retry))).length
     if (briefs.length === 0 && plan.toForget.length === 0 && retried === 0) return undefined
-    signal?.throwIfAborted()
+    // Once a checkpoint left the surface, the metadata write must finish even if the
+    // provider was disabled meanwhile: skipping it here is exactly the half-committed
+    // state (checkpoint published, MEMORY.md unchanged) this pass avoids.
     const next = applyMigrations(current.document, session, plan, briefs, checkpoints)
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
       MEMORY_STORE_PATH,
       renderMemoryDocument(next),
-      writeOptions(signal, current.version),
+      writeOptions(undefined, current.version),
     )
     return {
       path: written.path,
@@ -721,31 +723,35 @@ async function checkpointMigrations(
   plan: TierMigrationPlan,
   briefs: readonly BriefMigration[],
   checkpoints: Map<string, number>,
+  signal: AbortSignal | undefined,
 ): Promise<void> {
   for (const brief of briefs) {
+    if (signal?.aborted === true) return
     const key = rangeKey('brief', brief.range)
     if (checkpoints.has(key)) continue
     const seq = await replaceSurfaceRange(ctx, session, brief.range, {
       text: renderBriefText(brief.entries),
       tier: 'brief',
-    })
+    }, signal)
     if (seq !== undefined) checkpoints.set(key, seq)
   }
   for (const range of plan.toForget) {
+    if (signal?.aborted === true) return
     const key = rangeKey('forget', range)
     if (checkpoints.has(key)) continue
     const seq = await replaceSurfaceRange(ctx, session, range, {
       text: renderForgetText(session.id, range),
       tier: range.tier,
-    })
+    }, signal)
     if (seq !== undefined) checkpoints.set(key, seq)
   }
   for (const retry of plan.retry) {
+    if (signal?.aborted === true) return
     const key = rangeKey(retry.action, retry)
     if (checkpoints.has(key)) continue
     const text = retryText(document, session.id, retry)
     if (text === undefined) continue
-    const seq = await replaceSurfaceRange(ctx, session, retry, { text, tier: retry.tier })
+    const seq = await replaceSurfaceRange(ctx, session, retry, { text, tier: retry.tier }, signal)
     if (seq !== undefined) checkpoints.set(key, seq)
   }
 }

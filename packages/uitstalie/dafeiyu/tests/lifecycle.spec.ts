@@ -252,3 +252,70 @@ test('warns once for a configured capability with no provider', async () => {
   })
   expect(warn).toHaveBeenCalledTimes(1)
 })
+
+/** Mount a provider whose turn hook blocks until the test releases it. */
+async function mountBlockingHook(): Promise<{
+  readonly ctx: Context
+  readonly harness: AgentLoopTestHarness
+  readonly serviceFiber: Fiber
+  readonly order: string[]
+  readonly release: () => void
+  readonly off: () => void
+}> {
+  const ctx = new Context()
+  contexts.push(ctx)
+  await mountAgentLoopTestDependencies(ctx)
+  const serviceFiber = await ctx.plugin(Dafeiyu, {})
+  const harness = await mountAgentLoopTestHarness(ctx)
+  const order: string[] = []
+  let release: () => void = () => {}
+  const off = ctx.dafeiyu.register({
+    id: 'memory',
+    contractVersion: 1,
+    config: {},
+    create: () => ({
+      scope: 'all',
+      onTurnEnd: async () => {
+        order.push('enter')
+        await new Promise<void>((resolve) => { release = resolve })
+        order.push('finish')
+      },
+      dispose: () => { order.push('dispose') },
+    }),
+  })
+  await settle()
+  return { ctx, harness, serviceFiber, order, release: () => { release() }, off }
+}
+
+test('retiring a capability waits for an admitted turn hook (DH-304)', async () => {
+  const { ctx, harness, order, release, off } = await mountBlockingHook()
+  const root = await harness.create(SessionId('root-retire-hook'))
+  emitTurnEnd(root.session, 1, { kind: 'completed' })
+  await until(() => order.includes('enter'))
+
+  off()
+  await settle()
+  expect(order).toEqual(['enter'])
+  expect(ctx.dafeiyu.status()).toEqual([])
+
+  release()
+  await until(() => order.includes('finish') && order.includes('dispose'))
+  expect(order).toEqual(['enter', 'finish', 'dispose'])
+})
+
+test('unloading the organizer waits for an admitted turn hook (DH-304)', async () => {
+  const { harness, serviceFiber, order, release } = await mountBlockingHook()
+  const root = await harness.create(SessionId('root-unload-hook'))
+  emitTurnEnd(root.session, 1, { kind: 'completed' })
+  await until(() => order.includes('enter'))
+
+  let finished = false
+  const disposal = serviceFiber.dispose().then(() => { finished = true })
+  await settle()
+  expect(finished).toBe(false)
+  expect(order).toEqual(['enter'])
+
+  release()
+  await disposal
+  expect(order).toEqual(['enter', 'finish', 'dispose'])
+})

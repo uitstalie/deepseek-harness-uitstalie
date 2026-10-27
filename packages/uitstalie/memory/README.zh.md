@@ -80,7 +80,7 @@ kind: "package-reference"
 
 tier 迁移 pass 在 detail 追加之后运行。`planTierMigrations` 读取刚写入的文档，返回年龄跨过 `brief` 或 `forget` 的区块；`migrateMemoryTiers` 用与摘要相同的模型目标压缩每个 detail 区块，并通过版本守卫和一次 stale 重试写入整批结果。区块在年龄达到 `brief` 时转为 brief：托管区块的标题与条目被替换为最多两条、总计最多 160 字符的条目，live surface 上的原始 turn 区间被替换成一个 checkpoint。区块在年龄达到 `forget` 时被遗忘：正文离开托管区块，`forgottenThrough` 前进，上一个 checkpoint 被替换成一行指针，写明会话、turn 与 seq 区间。checkpoint 来源是 `{ kind: 'memory', form: 'notice', window: { from, to, tier } }`，因此 snapshot 判定仍只识别 snapshot，重启后的提供者也能按 window 找到上一个 checkpoint。
 
-live surface 决定替换是否可行。辅助函数先找已记录的 checkpoint seq，再找 window 相同的 live checkpoint，最后才是该 turn 连续的 surface 节点。区间缺失、包含 memory snapshot、或包含 compaction checkpoint 时，只记 debug 日志跳过且不重试；文件仍记录窗口要求的 tier，原始 turn 的最终移除由 compaction 负责。追加会引用所有被遮住的 surface 节点。压缩失败保留 detail 区块；文件写入 stale 时重读并只重新应用一次计划，不会追加第二个 checkpoint。detail 摘要成功写入后，迁移失败不会丢掉那份摘要。
+live surface 决定替换是否可行。辅助函数先找已记录的 checkpoint seq，再找 window 相同的 live checkpoint，最后才是该 turn 连续的 surface 节点。区间缺失、包含 memory snapshot、或包含 compaction checkpoint 时，只记 debug 日志跳过且不重试；文件仍记录窗口要求的 tier，原始 turn 的最终移除由 compaction 负责。追加会引用所有被遮住的 surface 节点。checkpoint 发布会在 surface 读取之前与追加之前各检查一次 provider 的取消信号：慢读取期间被 disable 时什么都不发布。checkpoint 一旦发布，记录其 seq 的 MEMORY.md 写入不再可取消——提交这份元数据正是避免“有 checkpoint 却没有对应 tier 状态”的方式。压缩失败保留 detail 区块；文件写入 stale 时重读并只重新应用一次计划，不会追加第二个 checkpoint。detail 摘要成功写入后，迁移失败不会丢掉那份摘要。
 
 snapshot 是文件面向模型的持久视图。每次 `memory_write` 成功后，`refreshMemorySnapshot` 读取 MEMORY.md、渲染文本，并用 `ctx.sessionQuery.readSurface` 扫出 surface 上最后一条来源为 memory snapshot 的消息。找到就用 `surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq }` 与 `sourceEventSeqs: [seq]` 原地替换该节点；找不到就 append。surface 因目标已离开而拒绝替换时退回 append，由下一次刷新替换该节点。snapshot 失败只记日志，不改变已经提交的写入结果。
 

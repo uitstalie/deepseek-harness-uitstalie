@@ -92,6 +92,16 @@ interface Registration {
   readonly registrations: Map<Agent, readonly (() => void)[]>
   /** Set when the registration was removed or the organizer is unloading. */
   retired: boolean
+  /**
+   * Activation generation: every activation, disable, reload and retire bumps it.
+   * A `create()` that resolves under an older generation owns only its own
+   * contribution and may not publish state or report failure for a newer one.
+   */
+  generation: number
+  /** Hooks this registration admitted and has not finished yet. */
+  readonly admitted: Set<Promise<void>>
+  /** Serialized lifecycle: gate toggles, reloads, retire and shutdown append here. */
+  lifecycle: Promise<void>
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -117,6 +127,8 @@ export class Dafeiyu extends Service {
   private readonly turnChains = new Map<SessionId, Promise<void>>()
   private readonly warnedMissing = new Set<string>()
   private disposed = false
+  /** Serialized configuration reloads. */
+  private reloadChain: Promise<void> = Promise.resolve()
 
   /**
    * @param ctx - plugin context; `agents` is optional because the registry can be mounted before an agent service exists.
@@ -129,8 +141,8 @@ export class Dafeiyu extends Service {
     ctx.on('agent/disposed', ({ agent }) => { this.forgetAgent(agent) })
     ctx.on('session/event', (session, event) => { this.observeSession(session, event) })
     ctx.on('loader/volatile-update', () => { this.reconcileGates() })
-    ctx.on('app-boot/config-reload', () => { this.reloadRegistrations() })
-    ctx.effect(() => () => { this.shutdown() }, 'dafeiyu.shutdown()')
+    ctx.on('app-boot/config-reload', () => { this.queueReload() })
+    ctx.effect(() => async () => { await this.shutdown() }, 'dafeiyu.shutdown()')
     void ctx.plugin(DafeiyuRemote)
   }
 
@@ -199,31 +211,84 @@ export class Dafeiyu extends Service {
       lastTurnAt: undefined,
       registrations: new Map(),
       retired: false,
+      generation: 0,
+      admitted: new Set(),
+      lifecycle: Promise.resolve(),
     }
     if (!enabled) {
       resolve()
       return registration
     }
-    void this.activate(registration)
+    this.startActivation(registration)
     return registration
   }
 
-  /** Call the provider's `create()` once and retain its contribution. */
-  private async activate(registration: Registration): Promise<void> {
-    const runtime: CapabilityRuntime = { ctx: this.ctx, signal: registration.controller.signal }
+  /**
+   * Start one activation and capture its generation, controller and ready
+   * resolver. The caller that starts it is the only one allowed to publish the
+   * resulting contribution: a later disable/reload bumps the generation.
+   */
+  private startActivation(registration: Registration): void {
+    const { promise, resolve } = Promise.withResolvers<void>()
+    registration.ready = promise
+    registration.settleReady = resolve
+    registration.controller = new AbortController()
+    registration.generation += 1
+    registration.state = 'activating'
+    registration.failure = undefined
+    const generation = registration.generation
+    const settleReady = resolve
+    void this.activate(registration, generation, registration.controller, settleReady)
+  }
+
+  /** Append one lifecycle step, so a toggle cannot interleave with the previous one. */
+  private enqueue(registration: Registration, task: () => Promise<void>): Promise<void> {
+    registration.lifecycle = registration.lifecycle
+      .then(task)
+      .catch((error: unknown) => {
+        this.ctx.logger.warn(
+          'dafeiyu: capability "%s" lifecycle step failed: %s',
+          registration.provider.id,
+          errorSummary(error),
+        )
+      })
+    return registration.lifecycle
+  }
+
+  /** Call the provider's `create()` once under one generation and publish only if it is current. */
+  private async activate(
+    registration: Registration,
+    generation: number,
+    controller: AbortController,
+    settleReady: () => void,
+  ): Promise<void> {
+    const runtime: CapabilityRuntime = { ctx: this.ctx, signal: controller.signal }
     try {
       const contribution = await registration.provider.create(runtime)
-      if (registration.retired || this.disposed || registration.controller.signal.aborted) {
+      if (!this.isCurrent(registration, generation) || controller.signal.aborted) {
+        // A newer activation owns the state; this one only cleans up what it created.
         this.disposeContribution(registration, contribution)
         return
       }
       registration.contribution = contribution
       registration.state = 'active'
     } catch (error: unknown) {
+      // An aborted or superseded create must not mark the current generation failed.
+      if (!this.isCurrent(registration, generation) || controller.signal.aborted) return
       this.fail(registration, 'create()', error)
     } finally {
-      registration.settleReady()
+      settleReady()
     }
+  }
+
+  /** Whether one activation generation still owns this registration's state. */
+  private isCurrent(registration: Registration, generation: number): boolean {
+    return !registration.retired && !this.disposed && registration.generation === generation
+  }
+
+  /** Wait for the turn hooks this registration admitted, without failing on their errors. */
+  private async waitForAdmitted(registration: Registration): Promise<void> {
+    await Promise.allSettled([...registration.admitted])
   }
 
   /** Wire one capability onto one agent; a provider failure rolls back this capability's additions. */
@@ -314,13 +379,27 @@ export class Dafeiyu extends Service {
         event,
         signal: registration.controller.signal,
       }
-      try {
-        await contribution.onTurnEnd(input)
-      } catch (error: unknown) {
-        // A reload or a disabled gate aborts the hook; the abort is not a capability failure.
-        if (input.signal.aborted) return
-        this.fail(registration, `onTurnEnd() for turn ${event.data.turn}`, error)
-      }
+      const running = this.runTurnHook(registration, contribution, input, event.data.turn)
+      // Track the hook itself, so a disable or teardown can wait for the work it admitted.
+      registration.admitted.add(running)
+      void running.finally(() => { registration.admitted.delete(running) })
+      await running
+    }
+  }
+
+  /** Invoke one provider hook, containing failure unless the abort cancelled it. */
+  private async runTurnHook(
+    registration: Registration,
+    contribution: CapabilityContribution,
+    input: TurnEndInput,
+    turn: number,
+  ): Promise<void> {
+    try {
+      await contribution.onTurnEnd?.(input)
+    } catch (error: unknown) {
+      // A reload or a disabled gate aborts the hook; the abort is not a capability failure.
+      if (input.signal.aborted) return
+      this.fail(registration, `onTurnEnd() for turn ${turn}`, error)
     }
   }
 
@@ -328,30 +407,40 @@ export class Dafeiyu extends Service {
   private unregister(id: string, registration: Registration): void {
     if (this.registrations.get(id) !== registration) return
     this.registrations.delete(id)
-    this.retire(registration)
+    void this.retire(registration)
   }
 
-  /** Abort, dispose the contribution, and revoke the agent-level registrations. */
-  private retire(registration: Registration): void {
+  /** Stop admission synchronously, then release the registration after its admitted work. */
+  private retire(registration: Registration): Promise<void> {
     registration.retired = true
-    registration.controller.abort()
-    this.disposeContribution(registration, registration.contribution)
-    registration.contribution = undefined
-    this.disposeRegistrations(registration)
-    registration.settleReady()
+    this.stopRegistration(registration)
+    return this.enqueue(registration, async () => { await this.tearDown(registration) })
   }
 
-  /** Dispose every registration and clear the organizer's state. */
-  private shutdown(): void {
+  /**
+   * Dispose every registration and clear the organizer's state.
+   *
+   * Teardown first stops admission and settles every activation, then waits for
+   * the hooks already admitted before it releases a provider, because a hook
+   * that is still awaiting would otherwise write through a disposed provider.
+   */
+  private async shutdown(): Promise<void> {
     if (this.disposed) return
     this.disposed = true
     const registrations = [...this.registrations.values()]
     this.registrations.clear()
     for (const registration of registrations) {
       registration.retired = true
+      registration.generation += 1
       registration.controller.abort()
       registration.settleReady()
     }
+    await Promise.allSettled([
+      ...registrations.map(registration => registration.lifecycle),
+      ...registrations.map(registration => registration.ready),
+      ...[...this.turnChains.values()],
+    ])
+    await Promise.allSettled(registrations.map(registration => this.waitForAdmitted(registration)))
     for (const registration of registrations) this.disposeContribution(registration, registration.contribution)
     for (const registration of registrations) this.disposeRegistrations(registration)
     this.turnChains.clear()
@@ -438,59 +527,81 @@ export class Dafeiyu extends Service {
       const enabled = this.gateFor(registration.provider)
       if (enabled === registration.enabled) continue
       registration.enabled = enabled
-      if (enabled) this.activateRegistration(registration)
-      else this.disableRegistration(registration)
+      if (enabled) {
+        this.enqueue(registration, async () => { await this.rebuild(registration) })
+      } else {
+        // Stop admission synchronously, then wait for the admitted hook before releasing it.
+        this.stopRegistration(registration)
+        this.enqueue(registration, async () => { await this.tearDown(registration) })
+      }
     }
   }
 
-  /** Rebuild one registration whose gate reopened: a fresh abort scope and a fresh `create()`. */
-  private activateRegistration(registration: Registration): void {
-    const { promise, resolve } = Promise.withResolvers<void>()
-    registration.ready = promise
-    registration.settleReady = resolve
-    registration.controller = new AbortController()
-    registration.state = 'activating'
-    registration.failure = undefined
-    void this.activate(registration)
+  /**
+   * Stop the current generation synchronously: mark it non-contributing, bump
+   * the generation so a pending `create()` cannot publish, abort its signal and
+   * settle the ready promise. Waiting for admitted work is the queued part.
+   */
+  private stopRegistration(registration: Registration): void {
+    registration.state = 'disabled'
+    registration.generation += 1
+    registration.controller.abort()
+    registration.settleReady()
   }
 
-  /** Tear one registration down while the provider stays registered; agents created later receive nothing. */
-  private disableRegistration(registration: Registration): void {
-    registration.controller.abort()
+  /** Release one registration after its admitted work exits; admission already stopped. */
+  private async tearDown(registration: Registration): Promise<void> {
+    await this.waitForAdmitted(registration)
     this.disposeContribution(registration, registration.contribution)
     registration.contribution = undefined
     this.disposeRegistrations(registration)
-    registration.state = 'disabled'
+  }
+
+  /** Rebuild one registration after its gate reopened or the profile reloaded. */
+  private async rebuild(registration: Registration): Promise<void> {
+    registration.generation += 1
+    registration.controller.abort()
     registration.settleReady()
+    await this.waitForAdmitted(registration)
+    this.disposeContribution(registration, registration.contribution)
+    registration.contribution = undefined
+    this.disposeRegistrations(registration)
+    const enabled = this.gateFor(registration.provider)
+    registration.enabled = enabled
+    if (!enabled) {
+      registration.state = 'disabled'
+      return
+    }
+    this.startActivation(registration)
+    await registration.ready
+  }
+
+  /** Serialize configuration reloads, since one reload must finish before the next begins. */
+  private queueReload(): void {
+    this.reloadChain = this.reloadChain
+      .then(async () => { await this.reloadOnce() })
+      .catch((error: unknown) => {
+        this.ctx.logger.warn('dafeiyu: capability reload failed: %s', errorSummary(error))
+      })
   }
 
   /**
    * Rebuild every capability after the profile configuration reloaded.
    *
-   * The call disposes each contribution and its agent-level registrations, then
-   * calls `create()` again for the registrations whose gate is open and re-wires
-   * the agents that were already wired. It makes no per-capability diff: the
-   * reload may have changed any provider's configuration, and re-creating one
-   * capability at a time would leave the rest reading the previous profile.
+   * The synchronous part stops every current generation so no hook is admitted
+   * while the previous work drains; each registration then retires its
+   * contribution, calls `create()` again when its gate is open, and re-wires the
+   * agents that were already wired.
    */
-  private reloadRegistrations(): void {
+  private async reloadOnce(): Promise<void> {
     if (this.disposed) return
     const agents = this.ctx.get('agents')
+    const rebuilds: Promise<void>[] = []
     for (const registration of this.registrations.values()) {
       const wired = [...registration.registrations.keys()]
-      registration.controller.abort()
-      this.disposeContribution(registration, registration.contribution)
-      registration.contribution = undefined
-      this.disposeRegistrations(registration)
-      const enabled = this.gateFor(registration.provider)
-      registration.enabled = enabled
-      if (!enabled) {
-        registration.state = 'disabled'
-        registration.settleReady()
-        continue
-      }
-      this.activateRegistration(registration)
-      void registration.ready.then(() => {
+      this.stopRegistration(registration)
+      rebuilds.push(this.enqueue(registration, async () => {
+        await this.rebuild(registration)
         if (this.disposed || registration.retired) return
         const contribution = registration.contribution
         if (registration.state !== 'active' || contribution === undefined) return
@@ -499,8 +610,9 @@ export class Dafeiyu extends Service {
           if (agents?.get(agent.session.id) !== agent) continue
           this.wire(registration, agent, contribution)
         }
-      })
+      }))
     }
+    await Promise.allSettled(rebuilds)
   }
 }
 

@@ -180,6 +180,7 @@ test('a volatile gate write tears the capability down and rebuilds it without a 
 
   await entry.update({ config: { capabilities: { memory: { enabled: false } } } })
   await entry.fiber?.await()
+  await settle()
   expect(entry.fiber?.uid).toBe(fiberUid)
   expect(dispose).toHaveBeenCalledTimes(1)
   expect(ctx.dafeiyu.status()).toEqual([{ id: 'memory', present: true, enabled: false, state: 'disabled' }])
@@ -300,4 +301,79 @@ test('configured ids without a provider report missing', async () => {
     { id: 'ghost', present: false, enabled: true, state: 'missing' },
     { id: 'off', present: false, enabled: false, state: 'missing' },
   ])
+})
+
+/** Mount the organizer through a real Loader so a volatile gate write can be committed live. */
+async function mountLive(name: string): Promise<{ ctx: Context; update: (enabled: boolean) => Promise<void> }> {
+  const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(Loader)
+  ctx.loader.builtins[name] = Dafeiyu
+  const id = await ctx.loader.create({
+    name: `cordis:${name}`,
+    config: { capabilities: { memory: { enabled: true } } },
+  })
+  const entry = ctx.loader.resolve(id)
+  await entry.fiber?.await()
+  return {
+    ctx,
+    update: async (enabled) => {
+      await entry.update({ config: { capabilities: { memory: { enabled } } } })
+      await entry.fiber?.await()
+    },
+  }
+}
+
+test('a superseded create cannot publish over the newer generation', async () => {
+  const { ctx, update } = await mountLive('dafeiyu-generation-resolve')
+  const first = Promise.withResolvers<CapabilityContribution>()
+  const second = Promise.withResolvers<CapabilityContribution>()
+  const disposeFirst = vi.fn()
+  const disposeSecond = vi.fn()
+  let calls = 0
+  ctx.dafeiyu.register(provider({
+    create: () => {
+      calls += 1
+      return calls === 1 ? first.promise : second.promise
+    },
+  }))
+
+  await update(false)
+  await update(true)
+  await settle()
+  expect(calls, 'the reopened gate started the second create').toBe(2)
+
+  first.resolve({ dispose: disposeFirst })
+  await settle()
+  expect(disposeFirst).toHaveBeenCalledTimes(1)
+  expect(ctx.dafeiyu.status()).toEqual([{ id: 'memory', present: true, enabled: true, state: 'disabled' }])
+
+  second.resolve({ dispose: disposeSecond })
+  await settle()
+  expect(disposeSecond).not.toHaveBeenCalled()
+  expect(ctx.dafeiyu.status()).toEqual([{ id: 'memory', present: true, enabled: true, state: 'active' }])
+})
+
+test('a superseded create failure cannot mark the newer generation failed', async () => {
+  const { ctx, update } = await mountLive('dafeiyu-generation-reject')
+  const first = Promise.withResolvers<CapabilityContribution>()
+  const second = Promise.withResolvers<CapabilityContribution>()
+  let calls = 0
+  ctx.dafeiyu.register(provider({
+    create: () => {
+      calls += 1
+      return calls === 1 ? first.promise : second.promise
+    },
+  }))
+
+  await update(false)
+  await update(true)
+  await settle()
+  first.reject(new Error('older generation failed'))
+  await settle()
+  expect(ctx.dafeiyu.status()).toEqual([{ id: 'memory', present: true, enabled: true, state: 'disabled' }])
+
+  second.resolve({})
+  await settle()
+  expect(ctx.dafeiyu.status()).toEqual([{ id: 'memory', present: true, enabled: true, state: 'active' }])
 })

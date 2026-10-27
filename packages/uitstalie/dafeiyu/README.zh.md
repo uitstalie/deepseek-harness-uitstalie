@@ -90,13 +90,15 @@ const statuses = await ctx.remote.dafeiyu.status()
 
 注册表按注册顺序校验并保存 provider。启用状态下，`register()` 被调用后立即执行一次 `create()`；返回的 promise 尚未 settle 时该注册没有贡献，`agent/created` 会等待它，`status()` 报 `disabled`。`create()` resolve 后注册变为 `active`；reject 时记录只占一行的失败摘要并变为 `failed`，不自动重试。
 
-收到 `loader/volatile-update` 时，组织者为每条注册重新读取门，只协调值发生变化的 id：关门会 abort 该注册的 `AbortController`、销毁贡献，并撤销它已加到 agent 上的工具与 prompt 段；开门会安装新的 controller 并重新调用 `create()`。其他能力保留自己的贡献与 agent。能力在 agent 已存在之后才启用不会追溯接线——只有此后创建的 agent 才会收到贡献。
+收到 `loader/volatile-update` 时，组织者为每条注册重新读取门，只协调值发生变化的 id：关门会同步停止 admission（置状态、代次 +1、abort、settle ready），等它已接纳的 turn 钩子退出，再销毁贡献并撤销它已加到 agent 上的工具与 prompt 段；开门会安装新的 controller 并重新调用 `create()`。其他能力保留自己的贡献与 agent。能力在 agent 已存在之后才启用不会追溯接线——只有此后创建的 agent 才会收到贡献。
+
+每次激活都拥有独立的代次、controller 与 ready resolver。在旧代次下 settle 的 `create()` 只销毁自己创建的贡献：不能覆盖新激活的发布，它的 rejection 也不能把新代次标记为 failed。门切换、reload 与卸载按注册串行，两个生命周期步骤不会交错。
 
 收到 `agent/created` 时，组织者等待所有尚未 settle 的注册，然后给 scope 匹配的每个 active 能力接线。`scope: 'root'` 跳过子 agent；由于运行态 `Agent` 句柄不暴露父 agent 字段，这里通过 live agent 注册表（`ctx.agents.roots()`）判断。工具用 `agent.ctx.tools.register` 注册，prompt 段用 `agent.ctx.systemPrompt.section` 注册，disposer 全部保留；`onAgentCreated` 最后调用。接线过程中某个 provider 失败时，只回滚该能力给这个 agent 添加的内容并把该能力标记为 failed，不影响其他能力。
 
 收到 `session/event` 中 `reason.kind === 'completed'` 的 `turn/end` 时，组织者用 `ctx.agents.get(session.id)` 取得 live agent，套用同样的 scope 过滤，并在同一 session 内串行调用各 `onTurnEnd`；不同 session 并行分发。取消、报错、blocked、max-token、interrupted 与 forked 的 turn 一律跳过。每个钩子失败都会被捕获、摘要并记为 `failed`，后续能力照常执行。
 
-卸载时先 dispose 各贡献，再执行保留的 agent 级 disposer，最后清空注册表。调用单个 `register()` 的 disposer 也走同一套卸载流程；两者都先 abort 注册的 `AbortController`，让在途的 `create()` 与钩子工作可以停止。
+卸载时先 abort 每条注册、等待它已接纳的 turn 钩子与尚未 settle 的 `create()`，再 dispose 各贡献、执行保留的 agent 级 disposer，最后清空注册表。单个 `register()` 的 disposer 对一条注册走同一路径。reload 会先 abort 并排空旧代次再重新 `create()`，随后给原本已接线的 agent 重新接线。
 
 Remote 面与服务同行走在 `remote.dafeiyu` 命名空间下，只发布一个方法（`status`）且从不写入：门是组织者自己的 profile 配置，经 `dafeiyu` 行的设置命名空间写入，而不是经过这个面。
 
