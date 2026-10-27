@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -164,5 +164,11 @@ describe('home-backup plugin', () => {
 
   it('defaults the destination beside the harness home', () => {
     expect(HomeBackup.defaultDestination()).toBe(join(homedir(), 'dsh-backups'))
+  })
+
+  it('leaves the branch composition without a platform-specific destination', () => {
+    const layer = readFileSync(new URL('../../../bundle/web-app/cordis.patch.uitstalie.yml', import.meta.url), 'utf8')
+    const row = layer.split('- id: home-backup')[1]?.split('\n    - id:')[0] ?? ''
+    expect(row).not.toContain('destination:')
   })
 })

@@ -20,8 +20,6 @@
       name: '@deepseek-ai/dsh-tool-dsh-store'
     - id: home-backup
       name: '@deepseek-ai/dsh-home-backup'
-      config:
-        destination: 'D:\dsh-backups'
     - id: jira-service
       name: '@deepseek-ai/dsh-jira-service'
       config:

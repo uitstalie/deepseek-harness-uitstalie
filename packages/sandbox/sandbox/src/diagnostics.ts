@@ -126,9 +126,35 @@ function namedAbsolutePaths(line: string): string[] {
   return line.match(UNQUOTED_ABSOLUTE_PATH) ?? []
 }
 
+/** How one platform compares two absolute paths. */
+interface ComparisonRules {
+  /** Whether case differences are significant on this platform. */
+  readonly caseSensitive: boolean
+  /** The separator every comparison path uses. */
+  readonly separator: '/' | '\\'
+}
+
+/**
+ * Comparison rules for one platform: Windows folds case and uses backslashes;
+ * every POSIX platform compares case-sensitively with slashes. A literal denial
+ * path and a granted root must be compared with the same rules the filesystem
+ * itself applies, or `/Workspace/secret` looks like a child of `/workspace` on
+ * Linux.
+ * @param platform - platform to describe.
+ * @returns the comparison rules for that platform.
+ */
+function comparisonRulesFor(platform: NodeJS.Platform): ComparisonRules {
+  return platform === 'win32'
+    ? { caseSensitive: false, separator: '\\' }
+    : { caseSensitive: true, separator: '/' }
+}
+
 /** Collapse a path to the comparison spelling: unified separators, no trailing separator. */
-function comparisonPath(path: string): string {
-  return stripExtendedPrefix(path).replaceAll('/', '\\').toLowerCase().replace(/\\+$/, '')
+function comparisonPath(path: string, rules: ComparisonRules): string {
+  const unified = stripExtendedPrefix(path)
+    .replaceAll(rules.separator === '\\' ? '/' : '\\', rules.separator)
+    .replace(rules.separator === '\\' ? /\\+$/u : /\/+$/u, '')
+  return rules.caseSensitive ? unified : unified.toLowerCase()
 }
 
 // uitstalie-k3, 2026/10/12, task37, 判定改用解析后的真实路径：区内 junction 指向区外时，
@@ -163,11 +189,11 @@ function resolvedPath(path: string): string {
 }
 
 /** Whether `path` is one of `roots` or sits under one, on a segment boundary. */
-function isUnderAnyRoot(path: string, roots: readonly string[]): boolean {
-  const candidate = comparisonPath(resolvedPath(path))
+function isUnderAnyRoot(path: string, roots: readonly string[], rules: ComparisonRules): boolean {
+  const candidate = comparisonPath(resolvedPath(path), rules)
   return roots.some((root) => {
-    const normalized = comparisonPath(resolvedPath(root))
-    return candidate === normalized || candidate.startsWith(`${normalized}\\`)
+    const normalized = comparisonPath(resolvedPath(root), rules)
+    return candidate === normalized || candidate.startsWith(`${normalized}${rules.separator}`)
   })
 }
 
@@ -180,10 +206,11 @@ function isUnderAnyRoot(path: string, roots: readonly string[]): boolean {
  * denial would tell the model the sandbox refused a call it never inspected.
  * @param line - the stderr line that matched a denial signature.
  * @param writableRoots - the call's granted write roots.
+ * @param rules - the platform's path comparison rules.
  * @returns whether the line names a path the granted roots do not cover.
  */
-function namesPathOutsideRoots(line: string, writableRoots: readonly string[]): boolean {
-  return namedAbsolutePaths(line).some(path => !isUnderAnyRoot(path, writableRoots))
+function namesPathOutsideRoots(line: string, writableRoots: readonly string[], rules: ComparisonRules): boolean {
+  return namedAbsolutePaths(line).some(path => !isUnderAnyRoot(path, writableRoots, rules))
 }
 
 /**
@@ -191,10 +218,15 @@ function namesPathOutsideRoots(line: string, writableRoots: readonly string[]): 
  * one of the selected backend's denial phrases with path evidence that the
  * granted roots cannot explain. Under `read-only` (no granted root) no named
  * path can contradict a phrase, so the phrase alone decides.
+ *
+ * Path evidence follows the platform's own comparison rules by default; the
+ * optional platform is for tests that exercise another platform's semantics on
+ * one host (Fedora checks run on Linux, Windows checks on Windows).
  * @param exitCode - process exit code; null means signal termination.
  * @param stderr - collected stderr text, left unchanged.
  * @param signatures - case-insensitive denial substrings from the active wrap.
  * @param writableRoots - the calling session's granted write roots.
+ * @param platform - platform whose path rules apply; defaults to the running one.
  * @returns whether this run is a sandbox denial rather than an unrelated failure.
  */
 export function classifyDenial(
@@ -202,13 +234,15 @@ export function classifyDenial(
   stderr: string,
   signatures: readonly string[],
   writableRoots: readonly string[],
+  platform: NodeJS.Platform = process.platform,
 ): boolean {
   if (exitCode === null || exitCode === 0) return false
   const lowered = signatures.map(signature => signature.toLowerCase())
+  const rules = comparisonRulesFor(platform)
   return stderr.split(/\r?\n/).some((line) => {
     const candidate = line.toLowerCase()
     if (!lowered.some(signature => candidate.includes(signature))) return false
-    return writableRoots.length === 0 || namesPathOutsideRoots(line, writableRoots)
+    return writableRoots.length === 0 || namesPathOutsideRoots(line, writableRoots, rules)
   })
 }
 // END uitstalie-k3

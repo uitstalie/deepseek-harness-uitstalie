@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature } from '../src/diagnostics.ts'
+import { classifyDenial, classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature } from '../src/diagnostics.ts'
 
 const spillDir = mkdtempSync(join(tmpdir(), 'dsh-sandbox-diagnostics-'))
 afterAll(() => { rmSync(spillDir, { recursive: true, force: true }) })
@@ -140,5 +140,27 @@ describe('shared diagnostic status and matching rules', () => {
     [1, 'ordinary output', false],
   ] as const)('matches selected denial signatures only on failed exits (%s,%s)', (code, stderr, expected) => {
     expect(matchesSignature(code, stderr, ['permission denied'])).toBe(expected)
+  })
+})
+
+describe('classifyDenial path semantics follow the platform (DH-305)', () => {
+  const signatures = ['permission denied']
+  const denied = (line: string): string => `sh: ${line}: Permission denied`
+
+  it.each([
+    ['/Workspace/secret', true],
+    ['/workspace/secret', false],
+    ['/workspace', false],
+    ['/workspace2/secret', true],
+  ] as const)('on POSIX compares case-sensitively and on a segment boundary: %s', (path, expected) => {
+    expect(classifyDenial(1, denied(path), signatures, ['/workspace'], 'linux')).toBe(expected)
+  })
+
+  it.each([
+    ['C:\\Workspace\\secret', false],
+    ['c:\\workspace\\secret', false],
+    ['C:\\workspace2\\secret', true],
+  ] as const)('on Windows folds case and still respects segment boundaries: %s', (path, expected) => {
+    expect(classifyDenial(1, denied(path), signatures, ['c:\\workspace'], 'win32')).toBe(expected)
   })
 })
