@@ -17,9 +17,9 @@ import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import { FsVersion } from '@deepseek-ai/dsh-fs'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { findProjectRoot, trimmedInstructionDigest } from '@deepseek-ai/dsh-agent-instructions'
-import { scanWorkspaceRules } from '@deepseek-ai/dsh-agent-instructions-plus'
 import { STORE_DIR_NAME, normalizeStorePath, resolveStoreTarget } from './paths.ts'
 import { isRulesPath, validateNamespaceContent } from './namespaces.ts'
+import { scanWorkspaceRules } from './rules.ts'
 import {
   createStoreFile,
   createStoreFolder,

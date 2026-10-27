@@ -1,6 +1,8 @@
 /**
  * Rules discovery tests: recursive collection, path ordering, cross-file
  * deduplication by trimmed content, per-file cap, and change-detecting digest.
+ * The scan lives in the store atom, so these cases mount the filesystem only —
+ * no instruction provider is involved.
  */
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'

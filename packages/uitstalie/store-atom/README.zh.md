@@ -54,6 +54,7 @@ const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALI
 - `src/paths.ts` —— 存储相对路径的规范化与围栏，拒绝绝对路径、`..`、盘符与保留设备名。
 - `src/namespaces.ts` —— `rules/**` 与 `skills/**` 的作者校验，以及存储工具可读但不可改的 `memory` 区域。
 - `src/policy.ts` —— 解析会话的沙箱策略，并对 `read-only` 会话的变更抛出共享拒绝标记。
+- `src/rules.ts` —— `.dsh/rules/**` 的工作区规则发现（路径顺序、按去空白内容去重、逐文件上限、集合 digest）。atom 自己的重复校验与指令加载器共用同一份扫描，因此 atom 拥有 rules 区域，却不依赖指令 provider。
 - `src/store-ops.ts` —— 服务与 Remote 共用的文件系统操作。
 
 工作区根是 `<projectRoot>/.dsh`，项目根由会话 cwd 按 `.git` 标记发现。全局根是 `resolveDshHome()`——设置了 `$DSH_HOME` 就用它，否则 `~/.dsh`。任何会话模式下都可以读；工作区写要过会话的策略门，全局写没有会话门（策略只覆盖工作区），因此审计由调用方承担。

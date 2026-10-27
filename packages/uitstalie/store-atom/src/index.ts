@@ -49,6 +49,8 @@ export {
   SKILLS_NAMESPACE_PATTERN,
   validateNamespaceContent,
 } from './namespaces.ts'
+export { RULES_DIRECTORY, rulesScanChanged, scanWorkspaceRules } from './rules.ts'
+export type { RulesScan, RulesScanOptions } from './rules.ts'
 export {
   createStoreFile,
   createStoreFolder,

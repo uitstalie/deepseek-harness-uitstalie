@@ -26,7 +26,7 @@ English | [中文](README.zh.md)
 
 ### What it adds
 
-The native chain — `$DSH_HOME/AGENTS.md` plus the project chain of `AGENTS.md`, `CLAUDE.md`, and their local overlays — is delivered exactly as before, by its own row. This package appends the workspace rules: every `.md` file under `.dsh/rules`, nested directories included, in path order, as `Instructions from: .dsh/rules/<name>` sections of the same message.
+The native chain — `$DSH_HOME/AGENTS.md` plus the project chain of `AGENTS.md`, `CLAUDE.md`, and their local overlays — is delivered exactly as before, by its own row. This package appends the workspace rules: every `.md` file under `.dsh/rules`, nested directories included, in path order, as `Instructions from: .dsh/rules/<name>` sections of the same message. The scan itself belongs to the `.dsh` store atom, which also uses it for the duplicate check; this package consumes and re-exports it, so the rules area has one owner.
 
 ### Configuration
 

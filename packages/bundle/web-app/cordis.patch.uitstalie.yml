@@ -16,6 +16,8 @@
       name: '@deepseek-ai/dsh-personality'
     - id: store-atom
       name: '@deepseek-ai/dsh-store-atom'
+    - id: system-environment
+      name: '@deepseek-ai/dsh-system-environment'
     - id: tool-dsh-store
       name: '@deepseek-ai/dsh-tool-dsh-store'
     - id: home-backup

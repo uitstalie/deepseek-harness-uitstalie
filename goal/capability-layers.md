@@ -71,23 +71,29 @@ interface CapabilityProvider {
 - **不拥有具体配置**：不渲染 provider 的表单，不校验其 schema；provider 设置页负责自己的保存与生效。
 - 契约版本：v2 起 descriptor 带 UI 元数据；v1 provider 仍可注册（无 UI 元数据，只显示 id/状态）。
 
-## jira 迁移（下一个大任务）
+### 宿主环境 atom（`systemEnvironment`）
 
-目标：把现有 jira 插件按三层拆分，并接入 dafeiyu 列表；数据与工具行为保持兼容。
+`packages/uitstalie/system-environment/`（`@deepseek-ai/dsh-system-environment`）提供 `ctx.systemEnvironment`：平台与路径方言、分隔符、大小写规则、环境变量查找（Windows 大小写不敏感）、用户 home 与 `resolveDshHome()`。两套规则在任意宿主都可测（`platform: 'win32' | 'posix'`），因此 Windows 行为能在 Linux 上验证。分支层把它挂在 `store-atom` 之后。
 
-1. **atom `jira-ledger`**：读/写现有 `$DSH_HOME/jira` git 台账（issue、KB、comments、counters、machines、派生工件），提供 issue/KB 的 CRUD 与检索；不直接暴露工具。
-2. **atom `jira-cloud`**：多设备同步（push/pull、冲突合并、待推送队列）；与 `jira-ledger` 共享 store 根与版本守卫。
-3. **provider `jira`**：把 ledger/cloud 组装成模型可见能力（`jira_issue`、`jira_kb` 等工具、KB 注入策略），拥有自己的设置页（项目映射、同步开关、状态）。
-4. **dafeiyu 列表**：出现 “Jira” 行，开关 + 打开 Jira 设置。
-5. **兼容期**：旧 jira 插件行保留为 shim，内部改为调用 `jira-ledger`/`jira-cloud`；dafeiyu 检测到同一 id 的旧/新注册时只认 provider，冲突记 warning。
-6. **数据兼容**：台账路径不变（`$DSH_HOME/jira`）；版本守卫与现有 git 提交行为一致；迁移不重写历史。
+现有消费者仍各自拼自己的路径比较（sandbox 诊断、home-backup、store-atom）；迁移到本服务另行跟踪，且不得改变行为。
+
+## jira：采用 Core-as-atom（DH-309 定稿）
+
+2026-10-27 决定：**不**再拆 `jira-ledger` / `jira-cloud` 两个 atom，正式采用 [jira-contract.md](jira-contract.md) 的 Core-as-atom。
+
+- `jira-core` 是原子能力：领域逻辑、io/git/锁/事务、渲染、doctor、kb；零 `@deepseek-ai` 依赖，只 `node:*`。它已经满足 atom 的定位（无 UI、无模型面、无 provider 配置）。
+- `jira-service` 是**能力提供者的宿主部分**：持有 Store、注册 `ctx.jira`、独占 sync、volatile 配置与 `remote.jira`；`jira-agent` 是模型面；`ui-jira` 是浏览器面；`jira-cli` 是人面。
+- **不再引入 ledger/cloud 包**：那会把已经零依赖的 core 拆成两个互相依赖的包，只增加跨包版本与接口面，不减少职责；git 提交与文件 version 的语义冲突也不会因此消失。
+- dafeiyu 列表与设置页已由 `jira-agent` 的 descriptor（`settings.sectionId = 'jira'`）加 `ui-jira` 完成；旧插件 shim 没有存在必要。
+- 数据兼容不变：台账路径 `$DSH_HOME/jira`、issue 锁、CAS、审计、数据格式与 Git 语义都保持。
+- 退出/延期：`jira-ledger` / `jira-cloud` 的拆分**不实施**；将来若出现第二个只读消费者或独立同步进程，再按当时真实的 consumer 重开，而不是现在按行数预拆。
 
 ## 迁移顺序
 
 1. 本文 + `dafeiyu.md` 定稿（契约 v2、atom 接口、配置归属）。
 2. atom：`.dsh` scoped store 抽包，`tool-dsh-store` 改消费者；memory/personality 改用 atom（行为不变，测试保持绿）。
 3. provider 描述符 v2 + `dsh-client-ui-dafeiyu` 设置段（先接 memory/personality）。
-4. jira：`jira-ledger` → `jira-cloud` → `jira` provider → 设置页 → shim。
+4. jira：已按 Core-as-atom（DH-309）完成——没有 ledger/cloud 拆分；`jira-service`/`jira-agent`/`ui-jira`/`jira-cli` 的边界见 jira-contract.md。
 5. 清理：旧路径/重复配置、升级说明、README 与 goal 文档同步。
 
 **状态（2026-10-27，DH-301）**：`global` scope 已落地——根固定为 `resolveDshHome()`，`workspace` 根为 `<projectRoot>/.dsh`，没有第三个根；personality 的 `globalPath` 配置已移除，全局档案/历史/提案都走 `ctx.dshStore` 的 `global` scope，`ctx.fs` 只负责 watch。全局写不过会话策略门，由调用方承担审计。
@@ -97,8 +103,8 @@ interface CapabilityProvider {
 1. `global` scope 与 `workspace` scope 的权限语义不同（global 写不依赖会话），需要 provider 明确传 session 并承担审计。
 2. atom 抽包会产生一次跨包接口变更（`ctx.dshStore` 的 scope 参数），需一次性改完 memory/personality/tool-dsh-store，避免双接口并存。
 3. provider 设置页的 sectionId 命名与 order 需要注册约定，否则 dafeiyu 的“打开设置”链接会漂移。
-4. jira 的 git 台账写入与 atom 版本守卫如何共存（git commit 不是文件系统版本）需要在迁移设计里单独定。
-5. 旧 jira 插件 shim 的退出条件与时间点。
+4. jira 的 git 台账写入与 atom 版本守卫如何共存：**已解决（DH-309）**——不套用 store CAS。git commit 是审计日志，文件 version 仍由 `jira-core` 的 CAS 负责，两者保持现状；core 作为 atom 没有第二个版本体系。
+5. 旧 jira 插件 shim 的退出条件与时间点：**不适用**——Core-as-atom 决定不引入 ledger/cloud 包，因此没有需要兼容的旧行。
 
 ## 落地状态（2026-10-27，DH-12）
 
@@ -106,3 +112,10 @@ interface CapabilityProvider {
 - 首个 atom 已抽出：`tool-dsh-store` 不再提供 `ctx.dshStore`，改为 `inject: ['dshStore']` 后消费；memory/personality 的 workspace 读写随之走 atom（行为不变，160 个相关测试通过）。
 - **`global` scope 已实现（DH-301）**：`DshStore` 的每个方法都接受 `scope: 'global' | 'workspace'`（默认 workspace）；global 根固定为 `resolveDshHome()`，workspace 根为 `<projectRoot>/.dsh`，没有第三个根。personality 的 `globalPath` 配置已移除，全局档案/历史/提案都走 atom 的 global scope；`ctx.fs` 只用于 watch。全局写不过会话策略门，审计由调用方承担。
 - **接口的 `scope` 参数已加**：`rootFor`/`prepare` 首个参数改为 scope（global 可不传 session）；读写方法保持 session 在首位、允许 `undefined`（仅 global）。memory 与 tool-dsh-store 只走默认 workspace，行为不变。
+
+## 落地状态（2026-10-27，DH-309）
+
+- **依赖方向修正**：`.dsh/rules` 的扫描从 `agent-instructions-plus` 移入 `store-atom`（`src/rules.ts`），atom 不再依赖指令 provider；`agent-instructions-plus` 与 `tool-dsh-store` 改为消费 atom 的导出。store-atom 的独立 Loader 组合测试只挂 `fs-local` + `store-atom`，证明提供存储不需要任何指令/provider。
+- **宿主环境 atom 已落地**：新增 `packages/uitstalie/system-environment/`（`ctx.systemEnvironment`），分支层挂在 `store-atom` 之后；本单只提供服务与验收，sandbox/home-backup/store-atom 的迁移另行跟踪。
+- **jira 合同收敛**：采用 Core-as-atom（见上节），`goal/jira-contract.md` 与 DH-12/DH-13 的完成边界据此对齐；`jira-ledger`/`jira-cloud` 不实施。
+- **仍延期的**：把 sandbox 诊断、home-backup、store-atom 的路径/环境判断迁到 `systemEnvironment`；这是行为保持的迁移，改动前先补各自的对照测试。

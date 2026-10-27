@@ -45,7 +45,6 @@
     "@deepseek-ai/cordis": "workspace:~"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-agent-instructions-plus": "workspace:*",
     "@deepseek-ai/dsh-store-atom": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",

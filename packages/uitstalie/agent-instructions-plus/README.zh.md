@@ -26,7 +26,7 @@ kind: "package-reference"
 
 ### 它增加了什么
 
-原生链——`$DSH_HOME/AGENTS.md` 加上项目链上的 `AGENTS.md`、`CLAUDE.md` 及各自的本地覆盖文件——仍由它自己的行完全一致地投递。本包追加的是工作区规则：`.dsh/rules` 下的每个 `.md` 文件（含嵌套目录），按路径顺序，渲染为同一条消息里的 `Instructions from: .dsh/rules/<name>` 段。
+原生链——`$DSH_HOME/AGENTS.md` 加上项目链上的 `AGENTS.md`、`CLAUDE.md` 及各自的本地覆盖文件——仍由它自己的行完全一致地投递。本包追加的是工作区规则：`.dsh/rules` 下的每个 `.md` 文件（含嵌套目录），按路径顺序，渲染为同一条消息里的 `Instructions from: .dsh/rules/<name>` 段。扫描本身属于 `.dsh` store atom，atom 自己的重复校验也用它；本包消费并转出它，因此 rules 区域只有一个属主。
 
 ### 配置
 

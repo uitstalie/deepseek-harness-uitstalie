@@ -50,6 +50,7 @@ const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALI
 - `src/paths.ts` — store-relative path normalization and confinement rejects absolute paths, `..`, drive letters, and reserved device names.
 - `src/namespaces.ts` — authoring checks for `rules/**` and `skills/**`, and the `memory` area the store tool may read but not modify.
 - `src/policy.ts` — resolves the session's sandbox policy and refuses mutations for a `read-only` session with the shared denial marker.
+- `src/rules.ts` — workspace-rules discovery for `.dsh/rules/**` (path order, trimmed-content deduplication, per-file cap, set digest). The atom's own duplicate check and the instructions loader consume the same scan, so the atom owns the rules area without depending on an instruction provider.
 - `src/store-ops.ts` — the filesystem operations shared by the service and the Remote.
 
 The workspace root is `<projectRoot>/.dsh`, where the project root is discovered from the session cwd by the `.git` marker. The global root is `resolveDshHome()` — `$DSH_HOME` when set, `~/.dsh` otherwise. Reads are allowed in every session mode; workspace writes pass the session's policy gate, while a global write has no session gate because the policy covers the workspace, so the caller owns that audit.

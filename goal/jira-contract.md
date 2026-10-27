@@ -16,6 +16,8 @@ packages/bundle/web-app/cordis.patch.uitstalie.yml  分支层单一组合：jira
 
 依赖方向单向：`jira-core ← jira-service ← jira-agent`；`ui-jira → remote`；`jira-cli → jira-core`。`jira-agent` 只能 import `jira-core` 的类型与 `jira-service` 的注入类型，不碰内部模块。
 
+> **分层口径（DH-309）**：采用 Core-as-atom——`jira-core` 就是 L1 原子（纯逻辑、零宿主依赖），`jira-service` 是 provider 的宿主部分，`jira-agent` / `ui-jira` / `jira-cli` 分别是模型面、浏览器面、人面。`capability-layers.md` 早期设想的 `jira-ledger` + `jira-cloud` 拆分**不实施**；不要同时按两套完成标准验收。数据兼容不变：台账路径、issue 锁、CAS、审计、数据格式与 Git 语义都保持。
+
 ## 2. `ctx.get('jira')` 服务 API
 
 ```ts

@@ -586,6 +586,7 @@
       "@deepseek-ai/dsh-subprocess": ["./packages/subprocess/subprocess/src"],
       "@deepseek-ai/dsh-subprocess-local": ["./packages/subprocess/subprocess-local/src"],
       "@deepseek-ai/dsh-subprocess-ssh": ["./packages/ssh/subprocess-ssh/src"],
+      "@deepseek-ai/dsh-system-environment": ["./packages/uitstalie/system-environment/src"],
       "@deepseek-ai/dsh-system-prompt": ["./packages/core/system-prompt/src"],
       "@deepseek-ai/dsh-terminal": ["./packages/terminal/terminal/src"],
       "@deepseek-ai/dsh-terminal-bash": ["./packages/terminal/terminal-bash/src"],

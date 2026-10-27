@@ -15,9 +15,6 @@
       "path": "../../../vendor/schemastery"
     },
     {
-      "path": "../agent-instructions-plus"
-    },
-    {
       "path": "../store-atom"
     },
     {

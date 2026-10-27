@@ -44,6 +44,9 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
   // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-12, 存储原子没有模型面
   'packages/uitstalie/store-atom': 'The atom only provides the store service that other plugins drive; it registers no tools, prompt sections, or Session events of its own.',
   // END uitstalie-deepseek-flash
+  // BEGIN uitstalie-deepseek-flash, 2026/10/27, DH-309, 宿主环境原子没有模型面
+  'packages/uitstalie/system-environment': 'The atom only answers host environment facts to other branch plugins; it registers no tools, prompt sections, or Session events of its own.',
+  // END uitstalie-deepseek-flash
 }
 
 /**

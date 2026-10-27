@@ -22,7 +22,6 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-agent-instructions": "workspace:*",
-    "@deepseek-ai/dsh-agent-instructions-plus": "workspace:*",
     "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-sandbox": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
