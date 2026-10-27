@@ -106,8 +106,8 @@ test('parse recovers frontmatter machine state and managed entries', () => {
       endTurn: 10,
       tier: 'detail',
       entries: [
-        { kind: 'decision', text: 'keep the store path relative', tags: ['dh-8', 'store'] },
-        { kind: 'files', text: 'src/memory-file.ts' },
+        { kind: 'decision', text: 'keep the store path relative', turn: 7, tags: ['dh-8', 'store'] },
+        { kind: 'files', text: 'src/memory-file.ts', turn: 9 },
       ],
     }],
     frame: { before: '\n', after: '\n' },
@@ -136,7 +136,7 @@ test('an append creates the session record, a section, and the entry line', asyn
     startTurn: 3,
     endTurn: 3,
     tier: 'detail',
-    entries: [{ kind: 'decision', text: 'write through the version-guarded store' }],
+    entries: [{ kind: 'decision', text: 'write through the version-guarded store', turn: 3 }],
   }])
   const record = parsed.sessions[0]
   expect(record?.id).toBe('session-a')
@@ -156,9 +156,9 @@ test('an append records normalized labels and parses them back', async () => {
   })
 
   const text = await readFile(memoryFile(), 'utf8')
-  expect(text).toContain('- [open] follow up <!-- tags: dh-8, memory -->')
+  expect(text).toContain('- [open] follow up <!-- turn: 2 --> <!-- tags: dh-8, memory -->')
   const entries = parseMemoryDocument(text).sections.at(-1)?.entries
-  expect(entries).toEqual([{ kind: 'open', text: 'follow up', tags: ['dh-8', 'memory'] }])
+  expect(entries).toEqual([{ kind: 'open', text: 'follow up', turn: 2, tags: ['dh-8', 'memory'] }])
 })
 
 test('an entry line written before labels existed keeps its text', async () => {
@@ -166,10 +166,16 @@ test('an entry line written before labels existed keeps its text', async () => {
     .replace('<!-- memory:end -->', [
       '## session-a · turn 1–1（detail）',
       '- [decision] a line that merely mentions <!-- tags: --> in prose',
+      '- [open] an older line with no turn',
+      '- [files] a malformed turn marker <!-- turn: nine -->',
       '<!-- memory:end -->',
     ].join('\n'))
-  const entry = parseMemoryDocument(text).sections[0]?.entries[0]
-  expect(entry).toEqual({ kind: 'decision', text: 'a line that merely mentions <!-- tags: --> in prose' })
+  const entries = parseMemoryDocument(text).sections[0]?.entries
+  expect(entries).toEqual([
+    { kind: 'decision', text: 'a line that merely mentions <!-- tags: --> in prose' },
+    { kind: 'open', text: 'an older line with no turn' },
+    { kind: 'files', text: 'a malformed turn marker <!-- turn: nine -->' },
+  ])
 })
 
 test('append preserves the hand-written text around the managed block', async () => {
@@ -214,8 +220,8 @@ test('a turn summary appends one detail section and extends consecutive turns', 
     endTurn: 3,
     tier: 'detail',
     entries: [
-      { kind: 'decision', text: 'keep the version guard' },
-      { kind: 'files', text: 'src/summary.ts' },
+      { kind: 'decision', text: 'keep the version guard', turn: 3 },
+      { kind: 'files', text: 'src/summary.ts', turn: 3 },
     ],
   }])
   expect(parsed.sessions[0]?.turns).toEqual([{ turn: 3, seq: [10, 20], tier: 'detail' }])
@@ -254,7 +260,7 @@ test('a missing file reads as absent and the first append creates it', async () 
   expect(await readMemoryDocument(ctx, session)).toEqual({ path: MEMORY_STORE_PATH })
   await appendMemoryEntry(ctx, session, { kind: 'decision', text: 'created', turn: 1, seq: [1, 2] })
   const read = await readMemoryDocument(ctx, session)
-  expect(read.document?.sections[0]?.entries).toEqual([{ kind: 'decision', text: 'created' }])
+  expect(read.document?.sections[0]?.entries).toEqual([{ kind: 'decision', text: 'created', turn: 1 }])
   expect(read.version).toEqual(expect.any(String))
 })
 

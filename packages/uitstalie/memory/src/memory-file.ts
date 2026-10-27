@@ -134,6 +134,8 @@ export interface MemoryEntry {
   readonly kind: MemoryEntryKind
   /** Single-line entry text. */
   readonly text: string
+  /** Turn the entry summarizes; absent on entries written before per-turn attribution. */
+  readonly turn?: number
   /** Optional labels recorded beside the text, in the order the writer supplied them. */
   readonly tags?: readonly string[]
 }
@@ -299,6 +301,9 @@ const ENTRY_LINE = /^- \[(?<kind>[a-z]+)\] (?<text>.+)$/u
 
 /** Optional label suffix of one entry line; entries written before labels existed have none. */
 const ENTRY_TAGS = /^(?<text>[^]*?)\s*<!-- tags: (?<tags>[^>]*) -->$/u
+
+/** Optional turn suffix of one entry line, written before the label suffix when both exist. */
+const ENTRY_TURN = /^(?<text>[^]*?)\s*<!-- turn: (?<turn>\d+) -->$/u
 
 /** Maximum number of labels one entry may carry; extra labels are dropped. */
 export const MEMORY_ENTRY_TAGS_LIMIT = 8
@@ -773,6 +778,7 @@ function copyEntries(entries: readonly MemoryEntry[]): readonly MemoryEntry[] {
   return entries.map(entry => ({
     kind: entry.kind,
     text: entry.text,
+    ...entry.turn === undefined ? {} : { turn: entry.turn },
     ...entry.tags === undefined ? {} : { tags: [...entry.tags] },
   }))
 }
@@ -992,12 +998,33 @@ function parseEntryLine(line: string, index: number): MemoryEntry {
       'invalid-document',
     )
   }
-  const { text, tags } = splitEntryTags(groups['text'])
+  const withoutTags = splitEntryTags(groups['text'])
+  const { text, turn } = splitEntryTurn(withoutTags.text)
   return {
     kind: assertMemoryEntryKind(groups['kind'] ?? ''),
     text,
-    ...tags === undefined ? {} : { tags },
+    ...turn === undefined ? {} : { turn },
+    ...withoutTags.tags === undefined ? {} : { tags: withoutTags.tags },
   }
+}
+
+/**
+ * Split the optional turn suffix from one entry's text.
+ *
+ * The suffix is written before the label suffix, so it is the last thing parsed out. A line
+ * without a well-formed suffix keeps its complete text, which is how entries written before
+ * per-turn attribution still parse.
+ * @param raw - entry text after the label suffix was removed.
+ * @returns the text and the turn, or the text unchanged without a turn.
+ */
+function splitEntryTurn(raw: string): { text: string; turn?: number } {
+  const match = ENTRY_TURN.exec(raw)
+  const text = match?.groups?.['text']
+  const serialized = match?.groups?.['turn']
+  if (text === undefined || serialized === undefined) return { text: raw }
+  const turn = Number(serialized)
+  if (!Number.isSafeInteger(turn) || turn < 0 || text.length === 0) return { text: raw }
+  return { text, turn }
 }
 
 /**
@@ -1082,9 +1109,14 @@ function renderManagedBody(sections: readonly MemorySection[]): string {
   if (sections.length === 0) return '\n'
   return sections.map((section) => {
     const heading = `## ${section.sessionId} · turn ${String(section.startTurn)}–${String(section.endTurn)}（${section.tier}）`
-    const entries = section.entries.map(entry => `- [${entry.kind}] ${entry.text}${renderEntryTags(entry.tags)}\n`).join('')
+    const entries = section.entries.map(entry => `- [${entry.kind}] ${entry.text}${renderEntryTurn(entry.turn)}${renderEntryTags(entry.tags)}\n`).join('')
     return `\n${heading}\n${entries}`
   }).join('')
+}
+
+/** Render the optional turn suffix of one entry; an entry without a turn renders nothing. */
+function renderEntryTurn(turn: number | undefined): string {
+  return turn === undefined ? '' : ` <!-- turn: ${String(turn)} -->`
 }
 
 /** Render the optional label suffix of one entry; absent or empty labels render nothing. */
@@ -1134,6 +1166,7 @@ function appendSectionEntry(
   const appended: MemoryEntry = {
     kind,
     text: entry.text,
+    turn: entry.turn,
     ...tags.length === 0 ? {} : { tags },
   }
   const last = sections.at(-1)
@@ -1159,6 +1192,7 @@ function appendSummaryEntries(
   const appended = entries.map(entry => ({
     kind: entry.kind,
     text: entry.text,
+    turn,
     ...entry.tags === undefined ? {} : { tags: normalizeEntryTags(entry.tags) },
   }))
   const last = sections.at(-1)

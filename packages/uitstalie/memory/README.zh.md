@@ -59,7 +59,7 @@ kind: "package-reference"
 提供者是函数插件：`src/index.ts` 导出 `name`、`inject`、`Config` 与 `apply`，并只注册一个 `contractVersion: 2`、`id: 'memory'` 的能力，带 `label: 'Memory'` 与一句能力列表用的 description。
 
 - `src/config.ts` 持有 schemastery `Config` 与显式的 `resolveConfig(config): MemorySettings` 步骤。默认值只在那里补一次，两条跨字段规则（阈值递增、摘要模型成对）在注册之前检查。
-- `src/memory-file.ts` 是 MEMORY.md 仓库与文件侧迁移 pass。文件的 YAML frontmatter 存机器状态（`version`、`window`，以及每个会话的 `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`）；`<!-- memory:begin -->` 与 `<!-- memory:end -->` 之间的托管区块按 `## <sessionId> · turn N–M（tier）` 标题分组，每行一个 `- [kind] text` 条目，条目可带一个行尾标签后缀 `<!-- tags: a, b -->`。托管区块之外的手写内容逐字节原样往返；托管区块归提供者所有，写入时整体重写。
+- `src/memory-file.ts` 是 MEMORY.md 仓库与文件侧迁移 pass。文件的 YAML frontmatter 存机器状态（`version`、`window`，以及每个会话的 `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`）；`<!-- memory:begin -->` 与 `<!-- memory:end -->` 之间的托管区块按 `## <sessionId> · turn N–M（tier）` 标题分组，每行一个 `- [kind] text` 条目，条目用行尾 `<!-- turn: N -->` 标注所属 turn，并可再带一个标签后缀 `<!-- tags: a, b -->`。托管区块之外的手写内容逐字节原样往返；托管区块归提供者所有，写入时整体重写。
 - `src/window.ts` 是纯规划器。它按最新完成的 turn 计算每个 turn 的相对年龄，返回应转为 brief 或遗忘的区块，并报告 frontmatter 的窗口值，不触碰存储、模型或 surface。
 - `src/checkpoint.ts` 构造 memory checkpoint 消息，并用它替换 live surface 上的一段区间。来源是 memory 生产者的 `form: 'notice'` 加 `window: { from, to, tier }` 字段；这既把它与 snapshot 区分开，也让重启后的提供者找到自己的上一个节点。
 - `src/prompt.ts` 持有唯一的固定提示词段：名字 `memory`，顺序 `2350`（在 `2300` 的 session-query 工具与 `2400` 的 goal 工具之间），文本静态，不随 turn 或 agent 变化。

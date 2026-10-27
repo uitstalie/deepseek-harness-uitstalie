@@ -276,7 +276,7 @@ test('invalid JSON falls back to one decision entry with the raw output', async 
   const text = await waitForMemoryFile()
   expect(text).toContain('- [decision] the model ignored the JSON instruction')
   expect(parseMemoryDocument(text).sections[0]?.entries).toEqual([
-    { kind: 'decision', text: 'the model ignored the JSON instruction' },
+    { kind: 'decision', text: 'the model ignored the JSON instruction', turn: 1 },
   ])
   expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(0)
 })
