@@ -228,6 +228,14 @@ export interface PersonalityWriteOptions {
   readonly settings: PersonalitySettings
   /** Writer recorded in the history line. */
   readonly source: PersonalityHistorySource
+  /**
+   * Write an identity entry that the user already confirmed.
+   *
+   * Identity entries describe who the user is, so the provider never writes one
+   * on its own; only the proposal-acceptance path sets this, after a human chose
+   * to accept a queued proposal.
+   */
+  readonly confirmIdentity?: boolean
 }
 
 /** Result of one personality write. */
@@ -536,9 +544,9 @@ export async function writePersonalityEntry(
   signal?: AbortSignal,
 ): Promise<PersonalityWriteResult> {
   const kind = assertPersonalityEntryKind(entry.kind)
-  if (kind === 'identity') {
+  if (kind === 'identity' && options.confirmIdentity !== true) {
     throw new PersonalityDocumentError(
-      'identity entries need user confirmation: ask the user to edit PERSONALITY.md directly, because this provider never writes identity.* entries',
+      'identity entries need user confirmation: ask the user to accept a queued proposal or edit PERSONALITY.md directly, because this provider never writes identity.* entries on its own',
       'identity-manual',
     )
   }

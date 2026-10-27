@@ -25,6 +25,7 @@ import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
 import * as Personality from '../src/index.ts'
 import type { Config } from '../src/config.ts'
 import { resolveConfig } from '../src/config.ts'
+import { PERSONALITY_PROPOSALS_FILE_NAME } from '../src/proposals.ts'
 import {
   PERSONALITY_FILE_NAME,
   PERSONALITY_HISTORY_FILE_NAME,
@@ -259,7 +260,7 @@ test('personality_learn refuses identity entries without writing and without fai
   })
 
   expect(result.isError, text(result)).toBe(false)
-  expect(text(result)).toContain('edit PERSONALITY.md directly')
+  expect(text(result)).toContain('personality_propose')
   await expect(stat(workspaceFile())).rejects.toThrow()
   await expect(stat(globalFile())).rejects.toThrow()
 })
@@ -314,6 +315,25 @@ test('the auto-learn budget refuses an entry past the per-session limit', async 
   expect(text(second)).toContain('auto-learn budget is exhausted')
   expect(text(second)).toContain('0 of 1 entries')
   expect(parsePersonalityDocument(await readFile(globalFile(), 'utf8')).entries).toHaveLength(1)
+})
+
+test('personality_propose queues an identity proposal without writing the profile', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+
+  const result = await call(mounted.ctx, root, 'personality_propose', {
+    kind: 'identity',
+    name: 'role',
+    text: '用户是独立开发者。',
+    evidence: 'seq 3',
+  })
+
+  expect(result.isError, text(result)).toBe(false)
+  expect(text(result)).toContain('Queued identity proposal')
+  await expect(stat(globalFile())).rejects.toThrow()
+  const queue = await readFile(join(project, 'home', 'personality', PERSONALITY_PROPOSALS_FILE_NAME), 'utf8')
+  expect(queue).toContain('"kind":"identity"')
+  expect(queue).toContain('"status":"pending"')
 })
 
 test('an explicit correction on a completed turn writes one automatic entry', async () => {

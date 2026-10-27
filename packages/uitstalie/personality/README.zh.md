@@ -52,13 +52,16 @@ kind: "package-reference"
 
 ### 漂移审阅命令
 
-一个 `/personality` 命令通过可选的 `ctx.inject(['commands'])` 子上下文注册，因此没有命令注册表的组合仍能拿到提示词段和工具。命令语法把斜杠行拆成一个名字加原样输入，三个子命令共用这一次注册：
+一个 `/personality` 命令通过可选的 `ctx.inject(['commands'])` 子上下文注册，因此没有命令注册表的组合仍能拿到提示词段和工具。命令语法把斜杠行拆成一个名字加原样输入，子命令共用这一次注册：
 
 | 子命令 | 行为 |
 |---|---|
 | `/personality show` | 渲染合并后的全局与覆盖条目（`id`、kind、一行文本）和两个文档版本。文件不存在视作空档案，不报错。 |
 | `/personality diff` | 对全局 `PERSONALITY.history.jsonl` 最近两条记录渲染行级 diff，标注各自的版本与 `source: user` 或 `source: auto`。少于两条记录只报告，不失败。 |
 | `/personality revert <version>` | 用该记录保存的托管区块替换全局托管区块，写入走版本守卫，随后追加一条 `source: user` 的新历史记录。非法参数、未知版本与回退到当前版本都只报告，不写入。 |
+| `/personality proposals` | 列出 `PERSONALITY.proposals.jsonl` 中的队列，pending 在前，每条带 id、状态、证据与一行正文。 |
+| `/personality accept <id>` | 通过版本守卫的档案写入（带 `confirmIdentity`）写入排队的 identity 条目，再记录 accepted 状态；档案写入失败时提案保持 pending。 |
+| `/personality reject <id>` | 只记录 rejected 状态，不改 `PERSONALITY.md`。 |
 
 本版本的历史审阅只覆盖全局文件：工作区覆盖有自己的历史，该命令既不 diff 也不回退它。`show` 始终读取合并视图。
 
@@ -121,7 +124,7 @@ How to respond:
 
 #### 模型看到什么
 
-每个 agent 上一个工具。它需要必填的 `kind`、必填的一段 `content`，以及必填的 `evidence` 字符串——必须指向一个正的会话事件 seq，例如 `"seq 42"`。它只返回一行：要么确认写入的条目 id、文件与修订号，要么说明为什么什么都没写。identity 条目按手改说明拒绝，未知 kind 会列出可用 kind，每会话预算耗尽时报告剩余条数与字节数。
+每个 agent 上两个工具。`personality_learn` 需要必填的 `kind`、必填的一段 `content`，以及必填的 `evidence` 字符串——必须指向一个正的会话事件 seq，例如 `"seq 42"`；它只返回一行：要么确认写入的条目 id、文件与修订号，要么说明为什么什么都没写。identity 条目会被拒绝并指向 `personality_propose`，未知 kind 会列出可用 kind，每会话预算耗尽时报告剩余条数与字节数。`personality_propose` 接受 `kind: 'identity'`、lower-kebab 的 `name`、一段正文与证据；它把提案排入 `PERSONALITY.proposals.jsonl`，在用户接受之前不写档案。
 
 #### Token 影响
 
@@ -135,7 +138,7 @@ How to respond:
 
 ## 已知限制与延期工作
 
-- **identity 提案等设置页** — `personality_learn` 拒绝 `identity.*`；还没有提案队列或设置页，identity 修改仍需手改。
+- **identity 提案有队列但还没有设置页** — `personality_learn` 拒绝 `identity.*` 并指向 `personality_propose`，后者把提案排入队列；`/personality proposals`、`accept`、`reject` 是当前的人面。队列的浏览器设置段是 DH-302 剩下的部分。
 - **自动学习有预算、只在内存里、且是启发式的** — 每次能力注册为每个会话保留最多 `autoLearn.entries` 条写入与 `autoLearn.bytes` 字节；能力重载后计数清零。`personality_learn` 工具与 turn 结束触发器共用这份预算。turn 结束检测只是用户句子上的少量规则，因此措辞特殊的纠正可能漏掉，语气强烈的普通指令也可能被当成偏好；两种结果都能通过档案历史回退。
 - **覆盖 watcher 是尽力而为** — 它优先监听覆盖文件，其次 `memory` 目录，最后 store 根；目录 watcher 只报告直接条目，因此它没有盯住的子文件若只改内容，要等下一次 agent 读取。创建时的读取仍会看到合并结果。
 - **watch 通知滞后于外部修改** — 手改与 watcher 事件之间，组装仍可能读到旧的缓存文本；文件仍是下一次刷新的真相来源。

@@ -106,6 +106,22 @@ export type {
   PersonalityWriteResult,
 } from './personality-file.ts'
 export {
+  decideProposal,
+  PERSONALITY_PENDING_PROPOSAL_LIMIT,
+  PERSONALITY_PROPOSAL_KINDS,
+  PERSONALITY_PROPOSALS_FILE_NAME,
+  proposeIdentity,
+  PersonalityProposalError,
+  readProposals,
+} from './proposals.ts'
+export type {
+  PersonalityProposal,
+  PersonalityProposalErrorCode,
+  PersonalityProposalInput,
+  PersonalityProposalRead,
+  PersonalityProposalStatus,
+} from './proposals.ts'
+export {
   diffPersonalityHistory,
   PERSONALITY_COMMAND_NAME,
   PERSONALITY_COMMAND_USAGE,

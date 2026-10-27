@@ -31,12 +31,13 @@ import type {
   PersonalityHistoryRecord,
   PersonalityRead,
 } from './personality-file.ts'
+import { decideProposal, PersonalityProposalError, readProposals } from './proposals.ts'
 
 /** Name of the one registered command; subcommands ride its raw input. */
 export const PERSONALITY_COMMAND_NAME = 'personality'
 
 /** One-line grammar shown by every failure and advertised as the input hint. */
-export const PERSONALITY_COMMAND_USAGE = 'Usage: /personality [show|diff|revert <version>]'
+export const PERSONALITY_COMMAND_USAGE = 'Usage: /personality [show|diff|revert <version>|proposals|accept <id>|reject <id>]'
 
 /** Version history lines named in a revert failure at most. */
 const KNOWN_VERSION_LIMIT = 10
@@ -156,6 +157,68 @@ export async function revertPersonality(
 }
 
 /**
+ * Render the identity proposal queue, pending first.
+ * @param ctx - context carrying `fs`.
+ * @param settings - resolved provider settings.
+ * @param signal - cancellation for the queue read.
+ * @returns a success result listing each proposal, or an error result when the queue is unreadable.
+ */
+export async function listPersonalityProposals(
+  ctx: Context,
+  settings: PersonalitySettings,
+  signal?: AbortSignal,
+): Promise<CommandResult> {
+  let read
+  try {
+    read = await readProposals(ctx, settings, signal)
+  } catch (error: unknown) {
+    return commandFailure(error)
+  }
+  if (read.proposals.length === 0) {
+    return { kind: 'success', text: `No identity proposals are queued in ${read.path}.` }
+  }
+  const lines = [`Identity proposals (${String(read.proposals.length)}):`]
+  for (const proposal of read.proposals) {
+    lines.push(`- ${proposal.id} [${proposal.status}] ${proposal.name}: ${oneLine(proposal.text)} (evidence: ${oneLine(proposal.evidence)})`)
+  }
+  return { kind: 'success', text: lines.join('\n') }
+}
+
+/**
+ * Accept or reject one queued identity proposal.
+ *
+ * Accepting writes the identity entry through the version-guarded profile write
+ * and records the accepted status; rejecting only records the decision.
+ * @param ctx - context carrying `fs` and `dshStore`.
+ * @param session - session requesting the decision, recorded in the profile history.
+ * @param settings - resolved provider settings.
+ * @param id - the proposal id.
+ * @param decision - accept or reject.
+ * @param signal - cancellation for the reads and writes.
+ * @returns a success result naming the outcome, or an actionable error result.
+ */
+export async function decidePersonalityProposal(
+  ctx: Context,
+  session: Session,
+  settings: PersonalitySettings,
+  id: string,
+  decision: 'accept' | 'reject',
+  signal?: AbortSignal,
+): Promise<CommandResult> {
+  try {
+    const decided = await decideProposal(ctx, session, settings, id, decision, signal)
+    return {
+      kind: 'success',
+      text: decision === 'accept'
+        ? `Accepted identity proposal ${decided.id}; wrote ${decided.name} into PERSONALITY.md.`
+        : `Rejected identity proposal ${decided.id}; PERSONALITY.md was not changed.`,
+    }
+  } catch (error: unknown) {
+    return commandFailure(error)
+  }
+}
+
+/**
  * Build the one `/personality` command definition.
  * @param ctx - context carrying `commands`, `fs`, and `dshStore`.
  * @param settings - resolved provider settings.
@@ -165,8 +228,8 @@ export function personalityCommand(ctx: Context, settings: PersonalitySettings):
   return {
     definitionId: CommandDefinitionId('@deepseek-ai/dsh-personality'),
     name: PERSONALITY_COMMAND_NAME,
-    description: 'Show, diff, or revert the personality profile',
-    input: { hint: '[show|diff|revert <version>]' },
+    description: 'Show, diff, revert, or review identity proposals for the personality profile',
+    input: { hint: '[show|diff|revert <version>|proposals|accept <id>|reject <id>]' },
     handler: invocation => executePersonalityCommand(ctx, invocation, settings),
   }
 }
@@ -186,14 +249,25 @@ type PersonalitySubcommand =
   | { readonly kind: 'show' }
   | { readonly kind: 'diff' }
   | { readonly kind: 'revert'; readonly argument: string }
+  | { readonly kind: 'proposals' }
+  | { readonly kind: 'decide'; readonly decision: 'accept' | 'reject'; readonly id: string }
 
 /** Parse the subcommand and its argument from the verbatim command input. */
 function parsePersonalitySubcommand(rawInput: string): PersonalitySubcommand | undefined {
   const input = rawInput.trim()
   if (input.length === 0 || input.toLowerCase() === 'show') return { kind: 'show' }
   if (input.toLowerCase() === 'diff') return { kind: 'diff' }
+  if (input.toLowerCase() === 'proposals') return { kind: 'proposals' }
   if (/^revert(?=\s|$)/iu.test(input)) {
     return { kind: 'revert', argument: input.slice('revert'.length).trim() }
+  }
+  const decide = /^(accept|reject)(?=\s|$)/iu.exec(input)
+  if (decide !== null) {
+    return {
+      kind: 'decide',
+      decision: decide[1]?.toLowerCase() === 'accept' ? 'accept' : 'reject',
+      id: input.slice(decide[1]?.length ?? 0).trim(),
+    }
   }
   return undefined
 }
@@ -218,6 +292,17 @@ async function executePersonalityCommand(
       return await diffPersonalityHistory(ctx, settings, invocation.signal)
     case 'revert':
       return await revertPersonality(ctx, invocation.agent.session, settings, command.argument, invocation.signal)
+    case 'proposals':
+      return await listPersonalityProposals(ctx, settings, invocation.signal)
+    case 'decide':
+      return await decidePersonalityProposal(
+        ctx,
+        invocation.agent.session,
+        settings,
+        command.id,
+        command.decision,
+        invocation.signal,
+      )
     /* v8 ignore next 2 -- PersonalitySubcommand is closed and every member is handled above */
     default: return assertNever(command)
   }
@@ -297,9 +382,9 @@ function summarizeChanges(changes: readonly PersonalityEntryChange[]): string {
   return `${String(counts.added)} added, ${String(counts.updated)} updated, ${String(counts.removed)} removed`
 }
 
-/** Convert an expected file failure into a human-only command result. */
+/** Convert an expected file or proposal failure into a human-only command result. */
 function commandFailure(error: unknown): CommandResult {
-  if (error instanceof PersonalityDocumentError || error instanceof FsError) {
+  if (error instanceof PersonalityDocumentError || error instanceof PersonalityProposalError || error instanceof FsError) {
     return { kind: 'error', text: error.message }
   }
   throw error

@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentStatus } from '@deepseek-ai/dsh-agent'
 import { CommandId, CommandRuntime } from '@deepseek-ai/dsh-commands'
-import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
+import type { CommandDefinition, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { createInboxStub } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -43,6 +43,7 @@ import {
   revertPersonality,
   showPersonality,
 } from '../src/commands.ts'
+import { proposeIdentity, readProposals } from '../src/proposals.ts'
 
 let project: string
 let ctx: Context
@@ -174,6 +175,17 @@ function stubAgent(): Agent {
     runMaintenance: task => task(new AbortController().signal),
     whenIdle() { return Promise.resolve() },
   }
+}
+
+/** Build an invoker for one registered command definition and its stub agent. */
+function invokeWith(definition: CommandDefinition, agent: Agent): (rawInput: string) => Promise<CommandResult> {
+  return async rawInput => await definition.handler({
+    commandId: CommandId('cmd-test'),
+    agent,
+    rawInput,
+    attachments: [],
+    signal: new AbortController().signal,
+  })
 }
 
 test('show renders an empty profile without throwing', async () => {
@@ -364,6 +376,48 @@ test.each(['', 'abc', '0', '-1', '1.5'])('revert rejects the invalid argument %j
   expect(await readFile(globalFile(), 'utf8')).toBe(seeded)
 })
 
+test('proposals list pending ones, and accept writes the identity entry', async () => {
+  await mkdir(dirname(settings.proposalsPath), { recursive: true })
+  await ctx.plugin(CommandRuntime)
+  const agent = stubAgent()
+  registerPersonalityCommands(ctx, settings)
+  const definition = ctx.commands.find(agent, PERSONALITY_COMMAND_NAME)
+  expect(definition).toBeDefined()
+  const invoke = invokeWith(definition!, agent)
+
+  const proposal = await proposeIdentity(ctx, settings, {
+    kind: 'identity',
+    name: 'role',
+    text: '用户是独立开发者。',
+    evidence: 'seq 3',
+  })
+  const listed = await invoke(' proposals')
+  expect(text(listed)).toContain(proposal.id)
+  expect(text(listed)).toContain('[pending]')
+
+  const accepted = await invoke(` accept ${proposal.id}`)
+  expect(accepted.kind).toBe('success')
+  expect(text(accepted)).toContain('Accepted identity proposal')
+  expect((await readGlobalDocument()).entries).toEqual([
+    expect.objectContaining({ id: 'identity.role', kind: 'identity', text: '用户是独立开发者。' }),
+  ])
+  expect((await readProposals(ctx, settings)).proposals[0]).toMatchObject({ id: proposal.id, status: 'accepted' })
+
+  const second = await proposeIdentity(ctx, settings, {
+    kind: 'identity',
+    name: 'focus',
+    text: '用户偏好先读现有实现。',
+    evidence: 'seq 4',
+  })
+  const rejected = await invoke(` reject ${second.id}`)
+  expect(rejected.kind).toBe('success')
+  expect(text(rejected)).toContain('PERSONALITY.md was not changed')
+  expect((await readGlobalDocument()).entries).toHaveLength(1)
+  expect(text(await invoke(' accept p-missing'))).toContain('no proposal with id')
+  expect(text(await invoke(` accept ${proposal.id}`))).toContain('already accepted')
+  await agent.ctx.fiber.dispose()
+})
+
 test('registers one /personality command that dispatches its subcommands', async () => {
   await ctx.plugin(CommandRuntime)
   await seedGlobal([entry('style', 'language', '全局文本。')])
@@ -373,8 +427,8 @@ test('registers one /personality command that dispatches its subcommands', async
   expect(ctx.commands.list(agent)).toContainEqual({
     definitionId: '@deepseek-ai/dsh-personality',
     name: PERSONALITY_COMMAND_NAME,
-    description: 'Show, diff, or revert the personality profile',
-    input: { hint: '[show|diff|revert <version>]' },
+    description: 'Show, diff, revert, or review identity proposals for the personality profile',
+    input: { hint: '[show|diff|revert <version>|proposals|accept <id>|reject <id>]' },
   })
   const definition = ctx.commands.find(agent, PERSONALITY_COMMAND_NAME)
   expect(definition).toBeDefined()
@@ -395,6 +449,7 @@ test('registers one /personality command that dispatches its subcommands', async
   expect(await definition!.handler(invocation)).toMatchObject({ kind: 'success' })
   expect(text(await invoke(' show'))).toContain('Global version: 1')
   expect(text(await invoke(' diff'))).toContain('No personality history yet')
+  expect(text(await invoke(' proposals'))).toContain('No identity proposals are queued')
   expect(text(await invoke(' bogus'))).toContain('Unknown /personality subcommand "bogus"')
 
   dispose()

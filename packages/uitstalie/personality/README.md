@@ -50,13 +50,16 @@ The provider is a hard composition dependency on `ctx.dafeiyu` (the organizer), 
 
 ### Drift-review commands
 
-One `/personality` command registers through an optional `ctx.inject(['commands'])` child, so a composition without a command registry still receives the prompt section and the tool. The command grammar splits a slash line into one name plus verbatim input, so the three subcommands ride that one registration:
+One `/personality` command registers through an optional `ctx.inject(['commands'])` child, so a composition without a command registry still receives the prompt section and the tool. The command grammar splits a slash line into one name plus verbatim input, so the subcommands ride that one registration:
 
 | Subcommand | Behavior |
 |---|---|
 | `/personality show` | Render the merged global and overlay entries (`id`, kind, one line of text) and both document versions. A missing file is an empty profile, not an error. |
 | `/personality diff` | Render a line diff of the two latest records in the global `PERSONALITY.history.jsonl`, labelled with each version and `source: user` or `source: auto`. A history with fewer than two records is reported, not failed. |
 | `/personality revert <version>` | Replace the global managed block with that record's stored block through the version-guarded write, then append a new `source: user` history record. An invalid argument, an unknown version, and reverting to the current version are reported without a write. |
+| `/personality proposals` | List the queue in `PERSONALITY.proposals.jsonl`, pending proposals first, each with its id, status, evidence, and one text line. |
+| `/personality accept <id>` | Write the queued identity entry through the version-guarded profile write (with `confirmIdentity`), then record the accepted status. A failed profile write leaves the proposal pending. |
+| `/personality reject <id>` | Record the rejected status without touching `PERSONALITY.md`. |
 
 History review is global-only in this version: the workspace overlay keeps its own history and this command neither diffs nor reverts it. `show` always reads the merged view.
 
@@ -115,7 +118,7 @@ Prefix-stable between profile edits. The preamble, headings, and order are const
 
 #### What the model sees
 
-One tool on every agent. It takes a required `kind`, a required one-paragraph `content`, and a required `evidence` string that must name a positive session event seq, for example `"seq 42"`. It answers with one line: either a confirmation naming the stored entry id, file, and revision, or a refusal explaining why nothing was written. Identity entries are refused with the manual-edit guidance, unknown kinds list the valid kinds, and an exhausted per-session budget names the remaining entries and bytes.
+Two tools on every agent. `personality_learn` takes a required `kind`, a required one-paragraph `content`, and a required `evidence` string that must name a positive session event seq, for example `"seq 42"`; it answers with one line: either a confirmation naming the stored entry id, file, and revision, or a refusal explaining why nothing was written. Identity entries are refused with a pointer to `personality_propose`, unknown kinds list the valid kinds, and an exhausted per-session budget names the remaining entries and bytes. `personality_propose` takes `kind: 'identity'`, a lower-kebab `name`, one paragraph, and evidence; it queues the proposal in `PERSONALITY.proposals.jsonl` and writes nothing to the profile until the user accepts it.
 
 #### Token effect
 
@@ -127,7 +130,7 @@ Prefix-stable while the tool definition is unchanged. A successful write changes
 
 ## Known Limitations and Deferred Work
 
-- **Identity proposals need a settings page** — `personality_learn` refuses `identity.*`; there is no proposal queue or settings page yet, so identity changes stay manual edits.
+- **Identity proposals have a queue but no settings page yet** — `personality_learn` refuses `identity.*` and points at `personality_propose`, which queues the proposal; `/personality proposals`, `accept`, and `reject` are the human surface today. A browser settings section for the queue is the remaining part of DH-302.
 - **Auto-learning is budgeted, in-memory, and heuristic** — one capability registration keeps at most `autoLearn.entries` writes and `autoLearn.bytes` bytes per session; the counters reset when the capability reloads. The `personality_learn` tool and the turn-end trigger share that budget. Turn-end detection is a small rule set over the user's sentence, so it can miss a correction worded unusually and can treat a strongly worded instruction as a preference; the profile history can revert either kind.
 - **The overlay watcher is best-effort** — it prefers the overlay file, then its directory, then the store root; a directory watcher reports direct entries, so a content-only edit inside a child it did not watch waits for the next agent read. The creation-time read still sees the merged view.
 - **A watch notification lags the external edit** — between a hand edit and the watcher event, an assembly can still read the previous cached text; the file remains the source of truth for the next refresh.

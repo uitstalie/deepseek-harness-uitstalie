@@ -24,6 +24,7 @@ import {
   personalityKindDefinition,
   writePersonalityEntry,
 } from './personality-file.ts'
+import { PERSONALITY_PROPOSAL_KINDS, proposeIdentity, PersonalityProposalError } from './proposals.ts'
 
 /** In-memory automatic writes charged to one session. */
 export interface AutoLearnUsage {
@@ -56,7 +57,7 @@ export interface PersonalityLearnValue {
 }
 
 /** Refusal that asks the model to route identity changes through the user. */
-const IDENTITY_MANUAL_MESSAGE = 'Identity entries describe who the user is and need user confirmation. Ask the user to edit PERSONALITY.md directly; `personality_learn` never writes identity.* entries.'
+const IDENTITY_MANUAL_MESSAGE = 'Identity entries describe who the user is and need user confirmation. Call `personality_propose` to queue one; the provider writes the entry only after the user accepts the proposal with /personality accept.'
 
 /** `kind` parameter description generated from the one kind registry. */
 const KIND_DESCRIPTION = `Entry kind: ${
@@ -78,7 +79,72 @@ export function personalityTools(
   settings: PersonalitySettings,
   options: PersonalityToolOptions,
 ): readonly ToolDefinition[] {
-  return [definePersonalityLearnTool(ctx, settings, options)]
+  return [definePersonalityLearnTool(ctx, settings, options), definePersonalityProposeTool(ctx, settings)]
+}
+
+/** Build `personality_propose`: queue one identity proposal for the user to accept or reject. */
+function definePersonalityProposeTool(ctx: Context, settings: PersonalitySettings): ToolDefinition {
+  return defineTool({
+    name: 'personality_propose',
+    description:
+      'Queue one identity proposal for the user to accept or reject. Use this instead of `personality_learn` for '
+      + '`identity.*`: identity describes who the user is, the provider never writes it on its own, and the accepted '
+      + 'entry is stored only after the user confirms the proposal with /personality or the settings page. '
+      + 'A queued proposal appears in /personality proposals; nothing is written to PERSONALITY.md yet.',
+    parameters: {
+      kind: {
+        type: 'string',
+        required: true,
+        enum: [...PERSONALITY_PROPOSAL_KINDS],
+        description: 'Proposal kind; identity is the only kind the queue accepts.',
+      },
+      name: {
+        type: 'string',
+        required: true,
+        description: 'Lower-kebab entry name, for example `role` or `daily-focus`.',
+      },
+      text: {
+        type: 'string',
+        required: true,
+        description: 'One paragraph stating who the user is, at most 2 KiB.',
+      },
+      evidence: {
+        type: 'string',
+        required: true,
+        description: 'Why this belongs in the profile: a session event seq or a short quote from the user.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          status: { type: 'string', required: true, enum: ['queued', 'rejected'] },
+          message: { type: 'string', required: true },
+          id: { type: 'string' },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: value.message }],
+    },
+    async execute(args, exec) {
+      try {
+        const proposal = await proposeIdentity(ctx, settings, {
+          kind: args.kind,
+          name: args.name,
+          text: args.text,
+          evidence: args.evidence,
+        }, exec.signal)
+        return {
+          status: 'queued' as const,
+          message: `Queued identity proposal ${proposal.id} (${proposal.name}). Accept or reject it with /personality accept ${proposal.id} or /personality reject ${proposal.id}.`,
+          id: proposal.id,
+        }
+      } catch (error: unknown) {
+        if (!(error instanceof PersonalityProposalError)) throw error
+        return { status: 'rejected' as const, message: error.message }
+      }
+    },
+  })
 }
 
 /** Build `personality_learn`: record one auto-learned entry. */

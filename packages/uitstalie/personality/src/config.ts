@@ -15,6 +15,7 @@ import {
   PERSONALITY_HISTORY_STORE_PATH,
   PERSONALITY_STORE_PATH,
 } from './personality-file.ts'
+import { PERSONALITY_PROPOSALS_FILE_NAME } from './proposals.ts'
 
 /** Raw auto-learning budget as the Loader passes it; every field carries a schema default. */
 export interface AutoLearnConfig {
@@ -76,6 +77,8 @@ export interface PersonalitySettings {
   readonly globalPath: string
   /** Absolute path of the append-only history beside the global profile. */
   readonly globalHistoryPath: string
+  /** Absolute path of the identity proposal queue beside the global profile. */
+  readonly proposalsPath: string
   /** Whether the workspace overlay is read and written. */
   readonly workspaceOverlay: boolean
   /** Store-relative path of the workspace overlay. */
@@ -126,6 +129,7 @@ export function resolveConfig(config: Config): PersonalitySettings {
   return {
     globalPath,
     globalHistoryPath: join(dirname(globalPath), PERSONALITY_HISTORY_FILE_NAME),
+    proposalsPath: join(dirname(globalPath), PERSONALITY_PROPOSALS_FILE_NAME),
     workspaceOverlay: config.workspaceOverlay ?? true,
     workspaceStorePath: PERSONALITY_STORE_PATH,
     workspaceHistoryStorePath: PERSONALITY_HISTORY_STORE_PATH,
