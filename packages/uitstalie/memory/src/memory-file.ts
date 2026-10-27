@@ -24,7 +24,7 @@ import { parse as parseYaml } from 'yaml'
 import type { StoreWriteOptions } from '@deepseek-ai/dsh-store-atom'
 import { replaceSurfaceRange } from './checkpoint.ts'
 import { planTierMigrations } from './window.ts'
-import type { TierMigrationPlan, TurnRange } from './window.ts'
+import type { SurfaceRetry, TierMigrationPlan, TurnRange } from './window.ts'
 
 /** Store-relative path of the per-workspace memory file. */
 export const MEMORY_STORE_PATH = 'memory/sessions/MEMORY.md'
@@ -256,6 +256,8 @@ export interface MemoryTierMigrationResult {
   readonly briefed: number
   /** Number of sections whose body was forgotten. */
   readonly forgotten: number
+  /** Number of earlier-skipped surface replacements this pass completed. */
+  readonly retried: number
 }
 
 /** Options of one append. */
@@ -521,10 +523,13 @@ export async function appendTurnSummary(
  * The pass reads the document once, compresses each detail section that reached
  * the brief age through the supplied model callback, replaces the matching
  * surface range with a checkpoint, removes forgotten section bodies, and writes
- * the complete batch with one version-guarded write. A failed compression keeps
- * that section at detail and does not block the other ranges. One stale-version
- * conflict re-reads and applies the plan once more; surface replacements already
- * made are reused by their window, so they are not appended twice.
+ * the complete batch with one version-guarded write. Ranges an earlier pass
+ * migrated but could not replace on the surface (a snapshot, a compaction
+ * checkpoint, or a gap) are retried from the stored text, without re-compressing.
+ * A failed compression keeps that section at detail and does not block the other
+ * ranges. One stale-version conflict re-reads and applies the plan once more;
+ * surface replacements already made are reused by their window, so they are not
+ * appended twice.
  * @param ctx - context carrying the store, session query, and logger.
  * @param session - session whose turns are migrated.
  * @param currentTurn - latest completed turn of that session.
@@ -532,7 +537,7 @@ export async function appendTurnSummary(
  * @param signal - cancellation for model calls and the page write.
  * @param options - window thresholds and the managed-body budget.
  * @returns the written path and migrated section counts, or undefined when the
- *   document has no section to migrate.
+ *   document has nothing to migrate and no skipped replacement to retry.
  * @throws MemoryDocumentError `budget-exceeded` when the body after migration
  *   would exceed the budget.
  * @throws FsError when the guarded write fails twice or the store refuses it.
@@ -554,10 +559,12 @@ export async function migrateMemoryTiers(
     const current = await readMemoryDocument(ctx, session, signal)
     if (current.document === undefined) return undefined
     const plan = planTierMigrations(current.document, currentTurn, { ...window, sessionId: session.id })
-    if (plan.toBrief.length === 0 && plan.toForget.length === 0) return undefined
+    if (plan.toBrief.length === 0 && plan.toForget.length === 0 && plan.retry.length === 0) return undefined
     const briefs = await compressBriefs(ctx, current.document, session, plan, compress, compressed, signal)
-    if (briefs.length === 0 && plan.toForget.length === 0) return undefined
-    await checkpointMigrations(ctx, session, plan, briefs, checkpoints)
+    if (briefs.length === 0 && plan.toForget.length === 0 && plan.retry.length === 0) return undefined
+    await checkpointMigrations(ctx, current.document, session, plan, briefs, checkpoints)
+    const retried = plan.retry.filter(retry => checkpoints.has(rangeKey(retry.action, retry))).length
+    if (briefs.length === 0 && plan.toForget.length === 0 && retried === 0) return undefined
     signal?.throwIfAborted()
     const next = applyMigrations(current.document, session, plan, briefs, checkpoints)
     assertBodyBudget(next, maxBytes)
@@ -571,6 +578,7 @@ export async function migrateMemoryTiers(
       path: written.path,
       briefed: briefs.length,
       forgotten: plan.toForget.length,
+      retried,
       ...written.version === undefined ? {} : { version: written.version },
     }
   }
@@ -636,6 +644,7 @@ async function compressBriefs(
 /** Publish the batch's checkpoint replacements, reusing seqs from a prior attempt. */
 async function checkpointMigrations(
   ctx: Context,
+  document: MemoryDocument,
   session: Session,
   plan: TierMigrationPlan,
   briefs: readonly BriefMigration[],
@@ -659,6 +668,35 @@ async function checkpointMigrations(
     })
     if (seq !== undefined) checkpoints.set(key, seq)
   }
+  for (const retry of plan.retry) {
+    const key = rangeKey(retry.action, retry)
+    if (checkpoints.has(key)) continue
+    const text = retryText(document, session.id, retry)
+    if (text === undefined) continue
+    const seq = await replaceSurfaceRange(ctx, session, retry, { text, tier: retry.tier })
+    if (seq !== undefined) checkpoints.set(key, seq)
+  }
+}
+
+/**
+ * Render the text one earlier-skipped replacement needs.
+ *
+ * A brief retry republishes the section's stored entries; a forgotten run republishes the
+ * one-line pointer. Both are derived from the document, so a retry never compresses again.
+ * @param document - the parsed document the plan was computed from.
+ * @param sessionId - session the ranges belong to.
+ * @param retry - the range and the action it retries.
+ * @returns the checkpoint text, or undefined when the section is gone or empty.
+ */
+function retryText(
+  document: MemoryDocument,
+  sessionId: string,
+  retry: SurfaceRetry,
+): string | undefined {
+  if (retry.action === 'forget') return renderForgetText(sessionId, retry)
+  const section = findSection(document.sections, sessionId, retry)
+  if (section === undefined || section.entries.length === 0) return undefined
+  return renderBriefText(section.entries)
 }
 
 /** Compose the post-migration document without writing it. */
@@ -685,6 +723,10 @@ function applyMigrations(
     sections = sections.filter(section => !sameSection(section, session.id, range))
     const checkpointSeq = checkpoints.get(rangeKey('forget', range))
     if (checkpointSeq !== undefined) turns = updateTurnRange(turns, range, { checkpointSeq })
+  }
+  for (const retry of plan.retry) {
+    const checkpointSeq = checkpoints.get(rangeKey(retry.action, retry))
+    if (checkpointSeq !== undefined) turns = updateTurnRange(turns, retry, { checkpointSeq })
   }
   return {
     ...document,

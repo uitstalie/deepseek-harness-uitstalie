@@ -148,6 +148,40 @@ test('already brief and already forgotten turns do not migrate again', () => {
   expect(forgotten.window.forgottenThrough).toBe(2)
 })
 
+test('a brief section whose checkpoint was skipped is planned for a retry', () => {
+  const currentTurn = 30
+  const turnNumber = currentTurn - 16
+  const result = plan(currentTurn, [turn(turnNumber, 'brief')], [section(turnNumber, turnNumber, 'brief')])
+  expect(result.toBrief).toEqual([])
+  expect(result.toForget).toEqual([])
+  expect(result.retry).toEqual([{
+    startTurn: turnNumber,
+    endTurn: turnNumber,
+    seq: [turnNumber * 10, turnNumber * 10 + 5],
+    tier: 'brief',
+    action: 'brief',
+  }])
+})
+
+test('a forgotten run whose pointer was skipped is planned for a retry', () => {
+  const currentTurn = 30
+  const turnNumber = currentTurn - 22
+  const result = planTierMigrations(
+    document([session('session-a', [turn(turnNumber, 'brief')], undefined, turnNumber)], []),
+    currentTurn,
+    { ...DEFAULT_MEMORY_WINDOW, sessionId: 'session-a' },
+  )
+  expect(result.toBrief).toEqual([])
+  expect(result.toForget).toEqual([])
+  expect(result.retry).toEqual([{
+    startTurn: turnNumber,
+    endTurn: turnNumber,
+    seq: [turnNumber * 10, turnNumber * 10 + 5],
+    tier: 'brief',
+    action: 'forget',
+  }])
+})
+
 test('a plan scopes ages to the named session', () => {
   const turnsA = [turn(1)]
   const turnsB = [turn(1)]

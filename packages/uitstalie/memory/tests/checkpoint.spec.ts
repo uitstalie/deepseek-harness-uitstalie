@@ -5,7 +5,7 @@
  * compaction checkpoint, and leaving a memory snapshot untouched.
  */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -24,6 +24,8 @@ import {
   refreshMemorySnapshot,
 } from '../src/index.ts'
 import type { MemoryCheckpointWindow, MemoryEntry, MemoryNoticeSource } from '../src/index.ts'
+import { renderMemoryDocument } from '../src/memory-file.ts'
+import type { MemoryDocument } from '../src/memory-file.ts'
 import {
   appendAssistantText,
   appendUserText,
@@ -219,6 +221,52 @@ test('a range carrying a compaction checkpoint is refused and stays untouched', 
   expect(surface.events.some(event =>
     event.type === 'user/message' && event.data.source.kind === 'compact-checkpoint')).toBe(true)
   expect(parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8')).sections[0]?.tier).toBe('brief')
+})
+
+test('a replacement skipped by an earlier pass is retried without re-compressing', async () => {
+  const mounted = await mount()
+  const seeded = await seedDetail(mounted)
+  const before = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
+  // Simulate the earlier pass: the body is already brief, but the surface replacement was
+  // refused, so the turn records carry no checkpoint seq.
+  const downgraded: MemoryDocument = {
+    ...before,
+    sections: before.sections.map(section => section.sessionId === 'memory-root'
+      ? { ...section, tier: 'brief' as const, entries: BRIEF }
+      : section),
+    sessions: before.sessions.map(record => record.id === 'memory-root'
+      ? { ...record, turns: record.turns.map(turnRecord => ({ ...turnRecord, tier: 'brief' as const })) }
+      : record),
+  }
+  await writeFile(memoryFilePath(project), renderMemoryDocument(downgraded))
+  const writes = vi.spyOn(mounted.ctx.fs, 'writeText')
+
+  const result = await migrateMemoryTiers(
+    mounted.ctx,
+    seeded.root.session,
+    17,
+    () => Promise.reject(new Error('a retry must not compress again')),
+    signal,
+    { window: { detail: 6, brief: 16, forget: 21, sessions: 10 } },
+  )
+
+  expect(result).toMatchObject({ briefed: 0, forgotten: 0, retried: 1 })
+  expect(writes).toHaveBeenCalledTimes(1)
+  const observed = await checkpoints(mounted, 'memory-root')
+  expect(observed).toHaveLength(1)
+  expect(textOf(observed[0]!.message)).toContain('keep the guard')
+  const after = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
+  expect(after.sessions[0]?.turns[0]?.checkpointSeq).toBe(observed[0]?.seq)
+
+  const again = await migrateMemoryTiers(
+    mounted.ctx,
+    seeded.root.session,
+    17,
+    () => Promise.reject(new Error('a settled retry is not attempted again')),
+    signal,
+    { window: { detail: 6, brief: 16, forget: 21, sessions: 10 } },
+  )
+  expect(again).toBeUndefined()
 })
 
 test('a range carrying a memory snapshot is refused and the snapshot remains', async () => {

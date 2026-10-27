@@ -48,6 +48,12 @@ export interface MemoryWindowSnapshot {
   readonly forgottenThrough?: number
 }
 
+/** One surface replacement a previous pass skipped, retried without touching the body. */
+export interface SurfaceRetry extends TurnRange {
+  /** What the replacement writes: a brief summary or the forget pointer. */
+  readonly action: 'brief' | 'forget'
+}
+
 /** Explicit migrations for one session; the caller applies them to the file. */
 export interface TierMigrationPlan {
   /** Session the plan was computed for. */
@@ -56,6 +62,12 @@ export interface TierMigrationPlan {
   readonly toBrief: readonly TurnRange[]
   /** Detail or brief sections whose bodies leave the managed block. */
   readonly toForget: readonly TurnRange[]
+  /**
+   * Ranges an earlier pass already migrated in the document but could not replace on
+   * the surface (a snapshot, a compaction checkpoint, or a gap). The body is already
+   * correct; only the surface replacement is retried.
+   */
+  readonly retry: readonly SurfaceRetry[]
   /** New frontmatter values to record after applying the plan. */
   readonly window: MemoryWindowSnapshot
 }
@@ -103,11 +115,13 @@ export function planTierMigrations(
   }
   toBrief.sort((left, right) => left.startTurn - right.startTurn)
   toForget.sort((left, right) => left.startTurn - right.startTurn)
+  const retry = planSurfaceRetries(document, session, turns)
   const forgottenThrough = nextForgottenThrough(session.forgottenThrough, toForget)
   return {
     sessionId: session.id,
     toBrief,
     toForget,
+    retry,
     window: {
       sessionId: session.id,
       turns: applyBriefTiers(session.turns, toBrief),
@@ -132,6 +146,7 @@ function emptyPlan(sessionId: string): TierMigrationPlan {
     sessionId,
     toBrief: [],
     toForget: [],
+    retry: [],
     window: { sessionId, turns: [] },
   }
 }
@@ -207,6 +222,65 @@ function turnRange(section: MemorySection, turns: readonly MemoryTurnRecord[]): 
     tier: section.tier,
     ...checkpointSeq === undefined ? {} : { checkpointSeq },
   }
+}
+
+/**
+ * Collect the ranges an earlier pass migrated in the document without a surface replacement.
+ *
+ * A brief section is retried when any of its turns lacks a recorded checkpoint seq; a
+ * forgotten run is retried when its turn records still lack one. The planner never re-migrates
+ * them — their body is already correct — so repeated passes are cheap and idempotent.
+ * @param document - parsed MEMORY.md.
+ * @param session - the session being planned.
+ * @param turns - turn records by turn number.
+ * @returns retry ranges in turn order.
+ */
+function planSurfaceRetries(
+  document: MemoryDocument,
+  session: MemorySessionRecord,
+  turns: ReadonlyMap<number, MemoryTurnRecord>,
+): SurfaceRetry[] {
+  const retries: SurfaceRetry[] = []
+  for (const section of sessionSections(document, session.id)) {
+    if (section.tier !== 'brief' || forgottenSection(section, session.forgottenThrough)) continue
+    const sectionTurns = completeSectionTurns(section, turns)
+    if (sectionTurns === undefined) continue
+    if (sectionTurns.every(record => record.checkpointSeq !== undefined)) continue
+    retries.push({
+      startTurn: section.startTurn,
+      endTurn: section.endTurn,
+      seq: [sectionTurns[0]?.seq[0] ?? 0, sectionTurns.at(-1)?.seq[1] ?? 0],
+      tier: 'brief',
+      action: 'brief',
+    })
+  }
+  const forgotten = session.turns
+    .filter(record => session.forgottenThrough !== undefined
+      && record.turn <= session.forgottenThrough
+      && record.checkpointSeq === undefined)
+    .sort((left, right) => left.turn - right.turn)
+  let run: MemoryTurnRecord[] = []
+  const flush = (): void => {
+    const first = run[0]
+    const last = run.at(-1)
+    if (first === undefined || last === undefined) return
+    retries.push({
+      startTurn: first.turn,
+      endTurn: last.turn,
+      seq: [first.seq[0], last.seq[1]],
+      tier: last.tier,
+      action: 'forget',
+    })
+    run = []
+  }
+  for (const record of forgotten) {
+    const previous = run.at(-1)
+    if (previous !== undefined && record.turn !== previous.turn + 1) flush()
+    run.push(record)
+  }
+  flush()
+  retries.sort((left, right) => left.startTurn - right.startTurn)
+  return retries
 }
 
 /** Advance the forgotten pointer to the highest forgotten turn. */
