@@ -11,9 +11,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandRuntime } from '@deepseek-ai/dsh-commands'
-import { ioFailed } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { err, ok } from '@deepseek-ai/dsh-jira-core/result.ts'
-import { system } from '@deepseek-ai/dsh-jira-core/system/index.ts'
 import type { SkillRegistry } from '@deepseek-ai/dsh-skill'
 import { createJiraCommand, type CommandOptions } from './command.ts'
 import { type HostEnv } from './env.ts'
@@ -47,12 +44,12 @@ export const installWriteGuard = (ctx: Context, env: HostEnv): void => {
 /**
  * Register `/jira` against a composition's command registry.
  *
- * Every value the command reads is a closure, resolved at invocation time: the machine identity is
- * only resolved once the ledger service opens, and `/jira sync` must flush the service's own queue
- * rather than build a second one.
+ * Every value the command reads is a closure, resolved at invocation time: the ledger root, the
+ * machine identity and the push queue all belong to the service, so the command asks `ctx.jira`
+ * instead of opening a second store (DH-205).
  * @param commands - the command registry to register with.
  * @param ctx - the plugin context the ledger service is read from.
- * @param env - the process environment the state directory is resolved from.
+ * @param env - the process environment the read-only switch is evaluated against.
  * @param clock - the clock the command's audit timestamps are formatted from.
  * @returns the registry's disposer for this definition.
  */
@@ -63,15 +60,9 @@ export const registerJiraCommand = (
   clock: () => number,
 ): (() => void) => {
   const options: CommandOptions = Object.freeze({
-    root: () => {
-      const root = ctx.jira.root
-      return root === '' ? err(ioFailed('cannot resolve the store root')) : ok(root)
-    },
-    machineId: () => ctx.jira.machineId,
-    host: system.hostName(env),
+    jira: ctx.jira,
     identity: () => `human:${ctx.jira.machineId}`,
     now: () => nowUtc(clock),
-    sync: () => ctx.jira.sync(),
     writable: () => {
       const caller = callerOf({ ctx, env }, undefined)
       return caller.writable ? '本会话可以写' : `不能写（${caller.reason ?? 'read-only'}）`

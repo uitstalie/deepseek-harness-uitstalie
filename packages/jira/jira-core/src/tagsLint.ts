@@ -20,6 +20,7 @@ export const SIMILARITY_THRESHOLD = 0.7
 
 export type SimilarPair = Readonly<{ left: string; right: string; score: number; shared: boolean }>
 
+/** What the tag lint reports: barely-used tags, missing descriptions, and probably-duplicate pairs. */
 export type TagsLintReport = Readonly<{
   /** Registered tags used by at most one issue, including never. */
   barelyUsed: readonly Readonly<{ name: string; count: number }>[]

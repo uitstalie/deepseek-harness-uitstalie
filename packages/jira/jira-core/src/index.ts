@@ -34,6 +34,8 @@ export * as rebase from './rebase.ts'
 export * as result from './result.ts'
 export * as store from './store.ts'
 export * as system from './system/index.ts'
+export * as tagsLint from './tagsLint.ts'
+export * as vocab from './vocab.ts'
 
 // The named types a consumer states in its own signatures. They are re-exported by name, not only
 // reachable through the namespaces above, because the type-graph generator resolves a package
@@ -49,3 +51,5 @@ export type { NewIssueInput } from './mutate.ts'
 export type { PushOutcome, PushQueue } from './push.ts'
 export type { Result } from './result.ts'
 export type { Actor, Created, Mutation, Store, Transaction, TransactOptions } from './store.ts'
+export type { TagsLintReport } from './tagsLint.ts'
+export type { Vocab } from './vocab.ts'

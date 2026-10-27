@@ -261,3 +261,8 @@ export const leaseNote = (issue: Issue, now?: Timestamp, locale: Locale = 'en'):
   if (now === undefined) return until
   return issue.leaseExpiresAt > now ? until : words.leaseExpired + issue.leaseExpiresAt + words.reclaimable
 }
+
+// The human command renders through this presentation module only. Its store-access ratchet forbids
+// importing the modules that also hold the checks, so the two pure renderers are surfaced here.
+export { renderDoctorReport } from './doctor.ts'
+export { renderTagsLint } from './tagsLint.ts'

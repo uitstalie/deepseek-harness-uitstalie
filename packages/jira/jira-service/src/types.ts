@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-jira-service/types
  */
 
-import type { Actor, Created, DoctorReport, ErrorCode, Identity, Issue, IssueKey, JiraError, KbSearch, KnowledgeEntry, KnowledgeKey, LinkType, KnowledgePatch, ListQuery, ListResult, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Result, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from '@deepseek-ai/dsh-jira-core'
+import type { Actor, Created, DoctorReport, ErrorCode, Identity, Issue, IssueKey, JiraError, KbSearch, KnowledgeEntry, KnowledgeKey, LinkType, KnowledgePatch, ListQuery, ListResult, Mutation, NewIssueInput, NewKnowledge, PushOutcome, Result, TagsLintReport, Timestamp, Transaction, TransactOptions, Vocab, WrittenKnowledge } from '@deepseek-ai/dsh-jira-core'
 
 export type {
   Actor,
@@ -29,9 +29,11 @@ export type {
   NewIssueInput,
   NewKnowledge,
   PushOutcome,
+  TagsLintReport,
   Timestamp,
   Transaction,
   TransactOptions,
+  Vocab,
   WrittenKnowledge,
 }
 
@@ -84,6 +86,36 @@ export interface JiraStatus {
   readonly lastSync: SyncRecord | null
   /** Whether a push is armed and waiting for its debounce. */
   readonly pending: boolean
+}
+
+/** One read of the ledger for the human command surface: issues, vocabulary and health. */
+export interface JiraSnapshot {
+  /** The ledger root the snapshot was read from. */
+  readonly root: string
+  /** Every decoded issue, in file order, closed ones included. */
+  readonly issues: readonly Issue[]
+  /** The parsed vocabulary, absent when `config.md` is missing or cannot be parsed. */
+  readonly vocab?: Vocab
+  /** The doctor's report over the same read, so health and contents cannot disagree. */
+  readonly report: DoctorReport
+}
+
+/** Issues one command filter matched, plus what the human renderers need. */
+export interface JiraFilteredIssues {
+  /** The issues that matched the query, already filtered and ordered. */
+  readonly issues: readonly Issue[]
+  /** The parsed vocabulary, absent when `config.md` is missing or cannot be parsed. */
+  readonly vocab?: Vocab
+  /** Every issue in the ledger before the closed filter; the command reports the hidden count. */
+  readonly total: number
+}
+
+/** Whether the ledger has a remote and whether its worktree carries uncommitted changes. */
+export interface JiraSyncState {
+  /** Whether an origin remote is configured. */
+  readonly remote: boolean
+  /** Whether `git status --porcelain` reported any change. */
+  readonly dirty: boolean
 }
 
 /** The ledger facade `ctx.jira` provides to the agent, the UI and the CLI. */
@@ -211,6 +243,7 @@ export interface JiraCounts {
   readonly readOnlyProjects: number
 }
 
+/** The ledger facade `ctx.jira` provides to the agent, the UI and the CLI. */
 export interface JiraServiceApi {
   /** The resolved ledger root. */
   readonly root: string
@@ -295,6 +328,27 @@ export interface JiraServiceApi {
    * @returns the counts, or the error that prevented reading the store.
    */
   counts(): Promise<Result<JiraCounts, JiraError>>
+  /**
+   * Read the ledger once for a human command: issues, parsed vocabulary and the doctor report.
+   * @returns the snapshot, or the error that prevented reading the store.
+   */
+  snapshot(): Promise<JiraResult<JiraSnapshot>>
+  /**
+   * Read the issues one human list or board filter matches.
+   * @param query - the filter; every field is optional.
+   * @returns the matched issues, the vocabulary and the pre-filter issue count.
+   */
+  queryIssues(query: ListQuery): Promise<JiraResult<JiraFilteredIssues>>
+  /**
+   * Check the tag registry against the ledger's issues.
+   * @returns the lint report the command renders, or the error that prevented reading.
+   */
+  tagsLint(): Promise<JiraResult<TagsLintReport>>
+  /**
+   * Report whether the ledger has a remote and whether its worktree is dirty.
+   * @returns the sync state, or the error that prevented asking git.
+   */
+  syncState(): Promise<JiraResult<JiraSyncState>>
   /**
    * Read the ledger's issues with a filter.
    * @param query - the filter; every field is optional.

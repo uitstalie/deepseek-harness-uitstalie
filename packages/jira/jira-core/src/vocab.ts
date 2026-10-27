@@ -19,6 +19,7 @@ export const DEFAULT_PRIORITY = 'S3'
 
 export type StatusDef = Readonly<{ name: string; order: number; deprecated?: boolean }>
 
+/** The parsed `config.md` vocabulary: the closed sets, the status order and the transition edges. */
 export type Vocab = Readonly<{
   issueTypes: readonly string[]
   kbTypes: readonly string[]

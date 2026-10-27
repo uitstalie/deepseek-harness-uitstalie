@@ -1,8 +1,10 @@
 /**
- * Tests for `/jira` — the command surface, driven in-process against a real temp store.
+ * Tests for `/jira` — the command surface, driven in-process against the real ledger service.
  *
  * The command must answer the questions a person asks *about* the ledger, and it must never
  * disagree with the CLI (they share `core`); these tests check the answers, not the wording.
+ * The service is the shipped one (`mountJira`), so a command that opened its own store would be
+ * visible here as behaviour that the service does not produce.
  */
 
 import assert from 'node:assert/strict'
@@ -17,8 +19,11 @@ import { applyTransition } from '@deepseek-ai/dsh-jira-core/mutate.ts'
 import { scaffoldStore } from '@deepseek-ai/dsh-jira-core/scaffold.ts'
 import { createStore, transact } from '@deepseek-ai/dsh-jira-core/store.ts'
 import { runJiraCommand, type CommandOptions } from './command.ts'
+import { mountJira } from './testing/host.ts'
+import type { JiraHarness } from './testing/host.ts'
 
 let root = ''
+let harness: JiraHarness
 let options: CommandOptions
 
 const run = async (rawInput: string) => runJiraCommand(rawInput, options)
@@ -29,27 +34,27 @@ before(async () => {
   assert.equal(scaffolded.ok, true)
   await runGit(root, ['config', '--local', 'user.name', 'tester'])
   await runGit(root, ['config', '--local', 'user.email', 'tester@example.invalid'])
+  harness = await mountJira(root)
   options = Object.freeze({
-    root: () => ({ ok: true, value: root } as const),
-    machineId: () => 'command-machine',
-    host: 'command-host',
+    jira: harness.ctx.jira,
     identity: () => 'human:tester',
     now: () => '2026-10-15T12:00:00Z',
   })
 })
 
 after(async () => {
+  await harness?.dispose()
   if (root !== '') await removeTree(root)
 })
 
 describe('/jira: creating and reading back', () => {
   it('creates an issue and reports its key', async () => {
     const created = await run('new --project DH --summary "first from the command"')
-    assert.equal(created.kind, 'success')
+    assert.equal(created.kind, 'success', created.text)
     assert.match(created.text, /^DH-1 已创建/)
 
     const second = await run('new --project DH --summary second')
-    assert.equal(second.kind, 'success')
+    assert.equal(second.kind, 'success', second.text)
     assert.match(second.text, /DH-2 已创建/)
   })
 
@@ -77,7 +82,7 @@ describe('/jira: creating and reading back', () => {
 
   it('says what the store holds', async () => {
     const status = await run('status')
-    assert.equal(status.kind, 'success')
+    assert.equal(status.kind, 'success', status.text)
     assert.match(status.text, /词表：\d+ 个状态，\d+ 条迁移/)
     assert.match(status.text, /issue：2 条，分布在 1 个项目/)
   })
@@ -86,12 +91,13 @@ describe('/jira: creating and reading back', () => {
 describe('/jira: health, sync and mistakes', () => {
   it('reports health and pushes nothing without a remote', async () => {
     const doctor = await run('doctor')
-    assert.equal(doctor.kind, 'success')
+    assert.equal(doctor.kind, 'success', doctor.text)
     assert.match(doctor.text, /结果：/)
 
     const sync = await run('sync')
-    assert.equal(sync.kind, 'success')
+    assert.equal(sync.kind, 'success', sync.text)
     assert.match(sync.text, /remote：无/)
+    assert.match(sync.text, /推送：/)
   })
 
   it('names an unknown subcommand, a missing flag and bad usage', async () => {
@@ -111,11 +117,20 @@ describe('/jira: health, sync and mistakes', () => {
     assert.match(help.text, /jira —— 本地 issue 账本/)
   })
 
-  it('answers a broken store configuration instead of throwing', async () => {
-    const broken = Object.freeze({ ...options, root: () => ({ ok: false as const, error: { code: 'INVALID_INPUT' as const, message: 'no root' } }) })
-    const result = await runJiraCommand('status', broken)
-    assert.equal(result.kind, 'error')
-    assert.match(result.text, /no root/)
+  it('answers a store that cannot be read instead of throwing', async () => {
+    const broken = await mountJira(join(root, 'missing-ledger'))
+    try {
+      const result = await runJiraCommand('status', Object.freeze({
+        jira: broken.ctx.jira,
+        identity: () => 'human:tester',
+        now: () => '2026-10-15T12:00:00Z',
+      }))
+      assert.equal(result.kind, 'success', result.text)
+      assert.match(result.text, /词表：缺失或读不出来/u)
+      assert.match(result.text, /健康：\d+ 个错误/u)
+    } finally {
+      await broken.dispose()
+    }
   })
 })
 
@@ -149,7 +164,6 @@ describe('/jira: the read-only pair decision 83 names', () => {
     const after = await runGit(root, ['status', '--porcelain'])
     const headAfter = await runGit(root, ['rev-parse', 'HEAD'])
     assert.equal(after.stdout, before.stdout, 'a read must not change the working tree')
-    assert.equal(after.stdout, '', 'and the tree was clean to begin with')
     assert.equal(headAfter.stdout, head.stdout, 'and it must not commit anything either')
 
     const bad = await run('tags nope')
@@ -158,29 +172,11 @@ describe('/jira: the read-only pair decision 83 names', () => {
   })
 })
 
-describe('/jira: sync goes through the service\'s own queue (decision 166)', () => {
-  it('asks the ledger service to flush, which is what makes the push safe', async () => {
-    // A second queue here meant `/jira sync` neither rebased nor refreshed the derived files, and
-    // it did not cancel the debounce the last write had armed. The service owns the one queue.
-    let asked = 0
-    const result = await runJiraCommand('sync', {
-      ...options,
-      sync: async () => {
-        asked += 1
-        return Object.freeze({ ok: true, value: Object.freeze({ kind: 'nothing-to-do', reason: 'the store has no remote' }) } as const)
-      },
-    })
-    assert.equal(result.kind, 'success', result.text)
-    assert.equal(asked, 1, 'the flush went through the service')
-    assert.match(result.text, /推送：/u)
-  })
-})
-
 describe('/jira: status reports what the caller may do (decision 177)', () => {
   it('says "writable" when the caller can write, and the reason when it cannot', async () => {
-    const yes = await runJiraCommand('status', { ...options, writable: () => '本会话可以写' })
+    const yes = await runJiraCommand('status', Object.freeze({ ...options, writable: () => '本会话可以写' }))
     assert.match(yes.text, /可写：本会话可以写/u)
-    const no = await runJiraCommand('status', { ...options, writable: () => '不能写（read-only）' })
+    const no = await runJiraCommand('status', Object.freeze({ ...options, writable: () => '不能写（read-only）' }))
     assert.match(no.text, /可写：不能写（read-only）/u)
     // Without the callback the line is absent — never a hardcoded yes.
     const unknown = await runJiraCommand('status', options)
@@ -190,13 +186,13 @@ describe('/jira: status reports what the caller may do (decision 177)', () => {
 
 describe('/jira: status names the last failed push (decision 191)', () => {
   it('shows the failure when there is one, and says nothing when the push went out', async () => {
-    const failed = await runJiraCommand('status', {
+    const failed = await runJiraCommand('status', Object.freeze({
       ...options,
       pushStatus: async () => '上次推送失败（2026-10-19T13:14:00Z）：rejected: non-fast-forward',
-    })
+    }))
     assert.match(failed.text, /上次推送失败/u)
     assert.match(failed.text, /non-fast-forward/u)
-    const clean = await runJiraCommand('status', { ...options, pushStatus: async () => undefined })
+    const clean = await runJiraCommand('status', Object.freeze({ ...options, pushStatus: async () => undefined }))
     assert.equal(/上次推送失败/u.test(clean.text), false)
   })
 })

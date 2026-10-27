@@ -32,6 +32,8 @@ import {
   result,
   store as coreStore,
   system,
+  tagsLint as coreTagsLint,
+  vocab as coreVocab,
 } from '@deepseek-ai/dsh-jira-core'
 import { countStore } from '@deepseek-ai/dsh-jira-core/injection.ts'
 import type { Store } from '@deepseek-ai/dsh-jira-core'
@@ -49,7 +51,7 @@ import { closeMany } from '@deepseek-ai/dsh-jira-core/batch.ts'
 import { resolveWorkspace } from '@deepseek-ai/dsh-jira-core/workspace.ts'
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraResult, JiraServiceApi, KnowledgeDetail, SessionRecordFacts, JiraStatus, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
+import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraFilteredIssues, JiraResult, JiraServiceApi, JiraSnapshot, JiraSyncState, JiraStatus, KnowledgeDetail, SessionRecordFacts, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, TagsLintReport, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 import JiraRemote from './remote.ts'
 
 export type * from './types.ts'
@@ -489,6 +491,73 @@ export class JiraService extends Service implements JiraServiceApi {
       knowledge: counts.value.knowledge,
       openIssues: counts.value.openIssues,
       readOnlyProjects: counts.value.readOnlyProjects,
+    }))
+  }
+
+  /**
+   * Read the ledger once for a human command: issues, parsed vocabulary and the doctor report.
+   * @returns the snapshot, or the error that prevented reading the store.
+   */
+  async snapshot(): Promise<JiraResult<JiraSnapshot>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const snapshot = await inspect.readSnapshot(opened.root)
+    const decoded = await inspect.listIssues(opened.root)
+    const parsed = snapshot.configText === undefined ? undefined : coreVocab.parseVocab(snapshot.configText)
+    return result.ok(Object.freeze({
+      root: opened.root,
+      issues: Object.freeze(decoded.issues),
+      ...(parsed?.ok === true ? { vocab: parsed.value } : {}),
+      report: doctor.checkStore(snapshot),
+    }))
+  }
+
+  /**
+   * Read the issues one human list or board filter matches.
+   *
+   * The vocabulary is optional on purpose: a ledger without a readable `config.md` still answers
+   * `list`, and only the board refuses (the caller decides, as the command always has).
+   * @param query - the filter; every field is optional.
+   * @returns the matched issues, the vocabulary and the pre-filter issue count.
+   */
+  async queryIssues(query: ListQuery): Promise<JiraResult<JiraFilteredIssues>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const loaded = await coreStore.loadVocab(opened.store.value)
+    const vocab = loaded.ok ? loaded.value : undefined
+    const issues = await inspect.listIssues(opened.root)
+    return result.ok(Object.freeze({
+      issues: inspect.queryIssues(issues.issues, query, vocab),
+      ...(vocab === undefined ? {} : { vocab }),
+      total: issues.issues.length,
+    }))
+  }
+
+  /**
+   * Check the tag registry against the ledger's issues.
+   * @returns the lint report the command renders, or the error that prevented reading.
+   */
+  async tagsLint(): Promise<JiraResult<TagsLintReport>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const tags = await coreStore.loadTags(opened.store.value)
+    if (!tags.ok) return tags
+    const issues = await inspect.listIssues(opened.root)
+    return result.ok(coreTagsLint.lintTags(tags.value, issues.issues))
+  }
+
+  /**
+   * Report whether the ledger has a remote and whether its worktree is dirty.
+   * @returns the sync state, or the error that prevented asking git.
+   */
+  async syncState(): Promise<JiraResult<JiraSyncState>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const remote = await git.hasRemote(opened.root)
+    const status = await git.runGit(opened.root, ['status', '--porcelain'])
+    return result.ok(Object.freeze({
+      remote,
+      dirty: status.code === 0 && status.stdout !== '',
     }))
   }
 

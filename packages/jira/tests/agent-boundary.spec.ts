@@ -22,11 +22,9 @@ const FORBIDDEN = new Set([
 
 /**
  * Files that still open the store directly; shrink this set as the migration completes.
- * `command.ts` is the human `/jira` surface, tracked by DH-205.
+ * Empty since DH-205 moved the human `/jira` surface onto `ctx.jira`.
  */
-const PENDING = new Set([
-  'command.ts',
-])
+const PENDING = new Set<string>([])
 
 const SRC = join(import.meta.dirname, '..', 'jira-agent', 'src')
 

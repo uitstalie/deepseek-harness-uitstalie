@@ -99,6 +99,7 @@ ctx.dafeiyu.register({
 ## 6. 守卫与不可动契约
 
 - guard（只读会话、子代理拒绝写）在 `jira-agent`，检查 session 模式与 `Actor`；服务不自判权限。
+- `/jira` 人类命令面与模型工具走同一个 `ctx.jira`（DH-205）：命令层只做参数解析与文案渲染，不打开 store、不跑 git；`agent-boundary` 的 PENDING 已清空。
 - 工具名与动词、`/jira` 子命令名、CLI 23 个命令名与退出码、人面文案出处、数据格式/key 空间/计数器分块、`.gitattributes`/`.gitignore` 语义——**全部不变**。
 - 提交绑定、tag 校验、关闭规则（先 `in_progress`）、KB 键空间、`batch_close` 全成或全不成：沿用 `jira-core`，迁移只搬文件。
 
