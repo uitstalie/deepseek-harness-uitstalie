@@ -8,7 +8,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
@@ -25,6 +25,8 @@ import type { JiraHarness } from './testing/host.ts'
 let root = ''
 let harness: JiraHarness
 let options: CommandOptions
+/** Every temp directory this file made beyond `root`, so `after` can remove them. */
+const scratch: string[] = []
 
 const run = async (rawInput: string) => runJiraCommand(rawInput, options)
 
@@ -45,6 +47,7 @@ before(async () => {
 after(async () => {
   await harness?.dispose()
   if (root !== '') await removeTree(root)
+  for (const dir of scratch.splice(0)) await removeTree(dir)
 })
 
 describe('/jira: creating and reading back', () => {
@@ -131,6 +134,86 @@ describe('/jira: health, sync and mistakes', () => {
     } finally {
       await broken.dispose()
     }
+  })
+})
+
+/**
+ * A scaffolded ledger with a bare remote and one pushed commit — the state `sync` needs before it
+ * can pull, settle or push. Everything lands in `scratch`, which `after` removes.
+ * @returns the ledger root, the bare remote and the checked-out branch.
+ */
+const ledgerWithRemote = async (): Promise<{ dir: string; bare: string; branch: string }> => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-sync-'))
+  const bare = await mkdtemp(join(tmpdir(), 'dsh-jira-bare-'))
+  scratch.push(dir, bare)
+  const scaffolded = await scaffoldStore(dir)
+  assert.equal(scaffolded.ok, true)
+  await runGit(dir, ['config', '--local', 'user.name', 'tester'])
+  await runGit(dir, ['config', '--local', 'user.email', 'tester@example.invalid'])
+  await runGit(bare, ['init', '--bare', '--quiet'])
+  await runGit(dir, ['remote', 'add', 'origin', bare])
+  await runGit(dir, ['add', '-A'])
+  await runGit(dir, ['commit', '--no-verify', '-m', 'init [no-issue]'])
+  const pushed = await runGit(dir, ['push', '-u', 'origin', 'HEAD'])
+  assert.equal(pushed.code, 0, pushed.stderr)
+  const branch = (await runGit(dir, ['branch', '--show-current'])).stdout.trim()
+  return { dir, bare, branch }
+}
+
+/** Run `/jira sync` against one ledger mounted with its push queue on. */
+const syncWithQueue = async (dir: string): Promise<{ kind: string; text: string }> => {
+  const mounted = await mountJira(dir, { push: true })
+  try {
+    return await runJiraCommand('sync', Object.freeze({
+      jira: mounted.ctx.jira,
+      identity: () => 'human:tester',
+      now: () => '2026-10-15T12:00:00Z',
+    }))
+  } finally {
+    await mounted.dispose()
+  }
+}
+
+describe('/jira: sync classifies every failed step as an error (DH-306)', () => {
+  it('fails when pull --rebase stops on a real conflict', async () => {
+    const { dir, bare, branch } = await ledgerWithRemote()
+    const other = await mkdtemp(join(tmpdir(), 'dsh-jira-other-'))
+    scratch.push(other)
+    await runGit(other, ['clone', '--quiet', '--branch', branch, bare, '.'])
+    await runGit(other, ['config', '--local', 'user.name', 'other'])
+    await runGit(other, ['config', '--local', 'user.email', 'other@example.invalid'])
+    // Both machines edit the same line: git cannot rebase one onto the other.
+    const marker = '# This file is the store\'s vocabulary.'
+    const theirs = join(other, 'config.md')
+    await writeFile(theirs, (await readFile(theirs, 'utf8')).replace(marker, `${marker} (other)`), 'utf8')
+    await runGit(other, ['commit', '-am', 'config from the other machine [no-issue]'])
+    assert.equal((await runGit(other, ['push', 'origin', branch])).code, 0)
+    const ours = join(dir, 'config.md')
+    await writeFile(ours, (await readFile(ours, 'utf8')).replace(marker, `${marker} (local)`), 'utf8')
+    await runGit(dir, ['commit', '-am', 'config here [no-issue]'])
+
+    const result = await syncWithQueue(dir)
+    assert.equal(result.kind, 'error', result.text)
+    assert.match(result.text, /pull --rebase stopped/u)
+  })
+
+  it('fails when settling cannot commit', async () => {
+    const { dir } = await ledgerWithRemote()
+    // `git add -A` refuses to run while another process owns the index; the settle step reports
+    // that as a failure instead of pretending the derived files were refreshed.
+    await writeFile(join(dir, '.git', 'index.lock'), '', 'utf8')
+    const result = await syncWithQueue(dir)
+    assert.equal(result.kind, 'error', result.text)
+    assert.match(result.text, /git add -A/u)
+  })
+
+  it('fails when the push is rejected', async () => {
+    const { dir } = await ledgerWithRemote()
+    // Fetch still works (so the pull succeeds); only the push URL is gone.
+    await runGit(dir, ['remote', 'set-url', '--push', 'origin', join(dir, 'missing.git')])
+    const result = await syncWithQueue(dir)
+    assert.equal(result.kind, 'error', result.text)
+    assert.match(result.text, /push/u)
   })
 })
 

@@ -144,7 +144,9 @@ export const runIssueTool = async (
     }
     return okValue(caller, me, {
       ...created.value.created.change.issue,
-      ...(created.value.projectCreated ? {} : { project_created: true }),
+      // Decision 195: the key is absent in the common case, and present only when this call
+      // registered the project — the service's own fact, never a re-derivation here.
+      ...(created.value.projectCreated ? { project_created: true } : {}),
     })
   }
 

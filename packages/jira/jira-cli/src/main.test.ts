@@ -569,6 +569,16 @@ describe('cli: the walk a person takes', () => {
     assert.equal(result.code, 0, 'no remote is not a failure')
   })
 
+  it('fails the command when a sync cannot push (DH-306)', async () => {
+    // Its own store: adding a remote to the shared one would change the walk's later answers.
+    const own = await tempDir('dsh-jira-cli-syncfail-')
+    assert.equal((await run(['init', '--root', own])).code, 0)
+    // Pull and settle still work; only the push URL is gone, so the exit code must say "failed".
+    await runGit(own, ['remote', 'add', 'origin', join(own, 'missing.git')])
+    const failed = await run(['sync', '--root', own])
+    assert.equal(failed.code, 1, failed.out.join('\n'))
+  })
+
   it('checks the store it just built', async () => {
     const result = await run(['doctor', '--root', root, '--json'])
     const report = JSON.parse(result.out[0] ?? '{}') as { ok: boolean; problems: { code: string }[]; summary: { issues: number } }

@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { rmSync, writeFileSync } from 'node:fs'
-import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
@@ -126,11 +126,12 @@ const issueOf = (envelope: Record<string, unknown>): Record<string, unknown> => 
 const mountWired = async (
   ledger: string,
   options: Parameters<typeof mountJira>[1] = {},
+  header: Parameters<typeof testAgent>[2] = {},
 ): Promise<{ harness: JiraHarness; agent: ReturnType<typeof testAgent>; fiber: { dispose(): Promise<void> } }> => {
   const harness = await mountJira(ledger, options)
   const fiber = await harness.ctx.plugin(jiraAgent)
   await settle()
-  const agent = testAgent(harness.ctx, 'main-1')
+  const agent = testAgent(harness.ctx, 'main-1', header)
   await harness.ctx.serial('agent/created', { agent, source: 'startup' })
   return { harness, agent, fiber }
 }
@@ -411,6 +412,47 @@ describe('agent: reading, writing and the envelope', () => {
 
       const linked = issueOf(await call(harness, agent, { action: 'link', key: 'DH-13', link: { type: 'is_blocked_by', target: 'DH-12' } }))
       assert.deepEqual(listOf(linked.links), [{ type: 'is_blocked_by', target: 'DH-12' }])
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('reports project_created only when this call registered the project (DH-306)', async () => {
+    // The inferred path is where the old directory probe was wrong in both directions:
+    // `ensureWorkspaceProject` writes `projects/<key>/` before the probe runs, so a brand-new
+    // project looked pre-existing and the receipt said nothing. The registration result is the
+    // fact. A second write from the same checkout must stay silent (the common case).
+    const dir = await storeWithoutGenerated()
+    const scratch = await mkdtemp(join(tmpdir(), 'dsh-jira-checkout-'))
+    throwaway.push(scratch)
+    const checkout = join(scratch, 'brand-new')
+    await mkdir(checkout, { recursive: true })
+    const { harness, agent } = await mountWired(dir, {}, { cwd: checkout })
+    try {
+      const first = issueOf(await call(harness, agent, { action: 'create', data: { summary: 'auto-registered' } }))
+      assert.equal(first.project_created, true, 'the first write registers the project and says so')
+      assert.match(String(first.key), /^BN-\d+$/u, 'the key comes from the checkout name')
+
+      const second = issueOf(await call(harness, agent, { action: 'create', data: { summary: 'same project' } }))
+      assert.equal(Object.hasOwn(second, 'project_created'), false, 'a known project is the common case')
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('reports project_created for an explicit new key, not for an existing one (DH-306)', async () => {
+    const dir = await storeWithoutGenerated()
+    const { harness, agent } = await mountWired(dir)
+    try {
+      const fresh = issueOf(await call(harness, agent, { action: 'create', project: 'XY', data: { summary: 'new project' } }))
+      assert.equal(fresh.project_created, true)
+
+      const known = issueOf(await call(harness, agent, { action: 'create', project: 'XY', data: { summary: 'second' } }))
+      assert.equal(Object.hasOwn(known, 'project_created'), false)
+
+      // The fixture already has projects/DH on disk, so naming it is not creating it.
+      const existing = issueOf(await call(harness, agent, { action: 'create', project: 'DH', data: { summary: 'fixture project' } }))
+      assert.equal(Object.hasOwn(existing, 'project_created'), false)
     } finally {
       await harness.dispose()
     }

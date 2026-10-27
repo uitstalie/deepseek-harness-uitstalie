@@ -209,14 +209,13 @@ export const runJiraCommand = async (rawInput: string, options: CommandOptions):
       // The service owns that one queue, so the command asks it instead of building a second one
       // that would race the debounce the last write armed.
       const outcome = await options.jira.sync()
+      // A failed pull, settle or push is a **failed command**, not a successful one with a
+      // discouraging line: the service reports it as an error result, and `PushOutcome` keeps its
+      // own failed arm for callers that flush the queue directly.
+      if (!outcome.ok) return failure(outcome.error)
+      if (outcome.value.kind === 'failed') return failure(outcome.value.error)
       const state = await options.jira.syncState()
-      const detail = outcome.ok
-        ? outcome.value.kind === 'pushed'
-          ? 'pushed'
-          : outcome.value.kind === 'failed'
-            ? formatError(outcome.value.error)
-            : outcome.value.reason
-        : formatError(outcome.error)
+      const detail = outcome.value.kind === 'pushed' ? 'pushed' : outcome.value.reason
       return success([
         syncPushLine(detail),
         `remote：${state.ok && state.value.remote ? '有' : '无'}`,

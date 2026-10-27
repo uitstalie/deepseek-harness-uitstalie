@@ -382,6 +382,8 @@ export class JiraService extends Service implements JiraServiceApi {
     if (!opened.store.ok) return opened.store
     const store = opened.store.value
     let chosen = project?.toUpperCase() ?? ''
+    /** Set by the inferred path: the registration itself knows whether it created the project. */
+    let projectCreated: boolean | undefined
     if (chosen === '') {
       if (cwd === undefined) return err(invalidInput('create needs project: this session has no checkout to infer one from', { project: chosen }))
       const binding = await resolveWorkspace(store, cwd)
@@ -389,13 +391,21 @@ export class JiraService extends Service implements JiraServiceApi {
       const ensured = await ensureWorkspaceProject(store, actor, binding.value, store.machineId)
       if (!ensured.ok) return ensured
       chosen = ensured.value.key
+      // `ensureWorkspaceProject` has already written `projects/<key>/`, so probing the directory
+      // afterwards reports "existed" even for the project it just registered. The registration
+      // result is the fact; only an explicit key still needs the directory probe.
+      projectCreated = ensured.value.registered
     }
     if (!entities.isProjectKey(chosen)) return err(invalidInput('create needs `project`, e.g. "DH"', { project: chosen }))
-    const existed = await access(join(store.files.root, 'projects', chosen)).then(() => true).catch(() => false)
+    if (projectCreated === undefined) {
+      // Probing a path is only safe after the key passed the path-segment check above (decision 162).
+      const existed = await access(join(store.files.root, 'projects', chosen)).then(() => true).catch(() => false)
+      projectCreated = !existed
+    }
     const created = await coreStore.createInStore(store, chosen, actor, draft)
     if (!created.ok) return created
     this.notifyWrite(created.value.key)
-    return result.ok(Object.freeze({ created: created.value, project: chosen, projectCreated: !existed }))
+    return result.ok(Object.freeze({ created: created.value, project: chosen, projectCreated }))
   }
 
   /**
