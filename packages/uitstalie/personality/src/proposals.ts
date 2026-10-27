@@ -18,12 +18,15 @@
 import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { FsError, FsVersion } from '@deepseek-ai/dsh-fs'
+import { FsError } from '@deepseek-ai/dsh-fs'
 import type { PersonalitySettings } from './config.ts'
 import { writePersonalityEntry } from './personality-file.ts'
 
 /** File name of the identity proposal queue beside the global profile. */
 export const PERSONALITY_PROPOSALS_FILE_NAME = 'PERSONALITY.proposals.jsonl'
+
+/** Store-relative path of the proposal queue under the user's `$DSH_HOME`. */
+export const PERSONALITY_PROPOSALS_GLOBAL_STORE_PATH = `personality/${PERSONALITY_PROPOSALS_FILE_NAME}`
 
 /** Kinds the queue accepts; identity is the only one that needs confirmation. */
 export const PERSONALITY_PROPOSAL_KINDS = ['identity'] as const
@@ -121,7 +124,7 @@ export async function readProposals(
   settings: PersonalitySettings,
   signal?: AbortSignal,
 ): Promise<PersonalityProposalRead> {
-  const current = await readQueueText(ctx, settings.proposalsPath, signal)
+  const current = await readQueueText(ctx, PERSONALITY_PROPOSALS_GLOBAL_STORE_PATH, signal)
   return {
     path: settings.proposalsPath,
     proposals: foldProposals(current.text),
@@ -161,15 +164,15 @@ export async function proposeIdentity(
     status: 'pending',
   }
   const append = async (): Promise<PersonalityProposal> => {
-    const current = await readQueueText(ctx, settings.proposalsPath, signal)
+    const current = await readQueueText(ctx, PERSONALITY_PROPOSALS_GLOBAL_STORE_PATH, signal)
     const pending = foldProposals(current.text).filter(candidate => candidate.status === 'pending')
     if (pending.length >= PERSONALITY_PENDING_PROPOSAL_LIMIT) {
       throw new PersonalityProposalError(
-        `identity proposal queue already holds ${String(pending.length)} pending proposals; accept or reject some before proposing more`,
+        `identity proposal queue ${settings.proposalsPath} already holds ${String(pending.length)} pending proposals; accept or reject some before proposing more`,
         'proposal-limit',
       )
     }
-    await writeQueueText(ctx, settings.proposalsPath, appendLine(current.text, proposal), current.version, signal)
+    await writeQueueText(ctx, PERSONALITY_PROPOSALS_GLOBAL_STORE_PATH, appendLine(current.text, proposal), current.version, signal)
     return proposal
   }
   try {
@@ -204,7 +207,7 @@ export async function decideProposal(
   decision: 'accept' | 'reject',
   signal?: AbortSignal,
 ): Promise<PersonalityProposal> {
-  const current = await readQueueText(ctx, settings.proposalsPath, signal)
+  const current = await readQueueText(ctx, PERSONALITY_PROPOSALS_GLOBAL_STORE_PATH, signal)
   const proposal = foldProposals(current.text).find(candidate => candidate.id === id)
   if (proposal === undefined) {
     throw new PersonalityProposalError(`no proposal with id ${JSON.stringify(id)} exists in ${settings.proposalsPath}`, 'unknown-proposal')
@@ -220,7 +223,7 @@ export async function decideProposal(
     }, { settings, source: 'user', confirmIdentity: true }, signal)
   }
   const decided: PersonalityProposal = { ...proposal, status: decision === 'accept' ? 'accepted' : 'rejected' }
-  await writeQueueText(ctx, settings.proposalsPath, appendLine(current.text, decided), current.version, signal)
+  await writeQueueText(ctx, PERSONALITY_PROPOSALS_GLOBAL_STORE_PATH, appendLine(current.text, decided), current.version, signal)
   return decided
 }
 
@@ -289,35 +292,34 @@ function parseProposal(line: string): PersonalityProposal | undefined {
   }
 }
 
-/** Read the queue text and its version; an absent file reads as empty. */
+/** Read the queue text and its version through the store atom's global scope. */
 async function readQueueText(
   ctx: Context,
-  path: string,
+  storePath: string,
   signal: AbortSignal | undefined,
 ): Promise<{ text: string; version?: string }> {
-  const resolved = await ctx.fs.resolve(path, signalOptions(signal))
-  const info = await ctx.fs.stat(resolved, signal)
-  if (info === undefined) return { text: '' }
-  if (info.type !== 'file') {
-    throw new PersonalityProposalError(
-      `personality proposal queue ${JSON.stringify(path)} is not a regular file`,
-      'invalid-proposal',
-    )
+  const read = await ctx.dshStore.readFile(undefined, storePath, {
+    scope: 'global',
+    ...signalOptions(signal),
+  })
+  if (read.text === undefined) return { text: '' }
+  return {
+    text: read.text,
+    ...read.version === undefined ? {} : { version: read.version },
   }
-  return { text: await ctx.fs.readText(resolved, signal), version: info.version }
 }
 
-/** Write the queue text through the version guard. */
+/** Write the queue text through the store atom's global scope and version guard. */
 async function writeQueueText(
   ctx: Context,
-  path: string,
+  storePath: string,
   text: string,
   version: string | undefined,
   signal: AbortSignal | undefined,
 ): Promise<void> {
-  const resolved = await ctx.fs.resolve(path, signalOptions(signal))
-  const intent = version === undefined
-    ? { kind: 'createIfAbsent' as const }
-    : { kind: 'replaceIfVersion' as const, version: FsVersion(version) }
-  await ctx.fs.writeText(resolved, text, intent, signal)
+  await ctx.dshStore.writeFile(undefined, storePath, text, {
+    scope: 'global',
+    ...version === undefined ? {} : { expected: version },
+    ...signalOptions(signal),
+  })
 }

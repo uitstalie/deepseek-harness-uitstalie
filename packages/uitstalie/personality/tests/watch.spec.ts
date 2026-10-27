@@ -39,10 +39,12 @@ beforeEach(async () => {
   // A `.git` marker makes the fixture look like a checkout, so project-root
   // discovery resolves to the fixture rather than to the temp directory above it.
   await mkdir(join(project, '.git'), { recursive: true })
+  vi.stubEnv('DSH_HOME', join(project, 'home'))
   contexts = []
 })
 
 afterEach(async () => {
+  vi.unstubAllEnvs()
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   await rm(project, { recursive: true, force: true })
 })
@@ -121,7 +123,7 @@ async function mount(options: MountOptions = {}): Promise<Mounted> {
   })
   options.beforePersonality?.(ctx)
   await ctx.plugin(Dafeiyu)
-  const personalityFiber = await ctx.plugin(Personality, { globalPath: globalFile() })
+  const personalityFiber = await ctx.plugin(Personality, {})
   await settle()
   const harness = await mountAgentLoopTestHarness(ctx)
   return { ctx, harness, personalityFiber, calls, closeCount: () => closes }

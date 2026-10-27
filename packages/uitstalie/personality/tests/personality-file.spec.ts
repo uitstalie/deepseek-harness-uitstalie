@@ -52,11 +52,13 @@ beforeEach(async () => {
     isSeeded: false,
     cwd: project,
   })
-  settings = resolveConfig({ globalPath: join(project, 'home', 'personality', PERSONALITY_FILE_NAME) })
+  vi.stubEnv('DSH_HOME', join(project, 'home'))
+  settings = resolveConfig({})
 })
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
   await ctx.fiber.dispose()
   await rm(project, { recursive: true, force: true })
 })
@@ -242,7 +244,6 @@ test('a style write goes to the workspace overlay, which owns its own history', 
 
 test('a disabled overlay sends style writes to the global file', async () => {
   const globalOnly = resolveConfig({
-    globalPath: settings.globalPath,
     workspaceOverlay: false,
   })
   const written = await writePersonalityEntry(ctx, session, entry('preference', 'workflow', '先读现有实现。'), {
@@ -285,7 +286,7 @@ test('a second stale-version write surfaces the failure and keeps the file', asy
 
 test('the body budget rejects a write and keeps the file', async () => {
   const seed = await seedGlobal([entry('style', 'language', '旧文本。')])
-  const small = resolveConfig({ globalPath: settings.globalPath, maxBytes: 32 })
+  const small = resolveConfig({ maxBytes: 32 })
 
   await expect(writePersonalityEntry(ctx, session, entry('understanding', 'terse', '这是一段超过预算的条目文本。'), {
     settings: small,
@@ -295,7 +296,7 @@ test('the body budget rejects a write and keeps the file', async () => {
 })
 
 test('a hand-edited body over the budget is rejected on read', async () => {
-  const small = resolveConfig({ globalPath: settings.globalPath, maxBytes: 32 })
+  const small = resolveConfig({ maxBytes: 32 })
   await seedGlobal([entry('style', 'language', '这是一段超过预算的条目文本。')])
 
   await expect(readPersonality(ctx, session, small)).rejects.toThrow(/over the 32-byte limit/)
@@ -313,7 +314,7 @@ test('both writes append history lines in revision order', async () => {
 })
 
 test('history rotation keeps only the newest records', async () => {
-  const limited = resolveConfig({ globalPath: settings.globalPath, historyLimit: 2 })
+  const limited = resolveConfig({ historyLimit: 2 })
   await writePersonalityEntry(ctx, session, entry('understanding', 'terse', '第一条。'), { settings: limited, source: 'user' })
   await writePersonalityEntry(ctx, session, entry('understanding', 'detailed', '第二条。'), { settings: limited, source: 'user' })
   await writePersonalityEntry(ctx, session, entry('understanding', 'dry', '第三条。'), { settings: limited, source: 'user' })

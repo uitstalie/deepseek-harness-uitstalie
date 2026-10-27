@@ -2,7 +2,7 @@
  * Store service tests: the version-guarded `writeFile` primitive against a real
  * filesystem-backed workspace, plus its policy and path refusals.
  */
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -37,6 +37,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  vi.unstubAllEnvs()
   await ctx.fiber.dispose()
   await rm(project, { recursive: true, force: true })
 })
@@ -76,6 +77,52 @@ test('readFile reports an absent or non-file target without text', async () => {
   })
   await store.createFolder(session, 'memory')
   expect(await store.readFile(session, 'memory')).toEqual({ path: 'memory' })
+})
+
+test('global scope resolves $DSH_HOME and works without a session', async () => {
+  const home = join(project, 'home')
+  vi.stubEnv('DSH_HOME', home)
+
+  expect(await store.rootFor('global')).toBe(home)
+  const written = await store.writeFile(undefined, 'personality/PERSONALITY.md', 'global text', { scope: 'global' })
+  expect(written.path).toBe('personality/PERSONALITY.md')
+  expect(await readFile(join(home, 'personality', 'PERSONALITY.md'), 'utf8')).toBe('global text')
+
+  const read = await store.readFile(undefined, 'personality/PERSONALITY.md', { scope: 'global' })
+  expect(read).toEqual({
+    path: 'personality/PERSONALITY.md',
+    text: 'global text',
+    version: versionOf(written),
+  })
+})
+
+test('the workspace scope refuses a call without a session', async () => {
+  await expect(store.readFile(undefined, 'memory/MEMORY.md')).rejects.toThrow(/requires a session/)
+})
+
+test('a guarded global write rejects a stale version', async () => {
+  vi.stubEnv('DSH_HOME', join(project, 'home'))
+  const first = await store.writeFile(undefined, 'personality/PERSONALITY.md', 'first', { scope: 'global' })
+  await store.writeFile(undefined, 'personality/PERSONALITY.md', 'second', {
+    scope: 'global',
+    expected: versionOf(first),
+  })
+  await expect(store.writeFile(undefined, 'personality/PERSONALITY.md', 'third', {
+    scope: 'global',
+    expected: versionOf(first),
+  })).rejects.toThrow(/changed since it was read/u)
+})
+
+test('a read-only workspace policy does not gate the global scope', async () => {
+  vi.stubEnv('DSH_HOME', join(project, 'home'))
+  await ctx.plugin(SessionProjectionPlugin)
+  await ctx.plugin(SandboxPolicyService, { mode: 'read-only', workspaceRoot: project })
+
+  const written = await store.writeFile(undefined, 'personality/PERSONALITY.md', 'global', { scope: 'global' })
+  expect(versionOf(written)).toEqual(expect.any(String))
+  await expect(store.writeFile(session, 'memory/MEMORY.md', 'workspace')).rejects.toMatchObject({
+    code: 'FS_SANDBOX_DENIED',
+  })
 })
 
 test('a read-only session can still read the store', async () => {

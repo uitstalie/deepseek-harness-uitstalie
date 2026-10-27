@@ -5,9 +5,9 @@
  * @module @deepseek-ai/dsh-personality/config
  */
 
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
-import { expandHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import {
   DEFAULT_PERSONALITY_MAX_BYTES,
   PERSONALITY_FILE_NAME,
@@ -41,11 +41,6 @@ export const DEFAULT_PERSONALITY_HISTORY_LIMIT = 500
 
 /** Configuration as the Loader passes it; every field carries a schema default. */
 export interface Config {
-  /**
-   * Absolute path of the global profile; empty resolves to
-   * `<DSH_HOME>/personality/PERSONALITY.md`, where `DSH_HOME` defaults to `~/.dsh`.
-   */
-  globalPath?: string
   /** Read and write style and preference entries in the workspace overlay; defaults to true. */
   workspaceOverlay?: boolean
   /** Managed-block body budget in UTF-8 bytes. */
@@ -61,7 +56,6 @@ export interface Config {
 
 /** Schemastery configuration for the personality provider. */
 export const Config: z<Config> = z.object({
-  globalPath: z.string().default(''),
   workspaceOverlay: z.boolean().default(true),
   maxBytes: z.number().step(1).min(1).default(DEFAULT_PERSONALITY_MAX_BYTES),
   autoLearn: z.object({
@@ -73,11 +67,11 @@ export const Config: z<Config> = z.object({
 
 /** Resolved provider settings; the provider reads configuration only in this form. */
 export interface PersonalitySettings {
-  /** Absolute path of the global profile. */
+  /** Absolute display path of the global profile under `$DSH_HOME`. */
   readonly globalPath: string
-  /** Absolute path of the append-only history beside the global profile. */
+  /** Absolute display path of the append-only history beside the global profile. */
   readonly globalHistoryPath: string
-  /** Absolute path of the identity proposal queue beside the global profile. */
+  /** Absolute display path of the identity proposal queue beside the global profile. */
   readonly proposalsPath: string
   /** Whether the workspace overlay is read and written. */
   readonly workspaceOverlay: boolean
@@ -96,18 +90,16 @@ export interface PersonalitySettings {
 /**
  * Resolve raw configuration into the settings the provider uses.
  *
- * The global path defaults to `<DSH_HOME>/personality/PERSONALITY.md`; an
- * explicit path expands a leading tilde and resolves against the current
- * directory, like the harness home resolvers do.
+ * The global profile lives at `<DSH_HOME>/personality/PERSONALITY.md`, where
+ * `DSH_HOME` defaults to `~/.dsh`; the store atom's `global` scope owns that
+ * root, so no configuration field can point the profile elsewhere.
  * @param config - raw plugin configuration; absent fields take their defaults.
- * @returns resolved settings, including both file paths and both history paths.
+ * @returns resolved settings, including both display paths and both store paths.
  * @throws Error when the body budget or an auto-learning budget is not a
  *   positive safe integer.
  */
 export function resolveConfig(config: Config): PersonalitySettings {
-  const globalPath = config.globalPath === undefined || config.globalPath.trim().length === 0
-    ? join(resolveDshHome(), 'personality', PERSONALITY_FILE_NAME)
-    : resolve(expandHomePath(config.globalPath))
+  const globalPath = join(resolveDshHome(), 'personality', PERSONALITY_FILE_NAME)
   const maxBytes = config.maxBytes ?? DEFAULT_PERSONALITY_MAX_BYTES
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
     throw new Error(`personality: maxBytes must be a positive integer; got ${String(maxBytes)}`)

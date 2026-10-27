@@ -27,7 +27,6 @@ Mount the provider in the same web profile patch layer that mounts the organizer
 - id: personality
   name: '@deepseek-ai/dsh-personality'
   config:
-    globalPath: ''
     workspaceOverlay: true
     maxBytes: 2048
     autoLearn:
@@ -39,14 +38,13 @@ Every field has a default, so an empty `config` is valid:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `globalPath` | `""` | Absolute profile path; empty resolves to `<DSH_HOME>/personality/PERSONALITY.md`. |
 | `workspaceOverlay` | `true` | Read and write style and preference entries in `.dsh/memory/PERSONALITY.md`. |
 | `maxBytes` | `2048` | Managed-block body budget in UTF-8 bytes, enforced on reads and writes. |
 | `autoLearn.entries` | `3` | Automatic writes allowed per session. |
 | `autoLearn.bytes` | `512` | Automatic-write bytes allowed per session. |
 | `historyLimit` | `500` | History records kept per file; the oldest are dropped when a write would exceed it. |
 
-The provider is a hard composition dependency on `ctx.dafeiyu` (the organizer), `ctx.dshStore` (the workspace overlay), and `ctx.fs` (the global profile). A composition that omits one of them leaves this row inactive. The organized contribution is `scope: 'all'`, so child agents inherit the prompt section and the tool; the organizer still decides which agents are wired and which completed turns reach `onTurnEnd`.
+The global profile is not configurable: it lives at `<DSH_HOME>/personality/PERSONALITY.md` (with `$DSH_HOME` defaulting to `~/.dsh`), the store atom's `global` scope. The provider is a hard composition dependency on `ctx.dafeiyu` (the organizer), `ctx.dshStore` (both scopes), and `ctx.fs` (watching the global file). A composition that omits one of them leaves this row inactive. The organized contribution is `scope: 'all'`, so child agents inherit the prompt section and the tool; the organizer still decides which agents are wired and which completed turns reach `onTurnEnd`.
 
 ### Drift-review commands
 
@@ -75,14 +73,14 @@ The organizer forwards each completed turn to this provider. When the session lo
 
 The provider is a function plugin: `src/index.ts` exports `name`, `inject`, `Config`, and `apply`, and registers exactly one `contractVersion: 2` capability with `id: 'personality'`, `label: 'Personality'`, and a one-sentence description that the capabilities settings list renders.
 
-- `src/config.ts` holds the schemastery `Config` and an explicit `resolveConfig(config): PersonalitySettings` step. Defaults are applied there once: the global path becomes `<DSH_HOME>/personality/PERSONALITY.md`, the history path derives from `globalPath`, and the two file paths of the workspace overlay are store-relative constants.
+- `src/config.ts` holds the schemastery `Config` and an explicit `resolveConfig(config): PersonalitySettings` step. Defaults are applied there once: the global path derives from `resolveDshHome()` as `<DSH_HOME>/personality/PERSONALITY.md`, the history and proposal paths derive from it, and the two file paths of the workspace overlay are store-relative constants. No field can point the global profile elsewhere.
 - `src/personality-file.ts` is the repository. The YAML frontmatter carries `version` (the document revision, incremented on every write), `updatedAt`, and `entries`; the managed block between `<!-- personality:begin -->` and `<!-- personality:end -->` holds one `## <kind>.<name>` heading followed by one paragraph per entry. Text outside the block round-trips byte for byte. Entry ids are `<kind>.<lower-kebab-name>` with `understanding`, `style`, `preference`, and `identity` kinds; the overlay may only carry `style.*` and `preference.*`. The same module reads and validates `PERSONALITY.history.jsonl` and restores one recorded block into the global file.
-- Reads merge the global profile and the overlay by entry id, with the overlay replacing a global entry and appending any new id. The global file is read through `ctx.fs`, the overlay through `ctx.dshStore`, and a missing file is not an error.
+- Reads merge the global profile and the overlay by entry id, with the overlay replacing a global entry and appending any new id. The global file is read through the store atom's `global` scope, the overlay through its `workspace` scope, and a missing file is not an error.
 - `src/prompt.ts` holds the static preamble, the two part headings, and the canonical kind order. `src/index.ts` caches the rendered text per agent because a prompt section's text is evaluated synchronously: `create()` preloads the global profile and starts the watcher, and wiring an agent starts an asynchronous read of that agent's merged view. A watched change re-reads the global profile and refreshes both the preloaded fallback and every live agent's cached text; the section's getter is evaluated at each assembly, so no extra change notification is needed.
 - `src/commands.ts` holds the `/personality` command: subcommand parsing, the `show`/`diff`/`revert` renderers, and the registration helper. `revert` delegates the guarded write and its new history record to `src/personality-file.ts`; the handlers take the context and session explicitly so they run without the command runtime.
 - `src/tools.ts` builds `personality_learn`. It validates the kind, requires evidence naming a positive session event seq, and enforces `autoLearn` from an in-memory per-session usage record. `understanding`, `style`, and `preference` entries are written with `source: 'auto'`; `identity` is refused with the manual-edit guidance, and an exhausted budget is refused with the remaining entries and bytes. Refusals are canonical results, not tool errors.
 
-Writes are version-guarded. `writePersonalityEntry` reads the target file and its version, composes the next text, and writes with `expected: version` (the store maps that to `replaceIfVersion`; the global file uses the filesystem intent directly). A conflicting write surfaces as `FS_STALE_VERSION`; the write re-reads once and retries, and a second conflict is thrown with the previous file untouched. After a successful write, `appendHistory` adds one JSON line to `PERSONALITY.history.jsonl` beside the written file, recording the revision, time, source, session, by-id diff, and the complete managed block. A history failure is logged and does not report the entry write as failed. `revertGlobalPersonality` keeps the current hand-written frame and uses the same guarded write with one stale retry; its history line records `source: 'user'` and the by-id diff of the restore, so a revert is reviewable like any other write.
+Writes are version-guarded. `writePersonalityEntry` reads the target file and its version, composes the next text, and writes with `expected: version` through `ctx.dshStore` (both scopes map it to `replaceIfVersion`). A conflicting write surfaces as `FS_STALE_VERSION`; the write re-reads once and retries, and a second conflict is thrown with the previous file untouched. After a successful write, `appendHistory` adds one JSON line to `PERSONALITY.history.jsonl` beside the written file, recording the revision, time, source, session, by-id diff, and the complete managed block. A history failure is logged and does not report the entry write as failed. `revertGlobalPersonality` keeps the current hand-written frame and uses the same guarded write with one stale retry; its history line records `source: 'user'` and the by-id diff of the restore, so a revert is reviewable like any other write.
 
 ## Model Experience
 

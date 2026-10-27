@@ -309,7 +309,7 @@ async function createContribution(
       }
     }, 'personality: close the overlay watcher')
     try {
-      const root = await ctx.dshStore.rootFor(agent.session, controller.signal)
+      const root = await ctx.dshStore.rootFor('workspace', agent.session, controller.signal)
       for (const candidate of [settings.workspaceStorePath, 'memory', '.']) {
         let target
         try {
@@ -515,7 +515,7 @@ async function learnCorrection(
   }
   try {
     // A turn-end write can be the first store write of the session, so the root may not exist.
-    await ctx.dshStore.prepare(session, signal)
+    await ctx.dshStore.prepare('workspace', session, signal)
     await writePersonalityEntry(ctx, session, {
       kind: correction.kind,
       name: autoEntryName(correction.kind, correction.text),

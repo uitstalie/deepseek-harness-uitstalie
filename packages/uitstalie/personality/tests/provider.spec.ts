@@ -47,6 +47,7 @@ beforeEach(async () => {
   // A `.git` marker makes the fixture look like a checkout, so project-root
   // discovery resolves to the fixture rather than to the temp directory above it.
   await mkdir(join(project, '.git'), { recursive: true })
+  vi.stubEnv('DSH_HOME', join(project, 'home'))
   contexts = []
   callCounter = 0
 })
@@ -66,7 +67,6 @@ interface Mounted {
 /** Configuration that keeps the global profile inside the fixture. */
 function settingsConfig(overrides: Config = {}): Config {
   return {
-    globalPath: overrides.globalPath ?? globalFile(),
     ...overrides.workspaceOverlay === undefined ? {} : { workspaceOverlay: overrides.workspaceOverlay },
     ...overrides.maxBytes === undefined ? {} : { maxBytes: overrides.maxBytes },
     ...overrides.autoLearn === undefined ? {} : { autoLearn: overrides.autoLearn },

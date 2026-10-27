@@ -66,11 +66,13 @@ beforeEach(async () => {
     isSeeded: false,
     cwd: project,
   })
-  settings = resolveConfig({ globalPath: globalFile() })
+  vi.stubEnv('DSH_HOME', join(project, 'home'))
+  settings = resolveConfig({})
 })
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
   await ctx.fiber.dispose()
   await rm(project, { recursive: true, force: true })
 })
@@ -239,7 +241,7 @@ test('show merges the workspace overlay and reports both versions', async () => 
 
 test('show reports a disabled overlay without reading it', async () => {
   await seedGlobal([entry('style', 'language', '全局文本。')])
-  const globalOnly = resolveConfig({ globalPath: globalFile(), workspaceOverlay: false })
+  const globalOnly = resolveConfig({ workspaceOverlay: false })
 
   const result = await showPersonality(ctx, session, globalOnly)
 

@@ -29,7 +29,6 @@ kind: "package-reference"
 - id: personality
   name: '@deepseek-ai/dsh-personality'
   config:
-    globalPath: ''
     workspaceOverlay: true
     maxBytes: 2048
     autoLearn:
@@ -41,12 +40,13 @@ kind: "package-reference"
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `globalPath` | `""` | 档案的绝对路径；为空时解析为 `<DSH_HOME>/personality/PERSONALITY.md`。 |
 | `workspaceOverlay` | `true` | 在 `.dsh/memory/PERSONALITY.md` 中读写 style 与 preference 条目。 |
 | `maxBytes` | `2048` | 托管区块正文的字节预算（UTF-8），读写两侧都会检查。 |
 | `autoLearn.entries` | `3` | 每个会话允许的自动写入条数。 |
 | `autoLearn.bytes` | `512` | 每个会话允许的自动写入字节数。 |
 | `historyLimit` | `500` | 每个历史文件保留的记录数；写入超过时丢弃最旧的记录。 |
+
+全局档案位置不可配置：固定在 `<DSH_HOME>/personality/PERSONALITY.md`（`$DSH_HOME` 默认为 `~/.dsh`），即 store atom 的 `global` scope。提供者对 `ctx.dafeiyu`（组织者）、`ctx.dshStore`（两种 scope）与 `ctx.fs`（监听全局文件）是硬组合依赖；组合里缺少任一个时本行保持 inactive。组织者接线的贡献是 `scope: 'all'`，因此子 agent 继承提示词段与工具；哪些 agent 被接线、哪些完成的 turn 会到达 `onTurnEnd` 仍由组织者决定。
 
 提供者对 `ctx.dafeiyu`（组织者）、`ctx.dshStore`（工作区覆盖）与 `ctx.fs`（全局档案）是硬组合依赖；组合里缺少任一个时本行保持 inactive。组织者接线的贡献是 `scope: 'all'`，因此子 agent 继承提示词段与工具；哪些 agent 被接线、哪些完成的 turn 进入 `onTurnEnd`，仍由组织者决定。
 
@@ -79,14 +79,14 @@ kind: "package-reference"
 
 提供者是函数插件：`src/index.ts` 导出 `name`、`inject`、`Config` 与 `apply`，并只注册一个 `contractVersion: 2`、`id: 'personality'` 的能力，带 `label: 'Personality'` 与一句能力列表用的 description。
 
-- `src/config.ts` 持有 schemastery `Config` 与显式的 `resolveConfig(config): PersonalitySettings` 步骤。默认值只在那里补一次：全局路径变为 `<DSH_HOME>/personality/PERSONALITY.md`，历史路径从 `globalPath` 推出，工作区覆盖的两个文件路径是 store 相对常量。
+- `src/config.ts` 持有 schemastery `Config` 与显式的 `resolveConfig(config): PersonalitySettings` 步骤。默认值只在那里补一次：全局路径由 `resolveDshHome()` 推出为 `<DSH_HOME>/personality/PERSONALITY.md`，历史与提案路径从它推出，工作区覆盖的两个文件路径是 store 相对常量。没有任何字段能把全局档案指到别处。
 - `src/personality-file.ts` 是仓库。YAML frontmatter 记录 `version`（文档修订号，每次写入递增）、`updatedAt` 与 `entries`；`<!-- personality:begin -->` 与 `<!-- personality:end -->` 之间的托管区块按条目保存 `## <kind>.<name>` 标题加一段正文。区块之外的内容逐字节往返。条目 id 形如 `<kind>.<lower-kebab-name>`，kind 为 `understanding`、`style`、`preference`、`identity`；覆盖文件只允许 `style.*` 与 `preference.*`。同一个模块负责读取、校验 `PERSONALITY.history.jsonl`，并把一条记录中的区块恢复到全局文件。
-- 读取时按条目 id 合并全局档案与覆盖文件：覆盖条目替换同 id 的全局条目，新 id 追加在后面。全局文件经 `ctx.fs` 读取，覆盖文件经 `ctx.dshStore` 读取，文件不存在不算错误。
+- 读取时按条目 id 合并全局档案与覆盖文件：覆盖条目替换同 id 的全局条目，新 id 追加在后面。全局文件经 store atom 的 `global` scope 读取，覆盖文件经 `workspace` scope 读取，文件不存在不算错误。
 - `src/prompt.ts` 持有固定 preamble、两个部分的标题与规范 kind 顺序。由于提示词段的文本是同步求值的，`src/index.ts` 按 agent 缓存渲染结果：`create()` 预读全局档案并启动 watcher，接线一个 agent 时再异步读取该 agent 的合并视图。watch 到变化时重读全局档案，同时刷新预读回退文本与每个存活 agent 的缓存文本；该段的 getter 在每次组装时求值，因此不需要额外的变更通知。
 - `src/commands.ts` 持有 `/personality` 命令：子命令解析、`show`/`diff`/`revert` 渲染与注册辅助函数。`revert` 把版本守卫写入与新历史记录委托给 `src/personality-file.ts`；handler 显式接收 context 与 session，因此无需启动命令运行时也能运行。
 - `src/tools.ts` 构造 `personality_learn`。它校验 kind、要求 evidence 指向一个正的会话事件 seq，并用内存里的每会话用量记录执行 `autoLearn` 预算。`understanding`、`style`、`preference` 条目以 `source: 'auto'` 写入；`identity` 按手改说明拒绝，预算耗尽时报告剩余条数与字节数。拒绝是规范的返回值，不是工具错误。
 
-写入带版本守卫。`writePersonalityEntry` 先读目标文件与其版本，拼出下一版文本，再带 `expected: version` 写入（store 映射为 `replaceIfVersion`，全局文件直接使用文件系统的写入意图）。冲突写入表现为 `FS_STALE_VERSION`；写入会重读一次并重试，第二次冲突直接抛出，旧文件保持不变。写入成功后，`appendHistory` 在同一个目录的 `PERSONALITY.history.jsonl` 追加一行 JSON，记录修订号、时间、来源、会话、按 id 的 diff 与完整托管区块。历史追加失败只记录日志，不会把条目写入报告为失败。`revertGlobalPersonality` 保留当前手写边框，走同一套带一次 stale 重试的版本守卫写入；它的历史行记录 `source: 'user'` 与恢复的按 id diff，因此回退本身和普通写入一样可审阅。
+写入带版本守卫。`writePersonalityEntry` 先读目标文件与其版本，拼出下一版文本，再带 `expected: version` 经 `ctx.dshStore` 写入（两种 scope 都映射为 `replaceIfVersion`）。冲突写入表现为 `FS_STALE_VERSION`；写入会重读一次并重试，第二次冲突直接抛出，旧文件保持不变。写入成功后，`appendHistory` 在同一个目录的 `PERSONALITY.history.jsonl` 追加一行 JSON，记录修订号、时间、来源、会话、按 id 的 diff 与完整托管区块。历史追加失败只记录日志，不会把条目写入报告为失败。`revertGlobalPersonality` 保留当前手写边框，走同一套带一次 stale 重试的版本守卫写入；它的历史行记录 `source: 'user'` 与恢复的按 id diff，因此回退本身和普通写入一样可审阅。
 
 <a id="model-experience"></a>
 

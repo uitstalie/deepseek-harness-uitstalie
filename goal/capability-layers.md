@@ -90,7 +90,7 @@ interface CapabilityProvider {
 4. jira：`jira-ledger` → `jira-cloud` → `jira` provider → 设置页 → shim。
 5. 清理：旧路径/重复配置、升级说明、README 与 goal 文档同步。
 
-**状态（2026-10-27）**：1、2、3、4 已完成——2/3 见 DH-12（atom 抽包与 provider v2/`ui-dafeiyu`），4 由 DH-13 进仓拆包、DH-201–205 收尾（`/jira` 命令面也已走 `ctx.jira`）。5 的 README/goal 同步随 DH-12 完成；没有对外升级说明需要写（这些包均未发布），唯一可能改变外部契约的 `global` scope 拆成 DH-301，等 `globalPath` 语义拍板。
+**状态（2026-10-27，DH-301）**：`global` scope 已落地——根固定为 `resolveDshHome()`，`workspace` 根为 `<projectRoot>/.dsh`，没有第三个根；personality 的 `globalPath` 配置已移除，全局档案/历史/提案都走 `ctx.dshStore` 的 `global` scope，`ctx.fs` 只负责 watch。全局写不过会话策略门，由调用方承担审计。
 
 ## 风险与未决
 
@@ -104,5 +104,5 @@ interface CapabilityProvider {
 
 - **目录落点改为 `packages/uitstalie/store-atom/`**：仓库的包门禁（`verify-package-meta`、`verify-package-dependencies`、`package-graph`、`gen-tsconfig-paths` 等）只枚举 `packages/*/*`，`atoms/<name>/` 会落在所有包级检查的盲区；包名仍是 `@deepseek-ai/dsh-store-atom`。后续 atom 沿用这个两层目录约定。
 - 首个 atom 已抽出：`tool-dsh-store` 不再提供 `ctx.dshStore`，改为 `inject: ['dshStore']` 后消费；memory/personality 的 workspace 读写随之走 atom（行为不变，160 个相关测试通过）。
-- **`global` scope 未实现**：personality 的 `globalPath` 允许指向 `$DSH_HOME` 之外（见 [personality.md](personality.md) 的存储决定），与“global 根 = `$DSH_HOME`”冲突；在拍板这条契约前，personality 的全局档案继续走 `ctx.fs`，atom 只承载 workspace scope。该决策与实现跟踪在 DH-301。
-- 接口暂未加 `scope` 参数：先完成抽包、保持 `DshStore` 形状不变，避免一次跨包接口变更与抽包同时发生（对应上面的风险 2）；`scope` 与 `global` 一起作为下一步。
+- **`global` scope 已实现（DH-301）**：`DshStore` 的每个方法都接受 `scope: 'global' | 'workspace'`（默认 workspace）；global 根固定为 `resolveDshHome()`，workspace 根为 `<projectRoot>/.dsh`，没有第三个根。personality 的 `globalPath` 配置已移除，全局档案/历史/提案都走 atom 的 global scope；`ctx.fs` 只用于 watch。全局写不过会话策略门，审计由调用方承担。
+- **接口的 `scope` 参数已加**：`rootFor`/`prepare` 首个参数改为 scope（global 可不传 session）；读写方法保持 session 在首位、允许 `undefined`（仅 global）。memory 与 tool-dsh-store 只走默认 workspace，行为不变。

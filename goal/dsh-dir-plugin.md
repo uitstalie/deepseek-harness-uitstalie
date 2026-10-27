@@ -143,7 +143,7 @@
 
 **状态（2026/10/20）**：本包已服务化为 `ctx.dshStore`（基础接口，工具与 Remote 是消费者），组合行改由 web-app 分支层挂载，preset 不再被改动（DH-5）；P0–P5 的结论不变。
 
-**状态（2026/10/27，DH-12）**：存储实现已从工具包抽到 `packages/uitstalie/store-atom/`（`@deepseek-ai/dsh-store-atom`）。`tool-dsh-store` 现在只保留模型工具与只读 Remote，并 `inject: ['dshStore']` 消费 atom；memory/personality 的 workspace 读写同样走 atom。本节其余设计结论不变。
+**状态（2026/10/27，DH-12 / DH-301）**：存储实现已从工具包抽到 `packages/uitstalie/store-atom/`（`@deepseek-ai/dsh-store-atom`）。`tool-dsh-store` 现在只保留模型工具与只读 Remote，并 `inject: ['dshStore']` 消费 atom；memory/personality 的 workspace 读写同样走 atom。DH-301 补上了 `global` scope：根固定为 `$DSH_HOME`，workspace 根为 `<projectRoot>/.dsh`，没有第三个根；personality 的全局档案/历史/提案已改走 atom。本节其余设计结论不变。
 
 提交拆分：host 包、client 包、docs 各自独立提交（分支自有文件）；原生登记（`tsconfig.host.json`、`tsconfig.client.json`、`tsconfig.base.json` 手写别名）单独一个提交，带 `uitstalie-` 标记。
 

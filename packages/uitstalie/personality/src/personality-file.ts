@@ -20,7 +20,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { FsError, FsVersion } from '@deepseek-ai/dsh-fs'
+import { FsError } from '@deepseek-ai/dsh-fs'
 import { parse as parseYaml } from 'yaml'
 import type { StoreWriteOptions } from '@deepseek-ai/dsh-store-atom'
 import type { PersonalitySettings } from './config.ts'
@@ -36,6 +36,12 @@ export const PERSONALITY_STORE_PATH = `memory/${PERSONALITY_FILE_NAME}`
 
 /** Store-relative path of the workspace overlay's version history. */
 export const PERSONALITY_HISTORY_STORE_PATH = `memory/${PERSONALITY_HISTORY_FILE_NAME}`
+
+/** Store-relative path of the global profile under the user's `$DSH_HOME`. */
+export const PERSONALITY_GLOBAL_STORE_PATH = `personality/${PERSONALITY_FILE_NAME}`
+
+/** Store-relative path of the global history under the user's `$DSH_HOME`. */
+export const PERSONALITY_GLOBAL_HISTORY_STORE_PATH = `personality/${PERSONALITY_HISTORY_FILE_NAME}`
 
 /** Marker opening the provider-owned managed block. */
 export const PERSONALITY_BLOCK_BEGIN = '<!-- personality:begin -->'
@@ -433,12 +439,12 @@ export function mergePersonalityEntries(
 }
 
 /**
- * Read the global personality profile through `ctx.fs`. A missing file is not
- * an error: the caller composes a new document and creates the file without a
- * version guard.
- * @param ctx - context carrying `fs`.
- * @param settings - resolved provider settings, including the global path and budget.
- * @param signal - cancellation for the filesystem reads.
+ * Read the global personality profile through the store atom's global scope.
+ * A missing file is not an error: the caller composes a new document and
+ * creates the file without a version guard.
+ * @param ctx - context carrying `dshStore`.
+ * @param settings - resolved provider settings, including the global display path and budget.
+ * @param signal - cancellation for the store read.
  * @returns the path plus the parsed document and version when the file exists.
  * @throws PersonalityDocumentError when an existing file cannot be parsed or
  *   exceeds the managed-body budget.
@@ -448,18 +454,18 @@ export async function readGlobalPersonality(
   settings: PersonalitySettings,
   signal?: AbortSignal,
 ): Promise<PersonalityFileRead> {
-  const target = await ctx.fs.resolve(settings.globalPath, signalOptions(signal))
-  const info = await ctx.fs.stat(target, signal)
-  if (info === undefined) return { path: settings.globalPath }
-  if (info.type !== 'file') {
-    throw new PersonalityDocumentError(
-      `global personality path ${JSON.stringify(settings.globalPath)} is not a regular file`,
-      'invalid-document',
-    )
-  }
-  const document = parsePersonalityDocument(await ctx.fs.readText(target, signal))
+  const read = await ctx.dshStore.readFile(undefined, PERSONALITY_GLOBAL_STORE_PATH, {
+    scope: 'global',
+    ...signalOptions(signal),
+  })
+  if (read.text === undefined) return { path: settings.globalPath }
+  const document = parsePersonalityDocument(read.text)
   assertBodyBudget(document.entries, settings.maxBytes)
-  return { path: settings.globalPath, document, version: info.version }
+  return {
+    path: settings.globalPath,
+    document,
+    ...read.version === undefined ? {} : { version: read.version },
+  }
 }
 
 /**
@@ -511,7 +517,7 @@ export async function readGlobalPersonalityHistory(
   settings: PersonalitySettings,
   signal?: AbortSignal,
 ): Promise<PersonalityHistoryRead> {
-  const current = await readGlobalHistoryText(ctx, settings.globalHistoryPath, signal)
+  const current = await readGlobalHistoryText(ctx, PERSONALITY_GLOBAL_HISTORY_STORE_PATH, signal)
   return { path: settings.globalHistoryPath, records: parseHistoryRecords(current.text) }
 }
 
@@ -960,12 +966,14 @@ async function writeTargetFile(
     const written = await ctx.dshStore.writeFile(session, target.path, text, storeWriteOptions(signal, version))
     return { path: written.path, ...written.version === undefined ? {} : { version: written.version } }
   }
-  const resolved = await ctx.fs.resolve(target.path, signalOptions(signal))
-  const intent = version === undefined
-    ? { kind: 'createIfAbsent' as const }
-    : { kind: 'replaceIfVersion' as const, version: FsVersion(version) }
-  const outcome = await ctx.fs.writeText(resolved, text, intent, signal)
-  return { path: target.path, version: outcome.version }
+  const written = await ctx.dshStore.writeFile(undefined, PERSONALITY_GLOBAL_STORE_PATH, text, {
+    ...storeWriteOptions(signal, version),
+    scope: 'global',
+  })
+  return {
+    path: target.path,
+    ...written.version === undefined ? {} : { version: written.version },
+  }
 }
 
 /** Read the accumulated history text and its version. */
@@ -982,25 +990,24 @@ async function readHistory(
       ...read.version === undefined ? {} : { version: read.version },
     }
   }
-  return await readGlobalHistoryText(ctx, target.historyPath, signal)
+  return await readGlobalHistoryText(ctx, PERSONALITY_GLOBAL_HISTORY_STORE_PATH, signal)
 }
 
-/** Read the accumulated global history text and its version. */
+/** Read the global history text and its version through the store atom's global scope. */
 async function readGlobalHistoryText(
   ctx: Context,
-  path: string,
+  storePath: string,
   signal: AbortSignal | undefined,
 ): Promise<{ text: string; version?: string }> {
-  const resolved = await ctx.fs.resolve(path, signalOptions(signal))
-  const info = await ctx.fs.stat(resolved, signal)
-  if (info === undefined) return { text: '' }
-  if (info.type !== 'file') {
-    throw new PersonalityDocumentError(
-      `personality history path ${JSON.stringify(path)} is not a regular file`,
-      'invalid-document',
-    )
+  const read = await ctx.dshStore.readFile(undefined, storePath, {
+    scope: 'global',
+    ...signalOptions(signal),
+  })
+  if (read.text === undefined) return { text: '' }
+  return {
+    text: read.text,
+    ...read.version === undefined ? {} : { version: read.version },
   }
-  return { text: await ctx.fs.readText(resolved, signal), version: info.version }
 }
 
 /** Write the accumulated history text through the backend that owns the target. */
@@ -1016,11 +1023,10 @@ async function writeHistory(
     await ctx.dshStore.writeFile(session, target.historyPath, text, storeWriteOptions(signal, version))
     return
   }
-  const resolved = await ctx.fs.resolve(target.historyPath, signalOptions(signal))
-  const intent = version === undefined
-    ? { kind: 'createIfAbsent' as const }
-    : { kind: 'replaceIfVersion' as const, version: FsVersion(version) }
-  await ctx.fs.writeText(resolved, text, intent, signal)
+  await ctx.dshStore.writeFile(undefined, PERSONALITY_GLOBAL_HISTORY_STORE_PATH, text, {
+    ...storeWriteOptions(signal, version),
+    scope: 'global',
+  })
 }
 
 /** Reject a document whose managed body exceeds the configured budget. */

@@ -851,7 +851,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-dafeiyu`
 
-- `source`: [`packages/uitstalie/dafeiyu/src/index.ts:65`](../packages/uitstalie/dafeiyu/src/index.ts)
+- `source`: [`packages/uitstalie/dafeiyu/src/index.ts:66`](../packages/uitstalie/dafeiyu/src/index.ts)
 
 ```ts config-catalog
 /** Resolved organizer configuration: `capabilities` is the live reference. */
@@ -1867,7 +1867,7 @@ export type Config = Readonly<Record<never, never>>
 ## `@deepseek-ai/dsh-jira-service`
 
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/jira/jira-service/src/index.ts:64`](../packages/jira/jira-service/src/index.ts)
+- `source`: [`packages/jira/jira-service/src/index.ts:66`](../packages/jira/jira-service/src/index.ts)
 
 ```ts config-catalog
 /** What a `jira-service` row may configure: where the ledger is, who writes, whether to push. */
@@ -2697,22 +2697,22 @@ export interface Config {
 ## `@deepseek-ai/dsh-personality`
 
 - `inject`: `dafeiyu` · `dshStore` · `fs`
-- `source`: [`packages/uitstalie/personality/src/config.ts:39`](../packages/uitstalie/personality/src/config.ts)
+- `source`: [`packages/uitstalie/personality/src/config.ts:43`](../packages/uitstalie/personality/src/config.ts)
 
 ```ts config-catalog
 /** Configuration as the Loader passes it; every field carries a schema default. */
 export interface Config {
-  /**
-   * Absolute path of the global profile; empty resolves to
-   * `<DSH_HOME>/personality/PERSONALITY.md`, where `DSH_HOME` defaults to `~/.dsh`.
-   */
-  globalPath?: string
   /** Read and write style and preference entries in the workspace overlay; defaults to true. */
   workspaceOverlay?: boolean
   /** Managed-block body budget in UTF-8 bytes. */
   maxBytes?: number
   /** Per-session automatic-learning budget; defaults to {@link DEFAULT_AUTO_LEARN_BUDGET}. */
   autoLearn?: AutoLearnConfig
+  /**
+   * Number of history records kept per file; the oldest are dropped when a
+   * write would exceed it. Defaults to {@link DEFAULT_PERSONALITY_HISTORY_LIMIT}.
+   */
+  historyLimit?: number
 }
 
 /** Raw auto-learning budget as the Loader passes it; every field carries a schema default. */
@@ -3683,6 +3683,23 @@ export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-storage-sqlite -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-store-atom -->
+<a id="deepseek-aidsh-store-atom"></a>
+
+## `@deepseek-ai/dsh-store-atom`
+
+- `inject`: `fs`
+- `source`: [`packages/uitstalie/store-atom/src/index.ts:25`](../packages/uitstalie/store-atom/src/index.ts)
+
+```ts config-catalog
+/** Store atom configuration. */
+export interface Config {
+  /** Create `<projectRoot>/.dsh` for a session that needs the store; `false` leaves it absent. */
+  ensureRoot?: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-store-atom -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-subagent -->
 <a id="deepseek-aidsh-subagent"></a>
 
@@ -4116,23 +4133,6 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-bash-persistent -->
-
-<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-dsh-store -->
-<a id="deepseek-aidsh-tool-dsh-store"></a>
-
-## `@deepseek-ai/dsh-tool-dsh-store`
-
-- `inject`: `tools` · `fs`
-- `source`: [`packages/uitstalie/tool-dsh-store/src/index.ts:23`](../packages/uitstalie/tool-dsh-store/src/index.ts)
-
-```ts config-catalog
-/** Store plugin configuration. */
-export interface Config {
-  /** Create `<projectRoot>/.dsh` for a session that needs the store; `false` leaves it absent. */
-  ensureRoot?: boolean
-}
-```
-<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-dsh-store -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-executor-ptc -->
 <a id="deepseek-aidsh-tool-executor-ptc"></a>
@@ -5008,6 +5008,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-models-dev` | — | [`packages/uitstalie/ui-models-dev/src/index.ts`](../packages/uitstalie/ui-models-dev/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-open-in-app` | — | [`packages/client/ui-open-in-app/src/index.ts`](../packages/client/ui-open-in-app/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-permission-presets` | — | [`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-personality` | — | [`packages/uitstalie/ui-personality/src/index.ts`](../packages/uitstalie/ui-personality/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plan` | — | [`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plugin-market` | — | [`packages/client/ui-plugin-market/src/index.ts`](../packages/client/ui-plugin-market/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plugin-recommendations` | — | [`packages/experimental/client-ui-plugin-recommendations/src/index.ts`](../packages/experimental/client-ui-plugin-recommendations/src/index.ts) |
@@ -5085,6 +5086,7 @@ export interface Config {
 | `@deepseek-ai/dsh-terminal` | — | [`packages/terminal/terminal/src/index.ts`](../packages/terminal/terminal/src/index.ts) |
 | `@deepseek-ai/dsh-tool-call-timeout-policy` | `tools` | [`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts) |
 | `@deepseek-ai/dsh-tool-cordis` | `tools` · `cordisInspect` | [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts) |
+| `@deepseek-ai/dsh-tool-dsh-store` | `dshStore` · `tools` | [`packages/uitstalie/tool-dsh-store/src/index.ts`](../packages/uitstalie/tool-dsh-store/src/index.ts) |
 | `@deepseek-ai/dsh-tool-executor-native` | `tools` | [`packages/core/tool-executor-native/src/index.ts`](../packages/core/tool-executor-native/src/index.ts) |
 | `@deepseek-ai/dsh-tool-schedule` | `tools` | [`packages/schedule/tool-schedule/src/index.ts`](../packages/schedule/tool-schedule/src/index.ts) |
 | `@deepseek-ai/dsh-tool-subagent-control` | `tools` · `subagents` · `agents` | [`packages/subagent/tool-subagent-control/src/index.ts`](../packages/subagent/tool-subagent-control/src/index.ts) |

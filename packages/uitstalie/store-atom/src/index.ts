@@ -72,6 +72,7 @@ export type {
   StoreCallOptions,
   StoreReadResult,
   StoreRemoveOptions,
+  StoreScope,
   StoreWriteOptions,
   StoreWriteResult,
 } from './service.ts'
@@ -89,7 +90,7 @@ export function apply(ctx: Context, config: Config): void {
   if (!ensureRoot) return
   ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
     try {
-      await store.prepare(agent.session, signal)
+      await store.prepare('workspace', agent.session, signal)
     } catch (error: unknown) {
       // Preparing the store root is housekeeping rather than part of the step: a
       // failure here is reported, and the tool call that needs the store reports

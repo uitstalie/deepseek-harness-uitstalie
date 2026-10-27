@@ -1,5 +1,5 @@
 ---
-description: "The .dsh store atom: the dshStore base interface with project-root discovery, path confinement, namespace authoring checks, and version-guarded reads and writes for workspace .dsh content."
+description: "The .dsh store atom: the dshStore base interface with the global ($DSH_HOME) and workspace (.dsh) scopes, project-root discovery, path confinement, namespace authoring checks, and version-guarded reads and writes."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`store-atom` owns the `.dsh` store implementation behind `ctx.dshStore`: project-root discovery, path confinement, the store operations, the rules/skills authoring checks, and the per-session sandbox policy gate. A capability provider writes its own store area through this interface instead of assembling a store path or re-implementing the refusal matrix, and the model-facing tool and the read-only sidebar Remote in `@deepseek-ai/dsh-tool-dsh-store` drive the same implementation.
+`store-atom` owns the `.dsh` store implementation behind `ctx.dshStore`: project-root discovery, path confinement, the store operations, the rules/skills checks, and the session sandbox policy gate. It recognizes exactly two roots — the user's `$DSH_HOME` (`global`) and the session workspace's `<projectRoot>/.dsh` (`workspace`) — and no other scope. Providers write their own area through this interface instead of assembling paths, and the model tool and sidebar Remote in `@deepseek-ai/dsh-tool-dsh-store` drive the same implementation.
 
 It provides `ctx.dshStore` and has no model surface of its own. The branch composition mounts it in the `web-app` layer before the tool that consumes it; consumers declare `inject: ['dshStore']`.
 
@@ -31,7 +31,7 @@ Mount the row once per composition, before any consumer of `ctx.dshStore`:
     ensureRoot: true
 ```
 
-A provider then reads and writes its own area with a store-relative path:
+A provider then reads and writes its own area with a store-relative path. The workspace scope is the default; the global scope takes `{ scope: 'global' }` and no session:
 
 ```ts
 const read = await ctx.dshStore.readFile(session, 'memory/sessions/MEMORY.md', { signal })
@@ -39,9 +39,10 @@ const written = await ctx.dshStore.writeFile(session, 'memory/sessions/MEMORY.md
   expected: read.version,
   signal,
 })
+const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALITY.md', { scope: 'global' })
 ```
 
-`expected` is the version an earlier read returned; omitting it writes unconditionally. A concurrent writer surfaces as `FS_STALE_VERSION` instead of a silent overwrite. `ensureRoot` controls whether a writable session gets `<projectRoot>/.dsh` created before its first step.
+`expected` is the version an earlier read returned; omitting it writes unconditionally. A concurrent writer surfaces as `FS_STALE_VERSION` instead of a silent overwrite. `ensureRoot` controls whether a writable session gets `<projectRoot>/.dsh` created before its first step; a global `prepare('global')` creates `$DSH_HOME` itself.
 
 ## Understand the implementation
 
@@ -51,12 +52,13 @@ const written = await ctx.dshStore.writeFile(session, 'memory/sessions/MEMORY.md
 - `src/policy.ts` — resolves the session's sandbox policy and refuses mutations for a `read-only` session with the shared denial marker.
 - `src/store-ops.ts` — the filesystem operations shared by the service and the Remote.
 
-The workspace store root is `<projectRoot>/.dsh`, where the project root is discovered from the session cwd by the `.git` marker. Reads are allowed in every session mode; writes pass the session's policy gate.
+The workspace root is `<projectRoot>/.dsh`, where the project root is discovered from the session cwd by the `.git` marker. The global root is `resolveDshHome()` — `$DSH_HOME` when set, `~/.dsh` otherwise. Reads are allowed in every session mode; workspace writes pass the session's policy gate, while a global write has no session gate because the policy covers the workspace, so the caller owns that audit.
 
 ## Known Limitations and Deferred Work
 
-- **Only the workspace scope exists.** The design calls for a `global` scope rooted at `$DSH_HOME`; it is not implemented yet because the personality profile's configurable `globalPath` can point outside `$DSH_HOME` and that contract has to be decided first.
-- **A session is required for every call.** Root resolution and the write gate derive from the session's project and policy; there is no session-less path for a host-side writer yet.
+- **Two roots and no more.** A call addresses `$DSH_HOME` or the session workspace's `.dsh`; there is no third root and no caller-supplied absolute path, so a provider cannot point the store at an arbitrary directory.
+- **The global scope is not policy-gated.** A global write ignores the workspace sandbox policy by design; the caller must only expose it on a user-confirmed path, and a misbehaving caller has no session gate to stop it.
+- **The workspace scope still requires a session.** Root resolution and its write gate derive from the session's project and policy; a global call passes `undefined` instead.
 
 ## Dev Note
 
