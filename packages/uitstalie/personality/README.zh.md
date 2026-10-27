@@ -138,7 +138,7 @@ How to respond:
 
 ## 已知限制与延期工作
 
-- **identity 提案有队列但还没有设置页** — `personality_learn` 拒绝 `identity.*` 并指向 `personality_propose`，后者把提案排入队列；`/personality proposals`、`accept`、`reject` 是当前的人面。队列的浏览器设置段是 DH-302 剩下的部分。
+- **identity 提案有两处审阅入口** — `personality_learn` 拒绝 `identity.*` 并指向 `personality_propose`，后者把提案排入队列；`/personality proposals`、`accept`、`reject` 处理 headless，`ui-personality` 设置段处理浏览器。两个入口都不允许在接受前编辑提案。
 - **自动学习有预算、只在内存里、且是启发式的** — 每次能力注册为每个会话保留最多 `autoLearn.entries` 条写入与 `autoLearn.bytes` 字节；能力重载后计数清零。`personality_learn` 工具与 turn 结束触发器共用这份预算。turn 结束检测只是用户句子上的少量规则，因此措辞特殊的纠正可能漏掉，语气强烈的普通指令也可能被当成偏好；两种结果都能通过档案历史回退。
 - **覆盖 watcher 是尽力而为** — 它优先监听覆盖文件，其次 `memory` 目录，最后 store 根；目录 watcher 只报告直接条目，因此它没有盯住的子文件若只改内容，要等下一次 agent 读取。创建时的读取仍会看到合并结果。
 - **watch 通知滞后于外部修改** — 手改与 watcher 事件之间，组装仍可能读到旧的缓存文本；文件仍是下一次刷新的真相来源。

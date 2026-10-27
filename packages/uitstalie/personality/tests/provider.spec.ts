@@ -198,6 +198,7 @@ test('registers an active all-agent capability with the stable prompt section', 
     state: 'active',
     label: Personality.PERSONALITY_CAPABILITY_LABEL,
     description: Personality.PERSONALITY_CAPABILITY_DESCRIPTION,
+    settings: { sectionId: 'personality', order: 210 },
   }])
   expect(await promptText(mounted.ctx, root)).toBe(renderPersonalityPrompt(entries))
   expect(PERSONALITY_PROMPT_ORDER).toBe(100)

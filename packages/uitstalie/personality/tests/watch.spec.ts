@@ -221,6 +221,7 @@ test('an unsupported watch degrades to the per-agent read and logs at debug', as
     state: 'active',
     label: Personality.PERSONALITY_CAPABILITY_LABEL,
     description: Personality.PERSONALITY_CAPABILITY_DESCRIPTION,
+    settings: { sectionId: 'personality', order: 210 },
   }])
   expect(await promptText(mounted.ctx, root)).toContain('预读文本。')
 

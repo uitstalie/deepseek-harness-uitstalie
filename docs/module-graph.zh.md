@@ -480,6 +480,7 @@ flowchart TD
     pkg_client_common_view["client-common-view"]
     pkg_client_ui_dafeiyu["client-ui-dafeiyu"]
     pkg_client_ui_models_dev["client-ui-models-dev"]
+    pkg_client_ui_personality["client-ui-personality"]
     pkg_client_ui_tool_dsh_store["client-ui-tool-dsh-store"]
     pkg_dafeiyu["dafeiyu"]
     pkg_home_backup["home-backup"]
@@ -1671,6 +1672,7 @@ flowchart TD
 | [`client-common-view`](../packages/uitstalie/common-view) | `uitstalie` | — |
 | [`client-ui-dafeiyu`](../packages/uitstalie/ui-dafeiyu) | `uitstalie` | — |
 | [`client-ui-models-dev`](../packages/uitstalie/ui-models-dev) | `uitstalie` | — |
+| [`client-ui-personality`](../packages/uitstalie/ui-personality) | `uitstalie` | — |
 | [`client-ui-tool-dsh-store`](../packages/uitstalie/ui-tool-dsh-store) | `uitstalie` | — |
 | [`dafeiyu`](../packages/uitstalie/dafeiyu) | `uitstalie` | — |
 | [`home-backup`](../packages/uitstalie/home-backup) | `uitstalie` | — |

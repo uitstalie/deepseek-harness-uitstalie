@@ -35,6 +35,7 @@ import {
 } from './personality-file.ts'
 import type { PersonalityEntry, PersonalityEntryKind } from './personality-file.ts'
 import { personalityPromptSection, renderPersonalityPrompt } from './prompt.ts'
+import PersonalityRemote, { createPersonalityProposalOperations } from './remote.ts'
 import { autoEntryName, checkAutoLearnBudget, personalityTools, usageFor } from './tools.ts'
 import type { AutoLearnUsage } from './tools.ts'
 
@@ -162,9 +163,14 @@ export function apply(ctx: Context, config: Config): void {
     label: PERSONALITY_CAPABILITY_LABEL,
     description: PERSONALITY_CAPABILITY_DESCRIPTION,
     config: settings,
+    settings: { sectionId: 'personality', order: 210 },
     create: runtime => createContribution(ctx, settings, runtime),
   })
   ctx.effect(() => registration, 'personality.register()')
+  // The settings page reads and decides through this face; it exists even when
+  // the capability's model surface is disabled, because the queue is user data.
+  ctx.provide('personalityProposals', createPersonalityProposalOperations(ctx, settings))
+  void ctx.plugin(PersonalityRemote)
   // The command child activates only when a command registry is composed.
   ctx.inject(['commands'], (commandCtx) => {
     registerPersonalityCommands(commandCtx, settings)

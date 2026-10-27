@@ -180,5 +180,8 @@
     // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-12, 注册能力总代设置段进 Client 聚合程序
     { "path": "./packages/uitstalie/ui-dafeiyu/tsconfig.client.json" },
     // END uitstalie-deepseek-flash
+    // BEGIN uitstalie-deepseek-flash, 2026/10/27, DH-302, 注册 personality 提案设置段进 Client 聚合程序
+    { "path": "./packages/uitstalie/ui-personality/tsconfig.client.json" },
+    // END uitstalie-deepseek-flash
   ]
 }

@@ -3358,6 +3358,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-ui-jira JiraSection',
       'client-ui-dafeiyu CapabilitiesSection',
       'client-ui-models-dev ModelsDevSection id \'models-dev\'',
+      'client-ui-personality PersonalitySection',
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'settings.section\', () => ctx.slots.register(\n      { name: \'settings.section\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',

@@ -291,7 +291,12 @@ export function autoEntryName(kind: string, content: string): string {
   return `auto-${digest}`
 }
 
-/** Read one session's usage record, creating it on first use. */
+/**
+ * Read one session's usage record, creating it on first use.
+ * @param usage - per-session usage map owned by one capability registration.
+ * @param sessionId - session whose entry is read.
+ * @returns the mutable usage record for that session.
+ */
 export function usageFor(usage: Map<string, AutoLearnUsage>, sessionId: string): AutoLearnUsage {
   const existing = usage.get(sessionId)
   if (existing !== undefined) return existing

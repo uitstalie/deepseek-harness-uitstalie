@@ -419,6 +419,10 @@
       "@deepseek-ai/dsh-client-ui-dafeiyu": ["./packages/uitstalie/ui-dafeiyu/src"],
       "@deepseek-ai/dsh-client-ui-dafeiyu/client": ["./packages/uitstalie/ui-dafeiyu/src/client/index.ts"],
       // END uitstalie-deepseek-flash
+      // BEGIN uitstalie-deepseek-flash, 2026/10/27, DH-302, personality 提案设置页（根 + /client 子路径）按包名解析
+      "@deepseek-ai/dsh-client-ui-personality": ["./packages/uitstalie/ui-personality/src"],
+      "@deepseek-ai/dsh-client-ui-personality/client": ["./packages/uitstalie/ui-personality/src/client/index.ts"],
+      // END uitstalie-deepseek-flash
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],

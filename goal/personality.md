@@ -28,7 +28,7 @@ personality 是**双向**的，两侧都只陈述事实：
 
 “模型可提议”保留为目标，实现形态分两级：低风险 `understanding`/`style`/`preference` 条目由自动学习直接写入并标 `source: auto`（全部进入漂移审阅）；`identity.*` 与角色设定只写**待接受**提案，用户在设置页逐条接受或拒绝；未接受的提案不进入注入。它不是 `memory_write` 的别名。
 
-**状态（2026/10/27，DH-302）**：提案队列已落地——`PERSONALITY.proposals.jsonl`（追加式 JSONL，最新状态胜出）、`personality_propose` 工具（只收 identity）、`/personality proposals|accept|reject` 三个子命令；接受时才通过 `confirmIdentity` 走版本守卫写档案，拒绝不动档案，pending 上限 20。**尚缺**：浏览器设置段（新 client 包 `ui-personality`），见 DH-302 验收 4。
+**状态（2026/10/27，DH-302）**：提案队列与设置面均已落地——`PERSONALITY.proposals.jsonl`（追加式 JSONL，最新状态胜出）、`personality_propose` 工具（只收 identity）、`/personality proposals|accept|reject` 三个子命令，以及 `ui-personality` 设置段（列表 + 接受/拒绝按钮，走 `remote.personality`）。接受时才通过 `confirmIdentity` 走版本守卫写档案，拒绝不动档案，pending 上限 20。
 
 ## 与 memory 的关系
 
