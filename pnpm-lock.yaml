@@ -16915,6 +16915,9 @@ importers:
 
   packages/uitstalie/dafeiyu:
     dependencies:
+      '@deepseek-ai/dsh-app-boot':
+        specifier: workspace:*
+        version: link:../../boot/app-boot
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:*
         version: link:../../typert/protocol
@@ -17005,6 +17008,9 @@ importers:
       '@deepseek-ai/dsh-fs':
         specifier: workspace:*
         version: link:../../fs/fs
+      '@deepseek-ai/dsh-store-atom':
+        specifier: workspace:*
+        version: link:../store-atom
       '@deepseek-ai/dsh-tools':
         specifier: workspace:*
         version: link:../../core/tools
@@ -17051,9 +17057,6 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:*
         version: link:../../core/system-prompt
-      '@deepseek-ai/dsh-tool-dsh-store':
-        specifier: workspace:*
-        version: link:../tool-dsh-store
       '@deepseek-ai/dsh-tool-jobs':
         specifier: workspace:*
         version: link:../../jobs/tool-jobs
@@ -17094,6 +17097,9 @@ importers:
       '@deepseek-ai/dsh-home-paths':
         specifier: workspace:*
         version: link:../../util/home-paths
+      '@deepseek-ai/dsh-store-atom':
+        specifier: workspace:*
+        version: link:../store-atom
       '@deepseek-ai/dsh-tools':
         specifier: workspace:*
         version: link:../../core/tools
@@ -17134,11 +17140,8 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:*
         version: link:../../core/system-prompt
-      '@deepseek-ai/dsh-tool-dsh-store':
-        specifier: workspace:*
-        version: link:../tool-dsh-store
 
-  packages/uitstalie/tool-dsh-store:
+  packages/uitstalie/store-atom:
     dependencies:
       '@deepseek-ai/dsh-agent-instructions':
         specifier: workspace:*
@@ -17152,9 +17155,43 @@ importers:
       '@deepseek-ai/dsh-sandbox':
         specifier: workspace:*
         version: link:../../sandbox/sandbox
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
       '@deepseek-ai/dsh-skill':
         specifier: workspace:*
         version: link:../../skill/skill
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:*
+        version: link:../../core/tools
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      yaml:
+        specifier: ^2.4.2
+        version: 2.9.0
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-fs-local':
+        specifier: workspace:*
+        version: link:../../fs/fs-local
+      '@deepseek-ai/dsh-sandbox-policy':
+        specifier: workspace:*
+        version: link:../../sandbox/sandbox-policy
+      '@deepseek-ai/dsh-session-projection':
+        specifier: workspace:*
+        version: link:../../session/session-projection
+
+  packages/uitstalie/tool-dsh-store:
+    dependencies:
+      '@deepseek-ai/dsh-agent-instructions-plus':
+        specifier: workspace:*
+        version: link:../agent-instructions-plus
+      '@deepseek-ai/dsh-store-atom':
+        specifier: workspace:*
+        version: link:../store-atom
       '@deepseek-ai/dsh-tools':
         specifier: workspace:*
         version: link:../../core/tools
@@ -17164,15 +17201,6 @@ importers:
       '@deepseek-ai/dsh-workspace':
         specifier: workspace:*
         version: link:../../workspace/workspace
-      '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
-        version: link:../../../vendor/schemastery
-      yaml:
-        specifier: ^2.4.2
-        version: 2.9.0
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
