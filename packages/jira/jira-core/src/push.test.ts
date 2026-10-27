@@ -237,7 +237,7 @@ describe('push: dispose stops the queue for good (decision 166)', () => {
 
     const outcome = await queue.flushNow({ settle: true })
     assert.equal(outcome.kind, 'nothing-to-do')
-    if (outcome.kind === 'nothing-to-do') assert.match(outcome.reason, /disposed/)
+    if (outcome.kind === 'nothing-to-do') assert.match(outcome.reason, /closed/)
     assert.equal(git.pushes(), 0, 'an explicit flush is refused too')
     assert.equal(queue.failures(), 0, 'a refused flush is not counted as a failure')
 
@@ -358,5 +358,84 @@ describe('push: a failed flush retries with backoff, then gives up (decision 191
     }).schedule()
     await fire()
     assert.equal(delays.length, 1, 'no retry was armed')
+  })
+})
+
+describe('push: close owns the work it admits (DH-303)', () => {
+  it('a close during a pending pull prevents settle and push, and resolves only after the pull', async () => {
+    const { timer } = fakeTimer()
+    const git = fakeGit({ remotes: 'origin' })
+    let releasePull: () => void = () => {}
+    let pulls = 0
+    let settles = 0
+    const queue = createPushQueue({
+      root: '/store',
+      timer,
+      run: git.run,
+      pull: async () => {
+        pulls += 1
+        await new Promise<void>((resolve) => { releasePull = resolve })
+        return ok(noRebase)
+      },
+      settle: async () => {
+        settles += 1
+        return ok(undefined)
+      },
+    })
+
+    const flush = queue.flushNow({ settle: true })
+    await until(() => pulls === 1)
+    let closed = false
+    const closedPromise = queue.close().then(() => { closed = true })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    assert.equal(closed, false, 'close waits for the admitted flush')
+
+    releasePull()
+    const outcome = await flush
+    assert.equal(outcome.kind, 'nothing-to-do')
+    assert.equal(settles, 0, 'no settle after the close')
+    assert.equal(git.pushes(), 0, 'no push after the close')
+    await closedPromise
+    assert.equal(closed, true)
+  })
+
+  it('a close during the settle prevents the push', async () => {
+    const { timer } = fakeTimer()
+    const git = fakeGit({ remotes: 'origin' })
+    let releaseSettle: () => void = () => {}
+    let settles = 0
+    const queue = createPushQueue({
+      root: '/store',
+      timer,
+      run: git.run,
+      pull: async () => ok(noRebase),
+      settle: async () => {
+        settles += 1
+        await new Promise<void>((resolve) => { releaseSettle = resolve })
+        return ok(undefined)
+      },
+    })
+
+    const flush = queue.flushNow({ settle: true })
+    await until(() => settles === 1)
+    const closedPromise = queue.close()
+    releaseSettle()
+    const outcome = await flush
+    assert.equal(outcome.kind, 'nothing-to-do')
+    assert.equal(git.pushes(), 0)
+    await closedPromise
+  })
+
+  it('refuses new flashes and schedules after close without touching git', async () => {
+    const { timer, pending } = fakeTimer()
+    const git = fakeGit({ remotes: 'origin' })
+    const queue = createPushQueue({ root: '/store', timer, run: git.run })
+    await queue.close()
+
+    queue.schedule()
+    assert.equal(pending(), 0, 'no timer is armed after close')
+    const outcome = await queue.flushNow({ settle: true })
+    assert.equal(outcome.kind, 'nothing-to-do')
+    assert.equal(git.pushes(), 0)
   })
 })

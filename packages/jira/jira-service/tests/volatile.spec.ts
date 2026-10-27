@@ -3,6 +3,9 @@
  * root, host and push switch without remounting the service.
  */
 
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { updateVolatile } from '@deepseek-ai/cosmokit'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -81,5 +84,28 @@ describe('jira-service writable row fields', () => {
 
     expect(service.status().host).toBe('host-b')
     expect(service.status().pushEnabled).toBe(true)
+  })
+
+  it('retires the opened queue on a root switch and awaits teardown', async () => {
+    const first = await mkdtemp(join(tmpdir(), 'dsh-jira-ownership-a-'))
+    const second = await mkdtemp(join(tmpdir(), 'dsh-jira-ownership-b-'))
+    try {
+      const service = await mount({ root: first, host: 'fixture-host', push: { enabled: false } })
+      // Opening the ledger creates the queue; sync keeps everything local because push is off.
+      await service.sync()
+      expect(service.status().root).toBe(first)
+
+      if (captured === undefined) throw new Error('the row configuration was not captured')
+      updateVolatile(captured.root, JiraService.Config({ root: second }).root)
+      commit(['root'])
+      expect(service.status().root).toBe(second)
+      expect(service.status().lastSync).toBeNull()
+
+      // Teardown awaits the retired queue's close instead of leaving a flush behind.
+      await expect(context?.fiber.dispose()).resolves.toBeUndefined()
+    } finally {
+      await rm(first, { recursive: true, force: true })
+      await rm(second, { recursive: true, force: true })
+    }
   })
 })

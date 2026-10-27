@@ -51,7 +51,20 @@ export type PushQueue = Readonly<{
   /** True while a timer is armed. */
   isPending: () => boolean
   /**
-   * Stop the queue (decision 166): clear the armed timer and refuse to push.
+   * Stop the queue for good and wait for the work it already admitted.
+   *
+   * Closing first refuses new schedules and flushes and clears the armed timer,
+   * then resolves only after every in-flight flush has observed the close at its
+   * next await boundary and returned without settling or pushing. A caller that
+   * switches roots or unloads the plugin must await this before releasing the
+   * store: `dispose()` alone only clears the timer and would let an admitted
+   * flush mutate the old root after the switch.
+   * @returns a promise that settles after the admitted work has exited.
+   */
+  close: () => Promise<void>
+  /**
+   * Stop the queue without waiting (decision 166): clear the armed timer and
+   * refuse to push.
    *
    * The plugin's `apply` hands this back as part of its dispose, because a live config reload
    * re-runs `apply` — without it every reload would leave another debounce timer holding a stale
@@ -123,16 +136,34 @@ export const createPushQueue = (options: PushQueueOptions): PushQueue => {
   /** Retries spent since the last success (decision 191). */
   let retries = 0
   let disposed = false
+  /** Every flush this queue admitted and has not finished yet. */
+  const admitted = new Set<Promise<PushOutcome>>()
+
+  /** Track one flush so `close()` can wait for it. */
+  const track = (work: Promise<PushOutcome>): Promise<PushOutcome> => {
+    admitted.add(work)
+    void work.finally(() => { admitted.delete(work) })
+    return work
+  }
+
+  /** The outcome a closed or disposing queue reports without doing more work. */
+  const closedOutcome = (): PushOutcome => Object.freeze({ kind: 'nothing-to-do', reason: 'the queue was closed' })
+
+  /** True when this flush must stop before its next durable or remote step. */
+  const isStale = (): boolean => disposed
 
   const pushNow = async (settle: boolean): Promise<PushOutcome> => {
-    if (disposed) return Object.freeze({ kind: 'nothing-to-do', reason: 'the queue was disposed' })
+    if (isStale()) return closedOutcome()
     if (!enabled) return Object.freeze({ kind: 'nothing-to-do', reason: 'push disabled by configuration' })
     if (!(await hasRemote(options.root, run))) {
       return Object.freeze({ kind: 'nothing-to-do', reason: 'the store has no remote' })
     }
+    // A close can land during any await; every later step re-checks ownership.
+    if (isStale()) return closedOutcome()
     // Decision 119: pull --rebase before pushing, or two machines tangle their history.
     if (options.pull !== undefined) {
       const rebased = await options.pull()
+      if (isStale()) return closedOutcome()
       if (!rebased.ok) {
         failures += 1
         return Object.freeze({ kind: 'failed', error: rebased.error })
@@ -143,15 +174,18 @@ export const createPushQueue = (options: PushQueueOptions): PushQueue => {
         return Object.freeze({ kind: 'failed', error: ioFailed('pull --rebase stopped: ' + (rebased.value.reason ?? 'git could not merge'), {}) })
       }
     }
+    if (isStale()) return closedOutcome()
     // Decision 148: only now — after the rebase has imported whatever it was going to import — is
     // the derived data rendered against the history that is actually about to be pushed.
     if (settle && options.settle !== undefined) {
       const settled = await options.settle()
+      if (isStale()) return closedOutcome()
       if (!settled.ok) {
         failures += 1
         return Object.freeze({ kind: 'failed', error: settled.error })
       }
     }
+    if (isStale()) return closedOutcome()
     const result = await push(options.root, run)
     if (result.ok) {
       failures = 0
@@ -190,11 +224,27 @@ export const createPushQueue = (options: PushQueueOptions): PushQueue => {
   }
 
   const flushNow = async (flush: FlushOptions = {}): Promise<PushOutcome> => {
+    if (isStale()) return closedOutcome()
     if (armed !== undefined) {
       timer.clear(armed)
       armed = undefined
     }
-    return report(await pushNow(flush.settle === true))
+    return report(await track(pushNow(flush.settle === true)))
+  }
+
+  /** Stop admission, clear the timer, then wait for every admitted flush to exit. */
+  const close = async (): Promise<void> => {
+    if (!disposed) {
+      disposed = true
+      if (armed !== undefined) {
+        timer.clear(armed)
+        armed = undefined
+      }
+    }
+    // The admitted flushes observe `disposed` after each await and return without
+    // settling or pushing; waiting here is what makes a root switch or teardown
+    // own the work instead of racing it.
+    await Promise.allSettled([...admitted])
   }
 
   return Object.freeze({
@@ -205,6 +255,7 @@ export const createPushQueue = (options: PushQueueOptions): PushQueue => {
         armed = undefined
       }
     },
+    close,
     schedule: () => {
       if (!enabled || disposed || armed !== undefined) return
       armed = timer.set(() => {

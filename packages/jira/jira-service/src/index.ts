@@ -111,6 +111,13 @@ interface Opened {
   readonly queue?: ReturnType<typeof push.createPushQueue>
 }
 
+/** One generation's resolved store and queue, unpublished until its generation wins. */
+interface BuiltOpening {
+  readonly generation: number
+  readonly opened: Opened
+  readonly queue?: ReturnType<typeof push.createPushQueue>
+}
+
 const CONFIG_SCHEMA = z.object({
   root: z.string().volatile(),
   host: z.string().volatile(),
@@ -184,9 +191,10 @@ export class JiraService extends Service implements JiraServiceApi {
     // host or push change therefore reopens the ledger and rebuilds the queue lazily.
     ctx.on('loader/volatile-update', () => { this.reconfigure() })
     // The queue is created lazily, so the disposer reads it at teardown rather than capturing a
-    // value that does not exist yet.
-    ctx.effect(() => () => {
-      this.queue?.dispose()
+    // value that does not exist yet. The teardown waits for admitted flush work: closing the queue
+    // is what stops an old root from settling or pushing after the plugin has gone.
+    ctx.effect(() => async () => {
+      await this.retireQueue()
       this.listeners.clear()
     })
     // The browser face reads through this service, so it is mounted by the row that owns the
@@ -221,11 +229,27 @@ export class JiraService extends Service implements JiraServiceApi {
     this.host = host
     this.pushEnabled = pushEnabled
     this.generation += 1
+    this.root = root
+    this.host = host
+    this.pushEnabled = pushEnabled
+    // The queue refuses new work immediately and resolves after the flush it already admitted has
+    // observed the close; a later open on the new root cannot be affected by that outcome because
+    // `onOutcome` only records into the queue the service currently publishes.
+    void this.retireQueue()
+  }
+
+  /**
+   * Retire the published queue: stop admission, clear the open promise and the last outcome, then
+   * wait for admitted flush work. Shared by a live root/host switch and by plugin teardown so both
+   * own the queue the same way.
+   * @returns a promise that settles after the retired queue has no in-flight work.
+   */
+  private async retireQueue(): Promise<void> {
     const queue = this.queue
     this.queue = undefined
     this.opened = undefined
     this.lastSync = null
-    queue?.dispose()
+    await queue?.close()
   }
 
   /** This machine's identity in the ledger's counter blocks. */
@@ -731,8 +755,14 @@ export class JiraService extends Service implements JiraServiceApi {
   async sync(): Promise<JiraResult<PushOutcome>> {
     const opened = await this.open()
     if (opened.queue === undefined) return result.err(errors.ioFailed('the ledger root could not be resolved'))
+    if (this.queue !== opened.queue) return result.err(errors.ioFailed('the ledger configuration changed while syncing; retry'))
     const outcome = await opened.queue.flushNow({ settle: true })
+    // A close during the flush returns without settling or pushing; reporting it as success would
+    // claim a sync that the retired queue deliberately refused.
     if (outcome.kind === 'failed') return result.err(outcome.error)
+    if (outcome.kind === 'nothing-to-do' && outcome.reason === 'the queue was closed') {
+      return result.err(errors.ioFailed('the ledger configuration changed while syncing; retry'))
+    }
     // The flush settled and pushed already; re-arming the queue here would push again forever.
     this.emitChange('sync')
     return result.ok(outcome)
@@ -806,13 +836,36 @@ export class JiraService extends Service implements JiraServiceApi {
   }
 
   private readonly openOnce = async (): Promise<Opened> => {
-    const generation = this.generation
+    // A volatile change can land while the root, machine or remote is being resolved. Rather than
+    // publishing a queue built for the previous configuration, retire it and resolve again for the
+    // generation that is current when the loop repeats.
+    for (;;) {
+      const generation = this.generation
+      const built = await this.openStore(generation)
+      if (built.queue === undefined) return built.opened
+      if (generation !== this.generation) {
+        await built.queue.close()
+        continue
+      }
+      this.queue = built.queue
+      return built.opened
+    }
+  }
+
+  /**
+   * Resolve one generation's store and queue without publishing it.
+   * @param generation - the generation the caller captured before resolving.
+   * @returns the built queue with its Opened record; `queue` is absent when the root fails to resolve.
+   */
+  private readonly openStore = async (generation: number): Promise<BuiltOpening> => {
     const configured = coreConfig.configuredRootOf(current(this.config.root))
     const resolved = coreConfig.resolveStoreRoot({
       ...(configured === undefined ? {} : { configured }),
       env: process.env,
     })
-    if (!resolved.ok) return Object.freeze({ root: '', machineId: this.resolvedMachineId, store: resolved })
+    if (!resolved.ok) {
+      return { generation, opened: Object.freeze({ root: '', machineId: this.resolvedMachineId, store: resolved }) }
+    }
 
     const machineId = await machine.resolveMachineId({
       ...(this.config.machine_id === undefined ? {} : { configured: this.config.machine_id }),
@@ -837,13 +890,17 @@ export class JiraService extends Service implements JiraServiceApi {
       pull: async () => rebase.pullRebase(store, { by: PULL_IDENTITY, at: now() }),
       settle: async () => generateStore.regenerateAndCommit(store, now()),
       onOutcome: (outcome) => {
+        // A retired queue may finish its admitted flush after a switch; its outcome must not
+        // overwrite the status of the queue the service currently publishes.
+        if (this.queue !== queue) return
         this.lastSync = recordOf(outcome)
       },
     })
-    // A volatile change during open already invalidated this generation; do not publish its queue.
-    if (generation === this.generation) this.queue = queue
-    else queue.dispose()
-    return Object.freeze({ root: resolved.value, machineId: this.resolvedMachineId, store: result.ok(store), queue })
+    return {
+      generation,
+      queue,
+      opened: Object.freeze({ root: resolved.value, machineId: this.resolvedMachineId, store: result.ok(store), queue }),
+    }
   }
 }
 
