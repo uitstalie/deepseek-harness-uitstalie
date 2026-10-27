@@ -174,7 +174,7 @@ brief checkpoint 用最多 160 字符加 `- [kind]` 前缀替换原始 turn；�
 
 - **`memory_read` 一次只读一个 turn** — `before` 与 `after` 各最多向相邻事件扩展十条，且没有跨 turn 区间参数；读取更长跨度需要按 turn 分多次调用。
 - **全新会话启动时没有 snapshot** — 启动钩子跳过没有 surface 的会话，因为此时追加的 user 消息会排在系统提示词之前。第一次成功写入会送出 snapshot；恢复的会话在启动时就有。
-- **tier 迁移以区块为单位** — 托管区块对整个 turn 区间只有一组条目，没有逐条目的 turn 映射，因此只有区间内每个 turn 都达到对应年龄时，区块才转成 brief 或被遗忘。跨过阈值一半的区间会等下一次 pass。
+- **带标记的条目按 turn 迁移** — 写入时带 turn 标记的条目允许 detail 区块拆分：同龄的连续 turn 作为一个 range 迁移，更新的 turn 保留自己的区块。标记出现之前的条目（以及 brief 区块）仍以整个区块为单位迁移，因此旧文件最多滞后一个最宽区块的跨度。
 - **被跳过的 surface checkpoint 会在后续 pass 重试** — live 区间缺失、不连续、包含 snapshot 或包含 compaction checkpoint 时，surface 替换被跳过，但文件仍记录新的 tier。下一次 pass 会用已存文本重试（不会二次压缩）：brief 区块重发它的条目，遗忘区间重发指针。仍无法替换的区间会继续重试；原始 turn 可能留在 surface 上，直到 compaction 移除它。
 - **一次 pass 只覆盖一个 turn** — pending 机制只覆盖最新完成的 turn；pass 运行期间完成的 turn 不会合并进本次，因此每完成一个 turn 会产生一次摘要调用，另外每个跨过 brief 年龄的区块各产生一次压缩调用。
 - **`maxBytes` 只覆盖托管区块** — 默认 4 KiB 是提供者拥有的正文预算。设计里的 16 KiB 总正文预算属于后续步骤；snapshot 有自己的固定 4 KiB 预算（`MEMORY_SNAPSHOT_MAX_BYTES`）。
@@ -194,6 +194,6 @@ brief checkpoint 用最多 160 字符加 `- [kind]` 前缀替换原始 turn；�
 
 本开发备注是非权威的工作上下文：尚未决定的问题与方向。已发布行为与已确认的理由在上文各节与包内代码里。
 
-- **区块是否应该携带逐 turn 条目** — 当前文件格式把连续 turn 归在同一个标题下，因此迁移以区块为单位。加入逐条目 turn 标记可以实现精确老化，但会改动托管区块格式。
+- **brief 区块是否也该带逐 turn 条目** — detail 条目现在带 turn 标记并可精确拆分；brief 条目是压缩产物，因此 brief 区块仍整体移动。要拆分多 turn 的 brief，需要压缩器保留逐 turn 映射。
 
 </details>

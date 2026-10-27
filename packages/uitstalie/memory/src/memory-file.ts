@@ -615,10 +615,19 @@ async function compressBriefs(
 ): Promise<BriefMigration[]> {
   const briefs: BriefMigration[] = []
   for (const range of plan.toBrief) {
-    const section = findSection(document.sections, session.id, range)
+    const section = findContainingSection(document.sections, session.id, range, 'detail')
     if (section === undefined) {
       ctx.logger.debug(
         'memory: skipping brief migration for turns %d–%d because its section changed',
+        range.startTurn,
+        range.endTurn,
+      )
+      continue
+    }
+    const source = entriesForRange(section, range)
+    if (source.length === 0) {
+      ctx.logger.debug(
+        'memory: skipping brief migration for turns %d–%d because it has no entries',
         range.startTurn,
         range.endTurn,
       )
@@ -628,7 +637,7 @@ async function compressBriefs(
     let entries = compressed.get(key)
     if (entries === undefined) {
       try {
-        entries = normalizeBriefEntries(await compress(range, section.entries, signal))
+        entries = normalizeBriefEntries(await compress(range, source, signal))
       } catch (error: unknown) {
         if (signal?.aborted === true) throw error
         ctx.logger.warn(
@@ -644,6 +653,64 @@ async function compressBriefs(
     briefs.push({ range, entries })
   }
   return briefs
+}
+
+/** Find the section of one tier that contains a range; a split range is smaller than its section. */
+function findContainingSection(
+  sections: readonly MemorySection[],
+  sessionId: string,
+  range: TurnRange,
+  tier: MemoryTier,
+): MemorySection | undefined {
+  return sections.find(section => section.sessionId === sessionId
+    && section.tier === tier
+    && section.startTurn <= range.startTurn
+    && section.endTurn >= range.endTurn)
+}
+
+/** Entries a range moves: per-turn entries by turn, legacy entries only with the whole section. */
+function entriesForRange(section: MemorySection, range: TurnRange): readonly MemoryEntry[] {
+  return section.entries.filter(entry => entryInRange(entry, range, section))
+}
+
+/** Whether one entry belongs to a migration range. */
+function entryInRange(entry: MemoryEntry, range: TurnRange, section: MemorySection): boolean {
+  if (entry.turn !== undefined) return entry.turn >= range.startTurn && entry.turn <= range.endTurn
+  return section.startTurn >= range.startTurn && section.endTurn <= range.endTurn
+}
+
+/**
+ * Split the entries a migration keeps into contiguous per-turn sections.
+ *
+ * A section whose older turns moved to brief can leave newer turns on both sides of the gap;
+ * one heading spanning the gap would claim a turn whose summary now lives in another section.
+ * Legacy entries (no turn marker) keep the section as it was.
+ * @param section - the section the entries came from.
+ * @param entries - the entries that stay.
+ * @returns one section per contiguous turn run.
+ */
+function narrowSections(section: MemorySection, entries: readonly MemoryEntry[]): MemorySection[] {
+  const turns = entries.flatMap(entry => entry.turn === undefined ? [] : [entry.turn])
+  if (turns.length !== entries.length) return [{ ...section, entries }]
+  const sorted = entries
+    .map(entry => ({ entry, turn: entry.turn as number }))
+    .sort((left, right) => left.turn - right.turn)
+  const runs: MemoryEntry[][] = []
+  let previous: number | undefined
+  for (const item of sorted) {
+    if (previous === undefined || item.turn > previous + 1) runs.push([])
+    runs.at(-1)?.push(item.entry)
+    previous = item.turn
+  }
+  return runs.map((run) => {
+    const runTurns = run.map(entry => entry.turn as number)
+    return {
+      ...section,
+      startTurn: Math.min(...runTurns),
+      endTurn: Math.max(...runTurns),
+      entries: run,
+    }
+  })
 }
 
 /** Publish the batch's checkpoint replacements, reusing seqs from a prior attempt. */
@@ -712,12 +779,23 @@ function applyMigrations(
   briefs: readonly BriefMigration[],
   checkpoints: ReadonlyMap<string, number>,
 ): MemoryDocument {
-  let sections = document.sections
+  let sections: MemorySection[] = [...document.sections]
   let turns = document.sessions.find(record => record.id === session.id)?.turns ?? []
   for (const brief of briefs) {
-    sections = sections.map(section => sameSection(section, session.id, brief.range)
-      ? { ...section, tier: 'brief' as const, entries: copyEntries(brief.entries) }
-      : section)
+    const container = findContainingSection(sections, session.id, brief.range, 'detail')
+    if (container !== undefined) {
+      const moved = entriesForRange(container, brief.range)
+      const kept = container.entries.filter(entry => !moved.includes(entry))
+      sections = sections.filter(section => section !== container)
+      if (kept.length > 0) sections.push(...narrowSections(container, kept))
+      sections.push({
+        sessionId: session.id,
+        startTurn: brief.range.startTurn,
+        endTurn: brief.range.endTurn,
+        tier: 'brief',
+        entries: copyEntries(brief.entries),
+      })
+    }
     const checkpointSeq = checkpoints.get(rangeKey('brief', brief.range))
     turns = updateTurnRange(turns, brief.range, {
       tier: 'brief',
@@ -725,7 +803,13 @@ function applyMigrations(
     })
   }
   for (const range of plan.toForget) {
-    sections = sections.filter(section => !sameSection(section, session.id, range))
+    sections = sections.flatMap((section) => {
+      if (section.sessionId !== session.id) return [section]
+      const kept = section.entries.filter(entry => !entryInRange(entry, range, section))
+      if (kept.length === section.entries.length) return [section]
+      if (kept.length === 0) return []
+      return narrowSections(section, kept)
+    })
     const checkpointSeq = checkpoints.get(rangeKey('forget', range))
     if (checkpointSeq !== undefined) turns = updateTurnRange(turns, range, { checkpointSeq })
   }
@@ -733,6 +817,10 @@ function applyMigrations(
     const checkpointSeq = checkpoints.get(rangeKey(retry.action, retry))
     if (checkpointSeq !== undefined) turns = updateTurnRange(turns, retry, { checkpointSeq })
   }
+  sections.sort((left, right) =>
+    left.startTurn - right.startTurn
+    || left.endTurn - right.endTurn
+    || (left.tier === right.tier ? 0 : left.tier === 'detail' ? -1 : 1))
   return {
     ...document,
     sections,

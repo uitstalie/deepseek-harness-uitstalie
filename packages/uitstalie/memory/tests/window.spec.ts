@@ -182,6 +182,48 @@ test('a forgotten run whose pointer was skipped is planned for a retry', () => {
   }])
 })
 
+test('a multi-turn detail section splits by turn age', () => {
+  const currentTurn = 18
+  const result = planTierMigrations(
+    document(
+      [session('session-a', [turn(1), turn(2), turn(3)])],
+      [{
+        sessionId: 'session-a',
+        startTurn: 1,
+        endTurn: 3,
+        tier: 'detail',
+        entries: [
+          { kind: 'decision', text: 'one', turn: 1 },
+          { kind: 'decision', text: 'two', turn: 2 },
+          { kind: 'decision', text: 'three', turn: 3 },
+        ],
+      }],
+    ),
+    currentTurn,
+    { ...DEFAULT_MEMORY_WINDOW, sessionId: 'session-a' },
+  )
+  expect(result.toBrief).toEqual([{ startTurn: 1, endTurn: 2, seq: [10, 25], tier: 'detail' }])
+  expect(result.toForget).toEqual([])
+})
+
+test('a section without per-turn entries keeps the section-granular rule', () => {
+  const result = planTierMigrations(
+    document(
+      [session('session-a', [turn(1), turn(2), turn(3)])],
+      [{
+        sessionId: 'session-a',
+        startTurn: 1,
+        endTurn: 3,
+        tier: 'detail',
+        entries: [{ kind: 'decision', text: 'one' }, { kind: 'decision', text: 'two' }],
+      }],
+    ),
+    19,
+    { ...DEFAULT_MEMORY_WINDOW, sessionId: 'session-a' },
+  )
+  expect(result.toBrief).toEqual([{ startTurn: 1, endTurn: 3, seq: [10, 35], tier: 'detail' }])
+})
+
 test('a plan scopes ages to the named session', () => {
   const turnsA = [turn(1)]
   const turnsB = [turn(1)]

@@ -198,6 +198,45 @@ test('the forget age replaces the previous checkpoint with one pointer', async (
   expect(textOf(observed[0]!.message)).toContain('left the context')
 })
 
+test('a section spanning turns splits when only the older turns cross the brief age', async () => {
+  const mounted = await mount()
+  const root = await mounted.harness.create(SessionId('memory-root'), ROUTE, { cwd: project })
+  for (const turnNumber of [1, 2, 3]) {
+    const start = root.session.append('turn/start', { turn: turnNumber })
+    appendUserText(root, `turn ${turnNumber} request`)
+    appendAssistantText(root, turnNumber, `turn ${turnNumber} answer`)
+    await appendTurnSummary(mounted.ctx, root.session, {
+      turn: turnNumber,
+      seq: [start.seq, root.session.seq - 1],
+      entries: [{ kind: 'decision', text: `turn ${turnNumber} conclusion` }],
+    })
+  }
+  const compressedRanges: string[] = []
+  const result = await migrateMemoryTiers(
+    mounted.ctx,
+    root.session,
+    18,
+    (range, entries) => {
+      compressedRanges.push(`${String(range.startTurn)}-${String(range.endTurn)}:${entries.map(entry => entry.text).join('|')}`)
+      return Promise.resolve([{ kind: 'decision', text: 'older turns compressed' }])
+    },
+    signal,
+    { window: { detail: 6, brief: 16, forget: 21, sessions: 10 } },
+  )
+
+  expect(result).toMatchObject({ briefed: 1, forgotten: 0 })
+  expect(compressedRanges).toEqual(['1-2:turn 1 conclusion|turn 2 conclusion'])
+  const document = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
+  expect(document.sections.map(section => [section.startTurn, section.endTurn, section.tier]))
+    .toEqual([[1, 2, 'brief'], [3, 3, 'detail']])
+  expect(document.sections[1]?.entries.map(entry => entry.turn)).toEqual([3])
+  expect(document.sessions[0]?.turns.map(turnRecord => [turnRecord.turn, turnRecord.tier]))
+    .toEqual([[1, 'brief'], [2, 'brief'], [3, 'detail']])
+  const observed = await checkpoints(mounted, 'memory-root')
+  expect(observed).toHaveLength(1)
+  expect(observed[0]?.source.window).toEqual({ from: 1, to: 2, tier: 'brief' })
+})
+
 test('a range carrying a compaction checkpoint is refused and stays untouched', async () => {
   const mounted = await mount()
   const root = await mounted.harness.create(SessionId('memory-root'), ROUTE, { cwd: project })

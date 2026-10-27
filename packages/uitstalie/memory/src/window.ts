@@ -7,11 +7,12 @@
  * ages below `detail` stay verbatim, ages below `brief` stay detail, ages below
  * `forget` become brief, and older turns are forgotten.
  *
- * A stored section carries one heading and one entry list for a run of turns,
- * with no per-entry turn mapping. A section therefore migrates only when every
- * turn it covers reaches the same action; a partially crossed section waits for
- * the next pass. The returned window values are the frontmatter state after the
- * successful part of that plan.
+ * A stored section carries one heading and one entry list for a run of turns. Entries written
+ * with a turn marker let a section split: consecutive turns that ask for the same action form
+ * one range, so an older turn can migrate while a newer one in the same heading stays detail.
+ * Entries written before the marker (and brief sections) keep the section-granular rule: the
+ * whole section migrates only when every turn reaches the same action. The returned window
+ * values are the frontmatter state after the successful part of that plan.
  * @module @deepseek-ai/dsh-memory/window
  */
 
@@ -86,8 +87,12 @@ type TurnAction = 'none' | 'brief' | 'forget'
  *
  * The current turn's record may already exist at age 0; it never migrates. A
  * section's turns are read from the frontmatter, so a section with a missing
- * turn record is skipped rather than guessed. Already-brief and already-forgotten
- * runs produce no instruction, which makes repeated calls idempotent.
+ * turn record is skipped rather than guessed. A detail section whose entries
+ * all name their turn migrates per turn: turns at different ages split into
+ * separate ranges, so one old turn no longer holds back a newer one. Entries
+ * written before that marker (and brief sections) keep the section-granular
+ * rule. Already-brief and already-forgotten runs produce no instruction, which
+ * makes repeated calls idempotent.
  * @param document - parsed MEMORY.md.
  * @param currentTurn - latest completed turn of the session being summarized.
  * @param config - window thresholds plus the session to plan.
@@ -107,6 +112,10 @@ export function planTierMigrations(
     const sectionTurns = completeSectionTurns(section, turns)
     if (sectionTurns === undefined) continue
     if (forgottenSection(section, session.forgottenThrough)) continue
+    if (section.tier === 'detail' && sectionHasTurnEntries(section)) {
+      collectTurnRanges(section, turns, currentTurn, config, session.forgottenThrough, toBrief, toForget)
+      continue
+    }
     const action = sectionAction(section, sectionTurns, currentTurn, config, session.forgottenThrough)
     if (action === 'none') continue
     const range = turnRange(section, sectionTurns)
@@ -221,6 +230,89 @@ function turnRange(section: MemorySection, turns: readonly MemoryTurnRecord[]): 
     seq: [first.seq[0], last.seq[1]],
     tier: section.tier,
     ...checkpointSeq === undefined ? {} : { checkpointSeq },
+  }
+}
+
+/** Whether every entry in a section names the turn it summarizes. */
+function sectionHasTurnEntries(section: MemorySection): boolean {
+  return section.entries.length > 0 && section.entries.every(entry => entry.turn !== undefined)
+}
+
+/**
+ * Plan one detail section's migrations per turn.
+ *
+ * Consecutive turns that ask for the same action form one range, so an old
+ * turn can move to brief (or be forgotten) while a newer turn in the same
+ * heading stays detail. Turns without a record, or whose action is `none`,
+ * break the run and wait for a later pass.
+ * @param section - the detail section to split.
+ * @param turns - turn records by turn number.
+ * @param currentTurn - latest completed turn of the session.
+ * @param config - window thresholds.
+ * @param forgottenThrough - highest already-forgotten turn.
+ * @param toBrief - collected brief ranges.
+ * @param toForget - collected forget ranges.
+ */
+function collectTurnRanges(
+  section: MemorySection,
+  turns: ReadonlyMap<number, MemoryTurnRecord>,
+  currentTurn: number,
+  config: TierMigrationConfig,
+  forgottenThrough: number | undefined,
+  toBrief: TurnRange[],
+  toForget: TurnRange[],
+): void {
+  const turnNumbers = [...new Set(section.entries
+    .map(entry => entry.turn)
+    .filter((turn): turn is number => turn !== undefined))]
+    .filter(turn => turn >= section.startTurn && turn <= section.endTurn)
+    .sort((left, right) => left - right)
+  let run: { start: number; end: number; action: TurnAction } | undefined
+  const flush = (): void => {
+    if (run === undefined) return
+    const range = rangeFromTurns(section, turns, run.start, run.end)
+    if (run.action === 'brief') toBrief.push(range)
+    else toForget.push(range)
+    run = undefined
+  }
+  for (const turnNumber of turnNumbers) {
+    const record = turns.get(turnNumber)
+    if (record === undefined) {
+      flush()
+      continue
+    }
+    const action = turnAction(record, currentTurn, config, forgottenThrough)
+    if (action === 'none') {
+      flush()
+      continue
+    }
+    if (run !== undefined && run.action === action && run.end === turnNumber - 1) {
+      run.end = turnNumber
+      continue
+    }
+    flush()
+    run = { start: turnNumber, end: turnNumber, action }
+  }
+  flush()
+}
+
+/** Build a range from two known turn records. */
+function rangeFromTurns(
+  section: MemorySection,
+  turns: ReadonlyMap<number, MemoryTurnRecord>,
+  startTurn: number,
+  endTurn: number,
+): TurnRange {
+  const first = turns.get(startTurn)
+  const last = turns.get(endTurn)
+  if (first === undefined || last === undefined) {
+    throw new Error(`memory: turns ${String(startTurn)}–${String(endTurn)} have no records`)
+  }
+  return {
+    startTurn,
+    endTurn,
+    seq: [first.seq[0], last.seq[1]],
+    tier: section.tier,
   }
 }
 

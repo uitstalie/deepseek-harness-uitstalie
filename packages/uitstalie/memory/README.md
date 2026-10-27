@@ -166,7 +166,7 @@ Appended at the tail, so it invalidates no earlier cached prefix; the following 
 
 - **`memory_read` covers one turn** — `before` and `after` add at most ten neighboring events each, and there is no cross-turn range parameter; reading a longer span takes one call per turn.
 - **A fresh session starts without a snapshot** — the startup hook skips a session with no surface, because a user message appended there would precede the system prompt. The first successful write supplies the snapshot; a resumed session gets one at startup.
-- **Tier migration is section-granular** — a managed-block section has one entry list for its whole turn run and no per-entry turn mapping, so a section moves to brief or forget only when every turn in it reaches that age. A run that straddles a threshold waits for the next pass.
+- **Tier migration is per-turn for marked entries** — an entry written with its turn marker lets a detail section split: consecutive turns at the same age migrate as one range while a newer turn keeps its own section. Entries written before the marker (and brief sections) still move as a whole section, so an old file can lag by up to its widest section.
 - **A skipped surface checkpoint is retried on later passes** — when the live range is missing, not contiguous, contains a snapshot, or contains a compaction checkpoint, the surface replacement is skipped and the file still records the new tier. The next pass retries it from the stored text (no second compression): a brief section republishes its entries, a forgotten run republishes its pointer. A range that still cannot be replaced is retried again, and the raw turn can stay on the surface until compaction removes it.
 - **A summary pass is one turn** — the pending mechanism covers the latest completed turn only; turns that complete while a pass runs are not batched into it, and a session summarized on every completed turn performs one summary call per turn plus one compression call per section that crosses the brief age.
 - **`maxBytes` covers the managed block only** — the default is 4 KiB for the provider-owned body. The design's 16 KiB total-body budget belongs to a later step; the snapshot has its own fixed 4 KiB budget (`MEMORY_SNAPSHOT_MAX_BYTES`).
@@ -184,6 +184,6 @@ Appended at the tail, so it invalidates no earlier cached prefix; the following 
 
 This Dev Note is non-authoritative working context: open questions and directions that are not decided. Shipped behavior and accepted rationale live in the sections above and in the package code.
 
-- **Whether a section should carry per-turn entries** — the current file format groups consecutive turns under one heading, which is why migration is section-granular. A per-turn entry marker would allow exact aging but would change the managed-block format.
+- **Whether a brief section should carry per-turn entries too** — detail entries now name their turn and split exactly; brief entries are compression output, so a brief section still moves as a whole. Splitting a multi-turn brief would need the compressor to keep a per-turn mapping.
 
 </details>
