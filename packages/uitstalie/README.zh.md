@@ -38,6 +38,7 @@ kind: "package-group"
 | [`system-environment`](system-environment/README.zh.md) | 宿主环境原子：平台事实、路径拼写与比较、环境变量查找，以及用户 home 与 Harness home | `ctx.systemEnvironment` |
 | [`tool-dsh-store`](tool-dsh-store/README.zh.md) | 面向模型的存储工具，以及基于存储原子的只读 rules Remote | `ctx.dshStore` 消费方 |
 | [`ui-dafeiyu`](ui-dafeiyu/README.zh.md) | 能力设置段：列出组织者的 provider、切换其启用门，并链接到每个 provider 的设置页 | 设置页段落 |
+| [`ui-memory`](ui-memory/README.zh.md) | memory 设置段：编辑 provider 的 volatile 窗口、保留会话数、预算与摘要模型字段 | 设置页段落 |
 | [`ui-models-dev`](ui-models-dev/README.zh.md) | Web 设置页段落：浏览目录并把选中的提供商物化为 `llm-plus` 路由 | 设置页段落 |
 | [`ui-tool-dsh-store`](ui-tool-dsh-store/README.zh.md) | Web 侧栏按钮：列出并读取工作区的 `.dsh/rules` | 工作区行菜单 |
 

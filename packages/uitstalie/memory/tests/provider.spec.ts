@@ -8,6 +8,8 @@ import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+// Type-only: the Loader's `loader/volatile-update` event declaration.
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
@@ -59,6 +61,7 @@ test('registers an active root-scoped capability with the fixed prompt section',
     state: 'active',
     label: MEMORY_CAPABILITY_LABEL,
     description: MEMORY_CAPABILITY_DESCRIPTION,
+    settings: { sectionId: 'memory', order: 190 },
   }])
   const assembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))
   const section = assembly.sections.find(entry => entry.name === 'memory')
@@ -98,6 +101,43 @@ test('memory_write appends one entry to this workspace MEMORY.md', async () => {
   expect((await stat(memoryFilePath(project))).isFile()).toBe(true)
   expect(await readFile(memoryFilePath(project), 'utf8'))
     .toContain('- [decision] write memory through the version-guarded store')
+})
+
+test('a volatile settings update reaches the next write without a remount', async () => {
+  const ctx = new Context()
+  contexts.push(ctx)
+  const mounted = await mountMemory(ctx, project, { config: { sessions: 1 } })
+  const root = await createRoot(mounted)
+
+  if (mounted.config === undefined) throw new Error('the memory provider did not resolve its configuration')
+  ;(mounted.config as unknown as { sessions: number }).sessions = 3
+  ctx.emit('loader/volatile-update', [['sessions']])
+  const result = await callTool(mounted.ctx, root, 'memory_write', {
+    kind: 'decision',
+    content: 'written after the settings change',
+  })
+  expect(result.isError, textOf(result)).toBe(false)
+  // The file records the window that wrote it: a stale apply closure would still say 1.
+  expect(await readFile(memoryFilePath(project), 'utf8')).toContain('sessions: 3')
+})
+
+test('an invalid volatile update keeps the previous settings', async () => {
+  const ctx = new Context()
+  contexts.push(ctx)
+  const mounted = await mountMemory(ctx, project, { config: { detail: 2, brief: 16, forget: 21 } })
+  const root = await createRoot(mounted)
+
+  if (mounted.config === undefined) throw new Error('the memory provider did not resolve its configuration')
+  ;(mounted.config as unknown as { detail: number }).detail = 20
+  ctx.emit('loader/volatile-update', [['detail']])
+  const result = await callTool(mounted.ctx, root, 'memory_write', {
+    kind: 'decision',
+    content: 'written after an invalid change',
+  })
+  expect(result.isError, textOf(result)).toBe(false)
+  const text = await readFile(memoryFilePath(project), 'utf8')
+  expect(text).toContain('detail: 2')
+  expect(text).not.toContain('detail: 20')
 })
 
 test('memory_write rejects an unknown kind with the valid list', async () => {

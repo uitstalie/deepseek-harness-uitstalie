@@ -6,6 +6,7 @@
  */
 
 import { dirname, join } from 'node:path'
+import type { Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import {
@@ -20,9 +21,9 @@ import { PERSONALITY_PROPOSALS_FILE_NAME } from './proposals.ts'
 /** Raw auto-learning budget as the Loader passes it; every field carries a schema default. */
 export interface AutoLearnConfig {
   /** Automatic writes allowed per session. */
-  entries?: number
+  entries?: number | undefined
   /** Automatic-write bytes allowed per session. */
-  bytes?: number
+  bytes?: number | undefined
 }
 
 /** Resolved per-session auto-learning budget. */
@@ -39,30 +40,38 @@ export const DEFAULT_AUTO_LEARN_BUDGET: AutoLearnBudget = { entries: 3, bytes: 5
 /** Default number of `PERSONALITY.history.jsonl` records kept before the oldest are dropped. */
 export const DEFAULT_PERSONALITY_HISTORY_LIMIT = 500
 
-/** Configuration as the Loader passes it; every field carries a schema default. */
-export interface Config {
+/** Plain configuration values, as `resolveConfig` accepts them (a default or a test). */
+export interface PersonalityConfigInput {
   /** Read and write style and preference entries in the workspace overlay; defaults to true. */
-  workspaceOverlay?: boolean
+  workspaceOverlay?: boolean | undefined
   /** Managed-block body budget in UTF-8 bytes. */
-  maxBytes?: number
+  maxBytes?: number | undefined
   /** Per-session automatic-learning budget; defaults to {@link DEFAULT_AUTO_LEARN_BUDGET}. */
-  autoLearn?: AutoLearnConfig
+  autoLearn?: AutoLearnConfig | undefined
   /**
    * Number of history records kept per file; the oldest are dropped when a
    * write would exceed it. Defaults to {@link DEFAULT_PERSONALITY_HISTORY_LIMIT}.
    */
-  historyLimit?: number
+  historyLimit?: number | undefined
+}
+
+/** Configuration as the Loader passes it; every field is a live reference. */
+export interface Config {
+  workspaceOverlay: Volatile<boolean>
+  maxBytes: Volatile<number>
+  autoLearn: Volatile<AutoLearnConfig>
+  historyLimit: Volatile<number>
 }
 
 /** Schemastery configuration for the personality provider. */
-export const Config: z<Config> = z.object({
-  workspaceOverlay: z.boolean().default(true),
-  maxBytes: z.number().step(1).min(1).default(DEFAULT_PERSONALITY_MAX_BYTES),
+export const Config = z.object({
+  workspaceOverlay: z.boolean().default(true).volatile(),
+  maxBytes: z.number().step(1).min(1).default(DEFAULT_PERSONALITY_MAX_BYTES).volatile(),
   autoLearn: z.object({
     entries: z.number().step(1).min(1).default(DEFAULT_AUTO_LEARN_BUDGET.entries),
     bytes: z.number().step(1).min(1).default(DEFAULT_AUTO_LEARN_BUDGET.bytes),
-  }).default({}),
-  historyLimit: z.number().step(1).min(1).default(DEFAULT_PERSONALITY_HISTORY_LIMIT),
+  }).default({}).volatile(),
+  historyLimit: z.number().step(1).min(1).default(DEFAULT_PERSONALITY_HISTORY_LIMIT).volatile(),
 })
 
 /** Resolved provider settings; the provider reads configuration only in this form. */
@@ -98,7 +107,7 @@ export interface PersonalitySettings {
  * @throws Error when the body budget or an auto-learning budget is not a
  *   positive safe integer.
  */
-export function resolveConfig(config: Config): PersonalitySettings {
+export function resolveConfig(config: PersonalityConfigInput): PersonalitySettings {
   const globalPath = join(resolveDshHome(), 'personality', PERSONALITY_FILE_NAME)
   const maxBytes = config.maxBytes ?? DEFAULT_PERSONALITY_MAX_BYTES
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {

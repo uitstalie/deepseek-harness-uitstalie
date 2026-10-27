@@ -10,7 +10,7 @@
  * @module @deepseek-ai/dsh-memory
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution, CapabilityRuntime, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import type {} from '@deepseek-ai/dsh-fs'
@@ -18,8 +18,10 @@ import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-store-atom'
+// Type-only: the Loader's loader/volatile-update event declaration.
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { resolveConfig } from './config.ts'
-import type { Config } from './config.ts'
+import type { Config, MemorySettings } from './config.ts'
 import { MEMORY_PROMPT_SECTION } from './prompt.ts'
 import { refreshMemorySnapshot } from './snapshot.ts'
 import { MemorySummaryRunner } from './summary.ts'
@@ -31,6 +33,12 @@ export const inject = ['dafeiyu', 'dshStore', 'fs', 'sessionQuery', 'jobs', 'llm
 
 /** Stable capability id this provider registers with the organizer. */
 export const MEMORY_CAPABILITY_ID = 'memory'
+
+/** The settings section this provider owns; `ui-memory` registers the page. */
+export const MEMORY_SETTINGS_SECTION = 'memory'
+
+/** Sort order of that section inside the settings navigation. */
+export const MEMORY_SETTINGS_ORDER = 190
 
 /** Contract version the provider implements: contribution plus capability-list metadata. */
 export const MEMORY_CONTRACT_VERSION = 2
@@ -162,13 +170,31 @@ export type {
  *   or when the capability id is already registered.
  */
 export function apply(ctx: Context, config: Config): void {
-  const settings = resolveConfig(config)
+  let effective = readSettings(config)
+  // Every consumer reads these getters, so a volatile settings write applies to the next tool
+  // call, summary pass or write without rebuilding the registration or keeping a stale closure.
+  const settings: MemorySettings = Object.freeze({
+    get window() { return effective.window },
+    get summarizationProvider() { return effective.summarizationProvider },
+    get summarizationModel() { return effective.summarizationModel },
+    get maxBytes() { return effective.maxBytes },
+  })
+  ctx.on('loader/volatile-update', () => {
+    try {
+      effective = readSettings(config)
+    } catch (error) {
+      // The schema accepted the write; a cross-field rule (detail < brief < forget, provider and
+      // model set together) can still refuse it. Keep the last valid settings and say so.
+      ctx.logger.warn('memory: keeping previous settings after an invalid update: %o', error)
+    }
+  })
   const registration = ctx.dafeiyu.register({
     id: MEMORY_CAPABILITY_ID,
     contractVersion: MEMORY_CONTRACT_VERSION,
     label: MEMORY_CAPABILITY_LABEL,
     description: MEMORY_CAPABILITY_DESCRIPTION,
-    config: settings,
+    settings: { sectionId: MEMORY_SETTINGS_SECTION, order: MEMORY_SETTINGS_ORDER },
+    config: effective,
     create: (runtime: CapabilityRuntime): CapabilityContribution => {
       const summaries = new MemorySummaryRunner(ctx, settings, runtime.signal)
       return {
@@ -190,6 +216,39 @@ export function apply(ctx: Context, config: Config): void {
     },
   })
   ctx.effect(() => registration, 'memory.register()')
+}
+
+/**
+ * Read one live row value.
+ *
+ * A Loader-validated row hands this plugin `Volatile` references; a caller that mounts it directly
+ * (a test) may hand plain values, so both forms are accepted.
+ * @param value - the configured value, a live reference, or undefined.
+ * @returns the current plain value.
+ */
+function current<T>(value: Volatile<T> | T | undefined): T | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === 'object' && value !== null && typeof (value as { get?: unknown }).get === 'function') {
+    return (value as Volatile<T>).get() as T
+  }
+  return value as T
+}
+
+/**
+ * Resolve the row's live references into settings.
+ * @param config - the Loader row configuration.
+ * @returns the settings for the values in effect right now.
+ */
+function readSettings(config: Config): MemorySettings {
+  return resolveConfig({
+    detail: current(config.detail),
+    brief: current(config.brief),
+    forget: current(config.forget),
+    sessions: current(config.sessions),
+    summarizationProvider: current(config.summarizationProvider),
+    summarizationModel: current(config.summarizationModel),
+    maxBytes: current(config.maxBytes),
+  })
 }
 
 /**

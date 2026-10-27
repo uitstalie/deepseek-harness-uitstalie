@@ -34,7 +34,7 @@ import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
 import { join } from 'node:path'
 import * as Memory from '../src/index.ts'
 import { isMemorySnapshotSource } from '../src/index.ts'
-import type { Config } from '../src/config.ts'
+import type { Config, MemoryConfigInput } from '../src/config.ts'
 import type { MemorySnapshotSource } from '../src/index.ts'
 
 /** Signal for tool calls that are not cancelled. */
@@ -81,6 +81,8 @@ export interface MemoryTestHarness {
   readonly memoryFiber: Fiber
   /** Fixture workspace root. */
   readonly project: string
+  /** Provider configuration the Loader resolved for this mount, when the provider activated. */
+  readonly config: Config | undefined
 }
 
 /** What one mounted memory composition enables. */
@@ -90,7 +92,7 @@ export interface MemoryMountOptions {
   /** Attach a job controller serving the fixture agents; absent attaches one. */
   readonly controller?: boolean
   /** Raw provider configuration; absent uses schema defaults. */
-  readonly config?: Config
+  readonly config?: MemoryConfigInput
 }
 
 /**
@@ -114,10 +116,19 @@ export async function mountMemory(
   }
   ctx.provide('dshStore', createDshStore(ctx, false))
   await ctx.plugin(Dafeiyu)
-  const memoryFiber = await ctx.plugin(Memory, options.config ?? {})
+  let captured: Config | undefined
+  const memoryPlugin = {
+    name: Memory.name,
+    inject: Memory.inject,
+    apply(pluginCtx: Context, config: Config) {
+      captured = config
+      Memory.apply(pluginCtx, config)
+    },
+  }
+  const memoryFiber = await ctx.plugin(memoryPlugin as never, (options.config ?? {}) as never)
   await settle()
   const harness = await mountAgentLoopTestHarness(ctx)
-  return { ctx, harness, memoryFiber, project }
+  return { ctx, harness, memoryFiber, project, config: captured }
 }
 
 /** Let activation and dispatch continuations run. */

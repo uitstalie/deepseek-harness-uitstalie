@@ -272,6 +272,9 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/uitstalie/ui-tool-dsh-store': { kind: 'none', reason: 'Browser-side sidebar panel that only reads rules through the store Remote namespace; it contributes no request content and writes nothing.' },
   'packages/uitstalie/common-view': { kind: 'none', reason: 'Browser-side overlay framework: it registers view contributions through slots and custom properties and contributes no request content.' },
   // END uitstalie-k3
+  // BEGIN uitstalie-deepseek-flash, 2026/10/27, DH-310, memory 设置页没有模型面（审计结论即表内理由）
+  'packages/uitstalie/ui-memory': { kind: 'none', reason: 'Browser-side settings section over the memory row configuration; the provider owns every prompt section, tool schema and memory write it edits.' },
+  // END uitstalie-deepseek-flash
   // BEGIN jira, 2026/10/26, DH-13, single-sentence Model Experience entries for the migrated packages (the audit conclusion is the reason).
   'packages/jira/jira-core': { kind: 'none', reason: 'The atom layer renders nothing itself; jira-agent composes its functions into model tools and owns their descriptions and results.' },
   'packages/jira/jira-cli': { kind: 'none', reason: 'The CLI is a human shell surface; its jira_* equivalents in jira-agent own every model-visible schema and result.' },

@@ -3357,6 +3357,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-ui-settings-plugins PluginsSettingsSection id \'plugins\'',
       'client-ui-jira JiraSection',
       'client-ui-dafeiyu CapabilitiesSection',
+      'client-ui-memory MemorySection',
       'client-ui-models-dev ModelsDevSection id \'models-dev\'',
       'client-ui-personality PersonalitySection',
     ],

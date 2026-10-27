@@ -396,10 +396,14 @@
       // BEGIN uitstalie-k3, 2026/08/31, task8, client 包命名（dsh-client-ui-*）与 uitstalie 目录前缀不吻合，生成器无法推断，手写根别名
       "@deepseek-ai/dsh-client-ui-models-dev": ["./packages/uitstalie/ui-models-dev/src"],
       "@deepseek-ai/dsh-client-ui-tool-dsh-store": ["./packages/uitstalie/ui-tool-dsh-store/src"],
+      // BEGIN uitstalie-deepseek-flash, 2026/10/27, DH-310, memory 设置页的 client 包名与目录名不吻合，手写根别名
+      "@deepseek-ai/dsh-client-ui-memory": ["./packages/uitstalie/ui-memory/src"],
+      // END uitstalie-deepseek-flash
       // END uitstalie-k3
       // BEGIN uitstalie-k3, 2026/10/09, task23, 组合测试运行时按组合清单 import '<pkg>/client'，缺该别名则整组组合规格失败
       "@deepseek-ai/dsh-client-ui-models-dev/client": ["./packages/uitstalie/ui-models-dev/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-tool-dsh-store/client": ["./packages/uitstalie/ui-tool-dsh-store/src/client/index.ts"],
+      "@deepseek-ai/dsh-client-ui-memory/client": ["./packages/uitstalie/ui-memory/src/client/index.ts"],
       "@deepseek-ai/dsh-client-common-view": ["./packages/uitstalie/common-view/src"],
       "@deepseek-ai/dsh-client-common-view/client": ["./packages/uitstalie/common-view/src/client/index.ts"],
       // END uitstalie-k3

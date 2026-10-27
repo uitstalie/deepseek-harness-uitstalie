@@ -25,7 +25,7 @@ import {
   readMemoryDocument,
   renderMemoryDocument,
 } from '../src/memory-file.ts'
-import type { MemoryDocument } from '../src/memory-file.ts'
+import type { MemoryDocument, MemoryWindow } from '../src/memory-file.ts'
 
 let project: string
 let ctx: Context
@@ -305,5 +305,87 @@ test('the managed-body budget rejects an append and keeps the file', async () =>
     turn: 3,
     seq: [10, 20],
   }, undefined, { maxBytes: 8 })).rejects.toThrow(/over the 8-byte limit/)
+  expect(await readFile(memoryFile(), 'utf8')).toBe(seed)
+})
+
+/** A second session over the same project, for the retention cases. */
+function otherSession(id: string): Session {
+  const sessionId = SessionId(id)
+  return Session.create(sessionId, undefined, {
+    version: SESSION_FORMAT_VERSION,
+    id: sessionId,
+    createdAt: 0,
+    isSeeded: false,
+    cwd: project,
+  })
+}
+
+/** Sessions limit of one, so every second session write must drop the previous one. */
+const ONE_SESSION: MemoryWindow = { detail: 6, brief: 16, forget: 21, sessions: 1 }
+
+test('the sessions window applies to the persisted file, not only to the snapshot', async () => {
+  const first = session
+  const second = otherSession('session-b')
+  await store.writeFile(first, MEMORY_STORE_PATH, seedText('Hand-written note.'))
+
+  await appendMemoryEntry(ctx, first, {
+    kind: 'decision', text: 'first session note', turn: 1, seq: [1, 2],
+  }, undefined, { window: ONE_SESSION })
+  await appendMemoryEntry(ctx, second, {
+    kind: 'decision', text: 'second session note', turn: 1, seq: [1, 2],
+  }, undefined, { window: ONE_SESSION })
+
+  const text = await readFile(memoryFile(), 'utf8')
+  const parsed = parseMemoryDocument(text)
+  expect(parsed.window.sessions).toBe(1)
+  expect(parsed.sessions.map(record => record.id)).toEqual(['session-b'])
+  expect(parsed.sections.map(section => section.sessionId)).toEqual(['session-b'])
+  expect(text).not.toContain('first session note')
+  // Trimming the machine state must not touch the hand-written frame around the block.
+  expect(parsed.frame.before).toBe(parseMemoryDocument(seedText('Hand-written note.')).frame.before)
+  expect(parsed.frame.after).toContain('Trailing note.')
+})
+
+test('exactly the configured number of sessions is kept; one more drops the oldest', async () => {
+  const window: MemoryWindow = { ...ONE_SESSION, sessions: 2 }
+  const first = session
+  const second = otherSession('session-b')
+  const third = otherSession('session-c')
+
+  await appendMemoryEntry(ctx, first, { kind: 'open', text: 'a', turn: 1, seq: [1, 2] }, undefined, { window })
+  await appendMemoryEntry(ctx, second, { kind: 'open', text: 'b', turn: 1, seq: [1, 2] }, undefined, { window })
+  let parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sessions.map(record => record.id)).toEqual(['session-a', 'session-b'])
+
+  await appendMemoryEntry(ctx, third, { kind: 'open', text: 'c', turn: 1, seq: [1, 2] }, undefined, { window })
+  parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sessions.map(record => record.id)).toEqual(['session-b', 'session-c'])
+  expect(parsed.sections.map(section => section.sessionId)).toEqual(['session-b', 'session-c'])
+})
+
+test('the body budget drops the oldest retained session before failing', async () => {
+  const window: MemoryWindow = { ...ONE_SESSION, sessions: 10 }
+  const first = session
+  const second = otherSession('session-b')
+  await appendMemoryEntry(ctx, first, {
+    kind: 'decision', text: 'x'.repeat(40), turn: 1, seq: [1, 2],
+  }, undefined, { window, maxBytes: 4096 })
+
+  // One section fits this budget; both do not, so the older session is dropped instead of failing.
+  await appendMemoryEntry(ctx, second, {
+    kind: 'decision', text: 'y'.repeat(40), turn: 1, seq: [1, 2],
+  }, undefined, { window, maxBytes: 180 })
+
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sessions.map(record => record.id)).toEqual(['session-b'])
+  expect(parsed.sections.map(section => section.sessionId)).toEqual(['session-b'])
+})
+
+test('a current session over the budget on its own still fails loudly', async () => {
+  const seed = seedText('Hand-written note.')
+  await store.writeFile(session, MEMORY_STORE_PATH, seed)
+  await expect(appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'z'.repeat(200), turn: 1, seq: [1, 2],
+  }, undefined, { window: ONE_SESSION, maxBytes: 50 })).rejects.toThrow(/after dropping older sessions/u)
   expect(await readFile(memoryFile(), 'utf8')).toBe(seed)
 })

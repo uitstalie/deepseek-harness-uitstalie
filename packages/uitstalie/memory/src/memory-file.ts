@@ -436,7 +436,7 @@ export async function appendMemoryEntry(
   const append = async (): Promise<MemoryAppendResult> => {
     const current = await readMemoryDocument(ctx, session, signal)
     const document = current.document ?? createMemoryDocument(window)
-    const next = appendToDocument(document, session, entry, kind)
+    const next = retainDocument(appendToDocument(document, session, entry, kind), session.id, window, maxBytes)
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -499,7 +499,7 @@ export async function appendTurnSummary(
   const append = async (): Promise<MemoryTurnSummaryResult> => {
     const current = await readMemoryDocument(ctx, session, signal)
     const document = current.document ?? createMemoryDocument(window)
-    const next = appendTurnToDocument(document, session, summary, entries)
+    const next = retainDocument(appendTurnToDocument(document, session, summary, entries), session.id, window, maxBytes)
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -573,7 +573,7 @@ export async function migrateMemoryTiers(
     // Once a checkpoint left the surface, the metadata write must finish even if the
     // provider was disabled meanwhile: skipping it here is exactly the half-committed
     // state (checkpoint published, MEMORY.md unchanged) this pass avoids.
-    const next = applyMigrations(current.document, session, plan, briefs, checkpoints)
+    const next = retainDocument(applyMigrations(current.document, session, plan, briefs, checkpoints), session.id, window, maxBytes)
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -1333,12 +1333,90 @@ function recordTurn(
   return sessions.map(record => record === existing ? { ...existing, updatedAt, turns } : record)
 }
 
+/**
+ * Keep one persisted document inside the configured retention window.
+ *
+ * `window.sessions` is the number of sessions whose summaries stay in MEMORY.md, so the limit is
+ * applied to **the file that is written**, together with the sections and the frontmatter index
+ * that describe those sessions — not only to the snapshot a reader slices. The session that just
+ * wrote is always retained. When the body is still over the byte budget, the oldest retained
+ * sessions are dropped first; a single session over the budget on its own stays an error, because
+ * silently discarding what the model just wrote would lose it without saying so.
+ * @param document - the document after this append or migration.
+ * @param currentSessionId - the session the write belongs to; it is never dropped.
+ * @param window - the configured retention window, recorded into the document.
+ * @param maxBytes - the managed-body budget.
+ * @returns the trimmed document, with the configured window recorded.
+ */
+function retainDocument(
+  document: MemoryDocument,
+  currentSessionId: string,
+  window: MemoryWindow,
+  maxBytes: number,
+): MemoryDocument {
+  const retained = retainSessions({ ...document, window }, currentSessionId, window.sessions)
+  let result = retained
+  while (Buffer.byteLength(renderManagedBody(result.sections), 'utf8') > maxBytes) {
+    const oldest = [...result.sessions]
+      .filter(record => record.id !== currentSessionId)
+      .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))[0]
+    if (oldest === undefined) break
+    result = withoutSessions(result, new Set(result.sessions
+      .filter(record => record.id !== oldest.id)
+      .map(record => record.id)))
+  }
+  return result
+}
+
+/**
+ * Drop the least recent sessions beyond the retention limit.
+ * @param document - document whose window already carries the configured limit.
+ * @param currentSessionId - session that must survive the trim.
+ * @param limit - maximum sessions to keep.
+ * @returns the document with older sessions and their sections removed.
+ */
+function retainSessions(
+  document: MemoryDocument,
+  currentSessionId: string,
+  limit: number,
+): MemoryDocument {
+  const keep = Math.max(1, Math.floor(limit))
+  if (document.sessions.length <= keep) return document
+  const ranked = [...document.sessions]
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.id.localeCompare(left.id))
+    .slice(0, keep)
+    .map(record => record.id)
+  if (!ranked.includes(currentSessionId)) {
+    // The append's own session survives even when its clock is behind the others'.
+    if (ranked.length === keep) ranked[ranked.length - 1] = currentSessionId
+    else ranked.push(currentSessionId)
+  }
+  return withoutSessions(document, new Set(ranked))
+}
+
+/**
+ * Remove every session outside one keep set, and the sections that belong to them.
+ * @param document - document to trim.
+ * @param kept - session ids to retain.
+ * @returns the document unchanged when nothing was dropped, otherwise the trimmed copy.
+ */
+function withoutSessions(document: MemoryDocument, kept: ReadonlySet<string>): MemoryDocument {
+  const sessions = document.sessions.filter(record => kept.has(record.id))
+  if (sessions.length === document.sessions.length) return document
+  return {
+    ...document,
+    sessions,
+    sections: document.sections.filter(section => kept.has(section.sessionId)),
+  }
+}
+
 /** Reject a document whose managed body exceeds the configured budget. */
 function assertBodyBudget(document: MemoryDocument, maxBytes: number): void {
   const bytes = Buffer.byteLength(renderManagedBody(document.sections), 'utf8')
   if (bytes <= maxBytes) return
   throw new MemoryDocumentError(
-    `memory body is ${String(bytes)} bytes, over the ${String(maxBytes)}-byte limit; forget or trim older entries before writing more`,
+    `memory body is ${String(bytes)} bytes, over the ${String(maxBytes)}-byte limit after dropping older sessions; `
+    + 'forget or trim older entries in this session before writing more',
     'budget-exceeded',
   )
 }

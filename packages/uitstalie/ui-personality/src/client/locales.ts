@@ -25,6 +25,19 @@ export const en = {
   rejectName: 'Reject the identity proposal {name}',
   decideFailed: 'The decision could not be applied: {message}',
   rule: 'Accepting writes the entry through the version-guarded profile write; rejecting only records the decision. The /personality command offers the same choices.',
+  settingsTitle: 'Provider settings',
+  settingsIntro: 'Edits the volatile fields of the personality row. Saving applies to the next tool call, automatic-learning decision or history write.',
+  fieldOverlay: 'Read and write the workspace overlay',
+  fieldMaxBytes: 'PERSONALITY.md body budget (bytes)',
+  fieldAutoLearnEntries: 'Automatic entries per session',
+  fieldAutoLearnBytes: 'Automatic bytes per session',
+  fieldHistoryLimit: 'History records kept per file',
+  save: 'Save',
+  saving: 'Saving…',
+  discard: 'Discard',
+  saveFailed: 'The provider settings were not saved.',
+  settingsUnavailable: 'The settings service is not composed here; the provider fields cannot be edited.',
+  invalidField: 'Enter a positive whole number.',
 }
 
 /** The settings.personality namespace key union. */
@@ -50,6 +63,19 @@ export const zh: { [Key in keyof typeof en]: string } = {
   rejectName: '拒绝 identity 提案 {name}',
   decideFailed: '无法应用这次决定：{message}',
   rule: '接受会经版本守卫的档案写入落盘；拒绝只记录决定。`/personality` 命令提供同样的选择。',
+  settingsTitle: 'Provider 设置',
+  settingsIntro: '编辑 personality 行的 volatile 字段。保存后在下一次工具调用、自动学习判定或历史写入时生效。',
+  fieldOverlay: '读写 workspace overlay',
+  fieldMaxBytes: 'PERSONALITY.md 正文预算（字节）',
+  fieldAutoLearnEntries: '每会话自动条目数',
+  fieldAutoLearnBytes: '每会话自动写入字节数',
+  fieldHistoryLimit: '每个文件保留的历史记录数',
+  save: '保存',
+  saving: '保存中…',
+  discard: '放弃修改',
+  saveFailed: 'Provider 设置未保存。',
+  settingsUnavailable: '当前组合未挂载设置服务，无法编辑 provider 字段。',
+  invalidField: '请输入正整数。',
 }
 
 /**

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 摘要
 
-`dsh-client-ui-personality` 是 personality provider 的设置页。它列出模型或人排入 `PERSONALITY.proposals.jsonl` 的 identity 提案，显示每条的名字、正文、证据、入队时间与状态，并接受或拒绝待处理的提案。它不拥有档案数据，也不拥有提案存储：读取与决定都走 `remote.personality` 命名空间，host 侧把接受后的 identity 条目经与 `/personality accept` 命令相同的版本守卫写入；拒绝只记录状态。
+`dsh-client-ui-personality` 是 personality provider 的设置页。它列出模型或人排入 `PERSONALITY.proposals.jsonl` 的 identity 提案，显示每条的名字、正文、证据、入队时间与状态，并接受或拒绝待处理的提案。它不拥有档案数据，也不拥有提案存储：读取与决定都走 `remote.personality` 命名空间，host 侧把接受后的 identity 条目经与 `/personality accept` 命令相同的版本守卫写入；拒绝只记录状态。它也会通过共享配置表单编辑该行的 volatile 字段。
 
 ## 目录
 
@@ -31,14 +31,14 @@ kind: "package-reference"
   name: '@deepseek-ai/dsh-client-ui-personality'
 ```
 
-接受会把 identity 条目写入全局 `PERSONALITY.md`，提案变为 `accepted`；拒绝记录 `rejected`，档案不变。同样的决定也有 `/personality proposals`、`/personality accept <id>`、`/personality reject <id>` 三种命令，headless 会话不需要这个页面。
+接受会把 identity 条目写入全局 `PERSONALITY.md`，提案变为 `accepted`；拒绝记录 `rejected`，档案不变。同样的决定也有 `/personality proposals`、`/personality accept <id>`、`/personality reject <id>` 三种命令，headless 会话不需要这个页面。队列上方的 Provider 设置块编辑该行的字段；保存的值在 provider 的下一次工具调用、学习判定或历史写入时生效。
 
 
 ## 理解实现
 
 <a id="understand-the-implementation"></a>
 
-`src/client/index.ts` 在载体尚未提供命名空间时挂载生成的 `remote.personality`，注册 `settings.personality` 文案字典，并以 order 210（在能力总代与 Jira 页之后）注册设置段。它解包每个 `RemoteResult` 并抛出 host 失败，让页面显示就地提示；它不会自行重试决定。
+`src/client/index.ts` 在载体尚未提供命名空间时挂载生成的 `remote.personality`，注册 `settings.personality` 文案字典，并以 order 210（在能力总代与 Jira 页之后）注册设置段。它解包每个 `RemoteResult` 并抛出 host 失败，让页面显示就地提示；它不会自行重试决定。src/client/settings-form.ts 暂存该行的数字与开关字段，并只把发生变化的字段作为一次带修订号的变更写入。
 
 `src/client/PersonalitySection.tsx` 只负责呈现：挂载时读一次队列，pending 在前，显示状态徽标与证据行；决定后用 host 返回值替换该行，并在请求进行中禁用该行按钮。所有文案来自 `settings.personality` 字典。
 

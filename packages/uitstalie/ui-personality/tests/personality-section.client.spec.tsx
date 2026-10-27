@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { PersonalityProposalWire } from '@deepseek-ai/dsh-personality/types'
 import { PersonalitySection } from '../src/client/PersonalitySection.tsx'
 import type { PersonalityProposalController } from '../src/client/PersonalitySection.tsx'
+import { PersonalitySettingsController, type PersonalityRowConfig } from '../src/client/settings-form.ts'
 import { en, type PersonalityKey } from '../src/client/locales.ts'
 
 afterEach(() => { cleanup() })
@@ -72,4 +73,37 @@ test('an empty queue renders the empty state', async () => {
   render(<PersonalitySection controller={controller} t={t} />)
 
   await screen.findByText('No identity proposals are queued.')
+})
+
+test('saves a provider field through the shared configuration form', async () => {
+  const mutate = vi.fn(async () => true)
+  const row: PersonalityRowConfig = { maxBytes: 4096, autoLearn: { entries: 3, bytes: 512 } }
+  const form = {
+    getSnapshot: () => ({
+      status: 'ready' as const,
+      value: row,
+      base: undefined,
+      user: undefined,
+      revision: 2,
+      writable: true,
+    }),
+    subscribe: () => () => {},
+    mutate,
+    set: vi.fn(async () => true),
+    unset: vi.fn(async () => true),
+  }
+  const settings = new PersonalitySettingsController(form as never)
+  const controller: PersonalityProposalController = {
+    list: vi.fn(async () => []),
+    decide: vi.fn(async () => proposal()),
+  }
+  render(<PersonalitySection controller={controller} t={t} settings={settings} />)
+
+  await screen.findByText('No identity proposals are queued.')
+  fireEvent.change(screen.getByDisplayValue('4096'), { target: { value: '2048' } })
+  fireEvent.click(screen.getByRole('button', { name: en.save }))
+  await waitFor(() => {
+    expect(mutate).toHaveBeenCalledWith([{ op: 'set', path: ['maxBytes'], value: 2048 }], 2)
+  })
+  settings.dispose()
 })

@@ -9,10 +9,14 @@
  * @module @deepseek-ai/dsh-client-ui-personality/PersonalitySection
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { PersonalityProposalWire } from '@deepseek-ai/dsh-personality/types'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import { fill, type PersonalityKey } from './locales.ts'
+import type {
+  PersonalitySettingsController,
+  PersonalitySettingsField,
+} from './settings-form.ts'
 import styles from './PersonalitySection.module.css'
 
 /** The page's host-facing operations (the `remote.personality` namespace). */
@@ -27,12 +31,96 @@ export interface PersonalityProposalController {
 export interface PersonalitySectionInjected {
   /** The proposal controller. */
   controller: PersonalityProposalController
+  /** The provider-settings controller (the row's volatile fields). */
+  settings: PersonalitySettingsController
   /** This page's copy (`settings.personality`). */
   t: (key: PersonalityKey) => string
 }
 
 /** The page's props: the inject face plus the shell's section affordances. */
 export type PersonalitySectionProps = Partial<InjectFace<PersonalitySectionInjected>>
+
+/** The staged field's label key. */
+function labelKeyOf(field: PersonalitySettingsField): PersonalityKey {
+  switch (field) {
+    case 'workspaceOverlay': return 'fieldOverlay'
+    case 'maxBytes': return 'fieldMaxBytes'
+    case 'autoLearnEntries': return 'fieldAutoLearnEntries'
+    case 'autoLearnBytes': return 'fieldAutoLearnBytes'
+    case 'historyLimit': return 'fieldHistoryLimit'
+  }
+}
+
+/** The numeric staged fields, in render order. */
+const NUMERIC_FIELDS: readonly PersonalitySettingsField[] = [
+  'maxBytes',
+  'autoLearnEntries',
+  'autoLearnBytes',
+  'historyLimit',
+]
+
+/** The provider-settings block: the volatile row fields, staged and saved as one mutation. */
+function ProviderSettings(props: {
+  readonly controller: PersonalitySettingsController
+  readonly t: (key: PersonalityKey) => string
+}) {
+  const { controller, t } = props
+  const state = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot)
+
+  if (!state.available) return <p className={styles.note}>{t('settingsUnavailable')}</p>
+  return (
+    <div className={styles.provider}>
+      <h3 className={styles.subtitle}>{t('settingsTitle')}</h3>
+      <p className={styles.intro}>{t('settingsIntro')}</p>
+      <label className={styles.toggle}>
+        <input
+          type="checkbox"
+          checked={state.values.workspaceOverlay === 'on'}
+          onChange={(event) => { controller.edit('workspaceOverlay', event.target.checked ? 'on' : '') }}
+        />
+        {t('fieldOverlay')}
+      </label>
+      <div className={styles.fields}>
+        {NUMERIC_FIELDS.map((field) => {
+          const invalid = state.invalid.includes(field)
+          return (
+            <label key={field} className={styles.field}>
+              <span className={styles.label}>{t(labelKeyOf(field))}</span>
+              <input
+                className={styles.input}
+                inputMode="numeric"
+                value={state.values[field]}
+                aria-invalid={invalid || undefined}
+                aria-label={t(labelKeyOf(field))}
+                onChange={(event) => { controller.edit(field, event.target.value) }}
+              />
+              {invalid ? <span className={styles.invalid} role="alert">{t('invalidField')}</span> : null}
+            </label>
+          )
+        })}
+      </div>
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.primary}
+          disabled={!state.dirty || state.saving || state.invalid.length > 0 || !state.writable}
+          onClick={() => { void controller.save() }}
+        >
+          {state.saving ? t('saving') : t('save')}
+        </button>
+        <button
+          type="button"
+          className={styles.secondary}
+          disabled={!state.dirty || state.saving}
+          onClick={() => { controller.discard() }}
+        >
+          {t('discard')}
+        </button>
+      </div>
+      {state.failed ? <p className={styles.error} role="alert">{t('saveFailed')}</p> : null}
+    </div>
+  )
+}
 
 /** The badge copy key for one proposal status. */
 function statusKey(status: PersonalityProposalWire['status']): PersonalityKey {
@@ -87,7 +175,7 @@ function ProposalRow(props: {
 }
 
 /** The identity proposal queue page. */
-export function PersonalitySection({ controller, t }: PersonalitySectionProps) {
+export function PersonalitySection({ controller, t, settings }: PersonalitySectionProps) {
   const [proposals, setProposals] = useState<readonly PersonalityProposalWire[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
@@ -129,6 +217,7 @@ export function PersonalitySection({ controller, t }: PersonalitySectionProps) {
     <section className={styles.page}>
       <h2 className={styles.title}>{t('title')}</h2>
       <p className={styles.intro}>{t('intro')}</p>
+      {settings === undefined ? null : <ProviderSettings controller={settings} t={t} />}
       {error === undefined ? null : (
         <p className={styles.error} role="alert">{fill(t('failed'), { message: error })}</p>
       )}

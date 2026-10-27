@@ -17,13 +17,15 @@
  * @module @deepseek-ai/dsh-personality
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { CapabilityContribution, CapabilityRuntime } from '@deepseek-ai/dsh-dafeiyu'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-store-atom'
+// Type-only: the Loader's loader/volatile-update event declaration.
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { registerPersonalityCommands } from './commands.ts'
 import { resolveConfig } from './config.ts'
 import type { Config, PersonalitySettings } from './config.ts'
@@ -156,13 +158,36 @@ export type { AutoLearnUsage, PersonalityLearnValue, PersonalityToolOptions } fr
  *   already registered.
  */
 export function apply(ctx: Context, config: Config): void {
-  const settings = resolveConfig(config)
+  let effective = readSettings(config)
+  // Every consumer reads these getters, so a volatile settings write applies to the next tool call,
+  // learning decision or history write without rebuilding the registration or keeping a stale
+  // closure. Paths stay derived from `resolveDshHome()` at each resolution.
+  const settings: PersonalitySettings = Object.freeze({
+    get globalPath() { return effective.globalPath },
+    get globalHistoryPath() { return effective.globalHistoryPath },
+    get proposalsPath() { return effective.proposalsPath },
+    get workspaceOverlay() { return effective.workspaceOverlay },
+    get workspaceStorePath() { return effective.workspaceStorePath },
+    get workspaceHistoryStorePath() { return effective.workspaceHistoryStorePath },
+    get maxBytes() { return effective.maxBytes },
+    get autoLearn() { return effective.autoLearn },
+    get historyLimit() { return effective.historyLimit },
+  })
+  ctx.on('loader/volatile-update', () => {
+    try {
+      effective = readSettings(config)
+    } catch (error) {
+      // The schema accepted the write; a positive-integer rule can still refuse it. Keep the last
+      // valid settings and report the refusal instead of applying a half-valid profile.
+      ctx.logger.warn('personality: keeping previous settings after an invalid update: %o', error)
+    }
+  })
   const registration = ctx.dafeiyu.register({
     id: PERSONALITY_CAPABILITY_ID,
     contractVersion: PERSONALITY_CONTRACT_VERSION,
     label: PERSONALITY_CAPABILITY_LABEL,
     description: PERSONALITY_CAPABILITY_DESCRIPTION,
-    config: settings,
+    config: effective,
     settings: { sectionId: 'personality', order: 210 },
     create: runtime => createContribution(ctx, settings, runtime),
   })
@@ -174,6 +199,36 @@ export function apply(ctx: Context, config: Config): void {
   // The command child activates only when a command registry is composed.
   ctx.inject(['commands'], (commandCtx) => {
     registerPersonalityCommands(commandCtx, settings)
+  })
+}
+
+/**
+ * Read one live row value.
+ *
+ * A Loader-validated row hands this plugin `Volatile` references; a caller that mounts it directly
+ * (a test) may hand plain values, so both forms are accepted.
+ * @param value - the configured value, a live reference, or undefined.
+ * @returns the current plain value.
+ */
+function current<T>(value: Volatile<T> | T | undefined): T | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === 'object' && value !== null && typeof (value as { get?: unknown }).get === 'function') {
+    return (value as Volatile<T>).get() as T
+  }
+  return value as T
+}
+
+/**
+ * Resolve the row's live references into settings.
+ * @param config - the Loader row configuration.
+ * @returns the settings for the values in effect right now.
+ */
+function readSettings(config: Config): PersonalitySettings {
+  return resolveConfig({
+    workspaceOverlay: current(config.workspaceOverlay),
+    maxBytes: current(config.maxBytes),
+    autoLearn: current(config.autoLearn),
+    historyLimit: current(config.historyLimit),
   })
 }
 

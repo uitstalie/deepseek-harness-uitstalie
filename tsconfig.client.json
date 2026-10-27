@@ -183,5 +183,8 @@
     // BEGIN uitstalie-deepseek-flash, 2026/10/27, DH-302, 注册 personality 提案设置段进 Client 聚合程序
     { "path": "./packages/uitstalie/ui-personality/tsconfig.client.json" },
     // END uitstalie-deepseek-flash
+    // BEGIN uitstalie-deepseek-flash, 2026/10/27, DH-310, 注册 memory 设置段进 Client 聚合程序
+    { "path": "./packages/uitstalie/ui-memory/tsconfig.client.json" },
+    // END uitstalie-deepseek-flash
   ]
 }

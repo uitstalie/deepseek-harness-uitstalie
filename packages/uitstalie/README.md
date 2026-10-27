@@ -38,6 +38,7 @@ Each row names the package's contribution and the `ctx` key or surface it attach
 | [`system-environment`](system-environment/README.md) | Host environment atom: platform facts, path spelling and comparison, environment lookup, and the user and Harness home directories | `ctx.systemEnvironment` |
 | [`tool-dsh-store`](tool-dsh-store/README.md) | Model-facing store tool and the read-only rules Remote over the store atom | `ctx.dshStore` consumer |
 | [`ui-dafeiyu`](ui-dafeiyu/README.md) | Capabilities settings section that lists the organizer's providers, switches their gate, and links each provider page | settings section |
+| [`ui-memory`](ui-memory/README.md) | Memory settings section that edits the provider's volatile window, retention, budget and summary-model fields | settings section |
 | [`ui-models-dev`](ui-models-dev/README.md) | Web settings section that browses the catalog and materializes chosen providers as `llm-plus` routes | settings section |
 | [`ui-tool-dsh-store`](ui-tool-dsh-store/README.md) | Web sidebar button that lists and reads a workspace's `.dsh/rules` | workspace row menu |
 

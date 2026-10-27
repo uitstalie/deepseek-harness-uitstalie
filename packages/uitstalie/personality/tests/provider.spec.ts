@@ -9,6 +9,8 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+// Type-only: the Loader's `loader/volatile-update` event declaration.
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type { Fiber } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
@@ -23,7 +25,7 @@ import {
 import type { AgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
 import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
 import * as Personality from '../src/index.ts'
-import type { Config } from '../src/config.ts'
+import type { Config, PersonalityConfigInput } from '../src/config.ts'
 import { resolveConfig } from '../src/config.ts'
 import { PERSONALITY_PROPOSALS_FILE_NAME } from '../src/proposals.ts'
 import {
@@ -62,14 +64,17 @@ interface Mounted {
   readonly ctx: Context
   readonly harness: AgentLoopTestHarness
   readonly personalityFiber: Fiber
+  /** Provider configuration the Loader resolved for this mount, when the provider activated. */
+  readonly config: Config | undefined
 }
 
 /** Configuration that keeps the global profile inside the fixture. */
-function settingsConfig(overrides: Config = {}): Config {
+function settingsConfig(overrides: PersonalityConfigInput = {}): PersonalityConfigInput {
   return {
     ...overrides.workspaceOverlay === undefined ? {} : { workspaceOverlay: overrides.workspaceOverlay },
     ...overrides.maxBytes === undefined ? {} : { maxBytes: overrides.maxBytes },
     ...overrides.autoLearn === undefined ? {} : { autoLearn: overrides.autoLearn },
+    ...overrides.historyLimit === undefined ? {} : { historyLimit: overrides.historyLimit },
   }
 }
 
@@ -101,17 +106,26 @@ async function seedGlobal(entries: readonly PersonalityEntry[]): Promise<void> {
 }
 
 /** Mount the real services and the personality provider, then the agent loop harness. */
-async function mount(config: Config = settingsConfig()): Promise<Mounted> {
+async function mount(config: PersonalityConfigInput = settingsConfig()): Promise<Mounted> {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(LocalFileSystem, { cwd: project })
   ctx.provide('dshStore', createDshStore(ctx, false))
   await ctx.plugin(Dafeiyu)
-  const personalityFiber = await ctx.plugin(Personality, config)
+  let captured: Config | undefined
+  const capturing = {
+    name: Personality.name,
+    inject: Personality.inject,
+    apply(pluginCtx: Context, rowConfig: Config) {
+      captured = rowConfig
+      Personality.apply(pluginCtx, rowConfig)
+    },
+  }
+  const personalityFiber = await ctx.plugin(capturing as never, config as never)
   await settle()
   const harness = await mountAgentLoopTestHarness(ctx)
-  return { ctx, harness, personalityFiber }
+  return { ctx, harness, personalityFiber, config: captured }
 }
 
 /** Let activation and dispatch continuations run. */
@@ -248,6 +262,23 @@ test('personality_learn writes a style entry to the overlay and refreshes the pr
 
   expect(await promptText(mounted.ctx, root)).toContain('先给结论，再给步骤。')
   expect(PERSONALITY_STORE_PATH).toBe('memory/PERSONALITY.md')
+})
+
+test('a volatile settings update reaches the next write without a remount', async () => {
+  const mounted = await mount({ maxBytes: 4096 })
+  const root = await createRoot(mounted)
+  if (mounted.config === undefined) throw new Error('the provider did not resolve its configuration')
+
+  // Shrink the body budget through the live reference the settings page writes, then emit the
+  // Loader's commit event: the next tool call must see 8, not the apply-time 4096.
+  ;(mounted.config as unknown as { maxBytes: number }).maxBytes = 8
+  mounted.ctx.emit('loader/volatile-update', [['maxBytes']])
+  const result = await call(mounted.ctx, root, 'personality_learn', {
+    kind: 'style',
+    content: 'this entry is longer than eight bytes',
+    evidence: 'seq 1',
+  })
+  expect(text(result)).toMatch(/over the 8-byte limit/u)
 })
 
 test('personality_learn refuses identity entries without writing and without failing the call', async () => {

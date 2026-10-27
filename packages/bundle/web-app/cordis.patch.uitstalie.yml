@@ -39,6 +39,8 @@
       name: '@deepseek-ai/dsh-client-ui-dafeiyu'
     - id: jira-ui
       name: '@deepseek-ai/dsh-client-ui-jira'
+    - id: ui-memory
+      name: '@deepseek-ai/dsh-client-ui-memory'
     - id: ui-personality
       name: '@deepseek-ai/dsh-client-ui-personality'
     - id: ui-common-view

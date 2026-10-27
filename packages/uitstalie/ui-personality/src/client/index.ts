@@ -23,11 +23,13 @@ import personalityRemote from '@deepseek-ai/dsh-personality/remote'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { PersonalitySection } from './PersonalitySection.tsx'
 import type { PersonalitySectionInjected } from './PersonalitySection.tsx'
+import { PersonalitySettingsController, type PersonalityRowConfig } from './settings-form.ts'
 import { en, zh, type PersonalityKey } from './locales.ts'
 import { PERSONALITY_SETTINGS_ORDER, PERSONALITY_SETTINGS_SECTION } from '../section.ts'
 
 export type { PersonalityProposalController, PersonalitySectionInjected, PersonalitySectionProps } from './PersonalitySection.tsx'
 export type { PersonalityKey } from './locales.ts'
+export type { PersonalitySettingsState } from './settings-form.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -71,13 +73,21 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
         ? scoped.remote.personality.accept(id)
         : scoped.remote.personality.reject(id)),
     }
+    const settings = new PersonalitySettingsController(
+      scoped.get('configForms')?.get<PersonalityRowConfig>('personality'),
+    )
+    scoped.effect(() => () => { settings.dispose() }, 'ui-personality: settings controller')
     scoped.slots.inject('settings.section', () => scoped.slots.register({
       name: 'settings.section',
       id: PERSONALITY_SETTINGS_SECTION,
       order: PERSONALITY_SETTINGS_ORDER,
       label: () => t('nav'),
       locale: NS,
-      inject: (): PersonalitySectionInjected => ({ controller, t }),
+      inject: (): PersonalitySectionInjected => ({
+        controller,
+        settings,
+        t,
+      }),
     }, PersonalitySection))
   })
   return () => {

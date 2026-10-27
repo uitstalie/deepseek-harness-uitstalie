@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-personality` is the personality provider's settings page. It lists the identity proposals the model or a person queued in `PERSONALITY.proposals.jsonl`, shows each proposal's name, text, evidence, queue time and status, and accepts or rejects a pending one. It owns no profile data and no proposal storage: reads and decisions cross the `remote.personality` namespace, and the host writes an accepted identity entry through the same version-guarded profile write the `/personality accept` command uses. A rejected proposal only records its status.
+`dsh-client-ui-personality` is the personality provider's settings page. It lists the identity proposals the model or a person queued in `PERSONALITY.proposals.jsonl`, shows each proposal's name, text, evidence, queue time and status, and accepts or rejects a pending one. It owns no profile data and no proposal storage: reads and decisions cross the `remote.personality` namespace, and the host writes an accepted identity entry through the same version-guarded profile write the `/personality accept` command uses. A rejected proposal only records its status. It also edits the row's volatile fields through the shared settings form.
 
 ## Table of Contents
 
