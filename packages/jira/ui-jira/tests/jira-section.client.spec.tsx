@@ -187,7 +187,10 @@ it('registers the jira settings section and withdraws it with the fiber', async 
 
   const fiber = await ctx.plugin({ inject: [...inject], apply }).await()
 
-  const [entry] = slots.entries('settings.section')
+  const entries = slots.entries('settings.section')
+  // Exactly one: a second registration of the same section id would render twice in settings.
+  expect(entries).toHaveLength(1)
+  const [entry] = entries
   expect(entry?.options.id).toBe('jira')
   expect(entry?.options.order).toBe(200)
   expect(entry?.component).toBe(JiraSection)

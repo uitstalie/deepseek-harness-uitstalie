@@ -141,6 +141,26 @@ const settle = async (): Promise<void> => {
   await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
 }
 
+/**
+ * Wait until the mount's first ledger read has finished.
+ *
+ * Creating an agent refreshes the awareness line in the background, and that refresh runs git
+ * reads (`status`) that take `.git/index.lock` transiently. A test that writes to the same
+ * fixture immediately afterwards can lose that lock to the refresh — observed once as
+ * `Unable to create .../index.lock: File exists` in `endAfterCommit`. Waiting for the refresh's
+ * visible result removes the race without widening any timeout (DH-308).
+ * @param harness - the mounted composition whose awareness refresh is in flight.
+ * @param agent - the agent whose prompt assembly reads the section.
+ */
+const awarenessSettled = async (harness: JiraHarness, agent: ReturnType<typeof testAgent>): Promise<void> => {
+  await waitFor(async () => {
+    const assembly = await harness.ctx.systemPrompt.assemble(assembleContextFor(agent))
+    return assembly.sections.some(section => section.name === JIRA_AWARENESS_SECTION_NAME && section.text !== '')
+      ? true
+      : undefined
+  })
+}
+
 /** A store that has an issue and a vocabulary, but no generated file yet. */
 const storeWithoutGenerated = async (): Promise<string> => {
   const dir = await createLedgerFixture()
@@ -653,6 +673,9 @@ describe('agent: the turn-end settle (contract §3)', () => {
       const head = (await runGit(dir, ['rev-parse', 'HEAD'])).stdout.trim()
       const { harness, agent } = await mountWired(dir, { env })
       try {
+        // The mount refreshes the ledger in the background; let that read finish before this
+        // test takes the repository's index for its own commit.
+        await awarenessSettled(harness, agent)
         const landed = await runGit(dir, ['-c', 'user.name=dsh-jira', '-c', 'user.email=jira@local', 'commit', '--allow-empty', '-m', 'DH-12: something happened'])
         assert.equal(landed.code, 0, landed.stderr)
         await settleCompletedTurn(harness.host, agent, 1, head)
