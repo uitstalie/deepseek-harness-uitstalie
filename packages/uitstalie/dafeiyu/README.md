@@ -66,6 +66,8 @@ const off = ctx.dafeiyu.register({
 
 `register()` rejects a duplicate id, a `contractVersion` other than `1` or `2`, and a v2 descriptor without a label or description, each with an error naming the capability. The service exposes two methods: `register(provider)` returns the disposer that removes the registration and its contributions, and `status()` returns one `CapabilityStatus` for every registered provider followed by configured ids that have no provider. `status()` is a synchronous snapshot; it never re-runs `create()` or reads the filesystem.
 
+Upgrading a provider from contract version 1 to 2 is additive: `create()`, the contribution hooks, and the registration lifecycle stay exactly as they were; the descriptor gains `label` and `description`, and optionally `enabledByDefault` and `settings`. Both versions register side by side — the v1 provider keeps working and the capability list shows its id and state only — so the versions can move one provider at a time. Raising the declared version above 2 is different: the organizer rejects it by name until it lists that version, so an incompatible contract bump needs a new organizer first.
+
 The browser reads the same snapshot through the read-only Remote namespace:
 
 ```text

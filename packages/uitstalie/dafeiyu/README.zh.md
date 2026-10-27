@@ -68,6 +68,8 @@ const off = ctx.dafeiyu.register({
 
 `register()` 拒绝重复 id、非 `1` 或 `2` 的 `contractVersion`、以及缺少 label 或 description 的 v2 描述符，错误信息都包含能力 id。服务有两个方法：`register(provider)` 返回撤销该注册及其贡献的 disposer；`status()` 为每个已注册 provider 返回一条 `CapabilityStatus`，随后列出配置里出现但没有 provider 的 id。`status()` 是同步快照，不会重新执行 `create()`，也不读文件系统。
 
+从契约版本 1 升到 2 是增量改动：`create()`、贡献钩子与注册生命周期完全不变；描述符补 `label` 与 `description`，可选补 `enabledByDefault` 与 `settings`。两个版本可以并存——v1 provider 继续工作，能力列表只显示它的 id 与状态——所以可以逐个 provider 迁移。把声明的版本抬到 2 以上就是另一回事：组织者还没列出该版本时会按 id 拒绝，因此不兼容的契约升级必须先有新的组织者。
+
 浏览器通过只读的 Remote 命名空间读取同一份快照：
 
 ```text

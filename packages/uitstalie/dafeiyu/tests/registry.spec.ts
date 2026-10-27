@@ -91,6 +91,29 @@ test('rejects an unsupported contract version and names the capability', async (
   expect(ctx.dafeiyu.status()).toEqual([])
 })
 
+test('v1 and v2 providers register side by side during an upgrade', async () => {
+  const ctx = await mount()
+  ctx.dafeiyu.register(provider({ id: 'memory', contractVersion: 1 }))
+  ctx.dafeiyu.register(provider({
+    id: 'jira',
+    contractVersion: 2,
+    label: 'Jira',
+    description: 'Workspace issue ledger',
+  }))
+  await settle()
+  const statuses = ctx.dafeiyu.status()
+  expect(statuses).toHaveLength(2)
+  expect(statuses[0]).toEqual({ id: 'memory', present: true, enabled: true, state: 'active' })
+  expect(statuses[1]).toMatchObject({
+    id: 'jira',
+    present: true,
+    enabled: true,
+    state: 'active',
+    label: 'Jira',
+    description: 'Workspace issue ledger',
+  })
+})
+
 test('a v2 descriptor contributes its list metadata to status', async () => {
   const ctx = await mount()
   ctx.dafeiyu.register(provider({
