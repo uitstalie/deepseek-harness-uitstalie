@@ -2,30 +2,33 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-width: 960px;
   padding: 4px 0;
+  color: var(--dsw-alias-label-primary);
 }
 
 .title {
   margin: 0;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .intro,
 .rule,
 .note {
   margin: 0;
-  color: var(--dsh-text-secondary, #666);
   font-size: 13px;
   line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .error {
   margin: 0;
   padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--dsh-bg-danger-subtle, #fdecec);
-  color: var(--dsh-text-danger, #b42318);
+  border: 0.5px solid var(--dsw-alias-state-error-secondary);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-error);
   font-size: 13px;
 }
 
@@ -42,9 +45,10 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--dsh-border-default, #e5e5e5);
-  border-radius: 8px;
+  padding: 12px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
 }
 
 .head {
@@ -54,29 +58,33 @@
 }
 
 .name {
-  font-weight: 600;
   font-size: 13px;
+  font-weight: 500;
 }
 
 .badge {
-  padding: 1px 6px;
+  padding: 1px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
   border-radius: 999px;
+  corner-shape: round;
   font-size: 11px;
-  background: var(--dsh-bg-secondary, #f2f2f2);
+  font-weight: 500;
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-bg-layer-0, transparent);
 }
 
 .pending {
-  background: var(--dsh-bg-warning-subtle, #fff4e5);
-  color: var(--dsh-text-warning, #8a5300);
+  color: var(--dsw-alias-label-secondary);
+  border-color: var(--dsw-alias-border-l2);
 }
 
 .accepted {
-  background: var(--dsh-bg-success-subtle, #e9f7ef);
-  color: var(--dsh-text-success, #1e6b3a);
+  color: var(--dsw-alias-state-success-primary);
+  border-color: var(--dsw-alias-state-success-secondary);
 }
 
 .rejected {
-  background: var(--dsh-bg-secondary, #f2f2f2);
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .text {
@@ -88,8 +96,8 @@
 
 .meta {
   margin: 0;
-  color: var(--dsh-text-secondary, #666);
   font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .actions {
@@ -100,25 +108,25 @@
 .primary,
 .secondary {
   padding: 4px 12px;
-  border-radius: 6px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm, 6px);
   font-size: 12px;
   cursor: pointer;
 }
 
 .primary {
-  border: 1px solid var(--dsh-accent, #2f6feb);
-  background: var(--dsh-accent, #2f6feb);
-  color: var(--dsh-text-on-accent, #fff);
+  border-color: var(--dsw-alias-button-primary-fill);
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-inverted);
 }
 
 .secondary {
-  border: 1px solid var(--dsh-border-default, #e5e5e5);
   background: transparent;
-  color: inherit;
+  color: var(--dsw-alias-label-primary);
 }
 
 .primary:disabled,
 .secondary:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: default;
 }
