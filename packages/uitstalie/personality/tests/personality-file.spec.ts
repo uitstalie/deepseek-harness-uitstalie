@@ -311,3 +311,16 @@ test('both writes append history lines in revision order', async () => {
   expect(lines[0]).toContain('"version":1')
   expect(lines[1]).toContain('"version":2')
 })
+
+test('history rotation keeps only the newest records', async () => {
+  const limited = resolveConfig({ globalPath: settings.globalPath, historyLimit: 2 })
+  await writePersonalityEntry(ctx, session, entry('understanding', 'terse', '第一条。'), { settings: limited, source: 'user' })
+  await writePersonalityEntry(ctx, session, entry('understanding', 'detailed', '第二条。'), { settings: limited, source: 'user' })
+  await writePersonalityEntry(ctx, session, entry('understanding', 'dry', '第三条。'), { settings: limited, source: 'user' })
+
+  const history = await readFile(join(dirname(settings.globalPath), PERSONALITY_HISTORY_FILE_NAME), 'utf8')
+  const lines = history.trimEnd().split('\n')
+  expect(lines).toHaveLength(2)
+  expect(lines[0]).toContain('"version":2')
+  expect(lines[1]).toContain('"version":3')
+})

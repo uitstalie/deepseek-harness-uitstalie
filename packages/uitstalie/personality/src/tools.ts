@@ -220,13 +220,13 @@ function normalizeLearnedContent(content: string): string {
  * @param content - normalized entry text.
  * @returns `auto-` plus eight hexadecimal digest characters.
  */
-function autoEntryName(kind: string, content: string): string {
+export function autoEntryName(kind: string, content: string): string {
   const digest = createHash('sha256').update(`${kind}\u0000${content}`).digest('hex').slice(0, 8)
   return `auto-${digest}`
 }
 
 /** Read one session's usage record, creating it on first use. */
-function usageFor(usage: Map<string, AutoLearnUsage>, sessionId: string): AutoLearnUsage {
+export function usageFor(usage: Map<string, AutoLearnUsage>, sessionId: string): AutoLearnUsage {
   const existing = usage.get(sessionId)
   if (existing !== undefined) return existing
   const created: AutoLearnUsage = { entries: 0, bytes: 0 }
@@ -241,7 +241,7 @@ function usageFor(usage: Map<string, AutoLearnUsage>, sessionId: string): AutoLe
  * @param bytes - UTF-8 size of the candidate entry text.
  * @returns a refusal naming the remaining budget, or undefined when the write fits.
  */
-function checkAutoLearnBudget(
+export function checkAutoLearnBudget(
   budget: AutoLearnBudget,
   usage: AutoLearnUsage,
   bytes: number,

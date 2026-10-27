@@ -91,6 +91,18 @@ async function seedGlobal(entries: readonly PersonalityEntry[], version = 1): Pr
   await writeFile(globalFile(), renderPersonalityDocument(document), 'utf8')
 }
 
+/** Write the workspace overlay before the provider activates. */
+async function seedOverlay(entries: readonly PersonalityEntry[], version = 1): Promise<void> {
+  const document: PersonalityDocument = {
+    version,
+    updatedAt: '2026-10-21T00:00:00.000Z',
+    entries,
+    frame: { before: '\n', after: '\n' },
+  }
+  await mkdir(join(project, '.dsh', 'memory'), { recursive: true })
+  await writeFile(join(project, '.dsh', 'memory', PERSONALITY_FILE_NAME), renderPersonalityDocument(document), 'utf8')
+}
+
 /** Mount the real services and provider over a stubbed watch primitive. */
 async function mount(options: MountOptions = {}): Promise<Mounted> {
   const ctx = new Context()
@@ -169,6 +181,22 @@ test('one global watch refreshes the cached prompt text for live agents', async 
   expect(text).toContain('新文本。')
   expect(text).not.toContain('旧文本。')
   expect(mounted.calls).toHaveLength(1)
+})
+
+test('a workspace overlay edit refreshes the live agent prompt', async () => {
+  await seedGlobal([entry('style', 'language', 'global text')])
+  await seedOverlay([entry('style', 'language', 'overlay text')])
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  await until(() => mounted.calls.length === 2)
+  await untilPrompt(mounted.ctx, root, 'overlay text')
+  const overlay = mounted.calls[1]
+  expect(overlay?.target.displayPath).toBe(join(project, '.dsh', 'memory', PERSONALITY_FILE_NAME))
+
+  await seedOverlay([entry('style', 'language', 'edited overlay text')], 2)
+  overlay?.changed()
+  await untilPrompt(mounted.ctx, root, 'edited overlay text')
+  expect(await promptText(mounted.ctx, root)).not.toContain('global text')
 })
 
 test('an unsupported watch degrades to the per-agent read and logs at debug', async () => {

@@ -15,14 +15,17 @@
   en: cbfb676bb9a7a2de
   zh: 528864635b577290
 /deepseek-ai-dsh-personality/use-this-package:
-  en: 83f9789212d68145
-  zh: 11ac6cb5a5523544
+  en: a2eca9ed2bf05cb4
+  zh: 9760a2c5a8b0576c
 /deepseek-ai-dsh-personality/use-this-package/drift-review-commands:
   en: 8011b31a61c882d4
   zh: 7bf68f8a3ccb47a3
 /deepseek-ai-dsh-personality/use-this-package/watch-refresh:
-  en: c6313bf49f5a1644
-  zh: bb7987f7e0693a0a
+  en: d7fb1597c528ab55
+  zh: c77053b37bd170af
+/deepseek-ai-dsh-personality/use-this-package/automatic-learning-on-turn-end:
+  en: f3c1935e5a48ac5a
+  zh: 5d926d43238c039d
 /deepseek-ai-dsh-personality/understand-the-implementation:
   en: 4c710d9af8b40c5a
   zh: b2fb59c69163ac35
@@ -57,8 +60,8 @@
   en: c2810b6f8b91e6f9
   zh: 7db9115063ee93f2
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work:
-  en: 12682c28445d9529
-  zh: e9412388efc43e5b
+  en: 288ade3a0e907f19
+  zh: 3dc278e09e8236e1
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work/dev-note:
   en: a4a55bbbef7c1347
   zh: 5b332322161bb08d

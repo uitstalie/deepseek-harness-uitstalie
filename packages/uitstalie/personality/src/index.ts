@@ -18,7 +18,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Session } from '@deepseek-ai/dsh-session'
 import type { CapabilityContribution, CapabilityRuntime } from '@deepseek-ai/dsh-dafeiyu'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-store-atom'
@@ -29,10 +31,11 @@ import {
   PersonalityDocumentError,
   readGlobalPersonality,
   readPersonality,
+  writePersonalityEntry,
 } from './personality-file.ts'
-import type { PersonalityEntry } from './personality-file.ts'
+import type { PersonalityEntry, PersonalityEntryKind } from './personality-file.ts'
 import { personalityPromptSection, renderPersonalityPrompt } from './prompt.ts'
-import { personalityTools } from './tools.ts'
+import { autoEntryName, checkAutoLearnBudget, personalityTools, usageFor } from './tools.ts'
 import type { AutoLearnUsage } from './tools.ts'
 
 export const name = 'personality'
@@ -178,6 +181,7 @@ async function createContribution(
   // effect removes it again when that agent's context is disposed.
   const liveAgents = new Set<Agent>()
   const autoLearnUsage = new Map<string, AutoLearnUsage>()
+  const overlayControllers = new Set<AbortController>()
   const preloaded = await readPreloadedEntries(ctx, settings, runtime.signal)
   let fallbackText = renderPersonalityPrompt(preloaded)
   const watchController = new AbortController()
@@ -260,6 +264,60 @@ async function createContribution(
   // initializing after disposal is closed by the branch above.
   if (!runtime.signal.aborted) void startWatch()
 
+  /**
+   * Watch one agent's workspace overlay and refresh that agent's cached text.
+   *
+   * The overlay file may not exist yet, so the watcher prefers the file, then
+   * its directory, then the store root; a store that cannot be watched keeps the
+   * creation-time read (the overlay is still re-read for a new agent). One
+   * invalidation serializes behind the same per-agent refresh the global watcher
+   * uses, so many overlay writes cheaply coalesce into the latest text.
+   */
+  const startOverlayWatch = async (agent: Agent): Promise<void> => {
+    const controller = new AbortController()
+    overlayControllers.add(controller)
+    let close: (() => Promise<void>) | undefined
+    agent.ctx.effect(() => async () => {
+      controller.abort()
+      overlayControllers.delete(controller)
+      if (close !== undefined) {
+        await close().catch((error: unknown) => {
+          ctx.logger.warn('personality: could not close the overlay watcher: %s', errorMessage(error))
+        })
+      }
+    }, 'personality: close the overlay watcher')
+    try {
+      const root = await ctx.dshStore.rootFor(agent.session, controller.signal)
+      for (const candidate of [settings.workspaceStorePath, 'memory', '.']) {
+        let target
+        try {
+          target = await ctx.fs.resolve(join(root, candidate), { signal: controller.signal })
+        } catch {
+          continue
+        }
+        if (await ctx.fs.stat(target, controller.signal) === undefined) continue
+        close = await ctx.fs.watch(target, (error) => {
+          if (error !== undefined) {
+            if (!disposed && !controller.signal.aborted) {
+              ctx.logger.warn('personality: overlay watch failed for session %s: %s', agent.id, error.message)
+            }
+            return
+          }
+          void refresh(agent)
+        }, controller.signal)
+        return
+      }
+    } catch (error: unknown) {
+      if (!disposed && !controller.signal.aborted && !runtime.signal.aborted) {
+        ctx.logger.debug(
+          'personality: overlay watch is unavailable for session %s; the overlay is re-read when an agent is created: %s',
+          agent.id,
+          errorMessage(error),
+        )
+      }
+    }
+  }
+
   return {
     scope: 'all',
     promptSections: agent => [personalityPromptSection(() => promptTexts.get(agent) ?? fallbackText)],
@@ -271,14 +329,21 @@ async function createContribution(
       liveAgents.add(agent)
       agent.ctx.effect(() => () => { liveAgents.delete(agent) }, 'personality: forget a disposed agent')
       void refresh(agent)
+      if (!runtime.signal.aborted) void startOverlayWatch(agent)
     },
-    onTurnEnd: () => {
-      // v1 has no automatic-learning trigger: the model calls the tool, and a
-      // completed turn is dispatched here and intentionally ignored.
+    onTurnEnd: async (input) => {
+      if (runtime.signal.aborted || input.signal.aborted) return
+      const agents = ctx.get('agents')
+      if (agents !== undefined && !agents.roots().includes(input.agent)) return
+      const correction = detectCorrection(input.session, input.turn, input.event.seq)
+      if (correction === undefined) return
+      await learnCorrection(ctx, settings, autoLearnUsage, input.session, input.agent, correction, input.signal, refresh)
     },
     dispose: () => {
       disposed = true
       watchController.abort()
+      for (const controller of overlayControllers) controller.abort()
+      overlayControllers.clear()
       autoLearnUsage.clear()
       liveAgents.clear()
       const close = stopWatch
@@ -321,6 +386,125 @@ async function readPreloadedEntries(
       errorMessage(error),
     )
     return []
+  }
+}
+
+/** One explicit user correction detected on a completed turn. */
+interface CorrectionSignal {
+  /** Kind the correction maps onto. */
+  readonly kind: PersonalityEntryKind
+  /** The user's sentence, trimmed. */
+  readonly text: string
+  /** Event seq of the correcting message, for diagnostics. */
+  readonly seq: number
+}
+
+/**
+ * Explicit-correction rules applied to one user message.
+ *
+ * Order matters: a durable style sentence ("from now on answer in Chinese") also
+ * matches the broader durable-preference rule, so the style rule runs first. The
+ * patterns are deliberately narrow — an ordinary instruction is not a correction
+ * and must not become a personality entry.
+ */
+const CORRECTION_RULES: readonly { readonly kind: PersonalityEntryKind; readonly pattern: RegExp }[] = [
+  {
+    kind: 'understanding',
+    pattern: /^(?:其实[，,\s]?|不是这个意思|不是这样|我说的是|我的意思是|我指的是|i meant\b|not what i meant|actually[,\s])/iu,
+  },
+  {
+    kind: 'style',
+    pattern: new RegExp(
+      '^(?:以后|下次|from now on\\b|going forward\\b).*'
+      + '(?:回复|回答|说话|写|语气|格式|风格|语言|中文|英文|reply|respond|write|format|tone|style|language|english|chinese)',
+      'iu',
+    ),
+  },
+  {
+    kind: 'preference',
+    pattern: /^(?:以后|下次|from now on\b|going forward\b)/iu,
+  },
+]
+
+/**
+ * Find the last explicit correction in one completed turn.
+ *
+ * The turn's user messages are read from the live log once per completed turn
+ * (the organizer already filtered the turn); the last match wins so a later
+ * correction supersedes an earlier one.
+ * @param session - session whose log is read.
+ * @param turn - the completed turn number.
+ * @param endSeq - the `turn/end` event seq, the inclusive upper bound.
+ * @returns the correction and its evidence seq, or undefined when the turn has none.
+ */
+function detectCorrection(session: Session, turn: number, endSeq: number): CorrectionSignal | undefined {
+  // oxlint-disable-next-line typescript/no-deprecated -- reads the just-finished turn from the live log
+  const events = session.snapshotEvents()
+  let startSeq: number | undefined
+  for (const event of events) {
+    if (event.type === 'turn/start' && event.data.turn === turn) startSeq = event.seq
+  }
+  if (startSeq === undefined) return undefined
+  let found: CorrectionSignal | undefined
+  for (const event of events) {
+    if (event.seq <= startSeq || event.seq > endSeq) continue
+    if (event.type !== 'user/message' || event.data.source.kind !== 'user') continue
+    const text = event.data.content
+      .flatMap(block => block.type === 'text' ? [block.text] : [])
+      .join('\n')
+      .trim()
+    if (text.length < 4 || text.length > 400) continue
+    const rule = CORRECTION_RULES.find(candidate => candidate.pattern.test(text))
+    if (rule !== undefined) found = { kind: rule.kind, text, seq: event.seq }
+  }
+  return found
+}
+
+/**
+ * Store one turn-end correction under the same per-session budget the tool uses.
+ *
+ * A refusal is a debug log, not a failure: the turn is already complete and the
+ * budget exists precisely so automatic writes cannot flood the profile.
+ * @param ctx - plugin context for the write and the logs.
+ * @param settings - resolved provider settings.
+ * @param usageMap - per-session auto-learning usage shared with the tool.
+ * @param session - session the correction came from.
+ * @param agent - agent whose cached prompt is refreshed after the write.
+ * @param correction - the detected correction.
+ * @param signal - cancellation for the write.
+ * @param refresh - prompt-cache refresh for the agent.
+ */
+async function learnCorrection(
+  ctx: Context,
+  settings: PersonalitySettings,
+  usageMap: Map<string, AutoLearnUsage>,
+  session: Session,
+  agent: Agent,
+  correction: CorrectionSignal,
+  signal: AbortSignal,
+  refresh: (agent: Agent | undefined) => Promise<void>,
+): Promise<void> {
+  const bytes = Buffer.byteLength(correction.text, 'utf8')
+  const usage = usageFor(usageMap, session.id)
+  const refusal = checkAutoLearnBudget(settings.autoLearn, usage, bytes)
+  if (refusal !== undefined) {
+    ctx.logger.debug('personality: automatic learning skipped for session %s: %s', session.id, refusal)
+    return
+  }
+  try {
+    // A turn-end write can be the first store write of the session, so the root may not exist.
+    await ctx.dshStore.prepare(session, signal)
+    await writePersonalityEntry(ctx, session, {
+      kind: correction.kind,
+      name: autoEntryName(correction.kind, correction.text),
+      text: correction.text,
+    }, { settings, source: 'auto' }, signal)
+    usage.entries += 1
+    usage.bytes += bytes
+    await refresh(agent)
+  } catch (error: unknown) {
+    if (signal.aborted) return
+    ctx.logger.warn('personality: automatic learning failed for session %s: %s', session.id, errorMessage(error))
   }
 }
 

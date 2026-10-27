@@ -35,6 +35,9 @@ export interface AutoLearnBudget {
 /** Default per-session auto-learning budget. */
 export const DEFAULT_AUTO_LEARN_BUDGET: AutoLearnBudget = { entries: 3, bytes: 512 }
 
+/** Default number of `PERSONALITY.history.jsonl` records kept before the oldest are dropped. */
+export const DEFAULT_PERSONALITY_HISTORY_LIMIT = 500
+
 /** Configuration as the Loader passes it; every field carries a schema default. */
 export interface Config {
   /**
@@ -48,6 +51,11 @@ export interface Config {
   maxBytes?: number
   /** Per-session automatic-learning budget; defaults to {@link DEFAULT_AUTO_LEARN_BUDGET}. */
   autoLearn?: AutoLearnConfig
+  /**
+   * Number of history records kept per file; the oldest are dropped when a
+   * write would exceed it. Defaults to {@link DEFAULT_PERSONALITY_HISTORY_LIMIT}.
+   */
+  historyLimit?: number
 }
 
 /** Schemastery configuration for the personality provider. */
@@ -59,6 +67,7 @@ export const Config: z<Config> = z.object({
     entries: z.number().step(1).min(1).default(DEFAULT_AUTO_LEARN_BUDGET.entries),
     bytes: z.number().step(1).min(1).default(DEFAULT_AUTO_LEARN_BUDGET.bytes),
   }).default({}),
+  historyLimit: z.number().step(1).min(1).default(DEFAULT_PERSONALITY_HISTORY_LIMIT),
 })
 
 /** Resolved provider settings; the provider reads configuration only in this form. */
@@ -77,6 +86,8 @@ export interface PersonalitySettings {
   readonly maxBytes: number
   /** Resolved per-session auto-learning budget. */
   readonly autoLearn: AutoLearnBudget
+  /** Number of history records kept per history file. */
+  readonly historyLimit: number
 }
 
 /**
@@ -108,6 +119,10 @@ export function resolveConfig(config: Config): PersonalitySettings {
   if (!Number.isSafeInteger(autoLearn.bytes) || autoLearn.bytes < 1) {
     throw new Error(`personality: autoLearn.bytes must be a positive integer; got ${String(autoLearn.bytes)}`)
   }
+  const historyLimit = config.historyLimit ?? DEFAULT_PERSONALITY_HISTORY_LIMIT
+  if (!Number.isSafeInteger(historyLimit) || historyLimit < 1) {
+    throw new Error(`personality: historyLimit must be a positive integer; got ${String(historyLimit)}`)
+  }
   return {
     globalPath,
     globalHistoryPath: join(dirname(globalPath), PERSONALITY_HISTORY_FILE_NAME),
@@ -116,5 +131,6 @@ export function resolveConfig(config: Config): PersonalitySettings {
     workspaceHistoryStorePath: PERSONALITY_HISTORY_STORE_PATH,
     maxBytes,
     autoLearn,
+    historyLimit,
   }
 }

@@ -568,7 +568,7 @@ export async function writePersonalityEntry(
       block: renderPersonalityBlock(entries),
     }
     try {
-      await appendHistory(ctx, session, target, record, signal)
+      await appendHistory(ctx, session, target, record, signal, options.settings.historyLimit)
     } catch (error: unknown) {
       ctx.logger.warn(
         'personality: wrote %s but could not append the version history: %s',
@@ -643,7 +643,7 @@ export async function revertGlobalPersonality(
       block: renderPersonalityBlock(entries),
     }
     try {
-      await appendHistory(ctx, session, target, history, signal)
+      await appendHistory(ctx, session, target, history, signal, settings.historyLimit)
     } catch (error: unknown) {
       ctx.logger.warn(
         'personality: reverted %s but could not append the version history: %s',
@@ -665,13 +665,15 @@ export async function revertGlobalPersonality(
  * Append one version record to the history file beside a personality file.
  *
  * The existing history text is preserved byte for byte and one JSON line is
- * added. The write is version-guarded like the profile write, with one retry on
- * a stale conflict.
+ * added; when the file would exceed `limit` records, the oldest lines are
+ * dropped in the same write so the history stays bounded. The write is
+ * version-guarded like the profile write, with one retry on a stale conflict.
  * @param ctx - context carrying `fs` and `dshStore`.
  * @param session - session whose workspace owns the overlay history.
  * @param target - the profile file whose history receives the record.
  * @param record - one complete revision record.
  * @param signal - cancellation for the read and the write.
+ * @param limit - maximum records to keep; `Infinity` disables rotation.
  * @throws FsError when the guarded write fails twice or the backend refuses the write.
  */
 export async function appendHistory(
@@ -680,12 +682,14 @@ export async function appendHistory(
   target: PersonalityFileTarget,
   record: PersonalityHistoryRecord,
   signal?: AbortSignal,
+  limit: number = Number.POSITIVE_INFINITY,
 ): Promise<void> {
   const line = `${JSON.stringify(record)}\n`
   const append = async (): Promise<void> => {
     const current = await readHistory(ctx, session, target, signal)
     const prefix = current.text.length === 0 || current.text.endsWith('\n') ? current.text : `${current.text}\n`
-    await writeHistory(ctx, session, target, `${prefix}${line}`, current.version, signal)
+    const text = boundHistory(`${prefix}${line}`, limit)
+    await writeHistory(ctx, session, target, text, current.version, signal)
   }
   try {
     await append()
@@ -693,6 +697,23 @@ export async function appendHistory(
     if (!isStaleWrite(error)) throw error
     await append()
   }
+}
+
+/**
+ * Keep only the newest `limit` records of a JSONL history text.
+ *
+ * Non-empty lines are the records; the kept lines are rewritten in order with a
+ * trailing newline. A limit at or above the record count returns the text
+ * unchanged, so a normal append stays byte-for-byte append-only.
+ * @param text - the complete history text, already including the new line.
+ * @param limit - maximum records to keep.
+ * @returns the bounded text.
+ */
+function boundHistory(text: string, limit: number): string {
+  if (!Number.isFinite(limit)) return text
+  const lines = text.split('\n').filter(line => line.trim().length > 0)
+  if (lines.length <= limit) return text
+  return `${lines.slice(-Math.max(1, Math.trunc(limit))).join('\n')}\n`
 }
 
 /** Split the leading frontmatter block from the rest of the file. */

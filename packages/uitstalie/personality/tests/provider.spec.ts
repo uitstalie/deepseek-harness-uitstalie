@@ -12,7 +12,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { createDshStore } from '@deepseek-ai/dsh-store-atom'
@@ -162,6 +162,28 @@ async function promptText(ctx: Context, agent: Agent): Promise<string> {
   return assembly.sections.find(section => section.name === PERSONALITY_PROMPT_SECTION_NAME)?.text ?? ''
 }
 
+/** Append one completed turn carrying a user message. */
+function completeTurn(agent: Agent, turn: number, text: string): void {
+  agent.session.append('turn/start', { turn })
+  agent.session.append('user/message', createUserMessage({
+    content: [{ type: 'text', text }],
+    source: { kind: 'user' },
+  }), { surfaceOp: 'append' })
+  agent.session.append('turn/end', { turn, reason: { kind: 'completed' } })
+}
+
+/** Poll until a personality file exists and parses, returning its entries. */
+async function awaitEntries(path: string): Promise<readonly PersonalityEntry[]> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    try {
+      return parsePersonalityDocument(await readFile(path, 'utf8')).entries
+    } catch {
+      await new Promise<void>((resolve) => { setTimeout(resolve, 1) })
+    }
+  }
+  throw new Error(`personality file ${path} never appeared`)
+}
+
 test('registers an active all-agent capability with the stable prompt section', async () => {
   const entries = [entry('style', 'language', '用中文回答；代码保持英文原文。')]
   await seedGlobal(entries)
@@ -292,6 +314,44 @@ test('the auto-learn budget refuses an entry past the per-session limit', async 
   expect(text(second)).toContain('auto-learn budget is exhausted')
   expect(text(second)).toContain('0 of 1 entries')
   expect(parsePersonalityDocument(await readFile(globalFile(), 'utf8')).entries).toHaveLength(1)
+})
+
+test('an explicit correction on a completed turn writes one automatic entry', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  completeTurn(root, 1, '以后用中文回答我')
+
+  const entries = await awaitEntries(workspaceFile())
+  expect(entries).toHaveLength(1)
+  expect(entries[0]).toMatchObject({ kind: 'style', text: '以后用中文回答我' })
+  expect(entries[0]?.id).toMatch(/^style\.auto-/u)
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    if ((await promptText(mounted.ctx, root)).includes('以后用中文回答我')) break
+    await new Promise<void>((resolve) => { setTimeout(resolve, 1) })
+  }
+  expect(await promptText(mounted.ctx, root)).toContain('以后用中文回答我')
+  const history = await readFile(join(project, '.dsh', 'memory', PERSONALITY_HISTORY_FILE_NAME), 'utf8')
+  expect(history).toContain('"source":"auto"')
+})
+
+test('an ordinary instruction is not learned on turn end', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  completeTurn(root, 1, '跑一下测试')
+  await settle()
+  await settle()
+  await expect(stat(workspaceFile())).rejects.toThrow()
+})
+
+test('turn-end learning shares the per-session auto-learn budget', async () => {
+  const mounted = await mount(settingsConfig({ autoLearn: { entries: 1, bytes: 512 } }))
+  const root = await createRoot(mounted)
+  completeTurn(root, 1, '以后用中文回答我')
+  await awaitEntries(workspaceFile())
+  completeTurn(root, 2, '其实不是这个意思')
+  await settle()
+  await settle()
+  expect(parsePersonalityDocument(await readFile(workspaceFile(), 'utf8')).entries).toHaveLength(1)
 })
 
 test('unloading the provider removes the capability, the tool, and the section', async () => {

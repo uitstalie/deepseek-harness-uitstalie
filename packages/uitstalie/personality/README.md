@@ -44,6 +44,7 @@ Every field has a default, so an empty `config` is valid:
 | `maxBytes` | `2048` | Managed-block body budget in UTF-8 bytes, enforced on reads and writes. |
 | `autoLearn.entries` | `3` | Automatic writes allowed per session. |
 | `autoLearn.bytes` | `512` | Automatic-write bytes allowed per session. |
+| `historyLimit` | `500` | History records kept per file; the oldest are dropped when a write would exceed it. |
 
 The provider is a hard composition dependency on `ctx.dafeiyu` (the organizer), `ctx.dshStore` (the workspace overlay), and `ctx.fs` (the global profile). A composition that omits one of them leaves this row inactive. The organized contribution is `scope: 'all'`, so child agents inherit the prompt section and the tool; the organizer still decides which agents are wired and which completed turns reach `onTurnEnd`.
 
@@ -61,7 +62,11 @@ History review is global-only in this version: the workspace overlay keeps its o
 
 ### Watch refresh
 
-One `ctx.fs.watch` registration observes the global profile. A change re-reads the file, updates the cached text every live agent's section getter reads, and refreshes the preloaded text later agents start from; the next assembly sees the new profile without restarting the agent. The workspace overlay is still read when an agent is created, so overlay edits need a new agent. A backend that cannot watch degrades to that per-agent read and logs the reason at debug; disposing the capability closes the watcher. External edits and the watcher's notification are separated by a short window, so a request assembled inside that window can still see the previous text.
+One `ctx.fs.watch` registration observes the global profile. A change re-reads the file, updates the cached text every live agent's section getter reads, and refreshes the preloaded text later agents start from; the next assembly sees the new profile without restarting the agent. Each live agent also owns one overlay watcher: it observes `.dsh/memory/PERSONALITY.md` when that file exists, otherwise the `memory` directory, otherwise the store root, and refreshes only that agent's merged text. Overlay edits therefore reach a live agent instead of waiting for a new one. A backend that cannot watch degrades to the per-agent read and logs the reason at debug; disposing the capability aborts every watcher. External edits and the watcher's notification are separated by a short window (usually the filesystem's event latency, and a watcher on a directory can miss a content-only edit inside a child file), so a request assembled inside that window can still see the previous text; the file remains the source of truth for the next refresh.
+
+### Automatic learning on turn end
+
+The organizer forwards each completed turn to this provider. When the session log for that turn carries an explicit correction from the user — an understanding rule ("不是这个意思", "I meant"), a durable style rule ("以后…回复/语言/格式"), or a durable preference rule ("以后…", "from now on") — the provider writes one `source: auto` entry through the same version-guarded write the tool uses. The entry kind follows the matched rule, the text is the user's sentence (4–400 characters), and the digest name means repeating the same correction updates that entry instead of adding a duplicate. Automatic writes charge the same per-session `autoLearn` budget as `personality_learn`, and only root agents trigger learning. A refusal from the budget or a failed write is logged, never surfaced to the user, because the turn has already completed.
 
 ## Understand the implementation
 
@@ -123,11 +128,11 @@ Prefix-stable while the tool definition is unchanged. A successful write changes
 ## Known Limitations and Deferred Work
 
 - **Identity proposals need a settings page** — `personality_learn` refuses `identity.*`; there is no proposal queue or settings page yet, so identity changes stay manual edits.
-- **Auto-learning is budgeted, in-memory, and model-triggered** — one capability registration keeps at most `autoLearn.entries` writes and `autoLearn.bytes` bytes per session; the counters reset when the capability reloads. Only the model-called `personality_learn` tool writes automatically; there is no `onTurnEnd` learning trigger.
-- **The overlay has no watcher** — the workspace overlay is read when an agent is created, so an overlay edit is visible to a new agent, not to a live one.
+- **Auto-learning is budgeted, in-memory, and heuristic** — one capability registration keeps at most `autoLearn.entries` writes and `autoLearn.bytes` bytes per session; the counters reset when the capability reloads. The `personality_learn` tool and the turn-end trigger share that budget. Turn-end detection is a small rule set over the user's sentence, so it can miss a correction worded unusually and can treat a strongly worded instruction as a preference; the profile history can revert either kind.
+- **The overlay watcher is best-effort** — it prefers the overlay file, then its directory, then the store root; a directory watcher reports direct entries, so a content-only edit inside a child it did not watch waits for the next agent read. The creation-time read still sees the merged view.
 - **A watch notification lags the external edit** — between a hand edit and the watcher event, an assembly can still read the previous cached text; the file remains the source of truth for the next refresh.
 - **`maxBytes` applies per file** — the managed body of each file is budgeted and re-checked on read, but the merged global-plus-overlay text can approach twice the budget.
-- **The history is append-only and unbounded** — every write adds one JSON line with the complete managed block; there is no rotation or retention limit. Revert restores one stored block, but the global history is the only history it reads.
+- **The history rotates, so old revisions are dropped** — every write adds one JSON line with the complete managed block and keeps the newest `historyLimit` records (500 by default); the dropped revisions cannot be reverted. Revert restores one stored block, but the global history is the only history it reads.
 - **An invalid file empties the section** — a parse failure, a disallowed overlay kind, or an oversized hand-edited body is logged as a warning and contributes no prompt text until the file is fixed. A failed watch refresh keeps the previous text instead of emptying the section.
 
 ### Dev Note
