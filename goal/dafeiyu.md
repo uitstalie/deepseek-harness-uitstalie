@@ -175,7 +175,13 @@ interface CapabilityStatus {
 
 ## 未决
 
-v1 没有未决项；以下留到后续版本：设置页面板与运行态开关、多设备/多进程下的能力状态同步、`contractVersion` 升 2 的迁移说明。
+v1 没有未决项。以下曾列为后续版本，现均已落地：
+
+- 设置页面板与运行态开关：`ui-dafeiyu` 列表展示 `active/disabled/missing/failed`、翻转 volatile 门、按 `settings.sectionId` 跳转到 provider 自己的设置页（DH-14 补了跨段跳转）。
+- `contractVersion` 升 2 的迁移说明与测试：v1/v2 并存注册、v2 元数据校验、`>2` 按 id 拒绝；README 记录了 v1→v2 的增量迁移路径（DH-10）。
+- 真实组合测试：从分支层 `cordis.patch.uitstalie.yml` 读取能力行，经真实 Loader 验证 organizer 把 memory/personality 置为 active 并接线到生产 agent（DH-10）。
+
+仍留给后续：多设备/多进程下的能力状态同步。
 
 ## 变更记录
 

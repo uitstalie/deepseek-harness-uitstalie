@@ -71,7 +71,7 @@ entries: 3
 
 ## 存储与写入
 
-- 全局路径用 `resolveDshHome()` 解析（`DSH_HOME` 环境变量优先），目录 `personality/`；provider 通过 `ctx.fs` 读写，不走 `dshStore`——`dshStore` 的边界是工作区 `.dsh`，全局文件不在其中。
+- 全局路径用 `resolveDshHome()` 解析（`DSH_HOME` 环境变量优先），目录 `personality/`；provider 通过 `ctx.fs` 读写，不走 `dshStore`——`dshStore` 的边界是工作区 `.dsh`，全局文件不在其中。`globalPath` 允许自定义绝对路径；它是否应收紧到 `$DSH_HOME` 内、从而让 provider 改走 store atom 的 global scope，跟踪在 DH-301。
 - 工作区覆盖走 `ctx.dshStore` 的 `memory` 命名空间（`.dsh/memory/PERSONALITY.md`），与 MEMORY.md 共用保留前缀；模型工具同样只读。
 - 写入一律原子：`FileSystem.writeText` 的原子发布 + `replaceIfVersion` 版本守卫。所有写入者（用户设置、自动学习、提案接受）都遵守这条契约：provider 持有上次读到/写入的 version，与用户手改冲突时重读一次重试，再失败就放弃并报告，不覆盖用户刚写的内容。
 - 写入路径：用户显式设置（编辑器/设置页）；自动学习（仅 `understanding`/`style`/`preference`，标 `source: auto`，受每条目/每会话预算约束）；`identity.*` 与角色设定走提案接受（设置页）。模型不直接写文件，全部经 provider 的写入接口做格式、预算与版本校验。
