@@ -32,9 +32,13 @@ import * as ToolExecutorPlugin from '@deepseek-ai/dsh-tool-executor-native'
 import * as ToolsPlugin from '@deepseek-ai/dsh-tools'
 import { runGit } from '@deepseek-ai/dsh-jira-core/git.ts'
 import { scaffoldStore } from '@deepseek-ai/dsh-jira-core/scaffold.ts'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
+
+// Booting the shipped rows through the real Loader has measured ~4.5 s under an aggregate run;
+// this file carries the composition budget rather than the 5 s unit default (DH-308).
+vi.setConfig({ testTimeout: 30_000 })
 
 /** The shipped branch layer whose jira rows this suite boots. */
 const BRANCH_LAYER = new URL('../../bundle/web-app/cordis.patch.uitstalie.yml', import.meta.url)

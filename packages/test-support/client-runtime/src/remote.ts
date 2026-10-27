@@ -1,5 +1,6 @@
-/** Test-owned Remote face: `$on` subscriptions with an explicit test event driver. */
+/** Test-owned Remote face: `$on` subscriptions and one-generation `$stream` opening. */
 import type { Context } from '@deepseek-ai/cordis'
+import type { RemoteStream, RemoteStreamItem, RemoteStreamOptions } from '@deepseek-ai/dsh-api-gateway/client'
 
 // Value re-export for spec-side failure construction: the api-remotes facade
 // cannot carry it — its src top-level imports owner /remote lib artifacts, so a
@@ -91,6 +92,33 @@ export class TestRemote {
     this.subscriptions.set(event, listeners)
     listeners.add(listener)
     return () => { listeners.delete(listener) }
+  }
+
+  /**
+   * Open one logical stream over the scripted namespace, without carrier generations.
+   *
+   * A spec scripts the namespace's own stream method (for example `watch`) and drives the items;
+   * this double wraps that iterable so the consumer sees the production item shape. It does not
+   * reopen across connections or model `restart`: a spec that needs either has outgrown the double.
+   * @param options - the domain opener the consumer passes to the real Client Remote.
+   * @returns the logical stream, opened on first iteration.
+   */
+  $stream<Item>(options: RemoteStreamOptions<Item>): RemoteStream<Item> {
+    const lifetime = new AbortController()
+    const stream = {
+      signal: lifetime.signal,
+      restart: (): void => { /* one generation in this double */ },
+      dispose: async (): Promise<void> => { lifetime.abort() },
+      async *[Symbol.asyncIterator](): AsyncGenerator<RemoteStreamItem<Item>> {
+        let generation = 0
+        for await (const value of options.open(lifetime.signal)) {
+          generation += 1
+          yield { generation, value, signal: lifetime.signal, accept: (): void => {} }
+        }
+        throw options.ended(true)
+      },
+    }
+    return stream as unknown as RemoteStream<Item>
   }
 
   /**

@@ -12,7 +12,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
@@ -22,6 +22,11 @@ import { createStore, createInStore, storePaths } from '@deepseek-ai/dsh-jira-co
 import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core/io.ts'
 
 const MACHINE = 'a1b2c3d4'
+
+// Booting the real Loader and opening a ledger costs seconds on a busy host (measured ~4.5 s in an
+// aggregate run). This file carries the composition budget; the coverage lane in CI already gives
+// every suite 90 s for the same reason, and the unit default is a budget artifact here (DH-307).
+vi.setConfig({ testTimeout: 30_000 })
 
 const FIXTURE_IDENTITY = (() => {
   const identity = asIdentity('human:fixture')

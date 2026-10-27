@@ -47,6 +47,9 @@ export function KnowledgeSearch({ knowledge, t, onChange, onSearch }: KnowledgeS
       {knowledge.status === 'error'
         ? <p className={styles.errorText} role="alert">{fill(t('kbFailed'), { message: knowledge.error ?? '' })}</p>
         : null}
+      {knowledge.stale && knowledge.status !== 'loading'
+        ? <p className={styles.notice} role="status">{t('kbStale')}</p>
+        : null}
       {knowledge.status === 'ready' && knowledge.view !== null ? <Hits knowledge={knowledge} t={t} /> : null}
     </section>
   )

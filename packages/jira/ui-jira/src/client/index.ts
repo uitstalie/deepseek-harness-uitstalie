@@ -19,6 +19,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the ctx.remote merge and the ClientRemote method types.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type { JiraChangeEvent } from '@deepseek-ai/dsh-jira-service/types'
 import jiraRemote from '@deepseek-ai/dsh-jira-service/remote'
 import { JiraSection } from './JiraSection.tsx'
 import type { JiraSectionInjected } from './JiraSection.tsx'
@@ -64,6 +65,37 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       scoped.get('configForms')?.get<JiraLedgerSettings>('jira-service'),
     )
     scoped.effect(() => () => { ledgerSettings.dispose() }, 'ui-jira: ledger settings form')
+    // The Host announces every committed change (a tool, another session, a sync). The stream is
+    // the page's only change source: it re-reads the snapshots it shows instead of watching files
+    // or polling, and a reconnected Host is caught up by one fresh read of the same snapshots.
+    scoped.effect(() => {
+      const lifetime = new AbortController()
+      const stream = scoped.remote.$stream<JiraChangeEvent>({
+        name: 'jira',
+        open: signal => scoped.remote.jira.watch(signal),
+        ended: () => new Error('the jira change stream ended'),
+      })
+      void (async () => {
+        try {
+          for await (const item of stream) {
+            if (lifetime.signal.aborted) return
+            // Accept before applying: the supervisor treats a generation as established only
+            // after its first item reached the page.
+            item.accept()
+            controller.changed(item.value)
+          }
+        } catch {
+          // A terminal stream failure must not take the page down: reads keep their own retry, and
+          // the next reconnect re-reads the snapshots.
+        }
+      })()
+      const stopReset = scoped.on('connection/reset', () => { controller.reconnected() })
+      return () => {
+        lifetime.abort()
+        stopReset()
+        void stream.dispose()
+      }
+    }, 'ui-jira: follow ledger changes')
     scoped.slots.inject('settings.section', () => scoped.slots.register({
       name: 'settings.section',
       id: JIRA_SETTINGS_SECTION,

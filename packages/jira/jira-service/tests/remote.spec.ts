@@ -10,7 +10,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import JiraService from '@deepseek-ai/dsh-jira-service'
 // The mounted class: the Context augmentation alone is not in the package's declaration output,
@@ -66,32 +66,35 @@ const remoteOf = async (ctx: Context): Promise<JiraRemote> => {
   return ctx.jiraRemote
 }
 
-let context: Context | undefined
-let ledger: string | undefined
+let ctx: Context
+let remote: JiraRemote
+let ledger: string
 
-afterEach(async () => {
-  await context?.fiber.dispose()
-  context = undefined
-  if (ledger !== undefined) await rm(ledger, { recursive: true, force: true })
-  ledger = undefined
-})
-
-/** Boot the ledger service over a fresh temporary store. */
-const boot = async (): Promise<{ ctx: Context; remote: Awaited<ReturnType<typeof remoteOf>> }> => {
+/**
+ * One boot for the whole file. These cases only read a fixture that never changes, and a per-case
+ * mount made each of them pay the real composition's startup again — under an aggregate run two
+ * of them crossed the 5 s default while the suite was busy (DH-307). The budget below covers the
+ * one real mount; every read after it is fast.
+ */
+beforeAll(async () => {
   ledger = await createLedger()
-  const ctx = context = new Context()
+  ctx = new Context()
   await ctx.plugin(JiraService, {
     root: ledger,
     machine_id: MACHINE,
     host: 'fixture-host',
     push: { enabled: false },
   }).await()
-  return { ctx, remote: await remoteOf(ctx) }
-}
+  remote = await remoteOf(ctx)
+}, 30_000)
+
+afterAll(async () => {
+  await ctx.fiber.dispose()
+  await rm(ledger, { recursive: true, force: true })
+})
 
 describe('remote.jira', () => {
   it('mounts the read-only face with the service row and exposes no write method', async () => {
-    const { remote } = await boot()
     expect(typeof remote.status).toBe('function')
     expect(typeof remote.board).toBe('function')
     expect(typeof remote.list).toBe('function')
@@ -103,12 +106,11 @@ describe('remote.jira', () => {
   })
 
   it('answers status() with the resolved root, identity and push state as plain JSON', async () => {
-    const { remote, ctx } = await boot()
     // The identity is resolved when the service first opens the ledger, so the board read that
     // every board page makes also brings the status up to date.
     await remote.board()
     const status = remote.status()
-    expect(status.root.replaceAll('\\', '/')).toBe((ledger ?? '').replaceAll('\\', '/'))
+    expect(status.root.replaceAll('\\', '/')).toBe(ledger.replaceAll('\\', '/'))
     expect(status.machineId).toBe(MACHINE)
     expect(status.host).toBe('fixture-host')
     expect(status.pushEnabled).toBe(false)
@@ -120,7 +122,6 @@ describe('remote.jira', () => {
   })
 
   it('answers board() with the issue grouped under its status and JSON-safe counts', async () => {
-    const { remote } = await boot()
     const board = await remote.board()
     expect(board.items.map(item => item.key)).toEqual(['DH-1'])
     expect(board.groups).toHaveLength(1)
@@ -133,7 +134,6 @@ describe('remote.jira', () => {
   })
 
   it('narrows list() with the browser filter and reports what the limit hid', async () => {
-    const { remote } = await boot()
     const truncated = await remote.list({ limit: 1 })
     expect(truncated.items.map(item => item.key)).toEqual(['DH-1'])
     expect(truncated.counts).toMatchObject({ matched: 1, returned: 1, remaining: 0 })
@@ -145,7 +145,6 @@ describe('remote.jira', () => {
   })
 
   it('answers get() with the issue frontmatter and body', async () => {
-    const { remote } = await boot()
     const issue = await remote.get('DH-1')
     expect(issue).toMatchObject({
       key: 'DH-1',
@@ -165,7 +164,6 @@ describe('remote.jira', () => {
   })
 
   it('maps a missing issue to jira/not-found and a malformed key to jira/invalid-input', async () => {
-    const { remote } = await boot()
     const missing = await remote.get('DH-404').then(() => undefined, (error: unknown) => error)
     expect(missing).toBeInstanceOf(RemoteError)
     expect(missing).toMatchObject({ code: 'jira/not-found', details: { jiraCode: 'NOT_FOUND' } })
@@ -174,7 +172,6 @@ describe('remote.jira', () => {
   })
 
   it('answers kbSearch() with a cited hit and an empty search without matches', async () => {
-    const { remote } = await boot()
     const found = await remote.kbSearch('ledger')
     expect(found.hits).toHaveLength(1)
     expect(found.hits[0]).toMatchObject({

@@ -19,7 +19,9 @@ import type { ErrorCode, JiraError } from '@deepseek-ai/dsh-jira-core'
 import type { RemoteErrorCode } from '@deepseek-ai/dsh-typert-protocol'
 import { boardViewOf, detailViewOf, kbSearchViewOf, statusViewOf } from './wire.ts'
 import type {
+  ChangeNotice,
   JiraBoardView,
+  JiraChangeEvent,
   JiraIssueDetailView,
   JiraKbSearchView,
   JiraListQuery,
@@ -84,7 +86,7 @@ export function unwrap<T>(result: JiraResult<T>): T {
 export const listQueryOf = (query: JiraListQuery): ListQuery => query
 
 /**
- * The `remote.jira` namespace: five reads over the host's one ledger.
+ * The `remote.jira` namespace: five reads and one change stream over the host's one ledger.
  *
  * Mounted by the `JiraService` constructor on its own fiber, so the `jira-service` row alone is a
  * complete browser surface and no second row can answer from a different ledger.
@@ -143,6 +145,52 @@ export default class JiraRemote extends TypertRemoteService {
     const parsed = entities.asIssueKey(key)
     if (parsed === undefined) throw remoteErrorOf(errors.invalidInput(`"${key}" is not an issue key`, { key }))
     return detailViewOf(unwrap(await this.ctx.jira.get(parsed)))
+  }
+
+  /**
+   * Follow the ledger's changes without replaying any that happened before the subscription.
+   *
+   * The stream carries the service's own notice (monotonic `version`, kind, key) and nothing else:
+   * the browser re-reads the snapshots it shows, so the frame cannot go stale against a read that
+   * started later. A stream that ends is reopened by the client's stream supervisor; the browser
+   * also re-reads after a reconnect, because nothing is replayed.
+   * @param signal - the stream generation's lifetime.
+   * @returns one item per committed change while subscribed.
+   */
+  @Remote({ mode: 'stream' })
+  async *watch(signal: AbortSignal): AsyncIterable<JiraChangeEvent> {
+    const queue: ChangeNotice[] = []
+    let version = 0
+    let wake: (() => void) | undefined
+    const stop = this.ctx.jira.on('changed', (change) => {
+      queue.push(change)
+      wake?.()
+      wake = undefined
+    })
+    const interrupt = (): void => {
+      wake?.()
+      wake = undefined
+    }
+    signal.addEventListener('abort', interrupt, { once: true })
+    try {
+      while (!signal.aborted) {
+        const next = queue.shift()
+        if (next !== undefined) {
+          version += 1
+          yield Object.freeze({
+            version,
+            kind: next.kind,
+            ...(next.key === undefined ? {} : { key: next.key }),
+            at: next.at,
+          })
+          continue
+        }
+        await new Promise<void>((resolve) => { wake = resolve })
+      }
+    } finally {
+      stop()
+      signal.removeEventListener('abort', interrupt)
+    }
   }
 
   /**

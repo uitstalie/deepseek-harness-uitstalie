@@ -72,6 +72,7 @@ export const en = {
   kbLoading: 'Searching…',
   kbEmpty: 'No knowledge entry matches.',
   kbFailed: 'The search failed: {message}',
+  kbStale: 'The ledger changed after these hits were read; search again for the current ranking.',
   kbMatched: '{matched} hits, {topK} at most',
   kbLocation: '{file}:{line}',
 }
@@ -146,6 +147,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   kbLoading: '检索中…',
   kbEmpty: '没有匹配的知识条目。',
   kbFailed: '检索失败：{message}',
+  kbStale: '这些命中读取后台账又变了；重新检索以获取当前排序。',
   kbMatched: '{matched} 条命中，最多 {topK} 条',
   kbLocation: '{file}:{line}',
 }

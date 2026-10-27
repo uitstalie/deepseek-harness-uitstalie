@@ -46,6 +46,7 @@ kind: "package-reference"
 | `list(query)` | 同一结果，按 `project`、`status`、`tag`、`tags`、`assignee`、`includeClosed`、`limit` 收窄 |
 | `get(key)` | 一个 issue 的 frontmatter 字段与 Markdown 正文 |
 | `kbSearch(query, topK?)` | 排序后的知识命中及其 `file:line` |
+| `watch(signal)` | 一条流：每次提交的变更一项——单调 `version`、kind、受影响 key |
 
 没有写方法：写入走模型的工具，由 agent 的守卫约束。每个结果都是纯 JSON——branded id、时间戳与身份都以 `string` 到达——因此浏览器不需要账本类型。账本失败会变成 `RemoteError`，其 code 是 `jira/<kebab-code>`（每个 `jira-core` 错误码一个），`details.jiraCode` 是账本自己的错误码；message 是账本格式化后的报告。
 
@@ -68,7 +69,7 @@ kind: "package-reference"
 
 ## 测试
 
-`tests/composition.spec.ts` 通过真实 Loader 启动服务：一份仅测试用的 [`tests/fixtures/cordis.yml`](tests/fixtures/cordis.yml) 在临时账本上插入这一行，测试断言 `ctx.jira` 打开它、报告解析出的根目录与身份，并读取一个 issue 与看板。`tests/remote.spec.ts` 在含一个 issue 与一条知识条目的临时账本上启动同一行，直接调用 Remote 方法：JSON 安全的结果、分组看板、过滤、详情、知识命中，以及两个失败码。两者都用 `pnpm exec vitest run packages/jira/jira-service` 运行。
+`tests/composition.spec.ts` 通过真实 Loader 启动服务：一份仅测试用的 [`tests/fixtures/cordis.yml`](tests/fixtures/cordis.yml) 在临时账本上插入这一行，测试断言 `ctx.jira` 打开它、报告解析出的根目录与身份，并读取一个 issue 与看板。`tests/remote.spec.ts` 在含一个 issue 与一条知识条目的临时账本上启动同一行，直接调用 Remote 方法：JSON 安全的结果、分组看板、过滤、详情、知识命中，以及两个失败码。`tests/events.spec.ts` 在真实服务上同时订阅 `changed` 与 `watch`，断言递增的 version、受影响的 key、settle 也会通告，以及 abort 会结束这条流。三者都用 `pnpm exec vitest run packages/jira/jira-service` 运行。
 
 <a id="model-experience"></a>
 
@@ -86,6 +87,8 @@ kind: "package-reference"
 
 - `/jira`（人类命令面）仍直接经 `jira-core` 读取；迁到服务上由 DH-205 跟踪。
 - `status()` 是同步的，在服务首次打开账本之前把 `machineId` 报为 `local`；要显示身份的客户端先读 `board()`（或任意其他方法）。
+- 变更流只带通告、不带快照：客户端在每一项之后重读 `board`、`status` 与 `get`，因此一帧不会晚于更晚开始的读取而变旧；重连后也不重放。
+- 变更供给是进程内的：另一个进程（CLI）的写入不会被通告；客户端在重连或下一次进程内变更时补上。
 - 组合测试覆盖读面；写方法、`sync` 与 `settle` 由 `jira-core` 的套件与 agent 的接线套件覆盖。
 
 <a id="dev-note"></a>

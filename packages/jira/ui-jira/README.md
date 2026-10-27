@@ -35,19 +35,22 @@ English | [中文](README.zh.md)
 
 The three row fields (`root`, `host`, `push.enabled`) are edited in the settings block. Saving writes the `jira-service` profile row through the settings service; the switch writes immediately, and the service reopens the ledger against the new values without a restart. Every ledger write stays with the model: the agent's tools are the only path to the ledger, and the guard in `jira-agent` constrains them. Nothing here reads a ledger file or writes a commit.
 
+The page follows `remote.jira.watch(signal)`. Every committed change — a tool, another session, a sync — refreshes the board, the ledger status and the open issue detail; a reconnect re-reads the same snapshots, because nothing is replayed. Reads carry a generation, so an answer that arrives after a newer read started is dropped, and a notice whose `version` is behind one already applied is ignored. Knowledge hits are one query's snapshot: a change marks them stale instead of re-running the search, and the next search replaces them. Nothing here polls or watches a ledger file.
+
 <a id="faces"></a>
 
 ## Faces
 
 - `src/index.ts` — the host entry: an empty plugin body plus the section identity, so the `jira-ui` row loads through this package.
 - `src/client/index.ts` — the browser entry: mounts `remote.jira` (the generated Host-for-Client artifact of `jira-service`), registers the `settings.jira` copy dictionary, and contributes the page to `settings.section`.
-- `src/client/store.ts` — the page controller: one board read, one detail read per selection, one knowledge search per query. It publishes plain data; structured failures reach the components as messages, and copy stays in the dictionary.
+- `src/client/store.ts` — the page controller: one board read per load, one detail read per selection, one knowledge search per query, plus those same reads after each Host change. A generation per read drops late answers and the notice's `version` drops delayed notifications. It publishes plain data; structured failures reach the components as messages, and copy stays in the dictionary.
 
 <a id="tests"></a>
 
 ## Tests
 
-- `tests/jira-section.client.spec.tsx` — registration (section id/order/label, disposal) and rendering: the status block, a board row, opening and closing the detail, the knowledge search's `file:line` hit, and a failed board read with retry. Remote data is scripted through the store's narrow `JiraWire`, so the assertions are about what the reader sees.
+- `tests/jira-section.client.spec.tsx` — registration (section id/order/label, disposal), the Host change stream refreshing an open page and stopping with the fiber, and rendering: the status block, a board row, opening and closing the detail, the knowledge search's `file:line` hit, and a failed board read with retry. Remote data is scripted through the store's narrow `JiraWire`, so the assertions are about what the reader sees.
+- `tests/store.client.spec.ts` — the change path without a browser: board/status/detail refresh, late board and detail answers, knowledge staleness, notice version ordering, reconnect, and an unopened page reading nothing.
 - `tests/entry.host.spec.ts` — the host entry loads as an inert plugin and publishes the section identity.
 
 Run them with `pnpm exec vitest run packages/jira/ui-jira`.
@@ -68,6 +71,7 @@ None; the page assembles no request and contributes no prompt text, tool schema,
 
 - **Board seat:** the board, detail and knowledge search render inside the settings section. A dock/sidebar board would be a second registration (and a designer's layout) rather than another page of this section.
 - **dafeiyu Capabilities list:** the Jira row's label, state and "open settings" jump are DH-12's work; this package only owns the section they link to.
+- **Writes from another process:** the change feed carries what this Host writes (tools, sessions, sync). A CLI write in another process announces nothing here; the page catches up on the next in-host change, on `connection/reset`, or when the section remounts. Watching ledger files would be a second change source and is out of scope.
 
 <a id="dev-note"></a>
 

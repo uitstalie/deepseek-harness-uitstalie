@@ -62,6 +62,24 @@ export interface ChangeNotice {
   readonly at: Timestamp
 }
 
+/**
+ * One item of the browser change stream: the service's notice, numbered on the wire.
+ *
+ * `version` grows with every item this subscription yields, so a client can ignore a delayed
+ * frame that arrived behind one it already applied. It starts at 1 for a new subscription; a
+ * reconnected client re-reads the snapshots instead of comparing across generations.
+ */
+export interface JiraChangeEvent {
+  /** Monotonic within one stream subscription. */
+  readonly version: number
+  /** What produced the change. */
+  readonly kind: ChangeNotice['kind']
+  /** The affected key, when the change concerns one. */
+  readonly key?: string
+  /** When the commit landed. */
+  readonly at: Timestamp
+}
+
 /** The last push attempt, successful or not. */
 export interface SyncRecord {
   /** When the flush started. */

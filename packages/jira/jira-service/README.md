@@ -46,6 +46,7 @@ The tool runners no longer hold the store: they call `ctx.jira`, and the service
 | `list(query)` | the same result narrowed by `project`, `status`, `tag`, `tags`, `assignee`, `includeClosed`, `limit` |
 | `get(key)` | one issue's frontmatter fields and Markdown body |
 | `kbSearch(query, topK?)` | ranked knowledge hits with their `file:line` |
+| `watch(signal)` | a stream: one item per committed change — monotonic `version`, kind, affected key |
 
 There are no write methods: writes go through the model's tools, which the agent's guard constrains. Every result is plain JSON — branded ids, timestamps and identities arrive as `string` — so the browser needs no ledger types. A ledger failure becomes a `RemoteError` whose code is `jira/<kebab-code>` (one per `jira-core` code) and whose `details.jiraCode` is the ledger's own code; the message is the ledger's formatted report.
 
@@ -68,7 +69,7 @@ The vocabulary (statuses, transitions, priorities, types, resolutions) is **not*
 
 ## Tests
 
-`tests/composition.spec.ts` boots the service through the real Loader: a test-only [`tests/fixtures/cordis.yml`](tests/fixtures/cordis.yml) inserts this one row over a temporary ledger, and the spec asserts that `ctx.jira` opens it, reports the resolved root and identity, and reads an issue and the board. `tests/remote.spec.ts` boots the same row over a temporary ledger with one issue and one knowledge entry and calls the Remote methods directly: JSON-safe results, the grouped board, the filter, the detail, the knowledge hit, and the two failure codes. Run both with `pnpm exec vitest run packages/jira/jira-service`.
+`tests/composition.spec.ts` boots the service through the real Loader: a test-only [`tests/fixtures/cordis.yml`](tests/fixtures/cordis.yml) inserts this one row over a temporary ledger, and the spec asserts that `ctx.jira` opens it, reports the resolved root and identity, and reads an issue and the board. `tests/remote.spec.ts` boots the same row over a temporary ledger with one issue and one knowledge entry and calls the Remote methods directly: JSON-safe results, the grouped board, the filter, the detail, the knowledge hit, and the two failure codes. `tests/events.spec.ts` subscribes to `changed` and to `watch` over a real service and asserts the growing version, the affected key, that a settle announces itself, and that abort ends the stream. Run them with `pnpm exec vitest run packages/jira/jira-service`.
 
 <a id="model-experience"></a>
 
@@ -86,6 +87,8 @@ None of its own; a commit it makes changes ledger data, and only `jira-agent` de
 
 - `/jira` (the human command surface) still reads through `jira-core` directly; moving it onto the service is DH-205.
 - `status()` is synchronous and reports `machineId` as `local` until the service first opens the ledger; a client that shows the identity reads `board()` (or any other method) first.
+- The change stream carries notices, not snapshots: a client re-reads `board`, `status` and `get` after each item, so a frame cannot go stale against a read that started later, and nothing is replayed after a reconnect.
+- The change feed is in-process: a write from another process (the CLI) is not announced; a client catches up on a reconnect or on the next in-process change.
 - The composition test covers the read surface; the write methods, `sync` and `settle` are exercised through `jira-core`'s suites and the agent's wiring suites.
 
 <a id="dev-note"></a>

@@ -15,6 +15,7 @@ import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   JiraBoardView,
+  JiraChangeEvent,
   JiraIssueDetailView,
   JiraIssueRowView,
   JiraKbSearchView,
@@ -201,6 +202,66 @@ it('registers the jira settings section and withdraws it with the fiber', async 
 
   await fiber.dispose()
   expect(slots.entries('settings.section')).toEqual([])
+})
+
+it('follows the Host change stream while open, and stops when the page goes away (DH-307)', async () => {
+  const ctx = new Context()
+  onTestFinished(async () => { await ctx.fiber.dispose() })
+  await ctx.plugin(SlotRegistry).await()
+  const locale = new LocaleRuntime(ctx)
+  locale.setLocale('zh')
+  ctx.provide('locale', locale)
+
+  // The scripted change stream: the spec pushes a notice and the plugin's subscription sees it.
+  const queue: JiraChangeEvent[] = []
+  let wake: (() => void) | undefined
+  const watch = (signal: AbortSignal): AsyncIterable<JiraChangeEvent> => ({
+    async *[Symbol.asyncIterator]() {
+      for (;;) {
+        if (signal.aborted) return
+        const next = queue.shift()
+        if (next !== undefined) {
+          yield next
+          continue
+        }
+        await new Promise<void>((resolve) => {
+          wake = resolve
+          signal.addEventListener('abort', () => { resolve() }, { once: true })
+        })
+      }
+    },
+  })
+  const push = (version: number): void => {
+    queue.push({ version, kind: 'write', key: 'DH-1', at: '2026-10-15T12:00:00Z' as JiraChangeEvent['at'] })
+    wake?.()
+    wake = undefined
+  }
+
+  const scripted = wire()
+  // The scripted namespace is mounted, so the plugin never reaches the carrier's `$mount`.
+  new TestRemote(ctx, { jira: { ...scripted, watch } })
+  const slots = ctx.get('slots') as SlotRegistry
+  slots.register({ name: 'root', children: { 'settings.section': { kind: 'list', scope: 'root' } } } as never, () => null)
+  const fiber = await ctx.plugin({ inject: [...inject], apply }).await()
+  const injected = injectFaceOf(slots.entries('settings.section')[0])
+
+  // A page that was never opened holds no snapshot: the live stream alone reads nothing.
+  push(1)
+  await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+  expect(scripted.board).not.toHaveBeenCalled()
+
+  injected.activate()
+  await waitFor(() => { expect(scripted.board).toHaveBeenCalledTimes(1) })
+  push(2)
+  await waitFor(() => { expect(scripted.board).toHaveBeenCalledTimes(2) })
+  ctx.emit('connection/reset')
+  await waitFor(() => { expect(scripted.board).toHaveBeenCalledTimes(3) })
+
+  // The subscription belongs to the plugin fiber; after disposal a late notice reads nothing.
+  await fiber.dispose()
+  push(3)
+  await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+  expect(scripted.board).toHaveBeenCalledTimes(3)
 })
 
 it('renders the ledger status and the board the host answered', async () => {
