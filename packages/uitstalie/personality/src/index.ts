@@ -14,6 +14,11 @@
  * preloaded when the capability activates, one global watcher refreshes that
  * cache while agents live, and each agent's merged view is read again when that
  * agent is created.
+ *
+ * `/personality` (drift review, and the revert it can perform) stays outside the capability gate
+ * (DH-309 boundary): it is an explicit human management action on the global profile, not a model
+ * capability, and its Remote is the separate user-data surface. Toggling the capability removes the
+ * prompt section, the learning tool and auto-learning; it does not hide the human surface.
  * @module @deepseek-ai/dsh-personality
  */
 

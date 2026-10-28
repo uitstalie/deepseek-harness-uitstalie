@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-dsh-store` 是工作区 `.dsh` 目录（承载项目技能与运行时快照的项目级约定）的模型面与侧边栏面。存储实现（`ctx.dshStore`、路径限定、带版本守卫的 `writeFile`、命名空间撰写校验与会话策略门禁）位于 [`@deepseek-ai/dsh-store-atom`](../store-atom/README.zh.md)，本包消费它。注册的 `tool-dsh-store` 工具在应用命名空间校验的前提下创建、查询与删除 `.dsh` 内容；`.dsh/memory` 对 memory 能力可写、对工具只读；插件同时提供 `remote.dshStore`，让 Web 侧边栏**无需会话**即可列出并读取某工作区的规则。
+`dsh-tool-dsh-store` 是工作区 `.dsh` 目录（承载项目技能与运行时快照的项目级约定）的模型面与侧边栏面。存储实现（`ctx.dshStore`、路径限定、带版本守卫的 `writeFile`、命名空间撰写校验与会话策略门禁）位于 [`@deepseek-ai/dsh-store-atom`](../store-atom/README.zh.md)，本包消费它。注册的 `tool-dsh-store` 工具在应用命名空间校验的前提下创建、查询与删除 `.dsh` 内容；`.dsh/memory` 对 memory 能力可写、对工具只读；插件同时提供 `remote.dshStore`，让 Web 侧边栏**无需会话**即可列出并读取某工作区的规则。工具本身是一个 dafeiyu 能力（`store`，默认启用），Capabilities 可以只关掉模型面而不卸载存储；`remote.dshStore` 保持为独立的面。
 
 ## 目录
 

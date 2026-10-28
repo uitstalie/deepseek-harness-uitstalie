@@ -17250,6 +17250,9 @@ importers:
 
   packages/uitstalie/tool-dsh-store:
     dependencies:
+      '@deepseek-ai/dsh-dafeiyu':
+        specifier: workspace:*
+        version: link:../dafeiyu
       '@deepseek-ai/dsh-store-atom':
         specifier: workspace:*
         version: link:../store-atom

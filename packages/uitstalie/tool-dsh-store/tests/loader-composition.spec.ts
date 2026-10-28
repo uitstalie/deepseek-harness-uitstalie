@@ -11,8 +11,9 @@ import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Loader, { type ModuleLoaderV2 } from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
-import { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
+import { type Agent } from '@deepseek-ai/dsh-agent'
 import * as AgentPlugin from '@deepseek-ai/dsh-agent'
+import * as DafeiyuPlugin from '@deepseek-ai/dsh-dafeiyu'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import * as LlmPlugin from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -57,6 +58,7 @@ async function boot(project: string): Promise<Context> {
     ['@deepseek-ai/dsh-fs-local', FsLocalPlugin],
     ['@deepseek-ai/dsh-agent', AgentPlugin],
     ['@deepseek-ai/dsh-agent-loop', AgentLoopPlugin],
+    ['@deepseek-ai/dsh-dafeiyu', DafeiyuPlugin],
     ['@deepseek-ai/dsh-store-atom', StoreAtomPlugin],
     ['@deepseek-ai/dsh-tool-dsh-store', StorePlugin],
   ])
@@ -83,20 +85,14 @@ function text(result: { content: { type: string; text?: string }[] }): string {
   return result.content.filter(block => block.type === 'text').map(block => block.text).join('')
 }
 
-test('the composed row registers the tool and prepares the store root', async () => {
+test('the composed row wires the capability and creates the root on first write', async () => {
   root = await mkdtemp(join(tmpdir(), 'store-loader-'))
   const project = root
   const ctx = await boot(project)
   const agent: Agent = await ctx.agentLoop.create(SessionId('store-loader-1'), {}, { cwd: project })
 
-  expect(ctx.tools.schemas().some(entry => entry.name === 'tool-dsh-store')).toBe(true)
-
-  await agentEvents(ctx, agent).waterfall(
-    'agent/pre-step',
-    { messages: [], turn: 1, step: 1, signal: new AbortController().signal, modelSelection: { provider: 'test', model: 'test' } },
-    async () => ({ kind: 'enter' as const, messages: [] }),
-  )
-  expect((await stat(join(project, '.dsh'))).isDirectory()).toBe(true)
+  expect(ctx.tools.schemas(agent).some(entry => entry.name === 'tool-dsh-store')).toBe(true)
+  await expect(stat(join(project, '.dsh'))).rejects.toThrow()
 
   const batch = await ctx.tools.execute({
     signal: new AbortController().signal,

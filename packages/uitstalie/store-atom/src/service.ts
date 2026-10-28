@@ -255,28 +255,37 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
     }
   }
 
+  /**
+   * Resolve one root and, for a writable target, create it.
+   * @param scope - `global` or `workspace`.
+   * @param session - the session whose policy and project own a workspace root.
+   * @param signal - cancellation for the filesystem probes and creation.
+   * @returns the absolute root.
+   */
+  const prepare = async (scope: StoreScope, session?: Session, signal?: AbortSignal): Promise<string> => {
+    const root = await rootFor(scope, session, signal)
+    if (!ensureRoot) return root
+    if (scope === 'global') {
+      if (globalPrepared) return root
+      await ensureStoreRoot(ctx.fs, root, signal)
+      globalPrepared = true
+      return root
+    }
+    if (session === undefined) return root
+    if (prepared.has(session)) return root
+    const policy = ctx.get('sandboxPolicy')?.resolve({ session })
+    // A read-only session is deliberately not marked as prepared: its mode can
+    // change later in the same session, and the next call then creates the root.
+    if (policy?.mode === 'read-only') return root
+    await ensureStoreRoot(ctx.fs, root, signal, policy)
+    prepared.add(session)
+    return root
+  }
+
   return {
     projectRootFor,
     rootFor,
-    async prepare(scope: StoreScope, session?: Session, signal?: AbortSignal): Promise<string> {
-      const root = await rootFor(scope, session, signal)
-      if (!ensureRoot) return root
-      if (scope === 'global') {
-        if (globalPrepared) return root
-        await ensureStoreRoot(ctx.fs, root, signal)
-        globalPrepared = true
-        return root
-      }
-      if (session === undefined) return root
-      if (prepared.has(session)) return root
-      const policy = ctx.get('sandboxPolicy')?.resolve({ session })
-      // A read-only session is deliberately not marked as prepared: its mode can
-      // change later in the same session, and the next call then creates the root.
-      if (policy?.mode === 'read-only') return root
-      await ensureStoreRoot(ctx.fs, root, signal, policy)
-      prepared.add(session)
-      return root
-    },
+    prepare,
     async createFile(
       session: Session | undefined,
       path: string,
@@ -284,7 +293,7 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
       options: StoreCallOptions = {},
     ): Promise<StoreCreateResult> {
       const scope = scopeOf(options)
-      const root = await rootFor(scope, session, options.signal)
+      const root = await prepare(scope, session, options.signal)
       const normalized = normalizeStorePath(path)
       const target = resolveStoreTarget(root, normalized)
       if (scope === 'workspace' && session !== undefined && isRulesPath(normalized.displayPath)) {
@@ -307,7 +316,7 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
       options: StoreWriteOptions = {},
     ): Promise<StoreWriteResult> {
       const scope = scopeOf(options)
-      const root = await rootFor(scope, session, options.signal)
+      const root = await prepare(scope, session, options.signal)
       const normalized = normalizeStorePath(path)
       if (normalized.displayPath.length === 0) {
         throw new Error(`refusing to write the ${STORE_DIR_NAME} root: a file path is required`)
@@ -341,7 +350,7 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
       options: StoreCallOptions = {},
     ): Promise<StoreCreateResult> {
       const scope = scopeOf(options)
-      const root = await rootFor(scope, session, options.signal)
+      const root = await prepare(scope, session, options.signal)
       const normalized = normalizeStorePath(path)
       const target = resolveStoreTarget(root, normalized)
       return await createStoreFolder(

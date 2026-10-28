@@ -11,5 +11,6 @@
 - name: '@deepseek-ai/dsh-agent-loop'
   config:
     agents: []
+- name: '@deepseek-ai/dsh-dafeiyu'
 - name: '@deepseek-ai/dsh-store-atom'
 - name: '@deepseek-ai/dsh-tool-dsh-store'

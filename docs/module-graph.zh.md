@@ -479,6 +479,7 @@ flowchart TD
     pkg_agent_instructions_plus["agent-instructions-plus"]
     pkg_client_common_view["client-common-view"]
     pkg_client_ui_dafeiyu["client-ui-dafeiyu"]
+    pkg_client_ui_memory["client-ui-memory"]
     pkg_client_ui_models_dev["client-ui-models-dev"]
     pkg_client_ui_personality["client-ui-personality"]
     pkg_client_ui_tool_dsh_store["client-ui-tool-dsh-store"]
@@ -489,6 +490,7 @@ flowchart TD
     pkg_models_dev["models-dev"]
     pkg_personality["personality"]
     pkg_store_atom["store-atom"]
+    pkg_system_environment["system-environment"]
     pkg_tool_dsh_store["tool-dsh-store"]
   end
   subgraph group_workflow["packages/workflow"]
@@ -1671,6 +1673,7 @@ flowchart TD
 | [`typert-registry`](../packages/typert/registry) | `typert` | — |
 | [`client-common-view`](../packages/uitstalie/common-view) | `uitstalie` | — |
 | [`client-ui-dafeiyu`](../packages/uitstalie/ui-dafeiyu) | `uitstalie` | — |
+| [`client-ui-memory`](../packages/uitstalie/ui-memory) | `uitstalie` | — |
 | [`client-ui-models-dev`](../packages/uitstalie/ui-models-dev) | `uitstalie` | — |
 | [`client-ui-personality`](../packages/uitstalie/ui-personality) | `uitstalie` | — |
 | [`client-ui-tool-dsh-store`](../packages/uitstalie/ui-tool-dsh-store) | `uitstalie` | — |
@@ -1678,6 +1681,7 @@ flowchart TD
 | [`home-backup`](../packages/uitstalie/home-backup) | `uitstalie` | — |
 | [`memory`](../packages/uitstalie/memory) | `uitstalie` | — |
 | [`store-atom`](../packages/uitstalie/store-atom) | `uitstalie` | — |
+| [`system-environment`](../packages/uitstalie/system-environment) | `uitstalie` | — |
 | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | `uitstalie` | — |
 | [`session`](../packages/core/session) | `core` | [`scope`](../packages/core/scope) |
 | [`system-prompt`](../packages/core/system-prompt) | `core` | [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope) |

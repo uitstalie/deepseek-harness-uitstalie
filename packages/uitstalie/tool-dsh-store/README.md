@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-dsh-store` is the model-facing and sidebar surface over a workspace's `.dsh` directory — the project-level convention holding project skills and runtime snapshots. The store implementation (`ctx.dshStore`, path confinement, the version-guarded `writeFile`, namespace authoring checks, and the session policy gate) lives in [`@deepseek-ai/dsh-store-atom`](../store-atom/README.md); this package consumes it. The registered `tool-dsh-store` tool creates, queries, and deletes `.dsh` content with the namespace checks applied, `.dsh/memory` stays writable for the memory capability but read-only for the tool, and the plugin serves `remote.dshStore` so the Web sidebar can list and read a workspace's rules without a session.
+`dsh-tool-dsh-store` is the model-facing and sidebar surface over a workspace's `.dsh` directory, which holds project skills and runtime snapshots. The store implementation (`ctx.dshStore`, path confinement, the version-guarded `writeFile`, namespace checks, and the session policy gate) lives in [`@deepseek-ai/dsh-store-atom`](../store-atom/README.md); this package consumes it. The `tool-dsh-store` tool creates, queries, and deletes `.dsh` content with those checks applied, keeps `.dsh/memory` writable only for the memory capability, and serves `remote.dshStore` for the Web sidebar. Its model face is one dafeiyu capability (`store`, enabled by default), so Capabilities can switch the tool off without unloading storage; the Remote stays separate.
 
 ## Table of Contents
 

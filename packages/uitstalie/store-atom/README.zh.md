@@ -44,7 +44,7 @@ const written = await ctx.dshStore.writeFile(session, 'memory/sessions/MEMORY.md
 const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALITY.md', { scope: 'global' })
 ```
 
-`expected` 是先前读取返回的版本；省略即无条件写入。并发写入方会以 `FS_STALE_VERSION` 暴露，而不是静默覆盖。`ensureRoot` 控制可写会话是否在第一步之前创建 `<projectRoot>/.dsh`；`prepare('global')` 会创建 `$DSH_HOME` 本身。
+`expected` 是先前读取返回的版本；省略即无条件写入。并发写入方会以 `FS_STALE_VERSION` 暴露，而不是静默覆盖。`ensureRoot` 控制可写会话是否在**首次变更**时创建 `<projectRoot>/.dsh`（写路径按需 prepare，atom 不订阅 Agent 生命周期）；`prepare('global')` 会创建 `$DSH_HOME` 本身。
 
 ## 理解实现
 

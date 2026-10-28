@@ -12,7 +12,8 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
+import { type Agent } from '@deepseek-ai/dsh-agent'
+import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import {
   mountAgentLoopTestDependencies,
@@ -50,6 +51,7 @@ async function mount(mode?: 'read-only' | 'workspace-write'): Promise<{ ctx: Con
   if (mode !== undefined) await ctx.plugin(SandboxPolicyService, { mode, workspaceRoot: project })
   const harness: AgentLoopTestHarness = await mountAgentLoopTestHarness(ctx)
   await ctx.plugin(StoreAtom, {})
+  await ctx.plugin(Dafeiyu)
   await ctx.plugin(Store)
   const agent = await harness.create(SessionId(`store-${++callCounter}`), {}, { cwd: project })
   return { ctx, agent }
@@ -77,18 +79,9 @@ function text(result: { content: { type: string; text?: string }[] }): string {
   return result.content.filter(block => block.type === 'text').map(block => block.text).join('')
 }
 
-/** Drive one pre-step so the plugin's eager root preparation runs. */
-async function drivePreStep(ctx: Context, agent: Agent): Promise<void> {
-  await agentEvents(ctx, agent).waterfall(
-    'agent/pre-step',
-    { messages: [], turn: 1, step: 1, signal, modelSelection: { provider: 'test', model: 'test' } },
-    async () => ({ kind: 'enter' as const, messages: [] }),
-  )
-}
-
-test('registers one tool with the three actions', async () => {
-  const { ctx } = await mount()
-  const schema = ctx.tools.schemas().find(entry => entry.name === 'tool-dsh-store')
+test('registers one agent-scoped tool with the three actions', async () => {
+  const { ctx, agent } = await mount()
+  const schema = ctx.tools.schemas(agent).find(entry => entry.name === 'tool-dsh-store')
   expect(schema).toBeDefined()
   const properties = (schema!.parameters as { properties?: Record<string, { enum?: string[] }> }).properties ?? {}
   expect(Object.keys(properties).sort()).toEqual(['action', 'content', 'path', 'recursive', 'target'])
@@ -96,9 +89,11 @@ test('registers one tool with the three actions', async () => {
   expect(properties.target?.enum).toEqual(['file', 'folder'])
 })
 
-test('creates the store root for a session before its first step', async () => {
+test('creates the store root on the first mutation, not at mount', async () => {
   const { ctx, agent } = await mount()
-  await drivePreStep(ctx, agent)
+  await expect(stat(join(project, '.dsh'))).rejects.toThrow()
+  const created = await call(ctx, agent, { action: 'create', target: 'folder', path: 'rules' })
+  expect(created.isError).toBe(false)
   expect((await stat(join(project, '.dsh'))).isDirectory()).toBe(true)
 })
 

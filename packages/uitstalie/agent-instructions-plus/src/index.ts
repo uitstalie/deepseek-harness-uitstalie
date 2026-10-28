@@ -7,6 +7,13 @@
  * `ctx.agentContextSources`. Skills keep their own injection through the skill
  * seam. The native loader stays mounted on its own row; this plugin only
  * decorates the baseline it produced.
+ *
+ * It is deliberately not a dafeiyu capability (DH-309 boundary): the contribution
+ * is an ordered `agent/pre-step` waterfall that rewrites the instruction baseline
+ * and the inbox, which the v2 capability contract (tools, prompt sections,
+ * agent-created, turn-end) cannot express. Instruction assembly is always-on
+ * infrastructure for every agent, like the native loader it decorates; gating it
+ * would silently remove the baseline instead of switching one capability off.
  * @module @deepseek-ai/dsh-agent-instructions-plus
  */
 

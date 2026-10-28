@@ -10,7 +10,10 @@
  *
  * The organizer owns the enable gate and per-agent wiring, so this provider never subscribes to
  * session or agent lifecycle events itself, and disabling the capability removes every
- * contribution it made.
+ * contribution it made. The write guard, `/jira` and the three skills deliberately stay outside
+ * the gate (DH-309 boundary): the guard is a ledger invariant for every caller, `/jira` is a
+ * human management surface, and the skills are user-invoked procedures. Gating them would let a
+ * capability switch disable the guard while the ledger stays reachable.
  *
  * @module @deepseek-ai/dsh-jira-agent
  */

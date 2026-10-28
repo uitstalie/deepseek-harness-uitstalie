@@ -80,25 +80,15 @@ export type {
 } from './service.ts'
 
 /**
- * Register the store service and the per-session root preparation.
+ * Register the store service.
+ *
+ * The store root is prepared lazily by the first mutation (`prepare`), so the
+ * atom never subscribes to the agent lifecycle: composing storage does not
+ * require an Agent, and a session that never writes never creates a store.
  * @param ctx - plugin context carrying the filesystem and the optional sandbox-policy service.
- * @param config - whether a session creates the store root on demand.
+ * @param config - whether a session creates the store root on its first mutation.
  */
 export function apply(ctx: Context, config: Config): void {
   const ensureRoot = config.ensureRoot ?? true
-  const store = createDshStore(ctx, ensureRoot)
-  ctx.provide('dshStore', store)
-
-  if (!ensureRoot) return
-  ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
-    try {
-      await store.prepare('workspace', agent.session, signal)
-    } catch (error: unknown) {
-      // Preparing the store root is housekeeping rather than part of the step: a
-      // failure here is reported, and the tool call that needs the store reports
-      // it again with the model-facing message.
-      ctx.logger.warn('store root preparation failed: %o', error)
-    }
-    return next()
-  })
+  ctx.provide('dshStore', createDshStore(ctx, ensureRoot))
 }

@@ -119,3 +119,14 @@ interface CapabilityProvider {
 - **宿主环境 atom 已落地**：新增 `packages/uitstalie/system-environment/`（`ctx.systemEnvironment`），分支层挂在 `store-atom` 之后；本单只提供服务与验收，sandbox/home-backup/store-atom 的迁移另行跟踪。
 - **jira 合同收敛**：采用 Core-as-atom（见上节），`goal/jira-contract.md` 与 DH-12/DH-13 的完成边界据此对齐；`jira-ledger`/`jira-cloud` 不实施。
 - **仍延期的**：把 sandbox 诊断、home-backup、store-atom 的路径/环境判断迁到 `systemEnvironment`；这是行为保持的迁移，改动前先补各自的对照测试。
+
+## 落地状态（2026-10-28，DH-309 复审收口）
+
+- **`tool-dsh-store` 已进 dafeiyu**：模型面改为 capability `store`（contract v2，默认启用）。工具经 organizer 按 agent 接线，`capabilities.store.enabled=false` 只关模型面，`remote.dshStore` 与存储 atom 不受影响；组合测试改为断言 agent 作用域工具 + 首次变更建根。
+- **`store-atom` 不再进 Agent 生命周期**：删除 `agent/pre-step` 初始化。`createFile`/`writeFile`/`createFolder` 在写路径按需 `prepare`，首个变更才创建根；读路径保持 `rootFor`，不会为一个查询建目录。
+- **明确不收拢的三处（always-on 边界）**：
+  1. `agent-instructions-plus`：贡献是 `agent/pre-step` 上有序的 baseline/inbox 改写，v2 贡献只能表达 tools / promptSections / onAgentCreated / onTurnEnd，无法表达这条 waterfall；指令装配是每个 agent 的基础设施，关掉等于删基线。
+  2. `jira-agent` 的 write guard、`/jira` 与三个技能：安全与人工面。guard 是台账不变量，`/jira`/技能是人工管理入口；如果跟 capability 开关绑定，关掉模型面会同时关掉 guard。
+  3. `personality` 的 `/personality` 与提案 Remote：人工管理面与用户数据面；开关只停 prompt section、学习工具与 auto-learn，`/personality` 的 revert 仍是一次显式人工操作。
+- **测试修正**：`agent-instructions-plus` 的组合测试改判“preset 不挂分支插件行”，允许 `uitstalie-` 溯源注释（DH-311 的标记块），不再把标记字符串当成分支挂载。
+- **仍延期**：`systemEnvironment` 迁移（sandbox 诊断、home-backup、store-atom 的路径判断）仍是行为保持改造，另行跟踪。

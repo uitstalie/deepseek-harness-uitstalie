@@ -42,7 +42,7 @@ const written = await ctx.dshStore.writeFile(session, 'memory/sessions/MEMORY.md
 const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALITY.md', { scope: 'global' })
 ```
 
-`expected` is the version an earlier read returned; omitting it writes unconditionally. A concurrent writer surfaces as `FS_STALE_VERSION` instead of a silent overwrite. `ensureRoot` controls whether a writable session gets `<projectRoot>/.dsh` created before its first step; a global `prepare('global')` creates `$DSH_HOME` itself.
+`expected` is the version an earlier read returned; omitting it writes unconditionally. A concurrent writer surfaces as `FS_STALE_VERSION` instead of a silent overwrite. `ensureRoot` controls whether a writable session gets `<projectRoot>/.dsh` created on its first mutation (writes are prepared lazily; the atom never subscribes to the agent lifecycle); a global `prepare('global')` creates `$DSH_HOME` itself.
 
 ## Understand the implementation
 
