@@ -139,6 +139,7 @@ ctx.dafeiyu.register({
 - `personality` 段与 `systemPrompt` 的 `personaPrefix` / `personaSuffix`、agent preset 的 persona 是**叠加**关系，不是替换；部署者写的 persona 仍然最先生效。
 - 不要用 personality 覆盖“You are a coding agent…”这类身份段；它只描述用户与协作偏好。
 - 如果某个 preset 明确声明“不要加载人格”，应由组织者的能力开关关闭，而不是 provider 自己判断——判断权在组合层。
+- 助手侧的角色卡（persona）是另一层：卡格式、CCv2/V3 安全导入与注入 order 见 [persona.md](persona.md)（DH-401）；本层不承担角色扮演。
 
 ## 样本：角色型提示词（2026/10/28）
 
