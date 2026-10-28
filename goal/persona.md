@@ -19,6 +19,8 @@ DSH 现有 `personality` 回答的是“**用户是谁、怎么理解他的输�
 
 persona 不是“越狱壳”：它只描述角色与表达，不改变指令层级、工具语义、事实标准。
 
+> 命名：DSH 上游已有 `@deepseek-ai/dsh-persona`（`packages/preset/persona`），那是 preset 的部署 persona 前缀/后缀；本设计的实现包叫 `@deepseek-ai/dsh-persona-card`，避免包名冲突，也避免把“角色卡”和“部署前缀”混成一个开关。运行时能力（DH-405）不是 preset 的替代品，而是另一种 provider。
+
 ## 卡格式
 
 全局目录：`$DSH_HOME/persona/`（`DSH_HOME` 默认 `~/.dsh`）。一张卡一个 Markdown 文件，YAML frontmatter 存结构化字段，正文存自由描述：
