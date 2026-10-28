@@ -127,8 +127,10 @@ const pwshCoverageExclusions = spawnSync(resolvePwshPath(), ['-NoLogo', '-NoProf
 
 const testIncludes = [
   'packages/*/*/tests/**/*.spec.{ts,tsx}',
+  // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-13, jira 组级边界/冒烟套件随 jira 包入仓，根 vitest 必须收进来
   // Group-level suites check invariants that span one package group's packages.
   'packages/*/tests/**/*.spec.{ts,tsx}',
+  // END uitstalie-deepseek-flash
   'apps/*/tests/**/*.spec.{ts,tsx}',
   'scripts/**/*.spec.ts',
   'website/tests/**/*.spec.ts',

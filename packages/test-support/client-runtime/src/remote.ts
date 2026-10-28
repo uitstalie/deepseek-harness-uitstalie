@@ -94,6 +94,7 @@ export class TestRemote {
     return () => { listeners.delete(listener) }
   }
 
+  // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-307, 打开看板/详情需要一代 logical stream，测试替身补 $stream
   /**
    * Open one logical stream over the scripted namespace, without carrier generations.
    *
@@ -120,6 +121,7 @@ export class TestRemote {
     }
     return stream as unknown as RemoteStream<Item>
   }
+  // END uitstalie-deepseek-flash
 
   /**
    * Generated-namespace mount, unsupported by this double.

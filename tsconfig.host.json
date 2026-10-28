@@ -611,7 +611,7 @@
     // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-12, 注册能力总代 client 双面包的 Host 编译面
     { "path": "./packages/uitstalie/ui-dafeiyu/tsconfig.host.json" },
     // END uitstalie-deepseek-flash
-    // BEGIN uitstalie-deepseek-flash, 2026/10/26, home-backup, 注册定时备份插件进 Host 聚合程序
+    // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-311, 注册定时备份插件进 Host 聚合程序（原标记键缺 issue，追溯登记）
     { "path": "./packages/uitstalie/home-backup" },
     // END uitstalie-deepseek-flash
   ]

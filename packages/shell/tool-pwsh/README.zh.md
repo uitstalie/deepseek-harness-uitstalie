@@ -54,7 +54,7 @@ kind: "package-reference"
 
 ### 运行命令
 
-工具执行 `pwsh -Command <command>` 并返回合并后的输出。命令每次调用都运行在全新 pwsh 进程中，因此状态从不保留——请传 `workdir` 而不是 `cd`。路径使用原生 Windows 形式，环境变量用 `$env:NAME` 读取。非零退出以 `[exit code: N]` 报告；在 Windows 上，强制终止的命令以 `[exit code: 1]` 结算且没有信号标记，因此 agent 把中断后的裸 exit 1 当作终止而非命令失败。schema 将 `description` 列在 `command` 前并要求模型先输出它，但不强制 JSON 成员顺序。工具描述要求 agent 在任何删除或移动前校验解析后的绝对目标路径，并且不要给 `$HOME` 等自动变量赋值。后台运行、输出截断以及 `description`／`timeoutMs`／`workdir` 参数的行为与 [`dsh-tool-bash`](../tool-bash/README.zh.md#running-long-commands-in-the-background) 完全一致，包括异步 shell 准备过程中由任务负责的取消。描述里还写明两条「失败时是静默的」方言规则：带引号、多行或含 `$` 的文本要写进文件、让命令去读该路径（PowerShell 会重新解析命令行；`2>/dev/null` 会被当成文件路径；没有 heredoc；双引号里的 `\n` 是字面量）；原生命令的非零退出既不会中断链条、也不会让调用失败，因此要用 `$LASTEXITCODE` 检查——而 `String.Replace()` 在没有任何匹配时原样返回，所以改文件应交给 `edit` 工具。
+工具执行 `pwsh -Command <command>` 并返回合并后的输出。命令每次调用都运行在全新 pwsh 进程中，因此状态从不保留——请传 `workdir` 而不是 `cd`。路径使用原生 Windows 形式，环境变量用 `$env:NAME` 读取。非零退出以 `[exit code: N]` 报告；在 Windows 上，强制终止的命令以 `[exit code: 1]` 结算且没有信号标记，因此 agent 把中断后的裸 exit 1 当作终止而非命令失败。schema 将 `description` 列在 `command` 前并要求模型先输出它，但不强制 JSON 成员顺序。工具描述要求 agent 在任何删除或移动前校验解析后的绝对目标路径，并且不要给 `$HOME` 等自动变量赋值。后台运行、输出截断以及 `description`／`timeoutMs`／`workdir` 参数的行为与 [`dsh-tool-bash`](../tool-bash/README.zh.md#running-long-commands-in-the-background) 完全一致，包括异步 shell 准备过程中由任务负责的取消。描述里还写明两条「失败时是静默的」方言规则：带引号、多行或含 `$` 的文本要写进文件、让命令去读该路径（PowerShell 会重新解析命令行；`2>/dev/null` 会被当成文件路径；没有 heredoc；双引号里的 `\n` 是字面量）；原生命令的非零退出既不会中断链条、也不会让调用失败，因此要用 `$LASTEXITCODE` 检查——而 `String.Replace()` 在没有任何匹配时原样返回，所以改文件应交给 `edit` 工具。 <!-- uitstalie-deepseek-flash, 2026/10/28, task28, 工具描述补充两条方言规则 -->
 
 ### 前台命令即任务
 

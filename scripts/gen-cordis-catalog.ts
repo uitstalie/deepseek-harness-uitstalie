@@ -1057,7 +1057,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   ModelDefaults: 'harness-shaped model defaults are owned by packages/uitstalie/models-dev/src/catalog.ts',
   ExtraParams: 'extra request params are owned by packages/uitstalie/models-dev/src/catalog.ts',
   // END uitstalie-k3
-  // BEGIN uitstalie-cordis-catalog, 2026/10/26, branch-owned capability, store, and ledger contracts documented outside docs/subsystems
+  // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-311, 分支自有能力/存储/台账服务的类型分类（原标记键缺 issue，追溯登记）
   // dafeiyu capability contracts (goal/dafeiyu.md)
   CapabilityProvider: 'capability provider registration contract is owned by goal/dafeiyu.md',
   CapabilityStatus: 'capability status snapshot is owned by goal/dafeiyu.md',
@@ -1097,7 +1097,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   IssueList: 'grouped ledger issue list is owned by packages/jira/jira-service/README.md',
   JiraResult: 'ledger operation result envelope is owned by packages/jira/jira-service/README.md',
   JiraStatus: 'ledger service status snapshot is owned by packages/jira/jira-service/README.md',
-  // END uitstalie-cordis-catalog
+  // END uitstalie-deepseek-flash
   // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-313, jira-service 与 store-atom 服务方法引用的分支类型补齐分类
   DetailedIssueList: 'issue list with rejected records is owned by packages/jira/jira-service/README.md',
   IssueBatchCloseOptions: 'batch close options are owned by packages/jira/jira-service/README.md',

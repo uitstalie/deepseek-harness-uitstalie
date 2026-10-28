@@ -100,23 +100,21 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose, onOpenSe
             ))}
           </div>
         </nav>
-        <div className={css.content}>
-          <div className={css.header}>
-            <div className={css.actions}>{renderSlot('settings.action', {})}</div>
-            <button type="button" className={css.close} onClick={onClose}>
-              <IconCloseOutlineRegular size={14} />
-              <span className={css.hiddenLabel}>{renderSlot('settings.close', {})}</span>
-            </button>
-          </div>
-          <div className={css.options}>
-            {/* BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-14, 设置段可跳到兄弟段 */}
-            {active !== undefined && renderSlot(
-              'settings.section',
-              { close: onClose, openSection: onOpenSection },
-              { only: active },
-            )}
-            {/* END uitstalie-deepseek-flash */}
-          </div>
+        <div className={css.header}>
+          <div className={css.actions}>{renderSlot('settings.action', {})}</div>
+          <button type="button" className={css.close} onClick={onClose}>
+            <IconCloseOutlineRegular size={14} />
+            <span className={css.hiddenLabel}>{renderSlot('settings.close', {})}</span>
+          </button>
+        </div>
+        <div className={css.options}>
+          {/* BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-14, 设置段可跳到兄弟段 */}
+          {active !== undefined && renderSlot(
+            'settings.section',
+            { close: onClose, openSection: onOpenSection },
+            { only: active },
+          )}
+          {/* END uitstalie-deepseek-flash */}
         </div>
       </div>
     </div>

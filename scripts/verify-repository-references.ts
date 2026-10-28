@@ -12,7 +12,7 @@ const organizationUrl = new RegExp(`\\bgithub\\.com/${organization}(?![a-z0-9-])
 // The independent kit repository owns the engine source and documentation.
 const kitRepositoryUrl = new RegExp(`\\bgithub\\.com/${organization}/libreoffice-kit(?:\\.git)?(?=/|[^a-zA-Z0-9_.-]|$)`, 'g')
 const commitCandidate = /(?<![a-z0-9])[\da-f]{7,40}(?![a-z0-9])/gi
-const excludedPrefixes = ['vendor/', '.agents/notes/archived/', '.dsh/memory/']
+const excludedPrefixes = ['vendor/', '.agents/notes/archived/', '.dsh/memory/'] // uitstalie-deepseek-flash, 2026/10/28, DH-311, 机器本地 .dsh/memory 不参与提交号扫描
 const gitOutputLimit = 64 * 1024 * 1024
 // One 41-byte line per object; 1.2 million objects produce about 49 MiB.
 const objectListingLimit = 1024 * 1024 * 1024
@@ -27,7 +27,9 @@ export interface RepositoryReference {
   kind: 'commit-hash' | 'organization-url'
 }
 
+// BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-311, uv 锁文件由外部工具生成，不参与提交号扫描
 const excludedFiles = new Set(['python/sdk/uv.lock'])
+// END uitstalie-deepseek-flash
 
 function isMaintained(file: string): boolean {
   return !excludedFiles.has(file) && !excludedPrefixes.some(prefix => file.startsWith(prefix))

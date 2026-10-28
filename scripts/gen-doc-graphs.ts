@@ -935,6 +935,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     consumers: ['tool-cordis'],
     note: 'Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport.',
   },
+  // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-12, 分支自有服务（能力总代/存储/台账/models.dev）在 docs/subsystems 之外的契约登记
   // Branch-owned services documented outside docs/subsystems.
   {
     key: 'agentContextSources',
@@ -982,6 +983,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     mode: 'service',
     note: 'Serves the models.dev provider and model catalog, route resolution, and harness-shaped model defaults and extra params.',
   },
+  // END uitstalie-deepseek-flash
 ]
 
 function generatedHeader(title: string): string[] {

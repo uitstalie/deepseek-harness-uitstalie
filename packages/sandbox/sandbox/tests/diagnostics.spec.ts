@@ -143,6 +143,7 @@ describe('shared diagnostic status and matching rules', () => {
   })
 })
 
+// BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-305, 拒绝分类的路径证据按平台比较（大小写折叠与目录段边界）
 describe('classifyDenial path semantics follow the platform (DH-305)', () => {
   const signatures = ['permission denied']
   const denied = (line: string): string => `sh: ${line}: Permission denied`
@@ -164,3 +165,4 @@ describe('classifyDenial path semantics follow the platform (DH-305)', () => {
     expect(classifyDenial(1, denied(path), signatures, ['c:\\workspace'], 'win32')).toBe(expected)
   })
 })
+// END uitstalie-deepseek-flash

@@ -195,12 +195,14 @@ jobs:
       - name: Run exhaustive coverage
         run: pnpm run check:ci:coverage
 
+      # BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-308, jira 的 node:test 套件进 CI 静态门禁
       # The Jira packages keep their behavior suites beside their sources as `node --test` files,
       # so the vitest coverage lane above never executes them. Run them from this same clean,
       # frozen install; the runner fails when it selects no package or runs no test, so a filter
       # that silently matches nothing cannot pass as green (DH-308).
       - name: Run the Jira Node suites
         run: pnpm run test:jira:node
+      # END uitstalie-deepseek-flash
 
       - name: Save coverage duration history
         if: ${{ !cancelled() }}
