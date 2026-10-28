@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dsh.local/schema/persona/v1",
+  "title": "DSH persona card v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "name"],
+  "properties": {
+    "schema": { "const": "persona/v1" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "description": { "type": "string" },
+    "personality": { "type": "string" },
+    "scenario": { "type": "string" },
+    "style": { "type": "string" },
+    "examples": { "type": "string" },
+    "greetings": {
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 16
+    },
+    "state_schema": { "$ref": "#/$defs/stateSchema" },
+    "lorebook": {
+      "type": "array",
+      "items": { "type": "object" },
+      "description": "Reserved for a future role-specific lorebook; not activated in v1."
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "source": { "enum": ["user", "import"] },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "version": { "type": "string" },
+        "original_spec": { "type": "string" },
+        "quarantined": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Imported fields that must never override system/developer instructions."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "stateSchema": {
+      "type": "object",
+      "description": "A JSON Schema subset; no $ref, patternProperties or remote references.",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["object", "array", "string", "number", "boolean", "null"] },
+        "properties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/stateSchema" } },
+        "items": { "$ref": "#/$defs/stateSchema" },
+        "required": { "type": "array", "items": { "type": "string" } },
+        "enum": { "type": "array" },
+        "minimum": { "type": "number" },
+        "maximum": { "type": "number" },
+        "additionalProperties": { "type": "boolean" }
+      }
+    }
+  }
+}
