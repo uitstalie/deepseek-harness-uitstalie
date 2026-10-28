@@ -44,10 +44,15 @@ const CHILD_NAMES = Object.keys(CHILD_SPECS) as Array<keyof typeof CHILD_SPECS>
  * uitstalie-k3, 2026/10/09, task23: ui-models-dev adds `models-dev` at order 12.
  * uitstalie-deepseek-flash, 2026/10/26, DH-15: ui-jira adds `jira` at order 200.
  * uitstalie-deepseek-flash, 2026/10/26, DH-12: ui-dafeiyu adds `capabilities` at order 150.
+ * uitstalie-deepseek-flash, 2026/10/28, DH-316: ui-memory adds `memory` at order 190 and ui-personality adds `personality` at order 210.
  */
 // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-15, 分支 jira 设置段与能力总代段进入 roster
 const PRODUCT_SECTIONS: readonly string[] = [
-  'general', 'models', 'models-dev', 'plugins', 'agent-presets', 'capabilities', 'jira',
+  'general', 'models', 'models-dev', 'plugins', 'agent-presets', 'capabilities',
+  // uitstalie-deepseek-flash, 2026/10/28, DH-316, DH-310 的 memory / personality 段进入 roster
+  'memory',
+  'jira',
+  'personality',
 ]
 // END uitstalie-deepseek-flash
 /** Onboarding steps the web-app roster registers, in coordinator order; both come from ui-settings-models. */
