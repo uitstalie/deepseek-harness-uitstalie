@@ -147,6 +147,10 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   const run = (): void => {
+    // A slow snapshot must not overlap the next tick: both would write the same
+    // staging directory and the later run would remove what the earlier is
+    // filling (ENOTEMPTY on Windows, a lost staging state elsewhere).
+    if (inFlight !== undefined) return
     inFlight = execute().finally(() => { inFlight = undefined })
   }
 
