@@ -64,9 +64,15 @@ export interface SystemEnvironment {
    * @returns the value, or undefined when unset.
    */
   env(name: string): string | undefined
-  /** The user's home directory (`HOME`, or `USERPROFILE` on Windows). */
+  /**
+   * The user's home directory (`HOME`, or `USERPROFILE` on Windows).
+   * @returns the home directory path.
+   */
   homeDir(): string
-  /** The resolved Harness home: `$DSH_HOME`, or `<home>/.dsh`. */
+  /**
+   * The resolved Harness home: `$DSH_HOME`, or `<home>/.dsh`.
+   * @returns the Harness home path.
+   */
   dshHome(): string
   /**
    * The spelling used for comparison on this platform.

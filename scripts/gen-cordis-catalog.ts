@@ -197,6 +197,11 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   dshStore: 'branch-owned .dsh store service — packages/uitstalie/tool-dsh-store/README.md owns the store API',
   jira: 'branch-owned ledger service — packages/jira/jira-service/README.md owns the service API',
   jiraRemote: 'branch-owned read-only ledger Remote — packages/jira/jira-service/README.md owns the API (the projection cannot walk it because src/index.ts does not re-export the module)',
+  // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-313, personality 与 systemEnvironment 服务按分支文档归属登记豁免
+  personalityProposals: 'branch-owned identity-proposal Remote — packages/uitstalie/personality/README.md owns the API',
+  personalityRemote: 'branch-owned personality Remote — packages/uitstalie/personality/README.md owns the API',
+  systemEnvironment: 'branch-owned host environment facts service — packages/uitstalie/system-environment/README.md owns the API',
+  // END uitstalie-deepseek-flash
   fileUpload: 'client-side browser upload service — packages/client/file-upload/README.md owns the API',
   uiRenderer: 'client-side interface-typed browser service — packages/client/ui-renderer/README.md owns the API',
   uiSession: 'client-side Session source adapter — packages/client/ui-session/README.md owns the API',
@@ -1093,6 +1098,27 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   JiraResult: 'ledger operation result envelope is owned by packages/jira/jira-service/README.md',
   JiraStatus: 'ledger service status snapshot is owned by packages/jira/jira-service/README.md',
   // END uitstalie-cordis-catalog
+  // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-313, jira-service 与 store-atom 服务方法引用的分支类型补齐分类
+  DetailedIssueList: 'issue list with rejected records is owned by packages/jira/jira-service/README.md',
+  IssueBatchCloseOptions: 'batch close options are owned by packages/jira/jira-service/README.md',
+  IssueBatchCloseResult: 'batch close result is owned by packages/jira/jira-service/README.md',
+  IssueCreateResult: 'issue creation result is owned by packages/jira/jira-service/README.md',
+  IssueDraft: 'issue draft fields are owned by packages/jira/jira-service/README.md',
+  IssueMutation: 'issue mutation payload is owned by packages/jira/jira-service/README.md',
+  IssueMutationOptions: 'issue mutation options are owned by packages/jira/jira-service/README.md',
+  IssueMutationResult: 'issue mutation result is owned by packages/jira/jira-service/README.md',
+  IssueRead: 'issue read result is owned by packages/jira/jira-service/README.md',
+  JiraCounts: 'ledger status counts are owned by packages/jira/jira-service/README.md',
+  JiraFilteredIssues: 'filtered ledger issue list is owned by packages/jira/jira-service/README.md',
+  JiraSnapshot: 'ledger status snapshot is owned by packages/jira/jira-service/README.md',
+  JiraSyncState: 'ledger sync state is owned by packages/jira/jira-service/README.md',
+  KnowledgeDetail: 'knowledge entry detail is owned by packages/jira/jira-service/README.md',
+  SessionRecordFacts: 'session watermark facts are owned by packages/jira/jira-service/README.md',
+  TagCreateInput: 'tag creation input is owned by packages/jira/jira-service/README.md',
+  TagCreateResult: 'tag creation result is owned by packages/jira/jira-service/README.md',
+  TagsLintReport: 'tag lint report is owned by packages/jira/jira-service/README.md',
+  StoreScope: 'store scope selector is owned by packages/uitstalie/store-atom/README.md',
+  // END uitstalie-deepseek-flash
 }
 
 /** Repository data policy consumed by the Cordis catalog projector. */

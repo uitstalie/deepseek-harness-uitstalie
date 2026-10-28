@@ -15,40 +15,52 @@ import { Context, Service, type Volatile } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import z from '@deepseek-ai/schemastery'
 import {
+  applyAckConflict,
+  applyAssignee,
+  applyClose,
+  applyComment,
+  applyLink,
+  applyTransition,
+  applyUpdate,
+  assertProjectWritable,
+  blockersOf,
+  closeMany,
+  combineChanges,
   config as coreConfig,
+  countStore,
+  createTag as createTagInStore,
+  decodeIssue,
   doctor,
   entities,
+  ensureSessionRecord,
+  ensureWorkspaceProject,
+  err,
   errors,
   generateStore,
   git,
   inspect,
+  invalidInput,
   io,
   kbstore,
   list,
   machine,
+  ok,
   provision,
   push,
   rebase,
+  readWatermark,
+  resolveWorkspace,
   result,
+  scanWatermarkPath,
+  sessionScan,
+  staleRevision,
   store as coreStore,
   system,
   tagsLint as coreTagsLint,
+  type Store,
   vocab as coreVocab,
+  writeWatermark,
 } from '@deepseek-ai/dsh-jira-core'
-import { countStore } from '@deepseek-ai/dsh-jira-core/injection.ts'
-import type { Store } from '@deepseek-ai/dsh-jira-core'
-import { ensureSessionRecord, readWatermark, scanWatermarkPath, sessionScan, writeWatermark } from '@deepseek-ai/dsh-jira-core/session.ts'
-import { decodeIssue } from '@deepseek-ai/dsh-jira-core/codec.ts'
-import { blockersOf } from '@deepseek-ai/dsh-jira-core/inspect.ts'
-import { invalidInput, staleRevision } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import {
-  applyAckConflict, applyAssignee, applyClose, applyComment, applyLink, applyTransition, applyUpdate, combineChanges,
-} from '@deepseek-ai/dsh-jira-core/mutate.ts'
-import { assertProjectWritable, ensureWorkspaceProject } from '@deepseek-ai/dsh-jira-core/project.ts'
-import { createTag as createTagInStore } from '@deepseek-ai/dsh-jira-core/tagstore.ts'
-import { err, ok } from '@deepseek-ai/dsh-jira-core/result.ts'
-import { closeMany } from '@deepseek-ai/dsh-jira-core/batch.ts'
-import { resolveWorkspace } from '@deepseek-ai/dsh-jira-core/workspace.ts'
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraFilteredIssues, JiraResult, JiraServiceApi, JiraSnapshot, JiraSyncState, JiraStatus, KnowledgeDetail, SessionRecordFacts, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, TagsLintReport, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'

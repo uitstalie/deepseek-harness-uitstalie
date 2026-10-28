@@ -37,6 +37,23 @@ export * as system from './system/index.ts'
 export * as tagsLint from './tagsLint.ts'
 export * as vocab from './vocab.ts'
 
+// The named values a host consumer needs whose declarations typert emits. A non-relative
+// `@deepseek-ai/dsh-jira-core/<module>.ts` specifier is not rewritten during emit (TS2877), so
+// jira-service takes these atoms from the root surface instead of a `src/` deep import (DH-313).
+export { countStore } from './injection.ts'
+export { ensureSessionRecord, readWatermark, scanWatermarkPath, sessionScan, writeWatermark } from './session.ts'
+export { blockersOf } from './inspect.ts'
+export { invalidInput, staleRevision } from './errors.ts'
+export { decodeIssue } from './codec.ts'
+export {
+  applyAckConflict, applyAssignee, applyClose, applyComment, applyLink, applyTransition, applyUpdate, combineChanges,
+} from './mutate.ts'
+export { assertProjectWritable, ensureWorkspaceProject } from './project.ts'
+export { createTag } from './tagstore.ts'
+export { err, ok } from './result.ts'
+export { closeMany } from './batch.ts'
+export { resolveWorkspace } from './workspace.ts'
+
 // The named types a consumer states in its own signatures. They are re-exported by name, not only
 // reachable through the namespaces above, because the type-graph generator resolves a package
 // reference by looking for that name among the package root's exports.

@@ -1212,7 +1212,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'dshStore',
     summary: 'The `.dsh` base interface.',
-    description: 'The `.dsh` base interface. Every method is session-scoped: the store root is derived from the session\'s project, never from a caller-supplied path.',
+    description: 'The `.dsh` base interface. Every method addresses one of two roots — the user\'s `$DSH_HOME` (`global`) or the session workspace\'s `.dsh` (`workspace`, the default). The workspace root is derived from the session\'s project, never from a caller-supplied path; the global root is `$DSH_HOME` and takes no session.',
     methods: [
       {
         signature: 'projectRootFor(session: Session, signal?: AbortSignal): Promise<string>',
@@ -1221,53 +1221,53 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the absolute project root.',
       },
       {
-        signature: 'rootFor(session: Session, signal?: AbortSignal): Promise<string>',
-        description: 'Resolve the session\'s absolute `.dsh` root without creating it.',
-        parameters: [{ name: 'session', description: 'session whose project owns the store.' }, { name: 'signal', description: 'cancellation for the filesystem probes.' }],
+        signature: 'rootFor(scope: StoreScope, session?: Session, signal?: AbortSignal): Promise<string>',
+        description: 'Resolve one absolute `.dsh` root without creating it.',
+        parameters: [{ name: 'scope', description: '`global` for `$DSH_HOME`, `workspace` for the project\'s `.dsh`.' }, { name: 'session', description: 'session whose project owns the workspace root; required for `workspace`.' }, { name: 'signal', description: 'cancellation for the filesystem probes.' }],
         returns: 'the absolute store root.',
       },
       {
-        signature: 'prepare(session: Session, signal?: AbortSignal): Promise<string>',
-        description: 'Resolve and, when the session may write, create the store root.',
-        parameters: [{ name: 'session', description: 'session whose project owns the store.' }, { name: 'signal', description: 'cancellation for the filesystem probes.' }],
+        signature: 'prepare(scope: StoreScope, session?: Session, signal?: AbortSignal): Promise<string>',
+        description: 'Resolve and, when writing is allowed, create one store root.',
+        parameters: [{ name: 'scope', description: '`global` for `$DSH_HOME`, `workspace` for the project\'s `.dsh`.' }, { name: 'session', description: 'session whose policy gates a workspace root; required for `workspace`.' }, { name: 'signal', description: 'cancellation for the filesystem probes.' }],
         returns: 'the absolute store root.',
       },
       {
-        signature: 'createFile(session: Session, path: string, content: string, options?: StoreCallOptions): Promise<StoreCreateResult>',
+        signature: 'createFile(session: Session | undefined, path: string, content: string, options?: StoreCallOptions): Promise<StoreCreateResult>',
         description: 'Create a file below the store root.',
-        parameters: [{ name: 'session', description: 'session whose policy gates the write.' }, { name: 'path', description: 'store-relative target path.' }, { name: 'content', description: 'complete file text.' }, { name: 'options', description: 'cancellation.' }],
+        parameters: [{ name: 'session', description: 'session whose policy gates a workspace write; omit for global.' }, { name: 'path', description: 'store-relative target path.' }, { name: 'content', description: 'complete file text.' }, { name: 'options', description: 'scope and cancellation.' }],
         returns: 'the created target record.',
       },
       {
-        signature: 'writeFile(session: Session, path: string, content: string, options?: StoreWriteOptions): Promise<StoreWriteResult>',
-        description: 'Write one file below the store root with an optional version guard.\n\nThis is the provider-facing write: it skips the `rules` and `skills` authoring checks, because a plugin that owns a namespace persists its own content there and no model-authoring rule applies to it.',
-        parameters: [{ name: 'session', description: 'session whose policy gates the write.' }, { name: 'path', description: 'store-relative target path; the root itself is refused.' }, { name: 'content', description: 'complete file text.' }, { name: 'options', description: 'cancellation and the version the file must still carry.' }],
+        signature: 'writeFile(session: Session | undefined, path: string, content: string, options?: StoreWriteOptions): Promise<StoreWriteResult>',
+        description: 'Write one file below the store root with an optional version guard.\n\nThis is the provider-facing write: it skips the `rules` and `skills` authoring checks, because a plugin that owns a namespace persists its own content there and no model-authoring rule applies to it. A global write has no sandbox-policy gate, because the session policy covers the workspace.',
+        parameters: [{ name: 'session', description: 'session whose policy gates a workspace write; omit for global.' }, { name: 'path', description: 'store-relative target path; the root itself is refused.' }, { name: 'content', description: 'complete file text.' }, { name: 'options', description: 'scope, cancellation, and the version the file must still carry.' }],
         returns: 'the written path and the version a later guarded write can expect.',
-        throws: ['Error when the path is empty, because the store root is a directory.', 'StorePathError when the path leaves the store root.', 'FsError `FS_SANDBOX_DENIED` for a read-only session, or `FS_STALE_VERSION` when `expected` no longer matches the file.'],
+        throws: ['Error when the path is empty, or when `workspace` is requested without a session.', 'StorePathError when the path leaves the store root.', 'FsError `FS_SANDBOX_DENIED` for a read-only workspace, or `FS_STALE_VERSION` when `expected` no longer matches the file.'],
       },
       {
-        signature: 'readFile(session: Session, path: string, options?: StoreCallOptions): Promise<StoreReadResult>',
+        signature: 'readFile(session: Session | undefined, path: string, options?: StoreCallOptions): Promise<StoreReadResult>',
         description: 'Read one store file without the session policy gate, because reading is allowed in every mode.\n\nThe returned version is the value a later guarded `writeFile` passes as `expected`. A provider reads the file, composes the next text, and writes it back with that version, so a concurrent writer surfaces as `FS_STALE_VERSION` instead of a silent overwrite.',
-        parameters: [{ name: 'session', description: 'session whose project owns the store.' }, { name: 'path', description: 'store-relative target path.' }, { name: 'options', description: 'cancellation.' }],
+        parameters: [{ name: 'session', description: 'session whose project owns a workspace store; omit for global.' }, { name: 'path', description: 'store-relative target path.' }, { name: 'options', description: 'scope and cancellation.' }],
         returns: 'the target path plus the text and version when it is a regular file.',
         throws: ['StorePathError when the path leaves the store root.'],
       },
       {
-        signature: 'createFolder(session: Session, path: string, options?: StoreCallOptions): Promise<StoreCreateResult>',
+        signature: 'createFolder(session: Session | undefined, path: string, options?: StoreCallOptions): Promise<StoreCreateResult>',
         description: 'Create a folder below the store root.',
-        parameters: [{ name: 'session', description: 'session whose policy gates the write.' }, { name: 'path', description: 'store-relative target path.' }, { name: 'options', description: 'cancellation.' }],
+        parameters: [{ name: 'session', description: 'session whose policy gates a workspace write; omit for global.' }, { name: 'path', description: 'store-relative target path.' }, { name: 'options', description: 'scope and cancellation.' }],
         returns: 'the created target record.',
       },
       {
-        signature: 'query(session: Session, path: string, options?: StoreCallOptions): Promise<StoreQueryResult>',
+        signature: 'query(session: Session | undefined, path: string, options?: StoreCallOptions): Promise<StoreQueryResult>',
         description: 'Inspect one store target.',
-        parameters: [{ name: 'session', description: 'session whose project owns the store.' }, { name: 'path', description: 'store-relative target path.' }, { name: 'options', description: 'cancellation.' }],
+        parameters: [{ name: 'session', description: 'session whose project owns a workspace store; omit for global.' }, { name: 'path', description: 'store-relative target path.' }, { name: 'options', description: 'scope and cancellation.' }],
         returns: 'the target kind, direct children, and (for a file) its text.',
       },
       {
-        signature: 'remove(session: Session, path: string, options?: StoreRemoveOptions): Promise<StoreRemoveResult>',
+        signature: 'remove(session: Session | undefined, path: string, options?: StoreRemoveOptions): Promise<StoreRemoveResult>',
         description: 'Remove one store target.',
-        parameters: [{ name: 'session', description: 'session whose policy gates the write.' }, { name: 'path', description: 'store-relative target path.' }, { name: 'options', description: 'recursive removal and cancellation.' }],
+        parameters: [{ name: 'session', description: 'session whose policy gates a workspace write; omit for global.' }, { name: 'path', description: 'store-relative target path.' }, { name: 'options', description: 'scope, recursive removal, and cancellation.' }],
         returns: 'the removed target record.',
       },
     ],
@@ -1616,13 +1616,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'The ledger facade. Read methods return the decoded data; write methods run inside the core\'s write transaction (two-level lock, validation, compare-and-set, audit identity, commit). None of them pushes, and none of them catches: a failure is the returned `JiraError`.',
     methods: [
       {
-        signature: 'readonly root: string',
-        description: 'The resolved ledger root, or the empty string when it could not be resolved.',
+        signature: 'root: string',
+        description: 'The resolved ledger root, or the empty string when it could not be resolved. Live-updated.',
         parameters: [],
       },
       {
-        signature: 'readonly host: string',
-        description: 'The `owner.host` audit value every write through this service carries.',
+        signature: 'host: string',
+        description: 'The `owner.host` audit value every write through this service carries. Live-updated.',
         parameters: [],
       },
       {
@@ -1632,10 +1632,93 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the root, identity, audit host, push switch, last push outcome and whether a push is armed.',
       },
       {
+        signature: 'async readIssue(key: IssueKey): Promise<JiraResult<IssueRead>>',
+        description: 'Read one issue with its comments and decode warnings.',
+        parameters: [{ name: 'key', description: 'the issue key.' }],
+        returns: 'the issue, or `not-found`.',
+      },
+      {
+        signature: 'async mutateIssue( key: IssueKey, mutation: IssueMutation, actor: Actor, options: IssueMutationOptions = {}, ): Promise<JiraResult<IssueMutationResult>>',
+        description: 'Apply one issue mutation under the issue lock.',
+        parameters: [{ name: 'key', description: 'the issue key.' }, { name: 'mutation', description: 'the action and its fields.' }, { name: 'actor', description: 'who is writing, for the audit fields.' }, { name: 'options', description: 'compare-and-set and conflict acknowledgement.' }],
+        returns: 'the transaction and the comments after it.',
+      },
+      {
+        signature: 'async createIssue( project: string | undefined, cwd: string | undefined, draft: IssueDraft, actor: Actor, ): Promise<JiraResult<IssueCreateResult>>',
+        description: 'Create one issue, inferring the project from a checkout when it is omitted.',
+        parameters: [{ name: 'project', description: 'the project key, or undefined to infer it from `cwd`.' }, { name: 'cwd', description: 'the checkout whose registered project should be used.' }, { name: 'draft', description: 'the issue fields.' }, { name: 'actor', description: 'who is writing.' }],
+        returns: 'the created issue and whether the project was registered by this call.',
+      },
+      {
+        signature: 'async batchClose( keys: readonly IssueKey[], options: IssueBatchCloseOptions, actor: Actor, ): Promise<JiraResult<IssueBatchCloseResult>>',
+        description: 'Close several issues in one all-or-nothing call.',
+        parameters: [{ name: 'keys', description: 'the issue keys.' }, { name: 'options', description: 'the target status, resolution and optional comment.' }, { name: 'actor', description: 'who is writing.' }],
+        returns: 'the closed keys, or every refusal.',
+      },
+      {
+        signature: 'async createTag(actor: Actor, input: TagCreateInput): Promise<JiraResult<TagCreateResult>>',
+        description: 'Register one tag.',
+        parameters: [{ name: 'actor', description: 'who is writing.' }, { name: 'input', description: 'the tag name, description and optional alias.' }],
+        returns: 'the created tag and whether it committed.',
+      },
+      {
+        signature: 'async recordSession( sessionId: string, facts: SessionRecordFacts, actor: Actor, ): Promise<JiraResult<Readonly<{ written: boolean }>>>',
+        description: 'Record a session at its first write, at most once per ledger.',
+        parameters: [{ name: 'sessionId', description: 'the session to record.' }, { name: 'facts', description: 'the tool, model and evidence to record.' }, { name: 'actor', description: 'who is writing, for the audit fields.' }],
+        returns: 'whether the record was written, or the error that prevented it.',
+      },
+      {
+        signature: 'async gitHead(): Promise<string>',
+        description: 'The ledger repository\'s current HEAD, or an empty string when it cannot be read.',
+        parameters: [],
+        returns: 'the commit the close-out scan starts from.',
+      },
+      {
+        signature: 'async closeOutSession(sessionId: string, headAtStart: string, stateDir: string, at: Timestamp): Promise<void>',
+        description: 'Scan the session from its starting commit, then advance the scan watermark. A close-out failure is swallowed: it must not turn a good session into a bad one.',
+        parameters: [{ name: 'sessionId', description: 'the session that just completed a turn.' }, { name: 'headAtStart', description: 'the commit the session started from.' }, { name: 'stateDir', description: 'the machine-local state directory holding the watermark.' }, { name: 'at', description: 'the scan timestamp.' }],
+      },
+      {
+        signature: 'async counts(): Promise<JiraResult<JiraCounts>>',
+        description: 'Count the ledger\'s projects, knowledge entries and open issues.',
+        parameters: [],
+        returns: 'the counts, or the error that prevented reading the store.',
+      },
+      {
+        signature: 'async snapshot(): Promise<JiraResult<JiraSnapshot>>',
+        description: 'Read the ledger once for a human command: issues, parsed vocabulary and the doctor report.',
+        parameters: [],
+        returns: 'the snapshot, or the error that prevented reading the store.',
+      },
+      {
+        signature: 'async queryIssues(query: ListQuery): Promise<JiraResult<JiraFilteredIssues>>',
+        description: 'Read the issues one human list or board filter matches.\n\nThe vocabulary is optional on purpose: a ledger without a readable `config.md` still answers `list`, and only the board refuses (the caller decides, as the command always has).',
+        parameters: [{ name: 'query', description: 'the filter; every field is optional.' }],
+        returns: 'the matched issues, the vocabulary and the pre-filter issue count.',
+      },
+      {
+        signature: 'async tagsLint(): Promise<JiraResult<TagsLintReport>>',
+        description: 'Check the tag registry against the ledger\'s issues.',
+        parameters: [],
+        returns: 'the lint report the command renders, or the error that prevented reading.',
+      },
+      {
+        signature: 'async syncState(): Promise<JiraResult<JiraSyncState>>',
+        description: 'Report whether the ledger has a remote and whether its worktree is dirty.',
+        parameters: [],
+        returns: 'the sync state, or the error that prevented asking git.',
+      },
+      {
         signature: 'async list(query: ListQuery): Promise<JiraResult<IssueList>>',
         description: 'Read the ledger\'s issues with a filter.',
         parameters: [{ name: 'query', description: 'the filter; every field is optional.' }],
         returns: 'the grouped list, or the error that prevented reading it.',
+      },
+      {
+        signature: 'async listWithRejected(query: ListQuery): Promise<JiraResult<DetailedIssueList>>',
+        description: 'Read the list together with the files it had to skip.',
+        parameters: [{ name: 'query', description: 'the filter; every field is optional.' }],
+        returns: 'the grouped list and the skipped files, or the error that prevented reading.',
       },
       {
         signature: 'async get(key: IssueKey): Promise<JiraResult<Issue>>',
@@ -1660,6 +1743,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Search the knowledge base.',
         parameters: [{ name: 'query', description: 'the search text.' }, { name: 'topK', description: 'how many hits to return; the core clamps it.' }],
         returns: 'the hits with their `file:line`, or the error that prevented searching.',
+      },
+      {
+        signature: 'async kbGet(key: KnowledgeKey): Promise<JiraResult<KnowledgeDetail>>',
+        description: 'Read one knowledge entry.',
+        parameters: [{ name: 'key', description: 'the knowledge key.' }],
+        returns: 'the entry with its file path and warnings, or `not-found`.',
       },
       {
         signature: 'async create(project: string, input: NewIssueInput, actor: Actor): Promise<JiraResult<Created>>',
@@ -1702,17 +1791,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Subscribe to ledger changes.',
         parameters: [{ name: '_event', description: 'the only event, `changed`.' }, { name: 'listener', description: 'called after each commit.' }],
         returns: 'the unsubscribe function.',
-      },
-      {
-        signature: 'async store(): Promise<JiraResult<Store>>',
-        description: 'Open the store this service holds, for the tool runners that still work on the raw store. This is the phase-1 bridge to `jira-agent`; moving them onto the methods above is phase 2.',
-        parameters: [],
-        returns: 'the store, or the error that prevented resolving its root.',
-      },
-      {
-        signature: 'notifyWrite(key?: string): void',
-        description: 'Record that a write happened outside this service\'s own methods (the tool runners\' writes), so the `changed` event still fires and the push queue still arms.',
-        parameters: [{ name: 'key', description: 'the affected key, when the write concerned one.' }],
       },
     ],
   },
@@ -3637,6 +3715,80 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Allocate a real terminal and start one owned process session. This is the only non-pipe process primitive: implementations own terminal byte I/O, foreground groups, signals, and whole-session quiescence.',
         parameters: [{ name: 'spec', description: 'fully specified argv, cwd, environment, dimensions, grace, and allocation cancellation.' }],
         returns: 'the live terminal handle after allocation succeeds.',
+      },
+    ],
+  },
+  {
+    key: 'systemEnvironment',
+    summary: 'One host\'s environment facts and the comparisons built on them.',
+    description: 'One host\'s environment facts and the comparisons built on them.\n\nEvery method answers the same question the same way: `normalizePath` produces the comparison spelling (separators normalized, trailing separator dropped, case folded on Windows), and `samePath`/`isUnder` are defined on top of it.',
+    methods: [
+      {
+        signature: 'readonly platform: SystemPlatform',
+        description: 'The platform whose path rules apply.',
+        parameters: [],
+      },
+      {
+        signature: 'readonly path: typeof posix',
+        description: 'Node\'s path dialect for that platform (`posix` or `win32`).',
+        parameters: [],
+      },
+      {
+        signature: 'readonly caseInsensitive: boolean',
+        description: 'Whether two spellings that differ only in case name the same target.',
+        parameters: [],
+      },
+      {
+        signature: 'readonly separator: \'/\' | \'\\\\\'',
+        description: 'The platform\'s path separator.',
+        parameters: [],
+      },
+      {
+        signature: 'readonly delimiter: \':\' | \';\'',
+        description: 'The platform\'s `PATH`-list delimiter.',
+        parameters: [],
+      },
+      {
+        signature: 'env(name: string): string | undefined',
+        description: 'One environment value. A Windows lookup is case-insensitive, because the OS is.',
+        parameters: [{ name: 'name', description: 'variable name.' }],
+        returns: 'the value, or undefined when unset.',
+      },
+      {
+        signature: 'homeDir(): string',
+        description: 'The user\'s home directory (`HOME`, or `USERPROFILE` on Windows).',
+        parameters: [],
+        returns: 'the home directory path.',
+      },
+      {
+        signature: 'dshHome(): string',
+        description: 'The resolved Harness home: `$DSH_HOME`, or `<home>/.dsh`.',
+        parameters: [],
+        returns: 'the Harness home path.',
+      },
+      {
+        signature: 'normalizePath(value: string): string',
+        description: 'The spelling used for comparison on this platform.',
+        parameters: [{ name: 'value', description: 'any path spelling.' }],
+        returns: 'absolute normalization with the comparison case.',
+      },
+      {
+        signature: 'samePath(left: string, right: string): boolean',
+        description: 'Whether two paths name the same target under this platform\'s rules.',
+        parameters: [{ name: 'left', description: 'first path.' }, { name: 'right', description: 'second path.' }],
+        returns: 'true when the comparison spellings are equal.',
+      },
+      {
+        signature: 'isUnder(parent: string, child: string): boolean',
+        description: 'Whether `child` is `parent` or lies below it.',
+        parameters: [{ name: 'parent', description: 'the enclosing directory.' }, { name: 'child', description: 'the candidate path.' }],
+        returns: 'true for the directory itself and every descendant; false for a sibling prefix such as `/a/bc` against `/a/b`.',
+      },
+      {
+        signature: 'join(...segments: string[]): string',
+        description: 'Join path segments with this platform\'s dialect.',
+        parameters: [{ name: 'segments', description: 'path segments.' }],
+        returns: 'the joined path.',
       },
     ],
   },
@@ -6012,6 +6164,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface DeliveryRetentionBounds {\n    readonly days: number;\n    readonly records: number;\n}',
   },
   {
+    name: 'DetailedIssueList',
+    declaration: 'export interface DetailedIssueList {\n    readonly list: IssueList;\n    readonly rejected: readonly Readonly<{\n        file: string;\n        reason: string;\n    }>[];\n}',
+  },
+  {
     name: 'DeveloperMessage',
     declaration: 'export interface DeveloperMessage extends MessageBase {\n    readonly role: \'developer\';\n}',
   },
@@ -6198,10 +6354,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FileReferenceCandidate',
     declaration: 'export interface FileReferenceCandidate {\n    path: string;\n    kind: \'file\' | \'directory\';\n}',
-  },
-  {
-    name: 'FileStore',
-    declaration: 'export type FileStore = Readonly<{\n    root: string;\n}>;',
   },
   {
     name: 'FileSystem',
@@ -6476,6 +6628,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type Issue = Readonly<{\n    key: IssueKey;\n    project: string;\n    issueType: string;\n    status: string;\n    summary: string;\n    priority: string;\n    tags: readonly string[];\n    links: readonly Link[];\n    note?: string;\n    resolution?: string;\n    resolutionNote?: string;\n    revision: number;\n    createdAt: Timestamp;\n    updatedAt: Timestamp;\n    reporter: Identity;\n    assignee?: Identity;\n    claimedAt?: Timestamp;\n    leaseExpiresAt?: Timestamp;\n    kbRefs: readonly string[];\n    conflicted: boolean;\n    body: string;\n}>;',
   },
   {
+    name: 'IssueBatchCloseOptions',
+    declaration: 'export interface IssueBatchCloseOptions {\n    readonly to?: string;\n    readonly resolution: string;\n    readonly resolutionNote?: string;\n    readonly comment?: string;\n}',
+  },
+  {
+    name: 'IssueBatchCloseResult',
+    declaration: 'export interface IssueBatchCloseResult {\n    readonly closed: readonly IssueKey[];\n    readonly partial?: Readonly<{\n        readonly closed: readonly IssueKey[];\n        readonly failed: Readonly<{\n            readonly key: IssueKey;\n            readonly error: JiraError;\n        }>;\n    }>;\n}',
+  },
+  {
+    name: 'IssueComment',
+    declaration: 'export interface IssueComment {\n    readonly id: string;\n    readonly author: Identity;\n    readonly revision: number;\n    readonly createdAt: Timestamp;\n    readonly body: string;\n}',
+  },
+  {
+    name: 'IssueCreateResult',
+    declaration: 'export interface IssueCreateResult {\n    readonly created: Created;\n    readonly project: string;\n    readonly projectCreated: boolean;\n}',
+  },
+  {
+    name: 'IssueDraft',
+    declaration: 'export interface IssueDraft {\n    readonly issueType: string;\n    readonly summary: string;\n    readonly priority?: string;\n    readonly status?: string;\n    readonly tags?: readonly string[];\n    readonly note?: string;\n    readonly assignee?: string;\n    readonly body?: string;\n}',
+  },
+  {
     name: 'IssueKey',
     declaration: 'export type IssueKey = string & {\n    readonly __brand: \'IssueKey\';\n};',
   },
@@ -6484,20 +6656,56 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type IssueList = ListResult;',
   },
   {
+    name: 'IssueMutation',
+    declaration: 'export type IssueMutation = Readonly<{\n    action: \'update\';\n    patch: IssueUpdatePatch;\n}> | Readonly<{\n    action: \'switch_state\';\n    to: string;\n    resolution?: string;\n    resolutionNote?: string;\n}> | Readonly<{\n    action: \'close\';\n    to?: string;\n    resolution?: string;\n    resolutionNote?: string;\n    comment?: string;\n}> | Readonly<{\n    action: \'comment\';\n    body: string;\n}> | Readonly<{\n    action: \'assignee\';\n    value: \'self\' | \'none\';\n}> | Readonly<{\n    action: \'link\';\n    type: LinkType;\n    target: IssueKey;\n    op: \'add\' | \'remove\';\n}>;',
+  },
+  {
+    name: 'IssueMutationOptions',
+    declaration: 'export interface IssueMutationOptions {\n    readonly expectedRevision?: number;\n    readonly ackConflict?: boolean;\n    readonly override?: boolean;\n}',
+  },
+  {
+    name: 'IssueMutationResult',
+    declaration: 'export interface IssueMutationResult {\n    readonly transaction: Transaction;\n    readonly comments?: readonly IssueComment[];\n}',
+  },
+  {
     name: 'IssueQuery',
     declaration: 'export type IssueQuery = Readonly<{\n    project?: string;\n    status?: string;\n    tag?: string;\n    tags?: readonly string[];\n    assignee?: string;\n    link?: Readonly<{\n        type: LinkType;\n        target: string;\n    }>;\n    includeClosed?: boolean;\n}>;',
+  },
+  {
+    name: 'IssueRead',
+    declaration: 'export interface IssueRead {\n    readonly issue: Issue;\n    readonly warnings: readonly string[];\n    readonly comments?: readonly IssueComment[];\n}',
+  },
+  {
+    name: 'IssueUpdatePatch',
+    declaration: 'export interface IssueUpdatePatch {\n    readonly summary?: string;\n    readonly issueType?: string;\n    readonly priority?: string;\n    readonly tags?: readonly string[];\n    readonly note?: string | null;\n    readonly body?: string;\n    readonly kbRefs?: readonly string[];\n}',
+  },
+  {
+    name: 'JiraCounts',
+    declaration: 'export interface JiraCounts {\n    readonly projects: number;\n    readonly knowledge: number;\n    readonly openIssues: number;\n    readonly readOnlyProjects: number;\n}',
   },
   {
     name: 'JiraError',
     declaration: 'export type JiraError = Readonly<{\n    code: ErrorCode;\n    message: string;\n    context?: ErrorContext;\n}>;',
   },
   {
+    name: 'JiraFilteredIssues',
+    declaration: 'export interface JiraFilteredIssues {\n    readonly issues: readonly Issue[];\n    readonly vocab?: Vocab;\n    readonly total: number;\n}',
+  },
+  {
     name: 'JiraResult',
     declaration: 'export type JiraResult<T> = Result<T, JiraError>;',
   },
   {
+    name: 'JiraSnapshot',
+    declaration: 'export interface JiraSnapshot {\n    readonly root: string;\n    readonly issues: readonly Issue[];\n    readonly vocab?: Vocab;\n    readonly report: DoctorReport;\n}',
+  },
+  {
     name: 'JiraStatus',
     declaration: 'export interface JiraStatus {\n    readonly root: string;\n    readonly machineId: string;\n    readonly host: string;\n    readonly pushEnabled: boolean;\n    readonly lastSync: SyncRecord | null;\n    readonly pending: boolean;\n}',
+  },
+  {
+    name: 'JiraSyncState',
+    declaration: 'export interface JiraSyncState {\n    readonly remote: boolean;\n    readonly dirty: boolean;\n}',
   },
   {
     name: 'JobAppendOptions',
@@ -6630,6 +6838,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'KbSearch',
     declaration: 'export type KbSearch = Readonly<{\n    hits: readonly KbHit[];\n    matched: number;\n    truncated: boolean;\n    topK: number;\n}>;',
+  },
+  {
+    name: 'KnowledgeDetail',
+    declaration: 'export interface KnowledgeDetail {\n    readonly entry: KnowledgeEntry;\n    readonly path: string;\n    readonly warnings: readonly string[];\n}',
   },
   {
     name: 'KnowledgeEntry',
@@ -6778,10 +6990,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'LocalizedText',
     declaration: 'export type LocalizedText = string | {\n    readonly en: string;\n    readonly [locale: string]: string;\n};',
-  },
-  {
-    name: 'LockEnvironment',
-    declaration: 'export type LockEnvironment = Readonly<{\n    now: () => number;\n    sleep: (ms: number) => Promise<void>;\n    random: () => number;\n}>;',
   },
   {
     name: 'LogExporterOptions',
@@ -8300,6 +8508,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionPromptValue {\n    readonly accepted: true;\n}',
   },
   {
+    name: 'SessionRecordFacts',
+    declaration: 'export interface SessionRecordFacts {\n    readonly tool: string;\n    readonly model?: string;\n    readonly toolEvidence?: string;\n}',
+  },
+  {
     name: 'SessionReferenceCandidate',
     declaration: 'export interface SessionReferenceCandidate {\n    sessionId: SessionId;\n    label: string;\n    displayTitle?: string;\n    cwd?: string;\n    sameWorkspace: boolean;\n    createdAt: number;\n}',
   },
@@ -8572,6 +8784,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SignInErrorCode = \'no-response\' | \'network\' | \'protocol\' | \'expired\' | \'storage\';',
   },
   {
+    name: 'SimilarPair',
+    declaration: 'export type SimilarPair = Readonly<{\n    left: string;\n    right: string;\n    score: number;\n    shared: boolean;\n}>;',
+  },
+  {
     name: 'SkillCandidate',
     declaration: 'export interface SkillCandidate extends SkillSummary {\n    readonly rank: number;\n    readonly locator: unknown;\n    readonly metadata?: Readonly<Record<string, unknown>>;\n}',
   },
@@ -8748,12 +8964,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface StorageForms {\n}',
   },
   {
-    name: 'Store',
-    declaration: 'export type Store = Readonly<{\n    files: FileStore;\n    machineId: string;\n    host: string;\n    lock: Readonly<{\n        timeoutMs: number;\n        staleMs: number;\n    }>;\n    env: LockEnvironment;\n}>;',
-  },
-  {
     name: 'StoreCallOptions',
-    declaration: 'export interface StoreCallOptions {\n    signal?: AbortSignal;\n}',
+    declaration: 'export interface StoreCallOptions {\n    signal?: AbortSignal;\n    scope?: StoreScope;\n}',
   },
   {
     name: 'StoreCreateResult',
@@ -8786,6 +8998,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'StoreRemoveResult',
     declaration: 'export interface StoreRemoveResult {\n    path: string;\n    kind: \'file\' | \'directory\';\n}',
+  },
+  {
+    name: 'StoreScope',
+    declaration: 'export type StoreScope = \'global\' | \'workspace\';',
   },
   {
     name: 'StoreSummary',
@@ -9012,8 +9228,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
+    name: 'TagCreateInput',
+    declaration: 'export interface TagCreateInput {\n    readonly name: string;\n    readonly description: string;\n    readonly alias?: string;\n}',
+  },
+  {
+    name: 'TagCreateResult',
+    declaration: 'export interface TagCreateResult {\n    readonly tag: unknown;\n    readonly committed: boolean;\n}',
+  },
+  {
     name: 'TagDef',
     declaration: 'export type TagDef = Readonly<{\n    name: string;\n    description?: string;\n    aliases?: readonly string[];\n}>;',
+  },
+  {
+    name: 'TagsLintReport',
+    declaration: 'export type TagsLintReport = Readonly<{\n    barelyUsed: readonly Readonly<{\n        name: string;\n        count: number;\n    }>[];\n    missingDescription: readonly string[];\n    similar: readonly SimilarPair[];\n    counts: Readonly<{\n        tags: number;\n        issues: number;\n    }>;\n}>;',
   },
   {
     name: 'TeamId',
