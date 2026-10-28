@@ -57,9 +57,13 @@ export interface PersonalityConfigInput {
 
 /** Configuration as the Loader passes it; every field is a live reference. */
 export interface Config {
+  /** Read the workspace PERSONALITY.md overlay. */
   workspaceOverlay: Volatile<boolean>
+  /** Managed-block budget in UTF-8 bytes. */
   maxBytes: Volatile<number>
+  /** Per-session automatic-learning budget. */
   autoLearn: Volatile<AutoLearnConfig>
+  /** History records kept per file. */
   historyLimit: Volatile<number>
 }
 

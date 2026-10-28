@@ -34,12 +34,19 @@ export interface MemoryConfigInput {
 
 /** Configuration as the Loader passes it; every field is a live reference. */
 export interface Config {
+  /** Turns kept verbatim; older turns enter the detail tier. */
   detail: Volatile<number>
+  /** Turns kept as one-line briefs. */
   brief: Volatile<number>
+  /** Turns after which entries leave the snapshot. */
   forget: Volatile<number>
+  /** Sessions kept with summaries in MEMORY.md. */
   sessions: Volatile<number>
+  /** Provider for the summary job; empty follows the routed model. */
   summarizationProvider: Volatile<string>
+  /** Model for the summary job; empty follows the routed model. */
   summarizationModel: Volatile<string>
+  /** Managed-block body budget in UTF-8 bytes. */
   maxBytes: Volatile<number>
 }
 

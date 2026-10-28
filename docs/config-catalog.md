@@ -1845,7 +1845,7 @@ export interface TlsConfig {
 ## `@deepseek-ai/dsh-jira-agent`
 
 - `inject`: `jira` · `tools` · `dafeiyu`
-- `source`: [`packages/jira/jira-agent/src/index.ts:55`](../packages/jira/jira-agent/src/index.ts)
+- `source`: [`packages/jira/jira-agent/src/index.ts:58`](../packages/jira/jira-agent/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -1865,7 +1865,7 @@ export type Config = Readonly<Record<never, never>>
 ## `@deepseek-ai/dsh-jira-service`
 
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/jira/jira-service/src/index.ts:66`](../packages/jira/jira-service/src/index.ts)
+- `source`: [`packages/jira/jira-service/src/index.ts:78`](../packages/jira/jira-service/src/index.ts)
 
 ```ts config-catalog
 /** What a `jira-service` row may configure: where the ledger is, who writes, whether to push. */
@@ -2469,28 +2469,26 @@ export interface ReconnectConfig {
 ## `@deepseek-ai/dsh-memory`
 
 - `inject`: `dafeiyu` · `dshStore` · `fs` · `sessionQuery` · `jobs` · `llm`
-- `source`: [`packages/uitstalie/memory/src/config.ts:12`](../packages/uitstalie/memory/src/config.ts)
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/uitstalie/memory/src/config.ts:36`](../packages/uitstalie/memory/src/config.ts)
 
 ```ts config-catalog
-/** Configuration as the Loader passes it; every field carries a schema default. */
+/** Configuration as the Loader passes it; every field is a live reference. */
 export interface Config {
-  /** Turn age at which a detail summary replaces the verbatim turn. */
-  detail?: number
-  /** Turn age at which a brief summary replaces the detail summary. */
-  brief?: number
-  /** Turn age at which the summary body leaves the context. */
-  forget?: number
-  /** Number of sessions kept with summaries in MEMORY.md. */
-  sessions?: number
-  /**
-   * Provider for the later summary job; empty follows the routed model of the
-   * turn that completes. Must be set together with {@link Config.summarizationModel}.
-   */
-  summarizationProvider?: string
-  /** Model for the later summary job; empty follows the routed model. */
-  summarizationModel?: string
-  /** Maximum managed-block body size in UTF-8 bytes. */
-  maxBytes?: number
+  /** Turns kept verbatim; older turns enter the detail tier. */
+  detail: Volatile<number>
+  /** Turns kept as one-line briefs. */
+  brief: Volatile<number>
+  /** Turns after which entries leave the snapshot. */
+  forget: Volatile<number>
+  /** Sessions kept with summaries in MEMORY.md. */
+  sessions: Volatile<number>
+  /** Provider for the summary job; empty follows the routed model. */
+  summarizationProvider: Volatile<string>
+  /** Model for the summary job; empty follows the routed model. */
+  summarizationModel: Volatile<string>
+  /** Managed-block body budget in UTF-8 bytes. */
+  maxBytes: Volatile<number>
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-memory -->
@@ -2695,30 +2693,28 @@ export interface Config {
 ## `@deepseek-ai/dsh-personality`
 
 - `inject`: `dafeiyu` · `dshStore` · `fs`
-- `source`: [`packages/uitstalie/personality/src/config.ts:43`](../packages/uitstalie/personality/src/config.ts)
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/uitstalie/personality/src/config.ts:59`](../packages/uitstalie/personality/src/config.ts)
 
 ```ts config-catalog
-/** Configuration as the Loader passes it; every field carries a schema default. */
+/** Configuration as the Loader passes it; every field is a live reference. */
 export interface Config {
-  /** Read and write style and preference entries in the workspace overlay; defaults to true. */
-  workspaceOverlay?: boolean
-  /** Managed-block body budget in UTF-8 bytes. */
-  maxBytes?: number
-  /** Per-session automatic-learning budget; defaults to {@link DEFAULT_AUTO_LEARN_BUDGET}. */
-  autoLearn?: AutoLearnConfig
-  /**
-   * Number of history records kept per file; the oldest are dropped when a
-   * write would exceed it. Defaults to {@link DEFAULT_PERSONALITY_HISTORY_LIMIT}.
-   */
-  historyLimit?: number
+  /** Read the workspace PERSONALITY.md overlay. */
+  workspaceOverlay: Volatile<boolean>
+  /** Managed-block budget in UTF-8 bytes. */
+  maxBytes: Volatile<number>
+  /** Per-session automatic-learning budget. */
+  autoLearn: Volatile<AutoLearnConfig>
+  /** History records kept per file. */
+  historyLimit: Volatile<number>
 }
 
 /** Raw auto-learning budget as the Loader passes it; every field carries a schema default. */
 export interface AutoLearnConfig {
   /** Automatic writes allowed per session. */
-  entries?: number
+  entries?: number | undefined
   /** Automatic-write bytes allowed per session. */
-  bytes?: number
+  bytes?: number | undefined
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-personality -->
@@ -3916,6 +3912,27 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-subagent-spawn-in-process -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-system-environment -->
+<a id="deepseek-aidsh-system-environment"></a>
+
+## `@deepseek-ai/dsh-system-environment`
+
+- `source`: [`packages/uitstalie/system-environment/src/index.ts:30`](../packages/uitstalie/system-environment/src/index.ts)
+
+```ts config-catalog
+/** Row configuration: the test seam for platform and environment. */
+export interface Config {
+  /** Pin the platform rules; defaults to the running host. */
+  platform?: SystemPlatform
+  /** Read environment values from this map instead of `process.env`. */
+  env?: Record<string, string>
+}
+
+/** The two path dialects this service speaks. */
+export type SystemPlatform = 'win32' | 'posix'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-system-environment -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-system-prompt -->
 <a id="deepseek-aidsh-system-prompt"></a>
 
@@ -5001,6 +5018,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-jira` | — | [`packages/jira/ui-jira/src/index.ts`](../packages/jira/ui-jira/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-jobs` | — | [`packages/client/ui-jobs/src/index.ts`](../packages/client/ui-jobs/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-layout` | — | [`packages/client/ui-layout/src/index.ts`](../packages/client/ui-layout/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-memory` | — | [`packages/uitstalie/ui-memory/src/index.ts`](../packages/uitstalie/ui-memory/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-message-feedback` | — | [`packages/client/ui-message-feedback/src/index.ts`](../packages/client/ui-message-feedback/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-model-selection` | — | [`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-models-dev` | — | [`packages/uitstalie/ui-models-dev/src/index.ts`](../packages/uitstalie/ui-models-dev/src/index.ts) |
@@ -5084,7 +5102,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-terminal` | — | [`packages/terminal/terminal/src/index.ts`](../packages/terminal/terminal/src/index.ts) |
 | `@deepseek-ai/dsh-tool-call-timeout-policy` | `tools` | [`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts) |
 | `@deepseek-ai/dsh-tool-cordis` | `tools` · `cordisInspect` | [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts) |
-| `@deepseek-ai/dsh-tool-dsh-store` | `dshStore` · `tools` | [`packages/uitstalie/tool-dsh-store/src/index.ts`](../packages/uitstalie/tool-dsh-store/src/index.ts) |
+| `@deepseek-ai/dsh-tool-dsh-store` | `dafeiyu` · `dshStore` · `tools` | [`packages/uitstalie/tool-dsh-store/src/index.ts`](../packages/uitstalie/tool-dsh-store/src/index.ts) |
 | `@deepseek-ai/dsh-tool-executor-native` | `tools` | [`packages/core/tool-executor-native/src/index.ts`](../packages/core/tool-executor-native/src/index.ts) |
 | `@deepseek-ai/dsh-tool-schedule` | `tools` | [`packages/schedule/tool-schedule/src/index.ts`](../packages/schedule/tool-schedule/src/index.ts) |
 | `@deepseek-ai/dsh-tool-subagent-control` | `tools` · `subagents` · `agents` | [`packages/subagent/tool-subagent-control/src/index.ts`](../packages/subagent/tool-subagent-control/src/index.ts) |
@@ -5171,6 +5189,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-official-bundles` | — | [`packages/util/official-bundles/src/index.ts`](../packages/util/official-bundles/src/index.ts) |
 | `@deepseek-ai/dsh-output-retention` | — | [`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts) |
 | `@deepseek-ai/dsh-package-manifest` | — | [`packages/util/package-manifest/src/index.ts`](../packages/util/package-manifest/src/index.ts) |
+| `@deepseek-ai/dsh-persona-card` | — | [`packages/uitstalie/persona-card/src/index.ts`](../packages/uitstalie/persona-card/src/index.ts) |
 | `@deepseek-ai/dsh-personalized-recommendations` | — | [`packages/experimental/personalized-recommendations/src/index.ts`](../packages/experimental/personalized-recommendations/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-detail` | — | [`packages/util/plugin-detail/src/index.ts`](../packages/util/plugin-detail/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-market-index` | — | [`packages/util/plugin-market-index/src/index.ts`](../packages/util/plugin-market-index/src/index.ts) |

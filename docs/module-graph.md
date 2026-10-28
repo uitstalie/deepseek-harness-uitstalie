@@ -486,6 +486,7 @@ flowchart TD
     pkg_llm_plus["llm-plus"]
     pkg_memory["memory"]
     pkg_models_dev["models-dev"]
+    pkg_persona_card["persona-card"]
     pkg_personality["personality"]
     pkg_store_atom["store-atom"]
     pkg_system_environment["system-environment"]
@@ -1678,6 +1679,7 @@ flowchart TD
 | [`dafeiyu`](../packages/uitstalie/dafeiyu) | `uitstalie` | — |
 | [`home-backup`](../packages/uitstalie/home-backup) | `uitstalie` | — |
 | [`memory`](../packages/uitstalie/memory) | `uitstalie` | — |
+| [`persona-card`](../packages/uitstalie/persona-card) | `uitstalie` | — |
 | [`store-atom`](../packages/uitstalie/store-atom) | `uitstalie` | — |
 | [`system-environment`](../packages/uitstalie/system-environment) | `uitstalie` | — |
 | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | `uitstalie` | — |

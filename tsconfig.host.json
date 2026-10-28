@@ -587,6 +587,7 @@
     // END uitstalie-k3
     // BEGIN uitstalie-k3, 2026/10/22, DH-7, 注册 personality 能力提供者进 Host 聚合程序
     { "path": "./packages/uitstalie/personality" },
+    { "path": "./packages/uitstalie/persona-card" },
     // END uitstalie-k3
     // BEGIN uitstalie-deepseek-flash, 2026/10/27, DH-302, 注册 personality 提案设置页 host 面进 Host 聚合程序
     { "path": "./packages/uitstalie/ui-personality/tsconfig.host.json" },

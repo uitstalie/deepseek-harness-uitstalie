@@ -34,6 +34,7 @@ Each row names the package's contribution and the `ctx` key or surface it attach
 | [`memory`](memory/README.md) | Memory capability provider: fixed prompt section, snapshot, turn-summary job, and the `memory_*` tools | registers on `ctx.dafeiyu` |
 | [`models-dev`](models-dev/README.md) | models.dev catalog service: startup fetch, disk-cache fallback, route defaults, and extra request params | `ctx.modelsDev` |
 | [`personality`](personality/README.md) | Personality capability provider: global profile with workspace overlay, `personality_learn`, and `/personality` review | registers on `ctx.dafeiyu` |
+| [`persona-card`](persona-card/README.md) | Role-play character card format: pure `persona/v1` validator/renderer and a safe Character Card V2/V3 JSON importer (not the deployment persona preset) | no `ctx` key |
 | [`store-atom`](store-atom/README.md) | `.dsh` store atom: the `dshStore` base interface with project-root discovery, path confinement, namespace authoring checks, workspace rules discovery, and version-guarded reads and writes | `ctx.dshStore` |
 | [`system-environment`](system-environment/README.md) | Host environment atom: platform facts, path spelling and comparison, environment lookup, and the user and Harness home directories | `ctx.systemEnvironment` |
 | [`tool-dsh-store`](tool-dsh-store/README.md) | Model-facing store tool and the read-only rules Remote over the store atom | `ctx.dshStore` consumer |
@@ -48,6 +49,7 @@ Each row names the package's contribution and the `ctx` key or surface it attach
 ## Related documentation
 
 - [Memory capability design](../../goal/memory.md) — the forgetting window, `.dsh/memory` storage, summary tiers, and tools behind `dsh-memory`.
+- [Role-play persona card design](../../goal/persona.md) — the assistant-side card format, safe CCv2/V3 import and the boundary against deployment personas.
 - [Personality profile design](../../goal/personality.md) — the global profile, workspace overlay, learning signals, and drift review behind `dsh-personality`.
 - [Capability organizer design](../../goal/dafeiyu.md) — the registry, enable gate, and wiring contract `dafeiyu` defines for its providers.
 - [Rules and instruction sources](../../goal/rules.md) — how `.dsh/rules` reaches the model through the instruction seam.

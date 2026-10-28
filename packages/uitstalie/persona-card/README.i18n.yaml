@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/persona-card/README.md
+/:
+  en: 8ed4e1227a9ca1ec
+  zh: 5ea893975062c7eb
+/deepseek-ai-dsh-persona-card:
+  en: a95b9988337e9c2f
+  zh: 39582ca627c72efb
+/deepseek-ai-dsh-persona-card/summary:
+  en: c0ea209ee09eff10
+  zh: 336209eb4b2b062c
+/deepseek-ai-dsh-persona-card/table-of-contents:
+  en: 783643188ce556ce
+  zh: 783643188ce556ce
+/deepseek-ai-dsh-persona-card/use-this-package:
+  en: e9257cc282bbc918
+  zh: 8fe9f2a9f5c7cce8
+/deepseek-ai-dsh-persona-card/use-this-package/card-shape:
+  en: 2e32a6b76a010c31
+  zh: 6cc51d67431c9316
+/deepseek-ai-dsh-persona-card/understand-the-implementation:
+  en: 804547726cd387a1
+  zh: eb64e86558c62cf9
+/deepseek-ai-dsh-persona-card/dev-note:
+  en: a3fb52064691f58e
+  zh: d4d80f78643bf7f4
+/deepseek-ai-dsh-persona-card/known-limitations-and-deferred-work:
+  en: 99e7e3b63f7c9437
+  zh: 382b41e23ba8aba5
