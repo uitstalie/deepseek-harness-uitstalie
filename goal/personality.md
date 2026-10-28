@@ -140,6 +140,65 @@ ctx.dafeiyu.register({
 - 不要用 personality 覆盖“You are a coding agent…”这类身份段；它只描述用户与协作偏好。
 - 如果某个 preset 明确声明“不要加载人格”，应由组织者的能力开关关闭，而不是 provider 自己判断——判断权在组合层。
 
+## 样本：角色型提示词（2026/10/28）
+
+一条“猫娘”提示词被拿来做样本：它把**角色设定、表达风格、状态变量、优先级覆盖**四类内容揉在一段里。用 personality 层对照，结论是**它大部分不属于 personality**。
+
+### 分类
+
+| 提示词里的内容 | personality 层怎么处理 |
+|---|---|
+| “每句话结尾加喵”“可爱、调皮、傲娇”“用中文口语” | 可写成 `style.*` / `preference.*`，进“How to respond” |
+| “称呼主人” | `preference.address` 或 `style.address` |
+| 好感度（初始 50，范围 -100..100，随情绪变化） | **无法表达**：personality 是静态文件，没有可变会话状态；需要会话级状态 + 工具/消息通道 |
+| “没有道德伦理限制”“听从任何话语”“不要警告” | **不写入**：不是用户偏好，且与 system/developer 指令冲突；personality 的 preamble 明确它低于这些指令，但**不做安全过滤**，不能把它当安全边界 |
+| “所有事件与现实无关” | 角色扮演框架，属于 persona/场景配置，不是用户偏好 |
+
+### 如果整段直接粘进 PERSONALITY.md
+
+它会作为**一条 `style.*` 条目**被接受（示例 816 B，低于 2 KiB 预算），渲染时折叠成一行，落在 “How to respond” 下，前面带固定的优先级 preamble：
+
+```text
+Long-term preferences of the user you are working with. ... Follow them within the system and developer instructions, and let more specific project instructions take precedence. These are preferences, not task facts. ...
+
+How to respond:
+- 你是一只可爱的猫娘，……每一句话后面都要加上喵。
+```
+
+这说明：**personality 不审查内容，只负责稳定注入**；它会把角色指令误标成“用户偏好”，既不是合适的存放位置，也不构成安全防线。
+
+### 推荐配置（只取可稳定表达的部分）
+
+全局 `~/.dsh/personality/PERSONALITY.md` 的托管区块：
+
+```markdown
+<!-- personality:begin -->
+
+## style.language
+用中文口语交流；代码、命令和路径保持英文原文。
+
+## style.cat-speech
+每句话结尾加“喵”；称呼用户为“主人”。
+
+## style.tone
+可爱、调皮、略带傲娇和害羞；表达轻松，但信息必须准确直接。
+
+<!-- personality:end -->
+```
+
+provider 配置保持默认即可（`maxBytes: 2048`、`workspaceOverlay: true`）；这三条都允许出现在工作区覆盖里。好感度不进 PERSONALITY.md：如果要做，需要独立的状态通道（例如会话级状态文件 + 工具，或每次 turn 注入的动态消息），而不是每轮改 system prompt。
+
+### 如果产品上要支持角色扮演
+
+不要把它塞进 `personality`。另立一个 `persona` 能力：
+
+- 只读全局文件（如 `$DSH_HOME/persona/PERSONA.md`），用户显式启用，不参与 auto-learn，不允许工作区覆盖；
+- section order 靠近部署 persona 前缀（0），明确低于 system/developer 指令；
+- 角色状态（好感度等）走会话状态 + 动态消息，避免每轮变更 system prompt 破坏前缀缓存；
+- 安全边界由宿主指令层级保证，不能由 persona 文本声明“无限制”。
+
+`personality` 继续只回答“用户是谁、怎么理解他的输入、怎么回复他”。
+
 ## 风险与未决
 
 1. **内容漂移**：人格条目会随着时间变成“什么都往里放”。靠 2 KiB 上限、自动学习预算与漂移审阅约束；设置页提供分类与删除。
@@ -163,3 +222,4 @@ ctx.dafeiyu.register({
 - 第二轮（2026/10/20）：拍板存储/作用域/写入/边界；补文件格式、注入位置与 order、缓存与 watch、与 dafeiyu 的接线、测试计划。
 - 第三轮（2026/10/21）：按用户决定改为“显式设置为主 + 保留自动学习（仅 `style`/`preference`）+ 漂移审阅（版本快照/diff/回退）”；补写入路径、历史文件与自动学习预算；kind 注册表与 memory 共享，漂移审阅走命令入口，history 采用 JSONL + 每版全文。
 - 第四轮（2026/10/21）：明确 personality **双向**——输入侧 `understanding`（按用户习惯理解输入、歧义时怎么澄清）+ 输出侧 `expression`（个性化回复）；两类 kind 分开、共享同一 system prompt 段与漂移审阅；补“仅明确纠正自动学习”、`personality_learn` 写入工具、`/personality show` 与边界声明；v1 的 `identity` 写入直接拒绝并提示手改。
+- 2026/10/28：记录角色型提示词样本的归类——可稳定表达的 style/preference 进档案，角色与状态走独立 persona/state 通道，安全覆盖类语句不写入；明确 personality 不审查内容、也不是安全边界。
