@@ -168,6 +168,15 @@ accuracy and safety policy above the role. Do not let the character speak for th
 - 自动从对话学习 persona；persona 只能显式选择/导入/手改。
 - 角色专属 lorebook 的激活；本版只保留字段。
 
+## 运行时第一切片（2026/10/29，DH-405）
+
+`@deepseek-ai/dsh-persona-card` 现在同时是运行时 provider：
+
+- 读取 `$DSH_HOME/persona/*.md`（YAML frontmatter + 正文），用 `parsePersonaFile` 校验。
+- row 配置 `{ active: <id>, maxBytes }`；`active` 为空则不注入。
+- 注册 dafeiyu 能力 `persona`（`enabledByDefault: false`），`scope: 'all'`，一个 `persona` system prompt 段，order 50。
+- 卡只在能力激活时读取一次；没有 watcher、没有 per-session 选择、没有 `/persona` 命令。这些在 DH-406。
+
 ## 待定
 
 1. 选择入口：命令、设置页、profile 配置三选一还是都做？

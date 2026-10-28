@@ -9,14 +9,14 @@
   en: a95b9988337e9c2f
   zh: 39582ca627c72efb
 /deepseek-ai-dsh-persona-card/summary:
-  en: c0ea209ee09eff10
-  zh: 336209eb4b2b062c
+  en: 9f09ec858a817851
+  zh: d7ea17375473dc73
 /deepseek-ai-dsh-persona-card/table-of-contents:
   en: 783643188ce556ce
   zh: 783643188ce556ce
 /deepseek-ai-dsh-persona-card/use-this-package:
-  en: e9257cc282bbc918
-  zh: 8fe9f2a9f5c7cce8
+  en: 78eb3f16a568cbdb
+  zh: d196f090ff69dd33
 /deepseek-ai-dsh-persona-card/use-this-package/card-shape:
   en: 2e32a6b76a010c31
   zh: 6cc51d67431c9316
@@ -26,6 +26,24 @@
 /deepseek-ai-dsh-persona-card/dev-note:
   en: a3fb52064691f58e
   zh: d4d80f78643bf7f4
+/deepseek-ai-dsh-persona-card/model-experience:
+  en: 215e7ba838619b7b
+  zh: 215e7ba838619b7b
+/deepseek-ai-dsh-persona-card/model-experience/the-persona-system-prompt-section:
+  en: 3d49484a633dc228
+  zh: 62a03bfcaeab83aa
+/deepseek-ai-dsh-persona-card/model-experience/the-persona-system-prompt-section/what-the-model-sees:
+  en: 6b7ac5786b2d5a7c
+  zh: 84d7f127373c0a6c
+/deepseek-ai-dsh-persona-card/model-experience/the-persona-system-prompt-section/what-the-model-sees/the-section-layout:
+  en: 43206fa1627063ca
+  zh: 43206fa1627063ca
+/deepseek-ai-dsh-persona-card/model-experience/the-persona-system-prompt-section/token-effect:
+  en: cab96ab39e6f9520
+  zh: abe715f8ac8b147a
+/deepseek-ai-dsh-persona-card/model-experience/the-persona-system-prompt-section/kv-cache-effect:
+  en: 81579ac8a26abfae
+  zh: 2832e98d5bfa9db2
 /deepseek-ai-dsh-persona-card/known-limitations-and-deferred-work:
-  en: 99e7e3b63f7c9437
-  zh: 382b41e23ba8aba5
+  en: 122b112bf00be6b0
+  zh: 4eacbeb65d496afc

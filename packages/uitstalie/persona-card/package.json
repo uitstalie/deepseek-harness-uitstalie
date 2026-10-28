@@ -23,5 +23,13 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-dafeiyu": "workspace:*",
+    "@deepseek-ai/dsh-home-paths": "workspace:*",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "yaml": "^2.4.2"
   }
 }

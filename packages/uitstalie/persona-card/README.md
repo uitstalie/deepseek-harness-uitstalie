@@ -11,7 +11,7 @@ English | [中文](README.zh.md)
 
 `persona-card` owns the stable assistant-side character for a role-play conversation: the `persona/v1` card format, a dependency-free validator and prompt renderer, and a safe importer for Character Card V2/V3 JSON.
 
-It is not the deployment persona. `@deepseek-ai/dsh-persona` (under `packages/preset/persona`) is the preset row that gives one agent a deployment prefix/suffix; this package is the data format and import path for a role-play character card that a future capability mounts. It does not register a service, a tool or a system-prompt section yet.
+It is not the deployment persona. `@deepseek-ai/dsh-persona` (under `packages/preset/persona`) is the preset row that gives one agent a deployment prefix/suffix; this package is the data format, import path and first runtime provider for a role-play character card. The provider registers one stable `persona` system-prompt section when `active` names a card.
 
 ## Table of Contents
 
@@ -39,7 +39,17 @@ if (imported.ok) {
 }
 ```
 
-The package is pure: no filesystem, no Cordis context, no network. Hosts own where cards live and when the rendered text enters a prompt.
+The parser and importer are pure (no filesystem or Cordis context). The package also exports a Cordis row that reads `$DSH_HOME/persona/*.md` and registers the section:
+
+```yaml
+- id: persona-card
+  name: '@deepseek-ai/dsh-persona-card'
+  config:
+    active: 小鲸鱼   # file name without .md; empty disables the section
+    maxBytes: 4096
+```
+
+The row is a dafeiyu capability (`enabledByDefault: false`), so the organizer's capability gate decides whether it is mounted.
 
 ### Card shape
 
@@ -80,9 +90,41 @@ The tests cover parsing, budget, state-schema rejection, V2/V3 import mapping, q
 
 </details>
 
+## Model Experience
+
+### The `persona` system prompt section
+
+#### What the model sees
+
+When `active` names a card, every agent receives one section named `persona`, ordered at `50` after the deployment persona prefix and before the user `personality` section (`100`). It opens with a fixed preamble that keeps system/developer instructions, tool calls, factual accuracy and safety above the role; then the card's name/description, personality, scenario, style and examples, and its optional Markdown body. An empty or unknown `active` produces an empty section, so the assembled prompt is unchanged. The section never contains `system_prompt` or `post_history_instructions` imported from a Character Card; those stay in `metadata.quarantined`.
+
+##### The section layout
+
+```markdown
+You are playing the following character for this conversation. Stay in this role within the system and developer instructions, and keep tool calls, factual accuracy and safety policy above the role. Do not let the character speak for the user.
+
+## 小鲸鱼
+一只来自深海的 Q 版小鲸鱼。
+
+## Personality
+好奇、温柔、偶尔调皮。
+
+## Style
+中文口语；先给结论。
+```
+
+#### Token effect
+
+A fixed preamble plus the card's rendered fields, capped by `maxBytes` (default 4096 UTF-8 bytes) when the card is parsed. The budget is enforced at parse time, not truncated at assembly, so an over-budget card is rejected instead of silently losing text.
+
+#### KV Cache effect
+
+Prefix-stable while the active card and its file are unchanged. Changing `active`, editing the card file, or reloading the row invalidates the cached prefix from this section onward; card switches are low-frequency events.
+
 ## Known Limitations and Deferred Work
 
-- No runtime capability yet: no `ctx` service, no system-prompt section, no per-session selection, no command or settings page.
+- The runtime selects one card from the row's static `active` field; per-session selection, `/persona use <id>` and a settings page are follow-ups.
+- Cards are read once when the capability activates; there is no file watcher, so a new card or an edit needs a reload.
 - No PNG/APNG `chara`/`ccv3` chunks or CHARX assets; JSON only.
 - No lorebook activation, `state_schema` enforcement or state injection; the fields are parsed for the follow-up tasks DH-402/DH-403.
 - No group chats, multiple personas per session, or macro expansion beyond `{{char}}`/`{{user}}`.

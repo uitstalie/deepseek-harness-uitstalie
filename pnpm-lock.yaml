@@ -17138,10 +17138,25 @@ importers:
         version: link:../../typert/protocol
 
   packages/uitstalie/persona-card:
-    devDependencies:
+    dependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-dafeiyu':
+        specifier: workspace:*
+        version: link:../dafeiyu
+      '@deepseek-ai/dsh-home-paths':
+        specifier: workspace:*
+        version: link:../../util/home-paths
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:*
+        version: link:../../core/system-prompt
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      yaml:
+        specifier: ^2.4.2
+        version: 2.9.0
 
   packages/uitstalie/personality:
     dependencies:

@@ -17,3 +17,6 @@ export type {
 } from './types.ts'
 export { parsePersonaCard, renderPersonaText } from './card.ts'
 export { importCharacterCard } from './import.ts'
+
+export { PERSONA_CARDS_DIRECTORY, PERSONA_CARD_SECTION_NAME, PERSONA_CARD_SECTION_ORDER, Config, apply, inject, loadPersonaCards, name, parsePersonaFile } from './provider.ts'
+export type { PersonaCards } from './provider.ts'
