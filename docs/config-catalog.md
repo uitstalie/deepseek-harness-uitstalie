@@ -2687,6 +2687,26 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-persona -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-persona-card -->
+<a id="deepseek-aidsh-persona-card"></a>
+
+## `@deepseek-ai/dsh-persona-card`
+
+- `inject`: `dafeiyu`
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/uitstalie/persona-card/src/provider.ts:36`](../packages/uitstalie/persona-card/src/provider.ts)
+
+```ts config-catalog
+/** Row configuration, accepting live references or plain test values. */
+export interface Config {
+  /** Card id (file name without `.md`); empty disables the section. */
+  readonly active?: Volatile<string> | string | undefined
+  /** Injection budget for one card, in UTF-8 bytes. */
+  readonly maxBytes?: Volatile<number> | number | undefined
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-persona-card -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-personality -->
 <a id="deepseek-aidsh-personality"></a>
 
@@ -5189,7 +5209,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-official-bundles` | — | [`packages/util/official-bundles/src/index.ts`](../packages/util/official-bundles/src/index.ts) |
 | `@deepseek-ai/dsh-output-retention` | — | [`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts) |
 | `@deepseek-ai/dsh-package-manifest` | — | [`packages/util/package-manifest/src/index.ts`](../packages/util/package-manifest/src/index.ts) |
-| `@deepseek-ai/dsh-persona-card` | — | [`packages/uitstalie/persona-card/src/index.ts`](../packages/uitstalie/persona-card/src/index.ts) |
 | `@deepseek-ai/dsh-personalized-recommendations` | — | [`packages/experimental/personalized-recommendations/src/index.ts`](../packages/experimental/personalized-recommendations/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-detail` | — | [`packages/util/plugin-detail/src/index.ts`](../packages/util/plugin-detail/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-market-index` | — | [`packages/util/plugin-market-index/src/index.ts`](../packages/util/plugin-market-index/src/index.ts) |

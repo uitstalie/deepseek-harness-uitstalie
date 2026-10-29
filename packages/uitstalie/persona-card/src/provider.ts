@@ -27,13 +27,16 @@ export const inject = ['dafeiyu']
 /** The directory under `$DSH_HOME` that holds `*.md` cards. */
 export const PERSONA_CARDS_DIRECTORY = 'persona'
 
-/** The prompt section name and order: after the deployment prefix, before `personality`. */
+/** The system-prompt section name: after the deployment prefix, before `personality`. */
 export const PERSONA_CARD_SECTION_NAME = 'persona'
+/** The section order: after the deployment prefix, before `personality`. */
 export const PERSONA_CARD_SECTION_ORDER = 50
 
 /** Row configuration, accepting live references or plain test values. */
 export interface Config {
+  /** Card id (file name without `.md`); empty disables the section. */
   readonly active?: Volatile<string> | string | undefined
+  /** Injection budget for one card, in UTF-8 bytes. */
   readonly maxBytes?: Volatile<number> | number | undefined
 }
 

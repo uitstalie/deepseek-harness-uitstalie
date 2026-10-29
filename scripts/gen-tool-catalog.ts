@@ -60,6 +60,8 @@ import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 // BEGIN uitstalie-k3, 2026/10/12, task28, 分支自有工具包 dsh-tool-dsh-store 此前未进目录清单，导致 verify-tool-catalog 直接失败
 import * as ToolDshStore from '@deepseek-ai/dsh-tool-dsh-store'
+import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
+import * as StoreAtom from '@deepseek-ai/dsh-store-atom'
 // END uitstalie-k3
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
@@ -394,7 +396,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
     dir: 'tool-dsh-store',
     source: 'packages/uitstalie/tool-dsh-store/src/tool.ts',
     requires: [
-      'ctx.tools', 'ctx.fs', 'an owning Agent session at execution time',
+      'ctx.tools', 'ctx.fs', 'ctx.dafeiyu', 'an owning Agent session at execution time',
       'ctx.sandboxPolicy in a confining composition',
     ],
     writes: [
@@ -402,10 +404,20 @@ const TOOL_PACKAGES: ToolPackage[] = [
       'fs/observed after query presence/absence or successful mutation', 'tool/result',
     ],
     async mount(ctx) {
+      // The capability organizer wires this tool onto an Agent, so the harvest
+      // boots one agent instead of mounting the plugin alone (a lone plugin
+      // registers no tool and the completeness assertion rightly fails).
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(Dafeiyu)
+      await ctx.plugin(StoreAtom)
       await ctx.plugin(ToolDshStore)
+      const session = ctx.sessions.create(SessionId('tool-catalog-store'))
+      const agent = { id: session.id, session, status: 'idle', ctx } as Agent
+      ctx.emit('agent/created', { agent, source: 'startup' })
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
     },
     note:
-      'One workspace-scoped store tool over `<projectRoot>/.dsh`: the plugin creates that root on demand for a session that may write (a read-only session is left untouched and retried after its mode changes), and it mounts a read-only Remote namespace for the Web sidebar whenever a workspace registry is composed. Execution needs an owning Agent session; the project root is discovered the same way the skill filesystem discovers it.',
+      'One workspace-scoped store tool over `<projectRoot>/.dsh`: the plugin creates that root on demand for a session that may write (a read-only session is left untouched and retried after its mode changes), and it mounts a read-only Remote namespace for the Web sidebar whenever a workspace registry is composed. The model face is the `store` dafeiyu capability: `capabilities.store.enabled=false` removes the tool without unloading the store. Execution needs an owning Agent session; the project root is discovered the same way the skill filesystem discovers it.',
   },
   // END uitstalie-k3
   {
