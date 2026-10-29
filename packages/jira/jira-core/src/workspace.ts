@@ -77,6 +77,11 @@ export const workspaceRemotes = async (
 /**
  * Resolve a checkout against a store. **Read-only**: nothing is created here, even when the answer
  * is "this would be a new project" (decision 38, §4.10).
+ * @param store - the ledger store whose projects are candidates.
+ * @param cwd - the checkout to resolve.
+ * @param run - git runner used to read the checkout's remotes.
+ * @param platform - platform whose path rules normalize the compared remotes.
+ * @returns the workspace binding, or a failure when the checkout matches no project.
  */
 export const resolveWorkspace = async (
   store: Store,
