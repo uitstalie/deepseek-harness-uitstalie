@@ -31,7 +31,7 @@ kind: "package-group"
 | [`dafeiyu`](dafeiyu/README.zh.md) | 能力组织者：注册表、启用门、按 agent（智能体）接线、轮次分发与失败隔离 | `ctx.dafeiyu` |
 | [`home-backup`](home-backup/README.zh.md) | 把 sessions、storages 与 profile 配置定时快照到 `$DSH_HOME` 之外，并保留有限份数 | 宿主定时器；不注册 `ctx` 键 |
 | [`llm-plus`](llm-plus/README.zh.md) | 自有的多协议 LLM 适配器，带 OAuth 登录流与热更新的路由 | 注册到 `ctx.llm` |
-| [`memory`](memory/README.zh.md) | 记忆能力提供者：固定提示词段、快照、轮次摘要任务与 `memory_*` 工具 | 注册到 `ctx.dafeiyu` |
+| [`memory`](memory/README.zh.md) | 记忆能力提供者：固定提示词段、快照、轮次摘要任务、`memory_*` 工具与 `/memory` 维护命令 | 注册到 `ctx.dafeiyu` |
 | [`models-dev`](models-dev/README.zh.md) | models.dev 目录服务：启动拉取、磁盘缓存回落、路由默认值与额外请求参数 | `ctx.modelsDev` |
 | [`personality`](personality/README.zh.md) | 人格能力提供者：全局档案加工作区覆盖、`personality_learn` 与 `/personality` 审阅 | 注册到 `ctx.dafeiyu` |
 | [`persona-card`](persona-card/README.zh.md) | 角色扮演角色卡格式：纯 `persona/v1` 校验/渲染器、安全的 Character Card V2/V3 JSON 导入器，以及带 `/persona` 选择与卡目录 watcher 的 per-session provider（不是部署 persona 预设） | 注册到 `ctx.dafeiyu` |

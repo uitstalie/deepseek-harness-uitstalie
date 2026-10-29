@@ -59,7 +59,7 @@ kind: "package-reference"
 提供者是函数插件：`src/index.ts` 导出 `name`、`inject`、`Config` 与 `apply`，并只注册一个 `contractVersion: 2`、`id: 'memory'` 的能力，带 `label: 'Memory'` 与一句能力列表用的 description。
 
 - `src/config.ts` 持有 schemastery `Config` 与显式的 `resolveConfig(config): MemorySettings` 步骤。默认值只在那里补一次，两条跨字段规则（阈值递增、摘要模型成对）在注册之前检查。
-- `src/memory-file.ts` 是 MEMORY.md 仓库与文件侧迁移 pass。文件的 YAML frontmatter 存机器状态（`version`、`window`，以及每个会话的 `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`）；`<!-- memory:begin -->` 与 `<!-- memory:end -->` 之间的托管区块按 `## <sessionId> · turn N–M（tier）` 标题分组，每行一个 `- [kind] text` 条目，条目用行尾 `<!-- turn: N -->` 标注所属 turn，并可再带一个标签后缀 `<!-- tags: a, b -->`。托管区块之外的手写内容逐字节原样往返；托管区块归提供者所有，写入时整体重写。
+- `src/memory-file.ts` 是 MEMORY.md 仓库与文件侧迁移 pass。文件的 YAML frontmatter 存机器状态（`version`、`window`、`summaryPaused`，以及每个会话的 `id`/`cwd`/`updatedAt`/`turns`/`forgottenThrough`）；`<!-- memory:begin -->` 与 `<!-- memory:end -->` 之间的托管区块按 `## <sessionId> · turn N–M（tier）` 标题分组，每行一个 `- [kind] text` 条目，条目用行尾 `<!-- turn: N -->` 标注所属 turn，并可再带一个标签后缀 `<!-- tags: a, b -->`。手改过的条目额外带 `<!-- source: manual -->` 与 `<!-- version: N -->`。托管区块之外的手写内容逐字节原样往返；托管区块归提供者所有，写入时整体重写。`editMemorySummary` / `revertMemorySummary` 重写单个条目的文本，每次变化都记录到 `MEMORY.history.json` 旁车文件（最多 100 条）。
 - `src/window.ts` 是纯规划器。它按最新完成的 turn 计算每个 turn 的相对年龄，返回应转为 brief 或遗忘的区块，并报告 frontmatter 的窗口值，不触碰存储、模型或 surface。
 - `src/checkpoint.ts` 构造 memory checkpoint 消息，并用它替换 live surface 上的一段区间。来源是 memory 生产者的 `form: 'notice'` 加 `window: { from, to, tier }` 字段；这既把它与 snapshot 区分开，也让重启后的提供者找到自己的上一个节点。
 - `src/prompt.ts` 持有唯一的固定提示词段：名字 `memory`，顺序 `2350`（在 `2300` 的 session-query 工具与 `2400` 的 goal 工具之间），文本静态，不随 turn 或 agent 变化。
@@ -69,6 +69,8 @@ kind: "package-reference"
 - `src/read.ts` 提供 `memory_read`：目标授权、turn 与 seq 解析、邻接事件扩展，以及带上限的对话面渲染。
 
 写入带版本守卫。`appendMemoryEntry` 先读文件与其版本，拼出下一版文本，再带 `expected: version` 写入；存储层把它映射为文件系统的 `replaceIfVersion` 守卫。冲突写入表现为 `FS_STALE_VERSION`；追加会重读一次并重试，第二次冲突直接抛出，旧文件保持不变。托管正文字节预算在写入前按完整渲染结果校验，因此超限追加失败且不碰文件。`appendTurnSummary` 用同一守卫追加一个 turn 的 detail 条目：在 frontmatter 记录该 turn 的 seq 区间与 tier，并在 turn 连续时延长末尾的 detail 区块。
+
+`/memory` 命令是人工维护面：组合了命令注册表时就会注册。`summaries` 列出本会话的区块、turn 区间、tier、来源与版本；`pause` / `resume` 写 frontmatter 的 `summaryPaused`，暂停后每个完成的 turn 都直接跳过，不写文件也不追加 notice；`edit <turn> <text>` 替换该 turn 的条目文本（归并为一行，空文本或超预算拒绝），并记录 `source: manual` 与递增的 revision；`revert <turn>` 恢复最近一次编辑前的文本。编辑与回退都追加到 `MEMORY.history.json`，因此模型写的摘要不是最终版本。窗口调度与 snapshot/checkpoint 消息不受影响：编辑后的条目在下一次 snapshot 或 checkpoint 渲染时到达模型。
 
 摘要 job 由 `onTurnEnd` 触发，组织者只会对 root agent 的 `completed` turn 调用它。提供者启动一个 `kind: 'memory'`、owner 为会话、label 为 `memory summary` 的 job；它运行期间，更新的完成 turn 只更新一个 pending 输入，本次 pass 结束后只再跑一次覆盖最新 turn 的 pass，因此同一会话的 pass 永不重叠。job 用 `ctx.jobs.wait` 认领自己的结算，所以这个内部 job 不会作为 `tool-jobs` 完成通知到达模型，也不会唤醒空闲 owner；结算后提供者删除该记录，因此 `job_list` 不会累积内部任务行。缺少注册表，或注册表没有已附加的 controller 时，只记 debug 日志并跳过该 turn，不让 turn 失败。
 
@@ -184,6 +186,9 @@ brief checkpoint 用最多 160 字符加 `- [kind]` 前缀替换原始 turn；�
 - **搜索与读取都只覆盖本工作区** — `memory_search` 的会话半边按 `cwd` 完全相等过滤，`memory_read` 拒绝 header `cwd` 与调用者不一致的目标，记忆半边读本工作区自己的文件，因此都到不了其他工作区的历史。
 - **手改托管区块会明确报错** — 解析器拒绝格式错误的标题或条目行而不是猜测；`memory_search` 记录解析失败并保留会话半边，写入则把错误报给调用方。
 - **多进程写入只重试一次** — 两个进程写同一工作区会竞争；失败方重读并重试一次，随后带旧文件原样失败。没有跨进程锁。
+- **暂停是工作区级** — `summaryPaused` 标志在同一个 MEMORY.md frontmatter 里，暂停会停掉该工作区所有会话的自动摘要；恢复后从当前窗口继续，不回填暂停期间的 turn。
+- **编辑按 turn 且为人工操作** — `/memory` 按 turn 号编辑当前会话的条目，早于逐 turn 标注的条目无法定位。回退只恢复最近记录的文本；删除或修改源消息不会自动回滚摘要。
+- **注入仍在 depth 0** — 摘要通过现有 snapshot 与 checkpoint 消息到达模型；可配模板或“历史之前”位置在后续步骤。
 
 <a id="dev-note"></a>
 

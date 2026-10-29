@@ -22,6 +22,7 @@ import type {} from '@deepseek-ai/dsh-store-atom'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { resolveConfig } from './config.ts'
 import type { Config, MemorySettings } from './config.ts'
+import { registerMemoryCommands } from './commands.ts'
 import { MEMORY_PROMPT_SECTION } from './prompt.ts'
 import { refreshMemorySnapshot } from './snapshot.ts'
 import { MemorySummaryRunner } from './summary.ts'
@@ -59,12 +60,15 @@ export {
   createMemoryDocument,
   DEFAULT_MEMORY_MAX_BYTES,
   DEFAULT_MEMORY_WINDOW,
+  editMemorySummary,
   MEMORY_BLOCK_BEGIN,
   MEMORY_BLOCK_END,
   MEMORY_BRIEF_MAX_CHARS,
   MEMORY_BRIEF_MAX_ENTRIES,
   MEMORY_DOCUMENT_VERSION,
   MEMORY_ENTRY_KINDS,
+  MEMORY_HISTORY_LIMIT,
+  MEMORY_HISTORY_STORE_PATH,
   MEMORY_KIND_REGISTRY,
   MEMORY_STORE_PATH,
   MemoryDocumentError,
@@ -72,7 +76,11 @@ export {
   migrateMemoryTiers,
   parseMemoryDocument,
   readMemoryDocument,
+  readMemorySummaryHistory,
   renderMemoryDocument,
+  revertMemorySummary,
+  setMemorySummaryPaused,
+  summaryPaused,
 } from './memory-file.ts'
 export type {
   MemoryAppendOptions,
@@ -96,6 +104,9 @@ export type {
   MemoryTurnSummaryOptions,
   MemoryTurnSummaryResult,
   MemoryWindow,
+  MemorySummaryEditResult,
+  MemorySummaryHistoryRecord,
+  MemorySummaryTarget,
 } from './memory-file.ts'
 export {
   isMemoryCheckpointSource,
@@ -137,6 +148,12 @@ export {
 } from './read.ts'
 export { memoryTools } from './tools.ts'
 export type { MemorySearchItem, MemorySearchValue, TurnFacts } from './tools.ts'
+export {
+  MEMORY_COMMAND_NAME,
+  MEMORY_COMMAND_USAGE,
+  memoryCommand,
+  registerMemoryCommands,
+} from './commands.ts'
 export { planTierMigrations } from './window.ts'
 export type {
   MemoryWindowSnapshot,
@@ -216,6 +233,12 @@ export function apply(ctx: Context, config: Config): void {
     },
   })
   ctx.effect(() => registration, 'memory.register()')
+
+  // `/memory` is a human maintenance surface: it is not gated by the capability switch, so a paused
+  // or broken capability can still be inspected and corrected.
+  ctx.inject(['commands'], (commandCtx) => {
+    ctx.effect(() => registerMemoryCommands(commandCtx, settings), 'memory.commands()')
+  })
 }
 
 /**

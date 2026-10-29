@@ -34,6 +34,8 @@ import {
   MEMORY_ENTRY_KINDS,
   appendTurnSummary,
   migrateMemoryTiers,
+  readMemoryDocument,
+  summaryPaused,
 } from './memory-file.ts'
 import type { MemoryEntry } from './memory-file.ts'
 import { appendMemoryNotice, refreshMemorySnapshot } from './snapshot.ts'
@@ -254,6 +256,13 @@ export class MemorySummaryRunner {
     let inputBytes = 0
     let target = 'none'
     try {
+      // A paused workspace keeps its file untouched; the turn stays unsummarized so resuming continues
+      // from the current window instead of backfilling turns the user paused through.
+      const current = await readMemoryDocument(this.ctx, input.session, signal)
+      if (summaryPaused(current.document)) {
+        this.ctx.logger.debug('memory: summary paused; skipping turn %d', input.turn)
+        return { status: 'completed' }
+      }
       const conversation = await readTurnConversation(this.ctx, input.session, input.turn, signal)
       if (conversation.text.length === 0) {
         this.ctx.logger.debug('memory: turn %d has no conversation surface; nothing to summarize', input.turn)

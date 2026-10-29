@@ -24,6 +24,7 @@ import {
   parseBriefEntries,
   parseMemoryDocument,
   parseSummaryEntries,
+  setMemorySummaryPaused,
 } from '../src/index.ts'
 import type { MemoryEntry } from '../src/index.ts'
 import {
@@ -210,6 +211,26 @@ test('a completed turn runs one memory job that appends a detail section and ref
   const snapshotText = snapshots[0]?.message.content
     .flatMap(block => block.type === 'text' ? [block.text] : []).join('') ?? ''
   expect(snapshotText).toContain('turn 1 summarized (detail)')
+})
+
+test('a paused workspace skips the completed turn without writing or noticing', async () => {
+  const mounted = await mount()
+  const adapter = new SummaryAdapter(() => jsonReply([{ kind: 'decision', text: 'never written' }]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+  await setMemorySummaryPaused(mounted.ctx, root.session, true)
+
+  appendUserText(root, 'paused request')
+  appendAssistantText(root, 1, 'paused answer')
+  completeTurn(root, 1)
+  await settle()
+  await settle()
+  await settle()
+
+  expect(adapter.requests).toHaveLength(0)
+  const parsed = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
+  expect(parsed.sections).toHaveLength(0)
+  expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(0)
 })
 
 test('an aborted turn does not start a summary job', async () => {

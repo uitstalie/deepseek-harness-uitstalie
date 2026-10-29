@@ -10,6 +10,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
+import CommandRuntime from '@deepseek-ai/dsh-commands'
 import { createAssistantMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
@@ -91,6 +92,8 @@ export interface MemoryMountOptions {
   readonly jobs?: boolean
   /** Attach a job controller serving the fixture agents; absent attaches one. */
   readonly controller?: boolean
+  /** Mount the human command registry before the provider; absent leaves `/memory` unregistered. */
+  readonly commands?: boolean
   /** Raw provider configuration; absent uses schema defaults. */
   readonly config?: MemoryConfigInput
 }
@@ -108,6 +111,7 @@ export async function mountMemory(
   options: MemoryMountOptions = {},
 ): Promise<MemoryTestHarness> {
   await mountAgentLoopTestDependencies(ctx)
+  if (options.commands === true) await ctx.plugin(CommandRuntime)
   await ctx.plugin(LocalFileSystem, { cwd: project })
   await ctx.plugin(TestSessionQueryEngine)
   if (options.jobs !== false) {

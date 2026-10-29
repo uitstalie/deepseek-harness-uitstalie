@@ -18,12 +18,17 @@ import {
   appendTurnSummary,
   assertMemoryEntryKind,
   createMemoryDocument,
+  editMemorySummary,
   MEMORY_BLOCK_BEGIN,
   MEMORY_BLOCK_END,
   MEMORY_STORE_PATH,
   parseMemoryDocument,
   readMemoryDocument,
+  readMemorySummaryHistory,
   renderMemoryDocument,
+  revertMemorySummary,
+  setMemorySummaryPaused,
+  summaryPaused,
 } from '../src/memory-file.ts'
 import type { MemoryDocument, MemoryWindow } from '../src/memory-file.ts'
 
@@ -388,4 +393,83 @@ test('a current session over the budget on its own still fails loudly', async ()
     kind: 'decision', text: 'z'.repeat(200), turn: 1, seq: [1, 2],
   }, undefined, { window: ONE_SESSION, maxBytes: 50 })).rejects.toThrow(/after dropping older sessions/u)
   expect(await readFile(memoryFile(), 'utf8')).toBe(seed)
+})
+
+test('a manual edit marks the entry manual, records history, and a revert restores it', async () => {
+  await appendTurnSummary(ctx, session, {
+    turn: 3,
+    seq: [10, 20],
+    entries: [{ kind: 'decision', text: 'auto text' }],
+  })
+
+  const edited = await editMemorySummary(ctx, session, { turn: 3 }, 'human text')
+  expect(edited).toMatchObject({ turn: 3, action: 'edit', before: 'auto text', after: 'human text' })
+  let parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections[0]?.entries[0]).toMatchObject({
+    text: 'human text',
+    source: 'manual',
+    version: 1,
+  })
+  expect(parsed.sections[0]?.entries[0]?.tags).toBeUndefined()
+
+  const history = await readMemorySummaryHistory(ctx, session)
+  expect(history).toHaveLength(1)
+  expect(history[0]).toMatchObject({ action: 'edit', turn: 3, before: 'auto text', after: 'human text' })
+
+  const reverted = await revertMemorySummary(ctx, session, { turn: 3 })
+  expect(reverted).toMatchObject({ action: 'revert', before: 'human text', after: 'auto text' })
+  parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections[0]?.entries[0]).toMatchObject({
+    text: 'auto text',
+    source: 'manual',
+    version: 2,
+  })
+})
+
+test('pause and resume round-trip through the frontmatter', async () => {
+  await setMemorySummaryPaused(ctx, session, true)
+  let parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(summaryPaused(parsed)).toBe(true)
+
+  await setMemorySummaryPaused(ctx, session, false)
+  parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(summaryPaused(parsed)).toBe(false)
+  expect(await readFile(memoryFile(), 'utf8')).not.toContain('summaryPaused')
+})
+
+test('an edit names the known turns and refuses empty text', async () => {
+  await appendTurnSummary(ctx, session, {
+    turn: 3,
+    seq: [10, 20],
+    entries: [{ kind: 'decision', text: 'auto text' }],
+  })
+
+  await expect(editMemorySummary(ctx, session, { turn: 9 }, 'x')).rejects.toThrow(/known turns: 3/u)
+  await expect(editMemorySummary(ctx, session, { turn: 3 }, '   ')).rejects.toMatchObject({ code: 'empty-summary' })
+})
+
+test('a revert without a recorded edit is refused', async () => {
+  await appendTurnSummary(ctx, session, {
+    turn: 3,
+    seq: [10, 20],
+    entries: [{ kind: 'decision', text: 'auto text' }],
+  })
+  await expect(revertMemorySummary(ctx, session, { turn: 3 })).rejects.toThrow(/no recorded edit/u)
+})
+
+test('the new suffixes appear only after an edit and survive a parse/render round trip', async () => {
+  await appendTurnSummary(ctx, session, {
+    turn: 3,
+    seq: [10, 20],
+    entries: [{ kind: 'decision', text: 'auto text' }],
+  })
+  const autoText = await readFile(memoryFile(), 'utf8')
+  expect(autoText).not.toContain('<!-- source:')
+  expect(autoText).not.toContain('<!-- version:')
+
+  await editMemorySummary(ctx, session, { turn: 3 }, 'human text')
+  const editedText = await readFile(memoryFile(), 'utf8')
+  expect(editedText).toContain('<!-- source: manual -->')
+  expect(editedText).toContain('<!-- version: 1 -->')
+  expect(renderMemoryDocument(parseMemoryDocument(editedText))).toBe(editedText)
 })

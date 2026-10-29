@@ -31,7 +31,7 @@ Each row names the package's contribution and the `ctx` key or surface it attach
 | [`dafeiyu`](dafeiyu/README.md) | Capability organizer: registry, enable gate, per-agent wiring, turn dispatch, and failure isolation | `ctx.dafeiyu` |
 | [`home-backup`](home-backup/README.md) | Scheduled snapshots of sessions, storages, and profile configuration outside `$DSH_HOME`, with a retention window | host timers; no `ctx` key |
 | [`llm-plus`](llm-plus/README.md) | Self-owned multi-protocol LLM adapter with OAuth flows and live-configured routes | registers on `ctx.llm` |
-| [`memory`](memory/README.md) | Memory capability provider: fixed prompt section, snapshot, turn-summary job, and the `memory_*` tools | registers on `ctx.dafeiyu` |
+| [`memory`](memory/README.md) | Memory capability provider: fixed prompt section, snapshot, turn-summary job, the `memory_*` tools, and the `/memory` maintenance command | registers on `ctx.dafeiyu` |
 | [`models-dev`](models-dev/README.md) | models.dev catalog service: startup fetch, disk-cache fallback, route defaults, and extra request params | `ctx.modelsDev` |
 | [`personality`](personality/README.md) | Personality capability provider: global profile with workspace overlay, `personality_learn`, and `/personality` review | registers on `ctx.dafeiyu` |
 | [`persona-card`](persona-card/README.md) | Role-play character card format: pure `persona/v1` validator/renderer, safe Character Card V2/V3 JSON importer, and a per-session provider with `/persona` selection and a card-directory watcher (not the deployment persona preset) | registers on `ctx.dafeiyu` |

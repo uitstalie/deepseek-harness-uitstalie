@@ -29,6 +29,12 @@ import type { SurfaceRetry, TierMigrationPlan, TurnRange } from './window.ts'
 /** Store-relative path of the per-workspace memory file. */
 export const MEMORY_STORE_PATH = 'memory/sessions/MEMORY.md'
 
+/** Store-relative path of the summary edit history beside MEMORY.md. */
+export const MEMORY_HISTORY_STORE_PATH = 'memory/sessions/MEMORY.history.json'
+
+/** Maximum summary-history records kept; the oldest records fall off the front. */
+export const MEMORY_HISTORY_LIMIT = 100
+
 /** Marker opening the provider-owned managed block. */
 export const MEMORY_BLOCK_BEGIN = '<!-- memory:begin -->'
 
@@ -138,6 +144,10 @@ export interface MemoryEntry {
   readonly turn?: number
   /** Optional labels recorded beside the text, in the order the writer supplied them. */
   readonly tags?: readonly string[]
+  /** Where the text came from: the automatic summary job, or a human edit. */
+  readonly source?: 'auto' | 'manual'
+  /** Revision of the text; absent until a human edit records one. */
+  readonly version?: number
 }
 
 /** One managed-block section: consecutive turns of one session at one tier. */
@@ -174,6 +184,8 @@ export interface MemoryDocument {
   readonly sections: readonly MemorySection[]
   /** Hand-written text around the managed block. */
   readonly frame: MemoryFrame
+  /** Whether the automatic summary job is paused for this workspace; absent or false runs it. */
+  readonly summaryPaused?: boolean
 }
 
 /** One entry a caller appends, with the turn it belongs to. */
@@ -305,6 +317,12 @@ const ENTRY_TAGS = /^(?<text>[^]*?)\s*<!-- tags: (?<tags>[^>]*) -->$/u
 /** Optional turn suffix of one entry line, written before the label suffix when both exist. */
 const ENTRY_TURN = /^(?<text>[^]*?)\s*<!-- turn: (?<turn>\d+) -->$/u
 
+/** Optional origin suffix of one entry line, written after the label suffix when present. */
+const ENTRY_SOURCE = /^(?<text>[^]*?)\s*<!-- source: (?<source>auto|manual) -->$/u
+
+/** Optional revision suffix of one entry line, written after the origin suffix when present. */
+const ENTRY_VERSION = /^(?<text>[^]*?)\s*<!-- version: (?<version>\d+) -->$/u
+
 /** Maximum number of labels one entry may carry; extra labels are dropped. */
 export const MEMORY_ENTRY_TAGS_LIMIT = 8
 
@@ -405,6 +423,334 @@ export async function readMemoryDocument(
     document: parseMemoryDocument(read.text),
     ...read.version === undefined ? {} : { version: read.version },
   }
+}
+
+/** One recorded summary edit or revert, kept beside MEMORY.md for rollback. */
+export interface MemorySummaryHistoryRecord {
+  /** ISO-8601 time of the change. */
+  readonly at: string
+  /** Session the edited summary belongs to. */
+  readonly sessionId: string
+  /** Turn the edited summary covers. */
+  readonly turn: number
+  /** Tier of the section that held the entry. */
+  readonly tier: MemoryTier
+  /** Whether the record came from an edit or a revert. */
+  readonly action: 'edit' | 'revert'
+  /** Text before the change. */
+  readonly before: string
+  /** Text after the change. */
+  readonly after: string
+}
+
+/** Locator for one summary entry: a turn in the file's session by default. */
+export interface MemorySummaryTarget {
+  /** Session whose summary is edited; defaults to the calling session. */
+  readonly sessionId?: string
+  /** Turn whose entry is edited. */
+  readonly turn: number
+}
+
+/** Result of one summary edit or revert. */
+export interface MemorySummaryEditResult {
+  /** Store-relative path that was written. */
+  readonly path: string
+  /** Version of the written MEMORY.md, when the store reported one. */
+  readonly version?: string
+  /** Session of the edited summary. */
+  readonly sessionId: string
+  /** Turn of the edited summary. */
+  readonly turn: number
+  /** Tier of the section that held the entry. */
+  readonly tier: MemoryTier
+  /** What changed. */
+  readonly action: 'edit' | 'revert'
+  /** Text before the change. */
+  readonly before: string
+  /** Text after the change. */
+  readonly after: string
+}
+
+/**
+ * Whether this document pauses the automatic summary job.
+ * @param document - the parsed document, absent while MEMORY.md does not exist.
+ * @returns whether completed turns skip summarization.
+ */
+export function summaryPaused(document: MemoryDocument | undefined): boolean {
+  return document?.summaryPaused === true
+}
+
+/**
+ * Read the summary edit history. A missing file is an empty history.
+ * @param ctx - context carrying `dshStore`.
+ * @param session - session whose project owns the file.
+ * @param signal - cancellation for the store read.
+ * @returns the recorded edits, oldest first.
+ * @throws MemoryDocumentError when the file exists but is not a valid history array.
+ */
+export async function readMemorySummaryHistory(
+  ctx: Context,
+  session: Session,
+  signal?: AbortSignal,
+): Promise<readonly MemorySummaryHistoryRecord[]> {
+  const read = await ctx.dshStore.readFile(session, MEMORY_HISTORY_STORE_PATH, signalOptions(signal))
+  if (read.text === undefined) return Object.freeze([])
+  return parseSummaryHistory(read.text)
+}
+
+/**
+ * Pause or resume the automatic summary job and persist the choice in MEMORY.md.
+ * @param ctx - context carrying `dshStore`.
+ * @param session - session whose project owns the file.
+ * @param paused - whether future completed turns skip summarization.
+ * @param signal - cancellation for the reads and write.
+ * @param options - window thresholds for a new document and the body budget.
+ * @returns the written path, the new version, and the flag now in effect.
+ */
+export async function setMemorySummaryPaused(
+  ctx: Context,
+  session: Session,
+  paused: boolean,
+  signal?: AbortSignal,
+  options: MemoryAppendOptions = {},
+): Promise<{ readonly path: string; readonly version?: string; readonly paused: boolean }> {
+  const current = await readMemoryDocument(ctx, session, signal)
+  const document = current.document ?? createMemoryDocument(options.window ?? DEFAULT_MEMORY_WINDOW)
+  const next: MemoryDocument = paused
+    ? Object.freeze({ ...document, summaryPaused: true })
+    : Object.freeze({
+      version: document.version,
+      window: document.window,
+      sessions: document.sessions,
+      sections: document.sections,
+      frame: document.frame,
+    })
+  const written = await writeNextMemoryDocument(ctx, session, next, current.version, signal, options)
+  return { path: written.path, ...written.version === undefined ? {} : { version: written.version }, paused }
+}
+
+/**
+ * Replace one summary entry's text and record the change for rollback.
+ * @param ctx - context carrying `dshStore`.
+ * @param session - session whose project owns the file.
+ * @param target - the session and turn whose entry is edited.
+ * @param text - the new single-line text.
+ * @param signal - cancellation for the reads and writes.
+ * @param options - window thresholds and the body budget.
+ * @returns what the edit changed.
+ * @throws MemoryDocumentError when the file or the entry is missing, or the text is empty.
+ */
+export async function editMemorySummary(
+  ctx: Context,
+  session: Session,
+  target: MemorySummaryTarget,
+  text: string,
+  signal?: AbortSignal,
+  options: MemoryAppendOptions = {},
+): Promise<MemorySummaryEditResult> {
+  return applySummaryChange(ctx, session, target, normalizeSummaryText(text), 'edit', signal, options)
+}
+
+/**
+ * Restore the text recorded by the latest edit of one summary entry.
+ * @param ctx - context carrying `dshStore`.
+ * @param session - session whose project owns the file.
+ * @param target - the session and turn whose entry is restored.
+ * @param signal - cancellation for the reads and writes.
+ * @param options - window thresholds and the body budget.
+ * @returns what the revert changed.
+ * @throws MemoryDocumentError when the file, the entry, or a recorded edit is missing.
+ */
+export async function revertMemorySummary(
+  ctx: Context,
+  session: Session,
+  target: MemorySummaryTarget,
+  signal?: AbortSignal,
+  options: MemoryAppendOptions = {},
+): Promise<MemorySummaryEditResult> {
+  const sessionId = target.sessionId ?? String(session.id)
+  const history = await readMemorySummaryHistory(ctx, session, signal)
+  const record = [...history].reverse().find(candidate =>
+    candidate.sessionId === sessionId && candidate.turn === target.turn && candidate.action === 'edit')
+  if (record === undefined) {
+    throw new MemoryDocumentError(
+      `no recorded edit for session ${sessionId} turn ${String(target.turn)}; only edited summaries can be reverted`,
+      'invalid-document',
+    )
+  }
+  return applySummaryChange(ctx, session, target, record.before, 'revert', signal, options)
+}
+
+/** Apply one edit or revert, write MEMORY.md, and append the history record. */
+async function applySummaryChange(
+  ctx: Context,
+  session: Session,
+  target: MemorySummaryTarget,
+  text: string,
+  action: 'edit' | 'revert',
+  signal: AbortSignal | undefined,
+  options: MemoryAppendOptions,
+): Promise<MemorySummaryEditResult> {
+  const current = await readMemoryDocument(ctx, session, signal)
+  if (current.document === undefined) {
+    throw new MemoryDocumentError('MEMORY.md does not exist yet; run one summarized turn first', 'invalid-document')
+  }
+  const sessionId = target.sessionId ?? String(session.id)
+  const located = locateSummaryEntry(current.document, sessionId, target.turn)
+  const before = located.entry.text
+  const nextEntry: MemoryEntry = Object.freeze({
+    kind: located.entry.kind,
+    text,
+    turn: target.turn,
+    ...located.entry.tags === undefined ? {} : { tags: located.entry.tags },
+    source: 'manual',
+    version: (located.entry.version ?? 0) + 1,
+  })
+  const next: MemoryDocument = Object.freeze({
+    ...current.document,
+    sections: current.document.sections.map((section) => {
+      if (section !== located.section) return section
+      return Object.freeze({
+        ...section,
+        entries: section.entries.map(entry => entry === located.entry ? nextEntry : entry),
+      })
+    }),
+  })
+  const written = await writeNextMemoryDocument(ctx, session, next, current.version, signal, options)
+  try {
+    await appendSummaryHistory(ctx, session, {
+      at: new Date().toISOString(),
+      sessionId,
+      turn: target.turn,
+      tier: located.section.tier,
+      action,
+      before,
+      after: text,
+    }, signal)
+  } catch (error: unknown) {
+    // The edit already landed; losing the sidecar record only loses the ability to revert this one change.
+    ctx.logger.warn('memory: could not record summary history: %s', errorMessage(error))
+  }
+  return {
+    path: written.path,
+    ...written.version === undefined ? {} : { version: written.version },
+    sessionId,
+    turn: target.turn,
+    tier: located.section.tier,
+    action,
+    before,
+    after: text,
+  }
+}
+
+/** Locate the entry for one turn, naming the turns this session does have. */
+function locateSummaryEntry(
+  document: MemoryDocument,
+  sessionId: string,
+  turn: number,
+): { readonly section: MemorySection; readonly entry: MemoryEntry } {
+  for (const section of document.sections) {
+    if (section.sessionId !== sessionId) continue
+    const entry = section.entries.find(candidate => candidate.turn === turn)
+    if (entry !== undefined) return { section, entry }
+  }
+  const known = document.sections
+    .filter(section => section.sessionId === sessionId)
+    .flatMap(section => section.entries.map(entry => entry.turn))
+    .filter((candidate): candidate is number => candidate !== undefined)
+  const names = known.length === 0 ? 'none' : known.join(', ')
+  throw new MemoryDocumentError(
+    `MEMORY.md has no per-turn summary for session ${sessionId} turn ${String(turn)}; known turns: ${names}`,
+    'invalid-document',
+  )
+}
+
+/** Re-render and write one document, retrying once after a stale-version refusal. */
+async function writeNextMemoryDocument(
+  ctx: Context,
+  session: Session,
+  document: MemoryDocument,
+  expected: string | undefined,
+  signal: AbortSignal | undefined,
+  options: MemoryAppendOptions,
+): Promise<{ readonly path: string; readonly version?: string }> {
+  const maxBytes = options.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES
+  assertBodyBudget(document, maxBytes)
+  const write = async (version: string | undefined): Promise<{ readonly path: string; readonly version?: string }> => {
+    const written = await ctx.dshStore.writeFile(
+      session,
+      MEMORY_STORE_PATH,
+      renderMemoryDocument(document),
+      writeOptions(signal, version),
+    )
+    return { path: written.path, ...written.version === undefined ? {} : { version: written.version } }
+  }
+  try {
+    return await write(expected)
+  } catch (error: unknown) {
+    if (!isStaleVersion(error)) throw error
+    const reread = await readMemoryDocument(ctx, session, signal)
+    return await write(reread.version)
+  }
+}
+
+/** Append one history record, keeping the newest {@link MEMORY_HISTORY_LIMIT} records. */
+async function appendSummaryHistory(
+  ctx: Context,
+  session: Session,
+  record: MemorySummaryHistoryRecord,
+  signal?: AbortSignal,
+): Promise<void> {
+  const read = await ctx.dshStore.readFile(session, MEMORY_HISTORY_STORE_PATH, signalOptions(signal))
+  const records = read.text === undefined ? [] : parseSummaryHistory(read.text)
+  const next = [...records, record].slice(-MEMORY_HISTORY_LIMIT)
+  await ctx.dshStore.writeFile(
+    session,
+    MEMORY_HISTORY_STORE_PATH,
+    `${JSON.stringify(next, null, 2)}\n`,
+    writeOptions(signal, read.version),
+  )
+}
+
+/** Parse the sidecar history, rejecting a malformed record instead of losing rollback silently. */
+function parseSummaryHistory(text: string): readonly MemorySummaryHistoryRecord[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch (error: unknown) {
+    throw new MemoryDocumentError(`MEMORY.history.json is not valid JSON: ${errorMessage(error)}`, 'invalid-document')
+  }
+  if (!Array.isArray(parsed)) {
+    throw new MemoryDocumentError('MEMORY.history.json must be an array of records', 'invalid-document')
+  }
+  return Object.freeze(parsed.map((value, index) => {
+    const subject = `MEMORY.history.json[${String(index)}]`
+    const record = asRecord(value, subject)
+    const action = record['action']
+    if (action !== 'edit' && action !== 'revert') {
+      throw new MemoryDocumentError(`${subject}.action must be "edit" or "revert"`, 'invalid-document')
+    }
+    const tier = record['tier']
+    if (tier !== 'detail' && tier !== 'brief') {
+      throw new MemoryDocumentError(`${subject}.tier must be "detail" or "brief"`, 'invalid-document')
+    }
+    return Object.freeze({
+      at: requireString(record, 'at', subject),
+      sessionId: requireString(record, 'sessionId', subject),
+      turn: requireInteger(record, 'turn', subject, 0),
+      tier,
+      action,
+      before: requireString(record, 'before', subject),
+      after: requireString(record, 'after', subject),
+    })
+  }))
+}
+
+/** Collapse one manual summary edit onto one line and refuse empty text. */
+function normalizeSummaryText(text: string): string {
+  const normalized = text.replaceAll(/\s+/gu, ' ').trim()
+  if (normalized === '') throw new MemoryDocumentError('a summary edit needs non-empty text', 'empty-summary')
+  return normalized
 }
 
 /**
@@ -957,7 +1303,7 @@ function splitManagedBlock(content: string): { body: string; frame: MemoryFrame 
 }
 
 /** Parse the YAML frontmatter into the machine-state fields. */
-function parseFrontmatter(source: string): Pick<MemoryDocument, 'version' | 'window' | 'sessions'> {
+function parseFrontmatter(source: string): Pick<MemoryDocument, 'version' | 'window' | 'sessions' | 'summaryPaused'> {
   const data = parseFrontmatterYaml(source)
   const record = asRecord(data, 'frontmatter')
   const version = requireInteger(record, 'version', 'frontmatter', 0)
@@ -972,6 +1318,10 @@ function parseFrontmatter(source: string): Pick<MemoryDocument, 'version' | 'win
   if (!Array.isArray(sessions)) {
     throw new MemoryDocumentError('frontmatter.sessions must be an array', 'invalid-document')
   }
+  const summaryPaused = record['summaryPaused']
+  if (summaryPaused !== undefined && typeof summaryPaused !== 'boolean') {
+    throw new MemoryDocumentError('frontmatter.summaryPaused must be a boolean', 'invalid-document')
+  }
   return {
     version,
     window: {
@@ -981,6 +1331,7 @@ function parseFrontmatter(source: string): Pick<MemoryDocument, 'version' | 'win
       sessions: requireInteger(windowRecord, 'sessions', 'frontmatter.window', 1),
     },
     sessions: sessions.map((session, index) => parseSessionRecord(session, index)),
+    ...summaryPaused === true ? { summaryPaused: true } : {},
   }
 }
 
@@ -1092,13 +1443,17 @@ function parseEntryLine(line: string, index: number): MemoryEntry {
       'invalid-document',
     )
   }
-  const withoutTags = splitEntryTags(groups['text'])
+  const withoutVersion = splitEntryVersion(groups['text'])
+  const withoutSource = splitEntrySource(withoutVersion.text)
+  const withoutTags = splitEntryTags(withoutSource.text)
   const { text, turn } = splitEntryTurn(withoutTags.text)
   return {
     kind: assertMemoryEntryKind(groups['kind'] ?? ''),
     text,
     ...turn === undefined ? {} : { turn },
     ...withoutTags.tags === undefined ? {} : { tags: withoutTags.tags },
+    ...withoutSource.source === undefined ? {} : { source: withoutSource.source },
+    ...withoutVersion.version === undefined ? {} : { version: withoutVersion.version },
   }
 }
 
@@ -1119,6 +1474,34 @@ function splitEntryTurn(raw: string): { text: string; turn?: number } {
   const turn = Number(serialized)
   if (!Number.isSafeInteger(turn) || turn < 0 || text.length === 0) return { text: raw }
   return { text, turn }
+}
+
+/**
+ * Split the optional origin suffix from one entry's text.
+ * @param raw - entry text after the revision suffix was removed.
+ * @returns the text and the origin, or the text unchanged.
+ */
+function splitEntrySource(raw: string): { text: string; source?: 'auto' | 'manual' } {
+  const match = ENTRY_SOURCE.exec(raw)
+  const text = match?.groups?.['text']
+  const source = match?.groups?.['source']
+  if (text === undefined || source === undefined || text.length === 0) return { text: raw }
+  return { text, source: source === 'manual' ? 'manual' : 'auto' }
+}
+
+/**
+ * Split the optional revision suffix from one entry's text.
+ * @param raw - entry text after the label suffix was removed.
+ * @returns the text and the revision, or the text unchanged.
+ */
+function splitEntryVersion(raw: string): { text: string; version?: number } {
+  const match = ENTRY_VERSION.exec(raw)
+  const text = match?.groups?.['text']
+  const serialized = match?.groups?.['version']
+  if (text === undefined || serialized === undefined) return { text: raw }
+  const version = Number(serialized)
+  if (!Number.isSafeInteger(version) || version < 1 || text.length === 0) return { text: raw }
+  return { text, version }
 }
 
 /**
@@ -1168,6 +1551,7 @@ function renderFrontmatter(document: MemoryDocument): string {
     `version: ${String(document.version)}`,
     `window: { detail: ${String(window.detail)}, brief: ${String(window.brief)}, forget: ${String(window.forget)}, sessions: ${String(window.sessions)} }`,
   ]
+  if (document.summaryPaused === true) lines.push('summaryPaused: true')
   if (document.sessions.length === 0) {
     lines.push('sessions: []')
     return `${lines.join('\n')}\n`
@@ -1203,7 +1587,7 @@ function renderManagedBody(sections: readonly MemorySection[]): string {
   if (sections.length === 0) return '\n'
   return sections.map((section) => {
     const heading = `## ${section.sessionId} · turn ${String(section.startTurn)}–${String(section.endTurn)}（${section.tier}）`
-    const entries = section.entries.map(entry => `- [${entry.kind}] ${entry.text}${renderEntryTurn(entry.turn)}${renderEntryTags(entry.tags)}\n`).join('')
+    const entries = section.entries.map(entry => `- [${entry.kind}] ${entry.text}${renderEntryTurn(entry.turn)}${renderEntryTags(entry.tags)}${renderEntrySource(entry.source)}${renderEntryVersion(entry.version)}\n`).join('')
     return `\n${heading}\n${entries}`
   }).join('')
 }
@@ -1217,6 +1601,16 @@ function renderEntryTurn(turn: number | undefined): string {
 function renderEntryTags(tags: readonly string[] | undefined): string {
   const normalized = normalizeEntryTags(tags ?? [])
   return normalized.length === 0 ? '' : ` <!-- tags: ${normalized.join(', ')} -->`
+}
+
+/** Render the optional origin suffix of one entry; auto entries written by the job render nothing. */
+function renderEntrySource(source: 'auto' | 'manual' | undefined): string {
+  return source === undefined ? '' : ` <!-- source: ${source} -->`
+}
+
+/** Render the optional revision suffix of one entry; an entry never edited renders nothing. */
+function renderEntryVersion(version: number | undefined): string {
+  return version === undefined ? '' : ` <!-- version: ${String(version)} -->`
 }
 
 /** Compose the next document from the current one and one entry. */
