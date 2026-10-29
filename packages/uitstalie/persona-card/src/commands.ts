@@ -10,14 +10,22 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { CommandDefinitionId } from '@deepseek-ai/dsh-commands/brand'
 import type { CommandDefinition, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
+import { DIRECTOR_NOTE_MAX_BYTES, normalizeDirectorNote } from './director.ts'
 
-/** Name of the one registered command; `use`, `off`, and `list` ride its raw input. */
+/** Name of the persona-card selection command; `use`, `off`, and `list` ride its raw input. */
 export const PERSONA_COMMAND_NAME = 'persona'
 
 /** One-line grammar shown by every failure and advertised as the input hint. */
 export const PERSONA_COMMAND_USAGE = 'Usage: /persona [list | use <id> | off]'
+
+/** Name of the session director-note command. */
+export const DIRECTOR_COMMAND_NAME = 'director'
+
+/** One-line grammar shown by every `/director` failure. */
+export const DIRECTOR_COMMAND_USAGE = 'Usage: /director [show | set <text> | clear]'
 
 /**
  * What the command needs from the mounted provider.
@@ -61,6 +69,77 @@ export function personaCommand(target: PersonaCommandTarget): CommandDefinition 
  */
 export function registerPersonaCommands(ctx: Context, target: PersonaCommandTarget): () => void {
   return ctx.commands.register(personaCommand(target))
+}
+
+/** What the `/director` command needs from the mounted provider. */
+export interface DirectorCommandTarget {
+  /** This session's note, or undefined when none is set. */
+  textOf(sessionId: string): string | undefined
+  /** Store and publish a note for this agent's session. */
+  set(agent: Agent, note: string): void
+  /** Drop the note and leave the cleared placeholder. */
+  clear(agent: Agent): void
+}
+
+/**
+ * Build the one `/director` command definition.
+ * @param target - the mounted provider's note store and surface writer.
+ * @returns the definition to register with the command registry.
+ */
+export function directorCommand(target: DirectorCommandTarget): CommandDefinition {
+  return {
+    definitionId: CommandDefinitionId('@deepseek-ai/dsh-persona-card/director'),
+    name: DIRECTOR_COMMAND_NAME,
+    description: 'Show, set, or clear this session\'s short director note',
+    input: { hint: '[show | set <text> | clear]' },
+    handler: invocation => executeDirector(target, invocation),
+  }
+}
+
+/**
+ * Register `/director` on a context that carries the command registry.
+ * @param ctx - context carrying `commands`.
+ * @param target - the mounted provider's note store and surface writer.
+ * @returns the registration disposer.
+ */
+export function registerDirectorCommand(ctx: Context, target: DirectorCommandTarget): () => void {
+  return ctx.commands.register(directorCommand(target))
+}
+
+/** Dispatch one `/director` invocation; no input and `show` render the same view. */
+function executeDirector(target: DirectorCommandTarget, invocation: CommandInvocation): CommandResult {
+  const input = invocation.rawInput.trim()
+  const sessionId = String(invocation.agent.session.id)
+  if (input === '' || /^show(?=\s|$)/iu.test(input)) {
+    const note = target.textOf(sessionId)
+    return {
+      kind: 'success',
+      text: note === undefined
+        ? `No director note is set for this session. ${DIRECTOR_COMMAND_USAGE}`
+        : `Director note: ${note}`,
+    }
+  }
+  const set = /^set(?=\s|$)/iu.exec(input)
+  if (set !== null) {
+    const raw = input.slice(set[0].length).trim()
+    let note: string
+    try {
+      note = normalizeDirectorNote(raw)
+    } catch (error: unknown) {
+      return { kind: 'error', text: `${error instanceof Error ? error.message : String(error)}. ${DIRECTOR_COMMAND_USAGE}` }
+    }
+    target.set(invocation.agent, note)
+    return { kind: 'success', text: `Director note set for this session (at most ${String(DIRECTOR_NOTE_MAX_BYTES)} bytes); the next request reads it at depth 0.` }
+  }
+  const clear = /^(clear|off)(?=\s|$)/iu.exec(input)
+  if (clear !== null && input.slice(clear[0].length).trim() === '') {
+    target.clear(invocation.agent)
+    return { kind: 'success', text: 'Director note cleared for this session.' }
+  }
+  return {
+    kind: 'error',
+    text: `Unknown /director form ${JSON.stringify(input)}. ${DIRECTOR_COMMAND_USAGE}`,
+  }
 }
 
 /** Dispatch one invocation: no input and `list` render the same view. */

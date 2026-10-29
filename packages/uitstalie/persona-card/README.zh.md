@@ -55,6 +55,8 @@ if (imported.ok) {
 
 卡可以声明 `state_schema`（下文所述 JSON Schema 子集）。声明后能力还会注册 `persona_state` 工具：`patch` 合并 `values` 并按 schema 校验合并结果，`show` 读取，`revert` 恢复某个 revision，`clear` 删除。每次接受的变化写一条 depth-0 的 `persona-state` user 消息并替换上一条，因此模型在历史末尾看到最新状态。状态只活在本进程（不持久化）；没有 `state_schema` 的卡会拒绝该工具。
 
+会话还可以携带一条与选中卡无关的短导演注：`/director set <text>`（最多 800 UTF-8 字节）把它发布成 depth-0 的 `director-note` user 消息，`/director show` 读取，`/director clear` 替换成一行占位。导演注属于独立的 `director` 能力（默认启用；没有注就没有消息），只活在本进程，并在每个完成轮次结束后重新发布，因此压缩不会静默丢掉它。
+
 ### 卡形状
 
 ```yaml
@@ -139,12 +141,27 @@ You are playing the following character for this conversation. Stay in this role
 
 消息位于 depth 0、紧跟它所属的轮次之后，稳定前缀不受影响；patch 只改变下一次请求的尾部，clear 去掉值文本、保留占位。
 
+### `director-note` depth-0 消息
+
+#### 模型看到什么
+
+`/director set` 之后，surface 在历史末尾携带一条 `director-note` user 消息：一行固定说明（本幕以此为准，但 system 与 developer 指令仍然优先），随后是导演注原文。之后的 set 或 clear 会替换这条消息而不是再追加；clear 留下一行 “Director note: none for this session.” 占位。每个完成的轮次结束后都会重新发布当前导演注，因此把它从 surface 上删掉的压缩无法让它对下一轮隐身。
+
+#### Token 影响
+
+一行固定标题加最多 800 UTF-8 字节的注文本。消息是替换而不是追加，因此 surface 最多一条；没有注的会话一条也不带。
+
+#### KV 缓存影响
+
+导演注位于 depth 0，稳定前缀不受影响；set 或 clear 只改变下一次请求的尾部，每轮重发重写的是同一个尾部节点。
+
 ## Known Limitations and Deferred Work
 
 - 会话选择只活在本进程：不持久化，重启后退回 row 的 `active` 卡。
 - 没有设置页或卡管理界面；`/persona` 是唯一的选择入口。
 - 卡由 watcher 或下一次创建 agent 时重读；watcher 事件可能滞后于文件系统延迟。
 - 状态只活在本进程，保留最近 20 个 revision；没有持久化状态文件，也不会因为删除消息自动回滚（回滚是显式 `persona_state` 调用）。
+- 导演注只活在本进程、每会话一条、上限 800 字节；clear 后的占位会保留到下一次 set 替换它。
 - 不支持 PNG/APNG 的 `chara`/`ccv3` 块或 CHARX 资产；只做 JSON。
 - 没有 lorebook 激活；字段会解析但不使用。
 - 不支持群聊、单会话多 persona，或 `{{char}}`/`{{user}}` 之外的宏。

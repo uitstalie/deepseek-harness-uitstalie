@@ -200,6 +200,16 @@ per-session 选择、命令与文件 watch 已落地：
 - 状态按 session 保存在进程内，保留最近 20 个 revision，不写盘、不写卡、不写 system prompt；重启后为空。状态消息是 untrusted data，不进入 memory 或 personality。
 - 未做：持久化、删除消息/压缩后的自动回退（回退只能显式调用工具）、UI 状态检查器。
 
+## 运行时第四切片：导演注（2026/10/29，DH-404）
+
+会话级短指令槽位已落地，与所选卡无关：
+
+- `/director set <text>`（≤800 UTF-8 字节）、`/director show`、`/director clear`（别名 `off`）；命令是人工面，不写卡、不写配置。
+- 注入为 depth-0 的 `director-note` user 消息（`source.kind = 'director-note'`，`form: 'snapshot'`），下一次 set/clear 用 `surfaceOp: replace` 替换上一条；clear 留下 “Director note: none for this session.” 占位。
+- 独立的 dafeiyu 能力 `director`（`enabledByDefault: true`；没有注时无任何模型可见内容），在每个完成轮次结束时重新发布当前注，compaction 删掉也能在下一轮恢复；新 agent 创建时同样重发。
+- 注只活在本进程、每会话一条；不持久化。
+- 未做：设置页入口、持久化、与 persona 卡绑定（导演注独立于卡）。
+
 ## 待定
 
 1. 选择入口：命令、设置页、profile 配置三选一还是都做？

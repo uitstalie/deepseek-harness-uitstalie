@@ -26,12 +26,29 @@ export { PERSONA_CARDS_DIRECTORY, PERSONA_CARD_SECTION_NAME, PERSONA_CARD_SECTIO
 export type { PersonaCards } from './provider.ts'
 
 export {
+  DIRECTOR_COMMAND_NAME,
+  DIRECTOR_COMMAND_USAGE,
+  directorCommand,
   PERSONA_COMMAND_NAME,
   PERSONA_COMMAND_USAGE,
   personaCommand,
+  registerDirectorCommand,
   registerPersonaCommands,
 } from './commands.ts'
-export type { PersonaCommandTarget } from './commands.ts'
+export type { DirectorCommandTarget, PersonaCommandTarget } from './commands.ts'
+
+export {
+  DIRECTOR_NOTE_CLEARED,
+  DIRECTOR_NOTE_MAX_BYTES,
+  DIRECTOR_NOTE_SECTION_NAME,
+  DIRECTOR_NOTE_TITLE,
+  directorNoteMessage,
+  isDirectorNoteSource,
+  normalizeDirectorNote,
+  renderDirectorNote,
+  syncDirectorNote,
+} from './director.ts'
+export type { DirectorNoteSource } from './director.ts'
 
 export {
   PERSONA_STATE_HISTORY_LIMIT,

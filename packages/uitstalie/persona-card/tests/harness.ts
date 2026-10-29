@@ -196,6 +196,24 @@ export function personaStateMessages(agent: Agent): { readonly seq: number; read
 }
 
 /**
+ * Every director-note message on one session's log, in log order.
+ * @param agent - agent whose session is inspected.
+ * @returns the seq and rendered text of each note message.
+ */
+export function directorMessages(agent: Agent): { readonly seq: number; readonly text: string }[] {
+  const messages: { seq: number; text: string }[] = []
+  for (const event of agent.session.snapshotEvents()) {
+    if (event.type !== 'user/message') continue
+    if (!PersonaCard.isDirectorNoteSource(event.data.source)) continue
+    messages.push({
+      seq: event.seq,
+      text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join(''),
+    })
+  }
+  return messages
+}
+
+/**
  * Poll a read until it returns a defined value.
  * @param read - value supplier; undefined keeps waiting.
  * @param timeoutMs - maximum wait before failing the spec.

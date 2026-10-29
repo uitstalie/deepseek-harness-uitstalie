@@ -34,7 +34,7 @@ kind: "package-group"
 | [`memory`](memory/README.zh.md) | 记忆能力提供者：固定提示词段、快照、轮次摘要任务、`memory_*` 工具与 `/memory` 维护命令 | 注册到 `ctx.dafeiyu` |
 | [`models-dev`](models-dev/README.zh.md) | models.dev 目录服务：启动拉取、磁盘缓存回落、路由默认值与额外请求参数 | `ctx.modelsDev` |
 | [`personality`](personality/README.zh.md) | 人格能力提供者：全局档案加工作区覆盖、`personality_learn` 与 `/personality` 审阅 | 注册到 `ctx.dafeiyu` |
-| [`persona-card`](persona-card/README.zh.md) | 角色扮演角色卡格式：纯 `persona/v1` 校验/渲染器、安全的 Character Card V2/V3 JSON 导入器，以及带 `/persona` 选择与卡目录 watcher 的 per-session provider（不是部署 persona 预设） | 注册到 `ctx.dafeiyu` |
+| [`persona-card`](persona-card/README.zh.md) | 角色扮演角色卡格式：纯 `persona/v1` 校验/渲染器、安全的 Character Card V2/V3 JSON 导入器，以及带 `/persona` 选择、卡目录 watcher、persona 状态与 depth-0 `/director` 导演注的 per-session provider（不是部署 persona 预设） | 注册到 `ctx.dafeiyu` |
 | [`store-atom`](store-atom/README.zh.md) | `.dsh` 存储原子：`dshStore` 基础接口，含项目根发现、路径围栏、命名空间撰写校验、工作区规则发现与带版本守卫的读写 | `ctx.dshStore` |
 | [`system-environment`](system-environment/README.zh.md) | 宿主环境原子：平台事实、路径拼写与比较、环境变量查找，以及用户 home 与 Harness home | `ctx.systemEnvironment` |
 | [`tool-dsh-store`](tool-dsh-store/README.zh.md) | 面向模型的存储工具，以及基于存储原子的只读 rules Remote | `ctx.dshStore` 消费方 |

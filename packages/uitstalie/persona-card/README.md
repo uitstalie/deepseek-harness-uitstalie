@@ -55,6 +55,8 @@ A session can pick its own card without touching the row: `/persona list` shows 
 
 A card may declare `state_schema` (the JSON Schema subset described below). When it does, the capability also registers the `persona_state` tool: `patch` merges `values` and validates the merged result, `show` reads it, `revert` restores one revision number, and `clear` drops it. Every accepted change writes one `persona-state` user message at depth 0, replacing the previous one, so the model sees the latest state at the end of the history. State is process-local (not persisted), and a card without `state_schema` refuses the tool.
 
+A session can also carry one short director note, independent of the selected card: `/director set <text>` (at most 800 UTF-8 bytes) publishes it as a depth-0 `director-note` user message, `/director show` reads it, and `/director clear` replaces it with a one-line placeholder. The note belongs to its own `director` capability (enabled by default; no note means no message), is process-local, and is re-published at the end of every completed turn so a compaction cannot silently drop it.
+
 ### Card shape
 
 ```yaml
@@ -139,12 +141,27 @@ One fixed title line plus the compact JSON object, refused when a patch would pu
 
 The message sits at depth 0, after the turn it follows, so the stable prefix is untouched; a patch changes only the tail of the next request, and clearing removes the value text while keeping the placeholder.
 
+### The `director-note` depth-0 message
+
+#### What the model sees
+
+After `/director set`, the surface carries one `director-note` user message at the end of the history: a fixed line saying the note governs this scene while system and developer instructions still win, then the note text verbatim. A later set or clear replaces that message instead of appending another; a clear leaves a one-line "Director note: none for this session." placeholder. Each completed turn re-publishes the current note at depth 0, so a compaction that removed it cannot hide it from the next turn.
+
+#### Token effect
+
+One fixed title line plus at most 800 UTF-8 bytes of note text. Because the message is replaced rather than appended, the surface holds at most one note; a session without a note carries none.
+
+#### KV Cache effect
+
+The note sits at depth 0, so the stable prefix is untouched. A set or clear changes only the tail of the next request; the per-turn re-publication rewrites the same tail node.
+
 ## Known Limitations and Deferred Work
 
 - The session selection is process-local: it is not persisted, so a restart falls back to the row's `active` card.
 - No settings page or card-management UI; `/persona` is the only selection entry.
 - Cards are re-read by the watcher or on the next agent creation; a watcher event can trail an edit by the filesystem's latency.
 - State is process-local and keeps the last 20 revisions; there is no durable state file and no rollback triggered by deleting a message (revert is an explicit `persona_state` call).
+- The director note is process-local, single per session, and limited to 800 bytes; a cleared note keeps its one-line placeholder until the next set replaces it.
 - No PNG/APNG `chara`/`ccv3` chunks or CHARX assets; JSON only.
 - No lorebook activation; the field is parsed but not used.
 - No group chats, multiple personas per session, or macro expansion beyond `{{char}}`/`{{user}}`.

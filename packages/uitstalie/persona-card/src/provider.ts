@@ -17,14 +17,15 @@ import type { Context, Volatile } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution } from '@deepseek-ai/dsh-dafeiyu'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import type { SessionSeq } from '@deepseek-ai/dsh-session'
+import type { Session, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 import z from '@deepseek-ai/schemastery'
 import { parse } from 'yaml'
 import { parsePersonaCard, renderPersonaText } from './card.ts'
-import { registerPersonaCommands, type PersonaCommandTarget } from './commands.ts'
+import { registerDirectorCommand, registerPersonaCommands, type DirectorCommandTarget, type PersonaCommandTarget } from './commands.ts'
 import { PersonaStateStore, personaStateTool, syncPersonaStateMessage } from './state.ts'
 import type { PersonaStateTarget } from './state.ts'
+import { syncDirectorNote } from './director.ts'
 import { DEFAULT_PERSONA_MAX_BYTES, type PersonaCard, type PersonaResult } from './types.ts'
 
 /** Cordis plugin name. */
@@ -154,6 +155,9 @@ export function apply(ctx: Context, config: Config): void {
   /** Process-local state and the surface target of each session's state message. */
   const state = new PersonaStateStore()
   const stateTargets = new Map<string, SessionSeq>()
+  /** Process-local director notes and the surface target of each session's note message. */
+  const directorNotes = new Map<string, string>()
+  const directorTargets = new Map<string, SessionSeq>()
   /** Live agents by session, weakly held so a session map never outlives its agent. */
   const agents = new Map<string, WeakRef<Agent>>()
   let refreshing: Promise<void> | undefined
@@ -195,6 +199,13 @@ export function apply(ctx: Context, config: Config): void {
     const sessionId = String(agent.session.id)
     const record = state.read(sessionId, effectiveOf(sessionId))
     syncPersonaStateMessage(ctx, agent.session, record, stateTargets)
+  }
+
+  /** Publish this session's director note again so it stays the last instruction in history. */
+  const syncDirector = (session: Session): void => {
+    const note = directorNotes.get(String(session.id))
+    if (note === undefined) return
+    syncDirectorNote(ctx, session, note, directorTargets)
   }
 
   /**
@@ -293,6 +304,23 @@ export function apply(ctx: Context, config: Config): void {
   })
   ctx.effect(() => registration, 'persona-card.register()')
 
+  // The director note is a session-level instruction, not a persona card face: its own capability
+  // republishes it after every completed turn and when a new agent starts.
+  const directorRegistration = ctx.dafeiyu.register({
+    id: 'director',
+    contractVersion: 2,
+    label: 'Director note',
+    description: 'Session-level short instruction injected as one depth-0 message',
+    config: {},
+    enabledByDefault: true,
+    create: (): CapabilityContribution => ({
+      scope: 'all',
+      onTurnEnd: (input) => { syncDirector(input.session) },
+      onAgentCreated: (agent) => { syncDirector(agent.session) },
+    }),
+  })
+  ctx.effect(() => directorRegistration, 'persona-card.director()')
+
   // `/persona` is a human surface: like `/personality`, it is not gated by the capability switch.
   const target: PersonaCommandTarget = {
     directory,
@@ -309,7 +337,21 @@ export function apply(ctx: Context, config: Config): void {
       if (agent !== undefined) syncState(agent)
     },
   }
+  const directorTarget: DirectorCommandTarget = {
+    textOf: sessionId => directorNotes.get(sessionId),
+    set: (agent, note) => {
+      directorNotes.set(String(agent.session.id), note)
+      syncDirector(agent.session)
+    },
+    clear: (agent) => {
+      const sessionId = String(agent.session.id)
+      directorNotes.delete(sessionId)
+      if (!directorTargets.has(sessionId)) return
+      syncDirectorNote(ctx, agent.session, undefined, directorTargets)
+    },
+  }
   ctx.inject(['commands'], (commandCtx) => {
     ctx.effect(() => registerPersonaCommands(commandCtx, target), 'persona-card.commands()')
+    ctx.effect(() => registerDirectorCommand(commandCtx, directorTarget), 'persona-card.director-command()')
   })
 }
