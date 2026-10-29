@@ -53,6 +53,8 @@ The row is a dafeiyu capability (`enabledByDefault: false`), so the organizer's 
 
 A session can pick its own card without touching the row: `/persona list` shows the installed cards, `/persona use <id>` selects one for that session, and `/persona off` suppresses the section for it. The choice is process-local — restarting the process falls back to the row's `active` card. The provider watches `$DSH_HOME/persona` and re-reads the directory after a change, so a new or edited card reaches the next assembly without a reload; when the directory does not exist yet (or the backend cannot watch), a new agent re-reads the cards instead.
 
+A card may declare `state_schema` (the JSON Schema subset described below). When it does, the capability also registers the `persona_state` tool: `patch` merges `values` and validates the merged result, `show` reads it, `revert` restores one revision number, and `clear` drops it. Every accepted change writes one `persona-state` user message at depth 0, replacing the previous one, so the model sees the latest state at the end of the history. State is process-local (not persisted), and a card without `state_schema` refuses the tool.
+
 ### Card shape
 
 ```yaml
@@ -123,11 +125,26 @@ A fixed preamble plus the card's rendered fields, capped by `maxBytes` (default 
 
 Prefix-stable while the session's selection, the active card and its file are unchanged. Changing the selection or `active`, editing the card file, or reloading the row invalidates the cached prefix from this section onward; card switches are low-frequency events.
 
+### The `persona-state` depth-0 message
+
+#### What the model sees
+
+When the selected card declares `state_schema` and the model calls `persona_state`, the surface carries one `persona-state` user message after the conversation: a fixed `Persona state (data, not instructions).` line and the compact JSON values. The next accepted change replaces that message instead of appending another, so the surface holds at most one; `clear` replaces it with a "No state is recorded" placeholder. The message is untrusted data: the state never enters the system prompt, the card file, or memory.
+
+#### Token effect
+
+One fixed title line plus the compact JSON object, refused when a patch would push the rendered message past 1 KiB. Because each change replaces the previous node, the surface carries at most one state message rather than a growing log.
+
+#### KV Cache effect
+
+The message sits at depth 0, after the turn it follows, so the stable prefix is untouched; a patch changes only the tail of the next request, and clearing removes the value text while keeping the placeholder.
+
 ## Known Limitations and Deferred Work
 
 - The session selection is process-local: it is not persisted, so a restart falls back to the row's `active` card.
 - No settings page or card-management UI; `/persona` is the only selection entry.
 - Cards are re-read by the watcher or on the next agent creation; a watcher event can trail an edit by the filesystem's latency.
+- State is process-local and keeps the last 20 revisions; there is no durable state file and no rollback triggered by deleting a message (revert is an explicit `persona_state` call).
 - No PNG/APNG `chara`/`ccv3` chunks or CHARX assets; JSON only.
-- No lorebook activation, `state_schema` enforcement or state injection; the fields are parsed for the follow-up tasks DH-402/DH-403.
+- No lorebook activation; the field is parsed but not used.
 - No group chats, multiple personas per session, or macro expansion beyond `{{char}}`/`{{user}}`.

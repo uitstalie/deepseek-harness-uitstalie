@@ -190,6 +190,16 @@ per-session 选择、命令与文件 watch 已落地：
 
 未做：设置页/UI、选择持久化、per-agent 覆盖（子 agent 继承父 agent 的会话选择）。
 
+## 运行时第三切片：会话状态（2026/10/29，DH-402）
+
+`state_schema` 从“保留字段”变成可用的会话状态通道：
+
+- 卡在 `state_schema` 里声明一个小的 JSON Schema 子集（object / properties / required / array / string / number / boolean / null / enum / minimum / maximum / additionalProperties），导入时由 `card.ts` 校验。
+- 能力额外注册 `persona_state` 工具（受 dafeiyu 能力门约束）：`patch` 合并顶层字段、整段替换嵌套值，合并结果按 schema 校验；`show` 读；`revert` 按 revision 恢复；`clear` 删除。没有 `state_schema` 的卡拒绝该工具。
+- 每次接受的变化把状态渲染成一条 depth-0 `persona-state` user 消息（`source.kind = 'persona-state'`、`form: 'snapshot'`），下一次变化用 `surfaceOp: replace` 替换上一条；`clear` 替换成 “No state is recorded”。换卡或 `/persona off` 时，若会话仍挂着旧卡的状态消息，会同步替换为清空占位。
+- 状态按 session 保存在进程内，保留最近 20 个 revision，不写盘、不写卡、不写 system prompt；重启后为空。状态消息是 untrusted data，不进入 memory 或 personality。
+- 未做：持久化、删除消息/压缩后的自动回退（回退只能显式调用工具）、UI 状态检查器。
+
 ## 待定
 
 1. 选择入口：命令、设置页、profile 配置三选一还是都做？

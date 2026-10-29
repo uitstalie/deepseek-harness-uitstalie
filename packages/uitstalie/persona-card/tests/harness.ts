@@ -13,8 +13,10 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
+import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,
@@ -111,19 +113,86 @@ export async function runCommand(mounted: PersonaTestHarness, agent: Agent, line
  * @param home - the fixture `DSH_HOME` directory.
  * @param id - card id (file name without `.md`).
  * @param displayName - the card's `name` field.
+ * @param options - an optional `state_schema` flow mapping.
  * @returns the written path.
  */
-export async function writeCard(home: string, id: string, displayName: string): Promise<string> {
+export async function writeCard(
+  home: string,
+  id: string,
+  displayName: string,
+  options: { readonly stateSchema?: Readonly<Record<string, unknown>> } = {},
+): Promise<string> {
   const path = join(home, PersonaCard.PERSONA_CARDS_DIRECTORY, `${id}.md`)
   await writeFile(path, [
     '---',
     'schema: persona/v1',
     `name: ${displayName}`,
     `description: ${displayName} is a fixture persona.`,
+    ...(options.stateSchema === undefined ? [] : [`state_schema: ${JSON.stringify(options.stateSchema)}`]),
     '---',
     '',
   ].join('\n'), 'utf8')
   return path
+}
+
+let callCounter = 0
+/** Abort signal for tool calls that are not cancelled. */
+const signal = new AbortController().signal
+
+/**
+ * Invoke one registered tool through the real tool runtime.
+ * @param mounted - the mounted composition.
+ * @param agent - the owning agent.
+ * @param name - tool name.
+ * @param args - JSON arguments.
+ * @returns the settled execution result.
+ */
+export async function callTool(
+  mounted: PersonaTestHarness,
+  agent: Agent,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<ToolExecutionResult> {
+  const batch = await mounted.ctx.tools.execute({
+    signal,
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`call-${String(++callCounter)}`),
+      name,
+      arguments: JSON.stringify(args),
+    }],
+    agent,
+  })
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error(`tool "${name}" settled no result`)
+  return result
+}
+
+/**
+ * Text blocks of one tool result.
+ * @param result - a settled tool result.
+ * @returns the joined text.
+ */
+export function textOf(result: ToolExecutionResult): string {
+  return result.content.filter(block => block.type === 'text').map(block => block.text).join('')
+}
+
+/**
+ * Every persona-state message on one session's log, in log order.
+ * @param agent - agent whose session is inspected.
+ * @returns the seq and rendered text of each state message.
+ */
+export function personaStateMessages(agent: Agent): { readonly seq: number; readonly text: string }[] {
+  const messages: { seq: number; text: string }[] = []
+  for (const event of agent.session.snapshotEvents()) {
+    if (event.type !== 'user/message') continue
+    if (!PersonaCard.isPersonaStateSource(event.data.source)) continue
+    messages.push({
+      seq: event.seq,
+      text: event.data.content.filter(block => block.type === 'text').map(block => block.text).join(''),
+    })
+  }
+  return messages
 }
 
 /**

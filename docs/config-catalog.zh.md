@@ -2696,7 +2696,7 @@ export interface Config {
 
 - `inject`: `dafeiyu`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/uitstalie/persona-card/src/provider.ts:44`](../packages/uitstalie/persona-card/src/provider.ts)
+- `source`: [`packages/uitstalie/persona-card/src/provider.ts:47`](../packages/uitstalie/persona-card/src/provider.ts)
 
 ```ts config-catalog
 /** Row configuration, accepting live references or plain test values. */

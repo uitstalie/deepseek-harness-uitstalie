@@ -33,6 +33,28 @@ export {
 } from './commands.ts'
 export type { PersonaCommandTarget } from './commands.ts'
 
+export {
+  PERSONA_STATE_HISTORY_LIMIT,
+  PERSONA_STATE_MAX_BYTES,
+  PERSONA_STATE_SECTION_NAME,
+  PERSONA_STATE_TITLE,
+  PersonaStateStore,
+  isPersonaStateSource,
+  personaStateMessage,
+  personaStateTool,
+  renderPersonaStateText,
+  syncPersonaStateMessage,
+  validatePersonaStateValue,
+} from './state.ts'
+export type {
+  PersonaStateMutation,
+  PersonaStateRecord,
+  PersonaStateRevision,
+  PersonaStateSource,
+  PersonaStateTarget,
+  PersonaStateValues,
+} from './state.ts'
+
 /** The capability organizer that gates this row. */
 export const inject = ['dafeiyu']
 

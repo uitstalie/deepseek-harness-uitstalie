@@ -17,11 +17,14 @@ import type { Context, Volatile } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution } from '@deepseek-ai/dsh-dafeiyu'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import type { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 import z from '@deepseek-ai/schemastery'
 import { parse } from 'yaml'
 import { parsePersonaCard, renderPersonaText } from './card.ts'
 import { registerPersonaCommands, type PersonaCommandTarget } from './commands.ts'
+import { PersonaStateStore, personaStateTool, syncPersonaStateMessage } from './state.ts'
+import type { PersonaStateTarget } from './state.ts'
 import { DEFAULT_PERSONA_MAX_BYTES, type PersonaCard, type PersonaResult } from './types.ts'
 
 /** Cordis plugin name. */
@@ -148,6 +151,11 @@ export function apply(ctx: Context, config: Config): void {
   /** Explicit per-session choices; `null` means "off", an absent key means "use the row default". */
   const selections = new Map<string, string | null>()
   const warnedMissing = new Set<string>()
+  /** Process-local state and the surface target of each session's state message. */
+  const state = new PersonaStateStore()
+  const stateTargets = new Map<string, SessionSeq>()
+  /** Live agents by session, weakly held so a session map never outlives its agent. */
+  const agents = new Map<string, WeakRef<Agent>>()
   let refreshing: Promise<void> | undefined
   let watcher: FSWatcher | undefined
   let debounce: NodeJS.Timeout | undefined
@@ -170,6 +178,23 @@ export function apply(ctx: Context, config: Config): void {
       rendered.set(card, text)
     }
     return text
+  }
+
+  const stateTarget: PersonaStateTarget = {
+    cardIdFor: effectiveOf,
+    cardFor: (sessionId) => {
+      const id = effectiveOf(sessionId)
+      return id === '' ? undefined : cards.cards.get(id)
+    },
+    store: state,
+    targets: stateTargets,
+  }
+
+  /** Rewrite the session's depth-0 state message for the card it now shows. */
+  const syncState = (agent: Agent): void => {
+    const sessionId = String(agent.session.id)
+    const record = state.read(sessionId, effectiveOf(sessionId))
+    syncPersonaStateMessage(ctx, agent.session, record, stateTargets)
   }
 
   /**
@@ -255,7 +280,14 @@ export function apply(ctx: Context, config: Config): void {
       return {
         scope: 'all',
         promptSections: agent => [sectionFor(agent)],
-        onAgentCreated: () => { void refresh() },
+        tools: () => [personaStateTool(ctx, stateTarget)],
+        onAgentCreated: (agent: Agent) => {
+          const sessionId = String(agent.session.id)
+          agents.set(sessionId, new WeakRef(agent))
+          void refresh()
+          const record = state.read(sessionId, effectiveOf(sessionId))
+          if (record !== undefined) syncState(agent)
+        },
       }
     },
   })
@@ -268,8 +300,13 @@ export function apply(ctx: Context, config: Config): void {
     selectionOf,
     effectiveOf,
     select: (sessionId, selection) => {
+      const previous = effectiveOf(sessionId)
       if (selection === null) selections.set(sessionId, null)
       else selections.set(sessionId, selection)
+      // A session that switched cards must stop showing the old card's state.
+      if (previous === effectiveOf(sessionId)) return
+      const agent = agents.get(sessionId)?.deref()
+      if (agent !== undefined) syncState(agent)
     },
   }
   ctx.inject(['commands'], (commandCtx) => {

@@ -12,7 +12,9 @@
     { "path": "../../../vendor/schemastery" },
     { "path": "../../core/agent" },
     { "path": "../../core/system-prompt" },
+    { "path": "../../core/tools" },
     { "path": "../../interaction/commands" },
+    { "path": "../../llm/llm" },
     { "path": "../../util/home-paths" },
     { "path": "../dafeiyu" }
   ]

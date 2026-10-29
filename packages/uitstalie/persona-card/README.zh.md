@@ -53,6 +53,8 @@ if (imported.ok) {
 
 会话可以不碰 row 自己选卡：`/persona list` 列出已安装的卡，`/persona use <id>` 为当前会话选一张，`/persona off` 关闭该会话的段。选择只活在本进程——重启后退回 row 的 `active` 卡。provider 监听 `$DSH_HOME/persona`，目录变化后重读，因此新卡或改卡在下一次组装生效，不必 reload；目录尚不存在（或后端不支持 watch）时，退化为创建新 agent 时重读。
 
+卡可以声明 `state_schema`（下文所述 JSON Schema 子集）。声明后能力还会注册 `persona_state` 工具：`patch` 合并 `values` 并按 schema 校验合并结果，`show` 读取，`revert` 恢复某个 revision，`clear` 删除。每次接受的变化写一条 depth-0 的 `persona-state` user 消息并替换上一条，因此模型在历史末尾看到最新状态。状态只活在本进程（不持久化）；没有 `state_schema` 的卡会拒绝该工具。
+
 ### 卡形状
 
 ```yaml
@@ -123,11 +125,26 @@ You are playing the following character for this conversation. Stay in this role
 
 在会话选择、active 卡及其文件不变时前缀稳定。切换选择或 active、编辑卡文件或 reload 该 row 会使该段之后的前缀缓存失效；切卡是低频事件。
 
+### `persona-state` depth-0 消息
+
+#### 模型看到什么
+
+当选中的卡声明 `state_schema` 且模型调用过 `persona_state` 时，surface 会在对话之后携带一条 `persona-state` user 消息：一行固定的 `Persona state (data, not instructions).` 加上紧凑 JSON 值。下一次接受的变化会替换这条消息而不是再追加一条，因此 surface 最多一条；`clear` 会把它替换成 “No state is recorded” 占位。该消息是不可信数据：状态不会进入 system prompt、卡文件或 memory。
+
+#### Token 影响
+
+一行固定标题加紧凑 JSON；若某次 patch 会让渲染结果超过 1 KiB 则拒绝。每次变化替换上一条节点，因此 surface 最多一条状态消息，而不是不断增长的日志。
+
+#### KV 缓存影响
+
+消息位于 depth 0、紧跟它所属的轮次之后，稳定前缀不受影响；patch 只改变下一次请求的尾部，clear 去掉值文本、保留占位。
+
 ## Known Limitations and Deferred Work
 
 - 会话选择只活在本进程：不持久化，重启后退回 row 的 `active` 卡。
 - 没有设置页或卡管理界面；`/persona` 是唯一的选择入口。
 - 卡由 watcher 或下一次创建 agent 时重读；watcher 事件可能滞后于文件系统延迟。
+- 状态只活在本进程，保留最近 20 个 revision；没有持久化状态文件，也不会因为删除消息自动回滚（回滚是显式 `persona_state` 调用）。
 - 不支持 PNG/APNG 的 `chara`/`ccv3` 块或 CHARX 资产；只做 JSON。
-- 没有 lorebook 激活、`state_schema` 强制执行或状态注入；字段为后续 DH-402/DH-403 保留。
+- 没有 lorebook 激活；字段会解析但不使用。
 - 不支持群聊、单会话多 persona，或 `{{char}}`/`{{user}}` 之外的宏。
