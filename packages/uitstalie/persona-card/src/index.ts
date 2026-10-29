@@ -25,6 +25,14 @@ export { importCharacterCard } from './import.ts'
 export { PERSONA_CARDS_DIRECTORY, PERSONA_CARD_SECTION_NAME, PERSONA_CARD_SECTION_ORDER, Config, loadPersonaCards, name, parsePersonaFile } from './provider.ts'
 export type { PersonaCards } from './provider.ts'
 
+export {
+  PERSONA_COMMAND_NAME,
+  PERSONA_COMMAND_USAGE,
+  personaCommand,
+  registerPersonaCommands,
+} from './commands.ts'
+export type { PersonaCommandTarget } from './commands.ts'
+
 /** The capability organizer that gates this row. */
 export const inject = ['dafeiyu']
 

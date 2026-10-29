@@ -10,7 +10,9 @@
   "references": [
     { "path": "../../../vendor/cordis" },
     { "path": "../../../vendor/schemastery" },
+    { "path": "../../core/agent" },
     { "path": "../../core/system-prompt" },
+    { "path": "../../interaction/commands" },
     { "path": "../../util/home-paths" },
     { "path": "../dafeiyu" }
   ]

@@ -177,6 +177,19 @@ accuracy and safety policy above the role. Do not let the character speak for th
 - 注册 dafeiyu 能力 `persona`（`enabledByDefault: false`），`scope: 'all'`，一个 `persona` system prompt 段，order 50。
 - 卡只在能力激活时读取一次；没有 watcher、没有 per-session 选择、没有 `/persona` 命令。这些在 DH-406。
 
+## 运行时第二切片（2026/10/29，DH-406）
+
+per-session 选择、命令与文件 watch 已落地：
+
+- 选择按 session 身份保存在进程内：`/persona use <id>` 为当前会话选卡，`/persona off` 关闭该会话的段，未选择的会话继续用 row 的 `active`。选择不写盘、不写 session log，重启后回到 row 默认。
+- `/persona list`（以及不带参数的 `/persona`）列出卡目录、标出当前卡，并说明当前来源（row 默认 / 会话选择 / off）。
+- 命令是人工面，和 `/personality` 一样不受能力开关约束；关闭能力只移除模型可见的段。
+- provider 在激活时读一次目录，之后用 `fs.watch`（Node 目录 watcher，50 ms 去抖）刷新；目录不存在或后端不能 watch 时退化为创建 agent 时重读。并发刷新共享一次读取，读失败保留旧卡。
+- 段文本改为按 agent 求值：`text()` 读该会话的选择与当前卡缓存，所以切卡/off 在下一次 assembly 生效，不会重建 agent。
+- 仍然只接受 `persona/v1`；quarantined 字段永不注入。
+
+未做：设置页/UI、选择持久化、per-agent 覆盖（子 agent 继承父 agent 的会话选择）。
+
 ## 待定
 
 1. 选择入口：命令、设置页、profile 配置三选一还是都做？

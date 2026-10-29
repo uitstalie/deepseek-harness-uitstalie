@@ -51,6 +51,8 @@ The parser and importer are pure (no filesystem or Cordis context). The package 
 
 The row is a dafeiyu capability (`enabledByDefault: false`), so the organizer's capability gate decides whether it is mounted.
 
+A session can pick its own card without touching the row: `/persona list` shows the installed cards, `/persona use <id>` selects one for that session, and `/persona off` suppresses the section for it. The choice is process-local — restarting the process falls back to the row's `active` card. The provider watches `$DSH_HOME/persona` and re-reads the directory after a change, so a new or edited card reaches the next assembly without a reload; when the directory does not exist yet (or the backend cannot watch), a new agent re-reads the cards instead.
+
 ### Card shape
 
 ```yaml
@@ -96,7 +98,7 @@ The tests cover parsing, budget, state-schema rejection, V2/V3 import mapping, q
 
 #### What the model sees
 
-When `active` names a card, every agent receives one section named `persona`, ordered at `50` after the deployment persona prefix and before the user `personality` section (`100`). It opens with a fixed preamble that keeps system/developer instructions, tool calls, factual accuracy and safety above the role; then the card's name/description, personality, scenario, style and examples, and its optional Markdown body. An empty or unknown `active` produces an empty section, so the assembled prompt is unchanged. The section never contains `system_prompt` or `post_history_instructions` imported from a Character Card; those stay in `metadata.quarantined`.
+When the session's selection (or the row's `active`) names a card, every agent receives one section named `persona`, ordered at `50` after the deployment persona prefix and before the user `personality` section (`100`). It opens with a fixed preamble that keeps system/developer instructions, tool calls, factual accuracy and safety above the role; then the card's name/description, personality, scenario, style and examples, and its optional Markdown body. `/persona off`, an empty `active`, or an unknown card produces an empty section, so the assembled prompt is unchanged. The section never contains `system_prompt` or `post_history_instructions` imported from a Character Card; those stay in `metadata.quarantined`.
 
 ##### The section layout
 
@@ -119,12 +121,13 @@ A fixed preamble plus the card's rendered fields, capped by `maxBytes` (default 
 
 #### KV Cache effect
 
-Prefix-stable while the active card and its file are unchanged. Changing `active`, editing the card file, or reloading the row invalidates the cached prefix from this section onward; card switches are low-frequency events.
+Prefix-stable while the session's selection, the active card and its file are unchanged. Changing the selection or `active`, editing the card file, or reloading the row invalidates the cached prefix from this section onward; card switches are low-frequency events.
 
 ## Known Limitations and Deferred Work
 
-- The runtime selects one card from the row's static `active` field; per-session selection, `/persona use <id>` and a settings page are follow-ups.
-- Cards are read once when the capability activates; there is no file watcher, so a new card or an edit needs a reload.
+- The session selection is process-local: it is not persisted, so a restart falls back to the row's `active` card.
+- No settings page or card-management UI; `/persona` is the only selection entry.
+- Cards are re-read by the watcher or on the next agent creation; a watcher event can trail an edit by the filesystem's latency.
 - No PNG/APNG `chara`/`ccv3` chunks or CHARX assets; JSON only.
 - No lorebook activation, `state_schema` enforcement or state injection; the fields are parsed for the follow-up tasks DH-402/DH-403.
 - No group chats, multiple personas per session, or macro expansion beyond `{{char}}`/`{{user}}`.

@@ -1,27 +1,32 @@
 /**
- * The persona-card capability provider: mount one role-play card on every agent.
+ * The persona-card capability provider: mount one role-play card per session.
  *
- * This is the first runtime slice: a global card directory, one configured active card and one
- * stable system-prompt section. Per-session selection and `/persona` commands are follow-ups;
- * the provider currently reads its selection from the row configuration.
+ * The provider loads `$DSH_HOME/persona/*.md` once, keeps the set fresh while the directory
+ * changes, and registers one `persona` system-prompt section with the capability organizer. The
+ * section text is evaluated per assembly from the session's selection: `/persona use <id>` picks
+ * a card for that session, `/persona off` suppresses the section, and a session that never chose
+ * falls back to the row's `active` card. A selection lives in this process only.
  *
  * @module @deepseek-ai/dsh-persona-card/provider
  */
 
+import { watch, type FSWatcher } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context, Volatile } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution } from '@deepseek-ai/dsh-dafeiyu'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 import z from '@deepseek-ai/schemastery'
 import { parse } from 'yaml'
 import { parsePersonaCard, renderPersonaText } from './card.ts'
+import { registerPersonaCommands, type PersonaCommandTarget } from './commands.ts'
 import { DEFAULT_PERSONA_MAX_BYTES, type PersonaCard, type PersonaResult } from './types.ts'
 
 /** Cordis plugin name. */
 export const name = 'persona-card'
-/** The organizer wires the contribution; no other service is required. */
+/** The organizer wires the contribution; commands are an optional human surface. */
 export const inject = ['dafeiyu']
 
 /** The directory under `$DSH_HOME` that holds `*.md` cards. */
@@ -32,9 +37,12 @@ export const PERSONA_CARD_SECTION_NAME = 'persona'
 /** The section order: after the deployment prefix, before `personality`. */
 export const PERSONA_CARD_SECTION_ORDER = 50
 
+/** How long a burst of directory events coalesces before the cards are re-read. */
+const WATCH_DEBOUNCE_MS = 50
+
 /** Row configuration, accepting live references or plain test values. */
 export interface Config {
-  /** Card id (file name without `.md`); empty disables the section. */
+  /** Card id (file name without `.md`) used by sessions that never chose one; empty disables the section. */
   readonly active?: Volatile<string> | string | undefined
   /** Injection budget for one card, in UTF-8 bytes. */
   readonly maxBytes?: Volatile<number> | number | undefined
@@ -42,7 +50,7 @@ export interface Config {
 
 /** Row configuration schema. */
 export const Config = z.object({
-  /** Card id (file name without `.md`); empty disables the section. */
+  /** Card id (file name without `.md`) used by sessions that never chose one; empty disables the section. */
   active: z.string().default('').volatile(),
   /** Injection budget for one card, in UTF-8 bytes. */
   maxBytes: z.number().step(1).min(1).default(DEFAULT_PERSONA_MAX_BYTES).volatile(),
@@ -126,13 +134,109 @@ export const loadPersonaCards = async (
 }
 
 /**
- * Register the capability with the organizer.
+ * Register the capability and the `/persona` command.
  * @param ctx - the plugin context.
  * @param config - the row configuration.
  */
 export function apply(ctx: Context, config: Config): void {
-  const active = () => current(config.active) ?? ''
-  const maxBytes = () => current(config.maxBytes) ?? DEFAULT_PERSONA_MAX_BYTES
+  const active = (): string => current(config.active) ?? ''
+  const maxBytes = (): number => current(config.maxBytes) ?? DEFAULT_PERSONA_MAX_BYTES
+  const directory = join(resolveDshHome(), PERSONA_CARDS_DIRECTORY)
+
+  let cards: PersonaCards = Object.freeze({ cards: new Map<string, PersonaCard>(), warnings: Object.freeze([]) })
+  const rendered = new WeakMap<PersonaCard, string>()
+  /** Explicit per-session choices; `null` means "off", an absent key means "use the row default". */
+  const selections = new Map<string, string | null>()
+  const warnedMissing = new Set<string>()
+  let refreshing: Promise<void> | undefined
+  let watcher: FSWatcher | undefined
+  let debounce: NodeJS.Timeout | undefined
+  let disposed = false
+
+  const selectionOf = (sessionId: string): string | null | undefined => selections.get(sessionId)
+  const effectiveOf = (sessionId: string): string => {
+    const selection = selections.get(sessionId)
+    if (selection !== undefined) return selection ?? ''
+    return active()
+  }
+  const textFor = (sessionId: string): string => {
+    const id = effectiveOf(sessionId)
+    if (id === '') return ''
+    const card = cards.cards.get(id)
+    if (card === undefined) return ''
+    let text = rendered.get(card)
+    if (text === undefined) {
+      text = renderPersonaText(card)
+      rendered.set(card, text)
+    }
+    return text
+  }
+
+  /**
+   * Re-read the card directory once. Concurrent calls share one read, and a failed read keeps the
+   * previous cards: a half-written file must not empty a live session's persona.
+   */
+  const refresh = (): Promise<void> => {
+    refreshing ??= (async () => {
+      let loaded: PersonaCards
+      try {
+        loaded = await loadPersonaCards({ maxBytes: maxBytes(), warn: (message) => { ctx.logger.warn('persona: %s', message) } })
+      } catch (error: unknown) {
+        ctx.logger.warn('persona: could not load cards: %s', error instanceof Error ? error.message : String(error))
+        return
+      }
+      if (disposed) return
+      cards = loaded
+      const id = active()
+      if (id !== '' && loaded.cards.has(id)) warnedMissing.delete(id)
+      if (id !== '' && !loaded.cards.has(id) && !warnedMissing.has(id)) {
+        warnedMissing.add(id)
+        ctx.logger.warn('persona: active card %s was not found', id)
+      }
+    })().finally(() => { refreshing = undefined })
+    return refreshing
+  }
+
+  const scheduleRefresh = (): void => {
+    if (disposed) return
+    if (debounce !== undefined) clearTimeout(debounce)
+    debounce = setTimeout(() => {
+      debounce = undefined
+      void refresh()
+    }, WATCH_DEBOUNCE_MS)
+    debounce.unref?.()
+  }
+
+  /**
+   * Watch the card directory. A directory that does not exist yet (or a backend without watching)
+   * degrades to re-reading when an agent is created, which is the next assembly that can see the
+   * change anyway.
+   */
+  const startWatch = (): void => {
+    if (disposed) return
+    try {
+      watcher = watch(directory, { persistent: false }, () => { scheduleRefresh() })
+      watcher.on('error', (error) => {
+        ctx.logger.debug('persona: card watch is unavailable for %s: %s', directory, error.message)
+      })
+    } catch (error: unknown) {
+      ctx.logger.debug(
+        'persona: card watch is unavailable for %s; cards are re-read when an agent is created: %s',
+        directory,
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+  }
+
+  ctx.effect(() => () => {
+    disposed = true
+    if (debounce !== undefined) clearTimeout(debounce)
+    watcher?.close()
+    watcher = undefined
+  }, 'persona-card.watch()')
+
+  void refresh().then(startWatch, startWatch)
+
   const registration = ctx.dafeiyu.register({
     id: 'persona',
     contractVersion: 2,
@@ -141,22 +245,34 @@ export function apply(ctx: Context, config: Config): void {
     config: { active: active(), maxBytes: maxBytes() },
     enabledByDefault: false,
     create: async (): Promise<CapabilityContribution> => {
-      let text = ''
-      try {
-        const loaded = await loadPersonaCards({ maxBytes: maxBytes(), warn: message => ctx.logger.warn('persona: %s', message) })
-        const card = loaded.cards.get(active())
-        if (card !== undefined) text = renderPersonaText(card)
-        else if (active() !== '') ctx.logger.warn('persona: active card %s was not found', active())
-      } catch (error: unknown) {
-        ctx.logger.warn('persona: could not load cards: %s', error instanceof Error ? error.message : String(error))
-      }
-      const section: PromptSection = {
+      // The first assembly after activation must see the cards on disk, not the empty cache.
+      await refresh()
+      const sectionFor = (agent: Agent): PromptSection => ({
         name: PERSONA_CARD_SECTION_NAME,
         order: PERSONA_CARD_SECTION_ORDER,
-        text: () => text,
+        text: () => textFor(String(agent.session.id)),
+      })
+      return {
+        scope: 'all',
+        promptSections: agent => [sectionFor(agent)],
+        onAgentCreated: () => { void refresh() },
       }
-      return { scope: 'all', promptSections: () => [section] }
     },
   })
   ctx.effect(() => registration, 'persona-card.register()')
+
+  // `/persona` is a human surface: like `/personality`, it is not gated by the capability switch.
+  const target: PersonaCommandTarget = {
+    directory,
+    cards: () => [...cards.cards.keys()].sort((left, right) => left.localeCompare(right)),
+    selectionOf,
+    effectiveOf,
+    select: (sessionId, selection) => {
+      if (selection === null) selections.set(sessionId, null)
+      else selections.set(sessionId, selection)
+    },
+  }
+  ctx.inject(['commands'], (commandCtx) => {
+    ctx.effect(() => registerPersonaCommands(commandCtx, target), 'persona-card.commands()')
+  })
 }

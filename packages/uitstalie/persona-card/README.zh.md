@@ -51,6 +51,8 @@ if (imported.ok) {
 
 该 row 是 dafeiyu 能力（`enabledByDefault: false`），是否挂载由组织者的能力门决定。
 
+会话可以不碰 row 自己选卡：`/persona list` 列出已安装的卡，`/persona use <id>` 为当前会话选一张，`/persona off` 关闭该会话的段。选择只活在本进程——重启后退回 row 的 `active` 卡。provider 监听 `$DSH_HOME/persona`，目录变化后重读，因此新卡或改卡在下一次组装生效，不必 reload；目录尚不存在（或后端不支持 watch）时，退化为创建新 agent 时重读。
+
 ### 卡形状
 
 ```yaml
@@ -96,7 +98,7 @@ metadata:
 
 #### 模型看到什么
 
-当 `active` 指定一张卡时，每个 agent 都会收到一个名为 `persona`、order 为 `50` 的段：位于部署 persona 前缀之后、用户 `personality` 段（`100`）之前。段首是固定 preamble，明确 system/developer 指令、工具调用、事实准确性与安全高于角色；随后是卡的 name/description、personality、scenario、style、examples 与可选正文。`active` 为空或卡不存在时产生空段，组装后的提示不变。从 Character Card 导入的 `system_prompt`/`post_history_instructions` 永远不会出现在这个段里，只留在 `metadata.quarantined`。
+当会话选择（或 row 的 `active`）指定一张卡时，每个 agent 都会收到一个名为 `persona`、order 为 `50` 的段：位于部署 persona 前缀之后、用户 `personality` 段（`100`）之前。段首是固定 preamble，明确 system/developer 指令、工具调用、事实准确性与安全高于角色；随后是卡的 name/description、personality、scenario、style、examples 与可选正文。`/persona off`、`active` 为空或卡不存在时产生空段，组装后的提示不变。从 Character Card 导入的 `system_prompt`/`post_history_instructions` 永远不会出现在这个段里，只留在 `metadata.quarantined`。
 
 ##### The section layout
 
@@ -119,12 +121,13 @@ You are playing the following character for this conversation. Stay in this role
 
 #### KV 缓存影响
 
-在 active 卡及其文件不变时前缀稳定。切换 active、编辑卡文件或 reload 该 row 会使该段之后的前缀缓存失效；切卡是低频事件。
+在会话选择、active 卡及其文件不变时前缀稳定。切换选择或 active、编辑卡文件或 reload 该 row 会使该段之后的前缀缓存失效；切卡是低频事件。
 
 ## Known Limitations and Deferred Work
 
-- 运行时只从 row 的静态 `active` 选择一张卡；per-session 选择、`/persona use <id>` 与设置页是后续工作。
-- 卡在能力激活时读取一次；没有文件 watcher，新卡/编辑需要 reload。
+- 会话选择只活在本进程：不持久化，重启后退回 row 的 `active` 卡。
+- 没有设置页或卡管理界面；`/persona` 是唯一的选择入口。
+- 卡由 watcher 或下一次创建 agent 时重读；watcher 事件可能滞后于文件系统延迟。
 - 不支持 PNG/APNG 的 `chara`/`ccv3` 块或 CHARX 资产；只做 JSON。
 - 没有 lorebook 激活、`state_schema` 强制执行或状态注入；字段为后续 DH-402/DH-403 保留。
 - 不支持群聊、单会话多 persona，或 `{{char}}`/`{{user}}` 之外的宏。

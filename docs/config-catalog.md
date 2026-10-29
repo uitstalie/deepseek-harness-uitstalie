@@ -2694,12 +2694,12 @@ export interface Config {
 
 - `inject`: `dafeiyu`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/uitstalie/persona-card/src/provider.ts:36`](../packages/uitstalie/persona-card/src/provider.ts)
+- `source`: [`packages/uitstalie/persona-card/src/provider.ts:44`](../packages/uitstalie/persona-card/src/provider.ts)
 
 ```ts config-catalog
 /** Row configuration, accepting live references or plain test values. */
 export interface Config {
-  /** Card id (file name without `.md`); empty disables the section. */
+  /** Card id (file name without `.md`) used by sessions that never chose one; empty disables the section. */
   readonly active?: Volatile<string> | string | undefined
   /** Injection budget for one card, in UTF-8 bytes. */
   readonly maxBytes?: Volatile<number> | number | undefined
