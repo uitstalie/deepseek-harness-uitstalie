@@ -109,6 +109,9 @@ const decodeLinks = (value: unknown): Result<readonly Link[], JiraError> => {
  * Read an issue from its file text. `key` comes from the file name (the name is the
  * identity; decision 77's principle applied to issues), and a frontmatter `key` that
  * disagrees is reported rather than silently preferred.
+ * @param text - the issue file's full text, frontmatter and body.
+ * @param key - the issue key derived from the file name; the identity of the issue.
+ * @returns the decoded issue, or the validation failure that stops the read.
  */
 export const decodeIssue = (text: string, key: IssueKey): Result<DecodedIssue, JiraError> => {
   const parsed = parseFrontmatter(text)

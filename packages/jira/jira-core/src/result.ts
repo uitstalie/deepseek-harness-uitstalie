@@ -16,7 +16,17 @@ export type Err<E> = Readonly<{ ok: false; error: E }>
 /** A value or a typed error, never both: the composition primitive every core function returns. */
 export type Result<T, E> = Ok<T> | Err<E>
 
+/**
+ * Wrap a success; the returned record is frozen.
+ * @param value - the success value.
+ * @returns the frozen `Ok` record.
+ */
 export const ok = <T>(value: T): Ok<T> => Object.freeze({ ok: true, value })
+/**
+ * Wrap a failure; the returned record is frozen.
+ * @param error - the failure value.
+ * @returns the frozen `Err` record.
+ */
 export const err = <E>(error: E): Err<E> => Object.freeze({ ok: false, error })
 
 export const isOk = <T, E>(result: Result<T, E>): result is Ok<T> => result.ok

@@ -312,6 +312,11 @@ export type RegisteredProject = Readonly<{ key: string; registered: boolean; pro
  *
  * A key collision appends digits (`dsh-jira` → `DJ`, then `DJ2`), because two repositories really can
  * derive the same initials.
+ * @param store - the ledger store the project is registered in.
+ * @param actor - the identity and timestamp recorded on the project file.
+ * @param binding - the resolved checkout: its key, derived key, remote, and working directory.
+ * @param machineId - this machine's identity, recorded when the project has no remote.
+ * @returns the registered project (or the existing binding), or the write failure.
  */
 export const ensureWorkspaceProject = async (
   store: Store,
@@ -355,6 +360,10 @@ export const ensureWorkspaceProject = async (
  * §4.11's interception, the piece that was computed but never consumed: a project with no remote is
  * anchored to one machine, so **other machines' agents** may not write it. Humans still may, and this
  * machine's own agents always may — the rule is about the tuple, not about distrust.
+ * @param store - the ledger store that carries the project file.
+ * @param projectKey - the project whose write policy is checked.
+ * @param by - the acting identity; `agent:` identities are the ones the policy can refuse.
+ * @returns success, or the refusal that names the owning machine.
  */
 export const assertProjectWritable = async (
   store: Store,

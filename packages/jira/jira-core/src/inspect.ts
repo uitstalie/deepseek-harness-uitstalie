@@ -193,6 +193,9 @@ export const queryIssues = (
  * Decision 24: the issues that still **block** this one — i.e. its `is_blocked_by` targets that are
  * not in a closed status. It lives here rather than in the write path because answering it needs the
  * whole issue map, and the write transaction deliberately does not read one.
+ * @param store - the ledger store whose issues are scanned.
+ * @param key - the issue whose open blockers are wanted.
+ * @returns the blocking keys in document order, or the vocabulary read failure.
  */
 export const blockersOf = async (
   store: Store,

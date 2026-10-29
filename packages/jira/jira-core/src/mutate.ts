@@ -164,6 +164,14 @@ const changedFields = (issue: Issue, next: Partial<Issue>): readonly string[] =>
   return Object.freeze(fields)
 }
 
+/**
+ * Build the next issue from a patch. Every supplied field is validated against the
+ * vocabulary and the tag registry; a field the patch omits is left untouched.
+ * @param issue - the issue before the update.
+ * @param patch - the fields to change.
+ * @param ctx - the change context (vocabulary, known tags, identity, timestamp).
+ * @returns the change, or the first validation failure.
+ */
 export const applyUpdate = (issue: Issue, patch: IssuePatch, ctx: ChangeContext): Result<Change, JiraError> => {
   const next: Partial<Record<keyof Issue, unknown>> = {}
 
@@ -227,6 +235,15 @@ export const applyUpdate = (issue: Issue, patch: IssuePatch, ctx: ChangeContext)
 
 export type TransitionOptions = Readonly<{ resolution?: string; resolutionNote?: string }>
 
+/**
+ * Move an issue along a declared transition. Entering a closed status requires a resolution;
+ * leaving the closed set clears the previous conclusion and records it as a comment (decision 72).
+ * @param issue - the issue before the transition.
+ * @param to - the target status the vocabulary declares.
+ * @param options - the optional resolution and resolution note.
+ * @param ctx - the change context (vocabulary, identity, timestamp).
+ * @returns the change, or the transition or validation failure.
+ */
 export const applyTransition = (
   issue: Issue,
   to: string,
@@ -288,6 +305,10 @@ export const applyTransition = (
  * calls and 31 commits — for an agent, that is doubled context and doubled chance of getting it wrong.
  * This is a **composition**, not a bypass: the transition rules, the resolution requirement and the
  * comment's own validation all still run, and a failure of either half leaves the issue untouched.
+ * @param issue - the issue to close.
+ * @param options - the target status, resolution, note, and closing comment.
+ * @param ctx - the change context (vocabulary, identity, timestamp).
+ * @returns the combined transition and comment change, or the failure that left the issue untouched.
  */
 export const applyClose = (
   issue: Issue,
@@ -313,7 +334,13 @@ export const applyClose = (
   return ok(freezeChange(commented.value.issue, [...transition.value.comments, ...commented.value.comments]))
 }
 
-/** A comment never touches the issue (decision 44): the caller only appends it. */
+/**
+ * A comment never touches the issue (decision 44): the caller only appends it.
+ * @param issue - the issue the comment is recorded against.
+ * @param body - the comment text; an empty or whitespace-only body is refused.
+ * @param ctx - the change context supplying the author and timestamp.
+ * @returns the change carrying the pending comment.
+ */
 export const applyComment = (
   issue: Issue,
   body: string,
@@ -347,6 +374,15 @@ export const renewAssigneeLease = (issue: Issue, at: Timestamp): Issue => {
   return Object.freeze({ ...issue, leaseExpiresAt: expires })
 }
 
+/**
+ * Claim or release an issue (decision 50). A live lease held by somebody else is refused, an
+ * expired one is taken over with a comment, and an agent may not claim blocked work without an
+ * explicit override (decision 24).
+ * @param issue - the issue before the assignment.
+ * @param assignee - the new identity, or `null` to release.
+ * @param ctx - the change context (identity, timestamp, blockers, override).
+ * @returns the change, or the refusal that leaves the issue untouched.
+ */
 export const applyAssignee = (
   issue: Issue,
   assignee: Identity | null,
@@ -407,7 +443,13 @@ export const applyAssignee = (
 
 export type LinkChange = Readonly<{ type: LinkType; target: IssueKey; op: 'add' | 'remove' }>
 
-/** Links are a closed vocabulary of four types, stored as `links: [{ type, target }]` (decision 70). */
+/**
+ * Links are a closed vocabulary of four types, stored as `links: [{ type, target }]` (decision 70).
+ * @param issue - the issue whose links change.
+ * @param change - the link type, target key, and add or remove operation.
+ * @param ctx - the change context supplying the timestamp.
+ * @returns the change, or the validation failure.
+ */
 export const applyLink = (
   issue: Issue,
   change: LinkChange,
@@ -453,6 +495,9 @@ export const applyConflictMark = (issue: Issue, ctx: ChangeContext): Result<Chan
 /**
  * Clear the `conflicted` flag: a human has looked at what git could not merge (decision 71).
  * Acknowledging is a change to the issue in its own right, so it advances the revision.
+ * @param issue - the issue whose conflict flag is cleared.
+ * @param ctx - the change context supplying the timestamp.
+ * @returns the change; an already-acknowledged issue is returned unchanged.
  */
 export const applyAckConflict = (issue: Issue, ctx: ChangeContext): Result<Change, JiraError> =>
   issue.conflicted !== true
@@ -467,6 +512,9 @@ export const applyAckConflict = (issue: Issue, ctx: ChangeContext): Result<Chang
 /**
  * Two changes as one: the first's issue is fed to the second (whole or not at all), and the
  * comments both wanted to append are kept in order.
+ * @param first - the change applied first.
+ * @param second - the change applied to the first's resulting issue.
+ * @returns one change carrying the second issue and both comment lists in order.
  */
 export const combineChanges = (first: Change, second: Change): Change =>
   Object.freeze({

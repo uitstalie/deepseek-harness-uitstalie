@@ -108,6 +108,10 @@ export const readSession = async (store: Store, id: string): Promise<Result<Sess
 /**
  * Write the session record **once**. Idempotent by construction: an existing file is left exactly as
  * it is, so a resumed session keeps its original "who and when" (decision 10).
+ * @param store - the ledger store the session record is written into.
+ * @param actor - the identity and timestamp recorded on the commit.
+ * @param record - the session record to write.
+ * @returns whether this call wrote the record, or the write failure.
  */
 export const ensureSessionRecord = async (
   store: Store,
@@ -129,12 +133,22 @@ export const ensureSessionRecord = async (
 
 /* ── the close-out scan (decision 100) ───────────────────────────────────────── */
 
-/** Where the scan's watermark lives: outside the store, like every machine-local fact (decision 73). */
+/**
+ * Where the scan's watermark lives: outside the store, like every machine-local fact (decision 73).
+ * @param dshHome - the harness home the machine-local state lives under.
+ * @param sessionId - the session whose watermark path is wanted; unsafe characters are replaced.
+ * @returns the watermark file path.
+ */
 export const scanWatermarkPath = (dshHome: string, sessionId: string): string =>
   join(dshHome, 'dsh-jira', 'session-scan', `${sessionId.replace(/[^A-Za-z0-9._-]/gu, '_')}.json`)
 
 export type Watermark = Readonly<{ lastSha?: string; scans: number }>
 
+/**
+ * Read the scan watermark; a missing or corrupt file reads as "never scanned".
+ * @param path - the watermark file path from {@link scanWatermarkPath}.
+ * @returns the watermark; failures are tolerated rather than raised.
+ */
 export const readWatermark = async (path: string): Promise<Watermark> => {
   const text = await readText(path)
   if (!text.ok) return Object.freeze({ scans: 0 })
@@ -153,6 +167,9 @@ export const readWatermark = async (path: string): Promise<Watermark> => {
 /**
  * Persist the watermark. Returns the io boundary's Result rather than throwing (decision 180):
  * the session end must survive a failed watermark write, and the BOM/CR refusal stays in one place.
+ * @param path - the watermark file path from {@link scanWatermarkPath}.
+ * @param watermark - the watermark to persist.
+ * @returns the write result.
  */
 export const writeWatermark = async (path: string, watermark: Watermark): Promise<Result<void, JiraError>> =>
   writeTextAtomic(path, `${JSON.stringify(watermark, null, 2)}\n`)
@@ -205,6 +222,10 @@ export type ScanOutcome = Readonly<{
  *
  * A comment carries the commit sha, and that is what makes a second scan — after a crash, or a
  * session that ends twice — a no-op for the issues it already covered.
+ * @param store - the ledger store the comments are appended to.
+ * @param actor - the identity and timestamp recorded on every appended comment.
+ * @param options - the session id, the range start, and the git runner.
+ * @returns what the scan examined, commented, and skipped, or the write failure.
  */
 export const sessionScan = async (
   store: Store,

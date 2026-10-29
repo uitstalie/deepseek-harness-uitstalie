@@ -99,6 +99,10 @@ export type CreateTagInput = Readonly<{ name: string; description: string; alias
  * Register a tag (decision 26's `tag-create`). Every refusal names what to do about it: a bad name
  * shows the naming rule, a missing description says it is required and why, and a duplicate quotes
  * the description that is already there.
+ * @param store - the ledger store the registry lives in.
+ * @param actor - the identity and timestamp recorded on the registry commit.
+ * @param input - the tag name, description, and optional aliases.
+ * @returns the registered tag and whether it was committed, or the refusal.
  */
 export const createTag = async (
   store: Store,

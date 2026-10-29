@@ -66,7 +66,14 @@ const refusalFor = async (
   return planned.ok ? undefined : { key, code: planned.error.code, message: planned.error.message }
 }
 
-/** Close every key, or none (see the module comment for the one residual). */
+/**
+ * Close every key, or none (see the module comment for the one residual).
+ * @param store - the ledger store every issue and the vocabulary are read from.
+ * @param keys - the issue keys to close; duplicates collapse and an empty list is refused.
+ * @param actor - the identity and timestamp recorded on every transition and comment.
+ * @param options - the close options shared by every key.
+ * @returns the closed keys and their comments, or the first refusal that aborted the batch.
+ */
 export const closeMany = async (
   store: Store,
   keys: readonly IssueKey[],

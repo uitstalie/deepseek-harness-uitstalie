@@ -54,6 +54,11 @@ const countFiles = async (directory: string, matches: (name: string) => boolean)
   return listed.value.filter(entry => entry.isFile && matches(entry.name)).length
 }
 
+/**
+ * Count projects, knowledge entries, open issues, and projects read-only for every machine.
+ * @param store - the ledger store to survey.
+ * @returns the counts, or the read failure.
+ */
 export const countStore = async (store: Store): Promise<Result<StoreCounts, JiraError>> => {
   const projectsDirectory = join(store.files.root, 'projects')
   const projectDirs = await listDirEntries(projectsDirectory)

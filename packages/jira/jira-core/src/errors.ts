@@ -53,6 +53,12 @@ export const formatError = (error: JiraError): string => {
 /* Named constructors for the codes the current slice can produce. Each is a pure
  * function so callers compose instead of assembling literals by hand. */
 
+/**
+ * A caller mistake: the request is malformed and the message says how to fix it.
+ * @param message - what is wrong with the request.
+ * @param context - optional structured details for callers and diagnostics.
+ * @returns the typed `INVALID_INPUT` error.
+ */
 export const invalidInput = (message: string, context?: ErrorContext): JiraError =>
   jiraError('INVALID_INPUT', message, context)
 
@@ -60,6 +66,12 @@ export const invalidInput = (message: string, context?: ErrorContext): JiraError
 export const notFound = (key: string, kind = 'issue'): JiraError =>
   jiraError('NOT_FOUND', `${kind} ${key} not found`, { key, kind })
 
+/**
+ * An optimistic-concurrency failure: the issue moved under the caller's recorded revision.
+ * @param expected - the revision the caller recorded.
+ * @param actual - the revision the store now holds.
+ * @returns the typed `STALE_REVISION` error.
+ */
 export const staleRevision = (expected: number, actual: number): JiraError =>
   jiraError('STALE_REVISION', `revision mismatch: expected ${expected}, found ${actual}`, {
     expected,
