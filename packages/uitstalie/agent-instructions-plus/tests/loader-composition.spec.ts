@@ -106,8 +106,8 @@ test('the composed row delivers the native chain and the rules in one message', 
 test('the branch layer mounts the plus row and the presets stay native', async () => {
   for (const preset of ['standard', 'ptc', 'cordis']) {
     const text = await readFile(new URL(`../../../bundle/web-app/presets/${preset}.patch.yml`, import.meta.url), 'utf8')
-    // The presets carry branch *provenance* comments (the `uitstalie-` markers every
-    // native change needs); the contract is that they mount no branch plugin row.
+    // The presets carry `uitstalie-` marker comments (the per-change labels every
+    // native edit needs); the contract is that they mount no branch plugin row.
     const rows = text.split('\n').filter(line => !line.trimStart().startsWith('#'))
     expect(rows.join('\n'), preset).not.toContain('uitstalie')
     expect(rows.join('\n'), preset).not.toContain('agent-instructions-plus')

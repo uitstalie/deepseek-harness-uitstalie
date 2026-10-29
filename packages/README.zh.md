@@ -80,7 +80,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 | [`client/`](client/README.zh.md) | web GUI 浏览器半侧：shell、协议层、对象服务、slot、`ui-*` 插件 |
 | [`test-support/`](test-support/README.zh.md) | 测试基础设施（testkit、回放、Loader 冒烟测试） |
 | [`util/`](util/README.zh.md) | 组间共享的低层工具与纯数据包列表（`Branded<B>`、home／路径辅助函数、超时、留存、官方组合包列表） |
-| [`uitstalie/`](uitstalie/README.zh.md) | 分支自有能力系列：指令源、`.dsh` 存储、LLM 适配器、memory 与 personality 提供方及其 Web 界面 | <!-- uitstalie-k3, 2026/10/26, DH-11, 分支自有包组登记 -->
+| [`uitstalie/`](uitstalie/README.zh.md) | 分支自有能力系列：指令源、`.dsh` 存储、LLM 适配器、memory／personality 提供方与 Web 界面 | <!-- uitstalie-k3, 2026/10/26, DH-11, 分支自有包组登记 -->
 -----
 
 <a id="release-expectations"></a>
