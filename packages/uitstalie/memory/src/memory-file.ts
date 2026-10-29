@@ -47,6 +47,9 @@ export const MEMORY_DOCUMENT_VERSION = 1
 /** Default body budget in UTF-8 bytes. */
 export const DEFAULT_MEMORY_MAX_BYTES = 4096
 
+/** Default per-session entry cap kept in the managed block. */
+export const DEFAULT_MEMORY_MAX_ENTRIES = 40
+
 /** Maximum entries one brief checkpoint may carry. */
 export const MEMORY_BRIEF_MAX_ENTRIES = 2
 
@@ -220,6 +223,8 @@ export interface MemoryTurnSummaryOptions {
   readonly window?: MemoryWindow
   /** Maximum managed-block body size in UTF-8 bytes. */
   readonly maxBytes?: number
+  /** Maximum entries retained per session; older sections leave the block. */
+  readonly maxEntries?: number
 }
 
 /** Result of one turn-summary append. */
@@ -258,6 +263,8 @@ export interface MemoryTierMigrationOptions {
   readonly window?: MemoryWindow
   /** Maximum managed-block body size in UTF-8 bytes. */
   readonly maxBytes?: number
+  /** Maximum entries retained per session; older sections leave the block. */
+  readonly maxEntries?: number
 }
 
 /** Result of one tier migration pass. */
@@ -280,6 +287,8 @@ export interface MemoryAppendOptions {
   readonly window?: MemoryWindow
   /** Maximum managed-block body size in UTF-8 bytes. */
   readonly maxBytes?: number
+  /** Maximum entries retained per session; older sections leave the block. */
+  readonly maxEntries?: number
 }
 
 /** Result of one append. */
@@ -643,6 +652,75 @@ async function applySummaryChange(
   }
 }
 
+/**
+ * Drop duplicate entries and over-cap sections of one session, and report what changed.
+ *
+ * This is the `/memory prune` path: unlike the implicit retention on every append, it runs only
+ * when a human asks for it and reports the counts.
+ * @param ctx - context carrying `dshStore`.
+ * @param session - session whose project owns the file.
+ * @param target - the session to prune and the entry cap; defaults to the calling session and the
+ *   append options' cap.
+ * @param signal - cancellation for the reads and write.
+ * @param options - window thresholds and the body budget.
+ * @returns the written path, what was removed, and how many entries remain.
+ * @throws MemoryDocumentError when MEMORY.md does not exist or cannot be parsed.
+ */
+export async function pruneMemorySession(
+  ctx: Context,
+  session: Session,
+  target: { readonly sessionId?: string; readonly keep?: number } = {},
+  signal?: AbortSignal,
+  options: MemoryAppendOptions = {},
+): Promise<MemoryPruneResult> {
+  const current = await readMemoryDocument(ctx, session, signal)
+  if (current.document === undefined) {
+    throw new MemoryDocumentError('MEMORY.md does not exist yet; there is nothing to prune', 'invalid-document')
+  }
+  const sessionId = target.sessionId ?? String(session.id)
+  const keep = Math.max(1, Math.floor(target.keep ?? options.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES))
+  const pruned = pruneSessionEntries(current.document, sessionId, keep)
+  if (pruned.duplicates === 0 && pruned.overCap === 0) {
+    return {
+      path: current.path,
+      ...current.version === undefined ? {} : { version: current.version },
+      sessionId,
+      duplicates: 0,
+      overCap: 0,
+      remaining: summarizeMemoryEntries(current.document, sessionId).entries,
+      keep,
+    }
+  }
+  const written = await writeNextMemoryDocument(ctx, session, pruned.document, current.version, signal, options)
+  return {
+    path: written.path,
+    ...written.version === undefined ? {} : { version: written.version },
+    sessionId,
+    duplicates: pruned.duplicates,
+    overCap: pruned.overCap,
+    remaining: summarizeMemoryEntries(pruned.document, sessionId).entries,
+    keep,
+  }
+}
+
+/** Result of one `/memory prune`. */
+export interface MemoryPruneResult {
+  /** Store-relative path that was written or left untouched. */
+  readonly path: string
+  /** Version of the written file, when the store reported one. */
+  readonly version?: string
+  /** Session that was pruned. */
+  readonly sessionId: string
+  /** Entries removed as duplicates. */
+  readonly duplicates: number
+  /** Entries removed with the oldest sections over the cap. */
+  readonly overCap: number
+  /** Entries remaining for the session. */
+  readonly remaining: number
+  /** Entry cap the prune used. */
+  readonly keep: number
+}
+
 /** Locate the entry for one turn, naming the turns this session does have. */
 function locateSummaryEntry(
   document: MemoryDocument,
@@ -779,10 +857,17 @@ export async function appendMemoryEntry(
   const kind = assertMemoryEntryKind(entry.kind)
   const window = options.window ?? DEFAULT_MEMORY_WINDOW
   const maxBytes = options.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES
+  const maxEntries = options.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES
   const append = async (): Promise<MemoryAppendResult> => {
     const current = await readMemoryDocument(ctx, session, signal)
     const document = current.document ?? createMemoryDocument(window)
-    const next = retainDocument(appendToDocument(document, session, entry, kind), session.id, window, maxBytes)
+    const next = retainDocument(
+      appendToDocument(document, session, entry, kind),
+      session.id,
+      window,
+      maxBytes,
+      maxEntries,
+    )
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -842,10 +927,17 @@ export async function appendTurnSummary(
   }))
   const window = options.window ?? DEFAULT_MEMORY_WINDOW
   const maxBytes = options.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES
+  const maxEntries = options.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES
   const append = async (): Promise<MemoryTurnSummaryResult> => {
     const current = await readMemoryDocument(ctx, session, signal)
     const document = current.document ?? createMemoryDocument(window)
-    const next = retainDocument(appendTurnToDocument(document, session, summary, entries), session.id, window, maxBytes)
+    const next = retainDocument(
+      appendTurnToDocument(document, session, summary, entries),
+      session.id,
+      window,
+      maxBytes,
+      maxEntries,
+    )
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -919,7 +1011,13 @@ export async function migrateMemoryTiers(
     // Once a checkpoint left the surface, the metadata write must finish even if the
     // provider was disabled meanwhile: skipping it here is exactly the half-committed
     // state (checkpoint published, MEMORY.md unchanged) this pass avoids.
-    const next = retainDocument(applyMigrations(current.document, session, plan, briefs, checkpoints), session.id, window, maxBytes)
+    const next = retainDocument(
+      applyMigrations(current.document, session, plan, briefs, checkpoints),
+      session.id,
+      window,
+      maxBytes,
+      options.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES,
+    )
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -1747,8 +1845,12 @@ function retainDocument(
   currentSessionId: string,
   window: MemoryWindow,
   maxBytes: number,
+  maxEntries: number = DEFAULT_MEMORY_MAX_ENTRIES,
 ): MemoryDocument {
-  const retained = retainSessions({ ...document, window }, currentSessionId, window.sessions)
+  let retained = retainSessions({ ...document, window }, currentSessionId, window.sessions)
+  for (const record of retained.sessions) {
+    retained = pruneSessionEntries(retained, record.id, maxEntries).document
+  }
   let result = retained
   while (Buffer.byteLength(renderManagedBody(result.sections), 'utf8') > maxBytes) {
     const oldest = [...result.sessions]
@@ -1760,6 +1862,168 @@ function retainDocument(
       .map(record => record.id)))
   }
   return result
+}
+
+/** Duplicate entries and over-cap sections removed from one session. */
+export interface SessionPrune {
+  /** Document after the pruning. */
+  readonly document: MemoryDocument
+  /** Entries removed because an equal normalized text already appeared earlier in the session. */
+  readonly duplicates: number
+  /** Entries removed with the oldest whole sections over the per-session cap. */
+  readonly overCap: number
+}
+
+/**
+ * Drop duplicate entries and the oldest whole sections of one session beyond a cap.
+ *
+ * Deduplication keeps the first occurrence in file order, so the turn where a fact first entered
+ * stays. The cap removes whole sections oldest-first and drops their frontmatter turn records too,
+ * so the file never claims a summarized turn whose entries are gone. Manual edits are not special:
+ * an over-cap session loses its oldest sections whichever source wrote them.
+ * @param document - document to compact.
+ * @param sessionId - session whose sections are pruned.
+ * @param keep - maximum entries retained for that session.
+ * @returns the compacted document and both removal counts.
+ */
+export function pruneSessionEntries(document: MemoryDocument, sessionId: string, keep: number): SessionPrune {
+  const cap = Math.max(1, Math.floor(keep))
+  const seen = new Set<string>()
+  let duplicates = 0
+  const keptSections: MemorySection[] = []
+  const droppedTurns = new Set<number>()
+  for (const section of document.sections) {
+    if (section.sessionId !== sessionId) {
+      keptSections.push(section)
+      continue
+    }
+    const entries: MemoryEntry[] = []
+    for (const entry of section.entries) {
+      const key = normalizeEntryText(entry.text)
+      if (seen.has(key)) {
+        duplicates += 1
+        continue
+      }
+      seen.add(key)
+      entries.push(entry)
+    }
+    if (entries.length === 0) {
+      rememberTurns(droppedTurns, section)
+      continue
+    }
+    keptSections.push(entries.length === section.entries.length
+      ? section
+      : Object.freeze({ ...section, entries: Object.freeze(entries) }))
+  }
+
+  let remaining = keptSections
+    .filter(section => section.sessionId === sessionId)
+    .reduce((total, section) => total + section.entries.length, 0)
+  let overCap = 0
+  const ordered = keptSections
+    .filter(section => section.sessionId === sessionId)
+    .sort((left, right) => left.startTurn - right.startTurn)
+  const dropped = new Set<MemorySection>()
+  for (const section of ordered) {
+    if (remaining <= cap) break
+    dropped.add(section)
+    remaining -= section.entries.length
+    overCap += section.entries.length
+    rememberTurns(droppedTurns, section)
+  }
+  const sections = dropped.size === 0 ? keptSections : keptSections.filter(section => !dropped.has(section))
+  if (duplicates === 0 && overCap === 0) {
+    return {
+      document: sections === document.sections
+        ? document
+        : Object.freeze({ ...document, sections: Object.freeze(sections) }),
+      duplicates,
+      overCap,
+    }
+  }
+  const sessions = droppedTurns.size === 0
+    ? document.sessions
+    : document.sessions.map((record) => {
+      if (record.id !== sessionId) return record
+      const turns = record.turns.filter(turn => !droppedTurns.has(turn.turn))
+      return Object.freeze({ ...record, turns: Object.freeze(turns) })
+    })
+  return {
+    document: Object.freeze({
+      ...document,
+      sections: Object.freeze(sections),
+      sessions: Object.freeze(sessions),
+    }),
+    duplicates,
+    overCap,
+  }
+}
+
+/** Add every turn a dropped section covered to the removed-turn set. */
+function rememberTurns(dropped: Set<number>, section: MemorySection): void {
+  for (let turn = section.startTurn; turn <= section.endTurn; turn += 1) dropped.add(turn)
+}
+
+/** Normalize one entry text for duplicate detection. */
+function normalizeEntryText(text: string): string {
+  return text.replaceAll(/\s+/gu, ' ').trim().toLowerCase()
+}
+
+/** One session's curation counts, rendered by `/memory stats`. */
+export interface MemoryEntryStats {
+  /** Session the counts belong to. */
+  readonly sessionId: string
+  /** Entries across all of this session's sections. */
+  readonly entries: number
+  /** Entries written by the summary job. */
+  readonly auto: number
+  /** Entries a human edited. */
+  readonly manual: number
+  /** UTF-8 bytes of the entry texts. */
+  readonly bytes: number
+  /** Entries per kind. */
+  readonly kinds: Readonly<Record<MemoryEntryKind, number>>
+  /** Lowest and highest turn with an entry; absent when nothing has a turn. */
+  readonly turns?: readonly [number, number]
+}
+
+/**
+ * Count one session's entries for the maintenance command.
+ * @param document - parsed MEMORY.md.
+ * @param sessionId - session whose sections are counted.
+ * @returns entry, source, kind, byte, and turn-range counts.
+ */
+export function summarizeMemoryEntries(document: MemoryDocument, sessionId: string): MemoryEntryStats {
+  const kinds: Record<MemoryEntryKind, number> = { decision: 0, files: 0, open: 0, preference: 0 }
+  let entries = 0
+  let auto = 0
+  let manual = 0
+  let bytes = 0
+  let lowest: number | undefined
+  let highest: number | undefined
+  for (const section of document.sections) {
+    if (section.sessionId !== sessionId) continue
+    for (const entry of section.entries) {
+      entries += 1
+      kinds[entry.kind] += 1
+      bytes += Buffer.byteLength(entry.text, 'utf8')
+      if (entry.source === 'manual') manual += 1
+      else auto += 1
+      if (entry.turn !== undefined) {
+        lowest = lowest === undefined ? entry.turn : Math.min(lowest, entry.turn)
+        highest = highest === undefined ? entry.turn : Math.max(highest, entry.turn)
+      }
+    }
+  }
+  return {
+    sessionId,
+    entries,
+    auto,
+    manual,
+    bytes,
+    kinds,
+    ...lowest === undefined || highest === undefined ? {} : { turns: [lowest, highest] as const },
+  }
 }
 
 /**

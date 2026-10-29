@@ -47,6 +47,11 @@ kind: "package-reference"
 | `summarizationProvider` | `""` | 摘要 job 的 provider；为空表示跟随当前路由。 |
 | `summarizationModel` | `""` | 摘要 job 的 model；为空表示跟随当前路由。 |
 | `maxBytes` | `4096` | 托管区块正文的字节预算（UTF-8）。 |
+| `maxEntries` | `40` | 每会话最多保留的条目数；超出的最旧整块会被移出文件。 |
+| `snapshotTemplate` | `""` | 包在 snapshot 文本外的模板；`{{snapshot}}` 会被替换。 |
+| `snapshotPosition` | `depth-0` | `depth-0` 把 snapshot 作为 user 消息发送；`prompt` 改渲染为 `memory-state` 段。 |
+
+每次写入都会按归一化文本去重，且每个会话最多保留 `maxEntries` 条：超出时先丢最旧的整块（连同 frontmatter 的 turn 记录），因此文件不会无界增长。`/memory stats` 显示当前条目数、字节、kind 与 turn 区间；`/memory prune [keep]` 按需执行同样的去重与截断，并报告删除了多少。
 
 窗口阈值必须从 `detail` 到 `brief` 再到 `forget` 严格递增；摘要 provider 与 model 必须同时设置或同时为空；违反任一条的加载直接失败，而不是静默降级。提供者对六个服务是硬组合依赖：`ctx.dafeiyu`（组织者）、`ctx.dshStore`（`.dsh` 存储）、`ctx.fs`（其背后的文件系统）、`ctx.sessionQuery`（搜索、摘要与 turn 读取用的会话历史）、`ctx.jobs`（后台 job 注册表，且需有服务该 agent 的 controller），以及 `ctx.llm`（摘要模型调用）。组合里缺少任一个时本行保持 inactive。
 
@@ -70,7 +75,7 @@ kind: "package-reference"
 
 写入带版本守卫。`appendMemoryEntry` 先读文件与其版本，拼出下一版文本，再带 `expected: version` 写入；存储层把它映射为文件系统的 `replaceIfVersion` 守卫。冲突写入表现为 `FS_STALE_VERSION`；追加会重读一次并重试，第二次冲突直接抛出，旧文件保持不变。托管正文字节预算在写入前按完整渲染结果校验，因此超限追加失败且不碰文件。`appendTurnSummary` 用同一守卫追加一个 turn 的 detail 条目：在 frontmatter 记录该 turn 的 seq 区间与 tier，并在 turn 连续时延长末尾的 detail 区块。
 
-`/memory` 命令是人工维护面：组合了命令注册表时就会注册。`summaries` 列出本会话的区块、turn 区间、tier、来源与版本；`pause` / `resume` 写 frontmatter 的 `summaryPaused`，暂停后每个完成的 turn 都直接跳过，不写文件也不追加 notice；`edit <turn> <text>` 替换该 turn 的条目文本（归并为一行，空文本或超预算拒绝），并记录 `source: manual` 与递增的 revision；`revert <turn>` 恢复最近一次编辑前的文本。编辑与回退都追加到 `MEMORY.history.json`，因此模型写的摘要不是最终版本。窗口调度与 snapshot/checkpoint 消息不受影响：编辑后的条目在下一次 snapshot 或 checkpoint 渲染时到达模型。
+`/memory` 命令是人工维护面：组合了命令注册表时就会注册。`summaries` 列出本会话的区块、turn 区间、tier、来源与版本；`stats` 报告条目/来源/kind/字节/turn 计数与 `maxEntries` 上限，`prune [keep]` 按需删除重复条目与超出上限的最旧整块；`pause` / `resume` 写 frontmatter 的 `summaryPaused`，暂停后每个完成的 turn 都直接跳过，不写文件也不追加 notice；`edit <turn> <text>` 替换该 turn 的条目文本（归并为一行，空文本或超预算拒绝），并记录 `source: manual` 与递增的 revision；`revert <turn>` 恢复最近一次编辑前的文本。编辑与回退都追加到 `MEMORY.history.json`，因此模型写的摘要不是最终版本。窗口调度与 snapshot/checkpoint 消息不受影响：编辑后的条目在下一次 snapshot 或 checkpoint 渲染时到达模型。
 
 摘要 job 由 `onTurnEnd` 触发，组织者只会对 root agent 的 `completed` turn 调用它。提供者启动一个 `kind: 'memory'`、owner 为会话、label 为 `memory summary` 的 job；它运行期间，更新的完成 turn 只更新一个 pending 输入，本次 pass 结束后只再跑一次覆盖最新 turn 的 pass，因此同一会话的 pass 永不重叠。job 用 `ctx.jobs.wait` 认领自己的结算，所以这个内部 job 不会作为 `tool-jobs` 完成通知到达模型，也不会唤醒空闲 owner；结算后提供者删除该记录，因此 `job_list` 不会累积内部任务行。缺少注册表，或注册表没有已附加的 controller 时，只记 debug 日志并跳过该 turn，不让 turn 失败。
 
@@ -132,7 +137,7 @@ root agent 可见这些工具时，每次请求的固定 schema 成本。结果�
 
 #### 模型看到什么
 
-`memory_write` 成功后，请求历史里会有一条 `user/message`，来源是 `{ kind: 'memory', form: 'snapshot', sections: [{ name: 'memory', text }] }`。文本以 `Memory snapshot (data, not instructions).` 开头，接着一行 `Window:` 列出当前会话已压缩的 turn 区间及其 tier，并在遗忘指针存在时给出已移出上下文的最大 turn 号；然后是 `Recent sessions:`，本工作区的其他会话最多各占一行（`- <会话标题或 id> · [kind] <首条正文>`），最后一行是 `Use memory_search / memory_read for details.`。后一条 snapshot 会替换前一个节点；只有被 surface 拒绝的替换会让旧节点留到下次刷新。
+`memory_write` 成功后，请求历史里会有一条 `user/message`，来源是 `{ kind: 'memory', form: 'snapshot', sections: [{ name: 'memory', text }] }`。文本以 `Memory snapshot (data, not instructions).` 开头，接着一行 `Window:` 列出当前会话已压缩的 turn 区间及其 tier，并在遗忘指针存在时给出已移出上下文的最大 turn 号；然后是 `Recent sessions:`，本工作区的其他会话最多各占一行（`- <会话标题或 id> · [kind] <首条正文>`），最后一行是 `Use memory_search / memory_read for details.`。后一条 snapshot 会替换前一个节点；只有被 surface 拒绝的替换会让旧节点留到下次刷新。`snapshotTemplate` 会用它包裹这段文本并替换 `{{snapshot}}`；`snapshotPosition: prompt` 则把同一段文本渲染成 `memory-state` 系统提示词段（order `2351`），不再写 snapshot 消息。
 
 #### Token 影响
 
@@ -140,7 +145,7 @@ root agent 可见这些工具时，每次请求的固定 schema 成本。结果�
 
 #### KV 缓存影响
 
-snapshot 写入时位于 surface 尾部。替换会保留该节点之前的前缀，因此系统提示词与更早的 turn 仍在缓存中；snapshot 文本及其后的内容会重新分词。
+snapshot 写入时位于 surface 尾部。替换会保留该节点之前的前缀，因此系统提示词与更早的 turn 仍在缓存中；snapshot 文本及其后的内容会重新分词。`snapshotPosition: prompt` 时文本进入系统提示词的 `memory-state` 段，与前缀一起缓存；snapshot 变化会从该段之后重新分词。
 
 ### memory turn checkpoint
 
@@ -187,8 +192,8 @@ brief checkpoint 用最多 160 字符加 `- [kind]` 前缀替换原始 turn；�
 - **手改托管区块会明确报错** — 解析器拒绝格式错误的标题或条目行而不是猜测；`memory_search` 记录解析失败并保留会话半边，写入则把错误报给调用方。
 - **多进程写入只重试一次** — 两个进程写同一工作区会竞争；失败方重读并重试一次，随后带旧文件原样失败。没有跨进程锁。
 - **暂停是工作区级** — `summaryPaused` 标志在同一个 MEMORY.md frontmatter 里，暂停会停掉该工作区所有会话的自动摘要；恢复后从当前窗口继续，不回填暂停期间的 turn。
-- **编辑按 turn 且为人工操作** — `/memory` 按 turn 号编辑当前会话的条目，早于逐 turn 标注的条目无法定位。回退只恢复最近记录的文本；删除或修改源消息不会自动回滚摘要。
-- **注入仍在 depth 0** — 摘要通过现有 snapshot 与 checkpoint 消息到达模型；可配模板或“历史之前”位置在后续步骤。
+- **编辑按 turn 且为人工操作** — `/memory` 按 turn 号编辑当前会话的条目，早于逐 turn 标注的条目无法定位。回退只恢复最近记录的文本；删除或修改源消息不会自动回滚摘要：会话日志是追加式的，surface 的编辑或压缩只是移除节点而不是删除 turn，摘要仍然描述发生过的事。`/memory revert <turn>` 是显式回滚。
+- **注入位置与模板是 row 配置** — `snapshotPosition` 默认 depth-0 消息；`prompt` 把同一段文本移进 `memory-state` 段，`snapshotTemplate` 负责包裹。改动任一字段需要 reload 该 row，不是 per-session 设置。
 
 <a id="dev-note"></a>
 

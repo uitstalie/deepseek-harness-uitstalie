@@ -87,18 +87,26 @@ export interface MemorySearchValue {
  * Build the memory tool definitions for one root agent.
  * @param ctx - context carrying `dshStore` and `sessionQuery`.
  * @param settings - resolved provider settings.
+ * @param onSnapshotText - optional sink for the rendered snapshot (the prompt-position cache).
  * @returns the three tools, in registration order.
  */
-export function memoryTools(ctx: Context, settings: MemorySettings): readonly ToolDefinition[] {
+export function memoryTools(
+  ctx: Context,
+  settings: MemorySettings,
+  onSnapshotText?: SnapshotTextSink,
+): readonly ToolDefinition[] {
   return [
-    defineMemoryWriteTool(ctx, settings),
+    defineMemoryWriteTool(ctx, settings, onSnapshotText),
     defineMemorySearchTool(ctx),
     defineMemoryReadTool(ctx),
   ]
 }
 
+/** Receives one rendered snapshot, or undefined when there is nothing to report. */
+export type SnapshotTextSink = (sessionId: string, text: string | undefined) => void
+
 /** Build `memory_write`: append one entry to the caller's workspace MEMORY.md. */
-function defineMemoryWriteTool(ctx: Context, settings: MemorySettings): ToolDefinition {
+function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapshotText?: SnapshotTextSink): ToolDefinition {
   return defineTool({
     name: 'memory_write',
     description:
@@ -152,8 +160,12 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings): ToolDefi
         tags: normalizeEntryTags(args.tags ?? []),
         turn: facts.turn,
         seq: facts.seq,
-      }, exec.signal, { window: settings.window, maxBytes: settings.maxBytes })
-      await refreshMemorySnapshot(ctx, exec.agent, exec.signal)
+      }, exec.signal, { window: settings.window, maxBytes: settings.maxBytes, maxEntries: settings.maxEntries })
+      await refreshMemorySnapshot(ctx, exec.agent, exec.signal, {
+        template: settings.snapshotTemplate,
+        position: settings.snapshotPosition,
+        ...onSnapshotText === undefined ? {} : { onText: onSnapshotText },
+      })
       return {
         path: written.path,
         kind: written.kind,

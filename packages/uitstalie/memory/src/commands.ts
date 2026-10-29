@@ -18,18 +18,24 @@ import type { MemorySettings } from './config.ts'
 import {
   MemoryDocumentError,
   editMemorySummary,
+  pruneMemorySession,
   readMemoryDocument,
   revertMemorySummary,
   setMemorySummaryPaused,
+  summarizeMemoryEntries,
   summaryPaused,
 } from './memory-file.ts'
 import type { MemoryEntry, MemorySection } from './memory-file.ts'
+import { MEMORY_ENTRY_KINDS } from './memory-file.ts'
+
+/** Stable kind order for the `/memory stats` line. */
+const MEMORY_ENTRY_LABELS = MEMORY_ENTRY_KINDS
 
 /** Name of the one registered command; its subcommands ride the raw input. */
 export const MEMORY_COMMAND_NAME = 'memory'
 
 /** One-line grammar shown by every failure and advertised as the input hint. */
-export const MEMORY_COMMAND_USAGE = 'Usage: /memory [summaries | pause | resume | edit <turn> <text> | revert <turn>]'
+export const MEMORY_COMMAND_USAGE = 'Usage: /memory [summaries | stats | prune [keep] | pause | resume | edit <turn> <text> | revert <turn>]'
 
 /**
  * Build the one `/memory` command definition.
@@ -41,8 +47,8 @@ export function memoryCommand(ctx: Context, settings: MemorySettings): CommandDe
   return {
     definitionId: CommandDefinitionId('@deepseek-ai/dsh-memory'),
     name: MEMORY_COMMAND_NAME,
-    description: 'Inspect, pause, resume, edit, or revert this workspace\'s memory summaries',
-    input: { hint: '[summaries | pause | resume | edit <turn> <text> | revert <turn>]' },
+    description: 'Inspect, prune, pause, resume, edit, or revert this workspace\'s memory summaries',
+    input: { hint: '[summaries | stats | prune [keep] | pause | resume | edit <turn> <text> | revert <turn>]' },
     handler: invocation => execute(ctx, settings, invocation),
   }
 }
@@ -62,6 +68,9 @@ async function execute(ctx: Context, settings: MemorySettings, invocation: Comma
   const input = invocation.rawInput.trim()
   try {
     if (input === '' || /^summaries(?=\s|$)/iu.test(input)) return await listSummaries(ctx, invocation.agent.session)
+    if (/^stats(?=\s|$)/iu.test(input)) return await showStats(ctx, invocation.agent.session, settings)
+    const prune = /^prune(?=\s|$)/iu.exec(input)
+    if (prune !== null) return await pruneEntries(ctx, invocation.agent.session, settings, input.slice(prune[0].length).trim())
     if (/^pause(?=\s|$)/iu.test(input) && input.slice('pause'.length).trim() === '') return await setPaused(ctx, invocation.agent.session, settings, true)
     if (/^resume(?=\s|$)/iu.test(input) && input.slice('resume'.length).trim() === '') return await setPaused(ctx, invocation.agent.session, settings, false)
     const edit = /^edit(?=\s|$)/iu.exec(input)
@@ -91,6 +100,56 @@ async function listSummaries(ctx: Context, session: Session): Promise<CommandRes
   }
   lines.push(MEMORY_COMMAND_USAGE)
   return { kind: 'success', text: lines.join('\n') }
+}
+
+/** Render this session's entry counts, bytes, kinds, turn span, and the configured cap. */
+async function showStats(ctx: Context, session: Session, settings: MemorySettings): Promise<CommandResult> {
+  const read = await readMemoryDocument(ctx, session)
+  if (read.document === undefined) return { kind: 'success', text: `No memory entries yet: ${read.path} does not exist.` }
+  const stats = summarizeMemoryEntries(read.document, String(session.id))
+  const kinds = MEMORY_ENTRY_LABELS
+    .filter(kind => stats.kinds[kind] > 0)
+    .map(kind => `${kind} ${String(stats.kinds[kind])}`)
+    .join(', ')
+  const lines = [
+    `Memory entries in ${read.path}:`,
+    `Total: ${String(stats.entries)} (auto ${String(stats.auto)}, manual ${String(stats.manual)}); ${String(stats.bytes)} bytes; cap ${String(settings.maxEntries)} per session.`,
+    `Kinds: ${kinds === '' ? 'none' : kinds}.`,
+    stats.turns === undefined ? 'Turns: none attributed.' : `Turns: ${String(stats.turns[0])}–${String(stats.turns[1])}.`,
+  ]
+  if (stats.entries > settings.maxEntries) {
+    lines.push(`Over the cap: /memory prune drops the oldest whole sections to ${String(settings.maxEntries)} entries.`)
+  }
+  lines.push(MEMORY_COMMAND_USAGE)
+  return { kind: 'success', text: lines.join('\n') }
+}
+
+/** Drop duplicate entries and over-cap sections, optionally with an explicit keep count. */
+async function pruneEntries(
+  ctx: Context,
+  session: Session,
+  settings: MemorySettings,
+  argument: string,
+): Promise<CommandResult> {
+  let keep = settings.maxEntries
+  if (argument !== '') {
+    if (!/^\d+$/u.test(argument)) {
+      return { kind: 'error', text: `Prune takes one optional positive entry cap, for example /memory prune 20. ${MEMORY_COMMAND_USAGE}` }
+    }
+    keep = Number(argument)
+    if (!Number.isSafeInteger(keep) || keep < 1) {
+      return { kind: 'error', text: `The prune cap must be a positive integer. ${MEMORY_COMMAND_USAGE}` }
+    }
+  }
+  const result = await pruneMemorySession(ctx, session, { keep }, undefined, {
+    window: settings.window,
+    maxBytes: settings.maxBytes,
+    maxEntries: keep,
+  })
+  return {
+    kind: 'success',
+    text: `Pruned ${result.path}: removed ${String(result.duplicates)} duplicate(s) and ${String(result.overCap)} over-cap entries; ${String(result.remaining)} remain (cap ${String(result.keep)}).`,
+  }
 }
 
 /** Pause or resume the automatic job. */

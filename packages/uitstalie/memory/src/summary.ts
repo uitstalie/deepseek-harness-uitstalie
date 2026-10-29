@@ -39,6 +39,7 @@ import {
 } from './memory-file.ts'
 import type { MemoryEntry } from './memory-file.ts'
 import { appendMemoryNotice, refreshMemorySnapshot } from './snapshot.ts'
+import type { SnapshotTextSink } from './tools.ts'
 import type { TurnRange } from './window.ts'
 
 declare module '@deepseek-ai/dsh-jobs' {
@@ -158,6 +159,7 @@ export class MemorySummaryRunner {
     private readonly ctx: Context,
     private readonly settings: MemorySettings,
     private readonly runtimeSignal: AbortSignal,
+    private readonly onSnapshotText?: SnapshotTextSink,
   ) {}
 
   /**
@@ -284,7 +286,7 @@ export class MemorySummaryRunner {
         turn: input.turn,
         seq: conversation.seq,
         entries,
-      }, signal, { window: this.settings.window, maxBytes: this.settings.maxBytes })
+      }, signal, { window: this.settings.window, maxBytes: this.settings.maxBytes, maxEntries: this.settings.maxEntries })
       try {
         await migrateMemoryTiers(
           this.ctx,
@@ -299,7 +301,7 @@ export class MemorySummaryRunner {
             migrationSignal,
           ),
           signal,
-          { window: this.settings.window, maxBytes: this.settings.maxBytes },
+          { window: this.settings.window, maxBytes: this.settings.maxBytes, maxEntries: this.settings.maxEntries },
         )
       } catch (error: unknown) {
         if (signal.aborted) return { status: 'killed' }
@@ -307,7 +309,11 @@ export class MemorySummaryRunner {
         // that section in place instead of failing the pass that wrote it.
         this.ctx.logger.warn('memory: tier migration failed after turn %d: %s', input.turn, errorMessage(error))
       }
-      await refreshMemorySnapshot(this.ctx, input.agent, signal)
+      await refreshMemorySnapshot(this.ctx, input.agent, signal, {
+        template: this.settings.snapshotTemplate,
+        position: this.settings.snapshotPosition,
+        ...this.onSnapshotText === undefined ? {} : { onText: this.onSnapshotText },
+      })
       this.ctx.logger.debug(
         'memory: summarized turn %d (%d input bytes, model %s, %d ms)',
         input.turn,

@@ -25,6 +25,7 @@ import type { Config, MemorySettings } from './config.ts'
 import { registerMemoryCommands } from './commands.ts'
 import { MEMORY_PROMPT_SECTION } from './prompt.ts'
 import { refreshMemorySnapshot } from './snapshot.ts'
+import { MEMORY_STATE_SECTION_NAME, MEMORY_STATE_SECTION_ORDER } from './snapshot.ts'
 import { MemorySummaryRunner } from './summary.ts'
 import { memoryTools } from './tools.ts'
 
@@ -59,6 +60,7 @@ export {
   assertMemoryEntryKind,
   createMemoryDocument,
   DEFAULT_MEMORY_MAX_BYTES,
+  DEFAULT_MEMORY_MAX_ENTRIES,
   DEFAULT_MEMORY_WINDOW,
   editMemorySummary,
   MEMORY_BLOCK_BEGIN,
@@ -75,11 +77,14 @@ export {
   memoryKindDefinition,
   migrateMemoryTiers,
   parseMemoryDocument,
+  pruneMemorySession,
+  pruneSessionEntries,
   readMemoryDocument,
   readMemorySummaryHistory,
   renderMemoryDocument,
   revertMemorySummary,
   setMemorySummaryPaused,
+  summarizeMemoryEntries,
   summaryPaused,
 } from './memory-file.ts'
 export type {
@@ -104,9 +109,12 @@ export type {
   MemoryTurnSummaryOptions,
   MemoryTurnSummaryResult,
   MemoryWindow,
+  MemoryEntryStats,
+  MemoryPruneResult,
   MemorySummaryEditResult,
   MemorySummaryHistoryRecord,
   MemorySummaryTarget,
+  SessionPrune,
 } from './memory-file.ts'
 export {
   isMemoryCheckpointSource,
@@ -124,6 +132,9 @@ export {
   MEMORY_SNAPSHOT_MAX_BYTES,
   MEMORY_SNAPSHOT_SECTION_NAME,
   MEMORY_SNAPSHOT_TITLE,
+  MEMORY_STATE_SECTION_NAME,
+  MEMORY_STATE_SECTION_ORDER,
+  applySnapshotTemplate,
   refreshMemorySnapshot,
   renderMemorySnapshot,
   syncMemorySnapshot,
@@ -195,6 +206,9 @@ export function apply(ctx: Context, config: Config): void {
     get summarizationProvider() { return effective.summarizationProvider },
     get summarizationModel() { return effective.summarizationModel },
     get maxBytes() { return effective.maxBytes },
+    get maxEntries() { return effective.maxEntries },
+    get snapshotTemplate() { return effective.snapshotTemplate },
+    get snapshotPosition() { return effective.snapshotPosition },
   })
   ctx.on('loader/volatile-update', () => {
     try {
@@ -205,6 +219,11 @@ export function apply(ctx: Context, config: Config): void {
       ctx.logger.warn('memory: keeping previous settings after an invalid update: %o', error)
     }
   })
+  const snapshotTexts = new Map<string, string>()
+  const onSnapshotText = (sessionId: string, text: string | undefined): void => {
+    if (text === undefined) snapshotTexts.delete(sessionId)
+    else snapshotTexts.set(sessionId, text)
+  }
   const registration = ctx.dafeiyu.register({
     id: MEMORY_CAPABILITY_ID,
     contractVersion: MEMORY_CONTRACT_VERSION,
@@ -213,16 +232,26 @@ export function apply(ctx: Context, config: Config): void {
     settings: { sectionId: MEMORY_SETTINGS_SECTION, order: MEMORY_SETTINGS_ORDER },
     config: effective,
     create: (runtime: CapabilityRuntime): CapabilityContribution => {
-      const summaries = new MemorySummaryRunner(ctx, settings, runtime.signal)
+      const summaries = new MemorySummaryRunner(ctx, settings, runtime.signal, onSnapshotText)
       return {
         scope: 'root',
-        promptSections: () => [MEMORY_PROMPT_SECTION],
-        tools: () => memoryTools(ctx, settings),
+        promptSections: (agent: Agent) => settings.snapshotPosition === 'prompt'
+          ? [MEMORY_PROMPT_SECTION, {
+            name: MEMORY_STATE_SECTION_NAME,
+            order: MEMORY_STATE_SECTION_ORDER,
+            text: () => snapshotTexts.get(String(agent.session.id)) ?? '',
+          }]
+          : [MEMORY_PROMPT_SECTION],
+        tools: () => memoryTools(ctx, settings, onSnapshotText),
         onAgentCreated: (agent: Agent) => {
           // A resumed session already has a surface; a fresh one is empty until
           // its first step, and a user message must not precede the system prompt.
           if (agent.session.surface.nodes.length === 0) return
-          void refreshMemorySnapshot(ctx, agent, runtime.signal)
+          void refreshMemorySnapshot(ctx, agent, runtime.signal, {
+            template: settings.snapshotTemplate,
+            position: settings.snapshotPosition,
+            onText: onSnapshotText,
+          })
         },
         onTurnEnd: (input) => {
           validateTurnEnd(input)
@@ -271,6 +300,9 @@ function readSettings(config: Config): MemorySettings {
     summarizationProvider: current(config.summarizationProvider),
     summarizationModel: current(config.summarizationModel),
     maxBytes: current(config.maxBytes),
+    maxEntries: current(config.maxEntries),
+    snapshotTemplate: current(config.snapshotTemplate),
+    snapshotPosition: current(config.snapshotPosition),
   })
 }
 

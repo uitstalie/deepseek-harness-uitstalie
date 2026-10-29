@@ -214,3 +214,4 @@ provider 注册一个稳定的 system prompt 段，只对 root agent 注册（�
 - 第一轮（2026/10/20，四次提交）：调研、三层映射、设计草案、provider/organizer 拆分与 personality 草案。
 - 第二轮（2026/10/20）：按代码接口修正注入通道、原子写、保留命名空间、工具可见性；补齐摘要、替换、失败与实现计划。
 - 第三轮（2026/10/21）：按用户决定恢复 v1 的 `memory_write`（固定 schema、经 dshStore 写入原语）；托管区块改为 kind 条目模型；更新固定提示词。
+- 第四轮（2026/10/29，DH-403/504）：摘要维护面落地——`source`/`version` 标记、`MEMORY.history.json`、`summaryPaused` 与 `/memory summaries|stats|prune|pause|resume|edit|revert`；写入按归一化文本去重，每会话默认最多 `maxEntries=40` 条，超出先丢最旧整块并清掉对应 turn 记录；`snapshotTemplate` 包裹 snapshot 文本，`snapshotPosition: prompt` 把同一文本改注入 `memory-state` 系统提示词段。会话日志是追加式的，删除/编辑消息不自动回退摘要，`/memory revert` 是显式回滚。

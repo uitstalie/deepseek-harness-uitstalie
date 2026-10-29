@@ -23,11 +23,14 @@ import {
   MEMORY_BLOCK_END,
   MEMORY_STORE_PATH,
   parseMemoryDocument,
+  pruneMemorySession,
+  pruneSessionEntries,
   readMemoryDocument,
   readMemorySummaryHistory,
   renderMemoryDocument,
   revertMemorySummary,
   setMemorySummaryPaused,
+  summarizeMemoryEntries,
   summaryPaused,
 } from '../src/memory-file.ts'
 import type { MemoryDocument, MemoryWindow } from '../src/memory-file.ts'
@@ -472,4 +475,109 @@ test('the new suffixes appear only after an edit and survive a parse/render roun
   expect(editedText).toContain('<!-- source: manual -->')
   expect(editedText).toContain('<!-- version: 1 -->')
   expect(renderMemoryDocument(parseMemoryDocument(editedText))).toBe(editedText)
+})
+
+test('duplicate entries are dropped on append and the first occurrence survives', async () => {
+  await appendMemoryEntry(ctx, session, { kind: 'decision', text: 'Keep the version guard', turn: 1, seq: [1, 2] })
+  await appendMemoryEntry(ctx, session, { kind: 'decision', text: 'keep   the version guard', turn: 2, seq: [3, 4] })
+
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  const entries = parsed.sections.flatMap(section => section.entries)
+  expect(entries).toHaveLength(1)
+  expect(entries[0]?.text).toBe('Keep the version guard')
+  expect(parsed.sessions[0]?.turns.map(turn => turn.turn)).toEqual([1])
+})
+
+test('the per-session cap keeps the newest sections and drops their turn records', async () => {
+  const window: MemoryWindow = { ...ONE_SESSION, sessions: 10 }
+  for (const turn of [1, 2, 3]) {
+    await appendMemoryEntry(ctx, session, {
+      kind: 'decision', text: `turn ${String(turn)} fact`, turn, seq: [turn, turn + 1],
+    }, undefined, { window, maxEntries: 2 })
+  }
+
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  const entries = parsed.sections.flatMap(section => section.entries)
+  expect(entries.map(entry => entry.text)).toEqual(['turn 2 fact', 'turn 3 fact'])
+  expect(parsed.sessions[0]?.turns.map(turn => turn.turn)).toEqual([2, 3])
+})
+
+test('summarizeMemoryEntries counts sources, kinds, bytes, and the turn span', async () => {
+  await appendTurnSummary(ctx, session, {
+    turn: 3,
+    seq: [10, 20],
+    entries: [
+      { kind: 'decision', text: 'auto one' },
+      { kind: 'files', text: 'auto two' },
+    ],
+  })
+  await editMemorySummary(ctx, session, { turn: 3 }, 'human one')
+
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  const stats = summarizeMemoryEntries(parsed, String(session.id))
+  expect(stats).toMatchObject({
+    sessionId: 'session-a',
+    entries: 2,
+    auto: 1,
+    manual: 1,
+    turns: [3, 3],
+  })
+  expect(stats.kinds).toEqual({ decision: 1, files: 1, open: 0, preference: 0 })
+  expect(stats.bytes).toBeGreaterThan(0)
+})
+
+test('pruneSessionEntries removes duplicates and over-cap sections in one pass', () => {
+  const document = parseMemoryDocument(renderMemoryDocument(createMemoryDocument()))
+  const seeded: MemoryDocument = {
+    ...document,
+    sessions: [{
+      id: 'session-a', cwd: '/w', updatedAt: '2026-01-01T00:00:00Z',
+      turns: [
+        { turn: 1, seq: [1, 2], tier: 'detail' },
+        { turn: 2, seq: [3, 4], tier: 'detail' },
+        { turn: 3, seq: [5, 6], tier: 'detail' },
+      ],
+    }],
+    sections: [
+      { sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail', entries: [{ kind: 'decision', text: 'same', turn: 1 }] },
+      { sessionId: 'session-a', startTurn: 2, endTurn: 2, tier: 'detail', entries: [{ kind: 'decision', text: 'same', turn: 2 }, { kind: 'open', text: 'b', turn: 2 }] },
+      { sessionId: 'session-a', startTurn: 3, endTurn: 3, tier: 'detail', entries: [{ kind: 'open', text: 'c', turn: 3 }] },
+    ],
+  }
+  const pruned = pruneSessionEntries(seeded, 'session-a', 1)
+  expect(pruned.duplicates).toBe(1)
+  expect(pruned.overCap).toBeGreaterThan(0)
+  const remaining = pruned.document.sections.flatMap(section => section.entries)
+  expect(remaining).toHaveLength(1)
+  expect(remaining[0]?.text).toBe('c')
+  expect(pruned.document.sessions[0]?.turns.map(turn => turn.turn)).toEqual([3])
+})
+
+test('pruneMemorySession writes the compacted document and reports the counts', async () => {
+  const base = parseMemoryDocument(renderMemoryDocument(createMemoryDocument()))
+  const seeded = renderMemoryDocument({
+    ...base,
+    sessions: [{
+      id: 'session-a', cwd: '/w', updatedAt: '2026-01-01T00:00:00Z',
+      turns: [
+        { turn: 1, seq: [1, 2], tier: 'detail' },
+        { turn: 2, seq: [3, 4], tier: 'detail' },
+        { turn: 3, seq: [5, 6], tier: 'detail' },
+      ],
+    }],
+    sections: [
+      { sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail', entries: [{ kind: 'open', text: 'a', turn: 1 }] },
+      { sessionId: 'session-a', startTurn: 2, endTurn: 2, tier: 'detail', entries: [{ kind: 'open', text: 'a', turn: 2 }] },
+      { sessionId: 'session-a', startTurn: 3, endTurn: 3, tier: 'detail', entries: [{ kind: 'open', text: 'b', turn: 3 }] },
+    ],
+  })
+  await store.writeFile(session, MEMORY_STORE_PATH, seeded)
+
+  const result = await pruneMemorySession(ctx, session, { keep: 1 }, undefined, { window: ONE_SESSION, maxEntries: 10 })
+  expect(result).toMatchObject({ sessionId: 'session-a', duplicates: 1, remaining: 1, keep: 1 })
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toEqual(['b'])
+
+  const noop = await pruneMemorySession(ctx, session, { keep: 1 }, undefined, { window: ONE_SESSION, maxEntries: 10 })
+  expect(noop).toMatchObject({ duplicates: 0, overCap: 0, remaining: 1 })
 })

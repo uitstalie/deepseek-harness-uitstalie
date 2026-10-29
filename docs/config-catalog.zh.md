@@ -2472,7 +2472,7 @@ export interface ReconnectConfig {
 
 - `inject`: `dafeiyu` · `dshStore` · `fs` · `sessionQuery` · `jobs` · `llm`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/uitstalie/memory/src/config.ts:36`](../packages/uitstalie/memory/src/config.ts)
+- `source`: [`packages/uitstalie/memory/src/config.ts:42`](../packages/uitstalie/memory/src/config.ts)
 
 ```ts config-catalog
 /** Configuration as the Loader passes it; every field is a live reference. */
@@ -2491,6 +2491,12 @@ export interface Config {
   summarizationModel: Volatile<string>
   /** Managed-block body budget in UTF-8 bytes. */
   maxBytes: Volatile<number>
+  /** Maximum entries retained per session. */
+  maxEntries: Volatile<number>
+  /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced. */
+  snapshotTemplate: Volatile<string>
+  /** Where the snapshot reaches the model. */
+  snapshotPosition: Volatile<'depth-0' | 'prompt'>
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-memory -->

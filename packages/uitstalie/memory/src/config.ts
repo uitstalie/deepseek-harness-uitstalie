@@ -11,7 +11,7 @@
 
 import type { Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { DEFAULT_MEMORY_MAX_BYTES, DEFAULT_MEMORY_WINDOW } from './memory-file.ts'
+import { DEFAULT_MEMORY_MAX_BYTES, DEFAULT_MEMORY_MAX_ENTRIES, DEFAULT_MEMORY_WINDOW } from './memory-file.ts'
 import type { MemoryWindow } from './memory-file.ts'
 
 /** Plain configuration values, as `resolveConfig` accepts them (a default or a test). */
@@ -30,6 +30,12 @@ export interface MemoryConfigInput {
   summarizationModel?: string | undefined
   /** Maximum managed-block body size in UTF-8 bytes. */
   maxBytes?: number | undefined
+  /** Maximum entries retained per session; older sections leave the managed block. */
+  maxEntries?: number | undefined
+  /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced and absent means the text alone. */
+  snapshotTemplate?: string | undefined
+  /** Where the snapshot reaches the model: a depth-0 message or a system-prompt section. */
+  snapshotPosition?: 'depth-0' | 'prompt' | undefined
 }
 
 /** Configuration as the Loader passes it; every field is a live reference. */
@@ -48,6 +54,12 @@ export interface Config {
   summarizationModel: Volatile<string>
   /** Managed-block body budget in UTF-8 bytes. */
   maxBytes: Volatile<number>
+  /** Maximum entries retained per session. */
+  maxEntries: Volatile<number>
+  /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced. */
+  snapshotTemplate: Volatile<string>
+  /** Where the snapshot reaches the model. */
+  snapshotPosition: Volatile<'depth-0' | 'prompt'>
 }
 
 /** Schemastery configuration for the memory provider. */
@@ -59,6 +71,9 @@ export const Config = z.object({
   summarizationProvider: z.string().default('').volatile(),
   summarizationModel: z.string().default('').volatile(),
   maxBytes: z.number().step(1).min(1).default(DEFAULT_MEMORY_MAX_BYTES).volatile(),
+  maxEntries: z.number().step(1).min(1).default(DEFAULT_MEMORY_MAX_ENTRIES).volatile(),
+  snapshotTemplate: z.string().default('').volatile(),
+  snapshotPosition: z.string().default('depth-0').volatile(),
 })
 
 /** Resolved provider settings; the provider reads configuration only in this form. */
@@ -71,6 +86,12 @@ export interface MemorySettings {
   readonly summarizationModel: string
   /** Managed-block body budget in UTF-8 bytes. */
   readonly maxBytes: number
+  /** Maximum entries retained per session. */
+  readonly maxEntries: number
+  /** Template wrapped around the snapshot text; empty means the text alone. */
+  readonly snapshotTemplate: string
+  /** Where the snapshot reaches the model. */
+  readonly snapshotPosition: 'depth-0' | 'prompt'
 }
 
 /**
@@ -104,10 +125,17 @@ export function resolveConfig(config: MemoryConfigInput): MemorySettings {
       'memory: summarizationProvider and summarizationModel must both be set or both be empty (empty follows the routed model)',
     )
   }
+  const snapshotPosition = config.snapshotPosition ?? 'depth-0'
+  if (snapshotPosition !== 'depth-0' && snapshotPosition !== 'prompt') {
+    throw new Error(`memory: snapshotPosition must be "depth-0" or "prompt"; got ${JSON.stringify(snapshotPosition)}`)
+  }
   return {
     window,
     summarizationProvider,
     summarizationModel,
     maxBytes: config.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES,
+    maxEntries: config.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES,
+    snapshotTemplate: config.snapshotTemplate ?? '',
+    snapshotPosition,
   }
 }
