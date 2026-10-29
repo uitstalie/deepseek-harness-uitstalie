@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/uitstalie/token-calculator/README.md
+/:
+  en: 0cce75f176a03af9
+  zh: b906a9c651c19fd1
+/deepseek-ai-dsh-token-calculator:
+  en: 524486d078b0b4e4
+  zh: c77ec004daa14232
+/deepseek-ai-dsh-token-calculator/summary:
+  en: e755db2f646ef9f5
+  zh: f44daa798aa9999b
+/deepseek-ai-dsh-token-calculator/table-of-contents:
+  en: 3a04aa72d8dd534e
+  zh: 50b7d656df68b41f
+/deepseek-ai-dsh-token-calculator/use-this-package:
+  en: 2737974c1ef6665c
+  zh: dd0e03b082d7d091
+/deepseek-ai-dsh-token-calculator/understand-the-implementation:
+  en: 631988ead3b3759d
+  zh: f6e72806db3f61cb
+/deepseek-ai-dsh-token-calculator/dev-note:
+  en: 21c325e1a893b31d
+  zh: 52bf0181e4d5aac1
+/deepseek-ai-dsh-token-calculator/model-experience:
+  en: 215e7ba838619b7b
+  zh: 215e7ba838619b7b
+/deepseek-ai-dsh-token-calculator/model-experience/the-count-tokens-tool:
+  en: a42fab8d8cf49499
+  zh: 5c4edb4ecb6bc1e8
+/deepseek-ai-dsh-token-calculator/model-experience/the-count-tokens-tool/what-the-model-sees:
+  en: ca941f0a2f2f5e0a
+  zh: a7974843551db53b
+/deepseek-ai-dsh-token-calculator/model-experience/the-count-tokens-tool/token-effect:
+  en: 20a3c6e4c8962564
+  zh: 20747ac284b489c7
+/deepseek-ai-dsh-token-calculator/model-experience/the-count-tokens-tool/kv-cache-effect:
+  en: 00d72e7a1c5ccf60
+  zh: 03d21c67bf9f2243
+/deepseek-ai-dsh-token-calculator/known-limitations-and-deferred-work:
+  en: 49284323da2397ee
+  zh: 929f8a4584f7d84c

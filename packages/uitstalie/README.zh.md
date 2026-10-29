@@ -37,6 +37,7 @@ kind: "package-group"
 | [`persona-card`](persona-card/README.zh.md) | 角色扮演角色卡格式：纯 `persona/v1` 校验/渲染器、安全的 Character Card V2/V3 JSON 导入器，以及带 `/persona` 选择、卡目录 watcher、persona 状态与 depth-0 `/director` 导演注的 per-session provider（不是部署 persona 预设） | 注册到 `ctx.dafeiyu` |
 | [`store-atom`](store-atom/README.zh.md) | `.dsh` 存储原子：`dshStore` 基础接口，含项目根发现、路径围栏、命名空间撰写校验、工作区规则发现与带版本守卫的读写 | `ctx.dshStore` |
 | [`system-environment`](system-environment/README.zh.md) | 宿主环境原子：平台事实、路径拼写与比较、环境变量查找，以及用户 home 与 Harness home | `ctx.systemEnvironment` |
+| [`token-calculator`](token-calculator/README.zh.md) | 离线 DeepSeek V4 token 计算器：内置 byte-level BPE 分词器、受能力门控制的 `count_tokens` 工具，以及用于提示词预算的 `/tokens` 命令 | 注册到 `ctx.dafeiyu` |
 | [`tool-dsh-store`](tool-dsh-store/README.zh.md) | 面向模型的存储工具，以及基于存储原子的只读 rules Remote | `ctx.dshStore` 消费方 |
 | [`ui-dafeiyu`](ui-dafeiyu/README.zh.md) | 能力设置段：列出组织者的 provider、切换其启用门，并链接到每个 provider 的设置页 | 设置页段落 |
 | [`ui-memory`](ui-memory/README.zh.md) | memory 设置段：编辑 provider 的 volatile 窗口、保留会话数、预算与摘要模型字段 | 设置页段落 |

@@ -598,6 +598,7 @@
       "@deepseek-ai/dsh-time-context": ["./packages/context/time-context/src"],
       "@deepseek-ai/dsh-timeout": ["./packages/util/timeout/src"],
       "@deepseek-ai/dsh-tmux-context": ["./packages/context/tmux-context/src"],
+      "@deepseek-ai/dsh-token-calculator": ["./packages/uitstalie/token-calculator/src"],
       "@deepseek-ai/dsh-token-meter": ["./packages/llm/token-meter/src"],
       "@deepseek-ai/dsh-tool-ask-user": ["./packages/interaction/tool-ask-user/src"],
       "@deepseek-ai/dsh-tool-bash": ["./packages/shell/tool-bash/src"],

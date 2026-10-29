@@ -531,6 +531,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-personality` | yes | Personality capability provider: the global PERSONALITY.md profile with a workspace overlay, a stable system-prompt section, file-watch refresh, the personality_learn auto-learning tool, and the /personality drift-review command |
 | `@deepseek-ai/dsh-store-atom` | yes | The .dsh store atom: the dshStore base interface with project-root discovery, path confinement, namespace authoring checks, and version-guarded reads and writes |
 | `@deepseek-ai/dsh-system-environment` | yes | The host environment atom: one provider for platform facts, path spelling and comparison rules, environment lookup, and the user and Harness home directories |
+| `@deepseek-ai/dsh-token-calculator` | no | DeepSeek V4 token calculator: an offline byte-level BPE tokenizer and the count_tokens tool for budgeting prompts |
 | `@deepseek-ai/dsh-tool-dsh-store` | no | The model-facing .dsh store tool and the read-only sidebar Remote over the store atom's dshStore service |
 
 ## web

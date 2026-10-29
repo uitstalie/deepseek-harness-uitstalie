@@ -20,6 +20,8 @@
       name: '@deepseek-ai/dsh-system-environment'
     - id: tool-dsh-store
       name: '@deepseek-ai/dsh-tool-dsh-store'
+    - id: token-calculator
+      name: '@deepseek-ai/dsh-token-calculator'
     - id: home-backup
       name: '@deepseek-ai/dsh-home-backup'
     - id: jira-service
