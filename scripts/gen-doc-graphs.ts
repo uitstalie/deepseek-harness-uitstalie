@@ -935,7 +935,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     consumers: ['tool-cordis'],
     note: 'Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport.',
   },
-  // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-12, 分支自有服务（能力总代/存储/台账/models.dev）在 docs/subsystems 之外的契约登记
+  // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-12, 分支自有服务（能力总代/存储/台账/宿主环境/models.dev）在 docs/subsystems 之外的契约登记
   // Branch-owned services documented outside docs/subsystems.
   {
     key: 'agentContextSources',
@@ -967,6 +967,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     mode: 'service',
     consumers: ['memory', 'personality'],
     note: 'Owns path-confined .dsh store operations and the per-session policy gate; the store tool and sidebar Remote consume it.',
+  },
+  {
+    key: 'systemEnvironment',
+    pkg: 'system-environment',
+    title: 'Host environment facts',
+    mode: 'service',
+    note: 'Owns platform facts, path spelling and comparison, environment lookup, and the user and Harness home directories; branch plugins inject it instead of deciding platform questions a second way.',
   },
   {
     key: 'jira',

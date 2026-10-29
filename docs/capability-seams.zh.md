@@ -318,6 +318,8 @@ flowchart LR
   pkg_client_ui_dafeiyu["client-ui-dafeiyu"]
   pkg_tool_dsh_store["tool-dsh-store"]
   svc_dshStore["ctx.dshStore<br/>.dsh store base interface"]
+  pkg_system_environment["system-environment"]
+  svc_systemEnvironment["ctx.systemEnvironment<br/>Host environment facts"]
   pkg_jira_service["jira-service"]
   svc_jira["ctx.jira<br/>Jira ledger single writer"]
   pkg_models_dev["models-dev"]
@@ -466,6 +468,7 @@ flowchart LR
   pkg_subprocess --> svc_subprocess
   pkg_subprocess_local --> svc_subprocess
   pkg_subprocess_ssh --> svc_subprocess
+  pkg_system_environment --> svc_systemEnvironment
   pkg_system_prompt --> svc_systemPrompt
   pkg_terminal --> svc_terminals
   pkg_terminal_bash --> svc_terminals
@@ -768,6 +771,7 @@ flowchart LR
 | `ctx.dafeiyu` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality), [`jira-agent`](../packages/jira/jira-agent) | - | 注册能力提供者、为它们的 create() 调用把关，并按 agent 分发工具、prompt 段与轮末钩子。 |
 | `ctx.dafeiyuRemote` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`client-ui-dafeiyu`](../packages/uitstalie/ui-dafeiyu) | - | 发布只读的 remote.dafeiyu 状态快照；它不能注册、启用或停用能力。 |
 | `ctx.dshStore` | `service` | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality) | - | 拥有受路径约束的 .dsh 存储操作与按会话的策略门；存储工具与侧栏 Remote 消费它。 |
+| `ctx.systemEnvironment` | `service` | [`system-environment`](../packages/uitstalie/system-environment) | - | - | - | 拥有平台事实、路径拼写与比较、环境变量查找，以及用户 home 与 Harness home 目录；分支插件注入它，而不是把平台问题再决定一遍。 |
 | `ctx.jira` | `service` | [`jira-service`](../packages/jira/jira-service) | - | [`jira-agent`](../packages/jira/jira-agent) | - | 拥有唯一的账本写入者、读写方法、推送队列与变更通知；浏览器经 remote.jira 读取。 |
 | `ctx.modelsDev` | `service` | [`models-dev`](../packages/uitstalie/models-dev) | - | - | - | 提供 models.dev 的 provider 与模型目录、路由解析，以及 harness 形状的模型默认值与额外参数。 |
 

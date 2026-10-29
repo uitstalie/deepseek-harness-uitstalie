@@ -316,6 +316,8 @@ flowchart LR
   pkg_client_ui_dafeiyu["client-ui-dafeiyu"]
   pkg_tool_dsh_store["tool-dsh-store"]
   svc_dshStore["ctx.dshStore<br/>.dsh store base interface"]
+  pkg_system_environment["system-environment"]
+  svc_systemEnvironment["ctx.systemEnvironment<br/>Host environment facts"]
   pkg_jira_service["jira-service"]
   svc_jira["ctx.jira<br/>Jira ledger single writer"]
   pkg_models_dev["models-dev"]
@@ -464,6 +466,7 @@ flowchart LR
   pkg_subprocess --> svc_subprocess
   pkg_subprocess_local --> svc_subprocess
   pkg_subprocess_ssh --> svc_subprocess
+  pkg_system_environment --> svc_systemEnvironment
   pkg_system_prompt --> svc_systemPrompt
   pkg_terminal --> svc_terminals
   pkg_terminal_bash --> svc_terminals
@@ -766,6 +769,7 @@ flowchart LR
 | `ctx.dafeiyu` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality), [`jira-agent`](../packages/jira/jira-agent) | - | Registers capability providers, gates their create() calls, and dispatches tools, prompt sections, and turn-end hooks per agent. |
 | `ctx.dafeiyuRemote` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`client-ui-dafeiyu`](../packages/uitstalie/ui-dafeiyu) | - | Publishes the read-only remote.dafeiyu status snapshot; it cannot register, enable, or disable a capability. |
 | `ctx.dshStore` | `service` | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality) | - | Owns path-confined .dsh store operations and the per-session policy gate; the store tool and sidebar Remote consume it. |
+| `ctx.systemEnvironment` | `service` | [`system-environment`](../packages/uitstalie/system-environment) | - | - | - | Owns platform facts, path spelling and comparison, environment lookup, and the user and Harness home directories; branch plugins inject it instead of deciding platform questions a second way. |
 | `ctx.jira` | `service` | [`jira-service`](../packages/jira/jira-service) | - | [`jira-agent`](../packages/jira/jira-agent) | - | Owns the one ledger writer, read and write methods, push queue, and changed notices; the browser reads it through remote.jira. |
 | `ctx.modelsDev` | `service` | [`models-dev`](../packages/uitstalie/models-dev) | - | - | - | Serves the models.dev provider and model catalog, route resolution, and harness-shaped model defaults and extra params. |
 
