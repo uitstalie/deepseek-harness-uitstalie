@@ -270,3 +270,49 @@ super agent 的主体是：**自己的 Source 轮询循环、自己的 SQLite �
 4. 领活仍由"会话内动作 / turn-end 一次 pass"触发，**不引入常驻轮询**；真 Session 执行器、面板、vendor 原型 `src/core` 继续后置。
 
 验收：workspace 列表里能看到 super workspace；能建一个真实 workspace 并拿到 Grant；能派一个 subagent 进去改文件，且在 issue 上留下"谁派的、哪个 workspace、改了什么"。
+
+## 7. 认领闭环：三道人类门，全部落在既有原语上
+
+结论（用户裁定）：第一阶段就要"**自己领活**"，但需要人**确认**与**复核**。这两道门几乎不需要新机制——账本里已经有现成落点：
+
+- `todo → in_progress`：2026-10-19 起**没有** todo→closed，理由原话是"否则'谁做的'在审计上说不清"；
+- `in_review`：原话是"**等人确认**——agent 认为做完了，但结论要人点头"；
+- `assignee: self` + 租约 + `is_blocked_by`（对 agent 显式拒绝认领，除非 override 并写评论）；
+- CAS `expected_revision`（两人同时确认，第二个拿 `STALE_REVISION`，绝不静默覆盖）；
+- **commit ⇄ issue 绑定已实现**（`jira verify-commit-msg` / `jira hooks install` / 分支名 `KEY-…` 自动前缀 / `[no-issue]` 显式旁路 / CI 查全 range）。
+
+闭环：
+
+```
+pass 扫描 → 候选（只读，不动账本）
+   ↓ 提案：issue 上留一条评论（would claim + 理由 + 证据原文 + 范围 + 强度）
+[门 1：人确认]        ← 唯一能动 assignee 的路径
+   ↓ assignee: self（expected_revision）+ switch_state → in_progress
+派活：subagent(cwd = workspace) 改代码 / 跑测试，只返回报告
+   ↓ 父会话写：comment（改了什么、哪个 workspace、怎么验证）+ switch_state → in_review
+[门 2：人复核]        → closed + fixed / 打回 in_progress
+```
+
+（门 0 是 §6.4 的 `workspace_ensure`：人协商路径，同时产生 Grant。）
+
+### 7.1 三条已核实的约束，会改写实现细节
+
+1. **subagent 对账本只读**（决策 89/93/96，由 `ctx.tools.guard` 在工具层拦截）。所以派出去的执行者**不能自己写账本**——父会话是唯一写者。这反而是对的：执行者只产出"代码 + 报告"，记录只由调度器写，不会出现两份账。
+2. **复核可以自动挂靠**：目标 workspace 装了 `jira hooks`、分支名带 key，则每次提交自动绑定 issue，复核就是 `git log --grep <KEY>` + issue 评论，不用人肉对 diff。所以 `workspace_ensure` 应顺带 `jira hooks install`（幂等，会备份并链式调用已有 hook）——但它**改的是用户的仓库**，必须算进门 0 的确认。
+3. **被阻塞的不能进提案**：`is_blocked_by` 未关闭时 `assignee: self` 会被拒（`jira_list` 也把 blocked 单独成组）。扫描阶段就过滤，别让它出现在候选里。
+
+### 7.2 唯一待定：确认落在哪
+
+| | 会话里问一句 | 账本里留一条待确认 |
+| --- | --- | --- |
+| 成本 | 最低 | 一次写 |
+| 存活 | 跟会话，会话没了就没了 | 跨会话、跨机器、可批量 |
+| 适合 | 人在场、立刻决定 | 人不在场时先积累，回来一次批完 |
+
+建议**两者是同一件事的两半**：提案始终写进账本（成本一条评论），会话里只是顺带问一句以加速。人不在，提案留在账本等下次 pass；人在，一句话批完。不需要面板、不需要常驻进程，也不会把"它想做什么"丢在聊天记录里。
+
+驳回也要留痕（否则"漏判不可见"，这是原型被公开批评的点之一）：驳回 = 一条 `declined` 评论 + 理由，同一 issue 在一个时间窗内不再重复提案。
+
+### 7.3 pass 的触发与节流
+
+会话启动 + turn-end 各跑一次；**每轮最多一条提案**；当前会话已有未完成的工作就不提案（不打断，对应原型的"默认沉默"）。
