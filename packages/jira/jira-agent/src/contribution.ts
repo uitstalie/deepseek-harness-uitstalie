@@ -38,6 +38,28 @@ export const JIRA_SETTINGS_SECTION = 'jira'
 /** Sort order of that section inside the settings navigation. */
 export const JIRA_SETTINGS_ORDER = 200
 
+/** Registry name of the standing instructions a delegated executor reads (DH-514). */
+export const JIRA_EXECUTOR_SECTION_NAME = 'jira:executor'
+
+/** One order after the awareness line: the same ledger, one level closer. */
+export const JIRA_EXECUTOR_ORDER = 701
+
+/**
+ * The executor's standing instructions, as a static section.
+ *
+ * Static on purpose (DH-514): a child pays for the text once and keeps the prefix cached, so the
+ * per-issue dispatch instruction only has to name the issue. This is what a worker preset would
+ * have carried, without the extra bundle row.
+ */
+const EXECUTOR_SECTION = Object.freeze({
+  name: JIRA_EXECUTOR_SECTION_NAME,
+  order: JIRA_EXECUTOR_ORDER,
+  text: 'You are executing one issue that a dispatcher claimed for you. Read it with jira_issue get '
+    + 'and work in this checkout. Report through issue_work: `progress` while you work, `deliver` '
+    + 'with the evidence when it is done, `blocked` with `waiting_for` when it cannot go on. That '
+    + 'is the only way you may change the ledger; jira_issue and jira_kb writes are refused for you.',
+})
+
 /** The services and process facts one contribution is built from. */
 export interface ContributionHost {
   /** The plugin context; `ctx.jira` is the ledger service. */
@@ -120,7 +142,7 @@ export const createJiraContribution = (host: ContributionHost): CapabilityContri
     // same verdict) plus `issue_work`, which is the only surface it may write through.
     scope: 'all',
     tools: (agent: Agent) => (isSubagent(agent) ? Object.freeze([...tools, ...workerTools]) : tools),
-    promptSections: (agent: Agent) => (isSubagent(agent) ? [] : [awareness.section]),
+    promptSections: (agent: Agent) => (isSubagent(agent) ? [EXECUTOR_SECTION] : [awareness.section]),
     onAgentCreated: (agent: Agent) => {
       // A child neither settles the ledger nor scans the session's commits: it writes one issue
       // through `issue_work`, and the dispatcher owns the commit history.

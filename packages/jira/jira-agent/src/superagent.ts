@@ -250,14 +250,13 @@ const candidateOrder = (left: Candidate, right: Candidate): number => {
 }
 
 /**
- * The instruction a dispatcher hands its executor, built here so it reads the same every time.
+ * The per-issue half of a dispatch; the executor's standing instructions are a prompt section
+ * (`jira:executor`, DH-514), so they are paid for once instead of on every dispatch.
  * @param key - the claimed issue.
  * @returns the instruction text.
  */
 export const dispatchInstruction = (key: string): string =>
-  `Work on ${key} in this checkout. Read the issue first with jira_issue get. Report with `
-  + 'issue_work: `progress` while you work, `deliver` with the evidence when it is done, or '
-  + '`blocked` with `waiting_for` when it cannot go on. Do not change the ledger any other way.'
+  `Work on ${key} in this checkout. Read it first with jira_issue get, then report through issue_work.`
 
 /** The ledger read both tools start from: every issue, plus the vocabulary's closed set. */
 const readLedger = async (jira: RunOptions['jira']): Promise<Readonly<{

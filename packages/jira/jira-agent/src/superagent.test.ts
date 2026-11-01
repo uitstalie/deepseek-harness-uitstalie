@@ -313,6 +313,10 @@ describe('superagent: the dispatcher\'s surface', () => {
       const childNames = contribution.tools?.(worker).map(tool => tool.name).sort() ?? []
       assert.deepEqual(rootNames, ['jira_issue', 'jira_kb', 'jira_list'])
       assert.deepEqual(childNames, ['issue_work', 'jira_issue', 'jira_kb', 'jira_list'])
+      // The standing instructions are the child's persona: paid once, cached, and the reason a
+      // dispatch instruction only names the issue.
+      assert.deepEqual(contribution.promptSections?.(main).map(section => section.name), ['jira:store'])
+      assert.deepEqual(contribution.promptSections?.(worker).map(section => section.name), ['jira:executor'])
     } finally {
       await harness.dispose()
     }
