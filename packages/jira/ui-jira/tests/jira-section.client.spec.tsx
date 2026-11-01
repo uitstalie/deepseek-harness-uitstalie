@@ -25,6 +25,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { useMemo, useSyncExternalStore } from 'react'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import { JiraSection, type JiraSectionInjected } from '../src/client/JiraSection.tsx'
+import { SuperagentSection } from '../src/client/SuperagentSection.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { JiraStore, type JiraWire } from '../src/client/store.ts'
 
@@ -190,8 +191,8 @@ it('registers the jira settings section and withdraws it with the fiber', async 
   const fiber = await ctx.plugin({ inject: [...inject], apply }).await()
 
   const entries = slots.entries('settings.section')
-  // Exactly one: a second registration of the same section id would render twice in settings.
-  expect(entries).toHaveLength(1)
+  // Two sections: the ledger page and the dedicated super-agent page; reusing an id would render twice.
+  expect(entries).toHaveLength(2)
   const [entry] = entries
   expect(entry?.options.id).toBe('jira')
   expect(entry?.options.order).toBe(200)
@@ -200,6 +201,11 @@ it('registers the jira settings section and withdraws it with the fiber', async 
   const injected = injectFaceOf(entry)
   expect(injected.t('title')).toBe('Jira 台账')
   expect(injected.hooks.snapshot.getSnapshot().board.status).toBe('idle')
+
+  const superagent = entries[1]
+  expect(superagent?.options.id).toBe('superagent')
+  expect(superagent?.options.order).toBe(220)
+  expect(superagent?.component).toBe(SuperagentSection)
 
   await fiber.dispose()
   expect(slots.entries('settings.section')).toEqual([])

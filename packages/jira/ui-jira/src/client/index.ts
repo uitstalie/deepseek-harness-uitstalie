@@ -22,11 +22,17 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { JiraChangeEvent } from '@deepseek-ai/dsh-jira-service/types'
 import jiraRemote from '@deepseek-ai/dsh-jira-service/remote'
 import { JiraSection } from './JiraSection.tsx'
+import { SuperagentSection } from './SuperagentSection.tsx'
 import type { JiraSectionInjected } from './JiraSection.tsx'
 import { JiraLedgerSettingsController, type JiraLedgerSettings } from './ledger-settings.ts'
 import { en, zh, type JiraKey } from './locales.ts'
 import { JiraStore } from './store.ts'
-import { JIRA_SETTINGS_ORDER, JIRA_SETTINGS_SECTION } from '../section.ts'
+import {
+  JIRA_SETTINGS_ORDER,
+  JIRA_SETTINGS_SECTION,
+  SUPERAGENT_SETTINGS_ORDER,
+  SUPERAGENT_SETTINGS_SECTION,
+} from '../section.ts'
 
 export type { JiraSectionInjected, JiraSectionProps } from './JiraSection.tsx'
 export type { JiraKey } from './locales.ts'
@@ -110,6 +116,20 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
         t,
       }),
     }, JiraSection))
+    scoped.slots.inject('settings.section', () => scoped.slots.register({
+      name: 'settings.section',
+      id: SUPERAGENT_SETTINGS_SECTION,
+      order: SUPERAGENT_SETTINGS_ORDER,
+      label: () => t('superagentNav'),
+      locale: NS,
+      inject: (): JiraSectionInjected => ({
+        controller,
+        activate: () => { void controller.load() },
+        ledgerSettings: { controller: ledgerSettings, store: ledgerSettings.store },
+        hooks: { snapshot: controller.store, ledgerSettings: ledgerSettings.store },
+        t,
+      }),
+    }, SuperagentSection))
   })
   return () => {
     // The mount disposer is asynchronous; the fiber's cleanup callback is synchronous.

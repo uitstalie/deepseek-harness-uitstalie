@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-jira` adds the jira ledger's browser surface: one settings section (`id: 'jira'`, `order: 200`) that edits the ledger row and reads the ledger itself — the board grouped by status, one issue's detail, and the knowledge search. The ledger views are read-only (writes stay with the model's tools); a super-agent summary block above the board reports ready, in-progress, review and blocked counts, preferring the Host's `superagentStatus` view and falling back to the board when the Host does not expose it, plus a recent-activity list from `superagentHistory` and a proposal/trigger list from `superagentTriggers`, while the full super-agent panel is deferred to DH-601. The row fields are editable because `jira-service` declares them volatile, so a save applies without a restart. The `dafeiyu` Capabilities list links to the section by id, so the id and order are a contract both halves read from one module.
+`dsh-client-ui-jira` adds the jira ledger's browser surface: a settings section (`id: 'jira'`, `order: 200`) that edits the ledger row and reads the ledger itself, plus a second section (`id: 'superagent'`, `order: 220`) for the super-agent summary, proposals and recent activity — the board grouped by status, one issue's detail, and the knowledge search. The ledger views are read-only (writes stay with the model's tools); a super-agent summary block above the board reports ready, in-progress, review and blocked counts, preferring the Host's `superagentStatus` view and falling back to the board when the Host does not expose it, plus a recent-activity list from `superagentHistory` and a proposal/trigger list from `superagentTriggers`, while the full super-agent panel is deferred to DH-601. The row fields are editable because `jira-service` declares them volatile, so a save applies without a restart. The `dafeiyu` Capabilities list links to the section by id, so the id and order are a contract both halves read from one module.
 
 ## Table of Contents
 
@@ -69,7 +69,7 @@ None; the page assembles no request and contributes no prompt text, tool schema,
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Super-agent panel:** the summary block, needs-person rows, comment history, recent activity and proposal triggers are in place; a dedicated trigger page with richer filtering awaits DH-601.
+- **Super-agent panel:** its own section hosts the summary, needs-person rows, comment history, recent activity and proposal triggers; a richer trigger page with filtering and the vendor panel await DH-601.
 - **Board seat:** the board, detail and knowledge search render inside the settings section. A dock/sidebar board would be a second registration (and a designer's layout) rather than another page of this section.
 - **dafeiyu Capabilities list:** the Jira row's label, state and "open settings" jump are DH-12's work; this package only owns the section they link to.
 - **Writes from another process:** the change feed carries what this Host writes (tools, sessions, sync). A CLI write in another process announces nothing here; the page catches up on the next in-host change, on `connection/reset`, or when the section remounts. Watching ledger files would be a second change source and is out of scope.

@@ -19,3 +19,9 @@ export const JIRA_SETTINGS_FIELDS = Object.freeze(['root', 'host', 'push.enabled
 
 /** One settings field the section shows. */
 export type JiraSettingsField = (typeof JIRA_SETTINGS_FIELDS)[number]
+
+/** The dedicated super-agent section: status, proposals and recent activity. */
+export const SUPERAGENT_SETTINGS_SECTION = 'superagent'
+
+/** Where the super-agent section sorts, after the jira ledger section. */
+export const SUPERAGENT_SETTINGS_ORDER = 220

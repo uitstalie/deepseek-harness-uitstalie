@@ -30,6 +30,12 @@ export const SUPERAGENT_CAPABILITY_LABEL = 'Super agent'
 /** One-sentence capability-list description. */
 export const SUPERAGENT_CAPABILITY_DESCRIPTION = 'Takes a ready issue from the ledger once a person confirms'
 
+/** The settings section the capability list links to. */
+export const SUPERAGENT_SETTINGS_SECTION = 'superagent'
+
+/** Where the super-agent section sorts. */
+export const SUPERAGENT_SETTINGS_ORDER = 220
+
 /** The only status an issue may be in to be proposed or claimed. */
 export const CLAIMABLE_STATUS = 'todo'
 

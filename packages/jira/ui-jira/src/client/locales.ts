@@ -8,6 +8,7 @@
 /** English strings (the key-set source of truth for this pair). */
 export const en = {
   nav: 'Jira',
+  superagentNav: 'Super agent',
   title: 'Jira ledger',
   intro: 'The workspace issue ledger and its knowledge base, read-only. Writes go through the agent tools.',
   statusTitle: 'Ledger',
@@ -95,6 +96,7 @@ export type JiraKey = keyof typeof en
 /** Chinese strings (same keys as {@link en}). */
 export const zh: { [Key in keyof typeof en]: string } = {
   nav: 'Jira',
+  superagentNav: 'Super agent',
   title: 'Jira 台账',
   intro: '工作区 issue 台账与知识库，只读；写入只经模型工具。',
   statusTitle: '台账',

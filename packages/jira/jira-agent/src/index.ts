@@ -41,6 +41,8 @@ import {
   SUPERAGENT_CAPABILITY_DESCRIPTION,
   SUPERAGENT_CAPABILITY_ID,
   SUPERAGENT_CAPABILITY_LABEL,
+  SUPERAGENT_SETTINGS_ORDER,
+  SUPERAGENT_SETTINGS_SECTION,
   createSuperagentContribution,
 } from './superagent.ts'
 import { installWriteGuard, registerJiraCommand, registerJiraSkills } from './wiring.ts'
@@ -110,7 +112,7 @@ export function apply(ctx: Context, config: Config): void {
     label: SUPERAGENT_CAPABILITY_LABEL,
     description: SUPERAGENT_CAPABILITY_DESCRIPTION,
     enabledByDefault: false,
-    settings: { sectionId: JIRA_SETTINGS_SECTION, order: JIRA_SETTINGS_ORDER },
+    settings: { sectionId: SUPERAGENT_SETTINGS_SECTION, order: SUPERAGENT_SETTINGS_ORDER },
     config: Object.freeze({}),
     create: (_runtime: CapabilityRuntime): CapabilityContribution => createSuperagentContribution(host),
   })
