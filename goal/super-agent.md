@@ -293,6 +293,12 @@ pass 扫描 → 候选（只读，不动账本）
 [门 2：人复核]        → closed + fixed / 打回 in_progress
 ```
 
+**已落地**（DH-512 / DH-513，提交 `5b19fbc99b` / `271dc5a708`）：两端都在 `jira-agent` 里，各开各的能力门。
+
+- 执行者端 `issue_work`：授权是**范围**——issue 在 `in_progress` 且 `assignee` 的会话等于调用者的父会话；`deliver` 一次事务完成"交回复审 + 证据"；`blocked` 只留 `[blocked:person|dependency]` 标记，不造状态。
+- 调度端 `superagent_scan` / `superagent_claim`：提案是 `[claim-proposal]` 评论且**必须是最新一条**才算数；`claim` 由状态迁移本身花掉提案，因此不需要"已消费"字段。`claim` 返回 `dispatch { key, cwd, instruction }`。
+- **仍未做**：worker agent preset、workspace 的登记与派遣（`workspaceRegistry`）、常驻轮询与面板。
+
 （门 0 是 §6.4 的 `workspace_ensure`：人协商路径，同时产生 Grant。）
 
 ### 7.1 三条已核实的约束，会改写实现细节
