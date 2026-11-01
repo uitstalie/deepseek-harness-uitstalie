@@ -263,14 +263,20 @@ describe('agent: the capability and its surfaces (contract §3)', () => {
   it('undoes every registration when the plugin fiber is disposed', async () => {
     const { harness, agent, fiber } = await mountWired(root)
     try {
-      assert.equal(harness.ctx.dafeiyu.status().length, 1)
+      assert.equal(harness.ctx.dafeiyu.status().length, 2, 'jira and superagent come from this row')
       assert.ok(harness.ctx.tools.get(TOOL_NAME, agent) !== undefined)
 
       await fiber.dispose()
+      const gone = harness.ctx.dafeiyu.status()
+        .map(entry => ({ id: entry.id, present: entry.present, state: entry.state }))
+        .sort((left, right) => left.id.localeCompare(right.id))
       assert.deepEqual(
-        harness.ctx.dafeiyu.status(),
-        [{ id: 'jira', present: false, enabled: true, state: 'missing' }],
-        'the capability is gone; the configured gate is the only trace left',
+        gone,
+        [
+          { id: 'jira', present: false, state: 'missing' },
+          { id: 'superagent', present: false, state: 'missing' },
+        ],
+        'the capabilities are gone; the configured gate is the only trace left',
       )
       assert.equal(harness.ctx.tools.get(TOOL_NAME, agent), undefined, 'the tools are gone')
       const commands = harness.ctx.commands.list(agent).map(command => command.name)

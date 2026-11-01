@@ -1,0 +1,365 @@
+/**
+ * plugin/superagent — the claim loop: find a ready issue, propose taking it, then take it.
+ *
+ * The two steps exist because a person has to say yes (DH-513, design §7). `propose` costs one
+ * append-only comment and changes no state; `claim` runs only while the **latest** comment on the
+ * issue is still this session's proposal. That is the whole gate: a proposal somebody answered, and
+ * a proposal another session wrote, cannot become a claim — and the state change itself spends the
+ * proposal, because the issue stops being `todo`.
+ *
+ * Both tools read and write through `ctx.jira`; nothing here reaches outside the store.
+ *
+ * @module @deepseek-ai/dsh-jira-agent/superagent
+ */
+
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { CapabilityContribution } from '@deepseek-ai/dsh-dafeiyu'
+import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
+import { clampText, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
+import { type RunOptions, type ToolValue, actorFor, asString, failure, nowUtc, okValue } from './envelope.ts'
+import { type Spec, type ToolHost, defineJiraTool, runOptionsOf } from './tools.ts'
+
+/** The capability id this provider registers with the organizer. */
+export const SUPERAGENT_CAPABILITY_ID = 'superagent'
+
+/** Display name in the organizer's capability list. */
+export const SUPERAGENT_CAPABILITY_LABEL = 'Super agent'
+
+/** One-sentence capability-list description. */
+export const SUPERAGENT_CAPABILITY_DESCRIPTION = 'Takes a ready issue from the ledger once a person confirms'
+
+/** The only status an issue may be in to be proposed or claimed. */
+export const CLAIMABLE_STATUS = 'todo'
+
+/** The marker a proposal comment starts with, so a claim finds it without reading prose. */
+export const PROPOSAL_MARKER = '[claim-proposal]'
+
+/** The tool names the host registry refers to. */
+export const SCAN_TOOL_NAME = 'superagent_scan'
+export const CLAIM_TOOL_NAME = 'superagent_claim'
+
+/** Whether an issue can be taken right now, and why not when it cannot. */
+export type Claimability = Readonly<{
+  ready: boolean
+  reason?: string
+}>
+
+const READY: Claimability = Object.freeze({ ready: true })
+
+/**
+ * A refusal, phrased for whoever has to clear it.
+ * @param reason - the concrete reason the issue cannot be taken.
+ * @returns the frozen verdict.
+ */
+const NOT_READY = (reason: string): Claimability => Object.freeze({ ready: false, reason })
+
+/**
+ * Whether an `is_blocked_by` target of this issue keeps it closed (DH-513).
+ *
+ * A target that cannot be found counts as blocking: "I cannot tell" must not open the gate.
+ * @param issue - the issue whose links are read.
+ * @param byKey - every issue in the ledger, so a target can be resolved.
+ * @param closed - the vocabulary's closed statuses.
+ * @returns whether the issue is blocked.
+ */
+export const isBlocked = (issue: Issue, byKey: ReadonlyMap<string, Issue>, closed: readonly string[]): boolean =>
+  issue.links.some((link) => {
+    if (link.type !== 'is_blocked_by') return false
+    const target = byKey.get(link.target)
+    return target === undefined || !closed.includes(target.status)
+  })
+
+/**
+ * Whether an issue may be proposed or claimed.
+ *
+ * Four facts decide it, in the order a person would ask them: is something still in the way, is it
+ * still unstarted, is somebody else on it, and can it be claimed at all.
+ * @param issue - the issue as the ledger stores it.
+ * @param blocked - {@link isBlocked}'s verdict for this issue.
+ * @param at - the current time, for the lease.
+ * @returns the verdict with its reason.
+ */
+export const claimability = (issue: Issue, blocked: boolean, at: Timestamp): Claimability => {
+  if (blocked) return NOT_READY('an `is_blocked_by` target is still open or missing')
+  if (issue.status !== CLAIMABLE_STATUS) {
+    return NOT_READY(`its status is '${issue.status}'; only '${CLAIMABLE_STATUS}' can be taken`)
+  }
+  if (leaseIsActive(issue, at)) {
+    return NOT_READY(`it is claimed by ${String(issue.assignee)} until ${String(issue.leaseExpiresAt)}`)
+  }
+  return READY
+}
+
+/**
+ * Whether this session holds an unspent proposal on the issue.
+ *
+ * The rule is deliberately narrow: the **latest** comment must be this session's proposal. A
+ * proposal somebody replied to is spent, and a claim cannot reach past the conversation that
+ * answered it.
+ * @param comments - the issue's comments, oldest first.
+ * @param by - the caller's identity.
+ * @returns the verdict with its reason.
+ */
+export const openProposal = (comments: readonly Comment[], by: Identity | undefined): Claimability => {
+  if (by === undefined) return NOT_READY('this session has no identity to propose under')
+  const last = comments.at(-1)
+  if (last === undefined) return NOT_READY(`no ${PROPOSAL_MARKER} comment on the issue; propose first`)
+  if (last.author !== by) return NOT_READY(`the latest comment is ${String(last.author)}'s, not this session's`)
+  if (!last.body.trimStart().startsWith(PROPOSAL_MARKER)) {
+    return NOT_READY(`the latest comment is not a ${PROPOSAL_MARKER}; propose again`)
+  }
+  return READY
+}
+
+/** `superagent_scan`'s schema. */
+export const SCAN_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+  limit: { type: 'number', description: 'How many candidates to return; default 20.' },
+})
+
+/** `superagent_scan`'s description: what it answers, and that it writes nothing. */
+export const SCAN_DESCRIPTION =
+  'List the local dsh-jira ledger\'s issues that could be taken now, of any project, ready ones '
+  + 'first and then by priority and recency. An entry with `ready: false` says why not. Read-only.'
+
+/** `superagent_claim`'s schema. */
+export const CLAIM_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+  action: {
+    type: 'string',
+    required: true,
+    description: 'propose: record that you would take the issue. claim: take it, after a person agreed.',
+    enum: ['propose', 'claim'],
+  },
+  key: { type: 'string', required: true, description: 'The issue key, e.g. DH-12.' },
+  why: { type: 'string', description: 'propose: why this issue, in one sentence. Required for propose.' },
+  cwd: { type: 'string', description: 'claim: the checkout to dispatch the work into; defaults to this session\'s own.' },
+})
+
+/**
+ * `superagent_claim`'s description.
+ *
+ * It names the two-step rule and the person's part, because neither is discoverable from a result:
+ * proposing costs a comment, claiming needs their yes.
+ */
+export const CLAIM_DESCRIPTION =
+  'Take one ready issue from the local dsh-jira ledger, in two steps so a person stays in charge. '
+  + '`propose` appends a comment saying why this issue and changes nothing else. `claim` runs only '
+  + 'when the latest comment on the issue is still that proposal; it assigns the issue to this '
+  + 'session and moves it to in_progress. Ask the person between the two steps, and do not claim an '
+  + 'issue they have not agreed to.'
+
+/** The envelope both tools advertise; `items`, `issue` and `dispatch` carry the payloads. */
+export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    ok: { type: 'boolean' },
+    writable: { type: 'boolean' },
+    items: { type: 'array' },
+    issue: { type: 'object', additionalProperties: true },
+    dispatch: { type: 'object', additionalProperties: true },
+    me: { type: 'object', additionalProperties: true },
+    error: { type: 'object', additionalProperties: true },
+    reason: { type: 'string' },
+    rejected: { type: 'array' },
+    message: { type: 'string' },
+  },
+  required: Object.freeze(['ok', 'writable', 'me']),
+})
+
+/** One candidate as the tool returns it. */
+interface Candidate {
+  key: string
+  project: string
+  priority: string
+  summary: string
+  updated: string
+  ready: boolean
+  reason?: string
+}
+
+/** Ready first, then priority (S1 before S5, which sorts lexicographically), then most recent. */
+const candidateOrder = (left: Candidate, right: Candidate): number => {
+  if (left.ready !== right.ready) return left.ready ? -1 : 1
+  if (left.priority !== right.priority) return left.priority < right.priority ? -1 : 1
+  return left.updated < right.updated ? 1 : -1
+}
+
+/**
+ * The instruction a dispatcher hands its executor, built here so it reads the same every time.
+ * @param key - the claimed issue.
+ * @returns the instruction text.
+ */
+export const dispatchInstruction = (key: string): string =>
+  `Work on ${key} in this checkout. Read the issue first with jira_issue get. Report with `
+  + 'issue_work: `progress` while you work, `deliver` with the evidence when it is done, or '
+  + '`blocked` with `waiting_for` when it cannot go on. Do not change the ledger any other way.'
+
+/** The ledger read both tools start from: every issue, plus the vocabulary's closed set. */
+const readLedger = async (jira: RunOptions['jira']): Promise<Readonly<{
+  byKey: ReadonlyMap<string, Issue>
+  issues: readonly Issue[]
+  closed: readonly string[]
+} | undefined>> => {
+  const snapshot = await jira.snapshot()
+  if (!snapshot.ok) return undefined
+  const byKey = new Map<string, Issue>(snapshot.value.issues.map(issue => [String(issue.key), issue]))
+  return Object.freeze({
+    byKey,
+    issues: snapshot.value.issues,
+    closed: snapshot.value.vocab?.closed ?? ['closed', 'cancelled'],
+  })
+}
+
+/**
+ * `superagent_scan`: read every candidate and say which could be taken.
+ * @param args - the raw tool arguments, validated against `SCAN_PARAMETERS`.
+ * @param options - the store, caller verdict and clock for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @returns the candidates with their verdicts.
+ */
+export const runScanTool = async (args: unknown, options: RunOptions, me: unknown): Promise<ToolValue> => {
+  const { jira, caller } = options
+  const validated = validateArgs(SCAN_PARAMETERS, args)
+  if (!validated.ok) return failure(validated.error, caller, me)
+
+  const ledger = await readLedger(jira)
+  if (ledger === undefined) return failure(invalidInput('the ledger could not be read'), caller, me)
+
+  const limit = typeof validated.value.limit === 'number' && validated.value.limit > 0
+    ? Math.min(Math.floor(validated.value.limit), 100)
+    : 20
+  const candidates: Candidate[] = []
+  for (const issue of ledger.issues) {
+    const verdict = claimability(issue, isBlocked(issue, ledger.byKey, ledger.closed), options.at)
+    // The ledger is the truth for readiness; a blocked or started issue is still worth naming when
+    // it is the closest thing to ready, so only closed issues are dropped outright.
+    if (ledger.closed.includes(issue.status)) continue
+    candidates.push({
+      key: String(issue.key),
+      project: issue.project,
+      priority: issue.priority,
+      summary: issue.summary,
+      updated: issue.updatedAt,
+      ready: verdict.ready,
+      ...(verdict.reason === undefined ? {} : { reason: verdict.reason }),
+    })
+  }
+  candidates.sort(candidateOrder)
+  const items = Object.freeze(candidates.slice(0, limit).map(candidate => Object.freeze(candidate)))
+  return Object.freeze({
+    ok: true,
+    writable: caller.writable,
+    ...(caller.reason === undefined ? {} : { reason: caller.reason }),
+    me,
+    items,
+  })
+}
+
+/**
+ * `superagent_claim`: propose, or claim the issue the proposal named.
+ * @param args - the raw tool arguments, validated against `CLAIM_PARAMETERS`.
+ * @param options - the store, caller verdict and clock for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @returns the proposal, or the claimed issue with its dispatch facts.
+ */
+export const runClaimTool = async (args: unknown, options: RunOptions, me: unknown): Promise<ToolValue> => {
+  const { jira, caller } = options
+  const validated = validateArgs(CLAIM_PARAMETERS, args)
+  if (!validated.ok) return failure(validated.error, caller, me)
+  if (!caller.writable) {
+    return failure(invalidInput('taking an issue needs a session that may write the ledger'), caller, me)
+  }
+  const action = String(validated.value.action)
+  const key = asString(validated.value.key) ?? ''
+  const cwd = asString(validated.value.cwd) ?? caller.cwd
+
+  const ledger = await readLedger(jira)
+  if (ledger === undefined) return failure(invalidInput('the ledger could not be read'), caller, me)
+  const issue = ledger.byKey.get(key)
+  if (issue === undefined) return failure(invalidInput(`${key} is not in the ledger`, { key }), caller, me)
+  const verdict = claimability(issue, isBlocked(issue, ledger.byKey, ledger.closed), options.at)
+  if (!verdict.ready) return failure(invalidInput(`${key} cannot be taken: ${String(verdict.reason)}`, { key }), caller, me)
+
+  const actor = { by: actorFor(options, caller), at: options.at }
+  const issueKey = key as IssueKey
+  if (action === 'propose') {
+    const why = asString(validated.value.why)
+    if (why === undefined || why.trim() === '') {
+      return failure(invalidInput('propose needs `why`: one sentence on why this issue'), caller, me)
+    }
+    const proposed = await jira.mutateIssue(issueKey, {
+      action: 'comment',
+      body: `${PROPOSAL_MARKER} ${why.trim()}`,
+    }, actor, {})
+    if (!proposed.ok) return failure(proposed.error, caller, me)
+    return okValue(caller, me, proposed.value.transaction.change.issue, proposed.value.comments, [], 'write')
+  }
+
+  const read = await jira.readIssue(issueKey)
+  if (!read.ok) return failure(read.error, caller, me)
+  const proposal = openProposal(read.value.comments ?? [], caller.identity)
+  if (!proposal.ready) {
+    return failure(invalidInput(`${key} cannot be claimed yet: ${String(proposal.reason)}`, { key }), caller, me)
+  }
+  const assigned = await jira.mutateIssue(issueKey, { action: 'assignee', value: 'self' }, actor, {})
+  if (!assigned.ok) return failure(assigned.error, caller, me)
+  const started = await jira.mutateIssue(issueKey, { action: 'switch_state', to: 'in_progress' }, actor, {})
+  if (!started.ok) return failure(started.error, caller, me)
+  return Object.freeze({
+    ...okValue(caller, me, started.value.transaction.change.issue, started.value.comments, [], 'write'),
+    dispatch: Object.freeze({
+      key,
+      ...(cwd === undefined ? {} : { cwd }),
+      instruction: dispatchInstruction(key),
+    }),
+  })
+}
+
+/** One text block, clamped to the model's budget. */
+const renderText = (text: string): ContentBlock[] => [{ type: 'text', text: clampText(text) }]
+
+/**
+ * Build the two tool definitions the capability contributes.
+ *
+ * The schemas, the runners and the descriptions live here; this function only turns them into the
+ * registry's shape, so both tools declare their timeout and concurrency class in one place.
+ * @param host - the plugin host the call context is resolved from.
+ * @returns the capability contribution the organizer wires onto root agents.
+ */
+export const createSuperagentContribution = (host: ToolHost): CapabilityContribution => {
+  const scan: Spec = {
+    name: SCAN_TOOL_NAME,
+    description: SCAN_DESCRIPTION,
+    parameters: SCAN_PARAMETERS,
+    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+    timeoutMs: 5_000,
+    isConcurrencySafe: () => true,
+    render: (typed) => {
+      const items = Array.isArray(typed.items) ? typed.items as Candidate[] : []
+      if (items.length === 0) return renderText('no issue is open')
+      return renderText(items
+        .map(item => `${item.key}  ${item.priority}  ${item.ready ? 'ready' : `no (${item.reason ?? 'not ready'})`}  ${item.summary}`)
+        .join('\n'))
+    },
+    run: (args, call) => runScanTool(args, runOptionsOf(host, call), call.me),
+  }
+  const claim: Spec = {
+    name: CLAIM_TOOL_NAME,
+    description: CLAIM_DESCRIPTION,
+    parameters: CLAIM_PARAMETERS,
+    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+    timeoutMs: 30_000,
+    isConcurrencySafe: () => false,
+    render: (typed) => {
+      const issue = typed.issue as Partial<Issue> | undefined
+      return renderText(issue === undefined || issue.key === undefined
+        ? 'ok'
+        : renderIssueHuman(issue as Issue, [], nowUtc(host.clock)).replace(/\n$/u, ''))
+    },
+    run: (args, call) => runClaimTool(args, runOptionsOf(host, call), call.me),
+  }
+  return Object.freeze({
+    scope: 'root',
+    tools: () => Object.freeze([defineJiraTool(host, scan), defineJiraTool(host, claim)]),
+  })
+}

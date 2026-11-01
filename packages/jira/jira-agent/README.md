@@ -1,5 +1,5 @@
 ---
-description: "The jira ledger's model surface: the dafeiyu capability provider registering the jira_issue, jira_list and jira_kb tools, the executor's issue_work tool, the write guard, the /jira command, the bundled skills and the turn-end settle."
+description: "The jira ledger's model surface: the dafeiyu capability providers registering the jira_issue, jira_list and jira_kb tools, the executor's issue_work tool, the claim loop, the write guard, the /jira command, the bundled skills and the turn-end settle."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-jira-agent` is the ledger's model surface: a dafeiyu capability provider that registers the three resident tools (`jira_issue` with its ten verbs, `jira_list`, `jira_kb`) on a root agent and the single `issue_work` tool on a delegated child, the one-line `jira:store` awareness section, the monotonic write guard, the `/jira` command, three skills, and the turn-end settle. It injects `ctx.jira`, the tool registry, and `ctx.dafeiyu`; commands and skills are optional, so a composition without those registries keeps the tools. It registers contract version 2 with `enabledByDefault: false` and `settings.sectionId: 'jira'` for the capabilities list. The ledger's location, machine identity, and push queue belong to the `jira-service` row, so this row carries no configuration of its own.
+`dsh-jira-agent` is the ledger's model surface: a dafeiyu capability provider that registers the three resident tools (`jira_issue` with its ten verbs, `jira_list`, `jira_kb`) on a root agent and the single `issue_work` tool on a delegated child, the one-line `jira:store` awareness section, the monotonic write guard, the `/jira` command, three skills, and the turn-end settle. It registers a second, independently gated `superagent` capability that adds the claim loop (`superagent_scan`, `superagent_claim`) to a root agent. It injects `ctx.jira`, the tool registry, and `ctx.dafeiyu`; commands and skills are optional, so a composition without those registries keeps the tools. It registers contract version 2 with `enabledByDefault: false` and `settings.sectionId: 'jira'` for the capabilities list. The ledger's location, machine identity, and push queue belong to the `jira-service` row, so this row carries no configuration of its own.
 
 ## Table of Contents
 
@@ -29,6 +29,7 @@ English | [中文](README.zh.md)
 | `contribution.ts` | the dafeiyu capability: scope, tools, sections, agent hook, turn-end settle, dispose |
 | `tools.ts` | the registry definitions (root and executor) and the per-call store/caller resolution |
 | `workIssue.ts` | the executor's tool: its schema, its scope check and its runner |
+| `superagent.ts` | the claim loop: readiness, proposal and claim |
 | `awareness.ts` | the `jira:store` prompt section and its `changed`-driven refresh |
 | `wiring.ts` | the write guard, the `/jira` command registration and the skill registration |
 | `toolIssue.ts` / `toolList.ts` / `toolKb.ts` | the tool schemas, descriptions and runners |
@@ -80,6 +81,20 @@ At most one line on every root-agent request; an empty ledger contributes nothin
 #### KV Cache effect
 
 The text changes only when a commit changes a count, so a stable ledger keeps the prefix cached; a changed line re-tokenizes from this section onward.
+
+### The claim loop
+
+#### What the model sees
+
+A root agent carries two more tools when its deployment enables the `superagent` capability: `superagent_scan` lists the issues that could be taken now, and `superagent_claim` proposes one or claims it. Claiming refuses unless the latest comment on the issue is still this session's own proposal, so a person is asked between the two calls. A child agent carries neither.
+
+#### Token effect
+
+Two more small schemas on every root-agent request while the capability is on, plus the result text: a candidate list, or the claimed issue with its dispatch instruction.
+
+#### KV Cache effect
+
+Prefix-stable while the capability and its definitions are unchanged; the two capabilities gate independently, so enabling one does not disturb the other's tools.
 
 ## Known Limitations and Deferred Work
 

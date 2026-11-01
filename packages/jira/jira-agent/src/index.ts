@@ -37,6 +37,12 @@ import {
 import type { ContributionHost } from './contribution.ts'
 import { defaultEnv } from './env.ts'
 import { createSessionRecorder } from './sessionRecord.ts'
+import {
+  SUPERAGENT_CAPABILITY_DESCRIPTION,
+  SUPERAGENT_CAPABILITY_ID,
+  SUPERAGENT_CAPABILITY_LABEL,
+  createSuperagentContribution,
+} from './superagent.ts'
 import { installWriteGuard, registerJiraCommand, registerJiraSkills } from './wiring.ts'
 
 export const name = 'jira-agent'
@@ -95,6 +101,20 @@ export function apply(ctx: Context, config: Config): void {
     create: (_runtime: CapabilityRuntime): CapabilityContribution => createJiraContribution(host),
   })
   ctx.effect(() => registration, 'jira.register()')
+
+  // DH-513: the claim loop is a second capability on the same row. It is gated on its own, and it
+  // has its own id so a deployment can enable the dispatcher without widening the ledger's surface.
+  const superagent = ctx.dafeiyu.register({
+    id: SUPERAGENT_CAPABILITY_ID,
+    contractVersion: JIRA_CONTRACT_VERSION,
+    label: SUPERAGENT_CAPABILITY_LABEL,
+    description: SUPERAGENT_CAPABILITY_DESCRIPTION,
+    enabledByDefault: false,
+    settings: { sectionId: JIRA_SETTINGS_SECTION, order: JIRA_SETTINGS_ORDER },
+    config: Object.freeze({}),
+    create: (_runtime: CapabilityRuntime): CapabilityContribution => createSuperagentContribution(host),
+  })
+  ctx.effect(() => superagent, 'superagent.register()')
 }
 
 export { JIRA_AWARENESS_ORDER, JIRA_AWARENESS_SECTION_NAME, createStoreAwareness } from './awareness.ts'
@@ -175,3 +195,25 @@ export {
   runWorkTool,
   workAccess,
 } from './workIssue.ts'
+export {
+  CLAIMABLE_STATUS,
+  CLAIM_DESCRIPTION,
+  CLAIM_PARAMETERS,
+  CLAIM_TOOL_NAME,
+  PROPOSAL_MARKER,
+  SCAN_DESCRIPTION,
+  SCAN_PARAMETERS,
+  SCAN_TOOL_NAME,
+  SUPERAGENT_CAPABILITY_DESCRIPTION,
+  SUPERAGENT_CAPABILITY_ID,
+  SUPERAGENT_CAPABILITY_LABEL,
+  SUPERAGENT_OUTPUT_SCHEMA,
+  type Claimability,
+  claimability,
+  createSuperagentContribution,
+  dispatchInstruction,
+  isBlocked,
+  openProposal,
+  runClaimTool,
+  runScanTool,
+} from './superagent.ts'

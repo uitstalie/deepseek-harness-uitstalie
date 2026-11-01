@@ -64,7 +64,7 @@ export interface CallContext {
 }
 
 /** One tool declaration before the shared wiring is applied. */
-interface Spec {
+export interface Spec {
   readonly name: string
   readonly description: string
   readonly parameters: Readonly<Record<string, FieldSpec>>
@@ -126,7 +126,7 @@ const sessionFactsOf = (host: ToolHost, root: string): SessionFacts => Object.fr
 })
 
 /** The options the three runners share. */
-const runOptionsOf = (host: ToolHost, call: CallContext) => Object.freeze({
+export const runOptionsOf = (host: ToolHost, call: CallContext) => Object.freeze({
   jira: call.jira,
   caller: call.caller,
   at: nowUtc(host.clock),
@@ -138,7 +138,7 @@ const runOptionsOf = (host: ToolHost, call: CallContext) => Object.freeze({
  * @param spec - the tool's schema, renderer and runner.
  * @returns the definition, with its output schema asserted against the registry's subset.
  */
-const defineJiraTool = (host: ToolHost, spec: Spec): ToolDefinition => {
+export const defineJiraTool = (host: ToolHost, spec: Spec): ToolDefinition => {
   const outputSchema = spec.outputSchema
   // The registry rejects an unsupported schema at registration; asserting here makes the
   // narrowing explicit and fails at module evaluation instead of during a quiet boot.

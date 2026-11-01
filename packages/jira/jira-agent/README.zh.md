@@ -1,5 +1,5 @@
 ---
-description: "jira 账本的模型面：dafeiyu 能力提供者，注册 jira_issue、jira_list 与 jira_kb 三个工具、执行者的 issue_work 工具、写守卫、/jira 命令、随包 skill 与 turn 结束时的 settle。"
+description: "jira 账本的模型面：dafeiyu 能力提供者，注册 jira_issue、jira_list 与 jira_kb 三个工具、执行者的 issue_work 工具、认领闭环、写守卫、/jira 命令、随包 skill 与 turn 结束时的 settle。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-jira-agent` 是账本的模型面：一个 dafeiyu 能力提供者，在 root agent 上注册三个常驻工具（带十个动词的 `jira_issue`、`jira_list`、`jira_kb`），在被派遣的子 agent 上只注册 `issue_work` 一个工具，另有一行 `jira:store` 注入段、单调递增的写守卫、`/jira` 命令、三个 skill，以及 turn 结束时的 settle。它注入 `ctx.jira`、工具注册表与 `ctx.dafeiyu`；命令与 skill 注册表是可选的，因此缺少这些注册表的组合仍保留工具。它按契约版本 2 注册，带 `enabledByDefault: false` 与 `settings.sectionId: 'jira'` 供能力列表使用。账本的位置、机器身份与 push 队列属于 `jira-service` 行，因此这一行没有自己的配置。
+`dsh-jira-agent` 是账本的模型面：一个 dafeiyu 能力提供者，在 root agent 上注册三个常驻工具（带十个动词的 `jira_issue`、`jira_list`、`jira_kb`），在被派遣的子 agent 上只注册 `issue_work` 一个工具，另有一行 `jira:store` 注入段、单调递增的写守卫、`/jira` 命令、三个 skill，以及 turn 结束时的 settle。它另注册一个独立开关的 `superagent` 能力，为 root agent 加上认领闭环（`superagent_scan`、`superagent_claim`）。它注入 `ctx.jira`、工具注册表与 `ctx.dafeiyu`；命令与 skill 注册表是可选的，因此缺少这些注册表的组合仍保留工具。它按契约版本 2 注册，带 `enabledByDefault: false` 与 `settings.sectionId: 'jira'` 供能力列表使用。账本的位置、机器身份与 push 队列属于 `jira-service` 行，因此这一行没有自己的配置。
 
 ## 目录
 
@@ -29,6 +29,7 @@ kind: "package-reference"
 | `contribution.ts` | dafeiyu 能力：scope、工具、注入段、agent 钩子、turn 结束时的 settle、dispose |
 | `tools.ts` | 注册表定义（root 与执行者两套）与每次调用的 store/caller 解析 |
 | `workIssue.ts` | 执行者的工具：它的 schema、范围检查与 runner |
+| `superagent.ts` | 认领闭环：可领性判定、提案与认领 |
 | `awareness.ts` | `jira:store` 提示词段及其由 `changed` 驱动的刷新 |
 | `wiring.ts` | 写守卫、`/jira` 命令注册与 skill 注册 |
 | `toolIssue.ts` / `toolList.ts` / `toolKb.ts` | 工具 schema、描述与 runner |
@@ -80,6 +81,20 @@ root agent（智能体）的每次请求都带三个工具：`jira_issue`（十�
 #### KV 缓存影响
 
 只有提交改变计数时文本才变化，因此稳定的账本保持前缀缓存；变化的一行会从该段起重新分词。
+
+### 认领闭环
+
+#### 模型看到什么
+
+部署打开 `superagent` 能力时，root agent 多带两个工具：`superagent_scan` 列出当下可领的 issue，`superagent_claim` 提案或认领其中一条。只有当该 issue 最新那条评论仍是本会话自己的提案时才认得动，因此两次调用之间必然要问人一句。子 agent 两者都不带。
+
+#### Token 影响
+
+能力打开时，每次 root agent 请求多两个小 schema，外加结果文本：候选列表，或带派遣说明的已认领 issue。
+
+#### KV 缓存影响
+
+能力与其定义不变时前缀稳定；两个能力各开各的门，打开一个不会扰动另一个的工具表。
 
 ## 已知限制与延期工作
 

@@ -99,6 +99,8 @@ export interface MountOptions {
   readonly env?: HostEnv
   /** Whether the organizer's gate is open for the jira capability; defaults to open. */
   readonly enabled?: boolean
+  /** Whether the organizer's gate is open for the superagent capability; defaults to closed. */
+  readonly superagent?: boolean
   /** Whether the service's push queue is enabled; defaults to off, so a mount never pushes. */
   readonly push?: boolean
 }
@@ -114,7 +116,12 @@ export const mountJira = async (root: string, options: MountOptions = {}): Promi
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(ToolExecutorNative)
-  await ctx.plugin(Dafeiyu, { capabilities: { jira: { enabled: options.enabled ?? true } } })
+  await ctx.plugin(Dafeiyu, {
+    capabilities: {
+      jira: { enabled: options.enabled ?? true },
+      superagent: { enabled: options.superagent ?? false },
+    },
+  })
   await ctx.plugin(CommandRuntime)
   await ctx.plugin(SkillRegistry)
   await ctx.plugin(JiraService, { root, machine_id: MACHINE, push: { enabled: options.push ?? false } })

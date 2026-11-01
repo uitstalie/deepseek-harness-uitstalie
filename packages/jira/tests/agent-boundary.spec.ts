@@ -25,10 +25,12 @@ const FORBIDDEN = new Set([
 ])
 
 /**
- * Presentation helpers `jira-core` re-exports from store modules; the contract allows the agent
- * to format what the service already gave it without opening the store itself.
+ * Pure atoms `jira-core` re-exports from store modules: presentation helpers that format what the
+ * service already gave the agent, and predicates over an `Issue` value. They grant no store access,
+ * which is what this boundary is about, so the agent may import them (DH-513 added the lease
+ * predicate: the claim loop decides readiness from an issue it was handed, not from the store).
  */
-const PRESENTATION_ATOMS = new Set(['renderDoctorReport', 'renderTagsLint'])
+const PURE_ATOMS = new Set(['leaseIsActive', 'renderDoctorReport', 'renderTagsLint'])
 
 /**
  * Runtime atom → the store-access module that owns it, derived from the core root's namespaces so
@@ -41,7 +43,7 @@ const forbiddenAtoms = ((): ReadonlyMap<string, string> => {
     const namespace = namespaces[moduleName]
     if (typeof namespace !== 'object' || namespace === null) continue
     for (const atom of Object.keys(namespace)) {
-      if (PRESENTATION_ATOMS.has(atom)) continue
+      if (PURE_ATOMS.has(atom)) continue
       if (!atoms.has(atom)) atoms.set(atom, moduleName)
     }
   }

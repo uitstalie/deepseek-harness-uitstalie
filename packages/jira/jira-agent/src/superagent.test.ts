@@ -1,0 +1,296 @@
+/**
+ * Tests for the claim loop (DH-513).
+ *
+ * The pure half covers the two predicates the loop is made of: whether an issue can be taken, and
+ * whether this session still holds the proposal that would let it. The composed half runs the loop
+ * it was built for — scan, propose, claim, and an executor delivering — through the shipped tool
+ * registry and a real store, because the gate is a fact about files and comments, not about the
+ * session.
+ */
+
+import assert from 'node:assert/strict'
+import { after, describe, it } from 'node:test'
+
+import { type Comment, type Identity, type Issue, type Timestamp, removeTree } from '@deepseek-ai/dsh-jira-core'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import {
+  CLAIM_TOOL_NAME,
+  PROPOSAL_MARKER,
+  SCAN_TOOL_NAME,
+  TOOL_NAME,
+  WORK_TOOL_NAME,
+  claimability,
+  isBlocked,
+  openProposal,
+} from './index.ts'
+import * as jiraAgent from './index.ts'
+import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent } from './testing/host.ts'
+
+/** An agent handle the harness built. */
+type AgentHandle = ReturnType<typeof testAgent>
+
+/** Ledgers created by this file, removed once the run settles. */
+const throwaway: string[] = []
+
+after(async () => {
+  for (const dir of throwaway.splice(0)) await removeTree(dir)
+})
+
+/** A fresh ledger per test: every case claims and writes. */
+const fixture = async (): Promise<string> => {
+  const dir = await createLedgerFixture()
+  throwaway.push(dir)
+  return dir
+}
+
+/** Let activation and dispatch continuations run. */
+const settle = async (): Promise<void> => {
+  await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+}
+
+/** One mounted composition with the claim loop enabled and a root agent wired to it. */
+const mount = async (options: Parameters<typeof mountJira>[1] = {}): Promise<{
+  harness: JiraHarness
+  main: AgentHandle
+  worker: AgentHandle
+}> => {
+  const harness = await mountJira(await fixture(), { superagent: true, ...options })
+  await harness.ctx.plugin(jiraAgent)
+  await settle()
+  const main = testAgent(harness.ctx, 'main-1')
+  await harness.ctx.serial('agent/created', { agent: main, source: 'startup' })
+  const worker = testAgent(harness.ctx, 'worker-1', {
+    origin: 'subagent',
+    delegationDepth: 1,
+    parentSession: SessionId('main-1'),
+  })
+  await harness.ctx.serial('agent/created', { agent: worker, source: 'startup' })
+  return { harness, main, worker }
+}
+
+/** Dispatch one call and return its envelope. */
+const call = async (
+  harness: JiraHarness,
+  agent: AgentHandle,
+  name: string,
+  args: unknown,
+): Promise<Record<string, unknown>> => {
+  const result = await dispatchTool(harness, agent, name, args, `${name}-${String(Math.random()).slice(2)}`)
+  const value = result.value
+  assert.ok(typeof value === 'object' && value !== null && !Array.isArray(value), `expected an envelope for ${name}`)
+  return value as Record<string, unknown>
+}
+
+/** The issue an envelope returned. */
+const issueOf = (envelope: Record<string, unknown>): Record<string, unknown> => {
+  const issue = envelope.issue
+  assert.ok(typeof issue === 'object' && issue !== null, 'envelope must carry the issue')
+  return issue as Record<string, unknown>
+}
+
+/** The candidate rows an envelope returned. */
+const itemsOf = (envelope: Record<string, unknown>): Record<string, unknown>[] =>
+  Array.isArray(envelope.items) ? envelope.items as Record<string, unknown>[] : []
+
+/** The comment bodies an envelope returned, oldest first. */
+const bodiesOf = (envelope: Record<string, unknown>): string[] => {
+  const comments = envelope.comments
+  if (!Array.isArray(comments)) return []
+  return comments.map((comment) => {
+    const body = (comment as { body?: unknown }).body
+    return typeof body === 'string' ? body : ''
+  })
+}
+
+const AT = '2026-10-15T12:00:00Z' as Timestamp
+const MAIN = 'agent:deepseek-flash|dsh|a1b2c3d4|main-1' as Identity
+
+/** A `todo` issue with no links, no claim and a body. */
+const issue = (overrides: Partial<Issue> = {}): Issue => ({
+  key: 'DH-12' as Issue['key'],
+  project: 'DH',
+  issueType: 'task',
+  status: 'todo',
+  summary: 'first',
+  priority: 'S3',
+  tags: [],
+  links: [],
+  revision: 1,
+  createdAt: AT,
+  updatedAt: AT,
+  reporter: 'human:daiqc' as Identity,
+  kbRefs: [],
+  conflicted: false,
+  body: '',
+  ...overrides,
+})
+
+/** A comment authored by the given identity. */
+const comment = (author: Identity, body: string): Comment => ({
+  id: 'c-a1b2-1',
+  author,
+  revision: 1,
+  createdAt: AT,
+  body,
+})
+
+describe('superagent: what can be taken', () => {
+  it('takes a todo issue with no blocker and no claim', () => {
+    assert.deepEqual(claimability(issue(), false, AT), { ready: true })
+  })
+
+  it('refuses a blocked, started or held issue, and names which', () => {
+    assert.match(String(claimability(issue(), true, AT).reason), /is_blocked_by/u)
+    assert.match(String(claimability(issue({ status: 'in_progress' }), false, AT).reason), /in_progress/u)
+    const held = issue({ assignee: MAIN, leaseExpiresAt: '2026-10-15T14:00:00Z' as Timestamp })
+    assert.match(String(claimability(held, false, AT).reason), /claimed by/u)
+  })
+
+  it('lets an expired lease be taken again', () => {
+    const expired = issue({ assignee: MAIN, leaseExpiresAt: '2026-10-15T11:00:00Z' as Timestamp })
+    assert.deepEqual(claimability(expired, false, AT), { ready: true })
+  })
+
+  it('treats an open or missing blocker as blocking, and a closed one as clear', () => {
+    const closedBlocker = issue({ key: 'DH-13' as Issue['key'], status: 'closed' })
+    const linked = issue({ links: [{ type: 'is_blocked_by', target: 'DH-13' as Issue['key'] }] })
+    const byKey = new Map<string, Issue>([['DH-13', closedBlocker]])
+    assert.equal(isBlocked(linked, new Map(), ['closed', 'cancelled']), true, 'a missing target stays blocking')
+    assert.equal(isBlocked(linked, byKey, ['closed', 'cancelled']), false, 'a closed target clears the block')
+    assert.equal(isBlocked(linked, byKey, []), true, 'an open target blocks')
+    assert.equal(isBlocked(issue(), byKey, ['closed']), false, 'no links, no block')
+  })
+})
+
+describe('superagent: is the proposal still fresh', () => {
+  it('accepts only this session\'s proposal as the latest comment', () => {
+    assert.match(String(openProposal([], MAIN).reason), /propose first/u)
+    assert.match(String(openProposal([comment(MAIN, 'hello')], MAIN).reason), /not a \[claim-proposal\]/u)
+    assert.match(String(openProposal([comment(MAIN, `${PROPOSAL_MARKER} because`)], 'human:daiqc' as Identity).reason), /not this session/u)
+    assert.deepEqual(openProposal([comment(MAIN, `${PROPOSAL_MARKER} because`)], MAIN), { ready: true })
+  })
+
+  it('spends the proposal once a person answers it', () => {
+    const answered = [
+      comment(MAIN, `${PROPOSAL_MARKER} because`),
+      comment('human:daiqc' as Identity, 'yes, go ahead'),
+    ]
+    assert.match(String(openProposal(answered, MAIN).reason), /not this session/u)
+  })
+})
+
+describe('superagent: the loop through the real composition', () => {
+  it('scans the ledger and names the ready issue', async () => {
+    const { harness, main } = await mount()
+    try {
+      const scanned = await call(harness, main, SCAN_TOOL_NAME, {})
+      assert.equal(scanned.ok, true, JSON.stringify(scanned.error))
+      const items = itemsOf(scanned)
+      const candidate = items.find(item => item.key === 'DH-12')
+      assert.ok(candidate !== undefined, JSON.stringify(items))
+      assert.equal(candidate.ready, true)
+      assert.equal(candidate.priority, 'S3')
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('refuses to claim without a proposal', async () => {
+    const { harness, main } = await mount()
+    try {
+      const refused = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /propose first/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('proposes without changing the state, then claims it', async () => {
+    const { harness, main } = await mount()
+    try {
+      const proposed = await call(harness, main, CLAIM_TOOL_NAME, {
+        action: 'propose',
+        key: 'DH-12',
+        why: 'it is the only ready issue and it is mine to take',
+      })
+      assert.equal(proposed.ok, true, JSON.stringify(proposed.error))
+      assert.equal(issueOf(proposed).status, 'todo', 'a proposal changes no state')
+      assert.ok(bodiesOf(proposed).some(body => body.startsWith(PROPOSAL_MARKER)))
+
+      const claimed = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      assert.equal(claimed.ok, true, JSON.stringify(claimed.error))
+      const claimedIssue = issueOf(claimed)
+      assert.equal(claimedIssue.status, 'in_progress')
+      assert.match(String(claimedIssue.assignee), /main-1$/u)
+      const dispatch = claimed.dispatch as Record<string, unknown>
+      assert.equal(dispatch.key, 'DH-12')
+      assert.match(String(dispatch.instruction), /issue_work/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('refuses a second claim: the first one spent the proposal', async () => {
+    const { harness, main } = await mount()
+    try {
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'take it' })
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      const again = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      assert.equal(again.ok, false)
+      assert.match(JSON.stringify(again.error), /in_progress/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('refuses to propose a blocked issue, and says what blocks it', async () => {
+    const { harness, main } = await mount()
+    try {
+      const created = await call(harness, main, TOOL_NAME, {
+        action: 'create',
+        project: 'DH',
+        data: { summary: 'blocked one' },
+      })
+      assert.equal(created.ok, true, JSON.stringify(created.error))
+      const key = String(issueOf(created).key)
+      const linked = await call(harness, main, TOOL_NAME, {
+        action: 'link',
+        key,
+        link: { type: 'is_blocked_by', target: 'DH-12' },
+      })
+      assert.equal(linked.ok, true, JSON.stringify(linked.error))
+      const refused = await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key, why: 'looks easy' })
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /is_blocked_by/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('runs the whole loop: proposal, claim, dispatch, delivery', async () => {
+    const { harness, main, worker } = await mount()
+    try {
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })
+      const claimed = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      assert.equal(claimed.ok, true, JSON.stringify(claimed.error))
+
+      // The executor the dispatcher spawns writes through its own narrow surface (DH-512)…
+      const delivered = await call(harness, worker, WORK_TOOL_NAME, {
+        action: 'deliver',
+        key: 'DH-12',
+        body: 'done: the change is in and the check passes',
+      })
+      assert.equal(delivered.ok, true, JSON.stringify(delivered.error))
+      assert.equal(issueOf(delivered).status, 'in_review')
+
+      // …and the ledger now shows the whole trail: proposal, claim, evidence.
+      const read = await call(harness, main, TOOL_NAME, { action: 'get', key: 'DH-12' })
+      const bodies = bodiesOf(read)
+      assert.ok(bodies.some(body => body.startsWith(PROPOSAL_MARKER)), 'the proposal survives')
+      assert.ok(bodies.some(body => body.startsWith('done:')), 'the evidence survives')
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
