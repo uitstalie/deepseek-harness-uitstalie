@@ -10,8 +10,8 @@
  * Loader fixtures resolve from their package manifest.
  */
 
-import { globSync, readFileSync } from 'node:fs'
-import { dirname, relative, resolve } from 'node:path'
+import { globSync, readFileSync, statSync } from 'node:fs' // uitstalie-deepseek-flash, 2026/11/01, DH-507, 物化软链解析需要 statSync
+import { dirname, isAbsolute, relative, resolve } from 'node:path' // uitstalie-deepseek-flash, 2026/11/01, DH-507, 新增 isAbsolute
 import { Script } from 'node:vm'
 import ts from 'typescript'
 import type { DshBundleManifest } from '../packages/util/package-manifest/src/types.ts'
@@ -63,7 +63,10 @@ if (import.meta.main) {
   const files = cordisConfigFiles(root)
 
   for (const file of files) {
-    const document = loadCordisYaml(readFileSync(resolve(root, file), 'utf8'))
+    // BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-507, 无软链检出（core.symlinks=false）时档案是内容为目标的普通文件，按目标读
+    // const document = loadCordisYaml(readFileSync(resolve(root, file), 'utf8'))
+    const document = readCordisDocument(root, file)
+    // END uitstalie-deepseek-flash
     if (!isUnknownArray(document)) {
       errors.push(`${file}: root must be a Loader entry array`)
       continue
@@ -165,6 +168,45 @@ function validatePresetPlaneSeparation(): string[] {
   }
   return problems
 }
+
+// BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-507, 物化软链档案解析（Windows 检出无软链时档案是文本目标）
+/**
+ * Read one Loader config file as its parsed document.
+ *
+ * A tracked symlink checked out without symlink support (git `core.symlinks`
+ * false, the Windows default outside Developer Mode) lands as a regular file
+ * whose entire content is the link target. Such a config is read through the
+ * file the symlink names, so a fixture that reaches its snapshot this way is
+ * validated exactly where a symlink-capable checkout validates it.
+ * @param repoRoot - Repository root.
+ * @param file - Repository-relative config path.
+ * @returns The parsed document; a lone scalar stays data unless it names an existing file in the repository.
+ */
+export function readCordisDocument(repoRoot: string, file: string): unknown {
+  const absolute = resolve(repoRoot, file)
+  const source = readFileSync(absolute, 'utf8')
+  const document = loadCordisYaml(source)
+  if (isUnknownArray(document)) return document
+  const target = materializedSymlinkTarget(repoRoot, absolute, source)
+  return target === undefined ? document : loadCordisYaml(readFileSync(target, 'utf8'))
+}
+
+/**
+ * Resolve the target a materialized symlink stores as its file content.
+ * @param repoRoot - Repository root; targets outside it are not followed.
+ * @param absolute - Absolute path of the candidate config.
+ * @param source - The config file's text.
+ * @returns The absolute target path, or `undefined` when the text is not one in-repository file path.
+ */
+function materializedSymlinkTarget(repoRoot: string, absolute: string, source: string): string | undefined {
+  const line = source.trim()
+  if (line.length === 0 || /[\r\n]/.test(line)) return undefined
+  const target = resolve(dirname(absolute), line)
+  const targetFromRoot = relative(repoRoot, target)
+  if (targetFromRoot === '' || targetFromRoot.startsWith('..') || isAbsolute(targetFromRoot)) return undefined
+  return statSync(target, { throwIfNoEntry: false })?.isFile() === true ? target : undefined
+}
+// END uitstalie-deepseek-flash
 
 /** Every entry of one config file, or an empty list when it is not an entry array. */
 function loadEntries(file: string): unknown[] {

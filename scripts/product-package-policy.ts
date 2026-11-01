@@ -52,4 +52,7 @@ export const PRODUCT_PACKAGE_POLICY: Readonly<Record<string, ProductPackagePolic
   // BEGIN uitstalie-k3, 2026/10/12, task25, 分支的 base 组合用 llm-plus 行取代了 llm-pi-ai 行，该 provider 仍可由用户组合选用
   'packages/llm/llm-pi-ai': { category: 'optional', reason: 'The branch base composition mounts the llm-plus twin; this provider stays selectable in a user composition.' },
   // END uitstalie-k3
+  // BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-507, 账本 CLI 是人面可执行文件，模型面由 jira-agent 挂载，组合不挂载它
+  'packages/jira/jira-cli': { category: 'optional', reason: 'Human-facing ledger CLI executable; the model surface is jira-agent, so no composition mounts it.' },
+  // END uitstalie-deepseek-flash
 }

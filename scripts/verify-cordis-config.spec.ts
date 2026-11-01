@@ -6,7 +6,7 @@
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path' // uitstalie-deepseek-flash, 2026/11/01, DH-507, 新增 relative
 import { describe, expect, it } from 'vitest'
 import {
   bundleManifestPaths,
@@ -15,6 +15,7 @@ import {
   metadataExpressionErrors,
   packageTestFixtureDependencyErrors,
   packageTestPluginDependencyErrors,
+  readCordisDocument, // uitstalie-deepseek-flash, 2026/11/01, DH-507
 } from './verify-cordis-config.ts'
 
 describe('verify-cordis-config metadata expressions', () => {
@@ -47,6 +48,52 @@ describe('verify-cordis-config metadata expressions', () => {
     expect(problems.some(problem => problem.includes('[0].disabled: disabled expression does not parse'))).toBe(true)
   })
 })
+
+// BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-507, 物化软链档案按目标解析的回归用例
+describe('materialized symlink Loader configs', () => {
+  it('reads a tracked symlink checked out as a file through its target', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'dsh-materialized-symlink-'))
+    try {
+      mkdirSync(join(fixture, 'snapshots'), { recursive: true })
+      mkdirSync(join(fixture, 'profiles'), { recursive: true })
+      writeFileSync(join(fixture, 'snapshots/cordis.yml'), '- id: web\n  name: pkg\n')
+      writeFileSync(join(fixture, 'profiles/cordis.yml'), '../snapshots/cordis.yml\n')
+
+      expect(readCordisDocument(fixture, 'profiles/cordis.yml')).toEqual([{ id: 'web', name: 'pkg' }])
+    } finally {
+      rmSync(fixture, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps a lone scalar that names no repository file as data', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'dsh-lone-scalar-'))
+    try {
+      mkdirSync(join(fixture, 'profiles'), { recursive: true })
+      writeFileSync(join(fixture, 'profiles/cordis.yml'), 'not a file path\n')
+
+      expect(readCordisDocument(fixture, 'profiles/cordis.yml')).toBe('not a file path')
+    } finally {
+      rmSync(fixture, { recursive: true, force: true })
+    }
+  })
+
+  it('does not follow a target outside the repository', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'dsh-symlink-outside-'))
+    const fixture = mkdtempSync(join(tmpdir(), 'dsh-symlink-root-'))
+    try {
+      writeFileSync(join(outside, 'cordis.yml'), '- id: outside\n  name: pkg\n')
+      mkdirSync(join(fixture, 'profiles'), { recursive: true })
+      const link = relative(join(fixture, 'profiles'), join(outside, 'cordis.yml'))
+      writeFileSync(join(fixture, 'profiles/cordis.yml'), link)
+
+      expect(readCordisDocument(fixture, 'profiles/cordis.yml')).toBe(link)
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+      rmSync(fixture, { recursive: true, force: true })
+    }
+  })
+})
+// END uitstalie-deepseek-flash
 
 describe('workspace Bundle discovery and product dependency closures', () => {
   it('allows scoped executors on both planes while retaining other plugin rows', () => {
