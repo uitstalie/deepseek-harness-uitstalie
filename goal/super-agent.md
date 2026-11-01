@@ -265,7 +265,7 @@ super agent 的主体是：**自己的 Source 轮询循环、自己的 SQLite �
 ### 6.4 阶段一的四件东西
 
 1. 一个固定路径的 super workspace 登记进 registry。建议放 `%DSH_HOME%` 下，不进任何代码仓：不进 git、不会被误当项目、也不会和"被派遣的 workspace"混。
-2. capability 贡献三个工具：`workspace_roster`（读：registry + `status` + 会话数）、`workspace_ensure`（写：`mkdir` → `create` → 账本写一条 Grant，需人批）、`dispatch`（写：`subagent(cwd=X)` + 结果回写 issue）。
+2. capability 贡献三件表面：`superagent_scan`（读：可领候选与原因）、`superagent_claim`（写：`propose`/`claim`，`claim` 返回 `dispatch { key, cwd, instruction }`）、`superagent_workspace`（读 `roster` / 写 `ensure`）。派活本身不需要专工具：拿到 `dispatch` 后模型用自带的 `subagent(cwd)` 起执行者。
 3. **Grant 记录落在账本**：谁批的、哪个 path、允许什么动作、按哪版规则。它天然产生在一个人类介入点上（协商路径），所以第一版不需要额外的授权 UI。
 4. 领活仍由"会话内动作 / turn-end 一次 pass"触发，**不引入常驻轮询**；真 Session 执行器、面板、vendor 原型 `src/core` 继续后置。
 
@@ -293,11 +293,13 @@ pass 扫描 → 候选（只读，不动账本）
 [门 2：人复核]        → closed + fixed / 打回 in_progress
 ```
 
-**已落地**（DH-512 / DH-513，提交 `5b19fbc99b` / `271dc5a708`）：两端都在 `jira-agent` 里，各开各的能力门。
+**已落地**（DH-512 / DH-513 / DH-514，提交 `5b19fbc99b` / `271dc5a708` / `a9e74d5236` + `3ad9b9e4be`）：两端都在 `jira-agent` 里，各开各的能力门。
 
-- 执行者端 `issue_work`：授权是**范围**——issue 在 `in_progress` 且 `assignee` 的会话等于调用者的父会话；`deliver` 一次事务完成"交回复审 + 证据"；`blocked` 只留 `[blocked:person|dependency]` 标记，不造状态。
-- 调度端 `superagent_scan` / `superagent_claim`：提案是 `[claim-proposal]` 评论且**必须是最新一条**才算数；`claim` 由状态迁移本身花掉提案，因此不需要"已消费"字段。`claim` 返回 `dispatch { key, cwd, instruction }`。
-- **仍未做**：worker agent preset、workspace 的登记与派遣（`workspaceRegistry`）、常驻轮询与面板。
+- 执行者端 `issue_work`：授权是**范围**——issue 在 `in_progress` 且 `assignee` 的会话等于调用者的父会话；`deliver` 一次事务完成"交回复审 + 证据"；`blocked` 只留 `[blocked:person|dependency]` 标记，不造状态。子 agent 另有三个账本读工具与一段常驻 `jira:executor` 说明。
+- 调度端 `superagent_scan` / `superagent_claim`：提案是 `[claim-proposal]` 评论且**必须是最新一条**才算数；`claim` 由状态迁移本身花掉提案。`claim` 返回 `dispatch { key, cwd, instruction }`。
+- `superagent_workspace`：`roster` / `ensure`，`ensure` 返回 canonical path 供派遣当 `cwd`；`workspaceRegistry` 走鸭子类型，缺席时如实拒绝。
+- **没有做 worker preset 行**：persona 由 `jira:executor` 段承担（子 agent 一次付费、可缓存），工具面由能力按 agent 分流，`issue_work` 的范围检查负责安全。preset 行只能再叠 persona，代价是 bundle patch + 部署配置。
+- **仍未做**：常驻轮询、面板、真正的独立 Session 执行器。
 
 （门 0 是 §6.4 的 `workspace_ensure`：人协商路径，同时产生 Grant。）
 
