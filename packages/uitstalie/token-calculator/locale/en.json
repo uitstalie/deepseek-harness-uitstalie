@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Token calculator",
+    "description": "Counts DeepSeek V4 tokens offline for prompt budgeting."
+  }
+}

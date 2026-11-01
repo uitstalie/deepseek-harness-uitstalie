@@ -154,10 +154,11 @@ export type IssuePatch = Readonly<{
 /** Which of the patch's fields actually differ from the issue, in a stable order. */
 const changedFields = (issue: Issue, next: Partial<Issue>): readonly string[] => {
   const fields: string[] = []
+  const current: Readonly<Record<string, unknown>> = { ...issue }
   for (const [field, value] of Object.entries(next)) {
     if (value === undefined) continue
-    const current = (issue as unknown as Record<string, unknown>)[field]
-    const before = Array.isArray(current) ? JSON.stringify(current) : current
+    const previous = current[field]
+    const before = Array.isArray(previous) ? JSON.stringify(previous) : previous
     const after = Array.isArray(value) ? JSON.stringify(value) : value
     if (before !== after) fields.push(field)
   }

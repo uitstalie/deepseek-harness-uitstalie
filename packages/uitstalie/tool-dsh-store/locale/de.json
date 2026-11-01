@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": ".dsh-Speicherdateien",
+    "description": "Erstellt, prüft und löscht Dateien und Ordner im .dsh-Verzeichnis eines Arbeitsbereichs."
+  }
+}

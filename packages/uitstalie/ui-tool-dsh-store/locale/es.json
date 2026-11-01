@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Vista de reglas del espacio de trabajo",
+    "description": "Muestra desde la barra lateral las reglas .dsh que el cargador de instrucciones inyecta por espacio de trabajo."
+  }
+}

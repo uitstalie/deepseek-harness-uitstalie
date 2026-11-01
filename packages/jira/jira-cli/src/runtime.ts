@@ -180,7 +180,7 @@ export const buildContext = async (
     },
     writeIssue: async (key, actor, mutate, what, options) => {
       const allowed = await assertProjectWritable(store, projectOf(key), String(actor.by))
-      if (!allowed.ok) return allowed as unknown as Result<Transaction, JiraError>
+      if (!allowed.ok) return allowed
       return transact(store, key, actor, mutate, what, options)
     },
   })

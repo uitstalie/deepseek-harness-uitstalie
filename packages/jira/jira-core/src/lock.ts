@@ -283,7 +283,7 @@ export const withLock = async <T>(
     void beat()
   }, heartbeatMs)
   // A held lock must never be the reason a process stays alive (a CLI that exits, a test runner).
-  ;(timer as unknown as { unref?: () => void }).unref?.()
+  if (typeof timer === 'object' && timer !== null && 'unref' in timer && typeof timer.unref === 'function') timer.unref()
 
   try {
     return await body(handle.value)

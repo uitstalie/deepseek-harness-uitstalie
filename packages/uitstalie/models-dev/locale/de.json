@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "models.dev-Katalog",
+    "description": "Ruft den models.dev-Katalog ab, speichert ihn auf der Festplatte zwischen und liefert Anbieter- und Modellstandards an die Einstellungsseite."
+  }
+}

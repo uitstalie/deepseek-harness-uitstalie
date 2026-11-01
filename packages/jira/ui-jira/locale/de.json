@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Jira-Registerseite",
+    "description": "Zeigt den Status des jira-Registers und liest Board, ein Ticket und die Wissensdatenbank."
+  }
+}

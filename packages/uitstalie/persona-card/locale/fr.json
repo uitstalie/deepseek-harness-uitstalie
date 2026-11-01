@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Cartes de persona",
+    "description": "Valide les cartes de persona de l'assistant et rend la carte active dans le prompt."
+  }
+}

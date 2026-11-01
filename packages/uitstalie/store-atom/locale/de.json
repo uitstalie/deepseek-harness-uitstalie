@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": ".dsh-Speicher",
+    "description": "Stellt die Speicherschnittstelle mit Wurzelerkennung, Pfadbeschränkung und Versionsprüfungen bereit."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ワークスペースの指示",
+    "description": "ネイティブのチェーンで AGENTS.md と CLAUDE.md を読み込み、常時有効な .dsh/rules を同じコンテキストメッセージに追加します。"
+  }
+}

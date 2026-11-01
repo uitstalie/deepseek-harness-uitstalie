@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Arbeitsbereichsanweisungen",
+    "description": "Lädt AGENTS.md und CLAUDE.md über die native Kette und fügt dauerhaft aktive .dsh/rules derselben Kontextnachricht hinzu."
+  }
+}

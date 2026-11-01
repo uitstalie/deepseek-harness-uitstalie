@@ -11,12 +11,6 @@ import { updateVolatile } from '@deepseek-ai/cosmokit'
 import { afterEach, describe, expect, it } from 'vitest'
 import { JiraService, type Config } from '../src/index.ts'
 
-/** The shape of the schema nodes this spec inspects. */
-interface SchemaNode {
-  meta?: { volatile?: boolean }
-  dict?: Record<string, SchemaNode>
-}
-
 /** The validated row configuration of the most recent mount, for targeted volatile updates. */
 let captured: Config | undefined
 
@@ -54,7 +48,7 @@ const commit = (path: string[]): void => {
 
 describe('jira-service writable row fields', () => {
   it('marks root, host and push.enabled volatile', () => {
-    const dict = (JiraService.Config as unknown as SchemaNode).dict
+    const dict = JiraService.Config.dict
     expect(dict?.['root']?.meta?.volatile).toBe(true)
     expect(dict?.['host']?.meta?.volatile).toBe(true)
     expect(dict?.['push']?.dict?.['enabled']?.meta?.volatile).toBe(true)

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Jira service",
+    "description": "The ledger's single writer: opens the store and owns the push queue."
+  }
+}

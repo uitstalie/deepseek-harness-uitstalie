@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Capability organizer",
+    "description": "Registers capability providers, gates their enablement per agent and dispatches the turn-end hook."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "LLM Plus-Anbieter",
+    "description": "Leitet Modellanfragen an die konfigurierten Anbieter weiter, mit Abonnement-Anmeldung und Standardwerten aus dem models.dev-Katalog."
+  }
+}

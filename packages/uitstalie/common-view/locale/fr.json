@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Superposition de vue commune",
+    "description": "Adopte une vue native à la fois et fournit sa superposition via des slots et des jetons de thème."
+  }
+}

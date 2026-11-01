@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Gemeinsame Ansichtsüberlagerung",
+    "description": "Übernimmt jeweils eine native Ansicht und liefert ihre Überlagerung über Slots und Theme-Token."
+  }
+}

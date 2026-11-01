@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Provedores LLM Plus",
+    "description": "Encaminha requisições de modelos aos provedores configurados, com login por assinatura e padrões do catálogo models.dev."
+  }
+}

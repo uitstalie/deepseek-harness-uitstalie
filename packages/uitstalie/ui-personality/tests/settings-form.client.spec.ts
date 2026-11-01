@@ -3,34 +3,25 @@
  * invalid numbers never reach the Host, and an absent settings service stays unavailable.
  */
 
-import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
-import { describe, expect, it, vi } from 'vitest'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
+import { stubConfigForm, type StubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
+import { describe, expect, it } from 'vitest'
 import { PersonalitySettingsController, type PersonalityRowConfig } from '../src/client/settings-form.ts'
-
-/** Build one accepted row snapshot. */
-const snapshotOf = (value: PersonalityRowConfig | undefined, writable = true): ConfigFormSnapshot<PersonalityRowConfig> => ({
-  status: value === undefined ? 'unavailable' : 'ready',
-  value,
-  base: undefined,
-  user: undefined,
-  revision: 4,
-  writable,
-})
 
 /** A form double that records each mutation and answers with a scripted acceptance. */
 const formOf = (
   value: PersonalityRowConfig | undefined,
   options: { writable?: boolean; accepted?: boolean } = {},
-): { form: ConfigForm<PersonalityRowConfig>; mutate: ReturnType<typeof vi.fn> } => {
-  const mutate = vi.fn(async () => options.accepted ?? true)
-  const form = {
-    getSnapshot: () => snapshotOf(value, options.writable ?? true),
-    subscribe: () => () => {},
-    mutate,
-    set: vi.fn(async () => true),
-    unset: vi.fn(async () => true),
-  } as unknown as ConfigForm<PersonalityRowConfig>
-  return { form, mutate }
+): { form: ConfigForm<PersonalityRowConfig>; mutate: StubConfigForm<PersonalityRowConfig>['mutate'] } => {
+  const stub = stubConfigForm<PersonalityRowConfig>()
+  stub.publish({
+    status: value === undefined ? 'unavailable' : 'ready',
+    value,
+    revision: 4,
+    writable: options.writable ?? true,
+  })
+  stub.mutate.mockResolvedValue(options.accepted ?? true)
+  return { form: stub.scope, mutate: stub.mutate }
 }
 
 describe('PersonalitySettingsController', () => {

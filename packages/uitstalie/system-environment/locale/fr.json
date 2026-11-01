@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Environnement système",
+    "description": "Fournit les faits de plateforme, les règles de chemins, la lecture de l'environnement et les répertoires personnels."
+  }
+}

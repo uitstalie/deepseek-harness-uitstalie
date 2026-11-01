@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Systemumgebung",
+    "description": "Stellt Plattformfakten, Pfadregeln, Umgebungssuche und die Benutzerverzeichnisse bereit."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Entorno del sistema",
+    "description": "Proporciona datos de plataforma, reglas de rutas, consulta del entorno y los directorios de usuario."
+  }
+}

@@ -31,6 +31,9 @@ const TEXT_FIELDS = ['description', 'personality', 'scenario', 'style', 'example
 /** Metadata keys copied verbatim when present. */
 const METADATA_KEYS = ['source', 'tags', 'version', 'creator', 'original_spec', 'quarantined', 'character_book', 'extensions', 'import_extra'] as const
 
+/** Mutable draft of a card under construction; the validator fills it field by field. */
+type CardDraft = { -readonly [K in keyof PersonaCard]: PersonaCard[K] }
+
 const fail = (code: PersonaError['code'], message: string, path?: string): PersonaResult<never> =>
   Object.freeze({ ok: false, error: Object.freeze({ code, message, ...(path === undefined ? {} : { path }) }) })
 
@@ -54,7 +57,7 @@ export const parsePersonaCard = (input: unknown, options: ParsePersonaOptions = 
   const name = input['name']
   if (!isString(name) || name.trim() === '') return fail('missing-name', 'a persona card needs a non-empty name', 'name')
 
-  const card: Record<string, unknown> = { schema: PERSONA_SCHEMA, name: name.trim() }
+  const card: Partial<CardDraft> = { schema: PERSONA_SCHEMA, name: name.trim() }
   for (const field of TEXT_FIELDS) {
     const value = input[field]
     if (value === undefined) continue
@@ -67,27 +70,27 @@ export const parsePersonaCard = (input: unknown, options: ParsePersonaOptions = 
       return fail('invalid-card', '"greetings" must be an array of strings', 'greetings')
     }
     if (greetings.length > 16) return fail('invalid-card', '"greetings" may contain at most 16 entries', 'greetings')
-    card['greetings'] = Object.freeze([...greetings])
+    card.greetings = Object.freeze([...greetings])
   }
   if (input['state_schema'] !== undefined) {
     if (!isRecord(input['state_schema'])) return fail('invalid-card', '"state_schema" must be an object', 'state_schema')
     const state = validateStateSchema(input['state_schema'], 'state_schema')
     if (!state.ok) return state
-    card['state_schema'] = state.value
+    card.state_schema = state.value
   }
   if (input['lorebook'] !== undefined) {
     const lorebook = input['lorebook']
     if (!Array.isArray(lorebook) || lorebook.some(item => !isRecord(item))) {
       return fail('invalid-card', '"lorebook" must be an array of objects', 'lorebook')
     }
-    card['lorebook'] = Object.freeze(lorebook.map(item => Object.freeze({ ...item })))
+    card.lorebook = Object.freeze(lorebook.map(item => Object.freeze({ ...item })))
   }
   if (input['metadata'] !== undefined) {
     if (!isRecord(input['metadata'])) return fail('invalid-card', '"metadata" must be an object', 'metadata')
-    card['metadata'] = parseMetadata(input['metadata'])
+    card.metadata = parseMetadata(input['metadata'])
   }
 
-  const normalized = Object.freeze(card as unknown as PersonaCard)
+  const normalized = Object.freeze(card as PersonaCard)
   const maxBytes = options.maxBytes ?? DEFAULT_PERSONA_MAX_BYTES
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
     return fail('invalid-card', 'maxBytes must be a positive integer')

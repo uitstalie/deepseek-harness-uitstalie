@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Armazenamento .dsh",
+    "description": "Fornece a interface do armazenamento com descoberta de raiz, confinamento de caminhos e proteções de versão."
+  }
+}

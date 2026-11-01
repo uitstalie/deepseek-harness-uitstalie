@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Catálogo de models.dev",
+    "description": "Obtiene el catálogo de models.dev, lo almacena en caché en disco y ofrece valores predeterminados de proveedor y modelo a la página de ajustes."
+  }
+}

@@ -16,6 +16,7 @@
       "default": "./lib/client.js"
     },
     "./src/*": "./src/*",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -50,9 +51,9 @@
     "react": "^18.2.0"
   },
   "files": [
+    "locale/*.json",
     "lib/index.js",
     "lib/client.js",
-    "lib/types/**/*.d.ts",
-    "lib/types/**/*.js"
+    "lib/types/**/*.d.ts"
   ]
 }

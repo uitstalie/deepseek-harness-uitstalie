@@ -271,7 +271,8 @@ test('a volatile settings update reaches the next write without a remount', asyn
 
   // Shrink the body budget through the live reference the settings page writes, then emit the
   // Loader's commit event: the next tool call must see 8, not the apply-time 4096.
-  ;(mounted.config as unknown as { maxBytes: number }).maxBytes = 8
+  // This harness mounts the plugin with plain values, so the write is a field replacement.
+  Object.assign(mounted.config, { maxBytes: 8 })
   mounted.ctx.emit('loader/volatile-update', [['maxBytes']])
   const result = await call(mounted.ctx, root, 'personality_learn', {
     kind: 'style',

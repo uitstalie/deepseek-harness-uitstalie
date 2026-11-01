@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Jira-Agent",
+    "description": "Stellt dem Modell das jira-Register über Werkzeuge, eine Schreibsperre und einen Slash-Befehl bereit."
+  }
+}

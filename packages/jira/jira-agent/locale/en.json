@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Jira agent",
+    "description": "Exposes the jira ledger to the model through tools, a write guard and a slash command."
+  }
+}

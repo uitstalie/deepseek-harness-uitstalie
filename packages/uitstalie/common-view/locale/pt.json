@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Sobreposição de visão comum",
+    "description": "Adota uma visão nativa por vez e contribui com sua sobreposição via slots e tokens de tema."
+  }
+}

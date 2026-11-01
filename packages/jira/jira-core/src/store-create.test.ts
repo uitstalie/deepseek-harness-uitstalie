@@ -6,6 +6,7 @@
  */
 
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,7 +24,7 @@ import { MAX_KEY_NUMBER } from './counters.ts'
 const AT = '2026-10-15T12:00:00Z' as Timestamp
 const ACTOR = Object.freeze({ by: 'human:daiqc' as Identity, at: AT })
 
-const fixture = await readFile(new URL('../fixtures/config.md', import.meta.url), 'utf8')
+const fixture = readFileSync(new URL('../fixtures/config.md', import.meta.url), 'utf8')
 
 const vocab: Vocab = (() => {
   const parsed = parseVocab(fixture)

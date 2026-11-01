@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agente do Jira",
+    "description": "Expõe o livro jira ao modelo por meio de ferramentas, proteção de escrita e um comando de barra."
+  }
+}

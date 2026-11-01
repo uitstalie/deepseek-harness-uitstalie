@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "System environment",
+    "description": "Provides platform facts, path rules, environment lookup and the user home directories."
+  }
+}

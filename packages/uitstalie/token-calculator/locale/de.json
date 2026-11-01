@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Token-Rechner",
+    "description": "Zählt DeepSeek V4-Token offline für die Prompt-Planung."
+  }
+}

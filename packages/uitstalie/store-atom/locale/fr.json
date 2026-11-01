@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Stockage .dsh",
+    "description": "Fournit l'interface de stockage avec découverte de racine, confinement des chemins et gardes de version."
+  }
+}

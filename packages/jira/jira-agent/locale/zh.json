@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Jira 台账代理",
+    "description": "通过工具、写入守卫和斜杠命令把 jira 台账暴露给模型。"
+  }
+}

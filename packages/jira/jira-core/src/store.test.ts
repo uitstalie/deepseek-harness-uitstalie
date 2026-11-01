@@ -7,6 +7,7 @@
  */
 
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -58,7 +59,7 @@ const LATER = Object.freeze({ by: 'human:daiqc' as Identity, at: '2026-10-15T13:
 const KEY = 'DH-1' as IssueKey
 const DH = projectOf(KEY)
 
-const fixtureText = await readFile(new URL('../fixtures/config.md', import.meta.url), 'utf8')
+const fixtureText = readFileSync(new URL('../fixtures/config.md', import.meta.url), 'utf8')
 
 const vocab: Vocab = (() => {
   const parsed = parseVocab(fixtureText)

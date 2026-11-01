@@ -4,34 +4,25 @@
  * service stays unavailable instead of offering dead controls.
  */
 
-import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
-import { describe, expect, it, vi } from 'vitest'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
+import { stubConfigForm, type StubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
+import { describe, expect, it } from 'vitest'
 import { MemorySettingsController, type MemoryRowConfig } from '../src/client/settings.ts'
-
-/** Build one accepted row snapshot. */
-const snapshotOf = (value: MemoryRowConfig | undefined, writable = true): ConfigFormSnapshot<MemoryRowConfig> => ({
-  status: value === undefined ? 'unavailable' : 'ready',
-  value,
-  base: undefined,
-  user: undefined,
-  revision: 7,
-  writable,
-})
 
 /** A form double that records each mutation and answers with a scripted acceptance. */
 const formOf = (
   value: MemoryRowConfig | undefined,
   options: { writable?: boolean; accepted?: boolean } = {},
-): { form: ConfigForm<MemoryRowConfig>; mutate: ReturnType<typeof vi.fn> } => {
-  const mutate = vi.fn(async () => options.accepted ?? true)
-  const form = {
-    getSnapshot: () => snapshotOf(value, options.writable ?? true),
-    subscribe: () => () => {},
-    mutate,
-    set: vi.fn(async () => true),
-    unset: vi.fn(async () => true),
-  } as unknown as ConfigForm<MemoryRowConfig>
-  return { form, mutate }
+): { form: ConfigForm<MemoryRowConfig>; mutate: StubConfigForm<MemoryRowConfig>['mutate'] } => {
+  const stub = stubConfigForm<MemoryRowConfig>()
+  stub.publish({
+    status: value === undefined ? 'unavailable' : 'ready',
+    value,
+    revision: 7,
+    writable: options.writable ?? true,
+  })
+  stub.mutate.mockResolvedValue(options.accepted ?? true)
+  return { form: stub.scope, mutate: stub.mutate }
 }
 
 describe('MemorySettingsController', () => {

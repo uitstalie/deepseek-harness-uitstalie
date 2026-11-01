@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "token 计算器",
+    "description": "离线统计 DeepSeek V4 的 token 数，用于提示词预算。"
+  }
+}

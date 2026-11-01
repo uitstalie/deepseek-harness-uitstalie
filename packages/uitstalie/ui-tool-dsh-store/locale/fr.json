@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Vue des règles de l'espace de travail",
+    "description": "Affiche depuis la barre latérale les règles .dsh que le chargeur d'instructions injecte par espace de travail."
+  }
+}

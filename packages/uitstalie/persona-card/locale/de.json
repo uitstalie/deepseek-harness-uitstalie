@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Persona-Karten",
+    "description": "Prüft Persona-Karten des Assistenten und rendert die aktive Karte in den Prompt."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": ".dsh store",
+    "description": "Provides the store interface with root discovery, path confinement and version guards."
+  }
+}

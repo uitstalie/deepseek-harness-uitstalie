@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Ambiente do sistema",
+    "description": "Fornece fatos da plataforma, regras de caminhos, consulta do ambiente e os diretórios iniciais do usuário."
+  }
+}

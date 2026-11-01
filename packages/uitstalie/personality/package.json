@@ -24,25 +24,23 @@
       "default": "./lib/types/types.js"
     },
     "./src/*": "./src/*",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "files": [
+    "locale/*.json",
     "lib/index.js",
     "lib/typert.host.js",
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
     "lib/typert.remote-client.d.ts",
+    "lib/types/**/*.js",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-commands": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@deepseek-ai/dsh-commands": {
-      "optional": true
-    }
   },
   "dependencies": {
     "@deepseek-ai/dsh-fs": "workspace:*",

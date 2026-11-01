@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Models.dev-Katalogseite",
+    "description": "Durchsucht die abgerufenen Anbieter, wählt eine Teilmenge und materialisiert sie als LLM Plus-Routen."
+  }
+}

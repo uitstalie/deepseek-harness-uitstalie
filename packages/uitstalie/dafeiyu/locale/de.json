@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Fähigkeits-Organisator",
+    "description": "Registriert Fähigkeitsanbieter, steuert deren Aktivierung je Agent und verteilt den Turn-End-Hook."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agent Jira",
+    "description": "Expose le registre jira au modèle via des outils, une garde d'écriture et une commande slash."
+  }
+}

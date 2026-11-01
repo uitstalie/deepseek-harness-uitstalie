@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Page du registre Jira",
+    "description": "Affiche l'état du registre jira et permet de lire le tableau, un ticket et la base de connaissances."
+  }
+}

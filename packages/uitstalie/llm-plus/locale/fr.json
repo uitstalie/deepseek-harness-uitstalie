@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Fournisseurs LLM Plus",
+    "description": "Route les requêtes de modèles vers les fournisseurs configurés, avec connexion par abonnement et valeurs par défaut du catalogue models.dev."
+  }
+}

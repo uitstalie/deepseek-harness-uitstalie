@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Proveedores de LLM Plus",
+    "description": "Enruta las peticiones de modelos a los proveedores que configures, con inicio de sesión por suscripción y valores del catálogo models.dev."
+  }
+}

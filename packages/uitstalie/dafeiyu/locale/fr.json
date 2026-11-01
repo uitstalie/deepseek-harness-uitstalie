@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Organisateur de capacités",
+    "description": "Enregistre les fournisseurs de capacités, contrôle leur activation par agent et distribue le crochet de fin de tour."
+  }
+}

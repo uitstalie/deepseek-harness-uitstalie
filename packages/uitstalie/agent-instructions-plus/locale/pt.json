@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Instruções do espaço de trabalho",
+    "description": "Carrega AGENTS.md e CLAUDE.md pela cadeia nativa e adiciona .dsh/rules sempre ativo à mesma mensagem de contexto."
+  }
+}

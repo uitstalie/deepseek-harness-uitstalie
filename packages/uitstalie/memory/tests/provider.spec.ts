@@ -111,7 +111,8 @@ test('a volatile settings update reaches the next write without a remount', asyn
   const root = await createRoot(mounted)
 
   if (mounted.config === undefined) throw new Error('the memory provider did not resolve its configuration')
-  ;(mounted.config as unknown as { sessions: number }).sessions = 3
+  // This harness mounts the plugin with plain values, so the settings page's write is a field replacement.
+  Object.assign(mounted.config, { sessions: 3 })
   ctx.emit('loader/volatile-update', [['sessions']])
   const result = await callTool(mounted.ctx, root, 'memory_write', {
     kind: 'decision',
@@ -129,7 +130,7 @@ test('an invalid volatile update keeps the previous settings', async () => {
   const root = await createRoot(mounted)
 
   if (mounted.config === undefined) throw new Error('the memory provider did not resolve its configuration')
-  ;(mounted.config as unknown as { detail: number }).detail = 20
+  Object.assign(mounted.config, { detail: 20 })
   ctx.emit('loader/volatile-update', [['detail']])
   const result = await callTool(mounted.ctx, root, 'memory_write', {
     kind: 'decision',

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Catalogue models.dev",
+    "description": "Récupère le catalogue models.dev, le met en cache sur disque et fournit les valeurs par défaut de fournisseur et de modèle à la page de réglages."
+  }
+}

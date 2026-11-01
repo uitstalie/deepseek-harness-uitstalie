@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Almacén .dsh",
+    "description": "Proporciona la interfaz del almacén con descubrimiento de raíz, confinamiento de rutas y guardas de versión."
+  }
+}

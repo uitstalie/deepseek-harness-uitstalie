@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tarjetas de rol",
+    "description": "Valida las tarjetas de rol del asistente y renderiza la tarjeta activa en el prompt."
+  }
+}
