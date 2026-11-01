@@ -23,6 +23,7 @@ import type {
   JiraKbSearchView,
   JiraStatusView,
   SuperagentStatusView,
+  SuperagentHistoryView,
 } from '@deepseek-ai/dsh-jira-service/types'
 
 /** The Remote methods this page calls; the generated `remote.jira` namespace satisfies it. */
@@ -37,6 +38,8 @@ export interface JiraWire {
   kbSearch(query: string, topK?: number): Promise<RemoteResult<JiraKbSearchView>>
   /** The read-only super-agent summary; absent on a Host that does not expose it. */
   superagentStatus?(): Promise<RemoteResult<SuperagentStatusView>>
+  /** Recent ledger commits, newest first. */
+  superagentHistory?(limit?: number): Promise<RemoteResult<SuperagentHistoryView>>
 }
 
 /** The board's load state. */
@@ -94,6 +97,8 @@ export interface JiraState {
   knowledge: JiraKnowledgeState
   /** The super-agent summary, when the Host exposes it. */
   superagent: { status: 'idle' | 'loading' | 'ready' | 'error'; error: string | null; view: SuperagentStatusView | null }
+  /** Recent ledger commits for the history block. */
+  superagentHistory: { status: 'idle' | 'loading' | 'ready' | 'error'; error: string | null; view: SuperagentHistoryView | null }
 }
 
 /** One Remote read folded into the page's failure shape. */
@@ -109,6 +114,7 @@ const initialState = (): JiraState => ({
   detail: null,
   knowledge: { query: '', status: 'idle', error: null, view: null, stale: false },
   superagent: { status: 'idle', error: null, view: null },
+  superagentHistory: { status: 'idle', error: null, view: null },
 })
 
 /**
@@ -165,6 +171,7 @@ export class JiraStore {
       draft.board.status = 'loading'
       draft.board.error = null
       if (this.wire.superagentStatus !== undefined) draft.superagent.status = 'loading'
+      if (this.wire.superagentHistory !== undefined) draft.superagentHistory.status = 'loading'
     })
     const board = await read(() => this.wire.board())
     const status = await read(() => this.wire.status())
@@ -172,6 +179,10 @@ export class JiraStore {
     const superagent = readSuperagent === undefined
       ? null
       : await read(() => readSuperagent())
+    const readHistory = this.wire.superagentHistory
+    const history = readHistory === undefined
+      ? null
+      : await read(() => readHistory(10))
     // A change (or a retry) started another load while these were in flight: that one owns the
     // state, and this answer is older than the truth it would replace.
     if (generation !== this.boardRead) return
@@ -190,6 +201,11 @@ export class JiraStore {
         draft.superagent = superagent.ok
           ? { status: 'ready', error: null, view: superagent.value }
           : { status: 'error', error: superagent.error, view: null }
+      }
+      if (history !== null) {
+        draft.superagentHistory = history.ok
+          ? { status: 'ready', error: null, view: history.value }
+          : { status: 'error', error: history.error, view: null }
       }
     })
   }

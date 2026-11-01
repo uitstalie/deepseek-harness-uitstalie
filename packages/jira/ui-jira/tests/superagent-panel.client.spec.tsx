@@ -49,6 +49,12 @@ it('opens the chosen review issue', () => {
   expect(onSelect).toHaveBeenCalledWith('DH-3')
 })
 
+it('renders recent activity when the Host provides it', () => {
+  render(<SuperagentPanel board={board} t={t} history={{ entries: [{ sha: 'a'.repeat(40), at: '2026-10-27T00:00:00Z', author: 'human:fixture', subject: 'claim DH-3' }] }} />)
+  expect(screen.getByText('superagentHistoryTitle')).toBeTruthy()
+  expect(screen.getByText(/claim DH-3/)).toBeTruthy()
+})
+
 it('renders nothing while the board is loading', () => {
   const { container } = render(<SuperagentPanel board={null} t={t} />)
   expect(container.firstChild).toBeNull()

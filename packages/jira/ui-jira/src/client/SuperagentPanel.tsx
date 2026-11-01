@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-client-ui-jira/SuperagentPanel
  */
 
-import type { JiraBoardView, JiraIssueRowView, SuperagentStatusView } from '@deepseek-ai/dsh-jira-service/types'
+import type { JiraBoardView, JiraIssueRowView, SuperagentHistoryView, SuperagentStatusView } from '@deepseek-ai/dsh-jira-service/types'
 import { fill } from './locales.ts'
 import type { JiraKey } from './locales.ts'
 import styles from './JiraSection.module.css'
@@ -20,6 +20,8 @@ export interface SuperagentPanelProps {
   readonly board: JiraBoardView | null
   /** The Host's super-agent view; preferred over deriving counts from the board. */
   readonly status?: SuperagentStatusView | null
+  /** Recent ledger commits, newest first. */
+  readonly history?: SuperagentHistoryView | null
   /** Open an issue's detail when a row is chosen. */
   readonly onSelect?: (key: string) => void
   /** This page's copy. */
@@ -33,7 +35,7 @@ const rowsOf = (board: JiraBoardView, status: string | undefined): readonly Jira
     .flatMap(group => group.items)
 
 /** The super-agent summary block. */
-export function SuperagentPanel({ board, status, onSelect, t }: SuperagentPanelProps) {
+export function SuperagentPanel({ board, status, history, onSelect, t }: SuperagentPanelProps) {
   if (board === null && status === undefined) return null
   let counts: readonly (readonly [JiraKey, number])[]
   let needs: readonly { key: string; summary: string }[]
@@ -80,6 +82,18 @@ export function SuperagentPanel({ board, status, onSelect, t }: SuperagentPanelP
                     {fill(t('superagentReviewItem'), { key: row.key, summary: row.summary })}
                   </button>
                 </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      {history === undefined || history === null || history.entries.length === 0
+        ? null
+        : (
+          <div className={styles.superagentNeeds}>
+            <h4 className={styles.superagentNeedsTitle}>{t('superagentHistoryTitle')}</h4>
+            <ul className={styles.superagentList}>
+              {history.entries.map(entry => (
+                <li key={entry.sha}>{entry.subject} · {entry.author} · {entry.at}</li>
               ))}
             </ul>
           </div>

@@ -28,6 +28,7 @@ import type {
   JiraResult,
   JiraStatusView,
   ListQuery,
+  SuperagentHistoryView,
   SuperagentStatusView,
 } from './types.ts'
 
@@ -132,6 +133,17 @@ export default class JiraRemote extends TypertRemoteService {
   @Remote
   async board(): Promise<JiraBoardView> {
     return boardViewOf(unwrap(await this.ctx.jira.board()))
+  }
+
+  /**
+   * Recent ledger commits, newest first: the review panel's history.
+   * @param limit - how many entries; the service clamps it to 1..50.
+   * @returns the commits as plain JSON.
+   * @throws {RemoteError} when git cannot read the ledger.
+   */
+  @Remote
+  async superagentHistory(limit?: number): Promise<SuperagentHistoryView> {
+    return unwrap(await this.ctx.jira.superagentHistory(limit))
   }
 
   /**

@@ -115,3 +115,16 @@ export const superagentStatusOf = (
     needsPerson,
   })
 }
+
+/** One recent ledger commit as the browser reads it. */
+export interface SuperagentHistoryEntry {
+  readonly sha: string
+  readonly at: string
+  readonly author: string
+  readonly subject: string
+}
+
+/** Recent ledger commits, newest first. */
+export interface SuperagentHistoryView {
+  readonly entries: readonly SuperagentHistoryEntry[]
+}

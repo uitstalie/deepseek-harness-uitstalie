@@ -63,7 +63,7 @@ import {
 } from '@deepseek-ai/dsh-jira-core'
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraFilteredIssues, JiraResult, JiraServiceApi, JiraSnapshot, JiraSyncState, JiraStatus, SuperagentStatusView, KnowledgeDetail, SessionRecordFacts, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, TagsLintReport, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
+import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraFilteredIssues, JiraResult, JiraServiceApi, JiraSnapshot, JiraSyncState, JiraStatus, SuperagentHistoryView, SuperagentStatusView, KnowledgeDetail, SessionRecordFacts, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, TagsLintReport, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 import JiraRemote from './remote.ts'
 import { superagentStatusOf } from './superagent-status.ts'
 
@@ -303,6 +303,24 @@ export class JiraService extends Service implements JiraServiceApi {
     }
     const at = `${new Date().toISOString().slice(0, 19)}Z` as Timestamp
     return result.ok(superagentStatusOf(listed.issues, byKey, vocab.value.closed, at))
+  }
+
+  /**
+   * Recent ledger commits, newest first.
+   * @param limit - how many entries; clamped to 1..50.
+   * @returns the commits as plain JSON, or the git failure.
+   */
+  async superagentHistory(limit: number = 10): Promise<JiraResult<SuperagentHistoryView>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const count = Math.max(1, Math.min(50, Math.floor(limit)))
+    const log = await git.runGit(opened.root, ['log', `-n${String(count)}`, '--pretty=format:%H%x1f%aI%x1f%an%x1f%s'])
+    if (log.code !== 0) return err(errors.ioFailed(`could not read the ledger history: ${log.stderr.trim()}`))
+    const entries = log.stdout.split('\n').filter(line => line !== '').map((line) => {
+      const [sha = '', at = '', author = '', subject = ''] = line.split('\x1f')
+      return Object.freeze({ sha, at, author, subject })
+    })
+    return result.ok(Object.freeze({ entries: Object.freeze(entries) }))
   }
 
   /**

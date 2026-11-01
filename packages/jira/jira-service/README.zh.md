@@ -29,7 +29,7 @@ kind: "package-reference"
 
 第二个消费方——UI、另一个能力、一个 shell——通过 `ctx.jira` 共享这个服务；其他任何人都不 push。跨进程时，存储自身的文件锁就是守卫，因此 CLI 可以在宿主会话打开时提交。
 
-`ctx.jira` 实现 [`src/types.ts`](src/types.ts) 里的约定：读方法（`list`、`listWithRejected`、`get`、`readIssue`、`board`、`doctor`、`searchKnowledge`、`kbGet`、`counts`、`superagentStatus`）、写方法（`create`、`createIssue`、`mutateIssue`、`batchClose`、`createTag`、`transact`、`kbCreate`、`kbUpdate`）、`gitHead`、`recordSession`、`closeOutSession`、`sync` 与 `settle`，以及 `changed` 订阅。每个方法返回 `Result`；错误是带十二个错误码之一的 `JiraError`；权限不在这里判定——`jira-agent` 的守卫在写入到达账本之前就拒绝它。
+`ctx.jira` 实现 [`src/types.ts`](src/types.ts) 里的约定：读方法（`list`、`listWithRejected`、`get`、`readIssue`、`board`、`doctor`、`searchKnowledge`、`kbGet`、`counts`、`superagentStatus`、`superagentHistory`）、写方法（`create`、`createIssue`、`mutateIssue`、`batchClose`、`createTag`、`transact`、`kbCreate`、`kbUpdate`）、`gitHead`、`recordSession`、`closeOutSession`、`sync` 与 `settle`，以及 `changed` 订阅。每个方法返回 `Result`；错误是带十二个错误码之一的 `JiraError`；权限不在这里判定——`jira-agent` 的守卫在写入到达账本之前就拒绝它。
 
 工具 runner 不再持有存储：它们调用 `ctx.jira`，由服务自己记录每次写入，因此 `changed` 与 push 队列无法被绕过。`/jira` 的人类视图仍直接打开存储；那一面单独跟踪（DH-205）。
 

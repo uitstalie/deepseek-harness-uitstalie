@@ -98,6 +98,7 @@ describe('remote.jira', () => {
     expect(typeof remote.status).toBe('function')
     expect(typeof remote.board).toBe('function')
     expect(typeof remote.superagentStatus).toBe('function')
+    expect(typeof remote.superagentHistory).toBe('function')
     expect(typeof remote.list).toBe('function')
     expect(typeof remote.get).toBe('function')
     expect(typeof remote.kbSearch).toBe('function')
@@ -128,6 +129,14 @@ describe('remote.jira', () => {
     expect(view.ready.map(item => item.key)).toEqual(['DH-1'])
     expect(view.needsPerson).toEqual([])
     expect(JSON.parse(JSON.stringify(view))).toEqual(view)
+  })
+
+  it('answers superagentHistory() with the ledger commits, newest first', async () => {
+    const history = await remote.superagentHistory(3)
+    expect(history.entries.length).toBeGreaterThan(0)
+    expect(history.entries[0]?.sha).toMatch(/^[0-9a-f]{40}$/u)
+    expect(history.entries[0]?.subject.length).toBeGreaterThan(0)
+    expect(JSON.parse(JSON.stringify(history))).toEqual(history)
   })
 
   it('answers board() with the issue grouped under its status and JSON-safe counts', async () => {
