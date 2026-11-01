@@ -326,19 +326,21 @@ pass 扫描 → 候选（只读，不动账本）
 ### 8.1 子代理能不能指定工具：能，两条路
 
 1. **agent preset（收窄"看得见什么"）**：`tool-subagent` 支持 `agent_preset` —— 配置里 `agentPreset` 强制指定，或 `allowedAgentPresets` 暴露给模型选。"The selected preset owns persona and tool composition." 两个限制：**只有 `spawn` provider 支持独立 preset**（`fork` 会直接报 `does not support independent agent preset selection`）；preset 只管可见面。
-2. **工具层 guard（收窄"写得了什么"）**：`installWriteGuard` 现在只认 `execution.name === 'jira_issue'` 且 `action ∈ WRITE_ACTIONS`，再用 `caller.writable` 判。要收窄就把它从 `writable: boolean` 扩成"这个会话对这个动作有没有能力"。
+2. **工具层授权（收窄"写得了什么"）**：`installWriteGuard` 是**单调拦截点**，只认 `jira_issue`，所以它挡不到一个新工具；新工具的可写面必须由它自己的 scope check 决定，而不是把 `writable: boolean` 扩成能力集。
 
-两者必须一起做：preset 决定看得见什么，guard 与 handler 决定写得了什么。
+**实现结果**（DH-512，提交 `5b19fbc99b`）：只做了第 2 条的 scope check，**没动 guard，也没做 worker preset**——能力的 scope 由 `root` 改成 `all` 并按 agent 分流：root 拿三个工具 + 注入行，子 agent 只拿 `issue_work`。授权 = issue 必须 `in_progress` 且其 `assignee` 的 session 等于调用者的 `SessionHeader.parentSession`；拒绝复用 `READ_ONLY_SESSION`，`reason` 说清是哪一种。preset 留给后续，它只影响 persona 与工具表的整洁度，不影响安全边界。
 
 ### 8.2 解单流程的三个动词
 
-新工具 `issue_work`（只挂在 worker preset 里），动作空间封闭：
+新工具 `issue_work`（能力在子 agent 上只挂这一个工具），动作空间封闭：
 
 | 动词 | 参数 | 账本上发生什么 |
 | --- | --- | --- |
 | `progress` | `body` | 追加一条评论 |
 | `deliver` | `body`（证据：改了什么、怎么验证） | 评论 + `switch_state → in_review`，一次提交 |
 | `blocked` | `waiting_for: 'person' \| 'dependency'`、`reason` | 评论 + 结构化标记 |
+
+`deliver` 不是两次写：它复用决策 193 的复合（`close` 动词带 `to: 'in_review'` + `comment`），迁移与证据在同一个事务里，不会只落一半。
 
 三个理由：
 
