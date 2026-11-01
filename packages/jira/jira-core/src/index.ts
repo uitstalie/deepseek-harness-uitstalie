@@ -1,16 +1,18 @@
 /**
  * The jira ledger's public module surface.
  *
- * Every entry is a namespace re-export of one atom module, so a consumer imports
- * `{ store, entities } from '@deepseek-ai/dsh-jira-core'` instead of reaching into `src/`.
- * Inside the package, modules keep importing each other by relative path; the `./*` export map
- * and the matching tsconfig alias exist only for `jira-cli`, which deliberately drives the same
- * atoms the service does.
+ * Every atom module contributes its values and types to the root surface, and each one is also
+ * reachable as a namespace (`{ store, entities } from '@deepseek-ai/dsh-jira-core'`). A non-relative
+ * `@deepseek-ai/dsh-jira-core/<module>.ts` specifier is not rewritten during emit (TS2877), and
+ * resolving it against the `./*` export map lands a NodeNext consumer on this package's source
+ * (DH-509), so consumers — jira-agent, jira-cli, jira-service, ui-jira — take atoms from the root.
+ * Inside the package, modules keep importing each other by relative path.
  *
  * @module @deepseek-ai/dsh-jira-core
  */
 
 export * as codec from './codec.ts'
+export * as batch from './batch.ts'
 export * as config from './config.ts'
 export * as doctor from './doctor.ts'
 export * as entities from './entity.ts'
@@ -29,44 +31,70 @@ export * as machine from './machine.ts'
 export * as mutate from './mutate.ts'
 export * as messages from './messages.ts'
 export * as provision from './provision.ts'
+export * as project from './project.ts'
 export * as push from './push.ts'
 export * as rebase from './rebase.ts'
 export * as result from './result.ts'
 export * as store from './store.ts'
-export * as system from './system/index.ts'
 export * as tagsLint from './tagsLint.ts'
+export * as tagstore from './tagstore.ts'
 export * as vocab from './vocab.ts'
+export * as workspace from './workspace.ts'
 
-// The named values a host consumer needs whose declarations typert emits. A non-relative
-// `@deepseek-ai/dsh-jira-core/<module>.ts` specifier is not rewritten during emit (TS2877), so
-// jira-service takes these atoms from the root surface instead of a `src/` deep import (DH-313).
-export { countStore } from './injection.ts'
-export { ensureSessionRecord, readWatermark, scanWatermarkPath, sessionScan, writeWatermark } from './session.ts'
-export { blockersOf } from './inspect.ts'
-export { invalidInput, staleRevision } from './errors.ts'
-export { decodeIssue } from './codec.ts'
-export {
-  applyAckConflict, applyAssignee, applyClose, applyComment, applyLink, applyTransition, applyUpdate, combineChanges,
-} from './mutate.ts'
-export { assertProjectWritable, ensureWorkspaceProject } from './project.ts'
-export { createTag } from './tagstore.ts'
-export { err, ok } from './result.ts'
-export { closeMany } from './batch.ts'
-export { resolveWorkspace } from './workspace.ts'
+// `system` is the platform adapter value, not a namespace: jira-cli and jira-agent call
+// `system.facts`, so the value export owns the name.
+export * from './args.ts'
+export * from './batch.ts'
+export * from './boardHtml.ts'
+export * from './codec.ts'
+export * from './comments.ts'
+export * from './commit.ts'
+export * from './commitmsg.ts'
+export * from './config.ts'
+export * from './consistency.ts'
+export * from './counters.ts'
+export * from './doctor.ts'
+export * from './entity.ts'
+export * from './errors.ts'
+export * from './frontmatter.ts'
+export * from './generate.ts'
+export * from './generateStore.ts'
+export * from './git.ts'
+export * from './hooks.ts'
+export * from './injection.ts'
+export * from './inspect.ts'
+export * from './io.ts'
+export * from './kb.ts'
+export * from './kbsearch.ts'
+export * from './kbstore.ts'
+export * from './keyset.ts'
+export * from './lint.ts'
+export * from './list.ts'
+export * from './lock.ts'
+export * from './machine.ts'
+export * from './machines.ts'
+export * from './messages.ts'
+export * from './mutate.ts'
+export * from './perf.ts'
+export * from './project.ts'
+export * from './provision.ts'
+export * from './push.ts'
+export * from './rebase.ts'
+export * from './render.ts'
+export * from './result.ts'
+export * from './scaffold.ts'
+export * from './schema.ts'
+export * from './session.ts'
+export * from './store.ts'
+export * from './system/index.ts'
+export * from './tags.ts'
+export * from './tagsLint.ts'
+export * from './tagstore.ts'
+export * from './testing/bothPlatforms.ts'
+export * from './testing/removeTree.ts'
+export * from './validate.ts'
+export * from './vocab.ts'
+export * from './workspace.ts'
 
-// The named types a consumer states in its own signatures. They are re-exported by name, not only
-// reachable through the namespaces above, because the type-graph generator resolves a package
-// reference by looking for that name among the package root's exports.
-export type { DoctorReport } from './doctor.ts'
-export type { Identity, Issue, IssueKey, LinkType, Timestamp } from './entity.ts'
-export type { ErrorCode, JiraError } from './errors.ts'
-export type { KnowledgeEntry, KnowledgeKey } from './kb.ts'
-export type { KbSearch } from './kbsearch.ts'
-export type { KnowledgePatch, NewKnowledge, WrittenKnowledge } from './kbstore.ts'
-export type { ListQuery, ListResult } from './list.ts'
-export type { NewIssueInput } from './mutate.ts'
-export type { PushOutcome, PushQueue } from './push.ts'
-export type { Result } from './result.ts'
-export type { Actor, Created, Mutation, Store, Transaction, TransactOptions } from './store.ts'
-export type { TagsLintReport } from './tagsLint.ts'
-export type { Vocab } from './vocab.ts'
+// Both modules declare this shape; the root names the one every consumer imports.
+export type { PendingComment } from './mutate.ts'

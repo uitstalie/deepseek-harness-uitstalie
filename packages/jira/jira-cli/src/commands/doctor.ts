@@ -1,12 +1,12 @@
 /** cli/commands/doctor — `jira doctor [--json]`: the health check (structure + consistency + perf). */
 
-import { type Timestamp } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { checkConsistency, renderConsistency } from '@deepseek-ai/dsh-jira-core/consistency.ts'
-import { checkStore, renderDoctorReport } from '@deepseek-ai/dsh-jira-core/doctor.ts'
-import { listIssues, readSnapshot } from '@deepseek-ai/dsh-jira-core/inspect.ts'
-import { listKnowledge } from '@deepseek-ai/dsh-jira-core/kbstore.ts'
-import { listMachines } from '@deepseek-ai/dsh-jira-core/machines.ts'
-import { PERF_SAMPLES, countPerfFiles, measureKbSearch, perfQuery, perfReport, renderPerf } from '@deepseek-ai/dsh-jira-core/perf.ts'
+import { type Timestamp } from '@deepseek-ai/dsh-jira-core'
+import { checkConsistency, renderConsistency } from '@deepseek-ai/dsh-jira-core'
+import { checkStore, renderDoctorReport } from '@deepseek-ai/dsh-jira-core'
+import { listIssues, readSnapshot } from '@deepseek-ai/dsh-jira-core'
+import { listKnowledge } from '@deepseek-ai/dsh-jira-core'
+import { listMachines } from '@deepseek-ai/dsh-jira-core'
+import { PERF_SAMPLES, countPerfFiles, measureKbSearch, perfQuery, perfReport, renderPerf } from '@deepseek-ai/dsh-jira-core'
 import { machineOf, nowUtc, type Handler } from '../runtime.ts'
 
 export const doctorCommand: Handler = async (ctx) => {

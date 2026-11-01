@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { objectSchema, type FieldSpec } from '@deepseek-ai/dsh-jira-core/schema.ts'
+import { objectSchema, type FieldSpec } from '@deepseek-ai/dsh-jira-core'
 import {
   assertSupportedJsonSchema,
   validateJsonSchemaValue,
@@ -18,7 +18,7 @@ import {
 } from '@deepseek-ai/dsh-tools'
 import { KB_TOOL_NAME, LIST_TOOL_NAME, TOOL_NAME, createJiraContribution } from './index.ts'
 import { createLedgerFixture, dispatchTool, mountJira, testAgent, type JiraHarness } from './testing/host.ts'
-import { removeTree } from '@deepseek-ai/dsh-jira-core/testing/removeTree.ts'
+import { removeTree } from '@deepseek-ai/dsh-jira-core'
 
 /** The three definitions one contribution contributes. */
 const definitionsOf = (harness: JiraHarness): readonly ToolDefinition[] => {

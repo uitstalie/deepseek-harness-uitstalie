@@ -1,8 +1,8 @@
 /** cli/commands/init — `jira init`: provision the store, and register this machine first. */
 
-import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { resolveMachineId } from '@deepseek-ai/dsh-jira-core/machine.ts'
-import { provisionStore } from '@deepseek-ai/dsh-jira-core/provision.ts'
+import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { resolveMachineId } from '@deepseek-ai/dsh-jira-core'
+import { provisionStore } from '@deepseek-ai/dsh-jira-core'
 import { fail, type Handler } from '../runtime.ts'
 
 export const initCommand: Handler = async (ctx) => {

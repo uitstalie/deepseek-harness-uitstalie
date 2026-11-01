@@ -17,9 +17,9 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import * as jiraServicePlugin from '@deepseek-ai/dsh-jira-service'
-import { asIdentity, utcTimestamp } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { createStore, createInStore, storePaths } from '@deepseek-ai/dsh-jira-core/store.ts'
-import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core/io.ts'
+import { asIdentity, utcTimestamp } from '@deepseek-ai/dsh-jira-core'
+import { createStore, createInStore, storePaths } from '@deepseek-ai/dsh-jira-core'
+import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core'
 
 const MACHINE = 'a1b2c3d4'
 

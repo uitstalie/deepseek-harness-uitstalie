@@ -14,8 +14,8 @@ import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 
 import { runCli, type CliEnv } from './main.ts'
-import { runGit } from '@deepseek-ai/dsh-jira-core/git.ts'
-import { removeTree } from '@deepseek-ai/dsh-jira-core/testing/removeTree.ts'
+import { runGit } from '@deepseek-ai/dsh-jira-core'
+import { removeTree } from '@deepseek-ai/dsh-jira-core'
 
 let root = ''
 let env: CliEnv = {}

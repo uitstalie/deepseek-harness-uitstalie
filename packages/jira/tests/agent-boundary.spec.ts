@@ -3,6 +3,9 @@
  * model surface. The contract allows types and presentation helpers from `jira-core`; it does not
  * allow the agent to open the store, lock it, run git, or mutate files behind the service.
  *
+ * Every consumer now imports the core root (DH-509), so the ratchet reads the *atoms* a file
+ * imports and maps each one back to the module that owns it.
+ *
  * The PENDING set is a ratchet, not an exemption: the suite fails when a listed file stops
  * violating (so the list shrinks with the migration) and when any file outside it starts.
  *
@@ -12,6 +15,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import * as core from '@deepseek-ai/dsh-jira-core'
 
 /** Modules whose runtime value exports count as store access. */
 const FORBIDDEN = new Set([
@@ -19,6 +23,30 @@ const FORBIDDEN = new Set([
   'lock', 'mutate', 'project', 'push', 'store', 'tagsLint', 'tagstore',
   'vocab', 'workspace',
 ])
+
+/**
+ * Presentation helpers `jira-core` re-exports from store modules; the contract allows the agent
+ * to format what the service already gave it without opening the store itself.
+ */
+const PRESENTATION_ATOMS = new Set(['renderDoctorReport', 'renderTagsLint'])
+
+/**
+ * Runtime atom → the store-access module that owns it, derived from the core root's namespaces so
+ * the map cannot drift from the surface it guards.
+ */
+const forbiddenAtoms = ((): ReadonlyMap<string, string> => {
+  const atoms = new Map<string, string>()
+  const namespaces = core as Readonly<Record<string, unknown>>
+  for (const moduleName of FORBIDDEN) {
+    const namespace = namespaces[moduleName]
+    if (typeof namespace !== 'object' || namespace === null) continue
+    for (const atom of Object.keys(namespace)) {
+      if (PRESENTATION_ATOMS.has(atom)) continue
+      if (!atoms.has(atom)) atoms.set(atom, moduleName)
+    }
+  }
+  return atoms
+})()
 
 /**
  * Files that still open the store directly; shrink this set as the migration completes.
@@ -40,23 +68,30 @@ const sourceFiles = (): string[] => {
 }
 
 /**
- * Runtime core-store imports in one file.
- * A whole `import type` line or an all-`type` specifier list is a type-only import and allowed.
+ * Runtime store-access atoms one file imports from the core root.
+ *
+ * A whole `import type` line or an all-`type` specifier list is a type-only import and allowed. A
+ * namespace import could reach any atom, so it counts as the whole forbidden surface.
  * @param text - the file contents.
- * @returns the forbidden modules the file imports as values.
+ * @returns the forbidden modules the file imports as values, sorted.
  */
 const violationsOf = (text: string): string[] => {
-  const modules: string[] = []
-  for (const line of text.split('\n')) {
-    const match = /from '@deepseek-ai\/dsh-jira-core\/([a-zA-Z]+)(?:\.ts)?'/u.exec(line)
-    if (match === null) continue
-    if (/^import\s+type\b/u.test(line)) continue
-    const specifiers = /\{([^}]*)\}/u.exec(line)?.[1]?.split(',').map(part => part.trim()) ?? []
-    if (specifiers.length > 0 && specifiers.every(specifier => specifier.startsWith('type '))) continue
-    const module = match[1] ?? ''
-    if (FORBIDDEN.has(module)) modules.push(module)
+  const modules = new Set<string>()
+  const named = /import\s+(type\s+)?\{([^}]*)\}\s+from\s+'@deepseek-ai\/dsh-jira-core'/gu
+  for (const match of text.matchAll(named)) {
+    if (match[1] !== undefined) continue
+    for (const raw of (match[2] ?? '').split(',')) {
+      const specifier = raw.trim()
+      if (specifier === '' || specifier.startsWith('type ')) continue
+      const atom = /^[A-Za-z_$][\w$]*/u.exec(specifier)?.[0] ?? ''
+      const moduleName = forbiddenAtoms.get(atom)
+      if (moduleName !== undefined) modules.add(moduleName)
+    }
   }
-  return [...new Set(modules)].sort()
+  if (/import\s+\*\s+as\s+[\w$]+\s+from\s+'@deepseek-ai\/dsh-jira-core'/u.test(text)) {
+    for (const moduleName of FORBIDDEN) modules.add(moduleName)
+  }
+  return [...modules].sort()
 }
 
 describe('jira-agent store-access boundary', () => {
@@ -72,9 +107,11 @@ describe('jira-agent store-access boundary', () => {
     expect(violations.map(entry => entry.file)).toEqual([...PENDING].sort())
   })
 
-  it('detects a runtime store import and ignores a type-only one', () => {
-    expect(violationsOf("import { x } from '@deepseek-ai/dsh-jira-core/store.ts'")).toEqual(['store'])
-    expect(violationsOf("import type { Store } from '@deepseek-ai/dsh-jira-core/store.ts'")).toEqual([])
+  it('detects a runtime store atom and ignores a type-only one', () => {
+    expect(violationsOf("import { createStore } from '@deepseek-ai/dsh-jira-core'")).toEqual(['store'])
+    expect(violationsOf("import type { Store } from '@deepseek-ai/dsh-jira-core'")).toEqual([])
+    expect(violationsOf("import { type Store, runGit } from '@deepseek-ai/dsh-jira-core'")).toEqual(['git'])
+    expect(violationsOf("import * as core from '@deepseek-ai/dsh-jira-core'")).toEqual([...FORBIDDEN].sort())
   })
 
   it('reads types and the awareness line without opening the store', () => {

@@ -1,9 +1,9 @@
 /** cli/commands/tag-create — `jira tag-create NAME --description …`: register a tag (decision 26). */
 
-import { stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { registeredMessage } from '@deepseek-ai/dsh-jira-core/messages.ts'
-import { createTag } from '@deepseek-ai/dsh-jira-core/tagstore.ts'
+import { stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { registeredMessage } from '@deepseek-ai/dsh-jira-core'
+import { createTag } from '@deepseek-ai/dsh-jira-core'
 import { fail, type Handler } from '../runtime.ts'
 
 export const tagCreateCommand: Handler = async (ctx) => {

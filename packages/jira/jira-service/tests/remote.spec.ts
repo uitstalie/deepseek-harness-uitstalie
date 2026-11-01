@@ -16,10 +16,10 @@ import JiraService from '@deepseek-ai/dsh-jira-service'
 // The mounted class: the Context augmentation alone is not in the package's declaration output,
 // because the root entry only uses the class as a value.
 import type JiraRemote from '@deepseek-ai/dsh-jira-service/remote.ts'
-import { asIdentity, utcTimestamp } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core/io.ts'
-import { createKnowledge, originFromIdentity } from '@deepseek-ai/dsh-jira-core/kbstore.ts'
-import { createInStore, createStore, storePaths } from '@deepseek-ai/dsh-jira-core/store.ts'
+import { asIdentity, utcTimestamp } from '@deepseek-ai/dsh-jira-core'
+import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core'
+import { createKnowledge, originFromIdentity } from '@deepseek-ai/dsh-jira-core'
+import { createInStore, createStore, storePaths } from '@deepseek-ai/dsh-jira-core'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 // Load the `ctx.jiraRemote` declaration merge even when the package entry resolves through a
 // built declaration file rather than this source tree.

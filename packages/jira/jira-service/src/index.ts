@@ -197,7 +197,7 @@ export class JiraService extends Service implements JiraServiceApi {
     this.config = config
     this.root = this.resolveRoot()
     // Resolved once: the store's audit fields and `status()` must agree on the host writes carry.
-    this.host = current(config.host) ?? system.system.hostName(process.env)
+    this.host = current(config.host) ?? system.hostName(process.env)
     this.pushEnabled = current(config.push.enabled) === true
     // The Loader commits volatile changes into the same references without remounting; a root,
     // host or push change therefore reopens the ledger and rebuilds the queue lazily.
@@ -234,7 +234,7 @@ export class JiraService extends Service implements JiraServiceApi {
    */
   private reconfigure(): void {
     const root = this.resolveRoot()
-    const host = current(this.config.host) ?? system.system.hostName(process.env)
+    const host = current(this.config.host) ?? system.hostName(process.env)
     const pushEnabled = current(this.config.push.enabled) === true
     if (root === this.root && host === this.host && pushEnabled === this.pushEnabled) return
     this.root = root

@@ -1,13 +1,13 @@
 /** cli/commands/new — `jira new`: create an issue; the project may come from the workspace. */
 
-import { optFlags, stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { isProjectKey } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { NEW_NEEDS_SUMMARY, createdMessage, invalidProjectKey } from '@deepseek-ai/dsh-jira-core/messages.ts'
-import { type NewIssueInput } from '@deepseek-ai/dsh-jira-core/mutate.ts'
-import { ensureWorkspaceProject } from '@deepseek-ai/dsh-jira-core/project.ts'
-import { createInStore } from '@deepseek-ai/dsh-jira-core/store.ts'
-import { resolveWorkspace } from '@deepseek-ai/dsh-jira-core/workspace.ts'
+import { optFlags, stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { isProjectKey } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { NEW_NEEDS_SUMMARY, createdMessage, invalidProjectKey } from '@deepseek-ai/dsh-jira-core'
+import { type NewIssueInput } from '@deepseek-ai/dsh-jira-core'
+import { ensureWorkspaceProject } from '@deepseek-ai/dsh-jira-core'
+import { createInStore } from '@deepseek-ai/dsh-jira-core'
+import { resolveWorkspace } from '@deepseek-ai/dsh-jira-core'
 import { fail, type Handler } from '../runtime.ts'
 
 export const newCommand: Handler = async (ctx) => {

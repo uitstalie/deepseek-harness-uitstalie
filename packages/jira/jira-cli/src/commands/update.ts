@@ -1,8 +1,8 @@
 /** cli/commands/update — `jira update <KEY>`: replace fields (decision 44's CAS is in the plan). */
 
-import { optFlags } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { type IssuePatch, applyUpdate } from '@deepseek-ai/dsh-jira-core/mutate.ts'
-import { ok } from '@deepseek-ai/dsh-jira-core/result.ts'
+import { optFlags } from '@deepseek-ai/dsh-jira-core'
+import { type IssuePatch, applyUpdate } from '@deepseek-ai/dsh-jira-core'
+import { ok } from '@deepseek-ai/dsh-jira-core'
 import { writeCommand, type Handler } from '../runtime.ts'
 
 export const updateCommand: Handler = ctx =>

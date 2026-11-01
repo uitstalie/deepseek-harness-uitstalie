@@ -15,7 +15,7 @@
  */
 
 import { basename } from 'node:path'
-import { injectionLine } from '@deepseek-ai/dsh-jira-core/injection.ts'
+import { injectionLine } from '@deepseek-ai/dsh-jira-core'
 import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 

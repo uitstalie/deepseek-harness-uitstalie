@@ -2,12 +2,12 @@
 
 import { writeFile } from 'node:fs/promises'
 
-import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { renderBoardHtml } from '@deepseek-ai/dsh-jira-core/boardHtml.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { listIssues } from '@deepseek-ai/dsh-jira-core/inspect.ts'
-import { BOARD_NEEDS_VOCAB, hiddenIssuesNote } from '@deepseek-ai/dsh-jira-core/messages.ts'
-import { renderBoard } from '@deepseek-ai/dsh-jira-core/render.ts'
+import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { renderBoardHtml } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { listIssues } from '@deepseek-ai/dsh-jira-core'
+import { BOARD_NEEDS_VOCAB, hiddenIssuesNote } from '@deepseek-ai/dsh-jira-core'
+import { renderBoard } from '@deepseek-ai/dsh-jira-core'
 import { fail, nowUtc, optionalVocab, queryFromFlags, type Handler } from '../runtime.ts'
 
 export const boardCommand: Handler = async (ctx) => {

@@ -17,11 +17,11 @@ import { join } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
-import { checkGenerated } from '@deepseek-ai/dsh-jira-core/generateStore.ts'
-import { initializeRepository, runGit, stageAllAndCommit } from '@deepseek-ai/dsh-jira-core/git.ts'
-import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core/io.ts'
-import { createStore, storePaths } from '@deepseek-ai/dsh-jira-core/store.ts'
-import { removeTree } from '@deepseek-ai/dsh-jira-core/testing/removeTree.ts'
+import { checkGenerated } from '@deepseek-ai/dsh-jira-core'
+import { initializeRepository, runGit, stageAllAndCommit } from '@deepseek-ai/dsh-jira-core'
+import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core'
+import { createStore, storePaths } from '@deepseek-ai/dsh-jira-core'
+import { removeTree } from '@deepseek-ai/dsh-jira-core'
 import {
   KB_TOOL_NAME,
   LIST_TOOL_NAME,

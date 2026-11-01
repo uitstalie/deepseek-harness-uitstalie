@@ -8,10 +8,10 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { applyBranchPrefix } from '@deepseek-ai/dsh-jira-core/commitmsg.ts'
-import { runGit } from '@deepseek-ai/dsh-jira-core/git.ts'
-import { hookStatus, installHooks, renderHookStatus, uninstallHooks } from '@deepseek-ai/dsh-jira-core/hooks.ts'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { applyBranchPrefix } from '@deepseek-ai/dsh-jira-core'
+import { runGit } from '@deepseek-ai/dsh-jira-core'
+import { hookStatus, installHooks, renderHookStatus, uninstallHooks } from '@deepseek-ai/dsh-jira-core'
 import { fail, type CommandContext, type Handler } from '../runtime.ts'
 
 const statusAction = async (ctx: CommandContext): Promise<number> => {

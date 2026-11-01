@@ -5,9 +5,9 @@
  * directory, so `bind`/`rebind` default to "here" without reading `process` (§3.1 ①).
  */
 
-import { stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { bindProject, listProjects, normalizePath, rebindProject, remoteIdentity, renderProjects } from '@deepseek-ai/dsh-jira-core/project.ts'
+import { stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { bindProject, listProjects, normalizePath, rebindProject, remoteIdentity, renderProjects } from '@deepseek-ai/dsh-jira-core'
 import { fail, type CommandContext, type Handler } from '../runtime.ts'
 
 const listAction = async (ctx: CommandContext): Promise<number> => {

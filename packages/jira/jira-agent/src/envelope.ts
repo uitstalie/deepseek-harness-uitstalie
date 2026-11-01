@@ -8,9 +8,9 @@
  * may I not write" is exactly what a failure is about.
  */
 
-import { type Identity, type Timestamp } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { type JiraError } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { type Actor } from '@deepseek-ai/dsh-jira-core/store.ts'
+import { type Identity, type Timestamp } from '@deepseek-ai/dsh-jira-core'
+import { type JiraError } from '@deepseek-ai/dsh-jira-core'
+import { type Actor } from '@deepseek-ai/dsh-jira-core'
 import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
 import { type Caller } from './caller.ts'
 import { type SessionFacts } from './sessionRecord.ts'

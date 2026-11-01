@@ -1,10 +1,10 @@
 /** cli/commands/link — `jira link <KEY> --type … --target … [--remove]`: add/remove a link. */
 
-import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { type LinkType, asIssueKey } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { applyLink } from '@deepseek-ai/dsh-jira-core/mutate.ts'
-import { ok } from '@deepseek-ai/dsh-jira-core/result.ts'
+import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { type LinkType, asIssueKey } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { applyLink } from '@deepseek-ai/dsh-jira-core'
+import { ok } from '@deepseek-ai/dsh-jira-core'
 import { planUsage, writeCommand, type Handler } from '../runtime.ts'
 
 export const linkCommand: Handler = ctx =>

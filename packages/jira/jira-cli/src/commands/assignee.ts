@@ -1,12 +1,12 @@
 /** cli/commands/assignee — `jira assignee <KEY> [--set self|none] [--override]`: claim/release. */
 
-import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { type Identity } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { blockersOf } from '@deepseek-ai/dsh-jira-core/inspect.ts'
-import { applyAssignee } from '@deepseek-ai/dsh-jira-core/mutate.ts'
-import { ok } from '@deepseek-ai/dsh-jira-core/result.ts'
-import { type TransactOptions } from '@deepseek-ai/dsh-jira-core/store.ts'
+import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { type Identity } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { blockersOf } from '@deepseek-ai/dsh-jira-core'
+import { applyAssignee } from '@deepseek-ai/dsh-jira-core'
+import { ok } from '@deepseek-ai/dsh-jira-core'
+import { type TransactOptions } from '@deepseek-ai/dsh-jira-core'
 import { planStore, planUsage, writeCommand, type Handler } from '../runtime.ts'
 
 export const assigneeCommand: Handler = ctx =>

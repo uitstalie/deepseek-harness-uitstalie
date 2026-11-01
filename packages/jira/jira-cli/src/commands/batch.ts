@@ -1,10 +1,10 @@
 /** cli/commands/batch — `jira batch <KEY…> --resolution fixed [--comment …]` (decision 196). */
 
-import { stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { closeMany } from '@deepseek-ai/dsh-jira-core/batch.ts'
-import { asIssueKey } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { type JiraError, invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { CLOSE_NEEDS_RESOLUTION } from '@deepseek-ai/dsh-jira-core/messages.ts'
+import { stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { closeMany } from '@deepseek-ai/dsh-jira-core'
+import { asIssueKey } from '@deepseek-ai/dsh-jira-core'
+import { type JiraError, invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { CLOSE_NEEDS_RESOLUTION } from '@deepseek-ai/dsh-jira-core'
 import { fail, type Handler } from '../runtime.ts'
 
 export const batchCommand: Handler = async (ctx) => {

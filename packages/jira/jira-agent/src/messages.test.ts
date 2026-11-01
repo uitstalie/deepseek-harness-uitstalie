@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
-import * as messages from '@deepseek-ai/dsh-jira-core/messages.ts'
+import * as core from '@deepseek-ai/dsh-jira-core'
 
 /**
  * The two human surfaces, read as source. The CLI side is split across `main.ts`, `runtime.ts`
@@ -52,7 +52,7 @@ const CASES: readonly (readonly [string, readonly string[]])[] = Object.freeze([
 
 describe('messages: one home per sentence (decision 184)', () => {
   it('covers every export, so a message added tomorrow is guarded too', () => {
-    assert.deepEqual(Object.keys(messages).sort(), CASES.map(([name]) => name).sort())
+    assert.deepEqual(Object.keys(core.messages).sort(), CASES.map(([name]) => name).sort())
   })
 
   it('no surface carries a second literal copy of any message', () => {
@@ -69,7 +69,7 @@ describe('messages: one home per sentence (decision 184)', () => {
 
   it('both surfaces import the module rather than spelling the sentences out', () => {
     for (const [path, source] of SURFACES) {
-      assert.match(source, /from '@deepseek-ai\/dsh-jira-core\/messages\.ts'/u, `${path} does not import core/messages`)
+      assert.match(source, /from '@deepseek-ai\/dsh-jira-core'/u, `${path} does not import the core root`)
     }
   })
 })

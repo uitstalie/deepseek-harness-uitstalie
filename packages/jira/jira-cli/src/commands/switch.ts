@@ -1,9 +1,9 @@
 /** cli/commands/switch — `jira switch <KEY> --to …`: walk a declared transition. */
 
-import { optFlags, stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { type TransitionOptions, applyTransition } from '@deepseek-ai/dsh-jira-core/mutate.ts'
-import { ok } from '@deepseek-ai/dsh-jira-core/result.ts'
+import { optFlags, stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { type TransitionOptions, applyTransition } from '@deepseek-ai/dsh-jira-core'
+import { ok } from '@deepseek-ai/dsh-jira-core'
 import { planUsage, writeCommand, type Handler } from '../runtime.ts'
 
 export const switchCommand: Handler = ctx =>

@@ -5,9 +5,9 @@
  * together so the tool's surface is edited in exactly one place; `index.ts` only registers them.
  */
 
-import { type IssueKey, isLinkType } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { formatError, invalidInput, readOnlySession } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-jira-core/schema.ts'
+import { type IssueKey, isLinkType } from '@deepseek-ai/dsh-jira-core'
+import { formatError, invalidInput, readOnlySession } from '@deepseek-ai/dsh-jira-core'
+import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import type { IssueMutation } from '@deepseek-ai/dsh-jira-service'
 import { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, okValue } from './envelope.ts'
 

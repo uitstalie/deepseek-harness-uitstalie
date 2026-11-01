@@ -1,7 +1,7 @@
 /** cli/commands/generate — `jira generate [--check]`: refresh the derived files; --check for CI. */
 
-import { booleanFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { planGenerated, writeGenerated } from '@deepseek-ai/dsh-jira-core/generateStore.ts'
+import { booleanFlag } from '@deepseek-ai/dsh-jira-core'
+import { planGenerated, writeGenerated } from '@deepseek-ai/dsh-jira-core'
 import { fail, type Handler } from '../runtime.ts'
 
 export const generateCommand: Handler = async (ctx) => {

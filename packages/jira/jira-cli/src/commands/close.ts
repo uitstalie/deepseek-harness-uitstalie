@@ -1,10 +1,10 @@
 /** cli/commands/close — `jira close <KEY> --resolution fixed [--note …] [--comment …]` (decision 193). */
 
-import { stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { CLOSE_NEEDS_RESOLUTION, committedSuffix } from '@deepseek-ai/dsh-jira-core/messages.ts'
-import { applyClose } from '@deepseek-ai/dsh-jira-core/mutate.ts'
-import { ok } from '@deepseek-ai/dsh-jira-core/result.ts'
+import { stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { CLOSE_NEEDS_RESOLUTION, committedSuffix } from '@deepseek-ai/dsh-jira-core'
+import { applyClose } from '@deepseek-ai/dsh-jira-core'
+import { ok } from '@deepseek-ai/dsh-jira-core'
 import { planUsage, writeCommand, type Handler } from '../runtime.ts'
 
 export const closeCommand: Handler = ctx =>

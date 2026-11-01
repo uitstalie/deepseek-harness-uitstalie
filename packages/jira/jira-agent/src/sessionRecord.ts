@@ -10,10 +10,10 @@
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core/io.ts'
-import { machineStateDir } from '@deepseek-ai/dsh-jira-core/machine.ts'
+import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core'
+import { machineStateDir } from '@deepseek-ai/dsh-jira-core'
 import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
-import { type Actor } from '@deepseek-ai/dsh-jira-core/store.ts'
+import { type Actor } from '@deepseek-ai/dsh-jira-core'
 import { type HostEnv } from './env.ts'
 
 /** How many times a failing session record is retried before it is given up (decision 177). */

@@ -1,10 +1,10 @@
 /** cli/commands/get — `jira get <KEY>`: read one issue (decision 38: a read writes nothing). */
 
-import { asIssueKey } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { invalidInput, notFound } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { readIssue } from '@deepseek-ai/dsh-jira-core/io.ts'
-import { renderIssueHuman, renderIssueJson } from '@deepseek-ai/dsh-jira-core/render.ts'
-import { readComments } from '@deepseek-ai/dsh-jira-core/store.ts'
+import { asIssueKey } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput, notFound } from '@deepseek-ai/dsh-jira-core'
+import { readIssue } from '@deepseek-ai/dsh-jira-core'
+import { renderIssueHuman, renderIssueJson } from '@deepseek-ai/dsh-jira-core'
+import { readComments } from '@deepseek-ai/dsh-jira-core'
 import { fail, type Handler } from '../runtime.ts'
 
 export const getCommand: Handler = async (ctx) => {

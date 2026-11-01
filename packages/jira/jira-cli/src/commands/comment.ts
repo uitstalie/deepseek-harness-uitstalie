@@ -1,9 +1,9 @@
 /** cli/commands/comment — `jira comment <KEY> --body …`: append a comment (never deleted). */
 
-import { stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { applyComment } from '@deepseek-ai/dsh-jira-core/mutate.ts'
-import { ok } from '@deepseek-ai/dsh-jira-core/result.ts'
+import { stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { applyComment } from '@deepseek-ai/dsh-jira-core'
+import { ok } from '@deepseek-ai/dsh-jira-core'
 import { planUsage, writeCommand, type Handler } from '../runtime.ts'
 
 export const commentCommand: Handler = ctx =>

@@ -10,9 +10,9 @@
  * was mid-thought would be a bad trade for convenience.
  */
 
-import { parseArgs, booleanFlag, splitTokens, stringFlag, type FlagSpec } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { type JiraError, formatError, invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { asIssueKey, isProjectKey } from '@deepseek-ai/dsh-jira-core/entity.ts'
+import { parseArgs, booleanFlag, splitTokens, stringFlag, type FlagSpec } from '@deepseek-ai/dsh-jira-core'
+import { type JiraError, formatError, invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { asIssueKey, isProjectKey } from '@deepseek-ai/dsh-jira-core'
 import {
   BOARD_NEEDS_VOCAB,
   NEW_NEEDS_SUMMARY,
@@ -21,8 +21,8 @@ import {
   invalidProjectKey,
   syncPushLine,
   unknownTagsAction,
-} from '@deepseek-ai/dsh-jira-core/messages.ts'
-import { renderBoard, renderDoctorReport, renderIssueHuman, renderIssueList, renderTagsLint } from '@deepseek-ai/dsh-jira-core/render.ts'
+} from '@deepseek-ai/dsh-jira-core'
+import { renderBoard, renderDoctorReport, renderIssueHuman, renderIssueList, renderTagsLint } from '@deepseek-ai/dsh-jira-core'
 import type { JiraServiceApi, ListQuery } from '@deepseek-ai/dsh-jira-service'
 
 /** What the command surface prints back: one rendered message, marked success or error. */

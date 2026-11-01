@@ -14,12 +14,12 @@
  * Exit codes: 0 success, 1 a store-level failure (not found, refused write), 2 usage.
  */
 
-import { parseArgs, type FlagSpec } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { type JiraError, invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { type Issue, type IssueKey, asIssueKey } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { type Result, err, ok } from '@deepseek-ai/dsh-jira-core/result.ts'
-import { createStore, readIssueText } from '@deepseek-ai/dsh-jira-core/store.ts'
-import { system } from '@deepseek-ai/dsh-jira-core/system/index.ts'
+import { parseArgs, type FlagSpec } from '@deepseek-ai/dsh-jira-core'
+import { type JiraError, invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { type Issue, type IssueKey, asIssueKey } from '@deepseek-ai/dsh-jira-core'
+import { type Result, err, ok } from '@deepseek-ai/dsh-jira-core'
+import { createStore, readIssueText } from '@deepseek-ai/dsh-jira-core'
+import { system } from '@deepseek-ai/dsh-jira-core'
 import { HANDLERS } from './commands/index.ts'
 import { type CliRequest, buildContext, fail, resolveRoot } from './runtime.ts'
 
@@ -310,7 +310,7 @@ export const getIssue = async (root: string, key: string): Promise<Result<Issue,
   if (parsedKey === undefined) return err(invalidInput(`"${key}" is not an issue key`))
   const text = await readIssueText(createStore({ root, machineId: 'cli' }), parsedKey as IssueKey)
   if (!text.ok) return text
-  const { decodeIssue } = await import('@deepseek-ai/dsh-jira-core/codec.ts')
+  const { decodeIssue } = await import('@deepseek-ai/dsh-jira-core')
   const decoded = decodeIssue(text.value, parsedKey as IssueKey)
   return decoded.ok ? ok(decoded.value.issue) : decoded
 }

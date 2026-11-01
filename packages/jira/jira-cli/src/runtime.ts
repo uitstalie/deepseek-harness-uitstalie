@@ -8,14 +8,14 @@
  * wrapper injects `cwd` alongside `argv`/`env`/`io` (§3.1 ①).
  */
 
-import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { type JiraError, formatError, invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { type Identity, type Issue, type IssueKey, type Timestamp, asIssueKey } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { gitUserName } from '@deepseek-ai/dsh-jira-core/git.ts'
-import { resolveMachineId } from '@deepseek-ai/dsh-jira-core/machine.ts'
-import { assertProjectWritable } from '@deepseek-ai/dsh-jira-core/project.ts'
-import { toWire } from '@deepseek-ai/dsh-jira-core/render.ts'
-import { type Result, err } from '@deepseek-ai/dsh-jira-core/result.ts'
+import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { type JiraError, formatError, invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { type Identity, type Issue, type IssueKey, type Timestamp, asIssueKey } from '@deepseek-ai/dsh-jira-core'
+import { gitUserName } from '@deepseek-ai/dsh-jira-core'
+import { resolveMachineId } from '@deepseek-ai/dsh-jira-core'
+import { assertProjectWritable } from '@deepseek-ai/dsh-jira-core'
+import { toWire } from '@deepseek-ai/dsh-jira-core'
+import { type Result, err } from '@deepseek-ai/dsh-jira-core'
 import {
   type Actor,
   type Mutation,
@@ -25,11 +25,11 @@ import {
   createStore,
   projectOf,
   transact,
-} from '@deepseek-ai/dsh-jira-core/store.ts'
-import { system } from '@deepseek-ai/dsh-jira-core/system/index.ts'
-import { resolveStoreRoot } from '@deepseek-ai/dsh-jira-core/config.ts'
-import { queryIssues, readSnapshot } from '@deepseek-ai/dsh-jira-core/inspect.ts'
-import { parseVocab, type Vocab } from '@deepseek-ai/dsh-jira-core/vocab.ts'
+} from '@deepseek-ai/dsh-jira-core'
+import { system } from '@deepseek-ai/dsh-jira-core'
+import { resolveStoreRoot } from '@deepseek-ai/dsh-jira-core'
+import { queryIssues, readSnapshot } from '@deepseek-ai/dsh-jira-core'
+import { parseVocab, type Vocab } from '@deepseek-ai/dsh-jira-core'
 
 export type CliIo = Readonly<{ out: (line: string) => void; err: (line: string) => void }>
 export type CliEnv = Readonly<Record<string, string | undefined>>

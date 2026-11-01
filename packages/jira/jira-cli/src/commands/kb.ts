@@ -5,10 +5,10 @@
  * other two are their own handlers (decision 187).
  */
 
-import { optFlags, stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { asKnowledgeKey, type KnowledgeKey } from '@deepseek-ai/dsh-jira-core/kb.ts'
-import { renderKbEntry, renderKbSearch } from '@deepseek-ai/dsh-jira-core/kbsearch.ts'
+import { optFlags, stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { asKnowledgeKey, type KnowledgeKey } from '@deepseek-ai/dsh-jira-core'
+import { renderKbEntry, renderKbSearch } from '@deepseek-ai/dsh-jira-core'
 import {
   type KnowledgePatch,
   createKnowledge,
@@ -16,8 +16,8 @@ import {
   originFromIdentity,
   searchKnowledgeIn,
   updateKnowledge,
-} from '@deepseek-ai/dsh-jira-core/kbstore.ts'
-import { createdMessage, updatedMessage } from '@deepseek-ai/dsh-jira-core/messages.ts'
+} from '@deepseek-ai/dsh-jira-core'
+import { createdMessage, updatedMessage } from '@deepseek-ai/dsh-jira-core'
 import { fail, type CommandContext, type Handler } from '../runtime.ts'
 
 /**

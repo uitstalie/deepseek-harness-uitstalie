@@ -10,7 +10,7 @@
  * Decision 89: the main agent writes, subagents only read.
  */
 
-import { type Identity, asIdentity } from '@deepseek-ai/dsh-jira-core/entity.ts'
+import { type Identity, asIdentity } from '@deepseek-ai/dsh-jira-core'
 
 /**
  * The write guard's verdict about the calling session (decisions 89/93): whether it may write, why

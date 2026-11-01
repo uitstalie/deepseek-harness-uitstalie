@@ -5,10 +5,10 @@
  * may use it (decision 89). Split out of `index.ts` under decision 186.
  */
 
-import { type LinkType, isLinkType } from '@deepseek-ai/dsh-jira-core/entity.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT } from '@deepseek-ai/dsh-jira-core/list.ts'
-import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-jira-core/schema.ts'
+import { type LinkType, isLinkType } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT } from '@deepseek-ai/dsh-jira-core'
+import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { type RunOptions, type ToolValue, asString, asStringList, failure, skipped } from './envelope.ts'
 
 /** The registered tool name for the read-only ledger view. */

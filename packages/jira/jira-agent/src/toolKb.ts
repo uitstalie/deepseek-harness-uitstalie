@@ -5,10 +5,10 @@
  * `index.ts` under decision 186.
  */
 
-import { type KnowledgeKey, asKnowledgeKey, knowledgePath } from '@deepseek-ai/dsh-jira-core/kb.ts'
-import { TOP_K_DEFAULT, TOP_K_MAX } from '@deepseek-ai/dsh-jira-core/kbsearch.ts'
-import { formatError, invalidInput, readOnlySession } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-jira-core/schema.ts'
+import { type KnowledgeKey, asKnowledgeKey, knowledgePath } from '@deepseek-ai/dsh-jira-core'
+import { TOP_K_DEFAULT, TOP_K_MAX } from '@deepseek-ai/dsh-jira-core'
+import { formatError, invalidInput, readOnlySession } from '@deepseek-ai/dsh-jira-core'
+import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, skipped } from './envelope.ts'
 
 /** The registered tool name for the knowledge half of the ledger. */

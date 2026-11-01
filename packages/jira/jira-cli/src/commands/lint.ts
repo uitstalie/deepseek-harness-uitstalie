@@ -1,11 +1,11 @@
 /** cli/commands/lint — `jira lint [--keys [--compare OTHER]]`: the structural self-check. */
 
-import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { listIssues } from '@deepseek-ai/dsh-jira-core/inspect.ts'
-import { compareKeyInventories, keyInventory, renderKeyComparison, renderKeyInventory } from '@deepseek-ai/dsh-jira-core/keyset.ts'
-import { listKnowledge } from '@deepseek-ai/dsh-jira-core/kbstore.ts'
-import { lintStore, renderLintReport } from '@deepseek-ai/dsh-jira-core/lint.ts'
-import { loadTags, loadVocab } from '@deepseek-ai/dsh-jira-core/store.ts'
+import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { listIssues } from '@deepseek-ai/dsh-jira-core'
+import { compareKeyInventories, keyInventory, renderKeyComparison, renderKeyInventory } from '@deepseek-ai/dsh-jira-core'
+import { listKnowledge } from '@deepseek-ai/dsh-jira-core'
+import { lintStore, renderLintReport } from '@deepseek-ai/dsh-jira-core'
+import { loadTags, loadVocab } from '@deepseek-ai/dsh-jira-core'
 import { fail, type Handler } from '../runtime.ts'
 
 export const lintCommand: Handler = async (ctx) => {

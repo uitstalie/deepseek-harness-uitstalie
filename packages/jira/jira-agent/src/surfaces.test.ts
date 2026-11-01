@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { removeTree } from '@deepseek-ai/dsh-jira-core/testing/removeTree.ts'
+import { removeTree } from '@deepseek-ai/dsh-jira-core'
 import {
   ISSUE_DESCRIPTION,
   ISSUE_PARAMETERS,

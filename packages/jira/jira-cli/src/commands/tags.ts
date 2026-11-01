@@ -1,10 +1,10 @@
 /** cli/commands/tags — `jira tags lint`: the tag registry check (read-only, decision 38). */
 
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { listIssues } from '@deepseek-ai/dsh-jira-core/inspect.ts'
-import { unknownTagsAction } from '@deepseek-ai/dsh-jira-core/messages.ts'
-import { loadTags } from '@deepseek-ai/dsh-jira-core/store.ts'
-import { lintTags, renderTagsLint } from '@deepseek-ai/dsh-jira-core/tagsLint.ts'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { listIssues } from '@deepseek-ai/dsh-jira-core'
+import { unknownTagsAction } from '@deepseek-ai/dsh-jira-core'
+import { loadTags } from '@deepseek-ai/dsh-jira-core'
+import { lintTags, renderTagsLint } from '@deepseek-ai/dsh-jira-core'
 import { fail, type Handler } from '../runtime.ts'
 
 export const tagsCommand: Handler = async (ctx) => {

@@ -3,12 +3,12 @@
  * 119/148). This is a human command on a store they own, so the settle step is always allowed.
  */
 
-import { formatError } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { aheadBehind, hasRemote, runGit } from '@deepseek-ai/dsh-jira-core/git.ts'
-import { syncPushLine } from '@deepseek-ai/dsh-jira-core/messages.ts'
-import { regenerateAndCommit } from '@deepseek-ai/dsh-jira-core/generateStore.ts'
-import { createPushQueue } from '@deepseek-ai/dsh-jira-core/push.ts'
-import { pullRebase } from '@deepseek-ai/dsh-jira-core/rebase.ts'
+import { formatError } from '@deepseek-ai/dsh-jira-core'
+import { aheadBehind, hasRemote, runGit } from '@deepseek-ai/dsh-jira-core'
+import { syncPushLine } from '@deepseek-ai/dsh-jira-core'
+import { regenerateAndCommit } from '@deepseek-ai/dsh-jira-core'
+import { createPushQueue } from '@deepseek-ai/dsh-jira-core'
+import { pullRebase } from '@deepseek-ai/dsh-jira-core'
 import { type Handler } from '../runtime.ts'
 
 export const syncCommand: Handler = async (ctx) => {

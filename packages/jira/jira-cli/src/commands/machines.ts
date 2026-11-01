@@ -5,10 +5,10 @@
  * is adding a row (decision 187).
  */
 
-import { stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { claimNoticeOnce, machineStateDir } from '@deepseek-ai/dsh-jira-core/machine.ts'
-import { labelMachine, listMachines, machinesHint, renderMachines } from '@deepseek-ai/dsh-jira-core/machines.ts'
+import { stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { claimNoticeOnce, machineStateDir } from '@deepseek-ai/dsh-jira-core'
+import { labelMachine, listMachines, machinesHint, renderMachines } from '@deepseek-ai/dsh-jira-core'
 import { fail, machineOf, type CommandContext, type Handler } from '../runtime.ts'
 
 const listAction = async (ctx: CommandContext): Promise<number> => {

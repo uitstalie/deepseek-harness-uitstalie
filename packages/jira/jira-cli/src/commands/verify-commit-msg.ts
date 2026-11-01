@@ -2,10 +2,10 @@
 
 import { readFile } from 'node:fs/promises'
 
-import { checkCommitMessage, renderVerdict, uncommentGitMessage } from '@deepseek-ai/dsh-jira-core/commitmsg.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { runGit } from '@deepseek-ai/dsh-jira-core/git.ts'
-import { collectKnownKeys } from '@deepseek-ai/dsh-jira-core/inspect.ts'
+import { checkCommitMessage, renderVerdict, uncommentGitMessage } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { runGit } from '@deepseek-ai/dsh-jira-core'
+import { collectKnownKeys } from '@deepseek-ai/dsh-jira-core'
 import { fail, type Handler } from '../runtime.ts'
 
 export const verifyCommitMsgCommand: Handler = async (ctx) => {

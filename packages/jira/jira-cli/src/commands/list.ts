@@ -1,10 +1,10 @@
 /** cli/commands/list — `jira list`: the shared query, rendered the way `jira_list` promises. */
 
-import { booleanFlag, optFlags, stringFlag } from '@deepseek-ai/dsh-jira-core/args.ts'
-import { invalidInput } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { listIssues } from '@deepseek-ai/dsh-jira-core/inspect.ts'
-import { buildIssueList } from '@deepseek-ai/dsh-jira-core/list.ts'
-import { renderIssueList } from '@deepseek-ai/dsh-jira-core/render.ts'
+import { booleanFlag, optFlags, stringFlag } from '@deepseek-ai/dsh-jira-core'
+import { invalidInput } from '@deepseek-ai/dsh-jira-core'
+import { listIssues } from '@deepseek-ai/dsh-jira-core'
+import { buildIssueList } from '@deepseek-ai/dsh-jira-core'
+import { renderIssueList } from '@deepseek-ai/dsh-jira-core'
 import { fail, optionalVocab, type Handler } from '../runtime.ts'
 
 export const listCommand: Handler = async (ctx) => {

@@ -10,8 +10,8 @@
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
-import { type JiraError, ioFailed } from '@deepseek-ai/dsh-jira-core/errors.ts'
-import { type Result, err, ok } from '@deepseek-ai/dsh-jira-core/result.ts'
+import { type JiraError, ioFailed } from '@deepseek-ai/dsh-jira-core'
+import { type Result, err, ok } from '@deepseek-ai/dsh-jira-core'
 
 /** One skill as the host's registry takes it: name, catalogue description, Markdown body and source. */
 export type SkillDefinition = Readonly<{
