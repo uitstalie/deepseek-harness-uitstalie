@@ -316,3 +316,38 @@ pass 扫描 → 候选（只读，不动账本）
 ### 7.3 pass 的触发与节流
 
 会话启动 + turn-end 各跑一次；**每轮最多一条提案**；当前会话已有未完成的工作就不提案（不打断，对应原型的"默认沉默"）。
+
+## 8. 执行者的表面：一个"解单流程"工具，而不是放宽 `jira_issue`
+
+先纠正一个事实：**账本工具没有"删除 issue"这个动作**。`jira_issue` 的 action 只有 `get / create / update / switch_state / comment / assignee / link / tag_create / close / batch_close`，`WRITE_ACTIONS` 是"除 get 之外的全部"。所以"只读"挡掉的真正风险不是删单，而是 `update`（改别人写的 summary/description）、`close` / `batch_close`（把不该关的关掉）、`create` / `tag_create`（造垃圾单和垃圾 tag）——这三类确实都不该给执行者。
+
+但"只读"把 `comment` 和 `switch_state` 也一起挡了，而这两件恰恰是解单必需的。结论：**不放宽 `jira_issue`，给执行者换一个更窄的工具**。
+
+### 8.1 子代理能不能指定工具：能，两条路
+
+1. **agent preset（收窄"看得见什么"）**：`tool-subagent` 支持 `agent_preset` —— 配置里 `agentPreset` 强制指定，或 `allowedAgentPresets` 暴露给模型选。"The selected preset owns persona and tool composition." 两个限制：**只有 `spawn` provider 支持独立 preset**（`fork` 会直接报 `does not support independent agent preset selection`）；preset 只管可见面。
+2. **工具层 guard（收窄"写得了什么"）**：`installWriteGuard` 现在只认 `execution.name === 'jira_issue'` 且 `action ∈ WRITE_ACTIONS`，再用 `caller.writable` 判。要收窄就把它从 `writable: boolean` 扩成"这个会话对这个动作有没有能力"。
+
+两者必须一起做：preset 决定看得见什么，guard 与 handler 决定写得了什么。
+
+### 8.2 解单流程的三个动词
+
+新工具 `issue_work`（只挂在 worker preset 里），动作空间封闭：
+
+| 动词 | 参数 | 账本上发生什么 |
+| --- | --- | --- |
+| `progress` | `body` | 追加一条评论 |
+| `deliver` | `body`（证据：改了什么、怎么验证） | 评论 + `switch_state → in_review`，一次提交 |
+| `blocked` | `waiting_for: 'person' \| 'dependency'`、`reason` | 评论 + 结构化标记 |
+
+三个理由：
+
+- **权限按流程切比按工具切安全**：动作空间封闭在三个动词里，**没有** update/create/close 的能力，也就不需要"维护一张允许清单再防绕过"。
+- **模型看到的工具表就是流程本身**：worker preset 里只有读工具 + `issue_work`（原型正是这么做的：worker 6 个工具 vs router 14 个）。
+- **结构化在调用处，不在正文里**：`blocked` 的 `waiting_for` 是 schema 参数，不需要父会话从自由文本里猜。原型否掉"从报告自由文本推断在等人"，理由正是这个。
+
+`blocked` 不设状态：账本的约定是"被阻塞不是状态，是 link"，而 link 由父会话决定——执行者只报告事实。执行者也**不能直接找人**：那等于绕过调度器，而"一次只问一个问题"必须由父会话统一持有。
+
+### 8.3 落在哪个包
+
+落在 **jira 侧**（新工具 + guard 扩成能力集），不放在 super-agent 侧。理由：它本质是账本写操作的收窄，复用身份（`agent:model|dsh|machine|session`）、提交、批次与 guard；放另一边则要把账本语义复制第二份。代价是 jira 包多认识一个"受限写者"角色——但它已经认识"只读会话"和"子代理"了，这是延续不是新概念。
