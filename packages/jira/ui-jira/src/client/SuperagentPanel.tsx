@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-client-ui-jira/SuperagentPanel
  */
 
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import type { JiraBoardView, JiraIssueRowView, SuperagentHistoryView, SuperagentStatusView, SuperagentTriggersView } from '@deepseek-ai/dsh-jira-service/types'
 import { fill } from './locales.ts'
 import type { JiraKey } from './locales.ts'
@@ -36,6 +36,22 @@ const rowsOf = (board: JiraBoardView, status: string | undefined): readonly Jira
   board.groups
     .filter(group => status === undefined ? group.kind === 'blocked' : group.kind === 'status' && group.status === status)
     .flatMap(group => group.items)
+
+/**
+ * Group trigger rows by their UTC day, preserving the newest-first order.
+ * @param entries - the visible trigger rows.
+ * @returns day → rows, in first-seen order.
+ */
+const groupByDay = <T extends { readonly at: string }>(entries: readonly T[]): ReadonlyMap<string, readonly T[]> => {
+  const groups = new Map<string, T[]>()
+  for (const entry of entries) {
+    const day = entry.at.slice(0, 10)
+    const rows = groups.get(day)
+    if (rows === undefined) groups.set(day, [entry])
+    else rows.push(entry)
+  }
+  return groups
+}
 
 /** The super-agent summary block. */
 export function SuperagentPanel({ board, status, history, triggers, onSelect, t }: SuperagentPanelProps) {
@@ -117,12 +133,17 @@ export function SuperagentPanel({ board, status, history, triggers, onSelect, t 
               </label>
             </div>
             <ul className={styles.superagentList}>
-              {visibleTriggers.map(entry => (
-                <li key={`${entry.key}-${entry.at}-${entry.author}`}>
-                  <button type="button" className={styles.superagentLink} onClick={() => onSelect?.(entry.key)}>
-                    {entry.key} · {entry.author} · {entry.at}{entry.active ? ' · active' : ''}
-                  </button>
-                </li>
+              {[...groupByDay(visibleTriggers)].map(([day, entries]) => (
+                <Fragment key={day}>
+                  <li className={styles.superagentDate}>{day}</li>
+                  {entries.map(entry => (
+                    <li key={`${entry.key}-${entry.at}-${entry.author}`}>
+                      <button type="button" className={styles.superagentLink} onClick={() => onSelect?.(entry.key)}>
+                        {entry.key} · {entry.author} · {entry.at}{entry.active ? ' · active' : ''}
+                      </button>
+                    </li>
+                  ))}
+                </Fragment>
               ))}
             </ul>
             {visibleTriggers.length === 0 ? <p className={styles.notice}>{t('superagentFilterEmpty')}</p> : null}

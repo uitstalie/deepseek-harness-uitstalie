@@ -419,3 +419,10 @@
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
 }
+
+.superagentDate {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  list-style: none;
+}
