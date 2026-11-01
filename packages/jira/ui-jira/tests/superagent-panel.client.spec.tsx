@@ -63,6 +63,19 @@ it('renders proposal triggers and opens the issue', () => {
   expect(onSelect).toHaveBeenCalledWith('DH-3')
 })
 
+it('filters proposals by text and active state', () => {
+  render(<SuperagentPanel board={board} t={t} triggers={{ entries: [
+    { key: 'DH-3', summary: 'needs a look', author: 'human:fixture', at: '2026-10-27T00:00:00Z', body: '[claim-proposal] active', active: true },
+    { key: 'DH-9', summary: 'old proposal', author: 'human:other', at: '2026-10-26T00:00:00Z', body: '[claim-proposal] stale', active: false },
+  ] }} />)
+  expect(screen.getByText(/DH-9/)).toBeTruthy()
+  fireEvent.change(screen.getByPlaceholderText('superagentFilterPlaceholder'), { target: { value: 'DH-3' } })
+  expect(screen.queryByText(/DH-9/)).toBeNull()
+  fireEvent.change(screen.getByPlaceholderText('superagentFilterPlaceholder'), { target: { value: '' } })
+  fireEvent.click(screen.getByRole('checkbox'))
+  expect(screen.queryByText(/DH-9/)).toBeNull()
+})
+
 it('renders nothing while the board is loading', () => {
   const { container } = render(<SuperagentPanel board={null} t={t} />)
   expect(container.firstChild).toBeNull()

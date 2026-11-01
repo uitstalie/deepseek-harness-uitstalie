@@ -9,6 +9,7 @@
  * @module @deepseek-ai/dsh-client-ui-jira/SuperagentPanel
  */
 
+import { useState } from 'react'
 import type { JiraBoardView, JiraIssueRowView, SuperagentHistoryView, SuperagentStatusView, SuperagentTriggersView } from '@deepseek-ai/dsh-jira-service/types'
 import { fill } from './locales.ts'
 import type { JiraKey } from './locales.ts'
@@ -38,6 +39,8 @@ const rowsOf = (board: JiraBoardView, status: string | undefined): readonly Jira
 
 /** The super-agent summary block. */
 export function SuperagentPanel({ board, status, history, triggers, onSelect, t }: SuperagentPanelProps) {
+  const [query, setQuery] = useState('')
+  const [activeOnly, setActiveOnly] = useState(false)
   if (board === null && status === undefined) return null
   let counts: readonly (readonly [JiraKey, number])[]
   let needs: readonly { key: string; summary: string }[]
@@ -60,6 +63,14 @@ export function SuperagentPanel({ board, status, history, triggers, onSelect, t 
   } else {
     return null
   }
+
+  const triggerEntries = triggers?.entries ?? []
+  const needle = query.trim().toLowerCase()
+  const visibleTriggers = triggerEntries.filter((entry) => {
+    if (activeOnly && !entry.active) return false
+    if (needle === '') return true
+    return [entry.key, entry.author, entry.summary, entry.body].some(value => value.toLowerCase().includes(needle))
+  })
 
   return (
     <section className={styles.superagent}>
@@ -93,8 +104,20 @@ export function SuperagentPanel({ board, status, history, triggers, onSelect, t 
         : (
           <div className={styles.superagentNeeds}>
             <h4 className={styles.superagentNeedsTitle}>{t('superagentTriggersTitle')}</h4>
+            <div className={styles.superagentFilters}>
+              <input
+                className={styles.superagentFilterInput}
+                value={query}
+                placeholder={t('superagentFilterPlaceholder')}
+                onChange={(event) => { setQuery(event.target.value) }}
+              />
+              <label className={styles.superagentFilterToggle}>
+                <input type="checkbox" checked={activeOnly} onChange={(event) => { setActiveOnly(event.target.checked) }} />
+                {t('superagentFilterActive')}
+              </label>
+            </div>
             <ul className={styles.superagentList}>
-              {triggers.entries.map(entry => (
+              {visibleTriggers.map(entry => (
                 <li key={`${entry.key}-${entry.at}-${entry.author}`}>
                   <button type="button" className={styles.superagentLink} onClick={() => onSelect?.(entry.key)}>
                     {entry.key} · {entry.author} · {entry.at}{entry.active ? ' · active' : ''}
@@ -102,6 +125,7 @@ export function SuperagentPanel({ board, status, history, triggers, onSelect, t 
                 </li>
               ))}
             </ul>
+            {visibleTriggers.length === 0 ? <p className={styles.notice}>{t('superagentFilterEmpty')}</p> : null}
           </div>
         )}
       {history === undefined || history === null || history.entries.length === 0

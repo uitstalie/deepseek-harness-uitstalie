@@ -393,3 +393,29 @@
 .superagentLink:hover {
   text-decoration: underline;
 }
+
+.superagentFilters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.superagentFilterInput {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--dsw-alias-border-secondary);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-secondary);
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.superagentFilterToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}

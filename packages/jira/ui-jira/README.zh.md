@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-jira` 提供 jira 账本的浏览器面：一个设置页段落（`id: 'jira'`、`order: 200`），编辑账本行并读取账本本身；另有一个段落（`id: 'superagent'`、`order: 220`）承载 super agent 摘要、提案与最近活动——按 status 分组的看板、一个 issue 的详情，以及知识搜索。账本视图仍然只读（写操作留给模型的工具）；看板上方还有一个 super agent 摘要块，报告 ready / in-progress / review / blocked 计数；优先用 Host 的 `superagentStatus`，没有时回退到同一份 board；另有 `superagentHistory` 的最近活动列表与 `superagentTriggers` 的提案/触发列表，完整面板留给 DH-601；行字段可编辑，因为 `jira-service` 把它们声明为 volatile，保存后无需重启即可生效。`dafeiyu` 的 Capabilities 列表按 id 链接到这个段落，因此 id 与 order 是两面都从同一个模块读取的约定。
+`dsh-client-ui-jira` 提供 jira 账本的浏览器面：一个设置页段落（`id: 'jira'`、`order: 200`），编辑账本行并读取账本本身；另有一个段落（`id: 'superagent'`、`order: 220`）承载 super agent 摘要、提案与最近活动——按 status 分组的看板、一个 issue 的详情，以及知识搜索。账本视图仍然只读（写操作留给模型的工具）；看板上方还有一个 super agent 摘要块，报告 ready / in-progress / review / blocked 计数；优先用 Host 的 `superagentStatus`，没有时回退到同一份 board；另有 `superagentHistory` 的最近活动列表与 `superagentTriggers` 的提案/触发列表（支持文本与只看 active 筛选），完整面板留给 DH-601；行字段可编辑，因为 `jira-service` 把它们声明为 volatile，保存后无需重启即可生效。`dafeiyu` 的 Capabilities 列表按 id 链接到这个段落，因此 id 与 order 是两面都从同一个模块读取的约定。
 
 ## 目录
 
@@ -69,7 +69,7 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **super agent 面板：** 独立段落承载摘要、needs-person 行、评论历史、最近活动和提案触发列表；带筛选的 trigger 页与 vendor 面板留给 DH-601。
+- **super agent 面板：** 独立段落承载摘要、needs-person 行、评论历史、最近活动和带文本/active 筛选的提案列表；更完整的 trigger 时间线与 vendor 面板留给 DH-601。
 - **看板位置：** 看板、详情与知识搜索渲染在设置页段落内。dock/侧栏看板会是第二个注册（以及设计师的布局），而不是这个段落的另一页。
 - **dafeiyu Capabilities 列表：** Jira 行的标签、状态与「打开设置」跳转是 DH-12 的工作；本包只拥有它们链接到的段落。
 - **另一进程的写入：** 变更流携带的是本 Host 的写入（工具、会话、sync）。另一个进程里的 CLI 写入在这里不会通告；页面会在下一次本进程内变更、`connection/reset` 或设置段重新挂载时补上。监听账本文件会是第二套变更源，超出本包范围。

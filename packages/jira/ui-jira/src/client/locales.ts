@@ -88,6 +88,9 @@ export const en = {
   superagentReviewItem: '{key}  {summary}',
   superagentHistoryTitle: 'Recent activity',
   superagentTriggersTitle: 'Proposals',
+  superagentFilterPlaceholder: 'Filter by key, author or text…',
+  superagentFilterActive: 'Active only',
+  superagentFilterEmpty: 'Nothing matches the filter.',
 }
 
 /** The settings.jira namespace key union. */
@@ -176,6 +179,9 @@ export const zh: { [Key in keyof typeof en]: string } = {
   superagentReviewItem: '{key}  {summary}',
   superagentHistoryTitle: '最近活动',
   superagentTriggersTitle: '提案',
+  superagentFilterPlaceholder: '按 key、作者或文本筛选…',
+  superagentFilterActive: '只看 active',
+  superagentFilterEmpty: '没有匹配的提案。',
 }
 
 /**
