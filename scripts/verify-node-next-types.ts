@@ -84,7 +84,9 @@ function linkPackage(pkg: WorkspacePackage, nodeModules: string): void {
   const parts = pkg.name.split('/')
   const link = resolve(nodeModules, ...parts)
   mkdirSync(dirname(link), { recursive: true })
-  symlinkSync(pkg.dir, link, 'dir')
+  // BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-508, 无 Developer Mode 时目录 symlink 直接 EPERM，junction 不需要特权
+  symlinkSync(pkg.dir, link, process.platform === 'win32' ? 'junction' : 'dir')
+  // END uitstalie-deepseek-flash
 }
 
 const packages = workspacePackages()
@@ -117,7 +119,9 @@ try {
   if (existsSync(rootTypes)) {
     const typesDir = resolve(nodeModules, '@types')
     mkdirSync(typesDir, { recursive: true })
-    symlinkSync(rootTypes, resolve(typesDir, 'node'), 'dir')
+    // BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-508, 同 linkPackage：无特权环境用 junction
+    symlinkSync(rootTypes, resolve(typesDir, 'node'), process.platform === 'win32' ? 'junction' : 'dir')
+    // END uitstalie-deepseek-flash
   }
 
   writeFileSync(resolve(tmp, 'package.json'), `${JSON.stringify({ type: 'module', private: true }, null, 2)}\n`)

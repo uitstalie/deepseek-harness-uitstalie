@@ -1,11 +1,57 @@
 /** Test-owned Remote face: `$on` subscriptions and one-generation `$stream` opening. */
 import type { Context } from '@deepseek-ai/cordis'
-import type { RemoteStream, RemoteStreamItem, RemoteStreamOptions } from '@deepseek-ai/dsh-api-gateway/client'
+import { RemoteStream } from '@deepseek-ai/dsh-api-gateway/client' // uitstalie-deepseek-flash, 2026/11/01, DH-508, 替身子类需要该类的值
+import type { RemoteStreamItem, RemoteStreamOptions } from '@deepseek-ai/dsh-api-gateway/client'
 
 // Value re-export for spec-side failure construction: the api-remotes facade
 // cannot carry it — its src top-level imports owner /remote lib artifacts, so a
 // value import from a spec would load the unbuilt assembly chain.
 export { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
+
+// BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-508, 单代 logical stream 替身改为 RemoteStream 的真实子类（去掉 as unknown）
+/**
+ * One-generation `RemoteStream` double: the scripted opener's items, then the domain end error.
+ *
+ * It extends the production class so consumers keep the exact type; the inherited reconnect
+ * machinery is overridden away, because this double neither reconnects nor restarts.
+ */
+class ScriptedRemoteStream<Item> extends RemoteStream<Item> {
+  private readonly scriptedLifetime = new AbortController()
+  private readonly scriptedOptions: RemoteStreamOptions<Item>
+
+  constructor(options: RemoteStreamOptions<Item>) {
+    // The base class only stores this connection; every public member that would read it is overridden.
+    super({ generation: { getSnapshot: () => undefined, subscribe: () => () => {} } }, options)
+    this.scriptedOptions = options
+  }
+
+  /** @inheritdoc */
+  override get signal(): AbortSignal {
+    return this.scriptedLifetime.signal
+  }
+
+  /** @inheritdoc */
+  override restart(): void {
+    // One generation in this double.
+  }
+
+  /** @inheritdoc */
+  override dispose(): Promise<void> {
+    this.scriptedLifetime.abort()
+    return Promise.resolve()
+  }
+
+  /** @inheritdoc */
+  override async *[Symbol.asyncIterator](): AsyncGenerator<RemoteStreamItem<Item>> {
+    let generation = 0
+    for await (const value of this.scriptedOptions.open(this.scriptedLifetime.signal)) {
+      generation += 1
+      yield { generation, value, signal: this.scriptedLifetime.signal, accept: (): void => {} }
+    }
+    throw this.scriptedOptions.ended(true)
+  }
+}
+// END uitstalie-deepseek-flash
 
 /**
  * Remote service test double for the forwarded-event path. Feature specs need
@@ -105,21 +151,7 @@ export class TestRemote {
    * @returns the logical stream, opened on first iteration.
    */
   $stream<Item>(options: RemoteStreamOptions<Item>): RemoteStream<Item> {
-    const lifetime = new AbortController()
-    const stream = {
-      signal: lifetime.signal,
-      restart: (): void => { /* one generation in this double */ },
-      dispose: async (): Promise<void> => { lifetime.abort() },
-      async *[Symbol.asyncIterator](): AsyncGenerator<RemoteStreamItem<Item>> {
-        let generation = 0
-        for await (const value of options.open(lifetime.signal)) {
-          generation += 1
-          yield { generation, value, signal: lifetime.signal, accept: (): void => {} }
-        }
-        throw options.ended(true)
-      },
-    }
-    return stream as unknown as RemoteStream<Item>
+    return new ScriptedRemoteStream<Item>(options)
   }
   // END uitstalie-deepseek-flash
 

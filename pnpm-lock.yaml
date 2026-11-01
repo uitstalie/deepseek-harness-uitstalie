@@ -3386,6 +3386,9 @@ importers:
       '@deepseek-ai/dsh-persona':
         specifier: workspace:*
         version: link:../../preset/persona
+      '@deepseek-ai/dsh-persona-card':
+        specifier: workspace:*
+        version: link:../../uitstalie/persona-card
       '@deepseek-ai/dsh-personality':
         specifier: workspace:*
         version: link:../../uitstalie/personality
@@ -17430,6 +17433,9 @@ importers:
       '@deepseek-ai/dsh-client-store':
         specifier: workspace:*
         version: link:../../client/store
+      '@deepseek-ai/dsh-client-test-runtime':
+        specifier: workspace:*
+        version: link:../../test-support/client-runtime
       '@deepseek-ai/dsh-client-ui-primitives':
         specifier: workspace:*
         version: link:../../client/ui-primitives
