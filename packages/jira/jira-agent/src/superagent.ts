@@ -13,6 +13,7 @@
  */
 
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import { mkdir } from 'node:fs/promises'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
@@ -39,6 +40,9 @@ export const PROPOSAL_MARKER = '[claim-proposal]'
 export const SCAN_TOOL_NAME = 'superagent_scan'
 export const CLAIM_TOOL_NAME = 'superagent_claim'
 export const STATUS_TOOL_NAME = 'superagent_status'
+
+/** How often the live-agent timer runs one pass; a daemon without sessions is deferred. */
+export const SUPERAGENT_POLL_MS = 5 * 60_000
 
 /** Whether an issue can be taken right now, and why not when it cannot. */
 export type Claimability = Readonly<{
@@ -572,6 +576,25 @@ export const runWorkspaceTool = async (
  * @returns the capability contribution the organizer wires onto root agents.
  */
 export const createSuperagentContribution = (host: ToolHost): CapabilityContribution => {
+  const liveAgents = new Set<Agent>()
+  let timer: ReturnType<typeof setInterval> | undefined
+  let polling = false
+  const poll = async (): Promise<void> => {
+    if (polling) return
+    polling = true
+    try {
+      for (const agent of liveAgents) {
+        if (!callerOf(host, agent).writable) continue
+        await runSuperagentPass(host, agent)
+        return
+      }
+    } finally {
+      polling = false
+    }
+  }
+  timer = setInterval(() => { void poll() }, SUPERAGENT_POLL_MS)
+  timer.unref?.()
+
   const scan: Spec = {
     name: SCAN_TOOL_NAME,
     description: SCAN_DESCRIPTION,
@@ -653,8 +676,17 @@ export const createSuperagentContribution = (host: ToolHost): CapabilityContribu
       defineJiraTool(host, workspace),
       defineJiraTool(host, status),
     ]),
+    onAgentCreated: (agent: Agent) => {
+      liveAgents.add(agent)
+      agent.ctx.effect(() => () => { liveAgents.delete(agent) }, 'superagent: forget a disposed agent')
+    },
     onTurnEnd: async (input: TurnEndInput) => {
       await runSuperagentPass(host, input.agent, input.signal)
+    },
+    dispose: () => {
+      if (timer !== undefined) clearInterval(timer)
+      timer = undefined
+      liveAgents.clear()
     },
   })
 }

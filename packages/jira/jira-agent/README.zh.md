@@ -86,7 +86,7 @@ root agent（智能体）的每次请求都带三个工具：`jira_issue`（十�
 
 #### 模型看到什么
 
-部署打开 `superagent` 能力时，root agent 多带四个工具：`superagent_scan` 列出当下可领的 issue，`superagent_claim` 提案或认领其中一条，`superagent_status` 报告 ready/proposed/in-progress/in-review/blocked 计数和需要人的条目，`superagent_workspace` 列出宿主的 workspace 或登记一个目录，好让派遣能指明自己的 checkout。只有当该 issue 最新那条评论仍是本会话自己的提案时才认得动，因此两次调用之间必然要问人一句。每个完成的 root turn 还会以 observe 模式跑一次 pass：提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不认领；如果本会话已有进行中的工作，或最新评论已经是提案，则保持沉默。被派遣的子 agent 三者都不带。
+部署打开 `superagent` 能力时，root agent 多带四个工具：`superagent_scan` 列出当下可领的 issue，`superagent_claim` 提案或认领其中一条，`superagent_status` 报告 ready/proposed/in-progress/in-review/blocked 计数和需要人的条目，`superagent_workspace` 列出宿主的 workspace 或登记一个目录，好让派遣能指明自己的 checkout。只有当该 issue 最新那条评论仍是本会话自己的提案时才认得动，因此两次调用之间必然要问人一句。每个完成的 root turn 还会以 observe 模式跑一次 pass：提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不认领；如果本会话已有进行中的工作，或最新评论已经是提案，则保持沉默。一个进程级、unref 的定时器在至少一个已接线 agent 存活时每五分钟重复一次该 pass，并随能力 dispose 停止；没有存活 agent 时 pass 延后，因为无会话就没有 dispatcher 身份。被派遣的子 agent 三者都不带。
 
 #### Token 影响
 

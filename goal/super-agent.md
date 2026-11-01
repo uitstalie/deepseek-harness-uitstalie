@@ -376,6 +376,7 @@ pass 扫描 → 候选（只读，不动账本）
 - 认领闭环：提案 → 人确认 → claim → 派 subagent → `issue_work` `deliver` 回 `in_review`；
 - **turn-end pass**：每个完成的 root turn 以 observe 模式提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不自行认领；本会话已有 in_progress 或最新评论已是提案时沉默；
 - **`superagent_status`**：只读汇总 ready / proposed / in-progress / in-review / blocked，并列出需要人确认或复核的条目；这是面板之前的最小“现在需要我吗”表面；
+- **进程级定时 pass**：能力启用且至少有一个已接线 agent 时，每 5 分钟跑一次 observe pass；timer 是 unref 的，随 dispose 清除；没有存活 agent 时不跑（无 session 就没有 dispatcher 身份，真正的无会话 daemon 仍后置）；
 - 测试覆盖纯谓词、工具面、真实组合的完整闭环，以及 pass 的"只提一次"。
 
 **仍未做（有意后置）**：常驻轮询、Web 面板、真正的独立 Session 执行器、GitHub/飞书 Source、vendor 原型 `src/core`。这些在闭环价值被验证后再开；不阻塞阶段一验收。
