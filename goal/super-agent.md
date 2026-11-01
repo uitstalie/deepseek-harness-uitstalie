@@ -225,3 +225,48 @@ super agent 的主体是：**自己的 Source 轮询循环、自己的 SQLite �
 4. 面板、独立 Session 执行器、以及 vendor 原型的 `src/core` 继续后置——只在确认这条闭环有价值后再做。
 
 验收这一轮只要求：能在账本里看到"它是自己领的、凭哪条 Grant 领的"；重复/并发认领有明确行为（要么靠租约挡住，要么接受重复并证明幂等）；不改变现有能力的任何行为。
+
+## 6. 第一阶段形态：super workspace + 账本
+
+阶段一思路（用户提出）：保留 workspace 概念；super agent 属于一个特殊的"超级 workspace"，它可以创建实体 workspace（与用户协商路径）、指挥 subagent 或派遣具体 agent 到对应 workspace 工作，自身是全局调度器与经验共享器；工作与知识继续依赖 jira 插件。
+
+这条思路成立，因为三份状态正好正交：
+
+| 真相源 | 只放 | 不放 |
+| --- | --- | --- |
+| `workspaceRegistry` | 目录、标题、会话归属 | 工作内容 |
+| jira 账本 | issue / 状态 / 认领 / Grant / 知识（KB） | 会话归属、目录 |
+| super workspace 自己的目录 | 编排状态（最近一次 pass、Grant 索引、租约） | 工作内容（避免第三份状态） |
+
+关联键只有一个：`issue key ↔ workspace id`。
+
+### 6.1 从实际 API 读出来的硬事实
+
+- `workspaceRegistry.create(path, title?)` 要求**目录已存在**并走 `fs.realpath`；相对路径、不存在、非目录一律拒绝，它不负责建目录。→ "虚拟 workspace"只能是"一个不是代码项目的真实目录"。
+- 身份是 **canonical path**，不是标题：同路径重复 create 返回已有实体且**不改标题**；不同路径可以同名。→ 协商路径就是协商身份，改路径 = 新 workspace。
+- **会话归属由 cwd 决定**：`attachSession` 校验 `header.cwd === workspace.path`，不符报 `its cwd resolves to …`。→ "派遣到 workspace X"必须在**启动时**用 `cwd = X` 决定，不能事后挪。
+- `status(): 'ok' | 'missing-dir'` 已存在 → 目录被删/移走可检测，健康检查白送。
+- 全仓没有 `workspace_*` 工具 → 建 workspace 目前只能走 UI；要让 agent 做，必须新加工具（正是 capability 该贡献的）。
+
+### 6.2 两种"派遣"不是一回事
+
+| | `subagent(cwd: X)` | 真实 Session（cwd: X） |
+| --- | --- | --- |
+| 成本 | 低，一次性 | 高：要预设、并发槽、生命周期 |
+| 可见性 | 不占 workspace 会话列表，事后不可追溯 | 出现在 workspace 里，可恢复、可接管 |
+| 失败 | 静默消失 | 可记录"被重启打断" |
+
+第一版用 subagent，并用账本补足可追溯性：派谁、去哪个 workspace、改了什么，全部回写 issue 评论。
+
+### 6.3 "经验共享"不造新机制
+
+账本已有 `knowledge/<domain>/KB-*.md` + `kb_refs[]` 双向引用 + 来源指纹（machine/os/tool/captured_at/source_sha256）。所以经验共享 = 两个已有动作被编排进流程：**领活前 `jira_kb search`，交付时写/补 KB 并 `kb_refs` 挂回 issue**。这属于 §0.3 的"周级"尺度。
+
+### 6.4 阶段一的四件东西
+
+1. 一个固定路径的 super workspace 登记进 registry。建议放 `%DSH_HOME%` 下，不进任何代码仓：不进 git、不会被误当项目、也不会和"被派遣的 workspace"混。
+2. capability 贡献三个工具：`workspace_roster`（读：registry + `status` + 会话数）、`workspace_ensure`（写：`mkdir` → `create` → 账本写一条 Grant，需人批）、`dispatch`（写：`subagent(cwd=X)` + 结果回写 issue）。
+3. **Grant 记录落在账本**：谁批的、哪个 path、允许什么动作、按哪版规则。它天然产生在一个人类介入点上（协商路径），所以第一版不需要额外的授权 UI。
+4. 领活仍由"会话内动作 / turn-end 一次 pass"触发，**不引入常驻轮询**；真 Session 执行器、面板、vendor 原型 `src/core` 继续后置。
+
+验收：workspace 列表里能看到 super workspace；能建一个真实 workspace 并拿到 Grant；能派一个 subagent 进去改文件，且在 issue 上留下"谁派的、哪个 workspace、改了什么"。
