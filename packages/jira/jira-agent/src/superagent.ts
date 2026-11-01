@@ -38,6 +38,7 @@ export const PROPOSAL_MARKER = '[claim-proposal]'
 /** The tool names the host registry refers to. */
 export const SCAN_TOOL_NAME = 'superagent_scan'
 export const CLAIM_TOOL_NAME = 'superagent_claim'
+export const STATUS_TOOL_NAME = 'superagent_status'
 
 /** Whether an issue can be taken right now, and why not when it cannot. */
 export type Claimability = Readonly<{
@@ -319,6 +320,81 @@ export const runScanTool = async (args: unknown, options: RunOptions, me: unknow
   })
 }
 
+/** `superagent_status`'s description: what needs a person right now. */
+export const STATUS_DESCRIPTION =
+  'Report the small set of facts a person needs about the claim loop: how many issues are ready, '
+  + 'proposed, in progress, waiting for review, or blocked, and which proposed/review issues need a '
+  + 'reply. Read-only; it changes no state.'
+
+/**
+ * `superagent_status`: what needs a person now, and what the loop is doing.
+ * @param options - the service, caller verdict and clock for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @returns counts plus the issues that need attention.
+ */
+export const runStatusTool = async (options: RunOptions, me: unknown): Promise<ToolValue> => {
+  const { jira, caller } = options
+  const ledger = await readLedger(jira)
+  if (ledger === undefined) return failure(invalidInput('the ledger could not be read'), caller, me)
+
+  const ready: Record<string, unknown>[] = []
+  const inProgress: Record<string, unknown>[] = []
+  const inReview: Record<string, unknown>[] = []
+  const blocked: Record<string, unknown>[] = []
+  const proposed: Record<string, unknown>[] = []
+  let proposedCount = 0
+
+  const open = ledger.issues.filter(issue => !ledger.closed.includes(issue.status))
+  const comments = await Promise.all(open.map(async (issue) => {
+    const read = await jira.readIssue(issue.key)
+    return read.ok ? read.value.comments ?? [] : []
+  }))
+
+  for (const [index, issue] of open.entries()) {
+    const isBlockedNow = isBlocked(issue, ledger.byKey, ledger.closed)
+    const verdict = claimability(issue, isBlockedNow, options.at)
+    const row = {
+      key: String(issue.key),
+      priority: issue.priority,
+      summary: issue.summary,
+      ...(issue.assignee === undefined ? {} : { assignee: String(issue.assignee) }),
+    }
+    if (verdict.ready) ready.push(row)
+    if (issue.status === 'in_progress') inProgress.push(row)
+    if (issue.status === 'in_review') inReview.push(row)
+    if (isBlockedNow) blocked.push(row)
+    const latest = comments[index]?.at(-1)
+    if (latest !== undefined && latest.body.trimStart().startsWith(PROPOSAL_MARKER)) {
+      proposedCount += 1
+      proposed.push({ ...row, author: String(latest.author) })
+    }
+  }
+
+  const needsPerson = [
+    ...proposed.map(row => ({ ...row, reason: 'confirm the proposal' })),
+    ...inReview.map(row => ({ ...row, reason: 'review the delivery' })),
+  ]
+  return Object.freeze({
+    ok: true,
+    writable: caller.writable,
+    ...(caller.reason === undefined ? {} : { reason: caller.reason }),
+    me,
+    counts: Object.freeze({
+      ready: ready.length,
+      proposed: proposedCount,
+      inProgress: inProgress.length,
+      inReview: inReview.length,
+      blocked: blocked.length,
+    }),
+    ready: Object.freeze(ready),
+    proposed: Object.freeze(proposed),
+    inProgress: Object.freeze(inProgress),
+    inReview: Object.freeze(inReview),
+    blocked: Object.freeze(blocked),
+    needsPerson: Object.freeze(needsPerson),
+  })
+}
+
 /**
  * `superagent_claim`: propose, or claim the issue the proposal named.
  * @param args - the raw tool arguments, validated against `CLAIM_PARAMETERS`.
@@ -512,6 +588,25 @@ export const createSuperagentContribution = (host: ToolHost): CapabilityContribu
     },
     run: (args, call) => runScanTool(args, runOptionsOf(host, call), call.me),
   }
+  const status: Spec = {
+    name: STATUS_TOOL_NAME,
+    description: STATUS_DESCRIPTION,
+    parameters: Object.freeze({}),
+    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+    timeoutMs: 5_000,
+    isConcurrencySafe: () => true,
+    render: (typed) => {
+      const counts = typed.counts as Record<string, number> | undefined
+      if (counts === undefined) return renderText('ok')
+      return renderText([
+        `ready ${String(counts.ready)} · proposed ${String(counts.proposed)} · in progress ${String(counts.inProgress)} · in review ${String(counts.inReview)} · blocked ${String(counts.blocked)}`,
+        ...(Array.isArray(typed.needsPerson)
+          ? (typed.needsPerson as { key: string; reason: string }[]).map(row => `${row.key}  needs you: ${row.reason}`)
+          : []),
+      ].join('\n'))
+    },
+    run: (_args, call) => runStatusTool(runOptionsOf(host, call), call.me),
+  }
   const claim: Spec = {
     name: CLAIM_TOOL_NAME,
     description: CLAIM_DESCRIPTION,
@@ -552,7 +647,12 @@ export const createSuperagentContribution = (host: ToolHost): CapabilityContribu
   }
   return Object.freeze({
     scope: 'root',
-    tools: () => Object.freeze([defineJiraTool(host, scan), defineJiraTool(host, claim), defineJiraTool(host, workspace)]),
+    tools: () => Object.freeze([
+      defineJiraTool(host, scan),
+      defineJiraTool(host, claim),
+      defineJiraTool(host, workspace),
+      defineJiraTool(host, status),
+    ]),
     onTurnEnd: async (input: TurnEndInput) => {
       await runSuperagentPass(host, input.agent, input.signal)
     },

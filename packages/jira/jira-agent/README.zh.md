@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-jira-agent` 是账本的模型面：一个 dafeiyu 能力提供者，在 root agent 上注册三个常驻工具（带十个动词的 `jira_issue`、`jira_list`、`jira_kb`），在被派遣的子 agent 上只注册 `issue_work` 一个工具，另有一行 `jira:store` 注入段、单调递增的写守卫、`/jira` 命令、三个 skill，以及 turn 结束时的 settle。它另注册一个独立开关的 `superagent` 能力，为 root agent 加上认领闭环（`superagent_scan`、`superagent_claim`）。它注入 `ctx.jira`、工具注册表与 `ctx.dafeiyu`；命令与 skill 注册表是可选的，因此缺少这些注册表的组合仍保留工具。它按契约版本 2 注册，带 `enabledByDefault: false` 与 `settings.sectionId: 'jira'` 供能力列表使用。账本的位置、机器身份与 push 队列属于 `jira-service` 行，因此这一行没有自己的配置。
+`dsh-jira-agent` 是账本的模型面：一个 dafeiyu 能力提供者，在 root agent 上注册三个常驻工具（带十个动词的 `jira_issue`、`jira_list`、`jira_kb`），在被派遣的子 agent 上只注册 `issue_work` 一个工具，另有一行 `jira:store` 注入段、单调递增的写守卫、`/jira` 命令、三个 skill，以及 turn 结束时的 settle。它另注册一个独立开关的 `superagent` 能力，为 root agent 加上认领闭环（`superagent_scan`、`superagent_claim`、`superagent_status`、`superagent_workspace`）。它注入 `ctx.jira`、工具注册表与 `ctx.dafeiyu`；命令与 skill 注册表是可选的，因此缺少这些注册表的组合仍保留工具。它按契约版本 2 注册，带 `enabledByDefault: false` 与 `settings.sectionId: 'jira'` 供能力列表使用。账本的位置、机器身份与 push 队列属于 `jira-service` 行，因此这一行没有自己的配置。
 
 ## 目录
 
@@ -86,11 +86,11 @@ root agent（智能体）的每次请求都带三个工具：`jira_issue`（十�
 
 #### 模型看到什么
 
-部署打开 `superagent` 能力时，root agent 多带三个工具：`superagent_scan` 列出当下可领的 issue，`superagent_claim` 提案或认领其中一条，`superagent_workspace` 列出宿主的 workspace 或登记一个目录，好让派遣能指明自己的 checkout。只有当该 issue 最新那条评论仍是本会话自己的提案时才认得动，因此两次调用之间必然要问人一句。每个完成的 root turn 还会以 observe 模式跑一次 pass：提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不认领；如果本会话已有进行中的工作，或最新评论已经是提案，则保持沉默。被派遣的子 agent 三者都不带。
+部署打开 `superagent` 能力时，root agent 多带四个工具：`superagent_scan` 列出当下可领的 issue，`superagent_claim` 提案或认领其中一条，`superagent_status` 报告 ready/proposed/in-progress/in-review/blocked 计数和需要人的条目，`superagent_workspace` 列出宿主的 workspace 或登记一个目录，好让派遣能指明自己的 checkout。只有当该 issue 最新那条评论仍是本会话自己的提案时才认得动，因此两次调用之间必然要问人一句。每个完成的 root turn 还会以 observe 模式跑一次 pass：提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不认领；如果本会话已有进行中的工作，或最新评论已经是提案，则保持沉默。被派遣的子 agent 三者都不带。
 
 #### Token 影响
 
-能力打开时，每次 root agent 请求多三个小 schema，外加结果文本：候选列表、带派遣说明的已认领 issue，或 workspace 清单。
+能力打开时，每次 root agent 请求多四个小 schema，外加结果文本：候选列表、带派遣说明的已认领 issue、状态计数，或 workspace 清单。
 
 #### KV 缓存影响
 

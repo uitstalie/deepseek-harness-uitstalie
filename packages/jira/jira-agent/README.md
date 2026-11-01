@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-jira-agent` is the ledger's model surface: a dafeiyu capability provider that registers the three resident tools (`jira_issue` with its ten verbs, `jira_list`, `jira_kb`) on a root agent and the single `issue_work` tool on a delegated child, the one-line `jira:store` awareness section, the monotonic write guard, the `/jira` command, three skills, and the turn-end settle. It registers a second, independently gated `superagent` capability that adds the claim loop (`superagent_scan`, `superagent_claim`) to a root agent. It injects `ctx.jira`, the tool registry, and `ctx.dafeiyu`; commands and skills are optional, so a composition without those registries keeps the tools. It registers contract version 2 with `enabledByDefault: false` and `settings.sectionId: 'jira'` for the capabilities list. The ledger's location, machine identity, and push queue belong to the `jira-service` row, so this row carries no configuration of its own.
+`dsh-jira-agent` is the ledger's model surface: a dafeiyu capability provider that registers the three resident tools (`jira_issue` with its ten verbs, `jira_list`, `jira_kb`) on a root agent and the single `issue_work` tool on a delegated child, the one-line `jira:store` awareness section, the monotonic write guard, the `/jira` command, three skills, and the turn-end settle. It registers a second, independently gated `superagent` capability that adds the claim loop (`superagent_scan`, `superagent_claim`, `superagent_status`, `superagent_workspace`) to a root agent. It injects `ctx.jira`, the tool registry, and `ctx.dafeiyu`; commands and skills are optional, so a composition without those registries keeps the tools. It registers contract version 2 with `enabledByDefault: false` and `settings.sectionId: 'jira'` for the capabilities list. The ledger's location, machine identity, and push queue belong to the `jira-service` row, so this row carries no configuration of its own.
 
 ## Table of Contents
 
@@ -86,11 +86,11 @@ The text changes only when a commit changes a count, so a stable ledger keeps th
 
 #### What the model sees
 
-A root agent carries three more tools when its deployment enables the `superagent` capability: `superagent_scan` lists the issues that could be taken now, `superagent_claim` proposes one or claims it, and `superagent_workspace` lists the host's workspaces or registers a directory so a dispatch can name its checkout. Claiming refuses unless the latest comment on the issue is still this session's own proposal, so a person is asked between the two calls. On every completed root turn the capability also runs one pass in observe mode: it proposes the first ready issue, writes one `[claim-proposal]` comment, and never claims; it stays silent when this session already has work in progress or the latest comment is a proposal. A delegated child carries none of the three.
+A root agent carries four more tools when its deployment enables the `superagent` capability: `superagent_scan` lists the issues that could be taken now, `superagent_claim` proposes one or claims it, `superagent_status` reports ready/proposed/in-progress/in-review/blocked counts and the issues that need a person, and `superagent_workspace` lists the host's workspaces or registers a directory so a dispatch can name its checkout. Claiming refuses unless the latest comment on the issue is still this session's own proposal, so a person is asked between the two calls. On every completed root turn the capability also runs one pass in observe mode: it proposes the first ready issue, writes one `[claim-proposal]` comment, and never claims; it stays silent when this session already has work in progress or the latest comment is a proposal. A delegated child carries none of the three.
 
 #### Token effect
 
-Three more small schemas on every root-agent request while the capability is on, plus the result text: a candidate list, the claimed issue with its dispatch instruction, or the workspace roster.
+Four more small schemas on every root-agent request while the capability is on, plus the result text: a candidate list, the claimed issue with its dispatch instruction, the status counts, or the workspace roster.
 
 #### KV Cache effect
 

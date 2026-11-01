@@ -21,6 +21,7 @@ import {
   CLAIM_TOOL_NAME,
   PROPOSAL_MARKER,
   SCAN_TOOL_NAME,
+  STATUS_TOOL_NAME,
   TOOL_NAME,
   WORKSPACE_TOOL_NAME,
   WORK_TOOL_NAME,
@@ -417,6 +418,26 @@ describe('superagent: the loop through the real composition', () => {
       await runSuperagentPass(harness.host, main)
       const second = await call(harness, main, TOOL_NAME, { action: 'get', key: 'DH-12' })
       assert.equal(bodiesOf(second).filter(body => body.startsWith(PROPOSAL_MARKER)).length, 1, 'the latest proposal suppresses another')
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('reports readiness, proposals and what needs a person', async () => {
+    const { harness, main } = await mount()
+    try {
+      const initial = await call(harness, main, STATUS_TOOL_NAME, {})
+      assert.equal(initial.ok, true, JSON.stringify(initial.error))
+      const initialCounts = initial.counts as Record<string, number>
+      assert.ok((initialCounts.ready ?? 0) >= 1, JSON.stringify(initialCounts))
+      assert.equal(initialCounts.proposed, 0)
+      assert.equal((initial.needs_person as unknown[]).length, 0)
+
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'status test' })
+      const proposed = await call(harness, main, STATUS_TOOL_NAME, {})
+      const counts = proposed.counts as Record<string, number>
+      assert.equal(counts.proposed, 1)
+      assert.ok((proposed.needs_person as { key: string; reason: string }[]).some(row => row.key === 'DH-12' && row.reason === 'confirm the proposal'))
     } finally {
       await harness.dispose()
     }

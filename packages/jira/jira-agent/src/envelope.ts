@@ -30,6 +30,8 @@ export type ToolValue = Readonly<{
   items?: unknown
   groups?: unknown
   counts?: unknown
+  /** `superagent_status`: what needs a person now. */
+  needsPerson?: unknown
   /** `superagent_workspace`: the registered workspaces, or the one just registered. */
   workspaces?: unknown
   workspace?: unknown
