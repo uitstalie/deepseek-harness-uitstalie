@@ -14,6 +14,7 @@ import type {
   JiraBoardCountsView,
   JiraBoardGroupView,
   JiraBoardView,
+  JiraCommentView,
   JiraIssueDetailView,
   JiraIssueLinkView,
   JiraIssueRowView,
@@ -117,11 +118,25 @@ export const linkViewOf = (link: entities.Link): JiraIssueLinkView =>
   Object.freeze({ type: link.type, target: link.target })
 
 /**
+ * One comment as plain JSON.
+ * @param comment - the comment.
+ * @returns the comment as plain JSON.
+ */
+export const commentViewOf = (comment: entities.Comment): JiraCommentView => Object.freeze({
+  id: comment.id,
+  author: String(comment.author),
+  revision: comment.revision,
+  createdAt: comment.createdAt,
+  body: comment.body,
+})
+
+/**
  * What `remote.jira.get()` returns.
  * @param issue - the decoded issue.
- * @returns the issue's frontmatter fields and body as plain JSON.
+ * @param comments - the issue's comments, oldest first.
+ * @returns the issue's frontmatter fields, body and comments as plain JSON.
  */
-export const detailViewOf = (issue: entities.Issue): JiraIssueDetailView => Object.freeze({
+export const detailViewOf = (issue: entities.Issue, comments: readonly entities.Comment[] = []): JiraIssueDetailView => Object.freeze({
   key: issue.key,
   project: issue.project,
   issueType: issue.issueType,
@@ -141,6 +156,7 @@ export const detailViewOf = (issue: entities.Issue): JiraIssueDetailView => Obje
   ...(issue.claimedAt === undefined ? {} : { claimedAt: issue.claimedAt }),
   ...(issue.leaseExpiresAt === undefined ? {} : { leaseExpiresAt: issue.leaseExpiresAt }),
   kbRefs: issue.kbRefs,
+  comments: Object.freeze(comments.map(commentViewOf)),
   conflicted: issue.conflicted,
   body: issue.body,
 })

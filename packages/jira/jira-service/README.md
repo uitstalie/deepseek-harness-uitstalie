@@ -44,7 +44,7 @@ The tool runners no longer hold the store: they call `ctx.jira`, and the service
 | `status()` | root, audit host, machine identity, push switch, last push outcome, whether a push is armed |
 | `board()` | issues grouped by status, blocked group last, with counts |
 | `list(query)` | the same result narrowed by `project`, `status`, `tag`, `tags`, `assignee`, `includeClosed`, `limit` |
-| `get(key)` | one issue's frontmatter fields and Markdown body |
+| `get(key)` | one issue's frontmatter fields, Markdown body and comment history |
 | `kbSearch(query, topK?)` | ranked knowledge hits with their `file:line` |
 | `watch(signal)` | a stream: one item per committed change — monotonic `version`, kind, affected key |
 

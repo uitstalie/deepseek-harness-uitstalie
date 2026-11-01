@@ -63,7 +63,12 @@ export function JiraSection(props: JiraSectionProps) {
       <h2 className={styles.title}>{t('title')}</h2>
       <p className={styles.intro}>{t('intro')}</p>
       <LedgerStatus status={state.statusView} error={state.statusError} t={t} />
-      <SuperagentPanel board={state.board.view} status={state.superagent.view} t={t} />
+      <SuperagentPanel
+        board={state.board.view}
+        status={state.superagent.view}
+        t={t}
+        onSelect={(key) => { void controller.select(key) }}
+      />
       {ledgerSettings === undefined || settingsState === undefined
         ? null
         : (

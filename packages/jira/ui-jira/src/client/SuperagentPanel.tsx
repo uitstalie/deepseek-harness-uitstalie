@@ -20,6 +20,8 @@ export interface SuperagentPanelProps {
   readonly board: JiraBoardView | null
   /** The Host's super-agent view; preferred over deriving counts from the board. */
   readonly status?: SuperagentStatusView | null
+  /** Open an issue's detail when a row is chosen. */
+  readonly onSelect?: (key: string) => void
   /** This page's copy. */
   readonly t: (key: JiraKey) => string
 }
@@ -31,7 +33,7 @@ const rowsOf = (board: JiraBoardView, status: string | undefined): readonly Jira
     .flatMap(group => group.items)
 
 /** The super-agent summary block. */
-export function SuperagentPanel({ board, status, t }: SuperagentPanelProps) {
+export function SuperagentPanel({ board, status, onSelect, t }: SuperagentPanelProps) {
   if (board === null && status === undefined) return null
   let counts: readonly (readonly [JiraKey, number])[]
   let needs: readonly { key: string; summary: string }[]
@@ -73,7 +75,11 @@ export function SuperagentPanel({ board, status, t }: SuperagentPanelProps) {
             <h4 className={styles.superagentNeedsTitle}>{t('superagentNeedsYou')}</h4>
             <ul className={styles.superagentList}>
               {needs.map(row => (
-                <li key={row.key}>{fill(t('superagentReviewItem'), { key: row.key, summary: row.summary })}</li>
+                <li key={row.key}>
+                  <button type="button" className={styles.superagentLink} onClick={() => onSelect?.(row.key)}>
+                    {fill(t('superagentReviewItem'), { key: row.key, summary: row.summary })}
+                  </button>
+                </li>
               ))}
             </ul>
           </div>

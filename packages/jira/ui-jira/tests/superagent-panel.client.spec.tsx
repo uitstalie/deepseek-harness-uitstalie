@@ -3,8 +3,8 @@
  * The super-agent summary: counts by status and the review rows that need a person.
  */
 
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, expect, it, vi } from 'vitest'
 import type { JiraBoardView, JiraIssueRowView } from '@deepseek-ai/dsh-jira-service/types'
 import { SuperagentPanel } from '../src/client/SuperagentPanel.tsx'
 
@@ -40,6 +40,13 @@ it('renders counts and the review rows', () => {
   expect(screen.getAllByText('1')).toHaveLength(4)
   expect(screen.getByText('superagentNeedsYou')).toBeTruthy()
   expect(screen.getByText(/DH-3/)).toBeTruthy()
+})
+
+it('opens the chosen review issue', () => {
+  const onSelect = vi.fn()
+  render(<SuperagentPanel board={board} t={t} onSelect={onSelect} />)
+  fireEvent.click(screen.getByText(/DH-3/))
+  expect(onSelect).toHaveBeenCalledWith('DH-3')
 })
 
 it('renders nothing while the board is loading', () => {

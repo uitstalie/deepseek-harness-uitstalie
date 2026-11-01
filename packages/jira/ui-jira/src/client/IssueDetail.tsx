@@ -71,6 +71,19 @@ function DetailContent(props: { view: JiraIssueDetailView; t: (key: JiraKey) => 
       </dl>
       <h4 className={styles.columnTitle}>{t('detailBody')}</h4>
       <p className={styles.bodyText}>{view.body}</p>
+      <h4 className={styles.columnTitle}>{t('detailComments')}</h4>
+      {view.comments.length === 0
+        ? <p className={styles.notice}>{t('detailNoComments')}</p>
+        : (
+          <ul className={styles.commentList}>
+            {view.comments.map(comment => (
+              <li key={comment.id} className={styles.comment}>
+                <div className={styles.commentMeta}>{comment.author} · {comment.createdAt}</div>
+                <p className={styles.commentBody}>{comment.body}</p>
+              </li>
+            ))}
+          </ul>
+        )}
     </>
   )
 }

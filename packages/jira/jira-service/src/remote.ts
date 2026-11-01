@@ -155,7 +155,8 @@ export default class JiraRemote extends TypertRemoteService {
   async get(key: string): Promise<JiraIssueDetailView> {
     const parsed = entities.asIssueKey(key)
     if (parsed === undefined) throw remoteErrorOf(errors.invalidInput(`"${key}" is not an issue key`, { key }))
-    return detailViewOf(unwrap(await this.ctx.jira.get(parsed)))
+    const read = unwrap(await this.ctx.jira.readIssue(parsed))
+    return detailViewOf(read.issue, read.comments)
   }
 
   /**

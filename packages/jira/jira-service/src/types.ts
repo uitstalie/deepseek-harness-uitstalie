@@ -607,6 +607,20 @@ export interface JiraIssueLinkView {
   readonly target: string
 }
 
+/** One comment as the browser reads it. */
+export interface JiraCommentView {
+  /** `c-<machine short code>-<n>`. */
+  readonly id: string
+  /** The comment's author. */
+  readonly author: string
+  /** The comment's own revision. */
+  readonly revision: number
+  /** When it was appended, UTC seconds. */
+  readonly createdAt: string
+  /** The body, append-only. */
+  readonly body: string
+}
+
 /** `remote.jira.get()`: one issue's frontmatter fields and body. */
 export interface JiraIssueDetailView {
   /** `DH-12`. */
@@ -647,6 +661,8 @@ export interface JiraIssueDetailView {
   readonly leaseExpiresAt?: string
   /** Knowledge entries this issue references. */
   readonly kbRefs: readonly string[]
+  /** Comments, oldest first. */
+  readonly comments: readonly JiraCommentView[]
   /** Whether the conflict pass marked it; an acknowledged write clears it. */
   readonly conflicted: boolean
   /** The Markdown description. */

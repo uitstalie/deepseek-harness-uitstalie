@@ -109,6 +109,7 @@ const ISSUE: JiraIssueDetailView = {
   updatedAt: '2026-10-15T12:00:00Z',
   reporter: 'human:fixture',
   kbRefs: ['KB-1'],
+  comments: [],
   conflicted: false,
   body: 'The body a detail view renders.',
 }

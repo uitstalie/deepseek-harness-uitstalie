@@ -69,7 +69,7 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **super agent 面板：** 目前只有只读摘要块；trigger/history 页与提案级细节留给 DH-601。
+- **super agent 面板：** 已有只读摘要块，需要你的行可打开 issue 详情与评论；trigger/history 页留给 DH-601。
 - **看板位置：** 看板、详情与知识搜索渲染在设置页段落内。dock/侧栏看板会是第二个注册（以及设计师的布局），而不是这个段落的另一页。
 - **dafeiyu Capabilities 列表：** Jira 行的标签、状态与「打开设置」跳转是 DH-12 的工作；本包只拥有它们链接到的段落。
 - **另一进程的写入：** 变更流携带的是本 Host 的写入（工具、会话、sync）。另一个进程里的 CLI 写入在这里不会通告；页面会在下一次本进程内变更、`connection/reset` 或设置段重新挂载时补上。监听账本文件会是第二套变更源，超出本包范围。

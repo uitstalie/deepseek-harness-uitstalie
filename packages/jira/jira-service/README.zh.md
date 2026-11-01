@@ -44,7 +44,7 @@ kind: "package-reference"
 | `status()` | 根目录、审计 host、机器身份、push 开关、最近一次 push 结果、是否已武装 push |
 | `board()` | 按 status 分组的 issue，blocked 组最后，带计数 |
 | `list(query)` | 同一结果，按 `project`、`status`、`tag`、`tags`、`assignee`、`includeClosed`、`limit` 收窄 |
-| `get(key)` | 一个 issue 的 frontmatter 字段与 Markdown 正文 |
+| `get(key)` | 一个 issue 的 frontmatter 字段、Markdown 正文与评论历史 |
 | `kbSearch(query, topK?)` | 排序后的知识命中及其 `file:line` |
 | `watch(signal)` | 一条流：每次提交的变更一项——单调 `version`、kind、受影响 key |
 
