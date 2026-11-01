@@ -9,8 +9,12 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
 
+import { type Context } from '@deepseek-ai/cordis'
 import { type Comment, type Identity, type Issue, type Timestamp, removeTree } from '@deepseek-ai/dsh-jira-core'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
@@ -18,9 +22,13 @@ import {
   PROPOSAL_MARKER,
   SCAN_TOOL_NAME,
   TOOL_NAME,
+  WORKSPACE_TOOL_NAME,
   WORK_TOOL_NAME,
   claimability,
+  createJiraContribution,
+  createSessionRecorder,
   isBlocked,
+  jiraWorkerTools,
   openProposal,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
@@ -34,6 +42,7 @@ const throwaway: string[] = []
 
 after(async () => {
   for (const dir of throwaway.splice(0)) await removeTree(dir)
+  for (const dir of workspaceDirs.splice(0)) await removeTree(dir)
 })
 
 /** A fresh ledger per test: every case claims and writes. */
@@ -48,7 +57,15 @@ const settle = async (): Promise<void> => {
   await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
 }
 
-/** One mounted composition with the claim loop enabled and a root agent wired to it. */
+/**
+ * Mount a composition with the claim loop enabled and a root agent wired to it.
+ *
+ * The executor's tool is registered directly instead of through `agent/created`: every agent in
+ * this harness shares the root context, so wiring a second one would contend for the same tool
+ * names. The per-agent split itself is asserted separately, against the contribution.
+ * @param options - the mount options to vary.
+ * @returns the harness and the two handles.
+ */
 const mount = async (options: Parameters<typeof mountJira>[1] = {}): Promise<{
   harness: JiraHarness
   main: AgentHandle
@@ -57,6 +74,7 @@ const mount = async (options: Parameters<typeof mountJira>[1] = {}): Promise<{
   const harness = await mountJira(await fixture(), { superagent: true, ...options })
   await harness.ctx.plugin(jiraAgent)
   await settle()
+  for (const tool of jiraWorkerTools(harness.host)) harness.ctx.tools.register(tool)
   const main = testAgent(harness.ctx, 'main-1')
   await harness.ctx.serial('agent/created', { agent: main, source: 'startup' })
   const worker = testAgent(harness.ctx, 'worker-1', {
@@ -64,7 +82,6 @@ const mount = async (options: Parameters<typeof mountJira>[1] = {}): Promise<{
     delegationDepth: 1,
     parentSession: SessionId('main-1'),
   })
-  await harness.ctx.serial('agent/created', { agent: worker, source: 'startup' })
   return { harness, main, worker }
 }
 
@@ -176,6 +193,159 @@ describe('superagent: is the proposal still fresh', () => {
       comment('human:daiqc' as Identity, 'yes, go ahead'),
     ]
     assert.match(String(openProposal(answered, MAIN).reason), /not this session/u)
+  })
+})
+
+/** A throwaway directory the workspace tests own, removed with the ledgers. */
+const workspaceDirs: string[] = []
+
+/** One row of the stand-in registry below. */
+interface FakeWorkspace {
+  id: string
+  path: string
+  title: string
+  sessionIds: unknown[]
+  status(): Promise<string>
+}
+
+/**
+ * A stand-in for the host's workspace registry.
+ *
+ * The real one needs `storageDomain` and `sessionPersistence`; the claim loop only reads the
+ * registry through `ctx.get` and calls `list`/`create`, so a plain class with exactly those two
+ * methods is what proves the duck typing works.
+ */
+class FakeWorkspaceRegistry {
+  readonly rows: FakeWorkspace[] = []
+
+  list(): readonly FakeWorkspace[] {
+    return this.rows
+  }
+
+  async create(path: string, title?: string): Promise<FakeWorkspace> {
+    const found = this.rows.find(row => row.path === path)
+    if (found !== undefined) return found
+    const created: FakeWorkspace = {
+      id: `w-${String(this.rows.length + 1)}`,
+      path,
+      title: title ?? path,
+      sessionIds: [],
+      status: async () => 'ok',
+    }
+    this.rows.push(created)
+    return created
+  }
+}
+
+/**
+ * Register the stand-in on the composition under the service's own name.
+ * @param harness - the mounted composition to extend.
+ * @returns the registry the tools will find.
+ */
+const provideRegistry = async (harness: JiraHarness): Promise<FakeWorkspaceRegistry> => {
+  const registry = new FakeWorkspaceRegistry()
+  await harness.ctx.plugin({
+    name: 'fake-workspace-registry',
+    apply(pluginCtx: Context) {
+      pluginCtx.reflect.provide('workspaceRegistry', registry)
+    },
+  })
+  return registry
+}
+
+/** A directory that exists but is not registered yet. */
+const scratchDirectory = async (): Promise<string> => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-superagent-ws-'))
+  workspaceDirs.push(dir)
+  return dir
+}
+
+describe('superagent: the workspace roster', () => {
+  it('says so plainly when the deployment has no workspace registry', async () => {
+    const { harness, main } = await mount()
+    try {
+      const refused = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'roster' })
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /no workspace registry/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('registers a directory that does not exist, and lists it', async () => {
+    const { harness, main } = await mount()
+    try {
+      const registry = await provideRegistry(harness)
+      const dir = await scratchDirectory()
+      const target = join(dir, 'checkout')
+
+      const registered = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'ensure', path: target, title: 'the work' })
+      assert.equal(registered.ok, true, JSON.stringify(registered.error))
+      const workspace = registered.workspace as Record<string, unknown>
+      assert.equal(workspace.path, target)
+      assert.equal(workspace.status, 'ok')
+
+      const again = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'ensure', path: target })
+      assert.equal(again.ok, true, JSON.stringify(again.error))
+      assert.equal(registry.rows.length, 1, 'ensure is idempotent')
+
+      const roster = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'roster' })
+      const rows = roster.workspaces as Record<string, unknown>[]
+      assert.equal(rows.length, 1)
+      assert.equal(rows[0]?.title, 'the work')
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
+
+describe('superagent: the dispatcher\'s surface', () => {
+  it('gives a child the ledger reads plus issue_work, and a root the three jira tools', async () => {
+    const { harness, main, worker } = await mount()
+    try {
+      const contribution = createJiraContribution({
+        ctx: harness.ctx,
+        env: {},
+        clock: () => Date.parse(AT),
+        recorder: createSessionRecorder(),
+      })
+      const rootNames = contribution.tools?.(main).map(tool => tool.name).sort() ?? []
+      const childNames = contribution.tools?.(worker).map(tool => tool.name).sort() ?? []
+      assert.deepEqual(rootNames, ['jira_issue', 'jira_kb', 'jira_list'])
+      assert.deepEqual(childNames, ['issue_work', 'jira_issue', 'jira_kb', 'jira_list'])
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('runs the loop into a named workspace: ensure, claim with its path, deliver', async () => {
+    const { harness, main, worker } = await mount()
+    try {
+      await provideRegistry(harness)
+      const target = join(await scratchDirectory(), 'checkout')
+      const registered = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'ensure', path: target, title: 'checkout' })
+      const workspace = registered.workspace as Record<string, unknown>
+
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })
+      const claimed = await call(harness, main, CLAIM_TOOL_NAME, {
+        action: 'claim',
+        key: 'DH-12',
+        cwd: String(workspace.path),
+      })
+      assert.equal(claimed.ok, true, JSON.stringify(claimed.error))
+      const dispatch = claimed.dispatch as Record<string, unknown>
+      assert.equal(dispatch.cwd, workspace.path, 'the dispatch names the workspace\'s canonical path')
+
+      const delivered = await call(harness, worker, WORK_TOOL_NAME, {
+        action: 'deliver',
+        key: 'DH-12',
+        body: 'done: changed in the named checkout',
+      })
+      assert.equal(delivered.ok, true, JSON.stringify(delivered.error))
+      assert.equal(issueOf(delivered).status, 'in_review')
+    } finally {
+      await harness.dispose()
+    }
   })
 })
 

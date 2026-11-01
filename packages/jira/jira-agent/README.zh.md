@@ -58,11 +58,11 @@ tsx loader 经仓库的 tsconfig paths 解析 workspace 包，所以源码 check
 
 #### 模型看到什么
 
-root agent（智能体）的每次请求都带三个工具：`jira_issue`（十个动词：`get`、`create`、`update`、`switch_state`、`comment`、`assignee`、`link`、`tag_create`、`close`、`batch_close`）、`jira_list`，以及带 `get`、`search`、`create`、`update` 的 `jira_kb`。被派遣的子 agent 只带一个工具 `issue_work`（`progress`、`deliver`、`blocked`），且不带注入行。`issue_work` 只接受处于 in_progress、且指派给「派遣它的那个会话」的 issue，因此子 agent 只写它被派来的那一条，一旦交回复审就什么都写不了。它们的描述与 schema 保持精简，每个结果都以文本渲染。不能写入的会话发起的写入会以普通工具结果被拒绝，守卫会更早拒绝 `jira_issue`，因此不会有处理函数运行。
+root agent（智能体）的每次请求都带三个工具：`jira_issue`（十个动词：`get`、`create`、`update`、`switch_state`、`comment`、`assignee`、`link`、`tag_create`、`close`、`batch_close`）、`jira_list`，以及带 `get`、`search`、`create`、`update` 的 `jira_kb`。被派遣的子 agent 带同样这三个用于读它被派的那条 issue，外加 `issue_work`（`progress`、`deliver`、`blocked`）；它的 `jira_issue` 与 `jira_kb` 写仍被拒，且不带注入行。`issue_work` 只接受处于 in_progress、且指派给「派遣它的那个会话」的 issue，因此子 agent 只写它被派来的那一条，一旦交回复审就什么都写不了。它们的描述与 schema 保持精简，每个结果都以文本渲染。不能写入的会话发起的写入会以普通工具结果被拒绝，守卫会更早拒绝 `jira_issue`，因此不会有处理函数运行。
 
 #### Token 影响
 
-固定 schema 成本，出现在每次 root agent 请求上，外加每次调用的结果文本。子 agent 带的是一个工具的 schema 而不是三个，且没有注入行。
+固定 schema 成本，出现在每次 root agent 请求上，外加每次调用的结果文本。子 agent 带的是三个账本 schema 加 `issue_work`，且没有注入行。
 
 #### KV 缓存影响
 
@@ -86,11 +86,11 @@ root agent（智能体）的每次请求都带三个工具：`jira_issue`（十�
 
 #### 模型看到什么
 
-部署打开 `superagent` 能力时，root agent 多带两个工具：`superagent_scan` 列出当下可领的 issue，`superagent_claim` 提案或认领其中一条。只有当该 issue 最新那条评论仍是本会话自己的提案时才认得动，因此两次调用之间必然要问人一句。子 agent 两者都不带。
+部署打开 `superagent` 能力时，root agent 多带三个工具：`superagent_scan` 列出当下可领的 issue，`superagent_claim` 提案或认领其中一条，`superagent_workspace` 列出宿主的 workspace 或登记一个目录，好让派遣能指明自己的 checkout。只有当该 issue 最新那条评论仍是本会话自己的提案时才认得动，因此两次调用之间必然要问人一句。被派遣的子 agent 三者都不带。
 
 #### Token 影响
 
-能力打开时，每次 root agent 请求多两个小 schema，外加结果文本：候选列表，或带派遣说明的已认领 issue。
+能力打开时，每次 root agent 请求多三个小 schema，外加结果文本：候选列表、带派遣说明的已认领 issue，或 workspace 清单。
 
 #### KV 缓存影响
 

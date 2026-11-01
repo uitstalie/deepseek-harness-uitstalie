@@ -17,7 +17,7 @@ import { after, describe, it } from 'node:test'
 import { type Identity, type IssueKey, removeTree } from '@deepseek-ai/dsh-jira-core'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { type Caller } from './caller.ts'
-import { TOOL_NAME, WORK_TOOL_NAME, workAccess } from './index.ts'
+import { TOOL_NAME, WORK_TOOL_NAME, jiraWorkerTools, workAccess } from './index.ts'
 import * as jiraAgent from './index.ts'
 import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent } from './testing/host.ts'
 
@@ -52,6 +52,10 @@ interface Wired {
 
 /**
  * Mount the plugin and wire a root agent plus one delegated child of it.
+ *
+ * The child's tool is registered directly: every agent in this harness shares the root context, so
+ * wiring a second one through `agent/created` would contend for the ledger's tool names. The
+ * per-agent split itself is asserted against the contribution in `superagent.test.ts`.
  * @param dir - the ledger root to mount.
  * @param options - process facts and the capability gate.
  * @returns the harness and the two handles.
@@ -60,6 +64,7 @@ const wire = async (dir: string, options: Parameters<typeof mountJira>[1] = {}):
   const harness = await mountJira(dir, options)
   await harness.ctx.plugin(jiraAgent)
   await settle()
+  for (const tool of jiraWorkerTools(harness.host)) harness.ctx.tools.register(tool)
   const main = testAgent(harness.ctx, 'main-1')
   await harness.ctx.serial('agent/created', { agent: main, source: 'startup' })
   const worker = testAgent(harness.ctx, 'worker-1', {
@@ -67,7 +72,6 @@ const wire = async (dir: string, options: Parameters<typeof mountJira>[1] = {}):
     delegationDepth: 1,
     parentSession: SessionId('main-1'),
   })
-  await harness.ctx.serial('agent/created', { agent: worker, source: 'startup' })
   return { harness, main, worker }
 }
 

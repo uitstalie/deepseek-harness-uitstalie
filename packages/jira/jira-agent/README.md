@@ -58,11 +58,11 @@ The tsx loader resolves workspace packages through the repository's tsconfig pat
 
 #### What the model sees
 
-Every request of a root agent carries the three tools: `jira_issue` with its ten verbs (`get`, `create`, `update`, `switch_state`, `comment`, `assignee`, `link`, `tag_create`, `close`, `batch_close`), `jira_list`, and `jira_kb` with `get`, `search`, `create` and `update`. A delegated child carries one tool instead — `issue_work` with `progress`, `deliver` and `blocked` — and no awareness line. `issue_work` accepts only an issue that is in progress and assigned to the session that dispatched the child, so a child writes exactly the issue it was sent for and nothing once it hands that issue back for review. Their descriptions and schemas stay small and every result renders as text. A write is refused with an ordinary tool result when the session may not write, and the guard denies `jira_issue` earlier so no handler runs.
+Every request of a root agent carries the three tools: `jira_issue` with its ten verbs (`get`, `create`, `update`, `switch_state`, `comment`, `assignee`, `link`, `tag_create`, `close`, `batch_close`), `jira_list`, and `jira_kb` with `get`, `search`, `create` and `update`. A delegated child carries the same three for reading the issue it was dispatched for, plus `issue_work` with `progress`, `deliver` and `blocked`; its `jira_issue` and `jira_kb` writes stay refused, and it gets no awareness line. `issue_work` accepts only an issue that is in progress and assigned to the session that dispatched the child, so a child writes exactly the issue it was sent for and nothing once it hands that issue back for review. Their descriptions and schemas stay small and every result renders as text. A write is refused with an ordinary tool result when the session may not write, and the guard denies `jira_issue` earlier so no handler runs.
 
 #### Token effect
 
-A fixed schema cost on every root-agent request, plus the result text of each call. A child carries the one-tool schema instead of the three, and no awareness line.
+A fixed schema cost on every root-agent request, plus the result text of each call. A child carries the three ledger schemas plus `issue_work`, and no awareness line.
 
 #### KV Cache effect
 
@@ -86,11 +86,11 @@ The text changes only when a commit changes a count, so a stable ledger keeps th
 
 #### What the model sees
 
-A root agent carries two more tools when its deployment enables the `superagent` capability: `superagent_scan` lists the issues that could be taken now, and `superagent_claim` proposes one or claims it. Claiming refuses unless the latest comment on the issue is still this session's own proposal, so a person is asked between the two calls. A child agent carries neither.
+A root agent carries three more tools when its deployment enables the `superagent` capability: `superagent_scan` lists the issues that could be taken now, `superagent_claim` proposes one or claims it, and `superagent_workspace` lists the host's workspaces or registers a directory so a dispatch can name its checkout. Claiming refuses unless the latest comment on the issue is still this session's own proposal, so a person is asked between the two calls. A delegated child carries none of the three.
 
 #### Token effect
 
-Two more small schemas on every root-agent request while the capability is on, plus the result text: a candidate list, or the claimed issue with its dispatch instruction.
+Three more small schemas on every root-agent request while the capability is on, plus the result text: a candidate list, the claimed issue with its dispatch instruction, or the workspace roster.
 
 #### KV Cache effect
 

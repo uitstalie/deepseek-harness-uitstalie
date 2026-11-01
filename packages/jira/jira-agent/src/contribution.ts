@@ -115,11 +115,11 @@ export const createJiraContribution = (host: ContributionHost): CapabilityContri
   const heads = new WeakMap<Agent, Promise<string>>()
 
   return Object.freeze({
-    // DH-512: a delegated child is wired too, but receives only `issue_work` — never the three
-    // root tools and never the awareness line. The handlers still refuse a delegated caller's
-    // `jira_issue` write (decision 89), because a PTC sub-dispatch can reach a denied tool.
+    // DH-512/514: a delegated child is wired too. It gets the ledger's three tools for reading the
+    // issue it was dispatched for (their writes stay refused, decision 89, and `jira_kb` checks the
+    // same verdict) plus `issue_work`, which is the only surface it may write through.
     scope: 'all',
-    tools: (agent: Agent) => (isSubagent(agent) ? workerTools : tools),
+    tools: (agent: Agent) => (isSubagent(agent) ? Object.freeze([...tools, ...workerTools]) : tools),
     promptSections: (agent: Agent) => (isSubagent(agent) ? [] : [awareness.section]),
     onAgentCreated: (agent: Agent) => {
       // A child neither settles the ledger nor scans the session's commits: it writes one issue

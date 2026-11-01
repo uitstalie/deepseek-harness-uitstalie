@@ -14,6 +14,7 @@
 
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { CapabilityContribution } from '@deepseek-ai/dsh-dafeiyu'
+import { mkdir } from 'node:fs/promises'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
 import { clampText, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { type RunOptions, type ToolValue, actorFor, asString, failure, nowUtc, okValue } from './envelope.ts'
@@ -147,6 +148,68 @@ export const CLAIM_DESCRIPTION =
   + 'session and moves it to in_progress. Ask the person between the two steps, and do not claim an '
   + 'issue they have not agreed to.'
 
+/** The tool name for workspace selection. */
+export const WORKSPACE_TOOL_NAME = 'superagent_workspace'
+
+/**
+ * The slice of the host's workspace registry this capability uses.
+ *
+ * Duck-typed on purpose (decision 108): the adapter imports no host package, so a deployment
+ * without a workspace registry loses one tool instead of failing to mount.
+ */
+export interface WorkspaceLike {
+  readonly id: string
+  readonly path: string
+  readonly title: string
+  readonly sessionIds: readonly unknown[]
+  status(): Promise<string>
+}
+
+/** The registry methods the workspace tool calls. */
+export interface WorkspaceRegistryLike {
+  list(): readonly WorkspaceLike[]
+  create(path: string, title?: string): Promise<WorkspaceLike>
+}
+
+/**
+ * Read the host's workspace registry, if this deployment has one.
+ * @param ctx - the plugin context, duck-typed.
+ * @returns the registry when it is present and has both methods.
+ */
+export const workspaceRegistryOf = (ctx: unknown): WorkspaceRegistryLike | undefined => {
+  const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
+  if (typeof get !== 'function') return undefined
+  const service = get.call(ctx, 'workspaceRegistry') as Partial<WorkspaceRegistryLike> | undefined
+  if (service === undefined || typeof service.list !== 'function' || typeof service.create !== 'function') {
+    return undefined
+  }
+  return service as WorkspaceRegistryLike
+}
+
+/** `superagent_workspace`'s schema. */
+export const WORKSPACE_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+  action: {
+    type: 'string',
+    required: true,
+    description: 'roster: list the registered workspaces. ensure: register a directory as one.',
+    enum: ['roster', 'ensure'],
+  },
+  path: { type: 'string', description: 'ensure: the directory to own, created when missing. Required for ensure.' },
+  title: { type: 'string', description: 'ensure: the display title for a newly registered workspace.' },
+})
+
+/**
+ * `superagent_workspace`'s description.
+ *
+ * The `ensure` half writes outside the ledger, so it says what it will do to the filesystem and who
+ * decides the path.
+ */
+export const WORKSPACE_DESCRIPTION =
+  'Inspect or extend the host\'s workspace list, so a dispatch can name the checkout it works in. '
+  + '`roster` lists each workspace with its path, status and session count. `ensure` registers a '
+  + 'directory, creating it when it does not exist, and answers with the canonical path to dispatch '
+  + 'into. Ask the person which directory before you register one.'
+
 /** The envelope both tools advertise; `items`, `issue` and `dispatch` carry the payloads. */
 export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
   type: 'object',
@@ -155,6 +218,8 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     ok: { type: 'boolean' },
     writable: { type: 'boolean' },
     items: { type: 'array' },
+    workspaces: { type: 'array' },
+    workspace: { type: 'object', additionalProperties: true },
     issue: { type: 'object', additionalProperties: true },
     dispatch: { type: 'object', additionalProperties: true },
     me: { type: 'object', additionalProperties: true },
@@ -319,10 +384,73 @@ export const runClaimTool = async (args: unknown, options: RunOptions, me: unkno
 const renderText = (text: string): ContentBlock[] => [{ type: 'text', text: clampText(text) }]
 
 /**
- * Build the two tool definitions the capability contributes.
+ * `superagent_workspace`: list the registered workspaces, or register one.
+ * @param args - the raw tool arguments, validated against `WORKSPACE_PARAMETERS`.
+ * @param options - the store, caller verdict and clock for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @param ctx - the plugin context the workspace registry is read from.
+ * @returns the roster, or the registered workspace with the path to dispatch into.
+ */
+export const runWorkspaceTool = async (
+  args: unknown,
+  options: RunOptions,
+  me: unknown,
+  ctx: ToolHost['ctx'],
+): Promise<ToolValue> => {
+  const { caller } = options
+  const validated = validateArgs(WORKSPACE_PARAMETERS, args)
+  if (!validated.ok) return failure(validated.error, caller, me)
+  const registry = workspaceRegistryOf(ctx)
+  if (registry === undefined) {
+    return failure(invalidInput('this deployment has no workspace registry, so there is no checkout to dispatch into'), caller, me)
+  }
+  const action = String(validated.value.action)
+  const verdict = Object.freeze({
+    ok: true,
+    writable: caller.writable,
+    ...(caller.reason === undefined ? {} : { reason: caller.reason }),
+    me,
+  })
+  if (action === 'roster') {
+    const workspaces = await Promise.all(registry.list().map(async workspace => Object.freeze({
+      id: String(workspace.id),
+      path: workspace.path,
+      title: workspace.title,
+      status: await workspace.status(),
+      sessions: workspace.sessionIds.length,
+    })))
+    return Object.freeze({ ...verdict, workspaces: Object.freeze(workspaces) })
+  }
+
+  if (!caller.writable) {
+    return failure(invalidInput('registering a workspace needs a session that may write'), caller, me)
+  }
+  const path = asString(validated.value.path)
+  if (path === undefined || path.trim() === '') return failure(invalidInput('ensure needs `path`'), caller, me)
+  try {
+    // `create` owns an existing directory, so the tool creates it first; both halves are idempotent.
+    await mkdir(path, { recursive: true })
+    const workspace = await registry.create(path, asString(validated.value.title))
+    return Object.freeze({
+      ...verdict,
+      workspace: Object.freeze({
+        id: String(workspace.id),
+        // The canonical path, not the argument: that is what a dispatched session's cwd must be.
+        path: workspace.path,
+        title: workspace.title,
+        status: await workspace.status(),
+      }),
+    })
+  } catch (error: unknown) {
+    return failure(invalidInput(`${path} could not be registered as a workspace: ${error instanceof Error ? error.message : String(error)}`, { path }), caller, me)
+  }
+}
+
+/**
+ * Build the three tool definitions the capability contributes.
  *
  * The schemas, the runners and the descriptions live here; this function only turns them into the
- * registry's shape, so both tools declare their timeout and concurrency class in one place.
+ * registry's shape, so each tool declares its timeout and concurrency class in one place.
  * @param host - the plugin host the call context is resolved from.
  * @returns the capability contribution the organizer wires onto root agents.
  */
@@ -358,8 +486,31 @@ export const createSuperagentContribution = (host: ToolHost): CapabilityContribu
     },
     run: (args, call) => runClaimTool(args, runOptionsOf(host, call), call.me),
   }
+  const workspace: Spec = {
+    name: WORKSPACE_TOOL_NAME,
+    description: WORKSPACE_DESCRIPTION,
+    parameters: WORKSPACE_PARAMETERS,
+    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+    timeoutMs: 30_000,
+    // `ensure` touches the filesystem, so the conservative default applies to both verbs.
+    isConcurrencySafe: () => false,
+    render: (typed) => {
+      if (Array.isArray(typed.workspaces)) {
+        const rows = typed.workspaces as { id: string; path: string; title: string; status: string; sessions: number }[]
+        if (rows.length === 0) return renderText('no workspace is registered')
+        return renderText(rows
+          .map(row => `${row.title}  ${row.path}  ${row.status}  ${String(row.sessions)} session(s)`)
+          .join('\n'))
+      }
+      const registered = typed.workspace as { path?: string; title?: string } | undefined
+      return renderText(registered?.path === undefined
+        ? 'ok'
+        : `${String(registered.title)}  ${String(registered.path)}`)
+    },
+    run: (args, call) => runWorkspaceTool(args, runOptionsOf(host, call), call.me, host.ctx),
+  }
   return Object.freeze({
     scope: 'root',
-    tools: () => Object.freeze([defineJiraTool(host, scan), defineJiraTool(host, claim)]),
+    tools: () => Object.freeze([defineJiraTool(host, scan), defineJiraTool(host, claim), defineJiraTool(host, workspace)]),
   })
 }
