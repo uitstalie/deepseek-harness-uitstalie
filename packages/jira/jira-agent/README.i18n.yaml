@@ -3,36 +3,36 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/jira/jira-agent/README.md
 /:
-  en: 34ee56c068f45200
-  zh: 22141eaea161c752
+  en: 8631038173c5de58
+  zh: 19da07559f677e86
 /deepseek-ai-dsh-jira-agent:
   en: 594808e8ae085902
   zh: ced69017ae5a3c51
 /deepseek-ai-dsh-jira-agent/summary:
-  en: 506f776e061b1fd9
-  zh: ad2cf9f93bade55e
+  en: b6f10db6337e1791
+  zh: cc655ced69ae2db7
 /deepseek-ai-dsh-jira-agent/table-of-contents:
   en: 0da18700a9c78dfd
   zh: 2e76184b7bb77e61
 /deepseek-ai-dsh-jira-agent/contents:
-  en: 22804d4e9ade32b1
-  zh: a7449ba9e3e50cd1
+  en: 748137d8a33b24e1
+  zh: d9790fcbe02715bf
 /deepseek-ai-dsh-jira-agent/tests:
   en: 58821ee841f08222
   zh: 445524e299c0fb44
 /deepseek-ai-dsh-jira-agent/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
-/deepseek-ai-dsh-jira-agent/model-experience/the-three-resident-jira-tools:
-  en: de031993ddf3f858
-  zh: ec45de7b74597c87
-/deepseek-ai-dsh-jira-agent/model-experience/the-three-resident-jira-tools/what-the-model-sees:
-  en: 5ea3a8fce6f7ccd4
-  zh: 1470ab7108966f15
-/deepseek-ai-dsh-jira-agent/model-experience/the-three-resident-jira-tools/token-effect:
-  en: 88f8a16d2fd4f7a3
-  zh: 7b59d45d94427b44
-/deepseek-ai-dsh-jira-agent/model-experience/the-three-resident-jira-tools/kv-cache-effect:
+/deepseek-ai-dsh-jira-agent/model-experience/the-root-tools-and-the-executor-s-tool:
+  en: 3cc052a537b04f03
+  zh: 4dc6b2884bbc886e
+/deepseek-ai-dsh-jira-agent/model-experience/the-root-tools-and-the-executor-s-tool/what-the-model-sees:
+  en: c4a6edca21dad2ac
+  zh: 6f7cffa77371beb0
+/deepseek-ai-dsh-jira-agent/model-experience/the-root-tools-and-the-executor-s-tool/token-effect:
+  en: 70ee9e5b4b9b8f20
+  zh: a8bc2634bd6885dd
+/deepseek-ai-dsh-jira-agent/model-experience/the-root-tools-and-the-executor-s-tool/kv-cache-effect:
   en: d939f14b34513625
   zh: c8282e678a8fb244
 /deepseek-ai-dsh-jira-agent/model-experience/the-jira-store-awareness-line:

@@ -38,6 +38,7 @@ import {
 } from './toolIssue.ts'
 import { KB_DESCRIPTION, KB_OUTPUT_SCHEMA, KB_PARAMETERS, KB_TOOL_NAME, runKbTool } from './toolKb.ts'
 import { LIST_DESCRIPTION, LIST_OUTPUT_SCHEMA, LIST_PARAMETERS, LIST_TOOL_NAME, runListTool } from './toolList.ts'
+import { WORK_DESCRIPTION, WORK_PARAMETERS, WORK_TOOL_NAME, runWorkTool } from './workIssue.ts'
 import { type SessionFacts, type SessionRecorder, stateDirOf, toolEvidenceOf } from './sessionRecord.ts'
 
 /** Everything a tool call reads besides the model's arguments. */
@@ -247,4 +248,34 @@ export const jiraTools = (host: ToolHost): readonly ToolDefinition[] => {
   }
 
   return Object.freeze([issue, list, knowledge].map(spec => defineJiraTool(host, spec)))
+}
+
+/**
+ * Build the executor's single tool (DH-512).
+ *
+ * Kept apart from {@link jiraTools} because it is not on the main agent's surface: the organizer
+ * registers this set on child agents and that one on roots, so a model never sees a verb its scope
+ * would refuse. The tool's own authorization is the issue's claim, not its presence here.
+ * @param host - the context, environment, clock and recorder the definition runs against.
+ * @returns the registry-ready definition, as the one-element list the organizer expects.
+ */
+export const jiraWorkerTools = (host: ToolHost): readonly ToolDefinition[] => {
+  const work: Spec = {
+    name: WORK_TOOL_NAME,
+    description: WORK_DESCRIPTION,
+    parameters: WORK_PARAMETERS,
+    outputSchema: ISSUE_OUTPUT_SCHEMA,
+    timeoutMs: WRITE_TIMEOUT_MS,
+    // Each verb writes one issue; there is no read path to declare overlap-safe.
+    isConcurrencySafe: () => false,
+    render: (typed) => {
+      const issue = typed.issue as Partial<Issue> | undefined
+      const text = issue === undefined || issue.key === undefined
+        ? 'ok'
+        : renderIssueHuman(issue as Issue, [], nowUtc(host.clock)).replace(/\n$/u, '')
+      return renderValue(text)
+    },
+    run: (args, call) => runWorkTool(args, runOptionsOf(host, call), call.me),
+  }
+  return Object.freeze([defineJiraTool(host, work)])
 }

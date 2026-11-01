@@ -14,11 +14,11 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import { createStoreAwareness } from './awareness.ts'
-import { callerSessionId } from './caller.ts'
+import { callerSessionId, isSubagent } from './caller.ts'
 import { type HostEnv } from './env.ts'
 import { nowUtc } from './envelope.ts'
 import { type SessionRecorder, stateDirOf } from './sessionRecord.ts'
-import { callerOf, jiraTools } from './tools.ts'
+import { callerOf, jiraTools, jiraWorkerTools } from './tools.ts'
 
 /** Stable capability id this provider registers with the organizer. */
 export const JIRA_CAPABILITY_ID = 'jira'
@@ -110,21 +110,27 @@ export const settleCompletedTurn = async (
 export const createJiraContribution = (host: ContributionHost): CapabilityContribution => {
   const awareness = createStoreAwareness(host.ctx.jira)
   const tools = jiraTools(host)
+  const workerTools = jiraWorkerTools(host)
   /** Starting commits captured at agent creation, keyed by the agent that owns the session. */
   const heads = new WeakMap<Agent, Promise<string>>()
 
   return Object.freeze({
-    // A child agent gets neither the tools nor the awareness line; the handlers still refuse a
-    // delegated caller's write, because a PTC sub-dispatch can reach a tool the child was denied.
-    scope: 'root',
-    tools: () => tools,
-    promptSections: () => [awareness.section],
+    // DH-512: a delegated child is wired too, but receives only `issue_work` — never the three
+    // root tools and never the awareness line. The handlers still refuse a delegated caller's
+    // `jira_issue` write (decision 89), because a PTC sub-dispatch can reach a denied tool.
+    scope: 'all',
+    tools: (agent: Agent) => (isSubagent(agent) ? workerTools : tools),
+    promptSections: (agent: Agent) => (isSubagent(agent) ? [] : [awareness.section]),
     onAgentCreated: (agent: Agent) => {
+      // A child neither settles the ledger nor scans the session's commits: it writes one issue
+      // through `issue_work`, and the dispatcher owns the commit history.
+      if (isSubagent(agent)) return
       heads.set(agent, headAtStart(host))
       // A resumed or newly opened root agent sees the current ledger before its first turn.
       void awareness.refresh()
     },
     onTurnEnd: async (input: TurnEndInput) => {
+      if (isSubagent(input.agent)) return
       await settleCompletedTurn(host, input.agent, input.turn, await (heads.get(input.agent) ?? headAtStart(host)))
     },
     dispose: () => {

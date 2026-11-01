@@ -28,6 +28,8 @@ export type Caller = Readonly<{
   readonly cwd?: string
   /** The host session id (decision 10): a session record and its scan key on it. */
   readonly sessionId?: string
+  /** The session that delegated to this one, when the host recorded it (DH-512's scope check). */
+  readonly parentSessionId?: string
 }>
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
@@ -66,6 +68,20 @@ export const callerSessionId = (agent: unknown): string | undefined => {
   if (record === undefined) return undefined
   const session = asRecord(record.session)
   return asNonEmptyString(session?.id) ?? asNonEmptyString(record.id)
+}
+
+/**
+ * The session that delegated to this one, from `SessionHeader.parentSession` (DH-512).
+ *
+ * The scope check reads it: an executor may write the issue **its own dispatcher** claimed. It is
+ * absent for a root session, which is what makes `issue_work` refuse there instead of guessing.
+ * @param agent - the calling agent, read duck-typed.
+ * @returns the parent session id, or undefined when this session was not delegated to.
+ */
+export const callerParentSessionId = (agent: unknown): string | undefined => {
+  const record = asRecord(agent)
+  if (record === undefined) return undefined
+  return asNonEmptyString(asRecord(asRecord(record.session)?.header)?.parentSession)
 }
 
 /**
@@ -120,10 +136,14 @@ export const describeCaller = (facts: CallerFacts): Caller => {
   const checkout = cwd === undefined ? {} : { cwd }
   const sessionId = callerSessionId(facts.agent)
   const session = sessionId === undefined ? {} : { sessionId }
+  const parentSessionId = callerParentSessionId(facts.agent)
+  const parent = parentSessionId === undefined ? {} : { parentSessionId }
   if (READ_ONLY_PRESET.test(agentPresetOf(facts.agent) ?? '')) {
-    return Object.freeze({ writable: false, reason: 'dsh-read-only', ...checkout })
+    return Object.freeze({ writable: false, reason: 'dsh-read-only', ...checkout, ...parent })
   }
-  if (facts.readOnly === true) return Object.freeze({ writable: false, reason: 'dsh-read-only', ...checkout })
+  if (facts.readOnly === true) {
+    return Object.freeze({ writable: false, reason: 'dsh-read-only', ...checkout, ...parent })
+  }
   const identity = identityOf(facts)
   if (isSubagent(facts.agent)) {
     return Object.freeze({
@@ -131,6 +151,7 @@ export const describeCaller = (facts: CallerFacts): Caller => {
       reason: 'subagent',
       ...checkout,
       ...session,
+      ...parent,
       ...(identity === undefined ? {} : { identity }),
     })
   }
@@ -138,6 +159,7 @@ export const describeCaller = (facts: CallerFacts): Caller => {
     writable: true,
     ...checkout,
     ...session,
+    ...parent,
     ...(identity === undefined ? {} : { identity }),
   })
 }

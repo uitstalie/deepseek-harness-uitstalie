@@ -3,7 +3,8 @@
  *
  * The plugin registers one capability with the dafeiyu organizer, which wires the three tools
  * (`jira_issue`, `jira_list`, `jira_kb`) and the `[store] jira · …` awareness line onto root
- * agents and forwards each completed turn back here to settle the ledger. Beside the capability
+ * agents — and, on a delegated child, the executor's single `issue_work` tool instead (DH-512) —
+ * and forwards each completed root turn back here to settle the ledger. Beside the capability
  * it installs the monotonic write guard, the `/jira` slash command and the three bundled skills.
  * The ledger itself — its root, its identity, its one push queue — belongs to `jira-service` and
  * is reached only through `ctx.jira`.
@@ -102,6 +103,7 @@ export {
   type Caller,
   agentPresetOf,
   callerCwd,
+  callerParentSessionId,
   callerSessionId,
   describeCaller,
   isSubagent,
@@ -158,5 +160,18 @@ export {
 } from './toolIssue.ts'
 export { KB_DESCRIPTION, KB_OUTPUT_SCHEMA, KB_PARAMETERS, KB_TOOL_NAME, runKbTool } from './toolKb.ts'
 export { LIST_DESCRIPTION, LIST_OUTPUT_SCHEMA, LIST_PARAMETERS, LIST_TOOL_NAME, runListTool } from './toolList.ts'
-export { type CallContext, type ToolHost, jiraTools } from './tools.ts'
+export { type CallContext, type ToolHost, jiraTools, jiraWorkerTools } from './tools.ts'
 export { JIRA_COMMAND_NAME, installWriteGuard, registerJiraCommand, registerJiraSkills } from './wiring.ts'
+export {
+  REVIEW_STATUS,
+  WAITING_FOR,
+  WORK_ACTIONS,
+  WORK_DESCRIPTION,
+  WORK_PARAMETERS,
+  WORK_TOOL_NAME,
+  type WorkAccess,
+  blockedBody,
+  blockedMarker,
+  runWorkTool,
+  workAccess,
+} from './workIssue.ts'

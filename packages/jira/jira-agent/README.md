@@ -1,5 +1,5 @@
 ---
-description: "The jira ledger's model surface: the dafeiyu capability provider registering the jira_issue, jira_list and jira_kb tools, the write guard, the /jira command, the bundled skills and the turn-end settle."
+description: "The jira ledger's model surface: the dafeiyu capability provider registering the jira_issue, jira_list and jira_kb tools, the executor's issue_work tool, the write guard, the /jira command, the bundled skills and the turn-end settle."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-jira-agent` is the ledger's model surface: a dafeiyu capability provider that registers the three resident tools (`jira_issue` with its ten verbs, `jira_list`, `jira_kb`), the one-line `jira:store` awareness section, the monotonic write guard, the `/jira` command, three skills, and the turn-end settle. It injects `ctx.jira`, the tool registry, and `ctx.dafeiyu`; commands and skills are optional, so a composition without those registries keeps the tools. It registers contract version 2 with `enabledByDefault: false` and `settings.sectionId: 'jira'` for the capabilities list. The ledger's location, machine identity, and push queue belong to the `jira-service` row, so this row carries no configuration of its own.
+`dsh-jira-agent` is the ledger's model surface: a dafeiyu capability provider that registers the three resident tools (`jira_issue` with its ten verbs, `jira_list`, `jira_kb`) on a root agent and the single `issue_work` tool on a delegated child, the one-line `jira:store` awareness section, the monotonic write guard, the `/jira` command, three skills, and the turn-end settle. It injects `ctx.jira`, the tool registry, and `ctx.dafeiyu`; commands and skills are optional, so a composition without those registries keeps the tools. It registers contract version 2 with `enabledByDefault: false` and `settings.sectionId: 'jira'` for the capabilities list. The ledger's location, machine identity, and push queue belong to the `jira-service` row, so this row carries no configuration of its own.
 
 ## Table of Contents
 
@@ -27,7 +27,8 @@ English | [中文](README.zh.md)
 |---|---|
 | `index.ts` | the plugin entry: `name` / `inject` / `Config` / `apply`, and the controlled re-exports |
 | `contribution.ts` | the dafeiyu capability: scope, tools, sections, agent hook, turn-end settle, dispose |
-| `tools.ts` | the three registry definitions and the per-call store/caller resolution |
+| `tools.ts` | the registry definitions (root and executor) and the per-call store/caller resolution |
+| `workIssue.ts` | the executor's tool: its schema, its scope check and its runner |
 | `awareness.ts` | the `jira:store` prompt section and its `changed`-driven refresh |
 | `wiring.ts` | the write guard, the `/jira` command registration and the skill registration |
 | `toolIssue.ts` / `toolList.ts` / `toolKb.ts` | the tool schemas, descriptions and runners |
@@ -52,15 +53,15 @@ The tsx loader resolves workspace packages through the repository's tsconfig pat
 
 ## Model Experience
 
-### The three resident jira tools
+### The root tools and the executor's tool
 
 #### What the model sees
 
-Every request of a root agent carries the three tools: `jira_issue` with its ten verbs (`get`, `create`, `update`, `switch_state`, `comment`, `assignee`, `link`, `tag_create`, `close`, `batch_close`), `jira_list`, and `jira_kb` with `get`, `search`, `create` and `update`. Their descriptions and schemas stay small and every result renders as text. A child agent receives neither the tools nor the awareness line, because the capability registers with `scope: 'root'`. A write is refused with an ordinary tool result when the session may not write, and the guard denies it earlier so no handler runs.
+Every request of a root agent carries the three tools: `jira_issue` with its ten verbs (`get`, `create`, `update`, `switch_state`, `comment`, `assignee`, `link`, `tag_create`, `close`, `batch_close`), `jira_list`, and `jira_kb` with `get`, `search`, `create` and `update`. A delegated child carries one tool instead — `issue_work` with `progress`, `deliver` and `blocked` — and no awareness line. `issue_work` accepts only an issue that is in progress and assigned to the session that dispatched the child, so a child writes exactly the issue it was sent for and nothing once it hands that issue back for review. Their descriptions and schemas stay small and every result renders as text. A write is refused with an ordinary tool result when the session may not write, and the guard denies `jira_issue` earlier so no handler runs.
 
 #### Token effect
 
-A fixed schema cost on every root-agent request, plus the result text of each call. A child agent carries none of it.
+A fixed schema cost on every root-agent request, plus the result text of each call. A child carries the one-tool schema instead of the three, and no awareness line.
 
 #### KV Cache effect
 

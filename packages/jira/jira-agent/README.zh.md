@@ -1,5 +1,5 @@
 ---
-description: "jira 账本的模型面：dafeiyu 能力提供者，注册 jira_issue、jira_list 与 jira_kb 三个工具、写守卫、/jira 命令、随包 skill 与 turn 结束时的 settle。"
+description: "jira 账本的模型面：dafeiyu 能力提供者，注册 jira_issue、jira_list 与 jira_kb 三个工具、执行者的 issue_work 工具、写守卫、/jira 命令、随包 skill 与 turn 结束时的 settle。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-jira-agent` 是账本的模型面：一个 dafeiyu 能力提供者，注册三个常驻工具（带十个动词的 `jira_issue`、`jira_list`、`jira_kb`）、一行 `jira:store` 注入段、单调递增的写守卫、`/jira` 命令、三个 skill，以及 turn 结束时的 settle。它注入 `ctx.jira`、工具注册表与 `ctx.dafeiyu`；命令与 skill 注册表是可选的，因此缺少这些注册表的组合仍保留工具。它按契约版本 2 注册，带 `enabledByDefault: false` 与 `settings.sectionId: 'jira'` 供能力列表使用。账本的位置、机器身份与 push 队列属于 `jira-service` 行，因此这一行没有自己的配置。
+`dsh-jira-agent` 是账本的模型面：一个 dafeiyu 能力提供者，在 root agent 上注册三个常驻工具（带十个动词的 `jira_issue`、`jira_list`、`jira_kb`），在被派遣的子 agent 上只注册 `issue_work` 一个工具，另有一行 `jira:store` 注入段、单调递增的写守卫、`/jira` 命令、三个 skill，以及 turn 结束时的 settle。它注入 `ctx.jira`、工具注册表与 `ctx.dafeiyu`；命令与 skill 注册表是可选的，因此缺少这些注册表的组合仍保留工具。它按契约版本 2 注册，带 `enabledByDefault: false` 与 `settings.sectionId: 'jira'` 供能力列表使用。账本的位置、机器身份与 push 队列属于 `jira-service` 行，因此这一行没有自己的配置。
 
 ## 目录
 
@@ -27,7 +27,8 @@ kind: "package-reference"
 |---|---|
 | `index.ts` | 插件入口：`name` / `inject` / `Config` / `apply`，以及受控再导出 |
 | `contribution.ts` | dafeiyu 能力：scope、工具、注入段、agent 钩子、turn 结束时的 settle、dispose |
-| `tools.ts` | 三个注册表定义与每次调用的 store/caller 解析 |
+| `tools.ts` | 注册表定义（root 与执行者两套）与每次调用的 store/caller 解析 |
+| `workIssue.ts` | 执行者的工具：它的 schema、范围检查与 runner |
 | `awareness.ts` | `jira:store` 提示词段及其由 `changed` 驱动的刷新 |
 | `wiring.ts` | 写守卫、`/jira` 命令注册与 skill 注册 |
 | `toolIssue.ts` / `toolList.ts` / `toolKb.ts` | 工具 schema、描述与 runner |
@@ -52,15 +53,15 @@ tsx loader 经仓库的 tsconfig paths 解析 workspace 包，所以源码 check
 
 ## 模型体验
 
-### 三个常驻 jira 工具
+### root 工具与执行者的工具
 
 #### 模型看到什么
 
-root agent（智能体）的每次请求都带三个工具：`jira_issue`（十个动词：`get`、`create`、`update`、`switch_state`、`comment`、`assignee`、`link`、`tag_create`、`close`、`batch_close`）、`jira_list`，以及带 `get`、`search`、`create`、`update` 的 `jira_kb`。它们的描述与 schema 保持精简，每个结果都以文本渲染。子 agent 既拿不到工具也拿不到注入行，因为能力注册为 `scope: 'root'`。不能写入的会话发起的写入会以普通工具结果被拒绝，守卫会更早拒绝，因此不会有处理函数运行。
+root agent（智能体）的每次请求都带三个工具：`jira_issue`（十个动词：`get`、`create`、`update`、`switch_state`、`comment`、`assignee`、`link`、`tag_create`、`close`、`batch_close`）、`jira_list`，以及带 `get`、`search`、`create`、`update` 的 `jira_kb`。被派遣的子 agent 只带一个工具 `issue_work`（`progress`、`deliver`、`blocked`），且不带注入行。`issue_work` 只接受处于 in_progress、且指派给「派遣它的那个会话」的 issue，因此子 agent 只写它被派来的那一条，一旦交回复审就什么都写不了。它们的描述与 schema 保持精简，每个结果都以文本渲染。不能写入的会话发起的写入会以普通工具结果被拒绝，守卫会更早拒绝 `jira_issue`，因此不会有处理函数运行。
 
 #### Token 影响
 
-固定 schema 成本，出现在每次 root agent 请求上，外加每次调用的结果文本。子 agent 完全不带这些。
+固定 schema 成本，出现在每次 root agent 请求上，外加每次调用的结果文本。子 agent 带的是一个工具的 schema 而不是三个，且没有注入行。
 
 #### KV 缓存影响
 
