@@ -40,7 +40,7 @@ export interface JiraWire {
   /** The read-only super-agent summary; absent on a Host that does not expose it. */
   superagentStatus?(): Promise<RemoteResult<SuperagentStatusView>>
   /** Recent ledger commits, newest first. */
-  superagentHistory?(limit?: number): Promise<RemoteResult<SuperagentHistoryView>>
+  superagentHistory?(limit?: number, before?: string): Promise<RemoteResult<SuperagentHistoryView>>
   /** Recent proposal comments, newest first. */
   superagentTriggers?(limit?: number, before?: string): Promise<RemoteResult<SuperagentTriggersView>>
 }
@@ -242,6 +242,28 @@ export class JiraStore {
       const current = draft.superagentTriggers.view
       if (current === null) return
       draft.superagentTriggers.view = {
+        entries: [...current.entries, ...next.value.entries],
+        hasMore: next.value.hasMore,
+      }
+    })
+  }
+
+  /**
+   * Append the next page of ledger history.
+   * @returns when the page is appended, or when there is no next page.
+   */
+  async loadMoreHistory(): Promise<void> {
+    const view = this.store.getSnapshot().superagentHistory.view
+    const wire = this.wire.superagentHistory
+    if (view === null || !view.hasMore || wire === undefined) return
+    const before = view.entries.at(-1)?.at
+    if (before === undefined) return
+    const next = await read(() => wire(10, before))
+    if (!next.ok) return
+    this.store.update((draft) => {
+      const current = draft.superagentHistory.view
+      if (current === null) return
+      draft.superagentHistory.view = {
         entries: [...current.entries, ...next.value.entries],
         hasMore: next.value.hasMore,
       }

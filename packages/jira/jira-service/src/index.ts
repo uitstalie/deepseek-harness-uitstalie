@@ -327,17 +327,19 @@ export class JiraService extends Service implements JiraServiceApi {
    * @param limit - how many entries; clamped to 1..50.
    * @returns the commits as plain JSON, or the git failure.
    */
-  async superagentHistory(limit: number = 10): Promise<JiraResult<SuperagentHistoryView>> {
+  async superagentHistory(limit: number = 10, before?: string): Promise<JiraResult<SuperagentHistoryView>> {
     const opened = await this.open()
     if (!opened.store.ok) return opened.store
-    const count = Math.max(1, Math.min(50, Math.floor(limit)))
-    const log = await git.runGit(opened.root, ['log', `-n${String(count)}`, '--pretty=format:%H%x1f%aI%x1f%an%x1f%s'])
+    const size = Math.max(1, Math.min(50, Math.floor(limit)))
+    const args = ['log', `-n${String(size + 1)}`, '--pretty=format:%H%x1f%aI%x1f%an%x1f%s']
+    if (before !== undefined && before !== '') args.push(`--before=${before}`)
+    const log = await git.runGit(opened.root, args)
     if (log.code !== 0) return err(errors.ioFailed(`could not read the ledger history: ${log.stderr.trim()}`))
-    const entries = log.stdout.split('\n').filter(line => line !== '').map((line) => {
+    const all = log.stdout.split('\n').filter(line => line !== '').map((line) => {
       const [sha = '', at = '', author = '', subject = ''] = line.split('\x1f')
       return Object.freeze({ sha, at, author, subject })
     })
-    return result.ok(Object.freeze({ entries: Object.freeze(entries) }))
+    return result.ok(Object.freeze({ entries: Object.freeze(all.slice(0, size)), hasMore: all.length > size }))
   }
 
   /**

@@ -300,7 +300,7 @@ export interface JiraServiceApi {
    * @param limit - how many entries; the service clamps it to 1..50.
    * @returns the commits as plain JSON.
    */
-  superagentHistory(limit?: number): Promise<JiraResult<SuperagentHistoryView>>
+  superagentHistory(limit?: number, before?: string): Promise<JiraResult<SuperagentHistoryView>>
 
   /**
    * Read one issue with its comments and decode warnings.

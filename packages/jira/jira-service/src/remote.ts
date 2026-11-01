@@ -154,8 +154,8 @@ export default class JiraRemote extends TypertRemoteService {
    * @throws {RemoteError} when git cannot read the ledger.
    */
   @Remote
-  async superagentHistory(limit?: number): Promise<SuperagentHistoryView> {
-    return unwrap(await this.ctx.jira.superagentHistory(limit))
+  async superagentHistory(limit?: number, before?: string): Promise<SuperagentHistoryView> {
+    return unwrap(await this.ctx.jira.superagentHistory(limit, before))
   }
 
   /**

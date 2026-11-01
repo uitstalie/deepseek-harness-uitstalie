@@ -31,6 +31,7 @@ export function SuperagentSection(props: SuperagentSectionProps) {
         triggers={state.superagentTriggers.view}
         t={t}
         onLoadMore={() => { void controller.loadMoreTriggers() }}
+        onLoadMoreHistory={() => { void controller.loadMoreHistory() }}
         onSelect={(key) => { void controller.select(key) }}
       />
     </div>

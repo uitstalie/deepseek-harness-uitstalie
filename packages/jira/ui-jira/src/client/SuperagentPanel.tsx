@@ -27,6 +27,8 @@ export interface SuperagentPanelProps {
   readonly triggers?: SuperagentTriggersView | null
   /** Append the next proposal page. */
   readonly onLoadMore?: () => void
+  /** Append the next history page. */
+  readonly onLoadMoreHistory?: () => void
   /** Open an issue's detail when a row is chosen. */
   readonly onSelect?: (key: string) => void
   /** This page's copy. */
@@ -56,7 +58,7 @@ const groupByDay = <T extends { readonly at: string }>(entries: readonly T[]): R
 }
 
 /** The super-agent summary block. */
-export function SuperagentPanel({ board, status, history, triggers, onLoadMore, onSelect, t }: SuperagentPanelProps) {
+export function SuperagentPanel({ board, status, history, triggers, onLoadMore, onLoadMoreHistory, onSelect, t }: SuperagentPanelProps) {
   const [query, setQuery] = useState('')
   const [activeOnly, setActiveOnly] = useState(false)
   const [fromDate, setFromDate] = useState('')
@@ -177,6 +179,9 @@ export function SuperagentPanel({ board, status, history, triggers, onLoadMore, 
                 <li key={entry.sha}>{entry.subject} · {entry.author} · {entry.at}</li>
               ))}
             </ul>
+            {history.hasMore && onLoadMoreHistory !== undefined
+              ? <button type="button" className={styles.superagentLink} onClick={onLoadMoreHistory}>{t('superagentLoadMoreHistory')}</button>
+              : null}
           </div>
         )}
     </section>

@@ -127,6 +127,8 @@ export interface SuperagentHistoryEntry {
 /** Recent ledger commits, newest first. */
 export interface SuperagentHistoryView {
   readonly entries: readonly SuperagentHistoryEntry[]
+  /** True when older commits exist beyond the returned page. */
+  readonly hasMore: boolean
 }
 
 /** One proposal comment: the event that asked a person to claim an issue. */

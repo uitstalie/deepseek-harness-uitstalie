@@ -50,7 +50,7 @@ it('opens the chosen review issue', () => {
 })
 
 it('renders recent activity when the Host provides it', () => {
-  render(<SuperagentPanel board={board} t={t} history={{ entries: [{ sha: 'a'.repeat(40), at: '2026-10-27T00:00:00Z', author: 'human:fixture', subject: 'claim DH-3' }] }} />)
+  render(<SuperagentPanel board={board} t={t} history={{ entries: [{ sha: 'a'.repeat(40), at: '2026-10-27T00:00:00Z', author: 'human:fixture', subject: 'claim DH-3' }], hasMore: false }} />)
   expect(screen.getByText('superagentHistoryTitle')).toBeTruthy()
   expect(screen.getByText(/claim DH-3/)).toBeTruthy()
 })
@@ -96,6 +96,15 @@ it('filters proposals by a UTC date range', () => {
   fireEvent.change(dates[0] as Element, { target: { value: '2026-10-27' } })
   expect(screen.queryByText(/DH-9/)).toBeNull()
   expect(screen.getAllByText(/DH-3/).length).toBeGreaterThan(0)
+})
+
+it('asks for older activity only when more exists', () => {
+  const onLoadMoreHistory = vi.fn()
+  render(<SuperagentPanel board={board} t={t} onLoadMoreHistory={onLoadMoreHistory} history={{ entries: [
+    { sha: 'a'.repeat(40), at: '2026-10-27T00:00:00Z', author: 'human:fixture', subject: 'claim DH-3' },
+  ], hasMore: true }} />)
+  fireEvent.click(screen.getByText('superagentLoadMoreHistory'))
+  expect(onLoadMoreHistory).toHaveBeenCalledTimes(1)
 })
 
 it('renders nothing while the board is loading', () => {

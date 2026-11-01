@@ -94,6 +94,7 @@ export const en = {
   superagentFilterTo: 'To',
   superagentFilterEmpty: 'Nothing matches the filter.',
   superagentLoadMore: 'Show older proposals',
+  superagentLoadMoreHistory: 'Show older activity',
 }
 
 /** The settings.jira namespace key union. */
@@ -188,6 +189,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   superagentFilterTo: '到',
   superagentFilterEmpty: '没有匹配的提案。',
   superagentLoadMore: '加载更早的提案',
+  superagentLoadMoreHistory: '加载更早的活动',
 }
 
 /**
