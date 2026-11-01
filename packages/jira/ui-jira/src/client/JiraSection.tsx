@@ -67,6 +67,7 @@ export function JiraSection(props: JiraSectionProps) {
         board={state.board.view}
         status={state.superagent.view}
         history={state.superagentHistory.view}
+        triggers={state.superagentTriggers.view}
         t={t}
         onSelect={(key) => { void controller.select(key) }}
       />

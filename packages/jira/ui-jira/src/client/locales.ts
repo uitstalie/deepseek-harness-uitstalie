@@ -86,6 +86,7 @@ export const en = {
   superagentNeedsYou: 'Needs you',
   superagentReviewItem: '{key}  {summary}',
   superagentHistoryTitle: 'Recent activity',
+  superagentTriggersTitle: 'Proposals',
 }
 
 /** The settings.jira namespace key union. */
@@ -172,6 +173,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   superagentNeedsYou: '需要你',
   superagentReviewItem: '{key}  {summary}',
   superagentHistoryTitle: '最近活动',
+  superagentTriggersTitle: '提案',
 }
 
 /**

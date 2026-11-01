@@ -29,6 +29,7 @@ import type {
   JiraStatusView,
   ListQuery,
   SuperagentHistoryView,
+  SuperagentTriggersView,
   SuperagentStatusView,
 } from './types.ts'
 
@@ -133,6 +134,17 @@ export default class JiraRemote extends TypertRemoteService {
   @Remote
   async board(): Promise<JiraBoardView> {
     return boardViewOf(unwrap(await this.ctx.jira.board()))
+  }
+
+  /**
+   * Recent proposal comments, newest first.
+   * @param limit - how many entries; the service clamps it to 1..50.
+   * @returns the proposals with their issue key and active flag.
+   * @throws {RemoteError} when the ledger cannot be read.
+   */
+  @Remote
+  async superagentTriggers(limit?: number): Promise<SuperagentTriggersView> {
+    return unwrap(await this.ctx.jira.superagentTriggers(limit))
   }
 
   /**

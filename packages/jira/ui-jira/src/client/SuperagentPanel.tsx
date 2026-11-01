@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-client-ui-jira/SuperagentPanel
  */
 
-import type { JiraBoardView, JiraIssueRowView, SuperagentHistoryView, SuperagentStatusView } from '@deepseek-ai/dsh-jira-service/types'
+import type { JiraBoardView, JiraIssueRowView, SuperagentHistoryView, SuperagentStatusView, SuperagentTriggersView } from '@deepseek-ai/dsh-jira-service/types'
 import { fill } from './locales.ts'
 import type { JiraKey } from './locales.ts'
 import styles from './JiraSection.module.css'
@@ -22,6 +22,8 @@ export interface SuperagentPanelProps {
   readonly status?: SuperagentStatusView | null
   /** Recent ledger commits, newest first. */
   readonly history?: SuperagentHistoryView | null
+  /** Recent proposal comments, newest first. */
+  readonly triggers?: SuperagentTriggersView | null
   /** Open an issue's detail when a row is chosen. */
   readonly onSelect?: (key: string) => void
   /** This page's copy. */
@@ -35,7 +37,7 @@ const rowsOf = (board: JiraBoardView, status: string | undefined): readonly Jira
     .flatMap(group => group.items)
 
 /** The super-agent summary block. */
-export function SuperagentPanel({ board, status, history, onSelect, t }: SuperagentPanelProps) {
+export function SuperagentPanel({ board, status, history, triggers, onSelect, t }: SuperagentPanelProps) {
   if (board === null && status === undefined) return null
   let counts: readonly (readonly [JiraKey, number])[]
   let needs: readonly { key: string; summary: string }[]
@@ -80,6 +82,22 @@ export function SuperagentPanel({ board, status, history, onSelect, t }: Superag
                 <li key={row.key}>
                   <button type="button" className={styles.superagentLink} onClick={() => onSelect?.(row.key)}>
                     {fill(t('superagentReviewItem'), { key: row.key, summary: row.summary })}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      {triggers === undefined || triggers === null || triggers.entries.length === 0
+        ? null
+        : (
+          <div className={styles.superagentNeeds}>
+            <h4 className={styles.superagentNeedsTitle}>{t('superagentTriggersTitle')}</h4>
+            <ul className={styles.superagentList}>
+              {triggers.entries.map(entry => (
+                <li key={`${entry.key}-${entry.at}-${entry.author}`}>
+                  <button type="button" className={styles.superagentLink} onClick={() => onSelect?.(entry.key)}>
+                    {entry.key} · {entry.author} · {entry.at}{entry.active ? ' · active' : ''}
                   </button>
                 </li>
               ))}

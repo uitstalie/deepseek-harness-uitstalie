@@ -128,3 +128,57 @@ export interface SuperagentHistoryEntry {
 export interface SuperagentHistoryView {
   readonly entries: readonly SuperagentHistoryEntry[]
 }
+
+/** One proposal comment: the event that asked a person to claim an issue. */
+export interface SuperagentTrigger {
+  readonly key: string
+  readonly summary: string
+  readonly author: string
+  readonly at: string
+  readonly body: string
+  /** True when this is still the latest comment on the issue. */
+  readonly active: boolean
+}
+
+/** Recent proposals, newest first. */
+export interface SuperagentTriggersView {
+  readonly entries: readonly SuperagentTrigger[]
+}
+
+type TriggerComment = Readonly<{
+  id: string
+  author: unknown
+  createdAt: string
+  body: string
+}>
+
+/**
+ * Project the proposal comments into the trigger view.
+ * @param issues - every decoded issue.
+ * @param commentsByKey - comments per issue, oldest first.
+ * @param limit - how many entries to keep.
+ * @returns the proposals, newest first.
+ */
+export const superagentTriggersOf = (
+  issues: readonly Issue[],
+  commentsByKey: ReadonlyMap<string, readonly TriggerComment[]>,
+  limit: number,
+): SuperagentTriggersView => {
+  const entries: SuperagentTrigger[] = []
+  for (const issue of issues) {
+    const comments = commentsByKey.get(String(issue.key)) ?? []
+    for (const [index, comment] of comments.entries()) {
+      if (!comment.body.trimStart().startsWith(SUPERAGENT_PROPOSAL_MARKER)) continue
+      entries.push(Object.freeze({
+        key: String(issue.key),
+        summary: issue.summary,
+        author: String(comment.author),
+        at: comment.createdAt,
+        body: comment.body,
+        active: index === comments.length - 1,
+      }))
+    }
+  }
+  entries.sort((left, right) => left.at < right.at ? 1 : left.at > right.at ? -1 : 0)
+  return Object.freeze({ entries: Object.freeze(entries.slice(0, Math.max(1, Math.min(50, limit)))) })
+}

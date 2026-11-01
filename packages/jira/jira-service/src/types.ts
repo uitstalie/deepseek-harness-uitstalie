@@ -144,9 +144,9 @@ export interface SessionRecordFacts {
   readonly toolEvidence?: string
 }
 
-import type { SuperagentHistoryView, SuperagentStatusView } from './superagent-status.ts'
+import type { SuperagentHistoryView, SuperagentStatusView, SuperagentTriggersView } from './superagent-status.ts'
 
-export type { SuperagentHistoryEntry, SuperagentHistoryView, SuperagentStatusItem, SuperagentStatusView } from './superagent-status.ts'
+export type { SuperagentHistoryEntry, SuperagentHistoryView, SuperagentStatusItem, SuperagentStatusView, SuperagentTrigger, SuperagentTriggersView } from './superagent-status.ts'
 
 /** One knowledge entry with its file path and warnings. */
 export interface KnowledgeDetail {
@@ -287,6 +287,13 @@ export interface JiraServiceApi {
    * @returns the counts and the rows that need a person.
    */
   superagentStatus(): Promise<JiraResult<SuperagentStatusView>>
+
+  /**
+   * Recent proposal comments, newest first: the trigger history a review panel shows.
+   * @param limit - how many entries; the service clamps it to 1..50.
+   * @returns the proposals with their issue key and active flag.
+   */
+  superagentTriggers(limit?: number): Promise<JiraResult<SuperagentTriggersView>>
 
   /**
    * Recent ledger commits, newest first: the history a review panel shows.

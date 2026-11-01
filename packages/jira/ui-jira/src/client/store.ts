@@ -24,6 +24,7 @@ import type {
   JiraStatusView,
   SuperagentStatusView,
   SuperagentHistoryView,
+  SuperagentTriggersView,
 } from '@deepseek-ai/dsh-jira-service/types'
 
 /** The Remote methods this page calls; the generated `remote.jira` namespace satisfies it. */
@@ -40,6 +41,8 @@ export interface JiraWire {
   superagentStatus?(): Promise<RemoteResult<SuperagentStatusView>>
   /** Recent ledger commits, newest first. */
   superagentHistory?(limit?: number): Promise<RemoteResult<SuperagentHistoryView>>
+  /** Recent proposal comments, newest first. */
+  superagentTriggers?(limit?: number): Promise<RemoteResult<SuperagentTriggersView>>
 }
 
 /** The board's load state. */
@@ -99,6 +102,8 @@ export interface JiraState {
   superagent: { status: 'idle' | 'loading' | 'ready' | 'error'; error: string | null; view: SuperagentStatusView | null }
   /** Recent ledger commits for the history block. */
   superagentHistory: { status: 'idle' | 'loading' | 'ready' | 'error'; error: string | null; view: SuperagentHistoryView | null }
+  /** Recent proposal comments for the trigger block. */
+  superagentTriggers: { status: 'idle' | 'loading' | 'ready' | 'error'; error: string | null; view: SuperagentTriggersView | null }
 }
 
 /** One Remote read folded into the page's failure shape. */
@@ -115,6 +120,7 @@ const initialState = (): JiraState => ({
   knowledge: { query: '', status: 'idle', error: null, view: null, stale: false },
   superagent: { status: 'idle', error: null, view: null },
   superagentHistory: { status: 'idle', error: null, view: null },
+  superagentTriggers: { status: 'idle', error: null, view: null },
 })
 
 /**
@@ -172,6 +178,7 @@ export class JiraStore {
       draft.board.error = null
       if (this.wire.superagentStatus !== undefined) draft.superagent.status = 'loading'
       if (this.wire.superagentHistory !== undefined) draft.superagentHistory.status = 'loading'
+      if (this.wire.superagentTriggers !== undefined) draft.superagentTriggers.status = 'loading'
     })
     const board = await read(() => this.wire.board())
     const status = await read(() => this.wire.status())
@@ -183,6 +190,10 @@ export class JiraStore {
     const history = readHistory === undefined
       ? null
       : await read(() => readHistory(10))
+    const readTriggers = this.wire.superagentTriggers
+    const triggers = readTriggers === undefined
+      ? null
+      : await read(() => readTriggers(10))
     // A change (or a retry) started another load while these were in flight: that one owns the
     // state, and this answer is older than the truth it would replace.
     if (generation !== this.boardRead) return
@@ -206,6 +217,11 @@ export class JiraStore {
         draft.superagentHistory = history.ok
           ? { status: 'ready', error: null, view: history.value }
           : { status: 'error', error: history.error, view: null }
+      }
+      if (triggers !== null) {
+        draft.superagentTriggers = triggers.ok
+          ? { status: 'ready', error: null, view: triggers.value }
+          : { status: 'error', error: triggers.error, view: null }
       }
     })
   }

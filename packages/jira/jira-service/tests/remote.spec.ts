@@ -99,6 +99,7 @@ describe('remote.jira', () => {
     expect(typeof remote.board).toBe('function')
     expect(typeof remote.superagentStatus).toBe('function')
     expect(typeof remote.superagentHistory).toBe('function')
+    expect(typeof remote.superagentTriggers).toBe('function')
     expect(typeof remote.list).toBe('function')
     expect(typeof remote.get).toBe('function')
     expect(typeof remote.kbSearch).toBe('function')
@@ -137,6 +138,12 @@ describe('remote.jira', () => {
     expect(history.entries[0]?.sha).toMatch(/^[0-9a-f]{40}$/u)
     expect(history.entries[0]?.subject.length).toBeGreaterThan(0)
     expect(JSON.parse(JSON.stringify(history))).toEqual(history)
+  })
+
+  it('answers superagentTriggers() with an empty list until a proposal exists', async () => {
+    const triggers = await remote.superagentTriggers(5)
+    expect(triggers.entries).toEqual([])
+    expect(JSON.parse(JSON.stringify(triggers))).toEqual(triggers)
   })
 
   it('answers board() with the issue grouped under its status and JSON-safe counts', async () => {

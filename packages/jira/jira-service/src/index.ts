@@ -63,9 +63,9 @@ import {
 } from '@deepseek-ai/dsh-jira-core'
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraFilteredIssues, JiraResult, JiraServiceApi, JiraSnapshot, JiraSyncState, JiraStatus, SuperagentHistoryView, SuperagentStatusView, KnowledgeDetail, SessionRecordFacts, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, TagsLintReport, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
+import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraFilteredIssues, JiraResult, JiraServiceApi, JiraSnapshot, JiraSyncState, JiraStatus, SuperagentHistoryView, SuperagentStatusView, SuperagentTriggersView, KnowledgeDetail, SessionRecordFacts, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, TagsLintReport, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 import JiraRemote from './remote.ts'
-import { superagentStatusOf } from './superagent-status.ts'
+import { superagentStatusOf, superagentTriggersOf } from './superagent-status.ts'
 
 export type * from './types.ts'
 
@@ -303,6 +303,23 @@ export class JiraService extends Service implements JiraServiceApi {
     }
     const at = `${new Date().toISOString().slice(0, 19)}Z` as Timestamp
     return result.ok(superagentStatusOf(listed.issues, byKey, vocab.value.closed, at))
+  }
+
+  /**
+   * Recent proposal comments, newest first.
+   * @param limit - how many entries; clamped to 1..50.
+   * @returns the proposals with their issue key and active flag.
+   */
+  async superagentTriggers(limit: number = 10): Promise<JiraResult<SuperagentTriggersView>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const listed = await inspect.listIssues(opened.root)
+    const byKey = new Map<string, readonly { id: string; author: unknown; createdAt: string; body: string }[]>()
+    for (const issue of listed.issues) {
+      const read = await coreStore.readComments(opened.store.value, issue.key)
+      if (read.ok) byKey.set(String(issue.key), read.value)
+    }
+    return result.ok(superagentTriggersOf(listed.issues, byKey, limit))
   }
 
   /**

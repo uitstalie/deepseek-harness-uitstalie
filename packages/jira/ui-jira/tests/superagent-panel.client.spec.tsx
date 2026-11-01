@@ -55,6 +55,14 @@ it('renders recent activity when the Host provides it', () => {
   expect(screen.getByText(/claim DH-3/)).toBeTruthy()
 })
 
+it('renders proposal triggers and opens the issue', () => {
+  const onSelect = vi.fn()
+  render(<SuperagentPanel board={board} t={t} onSelect={onSelect} triggers={{ entries: [{ key: 'DH-3', summary: 'needs a look', author: 'human:fixture', at: '2026-10-27T00:00:00Z', body: '[claim-proposal] take it', active: true }] }} />)
+  expect(screen.getByText('superagentTriggersTitle')).toBeTruthy()
+  fireEvent.click(screen.getByText(/DH-3 · human:fixture/))
+  expect(onSelect).toHaveBeenCalledWith('DH-3')
+})
+
 it('renders nothing while the board is loading', () => {
   const { container } = render(<SuperagentPanel board={null} t={t} />)
   expect(container.firstChild).toBeNull()
