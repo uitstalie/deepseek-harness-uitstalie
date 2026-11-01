@@ -63,8 +63,9 @@ import {
 } from '@deepseek-ai/dsh-jira-core'
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraFilteredIssues, JiraResult, JiraServiceApi, JiraSnapshot, JiraSyncState, JiraStatus, KnowledgeDetail, SessionRecordFacts, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, TagsLintReport, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
+import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraFilteredIssues, JiraResult, JiraServiceApi, JiraSnapshot, JiraSyncState, JiraStatus, SuperagentStatusView, KnowledgeDetail, SessionRecordFacts, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, TagsLintReport, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 import JiraRemote from './remote.ts'
+import { superagentStatusOf } from './superagent-status.ts'
 
 export type * from './types.ts'
 
@@ -282,6 +283,26 @@ export class JiraService extends Service implements JiraServiceApi {
       this.lastSync,
       this.queue?.isPending() === true,
     )
+  }
+
+  /**
+   * The read-only super-agent view: ready, proposed, in progress, in review and blocked.
+   * @returns the counts and the rows that need a person.
+   */
+  async superagentStatus(): Promise<JiraResult<SuperagentStatusView>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const vocab = await coreStore.loadVocab(opened.store.value)
+    if (!vocab.ok) return vocab
+    const listed = await inspect.listIssues(opened.root)
+    const byKey = new Map<string, readonly { body: string }[]>()
+    for (const issue of listed.issues) {
+      if (vocab.value.closed.includes(issue.status)) continue
+      const read = await coreStore.readComments(opened.store.value, issue.key)
+      if (read.ok) byKey.set(String(issue.key), read.value)
+    }
+    const at = `${new Date().toISOString().slice(0, 19)}Z` as Timestamp
+    return result.ok(superagentStatusOf(listed.issues, byKey, vocab.value.closed, at))
   }
 
   /**

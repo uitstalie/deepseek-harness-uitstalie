@@ -22,6 +22,7 @@ import type {
   JiraIssueDetailView,
   JiraKbSearchView,
   JiraStatusView,
+  SuperagentStatusView,
 } from '@deepseek-ai/dsh-jira-service/types'
 
 /** The Remote methods this page calls; the generated `remote.jira` namespace satisfies it. */
@@ -34,6 +35,8 @@ export interface JiraWire {
   get(key: string): Promise<RemoteResult<JiraIssueDetailView>>
   /** Ranked knowledge hits for one query. */
   kbSearch(query: string, topK?: number): Promise<RemoteResult<JiraKbSearchView>>
+  /** The read-only super-agent summary; absent on a Host that does not expose it. */
+  superagentStatus?(): Promise<RemoteResult<SuperagentStatusView>>
 }
 
 /** The board's load state. */
@@ -89,6 +92,8 @@ export interface JiraState {
   detail: JiraDetailState | null
   /** The knowledge search. */
   knowledge: JiraKnowledgeState
+  /** The super-agent summary, when the Host exposes it. */
+  superagent: { status: 'idle' | 'loading' | 'ready' | 'error'; error: string | null; view: SuperagentStatusView | null }
 }
 
 /** One Remote read folded into the page's failure shape. */
@@ -103,6 +108,7 @@ const initialState = (): JiraState => ({
   board: { status: 'idle', error: null, view: null },
   detail: null,
   knowledge: { query: '', status: 'idle', error: null, view: null, stale: false },
+  superagent: { status: 'idle', error: null, view: null },
 })
 
 /**
@@ -158,9 +164,14 @@ export class JiraStore {
     this.store.update((draft) => {
       draft.board.status = 'loading'
       draft.board.error = null
+      if (this.wire.superagentStatus !== undefined) draft.superagent.status = 'loading'
     })
     const board = await read(() => this.wire.board())
     const status = await read(() => this.wire.status())
+    const readSuperagent = this.wire.superagentStatus
+    const superagent = readSuperagent === undefined
+      ? null
+      : await read(() => readSuperagent())
     // A change (or a retry) started another load while these were in flight: that one owns the
     // state, and this answer is older than the truth it would replace.
     if (generation !== this.boardRead) return
@@ -175,6 +186,11 @@ export class JiraStore {
       }
       draft.statusView = status.ok ? status.value : null
       draft.statusError = status.ok ? null : status.error
+      if (superagent !== null) {
+        draft.superagent = superagent.ok
+          ? { status: 'ready', error: null, view: superagent.value }
+          : { status: 'error', error: superagent.error, view: null }
+      }
     })
   }
 

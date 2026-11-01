@@ -97,6 +97,7 @@ describe('remote.jira', () => {
   it('mounts the read-only face with the service row and exposes no write method', async () => {
     expect(typeof remote.status).toBe('function')
     expect(typeof remote.board).toBe('function')
+    expect(typeof remote.superagentStatus).toBe('function')
     expect(typeof remote.list).toBe('function')
     expect(typeof remote.get).toBe('function')
     expect(typeof remote.kbSearch).toBe('function')
@@ -119,6 +120,14 @@ describe('remote.jira', () => {
     expect(JSON.parse(JSON.stringify(status))).toEqual(status)
     // The service reports the same facts the row resolved; the Remote adds no second truth.
     expect(status.root).toBe(ctx.jira.status().root)
+  })
+
+  it('answers superagentStatus() with counts and no one needs to act yet', async () => {
+    const view = await remote.superagentStatus()
+    expect(view.counts).toEqual({ ready: 1, proposed: 0, inProgress: 0, inReview: 0, blocked: 0 })
+    expect(view.ready.map(item => item.key)).toEqual(['DH-1'])
+    expect(view.needsPerson).toEqual([])
+    expect(JSON.parse(JSON.stringify(view))).toEqual(view)
   })
 
   it('answers board() with the issue grouped under its status and JSON-safe counts', async () => {

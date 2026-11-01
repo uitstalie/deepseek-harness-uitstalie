@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-jira` 提供 jira 账本的浏览器面：一个设置页段落（`id: 'jira'`、`order: 200`），编辑账本行并读取账本本身——按 status 分组的看板、一个 issue 的详情，以及知识搜索。账本视图仍然只读（写操作留给模型的工具）；看板上方还有一个 super agent 摘要块，从同一份 board 报告 ready / in-progress / review / blocked 计数，完整面板留给 DH-601；行字段可编辑，因为 `jira-service` 把它们声明为 volatile，保存后无需重启即可生效。`dafeiyu` 的 Capabilities 列表按 id 链接到这个段落，因此 id 与 order 是两面都从同一个模块读取的约定。
+`dsh-client-ui-jira` 提供 jira 账本的浏览器面：一个设置页段落（`id: 'jira'`、`order: 200`），编辑账本行并读取账本本身——按 status 分组的看板、一个 issue 的详情，以及知识搜索。账本视图仍然只读（写操作留给模型的工具）；看板上方还有一个 super agent 摘要块，报告 ready / in-progress / review / blocked 计数；优先用 Host 的 `superagentStatus`，没有时回退到同一份 board，完整面板留给 DH-601；行字段可编辑，因为 `jira-service` 把它们声明为 volatile，保存后无需重启即可生效。`dafeiyu` 的 Capabilities 列表按 id 链接到这个段落，因此 id 与 order 是两面都从同一个模块读取的约定。
 
 ## 目录
 

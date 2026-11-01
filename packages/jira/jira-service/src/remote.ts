@@ -28,6 +28,7 @@ import type {
   JiraResult,
   JiraStatusView,
   ListQuery,
+  SuperagentStatusView,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -111,6 +112,16 @@ export default class JiraRemote extends TypertRemoteService {
   @Remote
   status(): JiraStatusView {
     return statusViewOf(this.ctx.jira.status())
+  }
+
+  /**
+   * The read-only super-agent view: ready, proposed, in progress, in review and blocked.
+   * @returns the counts and the rows that need a person.
+   * @throws {RemoteError} when the ledger cannot be read.
+   */
+  @Remote
+  async superagentStatus(): Promise<SuperagentStatusView> {
+    return unwrap(await this.ctx.jira.superagentStatus())
   }
 
   /**

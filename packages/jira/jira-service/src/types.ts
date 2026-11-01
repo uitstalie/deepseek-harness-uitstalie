@@ -144,6 +144,10 @@ export interface SessionRecordFacts {
   readonly toolEvidence?: string
 }
 
+import type { SuperagentStatusView } from './superagent-status.ts'
+
+export type { SuperagentStatusItem, SuperagentStatusView } from './superagent-status.ts'
+
 /** One knowledge entry with its file path and warnings. */
 export interface KnowledgeDetail {
   readonly entry: KnowledgeEntry
@@ -278,6 +282,12 @@ export interface JiraServiceApi {
    * @returns the commit the close-out scan starts from.
    */
   gitHead(): Promise<string>
+  /**
+   * The read-only super-agent view: ready, proposed, in progress, in review and blocked.
+   * @returns the counts and the rows that need a person.
+   */
+  superagentStatus(): Promise<JiraResult<SuperagentStatusView>>
+
   /**
    * Read one issue with its comments and decode warnings.
    * @param key - the issue key.

@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-client-ui-jira/SuperagentPanel
  */
 
-import type { JiraBoardView, JiraIssueRowView } from '@deepseek-ai/dsh-jira-service/types'
+import type { JiraBoardView, JiraIssueRowView, SuperagentStatusView } from '@deepseek-ai/dsh-jira-service/types'
 import { fill } from './locales.ts'
 import type { JiraKey } from './locales.ts'
 import styles from './JiraSection.module.css'
@@ -18,6 +18,8 @@ import styles from './JiraSection.module.css'
 export interface SuperagentPanelProps {
   /** The board the page already read; absent while it loads. */
   readonly board: JiraBoardView | null
+  /** The Host's super-agent view; preferred over deriving counts from the board. */
+  readonly status?: SuperagentStatusView | null
   /** This page's copy. */
   readonly t: (key: JiraKey) => string
 }
@@ -29,18 +31,29 @@ const rowsOf = (board: JiraBoardView, status: string | undefined): readonly Jira
     .flatMap(group => group.items)
 
 /** The super-agent summary block. */
-export function SuperagentPanel({ board, t }: SuperagentPanelProps) {
-  if (board === null) return null
-  const ready = rowsOf(board, 'todo')
-  const inProgress = rowsOf(board, 'in_progress')
-  const inReview = rowsOf(board, 'in_review')
-  const blocked = rowsOf(board, undefined)
-  const counts = [
-    ['superagentReady', ready.length],
-    ['superagentInProgress', inProgress.length],
-    ['superagentReview', inReview.length],
-    ['superagentBlocked', blocked.length],
-  ] as const
+export function SuperagentPanel({ board, status, t }: SuperagentPanelProps) {
+  if (board === null && status === undefined) return null
+  let counts: readonly (readonly [JiraKey, number])[]
+  let needs: readonly { key: string; summary: string }[]
+  if (status !== undefined && status !== null) {
+    counts = [
+      ['superagentReady', status.counts.ready],
+      ['superagentInProgress', status.counts.inProgress],
+      ['superagentReview', status.counts.inReview],
+      ['superagentBlocked', status.counts.blocked],
+    ] as const
+    needs = status.needsPerson
+  } else if (board !== null) {
+    counts = [
+      ['superagentReady', rowsOf(board, 'todo').length],
+      ['superagentInProgress', rowsOf(board, 'in_progress').length],
+      ['superagentReview', rowsOf(board, 'in_review').length],
+      ['superagentBlocked', rowsOf(board, undefined).length],
+    ] as const
+    needs = rowsOf(board, 'in_review')
+  } else {
+    return null
+  }
 
   return (
     <section className={styles.superagent}>
@@ -53,13 +66,13 @@ export function SuperagentPanel({ board, t }: SuperagentPanelProps) {
           </div>
         ))}
       </dl>
-      {inReview.length === 0
+      {needs.length === 0
         ? null
         : (
           <div className={styles.superagentNeeds}>
             <h4 className={styles.superagentNeedsTitle}>{t('superagentNeedsYou')}</h4>
             <ul className={styles.superagentList}>
-              {inReview.map(row => (
+              {needs.map(row => (
                 <li key={row.key}>{fill(t('superagentReviewItem'), { key: row.key, summary: row.summary })}</li>
               ))}
             </ul>
