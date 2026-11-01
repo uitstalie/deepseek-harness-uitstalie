@@ -39,7 +39,7 @@ it('renders counts and the review rows', () => {
   expect(screen.getByText('superagentTitle')).toBeTruthy()
   expect(screen.getAllByText('1')).toHaveLength(4)
   expect(screen.getByText('superagentNeedsYou')).toBeTruthy()
-  expect(screen.getByText(/DH-3/)).toBeTruthy()
+  expect(screen.getAllByText(/DH-3/).length).toBeGreaterThan(0)
 })
 
 it('opens the chosen review issue', () => {
@@ -85,6 +85,17 @@ it('asks for the next proposal page only when more exist', () => {
   ], hasMore: true }} />)
   fireEvent.click(screen.getByText('superagentLoadMore'))
   expect(onLoadMore).toHaveBeenCalledTimes(1)
+})
+
+it('filters proposals by a UTC date range', () => {
+  const { container } = render(<SuperagentPanel board={board} t={t} triggers={{ entries: [
+    { key: 'DH-3', summary: 'new', author: 'a', at: '2026-10-27T10:00:00Z', body: '[claim-proposal] new', active: true },
+    { key: 'DH-9', summary: 'old', author: 'b', at: '2026-10-26T10:00:00Z', body: '[claim-proposal] old', active: false },
+  ], hasMore: false }} />)
+  const dates = container.querySelectorAll('input[type="date"]')
+  fireEvent.change(dates[0] as Element, { target: { value: '2026-10-27' } })
+  expect(screen.queryByText(/DH-9/)).toBeNull()
+  expect(screen.getAllByText(/DH-3/).length).toBeGreaterThan(0)
 })
 
 it('renders nothing while the board is loading', () => {

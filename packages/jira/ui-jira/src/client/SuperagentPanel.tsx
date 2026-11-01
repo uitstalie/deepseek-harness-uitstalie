@@ -59,6 +59,8 @@ const groupByDay = <T extends { readonly at: string }>(entries: readonly T[]): R
 export function SuperagentPanel({ board, status, history, triggers, onLoadMore, onSelect, t }: SuperagentPanelProps) {
   const [query, setQuery] = useState('')
   const [activeOnly, setActiveOnly] = useState(false)
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   if (board === null && status === undefined) return null
   let counts: readonly (readonly [JiraKey, number])[]
   let needs: readonly { key: string; summary: string }[]
@@ -86,6 +88,9 @@ export function SuperagentPanel({ board, status, history, triggers, onLoadMore, 
   const needle = query.trim().toLowerCase()
   const visibleTriggers = triggerEntries.filter((entry) => {
     if (activeOnly && !entry.active) return false
+    const day = entry.at.slice(0, 10)
+    if (fromDate !== '' && day < fromDate) return false
+    if (toDate !== '' && day > toDate) return false
     if (needle === '') return true
     return [entry.key, entry.author, entry.summary, entry.body].some(value => value.toLowerCase().includes(needle))
   })
@@ -132,6 +137,14 @@ export function SuperagentPanel({ board, status, history, triggers, onLoadMore, 
               <label className={styles.superagentFilterToggle}>
                 <input type="checkbox" checked={activeOnly} onChange={(event) => { setActiveOnly(event.target.checked) }} />
                 {t('superagentFilterActive')}
+              </label>
+              <label className={styles.superagentFilterToggle}>
+                {t('superagentFilterFrom')}
+                <input type="date" className={styles.superagentFilterDate} value={fromDate} onChange={(event) => { setFromDate(event.target.value) }} />
+              </label>
+              <label className={styles.superagentFilterToggle}>
+                {t('superagentFilterTo')}
+                <input type="date" className={styles.superagentFilterDate} value={toDate} onChange={(event) => { setToDate(event.target.value) }} />
               </label>
             </div>
             <ul className={styles.superagentList}>

@@ -90,6 +90,8 @@ export const en = {
   superagentTriggersTitle: 'Proposals',
   superagentFilterPlaceholder: 'Filter by key, author or text…',
   superagentFilterActive: 'Active only',
+  superagentFilterFrom: 'From',
+  superagentFilterTo: 'To',
   superagentFilterEmpty: 'Nothing matches the filter.',
   superagentLoadMore: 'Show older proposals',
 }
@@ -182,6 +184,8 @@ export const zh: { [Key in keyof typeof en]: string } = {
   superagentTriggersTitle: '提案',
   superagentFilterPlaceholder: '按 key、作者或文本筛选…',
   superagentFilterActive: '只看 active',
+  superagentFilterFrom: '从',
+  superagentFilterTo: '到',
   superagentFilterEmpty: '没有匹配的提案。',
   superagentLoadMore: '加载更早的提案',
 }

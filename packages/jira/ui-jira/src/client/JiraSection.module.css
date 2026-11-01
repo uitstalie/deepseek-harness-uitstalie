@@ -426,3 +426,12 @@
   color: var(--dsw-alias-label-secondary);
   list-style: none;
 }
+
+.superagentFilterDate {
+  padding: 3px 6px;
+  border: 1px solid var(--dsw-alias-border-secondary);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-secondary);
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+}
