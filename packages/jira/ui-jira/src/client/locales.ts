@@ -75,6 +75,14 @@ export const en = {
   kbStale: 'The ledger changed after these hits were read; search again for the current ranking.',
   kbMatched: '{matched} hits, {topK} at most',
   kbLocation: '{file}:{line}',
+  superagentTitle: 'Super agent',
+  superagentIntro: 'Read-only summary of the claim loop from the board. Confirm a proposal in the issue comments; review means the delivery is waiting for you.',
+  superagentReady: 'Ready: {count}',
+  superagentInProgress: 'In progress: {count}',
+  superagentReview: 'Waiting for review: {count}',
+  superagentBlocked: 'Blocked: {count}',
+  superagentNeedsYou: 'Needs you',
+  superagentReviewItem: '{key}  {summary}',
 }
 
 /** The settings.jira namespace key union. */
@@ -150,6 +158,14 @@ export const zh: { [Key in keyof typeof en]: string } = {
   kbStale: '这些命中读取后台账又变了；重新检索以获取当前排序。',
   kbMatched: '{matched} 条命中，最多 {topK} 条',
   kbLocation: '{file}:{line}',
+  superagentTitle: 'Super agent',
+  superagentIntro: '看板的认领闭环只读汇总。提案在 issue 评论里确认；review 表示交付在等你复核。',
+  superagentReady: '可领：{count}',
+  superagentInProgress: '进行中：{count}',
+  superagentReview: '待复核：{count}',
+  superagentBlocked: '被阻塞：{count}',
+  superagentNeedsYou: '需要你',
+  superagentReviewItem: '{key}  {summary}',
 }
 
 /**

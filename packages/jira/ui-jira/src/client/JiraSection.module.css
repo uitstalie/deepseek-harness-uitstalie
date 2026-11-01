@@ -296,3 +296,58 @@
 .switchCopy .note {
   margin: 0;
 }
+
+/* The super-agent summary reads the same board; it is not a second data source. */
+.superagent {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--dsw-alias-border-secondary);
+}
+
+.superagentTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.superagentIntro {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.superagentCounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.superagentCount dt {
+  padding: 6px 8px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-secondary);
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.superagentNeeds {
+  margin-top: 12px;
+}
+
+.superagentNeedsTitle {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.superagentList {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-secondary);
+}

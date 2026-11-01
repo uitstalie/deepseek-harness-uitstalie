@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-jira` adds the jira ledger's browser surface: one settings section (`id: 'jira'`, `order: 200`) that edits the ledger row and reads the ledger itself — the board grouped by status, one issue's detail, and the knowledge search. The ledger views are read-only (writes stay with the model's tools); the row fields are editable because `jira-service` declares them volatile, so a save applies without a restart. The `dafeiyu` Capabilities list links to the section by id, so the id and order are a contract both halves read from one module.
+`dsh-client-ui-jira` adds the jira ledger's browser surface: one settings section (`id: 'jira'`, `order: 200`) that edits the ledger row and reads the ledger itself — the board grouped by status, one issue's detail, and the knowledge search. The ledger views are read-only (writes stay with the model's tools); a super-agent summary block above the board reports ready, in-progress, review and blocked counts from the same board, while the full super-agent panel is deferred to DH-601. the row fields are editable because `jira-service` declares them volatile, so a save applies without a restart. The `dafeiyu` Capabilities list links to the section by id, so the id and order are a contract both halves read from one module.
 
 ## Table of Contents
 
@@ -69,6 +69,7 @@ None; the page assembles no request and contributes no prompt text, tool schema,
 
 <a id="known-limitations-and-deferred-work"></a>
 
+- **Super-agent panel:** only the read-only summary block exists; trigger/history pages and proposal-level detail await DH-601.
 - **Board seat:** the board, detail and knowledge search render inside the settings section. A dock/sidebar board would be a second registration (and a designer's layout) rather than another page of this section.
 - **dafeiyu Capabilities list:** the Jira row's label, state and "open settings" jump are DH-12's work; this package only owns the section they link to.
 - **Writes from another process:** the change feed carries what this Host writes (tools, sessions, sync). A CLI write in another process announces nothing here; the page catches up on the next in-host change, on `connection/reset`, or when the section remounts. Watching ledger files would be a second change source and is out of scope.

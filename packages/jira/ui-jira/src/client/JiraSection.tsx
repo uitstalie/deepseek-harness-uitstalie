@@ -18,6 +18,7 @@ import type { JiraLedgerSettingsController, JiraLedgerSettingsState } from './le
 import { JiraBoard } from './JiraBoard.tsx'
 import { KnowledgeSearch } from './KnowledgeSearch.tsx'
 import { LedgerStatus } from './LedgerStatus.tsx'
+import { SuperagentPanel } from './SuperagentPanel.tsx'
 import type { JiraKey } from './locales.ts'
 import type { JiraState, JiraStore } from './store.ts'
 import styles from './JiraSection.module.css'
@@ -62,6 +63,7 @@ export function JiraSection(props: JiraSectionProps) {
       <h2 className={styles.title}>{t('title')}</h2>
       <p className={styles.intro}>{t('intro')}</p>
       <LedgerStatus status={state.statusView} error={state.statusError} t={t} />
+      <SuperagentPanel board={state.board.view} t={t} />
       {ledgerSettings === undefined || settingsState === undefined
         ? null
         : (
