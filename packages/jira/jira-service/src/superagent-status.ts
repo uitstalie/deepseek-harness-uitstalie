@@ -143,6 +143,8 @@ export interface SuperagentTrigger {
 /** Recent proposals, newest first. */
 export interface SuperagentTriggersView {
   readonly entries: readonly SuperagentTrigger[]
+  /** True when older proposals exist beyond the returned page. */
+  readonly hasMore: boolean
 }
 
 type TriggerComment = Readonly<{
@@ -163,12 +165,14 @@ export const superagentTriggersOf = (
   issues: readonly Issue[],
   commentsByKey: ReadonlyMap<string, readonly TriggerComment[]>,
   limit: number,
+  before?: string,
 ): SuperagentTriggersView => {
   const entries: SuperagentTrigger[] = []
   for (const issue of issues) {
     const comments = commentsByKey.get(String(issue.key)) ?? []
     for (const [index, comment] of comments.entries()) {
       if (!comment.body.trimStart().startsWith(SUPERAGENT_PROPOSAL_MARKER)) continue
+      if (before !== undefined && comment.createdAt >= before) continue
       entries.push(Object.freeze({
         key: String(issue.key),
         summary: issue.summary,
@@ -180,5 +184,6 @@ export const superagentTriggersOf = (
     }
   }
   entries.sort((left, right) => left.at < right.at ? 1 : left.at > right.at ? -1 : 0)
-  return Object.freeze({ entries: Object.freeze(entries.slice(0, Math.max(1, Math.min(50, limit)))) })
+  const size = Math.max(1, Math.min(50, limit))
+  return Object.freeze({ entries: Object.freeze(entries.slice(0, size)), hasMore: entries.length > size })
 }

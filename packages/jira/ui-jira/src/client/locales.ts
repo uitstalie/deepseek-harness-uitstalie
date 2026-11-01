@@ -91,6 +91,7 @@ export const en = {
   superagentFilterPlaceholder: 'Filter by key, author or text…',
   superagentFilterActive: 'Active only',
   superagentFilterEmpty: 'Nothing matches the filter.',
+  superagentLoadMore: 'Show older proposals',
 }
 
 /** The settings.jira namespace key union. */
@@ -182,6 +183,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   superagentFilterPlaceholder: '按 key、作者或文本筛选…',
   superagentFilterActive: '只看 active',
   superagentFilterEmpty: '没有匹配的提案。',
+  superagentLoadMore: '加载更早的提案',
 }
 
 /**

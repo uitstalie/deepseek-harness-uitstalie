@@ -310,7 +310,7 @@ export class JiraService extends Service implements JiraServiceApi {
    * @param limit - how many entries; clamped to 1..50.
    * @returns the proposals with their issue key and active flag.
    */
-  async superagentTriggers(limit: number = 10): Promise<JiraResult<SuperagentTriggersView>> {
+  async superagentTriggers(limit: number = 10, before?: string): Promise<JiraResult<SuperagentTriggersView>> {
     const opened = await this.open()
     if (!opened.store.ok) return opened.store
     const listed = await inspect.listIssues(opened.root)
@@ -319,7 +319,7 @@ export class JiraService extends Service implements JiraServiceApi {
       const read = await coreStore.readComments(opened.store.value, issue.key)
       if (read.ok) byKey.set(String(issue.key), read.value)
     }
-    return result.ok(superagentTriggersOf(listed.issues, byKey, limit))
+    return result.ok(superagentTriggersOf(listed.issues, byKey, limit, before))
   }
 
   /**

@@ -42,7 +42,7 @@ export interface JiraWire {
   /** Recent ledger commits, newest first. */
   superagentHistory?(limit?: number): Promise<RemoteResult<SuperagentHistoryView>>
   /** Recent proposal comments, newest first. */
-  superagentTriggers?(limit?: number): Promise<RemoteResult<SuperagentTriggersView>>
+  superagentTriggers?(limit?: number, before?: string): Promise<RemoteResult<SuperagentTriggersView>>
 }
 
 /** The board's load state. */
@@ -222,6 +222,28 @@ export class JiraStore {
         draft.superagentTriggers = triggers.ok
           ? { status: 'ready', error: null, view: triggers.value }
           : { status: 'error', error: triggers.error, view: null }
+      }
+    })
+  }
+
+  /**
+   * Append the next page of proposals.
+   * @returns when the page is appended, or when there is no next page.
+   */
+  async loadMoreTriggers(): Promise<void> {
+    const view = this.store.getSnapshot().superagentTriggers.view
+    const wire = this.wire.superagentTriggers
+    if (view === null || !view.hasMore || wire === undefined) return
+    const before = view.entries.at(-1)?.at
+    if (before === undefined) return
+    const next = await read(() => wire(10, before))
+    if (!next.ok) return
+    this.store.update((draft) => {
+      const current = draft.superagentTriggers.view
+      if (current === null) return
+      draft.superagentTriggers.view = {
+        entries: [...current.entries, ...next.value.entries],
+        hasMore: next.value.hasMore,
       }
     })
   }

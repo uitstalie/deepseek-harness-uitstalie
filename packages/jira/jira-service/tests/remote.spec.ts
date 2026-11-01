@@ -143,6 +143,7 @@ describe('remote.jira', () => {
   it('answers superagentTriggers() with an empty list until a proposal exists', async () => {
     const triggers = await remote.superagentTriggers(5)
     expect(triggers.entries).toEqual([])
+    expect(triggers.hasMore).toBe(false)
     expect(JSON.parse(JSON.stringify(triggers))).toEqual(triggers)
   })
 

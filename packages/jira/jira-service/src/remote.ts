@@ -143,8 +143,8 @@ export default class JiraRemote extends TypertRemoteService {
    * @throws {RemoteError} when the ledger cannot be read.
    */
   @Remote
-  async superagentTriggers(limit?: number): Promise<SuperagentTriggersView> {
-    return unwrap(await this.ctx.jira.superagentTriggers(limit))
+  async superagentTriggers(limit?: number, before?: string): Promise<SuperagentTriggersView> {
+    return unwrap(await this.ctx.jira.superagentTriggers(limit, before))
   }
 
   /**

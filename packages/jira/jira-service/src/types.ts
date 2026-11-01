@@ -293,7 +293,7 @@ export interface JiraServiceApi {
    * @param limit - how many entries; the service clamps it to 1..50.
    * @returns the proposals with their issue key and active flag.
    */
-  superagentTriggers(limit?: number): Promise<JiraResult<SuperagentTriggersView>>
+  superagentTriggers(limit?: number, before?: string): Promise<JiraResult<SuperagentTriggersView>>
 
   /**
    * Recent ledger commits, newest first: the history a review panel shows.
