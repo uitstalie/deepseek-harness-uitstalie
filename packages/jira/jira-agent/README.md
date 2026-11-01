@@ -86,7 +86,7 @@ The text changes only when a commit changes a count, so a stable ledger keeps th
 
 #### What the model sees
 
-A root agent carries three more tools when its deployment enables the `superagent` capability: `superagent_scan` lists the issues that could be taken now, `superagent_claim` proposes one or claims it, and `superagent_workspace` lists the host's workspaces or registers a directory so a dispatch can name its checkout. Claiming refuses unless the latest comment on the issue is still this session's own proposal, so a person is asked between the two calls. A delegated child carries none of the three.
+A root agent carries three more tools when its deployment enables the `superagent` capability: `superagent_scan` lists the issues that could be taken now, `superagent_claim` proposes one or claims it, and `superagent_workspace` lists the host's workspaces or registers a directory so a dispatch can name its checkout. Claiming refuses unless the latest comment on the issue is still this session's own proposal, so a person is asked between the two calls. On every completed root turn the capability also runs one pass in observe mode: it proposes the first ready issue, writes one `[claim-proposal]` comment, and never claims; it stays silent when this session already has work in progress or the latest comment is a proposal. A delegated child carries none of the three.
 
 #### Token effect
 

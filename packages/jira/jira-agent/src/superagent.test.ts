@@ -30,6 +30,7 @@ import {
   isBlocked,
   jiraWorkerTools,
   openProposal,
+  runSuperagentPass,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
 import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent } from './testing/host.ts'
@@ -400,6 +401,22 @@ describe('superagent: the loop through the real composition', () => {
       const dispatch = claimed.dispatch as Record<string, unknown>
       assert.equal(dispatch.key, 'DH-12')
       assert.match(String(dispatch.instruction), /issue_work/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('proposes once from the turn-end pass, then stays quiet', async () => {
+    const { harness, main } = await mount()
+    try {
+      await runSuperagentPass(harness.host, main)
+      const first = await call(harness, main, TOOL_NAME, { action: 'get', key: 'DH-12' })
+      const proposals = (): number => bodiesOf(first).filter(body => body.startsWith(PROPOSAL_MARKER)).length
+      assert.equal(proposals(), 1, 'the pass proposes the ready issue without claiming it')
+
+      await runSuperagentPass(harness.host, main)
+      const second = await call(harness, main, TOOL_NAME, { action: 'get', key: 'DH-12' })
+      assert.equal(bodiesOf(second).filter(body => body.startsWith(PROPOSAL_MARKER)).length, 1, 'the latest proposal suppresses another')
     } finally {
       await harness.dispose()
     }

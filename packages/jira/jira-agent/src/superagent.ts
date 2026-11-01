@@ -13,12 +13,12 @@
  */
 
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { CapabilityContribution } from '@deepseek-ai/dsh-dafeiyu'
+import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import { mkdir } from 'node:fs/promises'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
 import { clampText, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { type RunOptions, type ToolValue, actorFor, asString, failure, nowUtc, okValue } from './envelope.ts'
-import { type Spec, type ToolHost, defineJiraTool, runOptionsOf } from './tools.ts'
+import { type Spec, type ToolHost, callerOf, defineJiraTool, identityOf, runOptionsOf } from './tools.ts'
 
 /** The capability id this provider registers with the organizer. */
 export const SUPERAGENT_CAPABILITY_ID = 'superagent'
@@ -379,6 +379,48 @@ export const runClaimTool = async (args: unknown, options: RunOptions, me: unkno
   })
 }
 
+/**
+ * One turn-end pass: propose the first ready issue, once.
+ *
+ * The pass never claims — a person still confirms — and it stays quiet when this session already
+ * has work in progress or when the latest comment is already a proposal. That keeps the default
+ * behavior "observe": one proposal costs one comment, and a reply spends it.
+ * @param host - the plugin host the caller identity comes from.
+ * @param agent - the root agent whose turn just ended.
+ * @param signal - cancellation owned by the turn that triggered the pass.
+ * @returns a promise that settles after the proposal attempt.
+ */
+export const runSuperagentPass = async (host: ToolHost, agent: unknown, signal?: AbortSignal): Promise<void> => {
+  if (signal?.aborted === true) return
+  const caller = callerOf(host, agent)
+  if (!caller.writable || caller.identity === undefined || caller.sessionId === undefined) return
+  try {
+    const active = await host.ctx.jira.list({ status: 'in_progress', assignee: String(caller.identity) })
+    if (active.ok && active.value.items.length > 0) return
+
+    const call = { jira: host.ctx.jira, caller, me: identityOf(host, agent) }
+    const options = runOptionsOf(host, call)
+    const scanned = await runScanTool({ limit: 10 }, options, call.me)
+    if (!scanned.ok) return
+    const items = Array.isArray(scanned.items) ? scanned.items as unknown as Candidate[] : []
+    const ready = items.find(item => item.ready)
+    if (ready === undefined) return
+
+    const read = await host.ctx.jira.readIssue(ready.key as IssueKey)
+    if (!read.ok) return
+    const last = (read.value.comments ?? []).at(-1)
+    if (last !== undefined && last.body.trimStart().startsWith(PROPOSAL_MARKER)) return
+
+    await runClaimTool({
+      action: 'propose',
+      key: ready.key,
+      why: 'turn-end pass: it is ready, unclaimed, and not blocked',
+    }, options, call.me)
+  } catch {
+    // A background pass must never turn a completed turn into a failed one.
+  }
+}
+
 /** One text block, clamped to the model's budget. */
 const renderText = (text: string): ContentBlock[] => [{ type: 'text', text: clampText(text) }]
 
@@ -511,5 +553,8 @@ export const createSuperagentContribution = (host: ToolHost): CapabilityContribu
   return Object.freeze({
     scope: 'root',
     tools: () => Object.freeze([defineJiraTool(host, scan), defineJiraTool(host, claim), defineJiraTool(host, workspace)]),
+    onTurnEnd: async (input: TurnEndInput) => {
+      await runSuperagentPass(host, input.agent, input.signal)
+    },
   })
 }

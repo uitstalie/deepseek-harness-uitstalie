@@ -361,3 +361,22 @@ pass 扫描 → 候选（只读，不动账本）
 ### 8.3 落在哪个包
 
 落在 **jira 侧**（新工具 + guard 扩成能力集），不放在 super-agent 侧。理由：它本质是账本写操作的收窄，复用身份（`agent:model|dsh|machine|session`）、提交、批次与 guard；放另一边则要把账本语义复制第二份。代价是 jira 包多认识一个"受限写者"角色——但它已经认识"只读会话"和"子代理"了，这是延续不是新概念。
+
+## 9. 阶段一决定与实现状态（2026/11/01）
+
+**决定：选方案 B（在 dafeiyu 里做最小能力化版本），A/C 后置。** 理由：
+
+- 当前实现已经证明账本的"拉"可以补成"提案 + 人确认 + 认领"，不需要常驻进程、独立 profile 或新端口；
+- 原型的核心价值（Mandate/Policy 语义）在第一版只需要"一条不可扩大的 Grant 记录"，账本的评论 + git 历史已经能承担，先不 vendor 一个单 commit 的研究原型；
+- 方案 C 的 vendor 成本主要花在原型 app 层（webServer/sessionController/panel）的适配上，这部分正是第一版不需要的；等闭环被验证有价值后再做。
+
+**阶段一已落地**：
+
+- 独立 dafeiyu 能力 `superagent`（`enabledByDefault: false`），root 三个工具 `superagent_scan` / `superagent_claim` / `superagent_workspace`，子 agent 只带 `issue_work`；
+- 认领闭环：提案 → 人确认 → claim → 派 subagent → `issue_work` `deliver` 回 `in_review`；
+- **turn-end pass**：每个完成的 root turn 以 observe 模式提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不自行认领；本会话已有 in_progress 或最新评论已是提案时沉默；
+- 测试覆盖纯谓词、工具面、真实组合的完整闭环，以及 pass 的"只提一次"。
+
+**仍未做（有意后置）**：常驻轮询、Web 面板、真正的独立 Session 执行器、GitHub/飞书 Source、vendor 原型 `src/core`。这些在闭环价值被验证后再开；不阻塞阶段一验收。
+
+**对 dafeiyu 的结论**：super agent 适合拆成"能力列表里的一行 + 自己的 host row"，但不适合把整台异步机器塞进 capability contribution。第一版把它收在 jira-agent 的同一 row 里，用独立 capability id 门控，是 B 的最小形态；若后续要独立 host row，`superagent` 这个 id/工具面可以原样迁出。

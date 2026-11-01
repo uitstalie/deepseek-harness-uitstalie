@@ -223,6 +223,7 @@ export {
   openProposal,
   runClaimTool,
   runScanTool,
+  runSuperagentPass,
   runWorkspaceTool,
   workspaceRegistryOf,
 } from './superagent.ts'
