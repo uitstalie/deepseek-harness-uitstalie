@@ -29,8 +29,14 @@ const DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependen
  * for ordinary product growth, so a graph that grows here fails with its own
  * measured counts instead of failing on whichever runner happens to be slow.
  * Raising it requires re-measuring the resolution and recording the new counts.
+ *
+ * Branch measurement (DH-510): the branch's own private packages enter the
+ * graph through the release closure, so the measured graph is 334 package(s) x
+ * 2928 internal edge(s) = 977,952 unit(s). The budget keeps the same 25%
+ * headroom: 1,222,440 unit(s).
+ * uitstalie-deepseek-flash, 2026/11/01, DH-510, 预算按分支实测 334 x 2928 重测后上调到 1222440
  */
-export const MAX_RESOLUTION_WORK_UNITS = 875_000
+export const MAX_RESOLUTION_WORK_UNITS = 1_222_440
 
 /**
  * Measured npm seconds per resolution work unit on the reference host: 180.66 s
@@ -84,6 +90,31 @@ function cloneForVersion(manifest: object, version: string): MutableRegistryMani
   return cloned
 }
 
+// BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-510, 分支私有包以 0.0.0 占位版本进入合成双版本图
+/**
+ * The workspace source manifest one DSH package contributes to the synthetic graph.
+ *
+ * Release members carry the working version. A branch-owned private package (version `0.0.0`,
+ * never published) is still depended on by the branch's own release members, so npm must place it
+ * too: its single placeholder version is the source.
+ * @param name - the DSH package name.
+ * @param versions - every version the registry index holds for that name.
+ * @param sourceVersion - the working release version.
+ * @returns the manifest cloned into both synthetic releases.
+ */
+function sourceManifestFor(
+  name: string,
+  versions: ReadonlyMap<string, object>,
+  sourceVersion: string,
+): object {
+  const source = versions.get(sourceVersion)
+  if (source !== undefined) return source
+  const placeholder = versions.get('0.0.0')
+  if (placeholder !== undefined && versions.size === 1) return placeholder
+  throw new Error(`${name} has no workspace version ${sourceVersion}`)
+}
+// END uitstalie-deepseek-flash
+
 /**
  * Replace the working release with two incompatible, internally consistent DSH releases.
  * @param index - Registry metadata containing the working release.
@@ -98,8 +129,11 @@ export function buildDualDshRegistry(index: RegistryIndex, sourceVersion: string
       output.set(name, versions)
       continue
     }
-    const source = versions.get(sourceVersion)
-    if (source === undefined) throw new Error(`${name} has no workspace version ${sourceVersion}`)
+    // BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-510, 分支私有包以 0.0.0 占位版本进入合成双版本图
+    // const source = versions.get(sourceVersion)
+    // if (source === undefined) throw new Error(`${name} has no workspace version ${sourceVersion}`)
+    const source = sourceManifestFor(name, versions, sourceVersion)
+    // END uitstalie-deepseek-flash
     dshPackages++
     output.set(name, new Map(SYNTHETIC_DSH_VERSIONS.map(version => [
       version,

@@ -72,6 +72,39 @@ describe('npm install layout verifier', () => {
     expect(dual.get('@deepseek-ai/cordis')).toBe(index.get('@deepseek-ai/cordis'))
   })
 
+  // BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-510, 分支私有包占位版本与真实版本错配的两条用例
+  it('places a branch private package through its 0.0.0 placeholder version', () => {
+    const index: RegistryIndex = new Map([
+      ['@deepseek-ai/dsh', new Map([['0.1.1-rc.2', {
+        name: '@deepseek-ai/dsh',
+        version: '0.1.1-rc.2',
+        dependencies: { '@deepseek-ai/dsh-branch': '^0.1.1-rc.2' },
+      }]])],
+      ['@deepseek-ai/dsh-branch', new Map([['0.0.0', {
+        name: '@deepseek-ai/dsh-branch',
+        version: '0.0.0',
+      }]])],
+    ])
+
+    const dual = buildDualDshRegistry(index, '0.1.1-rc.2')
+
+    expect([...dual.get('@deepseek-ai/dsh-branch')?.keys() ?? []]).toEqual(['0.1.0', '0.2.0'])
+    expect(dual.get('@deepseek-ai/dsh')?.get('0.1.0')).toMatchObject({
+      dependencies: { '@deepseek-ai/dsh-branch': '^0.1.0' },
+    })
+  })
+
+  it('still rejects a release member whose version is not the working one', () => {
+    const index: RegistryIndex = new Map([
+      ['@deepseek-ai/dsh', new Map([['0.1.1-rc.2', { name: '@deepseek-ai/dsh', version: '0.1.1-rc.2' }]])],
+      ['@deepseek-ai/dsh-leaf', new Map([['0.1.0', { name: '@deepseek-ai/dsh-leaf', version: '0.1.0' }]])],
+    ])
+
+    expect(() => buildDualDshRegistry(index, '0.1.1-rc.2'))
+      .toThrow('@deepseek-ai/dsh-leaf has no workspace version 0.1.1-rc.2')
+  })
+  // END uitstalie-deepseek-flash
+
   it('accepts isolated DSH releases with one shared Cordis installation', () => {
     expect(assertDualDshInstallLayout(validLayout())).toEqual({
       dshPackagesPerVersion: 3,
@@ -118,12 +151,13 @@ describe('npm install layout verifier', () => {
 
 describe('resolution work budget', () => {
   it('accepts the measured dual-release graph', () => {
-    expect(assertResolutionWorkBudget({ dshPackagesPerVersion: 277, checkedDshEdges: 2524 }))
-      .toBe(699_148)
+    // uitstalie-deepseek-flash, 2026/11/01, DH-510, 分支合成图实测 334 x 2928
+    expect(assertResolutionWorkBudget({ dshPackagesPerVersion: 334, checkedDshEdges: 2928 }))
+      .toBe(977_952)
   })
 
   it('accepts a graph exactly at the budget and rejects one internal edge above it', () => {
-    const packages = 350
+    const packages = 334
     const edgesAtBudget = Math.floor(MAX_RESOLUTION_WORK_UNITS / packages)
 
     expect(packages * edgesAtBudget).toBe(MAX_RESOLUTION_WORK_UNITS)
@@ -136,9 +170,10 @@ describe('resolution work budget', () => {
   })
 
   it('accepts the headroom and rejects a runaway graph with its own measured counts', () => {
+    // uitstalie-deepseek-flash, 2026/11/01, DH-510, 上限上调后 runaway 取样也要高于新预算
     expect(assertResolutionWorkBudget({ dshPackagesPerVersion: 300, checkedDshEdges: 2800 }))
       .toBe(840_000)
-    expect(() => assertResolutionWorkBudget({ dshPackagesPerVersion: 400, checkedDshEdges: 3000 }))
-      .toThrow('400 package(s) per release x 3000 internal edge(s) = 1200000 unit(s), budget 875000 unit(s)')
+    expect(() => assertResolutionWorkBudget({ dshPackagesPerVersion: 400, checkedDshEdges: 3500 }))
+      .toThrow('400 package(s) per release x 3500 internal edge(s) = 1400000 unit(s), budget 1222440 unit(s)')
   })
 })
