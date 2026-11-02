@@ -1861,6 +1861,8 @@ export type Config = Readonly<{
   superagent_worker_preset?: string
   /** How many issues one dispatcher may hold in progress at once; defaults to two. */
   superagent_max_workers?: number
+  /** The single GitHub repository the source polls, as `owner/name`; unset means no source. */
+  superagent_github_repo?: string
 }>
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->

@@ -70,12 +70,15 @@ export type Config = Readonly<{
   superagent_worker_preset?: string
   /** How many issues one dispatcher may hold in progress at once; defaults to two. */
   superagent_max_workers?: number
+  /** The single GitHub repository the source polls, as `owner/name`; unset means no source. */
+  superagent_github_repo?: string
 }>
 
 /** Schemastery schema for the row configuration. */
 export const Config: z<Config> = z.object({
   superagent_worker_preset: z.string(),
   superagent_max_workers: z.number(),
+  superagent_github_repo: z.string(),
 })
 
 /**
@@ -125,7 +128,12 @@ export function apply(ctx: Context, config: Config): void {
     settings: { sectionId: SUPERAGENT_SETTINGS_SECTION, order: SUPERAGENT_SETTINGS_ORDER },
     config: Object.freeze({}),
     create: (_runtime: CapabilityRuntime): CapabilityContribution =>
-      createSuperagentContribution(host, config.superagent_worker_preset, config.superagent_max_workers),
+      createSuperagentContribution(
+        host,
+        config.superagent_worker_preset,
+        config.superagent_max_workers,
+        config.superagent_github_repo,
+      ),
   })
   ctx.effect(() => superagent, 'superagent.register()')
 }
@@ -198,6 +206,11 @@ export {
 export { KB_DESCRIPTION, KB_OUTPUT_SCHEMA, KB_PARAMETERS, KB_TOOL_NAME, runKbTool } from './toolKb.ts'
 export { LIST_DESCRIPTION, LIST_OUTPUT_SCHEMA, LIST_PARAMETERS, LIST_TOOL_NAME, runListTool } from './toolList.ts'
 export { type CallContext, type ToolHost, jiraTools, jiraWorkerTools } from './tools.ts'
+export {
+  type GhRunner,
+  type GithubItem,
+  pollGithub,
+} from './github.ts'
 export { JIRA_COMMAND_NAME, installWriteGuard, registerJiraCommand, registerJiraSkills } from './wiring.ts'
 export {
   REVIEW_STATUS,
@@ -226,6 +239,9 @@ export {
   SCAN_DESCRIPTION,
   SCAN_PARAMETERS,
   SCAN_TOOL_NAME,
+  SOURCE_DESCRIPTION,
+  SOURCE_PARAMETERS,
+  SOURCE_TOOL_NAME,
   STATUS_TOOL_NAME,
   SUPERAGENT_CAPABILITY_DESCRIPTION,
   SUPERAGENT_CAPABILITY_ID,
@@ -247,6 +263,7 @@ export {
   runClaimTool,
   runDispatchTool,
   runScanTool,
+  runSourceTool,
   runStatusTool,
   runSuperagentPass,
   runWorkspaceTool,

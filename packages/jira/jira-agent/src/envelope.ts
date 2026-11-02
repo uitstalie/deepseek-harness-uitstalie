@@ -40,6 +40,9 @@ export type ToolValue = Readonly<{
   /** `superagent_dispatch action: 'recover'`: the executors restarted, and the issues left alone. */
   recovered?: unknown
   left?: unknown
+  /** `superagent_source`: the ledger issues created from the source, and the items skipped. */
+  created?: unknown
+  skipped?: unknown
   truncated?: boolean
   limit?: number
   error?: JiraError

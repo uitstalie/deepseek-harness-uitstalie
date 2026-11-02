@@ -22,6 +22,7 @@ import {
   DISPATCH_TOOL_NAME,
   PROPOSAL_MARKER,
   SCAN_TOOL_NAME,
+  SOURCE_TOOL_NAME,
   STATUS_TOOL_NAME,
   TOOL_NAME,
   WORKSPACE_TOOL_NAME,
@@ -33,9 +34,11 @@ import {
   isBlocked,
   jiraWorkerTools,
   openProposal,
+  runSourceTool,
   runSuperagentPass,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
+import { callerOf, identityOf } from './tools.ts'
 import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent } from './testing/host.ts'
 
 /** An agent handle the harness built. */
@@ -354,7 +357,7 @@ describe('superagent: the dispatcher\'s surface', () => {
       assert.deepEqual(dispatcher.tools?.(executor) ?? null, [], 'an executor cannot dispatch or claim')
       // A root that did not join the preset keeps the dispatcher's surface.
       const other = testAgent(harness.ctx, 'main-9', { agentPreset: 'standard' })
-      assert.equal(dispatcher.tools?.(other).length, 5)
+      assert.equal(dispatcher.tools?.(other).length, 6)
     } finally {
       await harness.dispose()
     }
@@ -621,6 +624,66 @@ describe('superagent: dispatching into a real Session', () => {
       assert.deepEqual(controller.sessions[0]?.request, { cwd: '/tmp/work', agentPreset: 'jira-worker' })
       assert.match(controller.prompts[0]?.text ?? '', /DH-12/u)
       assert.match(controller.prompts[0]?.text ?? '', /issue_work/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
+
+describe('superagent: the GitHub source', () => {
+  /** The projected options one direct runner call needs. */
+  const runOptions = (harness: JiraHarness, agent: AgentHandle) => ({
+    jira: harness.ctx.jira,
+    caller: callerOf(harness.host, agent),
+    at: '2026-10-15T12:00:00Z' as Timestamp,
+  })
+
+  it('refuses to poll while no repository is configured', async () => {
+    const { harness, main } = await mount()
+    try {
+      const refused = await call(harness, main, SOURCE_TOOL_NAME, { action: 'poll' })
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /superagent_github_repo/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('imports unseen issues once, and skips the ones the ledger already has', async () => {
+    const { harness, main } = await mount()
+    try {
+      const options = runOptions(harness, main)
+      const me = identityOf(harness.host, main)
+      const payload = JSON.stringify([
+        { number: 7, title: 'crash on start', url: 'https://github.com/o/r/issues/7', author: { login: 'daiqc' } },
+        { number: 8, title: 'slow query', url: 'https://github.com/o/r/issues/8', author: { login: 'daiqc' } },
+      ])
+      const runner = async (): Promise<string> => payload
+
+      const first = await runSourceTool({ action: 'poll', project: 'DH' }, options, me, 'o/r', runner)
+      assert.equal(first.ok, true, JSON.stringify(first.error))
+      const created = first.created as { key: string; url: string }[]
+      assert.equal(created.length, 2, JSON.stringify(first.skipped))
+      assert.ok(created.some(row => row.url.endsWith('/issues/7')))
+
+      const second = await runSourceTool({ action: 'poll', project: 'DH' }, options, me, 'o/r', runner)
+      assert.equal(second.ok, true, JSON.stringify(second.error))
+      assert.deepEqual(second.created, [])
+      assert.equal((second.skipped as unknown[]).length, 2)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('reports a failed GitHub read instead of throwing', async () => {
+    const { harness, main } = await mount()
+    try {
+      const options = runOptions(harness, main)
+      const me = identityOf(harness.host, main)
+      const runner = async (): Promise<string> => { throw new Error('gh: not logged in') }
+      const failed = await runSourceTool({ action: 'poll' }, options, me, 'o/r', runner)
+      assert.equal(failed.ok, false)
+      assert.match(JSON.stringify(failed.error), /GitHub could not be read/u)
     } finally {
       await harness.dispose()
     }

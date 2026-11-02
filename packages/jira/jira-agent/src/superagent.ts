@@ -19,6 +19,8 @@ import { mkdir } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
 import { clampText, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
+import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
+import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, failure, nowUtc, okValue } from './envelope.ts'
 import { isExecutorSession } from './caller.ts'
 import { type Spec, type ToolHost, callerOf, defineJiraTool, identityOf, runOptionsOf } from './tools.ts'
@@ -826,6 +828,111 @@ export const runDispatchTool = async (
   })
 }
 
+/** The tool that turns a GitHub item into ledger work (DH-706). */
+export const SOURCE_TOOL_NAME = 'superagent_source'
+
+/** `superagent_source`'s schema. */
+export const SOURCE_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+  action: {
+    type: 'string',
+    required: true,
+    description: 'poll: read the configured repository\'s open issues and create the ones the ledger does not have yet.',
+    enum: ['poll'],
+  },
+  limit: { type: 'number', description: 'How many open issues to read; default 30.' },
+  project: { type: 'string', description: 'The ledger project the imported issues land in; defaults to the session\'s checkout.' },
+})
+
+/**
+ * `superagent_source`'s description.
+ *
+ * It says what the source does *not* do as plainly as what it does: GitHub is the intake channel,
+ * the ledger is where the work lives, and nothing is written back.
+ */
+export const SOURCE_DESCRIPTION =
+  'Read the configured GitHub repository\'s open issues and, for each one the ledger does not have '
+  + 'yet, create a ledger issue that carries the original URL. Read-only towards GitHub: no comment, '
+  + 'no label, no close. Poll only when someone asks; it is not a background watcher.'
+
+/**
+ * `superagent_source`: turn unseen GitHub issues into ledger issues.
+ *
+ * The deduplication is the ledger's: an item is known when some issue's body already carries its
+ * URL, so a re-poll costs no new state and a restart cannot forget what was imported.
+ * @param args - the raw tool arguments, validated against `SOURCE_PARAMETERS`.
+ * @param options - the store, caller verdict and clock for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @param githubRepo - the configured `owner/name`, or undefined when the deployment has none.
+ * @param runner - the `gh` runner; a test passes its own.
+ * @returns the issues created and the ones left alone, with a reason each.
+ */
+export const runSourceTool = async (
+  args: unknown,
+  options: RunOptions,
+  me: unknown,
+  githubRepo: string | undefined,
+  runner?: GhRunner,
+): Promise<ToolValue> => {
+  const { jira, caller } = options
+  const validated = validateArgs(SOURCE_PARAMETERS, args)
+  if (!validated.ok) return failure(validated.error, caller, me)
+  if (!caller.writable) {
+    return failure(invalidInput('polling a source creates ledger issues, so it needs a session that may write the ledger'), caller, me)
+  }
+  if (githubRepo === undefined || githubRepo.trim() === '') {
+    return failure(invalidInput(
+      'no GitHub repository is configured; set the row\'s superagent_github_repo to owner/name',
+    ), caller, me)
+  }
+
+  const ledger = await readLedger(jira)
+  if (ledger === undefined) return failure(invalidInput('the ledger could not be read'), caller, me)
+
+  const limit = typeof validated.value.limit === 'number' && validated.value.limit > 0
+    ? Math.min(Math.floor(validated.value.limit), 100)
+    : 30
+  let items: readonly GithubItem[]
+  try {
+    items = await pollGithub(githubRepo, runner, limit)
+  } catch (error: unknown) {
+    return failure(invalidInput(
+      `GitHub could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      { repo: githubRepo },
+    ), caller, me)
+  }
+
+  const actor = { by: actorFor(options, caller), at: options.at }
+  const created: Record<string, unknown>[] = []
+  const skipped: Record<string, unknown>[] = []
+  for (const item of items) {
+    if (ledger.issues.some(issue => issue.body.includes(item.url))) {
+      skipped.push(Object.freeze({ number: item.number, url: item.url, reason: 'already in the ledger' }))
+      continue
+    }
+    const made = await jira.createIssue(asString(validated.value.project), caller.cwd, {
+      issueType: 'task',
+      summary: item.title.slice(0, SUMMARY_MAX_CHARS),
+      body: `From GitHub: ${item.url}\n\nOpened by @${item.author ?? 'unknown'} as ${githubRepo}#${String(item.number)}.`,
+    }, actor)
+    if (!made.ok) {
+      skipped.push(Object.freeze({ number: item.number, url: item.url, reason: `could not be created: ${made.error.code}` }))
+      continue
+    }
+    created.push(Object.freeze({
+      key: String(made.value.created.change.issue.key),
+      number: item.number,
+      url: item.url,
+    }))
+  }
+  return Object.freeze({
+    ok: true,
+    writable: caller.writable,
+    me,
+    created: Object.freeze(created),
+    skipped: Object.freeze(skipped),
+  })
+}
+
 /** One text block, clamped to the model's budget. */
 const renderText = (text: string): ContentBlock[] => [{ type: 'text', text: clampText(text) }]
 
@@ -874,6 +981,7 @@ export const createSuperagentContribution = (
   host: ToolHost,
   workerPreset?: string,
   maxWorkers: number = DEFAULT_MAX_WORKERS,
+  githubRepo?: string,
 ): CapabilityContribution => {
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
@@ -929,6 +1037,25 @@ export const createSuperagentContribution = (
     },
     run: (_args, call) => runStatusTool(runOptionsOf(host, call), call.me),
   }
+  const source: Spec = {
+    name: SOURCE_TOOL_NAME,
+    description: SOURCE_DESCRIPTION,
+    parameters: SOURCE_PARAMETERS,
+    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+    timeoutMs: 30_000,
+    // One poll creates ledger issues in sequence; there is no read path to declare overlap-safe.
+    isConcurrencySafe: () => false,
+    render: (typed) => {
+      const created = Array.isArray(typed.created) ? typed.created as { key: string; number: number }[] : []
+      const skipped = Array.isArray(typed.skipped) ? typed.skipped as { number: number; reason: string }[] : []
+      if (created.length === 0 && skipped.length === 0) return renderText('no open issue to import')
+      return renderText([
+        ...created.map(row => `${row.key}  from #${String(row.number)}`),
+        ...skipped.map(row => `#${String(row.number)}  skipped: ${row.reason}`),
+      ].join('\n'))
+    },
+    run: (args, call) => runSourceTool(args, runOptionsOf(host, call), call.me, githubRepo),
+  }
   const claim: Spec = {
     name: CLAIM_TOOL_NAME,
     description: CLAIM_DESCRIPTION,
@@ -974,6 +1101,7 @@ export const createSuperagentContribution = (
     tools: (agent: Agent) => (isExecutorSession(agent, workerPreset)
       ? Object.freeze([])
       : Object.freeze([
+        defineJiraTool(host, source),
         defineJiraTool(host, scan),
         defineJiraTool(host, claim),
         defineJiraTool(host, workspace),
