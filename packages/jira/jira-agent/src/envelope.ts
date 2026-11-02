@@ -35,6 +35,8 @@ export type ToolValue = Readonly<{
   /** `superagent_workspace`: the registered workspaces, or the one just registered. */
   workspaces?: unknown
   workspace?: unknown
+  /** `superagent_dispatch`: the executor Session that was started (DH-702). */
+  dispatch?: unknown
   truncated?: boolean
   limit?: number
   error?: JiraError

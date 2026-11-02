@@ -19,6 +19,7 @@ import { type Comment, type Identity, type Issue, type Timestamp, removeTree } f
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
   CLAIM_TOOL_NAME,
+  DISPATCH_TOOL_NAME,
   PROPOSAL_MARKER,
   SCAN_TOOL_NAME,
   STATUS_TOOL_NAME,
@@ -68,13 +69,16 @@ const settle = async (): Promise<void> => {
  * @param options - the mount options to vary.
  * @returns the harness and the two handles.
  */
-const mount = async (options: Parameters<typeof mountJira>[1] = {}): Promise<{
+const mount = async (
+  options: Parameters<typeof mountJira>[1] = {},
+  workerPreset?: string,
+): Promise<{
   harness: JiraHarness
   main: AgentHandle
   worker: AgentHandle
 }> => {
   const harness = await mountJira(await fixture(), { superagent: true, ...options })
-  await harness.ctx.plugin(jiraAgent)
+  await harness.ctx.plugin(jiraAgent, workerPreset === undefined ? {} : { superagent_worker_preset: workerPreset })
   await settle()
   for (const tool of jiraWorkerTools(harness.host)) harness.ctx.tools.register(tool)
   const main = testAgent(harness.ctx, 'main-1')
@@ -349,6 +353,121 @@ describe('superagent: the dispatcher\'s surface', () => {
       })
       assert.equal(delivered.ok, true, JSON.stringify(delivered.error))
       assert.equal(issueOf(delivered).status, 'in_review')
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
+
+/** What the stand-in session controller recorded. */
+interface FakeSession {
+  readonly request: { readonly cwd?: string; readonly agentPreset?: string }
+  readonly sessionId: string
+}
+
+/**
+ * A stand-in for the host's session controller.
+ *
+ * The real one brings the whole agent loop; the dispatch tool only calls `create` and `prompt`, so
+ * a controller with exactly those two methods proves the duck typing and the ordering.
+ */
+class FakeSessionController {
+  readonly sessions: FakeSession[] = []
+  readonly prompts: { readonly sessionId: string; readonly text: string }[] = []
+
+  async create(request: { readonly cwd?: string; readonly agentPreset?: string }): Promise<{ sessionId: string }> {
+    const sessionId = `session-${String(this.sessions.length + 1)}`
+    this.sessions.push({ request, sessionId })
+    return { sessionId }
+  }
+
+  async prompt(request: {
+    readonly sessionId: unknown
+    readonly content: readonly { readonly type: string; readonly text?: string }[]
+  }): Promise<{ accepted: true }> {
+    this.prompts.push({
+      sessionId: String(request.sessionId),
+      text: request.content.map(part => part.text ?? '').join(''),
+    })
+    return { accepted: true }
+  }
+}
+
+/**
+ * Register the stand-in controller on the composition.
+ * @param harness - the mounted composition to extend.
+ * @returns the controller the tool will find.
+ */
+const provideController = async (harness: JiraHarness): Promise<FakeSessionController> => {
+  const controller = new FakeSessionController()
+  await harness.ctx.plugin({
+    name: 'fake-session-controller',
+    apply(pluginCtx: Context) {
+      pluginCtx.reflect.provide('sessionController', controller)
+    },
+  })
+  return controller
+}
+
+describe('superagent: dispatching into a real Session', () => {
+  it('refuses to dispatch while the deployment configures no worker preset', async () => {
+    const { harness, main } = await mount()
+    try {
+      const refused = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /worker preset/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('refuses when the deployment has no session controller', async () => {
+    const { harness, main } = await mount({}, 'jira-worker')
+    try {
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      const refused = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /no session controller/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('refuses an issue that is not in progress, and one somebody else claimed', async () => {
+    const { harness, main } = await mount({}, 'jira-worker')
+    try {
+      await provideController(harness)
+      const unstarted = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+      assert.equal(unstarted.ok, false)
+      assert.match(JSON.stringify(unstarted.error), /claim it before dispatching/u)
+
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      // A second dispatcher is writable but did not claim it.
+      const other = testAgent(harness.ctx, 'main-2')
+      const stolen = await call(harness, other, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+      assert.equal(stolen.ok, false)
+      assert.match(JSON.stringify(stolen.error), /not assigned to this session/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('starts the executor Session with the configured preset and hands it the issue', async () => {
+    const { harness, main } = await mount({}, 'jira-worker')
+    try {
+      const controller = await provideController(harness)
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+
+      const dispatched = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12', cwd: '/tmp/work' })
+      assert.equal(dispatched.ok, true, JSON.stringify(dispatched.error))
+      const dispatch = dispatched.dispatch as Record<string, unknown>
+      assert.equal(dispatch.session, 'session-1')
+      assert.deepEqual(controller.sessions[0]?.request, { cwd: '/tmp/work', agentPreset: 'jira-worker' })
+      assert.match(controller.prompts[0]?.text ?? '', /DH-12/u)
+      assert.match(controller.prompts[0]?.text ?? '', /issue_work/u)
     } finally {
       await harness.dispose()
     }

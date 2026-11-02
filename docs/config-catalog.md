@@ -1845,17 +1845,21 @@ export interface TlsConfig {
 ## `@deepseek-ai/dsh-jira-agent`
 
 - `inject`: `jira` · `tools` · `dafeiyu`
-- `source`: [`packages/jira/jira-agent/src/index.ts:58`](../packages/jira/jira-agent/src/index.ts)
+- `source`: [`packages/jira/jira-agent/src/index.ts:68`](../packages/jira/jira-agent/src/index.ts)
 
 ```ts config-catalog
 /**
- * The agent row takes no configuration of its own.
+ * The agent row's own configuration: which preset an executor Session joins.
  *
- * Where the ledger lives, who writes it and whether a settle pushes all belong to the
- * `jira-service` row; whether the model surface is created at all belongs to dafeiyu's
- * `capabilities.jira.enabled` gate. A config field here would be a second place for one of them.
+ * Everything about the ledger itself still belongs to the `jira-service` row, and whether a model
+ * surface exists at all belongs to dafeiyu's gates. This one field exists because a real executor
+ * Session gets a whole composition, and the composition it may join has to be decided here rather
+ * than by the model (DH-702): without it a dispatched Session would inherit the dispatcher's tools.
  */
-export type Config = Readonly<Record<never, never>>
+export type Config = Readonly<{
+  /** The agent preset a `superagent_dispatch` Session joins; unset means dispatch refuses. */
+  superagent_worker_preset?: string
+}>
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->
 
@@ -1865,7 +1869,7 @@ export type Config = Readonly<Record<never, never>>
 ## `@deepseek-ai/dsh-jira-service`
 
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/jira/jira-service/src/index.ts:78`](../packages/jira/jira-service/src/index.ts)
+- `source`: [`packages/jira/jira-service/src/index.ts:88`](../packages/jira/jira-service/src/index.ts)
 
 ```ts config-catalog
 /** What a `jira-service` row may configure: where the ledger is, who writes, whether to push. */

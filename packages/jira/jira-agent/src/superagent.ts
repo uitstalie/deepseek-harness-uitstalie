@@ -16,6 +16,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import { mkdir } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
 import { clampText, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { type RunOptions, type ToolValue, actorFor, asString, failure, nowUtc, okValue } from './envelope.ts'
@@ -461,9 +462,6 @@ export const runSuperagentPass = async (host: ToolHost, agent: unknown, signal?:
   }
 }
 
-/** One text block, clamped to the model's budget. */
-const renderText = (text: string): ContentBlock[] => [{ type: 'text', text: clampText(text) }]
-
 /**
  * `superagent_workspace`: list the registered workspaces, or register one.
  * @param args - the raw tool arguments, validated against `WORKSPACE_PARAMETERS`.
@@ -527,15 +525,179 @@ export const runWorkspaceTool = async (
   }
 }
 
+/** The tool that starts a real Session instead of a subagent (DH-702). */
+export const DISPATCH_TOOL_NAME = 'superagent_dispatch'
+
 /**
- * Build the three tool definitions the capability contributes.
+ * The slice of the host's session controller this capability uses.
+ *
+ * Duck-typed on purpose (decision 108): a deployment without one keeps every other verb and loses
+ * only this one, with a readable refusal.
+ */
+export interface SessionControllerLike {
+  /** Create the executor's own Session, in the checkout the dispatch names. */
+  create(request: { readonly cwd?: string; readonly agentPreset?: string }): Promise<{ readonly sessionId: unknown }>
+  /** Admit the dispatch instruction as the Session's first prompt. */
+  prompt(request: {
+    readonly requestId: unknown
+    readonly sessionId: unknown
+    readonly mode: 'queue' | 'steer'
+    readonly content: readonly { readonly type: 'text'; readonly text: string }[]
+  }): Promise<{ readonly accepted: boolean }>
+}
+
+/**
+ * Read the host's session controller, if this deployment has one.
+ * @param ctx - the plugin context, duck-typed.
+ * @returns the controller when it is present and has both methods.
+ */
+export const sessionControllerOf = (ctx: unknown): SessionControllerLike | undefined => {
+  const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
+  if (typeof get !== 'function') return undefined
+  const service = get.call(ctx, 'sessionController') as Partial<SessionControllerLike> | undefined
+  if (service === undefined || typeof service.create !== 'function' || typeof service.prompt !== 'function') {
+    return undefined
+  }
+  return service as SessionControllerLike
+}
+
+/** `superagent_dispatch`'s schema. */
+export const DISPATCH_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+  key: { type: 'string', required: true, description: 'The issue key you claimed, e.g. DH-12.' },
+  cwd: { type: 'string', description: 'The checkout the executor works in; defaults to this session\'s own.' },
+})
+
+/**
+ * `superagent_dispatch`'s description.
+ *
+ * It names the one fact a caller cannot learn from a result: a real Session only exists when the
+ * deployment configured the preset that makes it an executor rather than a second dispatcher.
+ */
+export const DISPATCH_DESCRIPTION =
+  'Start the executor of a claimed issue as a real Session of its own, in the checkout the dispatch '
+  + 'names, and hand it the issue. The issue must be in progress and assigned to this session; the '
+  + 'deployment must configure a worker preset, because a Session without one would inherit the '
+  + 'dispatcher\'s ledger rights instead of only `issue_work`.'
+
+/**
+ * `superagent_dispatch`: start a real Session as the executor of one claimed issue.
+ *
+ * The refusal order is the one that tells the caller what to fix: configuration, then the service,
+ * then the claim, then the ledger.
+ * @param args - the raw tool arguments, validated against `DISPATCH_PARAMETERS`.
+ * @param options - the store, caller verdict and clock for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @param ctx - the plugin context the session controller is read from.
+ * @param workerPreset - the configured executor preset, or undefined when the deployment has none.
+ * @returns the started Session and how it was told to work.
+ */
+export const runDispatchTool = async (
+  args: unknown,
+  options: RunOptions,
+  me: unknown,
+  ctx: ToolHost['ctx'],
+  workerPreset: string | undefined,
+): Promise<ToolValue> => {
+  const { jira, caller } = options
+  const validated = validateArgs(DISPATCH_PARAMETERS, args)
+  if (!validated.ok) return failure(validated.error, caller, me)
+  if (!caller.writable) {
+    return failure(invalidInput('dispatching an issue needs a session that may write the ledger'), caller, me)
+  }
+  if (workerPreset === undefined || workerPreset.trim() === '') {
+    return failure(invalidInput(
+      'no worker preset is configured, so a dispatched Session would inherit this session\'s tools '
+      + 'instead of only issue_work; set the superagent worker preset before dispatching',
+    ), caller, me)
+  }
+  const controller = sessionControllerOf(ctx)
+  if (controller === undefined) {
+    return failure(invalidInput('this deployment has no session controller, so it cannot start an executor Session'), caller, me)
+  }
+
+  const key = asString(validated.value.key) ?? ''
+  const ledger = await readLedger(jira)
+  if (ledger === undefined) return failure(invalidInput('the ledger could not be read'), caller, me)
+  const issue = ledger.byKey.get(key)
+  if (issue === undefined) return failure(invalidInput(`${key} is not in the ledger`, { key }), caller, me)
+  if (issue.status !== 'in_progress') {
+    return failure(invalidInput(`${key} is '${issue.status}'; claim it before dispatching`, { key }), caller, me)
+  }
+  if (issue.assignee === undefined || issue.assignee !== caller.identity) {
+    return failure(invalidInput(`${key} is not assigned to this session; a dispatcher claims before it dispatches`, { key }), caller, me)
+  }
+
+  const cwd = asString(validated.value.cwd) ?? caller.cwd
+  const instruction = dispatchInstruction(key)
+  try {
+    const created = await controller.create({
+      ...(cwd === undefined ? {} : { cwd }),
+      agentPreset: workerPreset,
+    })
+    const sessionId = String(created.sessionId)
+    await controller.prompt({
+      requestId: `superagent-${randomUUID()}`,
+      sessionId,
+      mode: 'queue',
+      content: [{ type: 'text', text: instruction }],
+    })
+    return Object.freeze({
+      ok: true,
+      writable: caller.writable,
+      me,
+      dispatch: Object.freeze({
+        key,
+        // `session` rather than `sessionId`, matching the `me` tuple: the wire conversion would
+        // rename a camelCase key on the way out, and the model reads the rendered text either way.
+        session: sessionId,
+        ...(cwd === undefined ? {} : { cwd }),
+        instruction,
+      }),
+    })
+  } catch (error: unknown) {
+    return failure(invalidInput(
+      `the executor Session for ${key} could not be started: ${error instanceof Error ? error.message : String(error)}`,
+      { key },
+    ), caller, me)
+  }
+}
+
+/** One text block, clamped to the model's budget. */
+const renderText = (text: string): ContentBlock[] => [{ type: 'text', text: clampText(text) }]
+
+/**
+ * The dispatch tool's declaration, shaped like the others.
+ * @param host - the plugin host the call context is resolved from.
+ * @param workerPreset - the configured executor preset, forwarded to the runner.
+ * @returns the tool declaration.
+ */
+const dispatcher = (host: ToolHost, workerPreset: string | undefined): Spec => ({
+  name: DISPATCH_TOOL_NAME,
+  description: DISPATCH_DESCRIPTION,
+  parameters: DISPATCH_PARAMETERS,
+  outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+  timeoutMs: 30_000,
+  isConcurrencySafe: () => false,
+  render: (typed) => {
+    const dispatch = typed.dispatch as { key?: string; session?: string; cwd?: string } | undefined
+    return renderText(dispatch?.session === undefined
+      ? 'ok'
+      : `${String(dispatch.key)}  session ${String(dispatch.session)}  ${String(dispatch.cwd ?? '')}`.trim())
+  },
+  run: (args, call) => runDispatchTool(args, runOptionsOf(host, call), call.me, host.ctx, workerPreset),
+})
+
+
+/**
+ * Build the tool definitions the capability contributes.
  *
  * The schemas, the runners and the descriptions live here; this function only turns them into the
  * registry's shape, so each tool declares its timeout and concurrency class in one place.
  * @param host - the plugin host the call context is resolved from.
+ * @param workerPreset - the configured executor preset; without one, dispatch refuses (DH-702).
  * @returns the capability contribution the organizer wires onto root agents.
  */
-export const createSuperagentContribution = (host: ToolHost): CapabilityContribution => {
+export const createSuperagentContribution = (host: ToolHost, workerPreset?: string): CapabilityContribution => {
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
   let polling = false
@@ -635,6 +797,7 @@ export const createSuperagentContribution = (host: ToolHost): CapabilityContribu
       defineJiraTool(host, claim),
       defineJiraTool(host, workspace),
       defineJiraTool(host, status),
+      defineJiraTool(host, dispatcher(host, workerPreset)),
     ]),
     onAgentCreated: (agent: Agent) => {
       liveAgents.add(agent)

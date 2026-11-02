@@ -58,16 +58,22 @@ export const name = 'jira-agent'
 export const inject = ['jira', 'tools', 'dafeiyu']
 
 /**
- * The agent row takes no configuration of its own.
+ * The agent row's own configuration: which preset an executor Session joins.
  *
- * Where the ledger lives, who writes it and whether a settle pushes all belong to the
- * `jira-service` row; whether the model surface is created at all belongs to dafeiyu's
- * `capabilities.jira.enabled` gate. A config field here would be a second place for one of them.
+ * Everything about the ledger itself still belongs to the `jira-service` row, and whether a model
+ * surface exists at all belongs to dafeiyu's gates. This one field exists because a real executor
+ * Session gets a whole composition, and the composition it may join has to be decided here rather
+ * than by the model (DH-702): without it a dispatched Session would inherit the dispatcher's tools.
  */
-export type Config = Readonly<Record<never, never>>
+export type Config = Readonly<{
+  /** The agent preset a `superagent_dispatch` Session joins; unset means dispatch refuses. */
+  superagent_worker_preset?: string
+}>
 
-/** Schemastery schema for the empty row configuration. */
-export const Config: z<Config> = z.object({})
+/** Schemastery schema for the row configuration. */
+export const Config: z<Config> = z.object({
+  superagent_worker_preset: z.string(),
+})
 
 /**
  * Register the jira capability and its always-on surfaces.
@@ -114,7 +120,8 @@ export function apply(ctx: Context, config: Config): void {
     enabledByDefault: false,
     settings: { sectionId: SUPERAGENT_SETTINGS_SECTION, order: SUPERAGENT_SETTINGS_ORDER },
     config: Object.freeze({}),
-    create: (_runtime: CapabilityRuntime): CapabilityContribution => createSuperagentContribution(host),
+    create: (_runtime: CapabilityRuntime): CapabilityContribution =>
+      createSuperagentContribution(host, config.superagent_worker_preset),
   })
   ctx.effect(() => superagent, 'superagent.register()')
 }
@@ -204,6 +211,9 @@ export {
   CLAIM_DESCRIPTION,
   CLAIM_PARAMETERS,
   CLAIM_TOOL_NAME,
+  DISPATCH_DESCRIPTION,
+  DISPATCH_PARAMETERS,
+  DISPATCH_TOOL_NAME,
   PROPOSAL_MARKER,
   SCAN_DESCRIPTION,
   SCAN_PARAMETERS,
@@ -217,6 +227,7 @@ export {
   WORKSPACE_PARAMETERS,
   WORKSPACE_TOOL_NAME,
   type Claimability,
+  type SessionControllerLike,
   type WorkspaceLike,
   type WorkspaceRegistryLike,
   claimability,
@@ -225,9 +236,11 @@ export {
   isBlocked,
   openProposal,
   runClaimTool,
+  runDispatchTool,
   runScanTool,
   runStatusTool,
   runSuperagentPass,
   runWorkspaceTool,
+  sessionControllerOf,
   workspaceRegistryOf,
 } from './superagent.ts'
