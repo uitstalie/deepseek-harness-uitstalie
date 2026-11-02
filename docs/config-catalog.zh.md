@@ -1861,6 +1861,8 @@ export interface TlsConfig {
 export type Config = Readonly<{
   /** The agent preset a `superagent_dispatch` Session joins; unset means dispatch refuses. */
   superagent_worker_preset?: string
+  /** How many issues one dispatcher may hold in progress at once; defaults to two. */
+  superagent_max_workers?: number
 }>
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->

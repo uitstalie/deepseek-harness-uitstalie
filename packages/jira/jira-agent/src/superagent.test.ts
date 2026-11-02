@@ -73,13 +73,17 @@ const settle = async (): Promise<void> => {
 const mount = async (
   options: Parameters<typeof mountJira>[1] = {},
   workerPreset?: string,
+  maxWorkers?: number,
 ): Promise<{
   harness: JiraHarness
   main: AgentHandle
   worker: AgentHandle
 }> => {
   const harness = await mountJira(await fixture(), { superagent: true, ...options })
-  await harness.ctx.plugin(jiraAgent, workerPreset === undefined ? {} : { superagent_worker_preset: workerPreset })
+  await harness.ctx.plugin(jiraAgent, {
+    ...(workerPreset === undefined ? {} : { superagent_worker_preset: workerPreset }),
+    ...(maxWorkers === undefined ? {} : { superagent_max_workers: maxWorkers }),
+  })
   await settle()
   for (const tool of jiraWorkerTools(harness.host)) harness.ctx.tools.register(tool)
   const main = testAgent(harness.ctx, 'main-1')
@@ -402,11 +406,17 @@ interface FakeSession {
 class FakeSessionController {
   readonly sessions: FakeSession[] = []
   readonly prompts: { readonly sessionId: string; readonly text: string }[] = []
+  /** Sessions the stand-in reports as still running. */
+  readonly running = new Set<string>()
 
   async create(request: { readonly cwd?: string; readonly agentPreset?: string }): Promise<{ sessionId: string }> {
     const sessionId = `session-${String(this.sessions.length + 1)}`
     this.sessions.push({ request, sessionId })
     return { sessionId }
+  }
+
+  async list(): Promise<{ items: { sessionId: string; running: boolean }[] }> {
+    return { items: this.sessions.map(session => ({ sessionId: session.sessionId, running: this.running.has(session.sessionId) })) }
   }
 
   async prompt(request: {
@@ -477,6 +487,63 @@ describe('superagent: dispatching into a real Session', () => {
       const stolen = await call(harness, other, DISPATCH_TOOL_NAME, { key: 'DH-12' })
       assert.equal(stolen.ok, false)
       assert.match(JSON.stringify(stolen.error), /not assigned to this session/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('refuses to claim past the configured slots', async () => {
+    const { harness, main } = await mount({}, 'jira-worker', 1)
+    try {
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      const first = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      assert.equal(first.ok, true, JSON.stringify(first.error))
+
+      const created = await call(harness, main, TOOL_NAME, { action: 'create', project: 'DH', data: { summary: 'second' } })
+      const second = String(issueOf(created).key)
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: second, why: 'also ready' })
+      const refused = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: second })
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /configured limit/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('refuses a second dispatch while the recorded executor still runs', async () => {
+    const { harness, main } = await mount({}, 'jira-worker')
+    try {
+      const controller = await provideController(harness)
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      const first = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+      assert.equal(first.ok, true, JSON.stringify(first.error))
+
+      controller.running.add('session-1')
+      const refused = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /already has a running executor/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('dispatches again once the executor is gone, and keeps both records', async () => {
+    const { harness, main } = await mount({}, 'jira-worker')
+    try {
+      const controller = await provideController(harness)
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+
+      const again = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+      assert.equal(again.ok, true, JSON.stringify(again.error))
+      assert.equal((again.dispatch as Record<string, unknown>).session, 'session-2')
+
+      const read = await call(harness, main, TOOL_NAME, { action: 'get', key: 'DH-12' })
+      const records = bodiesOf(read).filter(body => body.startsWith('[dispatch:session]'))
+      assert.equal(records.length, 2, JSON.stringify(bodiesOf(read)))
+      assert.equal(controller.sessions.length, 2)
     } finally {
       await harness.dispose()
     }

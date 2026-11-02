@@ -68,11 +68,14 @@ export const inject = ['jira', 'tools', 'dafeiyu']
 export type Config = Readonly<{
   /** The agent preset a `superagent_dispatch` Session joins; unset means dispatch refuses. */
   superagent_worker_preset?: string
+  /** How many issues one dispatcher may hold in progress at once; defaults to two. */
+  superagent_max_workers?: number
 }>
 
 /** Schemastery schema for the row configuration. */
 export const Config: z<Config> = z.object({
   superagent_worker_preset: z.string(),
+  superagent_max_workers: z.number(),
 })
 
 /**
@@ -122,7 +125,7 @@ export function apply(ctx: Context, config: Config): void {
     settings: { sectionId: SUPERAGENT_SETTINGS_SECTION, order: SUPERAGENT_SETTINGS_ORDER },
     config: Object.freeze({}),
     create: (_runtime: CapabilityRuntime): CapabilityContribution =>
-      createSuperagentContribution(host, config.superagent_worker_preset),
+      createSuperagentContribution(host, config.superagent_worker_preset, config.superagent_max_workers),
   })
   ctx.effect(() => superagent, 'superagent.register()')
 }
@@ -214,7 +217,9 @@ export {
   CLAIM_DESCRIPTION,
   CLAIM_PARAMETERS,
   CLAIM_TOOL_NAME,
+  DEFAULT_MAX_WORKERS,
   DISPATCH_DESCRIPTION,
+  DISPATCH_MARKER,
   DISPATCH_PARAMETERS,
   DISPATCH_TOOL_NAME,
   PROPOSAL_MARKER,
@@ -236,6 +241,7 @@ export {
   claimability,
   createSuperagentContribution,
   dispatchInstruction,
+  dispatchRecordOf,
   isBlocked,
   openProposal,
   runClaimTool,

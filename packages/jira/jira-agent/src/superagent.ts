@@ -368,7 +368,12 @@ export const runStatusTool = async (options: RunOptions, me: unknown): Promise<T
  * @param me - the caller's identity tuple, returned in every result.
  * @returns the proposal, or the claimed issue with its dispatch facts.
  */
-export const runClaimTool = async (args: unknown, options: RunOptions, me: unknown): Promise<ToolValue> => {
+export const runClaimTool = async (
+  args: unknown,
+  options: RunOptions,
+  me: unknown,
+  maxWorkers: number = DEFAULT_MAX_WORKERS,
+): Promise<ToolValue> => {
   const { jira, caller } = options
   const validated = validateArgs(CLAIM_PARAMETERS, args)
   if (!validated.ok) return failure(validated.error, caller, me)
@@ -406,6 +411,16 @@ export const runClaimTool = async (args: unknown, options: RunOptions, me: unkno
   const proposal = openProposal(read.value.comments ?? [], caller.identity)
   if (!proposal.ready) {
     return failure(invalidInput(`${key} cannot be claimed yet: ${String(proposal.reason)}`, { key }), caller, me)
+  }
+  // DH-704: a slot is a claimed issue. This session is the meter, so the number needs no new state
+  // and a person's own session is never counted (it is a dispatcher, not a worker).
+  const held = ledger.issues.filter(item => item.status === 'in_progress' && item.assignee === caller.identity).length
+  if (held >= maxWorkers) {
+    return failure(invalidInput(
+      `${key} cannot be claimed yet: this session already holds ${String(held)} issue(s) in progress, `
+      + `which is the configured limit (${String(maxWorkers)}); finish or release one first`,
+      { key, held, maxWorkers },
+    ), caller, me)
   }
   const assigned = await jira.mutateIssue(issueKey, { action: 'assignee', value: 'self' }, actor, {})
   if (!assigned.ok) return failure(assigned.error, caller, me)
@@ -529,6 +544,30 @@ export const runWorkspaceTool = async (
 /** The tool that starts a real Session instead of a subagent (DH-702). */
 export const DISPATCH_TOOL_NAME = 'superagent_dispatch'
 
+/** The marker a dispatch records on the issue, so a restart can tell which Session ran it. */
+export const DISPATCH_MARKER = '[dispatch:session]'
+
+/** How many issues one dispatcher may keep in progress at once, unless the row says otherwise. */
+export const DEFAULT_MAX_WORKERS = 2
+
+/**
+ * The Session the latest dispatch record on an issue names, when there is one.
+ *
+ * The record is a plain comment rather than state: a restarting host has to be able to read the
+ * same history a person reads, and "which executor ran this issue" is part of that history.
+ * @param comments - the issue's comments, oldest first.
+ * @returns the recorded session id, or undefined when the issue was never dispatched.
+ */
+export const dispatchRecordOf = (comments: readonly { readonly body: string }[]): string | undefined => {
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const body = comments[index]?.body.trimStart() ?? ''
+    if (!body.startsWith(DISPATCH_MARKER)) continue
+    const session = body.slice(DISPATCH_MARKER.length).trim()
+    return session === '' ? undefined : session
+  }
+  return undefined
+}
+
 /**
  * The slice of the host's session controller this capability uses.
  *
@@ -545,6 +584,8 @@ export interface SessionControllerLike {
     readonly mode: 'queue' | 'steer'
     readonly content: readonly { readonly type: 'text'; readonly text: string }[]
   }): Promise<{ readonly accepted: boolean }>
+  /** Every visible Session, so a dispatch can tell whether its executor still runs. */
+  list(): Promise<{ readonly items: readonly { readonly sessionId: unknown; readonly running: boolean }[] }>
 }
 
 /**
@@ -556,7 +597,8 @@ export const sessionControllerOf = (ctx: unknown): SessionControllerLike | undef
   const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
   if (typeof get !== 'function') return undefined
   const service = get.call(ctx, 'sessionController') as Partial<SessionControllerLike> | undefined
-  if (service === undefined || typeof service.create !== 'function' || typeof service.prompt !== 'function') {
+  if (service === undefined || typeof service.create !== 'function' || typeof service.prompt !== 'function'
+    || typeof service.list !== 'function') {
     return undefined
   }
   return service as SessionControllerLike
@@ -630,6 +672,32 @@ export const runDispatchTool = async (
 
   const cwd = asString(validated.value.cwd) ?? caller.cwd
   const instruction = dispatchInstruction(key)
+
+  // DH-704: never leave two executors on one issue. The last dispatch record names the Session that
+  // ran it; while that Session is still running, a second dispatch would duplicate the work.
+  const full = await jira.readIssue(key as IssueKey)
+  if (!full.ok) return failure(full.error, caller, me)
+  const previous = dispatchRecordOf(full.value.comments ?? [])
+  if (previous !== undefined) {
+    let running: boolean
+    try {
+      const listed = await controller.list()
+      running = listed.items.some(item => String(item.sessionId) === previous && item.running)
+    } catch {
+      return failure(invalidInput(
+        `${key} records executor session '${previous}', and whether it still runs cannot be read; `
+        + 'stop it or wait before dispatching again',
+        { key },
+      ), caller, me)
+    }
+    if (running) {
+      return failure(invalidInput(
+        `${key} already has a running executor (session '${previous}'); wait for it or stop it before dispatching again`,
+        { key },
+      ), caller, me)
+    }
+  }
+
   try {
     const created = await controller.create({
       ...(cwd === undefined ? {} : { cwd }),
@@ -642,6 +710,11 @@ export const runDispatchTool = async (
       mode: 'queue',
       content: [{ type: 'text', text: instruction }],
     })
+    // Recorded after the prompt so a failure to start leaves no claim of an executor that never ran.
+    const recorded = await jira.mutateIssue(key as IssueKey, {
+      action: 'comment',
+      body: `${DISPATCH_MARKER} ${sessionId}`,
+    }, { by: actorFor(options, caller), at: options.at }, {})
     return Object.freeze({
       ok: true,
       writable: caller.writable,
@@ -653,6 +726,7 @@ export const runDispatchTool = async (
         session: sessionId,
         ...(cwd === undefined ? {} : { cwd }),
         instruction,
+        recorded: recorded.ok,
       }),
     })
   } catch (error: unknown) {
@@ -698,7 +772,11 @@ const dispatcher = (host: ToolHost, workerPreset: string | undefined): Spec => (
  * @param workerPreset - the configured executor preset; without one, dispatch refuses (DH-702).
  * @returns the capability contribution the organizer wires onto root agents.
  */
-export const createSuperagentContribution = (host: ToolHost, workerPreset?: string): CapabilityContribution => {
+export const createSuperagentContribution = (
+  host: ToolHost,
+  workerPreset?: string,
+  maxWorkers: number = DEFAULT_MAX_WORKERS,
+): CapabilityContribution => {
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
   let polling = false
@@ -766,7 +844,7 @@ export const createSuperagentContribution = (host: ToolHost, workerPreset?: stri
         ? 'ok'
         : renderIssueHuman(issue as Issue, [], nowUtc(host.clock)).replace(/\n$/u, ''))
     },
-    run: (args, call) => runClaimTool(args, runOptionsOf(host, call), call.me),
+    run: (args, call) => runClaimTool(args, runOptionsOf(host, call), call.me, maxWorkers),
   }
   const workspace: Spec = {
     name: WORKSPACE_TOOL_NAME,
