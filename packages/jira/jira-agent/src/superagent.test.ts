@@ -29,6 +29,7 @@ import {
   claimability,
   createJiraContribution,
   createSessionRecorder,
+  createSuperagentContribution,
   isBlocked,
   jiraWorkerTools,
   openProposal,
@@ -323,6 +324,33 @@ describe('superagent: the dispatcher\'s surface', () => {
       // dispatch instruction only names the issue.
       assert.deepEqual(contribution.promptSections?.(main).map(section => section.name), ['jira:store'])
       assert.deepEqual(contribution.promptSections?.(worker).map(section => section.name), ['jira:executor'])
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('gives an executor Session the reads plus issue_work, and no dispatcher verbs', async () => {
+    const { harness } = await mount()
+    try {
+      const host = {
+        ctx: harness.ctx,
+        env: {},
+        clock: () => Date.parse(AT),
+        recorder: createSessionRecorder(),
+      }
+      const executor = testAgent(harness.ctx, 'exec-1', { agentPreset: 'jira-worker' })
+      const jira = createJiraContribution(host, 'jira-worker')
+      assert.deepEqual(
+        jira.tools?.(executor).map(tool => tool.name).sort(),
+        ['issue_work', 'jira_issue', 'jira_kb', 'jira_list'],
+      )
+      assert.deepEqual(jira.promptSections?.(executor).map(section => section.name), ['jira:executor'])
+
+      const dispatcher = createSuperagentContribution(host, 'jira-worker')
+      assert.deepEqual(dispatcher.tools?.(executor) ?? null, [], 'an executor cannot dispatch or claim')
+      // A root that did not join the preset keeps the dispatcher's surface.
+      const other = testAgent(harness.ctx, 'main-9', { agentPreset: 'standard' })
+      assert.equal(dispatcher.tools?.(other).length, 5)
     } finally {
       await harness.dispose()
     }

@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
 import { clampText, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { type RunOptions, type ToolValue, actorFor, asString, failure, nowUtc, okValue } from './envelope.ts'
+import { isExecutorSession } from './caller.ts'
 import { type Spec, type ToolHost, callerOf, defineJiraTool, identityOf, runOptionsOf } from './tools.ts'
 
 /** The capability id this provider registers with the organizer. */
@@ -791,14 +792,18 @@ export const createSuperagentContribution = (host: ToolHost, workerPreset?: stri
     run: (args, call) => runWorkspaceTool(args, runOptionsOf(host, call), call.me, host.ctx),
   }
   return Object.freeze({
+    // DH-703: an executor Session is a root agent, so the scope alone would hand it the dispatcher's
+    // verbs. It gets none of them; the jira capability gives it the reading tools and `issue_work`.
     scope: 'root',
-    tools: () => Object.freeze([
-      defineJiraTool(host, scan),
-      defineJiraTool(host, claim),
-      defineJiraTool(host, workspace),
-      defineJiraTool(host, status),
-      defineJiraTool(host, dispatcher(host, workerPreset)),
-    ]),
+    tools: (agent: Agent) => (isExecutorSession(agent, workerPreset)
+      ? Object.freeze([])
+      : Object.freeze([
+        defineJiraTool(host, scan),
+        defineJiraTool(host, claim),
+        defineJiraTool(host, workspace),
+        defineJiraTool(host, status),
+        defineJiraTool(host, dispatcher(host, workerPreset)),
+      ])),
     onAgentCreated: (agent: Agent) => {
       liveAgents.add(agent)
       agent.ctx.effect(() => () => { liveAgents.delete(agent) }, 'superagent: forget a disposed agent')

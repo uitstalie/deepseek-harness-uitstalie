@@ -106,7 +106,8 @@ export function apply(ctx: Context, config: Config): void {
     enabledByDefault: false,
     settings: { sectionId: JIRA_SETTINGS_SECTION, order: JIRA_SETTINGS_ORDER },
     config: Object.freeze({ ...config }),
-    create: (_runtime: CapabilityRuntime): CapabilityContribution => createJiraContribution(host),
+    create: (_runtime: CapabilityRuntime): CapabilityContribution =>
+      createJiraContribution(host, config.superagent_worker_preset),
   })
   ctx.effect(() => registration, 'jira.register()')
 
@@ -135,7 +136,9 @@ export {
   callerParentSessionId,
   callerSessionId,
   describeCaller,
+  isExecutorSession,
   isSubagent,
+  sessionAgentPreset,
 } from './caller.ts'
 export {
   type CommandDefinition,

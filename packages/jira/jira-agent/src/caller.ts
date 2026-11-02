@@ -85,6 +85,32 @@ export const callerParentSessionId = (agent: unknown): string | undefined => {
 }
 
 /**
+ * The agent preset this Session was created with, from `SessionHeader.agentPreset` (DH-703).
+ *
+ * A Session started by `superagent_dispatch` is a root agent, so the parent-session rule cannot
+ * recognize it; the preset it joined is the identity the capability narrows on instead.
+ * @param agent - the agent being wired or calling, read duck-typed.
+ * @returns the preset id, or undefined when the host recorded none.
+ */
+export const sessionAgentPreset = (agent: unknown): string | undefined => {
+  const record = asRecord(agent)
+  if (record === undefined) return undefined
+  return asNonEmptyString(asRecord(asRecord(record.session)?.header)?.agentPreset)
+}
+
+/**
+ * Whether this agent is an executor: a Session that joined the configured worker preset.
+ *
+ * An unset configured id means the deployment runs no real executors, so nothing matches; the
+ * `superagent_dispatch` gate enforces that separately.
+ * @param agent - the agent being wired.
+ * @param workerPreset - the configured executor preset, when the deployment has one.
+ * @returns whether this agent is an executor rather than a dispatcher or a delegated child.
+ */
+export const isExecutorSession = (agent: unknown, workerPreset: string | undefined): boolean =>
+  workerPreset !== undefined && workerPreset !== '' && sessionAgentPreset(agent) === workerPreset
+
+/**
  * Decision 93: the host carries the session's permission preset on the agent
  * (`agent.options.agentPreset`, names like `readOnly`/`workspaceWrite`). It is the only
  * read-only signal a plugin can actually see — the environment variable the first version

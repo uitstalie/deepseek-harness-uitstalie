@@ -14,7 +14,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import { createStoreAwareness } from './awareness.ts'
-import { callerSessionId, isSubagent } from './caller.ts'
+import { callerSessionId, isExecutorSession, isSubagent } from './caller.ts'
 import { type HostEnv } from './env.ts'
 import { nowUtc } from './envelope.ts'
 import { type SessionRecorder, stateDirOf } from './sessionRecord.ts'
@@ -127,32 +127,39 @@ export const settleCompletedTurn = async (
  * `create()` runs once per enabled registration, so the `changed` subscription and the tool
  * definitions live exactly as long as the capability does.
  * @param host - the services and process facts the contribution reads.
+ * @param workerPreset - the configured executor preset; an agent that joined it is a worker.
  * @returns the contribution the organizer wires onto root agents.
  */
-export const createJiraContribution = (host: ContributionHost): CapabilityContribution => {
+export const createJiraContribution = (host: ContributionHost, workerPreset?: string): CapabilityContribution => {
   const awareness = createStoreAwareness(host.ctx.jira)
   const tools = jiraTools(host)
   const workerTools = jiraWorkerTools(host)
   /** Starting commits captured at agent creation, keyed by the agent that owns the session. */
   const heads = new WeakMap<Agent, Promise<string>>()
+  /**
+   * Whether this agent is an executor rather than a dispatcher: a delegated child, or a real
+   * Session that joined the worker preset (DH-703). Both get the reading tools plus `issue_work`,
+   * and neither settles the ledger.
+   */
+  const isWorker = (agent: Agent): boolean => isSubagent(agent) || isExecutorSession(agent, workerPreset)
 
   return Object.freeze({
-    // DH-512/514: a delegated child is wired too. It gets the ledger's three tools for reading the
-    // issue it was dispatched for (their writes stay refused, decision 89, and `jira_kb` checks the
-    // same verdict) plus `issue_work`, which is the only surface it may write through.
+    // DH-512/514/703: a worker gets the ledger's three tools for reading the issue it was
+    // dispatched for (their writes stay refused, decision 89, and `jira_kb` checks the same
+    // verdict) plus `issue_work`, which is the only surface it may write through.
     scope: 'all',
-    tools: (agent: Agent) => (isSubagent(agent) ? Object.freeze([...tools, ...workerTools]) : tools),
-    promptSections: (agent: Agent) => (isSubagent(agent) ? [EXECUTOR_SECTION] : [awareness.section]),
+    tools: (agent: Agent) => (isWorker(agent) ? Object.freeze([...tools, ...workerTools]) : tools),
+    promptSections: (agent: Agent) => (isWorker(agent) ? [EXECUTOR_SECTION] : [awareness.section]),
     onAgentCreated: (agent: Agent) => {
-      // A child neither settles the ledger nor scans the session's commits: it writes one issue
+      // A worker neither settles the ledger nor scans the session's commits: it writes one issue
       // through `issue_work`, and the dispatcher owns the commit history.
-      if (isSubagent(agent)) return
+      if (isWorker(agent)) return
       heads.set(agent, headAtStart(host))
       // A resumed or newly opened root agent sees the current ledger before its first turn.
       void awareness.refresh()
     },
     onTurnEnd: async (input: TurnEndInput) => {
-      if (isSubagent(input.agent)) return
+      if (isWorker(input.agent)) return
       await settleCompletedTurn(host, input.agent, input.turn, await (heads.get(input.agent) ?? headAtStart(host)))
     },
     dispose: () => {
