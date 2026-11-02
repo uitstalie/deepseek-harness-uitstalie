@@ -214,7 +214,7 @@ test('configuration rejects a non-increasing window and a half summary pair', ()
     window: { detail: 6, brief: 16, forget: 21, sessions: 10 },
     summarizationProvider: '',
     summarizationModel: '',
-    maxBytes: 4096,
+    maxBytes: 16384,
     maxEntries: 40,
     snapshotTemplate: '',
     snapshotPosition: 'depth-0',

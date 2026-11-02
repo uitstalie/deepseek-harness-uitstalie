@@ -4,8 +4,10 @@
  * The planner reads one MEMORY.md document and returns the tier migrations for
  * one session without touching the file, the model, or the session surface. A
  * turn's relative age is `currentTurn - turn`, so the current turn has age 0:
- * ages below `detail` stay verbatim, ages below `brief` stay detail, ages below
- * `forget` become brief, and older turns are forgotten.
+ * ages below `detail` stay verbatim, ages below `brief` are replaced on the
+ * surface by a detail checkpoint while the stored tier stays detail, ages below
+ * `forget` become brief, and older turns are forgotten. A detail turn whose
+ * checkpoint is already recorded plans nothing, so repeated calls are idempotent.
  *
  * A stored section carries one heading and one entry list for a run of turns. Entries written
  * with a turn marker let a section split: consecutive turns that ask for the same action form
@@ -59,6 +61,8 @@ export interface SurfaceRetry extends TurnRange {
 export interface TierMigrationPlan {
   /** Session the plan was computed for. */
   readonly sessionId: string
+  /** Detail sections whose raw surface range becomes a detail checkpoint. */
+  readonly toDetail: readonly TurnRange[]
   /** Detail sections that become brief. */
   readonly toBrief: readonly TurnRange[]
   /** Detail or brief sections whose bodies leave the managed block. */
@@ -80,7 +84,7 @@ export interface TierMigrationConfig extends MemoryWindow {
 }
 
 /** What a turn's age asks the window to do. */
-type TurnAction = 'none' | 'brief' | 'forget'
+type TurnAction = 'none' | 'detail' | 'brief' | 'forget'
 
 /**
  * Plan one session's tier migrations.
@@ -106,6 +110,7 @@ export function planTierMigrations(
   const session = migrationSession(document, config.sessionId)
   if (session === undefined) return emptyPlan(config.sessionId ?? '')
   const turns = new Map(session.turns.map(turn => [turn.turn, turn]))
+  const toDetail: TurnRange[] = []
   const toBrief: TurnRange[] = []
   const toForget: TurnRange[] = []
   for (const section of sessionSections(document, session.id)) {
@@ -113,21 +118,24 @@ export function planTierMigrations(
     if (sectionTurns === undefined) continue
     if (forgottenSection(section, session.forgottenThrough)) continue
     if (section.tier === 'detail' && sectionHasTurnEntries(section)) {
-      collectTurnRanges(section, turns, currentTurn, config, session.forgottenThrough, toBrief, toForget)
+      collectTurnRanges(section, turns, currentTurn, config, session.forgottenThrough, toDetail, toBrief, toForget)
       continue
     }
     const action = sectionAction(section, sectionTurns, currentTurn, config, session.forgottenThrough)
     if (action === 'none') continue
     const range = turnRange(section, sectionTurns)
-    if (action === 'brief') toBrief.push(range)
+    if (action === 'detail') toDetail.push(range)
+    else if (action === 'brief') toBrief.push(range)
     else toForget.push(range)
   }
+  toDetail.sort((left, right) => left.startTurn - right.startTurn)
   toBrief.sort((left, right) => left.startTurn - right.startTurn)
   toForget.sort((left, right) => left.startTurn - right.startTurn)
   const retry = planSurfaceRetries(document, session, turns)
   const forgottenThrough = nextForgottenThrough(session.forgottenThrough, toForget)
   return {
     sessionId: session.id,
+    toDetail,
     toBrief,
     toForget,
     retry,
@@ -153,6 +161,7 @@ function migrationSession(document: MemoryDocument, sessionId: string | undefine
 function emptyPlan(sessionId: string): TierMigrationPlan {
   return {
     sessionId,
+    toDetail: [],
     toBrief: [],
     toForget: [],
     retry: [],
@@ -198,6 +207,13 @@ function sectionAction(
     && actions.every(action => action === 'brief' || action === 'forget')) {
     return 'brief'
   }
+  // A detail section without per-turn entries moves as a whole, and only while no turn
+  // already carries a checkpoint and every turn asks for the detail age.
+  if (section.tier === 'detail'
+    && turns.every(turn => turn.checkpointSeq === undefined)
+    && actions.every(action => action === 'detail')) {
+    return 'detail'
+  }
   return 'none'
 }
 
@@ -211,7 +227,9 @@ function turnAction(
   if (forgottenThrough !== undefined && turn.turn <= forgottenThrough) return 'none'
   const age = currentTurn - turn.turn
   if (age < config.detail) return 'none'
-  if (age < config.brief) return 'none'
+  if (age < config.brief) {
+    return turn.tier === 'detail' && turn.checkpointSeq === undefined ? 'detail' : 'none'
+  }
   if (age < config.forget) return turn.tier === 'detail' ? 'brief' : 'none'
   return 'forget'
 }
@@ -243,13 +261,16 @@ function sectionHasTurnEntries(section: MemorySection): boolean {
  *
  * Consecutive turns that ask for the same action form one range, so an old
  * turn can move to brief (or be forgotten) while a newer turn in the same
- * heading stays detail. Turns without a record, or whose action is `none`,
- * break the run and wait for a later pass.
+ * heading stays detail. A detail-aged turn without a checkpoint forms a detail
+ * range; a turn whose checkpoint is already recorded breaks the run. Turns
+ * without a record, or whose action is `none`, break the run and wait for a
+ * later pass.
  * @param section - the detail section to split.
  * @param turns - turn records by turn number.
  * @param currentTurn - latest completed turn of the session.
  * @param config - window thresholds.
  * @param forgottenThrough - highest already-forgotten turn.
+ * @param toDetail - collected detail ranges.
  * @param toBrief - collected brief ranges.
  * @param toForget - collected forget ranges.
  */
@@ -259,6 +280,7 @@ function collectTurnRanges(
   currentTurn: number,
   config: TierMigrationConfig,
   forgottenThrough: number | undefined,
+  toDetail: TurnRange[],
   toBrief: TurnRange[],
   toForget: TurnRange[],
 ): void {
@@ -271,7 +293,8 @@ function collectTurnRanges(
   const flush = (): void => {
     if (run === undefined) return
     const range = rangeFromTurns(section, turns, run.start, run.end)
-    if (run.action === 'brief') toBrief.push(range)
+    if (run.action === 'detail') toDetail.push(range)
+    else if (run.action === 'brief') toBrief.push(range)
     else toForget.push(range)
     run = undefined
   }

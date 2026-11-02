@@ -18,6 +18,7 @@ import {
   appendTurnSummary,
   assertMemoryEntryKind,
   createMemoryDocument,
+  DEFAULT_MEMORY_MAX_BYTES,
   editMemorySummary,
   MEMORY_BLOCK_BEGIN,
   MEMORY_BLOCK_END,
@@ -396,6 +397,25 @@ test('a current session over the budget on its own still fails loudly', async ()
     kind: 'decision', text: 'z'.repeat(200), turn: 1, seq: [1, 2],
   }, undefined, { window: ONE_SESSION, maxBytes: 50 })).rejects.toThrow(/after dropping older sessions/u)
   expect(await readFile(memoryFile(), 'utf8')).toBe(seed)
+})
+
+test('the default body budget admits more than the former 4 KiB before refusing', async () => {
+  expect(DEFAULT_MEMORY_MAX_BYTES).toBe(16 * 1024)
+  const seed = seedText('Hand-written note.')
+  await store.writeFile(session, MEMORY_STORE_PATH, seed)
+  // Six ~1 KiB entries: over the former 4 KiB default and under the 16 KiB default.
+  for (let index = 0; index < 6; index += 1) {
+    await appendMemoryEntry(ctx, session, {
+      kind: 'files',
+      text: `${String(index)}:${'x'.repeat(1000)}`,
+      turn: index + 1,
+      seq: [index * 10, index * 10 + 5],
+    })
+  }
+  const text = await readFile(memoryFile(), 'utf8')
+  expect(Buffer.byteLength(text, 'utf8')).toBeGreaterThan(4096)
+  const parsed = parseMemoryDocument(text)
+  expect(parsed.sections.flatMap(section => section.entries)).toHaveLength(6)
 })
 
 test('a manual edit marks the entry manual, records history, and a revert restores it', async () => {

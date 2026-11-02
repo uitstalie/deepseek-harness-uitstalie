@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/memory/README.md
 /:
-  en: e414c0a19db8cbff
-  zh: 6ee5f9015163749b
+  en: 119d68e2abf28e47
+  zh: 2f80a2d1eef95e38
 /deepseek-ai-dsh-memory:
   en: 451d0d0b45211d36
   zh: 98cef595909ea324
 /deepseek-ai-dsh-memory/summary:
-  en: a1e5d6041058b975
-  zh: f2207d1a5377afad
+  en: 25b206d2491ca255
+  zh: 13843cf63ba070fd
 /deepseek-ai-dsh-memory/table-of-contents:
   en: cbfb676bb9a7a2de
   zh: 528864635b577290
 /deepseek-ai-dsh-memory/use-this-package:
-  en: d7e9a223f1457b2a
-  zh: f90473e5b5f41647
+  en: d6afe80499a48ff2
+  zh: 87a883b008355b45
 /deepseek-ai-dsh-memory/understand-the-implementation:
-  en: ddf8508e2a5b15dd
-  zh: 49570a78e298047b
+  en: 696d34f38db4a0ff
+  zh: 6cc3db32793af256
 /deepseek-ai-dsh-memory/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -57,8 +57,8 @@
   en: 29fba07cf34b8e44
   zh: 0d1db1c7e69e36ed
 /deepseek-ai-dsh-memory/model-experience/memory-snapshot-message/token-effect:
-  en: 80b0a60245219ac0
-  zh: 0f807715a2754e5a
+  en: 765948b4df21ccf4
+  zh: 1c073c98415e0075
 /deepseek-ai-dsh-memory/model-experience/memory-snapshot-message/kv-cache-effect:
   en: cfdc83ae5afd7b93
   zh: 26b0c093e9c75b9f
@@ -66,14 +66,14 @@
   en: c65f1ca009d1dc17
   zh: fe34d093608adbda
 /deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/what-the-model-sees:
-  en: dec74820c206761a
-  zh: e467d34910f741c7
+  en: a447f17d7d848218
+  zh: f995f3bc1605f277
 /deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/token-effect:
-  en: a99ecdb86321e0b9
-  zh: afc0d8bf3eb9ab05
+  en: 25b149a36664263f
+  zh: 7ab2121fd1e8e3f2
 /deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/kv-cache-effect:
-  en: 167c231b4afac8bc
-  zh: f6d8042d46eff1a9
+  en: ba88a837c9ae8f85
+  zh: 8fd051c5929aece5
 /deepseek-ai-dsh-memory/model-experience/memory-failure-notice:
   en: 181b494f66f3b14a
   zh: dbd8abbaae67e3b0
@@ -87,8 +87,8 @@
   en: 3fd317b042a59673
   zh: 8cd8957e8611720f
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work:
-  en: 2d6e087991e63a88
-  zh: ac7c614642c2e393
+  en: ca24977012bb0ef0
+  zh: 8cf66778fc03983e
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work/dev-note:
   en: 164f2d3e79e7c776
   zh: 22b11728c82dbcf0

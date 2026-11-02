@@ -45,7 +45,7 @@ export const MEMORY_BLOCK_END = '<!-- memory:end -->'
 export const MEMORY_DOCUMENT_VERSION = 1
 
 /** Default body budget in UTF-8 bytes. */
-export const DEFAULT_MEMORY_MAX_BYTES = 4096
+export const DEFAULT_MEMORY_MAX_BYTES = 16 * 1024
 
 /** Default per-session entry cap kept in the managed block. */
 export const DEFAULT_MEMORY_MAX_ENTRIES = 40
@@ -273,6 +273,8 @@ export interface MemoryTierMigrationResult {
   readonly path: string
   /** Version of the written file, when the store reported one. */
   readonly version?: string
+  /** Number of raw ranges replaced with a detail checkpoint. */
+  readonly detailed: number
   /** Number of sections replaced with a brief checkpoint. */
   readonly briefed: number
   /** Number of sections whose body was forgotten. */
@@ -963,16 +965,17 @@ export async function appendTurnSummary(
 /**
  * Apply one session's tier migrations to the workspace MEMORY.md.
  *
- * The pass reads the document once, compresses each detail section that reached
- * the brief age through the supplied model callback, replaces the matching
- * surface range with a checkpoint, removes forgotten section bodies, and writes
- * the complete batch with one version-guarded write. Ranges an earlier pass
- * migrated but could not replace on the surface (a snapshot, a compaction
- * checkpoint, or a gap) are retried from the stored text, without re-compressing.
- * A failed compression keeps that section at detail and does not block the other
- * ranges. One stale-version conflict re-reads and applies the plan once more;
- * surface replacements already made are reused by their window, so they are not
- * appended twice.
+ * The pass reads the document once, replaces each detail range that reached the
+ * detail age with a detail checkpoint, compresses each detail section that
+ * reached the brief age through the supplied model callback, replaces the
+ * matching surface range with a brief checkpoint, removes forgotten section
+ * bodies, and writes the complete batch with one version-guarded write. Ranges an
+ * earlier pass migrated but could not replace on the surface (a snapshot, a
+ * compaction checkpoint, or a gap) are retried from the stored text, without
+ * re-compressing. A failed compression keeps that section at detail and does not
+ * block the other ranges. One stale-version conflict re-reads and applies the
+ * plan once more; surface replacements already made are reused by their window,
+ * so they are not appended twice.
  * @param ctx - context carrying the store, session query, and logger.
  * @param session - session whose turns are migrated.
  * @param currentTurn - latest completed turn of that session.
@@ -1002,12 +1005,15 @@ export async function migrateMemoryTiers(
     const current = await readMemoryDocument(ctx, session, signal)
     if (current.document === undefined) return undefined
     const plan = planTierMigrations(current.document, currentTurn, { ...window, sessionId: session.id })
-    if (plan.toBrief.length === 0 && plan.toForget.length === 0 && plan.retry.length === 0) return undefined
+    if (plan.toDetail.length === 0 && plan.toBrief.length === 0 && plan.toForget.length === 0
+      && plan.retry.length === 0) return undefined
     const briefs = await compressBriefs(ctx, current.document, session, plan, compress, compressed, signal)
-    if (briefs.length === 0 && plan.toForget.length === 0 && plan.retry.length === 0) return undefined
+    if (plan.toDetail.length === 0 && briefs.length === 0 && plan.toForget.length === 0
+      && plan.retry.length === 0) return undefined
     await checkpointMigrations(ctx, current.document, session, plan, briefs, checkpoints, signal)
     const retried = plan.retry.filter(retry => checkpoints.has(rangeKey(retry.action, retry))).length
-    if (briefs.length === 0 && plan.toForget.length === 0 && retried === 0) return undefined
+    const detailed = plan.toDetail.filter(range => checkpoints.has(rangeKey('detail', range))).length
+    if (detailed === 0 && briefs.length === 0 && plan.toForget.length === 0 && retried === 0) return undefined
     // Once a checkpoint left the surface, the metadata write must finish even if the
     // provider was disabled meanwhile: skipping it here is exactly the half-committed
     // state (checkpoint published, MEMORY.md unchanged) this pass avoids.
@@ -1027,6 +1033,7 @@ export async function migrateMemoryTiers(
     )
     return {
       path: written.path,
+      detailed,
       briefed: briefs.length,
       forgotten: plan.toForget.length,
       retried,
@@ -1169,12 +1176,32 @@ async function checkpointMigrations(
   checkpoints: Map<string, number>,
   signal: AbortSignal | undefined,
 ): Promise<void> {
+  for (const range of plan.toDetail) {
+    if (signal?.aborted === true) return
+    const key = rangeKey('detail', range)
+    if (checkpoints.has(key)) continue
+    const section = findContainingSection(document.sections, session.id, range, 'detail')
+    const entries = section === undefined ? [] : entriesForRange(section, range)
+    if (entries.length === 0) {
+      ctx.logger.debug(
+        'memory: skipping detail checkpoint for turns %d–%d because its section changed or is empty',
+        range.startTurn,
+        range.endTurn,
+      )
+      continue
+    }
+    const seq = await replaceSurfaceRange(ctx, session, range, {
+      text: renderEntryText(entries),
+      tier: 'detail',
+    }, signal)
+    if (seq !== undefined) checkpoints.set(key, seq)
+  }
   for (const brief of briefs) {
     if (signal?.aborted === true) return
     const key = rangeKey('brief', brief.range)
     if (checkpoints.has(key)) continue
     const seq = await replaceSurfaceRange(ctx, session, brief.range, {
-      text: renderBriefText(brief.entries),
+      text: renderEntryText(brief.entries),
       tier: 'brief',
     }, signal)
     if (seq !== undefined) checkpoints.set(key, seq)
@@ -1218,7 +1245,7 @@ function retryText(
   if (retry.action === 'forget') return renderForgetText(sessionId, retry)
   const section = findSection(document.sections, sessionId, retry)
   if (section === undefined || section.entries.length === 0) return undefined
-  return renderBriefText(section.entries)
+  return renderEntryText(section.entries)
 }
 
 /** Compose the post-migration document without writing it. */
@@ -1231,6 +1258,10 @@ function applyMigrations(
 ): MemoryDocument {
   let sections: MemorySection[] = [...document.sections]
   let turns = document.sessions.find(record => record.id === session.id)?.turns ?? []
+  for (const range of plan.toDetail) {
+    const checkpointSeq = checkpoints.get(rangeKey('detail', range))
+    if (checkpointSeq !== undefined) turns = updateTurnRange(turns, range, { checkpointSeq })
+  }
   for (const brief of briefs) {
     const container = findContainingSection(sections, session.id, brief.range, 'detail')
     if (container !== undefined) {
@@ -1322,7 +1353,7 @@ function copyEntries(entries: readonly MemoryEntry[]): readonly MemoryEntry[] {
 }
 
 /** Key one planned range by action and turns. */
-function rangeKey(action: 'brief' | 'forget', range: TurnRange): string {
+function rangeKey(action: 'detail' | 'brief' | 'forget', range: TurnRange): string {
   return `${action}:${String(range.startTurn)}:${String(range.endTurn)}`
 }
 
@@ -1352,8 +1383,8 @@ function truncateChars(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars - 1)}…`
 }
 
-/** Render brief entries as the model-facing checkpoint text. */
-function renderBriefText(entries: readonly MemoryEntry[]): string {
+/** Render stored entries as the model-facing checkpoint text. */
+function renderEntryText(entries: readonly MemoryEntry[]): string {
   return entries.map(entry => `- [${entry.kind}] ${entry.text}`).join('\n')
 }
 

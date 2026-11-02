@@ -309,6 +309,10 @@ test('a snapshot failure never fails the committed write', async () => {
   expect(await memorySnapshots(mounted.ctx, root.session.id)).toEqual([])
 })
 
+test('the default snapshot budget is 16 KiB', () => {
+  expect(MEMORY_SNAPSHOT_MAX_BYTES).toBe(16 * 1024)
+})
+
 /** Lines of one rendered text that start a cross-session index entry. */
 function indexLines(text: string): readonly string[] {
   return text.split('\n').filter(line => line.startsWith('- '))

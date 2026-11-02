@@ -82,7 +82,7 @@ sessions:
 - 插件只写 `<!-- memory:begin/end -->` 托管区块；区块外的手写内容原样保留。
 - frontmatter 是机器状态（窗口、tier、区间、checkpoint seq）；托管区块是给人读的摘要正文。两者都由 provider 生成，不从正文反推状态。
 - 正文只写“结论与决策”，不复制对话；摘要按条目渲染（`- [kind] 正文`），kind 来自注册表（`decision` / `files` / `open` / `preference`，personality 后续扩展）；每条摘要保留 `seq` 区间，供工具与轨迹页回查。
-- 总正文上限 16 KiB；每个会话的 turn 条目上限由窗口决定（≤15 条），跨会话最多 10 个。超限时先折叠最旧的会话为一行索引，再拒绝新的写入并提示。
+- 总正文上限 16 KiB（托管区块正文，`maxBytes` 可调）；每个会话的条目上限由 `maxEntries` 决定（默认 40 条），跨会话最多 10 个（`sessions`）。超限时先丢最旧会话正文、再拒绝新的写入并提示。
 
 ### 写入路径与原子性
 
@@ -143,6 +143,8 @@ memory 的注入不是“每个 pre-step 重新渲染一个 source”，而是**
 - checkpoint 的 `window` 元数据让 provider 在重启后能重建“哪个 turn 对应哪个 surface 节点”；不需要额外存储。
 - 同一区间内如果要替换的节点包含 memory 自己的 snapshot，跳过（snapshot 是全局状态，不参与 turn 窗口）。
 - 与 compaction 的关系：两者都改 surface，但都以 live surface 为输入。compaction 先把一段旧历史换成它自己的 checkpoint 后，memory 看到的目标区间已不存在，直接放弃该 turn；反过来 memory 先替换后，compaction 照样可以把 memory checkpoint 纳入它自己的区间。不需要跨插件锁。
+
+实现与回归：`planTierMigrations`（`packages/uitstalie/memory/src/window.ts`）规划 detail / brief / forget 三类区间，`migrateMemoryTiers` 执行 surface 替换；`packages/uitstalie/memory/tests/window-growth.spec.ts` 覆盖默认窗口 age 6 的 detail 替换、detail checkpoint 被 brief 单节点替换，以及 16 KiB 预算回归。
 
 ## 工具面
 

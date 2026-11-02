@@ -68,14 +68,23 @@ function plan(currentTurn: number, turns = [turn(currentTurn - 16)], sections = 
   )
 }
 
-test('turn ages at 5 and 6 stay detail', () => {
+test('turn ages at 5 and 6: age 6 plans the detail checkpoint', () => {
   for (const age of [5, 6]) {
     const currentTurn = 30
-    const result = plan(currentTurn, [turn(currentTurn - age)], [section(currentTurn - age)])
+    const turnNumber = currentTurn - age
+    const result = plan(currentTurn, [turn(turnNumber)], [section(turnNumber)])
+    expect(result.toDetail, `age ${String(age)}`).toEqual(age === 6
+      ? [{ startTurn: turnNumber, endTurn: turnNumber, seq: [turnNumber * 10, turnNumber * 10 + 5], tier: 'detail' }]
+      : [])
     expect(result.toBrief, `age ${String(age)}`).toEqual([])
     expect(result.toForget, `age ${String(age)}`).toEqual([])
     expect(result.window.turns[0]?.tier).toBe('detail')
   }
+})
+
+test('a detail turn whose checkpoint is recorded plans nothing at the detail age', () => {
+  const result = plan(30, [turn(24, 'detail', 512)], [section(24)])
+  expect(result.toDetail).toEqual([])
 })
 
 test('turn ages 15, 16, and 20 cross only the brief threshold', () => {
@@ -84,10 +93,17 @@ test('turn ages 15, 16, and 20 cross only the brief threshold', () => {
     const turnNumber = currentTurn - age
     const result = plan(currentTurn, [turn(turnNumber)], [section(turnNumber)])
     if (age === 15) {
+      expect(result.toDetail, 'age 15').toEqual([{
+        startTurn: turnNumber,
+        endTurn: turnNumber,
+        seq: [turnNumber * 10, turnNumber * 10 + 5],
+        tier: 'detail',
+      }])
       expect(result.toBrief, 'age 15').toEqual([])
       expect(result.toForget, 'age 15').toEqual([])
       continue
     }
+    expect(result.toDetail, `age ${String(age)}`).toEqual([])
     expect(result.toBrief, `age ${String(age)}`).toEqual([{
       startTurn: turnNumber,
       endTurn: turnNumber,
@@ -102,6 +118,7 @@ test('turn ages 15, 16, and 20 cross only the brief threshold', () => {
 test('turn age 21 forgets a detail section and advances the pointer', () => {
   const turnNumber = 9
   const result = plan(30, [turn(turnNumber)], [section(turnNumber)])
+  expect(result.toDetail).toEqual([])
   expect(result.toBrief).toEqual([])
   expect(result.toForget).toEqual([{
     startTurn: turnNumber,
@@ -116,6 +133,7 @@ test('a multi-turn section waits until every turn reaches the action', () => {
   const turns = [turn(1), turn(2)]
   const sections = [section(1, 2)]
   const early = plan(17, turns, sections)
+  expect(early.toDetail).toEqual([])
   expect(early.toBrief).toEqual([])
   const brief = plan(18, turns, sections)
   expect(brief.toBrief).toEqual([{
@@ -135,6 +153,7 @@ test('a multi-turn section waits until every turn reaches the action', () => {
 
 test('already brief and already forgotten turns do not migrate again', () => {
   const brief = plan(18, [turn(2, 'brief', 77)], [section(2, 2, 'brief')])
+  expect(brief.toDetail).toEqual([])
   expect(brief.toBrief).toEqual([])
   expect(brief.toForget).toEqual([])
 
@@ -152,6 +171,7 @@ test('a brief section whose checkpoint was skipped is planned for a retry', () =
   const currentTurn = 30
   const turnNumber = currentTurn - 16
   const result = plan(currentTurn, [turn(turnNumber, 'brief')], [section(turnNumber, turnNumber, 'brief')])
+  expect(result.toDetail).toEqual([])
   expect(result.toBrief).toEqual([])
   expect(result.toForget).toEqual([])
   expect(result.retry).toEqual([{
@@ -171,6 +191,7 @@ test('a forgotten run whose pointer was skipped is planned for a retry', () => {
     currentTurn,
     { ...DEFAULT_MEMORY_WINDOW, sessionId: 'session-a' },
   )
+  expect(result.toDetail).toEqual([])
   expect(result.toBrief).toEqual([])
   expect(result.toForget).toEqual([])
   expect(result.retry).toEqual([{
@@ -202,6 +223,7 @@ test('a multi-turn detail section splits by turn age', () => {
     currentTurn,
     { ...DEFAULT_MEMORY_WINDOW, sessionId: 'session-a' },
   )
+  expect(result.toDetail).toEqual([{ startTurn: 3, endTurn: 3, seq: [30, 35], tier: 'detail' }])
   expect(result.toBrief).toEqual([{ startTurn: 1, endTurn: 2, seq: [10, 25], tier: 'detail' }])
   expect(result.toForget).toEqual([])
 })
@@ -221,6 +243,7 @@ test('a section without per-turn entries keeps the section-granular rule', () =>
     19,
     { ...DEFAULT_MEMORY_WINDOW, sessionId: 'session-a' },
   )
+  expect(result.toDetail).toEqual([])
   expect(result.toBrief).toEqual([{ startTurn: 1, endTurn: 3, seq: [10, 35], tier: 'detail' }])
 })
 
@@ -236,12 +259,14 @@ test('a plan scopes ages to the named session', () => {
     { ...DEFAULT_MEMORY_WINDOW, sessionId: 'session-a' },
   )
   expect(result.sessionId).toBe('session-a')
+  expect(result.toDetail).toEqual([])
   expect(result.toForget).toHaveLength(1)
   expect(result.window.turns.every(turnRecord => turnRecord.tier === 'detail')).toBe(true)
 })
 
 test('a checkpoint seq carried by the turns survives into the migration range', () => {
   const result = plan(22, [turn(1, 'brief', 99)], [section(1, 1, 'brief')])
+  expect(result.toDetail).toEqual([])
   expect(result.toForget).toEqual([{
     startTurn: 1,
     endTurn: 1,

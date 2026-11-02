@@ -67,7 +67,7 @@ export interface MemoryNoticeSource {
 }
 
 /** Total UTF-8 byte budget of one snapshot text. */
-export const MEMORY_SNAPSHOT_MAX_BYTES = 4 * 1024
+export const MEMORY_SNAPSHOT_MAX_BYTES = 16 * 1024
 
 /** Section name the snapshot declares inside its message source. */
 export const MEMORY_SNAPSHOT_SECTION_NAME = 'memory'

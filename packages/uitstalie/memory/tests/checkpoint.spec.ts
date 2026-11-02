@@ -255,7 +255,7 @@ test('a section spanning turns splits when only the older turns cross the brief 
     { window: { detail: 6, brief: 16, forget: 21, sessions: 10 } },
   )
 
-  expect(result).toMatchObject({ briefed: 1, forgotten: 0 })
+  expect(result).toMatchObject({ briefed: 1, detailed: 1, forgotten: 0 })
   expect(compressedRanges).toEqual(['1-2:turn 1 conclusion|turn 2 conclusion'])
   const document = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
   expect(document.sections.map(section => [section.startTurn, section.endTurn, section.tier]))
@@ -264,8 +264,11 @@ test('a section spanning turns splits when only the older turns cross the brief 
   expect(document.sessions[0]?.turns.map(turnRecord => [turnRecord.turn, turnRecord.tier]))
     .toEqual([[1, 'brief'], [2, 'brief'], [3, 'detail']])
   const observed = await checkpoints(mounted, 'memory-root')
-  expect(observed).toHaveLength(1)
-  expect(observed[0]?.source.window).toEqual({ from: 1, to: 2, tier: 'brief' })
+  expect(observed).toHaveLength(2)
+  expect(observed.map(checkpoint => checkpoint.source.window)).toEqual([
+    { from: 1, to: 2, tier: 'brief' },
+    { from: 3, to: 3, tier: 'detail' },
+  ])
 })
 
 test('the forget and brief boundaries split the same section in one pass', async () => {
