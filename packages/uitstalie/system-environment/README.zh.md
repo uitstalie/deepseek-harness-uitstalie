@@ -56,4 +56,4 @@ const same = ctx.systemEnvironment.samePath(left, right)
 
 - **不做文件系统操作。** 这里只是查找与比较，不是针对磁盘的解析：需要证明目标存在的消费者仍然自己 stat。
 - **默认 Harness home 跟随 OS home。** 只覆盖 `HOME` 的测试，`dshHome()` 仍会看到真实 OS home，除非固定 `DSH_HOME` 或使用 `env` 缝。
-- **消费者仍各自携带路径规则。** sandbox 诊断、home-backup 与 store-atom 目前各自拼路径比较；把它们迁到本服务另行跟踪，且不得改变行为。
+- **原生包保留自己的规则。** 分支层挂载后，home-backup 与 store-atom 改读本服务，并各自保留宿主原生的兜底，使独立组合的原子仍可工作。sandbox 诊断仍留在原生 sandbox 包：宿主包不能依赖分支原子，因此它的平台规则在那里继续作为可参数的测试 seam，而不是服务读取。

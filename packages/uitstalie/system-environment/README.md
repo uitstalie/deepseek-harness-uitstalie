@@ -56,4 +56,4 @@ const same = ctx.systemEnvironment.samePath(left, right)
 
 - **No filesystem work.** This is lookup and comparison, not resolution against disk: a consumer that must prove a target exists still stats it itself.
 - **The default Harness home follows the OS home.** A test that overrides only `HOME` still sees the real OS home from `dshHome()` unless it pins `DSH_HOME` or uses the `env` seam.
-- **Consumers still carry their own path rules.** Sandbox diagnostics, home-backup, and store-atom each spell path comparison themselves; migrating them onto this service is tracked separately and must not change behavior.
+- **Native packages keep their own rules.** `home-backup` and `store-atom` read this service when the branch layer mounts it, and each keeps a host-native fallback so an independently composed atom still works. Sandbox diagnostics stays in the native sandbox package: a host package cannot depend on a branch atom, so its platform rules remain a parameterized test seam there instead of a service read.

@@ -14,6 +14,7 @@ import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/dsh-system-environment'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { runBackup, type BackupSelection } from './backup.ts'
 
@@ -34,7 +35,7 @@ export const DEFAULT_HOME_PATHS = Object.freeze(['sessions', 'storages'])
 
 /** Plugin configuration; every field is optional and the schema supplies the default. */
 export interface Config {
-  /** Snapshot directory; absent means {@link defaultDestination}. */
+  /** Snapshot directory; absent (or empty) means {@link defaultDestination}. */
   destination?: string
   /** Interval between snapshots in milliseconds. */
   intervalMs?: number
@@ -52,7 +53,7 @@ export interface Config {
 
 /** Validated schema; bounds keep a typo from turning into a snapshot storm or an empty window. */
 export const Config: z<Config> = z.object({
-  destination: z.string().min(1).default(defaultDestination()),
+  destination: z.string().default(''),
   intervalMs: z.number().step(1).min(60_000).default(DEFAULT_INTERVAL_MS),
   initialDelayMs: z.number().step(1).min(0).default(DEFAULT_INITIAL_DELAY_MS),
   retain: z.number().step(1).min(1).default(DEFAULT_RETAIN),
@@ -91,7 +92,7 @@ function nonNegativeInteger(label: string, value: number): void {
 }
 
 /** Materialize the defaults a Loader mount would already have applied. */
-function settingsOf(config: Config): Settings {
+function settingsOf(ctx: Context, config: Config): Settings {
   const intervalMs = config.intervalMs ?? DEFAULT_INTERVAL_MS
   const initialDelayMs = config.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS
   const retain = config.retain ?? DEFAULT_RETAIN
@@ -100,9 +101,16 @@ function settingsOf(config: Config): Settings {
   positiveInteger('retain', retain)
   const paths = config.paths ?? [...DEFAULT_HOME_PATHS]
   if (paths.length === 0) throw new Error('home-backup: paths must name at least one home entry')
+  // The environment atom is the source of the home and the default backup destination when the
+  // branch layer mounts it; the host-native fallback keeps a bare mount working.
+  const environment = ctx.get('systemEnvironment')
+  const home = environment?.dshHome() ?? resolveDshHome()
+  const destination = config.destination === undefined || config.destination === ''
+    ? environment?.join(environment.homeDir(), 'dsh-backups') ?? defaultDestination()
+    : environment?.path.resolve(config.destination) ?? resolve(config.destination)
   return {
-    home: resolveDshHome(),
-    destination: resolve(config.destination ?? defaultDestination()),
+    home,
+    destination,
     intervalMs,
     initialDelayMs,
     retain,
@@ -126,7 +134,7 @@ function settingsOf(config: Config): Settings {
  * @param config - {@link Config}; absent fields take their defaults.
  */
 export function apply(ctx: Context, config: Config): void {
-  const settings = settingsOf(config)
+  const settings = settingsOf(ctx, config)
   const logger = ctx.logger
   let inFlight: Promise<void> | undefined
 

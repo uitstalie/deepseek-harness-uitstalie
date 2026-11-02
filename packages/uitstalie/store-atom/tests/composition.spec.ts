@@ -6,6 +6,7 @@
  */
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -14,6 +15,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import * as FsLocalPlugin from '@deepseek-ai/dsh-fs-local'
+import * as SystemEnvironmentPlugin from '@deepseek-ai/dsh-system-environment'
 import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
 import * as StoreAtomPlugin from '../src/index.ts'
 
@@ -28,16 +30,29 @@ afterEach(async () => {
   root = undefined
 })
 
-/** Boot a composition holding the filesystem and this atom, and nothing else. */
-const boot = async (project: string, home: string): Promise<Context> => {
+/** Boot a composition holding the filesystem and this atom, and optionally the environment atom. */
+const boot = async (
+  project: string,
+  home: string,
+  environment?: { platform: 'win32' | 'posix'; env: Record<string, string> },
+): Promise<Context> => {
   const configPath = join(root ?? project, 'cordis.yml')
-  await writeFile(configPath, [
+  const rows = [
     "- name: '@deepseek-ai/dsh-fs-local'",
     '  config:',
     `    cwd: '${project.replaceAll('\\', '/')}'`,
     "- name: '@deepseek-ai/dsh-store-atom'",
-    '',
-  ].join('\n'), 'utf8')
+  ]
+  if (environment !== undefined) {
+    rows.push(
+      "- name: '@deepseek-ai/dsh-system-environment'",
+      '  config:',
+      `    platform: ${environment.platform}`,
+      '    env:',
+      ...Object.entries(environment.env).map(([key, value]) => `      ${key}: '${value.replaceAll('\\', '/')}'`),
+    )
+  }
+  await writeFile(configPath, `${rows.join('\n')}\n`, 'utf8')
   vi.stubEnv('DSH_HOME', home)
   const ctx = context = new Context()
   ctx.baseUrl = `${pathToFileURL(project).href}/`
@@ -46,6 +61,7 @@ const boot = async (project: string, home: string): Promise<Context> => {
   const modules = new Map<string, unknown>([
     ['@deepseek-ai/dsh-fs-local', FsLocalPlugin],
     ['@deepseek-ai/dsh-store-atom', StoreAtomPlugin],
+    ['@deepseek-ai/dsh-system-environment', SystemEnvironmentPlugin],
   ])
   ctx.loader.internal = {
     version: 'v2',
@@ -97,5 +113,25 @@ describe('store atom: minimal composition (DH-309)', () => {
     // Global storage resolves through $DSH_HOME and needs no session.
     await ctx.dshStore.writeFile(undefined, 'personality/PERSONALITY.md', 'global body', { scope: 'global' })
     expect(await readFile(join(home, 'personality', 'PERSONALITY.md'), 'utf8')).toBe('global body')
+  }, 30_000)
+
+  it('reads $DSH_HOME from the environment atom when the row is mounted after this atom', async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-store-env-'))
+    const project = join(root, 'project')
+    const decoy = join(root, 'decoy')
+    const realHome = join(root, 'env-home')
+    await mkdir(join(project, '.git'), { recursive: true })
+    await mkdir(decoy, { recursive: true })
+    await mkdir(realHome, { recursive: true })
+    // The branch layer lists store-atom before system-environment; the atom must pick the service
+    // up lazily, and the environment map (not process.env) must win. The dialect is the host's,
+    // because the atom joins with the host filesystem's dialect.
+    const hostPlatform = process.platform === 'win32' ? 'win32' : 'posix'
+    const ctx = await boot(project, decoy, { platform: hostPlatform, env: { DSH_HOME: realHome } })
+
+    expect(ctx.systemEnvironment.dshHome()).toBe(realHome)
+    await ctx.dshStore.writeFile(undefined, 'personality/PERSONALITY.md', 'from the env atom', { scope: 'global' })
+    expect(await readFile(join(realHome, 'personality', 'PERSONALITY.md'), 'utf8')).toBe('from the env atom')
+    expect(existsSync(join(decoy, 'personality', 'PERSONALITY.md'))).toBe(false)
   }, 30_000)
 })

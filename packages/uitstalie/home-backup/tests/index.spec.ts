@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import * as SystemEnvironmentPlugin from '@deepseek-ai/dsh-system-environment'
 import * as HomeBackup from '../src/index.ts'
 
 const roots: string[] = []
@@ -164,6 +165,30 @@ describe('home-backup plugin', () => {
 
   it('defaults the destination beside the harness home', () => {
     expect(HomeBackup.defaultDestination()).toBe(join(homedir(), 'dsh-backups'))
+  })
+
+  it('reads the home and default destination from the environment atom when mounted', async () => {
+    const root = await tempRoot()
+    const home = join(root, 'service-home')
+    const userHome = join(root, 'user-home')
+    const decoy = join(root, 'decoy')
+    await mkdir(join(home, 'sessions'), { recursive: true })
+    await writeFile(join(home, 'sessions', 'one'), '1')
+    await mkdir(userHome, { recursive: true })
+    await mkdir(decoy, { recursive: true })
+    // process.env points at a decoy: only the mounted environment atom carries the real paths.
+    process.env.DSH_HOME = decoy
+    process.env.HOME = decoy
+    process.env.USERPROFILE = decoy
+    const ctx = new Context()
+    await ctx.plugin(SystemEnvironmentPlugin, { platform: 'posix', env: { HOME: userHome, DSH_HOME: home } })
+    const fiber = await mount(ctx, { initialDelayMs: 20, intervalMs: 60, paths: ['sessions'], retain: 1 })
+
+    await waitFor(
+      () => snapshotCount(join(userHome, 'dsh-backups')) >= 1,
+      'the snapshot under the environment atom destination',
+    )
+    await fiber.dispose()
   })
 
   it('leaves the branch composition without a platform-specific destination', () => {

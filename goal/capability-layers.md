@@ -75,7 +75,7 @@ interface CapabilityProvider {
 
 `packages/uitstalie/system-environment/`（`@deepseek-ai/dsh-system-environment`）提供 `ctx.systemEnvironment`：平台与路径方言、分隔符、大小写规则、环境变量查找（Windows 大小写不敏感）、用户 home 与 `resolveDshHome()`。两套规则在任意宿主都可测（`platform: 'win32' | 'posix'`），因此 Windows 行为能在 Linux 上验证。分支层把它挂在 `store-atom` 之后。
 
-现有消费者仍各自拼自己的路径比较（sandbox 诊断、home-backup、store-atom）；迁移到本服务另行跟踪，且不得改变行为。
+现有消费者里，home-backup 与 store-atom 已在 2026-11-02 迁移到本服务（未挂载时保留宿主原生兜底）；sandbox 诊断按边界决定留在原生包，原因见下方“落地状态（2026-11-02，DH-309 迁移收口）”。
 
 ## jira：采用 Core-as-atom（DH-309 定稿）
 
@@ -130,3 +130,10 @@ interface CapabilityProvider {
   3. `personality` 的 `/personality` 与提案 Remote：人工管理面与用户数据面；开关只停 prompt section、学习工具与 auto-learn，`/personality` 的 revert 仍是一次显式人工操作。
 - **测试修正**：`agent-instructions-plus` 的组合测试改判“preset 不挂分支插件行”，允许 `uitstalie-` 溯源注释（DH-311 的标记块），不再把标记字符串当成分支挂载。
 - **仍延期**：`systemEnvironment` 迁移（sandbox 诊断、home-backup、store-atom 的路径判断）仍是行为保持改造，另行跟踪。
+
+## 落地状态（2026-11-02，DH-309 迁移收口）
+
+- **home-backup 迁移**：主目录与默认目标目录在 `apply` 时从 `ctx.systemEnvironment.dshHome()` / `homeDir()` / `join()` / `path.resolve()` 解析；未挂载时回退宿主原生 `resolveDshHome()` / `homedir()`。`Config.destination` 的 schema 默认值改为空串，由 apply 解析，分支层不再写死平台路径。
+- **store-atom 迁移**：全局根取 `ctx.systemEnvironment.dshHome()`（未挂载回退 `resolveDshHome()`）；`resolveStoreTarget` 接受包含判定回调，service 传入 `isUnder`（未挂载回退原子自己的 `isPathInside`）。环境原子按调用惰性读取，因此分支层把 `store-atom` 排在 `system-environment` 之前也能生效。
+- **sandbox 诊断不迁移（边界决定）**：`classifyDenial` 属于原生 `packages/sandbox/sandbox`，宿主包不能依赖分支原子；它的平台规则继续以 `classifyDenial(..., platform)` 的参数化 seam 存在，测试矩阵已覆盖两套方言。该决定写入 `system-environment` README 的限制项。
+- **验收**：`pnpm exec vitest run packages/uitstalie/store-atom packages/uitstalie/home-backup packages/uitstalie/system-environment` 全绿；新增 “environment atom mounted after store-atom” 组合测试与 “decoy process.env + service HOME/DSH_HOME” 的 home-backup 测试。

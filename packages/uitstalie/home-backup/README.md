@@ -40,6 +40,8 @@ A snapshot copies each configured home entry recursively, then the known configu
 
 Each run writes its snapshot into a sibling staging directory and renames it into place, so a destination never exposes a partly written snapshot. A failed run removes its staging directory, reports the failure through the host log, and leaves the next scheduled run armed. Retention removes the oldest snapshots beyond `retain` after the new snapshot lands.
 
+The home directory and the default destination are resolved at mount: `ctx.systemEnvironment.dshHome()` / `homeDir()` when that atom is mounted, otherwise the host-native `resolveDshHome()` / `os.homedir()`. A pinned environment atom therefore pins both paths in a test, and a bare mount keeps working without the branch layer.
+
 ### Restoring
 
 Stop every `dsh` process, then copy a snapshot's `sessions` and `storages` directories back over the new home; `manifest.json` states which home and entries the snapshot came from. Restoring a profile's configuration means copying the `profiles/<name>` files back beside the profile's dependencies, which the profile manager reinstalls.

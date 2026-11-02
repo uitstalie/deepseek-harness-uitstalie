@@ -1594,12 +1594,12 @@ export interface HmrConfig extends ChokidarOptions {
 
 ## `@deepseek-ai/dsh-home-backup`
 
-- `source`: [`packages/uitstalie/home-backup/src/index.ts:36`](../packages/uitstalie/home-backup/src/index.ts)
+- `source`: [`packages/uitstalie/home-backup/src/index.ts:37`](../packages/uitstalie/home-backup/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration; every field is optional and the schema supplies the default. */
 export interface Config {
-  /** Snapshot directory; absent means {@link defaultDestination}. */
+  /** Snapshot directory; absent (or empty) means {@link defaultDestination}. */
   destination?: string
   /** Interval between snapshots in milliseconds. */
   intervalMs?: number

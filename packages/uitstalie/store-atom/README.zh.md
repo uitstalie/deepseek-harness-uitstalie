@@ -57,7 +57,7 @@ const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALI
 - `src/rules.ts` —— `.dsh/rules/**` 的工作区规则发现（路径顺序、按去空白内容去重、逐文件上限、集合 digest）。atom 自己的重复校验与指令加载器共用同一份扫描，因此 atom 拥有 rules 区域，却不依赖指令 provider。
 - `src/store-ops.ts` —— 服务与 Remote 共用的文件系统操作。
 
-工作区根是 `<projectRoot>/.dsh`，项目根由会话 cwd 按 `.git` 标记发现。全局根是 `resolveDshHome()`——设置了 `$DSH_HOME` 就用它，否则 `~/.dsh`。任何会话模式下都可以读；工作区写要过会话的策略门，全局写没有会话门（策略只覆盖工作区），因此审计由调用方承担。
+工作区根是 `<projectRoot>/.dsh`，项目根由会话 cwd 按 `.git` 标记发现。挂载了环境原子时，全局根取 `ctx.systemEnvironment.dshHome()`，否则回退 `resolveDshHome()`（设置了 `$DSH_HOME` 就用它，否则 `~/.dsh`）；挂载时包含判定也由该原子提供，独立组合则保留本原子自己的路径检查。任何会话模式下都可以读；工作区写要过会话的策略门，全局写没有会话门（策略只覆盖工作区），因此审计由调用方承担。
 
 ## 已知限制与延期工作
 

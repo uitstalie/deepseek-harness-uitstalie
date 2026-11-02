@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-system-environment": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~"
   }
 }

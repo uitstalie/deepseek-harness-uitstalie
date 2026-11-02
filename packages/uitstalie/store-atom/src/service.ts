@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
+import type {} from '@deepseek-ai/dsh-system-environment'
 import { FsVersion } from '@deepseek-ai/dsh-fs'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { findProjectRoot, trimmedInstructionDigest } from '@deepseek-ai/dsh-agent-instructions'
@@ -202,6 +203,11 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
   let globalRoot: string | undefined
   let globalPrepared = false
 
+  // The environment atom may mount after this row in a composition (the branch layer lists
+  // `store-atom` first), so the service is resolved per call rather than captured at load. An
+  // independently composed atom without that row keeps the host-native behavior below.
+  const environment = () => ctx.get('systemEnvironment')
+
   const projectRootFor = async (session: Session, signal?: AbortSignal): Promise<string> => {
     const cached = projectRoots.get(session)
     if (cached !== undefined) return cached
@@ -216,7 +222,7 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
     session?: Session,
     signal?: AbortSignal,
   ): Promise<string> => {
-    if (scope === 'global') return globalRoot ??= resolveDshHome()
+    if (scope === 'global') return globalRoot ??= environment()?.dshHome() ?? resolveDshHome()
     if (session === undefined) {
       throw new Error('the workspace scope requires a session; pass scope: global to address the user store')
     }
@@ -295,7 +301,7 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
       const scope = scopeOf(options)
       const root = await prepare(scope, session, options.signal)
       const normalized = normalizeStorePath(path)
-      const target = resolveStoreTarget(root, normalized)
+      const target = resolveStoreTarget(root, normalized, environment()?.isUnder)
       if (scope === 'workspace' && session !== undefined && isRulesPath(normalized.displayPath)) {
         await refuseDuplicateRule(await projectRootFor(session, options.signal), content, options.signal)
       }
@@ -322,7 +328,7 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
         throw new Error(`refusing to write the ${STORE_DIR_NAME} root: a file path is required`)
       }
       const resolveOptions = options.signal === undefined ? {} : { signal: options.signal }
-      const target = await ctx.fs.resolve(resolveStoreTarget(root, normalized), resolveOptions)
+      const target = await ctx.fs.resolve(resolveStoreTarget(root, normalized, environment()?.isUnder), resolveOptions)
       const expected = options.expected === undefined
         ? undefined
         : { kind: 'replaceIfVersion' as const, version: FsVersion(options.expected) }
@@ -338,7 +344,7 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
       const root = await rootFor(scope, session, options.signal)
       const normalized = normalizeStorePath(path)
       const resolveOptions = options.signal === undefined ? {} : { signal: options.signal }
-      const target = await ctx.fs.resolve(resolveStoreTarget(root, normalized), resolveOptions)
+      const target = await ctx.fs.resolve(resolveStoreTarget(root, normalized, environment()?.isUnder), resolveOptions)
       const info = await ctx.fs.stat(target, options.signal)
       if (info === undefined || info.type !== 'file') return { path: normalized.displayPath }
       const text = await ctx.fs.readText(target, options.signal)
@@ -352,7 +358,7 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
       const scope = scopeOf(options)
       const root = await prepare(scope, session, options.signal)
       const normalized = normalizeStorePath(path)
-      const target = resolveStoreTarget(root, normalized)
+      const target = resolveStoreTarget(root, normalized, environment()?.isUnder)
       return await createStoreFolder(
         ctx.fs,
         target,
@@ -365,7 +371,7 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
       const scope = scopeOf(options)
       const root = await rootFor(scope, session, options.signal)
       const normalized = normalizeStorePath(path)
-      const target = resolveStoreTarget(root, normalized)
+      const target = resolveStoreTarget(root, normalized, environment()?.isUnder)
       return await queryStoreTarget(ctx.fs, target, normalized.displayPath, {
         readText: true,
         ...options.signal === undefined ? {} : { signal: options.signal },
@@ -376,7 +382,7 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
       const root = await rootFor(scope, session, options.signal)
       const normalized = normalizeStorePath(path)
       if (normalized.displayPath.length === 0) throw new Error(`refusing to delete the ${STORE_DIR_NAME} root`)
-      const target = resolveStoreTarget(root, normalized)
+      const target = resolveStoreTarget(root, normalized, environment()?.isUnder)
       const resolveOptions = options.signal === undefined ? {} : { signal: options.signal }
       const existing = await ctx.fs.stat(await ctx.fs.resolve(target, resolveOptions), options.signal)
       if (existing === undefined) throw new Error(`not found: ${STORE_DIR_NAME}/${normalized.displayPath}`)

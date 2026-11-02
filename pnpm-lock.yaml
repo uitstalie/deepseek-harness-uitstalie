@@ -17013,6 +17013,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-system-environment':
+        specifier: workspace:*
+        version: link:../system-environment
 
   packages/uitstalie/llm-plus:
     dependencies:
@@ -17283,6 +17286,9 @@ importers:
       '@deepseek-ai/dsh-session-projection':
         specifier: workspace:*
         version: link:../../session/session-projection
+      '@deepseek-ai/dsh-system-environment':
+        specifier: workspace:*
+        version: link:../system-environment
 
   packages/uitstalie/system-environment:
     dependencies:

@@ -40,6 +40,8 @@ kind: "package-reference"
 
 每次运行先把快照写入同级的暂存目录，再重命名到最终位置，因此目标目录不会暴露写了一半的快照。失败的运行会清掉自己的暂存目录、通过宿主日志报告失败，并保留下一次定时运行。新快照落盘后，保留策略删除超出 `retain` 的最旧快照。
 
+主目录与默认目标目录在挂载时解析：挂载了环境原子时取 `ctx.systemEnvironment.dshHome()` / `homeDir()`，否则回退宿主原生的 `resolveDshHome()` / `os.homedir()`。因此固定的环境原子能在测试里同时固定两条路径，而裸挂载在没有分支层时也照常工作。
+
 ### 恢复
 
 先停掉所有 `dsh` 进程，再把某份快照的 `sessions` 与 `storages` 目录复制回新的主目录；`manifest.json` 说明了快照的来源主目录与条目。恢复 profile 配置则是把 `profiles/<name>` 下的文件复制回该 profile 旁边，其依赖由 profile 管理器重新安装。

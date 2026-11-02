@@ -102,12 +102,17 @@ export function normalizeStorePath(
  * 把规范化后的段拼到 `.dsh/` 根上，并再次确认结果仍在根内。
  * @param root - `.dsh/` 根的绝对路径。
  * @param path - {@link normalizeStorePath} 的结果。
+ * @param isUnder - 平台包含判定；缺省用本模块的 {@link isPathInside}，有 `ctx.systemEnvironment` 时由调用方传入。
  * @returns 目标绝对路径。
  * @throws StorePathError 结果越出根时。
  */
-export function resolveStoreTarget(root: string, path: NormalizedStorePath): string {
+export function resolveStoreTarget(
+  root: string,
+  path: NormalizedStorePath,
+  isUnder: (parent: string, child: string) => boolean = isPathInside,
+): string {
   const candidate = join(root, ...path.segments)
-  if (!isPathInside(root, candidate)) throw new StorePathError('escape', path.displayPath)
+  if (!isUnder(root, candidate)) throw new StorePathError('escape', path.displayPath)
   return candidate
 }
 
