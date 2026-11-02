@@ -338,70 +338,24 @@ export const STATUS_DESCRIPTION =
 
 /**
  * `superagent_status`: what needs a person now, and what the loop is doing.
+ *
+ * The classification belongs to the service (`superagentStatus`), so the panel and the model
+ * cannot disagree about what counts as ready, proposed or blocked. This tool is the model's way
+ * in, not a second implementation of the rules.
  * @param options - the service, caller verdict and clock for this run.
  * @param me - the caller's identity tuple, returned in every result.
- * @returns counts plus the issues that need attention.
+ * @returns counts plus the rows that need a person.
  */
 export const runStatusTool = async (options: RunOptions, me: unknown): Promise<ToolValue> => {
   const { jira, caller } = options
-  const ledger = await readLedger(jira)
-  if (ledger === undefined) return failure(invalidInput('the ledger could not be read'), caller, me)
-
-  const ready: Record<string, unknown>[] = []
-  const inProgress: Record<string, unknown>[] = []
-  const inReview: Record<string, unknown>[] = []
-  const blocked: Record<string, unknown>[] = []
-  const proposed: Record<string, unknown>[] = []
-  let proposedCount = 0
-
-  const open = ledger.issues.filter(issue => !ledger.closed.includes(issue.status))
-  const comments = await Promise.all(open.map(async (issue) => {
-    const read = await jira.readIssue(issue.key)
-    return read.ok ? read.value.comments ?? [] : []
-  }))
-
-  for (const [index, issue] of open.entries()) {
-    const isBlockedNow = isBlocked(issue, ledger.byKey, ledger.closed)
-    const verdict = claimability(issue, isBlockedNow, options.at)
-    const row = {
-      key: String(issue.key),
-      priority: issue.priority,
-      summary: issue.summary,
-      ...(issue.assignee === undefined ? {} : { assignee: String(issue.assignee) }),
-    }
-    if (verdict.ready) ready.push(row)
-    if (issue.status === 'in_progress') inProgress.push(row)
-    if (issue.status === 'in_review') inReview.push(row)
-    if (isBlockedNow) blocked.push(row)
-    const latest = comments[index]?.at(-1)
-    if (latest !== undefined && latest.body.trimStart().startsWith(PROPOSAL_MARKER)) {
-      proposedCount += 1
-      proposed.push({ ...row, author: String(latest.author) })
-    }
-  }
-
-  const needsPerson = [
-    ...proposed.map(row => ({ ...row, reason: 'confirm the proposal' })),
-    ...inReview.map(row => ({ ...row, reason: 'review the delivery' })),
-  ]
+  const status = await jira.superagentStatus()
+  if (!status.ok) return failure(status.error, caller, me)
   return Object.freeze({
     ok: true,
     writable: caller.writable,
     ...(caller.reason === undefined ? {} : { reason: caller.reason }),
     me,
-    counts: Object.freeze({
-      ready: ready.length,
-      proposed: proposedCount,
-      inProgress: inProgress.length,
-      inReview: inReview.length,
-      blocked: blocked.length,
-    }),
-    ready: Object.freeze(ready),
-    proposed: Object.freeze(proposed),
-    inProgress: Object.freeze(inProgress),
-    inReview: Object.freeze(inReview),
-    blocked: Object.freeze(blocked),
-    needsPerson: Object.freeze(needsPerson),
+    ...status.value,
   })
 }
 

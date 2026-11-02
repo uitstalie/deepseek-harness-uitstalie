@@ -68,6 +68,15 @@ import JiraRemote from './remote.ts'
 import { superagentStatusOf, superagentTriggersOf } from './superagent-status.ts'
 
 export type * from './types.ts'
+// The pure projections are exported alongside the service: the model tool must reach the same
+// classification the page does, and a second implementation is how the two drift apart (DH-515).
+export {
+  SUPERAGENT_CLAIMABLE_STATUS, SUPERAGENT_PROPOSAL_MARKER, superagentStatusOf, superagentTriggersOf,
+} from './superagent-status.ts'
+export type {
+  SuperagentHistoryEntry, SuperagentHistoryView, SuperagentStatusItem, SuperagentStatusView,
+  SuperagentTrigger, SuperagentTriggersView,
+} from './superagent-status.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
