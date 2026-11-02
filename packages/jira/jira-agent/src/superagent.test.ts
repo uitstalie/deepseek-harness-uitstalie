@@ -549,6 +549,64 @@ describe('superagent: dispatching into a real Session', () => {
     }
   })
 
+  it('recovers the executors a restart lost, and names what it left alone', async () => {
+    const { harness, main } = await mount({}, 'jira-worker')
+    try {
+      const controller = await provideController(harness)
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+
+      // The restart: the Session is gone, the claim is not.
+      const recovered = await call(harness, main, DISPATCH_TOOL_NAME, { action: 'recover' })
+      assert.equal(recovered.ok, true, JSON.stringify(recovered.error))
+      const restarted = recovered.recovered as { key: string; previous: string; session: string }[]
+      assert.equal(restarted.length, 1)
+      assert.equal(restarted[0]?.key, 'DH-12')
+      assert.equal(restarted[0]?.previous, 'session-1')
+      assert.equal(restarted[0]?.session, 'session-2')
+      assert.equal(controller.sessions.length, 2)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('leaves a running executor alone during recovery', async () => {
+    const { harness, main } = await mount({}, 'jira-worker')
+    try {
+      const controller = await provideController(harness)
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+      controller.running.add('session-1')
+
+      const recovered = await call(harness, main, DISPATCH_TOOL_NAME, { action: 'recover' })
+      assert.equal(recovered.ok, true, JSON.stringify(recovered.error))
+      assert.deepEqual(recovered.recovered, [])
+      const left = recovered.left as { key: string; reason: string }[]
+      assert.match(String(left[0]?.reason), /still runs/u)
+      assert.equal(controller.sessions.length, 1)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('revives a lost executor from the turn-end pass, instead of proposing', async () => {
+    const { harness, main } = await mount({}, 'jira-worker')
+    try {
+      const controller = await provideController(harness)
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
+
+      await runSuperagentPass(harness.host, main, undefined, 'jira-worker')
+      assert.equal(controller.sessions.length, 2, 'the pass restarted the executor')
+      assert.match(controller.prompts[1]?.text ?? '', /DH-12/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
   it('starts the executor Session with the configured preset and hands it the issue', async () => {
     const { harness, main } = await mount({}, 'jira-worker')
     try {

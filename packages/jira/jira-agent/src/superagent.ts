@@ -437,26 +437,43 @@ export const runClaimTool = async (
 }
 
 /**
- * One turn-end pass: propose the first ready issue, once.
+ * One turn-end pass: revive a lost executor, or propose the first ready issue, once.
  *
  * The pass never claims — a person still confirms — and it stays quiet when this session already
  * has work in progress or when the latest comment is already a proposal. That keeps the default
- * behavior "observe": one proposal costs one comment, and a reply spends it.
+ * behavior "observe": one proposal costs one comment, and a reply spends it. Reviving an executor a
+ * restart lost (DH-705) comes first and counts as this turn's action.
  * @param host - the plugin host the caller identity comes from.
  * @param agent - the root agent whose turn just ended.
  * @param signal - cancellation owned by the turn that triggered the pass.
- * @returns a promise that settles after the proposal attempt.
+ * @param workerPreset - the configured executor preset, when the deployment runs real executors.
+ * @param maxWorkers - the configured slot count, forwarded to recovery.
+ * @returns a promise that settles after the recovery or proposal attempt.
  */
-export const runSuperagentPass = async (host: ToolHost, agent: unknown, signal?: AbortSignal): Promise<void> => {
+export const runSuperagentPass = async (
+  host: ToolHost,
+  agent: unknown,
+  signal?: AbortSignal,
+  workerPreset?: string,
+  maxWorkers: number = DEFAULT_MAX_WORKERS,
+): Promise<void> => {
   if (signal?.aborted === true) return
   const caller = callerOf(host, agent)
   if (!caller.writable || caller.identity === undefined || caller.sessionId === undefined) return
   try {
+    const call = { jira: host.ctx.jira, caller, me: identityOf(host, agent) }
+    const options = runOptionsOf(host, call)
+
+    // A restart ends the executor Sessions but not the claims, so reviving one is the more urgent
+    // half of the pass; a revived work item means no proposal this turn.
+    if (workerPreset !== undefined && workerPreset !== '') {
+      const recovered = await runDispatchTool({ action: 'recover' }, options, call.me, host.ctx, workerPreset, maxWorkers)
+      if (recovered.ok && Array.isArray(recovered.recovered) && recovered.recovered.length > 0) return
+    }
+
     const active = await host.ctx.jira.list({ status: 'in_progress', assignee: String(caller.identity) })
     if (active.ok && active.value.items.length > 0) return
 
-    const call = { jira: host.ctx.jira, caller, me: identityOf(host, agent) }
-    const options = runOptionsOf(host, call)
     const scanned = await runScanTool({ limit: 10 }, options, call.me)
     if (!scanned.ok) return
     const items = Array.isArray(scanned.items) ? scanned.items as unknown as Candidate[] : []
@@ -606,8 +623,14 @@ export const sessionControllerOf = (ctx: unknown): SessionControllerLike | undef
 
 /** `superagent_dispatch`'s schema. */
 export const DISPATCH_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
-  key: { type: 'string', required: true, description: 'The issue key you claimed, e.g. DH-12.' },
-  cwd: { type: 'string', description: 'The checkout the executor works in; defaults to this session\'s own.' },
+  action: {
+    type: 'string',
+    description: 'start: hand this issue to a new executor (the default). '
+      + 'recover: restart the executors this session lost, oldest first.',
+    enum: ['start', 'recover'],
+  },
+  key: { type: 'string', description: 'start: the issue key you claimed, e.g. DH-12.' },
+  cwd: { type: 'string', description: 'start: the checkout the executor works in; defaults to this session\'s own.' },
 })
 
 /**
@@ -620,10 +643,13 @@ export const DISPATCH_DESCRIPTION =
   'Start the executor of a claimed issue as a real Session of its own, in the checkout the dispatch '
   + 'names, and hand it the issue. The issue must be in progress and assigned to this session; the '
   + 'deployment must configure a worker preset, because a Session without one would inherit the '
-  + 'dispatcher\'s ledger rights instead of only `issue_work`.'
+  + 'dispatcher\'s ledger rights instead of only `issue_work`. '
+  + '`recover` restarts the executors this session lost — an issue it still holds whose recorded '
+  + 'Session is gone — which is what a restart leaves behind.'
 
 /**
- * `superagent_dispatch`: start a real Session as the executor of one claimed issue.
+ * `superagent_dispatch`: start a real Session as the executor of one claimed issue, or restart the
+ * executors this session lost after a restart (DH-705).
  *
  * The refusal order is the one that tells the caller what to fix: configuration, then the service,
  * then the claim, then the ledger.
@@ -632,7 +658,9 @@ export const DISPATCH_DESCRIPTION =
  * @param me - the caller's identity tuple, returned in every result.
  * @param ctx - the plugin context the session controller is read from.
  * @param workerPreset - the configured executor preset, or undefined when the deployment has none.
- * @returns the started Session and how it was told to work.
+ * @param maxWorkers - how many issues one dispatcher may hold in progress; the first test this
+ *   module needs, reported in the refusal.
+ * @returns the started Session, or what `recover` revived and what it left alone.
  */
 export const runDispatchTool = async (
   args: unknown,
@@ -640,6 +668,7 @@ export const runDispatchTool = async (
   me: unknown,
   ctx: ToolHost['ctx'],
   workerPreset: string | undefined,
+  maxWorkers: number = DEFAULT_MAX_WORKERS,
 ): Promise<ToolValue> => {
   const { jira, caller } = options
   const validated = validateArgs(DISPATCH_PARAMETERS, args)
@@ -658,83 +687,143 @@ export const runDispatchTool = async (
     return failure(invalidInput('this deployment has no session controller, so it cannot start an executor Session'), caller, me)
   }
 
-  const key = asString(validated.value.key) ?? ''
   const ledger = await readLedger(jira)
   if (ledger === undefined) return failure(invalidInput('the ledger could not be read'), caller, me)
-  const issue = ledger.byKey.get(key)
-  if (issue === undefined) return failure(invalidInput(`${key} is not in the ledger`, { key }), caller, me)
-  if (issue.status !== 'in_progress') {
-    return failure(invalidInput(`${key} is '${issue.status}'; claim it before dispatching`, { key }), caller, me)
-  }
-  if (issue.assignee === undefined || issue.assignee !== caller.identity) {
-    return failure(invalidInput(`${key} is not assigned to this session; a dispatcher claims before it dispatches`, { key }), caller, me)
-  }
-
   const cwd = asString(validated.value.cwd) ?? caller.cwd
-  const instruction = dispatchInstruction(key)
 
-  // DH-704: never leave two executors on one issue. The last dispatch record names the Session that
-  // ran it; while that Session is still running, a second dispatch would duplicate the work.
-  const full = await jira.readIssue(key as IssueKey)
-  if (!full.ok) return failure(full.error, caller, me)
-  const previous = dispatchRecordOf(full.value.comments ?? [])
-  if (previous !== undefined) {
-    let running: boolean
+  /**
+   * Start one executor for an issue this session holds.
+   * @param key - the claimed issue.
+   * @returns the started Session, or the refusal that stopped it.
+   */
+  const dispatchOne = async (key: string): Promise<ToolValue> => {
+    const issue = ledger.byKey.get(key)
+    if (issue === undefined) return failure(invalidInput(`${key} is not in the ledger`, { key }), caller, me)
+    if (issue.status !== 'in_progress') {
+      return failure(invalidInput(`${key} is '${issue.status}'; claim it before dispatching`, { key }), caller, me)
+    }
+    if (issue.assignee === undefined || issue.assignee !== caller.identity) {
+      return failure(invalidInput(`${key} is not assigned to this session; a dispatcher claims before it dispatches`, { key }), caller, me)
+    }
+
+    // DH-704: never leave two executors on one issue. The last dispatch record names the Session
+    // that ran it; while that Session is still running, a second dispatch would duplicate the work.
+    const full = await jira.readIssue(key as IssueKey)
+    if (!full.ok) return failure(full.error, caller, me)
+    const previous = dispatchRecordOf(full.value.comments ?? [])
+    if (previous !== undefined) {
+      let running: boolean
+      try {
+        const listed = await controller.list()
+        running = listed.items.some(item => String(item.sessionId) === previous && item.running)
+      } catch {
+        return failure(invalidInput(
+          `${key} records executor session '${previous}', and whether it still runs cannot be read; `
+          + 'stop it or wait before dispatching again',
+          { key },
+        ), caller, me)
+      }
+      if (running) {
+        return failure(invalidInput(
+          `${key} already has a running executor (session '${previous}'); wait for it or stop it before dispatching again`,
+          { key },
+        ), caller, me)
+      }
+    }
+
+    const instruction = dispatchInstruction(key)
+    try {
+      const created = await controller.create({
+        ...(cwd === undefined ? {} : { cwd }),
+        agentPreset: workerPreset,
+      })
+      const sessionId = String(created.sessionId)
+      await controller.prompt({
+        requestId: `superagent-${randomUUID()}`,
+        sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text: instruction }],
+      })
+      // Recorded after the prompt so a failure to start leaves no claim of an executor that never ran.
+      const recorded = await jira.mutateIssue(key as IssueKey, {
+        action: 'comment',
+        body: `${DISPATCH_MARKER} ${sessionId}`,
+      }, { by: actorFor(options, caller), at: options.at }, {})
+      return Object.freeze({
+        ok: true,
+        writable: caller.writable,
+        me,
+        dispatch: Object.freeze({
+          key,
+          // `session` rather than `sessionId`, matching the `me` tuple: the wire conversion would
+          // rename a camelCase key on the way out, and the model reads the rendered text either way.
+          session: sessionId,
+          ...(cwd === undefined ? {} : { cwd }),
+          instruction,
+          recorded: recorded.ok,
+        }),
+      })
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `the executor Session for ${key} could not be started: ${error instanceof Error ? error.message : String(error)}`,
+        { key },
+      ), caller, me)
+    }
+  }
+
+  if ((asString(validated.value.action) ?? 'start') !== 'recover') {
+    const key = asString(validated.value.key)
+    if (key === undefined || key.trim() === '') return failure(invalidInput('start needs a `key`'), caller, me)
+    return dispatchOne(key)
+  }
+
+  // DH-705: a restart ends the executor Sessions but not the claims, so the dispatcher owes those
+  // issues a new executor. Only issues that were dispatched before are considered: a claim without a
+  // record may be work somebody is doing by hand.
+  const mine = ledger.issues
+    .filter(issue => issue.status === 'in_progress' && issue.assignee === caller.identity)
+    .slice(0, Math.max(1, maxWorkers))
+  const recovered: Record<string, unknown>[] = []
+  const left: Record<string, unknown>[] = []
+  for (const issue of mine) {
+    const key = String(issue.key)
+    const full = await jira.readIssue(issue.key)
+    if (!full.ok) {
+      left.push(Object.freeze({ key, reason: 'the issue could not be read' }))
+      continue
+    }
+    const previous = dispatchRecordOf(full.value.comments ?? [])
+    if (previous === undefined) {
+      left.push(Object.freeze({ key, reason: 'it was never dispatched; nothing to restart' }))
+      continue
+    }
+    let running = false
     try {
       const listed = await controller.list()
       running = listed.items.some(item => String(item.sessionId) === previous && item.running)
     } catch {
-      return failure(invalidInput(
-        `${key} records executor session '${previous}', and whether it still runs cannot be read; `
-        + 'stop it or wait before dispatching again',
-        { key },
-      ), caller, me)
+      left.push(Object.freeze({ key, reason: `executor '${previous}' state cannot be read` }))
+      continue
     }
     if (running) {
-      return failure(invalidInput(
-        `${key} already has a running executor (session '${previous}'); wait for it or stop it before dispatching again`,
-        { key },
-      ), caller, me)
+      left.push(Object.freeze({ key, reason: `executor '${previous}' still runs` }))
+      continue
     }
+    const started = await dispatchOne(key)
+    if (!started.ok) {
+      left.push(Object.freeze({ key, reason: 'the executor could not be started' }))
+      continue
+    }
+    const dispatch = started.dispatch as { session?: string } | undefined
+    recovered.push(Object.freeze({ key, previous, session: String(dispatch?.session ?? '') }))
   }
-
-  try {
-    const created = await controller.create({
-      ...(cwd === undefined ? {} : { cwd }),
-      agentPreset: workerPreset,
-    })
-    const sessionId = String(created.sessionId)
-    await controller.prompt({
-      requestId: `superagent-${randomUUID()}`,
-      sessionId,
-      mode: 'queue',
-      content: [{ type: 'text', text: instruction }],
-    })
-    // Recorded after the prompt so a failure to start leaves no claim of an executor that never ran.
-    const recorded = await jira.mutateIssue(key as IssueKey, {
-      action: 'comment',
-      body: `${DISPATCH_MARKER} ${sessionId}`,
-    }, { by: actorFor(options, caller), at: options.at }, {})
-    return Object.freeze({
-      ok: true,
-      writable: caller.writable,
-      me,
-      dispatch: Object.freeze({
-        key,
-        // `session` rather than `sessionId`, matching the `me` tuple: the wire conversion would
-        // rename a camelCase key on the way out, and the model reads the rendered text either way.
-        session: sessionId,
-        ...(cwd === undefined ? {} : { cwd }),
-        instruction,
-        recorded: recorded.ok,
-      }),
-    })
-  } catch (error: unknown) {
-    return failure(invalidInput(
-      `the executor Session for ${key} could not be started: ${error instanceof Error ? error.message : String(error)}`,
-      { key },
-    ), caller, me)
-  }
+  return Object.freeze({
+    ok: true,
+    writable: caller.writable,
+    me,
+    recovered: Object.freeze(recovered),
+    left: Object.freeze(left),
+  })
 }
 
 /** One text block, clamped to the model's budget. */
@@ -746,7 +835,7 @@ const renderText = (text: string): ContentBlock[] => [{ type: 'text', text: clam
  * @param workerPreset - the configured executor preset, forwarded to the runner.
  * @returns the tool declaration.
  */
-const dispatcher = (host: ToolHost, workerPreset: string | undefined): Spec => ({
+const dispatcher = (host: ToolHost, workerPreset: string | undefined, maxWorkers: number): Spec => ({
   name: DISPATCH_TOOL_NAME,
   description: DISPATCH_DESCRIPTION,
   parameters: DISPATCH_PARAMETERS,
@@ -754,12 +843,21 @@ const dispatcher = (host: ToolHost, workerPreset: string | undefined): Spec => (
   timeoutMs: 30_000,
   isConcurrencySafe: () => false,
   render: (typed) => {
+    if (Array.isArray(typed.recovered)) {
+      const restarted = typed.recovered as { key: string; session: string }[]
+      const left = Array.isArray(typed.left) ? typed.left as { key: string; reason: string }[] : []
+      if (restarted.length === 0 && left.length === 0) return renderText('nothing to recover')
+      return renderText([
+        ...restarted.map(row => `${row.key}  restarted  session ${row.session}`),
+        ...left.map(row => `${row.key}  left alone: ${row.reason}`),
+      ].join('\n'))
+    }
     const dispatch = typed.dispatch as { key?: string; session?: string; cwd?: string } | undefined
     return renderText(dispatch?.session === undefined
       ? 'ok'
       : `${String(dispatch.key)}  session ${String(dispatch.session)}  ${String(dispatch.cwd ?? '')}`.trim())
   },
-  run: (args, call) => runDispatchTool(args, runOptionsOf(host, call), call.me, host.ctx, workerPreset),
+  run: (args, call) => runDispatchTool(args, runOptionsOf(host, call), call.me, host.ctx, workerPreset, maxWorkers),
 })
 
 
@@ -880,14 +978,14 @@ export const createSuperagentContribution = (
         defineJiraTool(host, claim),
         defineJiraTool(host, workspace),
         defineJiraTool(host, status),
-        defineJiraTool(host, dispatcher(host, workerPreset)),
+        defineJiraTool(host, dispatcher(host, workerPreset, maxWorkers)),
       ])),
     onAgentCreated: (agent: Agent) => {
       liveAgents.add(agent)
       agent.ctx.effect(() => () => { liveAgents.delete(agent) }, 'superagent: forget a disposed agent')
     },
     onTurnEnd: async (input: TurnEndInput) => {
-      await runSuperagentPass(host, input.agent, input.signal)
+      await runSuperagentPass(host, input.agent, input.signal, workerPreset, maxWorkers)
     },
     dispose: () => {
       if (timer !== undefined) clearInterval(timer)

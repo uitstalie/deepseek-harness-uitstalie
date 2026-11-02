@@ -37,6 +37,9 @@ export type ToolValue = Readonly<{
   workspace?: unknown
   /** `superagent_dispatch`: the executor Session that was started (DH-702). */
   dispatch?: unknown
+  /** `superagent_dispatch action: 'recover'`: the executors restarted, and the issues left alone. */
+  recovered?: unknown
+  left?: unknown
   truncated?: boolean
   limit?: number
   error?: JiraError
