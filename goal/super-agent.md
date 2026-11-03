@@ -66,7 +66,8 @@ README 的三句话就是目的陈述，其余都是推论：
 
 - 不提高单任务的模型质量（那是模型的事）；
 - 不做多 agent 协商或编排（没有 agent 间协议；subagent 只是执行手段）；
-- 不做通用平台/SDK（一个 GitHub 仓库、一支团队、两个 Source：GitHub 与飞书）；
+- 不做通用平台/SDK（一个 GitHub 仓库、一支团队、单一 GitHub Source）；
+- 云端共享与交付一律走 GitHub（仓库、PR、issue）；不接 IM/飞书或其它云端通道；
 - 不替人做决定——几乎全部设计都在定义"停在哪、问什么、问到什么粒度"；
 - 不降低部署成本：执行器不审批、以 operator 系统账号跑，等于**把安全成本转嫁给部署方**，靠独立账号/独立机器隔离。
 
@@ -83,7 +84,7 @@ DeepSeek Harness Team 在开源原型的同时发了一篇设计文章 *Explorin
 
 它给出的定义不是"更强的单体 Agent"，而是**一个替整个团队接活、并且按注意力成本自我约束的 Agent 系统**：
 
-- 一个常驻 Agent 同时面对聊天（飞书）、GitHub 通知/Issue/PR/CI 等多个事件源；
+- 一个常驻 Agent 同时面对 GitHub 通知/Issue/PR/CI 等多个事件源；
 - 人的请求先过"准入"（这个人有没有资格让它干活），只有被授权的请求才变成工单；
 - 工单在**自己的 Session 和自己的目录**里执行，执行完回到原对话交付（例如提 PR）；
 - 一个 Web 面板只回答三个问题：**现在需要我吗 / 系统健康吗 / 这件工作的历史是什么**；
@@ -185,13 +186,13 @@ super agent 的主体是：**自己的 Source 轮询循环、自己的 SQLite �
 | 方案 | 做法 | 优点 | 代价 |
 | --- | --- | --- | --- |
 | **A. 原样 vendor 成独立 profile 应用**（不碰 dafeiyu） | 把原型作为独立 bundle 包 vendor 进仓，按它的部署文档起独立 profile（独立端口/stateDir），dafeiyu 里只登记一个"外部能力"状态条目 | 改动最小、最忠于原型；它自己的面板/文档/测试可直接用 | 与"挂在现有 GUI 里"的目标不符；独立进程/profile、独立端口；两套 Agent 身份与模型配置 |
-| **B. 在 dafeiyu 里重新实现一个能力化版本** | 新包 `packages/uitstalie/super-agent`，capability `superagent`：工单/授权/订阅的最小领域模型 + turn-end 驱动的 pass 循环；Source 先接 jira 账本（我们已有 jira-service 与 ledger），GitHub 后接；执行器先用 subagent（spawn/fork）而不是独立 DSH Session；状态放 `.dsh/super-agent/` | 完全贴合本分支的 capability/权限/测试体系；可增量；无进程级副作用 | 与原型差距大（没有独立 worker Session/目录、没有 HTTP 管理面、Feishu 不支持）；等于重写领域层 |
+| **B. 在 dafeiyu 里重新实现一个能力化版本** | 新包 `packages/uitstalie/super-agent`，capability `superagent`：工单/授权/订阅的最小领域模型 + turn-end 驱动的 pass 循环；Source 先接 jira 账本（我们已有 jira-service 与 ledger），GitHub 后接；执行器先用 subagent（spawn/fork）而不是独立 DSH Session；状态放 `.dsh/super-agent/` | 完全贴合本分支的 capability/权限/测试体系；可增量；无进程级副作用 | 与原型差距大（没有独立 worker Session/目录、没有 HTTP 管理面、不支持多 Source）；等于重写领域层 |
 | **C. vendor 领域核心 + 能力化外壳**（推荐） | vendor 原型的 `src/core`（纯领域、零宿主依赖）+ `src/app` 的 Store/Effects/Outbox 等无 HTTP 部分；用 dafeiyu capability 包一层：`create()` 启动一个精简 Runtime（sources 换成我们的 provider，executor 先用 subagent，面板暂不移植），贡献 `orchestrator_*` 工具与提示词；后续再把原型的 panel/HTTP 作为独立 client 插件接进来 | 领域规则（Mandate/Policy/Eval/Stage/恢复语义）直接复用，风险最高、最容易写错的部分不重写；外壳贴合本分支 | 需要裁剪原型的 app 层依赖（webServer/sessionController/permissionPresets 等），并定义"执行器 = subagent"与原型"执行器 = 独立 Session"的语义差异；需要 vendor + 适配 + 测试三块工作 |
 
 ### 4.4 必须先定的问题（给用户）
 
 1. **定位**：要的是"在我们现在这个 GUI/会话里多一个能力"，还是"另起一个常驻服务（独立 profile、独立端口）"？前者只能走 B/C，后者 A 最省。
-2. **事件源**：第一版接哪个？jira 账本（我们已有、闭环最短）、GitHub（原型的主场景）、还是飞书？原型默认单 GitHub 仓库。
+2. **事件源**：第一版接哪个？jira 账本（我们已有、闭环最短），还是 GitHub（原型的主场景）？原型默认单 GitHub 仓库。
 3. **执行器**：沿用原型的"每 Ticket 一个独立 DSH Session + 目录"（更强、更贵、要动 Session 预设），还是先落到 subagent（便宜、好接、但缺"独立目录/长跑恢复"的语义）？
 4. **安全边界**：原型执行器不审批、用 operator 账号。我们分支有 approval/sandbox 体系，第一版是否强制走审批（会牺牲"无人值守"体验），以及是否接受"Agent 用独立 GitHub 账号"这一前提。
 5. **面板**：第一版是否要 Web 面板？如果要，是移植原型的 React 面板（工作量大，需适配我们的 client 插件规范），还是先只做能力列表里的一行状态 + 少量只读视图。
