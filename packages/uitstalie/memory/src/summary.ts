@@ -282,11 +282,9 @@ export class MemorySummaryRunner {
       const raw = await streamSummary(this.ctx, resolved, conversation.text, input.session.id, signal)
       const entries = parseSummaryEntries(raw)
       signal.throwIfAborted()
-      await appendTurnSummary(this.ctx, input.session, {
-        turn: input.turn,
-        seq: conversation.seq,
-        entries,
-      }, signal, { window: this.settings.window, maxBytes: this.settings.maxBytes, maxEntries: this.settings.maxEntries })
+      // Tier migration runs before the append (DH-710): a body at its byte budget would otherwise
+      // refuse the append, and the migration that frees space could never run. A migration failure
+      // still does not block the summary, which is written below.
       try {
         await migrateMemoryTiers(
           this.ctx,
@@ -305,10 +303,13 @@ export class MemorySummaryRunner {
         )
       } catch (error: unknown) {
         if (signal.aborted) return { status: 'killed' }
-        // The detail summary is already committed; a migration failure leaves
-        // that section in place instead of failing the pass that wrote it.
-        this.ctx.logger.warn('memory: tier migration failed after turn %d: %s', input.turn, errorMessage(error))
+        this.ctx.logger.warn('memory: tier migration failed before turn %d: %s', input.turn, errorMessage(error))
       }
+      await appendTurnSummary(this.ctx, input.session, {
+        turn: input.turn,
+        seq: conversation.seq,
+        entries,
+      }, signal, { window: this.settings.window, maxBytes: this.settings.maxBytes, maxEntries: this.settings.maxEntries })
       await refreshMemorySnapshot(this.ctx, input.agent, signal, {
         template: this.settings.snapshotTemplate,
         position: this.settings.snapshotPosition,

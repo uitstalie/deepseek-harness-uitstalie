@@ -505,6 +505,34 @@ test('a later completed turn compresses an old detail section into a brief check
   expect(await memorySnapshots(mounted.ctx, root.id)).toHaveLength(1)
 })
 
+test('migration frees budget before the append, so a full body does not block the pass (DH-710)', async () => {
+  const mounted = await mount({ config: { detail: 2, brief: 3, forget: 10, maxBytes: 700 } })
+  const adapter = new SummaryAdapter(call => call === 1
+    ? jsonReply([{ kind: 'decision', text: `turn five ${'x'.repeat(150)}` }])
+    : jsonReply([{ kind: 'decision', text: 'old turns compressed' }]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+  // A body close to the budget: the append of turn 5 would push it over, and only the migration
+  // that compresses turn 1 (age 4 >= brief 3) makes room.
+  await appendTurnSummary(mounted.ctx, root.session, {
+    turn: 1,
+    seq: [0, 0],
+    entries: [
+      { kind: 'decision', text: `old one ${'y'.repeat(250)}` },
+      { kind: 'decision', text: `old two ${'y'.repeat(250)}` },
+    ],
+  }, undefined, { window: { detail: 2, brief: 3, forget: 10, sessions: 10 }, maxBytes: 700 })
+
+  root.session.append('turn/start', { turn: 5 })
+  completeTurn(root, 5)
+  const jobs = await waitForSettledJobs(root, 1)
+  expect(jobs[0]?.status).toBe('completed')
+  expect(await memoryNotices(mounted.ctx, root.id)).toEqual([])
+  const document = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
+  expect(document.sections[0]).toMatchObject({ startTurn: 1, tier: 'brief' })
+  expect(document.sections.some(section => section.startTurn === 5)).toBe(true)
+})
+
 test('parseBriefEntries keeps two entries and the 160-character budget', () => {
   const entries = parseBriefEntries(JSON.stringify({
     entries: [
