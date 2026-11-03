@@ -603,13 +603,18 @@ export const DEFAULT_MAX_WORKERS = 2
 export interface SessionControllerLike {
   /** Create the executor's own Session, in the checkout the dispatch names. */
   create(request: { readonly cwd?: string; readonly agentPreset?: string }): Promise<{ readonly sessionId: unknown }>
-  /** Admit the dispatch instruction as the Session's first prompt. */
+  /**
+   * Admit the dispatch instruction as the Session's first prompt.
+   *
+   * `signal` is not decoration: the host's controller calls `throwIfAborted()` before it admits
+   * anything, so a call without one throws at runtime even though a casual stand-in accepts it.
+   */
   prompt(request: {
     readonly requestId: unknown
     readonly sessionId: unknown
     readonly mode: 'queue' | 'steer'
     readonly content: readonly { readonly type: 'text'; readonly text: string }[]
-  }): Promise<{ readonly accepted: boolean }>
+  }, signal: AbortSignal): Promise<{ readonly accepted: boolean }>
   /** Every visible Session, so a dispatch can tell whether its executor still runs. */
   list(): Promise<{ readonly items: readonly { readonly sessionId: unknown; readonly running: boolean }[] }>
 }
@@ -777,7 +782,7 @@ export const runDispatchTool = async (
         sessionId,
         mode: 'queue',
         content: [{ type: 'text', text: instruction }],
-      })
+      }, new AbortController().signal)
     } catch (error: unknown) {
       await record('failed')
       return failure(invalidInput(

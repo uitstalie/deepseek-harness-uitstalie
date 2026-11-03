@@ -433,7 +433,9 @@ interface FakeSession {
  * A stand-in for the host's session controller.
  *
  * The real one brings the whole agent loop; the dispatch tool only calls `create` and `prompt`, so
- * a controller with exactly those two methods proves the duck typing and the ordering.
+ * a controller with exactly those two methods proves the duck typing and the ordering. It keeps the
+ * real `prompt` contract on purpose: the host's controller calls `signal.throwIfAborted()` first, so
+ * a dispatch that forgets the signal must fail here rather than only in a GUI.
  */
 class FakeSessionController {
   readonly sessions: FakeSession[] = []
@@ -454,7 +456,8 @@ class FakeSessionController {
   async prompt(request: {
     readonly sessionId: unknown
     readonly content: readonly { readonly type: string; readonly text?: string }[]
-  }): Promise<{ accepted: true }> {
+  }, signal: AbortSignal): Promise<{ accepted: true }> {
+    signal.throwIfAborted()
     this.prompts.push({
       sessionId: String(request.sessionId),
       text: request.content.map(part => part.text ?? '').join(''),
