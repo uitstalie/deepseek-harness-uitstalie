@@ -301,7 +301,7 @@ pass 扫描 → 候选（只读，不动账本）
 - `superagent_workspace`：`roster` / `ensure`，`ensure` 返回 canonical path 供派遣当 `cwd`；`workspaceRegistry` 走鸭子类型，缺席时如实拒绝。
 - **worker preset 行已落地**（`jira-worker`，order 5）：只放执行者需要的 shell / 文件 / 后台 job / compaction，不放 delegation、goal、planning 与 `ask_user_question`；`SessionHeader.agentPreset` 是执行者的身份来源。
 - **GitHub source 已落地**（只读 `gh issue list`，未配置 repo 时可读拒绝）；**进程级定时 pass 已落地**（unref timer，随 dispose 清除）；**无会话 daemon 已落地**（DH-714：合成 dispatcher 身份，无 writable 会话时提案，确认后自己 claim + dispatch，默认关闭）。
-- **仍未做**：飞书 Source、vendor 原型 `src/core`。
+- **仍未做**：vendor 原型 `src/core`。飞书等多 Source 属于原型范围，用户已裁定只做 GitHub（决策 207），不在本分支待办里。
 
 （门 0 是 §6.4 的 `workspace_ensure`：人协商路径，同时产生 Grant。）
 
@@ -386,6 +386,6 @@ pass 扫描 → 候选（只读，不动账本）
 - **GitHub 导入**（只读）与 **重启恢复** 均已落地；
 - 测试覆盖纯谓词、工具面与**真实装配**的完整闭环：`packages/jira/tests/superagent-real-loop.spec.ts` 用真实的 `SessionController` 与 AgentLoop 派遣执行者（只有模型是脚本化的），覆盖提案 → 人类确认 → 认领 → 派遣 → 执行者 `issue_work` 交付 → `in_review`，以及执行者身份/工具面、guard 拒写、派遣记录 `starting → started` 与空闲执行者的 `recover`；pass 的"只提一次"等其余语义由单测覆盖。
 
-**仍未做（有意后置）**：飞书 Source、vendor 原型 `src/core`。无会话 daemon 已落地但默认关闭（DH-714）；这些在闭环价值被验证后再开；不阻塞阶段一验收。
+**仍未做（有意后置）**：vendor 原型 `src/core`。飞书/多 Source 不在范围内（用户裁定只做 GitHub，决策 207）；无会话 daemon 已落地但默认关闭（DH-714）；这些在闭环价值被验证后再开；不阻塞阶段一验收。
 
 **对 dafeiyu 的结论**：super agent 适合拆成"能力列表里的一行 + 自己的 host row"，但不适合把整台异步机器塞进 capability contribution。第一版把它收在 jira-agent 的同一 row 里，用独立 capability id 门控，是 B 的最小形态；若后续要独立 host row，`superagent` 这个 id/工具面可以原样迁出。
