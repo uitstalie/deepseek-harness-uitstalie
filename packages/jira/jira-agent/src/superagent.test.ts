@@ -20,6 +20,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import {
   CLAIM_APPROVED_MARKER,
   CLAIM_TOOL_NAME,
+  DAEMON_SESSION_ID,
   DISPATCH_MARKER,
   DISPATCH_TOOL_NAME,
   PROPOSAL_MARKER,
@@ -33,9 +34,11 @@ import {
   createJiraContribution,
   createSessionRecorder,
   createSuperagentContribution,
+  daemonIdentityOf,
   isBlocked,
   jiraWorkerTools,
   openProposal,
+  runDaemonPass,
   runSourceTool,
   runSuperagentPass,
 } from './index.ts'
@@ -883,6 +886,111 @@ describe('superagent: the loop through the real composition', () => {
       const bodies = bodiesOf(read)
       assert.ok(bodies.some(body => body.startsWith(PROPOSAL_MARKER)), 'the proposal survives')
       assert.ok(bodies.some(body => body.startsWith('done:')), 'the evidence survives')
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
+
+describe('superagent daemon: the session-less dispatcher', () => {
+  /** The identity the daemon writes under. */
+  const DAEMON = `agent:daemon|dsh|a1b2c3d4|${DAEMON_SESSION_ID}`
+
+  /** The comments one issue carries, read back through the service. */
+  const commentsOf = async (harness: JiraHarness): Promise<readonly { body: string; author: unknown }[]> => {
+    const read = await harness.ctx.jira.readIssue('DH-12' as never)
+    assert.equal(read.ok, true, read.ok ? '' : JSON.stringify(read.error))
+    if (!read.ok) throw new Error('unreachable')
+    return read.value.comments ?? []
+  }
+
+  it('derives a machine-scoped identity and refuses an empty machine id', () => {
+    assert.equal(String(daemonIdentityOf('a1b2c3d4')), DAEMON)
+    assert.equal(daemonIdentityOf(''), undefined)
+  })
+
+  it('is inert without a worker preset, a checkout or a session controller', async () => {
+    const { harness } = await mount()
+    try {
+      await runDaemonPass(harness.host, { maxWorkers: 2, cwd: '/tmp/work', propose: true })
+      await runDaemonPass(harness.host, { workerPreset: 'jira-worker', maxWorkers: 2, propose: true })
+      // A controller is required even to propose: a proposal this deployment could not dispatch
+      // would be a dead end.
+      await runDaemonPass(harness.host, { workerPreset: 'jira-worker', maxWorkers: 2, cwd: '/tmp/work', propose: true })
+      assert.deepEqual(await commentsOf(harness), [])
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('proposes as the daemon identity without any session', async () => {
+    const { harness } = await mount({}, 'jira-worker')
+    try {
+      const controller = await provideController(harness)
+      await runDaemonPass(harness.host, { workerPreset: 'jira-worker', maxWorkers: 2, cwd: '/tmp/work', propose: true })
+
+      const read = await harness.ctx.jira.readIssue('DH-12' as never)
+      assert.equal(read.ok, true)
+      if (!read.ok) throw new Error('unreachable')
+      assert.equal(read.value.issue.status, 'todo')
+      assert.equal(read.value.issue.assignee, undefined)
+      const last = read.value.comments?.at(-1)
+      assert.equal(String(last?.author), DAEMON)
+      assert.match(last?.body ?? '', /^\[claim-proposal\]/u)
+      // It proposed; it did not claim, dispatch, or mint a human credential.
+      assert.equal(controller.sessions.length, 0)
+      assert.equal(controller.prompts.length, 0)
+      assert.equal((read.value.comments ?? []).filter(comment => comment.body.startsWith(CLAIM_APPROVED_MARKER)).length, 0)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('claims a confirmed own proposal and dispatches it into the configured checkout', async () => {
+    const { harness } = await mount({}, 'jira-worker')
+    try {
+      const controller = await provideController(harness)
+      await runDaemonPass(harness.host, { workerPreset: 'jira-worker', maxWorkers: 2, cwd: '/tmp/work', propose: true })
+      await approve(harness)
+      await runDaemonPass(harness.host, { workerPreset: 'jira-worker', maxWorkers: 2, cwd: '/tmp/work', propose: false })
+
+      const read = await harness.ctx.jira.readIssue('DH-12' as never)
+      assert.equal(read.ok, true)
+      if (!read.ok) throw new Error('unreachable')
+      assert.equal(read.value.issue.status, 'in_progress')
+      assert.equal(String(read.value.issue.assignee), DAEMON)
+      assert.equal(controller.sessions.length, 1)
+      assert.deepEqual(controller.sessions[0]?.request, { cwd: '/tmp/work', agentPreset: 'jira-worker' })
+      const records = (read.value.comments ?? []).map(comment => comment.body).filter(body => body.startsWith(DISPATCH_MARKER))
+      assert.deepEqual(records, [`${DISPATCH_MARKER} session-1 starting`, `${DISPATCH_MARKER} session-1 started`])
+      // The only human credential on the issue is the person's; the daemon never writes one.
+      assert.equal((read.value.comments ?? []).filter(comment => comment.body.startsWith(CLAIM_APPROVED_MARKER)).length, 1)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('recovers a daemon executor whose Session is gone, and stays quiet while it holds work', async () => {
+    const { harness } = await mount({}, 'jira-worker')
+    try {
+      const controller = await provideController(harness)
+      await runDaemonPass(harness.host, { workerPreset: 'jira-worker', maxWorkers: 2, cwd: '/tmp/work', propose: true })
+      await approve(harness)
+      await runDaemonPass(harness.host, { workerPreset: 'jira-worker', maxWorkers: 2, cwd: '/tmp/work', propose: false })
+      assert.equal(controller.sessions.length, 1)
+
+      // The Session recorded by the dispatch is no longer running: the next pass revives it.
+      await runDaemonPass(harness.host, { workerPreset: 'jira-worker', maxWorkers: 2, cwd: '/tmp/work', propose: false })
+      assert.equal(controller.sessions.length, 2)
+      assert.equal(controller.sessions[1]?.request.agentPreset, 'jira-worker')
+      assert.equal(controller.sessions[1]?.request.cwd, '/tmp/work')
+
+      // While the replacement runs, the pass leaves the issue alone and proposes nothing.
+      controller.running.add('session-2')
+      const before = (await commentsOf(harness)).length
+      await runDaemonPass(harness.host, { workerPreset: 'jira-worker', maxWorkers: 2, cwd: '/tmp/work', propose: true })
+      assert.equal((await commentsOf(harness)).length, before)
+      assert.equal(controller.sessions.length, 2)
     } finally {
       await harness.dispose()
     }

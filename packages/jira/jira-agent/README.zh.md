@@ -86,7 +86,7 @@ root agent（智能体）的每次请求都带三个工具：`jira_issue`（十�
 
 #### 模型看到什么
 
-部署打开 `superagent` 能力时，root agent 多带六个工具：`superagent_scan` 列出当下可领的 issue，`superagent_claim` 提案或认领其中一条，`superagent_status` 报告 ready/proposed/in-progress/in-review/blocked 计数和需要人的条目，`superagent_source` 把所配置 GitHub 仓库里还没见过的 open issue 导入成账本 issue 且从不写回 GitHub，`superagent_workspace` 列出宿主的 workspace 或登记一个目录，好让派遣能指明自己的 checkout，`superagent_dispatch` 把已认领的 issue 交给一个**真实 Session** 去执行，并把该 Session 以 `[dispatch:session]` 记在 issue 上，于是它还在跑时第二次派遣会被拒——它的 `recover` 动词重启主机重启后丢失的执行者——最后一个只在该行的 `superagent_worker_preset` 指名的 preset 存在时才可用，因为没有 preset 的 Session 会继承派遣方自己的账本写权，而不是只有 `issue_work`。只有当该 issue 最新那条评论仍是本会话自己的提案时才认得动，因此两次调用之间必然要问人一句；并且在会话已经有 `superagent_max_workers` 张单在途时（默认 2）也会拒绝——槽就是一张已认领的单，所以人的会话永远不被计入。每个完成的 root turn 还会以 observe 模式跑一次 pass：提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不认领；如果本会话已有进行中的工作，或最新评论已经是提案，则保持沉默。一个进程级、unref 的定时器在至少一个已接线 agent 存活时每五分钟重复一次该 pass，并随能力 dispose 停止；没有存活 agent 时 pass 延后，因为无会话就没有 dispatcher 身份。被派遣的子 agent，以及加入了所配置 worker preset 的执行者 Session，六者都不带；jira 能力给这两者的是账本读工具 + `issue_work`，外加 `jira:executor` 段。
+部署打开 `superagent` 能力时，root agent 多带六个工具：`superagent_scan` 列出当下可领的 issue，`superagent_claim` 提案或认领其中一条，`superagent_status` 报告 ready/proposed/in-progress/in-review/blocked 计数和需要人的条目，`superagent_source` 把所配置 GitHub 仓库里还没见过的 open issue 导入成账本 issue 且从不写回 GitHub，`superagent_workspace` 列出宿主的 workspace 或登记一个目录，好让派遣能指明自己的 checkout，`superagent_dispatch` 把已认领的 issue 交给一个**真实 Session** 去执行，并把该 Session 以 `[dispatch:session]` 记在 issue 上，于是它还在跑时第二次派遣会被拒——它的 `recover` 动词重启主机重启后丢失的执行者——最后一个只在该行的 `superagent_worker_preset` 指名的 preset 存在时才可用，因为没有 preset 的 Session 会继承派遣方自己的账本写权，而不是只有 `issue_work`。只有当该 issue 最新那条评论仍是本会话自己的提案时才认得动，因此两次调用之间必然要问人一句；并且在会话已经有 `superagent_max_workers` 张单在途时（默认 2）也会拒绝——槽就是一张已认领的单，所以人的会话永远不被计入。每个完成的 root turn 还会以 observe 模式跑一次 pass：提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不认领；如果本会话已有进行中的工作，或最新评论已经是提案，则保持沉默。一个进程级、unref 的定时器每五分钟重复一次该 pass，并随能力 dispose 停止；没有 writable 会话时，它可以改为运行可选的**无会话 daemon**（行配置 `superagent_daemon` 与 `superagent_daemon_workspace`）：daemon 以自己的合成身份提案，随后由它自己认领并派遣已确认的提案——因为提案只能由写它的身份认领。被派遣的子 agent，以及加入了所配置 worker preset 的执行者 Session，六者都不带；jira 能力给这两者的是账本读工具 + `issue_work`，外加 `jira:executor` 段。
 
 #### Token 影响
 
@@ -103,6 +103,7 @@ root agent（智能体）的每次请求都带三个工具：`jira_issue`（十�
 - **浏览器面属于 `ui-jira`，不属于本包。** agent 拥有工具、注入行与写守卫；`jira` 设置页通过 `remote.jira` 读同一个账本，关闭能力只隐藏模型面。
 - **runner 模块仍按深路径 import `jira-core`。** phase-1 桥通过 `ctx.jira.store()` 打开存储；把 runner 迁到服务自己的读/写方法是 phase-2 的后续工作。
 - **CLI 一致性断言在本包之外。** `packages/jira/tests/parity.spec.ts` 是不依赖任一运行时的一侧：同时读取本包的工具动词与 `jira-cli` 的命令表，因此两个面得到比较，而无须让任一包依赖另一个。
+- **无会话 daemon 需要显式开启，且必须有 checkout。** `superagent_daemon` 默认 false；`superagent_daemon_workspace` 未配置，或缺少 worker preset / session controller 时，daemon pass 不写任何东西。它的 dispatcher 身份是合成的（`agent:daemon|dsh|<machine>|superagent-daemon`），且永不写人类确认。
 - **注入行不再写 workspace 绑定。** 约定里的这一段只写存储及其计数；workspace→project 的说法在独立插件里是 context source。
 
 <a id="dev-note"></a>

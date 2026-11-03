@@ -18,12 +18,12 @@ import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafe
 import { mkdir } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
-import { clampText, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
+import { clampText, asIdentity, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
 import { dispatchBody, dispatchRecordOf } from './dispatch.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, failure, nowUtc, okValue } from './envelope.ts'
-import { isExecutorSession } from './caller.ts'
+import { isExecutorSession, type Caller } from './caller.ts'
 import { type Spec, type ToolHost, callerOf, defineJiraTool, identityOf, runOptionsOf } from './tools.ts'
 
 /** The capability id this provider registers with the organizer. */
@@ -57,8 +57,11 @@ export const CLAIM_TOOL_NAME = 'superagent_claim'
 /** The name of the status tool: what is ready, what is proposed, and what waits on a person. */
 export const STATUS_TOOL_NAME = 'superagent_status'
 
-/** How often the live-agent timer runs one pass; a daemon without sessions is deferred. */
+/** How often the live-agent timer runs one pass; the session-less pass shares it (DH-714). */
 export const SUPERAGENT_POLL_MS = 5 * 60_000
+
+/** The synthetic session id the session-less dispatcher writes under. */
+export const DAEMON_SESSION_ID = 'superagent-daemon'
 
 /** Whether an issue can be taken right now, and why not when it cannot. */
 export type Claimability = Readonly<{
@@ -523,6 +526,106 @@ export const runSuperagentPass = async (
     }, options, call.me)
   } catch {
     // A background pass must never turn a completed turn into a failed one.
+  }
+}
+
+/**
+ * The dispatcher identity a session-less pass writes as.
+ *
+ * It keeps the ledger's ordinary `agent:<model>|<tool>|<machine>|<session>` shape and uses a
+ * synthetic session slot, because there is no Session to name; the machine is the real one the
+ * service resolved, so the write is still attributed to this host and this ledger. No second
+ * identity scheme and no second ledger are introduced (DH-714).
+ * @param machineId - this machine's ledger identity, from `ctx.jira.status()`.
+ * @returns the identity, or undefined when the machine id cannot form one.
+ */
+export const daemonIdentityOf = (machineId: string): Identity | undefined => {
+  if (machineId.trim() === '') return undefined
+  return asIdentity(`agent:daemon|dsh|${machineId}|${DAEMON_SESSION_ID}`)
+}
+
+/** How one session-less pass may act; an unset preset or checkout disables it. */
+export interface DaemonPassOptions {
+  /** The executor preset a claimed issue is dispatched into. */
+  readonly workerPreset?: string
+  /** How many issues the daemon may hold in progress; defaults to {@link DEFAULT_MAX_WORKERS}. */
+  readonly maxWorkers?: number
+  /** The checkout an executor works in. */
+  readonly cwd?: string
+  /** Whether this pass may add a proposal; only a pass with no writable session sets this. */
+  readonly propose?: boolean
+}
+
+/**
+ * One session-less dispatcher pass: recover, consume a confirmed own proposal, then propose.
+ *
+ * The daemon cannot propose and leave the claim to a person's session: a claim requires the
+ * proposal to name the claiming identity (decision 210), so a daemon proposal is claimable only by
+ * the daemon. It therefore finishes the job itself — claim, then dispatch into the configured
+ * checkout — and the executor is still a real Session (DH-702/DH-712).
+ *
+ * It never writes a human credential, never claims an issue it did not propose, and adds at most
+ * one proposal; a pending proposal from any session suppresses another. A pass is inert without a
+ * worker preset, a checkout, or a session controller, so a deployment that cannot dispatch does not
+ * accumulate proposals it can never act on.
+ * @param host - the plugin host the ledger service and clock come from.
+ * @param options - the preset, checkout, slot count and whether proposing is allowed.
+ * @returns after the pass settles; failures never escape into the timer.
+ */
+export const runDaemonPass = async (host: ToolHost, options: DaemonPassOptions = {}): Promise<void> => {
+  const workerPreset = options.workerPreset
+  const cwd = options.cwd
+  if (workerPreset === undefined || workerPreset.trim() === '') return
+  if (cwd === undefined || cwd.trim() === '') return
+  if (sessionControllerOf(host.ctx) === undefined) return
+  const identity = daemonIdentityOf(host.ctx.jira.status().machineId)
+  if (identity === undefined) return
+  const caller: Caller = Object.freeze({ writable: true, identity, sessionId: DAEMON_SESSION_ID, cwd })
+  const me = Object.freeze({ identity: String(identity), session: DAEMON_SESSION_ID })
+  const runOptions: RunOptions = Object.freeze({ jira: host.ctx.jira, caller, at: nowUtc(host.clock) })
+  const maxWorkers = options.maxWorkers ?? DEFAULT_MAX_WORKERS
+  try {
+    // A restart leaves the daemon's claims in place but its executor Sessions gone; reviving them
+    // is the same dispatch path a live dispatcher uses.
+    await runDispatchTool({ action: 'recover' }, runOptions, me, host.ctx, workerPreset, maxWorkers)
+    const snapshot = await host.ctx.jira.snapshot()
+    if (!snapshot.ok) return
+    const held = snapshot.value.issues.filter(issue => issue.status === 'in_progress' && issue.assignee === identity).length
+    if (held < maxWorkers) {
+      // A person's confirmation leaves a human `[claim-approved]` comment last; the proposal before
+      // it is the daemon's own, which is what `openProposal` checks.
+      for (const issue of snapshot.value.issues) {
+        if (issue.status !== CLAIMABLE_STATUS) continue
+        const read = await host.ctx.jira.readIssue(issue.key)
+        if (!read.ok) continue
+        if (!openProposal(read.value.comments ?? [], identity).ready) continue
+        const claimed = await runClaimTool({ action: 'claim', key: String(issue.key), cwd }, runOptions, me, maxWorkers)
+        if (!claimed.ok) continue
+        await runDispatchTool({ key: String(issue.key), cwd }, runOptions, me, host.ctx, workerPreset, maxWorkers)
+        return
+      }
+    }
+    if (options.propose !== true || held > 0) return
+    const status = await host.ctx.jira.superagentStatus()
+    // One pending proposal is enough; a second would be another comment to answer.
+    if (status.ok && status.value.proposed.length > 0) return
+    const scanned = await runScanTool({ limit: 10 }, runOptions, me)
+    if (!scanned.ok) return
+    const items = Array.isArray(scanned.items) ? scanned.items as unknown as Candidate[] : []
+    const ready = items.find(item => item.ready)
+    if (ready === undefined) return
+    const read = await host.ctx.jira.readIssue(ready.key as IssueKey)
+    if (!read.ok) return
+    const last = (read.value.comments ?? []).at(-1)
+    if (last !== undefined && last.body.trimStart().startsWith(PROPOSAL_MARKER)) return
+    // The revision is the lease against a second host proposing the same issue: a comment that
+    // landed in between makes the transaction stale instead of stacking a second proposal.
+    await host.ctx.jira.mutateIssue(ready.key as IssueKey, {
+      action: 'comment',
+      body: `${PROPOSAL_MARKER} session-less pass: it is ready, unclaimed, and not blocked`,
+    }, { by: identity, at: runOptions.at }, { expectedRevision: read.value.issue.revision })
+  } catch {
+    // A timer-driven pass never throws into the scheduler.
   }
 }
 
@@ -1010,6 +1113,14 @@ const dispatcher = (host: ToolHost, workerPreset: string | undefined, maxWorkers
 })
 
 
+/** The daemon row configuration; both the switch and a checkout are required for it to run. */
+export interface SuperagentDaemonConfig {
+  /** Whether a session-less pass may run at all. */
+  readonly enabled: boolean
+  /** The checkout a claimed issue is dispatched into. */
+  readonly workspace?: string
+}
+
 /**
  * Build the tool definitions the capability contributes.
  *
@@ -1017,10 +1128,11 @@ const dispatcher = (host: ToolHost, workerPreset: string | undefined, maxWorkers
  * registry's shape, so each tool declares its timeout and concurrency class in one place.
  * @param host - the plugin host the call context is resolved from.
  * @param workerPreset - the configured executor preset; without one, dispatch refuses (DH-702).
-  * @param maxWorkers - how many issues one dispatcher may hold in progress, forwarded to the claim
-  *   and dispatch tools.
-  * @param githubRepo - the configured `owner/name` the GitHub source tool imports from; without it
-  *   the source tool refuses.
+ * @param maxWorkers - how many issues one dispatcher may hold in progress, forwarded to the claim
+ *   and dispatch tools.
+ * @param githubRepo - the configured `owner/name` the GitHub source tool imports from; without it
+ *   the source tool refuses.
+ * @param daemon - the session-less pass configuration; absent or disabled keeps the old behavior.
  * @returns the capability contribution the organizer wires onto root agents.
  */
 export const createSuperagentContribution = (
@@ -1028,19 +1140,31 @@ export const createSuperagentContribution = (
   workerPreset?: string,
   maxWorkers: number = DEFAULT_MAX_WORKERS,
   githubRepo?: string,
+  daemon?: SuperagentDaemonConfig,
 ): CapabilityContribution => {
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
   let polling = false
+  const daemonWorkspace = daemon?.workspace
+  const daemonEnabled = daemon?.enabled === true && daemonWorkspace !== undefined && daemonWorkspace.trim() !== ''
   const poll = async (): Promise<void> => {
     if (polling) return
     polling = true
     try {
-      for (const agent of liveAgents) {
-        if (!callerOf(host, agent).writable) continue
-        await runSuperagentPass(host, agent)
-        return
+      const live = [...liveAgents].find(agent => callerOf(host, agent).writable)
+      // The session-less half revives its own executors and consumes its own confirmations even
+      // while a session exists, but it leaves proposing to a live dispatcher: that session's
+      // proposal is claimable by itself, so one proposer is enough.
+      if (daemonEnabled) {
+        await runDaemonPass(host, {
+          ...(workerPreset === undefined ? {} : { workerPreset }),
+          maxWorkers,
+          ...(daemonWorkspace === undefined ? {} : { cwd: daemonWorkspace }),
+          propose: live === undefined,
+        })
       }
+      if (live === undefined) return
+      await runSuperagentPass(host, live, undefined, workerPreset, maxWorkers)
     } finally {
       polling = false
     }

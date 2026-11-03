@@ -300,8 +300,8 @@ pass 扫描 → 候选（只读，不动账本）
 - 派遣记录带生命周期：`starting → started / failed`；记录先于 prompt 落地，写失败就不启动；重启后的 `recover` 以记录里的 Session 与 `running` 状态决定是否重派。
 - `superagent_workspace`：`roster` / `ensure`，`ensure` 返回 canonical path 供派遣当 `cwd`；`workspaceRegistry` 走鸭子类型，缺席时如实拒绝。
 - **worker preset 行已落地**（`jira-worker`，order 5）：只放执行者需要的 shell / 文件 / 后台 job / compaction，不放 delegation、goal、planning 与 `ask_user_question`；`SessionHeader.agentPreset` 是执行者的身份来源。
-- **GitHub source 已落地**（只读 `gh issue list`，未配置 repo 时可读拒绝）；**进程级定时 pass 已落地**（unref timer，随 dispose 清除）。
-- **仍未做**：无会话的常驻 daemon、飞书 Source、vendor 原型 `src/core`。
+- **GitHub source 已落地**（只读 `gh issue list`，未配置 repo 时可读拒绝）；**进程级定时 pass 已落地**（unref timer，随 dispose 清除）；**无会话 daemon 已落地**（DH-714：合成 dispatcher 身份，无 writable 会话时提案，确认后自己 claim + dispatch，默认关闭）。
+- **仍未做**：飞书 Source、vendor 原型 `src/core`。
 
 （门 0 是 §6.4 的 `workspace_ensure`：人协商路径，同时产生 Grant。）
 
@@ -381,10 +381,11 @@ pass 扫描 → 候选（只读，不动账本）
 - **派遣记录**：`[dispatch:session] <session> starting|started|failed` 先于 prompt 落地，recover 按记录与 running 状态决定重派；
 - **turn-end pass**：先恢复丢失的执行者，再以 observe 模式提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不自行认领；执行者会话跳过该 pass；
 - **`superagent_status`**：只读汇总 ready / proposed / in-progress / in-review / blocked，并列出需要人确认或复核的条目；`ui-jira` 的 Superagent 面板消费同一份只读数据，并提供唯一的人类动作——确认提案（写与 CLI 相同的 `human:` `[claim-approved]` 评论，DH-713）；
-- **进程级定时 pass**：能力启用且至少有一个已接线 agent 时，每 5 分钟跑一次 observe pass；timer 是 unref 的，随 dispose 清除；没有存活 agent 时不跑（无 session 就没有 dispatcher 身份，真正的无会话 daemon 仍后置）；
+- **进程级定时 pass**：能力启用时每 5 分钟跑一次；timer 是 unref 的，随 dispose 清除；有 writable 会话时由该会话的 pass 提案（它的提案可由它自己认领），没有会话时交给无会话 daemon（下一条）；
+- **无会话 daemon**（DH-714，默认关闭）：配置 `superagent_daemon` + `superagent_daemon_workspace` 后，定时器在没有 writable 会话时以 `agent:daemon|dsh|<machine>|superagent-daemon` 提案；人类确认后同一身份 claim + dispatch（决策 210 要求提案人 = 认领人），并先 `recover` 自己丢失的执行者。缺少 workspace、worker preset 或 session controller 时完全惰性，不写任何东西；
 - **GitHub 导入**（只读）与 **重启恢复** 均已落地；
 - 测试覆盖纯谓词、工具面与**真实装配**的完整闭环：`packages/jira/tests/superagent-real-loop.spec.ts` 用真实的 `SessionController` 与 AgentLoop 派遣执行者（只有模型是脚本化的），覆盖提案 → 人类确认 → 认领 → 派遣 → 执行者 `issue_work` 交付 → `in_review`，以及执行者身份/工具面、guard 拒写、派遣记录 `starting → started` 与空闲执行者的 `recover`；pass 的"只提一次"等其余语义由单测覆盖。
 
-**仍未做（有意后置）**：无会话常驻 daemon、飞书 Source、vendor 原型 `src/core`。这些在闭环价值被验证后再开；不阻塞阶段一验收。
+**仍未做（有意后置）**：飞书 Source、vendor 原型 `src/core`。无会话 daemon 已落地但默认关闭（DH-714）；这些在闭环价值被验证后再开；不阻塞阶段一验收。
 
 **对 dafeiyu 的结论**：super agent 适合拆成"能力列表里的一行 + 自己的 host row"，但不适合把整台异步机器塞进 capability contribution。第一版把它收在 jira-agent 的同一 row 里，用独立 capability id 门控，是 B 的最小形态；若后续要独立 host row，`superagent` 这个 id/工具面可以原样迁出。

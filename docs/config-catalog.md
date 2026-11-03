@@ -1863,6 +1863,10 @@ export type Config = Readonly<{
   superagent_max_workers?: number
   /** The single GitHub repository the source polls, as `owner/name`; unset means no source. */
   superagent_github_repo?: string
+  /** Whether a session-less dispatcher pass may run; defaults to false (DH-714). */
+  superagent_daemon?: boolean
+  /** The checkout a session-less claim is dispatched into; the daemon needs it to run. */
+  superagent_daemon_workspace?: string
 }>
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->
@@ -1873,7 +1877,7 @@ export type Config = Readonly<{
 ## `@deepseek-ai/dsh-jira-service`
 
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/jira/jira-service/src/index.ts:88`](../packages/jira/jira-service/src/index.ts)
+- `source`: [`packages/jira/jira-service/src/index.ts:91`](../packages/jira/jira-service/src/index.ts)
 
 ```ts config-catalog
 /** What a `jira-service` row may configure: where the ledger is, who writes, whether to push. */

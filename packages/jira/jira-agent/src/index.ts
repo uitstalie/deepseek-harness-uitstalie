@@ -72,6 +72,10 @@ export type Config = Readonly<{
   superagent_max_workers?: number
   /** The single GitHub repository the source polls, as `owner/name`; unset means no source. */
   superagent_github_repo?: string
+  /** Whether a session-less dispatcher pass may run; defaults to false (DH-714). */
+  superagent_daemon?: boolean
+  /** The checkout a session-less claim is dispatched into; the daemon needs it to run. */
+  superagent_daemon_workspace?: string
 }>
 
 /** Schemastery schema for the row configuration. */
@@ -79,6 +83,8 @@ export const Config: z<Config> = z.object({
   superagent_worker_preset: z.string(),
   superagent_max_workers: z.number(),
   superagent_github_repo: z.string(),
+  superagent_daemon: z.boolean(),
+  superagent_daemon_workspace: z.string(),
 })
 
 /**
@@ -139,6 +145,10 @@ export function apply(ctx: Context, config: Config): void {
         config.superagent_worker_preset,
         config.superagent_max_workers,
         config.superagent_github_repo,
+        {
+          enabled: config.superagent_daemon === true,
+          ...(config.superagent_daemon_workspace === undefined ? {} : { workspace: config.superagent_daemon_workspace }),
+        },
       ),
   })
   ctx.effect(() => superagent, 'superagent.register()')
@@ -238,6 +248,7 @@ export {
   CLAIM_PARAMETERS,
   CLAIM_TOOL_NAME,
   DEFAULT_MAX_WORKERS,
+  DAEMON_SESSION_ID,
   DISPATCH_DESCRIPTION,
   DISPATCH_MARKER,
   DISPATCH_PARAMETERS,
@@ -258,16 +269,20 @@ export {
   WORKSPACE_PARAMETERS,
   WORKSPACE_TOOL_NAME,
   type Claimability,
+  type DaemonPassOptions,
   type SessionControllerLike,
+  type SuperagentDaemonConfig,
   type WorkspaceLike,
   type WorkspaceRegistryLike,
   claimability,
   createSuperagentContribution,
+  daemonIdentityOf,
   dispatchInstruction,
   dispatchRecordOf,
   isBlocked,
   openProposal,
   runClaimTool,
+  runDaemonPass,
   runDispatchTool,
   runScanTool,
   runSourceTool,
