@@ -12,11 +12,14 @@ import { type JiraError, invalidInput } from './errors.ts'
 import { type Frontmatter, type FrontmatterMap, type FrontmatterScalar, parseFrontmatter } from './frontmatter.ts'
 import { type Result, err, ok } from './result.ts'
 
+/** The `schema` value the store's `config.md` carries. */
 export const CONFIG_SCHEMA = 'config/v1'
+/** The frontmatter `type` that marks the store's configuration document. */
 export const CONFIG_DOCUMENT_TYPE = 'config'
 /** New issues without an explicit priority get this one (asked and answered: S3). */
 export const DEFAULT_PRIORITY = 'S3'
 
+/** One status the vocabulary declares: its name, its display order, and whether it is retired. */
 export type StatusDef = Readonly<{ name: string; order: number; deprecated?: boolean }>
 
 /** The parsed `config.md` vocabulary: the closed sets, the status order and the transition edges. */
@@ -48,7 +51,11 @@ const requiredList = (frontmatter: Frontmatter, key: string): Result<readonly st
     : ok(list)
 }
 
-/** Read the vocabulary, then check it against itself. */
+/**
+ * Read the vocabulary, then check it against itself.
+ * @param text - the `config.md` text.
+ * @returns the checked vocabulary, or the refusal naming the first incoherence.
+ */
 export const parseVocab = (text: string): Result<Vocab, JiraError> => {
   const parsed = parseFrontmatter(text)
   if (!parsed.ok) return parsed
@@ -107,7 +114,11 @@ export const parseVocab = (text: string): Result<Vocab, JiraError> => {
   return checkVocab(vocab)
 }
 
-/** The self-consistency checks: every name used must be declared somewhere. */
+/**
+ * The self-consistency checks: every name used must be declared somewhere.
+ * @param vocab - the vocabulary to check.
+ * @returns the same vocabulary when it holds together, or the list of problems.
+ */
 export const checkVocab = (vocab: Vocab): Result<Vocab, JiraError> => {
   const names = new Set(vocab.statuses.map(status => status.name))
   const problems: string[] = []
@@ -133,16 +144,47 @@ export const checkVocab = (vocab: Vocab): Result<Vocab, JiraError> => {
 
 /* ── the queries the write path and the board use ─────────────────────────────── */
 
+/**
+ * Whether the vocabulary treats a status as closed, which is what demands a resolution.
+ * @param vocab - the store's vocabulary.
+ * @param status - the status name to test.
+ * @returns true when the status is in the closed set.
+ */
 export const isClosedStatus = (vocab: Vocab, status: string): boolean => vocab.closed.includes(status)
 
+/**
+ * The declared order of a status, for sorting.
+ * @param vocab - the store's vocabulary.
+ * @param status - the status name to look up.
+ * @returns the declared order, or the largest safe integer when the status is unknown.
+ */
 export const statusOrder = (vocab: Vocab, status: string): number =>
   vocab.statuses.find(entry => entry.name === status)?.order ?? Number.MAX_SAFE_INTEGER
 
+/**
+ * Whether the vocabulary declares a status.
+ * @param vocab - the store's vocabulary.
+ * @param status - the status name to look up.
+ * @returns true when the status is declared.
+ */
 export const isKnownStatus = (vocab: Vocab, status: string): boolean =>
   vocab.statuses.some(entry => entry.name === status)
 
+/**
+ * Whether the transition graph has an edge from one status to another.
+ * @param vocab - the store's vocabulary.
+ * @param from - the status the issue is in.
+ * @param to - the status the caller asked for.
+ * @returns true when the edge is declared.
+ */
 export const isLegalTransition = (vocab: Vocab, from: string, to: string): boolean =>
   vocab.transitions.some(([start, end]) => start === from && end === to)
 
+/**
+ * The statuses one status may move to, in declaration order.
+ * @param vocab - the store's vocabulary.
+ * @param from - the status the issue is in.
+ * @returns the declared targets, empty when the status has no outgoing edge.
+ */
 export const legalTargets = (vocab: Vocab, from: string): readonly string[] =>
   Object.freeze(vocab.transitions.filter(([start]) => start === from).map(([, end]) => end))

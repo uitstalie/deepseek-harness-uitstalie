@@ -34,7 +34,12 @@ const listFiles = async (path: string, suffix: string): Promise<string[]> => {
   return listed.value.filter(entry => entry.endsWith(suffix)).sort()
 }
 
-/** Everything the doctor looks at, in one pass. */
+/**
+ * Everything the doctor looks at, in one pass.
+ * @param root - the store's absolute root.
+ * @param run - the git runner used to read the repository state.
+ * @returns the snapshot every doctor check reads; the failures are absent fields, not exceptions.
+ */
 export const readSnapshot = async (
   root: string,
   run: GitRunner = runGit,
@@ -125,7 +130,12 @@ const readGitState = async (root: string, run: GitRunner): Promise<GitState> => 
 /** A file that did not decode, with the halves a caller needs to act on it (decision 80). */
 export type BrokenFile = Readonly<{ path: string; reason: string }>
 
-/** Every issue that decodes, for `list`/`board`. Files that do not decode are reported. */
+/**
+ * Every issue that decodes, for `list` and `board`. Files that do not decode are reported.
+ * @param root - the store's absolute root.
+ * @param run - the git runner used to read the repository state.
+ * @returns the decoded issues, and one broken entry per file that did not decode.
+ */
 export const listIssues = async (
   root: string,
   run: GitRunner = runGit,
@@ -147,6 +157,8 @@ export const listIssues = async (
  * exactly the commit a KB write makes (decision 187: this set used to be built inline by the
  * CLI's `verify-commit-msg`; the commit hook and any future surface must agree on "exists").
  * An unreadable library contributes nothing rather than failing the check.
+ * @param store - the store whose keys are collected.
+ * @returns every issue key and knowledge key the ledger holds.
  */
 export const collectKnownKeys = async (store: Store): Promise<ReadonlySet<string>> => {
   const issues = await listIssues(store.files.root)
@@ -156,6 +168,10 @@ export const collectKnownKeys = async (store: Store): Promise<ReadonlySet<string
     ...(knowledge.ok ? knowledge.value.entries.map(entry => String(entry.key)) : []),
   ])
 }
+/**
+ * The filters both the CLI and the `/jira` command apply: project, status, tag, assignee, a link,
+ * and whether closed issues are hidden.
+ */
 export type IssueQuery = Readonly<{
   project?: string
   status?: string
@@ -170,7 +186,14 @@ export type IssueQuery = Readonly<{
   includeClosed?: boolean
 }>
 
-/** One query used by both the CLI and the `/jira` command, so their views cannot drift. */
+/**
+ * One query used by both the CLI and the `/jira` command, so their views cannot drift.
+ * @param issues - the issues to filter.
+ * @param query - the filters to apply.
+ * @param vocab - the vocabulary that decides which statuses are closed; without it closed issues
+ *   are not hidden.
+ * @returns the matching issues, frozen and in their original order.
+ */
 export const queryIssues = (
   issues: readonly Issue[],
   query: IssueQuery,

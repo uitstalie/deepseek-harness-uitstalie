@@ -19,6 +19,7 @@ import { type GitRunner, hasRemote, push, runGit } from './git.ts'
 import { type RebaseOutcome } from './rebase.ts'
 import { type Result } from './result.ts'
 
+/** How long the queue waits after the last write before it pushes once. */
 export const DEFAULT_PUSH_DEBOUNCE_MS = 500
 
 /** How one flush ended: pushed, nothing to push, or failed with the error that stopped it. */
@@ -75,11 +76,13 @@ export type PushQueue = Readonly<{
   failures: () => number
 }>
 
+/** The timer seam the queue arms: a set and its clear, injectable so tests need no real timer. */
 export type PushTimer = Readonly<{
   set: (run: () => void, ms: number) => unknown
   clear: (handle: unknown) => void
 }>
 
+/** The real timer, for production callers. */
 export const realPushTimer: PushTimer = Object.freeze({
   set: (run: () => void, ms: number) => setTimeout(run, ms),
   clear: (handle: unknown) => {
@@ -87,6 +90,10 @@ export const realPushTimer: PushTimer = Object.freeze({
   },
 })
 
+/**
+ * Everything a queue is built with: its root, whether pushing is enabled, the debounce, the git
+ * runner, the timer, and the pull and settle hooks a flush runs.
+ */
 export type PushQueueOptions = Readonly<{
   root: string
   /** `push.enabled` (decision 57): false keeps everything local. */
@@ -125,6 +132,11 @@ export const MAX_PUSH_RETRIES = 3
 /** The retry delays: 1×, 2× and 4× the debounce — long enough for the other machine to finish. */
 const retryDelayMs = (attempt: number, debounceMs: number): number => debounceMs * 2 ** attempt
 
+/**
+ * Build the debounced queue for one store root.
+ * @param options - the root, the enable flag, the debounce, and the pull and settle hooks.
+ * @returns the queue handle.
+ */
 export const createPushQueue = (options: PushQueueOptions): PushQueue => {
   const enabled = options.enabled ?? true
   const debounceMs = options.debounceMs ?? DEFAULT_PUSH_DEBOUNCE_MS
@@ -273,6 +285,12 @@ export const createPushQueue = (options: PushQueueOptions): PushQueue => {
 /** A queue per store root, so a plugin registration and a CLI run share one debounce. */
 const queues = new Map<string, PushQueue>()
 
+/**
+ * The queue for a root, created on first use so a plugin registration and a CLI run share one
+ * debounce.
+ * @param options - the queue's options; only the root decides which queue is reused.
+ * @returns the shared queue for that root.
+ */
 export const sharedPushQueue = (options: PushQueueOptions): PushQueue => {
   const existing = queues.get(options.root)
   if (existing !== undefined) return existing
@@ -281,10 +299,18 @@ export const sharedPushQueue = (options: PushQueueOptions): PushQueue => {
   return created
 }
 
+/**
+ * Drop the cached queue for a root, so a switched-away store stops being reused.
+ * @param root - the store root whose queue is forgotten.
+ */
 export const forgetPushQueue = (root: string): void => {
   queues.delete(root)
 }
 
-/** The error a caller reports when a flush was asked for and could not happen. */
+/**
+ * The error a caller reports when a flush was asked for and could not happen.
+ * @param outcome - the flush outcome to inspect.
+ * @returns the error when the flush failed, otherwise undefined.
+ */
 export const pushFailure = (outcome: PushOutcome): JiraError | undefined =>
   outcome.kind === 'failed' ? outcome.error : undefined

@@ -21,6 +21,10 @@ import { exists, mkdirp } from './io.ts'
 import { type Result, err, ok } from './result.ts'
 import { scaffoldStore } from './scaffold.ts'
 
+/**
+ * How a machine joins the store: the root, an optional shared repository, and whether to
+ * fast-forward an existing clone.
+ */
 export type ProvisionOptions = Readonly<{
   root: string
   /** The shared data repository. Absent means "local-only store". */
@@ -30,6 +34,10 @@ export type ProvisionOptions = Readonly<{
   run?: GitRunner
 }>
 
+/**
+ * What provisioning did: which action it took, where, the remote it ended up with, and the pull
+ * outcome.
+ */
 export type ProvisionResult = Readonly<{
   action: 'cloned' | 'scaffolded' | 'joined' | 'unchanged'
   root: string
@@ -39,13 +47,24 @@ export type ProvisionResult = Readonly<{
   detail?: string
 }>
 
-/** The origin a repository is pointed at, or undefined when there is none. */
+/**
+ * The origin a repository is pointed at, or undefined when there is none.
+ * @param root - the repository root.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns the origin URL, or undefined when git reports none.
+ */
 export const currentRemote = async (root: string, run: GitRunner = runGit): Promise<string | undefined> => {
   const result = await run(root, ['remote', 'get-url', 'origin'])
   return result.code === 0 && result.stdout !== '' ? result.stdout : undefined
 }
 
-/** Point the repository at `remote`, without touching history. */
+/**
+ * Point the repository at `remote`, without touching history.
+ * @param root - the repository root.
+ * @param remote - the URL the origin should be.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns `set` when the origin had to be pointed, `unchanged` when it already was, or the failure.
+ */
 export const ensureRemote = async (
   root: string,
   remote: string,
@@ -62,7 +81,12 @@ export const ensureRemote = async (
     : err(ioFailed(`cannot point ${root} at ${remote}`, { stderr: result.stderr.slice(0, 500) }))
 }
 
-/** Fast-forward only: a diverged or dirty clone is reported so a human can look. */
+/**
+ * Fast-forward only: a diverged or dirty clone is reported so a human can look.
+ * @param root - the repository root.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns whether the clone was already current, moved forward, or refused to move.
+ */
 export const fastForward = async (
   root: string,
   run: GitRunner = runGit,
@@ -74,6 +98,12 @@ export const fastForward = async (
   return ok(before.stdout === after.stdout ? 'up-to-date' : 'fast-forwarded')
 }
 
+/**
+ * Bring the store into working order at the configured root: clone it, scaffold it, or join it
+ * and fast-forward.
+ * @param options - the root, the optional remote, and whether to pull.
+ * @returns what was done, or the failure that stopped it.
+ */
 export const provisionStore = async (options: ProvisionOptions): Promise<Result<ProvisionResult, JiraError>> => {
   const run = options.run ?? runGit
 

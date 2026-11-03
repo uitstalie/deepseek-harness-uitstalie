@@ -15,6 +15,10 @@ import { type Result, err, ok } from './result.ts'
 import { mkdirp, readText, writeTextAtomic } from './io.ts'
 import { storePaths } from './store.ts'
 
+/**
+ * The `config.md` a fresh store starts with: the starter vocabulary, written once and owned by
+ * the file from then on.
+ */
 export const STARTER_CONFIG = `---
 # The vocabulary of this store. Every value below is data: change it and the rules change
 # (statuses, the transitions between them, which statuses are closed, the priorities).
@@ -63,6 +67,7 @@ transitions:
 # a vocabulary that names a status it never declares is refused loudly rather than ignored.
 `
 
+/** The README a fresh store starts with: where the files live and what is derived rather than written. */
 export const STARTER_README = `# dsh-jira store
 
 One Markdown file per issue under \`projects/<PROJECT>/issues/<PROJECT>-<n>.md\`, one file per
@@ -74,6 +79,10 @@ issue's comments under \`projects/<PROJECT>/comments/\`, and the rules in \`conf
 * Derived data (\`.jira/\`, \`var/\`) is ignored.
 `
 
+/**
+ * What scaffolding did: the root, the files it wrote, the files that already existed, and whether
+ * git was initialised.
+ */
 export type ScaffoldResult = Readonly<{
   root: string
   created: readonly string[]
@@ -84,6 +93,8 @@ export type ScaffoldResult = Readonly<{
 /**
  * Create what is missing and never touch what exists. Safe to run repeatedly, which is what
  * makes it usable as "the store is not set up yet, set it up" from a tool, a command or CI.
+ * @param root - the store root to create.
+ * @returns the file lists and git outcome, or the failure that stopped it.
  */
 export const scaffoldStore = async (root: string): Promise<Result<ScaffoldResult, JiraError>> => {
   const created: string[] = []

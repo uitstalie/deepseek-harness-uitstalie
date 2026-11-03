@@ -12,6 +12,11 @@ import { rm } from 'node:fs/promises'
 
 import { system } from '../system/index.ts'
 
+/**
+ * Remove a directory tree, retrying while a git helper may still be writing into it.
+ * @param path - the directory to remove.
+ * @returns nothing; the last failure is thrown once the retries are spent.
+ */
 export const removeTree = async (path: string): Promise<void> => {
   for (let attempt = 0; ; attempt += 1) {
     try {

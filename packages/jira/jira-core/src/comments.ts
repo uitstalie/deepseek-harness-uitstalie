@@ -22,6 +22,10 @@ import { type Result, err, ok } from './result.ts'
 
 export type PendingComment = Readonly<{ body: string; author: Identity; createdAt: Timestamp }>
 
+/**
+ * A parsed comment file: its comments in order, and the prose that sits outside every anchor,
+ * preserved so a hand edit is never destroyed.
+ */
 export type ParsedComments = Readonly<{
   comments: readonly Comment[]
   /** Text that is not part of any comment; preserved so a hand edit is never destroyed. */
@@ -87,6 +91,11 @@ const parseAnchorLine = (line: string): ParsedAnchor | undefined => {
  * The anchor's field separator is `|`, and an agent identity *contains* `|` (decision 48),
  * so an identity that uses one is quoted. Without this the two decisions collide and the
  * author would be read as its first segment (found by a test, not by reading).
+ * @param id - the comment's `c-<short>-<n>` id.
+ * @param author - the identity that wrote the comment.
+ * @param createdAt - when it was written, as a UTC timestamp.
+ * @param revision - the comment's revision, starting at 1.
+ * @returns the single-line anchor that introduces the comment in the file.
  */
 export const commentAnchor = (
   id: string,
@@ -98,15 +107,33 @@ export const commentAnchor = (
   return `<!-- ${id} | author=${safe} | created_at=${createdAt} | revision=${revision} -->`
 }
 
-/** The four-character machine short code an id is built from (decision 68). */
+/**
+ * The four-character machine short code an id is built from (decision 68).
+ * @param machineId - the writing machine's id.
+ * @returns four lowercase alphanumerics, `anon` padded when the id has none.
+ */
 export const machineShortCode = (machineId: string): string => {
   const cleaned = machineId.toLowerCase().replaceAll(/[^0-9a-z]/g, '')
   return (cleaned.slice(0, 4) || 'anon').padEnd(4, '0')
 }
 
+/**
+ * Mint the id of the comment this machine appends next.
+ * @param machineId - the writing machine's id.
+ * @param sequence - the machine's own counter for this file.
+ * @returns the `c-<short>-<n>` id.
+ */
 export const commentId = (machineId: string, sequence: number): string =>
   `c-${machineShortCode(machineId)}-${sequence}`
 
+/**
+ * Parse a comment file into its comments and its preamble.
+ *
+ * Prose is tolerated, anchors are not: a line that looks like an anchor but does not parse
+ * is an error rather than a guess.
+ * @param text - the comment file's full text.
+ * @returns the comments and the leftover preamble, or the refusal naming the broken anchor line.
+ */
 export const parseComments = (text: string): Result<ParsedComments, JiraError> => {
   const lines = text.replaceAll('\r\n', '\n').split('\n')
   const comments: Comment[] = []
@@ -149,7 +176,12 @@ export const parseComments = (text: string): Result<ParsedComments, JiraError> =
   }))
 }
 
-/** The next id this machine may use in a file that already holds `existing` comments. */
+/**
+ * The next id this machine may use in a file that already holds `existing` comments.
+ * @param existing - the comments already in the file.
+ * @param machineId - the writing machine's id, whose own ids are the ones counted.
+ * @returns one past this machine's highest sequence, or 1 when it has written none.
+ */
 export const nextSequence = (existing: readonly Comment[], machineId: string): number => {
   const short = machineShortCode(machineId)
   let highest = 0
@@ -161,12 +193,20 @@ export const nextSequence = (existing: readonly Comment[], machineId: string): n
   return highest + 1
 }
 
+/**
+ * One comment appended to a file: the entity that was recorded, and the exact block that was
+ * written for it.
+ */
 export type AppendedComment = Readonly<{ comment: Comment; rendered: string }>
 
 /**
  * Render the block a batch of pending comments appends to a file, allocating ids in order.
  * The caller only ever appends: an existing comment is never rewritten here (editing one
  * is `rev+1` on that entry, which belongs to a later increment).
+ * @param existingText - the comment file's current text.
+ * @param pending - the comments to append, in the order they were written.
+ * @param machineId - the writing machine's id, which supplies the id short code.
+ * @returns one entry per pending comment, or the refusal raised while parsing the existing file.
  */
 export const appendComments = (
   existingText: string,
@@ -198,6 +238,9 @@ export const appendComments = (
 /**
  * The whole file's text after appending: the existing text (preamble included) plus the
  * rendered blocks, with exactly one trailing newline.
+ * @param existingText - the comment file's current text.
+ * @param appended - the rendered comments to add.
+ * @returns the whole file after appending, ending in exactly one newline.
  */
 export const withAppendedComments = (
   existingText: string,

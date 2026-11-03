@@ -18,14 +18,25 @@ import { type Locale } from './render.ts'
 
 /** Snippets are capped so ten hits cannot flood a context window (decision 54: "约 200 字"). */
 export const SNIPPET_MAX = 200
+/** How many hits a search returns when the caller names no `top_k`. */
 export const TOP_K_DEFAULT = 10
+/** The largest `top_k` a search accepts, so one query cannot ask for the whole library. */
 export const TOP_K_MAX = 50
 
+/**
+ * Keep a caller's `top_k` inside the search's bounds.
+ * @param topK - the value the caller asked for, if any.
+ * @returns the default when it is absent or nonsensical, otherwise the value capped at the maximum.
+ */
 export const clampTopK = (topK: number | undefined): number => {
   if (topK === undefined || !Number.isFinite(topK) || topK <= 0) return TOP_K_DEFAULT
   return Math.min(Math.floor(topK), TOP_K_MAX)
 }
 
+/**
+ * One knowledge hit: the entry's identity, the store-relative path and file-absolute line to open,
+ * the capped snippet, and how strongly it matched.
+ */
 export type KbHit = Readonly<{
   key: KnowledgeKey
   title: string
@@ -67,7 +78,13 @@ const countOccurrences = (haystack: string, needle: string): number => {
   return count
 }
 
-/** The window around a match, whitespace-collapsed and capped (decision 54). */
+/**
+ * The window around a match, whitespace-collapsed and capped (decision 54).
+ * @param body - the text the match was found in.
+ * @param matchIndex - where the match starts in the collapsed text.
+ * @param matchLength - how long the match is, which decides how much room is left around it.
+ * @returns the snippet, with ellipses where it was cut, or the whole short text.
+ */
 export const snippetAround = (body: string, matchIndex: number, matchLength: number): string => {
   const flat = body.replace(/\s+/gu, ' ').trim()
   if (flat === '') return ''
@@ -117,6 +134,10 @@ const hitFor = (entry: KnowledgeEntry, needle: string): KbHit | undefined => {
  * Order (decision 54): a title hit first, then the number of hits, then the most recently captured.
  * The final tiebreak is the key, so identical scores never reorder between calls — a list that
  * shuffles itself makes an agent's second look contradict its first.
+ * @param entries - the entries to search.
+ * @param query - the text to look for; empty means no hits at all.
+ * @param topK - how many hits to keep, when the caller wants a bound.
+ * @returns the ranked hits, the number that matched, and whether the cap hid some.
  */
 export const searchKnowledge = (
   entries: readonly KnowledgeEntry[],
@@ -168,6 +189,8 @@ const KB_SEARCH_WORDS: Readonly<Record<Locale, KbSearchWords>> = Object.freeze({
  * The one-entry view `jira kb get` prints: identity line, lineage, optional cross-references,
  * then the body. Kept next to `renderKbSearch` so both knowledge renderings live in one place
  * (DPMJ-211 — the CLI used to hand-build these lines inline).
+ * @param entry - the entry to render.
+ * @returns the identity line, the lineage, the cross-references, and the body.
  */
 export const renderKbEntry = (entry: KnowledgeEntry): string =>
   [
@@ -184,6 +207,9 @@ export const renderKbEntry = (entry: KnowledgeEntry): string =>
  *
  * It is shared the same way `renderIssueHuman` is: the tool (the model) takes the English default,
  * and the CLI asks for `zh` (decision 55).
+ * @param result - the search result to render.
+ * @param locale - which surface's words to use.
+ * @returns one line per hit, or the sentence saying nothing matched.
  */
 export const renderKbSearch = (result: KbSearch, locale: Locale = 'en'): string => {
   const words = KB_SEARCH_WORDS[locale]

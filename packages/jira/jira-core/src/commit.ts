@@ -44,6 +44,14 @@ const existingPaths = async (root: string, relative: readonly string[]): Promise
  * A failed commit does not undo the write: the file is the truth source, so the caller
  * gets the data plus a loud reason (decision 80's shape, not a silent failure). The first
  * commit of a store also carries `.gitattributes`, so decision 5 holds in history too.
+ * @param store - the ledger store whose repository is committed to.
+ * @param at - the timestamp the store lock is taken with.
+ * @param extraPaths - the store-relative paths this write produced, on top of the data every
+ *   commit carries.
+ * @param subject - the commit subject line.
+ * @param beforeCommit - an optional step run inside the store lock, immediately before the
+ *   commit; the paths it returns are committed too.
+ * @returns whether the commit landed, and the error that kept it from landing.
  */
 export const commitStoreWrite = async (
   store: Store,
@@ -95,6 +103,11 @@ export const commitStoreWrite = async (
 /**
  * Commit one issue's two files (the issue and its comments) with the action's own audit subject
  * (decision 67). Used by the transaction engine and by creation in `store.ts`.
+ * @param store - the ledger store the issue lives in.
+ * @param key - the issue whose two files are committed.
+ * @param at - the timestamp the store lock is taken with.
+ * @param facts - what the action did and the revision it produced, which form the audit subject.
+ * @returns whether the commit landed, and the error that kept it from landing.
  */
 export const commitWrite = async (
   store: Store,
@@ -123,6 +136,11 @@ export const commitWrite = async (
  * An empty result is the common case and costs one `git add -A` plus one `git diff`. A failure is
  * returned rather than swallowed: the caller refuses to write on top of a tree it could not settle,
  * and the human's changes are untouched either way (`git add` is not destructive).
+ * @param store - the ledger store whose working tree is settled.
+ * @param at - the timestamp the store lock is taken with.
+ * @param ownLock - the caller's own lock file, excluded from adoption because the edit behind it
+ *   is the one this call is protecting.
+ * @returns the paths committed as the human's work; empty when there was nothing to adopt.
  */
 export const adoptHumanChanges = async (
   store: Store,

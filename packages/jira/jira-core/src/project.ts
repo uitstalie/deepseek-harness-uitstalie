@@ -25,6 +25,7 @@ import { type Result, err, ok } from './result.ts'
 import { type Actor, type Store, commitStoreWrite } from './store.ts'
 import type { WorkspaceBinding } from './workspace.ts'
 
+/** The `schema` value a `project.md` carries. */
 export const PROJECT_SCHEMA = 'project/v1'
 
 /**
@@ -32,6 +33,8 @@ export const PROJECT_SCHEMA = 'project/v1'
  *
  * `git@github.com:o/r.git`, `ssh://git@GitHub.com:22/o/r.git/` and `https://u:p@github.com/o/r`
  * all become `github.com/o/r`, because they are the same remote and must compare equal.
+ * @param url - the remote as written, in any of its spellings.
+ * @returns the `host/path` identity, lowercased and without credentials, port, or `.git`.
  */
 export const normalizeRemote = (url: string): string => {
   let rest = url.trim()
@@ -67,11 +70,18 @@ export const normalizeRemote = (url: string): string => {
  * A relative path is still made absolute against the process's working directory, because that is
  * the only base a single machine has; it just goes through the module of the platform being
  * described rather than the host's.
+ * @param path - the path to normalize.
+ * @param platform - the platform whose rules apply, not the host's.
+ * @returns the absolute, platform-normalized path.
  */
 export const normalizePath = (path: string, platform: string = system.facts.platform): string =>
   system.normalizePath(path, platform)
 
-/** The identity remote: `upstream` > `origin` > the rest, lexicographically (decision 77). */
+/**
+ * The identity remote: `upstream` > `origin` > the rest, lexicographically (decision 77).
+ * @param remotes - the project's remotes, in the order the file lists them.
+ * @returns the normalized identity remote, or undefined when the project has none.
+ */
 export const remoteIdentity = (remotes: readonly string[]): string | undefined => {
   const normalized = remotes.map(normalizeRemote).filter(remote => remote !== '')
   for (const preferred of ['upstream', 'origin']) {
@@ -81,6 +91,10 @@ export const remoteIdentity = (remotes: readonly string[]): string | undefined =
   return [...normalized].sort()[0]
 }
 
+/**
+ * A project's `project.md`: the key (also the directory name), the remotes that identify it, the
+ * checkouts it has been seen in, and who may write it.
+ */
 export type ProjectFile = Readonly<{
   key: string
   name?: string
@@ -98,7 +112,12 @@ export type ProjectFile = Readonly<{
 /** Decision 182: the path rule lives in `entity.ts`; re-exported so project readers find it here. */
 export { projectRelPath }
 
-/** Tolerant read (decision 49's read side): a hand-edited file must not break `project list`. */
+/**
+ * Tolerant read (decision 49's read side): a hand-edited file must not break `project list`.
+ * @param text - the file's full text.
+ * @param key - the project key, taken from the directory name.
+ * @returns the decoded project, or the refusal when the frontmatter cannot be parsed at all.
+ */
 export const readProjectFile = (text: string, key: string): Result<ProjectFile, JiraError> => {
   const parsed = parseFrontmatter(text)
   if (!parsed.ok) return parsed
@@ -122,6 +141,11 @@ export const readProjectFile = (text: string, key: string): Result<ProjectFile, 
   }))
 }
 
+/**
+ * Write a project file: schema and type first, then the identity fields, then a one-line body.
+ * @param project - the project to encode.
+ * @returns the file text.
+ */
 export const encodeProjectFile = (project: ProjectFile): string => {
   const frontmatter: Frontmatter = Object.freeze({
     schema: PROJECT_SCHEMA,
@@ -136,6 +160,11 @@ export const encodeProjectFile = (project: ProjectFile): string => {
   return renderFrontmatter(frontmatter, `Project ${project.key}.\n`)
 }
 
+/**
+ * List every project in the store, treating one whose file cannot be read as this machine's own.
+ * @param store - the store to list.
+ * @returns the projects in key order; empty when the store has no `projects/` directory.
+ */
 export const listProjects = async (store: Store): Promise<Result<readonly ProjectFile[], JiraError>> => {
   const directory = join(store.files.root, 'projects')
   const listed = await listDirEntries(directory)
@@ -181,13 +210,18 @@ const writeProjectFile = async (store: Store, actor: Actor, project: ProjectFile
   })
 }
 
+/**
+ * Read one project file.
+ * @param store - the store the project lives in.
+ * @param key - the project key.
+ * @returns the project, or a local-only stand-in when the file is missing or unreadable.
+ */
 export const readProject = async (store: Store, key: string): Promise<Result<ProjectFile, JiraError>> => {
   const text = await readText(join(store.files.root, ...projectRelPath(key).split('/')))
   if (!text.ok) return ok(unreadableProject(key, store.machineId))
   return readProjectFile(text.value, key)
 }
 
-/** Record a checkout (and optionally remotes) for a project. Idempotent: the same path is not added twice. */
 /**
  * Decision 194 (trial feedback P1-3): `KB` is the **knowledge** key space, so a *new* project may not
  * claim it — `KB-12` would then be two different things depending on who is reading.
@@ -197,6 +231,13 @@ export const readProject = async (store: Store, key: string): Promise<Result<Pro
  */
 export const RESERVED_PROJECT_KEYS: readonly string[] = Object.freeze(['KB'])
 
+/**
+ * Refuse a project key that would collide with another key space, unless the project already
+ * exists — an existing ledger keeps working (decision 194).
+ * @param store - the store the project would be created in.
+ * @param project - the key the caller wants to create.
+ * @returns success when the name is allowed, or the refusal that explains the collision.
+ */
 export const assertProjectNameFree = async (
   store: Store,
   project: string,
@@ -213,6 +254,14 @@ export const assertProjectNameFree = async (
   ))
 }
 
+/**
+ * Record a checkout (and optionally remotes) for a project. Idempotent: the same path is not
+ * added twice, and the write policy follows from whether the project has a remote.
+ * @param store - the store the project is written to.
+ * @param actor - the identity and timestamp recorded on the project file.
+ * @param input - the project key, plus the checkout path, remotes, and name to record.
+ * @returns the project after the write, and whether the path was newly added.
+ */
 export const bindProject = async (
   store: Store,
   actor: Actor,
@@ -255,6 +304,10 @@ export const bindProject = async (
 /**
  * Move a checkout from one project to another (decision 92). Only `paths[]` changes — no issue
  * data is touched, because a path is a cache and the issues were never keyed by it.
+ * @param store - the store both projects live in.
+ * @param actor - the identity and timestamp recorded on the rewritten files.
+ * @param input - the projects to move between and the checkout path to move.
+ * @returns both project files after the move, and whether the path had been recorded before.
  */
 export const rebindProject = async (
   store: Store,
@@ -284,6 +337,13 @@ export const rebindProject = async (
   return ok(Object.freeze({ from: sourceWritten.value, to: bound.value.project, moved }))
 }
 
+/**
+ * Render the project list for the human surface, marking the checkout this process is in.
+ * @param projects - the projects to render.
+ * @param cwd - the working directory, matched against each project's recorded paths.
+ * @param platform - the platform whose path comparison applies.
+ * @returns the rendered list, newline-terminated.
+ */
 export const renderProjects = (projects: readonly ProjectFile[], cwd: string, platform: string = system.facts.platform): string => {
   const sys = systemFor(platform)
   if (projects.length === 0) return '还没有项目\n'
@@ -303,6 +363,10 @@ export const renderProjects = (projects: readonly ProjectFile[], cwd: string, pl
 /** Exported so the first-write registration (decision 133) can create a project file. */
 export const writeProject = writeProjectFile
 
+/**
+ * The outcome of registering a workspace checkout: the key it maps to, whether it was just
+ * created, and the project file behind it.
+ */
 export type RegisteredProject = Readonly<{ key: string; registered: boolean; project: ProjectFile }>
 
 /**
@@ -380,6 +444,11 @@ export const assertProjectWritable = async (
   return ok(undefined)
 }
 
+/**
+ * Derive a project key from a repository directory name: `dsh-jira` becomes `DJ`.
+ * @param repository - the path or remote whose last segment names the project.
+ * @returns a `[A-Z][A-Z0-9]{1,5}` key, or `WS` when nothing usable is left.
+ */
 export const deriveKey = (repository: string): string => {
   const words = basename(repository).split(/[^A-Za-z0-9]+/u).filter(word => word !== '')
   const initials = words.map(word => (word[0] ?? '').toUpperCase()).join('').replace(/^[^A-Z]+/u, '')

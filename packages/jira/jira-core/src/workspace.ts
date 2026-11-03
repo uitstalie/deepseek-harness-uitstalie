@@ -43,13 +43,11 @@ export type WorkspaceBinding = Readonly<{
 }>
 
 /**
- * Derive a key the way §4.10 says: **from the repository name**, not from the path, uppercase
- * initials of the words, at most six characters. `deepseek-harness` → `DH`, `dsh-jira` → `DJ`.
- *
- * `deriveKey` is also given the *normalized remote* (its basename is the repository), so the same
- * checkout registers the same key on every machine even though its directory differs.
+ * The remotes of a checkout, as git reports them. Remotes that cannot be read are simply absent.
+ * @param cwd - the checkout directory to read.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns the fetch URLs, `upstream` and `origin` first; empty when git cannot read them.
  */
-/** The remotes of a checkout, as git reports them. Remotes that cannot be read are simply absent. */
 export const workspaceRemotes = async (
   cwd: string,
   run: GitRunner = runGit,
@@ -138,7 +136,11 @@ export const resolveWorkspace = async (
   }))
 }
 
-/** The compact phrase the prompt line carries. Empty when nothing could be said. */
+/**
+ * The compact phrase the prompt line carries. Empty when nothing could be said.
+ * @param binding - the resolved binding, when a session has one.
+ * @returns the one-line description of what this checkout resolves to.
+ */
 export const describeBinding = (binding: WorkspaceBinding | undefined): string => {
   if (binding === undefined) return ''
   if (binding.project !== undefined) {

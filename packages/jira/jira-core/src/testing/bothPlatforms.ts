@@ -15,9 +15,14 @@ import { describe, it } from 'node:test'
 
 import { type System, systemFor } from '../system/index.ts'
 
+/** The two platform rule sets this helper drives; `darwin` follows the Linux rules. */
 export type PlatformName = 'win32' | 'linux'
 
-/** Run `body` once per platform, as two named cases inside one `describe`. */
+/**
+ * Run `body` once per platform, as two named cases inside one `describe`.
+ * @param name - the name of the describe block.
+ * @param body - the test body, run once with Windows rules and once with Linux rules.
+ */
 export const bothPlatforms = (
   name: string,
   body: (system: System, platform: PlatformName) => Promise<void> | void,

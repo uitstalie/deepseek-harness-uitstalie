@@ -18,6 +18,10 @@ import { similarity } from './tags.ts'
 /** Decision 86's threshold for "these two are probably the same tag". */
 export const SIMILARITY_THRESHOLD = 0.7
 
+/**
+ * Two tag names close enough to be the same tag, with their score and whether an alias already
+ * links them.
+ */
 export type SimilarPair = Readonly<{ left: string; right: string; score: number; shared: boolean }>
 
 /** What the tag lint reports: barely-used tags, missing descriptions, and probably-duplicate pairs. */
@@ -29,6 +33,13 @@ export type TagsLintReport = Readonly<{
   counts: Readonly<{ tags: number; issues: number }>
 }>
 
+/**
+ * Report the registry's three sections: barely-used tags, missing descriptions, and
+ * probably-duplicate pairs.
+ * @param tags - the registered tags.
+ * @param issues - the issues whose tag usage is counted.
+ * @returns the report; nothing is edited, by design (decision 86).
+ */
 export const lintTags = (tags: readonly TagDef[], issues: readonly Issue[]): TagsLintReport => {
   const counts = tagUseCounts(issues)
 
@@ -67,7 +78,11 @@ export const lintTags = (tags: readonly TagDef[], issues: readonly Issue[]): Tag
   })
 }
 
-/** The three sections, always all three: "nothing here" is information too. */
+/**
+ * The three sections, always all three: "nothing here" is information too.
+ * @param report - the report to render.
+ * @returns the rendered sections, newline-terminated.
+ */
 export const renderTagsLint = (report: TagsLintReport): string => {
   const lines: string[] = []
   lines.push(`只用过一次（${String(report.barelyUsed.length)}）：`)

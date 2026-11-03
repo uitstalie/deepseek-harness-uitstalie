@@ -41,7 +41,11 @@ const factsFor = (platform: SystemPlatform): SystemFacts => Object.freeze({
   longPathLimit: longPathLimitOf(platform),
 })
 
-/** Build the adapter for `platform` (defaults to the machine this process runs on). */
+/**
+ * Build the adapter for `platform` (defaults to the machine this process runs on).
+ * @param platform - the platform whose rules apply; an unknown name is treated as Linux.
+ * @returns the adapter for that platform, with every fact and derivation attached.
+ */
 export const systemFor = (platform: string = process.platform): System => {
   const known: SystemPlatform = platform === 'win32' || platform === 'darwin' ? platform : 'linux'
   const facts = factsFor(known)

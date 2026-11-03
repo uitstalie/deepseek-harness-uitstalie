@@ -22,8 +22,13 @@ import { type Result, err, ok } from './result.ts'
 import { type Actor, type Store, commitStoreWrite } from './store.ts'
 import { isMachineId } from './machine.ts'
 
+/** The `schema` value a machine registry file carries. */
 export const MACHINE_SCHEMA = 'machine/v1'
 
+/**
+ * One machine's registry entry: its id, the optional label, OS, first-seen date and note, plus
+ * the warnings a tolerant read produced.
+ */
 export type MachineRecord = Readonly<{
   machineId: string
   label?: string
@@ -34,14 +39,29 @@ export type MachineRecord = Readonly<{
   warnings: readonly string[]
 }>
 
+/**
+ * The store-relative posix path of a machine's registry file.
+ * @param machineId - the machine's id, which is also the file name.
+ * @returns the `machines/<id>.md` path.
+ */
 export const machinePath = (machineId: string): string => `machines/${machineId}.md`
 
-/** The display rule of decision 91, in one place so the board, the KB view and the CLI agree. */
+/**
+ * The display rule of decision 91, in one place so the board, the KB view and the CLI agree.
+ * @param machineId - the id to name.
+ * @param records - the registry, consulted for a label.
+ * @returns the label when the machine has one, otherwise the first six characters of the id.
+ */
 export const machineDisplayName = (machineId: string, records: readonly MachineRecord[] = []): string => {
   const label = records.find(record => record.machineId === machineId)?.label
   return label !== undefined && label !== '' ? label : machineId.slice(0, 6)
 }
 
+/**
+ * List the machine registry, warning about entries that are malformed rather than dropping them.
+ * @param store - the store whose registry is read.
+ * @returns the records in file-name order; empty when the store has no `machines/` directory.
+ */
 export const listMachines = async (store: Store): Promise<Result<readonly MachineRecord[], JiraError>> => {
   const directory = join(store.files.root, 'machines')
   const listed = await listDir(directory)
@@ -83,6 +103,7 @@ export const listMachines = async (store: Store): Promise<Result<readonly Machin
   return ok(Object.freeze(records))
 }
 
+/** The fields a label write supplies: the label itself, and optionally the OS and a note. */
 export type LabelInput = Readonly<{
   label: string
   os?: string
@@ -92,6 +113,11 @@ export type LabelInput = Readonly<{
 /**
  * Give this machine a label, creating the entry on first use. `first_seen` is preserved once set —
  * it is the one field that is history rather than configuration.
+ * @param store - the store whose registry is written.
+ * @param actor - the identity and clock the write records.
+ * @param machineId - the machine being labelled; created on first use.
+ * @param input - the label and its optional OS and note.
+ * @returns the stored record, or the refusal that wrote nothing.
  */
 export const labelMachine = async (
   store: Store,
@@ -138,6 +164,12 @@ export const labelMachine = async (
   })
 }
 
+/**
+ * Render the registry for the human surface, marking this machine's own row.
+ * @param records - the records to render.
+ * @param self - this machine's id.
+ * @returns the rendered list, newline-terminated.
+ */
 export const renderMachines = (records: readonly MachineRecord[], self: string): string => {
   const lines: string[] = []
   if (records.length === 0) lines.push('还没有登记任何机器')
@@ -158,6 +190,9 @@ export const renderMachines = (records: readonly MachineRecord[], self: string):
  *
  * Whether the hint has already been shown is machine-local state, and `core` keeps no state
  * (§3.1) — so the sentence is decided here and the *once* is the caller's marker (decision 150).
+ * @param records - the registry, consulted for this machine's label.
+ * @param self - this machine's id.
+ * @returns the hint, or undefined once this machine has a label.
  */
 export const machinesHint = (
   records: readonly MachineRecord[],

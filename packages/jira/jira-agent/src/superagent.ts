@@ -52,7 +52,9 @@ export const CLAIM_APPROVED_MARKER = '[claim-approved]'
 
 /** The tool names the host registry refers to. */
 export const SCAN_TOOL_NAME = 'superagent_scan'
+/** The name of the claim tool: propose an issue, or take the one a proposal named. */
 export const CLAIM_TOOL_NAME = 'superagent_claim'
+/** The name of the status tool: what is ready, what is proposed, and what waits on a person. */
 export const STATUS_TOOL_NAME = 'superagent_status'
 
 /** How often the live-agent timer runs one pass; a daemon without sessions is deferred. */
@@ -391,6 +393,8 @@ export const runStatusTool = async (options: RunOptions, me: unknown): Promise<T
  * @param args - the raw tool arguments, validated against `CLAIM_PARAMETERS`.
  * @param options - the store, caller verdict and clock for this run.
  * @param me - the caller's identity tuple, returned in every result.
+ * @param maxWorkers - how many issues this session may already hold in progress; a claim at that
+ *   limit is refused.
  * @returns the proposal, or the claimed issue with its dispatch facts.
  */
 export const runClaimTool = async (
@@ -1013,6 +1017,10 @@ const dispatcher = (host: ToolHost, workerPreset: string | undefined, maxWorkers
  * registry's shape, so each tool declares its timeout and concurrency class in one place.
  * @param host - the plugin host the call context is resolved from.
  * @param workerPreset - the configured executor preset; without one, dispatch refuses (DH-702).
+  * @param maxWorkers - how many issues one dispatcher may hold in progress, forwarded to the claim
+  *   and dispatch tools.
+  * @param githubRepo - the configured `owner/name` the GitHub source tool imports from; without it
+  *   the source tool refuses.
  * @returns the capability contribution the organizer wires onto root agents.
  */
 export const createSuperagentContribution = (

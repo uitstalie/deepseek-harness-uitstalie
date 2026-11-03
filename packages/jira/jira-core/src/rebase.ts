@@ -27,6 +27,9 @@ import { type Actor, type Store, transact } from './store.ts'
 /** Decision 84: the network step is bounded, and this is the bound. */
 export const REBASE_TIMEOUT_MS = 15_000
 
+/**
+ * What a pull-rebase did: whether it ran, whether it stopped, and which issues it marked conflicted.
+ */
 export type RebaseOutcome = Readonly<{
   /** A rebase ran and succeeded. */
   pulled: boolean
@@ -41,7 +44,13 @@ export type RebaseOutcome = Readonly<{
 
 const EMPTY: RebaseOutcome = Object.freeze({ pulled: false, stopped: false, marked: Object.freeze([]), failed: Object.freeze([]) })
 
-/** The issue keys mentioned by commits in a range, newest first, deduplicated. */
+/**
+ * The issue keys mentioned by commits in a range, newest first, deduplicated.
+ * @param root - the repository to read.
+ * @param range - the git range to inspect, such as `base..head`.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns the keys found, empty when the log cannot be read.
+ */
 export const keysTouchedIn = async (
   root: string,
   range: string,
@@ -61,6 +70,10 @@ export const keysTouchedIn = async (
  *
  * Returns `ok` even when the rebase **stops**: a stopped rebase is a normal, reportable state (the
  * human has to look), not an error of this call.
+ * @param store - the store whose clone is pulled.
+ * @param actor - the identity and clock the conflict marks record.
+ * @param options - the git runner and the network timeout.
+ * @returns the outcome, or the failure; a stopped rebase is an outcome, not an error.
  */
 export const pullRebase = async (
   store: Store,
@@ -160,7 +173,11 @@ const pullRebaseLocked = async (
   }))
 }
 
-/** A one-line summary for a CLI or a log. */
+/**
+ * A one-line summary for a CLI or a log.
+ * @param outcome - the outcome to summarise.
+ * @returns the sentence describing what happened.
+ */
 export const renderRebase = (outcome: RebaseOutcome): string => {
   if (outcome.stopped) return `pull --rebase stopped: ${outcome.reason ?? 'unknown reason'} (resolve it by hand; nothing was forced)`
   if (!outcome.pulled) return 'nothing to pull'
@@ -170,5 +187,10 @@ export const renderRebase = (outcome: RebaseOutcome): string => {
   return parts.join('; ')
 }
 
-/** The lock path an issue's own transaction uses — exported for tests that assert on it. */
+/**
+ * The lock path an issue's own transaction uses — exported for tests that assert on it.
+ * @param store - the store the issue lives in.
+ * @param key - the issue key, taken as given when it is not a valid key.
+ * @returns the issue lock directory path.
+ */
 export const rebaseLockPathOf = (store: Store, key: string): string => issueLockPath(store.files.root, asIssueKey(key) ?? (key as IssueKey))

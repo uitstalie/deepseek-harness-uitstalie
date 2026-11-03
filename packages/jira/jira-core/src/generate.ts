@@ -25,11 +25,16 @@ export const GENERATED_PATHS = Object.freeze([
   'tags/index.md',
 ] as const)
 
+/** The store-relative path of one of the files this module owns. */
 export type GeneratedPath = (typeof GENERATED_PATHS)[number]
 
 /** One tracked input: its store-relative posix path and the sha256 of its bytes (decision 79). */
 export type SourceTreeEntry = Readonly<{ path: string; sha256: string }>
 
+/**
+ * The head every generated file carries: when it was generated and the hash of the inputs it was
+ * generated from, so freshness can be checked without trusting the commit log.
+ */
 export type GeneratedMeta = Readonly<{ generatedAt: string; sourceTree: string }>
 
 /**
@@ -38,6 +43,8 @@ export type GeneratedMeta = Readonly<{ generatedAt: string; sourceTree: string }
  * Sorted and NUL-separated so the result does not depend on directory order or on the platform's
  * separators. No git command is involved, so it works offline and reflects uncommitted edits —
  * which is the point: a head that went stale must be detectable without trusting the commit log.
+ * @param entries - the tracked inputs, each with its path and content hash.
+ * @returns the sha256 of the sorted `path\0sha256` list.
  */
 export const hashSourceTree = (entries: readonly SourceTreeEntry[]): string => {
   const body = [...entries]
@@ -55,7 +62,11 @@ const header = (meta: GeneratedMeta): string =>
   + `     source_tree: ${meta.sourceTree}\n`
   + '-->\n'
 
-/** Read a generated head back; the freshness comparison in `jira doctor` uses this (decision 39). */
+/**
+ * Read a generated head back; the freshness comparison in `jira doctor` uses this (decision 39).
+ * @param text - the generated file's text.
+ * @returns the recorded head, or undefined when the text is not one of ours or is malformed.
+ */
 export const readGeneratedHead = (text: string): GeneratedMeta | undefined => {
   if (!text.startsWith(`<!-- ${HEAD_SIGNATURE}`)) return undefined
   const at = /^ +generated_at: +(\S+)$/mu.exec(text)
@@ -74,6 +85,10 @@ const cell = (value: string): string => value.replace(/\|/gu, '\\|').replace(/\r
  *
  * A target that cannot be found counts as blocking too: showing such an issue as ready would be a
  * claim the store cannot support.
+ * @param issue - the issue being placed on the board.
+ * @param byKey - every issue in the store, so link targets can be resolved.
+ * @param vocab - the vocabulary that decides which statuses are closed.
+ * @returns true when a blocker is unclosed or missing.
  */
 export const isBlocked = (issue: Issue, byKey: ReadonlyMap<string, Issue>, vocab: Vocab): boolean =>
   issue.links.some((link: Link) => {
@@ -100,6 +115,14 @@ const table = (issues: readonly Issue[], vocab: Vocab): readonly string[] => [
     + `| ${cell(issue.assignee ?? '')} | ${cell(issue.updatedAt)} |`),
 ]
 
+/**
+ * Render `BOARD.md`: one section per non-deprecated open status, then retired statuses, then
+ * blocked issues, then the closed-status counts.
+ * @param issues - the issues to place on the board.
+ * @param vocab - the vocabulary that decides the status order and the closed set.
+ * @param meta - the head written into the file.
+ * @returns the file text.
+ */
 export const renderBoardFile = (issues: readonly Issue[], vocab: Vocab, meta: GeneratedMeta): string => {
   const byKey = new Map(issues.map(issue => [issue.key as string, issue]))
   const open = issues.filter(issue => !isClosedStatus(vocab, issue.status))
@@ -136,9 +159,19 @@ export const renderBoardFile = (issues: readonly Issue[], vocab: Vocab, meta: Ge
 
 /* ── index.md (decision 87) ────────────────────────────────────────────────────── */
 
+/** One row of the index's project table: the key, the name, and how many issues are open. */
 export type ProjectRow = Readonly<{ key: string; name: string; open: number }>
+/** One row of the index's knowledge list: the domain name and how many entries it holds. */
 export type DomainRow = Readonly<{ name: string; entries: number }>
 
+/**
+ * Render `index.md`: the project table, the knowledge domains, and links to the other generated
+ * entry points.
+ * @param projects - the project rows, written in key order.
+ * @param domains - the knowledge domains, written in name order.
+ * @param meta - the head written into the file.
+ * @returns the file text.
+ */
 export const renderIndexFile = (
   projects: readonly ProjectRow[],
   domains: readonly DomainRow[],
@@ -169,8 +202,15 @@ export const renderIndexFile = (
 
 /* ── log.md (decision 87) ──────────────────────────────────────────────────────── */
 
+/** One commit shown in a generated log: its hash, its date, and its subject. */
 export type CommitRow = Readonly<{ hash: string; date: string; subject: string }>
 
+/**
+ * Render `log.md`: the keyed commits, in the order given (newest first).
+ * @param commits - the commits to list.
+ * @param meta - the head written into the file.
+ * @returns the file text.
+ */
 export const renderLogFile = (commits: readonly CommitRow[], meta: GeneratedMeta): string => {
   const lines: string[] = [header(meta), '# 最近的带 key 提交', '']
   if (commits.length === 0) {
@@ -186,8 +226,15 @@ export const renderLogFile = (commits: readonly CommitRow[], meta: GeneratedMeta
 
 /* ── tags/index.md (decision 87) ───────────────────────────────────────────────── */
 
+/** One row of the tag index: the tag's name, its description, and how many issues carry it. */
 export type TagRow = Readonly<{ name: string; description: string; uses: number }>
 
+/**
+ * Render `tags/index.md`: every registered tag with its description and use count, sorted by name.
+ * @param tags - the tag rows to list.
+ * @param meta - the head written into the file.
+ * @returns the file text.
+ */
 export const renderTagsIndexFile = (tags: readonly TagRow[], meta: GeneratedMeta): string => {
   const lines: string[] = [header(meta), '# 标签', '']
   if (tags.length === 0) {
@@ -219,9 +266,25 @@ export type BundleGenerated = Readonly<{
   bundles?: readonly BundleGenerated[]
 }>
 
+/**
+ * The store-relative path of a bundle's generated index.
+ * @param directory - the bundle's store-relative posix directory.
+ * @returns the `index.md` path under it.
+ */
 export const bundleIndexPath = (directory: string): string => `${directory}/index.md`
+/**
+ * The store-relative path of a bundle's generated log.
+ * @param directory - the bundle's store-relative posix directory.
+ * @returns the `log.md` path under it.
+ */
 export const bundleLogPath = (directory: string): string => `${directory}/log.md`
 
+/**
+ * Render a bundle's `index.md`: its title, its member count, and its members.
+ * @param bundle - the bundle to render.
+ * @param meta - the head written into the file.
+ * @returns the file text.
+ */
 export const renderBundleIndexFile = (bundle: BundleGenerated, meta: GeneratedMeta): string => {
   const lines: string[] = [header(meta), `# ${bundle.title}`, '']
   lines.push(`${String(bundle.members.length)} 条。`, '')
@@ -230,6 +293,12 @@ export const renderBundleIndexFile = (bundle: BundleGenerated, meta: GeneratedMe
   return lines.join('\n')
 }
 
+/**
+ * Render a bundle's `log.md`: the keyed commits whose subjects mention one of its keys.
+ * @param bundle - the bundle to render.
+ * @param meta - the head written into the file.
+ * @returns the file text.
+ */
 export const renderBundleLogFile = (bundle: BundleGenerated, meta: GeneratedMeta): string => {
   const lines: string[] = [header(meta), `# ${bundle.title} — 最近的带 key 提交`, '']
   if (bundle.commits.length === 0) {
@@ -243,6 +312,10 @@ export const renderBundleLogFile = (bundle: BundleGenerated, meta: GeneratedMeta
   return lines.join('\n')
 }
 
+/**
+ * Everything the generated files are computed from: the head, the vocabulary, the entities, and
+ * the rows already collected from them.
+ */
 export type GenerateInput = Readonly<{
   meta: GeneratedMeta
   vocab: Vocab
@@ -255,6 +328,11 @@ export type GenerateInput = Readonly<{
   bundles?: readonly BundleGenerated[]
 }>
 
+/**
+ * Render every generated file, including each bundle's own index and log.
+ * @param input - the entities and rows every file is computed from.
+ * @returns a map from store-relative path to the text that belongs at it.
+ */
 export const generateAll = (input: GenerateInput): Readonly<Record<string, string>> =>
   Object.freeze({
     'BOARD.md': renderBoardFile(input.issues, input.vocab, input.meta),
@@ -267,7 +345,11 @@ export const generateAll = (input: GenerateInput): Readonly<Record<string, strin
     ])),
   })
 
-/** Tag usage: how many issues carry each tag (decision 87's `（N 次）`). */
+/**
+ * Tag usage: how many issues carry each tag (decision 87's `（N 次）`).
+ * @param issues - the issues whose tags are counted.
+ * @returns how many issues carry each tag name.
+ */
 export const tagUseCounts = (issues: readonly Issue[]): ReadonlyMap<string, number> => {
   const counts = new Map<string, number>()
   for (const issue of issues) {
@@ -276,6 +358,12 @@ export const tagUseCounts = (issues: readonly Issue[]): ReadonlyMap<string, numb
   return counts
 }
 
+/**
+ * Pair each registered tag with how many issues carry it, ready for the tag index.
+ * @param tags - the registered tags, in registration order.
+ * @param issues - the issues whose tags are counted.
+ * @returns the rows, one per registered tag, frozen.
+ */
 export const tagRows = (tags: readonly Tag[], issues: readonly Issue[]): readonly TagRow[] => {
   const counts = tagUseCounts(issues)
   return Object.freeze(tags.map(tag => Object.freeze({

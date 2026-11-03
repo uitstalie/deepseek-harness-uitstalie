@@ -31,12 +31,17 @@ import { listIssues } from './inspect.ts'
 import { readProjectFile } from './project.ts'
 import { type Store, loadVocab } from './store.ts'
 
+/** The name the store line is registered under as a prompt context. */
 export const STORE_CONTEXT_NAME = 'jira:store'
 /** §6.4: five seconds, because a scan is cheap but not free and the counts move slowly. */
 export const INJECTION_TTL_MS = 5_000
 /** Before the tool listings; it is orientation, not instruction. */
 export const INJECTION_ORDER = 40
 
+/**
+ * What one survey of the store found: the projects, knowledge entries, and open issues, plus the
+ * projects no other machine may write.
+ */
 export type StoreCounts = Readonly<{
   /** `projects/<KEY>/project.md` files. */
   projects: number
@@ -107,6 +112,9 @@ export const countStore = async (store: Store): Promise<Result<StoreCounts, Jira
  *
  * It answers three questions, in the order a reader asks them: **which ledger** is this, **what is
  * this workspace to it**, and how big is it. A store with nothing in it still says nothing at all.
+ * @param counts - the survey the line is built from.
+ * @param context - how to name this ledger and this workspace, when the caller knows.
+ * @returns the line, or the empty string for a store with nothing in it.
  */
 export const injectionLine = (
   counts: StoreCounts,
@@ -119,6 +127,7 @@ export const injectionLine = (
   return counts.readOnlyProjects > 0 ? `${base} | read-only: ${String(counts.readOnlyProjects)}` : base
 }
 
+/** One survey's counts, plus how this ledger and this workspace are named in the line. */
 export type InjectionRead = Readonly<{
   counts: StoreCounts
   /** How to name this ledger in one word (the store directory's name). */
@@ -127,6 +136,10 @@ export type InjectionRead = Readonly<{
   binding?: string
 }>
 
+/**
+ * The prompt-context entry the host assembles: its name, its order, the cached text, and the
+ * seams a test drives it through.
+ */
 export type StoreInjection = Readonly<{
   name: string
   order: number
@@ -143,6 +156,8 @@ export type StoreInjection = Readonly<{
  * the background and the current step sees the previous text — one step of lag, five seconds of
  * reuse, and no IO in the model loop. The cache is keyed by `cwd` because two sessions in two
  * checkouts must be told two different things.
+ * @param options - how to read a checkout, how to find its cwd, and the cache's clock and TTL.
+ * @returns the prompt-context entry, caching one line per checkout.
  */
 export const createStoreInjection = (options: Readonly<{
   read: (cwd: string | undefined) => Promise<InjectionRead>

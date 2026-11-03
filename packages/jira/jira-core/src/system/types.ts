@@ -12,6 +12,10 @@ export type SystemPlatform = 'win32' | 'linux' | 'darwin'
 /** The environment shape every entry point already passes around (`--env`, `exec.agent`, tests). */
 export type SystemEnv = Readonly<Record<string, string | undefined>>
 
+/**
+ * What the adapter knows about a platform: its name, separator, null device, git settings, and path
+ * limits.
+ */
 export type SystemFacts = Readonly<{
   platform: SystemPlatform
   isWindows: boolean
@@ -46,6 +50,10 @@ export type SystemFacts = Readonly<{
   longPathLimit: number
 }>
 
+/**
+ * The platform adapter: the facts, plus every pure derivation from them. A call site that would ask
+ * the platform a question asks this instead.
+ */
 export type System = Readonly<{
   facts: SystemFacts
   /** Convenience for the one question that is asked most often. */

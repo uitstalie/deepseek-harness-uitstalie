@@ -31,17 +31,25 @@ import { applyComment } from './mutate.ts'
 import { type Result, err, ok } from './result.ts'
 import { type Actor, type Store, commitStoreWrite, readComments, transact } from './store.ts'
 
+/** The `schema` value a session record carries. */
 export const SESSION_SCHEMA = 'session/v1'
+/** The frontmatter `type` that marks a file as a session record. */
 export const SESSION_DOCUMENT_TYPE = 'session'
 
 /**
  * Where a session record lives. The id comes from the host, but it is still **one path segment**
  * (decision 167): `../x` used to write outside `sessions/`, and that is exactly what `safeFileName`
  * is for. The file keeps a readable id (the raw id, when it is already safe).
+ * @param sessionId - the host's session id, which is also the file name.
+ * @returns the store-relative posix path of the session record.
  */
 export const sessionPath = (sessionId: string): string =>
   `sessions/${system.safeFileName(sessionId)}.md`
 
+/**
+ * One session as the record stores it: its id, the tool and model, the machine, and the raw
+ * evidence that identified the host.
+ */
 export type SessionRecord = Readonly<{
   id: string
   /** The tool that ran the session (`dsh` for this plugin's host). */
@@ -57,6 +65,11 @@ const SESSION_FIELDS: readonly string[] = Object.freeze([
   'schema', 'type', 'session_id', 'tool', 'model', 'machine_id', 'started_at', 'tool_evidence',
 ])
 
+/**
+ * Write a session record: the fixed field order, and a one-line body naming the session.
+ * @param record - the session to encode.
+ * @returns the file text.
+ */
 export const encodeSession = (record: SessionRecord): string => {
   const frontmatter: Frontmatter = Object.freeze({
     schema: SESSION_SCHEMA,
@@ -74,6 +87,12 @@ export const encodeSession = (record: SessionRecord): string => {
 const asText = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 
+/**
+ * Read a session record, tolerating a missing id by taking the file name as the id.
+ * @param text - the file's full text.
+ * @param id - the fallback id, taken from the file name.
+ * @returns the record and the keys this version does not know, or the parse failure.
+ */
 export const decodeSession = (
   text: string,
   id: string,
@@ -97,7 +116,12 @@ export const decodeSession = (
   }))
 }
 
-/** Read a session record; `undefined` when this session has never written anything. */
+/**
+ * Read a session record; `undefined` when this session has never written anything.
+ * @param store - the store whose session records are read.
+ * @param id - the session id.
+ * @returns the record, or undefined when there is no readable file for it.
+ */
 export const readSession = async (store: Store, id: string): Promise<Result<SessionRecord | undefined, JiraError>> => {
   const text = await readText(join(store.files.root, ...sessionPath(id).split('/')))
   if (!text.ok) return ok(undefined)
@@ -142,6 +166,7 @@ export const ensureSessionRecord = async (
 export const scanWatermarkPath = (dshHome: string, sessionId: string): string =>
   join(dshHome, 'dsh-jira', 'session-scan', `${sessionId.replace(/[^A-Za-z0-9._-]/gu, '_')}.json`)
 
+/** The scan watermark: the last commit sha it covered, and how many scans it has recorded. */
 export type Watermark = Readonly<{ lastSha?: string; scans: number }>
 
 /**
@@ -174,9 +199,9 @@ export const readWatermark = async (path: string): Promise<Watermark> => {
 export const writeWatermark = async (path: string, watermark: Watermark): Promise<Result<void, JiraError>> =>
   writeTextAtomic(path, `${JSON.stringify(watermark, null, 2)}\n`)
 
+/** A commit the scan cares about: its sha, its subject, and the issue keys the subject names. */
 export type CommitTouched = Readonly<{ sha: string; subject: string; keys: readonly string[] }>
 
-/** The commits in a range that mention an issue key (decision 67's shape), newest first. */
 /**
  * A commit whose only job was to record a comment (`store.ts` writes `<KEY>: comment (rev N)`).
  *
@@ -187,6 +212,13 @@ export type CommitTouched = Readonly<{ sha: string; subject: string; keys: reado
  */
 const COMMENT_ONLY_COMMIT = /^\S+: comment \(rev \d+\)$/u
 
+/**
+ * The commits in a range that mention an issue key (decision 67's shape), newest first.
+ * @param store - the store whose repository is read.
+ * @param from - the commit the range starts after; empty asks for the most recent commits.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns the commits that name a key, with comment-only commits skipped.
+ */
 export const commitsTouching = async (
   store: Store,
   from: string,
@@ -208,6 +240,10 @@ export const commitsTouching = async (
   return Object.freeze(commits)
 }
 
+/**
+ * What the close-out scan did: how many commits it examined, which issues it commented on, and
+ * which were already recorded.
+ */
 export type ScanOutcome = Readonly<{
   /** Commits examined (those whose subject names an issue). */
   commits: number
@@ -271,7 +307,11 @@ export const sessionScan = async (
   }))
 }
 
-/** Every session record on disk, newest first — used by the doctor and by tests. */
+/**
+ * Every session record on disk, newest first — used by the doctor and by tests.
+ * @param store - the store whose session records are listed.
+ * @returns the records in start-time order, newest first.
+ */
 export const listSessions = async (store: Store): Promise<Result<readonly SessionRecord[], JiraError>> => {
   const directory = join(store.files.root, 'sessions')
   const listed = await listDir(directory)

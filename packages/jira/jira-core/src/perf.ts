@@ -21,9 +21,12 @@ import { type Store } from './store.ts'
 
 /** Decision 85's thresholds, kept here so the report and the design cannot drift. */
 export const SEARCH_P95_BUDGET_MS = 200
+/** Decision 85's file-count trigger: past this many store files, an index should be evaluated. */
 export const STORE_FILE_BUDGET = 5_000
+/** How many searches the measurement times; the slowest of them is reported as the p95. */
 export const PERF_SAMPLES = 5
 
+/** The two counts the file trigger uses: the knowledge library's files and the whole store's. */
 export type PerfFileCounts = Readonly<{
   /** Files the knowledge scan reads (the library itself). */
   knowledge: number
@@ -31,6 +34,7 @@ export type PerfFileCounts = Readonly<{
   store: number
 }>
 
+/** The measured numbers and the verdict they support. */
 export type PerfReport = Readonly<{
   files: PerfFileCounts
   /** Slowest of {@link PERF_SAMPLES} searches, in milliseconds. */
@@ -62,6 +66,11 @@ const countFiles = async (root: string, filter: (path: string) => boolean): Prom
   return walk(root, '')
 }
 
+/**
+ * Count the files the two triggers care about.
+ * @param store - the store to walk.
+ * @returns the knowledge file count and the store file count.
+ */
 export const countPerfFiles = async (store: Store): Promise<PerfFileCounts> =>
   Object.freeze({
     knowledge: await countFiles(join(store.files.root, 'knowledge'), () => true),
@@ -71,6 +80,10 @@ export const countPerfFiles = async (store: Store): Promise<PerfFileCounts> =>
 /**
  * Time the scan. A store with no entries is not a slow store, so it reports 0 ms rather than a
  * meaningless measurement of an empty loop.
+ * @param store - the store to search.
+ * @param query - the probe query to time.
+ * @param samples - how many times to run it.
+ * @returns the slowest run in milliseconds, or the search failure.
  */
 export const measureKbSearch = async (
   store: Store,
@@ -92,9 +105,21 @@ export const measureKbSearch = async (
   return ok(Math.round(worst))
 }
 
-/** The probe query: the title of the busiest entry when there is one, else a term nothing matches. */
+/**
+ * The probe query: the title of the busiest entry when there is one, else a term nothing matches.
+ * @param words - the candidate words, in the order they should be tried.
+ * @returns the first non-blank word, or a fallback term when there is none.
+ */
 export const perfQuery = (words: readonly string[]): string => words.find(word => word.trim() !== '') ?? 'the'
 
+/**
+ * Turn the measurements into the report and its verdict.
+ * @param files - the file counts.
+ * @param searchWorstMs - the slowest search, in milliseconds.
+ * @param query - the query that was timed.
+ * @param samples - how many searches were timed.
+ * @returns the report, with each budget marked and the verdict derived from them.
+ */
 export const perfReport = (files: PerfFileCounts, searchWorstMs: number, query: string, samples: number): PerfReport => {
   const overBudget = Object.freeze({
     search: searchWorstMs > SEARCH_P95_BUDGET_MS,
@@ -110,6 +135,11 @@ export const perfReport = (files: PerfFileCounts, searchWorstMs: number, query: 
   })
 }
 
+/**
+ * Render the report as the one line `jira doctor` prints.
+ * @param report - the report to render.
+ * @returns the single-line summary.
+ */
 export const renderPerf = (report: PerfReport): string =>
   `搜索 p95 ~ ${String(report.searchWorstMs)} ms（对 "${report.query}" 取 ${String(report.samples)} 次里最慢的一次，预算 ${String(SEARCH_P95_BUDGET_MS)} ms）`
   + `；文件 ${String(report.files.store)} 个（其中知识 ${String(report.files.knowledge)} 个，预算 ${String(STORE_FILE_BUDGET)}）`

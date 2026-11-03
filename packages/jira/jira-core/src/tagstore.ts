@@ -29,11 +29,22 @@ import { exists, readText, writeTextAtomic } from './io.ts'
 import { type Result, err, ok } from './result.ts'
 import { type Actor, type Store, commitStoreWrite } from './store.ts'
 
+/** The `schema` value a tag registry file carries. */
 export const TAG_SCHEMA = 'tag/v1'
+/** The frontmatter `type` that marks a file as a tag registration. */
 export const TAG_DOCUMENT_TYPE = 'tag'
 
+/**
+ * The store-relative posix path of a tag's registry file.
+ * @param name - the tag name, which is also the file name.
+ * @returns the `tags/<name>.md` path.
+ */
 export const tagPath = (name: string): string => `tags/${name}.md`
 
+/**
+ * A registered tag as the file stores it: its name, why it exists, its aliases, and who
+ * registered it when.
+ */
 export type TagRecord = Readonly<{
   name: string
   description: string
@@ -46,6 +57,11 @@ const TAG_FIELDS: readonly string[] = Object.freeze([
   'schema', 'type', 'name', 'description', 'aliases', 'created_by', 'created_at',
 ])
 
+/**
+ * Write a tag registration: the fixed field order, and a one-line body explaining the tag.
+ * @param record - the tag to encode.
+ * @returns the file text.
+ */
 export const encodeTag = (record: TagRecord): string => {
   const frontmatter: Frontmatter = Object.freeze({
     schema: TAG_SCHEMA,
@@ -62,6 +78,12 @@ export const encodeTag = (record: TagRecord): string => {
 const asText = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 
+/**
+ * Read a tag file, tolerating a missing `name` by taking the file name as the name.
+ * @param text - the file's full text.
+ * @param fallbackName - the name to use when the frontmatter carries none.
+ * @returns the record and the keys this version does not know, or the parse failure.
+ */
 export const decodeTag = (
   text: string,
   fallbackName: string,
@@ -85,7 +107,12 @@ export const decodeTag = (
   }))
 }
 
-/** Read one registered tag; `undefined` when the name is not registered. */
+/**
+ * Read one registered tag; `undefined` when the name is not registered.
+ * @param store - the store whose registry is read.
+ * @param name - the tag name to read.
+ * @returns the record, or undefined when there is no readable file for it.
+ */
 export const readTag = async (store: Store, name: string): Promise<Result<TagRecord | undefined, JiraError>> => {
   const text = await readText(join(store.files.root, ...tagPath(name).split('/')))
   if (!text.ok) return ok(undefined)
@@ -93,6 +120,10 @@ export const readTag = async (store: Store, name: string): Promise<Result<TagRec
   return decoded.ok ? ok(decoded.value.record) : ok(undefined)
 }
 
+/**
+ * What registering a tag supplies: the name, the description that must explain it, and optional
+ * aliases.
+ */
 export type CreateTagInput = Readonly<{ name: string; description: string; aliases?: readonly string[] }>
 
 /**

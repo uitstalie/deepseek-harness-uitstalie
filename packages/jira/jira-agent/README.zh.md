@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-jira-agent` 是账本的模型面：一个 dafeiyu 能力提供者，在 root agent 上注册三个常驻工具（带十个动词的 `jira_issue`、`jira_list`、`jira_kb`），在被派遣的子 agent 上只注册 `issue_work` 一个工具，另有一行 `jira:store` 注入段、单调递增的写守卫、`/jira` 命令、三个 skill，以及 turn 结束时的 settle。它另注册一个独立开关的 `superagent` 能力，为 root agent 加上认领闭环（`superagent_scan`、`superagent_claim`、`superagent_status`、`superagent_workspace`）。它注入 `ctx.jira`、工具注册表与 `ctx.dafeiyu`；命令与 skill 注册表是可选的，因此缺少这些注册表的组合仍保留工具。它按契约版本 2 注册，带 `enabledByDefault: false` 与 `settings.sectionId: 'jira'` 供能力列表使用。账本的位置、机器身份与 push 队列属于 `jira-service` 行，因此这一行没有自己的配置。
+`dsh-jira-agent` 是账本的模型面：一个 dafeiyu 能力提供者，在 root agent 上注册 `jira_issue`、`jira_list` 与 `jira_kb`，在被派遣的子 agent 上注册 `issue_work`，另有 `jira:store` 注入行、单调写守卫、`/jira` 命令、三个 skill 与 turn 结束时的 settle。第二个独立开关的 `superagent` 能力加上认领闭环（`superagent_scan`、`superagent_claim`、`superagent_status`、`superagent_workspace`、`superagent_dispatch`、`superagent_source`）。它注入 `ctx.jira`、工具注册表与 `ctx.dafeiyu`；命令与 skill 注册表是可选的。两个能力都按契约版本 2、`enabledByDefault: false` 与 `settings.sectionId: 'jira'` 注册。账本的根目录、身份与 push 队列属于 `jira-service` 行。
 
 ## 目录
 

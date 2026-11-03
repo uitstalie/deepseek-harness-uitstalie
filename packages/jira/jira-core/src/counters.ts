@@ -20,7 +20,12 @@ import { lockOptionsOf, lockOwnerOf, storeLockPath, withLock } from './lock.ts'
 import { type Result, err, ok } from './result.ts'
 import { type Store } from './store.ts'
 
+/** The `schema` value a counters file carries. */
 export const COUNTERS_SCHEMA = 'counters/v1'
+/**
+ * How many numbers one machine claims at a time; going back for another block is a store write
+ * under the store lock, so it is done in batches rather than per issue.
+ */
 export const BLOCK_SIZE = 100
 
 /**
@@ -31,10 +36,19 @@ export const BLOCK_SIZE = 100
  */
 export const MAX_KEY_NUMBER = 9999
 
+/** An inclusive `[start, end]` range of key numbers one machine has claimed. */
 export type Block = readonly [start: number, end: number]
 
+/**
+ * One machine's counters for one project: the next number it will hand out, and the blocks it
+ * has claimed — `next` inside the last block is free, `next` past it means a new block is due.
+ */
 export type ProjectCounter = Readonly<{ next: number; blocks: readonly Block[] }>
 
+/**
+ * One machine's whole counters file: its id plus one counter per project, because a project's
+ * numbers form their own space.
+ */
 export type CountersFile = Readonly<{
   schema: typeof COUNTERS_SCHEMA
   machine_id: string
@@ -42,6 +56,11 @@ export type CountersFile = Readonly<{
   projects: Readonly<Record<string, ProjectCounter>>
 }>
 
+/**
+ * Start a machine's counters from nothing — no project claimed, so the next claim takes block 1.
+ * @param machineId - the machine the counters belong to.
+ * @returns an empty counters file for that machine.
+ */
 export const emptyCounters = (machineId: string): CountersFile =>
   Object.freeze({ schema: COUNTERS_SCHEMA, machine_id: machineId, projects: Object.freeze({}) })
 
@@ -54,7 +73,12 @@ const isBlockList = (value: unknown): value is readonly Block[] =>
     && entry[0] >= 1
     && entry[1] >= entry[0])
 
-/** Parse one machine's counters file; a broken one is an error, not a fresh start. */
+/**
+ * Parse one machine's counters file; a broken one is an error, not a fresh start.
+ * @param text - the file's JSON text.
+ * @param machineId - the machine the file must belong to, which is checked.
+ * @returns the parsed counters, or the refusal naming what is wrong with them.
+ */
 export const parseCounters = (text: string, machineId: string): Result<CountersFile, JiraError> => {
   let raw: unknown
   try {
@@ -95,7 +119,11 @@ export const parseCounters = (text: string, machineId: string): Result<CountersF
   return ok(Object.freeze({ schema: COUNTERS_SCHEMA, machine_id: machineId, projects: Object.freeze(projects) }))
 }
 
-/** Stable, human-diffable JSON: sorted keys, two spaces, LF, one trailing newline. */
+/**
+ * Stable, human-diffable JSON: sorted keys, two spaces, LF, one trailing newline.
+ * @param file - the counters file to write.
+ * @returns its JSON text, ready to be written atomically.
+ */
 export const renderCounters = (file: CountersFile): string => {
   const projects: Record<string, unknown> = {}
   for (const project of Object.keys(file.projects).sort()) {
@@ -109,7 +137,12 @@ export const renderCounters = (file: CountersFile): string => {
   return `${JSON.stringify({ schema: COUNTERS_SCHEMA, machine_id: file.machine_id, projects }, null, 2)}\n`
 }
 
-/** The highest number any machine has already claimed for this project (0 when none). */
+/**
+ * The highest number any machine has already claimed for this project (0 when none).
+ * @param files - every machine's counters file.
+ * @param project - the project whose number space is asked about.
+ * @returns the highest claimed number, counting both claimed blocks and `next` progress.
+ */
 export const highestClaim = (files: readonly CountersFile[], project: string): number => {
   let highest = 0
   for (const file of files) {
@@ -121,12 +154,21 @@ export const highestClaim = (files: readonly CountersFile[], project: string): n
   return highest
 }
 
+/**
+ * The outcome of a claim: the key to use, the counters file to write back, and whether a new
+ * block was taken (which is what makes the write worth doing).
+ */
 export type Claim = Readonly<{ key: string; counters: CountersFile; claimedNewBlock: boolean }>
 
 /**
  * Produce the next key for `project` from this machine's counters, claiming a fresh block
  * when the current one is used up. `files` must include **every** machine's counters, or
  * two machines could claim the same block.
+ * @param files - every machine's counters file, not just this machine's.
+ * @param machineId - the machine claiming the key.
+ * @param project - the project whose number space is claimed from.
+ * @param seed - the highest number already used on disk, when the store predates the counters.
+ * @returns the claim, or a refusal when the project has run out of numbers.
  */
 export const claimKey = (
   files: readonly CountersFile[],
@@ -188,7 +230,11 @@ export const claimKey = (
    engine it has nothing to do with). The `Store` type is imported type-only, so the runtime
    dependency arrow stays `store → counters`, never the reverse. ───────────────────────────── */
 
-/** Every machine's counters file. A missing `counters/` means nobody has claimed yet. */
+/**
+ * Every machine's counters file. A missing `counters/` means nobody has claimed yet.
+ * @param store - the ledger store to read from.
+ * @returns the parsed files; a broken one stops the read rather than being skipped.
+ */
 export const readAllCounters = async (store: Store): Promise<Result<readonly CountersFile[], JiraError>> => {
   const directory = join(store.files.root, 'counters')
   const listed = await listDir(directory)
@@ -212,6 +258,9 @@ export const readAllCounters = async (store: Store): Promise<Result<readonly Cou
  * The highest `<PROJECT>-<n>` already on disk. A store that predates the counters (or was
  * seeded by hand) has no counter entry, so the first claim must start after what exists —
  * otherwise the very first allocation collides with a file that is already there.
+ * @param store - the ledger store to look in.
+ * @param project - the project whose issue files are scanned.
+ * @returns the highest key number on disk, or 0 when the project has no issues yet.
  */
 export const highestExistingKey = async (store: Store, project: string): Promise<number> => {
   const directory = join(store.files.root, 'projects', project, 'issues')
@@ -234,6 +283,10 @@ export const highestExistingKey = async (store: Store, project: string): Promise
  *
  * The project key is validated before anything builds a path or a counter entry out of it
  * (decision 162, via `entity.ts`'s `assertProjectKey`).
+ * @param store - the ledger store the key is allocated in.
+ * @param project - the project to allocate for; validated before it reaches a path.
+ * @param at - the timestamp the store lock is taken with.
+ * @returns the allocated key, or a refusal when the project is unknown or exhausted.
  */
 export const allocateKey = async (
   store: Store,

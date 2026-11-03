@@ -29,20 +29,43 @@ export { PATH_LENGTH_WARN } from './system/paths.ts'
 const WRITE_ATTEMPTS = system.writeAttempts
 
 
+/** The minimum a filesystem operation needs from a store: an absolute root directory. */
 export type FileStore = Readonly<{ root: string }>
 
+/**
+ * Wrap a root directory as a store handle.
+ * @param root - the absolute directory the store lives in.
+ * @returns the frozen handle.
+ */
 export const fileStore = (root: string): FileStore => Object.freeze({ root })
 
 /**
  * The absolute forms of the path rules in `entity.ts` (decision 182): the rule itself is
  * store-relative and posix; this is where — and the only place where — it meets a root.
+ * @param store - the store whose root the path hangs from.
+ * @param project - the project key, which is also the directory name.
+ * @param key - the issue key naming the file.
+ * @returns the absolute, platform-native path of the issue file.
  */
 export const issuePath = (store: FileStore, project: string, key: IssueKey): string =>
   join(store.root, ...issueRelPath(project, key).split('/'))
 
+/**
+ * The absolute form of the comment-path rule, the only place that rule meets a root.
+ * @param store - the store whose root the path hangs from.
+ * @param project - the project key, which is also the directory name.
+ * @param key - the issue key naming the file.
+ * @returns the absolute, platform-native path of the comment file.
+ */
 export const commentsPath = (store: FileStore, project: string, key: IssueKey): string =>
   join(store.root, ...commentRelPath(project, key).split('/'))
 
+/**
+ * The absolute form of the project-path rule, the only place that rule meets a root.
+ * @param store - the store whose root the path hangs from.
+ * @param project - the project key.
+ * @returns the absolute, platform-native path of `project.md`.
+ */
 export const projectPath = (store: FileStore, project: string): string =>
   join(store.root, ...projectRelPath(project).split('/'))
 
@@ -68,6 +91,11 @@ const failureOf = (path: string, cause: unknown): FileFailure => {
   return Object.freeze({ kind, path, ...(code === undefined ? {} : { cause: code }) })
 }
 
+/**
+ * Read a file as UTF-8 text.
+ * @param path - the absolute path to read.
+ * @returns the text, or the file-level failure that says why it is unreadable.
+ */
 export const readText = async (path: string): Promise<Result<string, FileFailure>> => {
   try {
     return ok(await readFile(path, 'utf8'))
@@ -81,6 +109,8 @@ export const readText = async (path: string): Promise<Result<string, FileFailure
 /**
  * Probe: `true` when the path exists at all. Never throws and never distinguishes why not —
  * existence is a fact, not a failure, so this one returns a plain boolean.
+ * @param path - the absolute path to probe.
+ * @returns true when the path exists and is accessible.
  */
 export const exists = async (path: string): Promise<boolean> => {
   try {
@@ -95,6 +125,8 @@ export const exists = async (path: string): Promise<boolean> => {
  * The **names** in a directory, in the order the filesystem returned them (callers that need a
  * stable order sort themselves). A missing directory is `err` with `kind: 'missing'` — most
  * callers treat that as "empty", but they say so themselves instead of being defaulted.
+ * @param path - the absolute directory to list.
+ * @returns the entry names, or the file-level failure that says why it cannot be listed.
  */
 export const listDir = async (path: string): Promise<Result<readonly string[], FileFailure>> => {
   try {
@@ -107,7 +139,11 @@ export const listDir = async (path: string): Promise<Result<readonly string[], F
 /** One directory entry: a frozen data point, not Node's `Dirent` (which would leak node:fs types). */
 export type FsEntry = Readonly<{ name: string; isFile: boolean; isDirectory: boolean }>
 
-/** Like {@link listDir}, with type flags, for callers that descend or filter by kind. */
+/**
+ * Like {@link listDir}, with type flags, for callers that descend or filter by kind.
+ * @param path - the absolute directory to list.
+ * @returns the entries with their file and directory flags, or the file-level failure.
+ */
 export const listDirEntries = async (path: string): Promise<Result<readonly FsEntry[], FileFailure>> => {
   try {
     const entries = await readdir(path, { withFileTypes: true })
@@ -118,7 +154,11 @@ export const listDirEntries = async (path: string): Promise<Result<readonly FsEn
   }
 }
 
-/** `mkdir -p`: recursive, and an already-existing directory is success. */
+/**
+ * `mkdir -p`: recursive, and an already-existing directory is success.
+ * @param path - the directory to create.
+ * @returns nothing on success, or the `WRITE_FAILED` error naming the path.
+ */
 export const mkdirp = async (path: string): Promise<Result<void, JiraError>> => {
   try {
     await mkdir(path, { recursive: true })
@@ -131,6 +171,9 @@ export const mkdirp = async (path: string): Promise<Result<void, JiraError>> => 
 /**
  * Write text atomically. Rejects CR and BOM outright: a file that would violate the
  * store's encoding rules is a bug in the caller, not something to normalize silently.
+ * @param path - the file to write.
+ * @param text - the exact text to write; a BOM or a CR is refused, never normalized.
+ * @returns nothing on success, or the error that kept the write from landing.
  */
 export const writeTextAtomic = async (path: string, text: string): Promise<Result<void, JiraError>> => {
   if (text.startsWith('\uFEFF')) return err(ioFailed('refusing to write a BOM', { path }))
@@ -169,11 +212,13 @@ export const writeTextAtomic = async (path: string, text: string): Promise<Resul
   return err(ioFailed(`atomic write failed after ${WRITE_ATTEMPTS} attempts`, { path, lastFailure }))
 }
 
-/** Read one issue: the file name carries the key, so the caller supplies it. */
 /**
  * Read one issue: the file name carries the key, so the caller supplies it. The
  * file-level failure is translated here, which is why a missing issue reports the **key**
  * (not a path) and an unreadable one reports the path it could not read.
+ * @param store - the store to read from.
+ * @param key - the issue key, which is also the file name.
+ * @returns the decoded issue, or the domain error a caller can act on.
  */
 export const readIssue = async (
   store: FileStore,
@@ -189,6 +234,13 @@ export const readIssue = async (
   return decodeIssue(text.value, key)
 }
 
+/**
+ * Write one issue's file, creating its directory when it does not exist yet.
+ * @param store - the store to write into.
+ * @param text - the encoded file text.
+ * @param key - the issue key, which is also the file name.
+ * @returns nothing on success, or the error that kept the write from landing.
+ */
 export const writeIssue = async (store: FileStore, text: string, key: IssueKey): Promise<Result<void, JiraError>> =>
   writeTextAtomic(issuePath(store, projectOfKey(key), key), text)
 
@@ -199,6 +251,14 @@ export type IssueFacts = Readonly<{
   ageSeconds: number
 }>
 
+/**
+ * The derived facts a board or a list needs, computed without touching the store.
+ * @param issue - the issue to measure.
+ * @param closedStatuses - the statuses the vocabulary treats as closed.
+ * @param now - the instant the age is measured against.
+ * @param hasOpenBlocker - whether an unclosed blocker exists, which the link walk decides.
+ * @returns whether the issue is open, whether it is blocked, and how old its last update is.
+ */
 export const issueFacts = (
   issue: Issue,
   closedStatuses: readonly string[],
@@ -248,6 +308,8 @@ const isGeneratedInput = (path: string): boolean =>
  *
  * Reads the tree, so it lives here and not in `core/generate` (§3.1). Paths come back
  * store-relative and posix-shaped, so the hash is the same on Fedora and on Windows.
+ * @param root - the store's absolute root directory.
+ * @returns the entries sorted by path, or the error that stopped the walk.
  */
 export const sourceTreeEntries = async (root: string): Promise<Result<readonly SourceTreeEntry[], JiraError>> => {
   const found: SourceTreeEntry[] = []

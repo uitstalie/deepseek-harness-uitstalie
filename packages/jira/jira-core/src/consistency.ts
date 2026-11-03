@@ -17,12 +17,19 @@ import { type Issue } from './entity.ts'
 import { type KnowledgeEntry } from './kb.ts'
 import { machineIdOf } from './kb.ts'
 
+/**
+ * One consistency warning: a machine-readable code and the sentence a doctor prints for it.
+ */
 export type ConsistencyFinding = Readonly<{
   severity: 'warning'
   code: string
   message: string
 }>
 
+/**
+ * Everything the two-entity checks compare: the issues, the knowledge entries, and the machines
+ * that already have a registry file.
+ */
 export type ConsistencyInput = Readonly<{
   issues: readonly Issue[]
   knowledge: readonly KnowledgeEntry[]
@@ -30,6 +37,15 @@ export type ConsistencyInput = Readonly<{
   registeredMachines: readonly string[]
 }>
 
+/**
+ * Check the invariants no single side can answer: an issue's `kb_refs` and the entry's `issues[]`
+ * must agree in both directions, and every machine id the store mentions must have a
+ * `machines/<id>.md` entry.
+ *
+ * A dangling reference is not reported here — `lint` owns that — only one-sided ones.
+ * @param input - the issues, knowledge entries, and registered machines to compare.
+ * @returns the warnings found, empty when every cross-reference is mutual and every machine is known.
+ */
 export const checkConsistency = (input: ConsistencyInput): readonly ConsistencyFinding[] => {
   const findings: ConsistencyFinding[] = []
   const byKey = new Map(input.knowledge.map(entry => [String(entry.key), entry]))
@@ -90,5 +106,10 @@ export const checkConsistency = (input: ConsistencyInput): readonly ConsistencyF
   return Object.freeze(findings)
 }
 
+/**
+ * Render findings as the doctor's `! code: message` lines.
+ * @param findings - the warnings collected by `checkConsistency`.
+ * @returns one newline-terminated line per finding, or the empty string when there are none.
+ */
 export const renderConsistency = (findings: readonly ConsistencyFinding[]): string =>
   findings.length === 0 ? '' : `${findings.map(finding => `! ${finding.code}: ${finding.message}`).join('\n')}\n`

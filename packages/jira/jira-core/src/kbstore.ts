@@ -41,6 +41,10 @@ import { system } from './system/index.ts'
 /** The generated file inside a domain directory; never an entry (decision 87/120). */
 const GENERATED_IN_DOMAIN = Object.freeze(['index.md', 'log.md'])
 
+/**
+ * One scan's answer: the readable entries, the valid domain directories, and the files that could
+ * not be read, with the reason.
+ */
 export type KnowledgeListing = Readonly<{
   entries: readonly KnowledgeEntry[]
   /**
@@ -99,11 +103,22 @@ const listingOf = async (store: Store): Promise<Result<KnowledgeListing, JiraErr
   }))
 }
 
+/**
+ * List the knowledge library.
+ * @param store - the store to read.
+ * @returns the entries, domains, and broken files; empty when the store has no knowledge yet.
+ */
 export const listKnowledge = async (store: Store): Promise<Result<KnowledgeListing, JiraError>> => listingOf(store)
 
+/** One entry found by key, with the path it was read from and the warnings the read produced. */
 export type FoundKnowledge = Readonly<{ entry: KnowledgeEntry; path: string; warnings: readonly string[] }>
 
-/** Find one entry by key. It scans, because the domain is not part of the key (decision 75). */
+/**
+ * Find one entry by key. It scans, because the domain is not part of the key (decision 75).
+ * @param store - the store to search.
+ * @param key - the knowledge key to look for.
+ * @returns the found entry, or the not-found error naming the key.
+ */
 export const findKnowledge = async (store: Store, key: KnowledgeKey): Promise<Result<FoundKnowledge, JiraError>> => {
   const listing = await listingOf(store)
   if (!listing.ok) return listing
@@ -112,6 +127,13 @@ export const findKnowledge = async (store: Store, key: KnowledgeKey): Promise<Re
   return ok(Object.freeze({ entry: found, path: knowledgePath(found.domain, found.key), warnings: Object.freeze([]) }))
 }
 
+/**
+ * Search the knowledge library, ranking the entries against the query.
+ * @param store - the store to search.
+ * @param query - the text to rank against.
+ * @param topK - how many hits to keep, when the caller wants a bound.
+ * @returns the ranked hits, or the refusal that stopped the library from being read.
+ */
 export const searchKnowledgeIn = async (
   store: Store,
   query: string,
@@ -185,6 +207,11 @@ export type MirrorResult = Readonly<{
  * Decision 75 says `knowledge[].issues[]` and `issues[].kb_refs[]` are two faces of one fact, so an
  * entry that cites an issue must leave that issue pointing back (decision 198). Each issue is its own
  * transaction — git has no cross-file transaction — so a partial mirror is reported, never hidden.
+ * @param store - the store the cited issues live in.
+ * @param entry - the knowledge key the issues gain in their `kb_refs`.
+ * @param issues - the issues to mirror the citation onto.
+ * @param actor - the identity and clock the issue writes record.
+ * @returns which issues were updated and which failed, each with its error.
  */
 export const mirrorKnowledgeRefs = async (
   store: Store,
@@ -238,6 +265,11 @@ const originSource = (origin: Origin, at: Timestamp, extra: Readonly<{ source?: 
  * Create one entry: allocate a `KB-<n>` key, validate, write under that key's lock, commit.
  * The source quadruple is filled from the caller's own context rather than trusting the model to
  * type it (the audit that produced decision 75 found lineage nobody could trust).
+ * @param store - the store to write into.
+ * @param actor - the identity and clock the entry records.
+ * @param origin - the machine, OS, and tool recorded as the source.
+ * @param input - the draft the store turns into an entry.
+ * @returns the written entry and its commit outcome, or the refusal that wrote nothing.
  */
 export const createKnowledge = async (
   store: Store,
@@ -319,7 +351,16 @@ export type KnowledgePatch = Readonly<{
   sourceSha256?: string | null
 }>
 
-/** Update one entry in place: read under the lock, merge, re-validate, write, commit. */
+/**
+ * Update one entry in place: read under the lock, merge, re-validate, write, commit.
+ * @param store - the store the entry lives in.
+ * @param key - the knowledge key to update.
+ * @param actor - the identity and clock the write records.
+ * @param _origin - the caller's origin, unused: an update keeps the stored source rather than
+ *   re-capturing one.
+ * @param patch - the fields to change; an omitted field keeps its stored value.
+ * @returns the written entry and its commit outcome, or the refusal that wrote nothing.
+ */
 export const updateKnowledge = async (
   store: Store,
   key: KnowledgeKey,
@@ -397,9 +438,20 @@ export const updateKnowledge = async (
 /** The `KB` project the keys are allocated in; exported so the tool can explain itself. */
 export const KB_KEY_SPACE = KNOWLEDGE_KEY_SPACE
 
+/**
+ * The knowledge key space, as a string for callers that print it or explain themselves.
+ * @returns the `KB` project key the knowledge numbers are allocated in.
+ */
 export const knowledgeKeySpace = (): string => KB_KEY_SPACE
 
-/** A convenience for callers that have an identity rather than a machine id (decision 48). */
+/**
+ * A convenience for callers that have an identity rather than a machine id (decision 48).
+ * @param identity - the writer's identity, when it carries a machine.
+ * @param machineId - the fallback machine id, used when the identity carries none.
+ * @param tool - the tool recorded as the source.
+ * @param os - the OS recorded as the source.
+ * @returns the origin tuple the write records.
+ */
 export const originFromIdentity = (
   identity: Identity | undefined,
   machineId: string,

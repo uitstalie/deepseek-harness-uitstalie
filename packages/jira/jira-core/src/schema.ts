@@ -14,8 +14,13 @@
 import { type JiraError, invalidInput } from './errors.ts'
 import { type Result, err, ok } from './result.ts'
 
+/** The JSON types a tool argument or output field may declare. */
 export type FieldType = 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array' | 'null'
 
+/**
+ * One field of a tool's object schema: its type, whether it is required, how it reads to the
+ * model, and the values it accepts when it is an enumeration.
+ */
 export type FieldSpec = Readonly<{
   type: FieldType
   required?: boolean
@@ -23,12 +28,15 @@ export type FieldSpec = Readonly<{
   enum?: readonly string[]
 }>
 
+/** A JSON Schema object as this package declares it: a plain frozen record the host serializes. */
 export type JsonSchema = Readonly<Record<string, unknown>>
 
 /**
  * Build the parameters (or output) schema for an object. `additionalProperties: false` is
  * not decoration: the host shows this to the model, and it is what makes a stray argument
  * a visible mistake instead of a silent no-op.
+ * @param fields - the object's fields, keyed by their argument names.
+ * @returns the closed object schema, with the required names collected into an array.
  */
 export const objectSchema = (fields: Readonly<Record<string, FieldSpec>>): JsonSchema => {
   const properties: Record<string, unknown> = {}
@@ -77,6 +85,9 @@ const matchesType = (value: unknown, type: FieldType): boolean => {
 /**
  * Strict validation, in one pass, reporting **every** problem in `context.issues` so a
  * caller can fix them together instead of one round trip at a time.
+ * @param fields - the fields the arguments are checked against.
+ * @param args - the arguments the caller supplied.
+ * @returns every argument problem at once, or the arguments as a frozen record.
  */
 export const validateArgs = (
   fields: Readonly<Record<string, FieldSpec>>,
@@ -114,6 +125,10 @@ export const validateArgs = (
 /**
  * Check a free-form object against the keys we accept (decision 49: an unknown key is
  * refused, and *named*, rather than ignored). Nested objects keep their own checks.
+ * @param value - the object to check; absent or null reads as empty.
+ * @param allowed - the keys this field accepts.
+ * @param field - the field's name, used in the error.
+ * @returns the object's own keys, or the refusal naming the unknown ones.
  */
 export const pickKnownKeys = (
   value: unknown,

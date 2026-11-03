@@ -20,9 +20,15 @@ import { type JiraError, ioFailed } from './errors.ts'
 import { type Result, err, ok } from './result.ts'
 import { readText, writeTextAtomic } from './io.ts'
 
+/** What a git invocation printed, and the code it exited with. */
 export type GitResult = Readonly<{ code: number; stdout: string; stderr: string }>
 
+/** How a single git invocation is bounded: an optional timeout, after which the child is killed. */
 export type GitRunnerOptions = Readonly<{ timeoutMs?: number }>
+/**
+ * The injectable shape every git call in this package goes through: the repository root, the
+ * arguments, and optional run options.
+ */
 export type GitRunner = (root: string, args: readonly string[], options?: GitRunnerOptions) => Promise<GitResult>
 
 /** The `.gitattributes` that must exist before anything else is committed (decision 5). */
@@ -35,6 +41,10 @@ export const GITATTRIBUTES = [
   '',
 ].join('\n')
 
+/**
+ * The `.gitignore` that keeps machine-local state, derived data, and atomic-write temp files out
+ * of history (decisions 73/119/175).
+ */
 export const GITIGNORE = [
   '# Derived data is never versioned (decision 73): locks, temp files, caches, identity.',
   '.jira/',
@@ -49,6 +59,13 @@ export const GITIGNORE = [
   '',
 ].join('\n')
 
+/**
+ * Run one git command in a repository.
+ * @param root - the repository root; `-C` is the only authority on which repository this is.
+ * @param args - the arguments that follow `-C <root>`.
+ * @param options - an optional timeout, after which the child is killed.
+ * @returns the exit code and the output; a spawn failure is code -1 rather than a throw.
+ */
 export const runGit: GitRunner = (root, args, options: GitRunnerOptions = {}) =>
   new Promise((resolve) => {
     const child = spawn('git', ['-C', root, ...args], {
@@ -89,6 +106,11 @@ export const runGit: GitRunner = (root, args, options: GitRunnerOptions = {}) =>
     })
   })
 
+/**
+ * Whether the root already holds a git repository.
+ * @param root - the directory to probe.
+ * @returns true when `<root>/.git` exists.
+ */
 export const isRepository = async (root: string): Promise<boolean> => {
   try {
     await access(join(root, '.git'))
@@ -98,11 +120,6 @@ export const isRepository = async (root: string): Promise<boolean> => {
   }
 }
 
-/**
- * Create the repository, with `.gitattributes` as its first content and the two settings
- * decision 81 owns (`core.fileMode=false`, `i18n.commitEncoding=utf-8`). Existing values
- * are never overwritten: the plugin only fills in what is missing.
- */
 
 /** The patterns of a list, ignoring comments and blanks. */
 const patternsOf = (text: string): string[] =>
@@ -134,6 +151,13 @@ const migrateGitignore = async (root: string, run: GitRunner): Promise<void> => 
   }
   await run(root, ['add', '--', '.gitignore'])
 }
+/**
+ * Create the repository, with `.gitattributes` as its first content and the settings decision 81
+ * owns. Existing values are never overwritten: only what is missing is filled in.
+ * @param root - the store root that becomes a repository.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns whether the repository was created now; an existing one is migrated and reports false.
+ */
 export const initializeRepository = async (
   root: string,
   run: GitRunner = runGit,
@@ -172,7 +196,12 @@ const ensureFile = async (path: string, content: string): Promise<Result<boolean
   return written.ok ? ok(true) : written
 }
 
-/** `git config user.name`, for the `human:<name>` identity of §4.9. */
+/**
+ * `git config user.name`, for the `human:<name>` identity of §4.9.
+ * @param root - the repository to ask.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns the configured name, or undefined when the machine has none.
+ */
 export const gitUserName = async (root: string, run: GitRunner = runGit): Promise<string | undefined> => {
   const result = await run(root, ['config', '--get', 'user.name'])
   return result.code === 0 && result.stdout !== '' ? result.stdout : undefined
@@ -186,14 +215,22 @@ export type CommitFacts = Readonly<{ key: string; what: string; revision?: numbe
  *
  * `[no-issue]` must be on the **first line** (decision 67), and machines/projects are metadata
  * rather than issue work, so their commits say so explicitly instead of borrowing a key.
+ * @param what - the change the commit makes, in the words the subject uses.
+ * @returns the subject with the `[no-issue]` marker on its first line.
  */
 export const noIssueSubject = (what: string): string => `${what} [no-issue]`
 
+/**
+ * The subject line for a change that belongs to an issue (decision 67).
+ * @param facts - the issue key, what changed, and the revision it produced.
+ * @returns the subject, with the revision in parentheses when there is one.
+ */
 export const commitSubject = (facts: CommitFacts): string =>
   `${facts.key}: ${facts.what}${facts.revision === undefined ? '' : ` (rev ${facts.revision})`}`
 
 /** The identity a store commit falls back to when the machine has none (decision 146). */
 export const FALLBACK_COMMIT_NAME = 'dsh-jira'
+/** The email of the fallback committer identity, used only when the machine has none. */
 export const FALLBACK_COMMIT_EMAIL = 'jira@local'
 
 /**
@@ -214,6 +251,9 @@ export const FALLBACK_COMMIT_EMAIL = 'jira@local'
  * replaying creates one, so a rebase needs a committer identity too. Without it the rebase stops
  * with "Committer identity unknown" and leaves the store mid-rebase — the push then never happens at
  * all. `core/rebase.ts` passes the same arguments for exactly that reason (decisions 119/146/148).
+ * @param root - the repository to ask.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns the `-c` arguments, empty when the machine already has both identity keys.
  */
 export const identityArgs = async (root: string, run: GitRunner = runGit): Promise<readonly string[]> => {
   const args: string[] = []
@@ -231,6 +271,9 @@ export const identityArgs = async (root: string, run: GitRunner = runGit): Promi
  * the audit trail says a person wrote it even though the tool performed the commit. `undefined` when
  * the machine has no identity at all: there is then no human name to preserve, and decision 146's
  * fallback (supplied per invocation) is the honest answer.
+ * @param root - the repository to ask.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns the `Name <email>` author string, or undefined when git has no identity.
  */
 export const humanAuthorOf = async (root: string, run: GitRunner = runGit): Promise<string | undefined> => {
   const name = await run(root, ['config', '--get', 'user.name'])
@@ -277,6 +320,12 @@ const commitStaged = async (
  * turns the agent's own commit into a silent `committed: false`), and an in-flight `<file>.tmp-<pid>-<n>`
  * from an atomic write. `:(exclude,literal)` and `:(exclude,glob)` rather than `git reset` afterwards:
  * nothing is ever staged, so a failure between the two steps cannot leave a half-staged index behind.
+ * @param root - the repository to sweep.
+ * @param exclude - store-relative paths to leave alone, such as another transaction's files.
+ * @param subject - the commit subject line.
+ * @param run - the git runner to use, injectable for tests.
+ * @param author - the author to record, when somebody else's work is being committed.
+ * @returns the paths committed; empty when nothing was left to commit.
  */
 export const stageAllExceptAndCommit = async (
   root: string,
@@ -305,6 +354,11 @@ export const stageAllExceptAndCommit = async (
  * (this write's own paths), while this one has to take whatever anybody left behind — that is what
  * "the working tree has uncommitted changes" means. `git add -A` handles edits, deletions, renames
  * and untracked files uniformly, and still respects `.gitignore`, so `var/` and `.jira/` stay out.
+ * @param root - the repository to sweep.
+ * @param subject - the commit subject line.
+ * @param run - the git runner to use, injectable for tests.
+ * @param author - the author to record, when somebody else's work is being committed.
+ * @returns the paths committed; empty when the tree had nothing to commit.
  */
 export const stageAllAndCommit = async (
   root: string,
@@ -340,6 +394,11 @@ export const stageAllAndCommit = async (
  * Stage exactly the given paths and commit them. Returns `false` when there was nothing to
  * commit (a no-op update must not create an empty commit), and an error carrying git's own
  * words when the commit failed — the caller keeps the written file either way, and says so.
+ * @param root - the repository to commit in.
+ * @param paths - the store-relative paths this write produced.
+ * @param subject - the commit subject line.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns whether a commit was created; false when nothing was actually staged.
  */
 export const stageAndCommit = async (
   root: string,
@@ -370,12 +429,18 @@ export const stageAndCommit = async (
   return ok(true)
 }
 
-/** Whether a push would go anywhere at all: no remote means the store is local-only. */
+/**
+ * Whether a push would go anywhere at all: no remote means the store is local-only.
+ * @param root - the repository to ask.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns true when at least one remote is configured.
+ */
 export const hasRemote = async (root: string, run: GitRunner = runGit): Promise<boolean> => {
   const remotes = await run(root, ['remote'])
   return remotes.code === 0 && remotes.stdout !== ''
 }
 
+/** How far the current branch has drifted from its upstream: commits ahead and behind. */
 export type AheadBehind = Readonly<{ ahead: number; behind: number }>
 
 /**
@@ -383,6 +448,9 @@ export type AheadBehind = Readonly<{ ahead: number; behind: number }>
  * A failed `rev-list` (no upstream, for one) reads as zero — drift reporting must never
  * break the command that carries it. Decision 187: this used to be two inline `rev-list`
  * calls in the CLI's sync handler.
+ * @param root - the repository to ask.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns the commit counts; both zero when there is no upstream or git cannot count.
  */
 export const aheadBehind = async (root: string, run: GitRunner = runGit): Promise<AheadBehind> => {
   const ahead = await run(root, ['rev-list', '--count', '@{u}..HEAD'])

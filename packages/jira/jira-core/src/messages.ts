@@ -21,30 +21,63 @@ export const NEW_NEEDS_SUMMARY = 'new 需要 --summary'
 /**
  * A project key becomes `projects/<key>/`, so both surfaces reject a bad one with the same words
  * before the store is ever touched (decision 162).
+ * @param project - the key the user typed.
+ * @returns the refusal sentence, naming the shape a key must have.
  */
 export const invalidProjectKey = (project: string): string =>
   `项目键 "${project}" 不合法（形如 DH：字母数字，至多六位）`
 
-/** Appended to a create/update/register result when the write was also committed. */
+/**
+ * Appended to a create/update/register result when the write was also committed.
+ * @param committed - whether the write became a commit.
+ * @returns the suffix, empty when the write was not committed.
+ */
 export const committedSuffix = (committed: boolean): string => (committed ? '并已提交' : '')
 
-/** "KB-1 已创建并已提交" — create results on both surfaces (issue and knowledge alike). */
+/**
+ * "KB-1 已创建并已提交" — create results on both surfaces (issue and knowledge alike).
+ * @param key - the key of the thing that was created.
+ * @param committed - whether the create became a commit.
+ * @returns the result line both surfaces print.
+ */
 export const createdMessage = (key: string, committed: boolean): string => `${key} 已创建${committedSuffix(committed)}`
 
-/** "KB-1 已更新并已提交" — the knowledge update's result line. */
+/**
+ * "KB-1 已更新并已提交" — the knowledge update's result line.
+ * @param key - the key of the thing that was updated.
+ * @param committed - whether the update became a commit.
+ * @returns the result line both surfaces print.
+ */
 export const updatedMessage = (key: string, committed: boolean): string => `${key} 已更新${committedSuffix(committed)}`
 
-/** "windows 已注册并已提交" — tag registration. */
+/**
+ * "windows 已注册并已提交" — tag registration.
+ * @param name - the tag that was registered.
+ * @param committed - whether the registration became a commit.
+ * @returns the result line both surfaces print.
+ */
 export const registeredMessage = (name: string, committed: boolean): string => `${name} 已注册${committedSuffix(committed)}`
 
-/** The note a filtered board appends: how many issues it is not showing, and how to see them. */
+/**
+ * The note a filtered board appends: how many issues it is not showing, and how to see them.
+ * @param hidden - how many issues the filter left out.
+ * @returns the note, starting with a blank line so it stands apart from the board.
+ */
 export const hiddenIssuesNote = (hidden: number): string =>
   `\n（另有 ${String(hidden)} 条 issue 被隐藏 —— 已关闭或被过滤；用 --all 显示）`
 
-/** Both surfaces' sync report leads with the same "推送：" line. */
+/**
+ * Both surfaces' sync report leads with the same "推送：" line.
+ * @param detail - what the push did, in the words the caller has.
+ * @returns the prefixed line.
+ */
 export const syncPushLine = (detail: string): string => `推送：${detail}`
 
-/** `tags` takes no action but `lint`; echo what was typed when there was something to echo. */
+/**
+ * `tags` takes no action but `lint`; echo what was typed when there was something to echo.
+ * @param action - the action the user typed, when they typed one.
+ * @returns the refusal sentence, naming the action when there was one.
+ */
 export const unknownTagsAction = (action?: string): string =>
   action === undefined ? '未知的 tags 动作（可选 lint）' : `未知的 tags 动作 "${action}"（可选 lint）`
 

@@ -17,8 +17,13 @@ import { type Issue, issueRelPath } from './entity.ts'
 import { type TagDef } from './tags.ts'
 import { type Vocab } from './vocab.ts'
 
+/** How serious a lint finding is: an error fails the check, a warning is only reported. */
 export type LintSeverity = 'error' | 'warning'
 
+/**
+ * One structural finding: its severity, its stable code, the sentence a reader sees, and the file
+ * it belongs to when there is one.
+ */
 export type LintFinding = Readonly<{
   severity: LintSeverity
   code: string
@@ -26,6 +31,10 @@ export type LintFinding = Readonly<{
   path?: string
 }>
 
+/**
+ * Everything lint checks: the issues, the knowledge entries, the files that could not be read,
+ * and the vocabulary and tags that decide what is legal.
+ */
 export type LintInput = Readonly<{
   issues: readonly Issue[]
   knowledge: readonly KnowledgeEntry[]
@@ -35,6 +44,7 @@ export type LintInput = Readonly<{
   knownTags: readonly TagDef[]
 }>
 
+/** How much lint examined, so the report can say what it covered. */
 export type LintCounts = Readonly<{
   issues: number
   knowledge: number
@@ -42,12 +52,19 @@ export type LintCounts = Readonly<{
   references: number
 }>
 
+/** The outcome: whether any error was found, every finding, and the counts behind them. */
 export type LintReport = Readonly<{
   ok: boolean
   findings: readonly LintFinding[]
   counts: LintCounts
 }>
 
+/**
+ * Check the store's structure: every value belongs to a declared set, and every reference
+ * resolves.
+ * @param input - the issues, knowledge entries, and vocabularies to check.
+ * @returns the findings and their counts; `ok` is false when any finding is an error.
+ */
 export const lintStore = (input: LintInput): LintReport => {
   const findings: LintFinding[] = []
   const add = (severity: LintSeverity, code: string, message: string, path?: string): void => {
@@ -122,7 +139,11 @@ export const lintStore = (input: LintInput): LintReport => {
   })
 }
 
-/** The human-facing report: findings first, then what was examined. */
+/**
+ * The human-facing report: findings first, then what was examined.
+ * @param report - the report to render.
+ * @returns the rendered lines, newline-terminated.
+ */
 export const renderLintReport = (report: LintReport): string => {
   const lines = report.findings.map(finding =>
     `${finding.severity === 'error' ? '✗' : '!'} ${finding.code}: ${finding.message}`)

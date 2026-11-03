@@ -24,11 +24,26 @@ import { type JiraError, ioFailed } from './errors.ts'
 import { type Result, err, ok } from './result.ts'
 import { system } from './system/index.ts'
 
+/**
+ * The two git hooks that bind a commit to an issue: `commit-msg` validates the message,
+ * `prepare-commit-msg` prefixes the branch's key.
+ */
 export const HOOK_KINDS = ['commit-msg', 'prepare-commit-msg'] as const
+/** One of the hook kinds this package installs. */
 export type HookKind = (typeof HOOK_KINDS)[number]
 
+/**
+ * The name an existing hook is preserved under before our shim replaces it.
+ * @param kind - the hook being preserved.
+ * @returns the `.jira-backup` name in the hooks directory.
+ */
 export const backupNameOf = (kind: HookKind): string => `${kind}.jira-backup`
 
+/**
+ * The hooks directory of a repository.
+ * @param repoRoot - the repository root.
+ * @returns the absolute path of `.git/hooks`.
+ */
 export const hooksDirectory = (repoRoot: string): string => join(repoRoot, '.git', 'hooks')
 
 /** What `jira hooks status` reports for one hook. */
@@ -48,6 +63,11 @@ const exists = async (path: string): Promise<boolean> => {
   }
 }
 
+/**
+ * Report what each hook currently is: our shim, somebody else's preserved hook, or absent.
+ * @param repoRoot - the repository root.
+ * @returns one state per hook kind.
+ */
 export const hookStatus = async (repoRoot: string): Promise<readonly HookState[]> => {
   const directory = hooksDirectory(repoRoot)
   const states: HookState[] = []
@@ -65,6 +85,10 @@ export const hookStatus = async (repoRoot: string): Promise<readonly HookState[]
   return Object.freeze(states)
 }
 
+/**
+ * The line every generated shim carries, which is how status and re-installation recognize our
+ * own hook rather than somebody else's.
+ */
 export const SHIM_MARKER = 'dsh-jira hook shim'
 
 /**
@@ -74,6 +98,9 @@ export const SHIM_MARKER = 'dsh-jira hook shim'
  * that *is* on the PATH there is usually WSL, which cannot run a Windows-path script. So the shell is
  * resolved once, at install time, and embedded in the shim — a preserved `#!/bin/sh` hook then runs
  * even on a machine whose PATH says nothing about shells.
+ * @param root - the repository root.
+ * @param run - the git runner to use, injectable for tests.
+ * @returns the shell to embed in a shim, or undefined when none can be found on Windows.
  */
 export const resolveGitShell = async (root: string, run: GitRunner = runGit): Promise<string | undefined> => {
   if (!system.isWindows) return 'sh'
@@ -97,6 +124,10 @@ export const resolveGitShell = async (root: string, run: GitRunner = runGit): Pr
  * `require` (not `import`) because git runs the hook file with no extension, so Node loads it as
  * CommonJS. The CLI path is embedded at install time and can be overridden with `JIRA_CLI`, which is
  * what a developer with two checkouts wants.
+ * @param kind - which hook the shim installs.
+ * @param cliPath - the CLI entry the shim runs.
+ * @param shell - the shell a preserved POSIX hook is run with, when one was resolved.
+ * @returns the shim source, newline-terminated.
  */
 export const hookShim = (kind: HookKind, cliPath: string, shell?: string): string => [
   '#!/usr/bin/env node',
@@ -153,6 +184,7 @@ export const hookShim = (kind: HookKind, cliPath: string, shell?: string): strin
   'process.exit(result.status === null ? 1 : result.status)',
   '',
 ].join('\n')
+/** What an install did: the hooks written, the hooks it had to back up, and where they live. */
 export type InstallReport = Readonly<{
   installed: readonly HookKind[]
   backedUp: readonly HookKind[]
@@ -161,6 +193,9 @@ export type InstallReport = Readonly<{
 
 /**
  * Install both hooks. Idempotent: re-running replaces our own shim and never re-backs-up a backup.
+ * @param repoRoot - the repository to install into.
+ * @param cliPath - the CLI entry the shims run.
+ * @returns the install report, or the failure that left the hooks untouched.
  */
 export const installHooks = async (
   repoRoot: string,
@@ -198,7 +233,11 @@ export const installHooks = async (
   return ok(Object.freeze({ installed: Object.freeze(installed), backedUp: Object.freeze(backedUp), directory }))
 }
 
-/** Put the original hooks back, and remove ours. */
+/**
+ * Put the original hooks back, and remove ours.
+ * @param repoRoot - the repository to uninstall from.
+ * @returns the hooks restored or removed; a hook that is not ours is left alone.
+ */
 export const uninstallHooks = async (repoRoot: string): Promise<Result<readonly HookKind[], JiraError>> => {
   const directory = hooksDirectory(repoRoot)
   const restored: HookKind[] = []
@@ -223,6 +262,11 @@ export const uninstallHooks = async (repoRoot: string): Promise<Result<readonly 
   return ok(Object.freeze(restored))
 }
 
+/**
+ * Render the hook states for the human surface, one line per hook.
+ * @param states - the states to render.
+ * @returns the rendered lines, newline-separated.
+ */
 export const renderHookStatus = (states: readonly HookState[]): string =>
   states.map(state =>
     `${state.installed ? '✓' : '·'} ${state.kind}${state.backup ? '  （原有的钩子已保留并串联）' : ''}`).join('\n')

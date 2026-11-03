@@ -19,10 +19,14 @@ import { writeTextAtomic } from './io.ts'
 import { type JiraError, ioFailed, jiraError } from './errors.ts'
 import { type Result, err, ok } from './result.ts'
 
+/** How long an acquirer waits for a busy lock before it gets a `LOCK_TIMEOUT` error. */
 export const DEFAULT_LOCK_TIMEOUT_MS = 10_000
+/** How long a held lock may go without proving itself alive before it may be reclaimed. */
 export const DEFAULT_LOCK_STALE_MS = 60_000
+/** The base backoff between acquisition attempts; up to the same amount of jitter is added. */
 export const LOCK_BACKOFF_MS = 100
 
+/** Who holds a lock: the process, the host, the machine, and when it was taken. */
 export type LockOwner = Readonly<{
   pid: number
   host: string
@@ -30,8 +34,12 @@ export type LockOwner = Readonly<{
   at: Timestamp
 }>
 
+/** A held lock: the directory it owns and the owner record written into it. */
 export type LockHandle = Readonly<{ path: string; owner: LockOwner }>
 
+/**
+ * The clock, sleep, and randomness a lock runs on — injected so tests need no real time.
+ */
 export type LockEnvironment = Readonly<{
   /** Milliseconds since the epoch — injected so tests can travel in time. */
   now: () => number
@@ -40,12 +48,17 @@ export type LockEnvironment = Readonly<{
   random: () => number
 }>
 
+/** The real clock, a real sleep, and `Math.random`, for production callers. */
 export const realLockEnvironment: LockEnvironment = Object.freeze({
   now: () => Date.now(),
   sleep: (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)),
   random: () => Math.random(),
 })
 
+/**
+ * How a lock acquisition behaves: the wait budget, the staleness window, the heartbeat interval,
+ * and the environment it measures time with.
+ */
 export type LockOptions = Readonly<{
   timeoutMs?: number
   staleMs?: number
@@ -86,7 +99,11 @@ const ownerSnapshot = async (path: string): Promise<string | undefined> => {
   }
 }
 
-/** A lock directory with no readable owner is treated as abandoned, not as held. */
+/**
+ * A lock directory with no readable owner is treated as abandoned, not as held.
+ * @param path - the lock directory.
+ * @returns the owner record, or undefined when it is missing or unparsable.
+ */
 export const readOwner = async (path: string): Promise<LockOwner | undefined> => {
   try {
     const parsed = JSON.parse(await readFile(ownerPath(path), 'utf8')) as Partial<LockOwner>
@@ -127,6 +144,10 @@ const staleSince = async (path: string, nowMs: number, staleMs: number): Promise
 /**
  * Whether an owner record *looks* old. Kept for diagnostics and for reading a lock from the
  * outside; the acquisition path deliberately does not use it (see {@link staleSince}).
+ * @param owner - the owner record, or undefined when the directory has none.
+ * @param nowMs - milliseconds since the epoch.
+ * @param staleMs - how old a record may be and still count as held.
+ * @returns true when the record is missing, unparsable, or older than the window.
  */
 export const isStale = (owner: LockOwner | undefined, nowMs: number, staleMs: number): boolean => {
   if (owner === undefined) return true
@@ -201,6 +222,10 @@ const reclaimLock = async (path: string, env: LockEnvironment, staleMs: number):
 /**
  * Take the lock, or fail after `timeoutMs`. A stale holder (older than `staleMs`, or a
  * directory whose owner file is gone) is reclaimed once and retried immediately.
+ * @param path - the lock directory to take.
+ * @param owner - the record written into it once it is ours.
+ * @param options - the wait budget, staleness window, and environment.
+ * @returns the handle, or a `LOCK_TIMEOUT` error naming the holder.
  */
 export const acquireLock = async (
   path: string,
@@ -247,7 +272,10 @@ export const acquireLock = async (
   }
 }
 
-/** Release is best-effort and idempotent: a lock already gone is not an error. */
+/**
+ * Release is best-effort and idempotent: a lock already gone is not an error.
+ * @param handle - the lock to release.
+ */
 export const releaseLock = async (handle: LockHandle): Promise<void> => {
   await rm(handle.path, { recursive: true, force: true }).catch(() => undefined)
 }
@@ -255,6 +283,11 @@ export const releaseLock = async (handle: LockHandle): Promise<void> => {
 /**
  * Run `body` with the lock held. The handle is handed in so the body can compare owners,
  * and release happens on every path — success, failure, or a thrown exception.
+ * @param path - the lock directory to take.
+ * @param owner - the record written into it once it is ours.
+ * @param options - the wait budget, staleness window, heartbeat, and environment.
+ * @param body - the work to run while the lock is held.
+ * @returns the body's result; the lock is released on success, failure, and throw alike.
  */
 export const withLock = async <T>(
   path: string,
@@ -293,10 +326,20 @@ export const withLock = async <T>(
   }
 }
 
-/** The two lock paths a store uses (decision 58): one issue, or the store itself. */
+/**
+ * The two lock paths a store uses (decision 58): one issue, or the store itself.
+ * @param root - the store's absolute root.
+ * @param key - the issue key the lock is scoped to.
+ * @returns the issue's lock directory path.
+ */
 export const issueLockPath = (root: string, key: string): string =>
   join(root, '.jira', 'locks', `${key}.lock`)
 
+/**
+ * The store-wide lock, which serialises commits and key allocation.
+ * @param root - the store's absolute root.
+ * @returns the store lock directory path.
+ */
 export const storeLockPath = (root: string): string => join(root, '.jira', 'lock')
 
 /**
@@ -307,6 +350,8 @@ export const storeLockPath = (root: string): string => join(root, '.jira', 'lock
  * two processes on one clone — the live plugin's push queue and a `jira sync` a person runs in a
  * terminal — used to fetch and rebase on top of each other, and git answers the loser with "fetch
  * updated the current branch".
+ * @param root - the store's absolute root.
+ * @returns the network lock directory path.
  */
 export const networkLockPath = (root: string): string => join(root, '.jira', 'network.lock')
 
@@ -324,6 +369,9 @@ export type LockOwnerSource = Readonly<{ host: string; machineId: string }>
  * It used to be built five times (issue path, knowledge path, machines, projects, network lock)
  * with three different meanings for `host` — the store's, the calling tool's, and a hardcoded
  * `'dsh'`. An audit field with three sources is a field nobody can trust (decision 181).
+ * @param source - the store, or anything carrying its host and machine id.
+ * @param at - when the lock is taken.
+ * @returns the frozen owner record for this process.
  */
 export const lockOwnerOf = (source: LockOwnerSource, at: Timestamp): LockOwner =>
   Object.freeze({ pid: process.pid, host: source.host, machine_id: source.machineId, at })
@@ -334,6 +382,10 @@ export type LockOptionsSource = Readonly<{
   env: LockEnvironment
 }>
 
-/** The options every store lock runs with — the one place this triple is assembled (decision 181). */
+/**
+ * The options every store lock runs with — the one place this triple is assembled (decision 181).
+ * @param source - the store, or anything carrying a lock budget and environment.
+ * @returns the frozen options every store lock is acquired with.
+ */
 export const lockOptionsOf = (source: LockOptionsSource): LockOptions =>
   Object.freeze({ timeoutMs: source.lock.timeoutMs, staleMs: source.lock.staleMs, env: source.env })

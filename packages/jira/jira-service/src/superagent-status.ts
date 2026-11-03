@@ -180,6 +180,7 @@ type TriggerComment = Readonly<{
  * @param issues - every decoded issue.
  * @param commentsByKey - comments per issue, oldest first.
  * @param limit - how many entries to keep.
+ * @param before - only proposals older than this timestamp are returned; the page's cursor.
  * @returns the proposals, newest first.
  */
 export const superagentTriggersOf = (

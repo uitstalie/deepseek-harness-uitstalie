@@ -15,6 +15,10 @@ import { type JiraError, invalidInput } from './errors.ts'
 import { type Result, err, ok } from './result.ts'
 import { systemFor, type SystemEnv } from './system/index.ts'
 
+/**
+ * The inputs a root resolution is decided from: a configured value, the host environment, and
+ * the platform whose path rules apply.
+ */
 export type RootRequest = Readonly<{
   /** From `--root`, or the plugin's `root` config value. */
   configured?: string
@@ -23,6 +27,10 @@ export type RootRequest = Readonly<{
   platform?: string
 }>
 
+/**
+ * The directory name a store gets under `$DSH_HOME` (and the user profile's `.dsh`) when
+ * nothing else names a root.
+ */
 export const DEFAULT_ROOT_DIRNAME = 'jira'
 
 /**
@@ -45,6 +53,12 @@ const acceptRoot = (root: string, request: RootRequest): Result<string, JiraErro
   ))
 }
 
+/**
+ * Resolve the store root by the documented precedence: the configured value, then `$JIRA_ROOT`,
+ * then `$DSH_HOME/jira`, then the platform's default under the user profile.
+ * @param request - the configured value, environment, and optional platform to resolve from.
+ * @returns the accepted root, or a refusal when nothing resolves or the root is too long.
+ */
 export const resolveStoreRoot = (request: RootRequest): Result<string, JiraError> => {
   // Trimmed before it reaches a path (decision 169): `--root ' /srv/jira '` used to pass the spaces to
   // `git -C`, which then reported a directory that does not exist.
@@ -63,6 +77,10 @@ export const resolveStoreRoot = (request: RootRequest): Result<string, JiraError
 }
 
 
-/** `root: null` in a config file means "not configured", not "the literal null". */
+/**
+ * `root: null` in a config file means "not configured", not "the literal null".
+ * @param value - the raw config value.
+ * @returns the configured root when it is a non-blank string, otherwise undefined.
+ */
 export const configuredRootOf = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value : undefined

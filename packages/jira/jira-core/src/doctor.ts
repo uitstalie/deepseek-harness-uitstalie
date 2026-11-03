@@ -20,8 +20,13 @@ import { type Result, ok } from './result.ts'
 import { type Vocab, parseVocab } from './vocab.ts'
 import { type Timestamp } from './entity.ts'
 
+/** How serious a doctor finding is: an error makes writes unreliable, a warning makes reading misleading. */
 export type Severity = 'error' | 'warning'
 
+/**
+ * One doctor finding: its severity, its stable code, the sentence a reader sees, and the file it
+ * belongs to when there is one.
+ */
 export type Problem = Readonly<{
   severity: Severity
   code: string
@@ -29,10 +34,17 @@ export type Problem = Readonly<{
   path?: string
 }>
 
+/** One issue file as the snapshot read it: its store-relative path, its project, its key, and its text. */
 export type IssueFile = Readonly<{ path: string; project: string; key: string; text: string }>
+/** One comment file as the snapshot read it: its path, the key it belongs to, and its text. */
 export type CommentFile = Readonly<{ path: string; key: string; text: string }>
+/** One machine's counters file as the snapshot read it: the machine id, the path, and the raw JSON. */
 export type CountersEntry = Readonly<{ machineId: string; path: string; raw: string }>
 
+/**
+ * What the doctor could learn about the repository: whether there is one, and its cleanliness,
+ * branch, and distance from upstream.
+ */
 export type GitState = Readonly<{
   repository: boolean
   clean?: boolean
@@ -44,6 +56,10 @@ export type GitState = Readonly<{
 /** One generated file as it is on disk; `text` is absent when the file is missing. */
 export type GeneratedFile = Readonly<{ path: string; text?: string }>
 
+/**
+ * Everything one read of the store produced, so every doctor check can inspect it without touching
+ * the disk again.
+ */
 export type Snapshot = Readonly<{
   root: string
   configText?: string
@@ -60,6 +76,7 @@ export type Snapshot = Readonly<{
   tags?: number
 }>
 
+/** What the store holds, in the numbers the doctor's closing lines print. */
 export type StoreSummary = Readonly<{
   projects: number
   issues: number
@@ -86,7 +103,12 @@ const frontmatterValue = (text: string, field: string): string | undefined => {
   return match?.[1]?.trim()
 }
 
-/** The pure half: everything the doctor knows, given a snapshot. */
+/**
+ * The pure half: everything the doctor knows, given a snapshot.
+ * @param snapshot - the store as it was read.
+ * @param now - the instant an expired lease is judged against; without it lease warnings are skipped.
+ * @returns the findings, the summary, and the vocabulary when it parsed.
+ */
 export const checkStore = (snapshot: Snapshot, now?: Timestamp): DoctorReport => {
   const problems: Problem[] = []
   const add = (severity: Severity, code: string, message: string, path?: string): void => {
@@ -308,13 +330,27 @@ const checkCounters = (
   }
 }
 
+/**
+ * How many findings are errors.
+ * @param report - the report to count.
+ * @returns the number of error findings.
+ */
 export const errorCount = (report: DoctorReport): number =>
   report.problems.filter(problem => problem.severity === 'error').length
 
+/**
+ * How many findings are warnings.
+ * @param report - the report to count.
+ * @returns the number of warning findings.
+ */
 export const warningCount = (report: DoctorReport): number =>
   report.problems.filter(problem => problem.severity === 'warning').length
 
-/** The human/model-facing text: errors first, then warnings, then the summary. */
+/**
+ * The human/model-facing text: errors first, then warnings, then the summary.
+ * @param report - the report to render.
+ * @returns the rendered lines, newline-terminated.
+ */
 export const renderDoctorReport = (report: DoctorReport): string => {
   const lines: string[] = []
   const order: Severity[] = ['error', 'warning']

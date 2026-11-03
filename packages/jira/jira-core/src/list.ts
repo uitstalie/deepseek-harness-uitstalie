@@ -16,7 +16,9 @@ import { isBlocked } from './generate.ts'
 import { queryIssues, type IssueQuery } from './inspect.ts'
 import { type Vocab, statusOrder } from './vocab.ts'
 
+/** How many issues `jira_list` returns when the caller names no `limit`. */
 export const DEFAULT_LIST_LIMIT = 20
+/** The largest `limit` a list accepts, so one call cannot return the whole store. */
 export const MAX_LIST_LIMIT = 100
 
 /** `jira_list`'s filters: the issue query plus the caller-resolved assignee and the result cap. */
@@ -26,6 +28,9 @@ export type ListQuery = IssueQuery & Readonly<{
   limit?: number
 }>
 
+/**
+ * One row of a list: the fields a caller needs to act on the issue, plus whether it is blocked.
+ */
 export type ListItem = Readonly<{
   key: IssueKey
   project: string
@@ -41,6 +46,10 @@ export type ListItem = Readonly<{
   blocked: boolean
 }>
 
+/**
+ * A group of list items: a project-and-status section, or the single blocked section that spans
+ * projects.
+ */
 export type ListGroup = Readonly<{
   name: string
   kind: 'status' | 'blocked'
@@ -50,6 +59,7 @@ export type ListGroup = Readonly<{
   items: readonly ListItem[]
 }>
 
+/** What a list matched and returned, including how many the limit kept out. */
 export type ListCounts = Readonly<{
   /** Everything that matched the filters, before the limit. */
   matched: number
@@ -69,6 +79,11 @@ export type ListResult = Readonly<{
   limit: number
 }>
 
+/**
+ * Keep a caller's `limit` inside the list's bounds.
+ * @param limit - the value the caller asked for, if any.
+ * @returns the default when it is absent or nonsensical, otherwise the value capped at the maximum.
+ */
 export const clampLimit = (limit: number | undefined): number => {
   if (limit === undefined || !Number.isFinite(limit) || limit <= 0) return DEFAULT_LIST_LIMIT
   return Math.min(Math.floor(limit), MAX_LIST_LIMIT)
@@ -100,6 +115,10 @@ const toItem = (issue: Issue, blocked: boolean): ListItem =>
  *
  * Blocked items are ordered last within the whole result, so `items` and `groups` read the same
  * way: everything ready, then everything waiting.
+ * @param issues - the issues to filter and order.
+ * @param vocab - the vocabulary that decides the status and priority order.
+ * @param query - the filters, the resolved assignee, and the limit.
+ * @returns the ordered items, the groups, and the counts over everything that matched.
  */
 export const buildIssueList = (
   issues: readonly Issue[],
@@ -177,6 +196,8 @@ export const buildIssueList = (
  * `agent:unknown|dsh|m-357504ff|session-…` on every row crowds out the summary; what a reader needs at a
  * glance is "which machine, which session". The full identity stays in `jira_issue get` (where it is the
  * subject, not decoration).
+ * @param identity - the full identity string.
+ * @returns the short form, or the identity unchanged when it does not parse.
  */
 export const shortIdentity = (identity: string): string => {
   if (!identity.startsWith('agent:') && !identity.startsWith('human:')) return identity
@@ -188,7 +209,11 @@ export const shortIdentity = (identity: string): string => {
   return `${kind}:${machine}${session === '' ? '' : `/${session}`}`
 }
 
-/** The model-facing rendering: what is ready, what is waiting, and what the limit hid. */
+/**
+ * The model-facing rendering: what is ready, what is waiting, and what the limit hid.
+ * @param result - the list result to render.
+ * @returns the grouped lines, or the sentence saying nothing matched.
+ */
 export const renderIssueListForModel = (result: ListResult): string => {
   if (result.items.length === 0) {
     return result.counts.matched === 0

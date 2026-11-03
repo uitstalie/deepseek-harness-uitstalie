@@ -12,6 +12,11 @@ import { type Result, err, ok } from './result.ts'
 import { type Vocab, isClosedStatus, isKnownStatus } from './vocab.ts'
 import { type TagDef, isTagName, suggestTags } from './tags.ts'
 
+/**
+ * Check a summary: non-empty, one line, within the store's length bound.
+ * @param summary - the summary to check.
+ * @returns the trimmed summary, or the refusal naming which rule it broke.
+ */
 export const validateSummary = (summary: string): Result<string, JiraError> => {
   const value = summary.trim()
   if (value === '') return err(invalidInput('summary must not be empty'))
@@ -32,6 +37,9 @@ export const validateSummary = (summary: string): Result<string, JiraError> => {
  *
  * `asIdentity` stays tolerant (it only checks the prefix) because reading old files must not fail;
  * this is the **write**-side gate.
+ * @param value - the identity the caller supplied.
+ * @param field - the field name the error names, such as `the acting identity`.
+ * @returns the identity, or the refusal naming the component at fault.
  */
 export const validateIdentity = (value: string, field: string): Result<Identity, JiraError> => {
   const identity = asIdentity(value)
@@ -55,6 +63,11 @@ export const validateIdentity = (value: string, field: string): Result<Identity,
   return ok(identity)
 }
 
+/**
+ * Check that a string is an issue key, naming the expected shape when it is not.
+ * @param value - the candidate key.
+ * @returns the key, or the refusal that shows what one looks like.
+ */
 export const validateKey = (value: string): Result<IssueKey, JiraError> => {
   const key = asIssueKey(value)
   return key === undefined
@@ -71,12 +84,30 @@ const membership = (
     ? ok(value)
     : err(invalidInput(`${field} "${value}" is not one of: ${allowed.join(', ')}`, { field, value, allowed }))
 
+/**
+ * Check an issue type against the vocabulary's closed set.
+ * @param vocab - the store's vocabulary.
+ * @param value - the type the caller supplied.
+ * @returns the type, or the refusal listing what the store declares.
+ */
 export const validateIssueType = (vocab: Vocab, value: string): Result<string, JiraError> =>
   membership('issue_type', value, vocab.issueTypes)
 
+/**
+ * Check a priority against the vocabulary's closed set.
+ * @param vocab - the store's vocabulary.
+ * @param value - the priority the caller supplied.
+ * @returns the priority, or the refusal listing what the store declares.
+ */
 export const validatePriority = (vocab: Vocab, value: string): Result<string, JiraError> =>
   membership('priority', value, vocab.priorities)
 
+/**
+ * Check a status against the vocabulary, listing the declared ones when it is unknown.
+ * @param vocab - the store's vocabulary.
+ * @param value - the status the caller supplied.
+ * @returns the status, or the refusal listing the declared statuses.
+ */
 export const validateStatus = (vocab: Vocab, value: string): Result<string, JiraError> => {
   if (!isKnownStatus(vocab, value)) {
     return err(invalidInput(`unknown status "${value}"`, {
@@ -87,6 +118,12 @@ export const validateStatus = (vocab: Vocab, value: string): Result<string, Jira
   return ok(value)
 }
 
+/**
+ * Check and normalize the tags on a write: lower-kebab, registered, and deduplicated.
+ * @param known - the registered tags.
+ * @param tags - the tags the caller supplied.
+ * @returns the normalized tags, or the unknown-tag refusal with its suggestions.
+ */
 export const validateTags = (
   known: readonly TagDef[],
   tags: readonly string[],
@@ -108,6 +145,10 @@ export const validateTags = (
 /**
  * A resolution is required to enter any status in the store's `closed` set, and forbidden
  * to carry one outside it (decision 25 + the reopen rule of decision 72).
+ * @param vocab - the store's vocabulary.
+ * @param status - the status the issue is entering.
+ * @param resolution - the resolution the caller supplied, if any.
+ * @returns the resolution or undefined, or the refusal naming what the status needs.
  */
 export const validateResolution = (
   vocab: Vocab,
@@ -126,7 +167,12 @@ export const validateResolution = (
     : membership('resolution', resolution, vocab.resolutions)
 }
 
-/** The `resolution`-pairing rule §4.16 records: `limitation` always explains itself. */
+/**
+ * The `resolution`-pairing rule §4.16 records: `limitation` always explains itself.
+ * @param resolution - the resolution the change carries.
+ * @param note - the note the caller supplied, if any.
+ * @returns the note or undefined, or the refusal when it is missing or too long.
+ */
 export const validateResolutionNote = (
   resolution: string | undefined,
   note: string | undefined,

@@ -21,6 +21,10 @@ import { validateIdentity } from './validate.ts'
 import { assertProjectWritable } from './project.ts'
 import { projectOf } from './entity.ts'
 
+/**
+ * The close every key in a batch shares: the status to enter (defaulting to the vocabulary's
+ * first closed one), the required resolution, and an optional comment.
+ */
 export type BatchCloseOptions = Readonly<{
   /** The closed status to enter; defaults to the vocabulary's first closed one. */
   to?: string
@@ -29,6 +33,10 @@ export type BatchCloseOptions = Readonly<{
   comment?: string
 }>
 
+/**
+ * What a batch close produced: the keys that closed, and — when a write failed after every key
+ * had already passed validation — the split between what closed and what did not.
+ */
 export type BatchClosed = Readonly<{
   closed: readonly IssueKey[]
   /** Present when a write failed after every key had already passed validation. */

@@ -93,7 +93,13 @@ const NO_LISTING: KnowledgeListing = Object.freeze({
   broken: Object.freeze([]),
 })
 
-/** The commits `log.md` shows: keyed subjects only, newest first. */
+/**
+ * The commits `log.md` shows: keyed subjects only, newest first.
+ * @param root - the store's absolute root, where git runs.
+ * @param run - the git runner to use, injectable for tests.
+ * @param limit - how many commits to ask git for before filtering.
+ * @returns the keyed commits in git's order, empty when the log cannot be read.
+ */
 export const readCommitRows = async (
   root: string,
   run: GitRunner = runGit,
@@ -127,6 +133,12 @@ export const readCommitRows = async (
 /** Everything `generateAll` needs except the head, which depends on the write it is part of. */
 export type GenerateSources = Omit<GenerateInput, 'meta'>
 
+/**
+ * Read the store into everything `generateAll` needs: the vocabulary, the issues, the tag and
+ * project rows, the recent keyed commits, and one bundle per project and knowledge domain.
+ * @param store - the ledger store to read.
+ * @returns the sources, or the refusal that stopped the read.
+ */
 export const readGenerateSources = async (store: Store): Promise<Result<GenerateSources, JiraError>> => {
   const vocab = await loadVocab(store)
   if (!vocab.ok) return vocab
@@ -183,7 +195,11 @@ export const readGenerateSources = async (store: Store): Promise<Result<Generate
   }))
 }
 
-/** The hash of the inputs as they are right now — what every generated head must carry. */
+/**
+ * The hash of the inputs as they are right now — what every generated head must carry.
+ * @param store - the ledger store whose tree is hashed.
+ * @returns the source-tree hash, or the refusal when the tree cannot be read completely.
+ */
 export const currentSourceTree = async (store: Store): Promise<Result<string, JiraError>> => {
   const entries = await sourceTreeEntries(store.files.root)
   return entries.ok ? ok(hashSourceTree(entries.value)) : entries
@@ -196,6 +212,10 @@ const metaFor = (sourceTree: string, generatedAt: string): GeneratedMeta =>
 const renderWith = (sources: GenerateSources, meta: GeneratedMeta): Readonly<Record<string, string>> =>
   generateAll({ ...sources, meta })
 
+/**
+ * One file in a generation plan: its path, the text it should hold, what is on disk now, and
+ * whether writing it would change anything.
+ */
 export type GeneratedPlanEntry = Readonly<{
   path: string
   text: string
@@ -204,6 +224,10 @@ export type GeneratedPlanEntry = Readonly<{
   action: 'write' | 'unchanged'
 }>
 
+/**
+ * What a generation would do: one entry per generated file, the input hash the texts were
+ * rendered from, and whether anything would change.
+ */
 export type GeneratedPlan = Readonly<{
   entries: readonly GeneratedPlanEntry[]
   sourceTree: string
@@ -217,6 +241,9 @@ export type GeneratedPlan = Readonly<{
  * The comparison re-renders with **the timestamp already on disk**, so a file whose content is
  * current compares equal no matter how long ago it was generated: only a real input change makes
  * `stale` true.
+ * @param store - the ledger store to plan for.
+ * @param generatedAt - the timestamp a changed file is stamped with.
+ * @returns the plan, or the refusal when the store or its tree cannot be read.
  */
 export const planGenerated = async (
   store: Store,
@@ -255,8 +282,15 @@ export const planGenerated = async (
   return ok(Object.freeze({ entries: Object.freeze(entries), sourceTree, stale }))
 }
 
+/** What writing a plan did: the paths written and the paths that were already current. */
 export type WriteReport = Readonly<{ written: readonly string[]; unchanged: readonly string[] }>
 
+/**
+ * Write the plan's changed files, leaving the unchanged ones untouched.
+ * @param store - the ledger store to write into.
+ * @param plan - the plan produced by `planGenerated`.
+ * @returns the paths written and the paths already current, or the write failure.
+ */
 export const writeGenerated = async (store: Store, plan: GeneratedPlan): Promise<Result<WriteReport, JiraError>> => {
   const written: string[] = []
   const unchanged: string[] = []
@@ -284,6 +318,10 @@ export const writeGenerated = async (store: Store, plan: GeneratedPlan): Promise
  * Only the paths that actually moved are committed, so a session that changed nothing produces no
  * commit at all — the plan re-renders with the timestamps already on disk, which is what makes a
  * fresh store byte-identical rather than merely equivalent.
+ * @param store - the ledger store to regenerate.
+ * @param at - the timestamp the regenerated heads and the commit carry.
+ * @param subject - the commit subject, defaulting to the no-issue chore line.
+ * @returns the paths written and committed, or the refusal that stopped the regeneration.
  */
 export const regenerateAndCommit = async (
   store: Store,
@@ -327,9 +365,14 @@ export const regenerateAndCommit = async (
   return ok(Object.freeze([...written.value.written]))
 }
 
+/** One generated file that is not current: its path and whether it is missing or merely stale. */
 export type StaleFile = Readonly<{ path: string; reason: 'missing' | 'stale' }>
 
-/** The freshness assertion: the same comparison as the plan, without writing (decision 39). */
+/**
+ * The freshness assertion: the same comparison as the plan, without writing (decision 39).
+ * @param store - the ledger store to check.
+ * @returns the files that need regenerating, empty when the store is fresh.
+ */
 export const checkGenerated = async (store: Store): Promise<Result<readonly StaleFile[], JiraError>> => {
   const plan = await planGenerated(store, new Date(0).toISOString().replace(/\.\d{3}Z$/u, 'Z'))
   if (!plan.ok) return plan

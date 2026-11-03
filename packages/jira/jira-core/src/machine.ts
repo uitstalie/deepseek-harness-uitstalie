@@ -23,17 +23,14 @@ import { system } from './system/index.ts'
 export const MACHINE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{2,31}$/u
 
 /**
- * Where the identity lives. `$DSH_HOME` first, then the user profile — and if neither is
- * known, **inside the store's ignored `.jira/`** rather than relative to the working
- * directory: a machine id dropped into whatever directory a command happened to run from is
- * how one ends up committed into a repository that other machines clone.
- */
-/**
  * The directory that holds this machine's own state — the machine id and everything that must not
  * travel to another machine (`notices/`, session watermarks). Decision 73's rule, one place.
  *
  * The fallback is the store's ignored `.jira/` when neither `DSH_HOME` nor a home directory is
  * known, so the answer is always a path: a caller never has to invent one.
+ * @param env - the environment to resolve the state directory from.
+ * @param fallbackRoot - the store root, used when neither DSH_HOME nor a home directory is known.
+ * @returns the directory holding this machine's own state; never undefined.
  */
 export const machineStateDir = (
   env: Readonly<Record<string, string | undefined>>,
@@ -43,6 +40,12 @@ export const machineStateDir = (
   return file === undefined ? join(fallbackRoot ?? '.', '.jira') : dirname(file)
 }
 
+/**
+ * The absolute file this machine's id is stored in.
+ * @param env - the environment to resolve the state directory from.
+ * @param fallbackRoot - the store root, used when no state directory can be resolved otherwise.
+ * @returns the file path, or undefined when no state directory is known.
+ */
 export const machineIdFile = (
   env: Readonly<Record<string, string | undefined>>,
   fallbackRoot?: string,
@@ -53,6 +56,10 @@ export const machineIdFile = (
   return state === undefined ? undefined : join(state, 'machine-id')
 }
 
+/**
+ * Mint a fresh machine id: `m-` and eight random hex characters.
+ * @returns the generated id.
+ */
 export const generateMachineId = (): string => `m-${randomBytes(4).toString('hex')}`
 
 /**
@@ -64,6 +71,10 @@ export const generateMachineId = (): string => `m-${randomBytes(4).toString('hex
  *
  * Decision 187: this used to be the CLI's private `claimNotice`; it is machine state, so it
  * lives here, on the io boundary like every other write (decision 180).
+ * @param directory - this machine's own state directory.
+ * @param machineId - this machine's id, which is part of the marker name.
+ * @param name - the notice being claimed.
+ * @returns true the first time this machine claims it, false on every later call.
  */
 export const claimNoticeOnce = async (directory: string, machineId: string, name: string): Promise<boolean> => {
   // One sanitizer for every "an id becomes a file name" case (decision 167).
@@ -73,15 +84,24 @@ export const claimNoticeOnce = async (directory: string, machineId: string, name
   return true
 }
 
+/**
+ * Decide whether a string is a usable machine id.
+ * @param value - the candidate id.
+ * @returns true for lowercase letters, digits and dashes, 3 to 32 characters, starting with a letter or digit.
+ */
 export const isMachineId = (value: string): boolean => MACHINE_ID_PATTERN.test(value)
 
+/** Where a resolved machine id came from: configuration, the environment, the file, or a fresh generation. */
 export type MachineIdSource = 'configured' | 'environment' | 'file' | 'generated'
 
+/** A resolved machine id: the id itself, where it came from, and the file that holds it. */
 export type ResolvedMachine = Readonly<{ id: string; source: MachineIdSource; file: string }>
 
 /**
  * Read the machine id, creating it on first use. A malformed file is replaced rather than
  * trusted: an id that another machine might also compute is worse than a new one.
+ * @param options - the configured id, the environment, and the file and writer to fall back on.
+ * @returns the resolved id and its source, or the refusal when no state directory can be found.
  */
 export const resolveMachineId = async (options: Readonly<{
   configured?: string

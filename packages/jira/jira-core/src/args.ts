@@ -9,13 +9,31 @@
 import { type JiraError, invalidInput } from './errors.ts'
 import { type Result, err, ok } from './result.ts'
 
+/**
+ * One flag a command accepts: the value kind the parser enforces and the help text that
+ * describes it to the user.
+ */
 export type FlagSpec = Readonly<{ type: 'string' | 'boolean' | 'number'; description: string }>
 
+/**
+ * What a successful parse produced: the positional arguments in the order given, and the flags
+ * that were present keyed by their bare (dash-less) names.
+ */
 export type ParsedArgs = Readonly<{
   positionals: readonly string[]
   flags: Readonly<Record<string, string | boolean | number>>
 }>
 
+/**
+ * Parse an argument list against the flags a command accepts.
+ *
+ * Every refusal is deliberate: an unknown flag, a repeated flag, a missing or non-numeric value,
+ * and a surplus positional all name themselves instead of being ignored or guessed at.
+ * @param argv - the tokens after the command name.
+ * @param spec - the flags this command accepts, keyed by their bare names.
+ * @param maxPositionals - how many positional arguments are accepted before the rest are refused.
+ * @returns the positionals and flag values, or the first refusal that stopped the parse.
+ */
 export const parseArgs = (
   argv: readonly string[],
   spec: Readonly<Record<string, FlagSpec>>,
@@ -86,14 +104,31 @@ export const parseArgs = (
   return ok(Object.freeze({ positionals: Object.freeze(positionals), flags: Object.freeze(flags) }))
 }
 
+/**
+ * Read a string flag, ignoring a value of another kind.
+ * @param flags - the parsed flag map.
+ * @param name - the flag's bare name.
+ * @returns the string value, or undefined when the flag was absent or not a string.
+ */
 export const stringFlag = (flags: ParsedArgs['flags'], name: string): string | undefined => {
   const value = flags[name]
   return typeof value === 'string' ? value : undefined
 }
 
+/**
+ * Read a boolean flag; absent and other-kinded flags both read as false.
+ * @param flags - the parsed flag map.
+ * @param name - the flag's bare name.
+ * @returns true only when the flag was given as a bare `--name` (or `--name=true`).
+ */
 export const booleanFlag = (flags: ParsedArgs['flags'], name: string): boolean => flags[name] === true
 
-/** Split a comma-separated list flag, tolerating spaces and an empty value. */
+/**
+ * Split a comma-separated list flag, tolerating spaces and an empty value.
+ * @param flags - the parsed flag map.
+ * @param name - the flag's bare name.
+ * @returns the trimmed, non-empty entries, or undefined when the flag was not given.
+ */
 export const listFlag = (flags: ParsedArgs['flags'], name: string): readonly string[] | undefined => {
   const value = stringFlag(flags, name)
   if (value === undefined) return undefined
@@ -106,6 +141,9 @@ export const listFlag = (flags: ParsedArgs['flags'], name: string): readonly str
  * The pattern this replaces — `...(stringFlag(flags, 'x') === undefined ? {} : { x: … })` — was
  * repeated two dozen times across the command handlers, and every repetition was a place a name
  * could drift. `to` renames the key (flags are kebab-case, core fields are camelCase).
+ * @param flags - the parsed flag map.
+ * @param spec - the flags to copy, each with its value kind and optional target key.
+ * @returns an object holding only the flags that were given, keyed by their target names.
  */
 export const optFlags = <T extends Record<string, unknown>>(
   flags: ParsedArgs['flags'],
@@ -127,6 +165,8 @@ export const optFlags = <T extends Record<string, unknown>>(
  *
  * A slash command receives the exact text the user typed (no shell), so this is where
  * `/jira new --summary "two words"` stops being four arguments.
+ * @param input - the command text after the command name, exactly as the user typed it.
+ * @returns the tokens with their quotes removed, or a refusal when a quote is left unclosed.
  */
 export const splitTokens = (input: string): Result<readonly string[], JiraError> => {
   const tokens: string[] = []

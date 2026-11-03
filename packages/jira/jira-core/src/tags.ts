@@ -12,15 +12,26 @@
  */
 
 export const TAG_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/
+/** The lowest Dice score a name needs before it is offered as a suggestion. */
 export const SUGGESTION_FLOOR = 0.5
+/** How many suggestions an unknown tag gets. */
 export const SUGGESTION_LIMIT = 3
 
+/**
+ * A registered tag: its canonical name, the description the generated index shows, and the
+ * alternative spellings that resolve to it.
+ */
 export type TagDef = Readonly<{ name: string; description?: string; aliases?: readonly string[] }>
 
 /** Fold a name to its comparable form: lowercase, `-`/`_` removed. */
 const fold = (value: string): string => value.toLowerCase().replaceAll(/[-_]/g, '')
 
-/** Dice coefficient over character bigrams (`0` when either side is too short). */
+/**
+ * Dice coefficient over character bigrams (`0` when either side is too short).
+ * @param left - one name to compare.
+ * @param right - the other name to compare.
+ * @returns the similarity from 0 to 1, where 1 means the folded names are identical.
+ */
 export const similarity = (left: string, right: string): number => {
   const a = fold(left)
   const b = fold(right)
@@ -48,6 +59,10 @@ export const similarity = (left: string, right: string): number => {
 /**
  * Nearest known tags, best first. An exact alias hit wins; a prefix relationship is
  * treated as the strongest signal; otherwise the Dice score decides, above the floor.
+ * @param known - the registered tags.
+ * @param wanted - the name the user typed.
+ * @param limit - how many suggestions to return at most.
+ * @returns the nearest names, best first; empty when nothing is close enough.
  */
 export const suggestTags = (
   known: readonly TagDef[],
@@ -69,4 +84,9 @@ export const suggestTags = (
   return Object.freeze(scored.slice(0, limit).map(entry => entry.name))
 }
 
+/**
+ * Decide whether a string is a usable tag (and knowledge domain) name.
+ * @param value - the candidate name.
+ * @returns true for lower-kebab names of at most 32 characters.
+ */
 export const isTagName = (value: string): boolean => TAG_PATTERN.test(value)

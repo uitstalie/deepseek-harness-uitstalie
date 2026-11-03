@@ -29,6 +29,7 @@
 import { type JiraError, invalidInput } from './errors.ts'
 import { type Result, err, ok } from './result.ts'
 
+/** A value the restricted subset holds directly: text, an integer, a boolean, or null. */
 export type FrontmatterScalar = string | number | boolean | null
 /** One level deep, scalars only — enough for decision 70's `{ type, target }` entries. */
 export type FrontmatterMap = Readonly<Record<string, FrontmatterScalar>>
@@ -39,8 +40,17 @@ export type FrontmatterMap = Readonly<Record<string, FrontmatterScalar>>
 export type FrontmatterNestedArray = readonly FrontmatterScalar[]
 /** What a block- or inline-array entry may be: a scalar, a flow map, or a scalar array. */
 export type FrontmatterItem = FrontmatterScalar | FrontmatterMap | FrontmatterNestedArray
+/**
+ * One key's value: a scalar, or an array of scalars, flow maps, and scalar arrays. Nothing nests
+ * more deeply than that.
+ */
 export type FrontmatterValue = FrontmatterScalar | readonly FrontmatterItem[]
+/** A whole frontmatter block, keyed by lower_snake_case names in the order the file lists them. */
 export type Frontmatter = Readonly<Record<string, FrontmatterValue>>
+/**
+ * A parsed document: its frontmatter entries, the body after the closing fence, and the 1-based
+ * line the body starts on.
+ */
 export type ParsedDocument = Readonly<{
   frontmatter: Frontmatter
   body: string
@@ -252,6 +262,13 @@ const splitDocument = (text: string): Result<readonly string[], JiraError> => {
   return ok(Object.freeze(lines))
 }
 
+/**
+ * Parse a document into its frontmatter entries and its body.
+ *
+ * Every unsupported YAML feature is refused with the line it appeared on, never guessed at.
+ * @param text - the document's full text.
+ * @returns the frontmatter, the body, and the body's starting line, or the refusal naming the line.
+ */
 export const parseFrontmatter = (text: string): Result<ParsedDocument, JiraError> => {
   const split = splitDocument(text)
   if (!split.ok) return split
@@ -362,6 +379,9 @@ const renderFlowMap = (map: FrontmatterMap): string =>
 /**
  * The exact inverse of {@link parseFrontmatter} for the subset it accepts: LF only, no
  * BOM, no trailing spaces, one blank line between the fence and the body.
+ * @param frontmatter - the entries to write, in the order given.
+ * @param body - the text after the closing fence.
+ * @returns the complete document text.
  */
 export const renderFrontmatter = (frontmatter: Frontmatter, body: string): string => {
   const lines: string[] = [FENCE]

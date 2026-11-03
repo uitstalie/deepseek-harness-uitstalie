@@ -29,11 +29,16 @@ import {
   validateTags,
 } from './validate.ts'
 
+/** A comment about to be appended, before it has an id: its text, author, and timestamp. */
 export type PendingComment = Readonly<{ body: string; author: Identity; createdAt: Timestamp }>
 
 /** A change is always "the new issue" plus "comments to append" — never a mutation. */
 export type Change = Readonly<{ issue: Issue; comments: readonly PendingComment[] }>
 
+/**
+ * Everything a change is decided with, supplied by the caller: the vocabulary, the tag registry,
+ * the actor, and the blockers or override the action carries.
+ */
 export type ChangeContext = Readonly<{
   /** Decision 24: the open issues blocking this one; supplied by the caller (it needs the map). */
   blockers?: readonly string[]
@@ -49,7 +54,11 @@ export type ChangeContext = Readonly<{
 const freezeChange = (issue: Issue, comments: readonly PendingComment[]): Change =>
   Object.freeze({ issue, comments: Object.freeze([...comments]) })
 
-/** The status a new issue starts in: the lowest `order` the vocabulary declares. */
+/**
+ * The status a new issue starts in: the lowest `order` the vocabulary declares.
+ * @param vocab - the store's vocabulary.
+ * @returns the initial status name, `todo` when the vocabulary declares no statuses.
+ */
 export const initialStatus = (vocab: Vocab): string => {
   const sorted = [...vocab.statuses].sort((left, right) => left.order - right.order)
   return sorted[0]?.name ?? 'todo'
@@ -82,6 +91,9 @@ export type ValidatedNewIssue = Readonly<{
  * The key-independent half of creation validation (decision 190). A caller that allocates
  * keys must run this **before** allocating: a refused input must never burn a number —
  * a skipped number on disk is a gap nobody can explain from the counter alone.
+ * @param input - the create's fields; the key is supplied separately by the allocator.
+ * @param ctx - the change context (vocabulary, known tags, identity, timestamp).
+ * @returns the normalized fields, or the first validation failure.
  */
 export const validateNewIssue = (
   input: Omit<NewIssueInput, 'key'>,
@@ -109,6 +121,13 @@ export const validateNewIssue = (
   }))
 }
 
+/**
+ * Build the entity a new issue is written from, with its defaults filled in and every field
+ * validated.
+ * @param input - the create's fields, key included.
+ * @param ctx - the change context (vocabulary, known tags, identity, timestamp).
+ * @returns the change carrying the new issue, or the first validation failure.
+ */
 export const createIssue = (input: NewIssueInput, ctx: ChangeContext): Result<Change, JiraError> => {
   const key = validateKey(input.key)
   if (!key.ok) return key
@@ -139,6 +158,10 @@ export const createIssue = (input: NewIssueInput, ctx: ChangeContext): Result<Ch
   return ok(freezeChange(issue, []))
 }
 
+/**
+ * The fields an update may change. A field left out is untouched, and `note: null` clears the note
+ * rather than writing an empty one.
+ */
 export type IssuePatch = Readonly<{
   summary?: string
   issueType?: string
@@ -234,6 +257,7 @@ export const applyUpdate = (issue: Issue, patch: IssuePatch, ctx: ChangeContext)
   return ok(freezeChange(updated, []))
 }
 
+/** What a transition may carry besides the target status: the resolution and the note behind it. */
 export type TransitionOptions = Readonly<{ resolution?: string; resolutionNote?: string }>
 
 /**
@@ -351,7 +375,6 @@ export const applyComment = (
   return ok(freezeChange(issue, [Object.freeze({ body, author: ctx.by, createdAt: ctx.at })]))
 }
 
-/** `assignee` merges claim and release (decision 50): an identity, or `null` to release. */
 /** Decision 61: two hours, and no heartbeat — a claim nobody renews simply lapses. */
 export const DEFAULT_LEASE_MS = 2 * 60 * 60 * 1000
 
@@ -359,7 +382,12 @@ export const DEFAULT_LEASE_MS = 2 * 60 * 60 * 1000
 const shiftSeconds = (at: Timestamp, ms: number): Timestamp =>
   new Date(new Date(at).getTime() + ms).toISOString().replace(/\.\d{3}Z$/u, 'Z') as Timestamp
 
-/** An active lease is one that has not expired yet; the fixed-width format compares as text. */
+/**
+ * An active lease is one that has not expired yet; the fixed-width format compares as text.
+ * @param issue - the issue whose lease is asked about.
+ * @param at - the instant to test against.
+ * @returns true when a lease exists and has not lapsed at that instant.
+ */
 export const leaseIsActive = (issue: Issue, at: Timestamp): boolean =>
   issue.leaseExpiresAt !== undefined && issue.leaseExpiresAt > at
 
@@ -367,6 +395,9 @@ export const leaseIsActive = (issue: Issue, at: Timestamp): boolean =>
  * Renew a claim's lease (decision 61): the holder is clearly still working, so extend it. Only ever
  * **extends**, never shortens, and does **not** touch the revision — a lease is metadata, not body
  * (decision 44). Called from the write transaction, so it costs no extra write.
+ * @param issue - the issue whose claim is renewed.
+ * @param at - the instant the renewal is measured from.
+ * @returns the issue with its lease extended, or the same issue when it already reaches further.
  */
 export const renewAssigneeLease = (issue: Issue, at: Timestamp): Issue => {
   if (issue.assignee === undefined || issue.claimedAt === undefined) return issue
@@ -442,6 +473,7 @@ export const applyAssignee = (
   return ok(freezeChange(Object.freeze(next as Issue), comments))
 }
 
+/** One link operation: the verb, the target key, and whether it is being added or removed. */
 export type LinkChange = Readonly<{ type: LinkType; target: IssueKey; op: 'add' | 'remove' }>
 
 /**
@@ -484,6 +516,9 @@ export const applyLink = (
  * Mark an issue conflicted (decision 71). Set **only** by the pull/rebase path or inside a write
  * transaction — never by a reader (decision 38) — and the flag is what makes the next write demand
  * `ack_conflict` (decision 71), so a human or an agent has to look before overwriting.
+ * @param issue - the issue to mark.
+ * @param ctx - the change context supplying the timestamp.
+ * @returns the change setting the flag; an already-conflicted issue is returned unchanged.
  */
 export const applyConflictMark = (issue: Issue, ctx: ChangeContext): Result<Change, JiraError> => {
   if (issue.conflicted) return ok(freezeChange(issue, []))
@@ -522,5 +557,9 @@ export const combineChanges = (first: Change, second: Change): Change =>
     issue: second.issue,
     comments: Object.freeze([...first.comments, ...second.comments]),
   })
-/** Read-only helper for callers that need the comments' own counter (decision 44). */
+/**
+ * Read-only helper for callers that need the comments' own counter (decision 44).
+ * @param comments - the comments to count.
+ * @returns how many comments the list holds.
+ */
 export const commentCount = (comments: readonly Comment[]): number => comments.length

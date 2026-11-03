@@ -13,6 +13,7 @@
 
 import { type Issue } from './entity.ts'
 
+/** One inventory row: the key and the few fields a comparison list needs to be readable. */
 export type KeyRow = Readonly<{
   key: string
   project: string
@@ -21,6 +22,7 @@ export type KeyRow = Readonly<{
   updatedAt: string
 }>
 
+/** One store's key inventory: the rows, the same rows grouped by project, and the total. */
 export type KeyInventory = Readonly<{
   rows: readonly KeyRow[]
   byProject: readonly Readonly<{ project: string; rows: readonly KeyRow[] }>[]
@@ -35,6 +37,11 @@ const rowOf = (issue: Issue): KeyRow => Object.freeze({
   updatedAt: issue.updatedAt,
 })
 
+/**
+ * Build the inventory: rows sorted by project then key, and grouped by project.
+ * @param issues - the issues to inventory.
+ * @returns the rows, their grouping, and the total.
+ */
 export const keyInventory = (issues: readonly Issue[]): KeyInventory => {
   const rows = [...issues].map(rowOf).sort((left, right) =>
     left.project.localeCompare(right.project) || left.key.localeCompare(right.key))
@@ -53,6 +60,7 @@ export const keyInventory = (issues: readonly Issue[]): KeyInventory => {
   })
 }
 
+/** A key that exists on both sides, with both rows and whether their summaries agree. */
 export type KeyCollision = Readonly<{
   key: string
   left: KeyRow
@@ -61,6 +69,7 @@ export type KeyCollision = Readonly<{
   sameSummary: boolean
 }>
 
+/** Two inventories compared: the totals, what each side alone holds, and the keys that collide. */
 export type KeyComparison = Readonly<{
   leftTotal: number
   rightTotal: number
@@ -69,6 +78,12 @@ export type KeyComparison = Readonly<{
   collisions: readonly KeyCollision[]
 }>
 
+/**
+ * Compare two inventories key by key.
+ * @param left - the inventory treated as this ledger.
+ * @param right - the inventory treated as the other ledger.
+ * @returns the totals, each side's exclusive rows, and every collision with its summary verdict.
+ */
 export const compareKeyInventories = (left: KeyInventory, right: KeyInventory): KeyComparison => {
   const rightByKey = new Map(right.rows.map(row => [row.key, row]))
   const leftByKey = new Map(left.rows.map(row => [row.key, row]))
@@ -89,7 +104,12 @@ export const compareKeyInventories = (left: KeyInventory, right: KeyInventory): 
   })
 }
 
-/** The inventory as a list a human can read next to the other side's. */
+/**
+ * The inventory as a list a human can read next to the other side's.
+ * @param inventory - the inventory to render.
+ * @param label - how this side is named in the closing line.
+ * @returns the rendered list, newline-terminated.
+ */
 export const renderKeyInventory = (inventory: KeyInventory, label = '本账本'): string => {
   const lines: string[] = []
   for (const group of inventory.byProject) {
@@ -106,6 +126,10 @@ export const renderKeyInventory = (inventory: KeyInventory, label = '本账本')
 /**
  * The comparison, with collisions first: those are the decisions a merge has to make, and the ones
  * whose summaries differ are the ones worth a human's attention.
+ * @param comparison - the comparison to render.
+ * @param leftLabel - how this ledger is named in the report.
+ * @param rightLabel - how the other ledger is named in the report.
+ * @returns the rendered sections, collisions first, newline-terminated.
  */
 export const renderKeyComparison = (comparison: KeyComparison, leftLabel = '本账本', rightLabel = '另一账本'): string => {
   const clashes = comparison.collisions.filter(collision => !collision.sameSummary)

@@ -24,7 +24,9 @@ import { type JiraError, invalidInput } from './errors.ts'
 import { type Frontmatter, type FrontmatterMap, type FrontmatterValue, parseFrontmatter, renderFrontmatter } from './frontmatter.ts'
 import { type Result, err, ok } from './result.ts'
 
+/** The `schema` value every issue file's frontmatter carries. */
 export const ISSUE_SCHEMA = 'issue/v1'
+/** The frontmatter `type` that marks a document as an issue; anything else is refused. */
 export const ISSUE_DOCUMENT_TYPE = 'issue'
 
 /** Disk key → entity field. Only this table knows the snake_case spellings (decision 41). */
@@ -56,6 +58,10 @@ type DiskKey = keyof typeof FIELD_BY_DISK_KEY
 
 const DISK_KEYS = Object.keys(FIELD_BY_DISK_KEY) as readonly DiskKey[]
 
+/**
+ * A decoded issue together with what reading it tolerated: the warnings worth showing, the
+ * frontmatter keys this version does not know, and the schema the file actually carried.
+ */
 export type DecodedIssue = Readonly<{
   issue: Issue
   /** Tolerated-on-read remarks: unknown keys, version surprises, mismatched key. */
@@ -215,6 +221,8 @@ const diskLinks = (links: readonly Link[]): readonly FrontmatterMap[] =>
  * Write an issue back to file text. Field order follows the entity so that a diff shows
  * what actually changed, and the body is written verbatim after one blank line. `key` is
  * deliberately absent: the file name carries it (C3 / decision 77's principle).
+ * @param issue - the entity to encode.
+ * @returns the file text — frontmatter plus body — or a refusal when the frontmatter cannot be rendered.
  */
 export const encodeIssue = (issue: Issue): Result<string, JiraError> => {
   const frontmatter: Record<string, FrontmatterValue> = {

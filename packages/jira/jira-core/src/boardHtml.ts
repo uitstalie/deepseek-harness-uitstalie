@@ -17,6 +17,10 @@ import { type Issue } from './entity.ts'
 import { isBlocked } from './generate.ts'
 import { type Vocab } from './vocab.ts'
 
+/**
+ * What the HTML board's header may say about the export: its title, when it was produced, and
+ * which tree it was produced from.
+ */
 export type BoardHtmlOptions = Readonly<{
   title?: string
   /** When the file was produced; omitted from the header when unknown rather than invented. */
@@ -24,6 +28,11 @@ export type BoardHtmlOptions = Readonly<{
   sourceTree?: string
 }>
 
+/**
+ * Escape text taken from the store so it renders as text, never as markup.
+ * @param value - the text to escape.
+ * @returns the text with the five HTML-significant characters replaced by entities.
+ */
 export const escapeHtml = (value: string): string =>
   value
     .replace(/&/gu, '&amp;')
@@ -34,7 +43,13 @@ export const escapeHtml = (value: string): string =>
 
 type Section = Readonly<{ id: string; title: string; issues: readonly Issue[]; kind: 'open' | 'blocked' | 'closed' }>
 
-/** The same grouping the Markdown board uses, exposed so the two can be compared in a test. */
+/**
+ * Group issues the way the Markdown board does — by the vocabulary's status order, with blocked
+ * issues lifted into their own section and closed issues last — so the two boards can be compared.
+ * @param issues - the issues to group.
+ * @param vocab - the store's vocabulary, which supplies the status order and the closed set.
+ * @returns the sections in display order; empty when there are no issues.
+ */
 export const boardSections = (issues: readonly Issue[], vocab: Vocab): readonly Section[] => {
   const byKey = new Map(issues.map(issue => [String(issue.key), issue]))
   const closed = new Set(vocab.closed)
@@ -104,6 +119,13 @@ const sectionHtml = (section: Section): string => [
   '</section>',
 ].join('\n')
 
+/**
+ * Render the whole board as one self-contained HTML file with inline CSS and no scripts.
+ * @param issues - the issues to render.
+ * @param vocab - the store's vocabulary, which decides the grouping.
+ * @param options - the header title and the optional generation and source-tree labels.
+ * @returns the complete HTML document, newline-terminated.
+ */
 export const renderBoardHtml = (issues: readonly Issue[], vocab: Vocab, options: BoardHtmlOptions = {}): string => {
   const sections = boardSections(issues, vocab)
   const title = options.title ?? 'jira 看板'

@@ -35,6 +35,10 @@ import { type TagDef } from './tags.ts'
 import { type Vocab, parseVocab } from './vocab.ts'
 import { validateIdentity } from './validate.ts'
 
+/**
+ * Everything a store is opened with: its root, the writing machine, an optional host label, and
+ * the lock budget and environment to use.
+ */
 export type StoreConfig = Readonly<{
   root: string
   /** The writing machine: it names the lock owner and the comment-id prefix. */
@@ -53,6 +57,11 @@ export type Store = Readonly<{
   env: LockEnvironment
 }>
 
+/**
+ * Open a store at a configured root, filling in the default lock budget, host, and environment.
+ * @param config - the root and machine to open with.
+ * @returns the frozen store handle.
+ */
 export const createStore = (config: StoreConfig): Store =>
   Object.freeze({
     files: fileStore(config.root),
@@ -76,6 +85,7 @@ export { projectOf }
 export { adoptHumanChanges, commitStoreWrite } from './commit.ts'
 export { allocateKey, highestExistingKey, readAllCounters } from './counters.ts'
 
+/** The absolute path builders every store-level read and write goes through (decision 182). */
 export const storePaths = {
   config: (root: string): string => join(root, 'config.md'),
   // Decision 182: the path *rules* live in `entity.ts`; these are the absolute forms, via `io.ts`.
@@ -85,6 +95,11 @@ export const storePaths = {
   counters: (root: string, machineId: string): string => join(root, 'counters', `${machineId}.json`),
 } as const
 
+/**
+ * Read the store's vocabulary from `config.md`.
+ * @param store - the store to read from.
+ * @returns the parsed vocabulary, or a refusal when the file is missing or unparsable.
+ */
 export const loadVocab = async (store: Store): Promise<Result<Vocab, JiraError>> => {
   const text = await readText(storePaths.config(store.files.root))
   if (!text.ok) {
@@ -118,6 +133,8 @@ const aliasesOf = (text: string): readonly string[] => {
 /**
  * The tag registry: one file per tag, the file name being the tag (decision 26). A store
  * with no `tags/` directory is a store with no tags yet — not an error.
+ * @param store - the store whose tag registry is read.
+ * @returns the registered tags in name order; empty when the store has no `tags/` directory.
  */
 export const loadTags = async (store: Store): Promise<Result<readonly TagDef[], JiraError>> => {
   const directory = storePaths.tags(store.files.root)
@@ -143,13 +160,24 @@ export const loadTags = async (store: Store): Promise<Result<readonly TagDef[], 
   return ok(Object.freeze(tags))
 }
 
+/**
+ * Read an issue's raw file text, which the decoders then interpret.
+ * @param store - the store to read from.
+ * @param key - the issue key naming the file.
+ * @returns the file text, or the domain's not-found error when it is missing.
+ */
 export const readIssueText = async (store: Store, key: IssueKey): Promise<Result<string, JiraError>> => {
   const text = await readText(storePaths.issue(store.files.root, projectOf(key), key))
   if (!text.ok) return err(notFound(key))
   return text
 }
 
-/** No comment file yet is simply no comments; a malformed one is a loud error. */
+/**
+ * No comment file yet is simply no comments; a malformed one is a loud error.
+ * @param store - the store to read from.
+ * @param key - the issue whose comments are read.
+ * @returns the comments in file order, or the refusal naming the broken anchor.
+ */
 export const readComments = async (store: Store, key: IssueKey): Promise<Result<readonly Comment[], JiraError>> => {
   const text = await readText(storePaths.comments(store.files.root, projectOf(key), key))
   if (!text.ok) return text.error.kind === 'missing' ? ok(Object.freeze([])) : err(notFound(key))
@@ -211,6 +239,13 @@ export type TransactOptions = Readonly<{
  *
  * The vocabulary and the tag registry are read *inside* the lock, so the rules a mutation
  * applied are the rules that were on disk when the change was made.
+ * @param store - the store the issue belongs to.
+ * @param key - the issue the transaction targets.
+ * @param actor - the identity and clock every write records.
+ * @param mutate - the pure change to apply under the lock.
+ * @param what - the action name used in the audit subject.
+ * @param options - compare-and-swap, blockers, and the override flag.
+ * @returns what the transaction did, or the refusal that left the disk untouched.
  */
 export const transact = async (
   store: Store,
@@ -326,6 +361,11 @@ export type Created = Readonly<{ key: IssueKey; change: Change; committed: boole
  * Decision 190: validation runs **before** allocation — a refused input must not burn a number.
  * (The reads feeding validation need no lock; allocation still takes the store lock on its own,
  * and the write still takes the issue lock — the order from decision 58 is unchanged.)
+ * @param store - the store to create the issue in.
+ * @param project - the project to create in, validated before a key is allocated.
+ * @param actor - the identity and clock the new issue records.
+ * @param input - the new issue, minus the key the allocator supplies.
+ * @returns the allocated key and the change that created it, or the refusal.
  */
 export const createInStore = async (
   store: Store,

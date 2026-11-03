@@ -19,7 +19,9 @@ import { type Frontmatter, type FrontmatterValue, parseFrontmatter, renderFrontm
 import { type Result, err, ok } from './result.ts'
 import { isTagName } from './tags.ts'
 
+/** The `schema` value a knowledge file carries. */
 export const KB_SCHEMA = 'kb/v1'
+/** The prefix a knowledge file's frontmatter `type` starts with, ahead of the entry's own type. */
 export const KB_DOCUMENT_TYPE_PREFIX = 'kb/'
 
 /** Branded so a knowledge key cannot be passed where an issue key is expected. */
@@ -34,12 +36,25 @@ export const KNOWLEDGE_KEY_SPACE = 'KB'
 
 const KNOWLEDGE_KEY = new RegExp(`^(${KNOWLEDGE_KEY_SPACE})-(\\d+)$`, 'u')
 
+/**
+ * Narrow a string to a knowledge key, tolerating surrounding spaces.
+ * @param value - the candidate string.
+ * @returns the trimmed value as a knowledge key, or undefined when it is not `KB-<n>`.
+ */
 export const asKnowledgeKey = (value: string): KnowledgeKey | undefined =>
   KNOWLEDGE_KEY.test(value.trim()) ? (value.trim() as KnowledgeKey) : undefined
 
-/** Domain directory names follow the tag rule: lower-kebab, at most 32 characters (decision 76). */
+/**
+ * Domain directory names follow the tag rule: lower-kebab, at most 32 characters (decision 76).
+ * @param value - the candidate domain name.
+ * @returns true when the name is a valid directory name for a domain.
+ */
 export const isDomainName = (value: string): boolean => isTagName(value)
 
+/**
+ * The lineage of an entry: which machine captured it, on what OS and with which tool, when, and
+ * where the fact came from when that was not the store itself.
+ */
 export type KnowledgeSource = Readonly<{
   machineId: string
   os: string
@@ -70,6 +85,10 @@ export type KnowledgeEntry = Readonly<{
   bodyLine: number
 }>
 
+/**
+ * A decoded entry together with what reading it tolerated: the warnings worth showing, the keys
+ * a write must refuse to drop, and the schema the file actually carried.
+ */
 export type DecodedKnowledge = Readonly<{
   entry: KnowledgeEntry
   warnings: readonly string[]
@@ -94,6 +113,12 @@ export const KB_FIELDS: readonly string[] = Object.freeze([
   'issues',
 ])
 
+/**
+ * The store-relative posix path of an entry's file.
+ * @param domain - the domain directory the entry lives in.
+ * @param key - the entry's knowledge key.
+ * @returns the `knowledge/<domain>/<key>.md` path.
+ */
 export const knowledgePath = (domain: string, key: KnowledgeKey): string => `knowledge/${domain}/${key}.md`
 
 const asText = (value: FrontmatterValue | undefined): string | undefined =>
@@ -105,6 +130,10 @@ const asList = (value: FrontmatterValue | undefined): readonly string[] =>
 /**
  * Read one entry. Missing required fields are **warned about, not fatal** (decision 49's read
  * side): a library with one half-written file must still be searchable.
+ * @param text - the file's full text, frontmatter and body.
+ * @param key - the knowledge key derived from the file name.
+ * @param domain - the domain directory the file lives in.
+ * @returns the decoded entry with its warnings, or the refusal that stops the read.
  */
 export const decodeKnowledge = (
   text: string,
@@ -184,6 +213,7 @@ export const decodeKnowledge = (
   }))
 }
 
+/** The vocabulary a knowledge write is validated against: the store's closed set of `kb_types`. */
 export type EncodeKnowledgeOptions = Readonly<{
   /** The store's `kb_types`; the closed set the design requires (decision 75). */
   kbTypes: readonly string[]
@@ -195,6 +225,9 @@ export type EncodeKnowledgeOptions = Readonly<{
  * allocating — a refused draft must never burn a `KB-<n>`. The source quadruple is not checked
  * here: it is built by the caller from its own context, and `encodeKnowledge` re-checks
  * everything at the write boundary anyway.
+ * @param input - the draft's domain, type, title, and tags.
+ * @param options - the vocabulary the draft is checked against.
+ * @returns true when the draft may be written, or the refusal naming the field at fault.
  */
 export const validateKnowledgeDraft = (
   input: Readonly<{ domain: string; kbType: string; title: string; tags?: readonly string[] }>,
@@ -221,7 +254,12 @@ export const validateKnowledgeDraft = (
 
 const looksLikeUrl = (value: string): boolean => /^[a-z][a-z0-9+.-]*:\/\//iu.test(value)
 
-/** Write one entry: strict, and the only place the field order is decided. */
+/**
+ * Write one entry: strict, and the only place the field order is decided.
+ * @param entry - the entry to encode.
+ * @param options - the vocabulary the entry is checked against.
+ * @returns the file text, or the refusal naming the field that broke a rule.
+ */
 export const encodeKnowledge = (
   entry: KnowledgeEntry,
   options: EncodeKnowledgeOptions,
@@ -274,7 +312,11 @@ export const encodeKnowledge = (
   return ok(renderFrontmatter(frontmatter, entry.body))
 }
 
-/** The identity a new entry records as its source (decision 48's tuple, kept whole). */
+/**
+ * The identity a new entry records as its source (decision 48's tuple, kept whole).
+ * @param input - the identity tuple a new entry records.
+ * @returns the frozen source, with the optional fields present only when they were given.
+ */
 export const sourceOf = (input: Readonly<{
   machineId: string
   os: string
@@ -297,6 +339,8 @@ export const sourceOf = (input: Readonly<{
  *
  * `human:daiqc` carries no machine, and inventing one from the human's name would put a person's
  * name into a lineage field. Callers fall back to the store's own machine id instead.
+ * @param identity - the identity string to read.
+ * @returns the machine id inside it, or undefined when it names none.
  */
 export const machineIdOf = (identity: string): string | undefined => {
   const parsed = asIdentity(identity)
