@@ -29,13 +29,14 @@ export const JIRA_COMMAND_NAME = 'jira'
  * depth, and that refusal is an ordinary tool result); the guard only decides earlier.
  * @param ctx - the plugin context; `ctx.tools` is the registry the guard registers with.
  * @param env - the process environment the read-only switch comes from.
+ * @param workerPreset - the configured executor preset, so the guard refuses an executor's ordinary writes.
  */
-export const installWriteGuard = (ctx: Context, env: HostEnv): void => {
+export const installWriteGuard = (ctx: Context, env: HostEnv, workerPreset?: string): void => {
   ctx.tools.guard((execution) => {
     if (execution.name !== TOOL_NAME) return undefined
     const action = (execution.arguments as { action?: unknown } | undefined)?.action
     if (typeof action !== 'string' || !WRITE_ACTIONS.includes(action)) return undefined
-    const caller = callerOf({ ctx, env }, execution.agent)
+    const caller = callerOf({ ctx, env, ...(workerPreset === undefined ? {} : { workerPreset }) }, execution.agent)
     if (caller.writable) return undefined
     return `dsh-jira: ${action} writes the ledger, and this session may not write (${caller.reason ?? 'read-only'})`
   })

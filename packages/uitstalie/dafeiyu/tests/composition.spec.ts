@@ -146,15 +146,16 @@ test('the branch layer wires the capability providers onto a production agent', 
 
   const ctx = await boot(project, rows)
   await vi.waitFor(() => {
-    expect(ctx.dafeiyu.status().map(entry => entry.state)).toEqual(['active', 'active'])
+    expect(ctx.dafeiyu.status().map(entry => entry.state)).toEqual(['active', 'active', 'active'])
   })
   const statuses = ctx.dafeiyu.status()
-  expect(statuses.map(entry => entry.id)).toEqual(['memory', 'personality'])
-  expect(statuses.map(entry => entry.label)).toEqual(['Memory', 'Personality'])
+  expect(statuses.map(entry => entry.id)).toEqual(['memory', 'personality', 'store'])
+  expect(statuses.map(entry => entry.label)).toEqual(['Memory', 'Personality', '.dsh store'])
 
   const agent: Agent = await ctx.agentLoop.create(SessionId('composition-root'), {}, { cwd: project })
   expect(ctx.tools.get('memory_write', agent)).toBeDefined()
   expect(ctx.tools.get('personality_learn', agent)).toBeDefined()
+  expect(ctx.tools.get('tool-dsh-store', agent)).toBeDefined()
   const assembly = await ctx.systemPrompt.assemble(assembleContextFor(agent))
   expect(assembly.sections.map(section => section.name)).toEqual(expect.arrayContaining(['memory', 'personality']))
 })

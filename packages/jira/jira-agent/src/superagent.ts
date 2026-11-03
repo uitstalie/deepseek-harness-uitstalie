@@ -21,6 +21,7 @@ import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey,
 import { clampText, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
+import { dispatchBody, dispatchRecordOf } from './dispatch.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, failure, nowUtc, okValue } from './envelope.ts'
 import { isExecutorSession } from './caller.ts'
 import { type Spec, type ToolHost, callerOf, defineJiraTool, identityOf, runOptionsOf } from './tools.ts'
@@ -45,6 +46,9 @@ export const CLAIMABLE_STATUS = 'todo'
 
 /** The marker a proposal comment starts with, so a claim finds it without reading prose. */
 export const PROPOSAL_MARKER = '[claim-proposal]'
+
+/** The marker a person's confirmation comment starts with (DH-513 review): the credential a claim consumes. */
+export const CLAIM_APPROVED_MARKER = '[claim-approved]'
 
 /** The tool names the host registry refers to. */
 export const SCAN_TOOL_NAME = 'superagent_scan'
@@ -107,22 +111,39 @@ export const claimability = (issue: Issue, blocked: boolean, at: Timestamp): Cla
 }
 
 /**
- * Whether this session holds an unspent proposal on the issue.
+ * Whether this session holds an unspent proposal a person has confirmed.
  *
- * The rule is deliberately narrow: the **latest** comment must be this session's proposal. A
- * proposal somebody replied to is spent, and a claim cannot reach past the conversation that
- * answered it.
+ * A proposal alone is not enough (DH-513 review): the confirmation is a **human-authored**
+ * `[claim-approved]` comment that is the latest comment on the issue. The person writes it through
+ * a human surface (the `jira` CLI's `comment` verb), so the model cannot mint the credential for
+ * itself; the state change a claim makes then spends it, because the issue leaves `todo`.
  * @param comments - the issue's comments, oldest first.
  * @param by - the caller's identity.
  * @returns the verdict with its reason.
  */
 export const openProposal = (comments: readonly Comment[], by: Identity | undefined): Claimability => {
   if (by === undefined) return NOT_READY('this session has no identity to propose under')
+  let proposalIndex = -1
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const candidate = comments[index]
+    if (candidate === undefined) continue
+    if (candidate.author === by && candidate.body.trimStart().startsWith(PROPOSAL_MARKER)) {
+      proposalIndex = index
+      break
+    }
+  }
+  if (proposalIndex < 0) return NOT_READY(`no ${PROPOSAL_MARKER} comment on the issue; propose first`)
   const last = comments.at(-1)
-  if (last === undefined) return NOT_READY(`no ${PROPOSAL_MARKER} comment on the issue; propose first`)
-  if (last.author !== by) return NOT_READY(`the latest comment is ${String(last.author)}'s, not this session's`)
-  if (!last.body.trimStart().startsWith(PROPOSAL_MARKER)) {
-    return NOT_READY(`the latest comment is not a ${PROPOSAL_MARKER}; propose again`)
+  if (last === undefined || last.author === by) {
+    return NOT_READY('the latest comment is still this session\'s proposal; ask a person to confirm with '
+      + `a ${CLAIM_APPROVED_MARKER} comment`)
+  }
+  if (!last.body.trimStart().startsWith(CLAIM_APPROVED_MARKER)) {
+    return NOT_READY(`the latest comment is not a ${CLAIM_APPROVED_MARKER} confirmation; ask a person first`)
+  }
+  if (!last.author.startsWith('human:')) {
+    return NOT_READY(`the confirmation is authored by ${String(last.author)}, not a person; `
+      + 'only a human comment is a credential')
   }
   return READY
 }
@@ -154,14 +175,15 @@ export const CLAIM_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.free
  * `superagent_claim`'s description.
  *
  * It names the two-step rule and the person's part, because neither is discoverable from a result:
- * proposing costs a comment, claiming needs their yes.
+ * proposing costs a comment, and claiming consumes a **human** confirmation comment.
  */
 export const CLAIM_DESCRIPTION =
   'Take one ready issue from the local dsh-jira ledger, in two steps so a person stays in charge. '
   + '`propose` appends a comment saying why this issue and changes nothing else. `claim` runs only '
-  + 'when the latest comment on the issue is still that proposal; it assigns the issue to this '
-  + 'session and moves it to in_progress. Ask the person between the two steps, and do not claim an '
-  + 'issue they have not agreed to.'
+  + 'after the issue\'s latest comment is a person\'s confirmation (a `human:`-authored '
+  + '`[claim-approved] ...` comment, written with the jira CLI\'s comment verb); it then assigns the '
+  + 'issue to this session and moves it to in_progress. Ask the person to confirm between the two '
+  + 'steps, and do not claim an issue they have not confirmed.'
 
 /** The tool name for workspace selection. */
 export const WORKSPACE_TOOL_NAME = 'superagent_workspace'
@@ -460,6 +482,8 @@ export const runSuperagentPass = async (
   maxWorkers: number = DEFAULT_MAX_WORKERS,
 ): Promise<void> => {
   if (signal?.aborted === true) return
+  // An executor Session is a root, but the claim loop belongs to the dispatcher (DH-703 review).
+  if (workerPreset !== undefined && workerPreset !== '' && isExecutorSession(agent, workerPreset)) return
   const caller = callerOf(host, agent)
   if (!caller.writable || caller.identity === undefined || caller.sessionId === undefined) return
   try {
@@ -563,29 +587,12 @@ export const runWorkspaceTool = async (
 /** The tool that starts a real Session instead of a subagent (DH-702). */
 export const DISPATCH_TOOL_NAME = 'superagent_dispatch'
 
-/** The marker a dispatch records on the issue, so a restart can tell which Session ran it. */
-export const DISPATCH_MARKER = '[dispatch:session]'
+/** The dispatch record lives in its own module so `issue_work` can read the same binding. */
+export { DISPATCH_MARKER, dispatchBody, dispatchRecordOf } from './dispatch.ts'
+export type { DispatchRecord, DispatchStatus } from './dispatch.ts'
 
 /** How many issues one dispatcher may keep in progress at once, unless the row says otherwise. */
 export const DEFAULT_MAX_WORKERS = 2
-
-/**
- * The Session the latest dispatch record on an issue names, when there is one.
- *
- * The record is a plain comment rather than state: a restarting host has to be able to read the
- * same history a person reads, and "which executor ran this issue" is part of that history.
- * @param comments - the issue's comments, oldest first.
- * @returns the recorded session id, or undefined when the issue was never dispatched.
- */
-export const dispatchRecordOf = (comments: readonly { readonly body: string }[]): string | undefined => {
-  for (let index = comments.length - 1; index >= 0; index -= 1) {
-    const body = comments[index]?.body.trimStart() ?? ''
-    if (!body.startsWith(DISPATCH_MARKER)) continue
-    const session = body.slice(DISPATCH_MARKER.length).trim()
-    return session === '' ? undefined : session
-  }
-  return undefined
-}
 
 /**
  * The slice of the host's session controller this capability uses.
@@ -713,64 +720,89 @@ export const runDispatchTool = async (
     const full = await jira.readIssue(key as IssueKey)
     if (!full.ok) return failure(full.error, caller, me)
     const previous = dispatchRecordOf(full.value.comments ?? [])
-    if (previous !== undefined) {
+    if (previous !== undefined && previous.status !== 'failed') {
       let running: boolean
       try {
         const listed = await controller.list()
-        running = listed.items.some(item => String(item.sessionId) === previous && item.running)
+        running = listed.items.some(item => String(item.sessionId) === previous.session && item.running)
       } catch {
         return failure(invalidInput(
-          `${key} records executor session '${previous}', and whether it still runs cannot be read; `
+          `${key} records executor session '${previous.session}', and whether it still runs cannot be read; `
           + 'stop it or wait before dispatching again',
           { key },
         ), caller, me)
       }
       if (running) {
         return failure(invalidInput(
-          `${key} already has a running executor (session '${previous}'); wait for it or stop it before dispatching again`,
+          `${key} already has a running executor (session '${previous.session}'); wait for it or stop it before dispatching again`,
           { key },
         ), caller, me)
       }
     }
 
     const instruction = dispatchInstruction(key)
+    let sessionId: string
     try {
       const created = await controller.create({
         ...(cwd === undefined ? {} : { cwd }),
         agentPreset: workerPreset,
       })
-      const sessionId = String(created.sessionId)
+      sessionId = String(created.sessionId)
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `the executor Session for ${key} could not be created: ${error instanceof Error ? error.message : String(error)}`,
+        { key },
+      ), caller, me)
+    }
+    // The record is written **before** the first prompt: the executor's first `issue_work` call
+    // authorizes against it, so a record that only appeared after the prompt would refuse the real
+    // worker (DH-702 review). A failed write means the executor is not started at all.
+    const record = async (status: 'starting' | 'started' | 'failed'): Promise<boolean> => {
+      const written = await jira.mutateIssue(key as IssueKey, {
+        action: 'comment',
+        body: dispatchBody(sessionId, status),
+      }, { by: actorFor(options, caller), at: options.at }, {})
+      return written.ok
+    }
+    if (!await record('starting')) {
+      return failure(invalidInput(
+        `${key}: the dispatch record could not be written, so the executor was not started `
+        + `(session '${sessionId}' was created but never prompted)`,
+        { key },
+      ), caller, me)
+    }
+    try {
       await controller.prompt({
         requestId: `superagent-${randomUUID()}`,
         sessionId,
         mode: 'queue',
         content: [{ type: 'text', text: instruction }],
       })
-      // Recorded after the prompt so a failure to start leaves no claim of an executor that never ran.
-      const recorded = await jira.mutateIssue(key as IssueKey, {
-        action: 'comment',
-        body: `${DISPATCH_MARKER} ${sessionId}`,
-      }, { by: actorFor(options, caller), at: options.at }, {})
-      return Object.freeze({
-        ok: true,
-        writable: caller.writable,
-        me,
-        dispatch: Object.freeze({
-          key,
-          // `session` rather than `sessionId`, matching the `me` tuple: the wire conversion would
-          // rename a camelCase key on the way out, and the model reads the rendered text either way.
-          session: sessionId,
-          ...(cwd === undefined ? {} : { cwd }),
-          instruction,
-          recorded: recorded.ok,
-        }),
-      })
     } catch (error: unknown) {
+      await record('failed')
       return failure(invalidInput(
         `the executor Session for ${key} could not be started: ${error instanceof Error ? error.message : String(error)}`,
         { key },
       ), caller, me)
     }
+    // The executor is running and bound by the `starting` record even if this richer status cannot
+    // be written; the claim is not lost, and recovery sees the Session as still running.
+    const recorded = await record('started')
+    return Object.freeze({
+      ok: true,
+      writable: caller.writable,
+      me,
+      dispatch: Object.freeze({
+        key,
+        // `session` rather than `sessionId`, matching the `me` tuple: the wire conversion would
+        // rename a camelCase key on the way out, and the model reads the rendered text either way.
+        session: sessionId,
+        ...(cwd === undefined ? {} : { cwd }),
+        instruction,
+        recorded,
+        status: recorded ? 'started' : 'starting',
+      }),
+    })
   }
 
   if ((asString(validated.value.action) ?? 'start') !== 'recover') {
@@ -802,13 +834,13 @@ export const runDispatchTool = async (
     let running = false
     try {
       const listed = await controller.list()
-      running = listed.items.some(item => String(item.sessionId) === previous && item.running)
+      running = listed.items.some(item => String(item.sessionId) === previous.session && item.running)
     } catch {
-      left.push(Object.freeze({ key, reason: `executor '${previous}' state cannot be read` }))
+      left.push(Object.freeze({ key, reason: `executor '${previous.session}' state cannot be read` }))
       continue
     }
     if (running) {
-      left.push(Object.freeze({ key, reason: `executor '${previous}' still runs` }))
+      left.push(Object.freeze({ key, reason: `executor '${previous.session}' still runs` }))
       continue
     }
     const started = await dispatchOne(key)
@@ -817,7 +849,7 @@ export const runDispatchTool = async (
       continue
     }
     const dispatch = started.dispatch as { session?: string } | undefined
-    recovered.push(Object.freeze({ key, previous, session: String(dispatch?.session ?? '') }))
+    recovered.push(Object.freeze({ key, previous: previous.session, session: String(dispatch?.session ?? '') }))
   }
   return Object.freeze({
     ok: true,
@@ -1113,6 +1145,9 @@ export const createSuperagentContribution = (
       agent.ctx.effect(() => () => { liveAgents.delete(agent) }, 'superagent: forget a disposed agent')
     },
     onTurnEnd: async (input: TurnEndInput) => {
+      // An executor Session is a root agent, but it must not propose new work (DH-703 review):
+      // its turn end is delivery, not dispatch.
+      if (isExecutorSession(input.agent, workerPreset)) return
       await runSuperagentPass(host, input.agent, input.signal, workerPreset, maxWorkers)
     },
     dispose: () => {

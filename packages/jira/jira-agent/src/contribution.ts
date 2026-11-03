@@ -70,6 +70,8 @@ export interface ContributionHost {
   readonly clock: () => number
   /** The per-plugin session recorder; a reload starts a fresh one. */
   readonly recorder: SessionRecorder
+  /** The configured executor preset: a Session that joined it writes only through `issue_work`. */
+  readonly workerPreset?: string
 }
 
 /**

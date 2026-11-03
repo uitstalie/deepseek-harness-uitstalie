@@ -23,7 +23,7 @@ import { type FieldSpec, objectSchema } from '@deepseek-ai/dsh-jira-core'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { assertSupportedJsonSchema, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
-import { type Caller, callerSessionId, describeCaller } from './caller.ts'
+import { type Caller, callerSessionId, describeCaller, isExecutorSession } from './caller.ts'
 import { type HostEnv, readOnlySession } from './env.ts'
 import { type ToolValue, nowUtc } from './envelope.ts'
 import {
@@ -51,6 +51,8 @@ export interface ToolHost {
   readonly clock: () => number
   /** The per-plugin session recorder; a reload starts a fresh one. */
   readonly recorder: SessionRecorder
+  /** The configured executor preset; a Session that joined it may only write through `issue_work`. */
+  readonly workerPreset?: string
 }
 
 /** The resolved store, caller and identity of one call. */
@@ -85,11 +87,15 @@ const actionOf = (args: unknown): string | undefined => {
 const renderValue = (text: string): ContentBlock[] => [{ type: 'text', text: clampText(text) }]
 
 /** The caller facts for one execution, shared by the tools and the write guard. */
-export const callerOf = (host: Pick<ToolHost, 'ctx' | 'env'>, agent: unknown): Caller =>
+export const callerOf = (
+  host: Pick<ToolHost, 'ctx' | 'env'> & { readonly workerPreset?: string | undefined },
+  agent: unknown,
+): Caller =>
   describeCaller({
     ...(agent === undefined ? {} : { agent }),
     machine: host.ctx.jira.machineId,
     readOnly: readOnlySession(host.env),
+    executor: isExecutorSession(agent, host.workerPreset),
   })
 
 /**

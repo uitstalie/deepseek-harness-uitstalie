@@ -293,13 +293,15 @@ pass 扫描 → 候选（只读，不动账本）
 [门 2：人复核]        → closed + fixed / 打回 in_progress
 ```
 
-**已落地**（DH-512 / DH-513 / DH-514，提交 `5b19fbc99b` / `271dc5a708` / `a9e74d5236` + `3ad9b9e4be`）：两端都在 `jira-agent` 里，各开各的能力门。
+**已落地**（DH-512 / DH-513 / DH-514，提交 `5b19fbc99b` / `271dc5a708` / `a9e74d5236` + `3ad9b9e4be`；执行者边界、派遣记录与人类确认于 2026-11-03 按复审补全）：两端都在 `jira-agent` 里，各开各的能力门。
 
-- 执行者端 `issue_work`：授权是**范围**——issue 在 `in_progress` 且 `assignee` 的会话等于调用者的父会话；`deliver` 一次事务完成"交回复审 + 证据"；`blocked` 只留 `[blocked:person|dependency]` 标记，不造状态。子 agent 另有三个账本读工具与一段常驻 `jira:executor` 说明。
-- 调度端 `superagent_scan` / `superagent_claim`：提案是 `[claim-proposal]` 评论且**必须是最新一条**才算数；`claim` 由状态迁移本身花掉提案。`claim` 返回 `dispatch { key, cwd, instruction }`。
+- 执行者端 `issue_work`：授权是**派遣记录绑定**，不是父会话——`[dispatch:session] <session>` 在首个 prompt 之前写进 issue，`issue_work` 要求调用者的 Session 就是最新记录里的那个；`deliver` 一次事务完成"交回复审 + 证据"；`blocked` 只留 `[blocked:person|dependency]` 标记，不造状态。子 agent 与执行者会话都另有三个账本读工具与一段常驻 `jira:executor` 说明；执行者会话被 `describeCaller` 判为 `writable: false, reason: 'executor'`，普通 `jira_issue` 写在 guard 层被拒，turn-end 也不再提案。
+- 调度端 `superagent_scan` / `superagent_claim`：提案是 `[claim-proposal]` 评论；`claim` 要求 issue 的**最新一条评论是人类作者（`human:`）的 `[claim-approved]`**，状态迁移随后花掉这条凭据。`claim` 返回 `dispatch { key, cwd, instruction }`。
+- 派遣记录带生命周期：`starting → started / failed`；记录先于 prompt 落地，写失败就不启动；重启后的 `recover` 以记录里的 Session 与 `running` 状态决定是否重派。
 - `superagent_workspace`：`roster` / `ensure`，`ensure` 返回 canonical path 供派遣当 `cwd`；`workspaceRegistry` 走鸭子类型，缺席时如实拒绝。
-- **没有做 worker preset 行**：persona 由 `jira:executor` 段承担（子 agent 一次付费、可缓存），工具面由能力按 agent 分流，`issue_work` 的范围检查负责安全。preset 行只能再叠 persona，代价是 bundle patch + 部署配置。
-- **仍未做**：常驻轮询、面板、真正的独立 Session 执行器。
+- **worker preset 行已落地**（`jira-worker`，order 5）：只放执行者需要的 shell / 文件 / 后台 job / compaction，不放 delegation、goal、planning 与 `ask_user_question`；`SessionHeader.agentPreset` 是执行者的身份来源。
+- **GitHub source 已落地**（只读 `gh issue list`，未配置 repo 时可读拒绝）；**进程级定时 pass 已落地**（unref timer，随 dispose 清除）。
+- **仍未做**：无会话的常驻 daemon、飞书 Source、vendor 原型 `src/core`。
 
 （门 0 是 §6.4 的 `workspace_ensure`：人协商路径，同时产生 Grant。）
 
@@ -336,7 +338,7 @@ pass 扫描 → 候选（只读，不动账本）
 1. **agent preset（收窄"看得见什么"）**：`tool-subagent` 支持 `agent_preset` —— 配置里 `agentPreset` 强制指定，或 `allowedAgentPresets` 暴露给模型选。"The selected preset owns persona and tool composition." 两个限制：**只有 `spawn` provider 支持独立 preset**（`fork` 会直接报 `does not support independent agent preset selection`）；preset 只管可见面。
 2. **工具层授权（收窄"写得了什么"）**：`installWriteGuard` 是**单调拦截点**，只认 `jira_issue`，所以它挡不到一个新工具；新工具的可写面必须由它自己的 scope check 决定，而不是把 `writable: boolean` 扩成能力集。
 
-**实现结果**（DH-512，提交 `5b19fbc99b`）：只做了第 2 条的 scope check，**没动 guard，也没做 worker preset**——能力的 scope 由 `root` 改成 `all` 并按 agent 分流：root 拿三个工具 + 注入行，子 agent 只拿 `issue_work`。授权 = issue 必须 `in_progress` 且其 `assignee` 的 session 等于调用者的 `SessionHeader.parentSession`；拒绝复用 `READ_ONLY_SESSION`，`reason` 说清是哪一种。preset 留给后续，它只影响 persona 与工具表的整洁度，不影响安全边界。
+**实现结果**（DH-512，提交 `5b19fbc99b`；2026-11-03 复审后修正授权）：只做了第 2 条的 scope check，**没动 guard 的语义边界，也没把执行者做成可写 root**——能力的 scope 由 `root` 改成 `all` 并按 agent 分流：root 拿完整工具，子 agent / 执行者只拿读工具 + `issue_work`。授权 = issue 的最新 `[dispatch:session]` 记录里的 Session 等于调用者的 `SessionHeader`；拒绝复用 `READ_ONLY_SESSION`，`reason` 说清是哪一种。执行者会话的 `writable` 为 false（`reason: 'executor'`），普通写由 guard 拒绝。
 
 ### 8.2 解单流程的三个动词
 
@@ -372,13 +374,15 @@ pass 扫描 → 候选（只读，不动账本）
 
 **阶段一已落地**：
 
-- 独立 dafeiyu 能力 `superagent`（`enabledByDefault: false`），root 三个工具 `superagent_scan` / `superagent_claim` / `superagent_workspace`，子 agent 只带 `issue_work`；
-- 认领闭环：提案 → 人确认 → claim → 派 subagent → `issue_work` `deliver` 回 `in_review`；
-- **turn-end pass**：每个完成的 root turn 以 observe 模式提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不自行认领；本会话已有 in_progress 或最新评论已是提案时沉默；
-- **`superagent_status`**：只读汇总 ready / proposed / in-progress / in-review / blocked，并列出需要人确认或复核的条目；这是面板之前的最小“现在需要我吗”表面；
+- 独立 dafeiyu 能力 `superagent`（`enabledByDefault: false`），root 六个工具（scan / claim / dispatch / workspace / status / source），子 agent 与执行者只带读工具 + `issue_work`；
+- 认领闭环：提案 → **人类 `[claim-approved]` 评论** → claim → 派遣（真实 Session，`jira-worker` preset）→ 执行者 `issue_work` `deliver` 回 `in_review`；
+- **派遣记录**：`[dispatch:session] <session> starting|started|failed` 先于 prompt 落地，recover 按记录与 running 状态决定重派；
+- **turn-end pass**：先恢复丢失的执行者，再以 observe 模式提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不自行认领；执行者会话跳过该 pass；
+- **`superagent_status`**：只读汇总 ready / proposed / in-progress / in-review / blocked，并列出需要人确认或复核的条目；`ui-jira` 的 Superagent 面板消费同一份只读数据；
 - **进程级定时 pass**：能力启用且至少有一个已接线 agent 时，每 5 分钟跑一次 observe pass；timer 是 unref 的，随 dispose 清除；没有存活 agent 时不跑（无 session 就没有 dispatcher 身份，真正的无会话 daemon 仍后置）；
-- 测试覆盖纯谓词、工具面、真实组合的完整闭环，以及 pass 的"只提一次"。
+- **GitHub 导入**（只读）与 **重启恢复** 均已落地；
+- 测试覆盖纯谓词、工具面、真实组合的完整闭环（提案 → 人类确认 → 认领 → 派遣 → 交付）、派遣记录生命周期与 pass 的"只提一次"。
 
-**仍未做（有意后置）**：常驻轮询、Web 面板、真正的独立 Session 执行器、GitHub/飞书 Source、vendor 原型 `src/core`。这些在闭环价值被验证后再开；不阻塞阶段一验收。
+**仍未做（有意后置）**：无会话常驻 daemon、飞书 Source、vendor 原型 `src/core`。这些在闭环价值被验证后再开；不阻塞阶段一验收。
 
 **对 dafeiyu 的结论**：super agent 适合拆成"能力列表里的一行 + 自己的 host row"，但不适合把整台异步机器塞进 capability contribution。第一版把它收在 jira-agent 的同一 row 里，用独立 capability id 门控，是 B 的最小形态；若后续要独立 host row，`superagent` 这个 id/工具面可以原样迁出。

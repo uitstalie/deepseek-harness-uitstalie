@@ -17,7 +17,7 @@ import { after, describe, it } from 'node:test'
 import { type Identity, type IssueKey, removeTree } from '@deepseek-ai/dsh-jira-core'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { type Caller } from './caller.ts'
-import { TOOL_NAME, WORK_TOOL_NAME, jiraWorkerTools, workAccess } from './index.ts'
+import { DISPATCH_MARKER, TOOL_NAME, WORK_TOOL_NAME, jiraWorkerTools, workAccess } from './index.ts'
 import * as jiraAgent from './index.ts'
 import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent } from './testing/host.ts'
 
@@ -62,7 +62,7 @@ interface Wired {
  */
 const wire = async (dir: string, options: Parameters<typeof mountJira>[1] = {}): Promise<Wired> => {
   const harness = await mountJira(dir, options)
-  await harness.ctx.plugin(jiraAgent)
+  await harness.ctx.plugin(jiraAgent, { superagent_worker_preset: 'jira-worker' })
   await settle()
   for (const tool of jiraWorkerTools(harness.host)) harness.ctx.tools.register(tool)
   const main = testAgent(harness.ctx, 'main-1')
@@ -94,6 +94,16 @@ const claim = async (harness: JiraHarness, main: AgentHandle, key = 'DH-12'): Pr
   assert.equal(assigned.ok, true, JSON.stringify(assigned.error))
   const moved = await call(harness, main, TOOL_NAME, { action: 'switch_state', key, to: 'in_progress' })
   assert.equal(moved.ok, true, JSON.stringify(moved.error))
+}
+
+/** Bind a Session the way `superagent_dispatch` does: the record precedes the executor's first write. */
+const recordDispatch = async (harness: JiraHarness, main: AgentHandle, key = 'DH-12', session = 'worker-1'): Promise<void> => {
+  const written = await call(harness, main, TOOL_NAME, {
+    action: 'comment',
+    key,
+    comment: { body: `${DISPATCH_MARKER} ${session} started` },
+  })
+  assert.equal(written.ok, true, JSON.stringify(written.error))
 }
 
 /** The issue an envelope returned. */
@@ -147,18 +157,17 @@ const issueOfPure = (overrides: Partial<IssueFacts> = {}): IssueFacts => ({
 })
 
 describe('issue_work: the scope check', () => {
-  it('accepts the issue the dispatcher claimed and left in progress', () => {
-    assert.deepEqual(workAccess(issueOfPure(), callerOf()), { allowed: true })
+  it('accepts the issue dispatched to this session and left in progress', () => {
+    assert.deepEqual(workAccess(issueOfPure(), callerOf(), 'worker-1'), { allowed: true })
   })
 
   it('refuses every other shape, and says which one', () => {
     const cases: readonly (readonly [string, unknown])[] = [
-      ['a read-only deployment', workAccess(issueOfPure(), callerOf({ reason: 'dsh-read-only' }))],
-      ['a root session', workAccess(issueOfPure(), callerOf({ parentSessionId: undefined }))],
-      ['an unclaimed issue', workAccess(issueOfPure({ assignee: undefined }), callerOf())],
-      ['another session\'s claim', workAccess(issueOfPure({ assignee: 'agent:m|dsh|a1b2c3d4|main-2' as Identity }), callerOf())],
-      ['a review already handed back', workAccess(issueOfPure({ status: 'in_review' }), callerOf())],
-      ['a closed issue', workAccess(issueOfPure({ status: 'closed' }), callerOf())],
+      ['a read-only deployment', workAccess(issueOfPure(), callerOf({ reason: 'dsh-read-only' }), 'worker-1')],
+      ['a session that was never dispatched', workAccess(issueOfPure(), callerOf(), undefined)],
+      ['another session\'s dispatch', workAccess(issueOfPure(), callerOf(), 'worker-2')],
+      ['a review already handed back', workAccess(issueOfPure({ status: 'in_review' }), callerOf(), 'worker-1')],
+      ['a closed issue', workAccess(issueOfPure({ status: 'closed' }), callerOf(), 'worker-1')],
     ]
     for (const [what, raw] of cases) {
       const verdict = raw as { allowed: boolean; reason?: string }
@@ -167,10 +176,9 @@ describe('issue_work: the scope check', () => {
     }
   })
 
-  it('refuses a human assignee, because a human did not dispatch anyone', () => {
-    const verdict = workAccess(issueOfPure({ assignee: 'human:daiqc' as Identity }), callerOf())
-    assert.equal(verdict.allowed, false)
-    assert.match(String(verdict.reason), /not claimed/u)
+  it('binds by the dispatch record, not by the assignee', () => {
+    const verdict = workAccess(issueOfPure({ assignee: 'human:daiqc' as Identity }), callerOf(), 'worker-1')
+    assert.deepEqual(verdict, { allowed: true })
   })
 })
 
@@ -179,6 +187,7 @@ describe('issue_work: through the real composition', () => {
     const { harness, main, worker } = await wire(await fixture())
     try {
       await claim(harness, main)
+      await recordDispatch(harness, main)
       const reported = await call(harness, worker, WORK_TOOL_NAME, { action: 'progress', key: 'DH-12', body: 'wired the thing up' })
       assert.equal(reported.ok, true, JSON.stringify(reported.error))
       assert.equal(reported.writable, true)
@@ -193,6 +202,7 @@ describe('issue_work: through the real composition', () => {
     const { harness, main, worker } = await wire(await fixture())
     try {
       await claim(harness, main)
+      await recordDispatch(harness, main)
       const delivered = await call(harness, worker, WORK_TOOL_NAME, {
         action: 'deliver',
         key: 'DH-12',
@@ -217,6 +227,7 @@ describe('issue_work: through the real composition', () => {
     const { harness, main, worker } = await wire(await fixture())
     try {
       await claim(harness, main)
+      await recordDispatch(harness, main)
       const blocked = await call(harness, worker, WORK_TOOL_NAME, {
         action: 'blocked',
         key: 'DH-12',
@@ -233,10 +244,11 @@ describe('issue_work: through the real composition', () => {
     }
   })
 
-  it('refuses an issue claimed by a different dispatcher', async () => {
+  it('refuses an issue dispatched to a different session', async () => {
     const { harness, main } = await wire(await fixture())
     try {
       await claim(harness, main)
+      await recordDispatch(harness, main)
       const stranger = testAgent(harness.ctx, 'worker-2', {
         origin: 'subagent',
         delegationDepth: 1,
@@ -245,42 +257,57 @@ describe('issue_work: through the real composition', () => {
       const refused = await call(harness, stranger, WORK_TOOL_NAME, { action: 'progress', key: 'DH-12', body: 'mine now' })
       assert.equal(refused.ok, false)
       assert.equal(refused.writable, false)
-      assert.match(String(refused.reason), /claimed by session 'main-1'/u)
+      assert.match(String(refused.reason), /dispatched to session 'worker-1'/u)
     } finally {
       await harness.dispose()
     }
   })
 
-  it('refuses a root session: `issue_work` is for a dispatched executor', async () => {
+  it('refuses a root session that was not the dispatched executor', async () => {
     const { harness, main } = await wire(await fixture())
     try {
       await claim(harness, main)
+      await recordDispatch(harness, main)
       const refused = await call(harness, main, WORK_TOOL_NAME, { action: 'progress', key: 'DH-12', body: 'talking to myself' })
       assert.equal(refused.ok, false)
-      assert.match(String(refused.reason), /dispatched executor/u)
+      assert.match(String(refused.reason), /dispatched to session 'worker-1'/u)
     } finally {
       await harness.dispose()
     }
   })
 
-  it('refuses an issue nobody claimed', async () => {
+  it('refuses an issue nobody dispatched', async () => {
     const { harness, worker } = await wire(await fixture())
     try {
       const refused = await call(harness, worker, WORK_TOOL_NAME, { action: 'progress', key: 'DH-12', body: 'uninvited' })
       assert.equal(refused.ok, false)
-      assert.match(String(refused.reason), /not claimed/u)
+      assert.match(String(refused.reason), /never dispatched/u)
     } finally {
       await harness.dispose()
     }
   })
 
-  it('keeps `jira_issue` refused for the executor it just let report', async () => {
+  it('keeps `jira_issue` refused for a delegated child', async () => {
     const { harness, main, worker } = await wire(await fixture())
     try {
       await claim(harness, main)
+      await recordDispatch(harness, main)
       const result = await dispatchTool(harness, worker, TOOL_NAME, { action: 'update', key: 'DH-12', data: { summary: 'nope' } }, 'guard-worker')
       assert.equal(result.isError, true)
       assert.match(result.content.find(block => block.type === 'text')?.text ?? '', /may not write \(subagent\)/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('keeps `jira_issue` refused for an executor Session that joined the worker preset', async () => {
+    const { harness, main } = await wire(await fixture())
+    try {
+      await claim(harness, main)
+      const executor = testAgent(harness.ctx, 'exec-1', { agentPreset: 'jira-worker' })
+      const result = await dispatchTool(harness, executor, TOOL_NAME, { action: 'update', key: 'DH-12', data: { summary: 'nope' } }, 'guard-executor')
+      assert.equal(result.isError, true)
+      assert.match(result.content.find(block => block.type === 'text')?.text ?? '', /may not write \(executor\)/u)
     } finally {
       await harness.dispose()
     }

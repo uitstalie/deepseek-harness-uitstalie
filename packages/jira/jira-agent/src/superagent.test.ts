@@ -18,7 +18,9 @@ import { type Context } from '@deepseek-ai/cordis'
 import { type Comment, type Identity, type Issue, type Timestamp, removeTree } from '@deepseek-ai/dsh-jira-core'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
+  CLAIM_APPROVED_MARKER,
   CLAIM_TOOL_NAME,
+  DISPATCH_MARKER,
   DISPATCH_TOOL_NAME,
   PROPOSAL_MARKER,
   SCAN_TOOL_NAME,
@@ -136,6 +138,25 @@ const bodiesOf = (envelope: Record<string, unknown>): string[] => {
 const AT = '2026-10-15T12:00:00Z' as Timestamp
 const MAIN = 'agent:deepseek-flash|dsh|a1b2c3d4|main-1' as Identity
 
+/** A person's confirmation: the human-authored credential a claim consumes. */
+const approve = async (harness: JiraHarness, key = 'DH-12'): Promise<void> => {
+  const written = await harness.ctx.jira.mutateIssue(key as Issue['key'], {
+    action: 'comment',
+    body: `${CLAIM_APPROVED_MARKER} go ahead`,
+  }, { by: 'human:daiqc' as Identity, at: AT }, {})
+  assert.equal(written.ok, true, written.ok ? '' : JSON.stringify(written.error))
+}
+
+/** Bind an executor Session the way a dispatch does: the record precedes any executor write. */
+const bindExecutor = async (harness: JiraHarness, key: string, sessionId: string): Promise<AgentHandle> => {
+  const written = await harness.ctx.jira.mutateIssue(key as Issue['key'], {
+    action: 'comment',
+    body: `${DISPATCH_MARKER} ${sessionId} started`,
+  }, { by: 'human:daiqc' as Identity, at: AT }, {})
+  assert.equal(written.ok, true, written.ok ? '' : JSON.stringify(written.error))
+  return testAgent(harness.ctx, sessionId)
+}
+
 /** A `todo` issue with no links, no claim and a body. */
 const issue = (overrides: Partial<Issue> = {}): Issue => ({
   key: 'DH-12' as Issue['key'],
@@ -194,19 +215,25 @@ describe('superagent: what can be taken', () => {
 })
 
 describe('superagent: is the proposal still fresh', () => {
-  it('accepts only this session\'s proposal as the latest comment', () => {
+  it('accepts only a session proposal a person confirmed with a human comment', () => {
+    const proposal = comment(MAIN, `${PROPOSAL_MARKER} because`)
+    const approval = comment('human:daiqc' as Identity, `${CLAIM_APPROVED_MARKER} go`)
     assert.match(String(openProposal([], MAIN).reason), /propose first/u)
-    assert.match(String(openProposal([comment(MAIN, 'hello')], MAIN).reason), /not a \[claim-proposal\]/u)
-    assert.match(String(openProposal([comment(MAIN, `${PROPOSAL_MARKER} because`)], 'human:daiqc' as Identity).reason), /not this session/u)
-    assert.deepEqual(openProposal([comment(MAIN, `${PROPOSAL_MARKER} because`)], MAIN), { ready: true })
+    assert.match(String(openProposal([comment(MAIN, 'hello')], MAIN).reason), /propose first/u)
+    assert.match(String(openProposal([proposal], MAIN).reason), /ask a person/u)
+    assert.match(String(openProposal([proposal, comment(MAIN, 'still here')], MAIN).reason), /ask a person/u)
+    assert.match(String(openProposal([proposal, comment('agent:other' as Identity, `${CLAIM_APPROVED_MARKER} x`)], MAIN).reason), /not a person/u)
+    assert.match(String(openProposal([proposal, comment('human:daiqc' as Identity, 'yes')], MAIN).reason), /claim-approved/u)
+    assert.deepEqual(openProposal([proposal, approval], MAIN), { ready: true })
   })
 
-  it('spends the proposal once a person answers it', () => {
-    const answered = [
+  it('spends the confirmation once a later comment follows it', () => {
+    const spent = [
       comment(MAIN, `${PROPOSAL_MARKER} because`),
-      comment('human:daiqc' as Identity, 'yes, go ahead'),
+      comment('human:daiqc' as Identity, `${CLAIM_APPROVED_MARKER} go`),
+      comment(MAIN, 'thanks, noted'),
     ]
-    assert.match(String(openProposal(answered, MAIN).reason), /not this session/u)
+    assert.match(String(openProposal(spent, MAIN).reason), /ask a person/u)
   })
 })
 
@@ -364,7 +391,7 @@ describe('superagent: the dispatcher\'s surface', () => {
   })
 
   it('runs the loop into a named workspace: ensure, claim with its path, deliver', async () => {
-    const { harness, main, worker } = await mount()
+    const { harness, main } = await mount()
     try {
       await provideRegistry(harness)
       const target = join(await scratchDirectory(), 'checkout')
@@ -372,6 +399,7 @@ describe('superagent: the dispatcher\'s surface', () => {
       const workspace = registered.workspace as Record<string, unknown>
 
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })
+      await approve(harness)
       const claimed = await call(harness, main, CLAIM_TOOL_NAME, {
         action: 'claim',
         key: 'DH-12',
@@ -381,7 +409,8 @@ describe('superagent: the dispatcher\'s surface', () => {
       const dispatch = claimed.dispatch as Record<string, unknown>
       assert.equal(dispatch.cwd, workspace.path, 'the dispatch names the workspace\'s canonical path')
 
-      const delivered = await call(harness, worker, WORK_TOOL_NAME, {
+      const executor = await bindExecutor(harness, 'DH-12', 'session-1')
+      const delivered = await call(harness, executor, WORK_TOOL_NAME, {
         action: 'deliver',
         key: 'DH-12',
         body: 'done: changed in the named checkout',
@@ -466,6 +495,7 @@ describe('superagent: dispatching into a real Session', () => {
     const { harness, main } = await mount({}, 'jira-worker')
     try {
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await approve(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       const refused = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
       assert.equal(refused.ok, false)
@@ -484,6 +514,7 @@ describe('superagent: dispatching into a real Session', () => {
       assert.match(JSON.stringify(unstarted.error), /claim it before dispatching/u)
 
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await approve(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       // A second dispatcher is writable but did not claim it.
       const other = testAgent(harness.ctx, 'main-2')
@@ -499,12 +530,14 @@ describe('superagent: dispatching into a real Session', () => {
     const { harness, main } = await mount({}, 'jira-worker', 1)
     try {
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await approve(harness)
       const first = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       assert.equal(first.ok, true, JSON.stringify(first.error))
 
       const created = await call(harness, main, TOOL_NAME, { action: 'create', project: 'DH', data: { summary: 'second' } })
       const second = String(issueOf(created).key)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: second, why: 'also ready' })
+      await approve(harness, second)
       const refused = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: second })
       assert.equal(refused.ok, false)
       assert.match(JSON.stringify(refused.error), /configured limit/u)
@@ -518,6 +551,7 @@ describe('superagent: dispatching into a real Session', () => {
     try {
       const controller = await provideController(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await approve(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       const first = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
       assert.equal(first.ok, true, JSON.stringify(first.error))
@@ -536,6 +570,7 @@ describe('superagent: dispatching into a real Session', () => {
     try {
       const controller = await provideController(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await approve(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
 
@@ -545,7 +580,8 @@ describe('superagent: dispatching into a real Session', () => {
 
       const read = await call(harness, main, TOOL_NAME, { action: 'get', key: 'DH-12' })
       const records = bodiesOf(read).filter(body => body.startsWith('[dispatch:session]'))
-      assert.equal(records.length, 2, JSON.stringify(bodiesOf(read)))
+      assert.equal(records.filter(body => body.includes('session-1')).length, 2, JSON.stringify(bodiesOf(read)))
+      assert.equal(records.filter(body => body.includes('session-2')).length, 2)
       assert.equal(controller.sessions.length, 2)
     } finally {
       await harness.dispose()
@@ -557,6 +593,7 @@ describe('superagent: dispatching into a real Session', () => {
     try {
       const controller = await provideController(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await approve(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
 
@@ -579,6 +616,7 @@ describe('superagent: dispatching into a real Session', () => {
     try {
       const controller = await provideController(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await approve(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
       controller.running.add('session-1')
@@ -599,6 +637,7 @@ describe('superagent: dispatching into a real Session', () => {
     try {
       const controller = await provideController(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
+      await approve(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
 
@@ -615,6 +654,7 @@ describe('superagent: dispatching into a real Session', () => {
     try {
       const controller = await provideController(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })
+      await approve(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
 
       const dispatched = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12', cwd: '/tmp/work' })
@@ -729,6 +769,7 @@ describe('superagent: the loop through the real composition', () => {
       assert.equal(issueOf(proposed).status, 'todo', 'a proposal changes no state')
       assert.ok(bodiesOf(proposed).some(body => body.startsWith(PROPOSAL_MARKER)))
 
+      await approve(harness)
       const claimed = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       assert.equal(claimed.ok, true, JSON.stringify(claimed.error))
       const claimedIssue = issueOf(claimed)
@@ -782,6 +823,7 @@ describe('superagent: the loop through the real composition', () => {
     const { harness, main } = await mount()
     try {
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'take it' })
+      await approve(harness)
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       const again = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       assert.equal(again.ok, false)
@@ -815,15 +857,17 @@ describe('superagent: the loop through the real composition', () => {
     }
   })
 
-  it('runs the whole loop: proposal, claim, dispatch, delivery', async () => {
-    const { harness, main, worker } = await mount()
+  it('runs the whole loop: proposal, confirmation, claim, dispatch, delivery', async () => {
+    const { harness, main } = await mount()
     try {
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })
+      await approve(harness)
       const claimed = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
       assert.equal(claimed.ok, true, JSON.stringify(claimed.error))
 
       // The executor the dispatcher spawns writes through its own narrow surface (DH-512)…
-      const delivered = await call(harness, worker, WORK_TOOL_NAME, {
+      const executor = await bindExecutor(harness, 'DH-12', 'session-1')
+      const delivered = await call(harness, executor, WORK_TOOL_NAME, {
         action: 'deliver',
         key: 'DH-12',
         body: 'done: the change is in and the check passes',

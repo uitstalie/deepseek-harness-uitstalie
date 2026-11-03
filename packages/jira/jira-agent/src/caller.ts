@@ -137,6 +137,8 @@ export type CallerFacts = Readonly<{
   machine?: string
   /** A read-only session (DSH sandbox/permission mode) refuses writes too (decision 93). */
   readOnly?: boolean
+  /** This Session joined the configured executor preset, so the general write surface is closed. */
+  executor?: boolean
 }>
 
 /**
@@ -178,6 +180,18 @@ export const describeCaller = (facts: CallerFacts): Caller => {
       ...checkout,
       ...session,
       ...parent,
+      ...(identity === undefined ? {} : { identity }),
+    })
+  }
+  if (facts.executor === true) {
+    // DH-703: an executor is a root Session, but its only write surface is `issue_work`; the
+    // ordinary issue verbs (and `jira_kb` writes) are refused, so a worker preset cannot widen
+    // itself back into a dispatcher through the tools it was given for reading.
+    return Object.freeze({
+      writable: false,
+      reason: 'executor',
+      ...checkout,
+      ...session,
       ...(identity === undefined ? {} : { identity }),
     })
   }

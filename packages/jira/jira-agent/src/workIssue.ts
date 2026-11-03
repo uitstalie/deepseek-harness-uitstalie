@@ -6,10 +6,11 @@
  * smaller surface than renaming an issue, creating one, registering a tag or closing one. So this
  * is a second tool rather than a relaxation of the first.
  *
- * Authorization is a **scope**, not a role (DH-512): the issue must be in progress, and its
- * assignee must be the session that delegated to the caller (`SessionHeader.parentSession`). That
- * is precisely the window between the claiming parent and the review — the executor writes exactly
- * the issue it was dispatched for, and nothing once the issue is handed back.
+ * Authorization is a **scope**, not a role (DH-512): the issue must be in progress, and the latest
+ * dispatch record on it must name the caller's own Session. A dispatched executor is a root
+ * Session, so `SessionHeader.parentSession` cannot identify it (DH-703 review); the record the
+ * dispatcher writes before the first prompt is the durable binding instead. The executor writes
+ * exactly the issue it was dispatched for, and nothing once the issue is handed back.
  *
  * @module @deepseek-ai/dsh-jira-agent/workIssue
  */
@@ -18,6 +19,7 @@ import { formatError, invalidInput, readOnlySession, validateArgs } from '@deeps
 import { type FieldSpec, type Identity, type IssueKey } from '@deepseek-ai/dsh-jira-core'
 import type { IssueMutation } from '@deepseek-ai/dsh-jira-service'
 import { type Caller } from './caller.ts'
+import { dispatchRecordOf } from './dispatch.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, failure, okValue } from './envelope.ts'
 
 /** The tool name the host registry and the worker preset refer to. */
@@ -93,48 +95,40 @@ const ALLOWED: WorkAccess = Object.freeze({ allowed: true })
  */
 const DENIED = (reason: string): WorkAccess => Object.freeze({ allowed: false, reason })
 
-/**
- * The session inside an `agent:` identity — decision 48's fourth component.
- * @param identity - the assignee identity, when the issue has one.
- * @returns the session id, or undefined for a human identity or a malformed one.
- */
-const sessionOf = (identity: Identity | undefined): string | undefined => {
-  if (identity === undefined) return undefined
-  const parts = identity.split('|')
-  return parts.length === 4 ? parts[3] : undefined
-}
-
 /** The facts the scope check reads from one issue. */
 export interface WorkTarget {
   /** The issue key, used in the refusals' sentences. */
   readonly key: IssueKey
   /** The issue's current status; only `in_progress` passes. */
   readonly status: string
-  /** The claiming identity, when it has one. */
+  /** The claiming identity, when it has one; kept on the record for audit, not for the check. */
   readonly assignee?: Identity | undefined
 }
 
 /**
  * Decide whether this caller may write this issue (DH-512's scope check).
  *
- * The order is the one that produces the most useful refusal: a read-only deployment, then "you
- * were not dispatched", then the claim's owner, then the claim's state.
+ * The order is the one that produces the most useful refusal: a read-only deployment, then "this
+ * Session was not the one dispatched", then the claim's state.
  * @param issue - the issue the call names.
- * @param caller - the caller verdict, carrying the parent session id.
+ * @param caller - the caller verdict, carrying the caller's own Session id.
+ * @param dispatchedTo - the Session the latest dispatch record names, when the issue was dispatched.
  * @returns the access verdict with its reason.
  */
-export const workAccess = (issue: WorkTarget, caller: Caller): WorkAccess => {
+export const workAccess = (
+  issue: WorkTarget,
+  caller: Caller,
+  dispatchedTo?: string | undefined,
+): WorkAccess => {
   if (caller.reason === 'dsh-read-only') return DENIED('this deployment marks the session read-only')
-  if (caller.parentSessionId === undefined) {
-    return DENIED('issue_work belongs to a dispatched executor; a session without a dispatcher '
-      + 'claims and reviews through jira_issue')
+  if (caller.sessionId === undefined) {
+    return DENIED('issue_work needs a session identity to match against the dispatch record')
   }
-  const owner = sessionOf(issue.assignee)
-  if (owner === undefined) {
-    return DENIED(`${String(issue.key)} is not claimed, so nothing was dispatched for it`)
+  if (dispatchedTo === undefined) {
+    return DENIED(`${String(issue.key)} was never dispatched; a dispatcher claims and reviews through jira_issue`)
   }
-  if (owner !== caller.parentSessionId) {
-    return DENIED(`the issue is claimed by session '${owner}', which did not dispatch you`)
+  if (dispatchedTo !== caller.sessionId) {
+    return DENIED(`${String(issue.key)} was dispatched to session '${dispatchedTo}', which is not this one`)
   }
   if (issue.status !== 'in_progress') {
     return DENIED(`the issue is '${issue.status}'; issue_work writes only an issue in progress`)
@@ -203,7 +197,8 @@ export const runWorkTool = async (
   if (!read.ok) {
     return failure(read.error, asCaller(options.caller, DENIED('the issue could not be read')), me)
   }
-  const access = workAccess(read.value.issue, options.caller)
+  const dispatch = dispatchRecordOf(read.value.comments ?? [])
+  const access = workAccess(read.value.issue, options.caller, dispatch?.session)
   const caller = asCaller(options.caller, access)
   if (!access.allowed) return failure(readOnlySession(access.reason ?? 'not dispatched'), caller, me)
 

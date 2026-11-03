@@ -90,9 +90,15 @@ export function apply(ctx: Context, config: Config): void {
   const env = defaultEnv()
   const clock = (): number => Date.now()
   const recorder = createSessionRecorder()
-  const host: ContributionHost = Object.freeze({ ctx, env, clock, recorder })
+  const host: ContributionHost = Object.freeze({
+    ctx,
+    env,
+    clock,
+    recorder,
+    ...(config.superagent_worker_preset === undefined ? {} : { workerPreset: config.superagent_worker_preset }),
+  })
 
-  installWriteGuard(ctx, env)
+  installWriteGuard(ctx, env, config.superagent_worker_preset)
   // Optional registries: the child fiber activates only when the service is composed, and its
   // registrations are released with it.
   ctx.inject(['commands'], (commandCtx) => {
@@ -226,6 +232,7 @@ export {
   workAccess,
 } from './workIssue.ts'
 export {
+  CLAIM_APPROVED_MARKER,
   CLAIMABLE_STATUS,
   CLAIM_DESCRIPTION,
   CLAIM_PARAMETERS,

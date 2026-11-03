@@ -156,7 +156,7 @@ export function SuperagentPanel({ board, status, history, triggers, onLoadMore, 
                   {entries.map(entry => (
                     <li key={`${entry.key}-${entry.at}-${entry.author}`}>
                       <button type="button" className={styles.superagentLink} onClick={() => onSelect?.(entry.key)}>
-                        {entry.key} · {entry.author} · {entry.at}{entry.active ? ' · active' : ''}
+                        {entry.key} · {entry.author} · {entry.at}{entry.active ? ` · ${t('superagentActive')}` : ''}
                       </button>
                     </li>
                   ))}
