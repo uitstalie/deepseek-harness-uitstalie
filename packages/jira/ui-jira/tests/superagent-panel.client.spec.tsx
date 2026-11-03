@@ -5,7 +5,7 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { JiraBoardView, JiraIssueRowView } from '@deepseek-ai/dsh-jira-service/types'
+import type { JiraBoardView, JiraIssueRowView, SuperagentStatusView } from '@deepseek-ai/dsh-jira-service/types'
 import { SuperagentPanel } from '../src/client/SuperagentPanel.tsx'
 
 afterEach(cleanup)
@@ -110,4 +110,64 @@ it('asks for older activity only when more exists', () => {
 it('renders nothing while the board is loading', () => {
   const { container } = render(<SuperagentPanel board={null} t={t} />)
   expect(container.firstChild).toBeNull()
+})
+
+/** One status view with a proposal and a delivery that needs a person. */
+const statusView = (): SuperagentStatusView => {
+  const proposed = { key: 'DH-5', priority: 'S1', summary: 'needs a decision', reason: 'confirm the proposal' }
+  const review = { key: 'DH-3', priority: 'S1', summary: 'needs a look', reason: 'review the delivery' }
+  return {
+    counts: { ready: 1, proposed: 1, inProgress: 0, inReview: 1, blocked: 0 },
+    ready: [],
+    proposed: [proposed],
+    inProgress: [],
+    inReview: [review],
+    blocked: [],
+    needsPerson: [proposed, review],
+  }
+}
+
+it('offers the confirmation only on a proposal, not on a delivery waiting for review', () => {
+  const onConfirm = vi.fn()
+  render(<SuperagentPanel board={board} status={statusView()} t={t} onConfirm={onConfirm} />)
+  const buttons = screen.getAllByText('superagentConfirm')
+  expect(buttons).toHaveLength(1)
+  fireEvent.click(buttons[0] as Element)
+  expect(onConfirm).toHaveBeenCalledWith('DH-5')
+})
+
+it('does not offer the confirmation without the Host status', () => {
+  render(<SuperagentPanel board={board} t={t} onConfirm={vi.fn()} />)
+  expect(screen.queryByText('superagentConfirm')).toBeNull()
+})
+
+it('disables the confirmation while it is being written', () => {
+  render(<SuperagentPanel
+    board={board}
+    status={statusView()}
+    t={t}
+    onConfirm={vi.fn()}
+    confirmState={{ key: 'DH-5', status: 'loading', error: null }}
+  />)
+  const button = screen.getByText('superagentConfirming') as HTMLButtonElement
+  expect(button.disabled).toBe(true)
+})
+
+it('shows the failure in place and the success notice after a confirmation', () => {
+  const { rerender } = render(<SuperagentPanel
+    board={board}
+    status={statusView()}
+    t={t}
+    onConfirm={vi.fn()}
+    confirmState={{ key: 'DH-5', status: 'error', error: 'no proposal' }}
+  />)
+  expect(screen.getByText('superagentConfirmFailed')).toBeTruthy()
+  rerender(<SuperagentPanel
+    board={board}
+    status={statusView()}
+    t={t}
+    onConfirm={vi.fn()}
+    confirmState={{ key: 'DH-5', status: 'ready', error: null }}
+  />)
+  expect(screen.getByText('superagentConfirmed')).toBeTruthy()
 })

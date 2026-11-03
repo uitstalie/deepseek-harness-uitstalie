@@ -1,5 +1,5 @@
 ---
-description: "The jira ledger's single writer: resolves the root, opens the store, owns the push queue and settle, registers the ctx.jira service, and publishes the read-only remote.jira browser face."
+description: "The jira ledger's single writer: resolves the root, opens the store, owns the push queue and settle, registers the ctx.jira service, and publishes the remote.jira browser face, whose one write is a person's confirmation of a proposal."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-jira-service` is the ledger's single writer: one row owns one ledger, resolves its root, reads this machine's identity, opens the store, holds the one push queue, regenerates the derived files, and emits `changed` whenever it commits. The browser, other capabilities, and the CLI share that service through `ctx.jira`, so a ledger never has two writers. It also publishes `remote.jira`, the read-only browser face. Push is off by default: writes stay local commits until `push.enabled` turns the queue on.
+`dsh-jira-service` is the ledger's single writer: one row owns one ledger, resolves its root, reads this machine's identity, opens the store, holds the one push queue, regenerates the derived files, and emits `changed` whenever it commits. The browser, other capabilities, and the CLI share that service through `ctx.jira`, so a ledger never has two writers. It also publishes `remote.jira`, the browser face: the reads a page needs plus one human confirmation, authored by the ledger repository's `git user.name`; every arbitrary write stays on `ctx.jira`. Push is off by default: writes stay local commits until `push.enabled` turns the queue on.
 
 ## Table of Contents
 
@@ -47,8 +47,12 @@ The tool runners no longer hold the store: they call `ctx.jira`, and the service
 | `get(key)` | one issue's frontmatter fields, Markdown body and comment history |
 | `kbSearch(query, topK?)` | ranked knowledge hits with their `file:line` |
 | `watch(signal)` | a stream: one item per committed change — monotonic `version`, kind, affected key |
+| `superagentStatus()` | ready, proposed, in-progress, in-review and blocked counts, plus the rows that need a person |
+| `superagentConfirm(key)` | records a person's `[claim-approved]` confirmation of the pending proposal; idempotent |
+| `superagentHistory(limit?, before?)` | recent ledger commits, newest first |
+| `superagentTriggers(limit?, before?)` | recent proposal comments, newest first |
 
-There are no write methods: writes go through the model's tools, which the agent's guard constrains. Every result is plain JSON — branded ids, timestamps and identities arrive as `string` — so the browser needs no ledger types. A ledger failure becomes a `RemoteError` whose code is `jira/<kebab-code>` (one per `jira-core` code) and whose `details.jiraCode` is the ledger's own code; the message is the ledger's formatted report.
+The only write is `superagentConfirm`: it appends the same `human:<git user.name>` `[claim-approved]` comment a person would write with the CLI, and the browser cannot choose that name or write anything else. Every other write goes through the model's tools or the CLI, which the agent's guard constrains. Every result is plain JSON — branded ids, timestamps and identities arrive as `string` — so the browser needs no ledger types. A ledger failure becomes a `RemoteError` whose code is `jira/<kebab-code>` (one per `jira-core` code) and whose `details.jiraCode` is the ledger's own code; the message is the ledger's formatted report.
 
 <a id="configuration"></a>
 

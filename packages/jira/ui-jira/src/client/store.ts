@@ -25,6 +25,7 @@ import type {
   SuperagentStatusView,
   SuperagentHistoryView,
   SuperagentTriggersView,
+  SuperagentConfirmView,
 } from '@deepseek-ai/dsh-jira-service/types'
 
 /** The Remote methods this page calls; the generated `remote.jira` namespace satisfies it. */
@@ -43,6 +44,8 @@ export interface JiraWire {
   superagentHistory?(limit?: number, before?: string): Promise<RemoteResult<SuperagentHistoryView>>
   /** Recent proposal comments, newest first. */
   superagentTriggers?(limit?: number, before?: string): Promise<RemoteResult<SuperagentTriggersView>>
+  /** Record a person's confirmation of one pending proposal; absent on a Host that exposes no panel. */
+  superagentConfirm?(key: string): Promise<RemoteResult<SuperagentConfirmView>>
 }
 
 /** The board's load state. */
@@ -104,6 +107,8 @@ export interface JiraState {
   superagentHistory: { status: 'idle' | 'loading' | 'ready' | 'error'; error: string | null; view: SuperagentHistoryView | null }
   /** Recent proposal comments for the trigger block. */
   superagentTriggers: { status: 'idle' | 'loading' | 'ready' | 'error'; error: string | null; view: SuperagentTriggersView | null }
+  /** The proposal confirmation in flight, or the last one's outcome. */
+  superagentConfirm: { key: string; status: 'idle' | 'loading' | 'ready' | 'error'; error: string | null }
 }
 
 /** One Remote read folded into the page's failure shape. */
@@ -121,6 +126,7 @@ const initialState = (): JiraState => ({
   superagent: { status: 'idle', error: null, view: null },
   superagentHistory: { status: 'idle', error: null, view: null },
   superagentTriggers: { status: 'idle', error: null, view: null },
+  superagentConfirm: { key: '', status: 'idle', error: null },
 })
 
 /**
@@ -150,6 +156,8 @@ export class JiraStore {
   private detailRead = 0
   /** The newest knowledge search; an older answer is stale. */
   private knowledgeRead = 0
+  /** The newest proposal confirmation; an older answer is stale. */
+  private confirmRead = 0
   /** Counts applied changes, so a search that straddled one can mark its hits stale. */
   private changeSerial = 0
   /** The newest notice applied; a delayed one below it is already superseded. */
@@ -268,6 +276,28 @@ export class JiraStore {
         hasMore: next.value.hasMore,
       }
     })
+  }
+
+  /**
+   * Record a person's confirmation of one pending proposal, then re-read the page so the row
+   * leaves the list. A failure stays on the row that caused it instead of replacing the page.
+   * @param key - the issue whose latest comment is the proposal.
+   */
+  async confirm(key: string): Promise<void> {
+    const wire = this.wire.superagentConfirm
+    if (wire === undefined) return
+    const generation = ++this.confirmRead
+    this.store.update((draft) => {
+      draft.superagentConfirm = { key, status: 'loading', error: null }
+    })
+    const answer = await read(() => wire(key))
+    this.store.update((draft) => {
+      if (generation !== this.confirmRead) return
+      draft.superagentConfirm = answer.ok
+        ? { key, status: 'ready', error: null }
+        : { key, status: 'error', error: answer.error }
+    })
+    if (answer.ok) await this.load()
   }
 
   /**

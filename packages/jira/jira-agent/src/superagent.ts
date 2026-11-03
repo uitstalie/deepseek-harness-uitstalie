@@ -181,7 +181,8 @@ export const CLAIM_DESCRIPTION =
   'Take one ready issue from the local dsh-jira ledger, in two steps so a person stays in charge. '
   + '`propose` appends a comment saying why this issue and changes nothing else. `claim` runs only '
   + 'after the issue\'s latest comment is a person\'s confirmation (a `human:`-authored '
-  + '`[claim-approved] ...` comment, written with the jira CLI\'s comment verb); it then assigns the '
+  + '`[claim-approved] ...` comment, written from the jira panel\'s Confirm button or the jira '
+  + 'CLI\'s comment verb); it then assigns the '
   + 'issue to this session and moves it to in_progress. Ask the person to confirm between the two '
   + 'steps, and do not claim an issue they have not confirmed.'
 

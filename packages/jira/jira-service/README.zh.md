@@ -1,5 +1,5 @@
 ---
-description: "jira 账本的唯一写入者：解析根目录、打开存储、持有 push 队列与 settle、注册 ctx.jira 服务，并发布只读的 remote.jira 浏览器面。"
+description: "jira 账本的唯一写入者：解析根目录、打开存储、持有 push 队列与 settle、注册 ctx.jira 服务，并发布 remote.jira 浏览器面；该面唯一的写入是人类对提案的确认。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-jira-service` 是账本的唯一写入者：一行拥有一个账本，解析它的根目录、读取本机身份、打开存储、持有唯一的 push 队列、重新生成派生文件，并在每次提交后发出 `changed`。浏览器、其他能力与 CLI 都通过 `ctx.jira` 共享这个服务，因此一个账本永远不会有两个写入者。它还发布 `remote.jira`，即只读的浏览器面。push 默认关闭：写入先是本地提交，直到 `push.enabled` 打开队列。
+`dsh-jira-service` 是账本的唯一写入者：一行拥有一个账本，解析它的根目录、读取本机身份、打开存储、持有唯一的 push 队列、重新生成派生文件，并在每次提交后发出 `changed`。浏览器、其他能力与 CLI 都通过 `ctx.jira` 共享这个服务，因此一个账本永远不会有两个写入者。它还发布 `remote.jira`，即浏览器面：页面需要的读取，加上一个由账本仓库的 `git user.name` 署名的人类确认；其余任意写入仍走 `ctx.jira`。push 默认关闭：写入先是本地提交，直到 `push.enabled` 打开队列。
 
 ## 目录
 
@@ -47,8 +47,12 @@ kind: "package-reference"
 | `get(key)` | 一个 issue 的 frontmatter 字段、Markdown 正文与评论历史 |
 | `kbSearch(query, topK?)` | 排序后的知识命中及其 `file:line` |
 | `watch(signal)` | 一条流：每次提交的变更一项——单调 `version`、kind、受影响 key |
+| `superagentStatus()` | ready、proposed、in-progress、in-review 与 blocked 计数，以及需要人处理的条目 |
+| `superagentConfirm(key)` | 记录人类对当前提案的 `[claim-approved]` 确认；幂等 |
+| `superagentHistory(limit?, before?)` | 最近的账本提交，最新在前 |
+| `superagentTriggers(limit?, before?)` | 最近的提案评论，最新在前 |
 
-没有写方法：写入走模型的工具，由 agent 的守卫约束。每个结果都是纯 JSON——branded id、时间戳与身份都以 `string` 到达——因此浏览器不需要账本类型。账本失败会变成 `RemoteError`，其 code 是 `jira/<kebab-code>`（每个 `jira-core` 错误码一个），`details.jiraCode` 是账本自己的错误码；message 是账本格式化后的报告。
+唯一的写入是 `superagentConfirm`：它追加一条与 CLI 写法相同的 `human:<git user.name>` `[claim-approved]` 评论，浏览器不能选择这个名字，也写不了别的。其余写入仍走模型的工具或 CLI，由 agent 的守卫约束。每个结果都是纯 JSON——branded id、时间戳与身份都以 `string` 到达——因此浏览器不需要账本类型。账本失败会变成 `RemoteError`，其 code 是 `jira/<kebab-code>`（每个 `jira-core` 错误码一个），`details.jiraCode` 是账本自己的错误码；message 是账本格式化后的报告。
 
 <a id="configuration"></a>
 

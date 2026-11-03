@@ -1,10 +1,10 @@
 /**
- * `remote.jira`: the read-only wire face the browser addresses.
+ * `remote.jira`: the browser face of the ledger.
  *
  * The spec boots the real `jira-service` plugin over a temporary ledger and calls the Remote
  * methods the way the Gateway would — directly on the mounted service — so the assertions cover
  * what actually crosses to a client: plain JSON values, `jira/<code>` failures for the ledger's
- * own errors, and no write method at all.
+ * own errors, no arbitrary write method, and the one human confirmation (its own spec).
  */
 
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
@@ -94,16 +94,18 @@ afterAll(async () => {
 })
 
 describe('remote.jira', () => {
-  it('mounts the read-only face with the service row and exposes no write method', async () => {
+  it('mounts the browser face with one human confirmation and no arbitrary write method', async () => {
     expect(typeof remote.status).toBe('function')
     expect(typeof remote.board).toBe('function')
     expect(typeof remote.superagentStatus).toBe('function')
+    expect(typeof remote.superagentConfirm).toBe('function')
     expect(typeof remote.superagentHistory).toBe('function')
     expect(typeof remote.superagentTriggers).toBe('function')
     expect(typeof remote.list).toBe('function')
     expect(typeof remote.get).toBe('function')
     expect(typeof remote.kbSearch).toBe('function')
-    for (const write of ['create', 'transact', 'kbCreate', 'kbUpdate', 'sync', 'settle']) {
+    // The browser may leave one credential a person clicked for; every other write stays inside.
+    for (const write of ['create', 'transact', 'kbCreate', 'kbUpdate', 'sync', 'settle', 'mutateIssue', 'createIssue']) {
       expect(write in remote).toBe(false)
     }
   })

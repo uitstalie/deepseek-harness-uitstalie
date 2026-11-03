@@ -1,9 +1,14 @@
 /**
- * The read-only Remote face of the ledger (`remote.jira`).
+ * The browser face of the ledger (`remote.jira`).
  *
- * The browser sees the board, one issue, the knowledge search and the service's state; it never
- * sees a write method, and it cannot name a ledger root — the root is the one the `jira-service`
- * row resolved for this host, so a client reads the same ledger the tools write, and nothing else.
+ * The browser sees the board, one issue, the knowledge search and the service's state; it cannot
+ * name a ledger root — the root is the one the `jira-service` row resolved for this host, so a
+ * client reads the same ledger the tools write, and nothing else.
+ *
+ * It also has exactly one write, {@link JiraRemote.superagentConfirm}: a person confirms a pending
+ * proposal from the panel, and the comment's author is the ledger repository's own
+ * `git user.name` rather than anything the browser supplies. Every arbitrary write still lives
+ * behind `ctx.jira`, whose callers carry a model or CLI identity.
  *
  * Failures keep the service's `Result` contract inside the host: a `JiraError` becomes a
  * {@link RemoteError} carrying `jira/<kebab-code>` and the ledger's own code in `details`, so a
@@ -28,6 +33,7 @@ import type {
   JiraResult,
   JiraStatusView,
   ListQuery,
+  SuperagentConfirmView,
   SuperagentHistoryView,
   SuperagentTriggersView,
   SuperagentStatusView,
@@ -89,7 +95,8 @@ export function unwrap<T>(result: JiraResult<T>): T {
 export const listQueryOf = (query: JiraListQuery): ListQuery => query
 
 /**
- * The `remote.jira` namespace: five reads and one change stream over the host's one ledger.
+ * The `remote.jira` namespace: the reads a browser needs, one human confirmation, and the change
+ * stream over the host's one ledger.
  *
  * Mounted by the `JiraService` constructor on its own fiber, so the `jira-service` row alone is a
  * complete browser surface and no second row can answer from a different ledger.
@@ -124,6 +131,24 @@ export default class JiraRemote extends TypertRemoteService {
   @Remote
   async superagentStatus(): Promise<SuperagentStatusView> {
     return unwrap(await this.ctx.jira.superagentStatus())
+  }
+
+  /**
+   * Confirm one pending proposal as the person the ledger's `git user.name` names.
+   *
+   * This is the face's single write. The browser cannot pass a name: the service reads the ledger
+   * repository's identity, so the comment is the same `human:<name>` credential a person would
+   * write with the CLI. Repeating the click answers `alreadyApproved` without a second comment.
+   * @param key - the issue whose latest comment is the proposal.
+   * @returns the identity written and whether the approval already existed.
+   * @throws {RemoteError} `jira/invalid-input` for a malformed key or no pending proposal,
+   * `jira/not-found` when the issue is absent.
+   */
+  @Remote
+  async superagentConfirm(key: string): Promise<SuperagentConfirmView> {
+    const parsed = entities.asIssueKey(key)
+    if (parsed === undefined) throw remoteErrorOf(errors.invalidInput(`"${key}" is not an issue key`, { key }))
+    return unwrap(await this.ctx.jira.superagentConfirm(parsed))
   }
 
   /**

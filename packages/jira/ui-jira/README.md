@@ -1,5 +1,5 @@
 ---
-description: "The jira ledger's browser surface: the settings section that edits the ledger row and reads the board, one issue's detail and the knowledge search; the ledger itself stays read-only here."
+description: "The jira ledger's browser surface: the settings section that edits the ledger row and reads the board, one issue's detail and the knowledge search; the ledger itself stays read-only here except for confirming a pending proposal."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-jira` adds the jira ledger's browser surface: a settings section (`id: 'jira'`, `order: 200`) that edits the ledger row and reads the ledger itself, plus a second section (`id: 'superagent'`, `order: 220`) for the super-agent summary, proposals and recent activity — the board grouped by status, one issue's detail, and the knowledge search. The ledger views are read-only (writes stay with the model's tools); a super-agent summary block above the board reports ready, in-progress, review and blocked counts, preferring the Host's `superagentStatus` view and falling back to the board when the Host does not expose it, plus a recent-activity list from `superagentHistory` with older-page loading and a proposal/trigger list from `superagentTriggers`, grouped by UTC day with text, active and date-range filters, plus older-page loading, while the full super-agent panel is deferred to DH-601. The row fields are editable because `jira-service` declares them volatile, so a save applies without a restart. The `dafeiyu` Capabilities list links to the section by id, so the id and order are a contract both halves read from one module.
+`dsh-client-ui-jira` adds the ledger's browser surface: a settings section (`id: 'jira'`, order 200) that edits the jira-service row and reads the board, one issue's detail and the knowledge search, and a super-agent section (order 220) with status counts, proposals and recent activity. Ledger views are read-only, except that a person can confirm a pending proposal — the same `[claim-approved]` credential the CLI writes. Row fields are volatile, so a save applies without a restart.
 
 ## Table of Contents
 

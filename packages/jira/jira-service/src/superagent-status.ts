@@ -15,8 +15,27 @@ import { leaseIsActive } from '@deepseek-ai/dsh-jira-core'
 /** The marker the claim loop writes on a proposal comment. */
 export const SUPERAGENT_PROPOSAL_MARKER = '[claim-proposal]'
 
+/**
+ * The marker a person's confirmation comment starts with.
+ *
+ * It must equal `jira-agent`'s `CLAIM_APPROVED_MARKER`: the service writes the credential the
+ * model's `claim` consumes, and `packages/jira/tests/superagent-parity.spec.ts` fails when the two
+ * strings drift (decision 210).
+ */
+export const SUPERAGENT_APPROVAL_MARKER = '[claim-approved]'
+
 /** The only status that can be proposed or claimed. */
 export const SUPERAGENT_CLAIMABLE_STATUS = 'todo'
+
+/** What one human confirmation wrote to the ledger. */
+export interface SuperagentConfirmView {
+  /** The issue the confirmation was recorded on. */
+  readonly key: string
+  /** The `human:<name>` identity the ledger's `git user.name` produced. */
+  readonly author: string
+  /** True when the latest comment was already this person's approval, so nothing was appended. */
+  readonly alreadyApproved: boolean
+}
 
 /** One issue row in the status view. */
 export interface SuperagentStatusItem {

@@ -144,9 +144,9 @@ export interface SessionRecordFacts {
   readonly toolEvidence?: string
 }
 
-import type { SuperagentHistoryView, SuperagentStatusView, SuperagentTriggersView } from './superagent-status.ts'
+import type { SuperagentConfirmView, SuperagentHistoryView, SuperagentStatusView, SuperagentTriggersView } from './superagent-status.ts'
 
-export type { SuperagentHistoryEntry, SuperagentHistoryView, SuperagentStatusItem, SuperagentStatusView, SuperagentTrigger, SuperagentTriggersView } from './superagent-status.ts'
+export type { SuperagentConfirmView, SuperagentHistoryEntry, SuperagentHistoryView, SuperagentStatusItem, SuperagentStatusView, SuperagentTrigger, SuperagentTriggersView } from './superagent-status.ts'
 
 /** One knowledge entry with its file path and warnings. */
 export interface KnowledgeDetail {
@@ -287,6 +287,18 @@ export interface JiraServiceApi {
    * @returns the counts and the rows that need a person.
    */
   superagentStatus(): Promise<JiraResult<SuperagentStatusView>>
+
+  /**
+   * Record a person's confirmation of one pending proposal.
+   *
+   * The identity is the ledger repository's `git user.name`, because that is the `human:<name>`
+   * the CLI writes; the panel does not accept a free-text name. The comment is the same
+   * `[claim-approved]` credential the model's `claim` consumes, so the two surfaces stay one
+   * convention (decision 210).
+   * @param key - the issue whose latest comment is the proposal.
+   * @returns the identity written and whether the approval already existed.
+   */
+  superagentConfirm(key: IssueKey): Promise<JiraResult<SuperagentConfirmView>>
 
   /**
    * Recent proposal comments, newest first: the trigger history a review panel shows.

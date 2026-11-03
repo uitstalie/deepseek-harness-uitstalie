@@ -16,6 +16,7 @@ import type {
   JiraIssueRowView,
   JiraKbSearchView,
   JiraStatusView,
+  SuperagentConfirmView,
 } from '@deepseek-ai/dsh-jira-service/types'
 import { JiraStore, type JiraWire } from '../src/client/store.ts'
 
@@ -246,5 +247,36 @@ describe('jira page: following the Host ledger', () => {
     controller.changed(notice(1))
     await vi.waitFor(() => { expect(controller.store.getSnapshot().board.status).toBe('error') })
     expect(controller.store.getSnapshot().board.error).toBe('read failed')
+  })
+
+  it('confirms a proposal and re-reads the page so the row leaves the list', async () => {
+    const wire = scriptedWire()
+    const confirmed: SuperagentConfirmView = { key: 'DH-1', author: 'human:tester', alreadyApproved: false }
+    const confirm = vi.fn(async () => ok(confirmed))
+    wire.superagentConfirm = confirm
+    const controller = new JiraStore(wire)
+    await controller.load()
+
+    await controller.confirm('DH-1')
+    expect(confirm).toHaveBeenCalledWith('DH-1')
+    expect(controller.store.getSnapshot().superagentConfirm).toEqual({ key: 'DH-1', status: 'ready', error: null })
+    // The page reads again: the status no longer counts the confirmed proposal.
+    await vi.waitFor(() => { expect(wire.board).toHaveBeenCalledTimes(2) })
+  })
+
+  it('keeps a confirmation failure on the page without re-reading', async () => {
+    const wire = scriptedWire()
+    wire.superagentConfirm = vi.fn(async (): Promise<RemoteResult<SuperagentConfirmView>> => ({
+      ok: false,
+      error: new RemoteError('jira/invalid-input', 'no pending proposal', { jiraCode: 'INVALID_INPUT' }),
+    }))
+    const controller = new JiraStore(wire)
+    await controller.load()
+
+    await controller.confirm('DH-1')
+    expect(controller.store.getSnapshot().superagentConfirm).toEqual({
+      key: 'DH-1', status: 'error', error: 'no pending proposal',
+    })
+    expect(wire.board).toHaveBeenCalledTimes(1)
   })
 })

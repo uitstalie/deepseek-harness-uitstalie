@@ -1,5 +1,5 @@
 ---
-description: "jira 账本的浏览器面：编辑账本行并读取看板、单个 issue 详情与知识搜索的设置页段落；账本本身在这里仍然只读。"
+description: "jira 账本的浏览器面：编辑账本行并读取看板、单个 issue 详情与知识搜索的设置页段落；账本本身在这里只读，唯一例外是确认待处理的提案。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-jira` 提供 jira 账本的浏览器面：一个设置页段落（`id: 'jira'`、`order: 200`），编辑账本行并读取账本本身；另有一个段落（`id: 'superagent'`、`order: 220`）承载 super agent 摘要、提案与最近活动——按 status 分组的看板、一个 issue 的详情，以及知识搜索。账本视图仍然只读（写操作留给模型的工具）；看板上方还有一个 super agent 摘要块，报告 ready / in-progress / review / blocked 计数；优先用 Host 的 `superagentStatus`，没有时回退到同一份 board；另有 `superagentHistory` 的最近活动列表（支持加载更早页）与 `superagentTriggers` 的提案/触发列表（按 UTC 日期分组，支持文本、只看 active、日期范围筛选与加载更早页），完整面板留给 DH-601；行字段可编辑，因为 `jira-service` 把它们声明为 volatile，保存后无需重启即可生效。`dafeiyu` 的 Capabilities 列表按 id 链接到这个段落，因此 id 与 order 是两面都从同一个模块读取的约定。
+`dsh-client-ui-jira` 提供账本的浏览器面：一个设置页段落（`id: 'jira'`、order 200）编辑 jira-service 行并读取看板、单个 issue 详情与知识搜索；另一个 super agent 段落（order 220）展示状态计数、提案与最近活动。账本视图只读，唯一例外是人类可确认待处理提案——写入与 CLI 相同的 `[claim-approved]` 凭证。行字段是 volatile，保存后无需重启即可生效。
 
 ## 目录
 

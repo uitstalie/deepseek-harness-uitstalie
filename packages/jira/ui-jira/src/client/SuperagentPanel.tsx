@@ -1,10 +1,11 @@
 /**
- * The super-agent summary on the jira settings page: how many issues are ready, in progress, waiting
- * for review or blocked, and which review issues need a person.
+ * The super-agent summary on the settings page: how many issues are ready, in progress, waiting
+ * for review or blocked, and which rows need a person.
  *
- * This is the first read-only slice of the super-agent panel. It reads the board the page already
- * fetched instead of adding a second Host read; proposal comments and the full trigger/history
- * pages come with the dedicated panel (DH-601).
+ * It reads the board the page already fetched instead of adding a second Host read. The one action
+ * is the confirmation of a proposal: it writes the same `human:<git user.name>` `[claim-approved]`
+ * credential a person would write with the CLI, so the panel is a second way to say the one thing
+ * the claim loop waits for (DH-713).
  *
  * @module @deepseek-ai/dsh-client-ui-jira/SuperagentPanel
  */
@@ -31,6 +32,10 @@ export interface SuperagentPanelProps {
   readonly onLoadMoreHistory?: () => void
   /** Open an issue's detail when a row is chosen. */
   readonly onSelect?: (key: string) => void
+  /** Record a person's confirmation of the row's pending proposal. */
+  readonly onConfirm?: (key: string) => void
+  /** The confirmation in flight, or the last one's outcome. */
+  readonly confirmState?: { readonly key: string; readonly status: 'idle' | 'loading' | 'ready' | 'error'; readonly error: string | null }
   /** This page's copy. */
   readonly t: (key: JiraKey) => string
 }
@@ -58,7 +63,8 @@ const groupByDay = <T extends { readonly at: string }>(entries: readonly T[]): R
 }
 
 /** The super-agent summary block. */
-export function SuperagentPanel({ board, status, history, triggers, onLoadMore, onLoadMoreHistory, onSelect, t }: SuperagentPanelProps) {
+export function SuperagentPanel(props: SuperagentPanelProps) {
+  const { board, status, history, triggers, onLoadMore, onLoadMoreHistory, onSelect, onConfirm, confirmState, t } = props
   const [query, setQuery] = useState('')
   const [activeOnly, setActiveOnly] = useState(false)
   const [fromDate, setFromDate] = useState('')
@@ -66,6 +72,7 @@ export function SuperagentPanel({ board, status, history, triggers, onLoadMore, 
   if (board === null && status === undefined) return null
   let counts: readonly (readonly [JiraKey, number])[]
   let needs: readonly { key: string; summary: string }[]
+  let proposed: ReadonlySet<string> = new Set()
   if (status !== undefined && status !== null) {
     counts = [
       ['superagentReady', status.counts.ready],
@@ -74,6 +81,8 @@ export function SuperagentPanel({ board, status, history, triggers, onLoadMore, 
       ['superagentBlocked', status.counts.blocked],
     ] as const
     needs = status.needsPerson
+    // Only a proposal has a credential to write; a delivery waiting for review has none.
+    proposed = new Set(status.proposed.map(row => row.key))
   } else if (board !== null) {
     counts = [
       ['superagentReady', rowsOf(board, 'todo').length],
@@ -119,9 +128,29 @@ export function SuperagentPanel({ board, status, history, triggers, onLoadMore, 
                   <button type="button" className={styles.superagentLink} onClick={() => onSelect?.(row.key)}>
                     {fill(t('superagentReviewItem'), { key: row.key, summary: row.summary })}
                   </button>
+                  {onConfirm === undefined || !proposed.has(row.key)
+                    ? null
+                    : (
+                      <button
+                        type="button"
+                        className={styles.superagentConfirm}
+                        disabled={confirmState?.status === 'loading'}
+                        onClick={() => onConfirm(row.key)}
+                      >
+                        {confirmState?.key === row.key && confirmState.status === 'loading'
+                          ? t('superagentConfirming')
+                          : t('superagentConfirm')}
+                      </button>
+                    )}
                 </li>
               ))}
             </ul>
+            {confirmState?.status === 'error'
+              ? <p className={styles.notice}>{fill(t('superagentConfirmFailed'), { message: confirmState.error ?? '' })}</p>
+              : null}
+            {confirmState?.status === 'ready'
+              ? <p className={styles.notice}>{fill(t('superagentConfirmed'), { key: confirmState.key })}</p>
+              : null}
           </div>
         )}
       {triggers === undefined || triggers === null || triggers.entries.length === 0

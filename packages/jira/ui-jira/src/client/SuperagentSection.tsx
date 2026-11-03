@@ -1,6 +1,6 @@
 /**
- * The dedicated super-agent page: the same read-only status, proposals and history as the block on
- * the jira page, but in its own settings section so trigger/history work has a room of its own.
+ * The dedicated super-agent page: the status, proposals and history, plus the one human action —
+ * confirming a proposal so the dispatcher may claim it.
  *
  * @module @deepseek-ai/dsh-client-ui-jira/SuperagentSection
  */
@@ -29,10 +29,12 @@ export function SuperagentSection(props: SuperagentSectionProps) {
         status={state.superagent.view}
         history={state.superagentHistory.view}
         triggers={state.superagentTriggers.view}
+        confirmState={state.superagentConfirm}
         t={t}
         onLoadMore={() => { void controller.loadMoreTriggers() }}
         onLoadMoreHistory={() => { void controller.loadMoreHistory() }}
         onSelect={(key) => { void controller.select(key) }}
+        onConfirm={(key) => { void controller.confirm(key) }}
       />
     </div>
   )

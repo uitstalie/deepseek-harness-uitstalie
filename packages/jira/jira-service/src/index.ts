@@ -22,6 +22,7 @@ import {
   applyLink,
   applyTransition,
   applyUpdate,
+  asIdentity,
   assertProjectWritable,
   blockersOf,
   closeMany,
@@ -38,6 +39,7 @@ import {
   errors,
   generateStore,
   git,
+  gitUserName,
   inspect,
   invalidInput,
   io,
@@ -58,23 +60,24 @@ import {
   system,
   tagsLint as coreTagsLint,
   type Store,
+  utcTimestamp,
   vocab as coreVocab,
   writeWatermark,
 } from '@deepseek-ai/dsh-jira-core'
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraFilteredIssues, JiraResult, JiraServiceApi, JiraSnapshot, JiraSyncState, JiraStatus, SuperagentHistoryView, SuperagentStatusView, SuperagentTriggersView, KnowledgeDetail, SessionRecordFacts, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, TagsLintReport, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
+import type { Actor, Board, ChangeNotice, Created, DoctorReport, Identity, Issue, IssueKey, IssueList, DetailedIssueList, IssueBatchCloseResult, IssueCreateResult, IssueDraft, IssueMutation, IssueMutationOptions, IssueMutationResult, IssueRead, IssueBatchCloseOptions, TagCreateInput, TagCreateResult, JiraCounts, JiraFilteredIssues, JiraResult, JiraServiceApi, JiraSnapshot, JiraSyncState, JiraStatus, SuperagentConfirmView, SuperagentHistoryView, SuperagentStatusView, SuperagentTriggersView, KnowledgeDetail, SessionRecordFacts, KbSearch, KnowledgeKey, KnowledgePatch, ListQuery, Mutation, NewIssueInput, NewKnowledge, PushOutcome, SyncRecord, TagsLintReport, Timestamp, Transaction, TransactOptions, WrittenKnowledge } from './types.ts'
 import JiraRemote from './remote.ts'
-import { superagentStatusOf, superagentTriggersOf } from './superagent-status.ts'
+import { superagentStatusOf, superagentTriggersOf, SUPERAGENT_APPROVAL_MARKER, SUPERAGENT_CLAIMABLE_STATUS, SUPERAGENT_PROPOSAL_MARKER } from './superagent-status.ts'
 
 export type * from './types.ts'
 // The pure projections are exported alongside the service: the model tool must reach the same
 // classification the page does, and a second implementation is how the two drift apart (DH-515).
 export {
-  SUPERAGENT_CLAIMABLE_STATUS, SUPERAGENT_PROPOSAL_MARKER, superagentStatusOf, superagentTriggersOf,
+  SUPERAGENT_APPROVAL_MARKER, SUPERAGENT_CLAIMABLE_STATUS, SUPERAGENT_PROPOSAL_MARKER, superagentStatusOf, superagentTriggersOf,
 } from './superagent-status.ts'
 export type {
-  SuperagentHistoryEntry, SuperagentHistoryView, SuperagentStatusItem, SuperagentStatusView,
+  SuperagentConfirmView, SuperagentHistoryEntry, SuperagentHistoryView, SuperagentStatusItem, SuperagentStatusView,
   SuperagentTrigger, SuperagentTriggersView,
 } from './superagent-status.ts'
 
@@ -312,6 +315,64 @@ export class JiraService extends Service implements JiraServiceApi {
     }
     const at = `${new Date().toISOString().slice(0, 19)}Z` as Timestamp
     return result.ok(superagentStatusOf(listed.issues, byKey, vocab.value.closed, at))
+  }
+
+  /**
+   * Record a person's confirmation of one pending proposal.
+   *
+   * The identity is the ledger repository's own `git user.name` — the same `human:<name>` the CLI
+   * writes — so a caller cannot choose who confirmed. The comment is the `[claim-approved]`
+   * credential the model's `claim` consumes, which keeps the panel and the CLI on one convention.
+   * Only a `todo` issue whose latest comment is the proposal is accepted: an approval written after
+   * some later comment would not be the credential `claim` reads.
+   * @param key - the issue whose latest comment is the proposal.
+   * @returns the identity written and whether the approval already existed.
+   */
+  async superagentConfirm(key: IssueKey): Promise<JiraResult<SuperagentConfirmView>> {
+    const opened = await this.open()
+    if (!opened.store.ok) return opened.store
+    const read = await this.readIssue(key)
+    if (!read.ok) return read
+    const issue = read.value.issue
+    if (issue.status !== SUPERAGENT_CLAIMABLE_STATUS) {
+      return err(errors.invalidInput(
+        `${String(issue.key)} is '${issue.status}'; only a todo proposal can be confirmed`,
+        { key: String(issue.key) },
+      ))
+    }
+    const latest = read.value.comments?.at(-1)
+    const body = latest?.body.trimStart() ?? ''
+    if (latest !== undefined && body.startsWith(SUPERAGENT_APPROVAL_MARKER)) {
+      return result.ok(Object.freeze({
+        key: String(issue.key),
+        author: String(latest.author),
+        alreadyApproved: true,
+      }))
+    }
+    if (!body.startsWith(SUPERAGENT_PROPOSAL_MARKER)) {
+      return err(errors.invalidInput(
+        `${String(issue.key)} has no pending proposal to confirm`,
+        { key: String(issue.key) },
+      ))
+    }
+    const name = await gitUserName(opened.root)
+    const author: Identity | undefined = name === undefined ? undefined : asIdentity(`human:${name.trim()}`)
+    if (author === undefined) {
+      return err(errors.invalidInput(
+        'the ledger cannot name the person confirming: set git user.name in the ledger repository',
+        {},
+      ))
+    }
+    const written = await this.mutateIssue(issue.key, {
+      action: 'comment',
+      body: `${SUPERAGENT_APPROVAL_MARKER} confirmed in the jira panel`,
+    }, { by: author, at: utcTimestamp(new Date()) })
+    if (!written.ok) return written
+    return result.ok(Object.freeze({
+      key: String(issue.key),
+      author: String(author),
+      alreadyApproved: false,
+    }))
   }
 
   /**

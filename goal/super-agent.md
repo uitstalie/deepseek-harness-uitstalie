@@ -380,7 +380,7 @@ pass 扫描 → 候选（只读，不动账本）
 - 认领闭环：提案 → **人类 `[claim-approved]` 评论** → claim → 派遣（真实 Session，`jira-worker` preset）→ 执行者 `issue_work` `deliver` 回 `in_review`；
 - **派遣记录**：`[dispatch:session] <session> starting|started|failed` 先于 prompt 落地，recover 按记录与 running 状态决定重派；
 - **turn-end pass**：先恢复丢失的执行者，再以 observe 模式提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不自行认领；执行者会话跳过该 pass；
-- **`superagent_status`**：只读汇总 ready / proposed / in-progress / in-review / blocked，并列出需要人确认或复核的条目；`ui-jira` 的 Superagent 面板消费同一份只读数据；
+- **`superagent_status`**：只读汇总 ready / proposed / in-progress / in-review / blocked，并列出需要人确认或复核的条目；`ui-jira` 的 Superagent 面板消费同一份只读数据，并提供唯一的人类动作——确认提案（写与 CLI 相同的 `human:` `[claim-approved]` 评论，DH-713）；
 - **进程级定时 pass**：能力启用且至少有一个已接线 agent 时，每 5 分钟跑一次 observe pass；timer 是 unref 的，随 dispose 清除；没有存活 agent 时不跑（无 session 就没有 dispatcher 身份，真正的无会话 daemon 仍后置）；
 - **GitHub 导入**（只读）与 **重启恢复** 均已落地；
 - 测试覆盖纯谓词、工具面与**真实装配**的完整闭环：`packages/jira/tests/superagent-real-loop.spec.ts` 用真实的 `SessionController` 与 AgentLoop 派遣执行者（只有模型是脚本化的），覆盖提案 → 人类确认 → 认领 → 派遣 → 执行者 `issue_work` 交付 → `in_review`，以及执行者身份/工具面、guard 拒写、派遣记录 `starting → started` 与空闲执行者的 `recover`；pass 的"只提一次"等其余语义由单测覆盖。

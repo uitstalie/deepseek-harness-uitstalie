@@ -11,8 +11,8 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Issue, IssueKey, Timestamp } from '../jira-core/src/index.ts'
-import { CLAIMABLE_STATUS, PROPOSAL_MARKER, claimability, isBlocked } from '../jira-agent/src/index.ts'
-import { SUPERAGENT_CLAIMABLE_STATUS, SUPERAGENT_PROPOSAL_MARKER, superagentStatusOf } from '../jira-service/src/index.ts'
+import { CLAIM_APPROVED_MARKER, CLAIMABLE_STATUS, PROPOSAL_MARKER, claimability, isBlocked } from '../jira-agent/src/index.ts'
+import { SUPERAGENT_APPROVAL_MARKER, SUPERAGENT_CLAIMABLE_STATUS, SUPERAGENT_PROPOSAL_MARKER, superagentStatusOf } from '../jira-service/src/index.ts'
 
 /** The instant every lease is judged against. */
 const AT = '2026-11-02T09:00:00Z' as Timestamp
@@ -80,6 +80,10 @@ describe('superagent classification parity', () => {
   it('agrees on the marker and the claimable status', () => {
     expect(PROPOSAL_MARKER).toBe(SUPERAGENT_PROPOSAL_MARKER)
     expect(CLAIMABLE_STATUS).toBe(SUPERAGENT_CLAIMABLE_STATUS)
+  })
+
+  it('agrees on the approval marker the panel writes and the claim consumes', () => {
+    expect(CLAIM_APPROVED_MARKER).toBe(SUPERAGENT_APPROVAL_MARKER)
   })
 
   it.each(CASES.map(entry => [entry.name, entry] as const))('classifies %s the same way', (_name, entry) => {
