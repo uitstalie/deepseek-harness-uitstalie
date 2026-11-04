@@ -1956,7 +1956,7 @@ export interface TlsConfig {
 ## `@deepseek-ai/dsh-jira-agent`
 
 - `inject`: `jira` · `tools` · `dafeiyu`
-- `source`: [`packages/jira/jira-agent/src/index.ts:68`](../packages/jira/jira-agent/src/index.ts)
+- `source`: [`packages/jira/jira-agent/src/index.ts:70`](../packages/jira/jira-agent/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -1978,6 +1978,14 @@ export type Config = Readonly<{
   superagent_daemon?: boolean
   /** The checkout a session-less claim is dispatched into; the daemon needs it to run. */
   superagent_daemon_workspace?: string
+  /**
+   * The directory the super agent lives in (DH-716); unset means no super workspace.
+   *
+   * It is registered once at mount, so it shows up in the workspace list like any other checkout,
+   * and a conversation opened there is the dispatcher: it keeps `superagent_workspace` and loses
+   * the ledger-bound claim verbs.
+   */
+  superagent_home?: string
 }>
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->

@@ -27,6 +27,7 @@ import {
   SCAN_TOOL_NAME,
   SOURCE_TOOL_NAME,
   STATUS_TOOL_NAME,
+  SUPERAGENT_SECTION_NAME,
   TOOL_NAME,
   WORKSPACE_TOOL_NAME,
   WORK_TOOL_NAME,
@@ -35,7 +36,9 @@ import {
   createSessionRecorder,
   createSuperagentContribution,
   daemonIdentityOf,
+  ensureSuperWorkspace,
   isBlocked,
+  isSuperAgentSession,
   jiraWorkerTools,
   openProposal,
   runDaemonPass,
@@ -44,7 +47,7 @@ import {
 } from './index.ts'
 import * as jiraAgent from './index.ts'
 import { callerOf, identityOf } from './tools.ts'
-import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent } from './testing/host.ts'
+import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent, waitFor } from './testing/host.ts'
 
 /** An agent handle the harness built. */
 type AgentHandle = ReturnType<typeof testAgent>
@@ -337,6 +340,64 @@ describe('superagent: the workspace roster', () => {
       const rows = roster.workspaces as Record<string, unknown>[]
       assert.equal(rows.length, 1)
       assert.equal(rows[0]?.title, 'the work')
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
+
+describe('superagent: the super workspace', () => {
+  it('registers the super home once, and a session there is the dispatcher', async () => {
+    const dir = await scratchDirectory()
+    const home = join(dir, 'super-agent')
+    const harness = await mountJira(await fixture(), { superagent: true })
+    try {
+      await harness.ctx.plugin(jiraAgent, { superagent_home: home })
+      const registry = await provideRegistry(harness)
+      await waitFor(() => (registry.rows.length > 0 ? registry.rows : undefined))
+      assert.equal(registry.rows.length, 1, 'one row for the super home')
+      assert.equal(registry.rows[0]?.path, home)
+      assert.equal(registry.rows[0]?.title, 'Super agent')
+
+      // The directory is created by the registration, and a second ensure is the registry's own
+      // idempotency rather than a second row.
+      const again = await ensureSuperWorkspace(registry, home)
+      assert.equal(again.path, home)
+      assert.equal(registry.rows.length, 1, 'ensure is idempotent')
+
+      const host = {
+        ctx: harness.ctx,
+        env: {},
+        clock: () => Date.parse(AT),
+        recorder: createSessionRecorder(),
+      }
+      const contribution = createSuperagentContribution(host, 'jira-worker', 2, undefined, undefined, home)
+      const superAgent = testAgent(harness.ctx, 'super-1', { cwd: home })
+      assert.equal(isSuperAgentSession(superAgent, home), true)
+      assert.deepEqual(
+        contribution.tools?.(superAgent).map(tool => tool.name),
+        [WORKSPACE_TOOL_NAME],
+        'the super agent keeps the workspace roster and loses the ledger-bound verbs',
+      )
+      assert.deepEqual(
+        contribution.promptSections?.(superAgent).map(section => section.name),
+        [SUPERAGENT_SECTION_NAME],
+      )
+
+      // Any other checkout keeps the full dispatcher surface and no section.
+      const other = testAgent(harness.ctx, 'main-2', { cwd: dir })
+      assert.equal(isSuperAgentSession(other, home), false)
+      assert.equal(contribution.tools?.(other).length, 6)
+      assert.deepEqual(contribution.promptSections?.(other), [])
+
+      // A subagent dispatched from the super agent runs in the target checkout, so it is not one.
+      const child = testAgent(harness.ctx, 'child-1', {
+        cwd: dir,
+        origin: 'subagent',
+        delegationDepth: 1,
+        parentSession: SessionId('super-1'),
+      })
+      assert.equal(isSuperAgentSession(child, home), false)
     } finally {
       await harness.dispose()
     }

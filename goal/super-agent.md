@@ -390,3 +390,17 @@ pass 扫描 → 候选（只读，不动账本）
 **仍未做（有意后置）**：vendor 原型 `src/core`。多 Source 不做（用户裁定只做 GitHub，决策 207）；无会话 daemon 已落地但默认关闭（DH-714）；这些在闭环价值被验证后再开；不阻塞阶段一验收。
 
 **对 dafeiyu 的结论**：super agent 适合拆成"能力列表里的一行 + 自己的 host row"，但不适合把整台异步机器塞进 capability contribution。第一版把它收在 jira-agent 的同一 row 里，用独立 capability id 门控，是 B 的最小形态；若后续要独立 host row，`superagent` 这个 id/工具面可以原样迁出。
+
+## 10. 阶段二：超级 workspace + 派遣（2026/11/04，DH-716）
+
+**目标形态（用户）**：人只跟超级 workspace 里的 agent 对话；具体活儿由它派子 agent 到各个 workspace 去做（调研、写代码、写文档、杂活都算）；人能看见被创建的工作区，并保留与这些执行者对话、控制它们的能力（对齐现在每个 workspace agent 的 subagent 体验）。
+
+**第一步已落地**（决策 213）：
+
+- 配置 `superagent_home`（jira-agent 行）；挂载时 `mkdir` + `workspaceRegistry.create` 登记一次，超级 workspace 因此出现在 workspace 列表里、可被打开，不引入第二份状态；
+- **身份 = cwd**：会话的 `SessionHeader.cwd` 落在超级 workspace 就是超级 agent，不需要每次选预设；从这里派出去的子 agent 跑在目标目录，不会被误判；
+- 超级 agent 的账本工具表只剩 `superagent_workspace`（roster / ensure），claim / dispatch / source 被移除，turn-end 也不再提案——它派遣，不跑账本闭环；
+- 常驻指令段 `superagent:dispatcher`：先与用户协商路径再 `ensure`；用宿主的 `subagent(cwd=…)` 派活，brief 自带验收标准和报告格式；运行中用 `list_agents` / `send_message` / `interrupt_agent` 控制；回来只给一句汇总，不贴全文；
+- 报告链路不用新机制：`subagent` 的完成结果本来就会回到发起者；执行者出现在超级 agent 的 delegation 视图里，用户可查看、可停止。
+
+**仍未做（阶段二后续）**：按 workspace 的 Grant（可写范围/强度，人批一次可复用）；任务账（值得跟踪的派遣才落 jira issue，杂活不落）；长任务升级为真实 Session（可恢复、出现在目标 workspace 的会话列表）；面板按 workspace 分组展示派遣与状态；daemon 常驻（人不在时继续派发/收报告）。

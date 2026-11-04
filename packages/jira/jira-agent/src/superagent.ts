@@ -15,7 +15,10 @@
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
+import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 import { mkdir } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
 import { clampText, asIdentity, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
@@ -23,7 +26,7 @@ import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
 import { dispatchBody, dispatchRecordOf } from './dispatch.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, failure, nowUtc, okValue } from './envelope.ts'
-import { isExecutorSession, type Caller } from './caller.ts'
+import { callerCwd, isExecutorSession, isSubagent, type Caller } from './caller.ts'
 import { type Spec, type ToolHost, callerOf, defineJiraTool, identityOf, runOptionsOf } from './tools.ts'
 
 /** The capability id this provider registers with the organizer. */
@@ -62,6 +65,42 @@ export const SUPERAGENT_POLL_MS = 5 * 60_000
 
 /** The synthetic session id the session-less dispatcher writes under. */
 export const DAEMON_SESSION_ID = 'superagent-daemon'
+
+/** The workspace title the super home is registered under, once, when the capability mounts. */
+export const SUPERAGENT_WORKSPACE_TITLE = 'Super agent'
+
+/** The prompt section only the session living in the super workspace reads. */
+export const SUPERAGENT_SECTION_NAME = 'superagent:dispatcher'
+
+/** One order after the executor's standing instructions: the same harness, the dispatcher's job. */
+export const SUPERAGENT_SECTION_ORDER = 702
+
+/**
+ * The super agent's standing instructions.
+ *
+ * Static on purpose, like the executor's: the role belongs to the workspace, so a session opened
+ * there pays for this text once and keeps the prefix cached. The dispatch itself is the host's own
+ * `subagent` tool with `cwd` — this section only says when to use it and what to report back.
+ */
+export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
+  name: SUPERAGENT_SECTION_NAME,
+  order: SUPERAGENT_SECTION_ORDER,
+  text: 'You are the super agent: the one conversation a person has with this harness. You do not '
+    + 'do the work yourself — you dispatch subagents into registered workspaces and report what came back.\n'
+    + '\n'
+    + '- Find or create the workspace with `superagent_workspace`: `roster` lists every registered '
+    + 'directory, `ensure` registers one. Ask the person which directory before `ensure` creates it, '
+    + 'and dispatch into the canonical path it returns.\n'
+    + '- Dispatch with the `subagent` tool and `cwd` set to that path. Make the brief self-contained: '
+    + 'what to find out or change, the acceptance check, and what not to touch. End every brief with '
+    + 'the report you need: what was done, which files changed, how it was verified, what is blocked.\n'
+    + '- Keep one dispatcher per task: while a subagent runs, use `list_agents`, `send_message` and '
+    + '`interrupt_agent` instead of starting a duplicate.\n'
+    + '- When it returns, answer the person in one short message: what was sent where, the outcome, '
+    + 'and any decision they owe you. Do not paste the whole report.\n'
+    + '- Read the ledger when it helps, but do not claim or dispatch ledger issues from here; this '
+    + 'workspace dispatches work, it does not run the claim loop.',
+})
 
 /** Whether an issue can be taken right now, and why not when it cannot. */
 export type Claimability = Readonly<{
@@ -227,6 +266,65 @@ export const workspaceRegistryOf = (ctx: unknown): WorkspaceRegistryLike | undef
     return undefined
   }
   return service as WorkspaceRegistryLike
+}
+
+/**
+ * Compare two checkout paths the way the filesystem does.
+ *
+ * The workspace registry stores canonical paths (`fs.realpath`), while a session may name the same
+ * directory through a symlink, a junction, or different case on Windows. Canonicalizing both sides
+ * is what keeps "this session lives in the super workspace" a fact rather than a string guess; a
+ * path that does not exist yet falls back to the lexical form, which is still exact.
+ * @param left - one absolute path.
+ * @param right - the other absolute path.
+ * @returns whether both name the same directory.
+ */
+export const sameCheckout = (left: string, right: string): boolean => {
+  const canonical = (value: string): string => {
+    try {
+      return realpathSync(value)
+    } catch {
+      return resolve(value)
+    }
+  }
+  const a = canonical(left)
+  const b = canonical(right)
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+}
+
+/**
+ * Whether this agent is the super agent: the session living in the configured super workspace.
+ *
+ * The role is the workspace, not a preset (DH-716): a person opens a conversation in the super
+ * workspace and that conversation dispatches. A subagent dispatched *from* there runs in the target
+ * checkout, so it never matches, which is what keeps workers out of the dispatcher's section.
+ * @param agent - the agent being wired or calling, read duck-typed.
+ * @param homePath - the configured super workspace path, when the deployment has one.
+ * @returns whether this agent works from the super workspace.
+ */
+export const isSuperAgentSession = (agent: unknown, homePath: string | undefined): boolean => {
+  if (homePath === undefined || homePath.trim() === '') return false
+  // A delegated child that happens to start in the super home is still a worker, not the dispatcher.
+  if (isSubagent(agent)) return false
+  const cwd = callerCwd(agent)
+  return cwd !== undefined && sameCheckout(cwd, homePath)
+}
+
+/**
+ * Register the super workspace once, creating its directory when that is what is missing.
+ *
+ * `workspaceRegistry.create` owns an existing directory, so the directory comes first; repeat calls
+ * are the registry's own idempotency (same canonical path, same row) rather than a second state.
+ * @param registry - the host's workspace registry, read through the duck-typed slice above.
+ * @param path - the directory the super agent lives in, as configured.
+ * @returns the registered workspace.
+ */
+export const ensureSuperWorkspace = async (
+  registry: WorkspaceRegistryLike,
+  path: string,
+): Promise<WorkspaceLike> => {
+  await mkdir(path, { recursive: true })
+  return registry.create(path, SUPERAGENT_WORKSPACE_TITLE)
 }
 
 /** `superagent_workspace`'s schema. */
@@ -1133,6 +1231,7 @@ export interface SuperagentDaemonConfig {
  * @param githubRepo - the configured `owner/name` the GitHub source tool imports from; without it
  *   the source tool refuses.
  * @param daemon - the session-less pass configuration; absent or disabled keeps the old behavior.
+ * @param home - the configured super workspace path; a session opened there is the super agent.
  * @returns the capability contribution the organizer wires onto root agents.
  */
 export const createSuperagentContribution = (
@@ -1141,10 +1240,12 @@ export const createSuperagentContribution = (
   maxWorkers: number = DEFAULT_MAX_WORKERS,
   githubRepo?: string,
   daemon?: SuperagentDaemonConfig,
+  home?: string,
 ): CapabilityContribution => {
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
   let polling = false
+  const superHome = home === undefined || home.trim() === '' ? undefined : home
   const daemonWorkspace = daemon?.workspace
   const daemonEnabled = daemon?.enabled === true && daemonWorkspace !== undefined && daemonWorkspace.trim() !== ''
   const poll = async (): Promise<void> => {
@@ -1267,17 +1368,24 @@ export const createSuperagentContribution = (
   return Object.freeze({
     // DH-703: an executor Session is a root agent, so the scope alone would hand it the dispatcher's
     // verbs. It gets none of them; the jira capability gives it the reading tools and `issue_work`.
+    // DH-716: the super agent is a root too, and it dispatches rather than claims — it keeps the
+    // workspace roster and loses the ledger-bound verbs that would only invite it into the loop.
     scope: 'root',
     tools: (agent: Agent) => (isExecutorSession(agent, workerPreset)
       ? Object.freeze([])
-      : Object.freeze([
-        defineJiraTool(host, source),
-        defineJiraTool(host, scan),
-        defineJiraTool(host, claim),
-        defineJiraTool(host, workspace),
-        defineJiraTool(host, status),
-        defineJiraTool(host, dispatcher(host, workerPreset, maxWorkers)),
-      ])),
+      : isSuperAgentSession(agent, superHome)
+        ? Object.freeze([defineJiraTool(host, workspace)])
+        : Object.freeze([
+          defineJiraTool(host, source),
+          defineJiraTool(host, scan),
+          defineJiraTool(host, claim),
+          defineJiraTool(host, workspace),
+          defineJiraTool(host, status),
+          defineJiraTool(host, dispatcher(host, workerPreset, maxWorkers)),
+        ])),
+    promptSections: (agent: Agent) => (isSuperAgentSession(agent, superHome)
+      ? [SUPERAGENT_SECTION]
+      : []),
     onAgentCreated: (agent: Agent) => {
       liveAgents.add(agent)
       agent.ctx.effect(() => () => { liveAgents.delete(agent) }, 'superagent: forget a disposed agent')
@@ -1286,6 +1394,8 @@ export const createSuperagentContribution = (
       // An executor Session is a root agent, but it must not propose new work (DH-703 review):
       // its turn end is delivery, not dispatch.
       if (isExecutorSession(input.agent, workerPreset)) return
+      // DH-716: the super agent's turn end is a report to the person, not a pass over the ledger.
+      if (isSuperAgentSession(input.agent, superHome)) return
       await runSuperagentPass(host, input.agent, input.signal, workerPreset, maxWorkers)
     },
     dispose: () => {

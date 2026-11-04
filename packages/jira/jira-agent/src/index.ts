@@ -44,6 +44,8 @@ import {
   SUPERAGENT_SETTINGS_ORDER,
   SUPERAGENT_SETTINGS_SECTION,
   createSuperagentContribution,
+  ensureSuperWorkspace,
+  workspaceRegistryOf,
 } from './superagent.ts'
 import { installWriteGuard, registerJiraCommand, registerJiraSkills } from './wiring.ts'
 
@@ -76,6 +78,14 @@ export type Config = Readonly<{
   superagent_daemon?: boolean
   /** The checkout a session-less claim is dispatched into; the daemon needs it to run. */
   superagent_daemon_workspace?: string
+  /**
+   * The directory the super agent lives in (DH-716); unset means no super workspace.
+   *
+   * It is registered once at mount, so it shows up in the workspace list like any other checkout,
+   * and a conversation opened there is the dispatcher: it keeps `superagent_workspace` and loses
+   * the ledger-bound claim verbs.
+   */
+  superagent_home?: string
 }>
 
 /** Schemastery schema for the row configuration. */
@@ -85,6 +95,7 @@ export const Config: z<Config> = z.object({
   superagent_github_repo: z.string(),
   superagent_daemon: z.boolean(),
   superagent_daemon_workspace: z.string(),
+  superagent_home: z.string(),
 })
 
 /**
@@ -105,6 +116,20 @@ export function apply(ctx: Context, config: Config): void {
   })
 
   installWriteGuard(ctx, env, config.superagent_worker_preset)
+  // The super workspace is a directory plus one registry row, never a second state: registering it
+  // here is what makes it visible in the workspace list before anyone opens a conversation (DH-716).
+  const superHome = config.superagent_home
+  if (superHome !== undefined && superHome.trim() !== '') {
+    ctx.inject(['workspaceRegistry'], async (workspaceCtx) => {
+      const registry = workspaceRegistryOf(workspaceCtx)
+      if (registry === undefined) return
+      try {
+        await ensureSuperWorkspace(registry, superHome)
+      } catch (error: unknown) {
+        ctx.logger.warn('jira-agent: the super workspace %s could not be registered: %s', superHome, String(error))
+      }
+    })
+  }
   // Optional registries: the child fiber activates only when the service is composed, and its
   // registrations are released with it.
   ctx.inject(['commands'], (commandCtx) => {
@@ -149,6 +174,7 @@ export function apply(ctx: Context, config: Config): void {
           enabled: config.superagent_daemon === true,
           ...(config.superagent_daemon_workspace === undefined ? {} : { workspace: config.superagent_daemon_workspace }),
         },
+        config.superagent_home,
       ),
   })
   ctx.effect(() => superagent, 'superagent.register()')
@@ -265,6 +291,10 @@ export {
   SUPERAGENT_CAPABILITY_ID,
   SUPERAGENT_CAPABILITY_LABEL,
   SUPERAGENT_OUTPUT_SCHEMA,
+  SUPERAGENT_SECTION,
+  SUPERAGENT_SECTION_NAME,
+  SUPERAGENT_SECTION_ORDER,
+  SUPERAGENT_WORKSPACE_TITLE,
   WORKSPACE_DESCRIPTION,
   WORKSPACE_PARAMETERS,
   WORKSPACE_TOOL_NAME,
@@ -279,7 +309,9 @@ export {
   daemonIdentityOf,
   dispatchInstruction,
   dispatchRecordOf,
+  ensureSuperWorkspace,
   isBlocked,
+  isSuperAgentSession,
   openProposal,
   runClaimTool,
   runDaemonPass,
@@ -289,6 +321,7 @@ export {
   runStatusTool,
   runSuperagentPass,
   runWorkspaceTool,
+  sameCheckout,
   sessionControllerOf,
   workspaceRegistryOf,
 } from './superagent.ts'
