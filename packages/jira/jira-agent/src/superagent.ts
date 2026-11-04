@@ -90,14 +90,18 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + '\n'
     + '- Find or create the workspace with `superagent_workspace`: `roster` lists every registered '
     + 'directory, `ensure` registers one. Ask the person which directory before `ensure` creates it.\n'
-    + '- Start the work with `superagent_session` action `start`, naming the workspace (path or title) '
-    + 'and a self-contained task: what to find out or change, the acceptance check, what not to touch, '
-    + 'and the report you need (what was done, files changed, how it was verified, what is blocked). '
-    + 'That Session decides whether to spawn subagents or do the work itself.\n'
-    + '- Its report arrives here as a message in a new turn. After starting, end your turn instead of '
-    + 'holding the conversation open; the person stays free to talk to you while the workspace works.\n'
+    + '- Follow-up work belongs in the workspace\'s existing conversation: use `superagent_session` '
+    + 'action `append` with the workspace and the instruction. It continues that workspace\'s most '
+    + 'recent Session and its report comes back here.\n'
+    + '- Open a NEW Session (action `start`) only when the person asks for one or the workspace has '
+    + 'none. Do not mirror one workspace\'s work into a second Session: two Sessions editing the same '
+    + 'files is the conflict you must avoid.\n'
+    + '- When the Session you need is already running, append to it — the instruction queues — instead '
+    + 'of starting a parallel Session. If the person wants an isolated task, say so and start one.\n'
     + '- Continue a Session the person names with action `prompt` (use `list` to resolve which Session '
     + 'they mean), branch it with `fork`, and hide it with `archive`.\n'
+    + '- Every report arrives here as a message in a new turn. After handing over work, end your turn '
+    + 'instead of holding the conversation open; the person stays free to talk to you.\n'
     + '- Use `subagent` only for quick research that belongs to no workspace; a real Session is what '
     + 'the person can see, continue, archive and branch.\n'
     + '- Treat a report as evidence: when it names a blocker (a missing tool, a permission failure, a '
@@ -454,25 +458,27 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
   action: {
     type: 'string',
     required: true,
-    description: 'start: open a Session in a workspace and hand it the task. prompt: append to an '
-      + 'existing Session. list: show the Sessions of one workspace. archive: hide one Session. '
-      + 'fork: branch one Session.',
-    enum: ['start', 'prompt', 'list', 'archive', 'fork'],
+    description: 'append: continue the workspace\'s most recent Session with more work (the default '
+      + 'for follow-up work in a workspace). start: open a NEW Session, only when the person asks for '
+      + 'one or the workspace has none. prompt: append to a Session the caller named. list: show one '
+      + 'workspace\'s Sessions. archive: hide one Session. fork: branch one Session.',
+    enum: ['append', 'start', 'prompt', 'list', 'archive', 'fork'],
   },
-  workspace: { type: 'string', description: 'start/list: the workspace path or title; prompt/archive/fork use it for the report headline.' },
+  workspace: { type: 'string', description: 'append/start/list: the workspace path or title; prompt/archive/fork use it for the report headline.' },
   task: { type: 'string', description: 'start: the self-contained task for that workspace agent.' },
   session: { type: 'string', description: 'prompt/archive/fork: the Session id.' },
-  text: { type: 'string', description: 'prompt: the follow-up instruction.' },
+  text: { type: 'string', description: 'append/prompt: the follow-up instruction.' },
   atSeq: { type: 'number', description: 'fork: branch from this event seq; default the latest completed turn.' },
 })
 
 /** `superagent_session`'s description: what the verbs do and where the report goes. */
 export const SESSION_DESCRIPTION =
-  'Run work inside a registered workspace as a real Session of its own, so the person can see it '
-  + 'under that workspace, continue it, archive it and branch it. `start` opens the Session with the '
-  + 'task; that agent decides whether to spawn subagents or do the work itself, and its report '
-  + 'arrives here as a message in a new turn. `prompt` appends to an existing Session, `list` shows '
-  + 'one workspace\'s Sessions, `archive` hides one, `fork` branches one.'
+  'Run work inside a registered workspace as a real Session of its own. Follow-up work belongs in the '
+  + 'workspace\'s existing conversation: `append` continues its most recent Session (the default), and '
+  + '`prompt` continues one the person named — use `list` to resolve a name. `start` opens a NEW '
+  + 'Session and is only for a task the person wants isolated; that agent decides whether to spawn '
+  + 'subagents or do the work itself. Every Session this super agent addresses reports its turn end '
+  + 'back here as a message. `archive` hides one Session, `fork` branches one.'
 
 /** One Session a super agent started or addressed, so its report can be routed back. */
 export interface TaskSessionRecord {
@@ -997,6 +1003,45 @@ export const runSessionTool = async (
   const atSeq = typeof validated.value.atSeq === 'number' ? validated.value.atSeq : undefined
   const workspace = workspaceArg === undefined ? undefined : findWorkspace(registry, workspaceArg)
 
+  if (action === 'append') {
+    if (workspace === undefined) {
+      return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+    }
+    if (textArg === undefined || textArg.trim() === '') {
+      return failure(invalidInput('append needs `text`: the follow-up instruction'), caller, me)
+    }
+    try {
+      const listed = await controller.list()
+      const target = listed.items
+        .filter(item => item.parentSessionId === undefined && item.origin !== 'subagent' && item.blank !== true)
+        .filter(item => item.cwd !== undefined && sameCheckout(item.cwd, workspace.path))
+        .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))[0]
+      if (target === undefined) {
+        return failure(invalidInput(
+          `"${workspace.title}" has no Session to continue yet; start one with superagent_session start`,
+          { workspace: workspace.path },
+        ), caller, me)
+      }
+      const sessionId = String(target.sessionId)
+      await controller.prompt({
+        requestId: `superagent-append-${randomUUID()}`,
+        sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text: textArg.trim() }],
+      }, new AbortController().signal)
+      if (reportTo !== undefined) context.tasks.set(sessionId, { superSession: reportTo, workspace: workspace.path })
+      return Object.freeze({
+        ...verdict,
+        session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title, appended: true }),
+      })
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `the follow-up could not be appended: ${error instanceof Error ? error.message : String(error)}`,
+        { workspace: workspace.path },
+      ), caller, me)
+    }
+  }
+
   if (action === 'start') {
     if (workspace === undefined) {
       return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
@@ -1072,6 +1117,7 @@ export const runSessionTool = async (
           running: item.running,
           blank: item.blank === true,
           ...(item.cwd === undefined ? {} : { cwd: item.cwd }),
+          ...(item.updatedAt === undefined ? {} : { updatedAt: item.updatedAt }),
         }))
       return Object.freeze({ ...verdict, sessions: Object.freeze(rows) })
     } catch (error: unknown) {
@@ -1206,6 +1252,8 @@ export interface SessionSummaryLike {
   readonly parentSessionId?: unknown
   readonly origin?: string
   readonly blank?: boolean
+  /** Last activity in epoch milliseconds; the append action prefers the most recent Session. */
+  readonly updatedAt?: number
 }
 
 /**

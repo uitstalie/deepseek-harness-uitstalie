@@ -370,9 +370,9 @@ describe('superagent: workspace Sessions', () => {
       prompted: { sessionId: string; text: string }[] = []
       forked: { sessionId: string; atSeq?: number }[] = []
       items = [
-        { sessionId: 'w-session', running: false, cwd: workspacePath, blank: false },
-        { sessionId: 'other-session', running: true, cwd: join(tmpdir(), 'elsewhere'), blank: false },
-        { sessionId: 'child', running: false, cwd: workspacePath, parentSessionId: 'w-session', origin: 'subagent' },
+        { sessionId: 'w-session', running: false, cwd: workspacePath, blank: false, updatedAt: 100 },
+        { sessionId: 'other-session', running: true, cwd: join(tmpdir(), 'elsewhere'), blank: false, updatedAt: 300 },
+        { sessionId: 'child', running: false, cwd: workspacePath, parentSessionId: 'w-session', origin: 'subagent', updatedAt: 200 },
       ]
       async create(request: { workspaceId?: string; agentPreset?: string }) {
         this.created.push(request)
@@ -432,6 +432,26 @@ describe('superagent: workspace Sessions', () => {
     assert.equal(listed.ok, true, JSON.stringify(listed.error))
     const rows = listed.sessions as { id: string }[]
     assert.deepEqual(rows.map(row => row.id), ['w-session'], 'only the workspace Sessions, no children')
+
+    // Follow-up work continues the workspace's most recent Session instead of opening another.
+    controller.items = [
+      ...controller.items,
+      { sessionId: 'w-newer', running: false, cwd: workspacePath, blank: false, updatedAt: 999 },
+    ]
+    const appended = await runSessionTool(
+      { action: 'append', workspace: 'hello', text: 'one more section' },
+      options, me, ctx, { tasks },
+    )
+    assert.equal(appended.ok, true, JSON.stringify(appended.error))
+    assert.equal(controller.prompted.at(-1)?.sessionId, 'w-newer')
+    assert.equal(tasks.get('w-newer')?.superSession, 'super-1')
+
+    controller.items = []
+    const noTarget = await runSessionTool(
+      { action: 'append', workspace: 'hello', text: 'nothing to continue' },
+      options, me, ctx, { tasks },
+    )
+    assert.equal(noTarget.ok, false, 'append refuses when the workspace has no Session yet')
 
     const archived = await runSessionTool({ action: 'archive', session: 'w-session-2' }, options, me, ctx, { tasks })
     assert.equal(archived.ok, true, JSON.stringify(archived.error))

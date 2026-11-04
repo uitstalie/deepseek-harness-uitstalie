@@ -411,4 +411,8 @@ pass 扫描 → 候选（只读，不动账本）
 
 **工作区分组（DH-718 第三步）**：ui-workspace 新增 `ctx.workspaceGroups` 注册表，别家插件可以把某个工作区登记为"特殊组"（id + label + workspaceId）。ui-jira 在状态就绪时把超级 workspace 注册进去，浏览器把它从普通列表里摘出来，在上方用独立小节标题（"超级工作区"）渲染，其余工作区保持原列表；label 由注册方提供，ui-workspace 不认识 jira。注册表可选：没有该插件的组合（以及测试）照旧渲染单一列表。
 
-**真实 Session 执行者（DH-719）**：super agent 不再用 `subagent(cwd)` 派活，而是用 `superagent_session start` 在目标工作区创建**真实 Session**（按 `workspaceId` 挂到工作区，所以人能在该工作区下看到、继续、归档、分支它）；该 Session 自己决定再派 subagent 还是自己干完。它每轮结束由 host 读取最后一条 assistant 文本，以 `[task-report] <session> in <workspace>` 消息 queue 回发起它的 super 会话（新回合，不阻塞对话）。同一工具还有 `prompt`（追加）、`list`（按工作区解析"某会话"）、`archive`、`fork`。启动 Session 的 preset 由 `superagent_agent_preset` 决定（缺省用部署默认）。
+**真实 Session 执行者（DH-719）**：super agent 不再用 `subagent(cwd)` 派活，而是用 `superagent_session` 在目标工作区创建**真实 Session**（按 `workspaceId` 挂到工作区，所以人能在该工作区下看到、继续、归档、分支它）；该 Session 自己决定再派 subagent 还是自己干完。它每轮结束由 host 读取最后一条 assistant 文本，以 `[task-report] <session> in <workspace>` 消息 queue 回发起它的 super 会话（新回合，不阻塞对话）。
+
+**跟进优先追加（DH-719 后续，用户裁定）**：同一工作区的跟进工作默认进**已有会话**——`append` 继续该工作区最近活跃的 Session，`start` 只在人明确要新会话或工作区还没有会话时使用；目标 Session 正在跑时用 `append`/`prompt` 让消息排队，不为同一批文件开并行 Session（并发编辑冲突由"一个工作区一个会话"这条规则避免）。用户点名某会话时先 `list` 再 `prompt`/`fork`/`archive`。
+
+启动 Session 的 preset 由 `superagent_agent_preset` 决定（缺省用部署默认）。
