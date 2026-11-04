@@ -13202,9 +13202,15 @@ importers:
       '@deepseek-ai/dsh-client-ui-settings':
         specifier: workspace:*
         version: link:../../client/ui-settings
+      '@deepseek-ai/dsh-client-ui-sidebar':
+        specifier: workspace:*
+        version: link:../../client/ui-sidebar
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:*
         version: link:../../client/ui-slots
+      '@deepseek-ai/dsh-client-ui-workspace':
+        specifier: workspace:*
+        version: link:../../client/ui-workspace
       '@deepseek-ai/dsh-jira-service':
         specifier: workspace:*
         version: link:../jira-service
