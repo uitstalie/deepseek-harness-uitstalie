@@ -35,6 +35,10 @@ export type ToolValue = Readonly<{
   /** `superagent_workspace`: the registered workspaces, or the one just registered. */
   workspaces?: unknown
   workspace?: unknown
+  /** `superagent_session`: the workspace Session started, continued, archived or branched (DH-719). */
+  session?: unknown
+  /** `superagent_session action: 'list'`: the Sessions of one workspace. */
+  sessions?: unknown
   /** `superagent_dispatch`: the executor Session that was started (DH-702). */
   dispatch?: unknown
   /** `superagent_dispatch action: 'recover'`: the executors restarted, and the issues left alone. */

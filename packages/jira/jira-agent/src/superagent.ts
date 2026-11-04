@@ -86,21 +86,22 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
   name: SUPERAGENT_SECTION_NAME,
   order: SUPERAGENT_SECTION_ORDER,
   text: 'You are the super agent: the one conversation a person has with this harness. You do not '
-    + 'do the work yourself — you dispatch subagents into registered workspaces and report what came back.\n'
+    + 'do the work yourself — you start a Session in the workspace that owns the work, and report what came back.\n'
     + '\n'
     + '- Find or create the workspace with `superagent_workspace`: `roster` lists every registered '
-    + 'directory, `ensure` registers one. Ask the person which directory before `ensure` creates it, '
-    + 'and dispatch into the canonical path it returns.\n'
-    + '- Dispatch with the `subagent` tool and `cwd` set to that path. Make the brief self-contained: '
-    + 'what to find out or change, the acceptance check, and what not to touch. End every brief with '
-    + 'the report you need: what was done, which files changed, how it was verified, what is blocked.\n'
-    + '- Keep one dispatcher per task: while a subagent runs, use `list_agents`, `send_message` and '
-    + '`interrupt_agent` instead of starting a duplicate. Several independent tasks may run at once.\n'
-    + '- After dispatching, end your turn instead of holding the conversation open. A subagent reports '
-    + 'back in a new turn, so the person stays free to talk to you while it works; waiting for it '
-    + 'yourself only blocks them.\n'
-    + '- Treat a subagent\'s report as evidence: when it reports a blocker (a missing tool, a permission '
-    + 'failure, a failed check), pass that fact on in one line instead of summarizing it away.\n'
+    + 'directory, `ensure` registers one. Ask the person which directory before `ensure` creates it.\n'
+    + '- Start the work with `superagent_session` action `start`, naming the workspace (path or title) '
+    + 'and a self-contained task: what to find out or change, the acceptance check, what not to touch, '
+    + 'and the report you need (what was done, files changed, how it was verified, what is blocked). '
+    + 'That Session decides whether to spawn subagents or do the work itself.\n'
+    + '- Its report arrives here as a message in a new turn. After starting, end your turn instead of '
+    + 'holding the conversation open; the person stays free to talk to you while the workspace works.\n'
+    + '- Continue a Session the person names with action `prompt` (use `list` to resolve which Session '
+    + 'they mean), branch it with `fork`, and hide it with `archive`.\n'
+    + '- Use `subagent` only for quick research that belongs to no workspace; a real Session is what '
+    + 'the person can see, continue, archive and branch.\n'
+    + '- Treat a report as evidence: when it names a blocker (a missing tool, a permission failure, a '
+    + 'failed check), pass that fact on in one line instead of summarizing it away.\n'
     + '- When the report arrives, answer the person in one short message: what was sent where, the outcome, '
     + 'and any decision they owe you. Do not paste the whole report.\n'
     + '- Read the ledger when it helps, but do not claim or dispatch ledger issues from here; this '
@@ -261,6 +262,8 @@ export interface WorkspaceRegistryLike {
    * gets a registered super workspace, just not a pinned one.
    */
   insertBefore?(id: string, beforeId?: string): Promise<readonly string[]>
+  /** Hide one Session from every grouping surface; optional because a host may not compose it. */
+  archiveSession?(sessionId: string, options?: { readonly stopActivity?: boolean }): Promise<void>
 }
 
 /**
@@ -443,6 +446,50 @@ export const WORKSPACE_DESCRIPTION =
   + 'directory, creating it when it does not exist, and answers with the canonical path to dispatch '
   + 'into. Ask the person which directory before you register one.'
 
+/** The tool a super agent uses to run and steer real workspace Sessions (DH-719). */
+export const SESSION_TOOL_NAME = 'superagent_session'
+
+/** `superagent_session`'s schema. */
+export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+  action: {
+    type: 'string',
+    required: true,
+    description: 'start: open a Session in a workspace and hand it the task. prompt: append to an '
+      + 'existing Session. list: show the Sessions of one workspace. archive: hide one Session. '
+      + 'fork: branch one Session.',
+    enum: ['start', 'prompt', 'list', 'archive', 'fork'],
+  },
+  workspace: { type: 'string', description: 'start/list: the workspace path or title; prompt/archive/fork use it for the report headline.' },
+  task: { type: 'string', description: 'start: the self-contained task for that workspace agent.' },
+  session: { type: 'string', description: 'prompt/archive/fork: the Session id.' },
+  text: { type: 'string', description: 'prompt: the follow-up instruction.' },
+  atSeq: { type: 'number', description: 'fork: branch from this event seq; default the latest completed turn.' },
+})
+
+/** `superagent_session`'s description: what the verbs do and where the report goes. */
+export const SESSION_DESCRIPTION =
+  'Run work inside a registered workspace as a real Session of its own, so the person can see it '
+  + 'under that workspace, continue it, archive it and branch it. `start` opens the Session with the '
+  + 'task; that agent decides whether to spawn subagents or do the work itself, and its report '
+  + 'arrives here as a message in a new turn. `prompt` appends to an existing Session, `list` shows '
+  + 'one workspace\'s Sessions, `archive` hides one, `fork` branches one.'
+
+/** One Session a super agent started or addressed, so its report can be routed back. */
+export interface TaskSessionRecord {
+  /** The super agent Session that receives the report. */
+  readonly superSession: string
+  /** The workspace the Session works in, for the report headline. */
+  readonly workspace: string
+}
+
+/** What one superagent_session call needs beyond the shared run options. */
+export interface SessionToolContext {
+  /** The configured preset a started Session joins; unset keeps the deployment default. */
+  readonly agentPreset?: string
+  /** Sessions this super agent addressed, so their turn ends report back to it. */
+  readonly tasks: Map<string, TaskSessionRecord>
+}
+
 /** The envelope both tools advertise; `items`, `issue` and `dispatch` carry the payloads. */
 export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
   type: 'object',
@@ -453,6 +500,8 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     items: { type: 'array' },
     workspaces: { type: 'array' },
     workspace: { type: 'object', additionalProperties: true },
+    sessions: { type: 'array' },
+    session: { type: 'object', additionalProperties: true },
     issue: { type: 'object', additionalProperties: true },
     dispatch: { type: 'object', additionalProperties: true },
     me: { type: 'object', additionalProperties: true },
@@ -885,12 +934,279 @@ export const runWorkspaceTool = async (
 /** The tool that starts a real Session instead of a subagent (DH-702). */
 export const DISPATCH_TOOL_NAME = 'superagent_dispatch'
 
+/**
+ * Find one registered workspace by title, exact path, or the same checkout.
+ * @param registry - the host's workspace registry, when present.
+ * @param needle - the workspace the caller named.
+ * @returns the matching workspace, or undefined.
+ */
+const findWorkspace = (registry: WorkspaceRegistryLike | undefined, needle: string): WorkspaceLike | undefined => {
+  const value = needle.trim()
+  if (value === '' || registry === undefined) return undefined
+  const rows = registry.list()
+  return rows.find(row => row.title === value)
+    ?? rows.find(row => row.path === value)
+    ?? rows.find(row => sameCheckout(row.path, value))
+}
+
+/**
+ * Run one `superagent_session` call: open, continue, list, archive or branch a real workspace Session.
+ *
+ * `start` creates the Session through the host controller with `workspaceId`, which is what makes it
+ * appear under that workspace and lets the person talk to it directly; the spawned agent decides
+ * whether to spawn subagents or do the work itself. Every Session this tool starts or addresses is
+ * remembered, so its turn end can report back here (DH-719).
+ * @param args - the raw tool arguments, validated against {@link SESSION_PARAMETERS}.
+ * @param options - the caller verdict, ledger and clock for this run.
+ * @param me - the caller identity tuple, echoed in every result.
+ * @param ctx - the plugin context the controller and registry are read from.
+ * @param context - the configured preset and the report bookkeeping.
+ * @returns the envelope, carrying the Session or the listing.
+ */
+export const runSessionTool = async (
+  args: unknown,
+  options: RunOptions,
+  me: unknown,
+  ctx: unknown,
+  context: SessionToolContext,
+): Promise<ToolValue> => {
+  const { caller } = options
+  const validated = validateArgs(SESSION_PARAMETERS, args)
+  if (!validated.ok) return failure(validated.error, caller, me)
+  const controller = sessionControllerOf(ctx)
+  if (controller === undefined) {
+    return failure(invalidInput('this deployment has no session controller, so a workspace Session cannot be run'), caller, me)
+  }
+  if (!caller.writable) {
+    return failure(invalidInput('running a workspace Session needs a session that may write'), caller, me)
+  }
+  const verdict = Object.freeze({
+    ok: true,
+    writable: caller.writable,
+    ...(caller.reason === undefined ? {} : { reason: caller.reason }),
+    me,
+  })
+  const registry = workspaceRegistryOf(ctx)
+  const action = asString(validated.value.action)
+  const superSession = (me as { readonly session?: unknown } | undefined)?.session
+  const reportTo = typeof superSession === 'string' && superSession !== '' ? superSession : undefined
+  const workspaceArg = asString(validated.value.workspace)
+  const sessionArg = asString(validated.value.session)
+  const textArg = asString(validated.value.text)
+  const taskArg = asString(validated.value.task)
+  const atSeq = typeof validated.value.atSeq === 'number' ? validated.value.atSeq : undefined
+  const workspace = workspaceArg === undefined ? undefined : findWorkspace(registry, workspaceArg)
+
+  if (action === 'start') {
+    if (workspace === undefined) {
+      return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+    }
+    if (taskArg === undefined || taskArg.trim() === '') {
+      return failure(invalidInput('start needs `task`: a self-contained brief for the workspace agent'), caller, me)
+    }
+    try {
+      const created = await controller.create({
+        workspaceId: workspace.id,
+        ...(context.agentPreset === undefined || context.agentPreset.trim() === ''
+          ? {}
+          : { agentPreset: context.agentPreset }),
+      })
+      const sessionId = String(created.sessionId)
+      await controller.prompt({
+        requestId: `superagent-task-${randomUUID()}`,
+        sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text: taskArg.trim() }],
+      }, new AbortController().signal)
+      if (reportTo !== undefined) context.tasks.set(sessionId, { superSession: reportTo, workspace: workspace.path })
+      return Object.freeze({
+        ...verdict,
+        session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title }),
+      })
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `the workspace Session could not be started: ${error instanceof Error ? error.message : String(error)}`,
+        { workspace: workspace.path },
+      ), caller, me)
+    }
+  }
+
+  if (action === 'prompt') {
+    if (sessionArg === undefined || sessionArg.trim() === '') {
+      return failure(invalidInput('prompt needs `session`: the Session id'), caller, me)
+    }
+    if (textArg === undefined || textArg.trim() === '') {
+      return failure(invalidInput('prompt needs `text`: the follow-up instruction'), caller, me)
+    }
+    try {
+      await controller.prompt({
+        requestId: `superagent-followup-${randomUUID()}`,
+        sessionId: sessionArg,
+        mode: 'queue',
+        content: [{ type: 'text', text: textArg.trim() }],
+      }, new AbortController().signal)
+      if (reportTo !== undefined) {
+        const known = context.tasks.get(sessionArg)
+        context.tasks.set(sessionArg, {
+          superSession: reportTo,
+          workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
+        })
+      }
+      return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionArg }) })
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `the follow-up could not be admitted: ${error instanceof Error ? error.message : String(error)}`,
+        { session: sessionArg },
+      ), caller, me)
+    }
+  }
+
+  if (action === 'list') {
+    try {
+      const listed = await controller.list()
+      const rows = listed.items
+        .filter(item => item.parentSessionId === undefined && item.origin !== 'subagent')
+        .filter(item => workspace === undefined || item.cwd === undefined || sameCheckout(item.cwd, workspace.path))
+        .map(item => Object.freeze({
+          id: String(item.sessionId),
+          running: item.running,
+          blank: item.blank === true,
+          ...(item.cwd === undefined ? {} : { cwd: item.cwd }),
+        }))
+      return Object.freeze({ ...verdict, sessions: Object.freeze(rows) })
+    } catch (error: unknown) {
+      return failure(invalidInput(`the Session list could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+    }
+  }
+
+  if (action === 'archive') {
+    if (sessionArg === undefined || sessionArg.trim() === '') {
+      return failure(invalidInput('archive needs `session`: the Session id'), caller, me)
+    }
+    if (registry?.archiveSession === undefined) {
+      return failure(invalidInput('this deployment has no workspace registry archive'), caller, me)
+    }
+    try {
+      await registry.archiveSession(sessionArg)
+      context.tasks.delete(sessionArg)
+      return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionArg, archived: true }) })
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `the Session could not be archived: ${error instanceof Error ? error.message : String(error)}`,
+        { session: sessionArg },
+      ), caller, me)
+    }
+  }
+
+  if (action === 'fork') {
+    if (sessionArg === undefined || sessionArg.trim() === '') {
+      return failure(invalidInput('fork needs `session`: the Session id'), caller, me)
+    }
+    if (controller.fork === undefined) {
+      return failure(invalidInput('this deployment cannot branch a Session'), caller, me)
+    }
+    try {
+      const forked = await controller.fork({
+        sessionId: sessionArg,
+        ...(atSeq === undefined ? {} : { atSeq }),
+      })
+      const sessionId = String(forked.sessionId)
+      if (reportTo !== undefined) {
+        const known = context.tasks.get(sessionArg)
+        context.tasks.set(sessionId, {
+          superSession: reportTo,
+          workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
+        })
+      }
+      return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionId, forkedFrom: sessionArg }) })
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `the Session could not be branched: ${error instanceof Error ? error.message : String(error)}`,
+        { session: sessionArg },
+      ), caller, me)
+    }
+  }
+
+  return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
+}
+
+/** The last assistant text of one Session, skipping reasoning and tool-call blocks. */
+const lastAssistantText = (agent: unknown): string | undefined => {
+  const session = (agent as { session?: { snapshotEvents?: () => readonly { type: string; data?: unknown }[] } }).session
+  const events = session?.snapshotEvents?.() ?? []
+  for (const event of [...events].reverse()) {
+    if (event.type !== 'assistant/message') continue
+    const message = (event.data as { message?: { content?: readonly { type: string; text?: string }[] } }).message
+    const text = (message?.content ?? [])
+      .filter(block => block.type === 'text')
+      .map(block => block.text ?? '')
+      .join('\n')
+      .trim()
+    if (text !== '') return text
+  }
+  return undefined
+}
+
+/**
+ * Deliver one workspace Session's turn report back to the super agent that started or addressed it.
+ *
+ * The report is an ordinary queued message in the super Session: it starts a new turn there without
+ * holding the person's conversation, which is the whole reason the super agent must not wait
+ * (DH-719). A failure is logged rather than thrown — the worker's turn already committed.
+ * @param host - the plugin host whose controller delivers the message.
+ * @param record - the super Session and workspace the report belongs to.
+ * @param agent - the workspace Session whose turn just ended.
+ * @param signal - the turn-end signal.
+ * @returns whether a report was delivered.
+ */
+export const deliverTaskReport = async (
+  host: ToolHost,
+  record: TaskSessionRecord,
+  agent: unknown,
+  signal: AbortSignal,
+): Promise<boolean> => {
+  const controller = sessionControllerOf(host.ctx)
+  if (controller === undefined) return false
+  const text = lastAssistantText(agent)
+  if (text === undefined) return false
+  const sessionId = String((agent as { id?: unknown }).id)
+  try {
+    await controller.prompt({
+      requestId: `superagent-report-${randomUUID()}`,
+      sessionId: record.superSession,
+      mode: 'queue',
+      content: [{
+        type: 'text',
+        text: `[task-report] ${sessionId} in ${record.workspace} finished its turn.\n\n${text}`,
+      }],
+    }, signal)
+    return true
+  } catch (error: unknown) {
+    host.ctx.logger.warn(
+      'superagent: the task report for %s could not be delivered: %s',
+      record.superSession,
+      error instanceof Error ? error.message : String(error),
+    )
+    return false
+  }
+}
+
 /** The dispatch record lives in its own module so `issue_work` can read the same binding. */
 export { DISPATCH_MARKER, dispatchBody, dispatchRecordOf } from './dispatch.ts'
 export type { DispatchRecord, DispatchStatus } from './dispatch.ts'
 
 /** How many issues one dispatcher may keep in progress at once, unless the row says otherwise. */
 export const DEFAULT_MAX_WORKERS = 2
+
+/** One Session row the list action reports. */
+export interface SessionSummaryLike {
+  readonly sessionId: unknown
+  readonly running: boolean
+  readonly cwd?: string
+  readonly parentSessionId?: unknown
+  readonly origin?: string
+  readonly blank?: boolean
+}
 
 /**
  * The slice of the host's session controller this capability uses.
@@ -899,8 +1215,15 @@ export const DEFAULT_MAX_WORKERS = 2
  * only this one, with a readable refusal.
  */
 export interface SessionControllerLike {
-  /** Create the executor's own Session, in the checkout the dispatch names. */
-  create(request: { readonly cwd?: string; readonly agentPreset?: string }): Promise<{ readonly sessionId: unknown }>
+  /**
+   * Create one Session. `workspaceId` attaches it to a registered Workspace (which is what makes it
+   * appear under that workspace in the sidebar); `cwd` names the directory otherwise.
+   */
+  create(request: {
+    readonly workspaceId?: string
+    readonly cwd?: string
+    readonly agentPreset?: string
+  }): Promise<{ readonly sessionId: unknown }>
   /**
    * Admit the dispatch instruction as the Session's first prompt.
    *
@@ -914,7 +1237,12 @@ export interface SessionControllerLike {
     readonly content: readonly { readonly type: 'text'; readonly text: string }[]
   }, signal: AbortSignal): Promise<{ readonly accepted: boolean }>
   /** Every visible Session, so a dispatch can tell whether its executor still runs. */
-  list(): Promise<{ readonly items: readonly { readonly sessionId: unknown; readonly running: boolean }[] }>
+  list(): Promise<{ readonly items: readonly SessionSummaryLike[] }>
+  /** Branch one Session from a completed-turn prefix; optional on a host without the verb. */
+  fork?(request: {
+    readonly sessionId: string
+    readonly atSeq?: number
+  }): Promise<{ readonly sessionId: unknown }>
 }
 
 /**
@@ -1335,11 +1663,14 @@ export const createSuperagentContribution = (
   daemon?: SuperagentDaemonConfig,
   home?: string,
   permissionPreset?: string,
+  agentPreset?: string,
 ): CapabilityContribution => {
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
   let polling = false
   const superHome = home === undefined || home.trim() === '' ? undefined : home
+  /** Sessions this super agent started or addressed, so their turn ends report back (DH-719). */
+  const tasks = new Map<string, TaskSessionRecord>()
   const daemonWorkspace = daemon?.workspace
   const daemonEnabled = daemon?.enabled === true && daemonWorkspace !== undefined && daemonWorkspace.trim() !== ''
   const poll = async (): Promise<void> => {
@@ -1459,6 +1790,33 @@ export const createSuperagentContribution = (
     },
     run: (args, call) => runWorkspaceTool(args, runOptionsOf(host, call), call.me, host.ctx),
   }
+  const session: Spec = {
+    name: SESSION_TOOL_NAME,
+    description: SESSION_DESCRIPTION,
+    parameters: SESSION_PARAMETERS,
+    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+    timeoutMs: 30_000,
+    // Starting or prompting a Session mutates the conversation, so the conservative default applies.
+    isConcurrencySafe: () => false,
+    render: (typed) => {
+      if (Array.isArray(typed.sessions)) {
+        const rows = typed.sessions as { id: string; running: boolean; cwd?: string; blank?: boolean }[]
+        if (rows.length === 0) return renderText('no Session in that workspace')
+        return renderText(rows
+          .map(row => `${row.id}  ${row.running ? 'running' : 'idle'}${row.blank === true ? '  (blank)' : ''}  ${row.cwd ?? ''}`)
+          .join('\n'))
+      }
+      const one = typed.session as { id?: string; archived?: boolean; forkedFrom?: string } | undefined
+      if (one?.id === undefined) return renderText('ok')
+      if (one.archived === true) return renderText(`archived ${one.id}`)
+      if (one.forkedFrom !== undefined) return renderText(`branched ${one.forkedFrom} → ${one.id}`)
+      return renderText(`session ${one.id}`)
+    },
+    run: (args, call) => runSessionTool(args, runOptionsOf(host, call), call.me, host.ctx, {
+      ...(agentPreset === undefined ? {} : { agentPreset }),
+      tasks,
+    }),
+  }
   return Object.freeze({
     // DH-703: an executor Session is a root agent, so the scope alone would hand it the dispatcher's
     // verbs. It gets none of them; the jira capability gives it the reading tools and `issue_work`.
@@ -1468,7 +1826,7 @@ export const createSuperagentContribution = (
     tools: (agent: Agent) => (isExecutorSession(agent, workerPreset)
       ? Object.freeze([])
       : isSuperAgentSession(agent, superHome)
-        ? Object.freeze([defineJiraTool(host, workspace)])
+        ? Object.freeze([defineJiraTool(host, workspace), defineJiraTool(host, session)])
         : Object.freeze([
           defineJiraTool(host, source),
           defineJiraTool(host, scan),
@@ -1496,6 +1854,13 @@ export const createSuperagentContribution = (
       }
     },
     onTurnEnd: async (input: TurnEndInput) => {
+      // DH-719: a Session this super agent started addresses reports back here as a queued message,
+      // so the person's conversation is never held while that workspace works.
+      const report = tasks.get(String(input.agent.id))
+      if (report !== undefined) {
+        await deliverTaskReport(host, report, input.agent, input.signal)
+        return
+      }
       // An executor Session is a root agent, but it must not propose new work (DH-703 review):
       // its turn end is delivery, not dispatch.
       if (isExecutorSession(input.agent, workerPreset)) return

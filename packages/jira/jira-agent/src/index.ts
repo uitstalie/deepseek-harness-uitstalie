@@ -98,6 +98,11 @@ export type Config = Readonly<{
    * than the workspace it owns. Unset or blank leaves the host's own default in place.
    */
   superagent_permission_preset?: string
+  /**
+   * The preset a workspace Session started by `superagent_session start` joins; unset keeps the
+   * deployment's default composition (DH-719).
+   */
+  superagent_agent_preset?: string
 }>
 
 /** Schemastery schema for the row configuration. */
@@ -109,6 +114,7 @@ export const Config: z<Config> = z.object({
   superagent_daemon_workspace: z.string(),
   superagent_home: z.string(),
   superagent_permission_preset: z.string(),
+  superagent_agent_preset: z.string(),
 })
 
 /**
@@ -210,6 +216,7 @@ export function apply(ctx: Context, config: Config): void {
         },
         homeProblem === undefined ? superHome : undefined,
         config.superagent_permission_preset ?? 'workspace-write',
+        config.superagent_agent_preset,
       ),
   })
   ctx.effect(() => superagent, 'superagent.register()')
@@ -330,18 +337,24 @@ export {
   SUPERAGENT_SECTION_NAME,
   SUPERAGENT_SECTION_ORDER,
   SUPERAGENT_WORKSPACE_TITLE,
+  SESSION_DESCRIPTION,
+  SESSION_PARAMETERS,
+  SESSION_TOOL_NAME,
   WORKSPACE_DESCRIPTION,
   WORKSPACE_PARAMETERS,
   WORKSPACE_TOOL_NAME,
   type Claimability,
   type DaemonPassOptions,
   type SessionControllerLike,
+  type SessionSummaryLike,
   type SuperagentDaemonConfig,
+  type TaskSessionRecord,
   type WorkspaceLike,
   type WorkspaceRegistryLike,
   claimability,
   createSuperagentContribution,
   daemonIdentityOf,
+  deliverTaskReport,
   dispatchInstruction,
   dispatchRecordOf,
   enforceSuperAgentPermission,
@@ -357,6 +370,7 @@ export {
   runSourceTool,
   runStatusTool,
   runSuperagentPass,
+  runSessionTool,
   runWorkspaceTool,
   sameCheckout,
   sessionControllerOf,

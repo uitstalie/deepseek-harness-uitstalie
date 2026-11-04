@@ -25,6 +25,7 @@ import {
   DISPATCH_TOOL_NAME,
   PROPOSAL_MARKER,
   SCAN_TOOL_NAME,
+  SESSION_TOOL_NAME,
   SOURCE_TOOL_NAME,
   STATUS_TOOL_NAME,
   SUPERAGENT_SECTION_NAME,
@@ -36,6 +37,7 @@ import {
   createSessionRecorder,
   createSuperagentContribution,
   daemonIdentityOf,
+  deliverTaskReport,
   enforceSuperAgentPermission,
   ensureSuperWorkspace,
   isBlocked,
@@ -44,6 +46,7 @@ import {
   openProposal,
   pinWorkspaceFirst,
   runDaemonPass,
+  runSessionTool,
   runSourceTool,
   runSuperagentPass,
   superagentHomeProblem,
@@ -359,6 +362,114 @@ describe('superagent: the workspace roster', () => {
   })
 })
 
+describe('superagent: workspace Sessions', () => {
+  it('runs a workspace Session and routes its report back (DH-719)', async () => {
+    const workspacePath = join(tmpdir(), 'task-workspace')
+    class TaskController {
+      created: { workspaceId?: string; agentPreset?: string }[] = []
+      prompted: { sessionId: string; text: string }[] = []
+      forked: { sessionId: string; atSeq?: number }[] = []
+      items = [
+        { sessionId: 'w-session', running: false, cwd: workspacePath, blank: false },
+        { sessionId: 'other-session', running: true, cwd: join(tmpdir(), 'elsewhere'), blank: false },
+        { sessionId: 'child', running: false, cwd: workspacePath, parentSessionId: 'w-session', origin: 'subagent' },
+      ]
+      async create(request: { workspaceId?: string; agentPreset?: string }) {
+        this.created.push(request)
+        return { sessionId: 'w-session-2' }
+      }
+      async prompt(request: { sessionId: string; content: readonly { text: string }[] }) {
+        this.prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '' })
+        return { accepted: true }
+      }
+      async list() { return { items: this.items } }
+      async fork(request: { sessionId: string; atSeq?: number }) {
+        this.forked.push(request)
+        return { sessionId: 'w-session-fork' }
+      }
+    }
+    class TaskRegistry {
+      rows = [{ id: 'w1', path: workspacePath, title: 'hello', sessionIds: [], status: async () => 'ok' }]
+      archived: string[] = []
+      list() { return this.rows }
+      async create(path: string, title?: string) {
+        return { id: 'w2', path, title: title ?? path, sessionIds: [], status: async () => 'ok' }
+      }
+      async archiveSession(sessionId: string) { this.archived.push(sessionId) }
+    }
+    const controller = new TaskController()
+    const registry = new TaskRegistry()
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? registry : undefined,
+    }
+    const tasks = new Map<string, { superSession: string; workspace: string }>()
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1' } as never,
+      at: '2026-10-15T12:00:00Z' as never,
+    }
+    const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
+
+    const started = await runSessionTool(
+      { action: 'start', workspace: 'hello', task: 'write the README' },
+      options, me, ctx, { agentPreset: 'cordis', tasks },
+    )
+    assert.equal(started.ok, true, JSON.stringify(started.error))
+    assert.deepEqual(controller.created, [{ workspaceId: 'w1', agentPreset: 'cordis' }])
+    assert.equal(controller.prompted[0]?.text, 'write the README')
+    assert.equal(controller.prompted[0]?.sessionId, 'w-session-2')
+    assert.deepEqual(tasks.get('w-session-2'), { superSession: 'super-1', workspace: workspacePath })
+
+    const followed = await runSessionTool(
+      { action: 'prompt', session: 'w-session-2', text: 'add a section' },
+      options, me, ctx, { tasks },
+    )
+    assert.equal(followed.ok, true, JSON.stringify(followed.error))
+    assert.equal(controller.prompted[1]?.text, 'add a section')
+    assert.equal(tasks.get('w-session-2')?.superSession, 'super-1')
+
+    const listed = await runSessionTool({ action: 'list', workspace: 'hello' }, options, me, ctx, { tasks })
+    assert.equal(listed.ok, true, JSON.stringify(listed.error))
+    const rows = listed.sessions as { id: string }[]
+    assert.deepEqual(rows.map(row => row.id), ['w-session'], 'only the workspace Sessions, no children')
+
+    const archived = await runSessionTool({ action: 'archive', session: 'w-session-2' }, options, me, ctx, { tasks })
+    assert.equal(archived.ok, true, JSON.stringify(archived.error))
+    assert.deepEqual(registry.archived, ['w-session-2'])
+    assert.equal(tasks.has('w-session-2'), false)
+
+    const forked = await runSessionTool({ action: 'fork', session: 'w-session', atSeq: 7 }, options, me, ctx, { tasks })
+    assert.equal(forked.ok, true, JSON.stringify(forked.error))
+    assert.deepEqual(controller.forked, [{ sessionId: 'w-session', atSeq: 7 }])
+    assert.equal(tasks.get('w-session-fork')?.superSession, 'super-1')
+
+    // The report is an ordinary queued message in the super Session, not a held turn.
+    const host = {
+      ctx: { ...ctx, logger: { warn: () => {} } } as never,
+      env: {},
+      clock: () => Date.parse(AT),
+      recorder: createSessionRecorder(),
+    }
+    const worker = {
+      id: 'w-session',
+      session: {
+        snapshotEvents: () => [{
+          type: 'assistant/message',
+          data: { message: { content: [{ type: 'text', text: 'README written and verified' }] } },
+        }],
+      },
+    }
+    const delivered = await deliverTaskReport(
+      host as never, { superSession: 'super-1', workspace: workspacePath }, worker, new AbortController().signal,
+    )
+    assert.equal(delivered, true)
+    const report = controller.prompted.at(-1)
+    assert.equal(report?.sessionId, 'super-1')
+    assert.match(report?.text ?? '', /\[task-report\] w-session/u)
+    assert.match(report?.text ?? '', /README written and verified/u)
+  })
+})
+
 describe('superagent: the super workspace', () => {
   it('registers the super home once, and a session there is the dispatcher', async () => {
     const dir = await scratchDirectory()
@@ -389,8 +500,8 @@ describe('superagent: the super workspace', () => {
       assert.equal(isSuperAgentSession(superAgent, home), true)
       assert.deepEqual(
         contribution.tools?.(superAgent).map(tool => tool.name),
-        [WORKSPACE_TOOL_NAME],
-        'the super agent keeps the workspace roster and loses the ledger-bound verbs',
+        [WORKSPACE_TOOL_NAME, SESSION_TOOL_NAME],
+        'the super agent keeps the workspace roster and the Session verbs, and loses the ledger-bound ones',
       )
       assert.deepEqual(
         contribution.promptSections?.(superAgent).map(section => section.name),

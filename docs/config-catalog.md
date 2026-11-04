@@ -1993,6 +1993,11 @@ export type Config = Readonly<{
    * than the workspace it owns. Unset or blank leaves the host's own default in place.
    */
   superagent_permission_preset?: string
+  /**
+   * The preset a workspace Session started by `superagent_session start` joins; unset keeps the
+   * deployment's default composition (DH-719).
+   */
+  superagent_agent_preset?: string
 }>
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->

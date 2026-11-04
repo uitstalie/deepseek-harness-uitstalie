@@ -410,3 +410,5 @@ pass 扫描 → 候选（只读，不动账本）
 **侧栏构建入口（DH-718 第二步）**：左侧栏底部新增一个 "Super agent" 动作（折叠时仅 ◆）。点它打开系统目录选择器，host 端依次校验路径 → 建目录 → 注册并置顶 → 把 `superagent_home` 写回 jira-agent 行（该行重载后按新 home 幂等 ensure）。`remote.jira.superagentState()` 只读当前配置与 registry，供入口显示状态；失败原因就地显示在按钮上（侧栏 action 没有可跳转的页面）。
 
 **工作区分组（DH-718 第三步）**：ui-workspace 新增 `ctx.workspaceGroups` 注册表，别家插件可以把某个工作区登记为"特殊组"（id + label + workspaceId）。ui-jira 在状态就绪时把超级 workspace 注册进去，浏览器把它从普通列表里摘出来，在上方用独立小节标题（"超级工作区"）渲染，其余工作区保持原列表；label 由注册方提供，ui-workspace 不认识 jira。注册表可选：没有该插件的组合（以及测试）照旧渲染单一列表。
+
+**真实 Session 执行者（DH-719）**：super agent 不再用 `subagent(cwd)` 派活，而是用 `superagent_session start` 在目标工作区创建**真实 Session**（按 `workspaceId` 挂到工作区，所以人能在该工作区下看到、继续、归档、分支它）；该 Session 自己决定再派 subagent 还是自己干完。它每轮结束由 host 读取最后一条 assistant 文本，以 `[task-report] <session> in <workspace>` 消息 queue 回发起它的 super 会话（新回合，不阻塞对话）。同一工具还有 `prompt`（追加）、`list`（按工作区解析"某会话"）、`archive`、`fork`。启动 Session 的 preset 由 `superagent_agent_preset` 决定（缺省用部署默认）。
