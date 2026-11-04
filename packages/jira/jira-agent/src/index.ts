@@ -24,6 +24,8 @@ import type {} from '@deepseek-ai/dsh-commands'
 import type { CapabilityContribution, CapabilityRuntime } from '@deepseek-ai/dsh-dafeiyu'
 import type {} from '@deepseek-ai/dsh-jira-service'
 import type {} from '@deepseek-ai/dsh-skill'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import {
   JIRA_CAPABILITY_DESCRIPTION,
@@ -35,7 +37,7 @@ import {
   createJiraContribution,
 } from './contribution.ts'
 import type { ContributionHost } from './contribution.ts'
-import { defaultEnv } from './env.ts'
+import { type HostEnv, defaultEnv } from './env.ts'
 import { createSessionRecorder } from './sessionRecord.ts'
 import {
   SUPERAGENT_CAPABILITY_DESCRIPTION,
@@ -45,6 +47,7 @@ import {
   SUPERAGENT_SETTINGS_SECTION,
   createSuperagentContribution,
   ensureSuperWorkspace,
+  superagentHomeProblem,
   workspaceRegistryOf,
 } from './superagent.ts'
 import { installWriteGuard, registerJiraCommand, registerJiraSkills } from './wiring.ts'
@@ -79,13 +82,22 @@ export type Config = Readonly<{
   /** The checkout a session-less claim is dispatched into; the daemon needs it to run. */
   superagent_daemon_workspace?: string
   /**
-   * The directory the super agent lives in (DH-716); unset means no super workspace.
+   * The directory the super agent lives in (DH-716, DH-718); **required** — unset means no super
+   * agent at all.
    *
-   * It is registered once at mount, so it shows up in the workspace list like any other checkout,
-   * and a conversation opened there is the dispatcher: it keeps `superagent_workspace` and loses
-   * the ledger-bound claim verbs.
+   * The location is the person's decision, never a default: the path must be absolute, must not be
+   * a filesystem root, and must not live under the harness home, because the super agent owns that
+   * checkout with a write-capable sandbox. Once set, it is registered once at mount, pinned to the
+   * front of the workspace list, and a conversation opened there is the dispatcher.
    */
   superagent_home?: string
+  /**
+   * The permission preset the super agent is pinned to; defaults to `workspace-write`.
+   *
+   * Pinned when the agent is wired, so an opened session cannot silently inherit a looser bundle
+   * than the workspace it owns. Unset or blank leaves the host's own default in place.
+   */
+  superagent_permission_preset?: string
 }>
 
 /** Schemastery schema for the row configuration. */
@@ -96,7 +108,19 @@ export const Config: z<Config> = z.object({
   superagent_daemon: z.boolean(),
   superagent_daemon_workspace: z.string(),
   superagent_home: z.string(),
+  superagent_permission_preset: z.string(),
 })
+
+/**
+ * The harness home `superagent_home` must stay out of: `$DSH_HOME`, else `<home>/.dsh`.
+ * @param env - the process environment.
+ * @returns the resolved harness home.
+ */
+const dshHomeOf = (env: HostEnv): string => {
+  const configured = env.DSH_HOME?.trim()
+  if (configured === undefined || configured === '') return join(homedir(), '.dsh')
+  return resolve(configured.replace(/^~(?=$|[\\/])/u, homedir()))
+}
 
 /**
  * Register the jira capability and its always-on surfaces.
@@ -118,17 +142,27 @@ export function apply(ctx: Context, config: Config): void {
   installWriteGuard(ctx, env, config.superagent_worker_preset)
   // The super workspace is a directory plus one registry row, never a second state: registering it
   // here is what makes it visible in the workspace list before anyone opens a conversation (DH-716).
-  const superHome = config.superagent_home
-  if (superHome !== undefined && superHome.trim() !== '') {
+  // Its location is the person's call, never a default (DH-718): an unset or unsafe path leaves the
+  // super agent off and says why, instead of guessing a directory to grant a write sandbox.
+  const superHome = config.superagent_home === undefined ? undefined : config.superagent_home.trim()
+  const dshHome = dshHomeOf(env)
+  const homeProblem = superHome === undefined || superHome === ''
+    ? 'superagent_home is not configured; the super agent stays off until a person names a directory'
+    : superagentHomeProblem(superHome, dshHome)
+  if (homeProblem === undefined && superHome !== undefined) {
     ctx.inject(['workspaceRegistry'], async (workspaceCtx) => {
       const registry = workspaceRegistryOf(workspaceCtx)
       if (registry === undefined) return
       try {
-        await ensureSuperWorkspace(registry, superHome)
+        await ensureSuperWorkspace(registry, superHome, dshHome)
       } catch (error: unknown) {
         ctx.logger.warn('jira-agent: the super workspace %s could not be registered: %s', superHome, String(error))
       }
     })
+  } else if (superHome === undefined || superHome === '') {
+    ctx.logger.info('jira-agent: %s', homeProblem)
+  } else {
+    ctx.logger.warn('jira-agent: %s; the super workspace was not registered', homeProblem)
   }
   // Optional registries: the child fiber activates only when the service is composed, and its
   // registrations are released with it.
@@ -174,7 +208,8 @@ export function apply(ctx: Context, config: Config): void {
           enabled: config.superagent_daemon === true,
           ...(config.superagent_daemon_workspace === undefined ? {} : { workspace: config.superagent_daemon_workspace }),
         },
-        config.superagent_home,
+        homeProblem === undefined ? superHome : undefined,
+        config.superagent_permission_preset ?? 'workspace-write',
       ),
   })
   ctx.effect(() => superagent, 'superagent.register()')
@@ -309,10 +344,12 @@ export {
   daemonIdentityOf,
   dispatchInstruction,
   dispatchRecordOf,
+  enforceSuperAgentPermission,
   ensureSuperWorkspace,
   isBlocked,
   isSuperAgentSession,
   openProposal,
+  pinWorkspaceFirst,
   runClaimTool,
   runDaemonPass,
   runDispatchTool,
@@ -323,5 +360,6 @@ export {
   runWorkspaceTool,
   sameCheckout,
   sessionControllerOf,
+  superagentHomeProblem,
   workspaceRegistryOf,
 } from './superagent.ts'

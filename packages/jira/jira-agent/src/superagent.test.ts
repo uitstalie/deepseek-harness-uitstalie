@@ -11,10 +11,10 @@
 import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, parse } from 'node:path'
 import { after, describe, it } from 'node:test'
 
-import { type Context } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import { type Comment, type Identity, type Issue, type Timestamp, removeTree } from '@deepseek-ai/dsh-jira-core'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
@@ -36,14 +36,17 @@ import {
   createSessionRecorder,
   createSuperagentContribution,
   daemonIdentityOf,
+  enforceSuperAgentPermission,
   ensureSuperWorkspace,
   isBlocked,
   isSuperAgentSession,
   jiraWorkerTools,
   openProposal,
+  pinWorkspaceFirst,
   runDaemonPass,
   runSourceTool,
   runSuperagentPass,
+  superagentHomeProblem,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
 import { callerOf, identityOf } from './tools.ts'
@@ -259,8 +262,8 @@ interface FakeWorkspace {
  * A stand-in for the host's workspace registry.
  *
  * The real one needs `storageDomain` and `sessionPersistence`; the claim loop only reads the
- * registry through `ctx.get` and calls `list`/`create`, so a plain class with exactly those two
- * methods is what proves the duck typing works.
+ * registry through `ctx.get` and calls `list`/`create`/`insertBefore`, so a plain class with
+ * exactly those methods is what proves the duck typing works.
  */
 class FakeWorkspaceRegistry {
   readonly rows: FakeWorkspace[] = []
@@ -281,6 +284,16 @@ class FakeWorkspaceRegistry {
     }
     this.rows.push(created)
     return created
+  }
+
+  async insertBefore(id: string, beforeId?: string): Promise<readonly string[]> {
+    const index = this.rows.findIndex(row => row.id === id)
+    if (index < 0) throw new Error(`unknown workspace ${id}`)
+    const [moved] = this.rows.splice(index, 1)
+    if (moved === undefined) throw new Error(`unknown workspace ${id}`)
+    const at = beforeId === undefined ? this.rows.length : this.rows.findIndex(row => row.id === beforeId)
+    this.rows.splice(at < 0 ? this.rows.length : at, 0, moved)
+    return this.rows.map(row => row.id)
   }
 }
 
@@ -361,7 +374,7 @@ describe('superagent: the super workspace', () => {
 
       // The directory is created by the registration, and a second ensure is the registry's own
       // idempotency rather than a second row.
-      const again = await ensureSuperWorkspace(registry, home)
+      const again = await ensureSuperWorkspace(registry, home, join(dir, 'home'))
       assert.equal(again.path, home)
       assert.equal(registry.rows.length, 1, 'ensure is idempotent')
 
@@ -401,6 +414,51 @@ describe('superagent: the super workspace', () => {
     } finally {
       await harness.dispose()
     }
+  })
+
+  it('refuses a super home under the harness home, relative paths and filesystem roots', () => {
+    const dshHome = join(tmpdir(), 'dsh-home')
+    assert.match(superagentHomeProblem('', dshHome) ?? '', /absolute/u)
+    assert.match(superagentHomeProblem('superagent', dshHome) ?? '', /absolute/u)
+    assert.match(superagentHomeProblem(join(dshHome, 'superagent'), dshHome) ?? '', /harness home/u)
+    assert.match(superagentHomeProblem(parse(dshHome).root, dshHome) ?? '', /root/u)
+    assert.equal(superagentHomeProblem(join(tmpdir(), 'superagent'), dshHome), undefined)
+  })
+
+  it('pins the super workspace first and leaves the other rows in order', async () => {
+    const dir = await scratchDirectory()
+    const registry = new FakeWorkspaceRegistry()
+    await registry.create(join(dir, 'project-a'), 'project-a')
+    await registry.create(join(dir, 'project-b'), 'project-b')
+    const home = join(dir, 'super-agent')
+    const registered = await ensureSuperWorkspace(registry, home, join(dir, 'home'))
+    assert.equal(registry.rows[0]?.id, registered.id, 'the super workspace is pinned first')
+    assert.deepEqual(registry.rows.slice(1).map(row => row.title), ['project-a', 'project-b'])
+    // A second pin is a no-op.
+    await pinWorkspaceFirst(registry, registered)
+    assert.equal(registry.rows[0]?.id, registered.id)
+  })
+
+  it('pins the super agent to the configured permission preset and leaves others alone', async () => {
+    const dir = await scratchDirectory()
+    const home = join(dir, 'super-agent')
+    const agentCtx = new Context()
+    const calls: { session: unknown; preset: string }[] = []
+    const permissionCtx = {
+      get: (key: string) => key === 'permissionPresets'
+        ? { set: (session: unknown, preset: string) => { calls.push({ session, preset }) } }
+        : undefined,
+    }
+    const superAgent = testAgent(agentCtx, 'super-perm', { cwd: home })
+    assert.equal(enforceSuperAgentPermission(permissionCtx, superAgent, home, 'workspace-write'), true)
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0]?.preset, 'workspace-write')
+    assert.equal(enforceSuperAgentPermission(permissionCtx, superAgent, home, undefined), false)
+    const other = testAgent(agentCtx, 'main-perm', { cwd: dir })
+    assert.equal(enforceSuperAgentPermission(permissionCtx, other, home, 'workspace-write'), false)
+    assert.equal(calls.length, 1)
+    // A deployment without the service keeps its own defaults.
+    assert.equal(enforceSuperAgentPermission({}, superAgent, home, 'workspace-write'), false)
   })
 })
 

@@ -404,3 +404,5 @@ pass 扫描 → 候选（只读，不动账本）
 - 报告链路不用新机制：`subagent` 的完成结果本来就会回到发起者；执行者出现在超级 agent 的 delegation 视图里，用户可查看、可停止。
 
 **仍未做（阶段二后续）**：按 workspace 的 Grant（可写范围/强度，人批一次可复用）；任务账（值得跟踪的派遣才落 jira issue，杂活不落）；长任务升级为真实 Session（可恢复、出现在目标 workspace 的会话列表）；面板按 workspace 分组展示派遣与状态；daemon 常驻（人不在时继续派发/收报告）。
+
+**安全加固（DH-718，用户裁定）**：超级 workspace 的位置不再有默认值——`superagent_home` 必填，且拒绝相对路径、文件系统根、`$DSH_HOME` 之下的任何目录（那里是设置/会话/memory，不能让持有写沙箱的 agent 落在其中）；不满足时只警告、不注册也不创建目录。登记成功后把它 `insertBefore` 到工作区顺序第一位（幂等），保证唯一的对话入口始终在侧栏最上面。超级 agent 在 wire 时被钉到 `superagent_permission_preset`（默认 `workspace-write`），不继承比自身 workspace 更宽的权限 bundle；人显式放宽仍是人的选择。

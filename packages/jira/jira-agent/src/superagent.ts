@@ -18,7 +18,7 @@ import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafe
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 import { mkdir } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
 import { clampText, asIdentity, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
@@ -251,6 +251,11 @@ export interface WorkspaceLike {
 export interface WorkspaceRegistryLike {
   list(): readonly WorkspaceLike[]
   create(path: string, title?: string): Promise<WorkspaceLike>
+  /**
+   * Move one workspace within the durable display order. Optional: a host without ordering still
+   * gets a registered super workspace, just not a pinned one.
+   */
+  insertBefore?(id: string, beforeId?: string): Promise<readonly string[]>
 }
 
 /**
@@ -311,20 +316,102 @@ export const isSuperAgentSession = (agent: unknown, homePath: string | undefined
 }
 
 /**
+ * Why one configured super home cannot be used, if it cannot.
+ *
+ * The super agent owns its checkout with a write-capable sandbox, so the location is a person's
+ * decision, never a default: it must be absolute, it must not be a filesystem root, and it must not
+ * live under the harness home — `.dsh` holds settings, sessions and memory, and a workspace there
+ * would let the agent rewrite the harness that governs it.
+ * @param path - the configured `superagent_home`.
+ * @param dshHome - the resolved harness home that the path must stay out of.
+ * @returns a sentence naming the rule, or undefined when the path is usable.
+ */
+export const superagentHomeProblem = (path: string, dshHome: string): string | undefined => {
+  const value = path.trim()
+  if (value === '') return 'set superagent_home to an absolute directory the super agent should own'
+  if (!isAbsolute(value)) return `superagent_home must be an absolute path, got ${value}`
+  const resolved = resolve(value)
+  if (dirname(resolved) === resolved) return `superagent_home cannot be a filesystem root (${resolved})`
+  const home = resolve(dshHome)
+  const candidate = relative(home, resolved)
+  if (candidate === '' || (!candidate.startsWith('..') && !isAbsolute(candidate))) {
+    return `superagent_home cannot live under the harness home (${home}); choose a directory you own outside it`
+  }
+  return undefined
+}
+
+/**
  * Register the super workspace once, creating its directory when that is what is missing.
  *
  * `workspaceRegistry.create` owns an existing directory, so the directory comes first; repeat calls
  * are the registry's own idempotency (same canonical path, same row) rather than a second state.
+ * The row is then pinned to the front of the display order, so the one workspace a person talks to
+ * is not buried among project checkouts.
  * @param registry - the host's workspace registry, read through the duck-typed slice above.
  * @param path - the directory the super agent lives in, as configured.
+ * @param dshHome - the harness home the path must stay out of.
  * @returns the registered workspace.
+ * @throws Error naming the rule when the configured path is unsafe or not absolute.
  */
 export const ensureSuperWorkspace = async (
   registry: WorkspaceRegistryLike,
   path: string,
+  dshHome: string,
 ): Promise<WorkspaceLike> => {
+  const problem = superagentHomeProblem(path, dshHome)
+  if (problem !== undefined) throw new Error(problem)
   await mkdir(path, { recursive: true })
-  return registry.create(path, SUPERAGENT_WORKSPACE_TITLE)
+  const workspace = await registry.create(path, SUPERAGENT_WORKSPACE_TITLE)
+  await pinWorkspaceFirst(registry, workspace)
+  return workspace
+}
+
+/**
+ * Move the super workspace to the front of the durable display order.
+ *
+ * Idempotent by construction: when it is already first the registry returns the same order. A host
+ * without `insertBefore` keeps its own ordering and simply misses the pin.
+ * @param registry - the host's workspace registry.
+ * @param workspace - the registered super workspace.
+ */
+export const pinWorkspaceFirst = async (
+  registry: WorkspaceRegistryLike,
+  workspace: WorkspaceLike,
+): Promise<void> => {
+  if (registry.insertBefore === undefined) return
+  const first = registry.list().find(row => row.id !== workspace.id)
+  if (first === undefined) return
+  await registry.insertBefore(workspace.id, first.id)
+}
+
+/**
+ * Force the super agent onto a fixed permission preset.
+ *
+ * The super agent owns a checkout, so its sandbox must stay the workspace-write bundle: a session
+ * that opened with a looser (or custom) bundle would otherwise be able to write outside that
+ * checkout. The host's preset service is duck-typed (decision 108), so a deployment without one
+ * keeps its own defaults instead of failing to mount.
+ * @param ctx - the plugin context, duck-typed.
+ * @param agent - the agent being wired.
+ * @param homePath - the configured super workspace path.
+ * @param preset - the preset name to select; unset or blank leaves the host default.
+ * @returns whether a preset was written.
+ * @throws Error when the host refuses the preset name.
+ */
+export const enforceSuperAgentPermission = (
+  ctx: unknown,
+  agent: unknown,
+  homePath: string | undefined,
+  preset: string | undefined,
+): boolean => {
+  if (preset === undefined || preset.trim() === '') return false
+  if (!isSuperAgentSession(agent, homePath)) return false
+  const service = (ctx as { get?: (key: string) => unknown } | undefined)?.get?.('permissionPresets') as
+    | { set?: (session: unknown, name: string) => void }
+    | undefined
+  if (service === undefined || typeof service.set !== 'function') return false
+  service.set((agent as { session: unknown }).session, preset)
+  return true
 }
 
 /** `superagent_workspace`'s schema. */
@@ -1232,6 +1319,7 @@ export interface SuperagentDaemonConfig {
  *   the source tool refuses.
  * @param daemon - the session-less pass configuration; absent or disabled keeps the old behavior.
  * @param home - the configured super workspace path; a session opened there is the super agent.
+ * @param permissionPreset - the permission preset a super agent is pinned to; unset keeps the host default.
  * @returns the capability contribution the organizer wires onto root agents.
  */
 export const createSuperagentContribution = (
@@ -1241,6 +1329,7 @@ export const createSuperagentContribution = (
   githubRepo?: string,
   daemon?: SuperagentDaemonConfig,
   home?: string,
+  permissionPreset?: string,
 ): CapabilityContribution => {
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
@@ -1389,6 +1478,17 @@ export const createSuperagentContribution = (
     onAgentCreated: (agent: Agent) => {
       liveAgents.add(agent)
       agent.ctx.effect(() => () => { liveAgents.delete(agent) }, 'superagent: forget a disposed agent')
+      // DH-718: the super agent must not inherit a looser bundle than the workspace it runs in.
+      try {
+        enforceSuperAgentPermission(host.ctx, agent, superHome, permissionPreset)
+      } catch (error: unknown) {
+        host.ctx.logger.warn(
+          'superagent: session %s could not take permission preset %s: %s',
+          String(agent.id),
+          String(permissionPreset),
+          String(error),
+        )
+      }
     },
     onTurnEnd: async (input: TurnEndInput) => {
       // An executor Session is a root agent, but it must not propose new work (DH-703 review):

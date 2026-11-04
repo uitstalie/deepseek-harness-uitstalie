@@ -1954,7 +1954,7 @@ export interface TlsConfig {
 ## `@deepseek-ai/dsh-jira-agent`
 
 - `inject`: `jira` · `tools` · `dafeiyu`
-- `source`: [`packages/jira/jira-agent/src/index.ts:70`](../packages/jira/jira-agent/src/index.ts)
+- `source`: [`packages/jira/jira-agent/src/index.ts:73`](../packages/jira/jira-agent/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -1977,13 +1977,22 @@ export type Config = Readonly<{
   /** The checkout a session-less claim is dispatched into; the daemon needs it to run. */
   superagent_daemon_workspace?: string
   /**
-   * The directory the super agent lives in (DH-716); unset means no super workspace.
+   * The directory the super agent lives in (DH-716, DH-718); **required** — unset means no super
+   * agent at all.
    *
-   * It is registered once at mount, so it shows up in the workspace list like any other checkout,
-   * and a conversation opened there is the dispatcher: it keeps `superagent_workspace` and loses
-   * the ledger-bound claim verbs.
+   * The location is the person's decision, never a default: the path must be absolute, must not be
+   * a filesystem root, and must not live under the harness home, because the super agent owns that
+   * checkout with a write-capable sandbox. Once set, it is registered once at mount, pinned to the
+   * front of the workspace list, and a conversation opened there is the dispatcher.
    */
   superagent_home?: string
+  /**
+   * The permission preset the super agent is pinned to; defaults to `workspace-write`.
+   *
+   * Pinned when the agent is wired, so an opened session cannot silently inherit a looser bundle
+   * than the workspace it owns. Unset or blank leaves the host's own default in place.
+   */
+  superagent_permission_preset?: string
 }>
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->
