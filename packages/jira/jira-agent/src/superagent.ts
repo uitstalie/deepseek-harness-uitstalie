@@ -110,6 +110,15 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + 'instead of holding the conversation open; the person stays free to talk to you.\n'
     + '- Use `subagent` only for quick research that belongs to no workspace; a real Session is what '
     + 'the person can see, continue, archive and branch.\n'
+    + '- `superagent_workspace roster` reports each workspace\'s directory status; `orphans` lists only '
+    + 'registrations whose directory is gone. `remove` unregisters one through the live registry '
+    + '(never by editing `~/.dsh/storages/workspace.json`): the directory and every Session log stay, '
+    + 'its Sessions fall into Ungrouped, and `confirm` must repeat the target id, title, or path. '
+    + '`rename` changes only the display title. Never remove or rename the workspace this Session '
+    + 'runs in (the super workspace).\n'
+    + '- `superagent_session archive` is the honest way to hide a Session: its durable JSONL log '
+    + 'remains. `delete` is only offered by a host with a real erase API; on current hosts it '
+    + 'refuses instead of pretending. Never delete the Session calling the tool.\n'
     + '- Treat a report as evidence: when it names a blocker (a missing tool, a permission failure, a '
     + 'failed check), pass that fact on in one line instead of summarizing it away.\n'
     + '- When the report arrives, answer the person in one short message: what was sent where, the outcome, '
@@ -261,12 +270,18 @@ export interface WorkspaceLike {
   readonly title: string
   readonly sessionIds: readonly unknown[]
   status(): Promise<string>
+  /** Change the display title; optional because a host may expose a read-only registry slice. */
+  setTitle?(title: string): Promise<void>
 }
 
 /** The registry methods the workspace tool calls. */
 export interface WorkspaceRegistryLike {
   list(): readonly WorkspaceLike[]
   create(path: string, title?: string): Promise<WorkspaceLike>
+  /** Look one registration up by id; optional like every host-specific verb. */
+  get?(id: string): WorkspaceLike | undefined
+  /** Unregister one workspace without touching its directory or Session logs. */
+  delete?(id: string): Promise<boolean>
   /**
    * Move one workspace within the durable display order. Optional: a host without ordering still
    * gets a registered super workspace, just not a pinned one.
@@ -437,11 +452,20 @@ export const WORKSPACE_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.
   action: {
     type: 'string',
     required: true,
-    description: 'roster: list the registered workspaces. ensure: register a directory as one.',
-    enum: ['roster', 'ensure'],
+    description: 'roster: list the registered workspaces with their directory status. orphans: list only '
+      + 'registrations whose directory is missing. ensure: register a directory as one. remove: '
+      + 'unregister a workspace (keeps its directory and Session logs; destructive). rename: change '
+      + 'its display title.',
+    enum: ['roster', 'orphans', 'ensure', 'remove', 'rename'],
   },
   path: { type: 'string', description: 'ensure: the directory to own, created when missing. Required for ensure.' },
-  title: { type: 'string', description: 'ensure: the display title for a newly registered workspace.' },
+  workspace: { type: 'string', description: 'remove/rename: the workspace id, title, or canonical path.' },
+  title: { type: 'string', description: 'ensure/rename: the display title.' },
+  confirm: {
+    type: 'string',
+    description: 'remove: required; repeat the target workspace id, title, or path exactly. The removal '
+      + 'is irreversible for the registration (the directory and Session logs survive).',
+  },
 })
 
 /**
@@ -451,10 +475,14 @@ export const WORKSPACE_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.
  * decides the path.
  */
 export const WORKSPACE_DESCRIPTION =
-  'Inspect or extend the host\'s workspace list, so a dispatch can name the checkout it works in. '
-  + '`roster` lists each workspace with its path, status and session count. `ensure` registers a '
-  + 'directory, creating it when it does not exist, and answers with the canonical path to dispatch '
-  + 'into. Ask the person which directory before you register one.'
+  'Inspect or change the host\'s workspace list, so a dispatch can name the checkout it works in. '
+  + '`roster` lists each workspace with its path, directory status (`ok` or `missing-dir`) and '
+  + 'session count; `orphans` lists only the missing-dir registrations. `ensure` registers a '
+  + 'directory, creating it when it does not exist. `remove` unregisters one through the live '
+  + 'registry (never by editing a storage file), keeps its directory and every Session log, and '
+  + 'requires `confirm` to repeat the target id, title or path. `rename` changes only the display '
+  + 'title. A workspace cannot remove itself while this Session runs in it, and the super workspace '
+  + 'is never removable from here. Ask the person which directory before you register one.'
 
 /** The tool a super agent uses to run and steer real workspace Sessions (DH-719). */
 export const SESSION_TOOL_NAME = 'superagent_session'
@@ -467,13 +495,16 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
     description: 'append: continue the workspace\'s most recent Session with more work (the default '
       + 'for follow-up work in a workspace). start: open a NEW Session, only when the person asks for '
       + 'one or the workspace has none. prompt: append to a Session the caller named. list: show one '
-      + 'workspace\'s Sessions. archive: hide one Session. fork: branch one Session.',
-    enum: ['append', 'start', 'prompt', 'list', 'archive', 'fork'],
+      + 'workspace\'s Sessions. archive: hide one Session. fork: branch one Session. delete: erase '
+      + 'one stored Session only when the host exposes a real delete API; current hosts do not, and '
+      + 'the tool refuses instead of pretending.',
+    enum: ['append', 'start', 'prompt', 'list', 'archive', 'fork', 'delete'],
   },
-  workspace: { type: 'string', description: 'append/start/list: the workspace path or title; prompt/archive/fork use it for the report headline.' },
+  workspace: { type: 'string', description: 'append/start/list: the workspace path or title; prompt/archive/fork/delete use it for the report headline.' },
   task: { type: 'string', description: 'start: the self-contained task for that workspace agent.' },
-  session: { type: 'string', description: 'prompt/archive/fork: the Session id.' },
+  session: { type: 'string', description: 'prompt/archive/fork/delete: the Session id.' },
   text: { type: 'string', description: 'append/prompt: the follow-up instruction.' },
+  confirm: { type: 'string', description: 'delete: required; repeat the target Session id exactly. Deletion is irreversible.' },
   atSeq: { type: 'number', description: 'fork: branch from this event seq; default the latest completed turn.' },
 })
 
@@ -484,7 +515,11 @@ export const SESSION_DESCRIPTION =
   + '`prompt` continues one the person named — use `list` to resolve a name. `start` opens a NEW '
   + 'Session and is only for a task the person wants isolated; that agent decides whether to spawn '
   + 'subagents or do the work itself. Every Session this super agent addresses reports its turn end '
-  + 'back here as a message. `archive` hides one Session, `fork` branches one.'
+  + 'back here as a message. `archive` hides one Session and keeps its durable log, `fork` branches '
+  + 'one, and `delete` exists only on a host with a real erase API. Current hosts expose no such API: '
+  + '`delete` refuses with that limitation instead of archiving behind your back; use `archive` and '
+  + 'tell the person the log remains under `~/.dsh/sessions`. Never delete the Session that called '
+  + 'this tool.'
 
 /** One Session a super agent started or addressed, so its report can be routed back. */
 export interface TaskSessionRecord {
@@ -512,6 +547,10 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     items: { type: 'array' },
     workspaces: { type: 'array' },
     workspace: { type: 'object', additionalProperties: true },
+    removed: { type: 'boolean' },
+    renamed: { type: 'boolean' },
+    directoryKept: { type: 'boolean' },
+    sessionsKept: { type: 'boolean' },
     sessions: { type: 'array' },
     session: { type: 'object', additionalProperties: true },
     issue: { type: 'object', additionalProperties: true },
@@ -888,6 +927,35 @@ export const runDaemonPass = async (host: ToolHost, options: DaemonPassOptions =
  * @param ctx - the plugin context the workspace registry is read from.
  * @returns the roster, or the registered workspace with the path to dispatch into.
  */
+/** One roster row; `status` never hides a broken directory behind a thrown probe. */
+const workspaceRowOf = async (workspace: WorkspaceLike): Promise<Readonly<Record<string, unknown>>> => {
+  let status: string
+  try {
+    status = await workspace.status()
+  } catch {
+    status = 'unknown'
+  }
+  return Object.freeze({
+    id: String(workspace.id),
+    path: workspace.path,
+    title: workspace.title,
+    status,
+    sessions: workspace.sessionIds.length,
+  })
+}
+
+/** Whether the target is the workspace this very Session lives in. */
+const isCurrentWorkspace = (workspace: WorkspaceLike, caller: Caller): boolean =>
+  caller.cwd !== undefined && sameCheckout(workspace.path, caller.cwd)
+
+/**
+ * `superagent_workspace`: list, create, unregister, rename, or find orphaned registrations.
+ * @param args - the raw tool arguments, validated against `WORKSPACE_PARAMETERS`.
+ * @param options - the store, caller verdict and clock for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @param ctx - the plugin context the workspace registry is read from.
+ * @returns the roster, the orphan list, or the changed/registered workspace.
+ */
 export const runWorkspaceTool = async (
   args: unknown,
   options: RunOptions,
@@ -908,39 +976,114 @@ export const runWorkspaceTool = async (
     ...(caller.reason === undefined ? {} : { reason: caller.reason }),
     me,
   })
-  if (action === 'roster') {
-    const workspaces = await Promise.all(registry.list().map(async workspace => Object.freeze({
-      id: String(workspace.id),
-      path: workspace.path,
-      title: workspace.title,
-      status: await workspace.status(),
-      sessions: workspace.sessionIds.length,
-    })))
+
+  if (action === 'roster' || action === 'orphans') {
+    const rows = await Promise.all(registry.list().map(workspaceRowOf))
+    const workspaces = action === 'orphans'
+      ? rows.filter(row => row.status === 'missing-dir')
+      : rows
     return Object.freeze({ ...verdict, workspaces: Object.freeze(workspaces) })
   }
 
   if (!caller.writable) {
-    return failure(invalidInput('registering a workspace needs a session that may write'), caller, me)
+    return failure(invalidInput(`${action} needs a session that may write`), caller, me)
   }
-  const path = asString(validated.value.path)
-  if (path === undefined || path.trim() === '') return failure(invalidInput('ensure needs `path`'), caller, me)
-  try {
-    // `create` owns an existing directory, so the tool creates it first; both halves are idempotent.
-    await mkdir(path, { recursive: true })
-    const workspace = await registry.create(path, asString(validated.value.title))
-    return Object.freeze({
-      ...verdict,
-      workspace: Object.freeze({
-        id: String(workspace.id),
-        // The canonical path, not the argument: that is what a dispatched session's cwd must be.
-        path: workspace.path,
-        title: workspace.title,
-        status: await workspace.status(),
-      }),
-    })
-  } catch (error: unknown) {
-    return failure(invalidInput(`${path} could not be registered as a workspace: ${error instanceof Error ? error.message : String(error)}`, { path }), caller, me)
+
+  if (action === 'ensure') {
+    const path = asString(validated.value.path)
+    if (path === undefined || path.trim() === '') return failure(invalidInput('ensure needs `path`'), caller, me)
+    try {
+      // `create` owns an existing directory, so the tool creates it first; both halves are idempotent.
+      await mkdir(path, { recursive: true })
+      const workspace = await registry.create(path, asString(validated.value.title))
+      return Object.freeze({
+        ...verdict,
+        workspace: Object.freeze({
+          ...(await workspaceRowOf(workspace)),
+          // The canonical path, not the argument: that is what a dispatched session's cwd must be.
+          path: workspace.path,
+        }),
+      })
+    } catch (error: unknown) {
+      return failure(invalidInput(`${path} could not be registered as a workspace: ${error instanceof Error ? error.message : String(error)}`, { path }), caller, me)
+    }
   }
+
+  const selector = asString(validated.value.workspace)
+  const workspace = selector === undefined ? undefined : findWorkspace(registry, selector)
+  if (workspace === undefined) {
+    return failure(invalidInput(`"${String(selector ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+  }
+  // The workspace that hosts this Session is the dispatcher's own home: unregistering or even
+  // renaming it would make the running role disappear. The title check is a second guard for a
+  // caller that reaches here through a host without a cwd on the caller.
+  if (isCurrentWorkspace(workspace, caller) || workspace.title === SUPERAGENT_WORKSPACE_TITLE) {
+    return failure(invalidInput(
+      `cannot ${action} "${workspace.title}": it is the workspace this Session runs in (the super workspace)`,
+      { workspace: workspace.path },
+    ), caller, me)
+  }
+
+  if (action === 'remove') {
+    const confirm = asString(validated.value.confirm)
+    if (confirm === undefined || ![workspace.id, workspace.title, workspace.path].includes(confirm.trim())) {
+      return failure(invalidInput(
+        `remove needs \`confirm\` to repeat the workspace id, title, or path exactly; got ${String(confirm ?? 'nothing')}`,
+        { workspace: workspace.path, accepted: [workspace.id, workspace.title, workspace.path] },
+      ), caller, me)
+    }
+    if (registry.delete === undefined) {
+      return failure(invalidInput('this host has no workspace delete, so the registration cannot be removed here'), caller, me)
+    }
+    try {
+      const removed = await registry.delete(workspace.id)
+      if (!removed) {
+        return failure(invalidInput(`the registry no longer knows "${workspace.title}"; nothing was removed`, { workspace: workspace.path }), caller, me)
+      }
+      return Object.freeze({
+        ...verdict,
+        removed: true,
+        directoryKept: true,
+        sessionsKept: true,
+        workspace: Object.freeze({
+          ...(await workspaceRowOf(workspace)),
+          removed: true,
+          directoryKept: true,
+          sessionsKept: true,
+        }),
+      })
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `"${workspace.title}" could not be unregistered: ${error instanceof Error ? error.message : String(error)}`,
+        { workspace: workspace.path },
+      ), caller, me)
+    }
+  }
+
+  if (action === 'rename') {
+    const title = asString(validated.value.title)
+    if (title === undefined || title.trim() === '') {
+      return failure(invalidInput('rename needs `title`: the new display title'), caller, me)
+    }
+    if (workspace.setTitle === undefined) {
+      return failure(invalidInput('this host exposes no workspace title change'), caller, me)
+    }
+    try {
+      await workspace.setTitle(title.trim())
+      return Object.freeze({
+        ...verdict,
+        renamed: true,
+        workspace: Object.freeze({ ...(await workspaceRowOf(workspace)), renamed: true }),
+      })
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `"${workspace.title}" could not be renamed: ${error instanceof Error ? error.message : String(error)}`,
+        { workspace: workspace.path },
+      ), caller, me)
+    }
+  }
+
+  return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
 }
 
 /** The tool that starts a real Session instead of a subagent (DH-702). */
@@ -956,7 +1099,8 @@ const findWorkspace = (registry: WorkspaceRegistryLike | undefined, needle: stri
   const value = needle.trim()
   if (value === '' || registry === undefined) return undefined
   const rows = registry.list()
-  return rows.find(row => row.title === value)
+  return rows.find(row => row.id === value)
+    ?? rows.find(row => row.title === value)
     ?? rows.find(row => row.path === value)
     ?? rows.find(row => sameCheckout(row.path, value))
 }
@@ -1150,6 +1294,40 @@ export const runSessionTool = async (
     }
   }
 
+  if (action === 'delete') {
+    if (sessionArg === undefined || sessionArg.trim() === '') {
+      return failure(invalidInput('delete needs `session`: the Session id'), caller, me)
+    }
+    const callerSession = (me as { readonly session?: unknown } | undefined)?.session
+    if (typeof callerSession === 'string' && callerSession === sessionArg.trim()) {
+      return failure(invalidInput('cannot delete the Session that is calling this tool'), caller, me)
+    }
+    const confirm = asString(validated.value.confirm)
+    if (confirm === undefined || confirm.trim() !== sessionArg.trim()) {
+      return failure(invalidInput(
+        `delete needs \`confirm\` to repeat the Session id exactly; got ${String(confirm ?? 'nothing')}`,
+        { session: sessionArg, accepted: sessionArg },
+      ), caller, me)
+    }
+    if (controller.delete === undefined) {
+      return failure(invalidInput(
+        'this host exposes no Session delete API: a Session log can be hidden with `archive`, but the '
+        + 'durable JSONL under ~/.dsh/sessions survives and this tool will not fake a deletion',
+        { session: sessionArg },
+      ), caller, me)
+    }
+    try {
+      await controller.delete(sessionArg)
+      context.tasks.delete(sessionArg)
+      return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionArg, deleted: true }) })
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `the Session could not be deleted: ${error instanceof Error ? error.message : String(error)}`,
+        { session: sessionArg },
+      ), caller, me)
+    }
+  }
+
   if (action === 'fork') {
     if (sessionArg === undefined || sessionArg.trim() === '') {
       return failure(invalidInput('fork needs `session`: the Session id'), caller, me)
@@ -1297,6 +1475,11 @@ export interface SessionControllerLike {
     readonly sessionId: string
     readonly atSeq?: number
   }): Promise<{ readonly sessionId: unknown }>
+  /**
+   * Permanently delete one stored Session, when the host can. Deliberately optional: current hosts
+   * expose archive only, and this adapter refuses `delete` rather than silently archiving.
+   */
+  delete?(sessionId: string): Promise<void>
 }
 
 /**

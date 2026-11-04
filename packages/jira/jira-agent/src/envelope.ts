@@ -35,6 +35,11 @@ export type ToolValue = Readonly<{
   /** `superagent_workspace`: the registered workspaces, or the one just registered. */
   workspaces?: unknown
   workspace?: unknown
+  /** `superagent_workspace remove/rename`: whether the registration changed, and what was kept. */
+  removed?: unknown
+  renamed?: unknown
+  directoryKept?: unknown
+  sessionsKept?: unknown
   /** `superagent_session`: the workspace Session started, continued, archived or branched (DH-719). */
   session?: unknown
   /** `superagent_session action: 'list'`: the Sessions of one workspace. */

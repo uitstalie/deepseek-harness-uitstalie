@@ -9,7 +9,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import { after, describe, it } from 'node:test'
@@ -49,6 +49,7 @@ import {
   runSessionTool,
   runSourceTool,
   runSuperagentPass,
+  runWorkspaceTool,
   superagentHomeProblem,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
@@ -259,6 +260,7 @@ interface FakeWorkspace {
   title: string
   sessionIds: unknown[]
   status(): Promise<string>
+  setTitle(title: string): Promise<void>
 }
 
 /**
@@ -270,9 +272,18 @@ interface FakeWorkspace {
  */
 class FakeWorkspaceRegistry {
   readonly rows: FakeWorkspace[] = []
+  readonly deleted: string[] = []
 
   list(): readonly FakeWorkspace[] {
     return this.rows
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const index = this.rows.findIndex(row => row.id === id)
+    if (index < 0) return false
+    this.rows.splice(index, 1)
+    this.deleted.push(id)
+    return true
   }
 
   async create(path: string, title?: string): Promise<FakeWorkspace> {
@@ -284,6 +295,7 @@ class FakeWorkspaceRegistry {
       title: title ?? path,
       sessionIds: [],
       status: async () => 'ok',
+      async setTitle(next: string) { this.title = next },
     }
     this.rows.push(created)
     return created
@@ -356,6 +368,77 @@ describe('superagent: the workspace roster', () => {
       const rows = roster.workspaces as Record<string, unknown>[]
       assert.equal(rows.length, 1)
       assert.equal(rows[0]?.title, 'the work')
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
+
+describe('superagent: workspace management', () => {
+  it('removes a registration through the live registry, renames, and lists orphans', async () => {
+    const { harness, main } = await mount()
+    try {
+      const registry = await provideRegistry(harness)
+      const dir = await scratchDirectory()
+      const qec = join(dir, 'qec')
+      const work = join(dir, 'work')
+      await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'ensure', path: qec, title: 'qec' })
+      await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'ensure', path: work, title: 'the work' })
+      const qecRow = registry.rows.find(row => row.title === 'qec')
+      assert.ok(qecRow !== undefined)
+
+      const refused = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'remove', workspace: 'qec', confirm: 'wrong' })
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /confirm/u)
+      assert.equal(registry.rows.length, 2, 'a refused removal changes nothing')
+
+      const renamed = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'rename', workspace: 'the work', title: 'renamed' })
+      assert.equal(renamed.ok, true, JSON.stringify(renamed.error))
+      assert.equal(registry.rows.find(row => row.path === work)?.title, 'renamed')
+
+      const removed = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'remove', workspace: 'qec', confirm: 'qec' })
+      assert.equal(removed.ok, true, JSON.stringify(removed.error))
+      assert.equal(removed.removed, true)
+      assert.equal(removed.directory_kept, true)
+      assert.equal(removed.sessions_kept, true)
+      assert.deepEqual(registry.deleted, [qecRow?.id])
+      assert.equal(registry.rows.some(row => row.path === qec), false)
+      assert.equal((await stat(qec)).isDirectory(), true, 'the directory survives the unregistration')
+
+      const orphan = registry.rows.find(row => row.path === work)
+      assert.ok(orphan !== undefined)
+      orphan.status = async () => 'missing-dir'
+      const orphans = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'orphans' })
+      const rows = orphans.workspaces as Record<string, unknown>[]
+      assert.deepEqual(rows.map(row => row.path), [work])
+      assert.equal(rows[0]?.status, 'missing-dir')
+
+      const self = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'remove', workspace: 'qec', confirm: 'qec' })
+      assert.equal(self.ok, false, 'the removed workspace is no longer found')
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('refuses the super workspace and the workspace this Session runs in', async () => {
+    const { harness } = await mount()
+    try {
+      const registry = await provideRegistry(harness)
+      const dir = await scratchDirectory()
+      const home = join(dir, 'super')
+      const workspace = await registry.create(home, 'Super agent')
+      const options = {
+        jira: {} as never,
+        caller: { writable: true, cwd: home } as never,
+        at: '2026-10-15T12:00:00Z' as never,
+      }
+      const refused = await runWorkspaceTool(
+        { action: 'remove', workspace: workspace.id, confirm: workspace.id },
+        options, {}, harness.ctx as never,
+      )
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /runs in|super workspace/u)
+      assert.equal(registry.rows.some(row => row.id === workspace.id), true)
     } finally {
       await harness.dispose()
     }
@@ -457,6 +540,32 @@ describe('superagent: workspace Sessions', () => {
     assert.equal(archived.ok, true, JSON.stringify(archived.error))
     assert.deepEqual(registry.archived, ['w-session-2'])
     assert.equal(tasks.has('w-session-2'), false)
+
+    const selfDelete = await runSessionTool(
+      { action: 'delete', session: 'super-1', confirm: 'super-1' },
+      options, me, ctx, { tasks },
+    )
+    assert.equal(selfDelete.ok, false, 'the calling Session cannot delete itself')
+
+    const noDeleteApi = await runSessionTool(
+      { action: 'delete', session: 'w-session', confirm: 'w-session' },
+      options, me, ctx, { tasks },
+    )
+    assert.equal(noDeleteApi.ok, false)
+    assert.match(JSON.stringify(noDeleteApi.error), /no Session delete API/u)
+    assert.deepEqual(registry.archived, ['w-session-2'], 'delete never silently falls back to archive')
+
+    const deletingController = new TaskController() as TaskController & { deleted: string[]; delete(sessionId: string): Promise<void> }
+    deletingController.deleted = []
+    deletingController.delete = async function (sessionId: string) { this.deleted.push(sessionId) }
+    const deletingCtx = { get: (key: string) => key === 'sessionController' ? deletingController : key === 'workspaceRegistry' ? registry : undefined }
+    const deleted = await runSessionTool(
+      { action: 'delete', session: 'w-session', confirm: 'w-session' },
+      options, me, deletingCtx, { tasks },
+    )
+    assert.equal(deleted.ok, true, JSON.stringify(deleted.error))
+    assert.deepEqual(deletingController.deleted, ['w-session'])
+    assert.equal(tasks.has('w-session'), false)
 
     const forked = await runSessionTool({ action: 'fork', session: 'w-session', atSeq: 7 }, options, me, ctx, { tasks })
     assert.equal(forked.ok, true, JSON.stringify(forked.error))
