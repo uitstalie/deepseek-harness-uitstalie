@@ -71,6 +71,20 @@ Super agent 的对话一被压缩/重开，`superagent_session` 的派发与回�
   `relation: superagent, workspace: <title>, task: <id>, issue: <key>` 的
   decision/open/files 结论；memory 自己也会对对话做 turn summary，漏写时仍有对话层兜底。
 
+## 模型选择（DH-802 追加）
+
+host 支持**中途换模型**：`sessionController.selectModel` 校验 route 后调用
+`agent.model.select()`，写入 `model/selection`；下一轮 request header 使用它。
+因此：
+
+- `superagent_session` 的 `start` / `append` / `prompt` 增加可选的
+  `provider` / `model` / `reasoning_effort`（与 subagent 同名）；
+- `start` 在 create 后、首次 prompt 前设置；`append` / `prompt` 在下一轮 prompt 前设置，不需要 fork；
+- 三个字段都省略时沿用当前/default route；`reasoning_effort` 必须与 provider+model 一起出现；
+- `superagent_models` 从 `ctx.get('llm')` 列 provider/model/efforts；workspace Session 没有
+  subagent 的 route allowlist，`selectModel` 自己校验可用性；
+- 参数错误由工具拒绝；host 路由/授权拒绝由 `selectModel` 的消息说明；未知 provider/model 由 LLM registry 拒绝。
+
 ## Jira 边界
 
 - jira 记 issue 的 claim/status/review；台账记“人让 super agent 派了什么活、结果如何”。

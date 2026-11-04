@@ -137,6 +137,11 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + '`[task-report]` arrives, the plugin has marked it `returned`/`failed`. Confirm or correct it '
     + 'with `superagent_ledger resolve`: add the outcome, artifact paths, open decisions, and the issue '
     + 'key only as a reference. Use `record` only when automatic recording failed.\n'
+    + '- To answer "use model X next round", first run `superagent_models` (provider list, then provider '
+    + 'models, then efforts); then use `superagent_session` `append` or `prompt` with `provider`, `model` '
+    + 'and optional `reasoning_effort`. The host records a Session model selection, so the next turn '
+    + 'uses it without forking; the reply carries the accepted `model`. `start` accepts the same fields '
+    + 'but so does every later append, so prefer the workspace\'s existing Session when one exists.\n'
     + '- After resolving a task, write the durable conclusion with `memory_write`: one `decision` line '
     + 'for a settled result or one `open` line for a pending decision, tagged `superagent`, the '
     + 'workspace title, and the task id. The ledger is the structured task truth; memory is the '
@@ -526,6 +531,12 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
   session: { type: 'string', description: 'prompt/archive/fork/delete: the Session id.' },
   text: { type: 'string', description: 'append/prompt: the follow-up instruction.' },
   confirm: { type: 'string', description: 'delete: required; repeat the target Session id exactly. Deletion is irreversible.' },
+  provider: { type: 'string', description: 'start/append/prompt: optional LLM provider id; requires `model`.' },
+  model: { type: 'string', description: 'start/append/prompt: optional model id; requires `provider`.' },
+  reasoning_effort: {
+    type: 'string',
+    description: 'start/append/prompt: optional adapter-owned reasoning effort; requires `provider` and `model`.',
+  },
   atSeq: { type: 'number', description: 'fork: branch from this event seq; default the latest completed turn.' },
 })
 
@@ -536,11 +547,155 @@ export const SESSION_DESCRIPTION =
   + '`prompt` continues one the person named — use `list` to resolve a name. `start` opens a NEW '
   + 'Session and is only for a task the person wants isolated; that agent decides whether to spawn '
   + 'subagents or do the work itself. Every Session this super agent addresses reports its turn end '
-  + 'back here as a message. `archive` hides one Session and keeps its durable log, `fork` branches '
+  + 'back here as a message. `start`/`append`/`prompt` accept optional `provider` + `model` (+ `reasoning_effort`) to change the model before the next turn: the host records a Session model selection, so an existing conversation can switch without forking. Omit the three fields to keep the current/default route. `archive` hides one Session and keeps its durable log, `fork` branches '
   + 'one, and `delete` exists only on a host with a real erase API. Current hosts expose no such API: '
   + '`delete` refuses with that limitation instead of archiving behind your back; use `archive` and '
   + 'tell the person the log remains under `~/.dsh/sessions`. Never delete the Session that called '
   + 'this tool.'
+
+/** Model discovery for the super agent's workspace Sessions (DH-803). */
+export const MODELS_TOOL_NAME = 'superagent_models'
+
+/** `superagent_models`'s schema. */
+export const MODELS_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+  provider: { type: 'string', description: 'Registered LLM provider id; omit to list providers.' },
+  model: { type: 'string', description: 'Exact model id; requires `provider`; omit to list that provider\'s models.' },
+})
+
+/** `superagent_models`'s description: same LLM registry the workspace Session uses. */
+export const MODELS_DESCRIPTION =
+  'List the LLM providers and models this deployment can route a workspace Session to. Omit both '
+  + 'fields for providers, pass `provider` for its models, and provider + model for that model\'s '
+  + 'reasoning efforts. This is the same `llm` registry `session.selectModel` validates against; '
+  + 'subagent authorization policy does not apply to a workspace Session.'
+
+/** One advertised model row as this tool returns it. */
+interface AdvertisedModel {
+  readonly provider: string
+  readonly id: string
+  readonly name: string
+  readonly description?: string
+  readonly efforts: readonly string[]
+}
+
+/** The slice of the host LLM runtime used for discovery; duck-typed like every host seam. */
+interface LlmLike {
+  listProviders(): readonly { readonly id: string; readonly name: string }[]
+  listModels(provider: string): Promise<readonly {
+    readonly id: string
+    readonly name: string
+    readonly description?: string
+    readonly reasoning?: { readonly efforts?: readonly { readonly id: string; readonly name: string }[] }
+  }[]>
+  resolveModelInfo?(provider: string, model: string, signal?: AbortSignal): Promise<{
+    readonly id: string
+    readonly name: string
+    readonly description?: string
+    readonly reasoning?: {
+      readonly defaultEffort?: string
+      readonly efforts?: readonly { readonly id: string; readonly name: string; readonly description?: string }[]
+    }
+  }>
+}
+
+/** Read the host LLM runtime, when this deployment has one. */
+const llmOf = (ctx: unknown): LlmLike | undefined => {
+  const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
+  if (typeof get !== 'function') return undefined
+  const service = get.call(ctx, 'llm') as Partial<LlmLike> | undefined
+  if (service === undefined || typeof service.listProviders !== 'function' || typeof service.listModels !== 'function') {
+    return undefined
+  }
+  return service as LlmLike
+}
+
+/** Render one provider/model row for the model-facing text. */
+const modelLine = (model: AdvertisedModel): string => {
+  const efforts = model.efforts.length === 0 ? '' : ` [efforts: ${model.efforts.join(', ')}]`
+  return `${model.provider}/${model.id} — ${model.name}${model.description === undefined ? '' : `: ${model.description}`}${efforts}`
+}
+
+/**
+ * `superagent_models`: list providers, a provider's models, or one model's reasoning efforts.
+ * @param args - the raw tool arguments, validated against {@link MODELS_PARAMETERS}.
+ * @param options - the caller verdict.
+ * @param me - the caller identity tuple.
+ * @param ctx - the plugin context carrying `llm`.
+ * @returns the advertised rows, or a refusal naming the layer that failed.
+ */
+export const runModelsTool = async (
+  args: unknown,
+  options: RunOptions,
+  me: unknown,
+  ctx: ToolHost['ctx'],
+): Promise<ToolValue> => {
+  const { caller } = options
+  const validated = validateArgs(MODELS_PARAMETERS, args)
+  if (!validated.ok) return failure(validated.error, caller, me)
+  const llm = llmOf(ctx)
+  if (llm === undefined) {
+    return failure(invalidInput('this deployment has no LLM registry, so workspace Session models cannot be listed'), caller, me)
+  }
+  const providerId = asString(validated.value.provider)?.trim()
+  const modelId = asString(validated.value.model)?.trim()
+  if (modelId !== undefined && providerId === undefined) {
+    return failure(invalidInput('`model` requires `provider`', { model: modelId }), caller, me)
+  }
+  try {
+    if (providerId === undefined) {
+      const providers = llm.listProviders().map(provider => Object.freeze({ id: provider.id, name: provider.name }))
+      return Object.freeze({ ...verdictOf(caller, me), providers })
+    }
+    const provider = llm.listProviders().find(candidate => candidate.id === providerId)
+    if (provider === undefined) {
+      const available = llm.listProviders().map(candidate => candidate.id).join(', ') || '(none)'
+      return failure(invalidInput(`LLM provider "${providerId}" is not registered; available providers: ${available}`, { provider: providerId }), caller, me)
+    }
+    if (modelId === undefined) {
+      const models = (await llm.listModels(provider.id)).map(model => Object.freeze({
+        provider: provider.id,
+        id: model.id,
+        name: model.name,
+        ...(model.description === undefined ? {} : { description: model.description }),
+        efforts: Object.freeze((model.reasoning?.efforts ?? []).map(effort => effort.id)),
+      }))
+      return Object.freeze({ ...verdictOf(caller, me), models: Object.freeze(models) })
+    }
+    if (llm.resolveModelInfo === undefined) {
+      return failure(invalidInput('this deployment cannot resolve one model\'s reasoning efforts', { provider: providerId, model: modelId }), caller, me)
+    }
+    const info = await llm.resolveModelInfo(provider.id, modelId)
+    const efforts = (info.reasoning?.efforts ?? []).map(effort => Object.freeze({
+      id: effort.id,
+      name: effort.name,
+      ...(effort.description === undefined ? {} : { description: effort.description }),
+      ...(info.reasoning?.defaultEffort === effort.id ? { default: true } : {}),
+    }))
+    return Object.freeze({
+      ...verdictOf(caller, me),
+      models: Object.freeze([{
+        provider: provider.id,
+        id: info.id,
+        name: info.name,
+        ...(info.description === undefined ? {} : { description: info.description }),
+        efforts,
+      }]),
+    })
+  } catch (error: unknown) {
+    return failure(invalidInput(
+      `the LLM registry refused ${providerId}/${String(modelId ?? '')}: ${error instanceof Error ? error.message : String(error)}`,
+      { provider: providerId, ...(modelId === undefined ? {} : { model: modelId }) },
+    ), caller, me)
+  }
+}
+
+/** The common success envelope without a file or state payload. */
+const verdictOf = (caller: Caller, me: unknown): ToolValue => Object.freeze({
+  ok: true,
+  writable: caller.writable,
+  ...(caller.reason === undefined ? {} : { reason: caller.reason }),
+  me,
+})
 
 /** The tool that records and updates the per-workspace dispatch ledger (DH-802). */
 export const LEDGER_TOOL_NAME = 'superagent_ledger'
@@ -671,6 +826,8 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     writable: { type: 'boolean' },
     items: { type: 'array' },
     workspaces: { type: 'array' },
+    providers: { type: 'array' },
+    models: { type: 'array' },
     workspace: { type: 'object', additionalProperties: true },
     ledger: { type: 'object', additionalProperties: true },
     ledgerError: { type: 'string' },
@@ -684,6 +841,7 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     sessionsKept: { type: 'boolean' },
     sessions: { type: 'array' },
     session: { type: 'object', additionalProperties: true },
+    model: { type: 'object', additionalProperties: true },
     issue: { type: 'object', additionalProperties: true },
     dispatch: { type: 'object', additionalProperties: true },
     me: { type: 'object', additionalProperties: true },
@@ -1236,6 +1394,77 @@ const findWorkspace = (registry: WorkspaceRegistryLike | undefined, needle: stri
     ?? rows.find(row => sameCheckout(row.path, value))
 }
 
+/** The optional model route requested by one Session action. */
+interface SessionModelChoice {
+  readonly provider: string
+  readonly model: string
+  readonly reasoningEffort?: string
+}
+
+/**
+ * Read the three model-facing fields. They are all optional, but an explicit choice must name both
+ * provider and model; effort alone is meaningless, matching the subagent tool's contract.
+ * @param values - the validated tool arguments.
+ * @returns the choice, or the argument error.
+ */
+const modelChoiceOf = (values: Readonly<Record<string, unknown>>): Readonly<{ choice?: SessionModelChoice; error?: string }> => {
+  const provider = asString(values.provider)
+  const model = asString(values.model)
+  const reasoningEffort = asString(values.reasoning_effort)
+  if (provider === undefined && model === undefined && reasoningEffort === undefined) return Object.freeze({})
+  if (provider === undefined || model === undefined) {
+    return Object.freeze({ error: '`provider` and `model` must be supplied together' })
+  }
+  if (provider.trim() === '' || model.trim() === '') {
+    return Object.freeze({ error: '`provider` and `model` must be non-empty' })
+  }
+  if (reasoningEffort !== undefined && reasoningEffort.trim() === '') {
+    return Object.freeze({ error: '`reasoning_effort` must be non-empty when supplied' })
+  }
+  return Object.freeze({
+    choice: Object.freeze({
+      provider: provider.trim(),
+      model: model.trim(),
+      ...(reasoningEffort === undefined ? {} : { reasoningEffort: reasoningEffort.trim() }),
+    }),
+  })
+}
+
+/**
+ * Apply a requested route to an existing Session before its next prompt. The host's
+ * `selectModel` writes `model/selection`; the next turn's request header uses it. This is why
+ * append/prompt can switch models without forking.
+ * @param controller - the host Session controller.
+ * @param sessionId - the Session whose next turn is being addressed.
+ * @param values - validated tool arguments.
+ * @returns the selected model, or the layer that refused it.
+ */
+const applySessionModel = async (
+  controller: SessionControllerLike,
+  sessionId: string,
+  values: Readonly<Record<string, unknown>>,
+): Promise<Readonly<{ model?: Readonly<{ provider: string; model: string; reasoningEffort?: string }>; error?: string }>> => {
+  const parsed = modelChoiceOf(values)
+  if (parsed.error !== undefined) return Object.freeze({ error: parsed.error })
+  if (parsed.choice === undefined) return Object.freeze({})
+  if (controller.selectModel === undefined) {
+    return Object.freeze({ error: 'this host exposes no Session model-selection API, so the requested model cannot be applied' })
+  }
+  try {
+    const selected = await controller.selectModel({
+      sessionId,
+      provider: parsed.choice.provider,
+      model: parsed.choice.model,
+      ...(parsed.choice.reasoningEffort === undefined ? {} : { reasoningEffort: parsed.choice.reasoningEffort }),
+    })
+    return Object.freeze({ model: Object.freeze({ ...selected.selected }) })
+  } catch (error: unknown) {
+    return Object.freeze({
+      error: `the host rejected the model selection (${parsed.choice.provider}/${parsed.choice.model}): ${error instanceof Error ? error.message : String(error)}`,
+    })
+  }
+}
+
 /**
  * Run one `superagent_session` call: open, continue, list, archive or branch a real workspace Session.
  *
@@ -1304,6 +1533,8 @@ export const runSessionTool = async (
         ), caller, me)
       }
       const sessionId = String(target.sessionId)
+      const selected = await applySessionModel(controller, sessionId, validated.value)
+      if (selected.error !== undefined) return failure(invalidInput(selected.error, { session: sessionId }), caller, me)
       await controller.prompt({
         requestId: `superagent-append-${randomUUID()}`,
         sessionId,
@@ -1321,6 +1552,7 @@ export const runSessionTool = async (
       return withLedger(Object.freeze({
         ...verdict,
         session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title, appended: true }),
+        ...(selected.model === undefined ? {} : { model: selected.model }),
       }), ledger)
     } catch (error: unknown) {
       return failure(invalidInput(
@@ -1345,6 +1577,8 @@ export const runSessionTool = async (
           : { agentPreset: context.agentPreset }),
       })
       const sessionId = String(created.sessionId)
+      const selected = await applySessionModel(controller, sessionId, validated.value)
+      if (selected.error !== undefined) return failure(invalidInput(selected.error, { session: sessionId }), caller, me)
       await controller.prompt({
         requestId: `superagent-task-${randomUUID()}`,
         sessionId,
@@ -1362,6 +1596,7 @@ export const runSessionTool = async (
       return withLedger(Object.freeze({
         ...verdict,
         session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title }),
+        ...(selected.model === undefined ? {} : { model: selected.model }),
       }), ledger)
     } catch (error: unknown) {
       return failure(invalidInput(
@@ -1379,6 +1614,8 @@ export const runSessionTool = async (
       return failure(invalidInput('prompt needs `text`: the follow-up instruction'), caller, me)
     }
     try {
+      const selected = await applySessionModel(controller, sessionArg, validated.value)
+      if (selected.error !== undefined) return failure(invalidInput(selected.error, { session: sessionArg }), caller, me)
       await controller.prompt({
         requestId: `superagent-followup-${randomUUID()}`,
         sessionId: sessionArg,
@@ -1396,7 +1633,11 @@ export const runSessionTool = async (
           ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
         })
       }
-      return withLedger(Object.freeze({ ...verdict, session: Object.freeze({ id: sessionArg }) }), ledger)
+      return withLedger(Object.freeze({
+        ...verdict,
+        session: Object.freeze({ id: sessionArg }),
+        ...(selected.model === undefined ? {} : { model: selected.model }),
+      }), ledger)
     } catch (error: unknown) {
       return failure(invalidInput(
         `the follow-up could not be admitted: ${error instanceof Error ? error.message : String(error)}`,
@@ -1735,6 +1976,16 @@ export interface SessionControllerLike {
   }, signal: AbortSignal): Promise<{ readonly accepted: boolean }>
   /** Every visible Session, so a dispatch can tell whether its executor still runs. */
   list(): Promise<{ readonly items: readonly SessionSummaryLike[] }>
+  /**
+   * Record a model selection for the Session's next turn. The host validates the route against
+   * its LLM registry, then writes the durable selection projection the next step reads.
+   */
+  selectModel?(request: {
+    readonly sessionId: string
+    readonly provider: string
+    readonly model: string
+    readonly reasoningEffort?: string
+  }): Promise<{ readonly selected: { readonly provider: string; readonly model: string; readonly reasoningEffort?: string } }>
   /** Branch one Session from a completed-turn prefix; optional on a host without the verb. */
   fork?(request: {
     readonly sessionId: string
@@ -2292,6 +2543,33 @@ export const createSuperagentContribution = (
     },
     run: (args, call) => runWorkspaceTool(args, runOptionsOf(host, call), call.me, host.ctx),
   }
+  const models: Spec = {
+    name: MODELS_TOOL_NAME,
+    description: MODELS_DESCRIPTION,
+    parameters: MODELS_PARAMETERS,
+    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+    timeoutMs: 15_000,
+    isConcurrencySafe: () => true,
+    render: (typed) => {
+      if (Array.isArray(typed.providers)) {
+        const providers = typed.providers as { id: string; name: string }[]
+        if (providers.length === 0) return renderText('(no LLM providers)')
+        return renderText(providers.map(provider => `${provider.id} — ${provider.name}`).join('\n'))
+      }
+      const rows = Array.isArray(typed.models)
+        ? typed.models as { provider: string; id: string; name: string; description?: string; efforts: readonly string[] }[]
+        : []
+      if (rows.length === 0) return renderText('(no models)')
+      return renderText(rows.map(row => modelLine({
+        provider: row.provider,
+        id: row.id,
+        name: row.name,
+        ...(row.description === undefined ? {} : { description: row.description }),
+        efforts: row.efforts,
+      })).join('\n'))
+    },
+    run: (args, call) => runModelsTool(args, runOptionsOf(host, call), call.me, host.ctx),
+  }
   const ledger: Spec = {
     name: LEDGER_TOOL_NAME,
     description: LEDGER_DESCRIPTION,
@@ -2351,7 +2629,12 @@ export const createSuperagentContribution = (
     tools: (agent: Agent) => (isExecutorSession(agent, workerPreset)
       ? Object.freeze([])
       : isSuperAgentSession(agent, superHome)
-        ? Object.freeze([defineJiraTool(host, workspace), defineJiraTool(host, session), defineJiraTool(host, ledger)])
+        ? Object.freeze([
+          defineJiraTool(host, workspace),
+          defineJiraTool(host, session),
+          defineJiraTool(host, ledger),
+          defineJiraTool(host, models),
+        ])
         : Object.freeze([
           defineJiraTool(host, source),
           defineJiraTool(host, scan),

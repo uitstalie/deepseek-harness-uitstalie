@@ -26,6 +26,7 @@ import {
   PROPOSAL_MARKER,
   SCAN_TOOL_NAME,
   LEDGER_TOOL_NAME,
+  MODELS_TOOL_NAME,
   SESSION_TOOL_NAME,
   SOURCE_TOOL_NAME,
   STATUS_TOOL_NAME,
@@ -49,6 +50,7 @@ import {
   runDaemonPass,
   resolveReportedTask,
   runLedgerTool,
+  runModelsTool,
   runSessionTool,
   runSourceTool,
   runSuperagentPass,
@@ -449,10 +451,26 @@ describe('superagent: workspace management', () => {
   })
 })
 
+/** Shared model-selection fake for the Session action tests. */
+class ModelSelectingController {
+  selections: { sessionId: string; provider: string; model: string; reasoningEffort?: string }[] = []
+
+  async selectModel(request: { sessionId: string; provider: string; model: string; reasoningEffort?: string }) {
+    this.selections.push(request)
+    return {
+      selected: {
+        provider: request.provider,
+        model: request.model,
+        ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
+      },
+    }
+  }
+}
+
 describe('superagent: workspace Sessions', () => {
   it('runs a workspace Session and routes its report back (DH-719)', async () => {
     const workspacePath = join(tmpdir(), 'task-workspace')
-    class TaskController {
+    class TaskController extends ModelSelectingController {
       created: { workspaceId?: string; agentPreset?: string }[] = []
       prompted: { sessionId: string; text: string }[] = []
       forked: { sessionId: string; atSeq?: number }[] = []
@@ -672,6 +690,93 @@ describe('superagent: the dispatch ledger', () => {
   })
 })
 
+describe('superagent: model selection and discovery', () => {
+  it('selects a model for start and for a later follow-up, and reports the accepted route', async () => {
+    const workspacePath = join(tmpdir(), 'model-workspace')
+    class Controller extends ModelSelectingController {
+      prompted: string[] = []
+      async create() { return { sessionId: 'model-child' } }
+      async prompt(request: { sessionId: string }) { this.prompted.push(String(request.sessionId)); return { accepted: true } }
+      async list() { return { items: [{ sessionId: 'model-child', running: false, cwd: workspacePath, blank: false }] } }
+    }
+    class Registry {
+      rows = [{ id: 'w1', path: workspacePath, title: 'model work', sessionIds: [], status: async () => 'ok' }]
+      list() { return this.rows }
+      async create(path: string, title?: string) { return { id: 'w2', path, title: title ?? path, sessionIds: [], status: async () => 'ok' } }
+    }
+    const controller = new Controller()
+    const registry = new Registry()
+    const ctx = { get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? registry : undefined }
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: await scratchDirectory() } as never,
+      at: '2026-11-05T00:00:00Z' as never,
+    }
+    const me = { session: 'super-1' }
+
+    const started = await runSessionTool(
+      { action: 'start', workspace: 'model work', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'high' },
+      options, me, ctx, { tasks: new Map() },
+    )
+    assert.equal(started.ok, true, JSON.stringify(started.error))
+    assert.deepEqual(controller.selections[0], { sessionId: 'model-child', provider: 'p', model: 'm', reasoningEffort: 'high' })
+    assert.deepEqual(started.model, { provider: 'p', model: 'm', reasoningEffort: 'high' })
+
+    controller.list = async () => ({ items: [{ sessionId: 'model-child', running: false, cwd: workspacePath, blank: false }] })
+    const followed = await runSessionTool(
+      { action: 'append', workspace: 'model work', text: 'continue', provider: 'p2', model: 'm2' },
+      options, me, ctx, { tasks: new Map() },
+    )
+    assert.equal(followed.ok, true, JSON.stringify(followed.error))
+    assert.deepEqual(controller.selections[1], { sessionId: 'model-child', provider: 'p2', model: 'm2' })
+    assert.deepEqual(followed.model, { provider: 'p2', model: 'm2' })
+  })
+
+  it('refuses a model on a host without selectModel, and rejects provider-only fields', async () => {
+    const workspacePath = join(tmpdir(), 'model-refusal')
+    class NoSelect {
+      async create() { return { sessionId: 'x' } }
+      async prompt() { return { accepted: true } }
+      async list() { return { items: [{ sessionId: 'x', running: false, cwd: workspacePath, blank: false }] } }
+    }
+    class Registry {
+      rows = [{ id: 'w1', path: workspacePath, title: 'r', sessionIds: [], status: async () => 'ok' }]
+      list() { return this.rows }
+      async create(path: string, title?: string) { return { id: 'w2', path, title: title ?? path, sessionIds: [], status: async () => 'ok' } }
+    }
+    const controller = new NoSelect()
+    const ctx = { get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? new Registry() : undefined }
+    const options = { jira: {} as never, caller: { writable: true, sessionId: 's', cwd: await scratchDirectory() } as never, at: '2026-11-05T00:00:00Z' as never }
+    const me = { session: 's' }
+    const noApi = await runSessionTool({ action: 'start', workspace: 'r', task: 'x', provider: 'p', model: 'm' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(noApi.ok, false)
+    assert.match(JSON.stringify(noApi.error), /no Session model-selection API/u)
+    const providerOnly = await runSessionTool({ action: 'prompt', session: 'x', text: 'x', provider: 'p' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(providerOnly.ok, false)
+    assert.match(JSON.stringify(providerOnly.error), /provider.*model/u)
+  })
+
+  it('lists providers, models and reasoning efforts from the same LLM registry', async () => {
+    const llm = {
+      listProviders: () => [{ id: 'p', name: 'Provider' }],
+      async listModels() { return [{ id: 'm', name: 'Model', reasoning: { efforts: [{ id: 'high', name: 'High' }] } }] },
+      async resolveModelInfo() { return { id: 'm', name: 'Model', reasoning: { defaultEffort: 'high', efforts: [{ id: 'high', name: 'High' }] } } },
+    }
+    const ctx = { get: (key: string) => key === 'llm' ? llm : undefined }
+    const options = { jira: {} as never, caller: { writable: true }, at: '2026-11-05T00:00:00Z' as never }
+    const me = { session: 's' }
+    const providers = await runModelsTool({}, options, me, ctx as never)
+    assert.deepEqual(providers.providers, [{ id: 'p', name: 'Provider' }])
+    const models = await runModelsTool({ provider: 'p' }, options, me, ctx as never)
+    assert.deepEqual((models.models as { id: string }[])[0]?.id, 'm')
+    const detail = await runModelsTool({ provider: 'p', model: 'm' }, options, me, ctx as never)
+    assert.equal((detail.models as { efforts: { default?: boolean }[] }[])[0]?.efforts[0]?.default, true)
+    const missing = await runModelsTool({ provider: 'nope' }, options, me, ctx as never)
+    assert.equal(missing.ok, false)
+    assert.match(JSON.stringify(missing.error), /not registered/u)
+  })
+})
+
 describe('superagent: the super workspace', () => {
   it('registers the super home once, and a session there is the dispatcher', async () => {
     const dir = await scratchDirectory()
@@ -702,7 +807,7 @@ describe('superagent: the super workspace', () => {
       assert.equal(isSuperAgentSession(superAgent, home), true)
       assert.deepEqual(
         contribution.tools?.(superAgent).map(tool => tool.name),
-        [WORKSPACE_TOOL_NAME, SESSION_TOOL_NAME, LEDGER_TOOL_NAME],
+        [WORKSPACE_TOOL_NAME, SESSION_TOOL_NAME, LEDGER_TOOL_NAME, MODELS_TOOL_NAME],
         'the super agent keeps the workspace roster and the Session verbs, and loses the ledger-bound ones',
       )
       assert.deepEqual(

@@ -35,6 +35,11 @@ export type ToolValue = Readonly<{
   /** `superagent_workspace`: the registered workspaces, or the one just registered. */
   workspaces?: unknown
   workspace?: unknown
+  /** `superagent_models`: the providers, models, or one model's effort rows. */
+  providers?: unknown
+  models?: unknown
+  /** `superagent_session`: the model route selected for the next turn, when one was requested. */
+  model?: unknown
   /** `superagent_ledger`: the rows or the changed task, and the optional memory-write suggestion. */
   entries?: unknown
   task?: unknown
