@@ -685,6 +685,21 @@ function SessionTree({
     ))
     rows.push(renderGroup(group, 0))
   }
+  // The ordinary list keeps its identity only when a special section sits above it.
+  if (specialSections.length > 0 && ordinaryRoots.length > 0) {
+    rowKeys.push('heading:ordinary')
+    rows.push((
+      <div
+        key="heading:ordinary"
+        className={css.specialHeading}
+        data-row-key="heading:ordinary"
+        role="heading"
+        aria-level={3}
+      >
+        {t('section.ordinaryWorkspaces')}
+      </div>
+    ))
+  }
   for (const group of ordinaryRoots) rows.push(renderGroup(group, 0))
   const groupRows = rows
   return (
