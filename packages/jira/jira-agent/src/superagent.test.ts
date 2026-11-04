@@ -9,7 +9,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtemp, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import { after, describe, it } from 'node:test'
@@ -25,6 +25,7 @@ import {
   DISPATCH_TOOL_NAME,
   PROPOSAL_MARKER,
   SCAN_TOOL_NAME,
+  LEDGER_TOOL_NAME,
   SESSION_TOOL_NAME,
   SOURCE_TOOL_NAME,
   STATUS_TOOL_NAME,
@@ -46,6 +47,8 @@ import {
   openProposal,
   pinWorkspaceFirst,
   runDaemonPass,
+  resolveReportedTask,
+  runLedgerTool,
   runSessionTool,
   runSourceTool,
   runSuperagentPass,
@@ -53,6 +56,7 @@ import {
   superagentHomeProblem,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
+import { type DispatchLedgerTask } from './dispatch-ledger.ts'
 import { callerOf, identityOf } from './tools.ts'
 import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent, waitFor } from './testing/host.ts'
 
@@ -599,6 +603,75 @@ describe('superagent: workspace Sessions', () => {
   })
 })
 
+describe('superagent: the dispatch ledger', () => {
+  it('records a pending dispatch automatically, then resolves and lists it', async () => {
+    const root = await scratchDirectory()
+    const { harness } = await mount()
+    try {
+      const registry = await provideRegistry(harness)
+      const workspace = await registry.create(root, 'rimworld')
+      const controller = {
+        created: [] as unknown[],
+        async create(request: unknown) { this.created.push(request); return { sessionId: 'child-1' } },
+        async prompt() { return { accepted: true } },
+        async list() { return { items: [] } },
+      }
+      const ctx = {
+        get: (key: string) => key === 'workspaceRegistry' ? registry : key === 'sessionController' ? controller : undefined,
+      }
+      const options = {
+        jira: {} as never,
+        caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
+        at: '2026-11-05T00:00:00Z' as never,
+      }
+      const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
+      const started = await runSessionTool(
+        { action: 'start', workspace: 'rimworld', task: 'build the colony' },
+        options, me, ctx, { agentPreset: 'worker', tasks: new Map() },
+      )
+      assert.equal(started.ok, true, JSON.stringify(started.error))
+      const file = join(root, '.superagent/ledger', `${workspace.id}.md`)
+      const pending = await readFile(file, 'utf8')
+      assert.match(pending, /## task-.* · pending/u)
+      assert.match(pending, /build the colony/u)
+
+      const listing = await runLedgerTool({ action: 'list', workspace: 'rimworld' }, options, me, ctx as never)
+      assert.equal(listing.ok, true, JSON.stringify(listing.error))
+      const rows = listing.entries as { id: string; status: string; task: string }[]
+      assert.equal(rows.length, 1)
+      assert.equal(rows[0]?.status, 'pending')
+      const id = rows[0]?.id ?? ''
+
+      // The turn-end report path resolves the same entry without the model's help.
+      await resolveReportedTask({
+        superSession: 'super-1',
+        workspace: root,
+        ledger: { root, task: rows[0] as unknown as DispatchLedgerTask },
+      }, 'colony survived automatically', AT as never)
+      const auto = await runLedgerTool({ action: 'list', workspace: 'rimworld', status: 'returned' }, options, me, ctx as never)
+      assert.equal((auto.entries as unknown[]).length, 1)
+
+      const resolved = await runLedgerTool({
+        action: 'resolve', id, status: 'returned', outcome: 'colony survived',
+        decisions: ['choose a new stove'], artifacts: ['out/colony.png'],
+      }, options, me, ctx as never)
+      assert.equal(resolved.ok, true, JSON.stringify(resolved.error))
+      const task = resolved.task as { status: string; outcome: string; decisions: readonly string[] }
+      assert.equal(task.status, 'returned')
+      assert.equal(task.outcome, 'colony survived')
+      assert.deepEqual(task.decisions, ['choose a new stove'])
+      assert.deepEqual((resolved.memory as { kind: string }).kind, 'decision')
+
+      const updated = await runLedgerTool({ action: 'list', workspace: 'rimworld', status: 'returned' }, options, me, ctx as never)
+      const updatedRows = updated.entries as { status: string; outcome: string }[]
+      assert.equal(updatedRows.length, 1)
+      assert.equal(updatedRows[0]?.outcome, 'colony survived')
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
+
 describe('superagent: the super workspace', () => {
   it('registers the super home once, and a session there is the dispatcher', async () => {
     const dir = await scratchDirectory()
@@ -629,7 +702,7 @@ describe('superagent: the super workspace', () => {
       assert.equal(isSuperAgentSession(superAgent, home), true)
       assert.deepEqual(
         contribution.tools?.(superAgent).map(tool => tool.name),
-        [WORKSPACE_TOOL_NAME, SESSION_TOOL_NAME],
+        [WORKSPACE_TOOL_NAME, SESSION_TOOL_NAME, LEDGER_TOOL_NAME],
         'the super agent keeps the workspace roster and the Session verbs, and loses the ledger-bound ones',
       )
       assert.deepEqual(
@@ -663,6 +736,24 @@ describe('superagent: the super workspace', () => {
     assert.match(superagentHomeProblem(join(dshHome, 'superagent'), dshHome) ?? '', /harness home/u)
     assert.match(superagentHomeProblem(parse(dshHome).root, dshHome) ?? '', /root/u)
     assert.equal(superagentHomeProblem(join(tmpdir(), 'superagent'), dshHome), undefined)
+  })
+
+  it('seeds a standing definition file once and preserves later edits', async () => {
+    const dir = await scratchDirectory()
+    const home = join(dir, 'super-agent')
+    const harness = await mountJira(await fixture(), { superagent: true })
+    try {
+      const registry = await provideRegistry(harness)
+      await ensureSuperWorkspace(registry, home, join(dir, 'home'))
+      const definition = await readFile(join(home, 'AGENTS.md'), 'utf8')
+      assert.match(definition, /single conversation/u)
+      assert.match(definition, /superagent_ledger/u)
+      await writeFile(join(home, 'AGENTS.md'), '# my edit\n', 'utf8')
+      await ensureSuperWorkspace(registry, home, join(dir, 'home'))
+      assert.equal(await readFile(join(home, 'AGENTS.md'), 'utf8'), '# my edit\n', 'an existing definition is not overwritten')
+    } finally {
+      await harness.dispose()
+    }
   })
 
   it('pins the super workspace first and leaves the other rows in order', async () => {

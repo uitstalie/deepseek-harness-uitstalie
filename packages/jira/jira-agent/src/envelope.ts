@@ -35,6 +35,13 @@ export type ToolValue = Readonly<{
   /** `superagent_workspace`: the registered workspaces, or the one just registered. */
   workspaces?: unknown
   workspace?: unknown
+  /** `superagent_ledger`: the rows or the changed task, and the optional memory-write suggestion. */
+  entries?: unknown
+  task?: unknown
+  file?: unknown
+  memory?: unknown
+  ledger?: unknown
+  ledgerError?: unknown
   /** `superagent_workspace remove/rename`: whether the registration changed, and what was kept. */
   removed?: unknown
   renamed?: unknown

@@ -18,15 +18,24 @@ import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafe
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 import { mkdir } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
-import { dirname, isAbsolute, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
 import { clampText, asIdentity, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
 import { dispatchBody, dispatchRecordOf } from './dispatch.ts'
-import { type RunOptions, type ToolValue, actorFor, asString, failure, nowUtc, okValue } from './envelope.ts'
+import { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, nowUtc, okValue } from './envelope.ts'
 import { callerCwd, isExecutorSession, isSubagent, type Caller } from './caller.ts'
+import { ensureSuperWorkspaceDefinition } from './super-workspace-definition.ts'
+import {
+  isDispatchLedgerStatus,
+  listDispatchTasks,
+  recordDispatch,
+  resolveDispatchTask,
+  type DispatchLedgerStatus,
+  type DispatchLedgerTask,
+} from './dispatch-ledger.ts'
 import { type Spec, type ToolHost, callerOf, defineJiraTool, identityOf, runOptionsOf } from './tools.ts'
 
 /** The capability id this provider registers with the organizer. */
@@ -123,8 +132,18 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + 'failed check), pass that fact on in one line instead of summarizing it away.\n'
     + '- When the report arrives, answer the person in one short message: what was sent where, the outcome, '
     + 'and any decision they owe you. Do not paste the whole report.\n'
-    + '- Read the ledger when it helps, but do not claim or dispatch ledger issues from here; this '
-    + 'workspace dispatches work, it does not run the claim loop.',
+    + '- Before dispatching into a workspace, read that workspace\'s dispatch ledger with '
+    + '`superagent_ledger list`. Each dispatch records `pending` automatically; when the '
+    + '`[task-report]` arrives, the plugin has marked it `returned`/`failed`. Confirm or correct it '
+    + 'with `superagent_ledger resolve`: add the outcome, artifact paths, open decisions, and the issue '
+    + 'key only as a reference. Use `record` only when automatic recording failed.\n'
+    + '- After resolving a task, write the durable conclusion with `memory_write`: one `decision` line '
+    + 'for a settled result or one `open` line for a pending decision, tagged `superagent`, the '
+    + 'workspace title, and the task id. The ledger is the structured task truth; memory is the '
+    + 'conversation conclusion layer. Do not write the ledger into memory verbatim.\n'
+    + '- Read the jira ledger when it helps, but do not claim or dispatch ledger issues from here; this '
+    + 'workspace dispatches work, it does not run the claim loop. The dispatch ledger references jira '
+    + 'issue keys but never copies issue status or comments.',
 })
 
 /** Whether an issue can be taken right now, and why not when it cannot. */
@@ -394,6 +413,8 @@ export const ensureSuperWorkspace = async (
   const problem = superagentHomeProblem(path, dshHome)
   if (problem !== undefined) throw new Error(problem)
   await mkdir(path, { recursive: true })
+  // The role is a file in the workspace, not only this capability's prompt section (DH-802).
+  await ensureSuperWorkspaceDefinition(path)
   const workspace = await registry.create(path, SUPERAGENT_WORKSPACE_TITLE)
   await pinWorkspaceFirst(registry, workspace)
   return workspace
@@ -521,12 +542,116 @@ export const SESSION_DESCRIPTION =
   + 'tell the person the log remains under `~/.dsh/sessions`. Never delete the Session that called '
   + 'this tool.'
 
+/** The tool that records and updates the per-workspace dispatch ledger (DH-802). */
+export const LEDGER_TOOL_NAME = 'superagent_ledger'
+
+/** `superagent_ledger`'s schema. */
+export const LEDGER_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+  action: {
+    type: 'string',
+    required: true,
+    description: 'list: read the dispatch ledger, optionally by workspace/status/query. record: append a '
+      + 'pending task manually when automatic dispatch recording is unavailable. resolve: append a '
+      + 'returned/failed outcome for an existing task id.',
+    enum: ['list', 'record', 'resolve'],
+  },
+  workspace: { type: 'string', description: 'record/list: the workspace id, title, or path.' },
+  task: { type: 'string', description: 'record: the one-line task sent to the workspace.' },
+  id: { type: 'string', description: 'resolve: the task id returned by the dispatch or `record`.' },
+  status: { type: 'string', enum: ['pending', 'returned', 'failed'], description: 'resolve: the new state.' },
+  outcome: { type: 'string', description: 'resolve: the conclusion the workspace reported back.' },
+  decisions: { type: 'array', description: 'resolve: unresolved decisions, one per array entry.' },
+  artifacts: { type: 'array', description: 'resolve: paths produced by the workspace.' },
+  issue: { type: 'string', description: 'record/resolve: optional jira issue key this task references.' },
+  query: { type: 'string', description: 'list: match task, outcome, workspace, artifact and decision text.' },
+  limit: { type: 'number', description: 'list: maximum rows, default 20, maximum 100.' },
+})
+
+/** `superagent_ledger`'s description: structured dispatch state, separate from jira. */
+export const LEDGER_DESCRIPTION =
+  'Read and correct the super workspace\'s per-workspace dispatch ledger. Dispatch records `pending` '
+  + 'automatically and the child turn end records `returned`/`failed`; use `record` only as a manual '
+  + 'fallback and `resolve` to add the conclusion, artifact paths and open decisions the automatic '
+  + 'record could not know. The ledger is append-only Markdown under `.superagent/ledger/`; it '
+  + 'references jira issue keys but never copies issue state. After resolving, write the durable '
+  + 'conclusion with `memory_write`.'
+
+/** One ledger write attempted next to a dispatch; failure never fails the dispatch itself. */
+type LedgerAttempt = Readonly<{ ledger?: Readonly<{ root: string; task: DispatchLedgerTask }>; error?: string }>
+
+/**
+ * Record the pending entry for a dispatch. This is deliberately best-effort: a ledger write failure
+ * is reported beside the dispatch result, but it must not silently lose a Session that did start.
+ * @param caller - the dispatching session, whose cwd is the super workspace root.
+ * @param workspace - the target workspace.
+ * @param task - the instruction sent to the Session.
+ * @param sessionId - the child Session id.
+ * @param at - the dispatch instant, fixed-width UTC.
+ * @returns the recorded entry or the failure text.
+ */
+const recordTaskLedger = async (
+  caller: Caller,
+  workspace: WorkspaceLike,
+  task: string,
+  sessionId: string,
+  at: Timestamp,
+): Promise<LedgerAttempt> => {
+  const root = caller.cwd
+  if (root === undefined) return Object.freeze({ error: 'the caller has no checkout, so no ledger root is known' })
+  try {
+    const recorded = await recordDispatch(root, {
+      id: workspace.id,
+      title: workspace.title,
+      path: workspace.path,
+    }, {
+      task,
+      dispatchedAt: at,
+      sessionId,
+    })
+    return Object.freeze({ ledger: Object.freeze({ root, task: recorded.task }) })
+  } catch (error: unknown) {
+    return Object.freeze({ error: `the dispatch ledger could not record the pending task: ${error instanceof Error ? error.message : String(error)}` })
+  }
+}
+
+/**
+ * Resolve the ledger entry when a dispatched child finishes: the hook sees this even though the
+ * report is delivered as a new message in the super conversation.
+ * @param record - the task bookkeeping captured at dispatch.
+ * @param text - the child's last assistant text, when it produced one.
+ * @param at - the turn-end instant.
+ * @returns after the outcome section is appended; a record without a ledger is a no-op.
+ */
+export const resolveReportedTask = async (
+  record: TaskSessionRecord,
+  text: string | undefined,
+  at: Timestamp,
+): Promise<void> => {
+  if (record.ledger === undefined) return
+  await resolveDispatchTask(record.ledger.root, record.ledger.task, {
+    status: 'returned',
+    updatedAt: at,
+    outcome: text ?? 'The child turn ended without assistant text.',
+  })
+}
+
+/** Add the ledger fields to a dispatch result without hiding a ledger failure. */
+const withLedger = (value: ToolValue, attempt: LedgerAttempt): ToolValue => Object.freeze({
+  ...value,
+  ...(attempt.ledger === undefined ? {} : {
+    ledger: Object.freeze({ taskId: attempt.ledger.task.id, file: join(attempt.ledger.root, '.superagent', 'ledger') }),
+  }),
+  ...(attempt.error === undefined ? {} : { ledgerError: attempt.error }),
+})
+
 /** One Session a super agent started or addressed, so its report can be routed back. */
 export interface TaskSessionRecord {
   /** The super agent Session that receives the report. */
   readonly superSession: string
   /** The workspace the Session works in, for the report headline. */
   readonly workspace: string
+  /** The structured dispatch entry this turn will resolve, when the ledger recorded one. */
+  readonly ledger?: Readonly<{ root: string; task: DispatchLedgerTask }>
 }
 
 /** What one superagent_session call needs beyond the shared run options. */
@@ -547,6 +672,12 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     items: { type: 'array' },
     workspaces: { type: 'array' },
     workspace: { type: 'object', additionalProperties: true },
+    ledger: { type: 'object', additionalProperties: true },
+    ledgerError: { type: 'string' },
+    entries: { type: 'array' },
+    task: { type: 'object', additionalProperties: true },
+    file: { type: 'string' },
+    memory: { type: 'object', additionalProperties: true },
     removed: { type: 'boolean' },
     renamed: { type: 'boolean' },
     directoryKept: { type: 'boolean' },
@@ -1179,11 +1310,18 @@ export const runSessionTool = async (
         mode: 'queue',
         content: [{ type: 'text', text: textArg.trim() }],
       }, new AbortController().signal)
-      if (reportTo !== undefined) context.tasks.set(sessionId, { superSession: reportTo, workspace: workspace.path })
-      return Object.freeze({
+      const ledger = await recordTaskLedger(caller, workspace, textArg.trim(), sessionId, options.at)
+      if (reportTo !== undefined) {
+        context.tasks.set(sessionId, {
+          superSession: reportTo,
+          workspace: workspace.path,
+          ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+        })
+      }
+      return withLedger(Object.freeze({
         ...verdict,
         session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title, appended: true }),
-      })
+      }), ledger)
     } catch (error: unknown) {
       return failure(invalidInput(
         `the follow-up could not be appended: ${error instanceof Error ? error.message : String(error)}`,
@@ -1213,11 +1351,18 @@ export const runSessionTool = async (
         mode: 'queue',
         content: [{ type: 'text', text: taskArg.trim() }],
       }, new AbortController().signal)
-      if (reportTo !== undefined) context.tasks.set(sessionId, { superSession: reportTo, workspace: workspace.path })
-      return Object.freeze({
+      const ledger = await recordTaskLedger(caller, workspace, taskArg.trim(), sessionId, options.at)
+      if (reportTo !== undefined) {
+        context.tasks.set(sessionId, {
+          superSession: reportTo,
+          workspace: workspace.path,
+          ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+        })
+      }
+      return withLedger(Object.freeze({
         ...verdict,
         session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title }),
-      })
+      }), ledger)
     } catch (error: unknown) {
       return failure(invalidInput(
         `the workspace Session could not be started: ${error instanceof Error ? error.message : String(error)}`,
@@ -1240,14 +1385,18 @@ export const runSessionTool = async (
         mode: 'queue',
         content: [{ type: 'text', text: textArg.trim() }],
       }, new AbortController().signal)
+      const ledger: LedgerAttempt = workspace === undefined
+        ? Object.freeze({})
+        : await recordTaskLedger(caller, workspace, textArg.trim(), sessionArg, options.at)
       if (reportTo !== undefined) {
         const known = context.tasks.get(sessionArg)
         context.tasks.set(sessionArg, {
           superSession: reportTo,
           workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
+          ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
         })
       }
-      return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionArg }) })
+      return withLedger(Object.freeze({ ...verdict, session: Object.freeze({ id: sessionArg }) }), ledger)
     } catch (error: unknown) {
       return failure(invalidInput(
         `the follow-up could not be admitted: ${error instanceof Error ? error.message : String(error)}`,
@@ -1360,6 +1509,117 @@ export const runSessionTool = async (
   return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
 }
 
+/**
+ * `superagent_ledger`: read, manually record, or resolve a per-workspace dispatch entry.
+ * @param args - the raw tool arguments, validated against {@link LEDGER_PARAMETERS}.
+ * @param options - the caller verdict and clock.
+ * @param me - the caller identity tuple, echoed in every result.
+ * @returns the ledger rows, or the changed entry plus a memory-write suggestion.
+ */
+export const runLedgerTool = async (
+  args: unknown,
+  options: RunOptions,
+  me: unknown,
+  ctx: ToolHost['ctx'],
+): Promise<ToolValue> => {
+  const { caller } = options
+  const validated = validateArgs(LEDGER_PARAMETERS, args)
+  if (!validated.ok) return failure(validated.error, caller, me)
+  const root = caller.cwd
+  if (root === undefined) {
+    return failure(invalidInput('the dispatch ledger needs a super workspace checkout, and this caller has none'), caller, me)
+  }
+  const action = String(validated.value.action)
+  const verdict = Object.freeze({
+    ok: true,
+    writable: caller.writable,
+    ...(caller.reason === undefined ? {} : { reason: caller.reason }),
+    me,
+  })
+  if (action === 'list') {
+    try {
+      const status = validated.value.status
+      const rows = await listDispatchTasks(root, {
+        ...(asString(validated.value.workspace) === undefined ? {} : { workspace: String(validated.value.workspace) }),
+        ...(isDispatchLedgerStatus(status) ? { status } : {}),
+        ...(asString(validated.value.query) === undefined ? {} : { query: String(validated.value.query) }),
+        ...(typeof validated.value.limit === 'number' ? { limit: validated.value.limit } : {}),
+      })
+      return Object.freeze({ ...verdict, entries: Object.freeze(rows) })
+    } catch (error: unknown) {
+      return failure(invalidInput(`the dispatch ledger could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+    }
+  }
+
+  if (!caller.writable) {
+    return failure(invalidInput('changing the dispatch ledger needs a session that may write'), caller, me)
+  }
+
+  if (action === 'record') {
+    const registry = workspaceRegistryOf(ctx)
+    const selector = asString(validated.value.workspace)
+    const task = asString(validated.value.task)
+    if (task === undefined || task.trim() === '') return failure(invalidInput('record needs `task`'), caller, me)
+    if (selector === undefined) return failure(invalidInput('record needs `workspace`'), caller, me)
+    const workspace = findWorkspace(registry, selector)
+    if (workspace === undefined) {
+      return failure(invalidInput(`"${selector}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+    }
+    try {
+      const recorded = await recordDispatch(root, {
+        id: workspace.id,
+        title: workspace.title,
+        path: workspace.path,
+      }, {
+        task: task.trim(),
+        dispatchedAt: options.at,
+        ...(asString(validated.value.issue) === undefined ? {} : { issue: String(validated.value.issue) }),
+      })
+      return Object.freeze({ ...verdict, task: recorded.task, file: recorded.file })
+    } catch (error: unknown) {
+      return failure(invalidInput(`the task could not be recorded: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+    }
+  }
+
+  if (action === 'resolve') {
+    const id = asString(validated.value.id)
+    const status = validated.value.status
+    if (id === undefined || id.trim() === '') return failure(invalidInput('resolve needs `id`: the task id'), caller, me)
+    if (!isDispatchLedgerStatus(status)) {
+      return failure(invalidInput('resolve needs `status` of pending, returned or failed'), caller, me)
+    }
+    try {
+      const rows = await listDispatchTasks(root, { limit: 100 })
+      const current = rows.find(row => row.id === id.trim())
+      if (current === undefined) {
+        return failure(invalidInput(`no ledger task "${id}" was found`, { id }), caller, me)
+      }
+      const artifacts = asStringList(validated.value.artifacts)
+      const decisions = asStringList(validated.value.decisions)
+      const resolved = await resolveDispatchTask(root, current, {
+        status: status as DispatchLedgerStatus,
+        updatedAt: options.at,
+        ...(asString(validated.value.outcome) === undefined ? {} : { outcome: String(validated.value.outcome) }),
+        ...(artifacts === undefined ? {} : { artifacts }),
+        ...(decisions === undefined ? {} : { decisions }),
+        ...(asString(validated.value.issue) === undefined ? {} : { issue: String(validated.value.issue) }),
+      })
+      // The ledger is the structured truth; memory is the durable conclusion layer. This hint is
+      // intentionally not a write: memory_write is a separate tool and remains the model's call.
+      const memory = Object.freeze({
+        kind: status === 'failed' || status === 'pending' ? 'open' : 'decision',
+        content: `${resolved.task.workspaceTitle} ${resolved.task.id}: ${resolved.task.outcome ?? resolved.task.task}`,
+        tags: Object.freeze(['superagent', resolved.task.workspaceTitle, resolved.task.id]),
+      })
+      return Object.freeze({ ...verdict, task: resolved.task, file: resolved.file, memory })
+    } catch (error: unknown) {
+      return failure(invalidInput(`the ledger task could not be resolved: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+    }
+  }
+
+  return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
+}
+
 /** The last assistant text of one Session, skipping reasoning and tool-call blocks. */
 const lastAssistantText = (agent: unknown): string | undefined => {
   const session = (agent as { session?: { snapshotEvents?: () => readonly { type: string; data?: unknown }[] } }).session
@@ -1407,7 +1667,12 @@ export const deliverTaskReport = async (
       mode: 'queue',
       content: [{
         type: 'text',
-        text: `[task-report] ${sessionId} in ${record.workspace} finished its turn.\n\n${text}`,
+        text: `[task-report] ${sessionId} in ${record.workspace} finished its turn`
+          + `${record.ledger === undefined ? '' : ` (task ${record.ledger.task.id}, ledger returned)`}.`
+          + `\n\n${text}\n\n`
+          + 'Record the durable conclusion with memory_write (kind decision/open/files, tags including '
+          + 'superagent, the workspace and the task id); use superagent_ledger resolve for any outcome, '
+          + 'artifact or decision the automatic record could not know.',
       }],
     }, signal)
     return true
@@ -2027,6 +2292,29 @@ export const createSuperagentContribution = (
     },
     run: (args, call) => runWorkspaceTool(args, runOptionsOf(host, call), call.me, host.ctx),
   }
+  const ledger: Spec = {
+    name: LEDGER_TOOL_NAME,
+    description: LEDGER_DESCRIPTION,
+    parameters: LEDGER_PARAMETERS,
+    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+    timeoutMs: 30_000,
+    // The ledger appends to a file, so the conservative default applies.
+    isConcurrencySafe: () => false,
+    render: (typed) => {
+      if (Array.isArray(typed.entries)) {
+        const rows = typed.entries as { id: string; status: string; workspaceTitle: string; task: string }[]
+        if (rows.length === 0) return renderText('the dispatch ledger has no matching task')
+        return renderText(rows
+          .map(row => `${row.id}  ${row.status}  ${row.workspaceTitle}  ${row.task}`)
+          .join('\n'))
+      }
+      const task = typed.task as { id?: string; status?: string; workspaceTitle?: string } | undefined
+      return renderText(task?.id === undefined
+        ? 'ok'
+        : `${String(task.id)}  ${String(task.status)}  ${String(task.workspaceTitle)}`)
+    },
+    run: (args, call) => runLedgerTool(args, runOptionsOf(host, call), call.me, host.ctx),
+  }
   const session: Spec = {
     name: SESSION_TOOL_NAME,
     description: SESSION_DESCRIPTION,
@@ -2063,7 +2351,7 @@ export const createSuperagentContribution = (
     tools: (agent: Agent) => (isExecutorSession(agent, workerPreset)
       ? Object.freeze([])
       : isSuperAgentSession(agent, superHome)
-        ? Object.freeze([defineJiraTool(host, workspace), defineJiraTool(host, session)])
+        ? Object.freeze([defineJiraTool(host, workspace), defineJiraTool(host, session), defineJiraTool(host, ledger)])
         : Object.freeze([
           defineJiraTool(host, source),
           defineJiraTool(host, scan),
@@ -2095,6 +2383,18 @@ export const createSuperagentContribution = (
       // so the person's conversation is never held while that workspace works.
       const report = tasks.get(String(input.agent.id))
       if (report !== undefined) {
+        // The child's turn end is visible here even though its report becomes a new message in the
+        // super conversation: resolve the structured ledger now, then deliver the same outcome.
+        const text = lastAssistantText(input.agent)
+        try {
+          await resolveReportedTask(report, text, nowUtc(host.clock))
+        } catch (error: unknown) {
+          host.ctx.logger.warn(
+            'superagent: the dispatch ledger entry for %s could not be resolved: %s',
+            report.ledger?.task.id ?? report.workspace,
+            error instanceof Error ? error.message : String(error),
+          )
+        }
         await deliverTaskReport(host, report, input.agent, input.signal)
         return
       }
