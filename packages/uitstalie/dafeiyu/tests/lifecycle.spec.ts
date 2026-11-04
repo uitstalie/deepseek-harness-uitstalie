@@ -87,7 +87,7 @@ function surfaceContribution(scope?: 'root' | 'all'): CapabilityContribution {
 test('root scope registers tools and prompt sections on root agents only', async () => {
   const { ctx, harness } = await mount({}, surfaceContribution('root'))
   const root = await harness.create(SessionId('root'))
-  const child = await ctx.agents.create({ sessionId: SessionId('child'), parentAgent: root })
+  const child = await ctx.agents.create({ sessionId: SessionId('child'), meta: { parentSession: root.id, origin: 'subagent', delegationDepth: 1 } })
 
   expect(ctx.tools.get('memory_probe', root)).toBeDefined()
   const rootAssembly = await ctx.systemPrompt.assemble(assembleContextFor(root))
@@ -102,7 +102,7 @@ test('root scope registers tools and prompt sections on root agents only', async
 test('all scope registers tools and prompt sections on child agents too', async () => {
   const { ctx, harness } = await mount({}, surfaceContribution('all'))
   const root = await harness.create(SessionId('root'))
-  const child = await ctx.agents.create({ sessionId: SessionId('child'), parentAgent: root })
+  const child = await ctx.agents.create({ sessionId: SessionId('child'), meta: { parentSession: root.id, origin: 'subagent', delegationDepth: 1 } })
 
   expect(ctx.tools.get('memory_probe', child.agent)).toBeDefined()
   const childAssembly = await ctx.systemPrompt.assemble(assembleContextFor(child.agent))
@@ -147,7 +147,7 @@ test('root-scoped turns skip child agents while all-scoped turns reach them', as
   }))
   await settle()
   const root = await harness.create(SessionId('root'))
-  const child = await ctx.agents.create({ sessionId: SessionId('child'), parentAgent: root })
+  const child = await ctx.agents.create({ sessionId: SessionId('child'), meta: { parentSession: root.id, origin: 'subagent', delegationDepth: 1 } })
 
   emitTurnEnd(child.agent.session, 1, { kind: 'completed' })
   await until(() => allCalls.length === 1)

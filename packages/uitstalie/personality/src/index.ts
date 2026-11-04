@@ -416,7 +416,9 @@ async function createContribution(
     onTurnEnd: async (input) => {
       if (runtime.signal.aborted || input.signal.aborted) return
       const agents = ctx.get('agents')
-      if (agents !== undefined && !agents.roots().includes(input.agent)) return
+      const header = input.agent.session.header
+      if (agents !== undefined
+        && (header.origin === 'subagent' || header.parentSession !== undefined || (header.delegationDepth ?? 0) > 0)) return
       const correction = detectCorrection(input.session, input.turn, input.event.seq)
       if (correction === undefined) return
       await learnCorrection(ctx, settings, autoLearnUsage, input.session, input.agent, correction, input.signal, refresh)

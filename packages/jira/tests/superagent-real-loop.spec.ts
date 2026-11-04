@@ -190,7 +190,9 @@ describe('superagent over the real Session controller', () => {
     } as never)
     ctx.provide('remoteAccess', { allows: () => true } as never)
     ctx.provide('sessionQuery', {
-      listSessions: async () => ctx.agents.roots().map(agent => ({ header: agent.session.header })),
+      listSessions: async () => ctx.agents.list()
+        .filter(agent => agent.session.header.origin !== 'subagent' && agent.session.header.parentSession === undefined)
+        .map(agent => ({ header: agent.session.header })),
     } as never)
     // The roster only has to name the preset; the shipped composition is covered by the bundle
     // suite. What matters here is that a Session created with it is recognizably an executor.

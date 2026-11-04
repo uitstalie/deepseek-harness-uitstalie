@@ -150,7 +150,18 @@ describe('npm install layout verifier', () => {
 })
 
 describe('resolution work budget', () => {
-  it('accepts the measured dual-release graph', () => {
+  it.each([
+    [277, 2524, 699_148],
+    [316, 2780, 878_480],
+    [316, 2786, 880_376],
+    [317, 2786, 883_162],
+    [320, 2836, 907_520],
+  ])('accepts the measured dual-release graph with %i packages and %i edges', (packages, edges, units) => {
+    expect(assertResolutionWorkBudget({ dshPackagesPerVersion: packages, checkedDshEdges: edges }))
+      .toBe(units)
+  })
+
+  it('accepts the measured branch-composed graph', () => {
     // uitstalie-deepseek-flash, 2026/11/01, DH-510, 分支合成图实测 334 x 2928
     expect(assertResolutionWorkBudget({ dshPackagesPerVersion: 334, checkedDshEdges: 2928 }))
       .toBe(977_952)

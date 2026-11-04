@@ -378,6 +378,7 @@ export class JiraService extends Service implements JiraServiceApi {
   /**
    * Recent proposal comments, newest first.
    * @param limit - how many entries; clamped to 1..50.
+   * @param before - exclusive cursor: skip proposals at or newer than this UTC timestamp.
    * @returns the proposals with their issue key and active flag.
    */
   async superagentTriggers(limit: number = 10, before?: string): Promise<JiraResult<SuperagentTriggersView>> {
@@ -395,6 +396,7 @@ export class JiraService extends Service implements JiraServiceApi {
   /**
    * Recent ledger commits, newest first.
    * @param limit - how many entries; clamped to 1..50.
+   * @param before - only commits older than this timestamp.
    * @returns the commits as plain JSON, or the git failure.
    */
   async superagentHistory(limit: number = 10, before?: string): Promise<JiraResult<SuperagentHistoryView>> {

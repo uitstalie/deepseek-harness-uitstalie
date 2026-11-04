@@ -75,7 +75,7 @@ test('root agents get the three tools; child agents get none', async () => {
   const root = await createRoot(mounted)
   const child = await mounted.ctx.agents.create({
     sessionId: SessionId('memory-child'),
-    parentAgent: root,
+    meta: { parentSession: root.id, origin: 'subagent', delegationDepth: 1 },
   })
 
   const names = mounted.ctx.tools.schemas(root).map(schema => schema.name)

@@ -232,7 +232,7 @@ test('child agents inherit the prompt section and the learn tool', async () => {
   await seedGlobal(entries)
   const mounted = await mount()
   const root = await createRoot(mounted)
-  const child = await mounted.ctx.agents.create({ sessionId: SessionId('personality-child'), parentAgent: root })
+  const child = await mounted.ctx.agents.create({ sessionId: SessionId('personality-child'), meta: { parentSession: root.id, origin: 'subagent', delegationDepth: 1 } })
   await until(() => mounted.ctx.tools.get('personality_learn', child.agent) !== undefined)
 
   expect(await promptText(mounted.ctx, child.agent)).toBe(renderPersonalityPrompt(entries))

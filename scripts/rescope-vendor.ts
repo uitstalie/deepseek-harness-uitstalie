@@ -105,15 +105,10 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
   { file: 'packages/experimental/creation-recommendations/src/index.ts', upstream: ['cordis'] },
   { file: 'packages/experimental/creation-recommendations/tests/creation.spec.ts', upstream: ['cordis'] },
   { file: 'packages/experimental/creation-recommendations/tests/loader-composition.spec.ts', upstream: ['cordis'] },
-  // BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-508, 该规格枚举预设 id（含 cordis），裸名是产品数据而非包引用
-  { file: 'packages/uitstalie/agent-instructions-plus/tests/loader-composition.spec.ts', upstream: ['cordis'] },
-  // END uitstalie-deepseek-flash
   // Preset selection, reminder policy and UI copy use the same product id.
   { file: 'apps/cli/tests/optional-bundle-transitions.e2e.ts', upstream: ['cordis'] },
   { file: 'apps/web/tests/agent-preset-selection.e2e.ts', upstream: ['cordis'] },
   { file: 'apps/web/tests/developer-tools-settings.e2e.ts', upstream: ['cordis'] },
-  { file: 'docs/subsystems/schedule.md', upstream: ['cordis'] },
-  { file: 'docs/subsystems/schedule.zh.md', upstream: ['cordis'] },
   { file: 'docs/upgrade-guide/v0.2.0-rc.2/schedule-bundle-retired/guide.md', upstream: ['cordis'] },
   { file: 'docs/upgrade-guide/v0.2.0-rc.2/schedule-bundle-retired/guide.zh.md', upstream: ['cordis'] },
   { file: 'docs/upgrade-guide/v0.2.1-alpha.1/subagent-preset-composition/guide.md', upstream: ['cordis'] },
@@ -665,19 +660,24 @@ export function exactEditState(text: string, find: string, replace: string, expe
   return hits === expect && landed === 0 ? 'pending' : 'invalid'
 }
 
+/**
+ * List tracked paths that the rescope checks or rewrites.
+ * @param repoRoot - Git working directory.
+ * @param env - Git's environment; omitted, Git inherits this process's environment.
+ * @returns eligible repository-relative paths, including large tracked corpora.
+ */
+export function listRescopeFiles(repoRoot: string, env?: NodeJS.ProcessEnv): string[] {
+  return execFileSync('git', ['ls-files', '-z'], { cwd: repoRoot, env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+    .split('\0')
+    .filter(file => file !== '' && !isRescopeExcluded(file))
+}
+
 function main(): void {
   const args = process.argv.slice(2)
   const mode = args.includes('--apply') ? 'apply' : args.includes('--check') ? 'check' : 'dry'
   const reverse = args.includes('--reverse')
   const all = patterns(reverse)
-  const files = execFileSync('git', ['ls-files', '-z'], {
-    cwd: root,
-    encoding: 'utf8',
-    // uitstalie-deepseek-flash, 2026/11/01, DH-508, 大仓的文件清单超过 execFileSync 默认 1 MiB 缓冲
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .split('\0')
-    .filter(file => file !== '' && !isRescopeExcluded(file))
+  const files = listRescopeFiles(root)
 
   const counts = new Map<string, { files: number; lines: number }>()
   const failures: string[] = []

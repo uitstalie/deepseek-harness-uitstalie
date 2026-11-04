@@ -683,9 +683,13 @@ function isContributing(registration: Registration): boolean {
     && registration.contribution !== undefined
 }
 
-/** Whether a turn belongs to a root agent, using the registry's runtime ownership. */
+/** Whether a turn belongs to a root agent: registered, and neither delegated nor parented. */
 function isRootAgent(agents: AgentRegistry, agent: Agent): boolean {
-  return agents.roots().includes(agent)
+  const header = agent.session.header
+  return agents.get(agent.id) === agent
+    && header.origin !== 'subagent'
+    && header.parentSession === undefined
+    && (header.delegationDepth ?? 0) === 0
 }
 
 /** Whether one registration's turn hook should run for this agent scope. */
