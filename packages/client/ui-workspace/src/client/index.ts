@@ -48,6 +48,7 @@ import {
 import { createWorkspaceShortcutControls, installWorkspaceShortcuts } from './shortcuts.ts'
 import { UiWorkspaceService } from './navigation.ts'
 import { createWorkspaceViewStore } from './stores.ts'
+import { WorkspaceGroupRegistry } from './workspace-groups.ts'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
 import { derive } from './session-actions/derived.ts'
@@ -68,6 +69,7 @@ export type {
   WorkspacePickerInjected, WorkspacePickerProps,
 } from './contract/slots.ts'
 export type { WorkspaceKey } from './locales.ts'
+export type { WorkspaceGroupRegistry, WorkspaceGroupSpec } from './workspace-groups.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface GlobalStandardProps {
@@ -125,6 +127,8 @@ export function apply(ctx: Context): void {
   const uiWorkspace = new UiWorkspaceService(
     ctx, ctx.remote.directoryPicker, workspaces, sessions, viewInstance.actions, notify,
   )
+  // Special Workspaces (the super agent's home) register here and render in their own section.
+  const workspaceGroups = new WorkspaceGroupRegistry(ctx)
   ctx.slots.provideRoot({
     hooks: { workspaces: workspaces.list },
     keyedHooks: {
@@ -288,6 +292,10 @@ export function apply(ctx: Context): void {
         run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'delete') } }] : [],
   }), 'workspace: delete menu action')
   const browserInjected = (): WorkspaceBrowserInjected => ({
+    workspaceGroups: {
+      list: () => workspaceGroups.list(),
+      subscribe: listener => workspaceGroups.subscribe(listener),
+    },
     openWorkspaceMenu: (workspaceId, path, displayTitle, point, mode) => {
       const target = ctx.contextMenus.active.getSnapshot()
       if (mode === 'toggle' && target?.kind === 'workspace' && target.value.workspaceId === workspaceId) ctx.contextMenus.close()

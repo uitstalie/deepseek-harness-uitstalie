@@ -16,6 +16,8 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: pulls the sidebar SlotMap merge (the 'sidebar.footer.action' entry).
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+// Type-only: pulls the workspace-group registry merge ('ctx.workspaceGroups').
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -144,6 +146,7 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       locale: NS,
       inject: (): SuperagentSetupInjected => ({
         t,
+        refresh: () => { void refreshSuperGroup() },
         pickDirectory: async () => {
           const workspace = (scoped as unknown as { get?: (name: string) => unknown }).get?.('uiWorkspace') as
             | { pickDirectory?: () => Promise<string | null> }
@@ -151,11 +154,50 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
           return workspace?.pickDirectory === undefined ? null : workspace.pickDirectory()
         },
         setup: async (path: string) => {
-          const surface = scoped.remote.jira as unknown as { superagentSetup(path: string): Promise<unknown> }
-          await surface.superagentSetup(path)
+          const surface = scoped.remote.jira as unknown as {
+            superagentSetup(path: string): Promise<
+              | { ok: true; value: unknown }
+              | { ok: false; error: { message: string } }
+            >
+          }
+          const result = await surface.superagentSetup(path)
+          if (!result.ok) throw new Error(result.error.message)
         },
       }),
     }, SuperagentSetupAction))
+    // The super agent's workspace renders in its own sidebar section (DH-718). The group is
+    // registered from the choice the host persists, and refreshed after the setup entry creates it.
+    let disposeSuperGroup: (() => void) | undefined
+    const refreshSuperGroup = async (): Promise<void> => {
+      disposeSuperGroup?.()
+      disposeSuperGroup = undefined
+      const surface = scoped.remote.jira as unknown as {
+        superagentState?: () => Promise<
+          | { ok: true; value: { configured: boolean; workspaceId?: string } }
+          | { ok: false }
+        >
+      }
+      if (surface.superagentState === undefined) return
+      try {
+        const result = await surface.superagentState()
+        if (!result.ok) return
+        const state = result.value
+        if (!state.configured || state.workspaceId === undefined) return
+        const registry = (scoped as unknown as { get?: (name: string) => unknown }).get?.('workspaceGroups') as
+          | { register?: (group: { id: string; label: () => string; workspaceId: string }) => () => void }
+          | undefined
+        if (registry?.register === undefined) return
+        disposeSuperGroup = registry.register({
+          id: 'superagent',
+          label: () => t('superagentWorkspace'),
+          workspaceId: state.workspaceId,
+        })
+      } catch {
+        // A Remote tier without the setup surface (a test composition) simply keeps the flat list.
+      }
+    }
+    scoped.effect(() => () => { disposeSuperGroup?.() }, 'ui-jira: super workspace group')
+    void refreshSuperGroup()
   })
   return () => {
     // The mount disposer is asynchronous; the fiber's cleanup callback is synchronous.

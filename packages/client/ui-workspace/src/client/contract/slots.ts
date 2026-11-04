@@ -290,6 +290,16 @@ export type WorkspaceBrowserInjected = {
   /** Publish directory interaction occupancy for command availability. */
   setDirectoryBusy: (busy: boolean) => void
   /**
+   * Special Workspaces that render in their own labelled section above the ordinary list.
+   * Read through a subscription rather than a frozen value: another plugin registers the group
+   * after this entry mounted (and may replace it when the person changes the location).
+   * Optional so a composition (and a test fixture) without the browser can still render the list.
+   */
+  workspaceGroups?: {
+    readonly list: () => readonly import('../workspace-groups.ts').WorkspaceGroupSpec[]
+    readonly subscribe: (listener: () => void) => () => void
+  }
+  /**
    * Create a fresh Session, or preserve a reusable blank with explicit draft options.
    * Without an explicit Workspace, inherit the current Session Workspace,
    * then the recent Workspace, or clear into the New Session view.

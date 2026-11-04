@@ -647,3 +647,14 @@
     transition: none;
   }
 }
+
+/* Section label for a special Workspace group (the super agent's home) in the ordinary list. */
+.specialHeading {
+  margin: 6px 8px 2px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+}

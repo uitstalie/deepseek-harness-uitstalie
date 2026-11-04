@@ -14,7 +14,7 @@
  * are slot entries with their own behavior, so this component threads no
  * action callbacks and hosts no action surface.
  */
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
 import { WorkspaceDialogs } from './WorkspaceDialogs.tsx'
 import {
@@ -293,6 +293,8 @@ type SessionTreeProps = Pick<
   revealSessionId?: SessionId | undefined
   /** Acknowledge that the chosen Session row has been revealed. */
   onSessionRevealed: (sessionId: SessionId) => void
+  /** Special Workspaces that render in their own labelled section above the ordinary list. */
+  workspaceGroups: readonly import('../workspace-groups.ts').WorkspaceGroupSpec[]
 }
 
 /** The list-empty placeholder — a glyph over the text; the archived-only view names its filter and offers the way back. */
@@ -322,6 +324,7 @@ function SessionTree({
   nestWorkspaces, groupExpansion, setGroupExpanded,
   setSessionOrder, home, t,
   revealSessionId, onSessionRevealed, shortcuts,
+  workspaceGroups,
 }: SessionTreeProps) {
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
   const statuses = useSessionStatus(s => s)
@@ -659,7 +662,31 @@ function SessionTree({
     )
   }
 
-  const groupRows = rootGroups.map(group => renderGroup(group, 0))
+  const specialIds = new Set(workspaceGroups.map(group => group.workspaceId))
+  const specialRoots = rootGroups.filter(group => group.workspaceId !== undefined && specialIds.has(group.workspaceId))
+  const ordinaryRoots = rootGroups.filter(group => group.workspaceId === undefined || !specialIds.has(group.workspaceId))
+  const specialSections = workspaceGroups.flatMap((spec) => {
+    const group = specialRoots.find(candidate => candidate.workspaceId === spec.workspaceId)
+    return group === undefined ? [] : [{ spec, group }]
+  })
+  const rows: ReactNode[] = []
+  for (const { spec, group } of specialSections) {
+    rowKeys.push(`heading:${spec.id}`)
+    rows.push((
+      <div
+        key={`heading:${spec.id}`}
+        className={css.specialHeading}
+        data-row-key={`heading:${spec.id}`}
+        role="heading"
+        aria-level={3}
+      >
+        {spec.label()}
+      </div>
+    ))
+    rows.push(renderGroup(group, 0))
+  }
+  for (const group of ordinaryRoots) rows.push(renderGroup(group, 0))
+  const groupRows = rows
   return (
     <HoverCardGroup className={clsx(css.treeBody, css.wide)}>
       {workspaceDropAtListStart && <span className={css.listTopDropIndicator} aria-hidden="true" />}
@@ -896,6 +923,10 @@ function SearchResults({
  * @param props - composed slot props (shell owner share + store + injected actions).
  * @returns the region element tree.
  */
+/** Stable empty source for a composition without the workspace-group registry (and its tests). */
+const NO_WORKSPACE_GROUPS = Object.freeze([]) as readonly import('../workspace-groups.ts').WorkspaceGroupSpec[]
+const NO_WORKSPACE_GROUP_SUBSCRIPTION = (): (() => void) => () => {}
+
 export function WorkspaceBrowser({
   wide,
   usePanelInfo,
@@ -928,9 +959,14 @@ export function WorkspaceBrowser({
   requestAddWorkspace,
   closeAddWorkspace,
   setDirectoryBusy,
+  workspaceGroups,
   renderSlot, openSessionMenu, openWorkspaceMenu, useContextMenuTarget, useContextMenu,
   t,
 }: WorkspaceBrowserProps) {
+  const specialGroups = useSyncExternalStore(
+    workspaceGroups?.subscribe ?? NO_WORKSPACE_GROUP_SUBSCRIPTION,
+    workspaceGroups?.list ?? (() => NO_WORKSPACE_GROUPS),
+  )
   const home = useHostInfo(info => info.home)
   const shortcuts = useShortcuts(rows => rows)
   const searchShortcut = shortcuts.find(row => row.id === 'session.search')
@@ -1432,6 +1468,7 @@ export function WorkspaceBrowser({
                 onSessionRevealed={acknowledgeSessionReveal}
                 home={home}
                 t={t}
+                workspaceGroups={specialGroups}
               />
             ))}
       </div>

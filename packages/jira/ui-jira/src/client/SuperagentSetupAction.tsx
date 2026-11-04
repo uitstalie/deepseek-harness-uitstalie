@@ -22,6 +22,8 @@ export interface SuperagentSetupInjected {
   readonly pickDirectory: () => Promise<string | null>
   /** Ask the host to create and register the super workspace at one directory. */
   readonly setup: (path: string) => Promise<void>
+  /** Re-read the persisted choice so the sidebar section reflects a fresh setup. */
+  readonly refresh?: () => void
 }
 
 /** The button's props: the injected face plus the sidebar's width flag. */
@@ -33,7 +35,7 @@ export type SuperagentSetupActionProps =
  * @param props - injected face and width flag.
  * @returns the footer action, or null while the injected face is incomplete.
  */
-export function SuperagentSetupAction({ t, pickDirectory, setup, wide }: SuperagentSetupActionProps) {
+export function SuperagentSetupAction({ t, pickDirectory, setup, refresh, wide }: SuperagentSetupActionProps) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | undefined>(undefined)
   if (t === undefined || pickDirectory === undefined || setup === undefined) return null
@@ -44,6 +46,7 @@ export function SuperagentSetupAction({ t, pickDirectory, setup, wide }: Superag
       const picked = await pickDirectory()
       if (picked === null) return
       await setup(picked)
+      refresh?.()
       setNote(t('superagentSetupDone'))
     } catch (error: unknown) {
       setNote(error instanceof Error ? error.message : String(error))
