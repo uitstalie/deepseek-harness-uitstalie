@@ -146,7 +146,7 @@ export interface SessionRecordFacts {
 
 import type { SuperagentConfirmView, SuperagentHistoryView, SuperagentStatusView, SuperagentTriggersView } from './superagent-status.ts'
 
-export type { SuperagentConfirmView, SuperagentHistoryEntry, SuperagentHistoryView, SuperagentStatusItem, SuperagentStatusView, SuperagentTrigger, SuperagentTriggersView } from './superagent-status.ts'
+export type { SuperagentConfirmView, SuperagentHistoryEntry, SuperagentHistoryView, SuperagentSetupView, SuperagentStatusItem, SuperagentStatusView, SuperagentTrigger, SuperagentTriggersView } from './superagent-status.ts'
 
 /** One knowledge entry with its file path and warnings. */
 export interface KnowledgeDetail {

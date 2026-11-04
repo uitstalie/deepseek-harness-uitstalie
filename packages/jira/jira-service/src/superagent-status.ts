@@ -37,6 +37,16 @@ export interface SuperagentConfirmView {
   readonly alreadyApproved: boolean
 }
 
+/** Where the super agent lives, as the profile and the workspace registry currently answer. */
+export interface SuperagentSetupView {
+  /** Whether a person has chosen a directory; false leaves the super agent off. */
+  readonly configured: boolean
+  /** The chosen directory, when one is configured. */
+  readonly home?: string
+  /** The workspace that owns the directory, when it is registered. */
+  readonly workspaceId?: string
+}
+
 /** One issue row in the status view. */
 export interface SuperagentStatusItem {
   readonly key: string

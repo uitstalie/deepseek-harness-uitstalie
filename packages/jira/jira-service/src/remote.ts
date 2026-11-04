@@ -18,11 +18,22 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { mkdir } from 'node:fs/promises'
 import { entities, errors } from '@deepseek-ai/dsh-jira-core'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { ErrorCode, JiraError } from '@deepseek-ai/dsh-jira-core'
 import type { RemoteErrorCode } from '@deepseek-ai/dsh-typert-protocol'
 import { boardViewOf, detailViewOf, kbSearchViewOf, statusViewOf } from './wire.ts'
+import {
+  type ConfigEditorLike,
+  type SetupRegistryLike,
+  type SetupWorkspaceLike,
+  dshHomeOf,
+  readSuperagentHome,
+  sameSetupPath,
+  superagentHomeProblem,
+  writeSuperagentHome,
+} from './superagent-setup.ts'
 import type {
   ChangeNotice,
   JiraBoardView,
@@ -35,6 +46,7 @@ import type {
   ListQuery,
   SuperagentConfirmView,
   SuperagentHistoryView,
+  SuperagentSetupView,
   SuperagentTriggersView,
   SuperagentStatusView,
 } from './types.ts'
@@ -181,6 +193,69 @@ export default class JiraRemote extends TypertRemoteService {
   @Remote
   async superagentHistory(limit?: number, before?: string): Promise<SuperagentHistoryView> {
     return unwrap(await this.ctx.jira.superagentHistory(limit, before))
+  }
+
+  /**
+   * Where the super agent lives, as the profile currently records it.
+   *
+   * The row's config is the single source (DH-718): this read never guesses a directory, and it
+   * answers `configured: false` when a person has not chosen one yet.
+   * @returns the configured home and the workspace that owns it, when both exist.
+   */
+  @Remote
+  superagentState(): SuperagentSetupView {
+    const editor = this.ctx.get('configEditor') as ConfigEditorLike | undefined
+    const home = readSuperagentHome(editor)
+    const registry = this.ctx.get('workspaceRegistry') as SetupRegistryLike | undefined
+    const workspace = home === undefined || registry === undefined
+      ? undefined
+      : registry.list().find(row => sameSetupPath(row.path, home))
+    return {
+      configured: home !== undefined,
+      ...(home === undefined ? {} : { home }),
+      ...(workspace === undefined ? {} : { workspaceId: workspace.id }),
+    }
+  }
+
+  /**
+   * Choose the super workspace: create its directory, register and pin it, then persist the choice.
+   *
+   * The persisted config is what makes a session opened there the super agent; the workspace is
+   * created first so the sidebar shows the result of the click even while the row reloads.
+   * @param path - the directory the person picked.
+   * @returns the resulting state.
+   * @throws {RemoteError} `jira/invalid-input` for a path that breaks the placement rules,
+   * `jira/write-failed` when this host cannot persist the choice.
+   */
+  @Remote
+  async superagentSetup(path: string): Promise<SuperagentSetupView> {
+    const home = path.trim()
+    const problem = superagentHomeProblem(home, dshHomeOf(process.env))
+    if (problem !== undefined) throw new RemoteError('jira/invalid-input', problem, { jiraCode: 'INVALID_INPUT' })
+    const editor = this.ctx.get('configEditor') as ConfigEditorLike | undefined
+    if (editor === undefined) {
+      throw new RemoteError('jira/write-failed', 'this host cannot persist the super agent location', { jiraCode: 'WRITE_FAILED' })
+    }
+    await mkdir(home, { recursive: true })
+    const registry = this.ctx.get('workspaceRegistry') as SetupRegistryLike | undefined
+    let workspace: SetupWorkspaceLike | undefined
+    if (registry !== undefined) {
+      workspace = await registry.create(home, 'Super agent')
+      const first = registry.list().find(row => row.id !== workspace?.id)
+      if (first !== undefined && registry.insertBefore !== undefined) {
+        await registry.insertBefore(workspace.id, first.id)
+      }
+    }
+    try {
+      await writeSuperagentHome(editor, home)
+    } catch (error: unknown) {
+      throw new RemoteError('jira/write-failed', String(error), { jiraCode: 'WRITE_FAILED' })
+    }
+    return {
+      configured: true,
+      home,
+      ...(workspace === undefined ? {} : { workspaceId: workspace.id }),
+    }
   }
 
   /**

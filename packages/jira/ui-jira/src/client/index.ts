@@ -14,6 +14,8 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // Type-only: pulls the shell's SlotMap merge (the 'settings.section' entry).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+// Type-only: pulls the sidebar SlotMap merge (the 'sidebar.footer.action' entry).
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -24,6 +26,8 @@ import jiraRemote from '@deepseek-ai/dsh-jira-service/remote'
 import { JiraSection } from './JiraSection.tsx'
 import { SuperagentSection } from './SuperagentSection.tsx'
 import type { JiraSectionInjected } from './JiraSection.tsx'
+import { SuperagentSetupAction } from './SuperagentSetupAction.tsx'
+import type { SuperagentSetupInjected } from './SuperagentSetupAction.tsx'
 import { JiraLedgerSettingsController, type JiraLedgerSettings } from './ledger-settings.ts'
 import { en, zh, type JiraKey } from './locales.ts'
 import { JiraStore } from './store.ts'
@@ -130,6 +134,28 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
         t,
       }),
     }, SuperagentSection))
+    // The sidebar's build entry (DH-718): the person picks the directory, and the host validates,
+    // creates, registers, pins and persists it. `uiWorkspace` supplies the OS chooser; a
+    // composition without it renders nothing rather than a dead button.
+    scoped.slots.inject('sidebar.footer.action', () => scoped.slots.register({
+      name: 'sidebar.footer.action',
+      id: 'jira-superagent-setup',
+      order: 50,
+      locale: NS,
+      inject: (): SuperagentSetupInjected => ({
+        t,
+        pickDirectory: async () => {
+          const workspace = (scoped as unknown as { get?: (name: string) => unknown }).get?.('uiWorkspace') as
+            | { pickDirectory?: () => Promise<string | null> }
+            | undefined
+          return workspace?.pickDirectory === undefined ? null : workspace.pickDirectory()
+        },
+        setup: async (path: string) => {
+          const surface = scoped.remote.jira as unknown as { superagentSetup(path: string): Promise<unknown> }
+          await surface.superagentSetup(path)
+        },
+      }),
+    }, SuperagentSetupAction))
   })
   return () => {
     // The mount disposer is asynchronous; the fiber's cleanup callback is synchronous.
