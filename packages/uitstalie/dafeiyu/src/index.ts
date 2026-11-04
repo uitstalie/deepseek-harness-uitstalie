@@ -454,10 +454,66 @@ export class Dafeiyu extends Service {
 
   /** Revoke the tools and prompt sections this registration added to agents. */
   private disposeRegistrations(registration: Registration): void {
-    for (const disposers of registration.registrations.values()) {
-      for (const disposer of disposers.toReversed()) this.runDisposer(registration, disposer)
+    for (const agent of [...registration.registrations.keys()]) {
+      this.disposeAgentRegistrations(registration, agent)
     }
-    registration.registrations.clear()
+  }
+
+  /**
+   * Revoke the registrations one agent received, leaving every other agent untouched.
+   *
+   * A config reload keeps a running agent's registrations until its turn settles: that step already
+   * resolved its tool admission against these exact definitions, and replacing them under it makes
+   * the next call fail as `UNKNOWN_TOOL` (dafeiyu re-wiring was doing exactly that mid-turn).
+   * @param registration - the capability being rebuilt or withdrawn.
+   * @param agent - the agent whose registrations are released.
+   */
+  private disposeAgentRegistrations(registration: Registration, agent: Agent): void {
+    const disposers = registration.registrations.get(agent)
+    if (disposers === undefined) return
+    registration.registrations.delete(agent)
+    for (const disposer of disposers.toReversed()) this.runDisposer(registration, disposer)
+  }
+
+  /**
+   * Whether the agent is mid-turn, so its current step's tool admission must stay valid.
+   * @param agent - the live agent.
+   * @returns whether the host reports it running.
+   */
+  private static busy(agent: Agent): boolean {
+    return (agent as { readonly status?: string }).status === 'running'
+  }
+
+  /**
+   * Replace one running agent's registrations once its turn settles.
+   *
+   * Deferring is what keeps a reload from invalidating a call that is already in flight; the
+   * deferred pass disposes the old definitions first, so the new ones cannot collide by name.
+   * @param registration - the capability whose newest contribution should be wired.
+   * @param agent - the busy agent to re-wire later.
+   */
+  private wireWhenIdle(registration: Registration, agent: Agent): void {
+    const whenIdle = (agent as { whenIdle?: () => Promise<void> }).whenIdle
+    if (typeof whenIdle !== 'function') {
+      // Without an idle signal the safe half of the trade is to leave the step's admission alone.
+      return
+    }
+    void whenIdle.call(agent).then(() => {
+      if (this.disposed || registration.retired) return
+      const agents = this.ctx.get('agents')
+      if (agents?.get(agent.session.id) !== agent) return
+      this.disposeAgentRegistrations(registration, agent)
+      if (registration.state !== 'active') return
+      const contribution = registration.contribution
+      if (contribution === undefined) return
+      this.wire(registration, agent, contribution)
+    }).catch((error: unknown) => {
+      this.ctx.logger.warn(
+        'dafeiyu: re-wiring capability "%s" after idle failed: %s',
+        registration.provider.id,
+        errorSummary(error),
+      )
+    })
   }
 
   /** Run one registration disposer without letting it block the remaining capabilities. */
@@ -565,12 +621,18 @@ export class Dafeiyu extends Service {
     await this.waitForAdmitted(registration)
     this.disposeContribution(registration, registration.contribution)
     registration.contribution = undefined
-    this.disposeRegistrations(registration)
     const enabled = this.gateFor(registration.provider)
     registration.enabled = enabled
     if (!enabled) {
+      this.disposeRegistrations(registration)
       registration.state = 'disabled'
       return
+    }
+    // A busy agent keeps the definitions its running step admitted; `reloadOnce` replaces them
+    // once that turn settles.
+    for (const agent of [...registration.registrations.keys()]) {
+      if (Dafeiyu.busy(agent)) continue
+      this.disposeAgentRegistrations(registration, agent)
     }
     this.startActivation(registration)
     await registration.ready
@@ -608,6 +670,11 @@ export class Dafeiyu extends Service {
         for (const agent of wired) {
           // An agent disposed during the rebuild must not receive the new contribution.
           if (agents?.get(agent.session.id) !== agent) continue
+          if (Dafeiyu.busy(agent)) {
+            this.wireWhenIdle(registration, agent)
+            continue
+          }
+          this.disposeAgentRegistrations(registration, agent)
           this.wire(registration, agent, contribution)
         }
       }))

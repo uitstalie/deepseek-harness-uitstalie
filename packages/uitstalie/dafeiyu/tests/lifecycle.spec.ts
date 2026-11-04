@@ -221,6 +221,54 @@ test('a profile config reload disposes and recreates every capability and re-wir
   expect(ctx.dafeiyu.status()).toContainEqual(expect.objectContaining({ id: 'memory', state: 'active' }))
 })
 
+test('a reload during a running turn keeps the step\'s tools and re-wires once it goes idle', async () => {
+  let created = 0
+  const ctx = new Context()
+  contexts.push(ctx)
+  await mountAgentLoopTestDependencies(ctx)
+  await ctx.plugin(Dafeiyu, {})
+  const harness = await mountAgentLoopTestHarness(ctx)
+  ctx.dafeiyu.register({
+    id: 'memory',
+    contractVersion: 1,
+    config: {},
+    create: () => {
+      created += 1
+      return surfaceContribution()
+    },
+  })
+  await settle()
+  const root = await harness.create(SessionId('busy-root'))
+  expect(created).toBe(1)
+  expect(ctx.tools.get('memory_probe', root)).toBeDefined()
+
+  // The Agent is mid-turn: its model step already admitted these exact definitions.
+  const idle = Promise.withResolvers<undefined>()
+  Object.defineProperty(root, 'status', { value: 'running', configurable: true })
+  Object.defineProperty(root, 'whenIdle', { value: () => idle.promise, configurable: true })
+  const step = await ctx.tools.resolve({
+    agent: root,
+    modelSelection: { provider: 'probe', model: 'probe' },
+    signal: new AbortController().signal,
+  })
+
+  try {
+    ctx.emit('app-boot/config-reload')
+    await until(() => created === 2)
+    // The running step keeps the old registration, so its next call is still executable — this is
+    // the regression: replacing the definitions mid-step made every call `UNKNOWN_TOOL`.
+    expect(step.view(root).get('memory_probe')).toBeDefined()
+    expect(ctx.tools.get('memory_probe', root)).toBeDefined()
+
+    // ...and the reload's own definitions replace them only after the turn settles.
+    idle.resolve(undefined)
+    await until(() => ctx.tools.get('memory_probe', root) !== undefined)
+    expect(ctx.dafeiyu.status()).toContainEqual(expect.objectContaining({ id: 'memory', state: 'active' }))
+  } finally {
+    step.dispose()
+  }
+})
+
 test('disposing the service revokes agent-level contributions', async () => {
   const { ctx, harness, serviceFiber } = await mount({}, surfaceContribution())
   const root = await harness.create(SessionId('root'))
