@@ -201,7 +201,10 @@ export function apply(ctx: Context, config: Config): void {
     contractVersion: JIRA_CONTRACT_VERSION,
     label: SUPERAGENT_CAPABILITY_LABEL,
     description: SUPERAGENT_CAPABILITY_DESCRIPTION,
-    enabledByDefault: false,
+    // A configured, safe super home is the person's opt-in: without this the row would register
+    // the workspace and still leave the dispatcher invisible, which reads as a broken super agent.
+    // The organizer can still switch it off explicitly.
+    enabledByDefault: homeProblem === undefined,
     settings: { sectionId: SUPERAGENT_SETTINGS_SECTION, order: SUPERAGENT_SETTINGS_ORDER },
     config: Object.freeze({}),
     create: (_runtime: CapabilityRuntime): CapabilityContribution =>

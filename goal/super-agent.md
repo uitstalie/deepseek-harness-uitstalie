@@ -389,6 +389,8 @@ pass 扫描 → 候选（只读，不动账本）
 
 **仍未做（有意后置）**：vendor 原型 `src/core`。多 Source 不做（用户裁定只做 GitHub，决策 207）；无会话 daemon 已落地但默认关闭（DH-714）；这些在闭环价值被验证后再开；不阻塞阶段一验收。
 
+**能力开关（2026/11/04 修正）**：配置了合法 `superagent_home` 时，`superagent` 能力默认开启；未配置或路径不安全时默认关闭。之前它即使注册了 workspace 也保持 `enabledByDefault: false`，本地使用时表现为“没有 superagent 工具、只会反复推理”，这是本轮修掉的根因。dafeiyu 仍可显式关闭，不影响其他能力。
+
 **对 dafeiyu 的结论**：super agent 适合拆成"能力列表里的一行 + 自己的 host row"，但不适合把整台异步机器塞进 capability contribution。第一版把它收在 jira-agent 的同一 row 里，用独立 capability id 门控，是 B 的最小形态；若后续要独立 host row，`superagent` 这个 id/工具面可以原样迁出。
 
 ## 10. 阶段二：超级 workspace + 派遣（2026/11/04，DH-716）
