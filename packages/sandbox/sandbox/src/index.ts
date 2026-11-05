@@ -19,7 +19,7 @@ export {
   validateEscalationArgs,
 } from './escalation.ts'
 export type { EscalationApproval, EscalationApprover, EscalationOutcome, EscalationRequest } from './escalation.ts'
-export { canonicalPath, workspaceWritableRoots, writableRoots, SandboxInvalidRootError } from './roots.ts'
+export { canonicalPath, fsWritableRoots, workspaceWritableRoots, writableRoots, SandboxInvalidRootError } from './roots.ts'
 
 /**
  * File-effect policy for confined processes. `read-only` permits only required
@@ -49,6 +49,20 @@ export interface SandboxExecutionPolicy {
    * These grant nothing under `read-only` or `danger-full-access`.
    */
   additionalWritableRoots?: readonly string[]
+  /**
+   * Extra physical absolute directories only the in-process filesystem fence
+   * (`@deepseek-ai/dsh-fs-sandbox`) may write under.
+   *
+   * This is the narrow grant for a capability that must hand files to a
+   * directory without widening what confined processes (shell, terminal, PTC)
+   * may write: those backends ignore this field, so a host whose confinement
+   * cannot express extra roots (Windows ACL) keeps working. The fence skips
+   * entries that are missing, are not directories, or are symlinked; unlike
+   * {@link additionalWritableRoots}, an unusable entry denies only itself
+   * instead of failing the whole policy. Grants nothing under `read-only` or
+   * `danger-full-access`.
+   */
+  fsAdditionalWritableRoots?: readonly string[]
   /**
    * Opaque identity of the calling session (the branded `dsh-session`
    * SessionId). Backends key per-session state off it (e.g. windows-acl gives

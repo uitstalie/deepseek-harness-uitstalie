@@ -20,7 +20,8 @@
  * Per-call policy: `read-only` denies every mutation; `workspace-write` allows
  * a mutation only when the target canonicalizes under the policy's workspace
  * root, an explicit additional writable root, or a platform temp area from the
- * shared `writableRoots` policy; `danger-full-access` delegates unfenced. A
+ * shared `fsWritableRoots` policy (the workspace, explicit extras, and the filesystem-only
+ * grants); `danger-full-access` delegates unfenced. A
  * denial throws the structured `FS_SANDBOX_DENIED`.
  *
  * @module @deepseek-ai/dsh-fs-sandbox
@@ -31,7 +32,7 @@ import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import type { Config as LocalConfig } from '@deepseek-ai/dsh-fs-local'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsDeleteOutcome, FsMoveOutcome, FsEditOutcome, FsEditRequest, FsRemoveOptions, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
-import { writableRoots } from '@deepseek-ai/dsh-sandbox'
+import { fsWritableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { isPathUnder } from './containment.ts'
@@ -195,7 +196,7 @@ export class SandboxedFileSystem extends LocalFileSystem {
     // mutation delegates with THIS fresh target — never the stale one.
     const fresh = await this.resolve(target.displayPath)
     let contained = false
-    for (const root of writableRoots(policy)) {
+    for (const root of fsWritableRoots(policy)) {
       if (await isPathUnder(fresh.targetKey, root)) {
         contained = true
         break

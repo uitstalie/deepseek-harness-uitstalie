@@ -204,6 +204,7 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   dafeiyuRemote: 'branch-owned capability-status Remote — goal/dafeiyu.md owns the status contract',
   dshStore: 'branch-owned .dsh store service — packages/uitstalie/tool-dsh-store/README.md owns the store API',
   jira: 'branch-owned ledger service — packages/jira/jira-service/README.md owns the service API',
+  workspaceGroups: 'client-side workspace section grouping registry — packages/client/ui-workspace/README.md owns the API',
   jiraRemote: 'branch-owned read-only ledger Remote — packages/jira/jira-service/README.md owns the API (the projection cannot walk it because src/index.ts does not re-export the module)',
   // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-313, personality 与 systemEnvironment 服务按分支文档归属登记豁免
   personalityProposals: 'branch-owned identity-proposal Remote — packages/uitstalie/personality/README.md owns the API',
@@ -1026,6 +1027,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   ConnectionIndexRequest: 'frontend authentication request is owned by packages/client/connection/src/rpc.ts',
   ConnectionIndexResponse: 'frontend authentication response is owned by packages/client/connection/src/rpc.ts',
   Profile: 'resolved profile layers are owned by packages/boot/app-boot/README.md',
+  FsWritableRootsProvider: 'the fs-only writable-roots provider contract is owned by packages/sandbox/sandbox-policy/README.md',
   PatchOptions: 'Include patch entries are owned by vendor/include (vendored upstream)',
   McpResourceProvider: 'scoped resource provider is owned by packages/mcp/mcp-resources/README.md',
   'z.ZodType': 'Zod response validation API is owned by https://zod.dev/packages/zod',

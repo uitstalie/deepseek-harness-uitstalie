@@ -9,7 +9,7 @@ import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { canonicalPath, workspaceWritableRoots, writableRoots } from '@deepseek-ai/dsh-sandbox'
+import { canonicalPath, fsWritableRoots, workspaceWritableRoots, writableRoots } from '@deepseek-ai/dsh-sandbox'
 
 /** Every temp root created by this file, removed after each test. */
 const roots: string[] = []
@@ -26,6 +26,26 @@ describe('canonicalPath', () => {
 
   it('returns the spelling as-is when the path cannot be resolved (conservative — matches nothing until it exists)', () => {
     expect(canonicalPath('/does/not/exist/anywhere-xyz')).toBe('/does/not/exist/anywhere-xyz')
+  })
+})
+
+describe('fsWritableRoots', () => {
+  it('adds existing physical fs-only roots and skips missing, non-directory and symlinked ones', () => {
+    const ws = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-ws-')))
+    const extra = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-extra-')))
+    const missing = join(tmpdir(), 'dsh-fs-root-missing-xyz')
+    const file = join(ws, 'file.txt')
+    writeFileSync(file, 'file')
+    roots.push(ws, extra)
+    const grants = fsWritableRoots({
+      mode: 'workspace-write',
+      workspaceRoot: ws,
+      fsAdditionalWritableRoots: [extra, extra, missing, file],
+    })
+    expect(grants).toContain(realpathSync.native(extra))
+    expect(grants).not.toContain(missing)
+    expect(grants).not.toContain(realpathSync.native(file))
+    expect(fsWritableRoots({ mode: 'read-only', workspaceRoot: ws, fsAdditionalWritableRoots: [extra] })).toEqual([])
   })
 })
 

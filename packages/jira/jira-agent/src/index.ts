@@ -103,6 +103,12 @@ export type Config = Readonly<{
    * deployment's default composition (DH-719).
    */
   superagent_agent_preset?: string
+  /**
+   * Whether the super agent may hand files to every registered workspace through the in-process
+   * filesystem fence (default: true). Only the super agent's own sessions receive the grant, and
+   * shell/terminal confinement is unchanged; set false to keep the stricter single-workspace fence.
+   */
+  superagent_write_registered_workspaces?: boolean
 }>
 
 /** Schemastery schema for the row configuration. */
@@ -115,6 +121,7 @@ export const Config: z<Config> = z.object({
   superagent_home: z.string(),
   superagent_permission_preset: z.string(),
   superagent_agent_preset: z.string(),
+  superagent_write_registered_workspaces: z.boolean(),
 })
 
 /**
@@ -220,6 +227,7 @@ export function apply(ctx: Context, config: Config): void {
         homeProblem === undefined ? superHome : undefined,
         config.superagent_permission_preset ?? 'workspace-write',
         config.superagent_agent_preset,
+        config.superagent_write_registered_workspaces !== false,
       ),
   })
   ctx.effect(() => superagent, 'superagent.register()')
@@ -345,6 +353,9 @@ export {
   LEDGER_DESCRIPTION,
   LEDGER_PARAMETERS,
   LEDGER_TOOL_NAME,
+  DELIVER_DESCRIPTION,
+  DELIVER_PARAMETERS,
+  DELIVER_TOOL_NAME,
   MODELS_DESCRIPTION,
   MODELS_PARAMETERS,
   MODELS_TOOL_NAME,
@@ -364,6 +375,8 @@ export {
   createSuperagentContribution,
   daemonIdentityOf,
   deliverTaskReport,
+  runDeliverTool,
+  superAgentFsRoots,
   dispatchInstruction,
   dispatchRecordOf,
   enforceSuperAgentPermission,

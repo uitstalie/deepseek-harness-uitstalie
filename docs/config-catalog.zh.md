@@ -2000,6 +2000,12 @@ export type Config = Readonly<{
    * deployment's default composition (DH-719).
    */
   superagent_agent_preset?: string
+  /**
+   * Whether the super agent may hand files to every registered workspace through the in-process
+   * filesystem fence (default: true). Only the super agent's own sessions receive the grant, and
+   * shell/terminal confinement is unchanged; set false to keep the stricter single-workspace fence.
+   */
+  superagent_write_registered_workspaces?: boolean
 }>
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->

@@ -15,7 +15,7 @@
 
 import { realpathSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { resolve } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import type { SandboxExecutionPolicy } from './index.ts'
 
@@ -97,4 +97,42 @@ export function workspaceWritableRoots(policy: SandboxExecutionPolicy): string[]
 export function writableRoots(policy: SandboxExecutionPolicy): string[] {
   if (policy.mode !== 'workspace-write') return []
   return [...new Set([...workspaceWritableRoots(policy), canonicalPath('/tmp'), canonicalPath(tmpdir())])]
+}
+
+/**
+ * Validate one filesystem-fence-only grant. Unlike an explicit extra root, an
+ * unusable entry must not fail the whole policy (a registered workspace can be
+ * removed at any time), so this returns `undefined` instead of throwing: the
+ * fence then simply does not grant that path. Symlinked spellings are refused
+ * for the same reason `additionalRoot` refuses them — a grant must name the
+ * physical directory it was meant to cover.
+ * @param path - the candidate directory as the provider supplied it.
+ * @returns the canonical physical path, or `undefined` when it cannot be granted.
+ */
+function fsAdditionalRoot(path: string): string | undefined {
+  if (!isAbsolute(path) || path.includes('\0')) return undefined
+  try {
+    const physical = realpathSync.native(path)
+    if (!statSync(physical).isDirectory()) return undefined
+    return physical === resolve(path) ? physical : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The roots the in-process filesystem fence may WRITE under: the ordinary
+ * `workspace-write` allow-list plus the policy's filesystem-only extra grants.
+ * Shell and terminal backends keep using {@link writableRoots}, so a
+ * capability can hand files to a directory without widening process
+ * confinement. Unusable fs grants are skipped; `read-only` grants nothing.
+ * @param policy - the file-effect policy to derive the fence's allow-list from.
+ * @returns the canonical, deduplicated roots.
+ */
+export function fsWritableRoots(policy: SandboxExecutionPolicy): string[] {
+  if (policy.mode !== 'workspace-write') return []
+  const extra = (policy.fsAdditionalWritableRoots ?? [])
+    .map(fsAdditionalRoot)
+    .filter((root): root is string => root !== undefined)
+  return [...new Set([...writableRoots(policy), ...extra])]
 }

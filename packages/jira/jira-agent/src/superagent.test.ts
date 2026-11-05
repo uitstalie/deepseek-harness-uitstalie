@@ -9,7 +9,8 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { existsSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
 import { after, describe, it } from 'node:test'
@@ -34,6 +35,7 @@ import {
   TOOL_NAME,
   WORKSPACE_TOOL_NAME,
   WORK_TOOL_NAME,
+  DELIVER_TOOL_NAME,
   claimability,
   createJiraContribution,
   createSessionRecorder,
@@ -48,6 +50,8 @@ import {
   openProposal,
   pinWorkspaceFirst,
   runDaemonPass,
+  runDeliverTool,
+  superAgentFsRoots,
   resolveReportedTask,
   runLedgerTool,
   runModelsTool,
@@ -777,6 +781,90 @@ describe('superagent: model selection and discovery', () => {
   })
 })
 
+describe('superagent: file delivery', () => {
+  it('grants the registered workspaces to a super-agent session only', async () => {
+    const dir = await scratchDirectory()
+    const home = join(dir, 'super-home')
+    const live = join(dir, 'live-workspace')
+    const missing = join(dir, 'missing-workspace')
+    await mkdir(live, { recursive: true })
+    const registry = new FakeWorkspaceRegistry()
+    await registry.create(home, 'Super agent')
+    await registry.create(live, 'live')
+    await registry.create(missing, 'missing')
+    const ctx = { get: (key: string) => key === 'workspaceRegistry' ? registry : undefined }
+    assert.deepEqual(superAgentFsRoots(ctx, { header: { cwd: home } }, home), [realpathSync.native(live)])
+    assert.equal(superAgentFsRoots(ctx, { header: { cwd: dir } }, home), undefined)
+    assert.equal(superAgentFsRoots(ctx, { header: { cwd: home } }, undefined), undefined)
+  })
+
+  it('delivers a file into a registered workspace and refuses escapes and missing dirs', async () => {
+    const dir = await scratchDirectory()
+    const ws = join(dir, 'ws')
+    await mkdir(ws)
+    const registry = new FakeWorkspaceRegistry()
+    await registry.create(ws, 'ws')
+    await registry.create(join(dir, 'gone'), 'gone')
+    const ctx = { get: (key: string) => key === 'workspaceRegistry' ? registry : undefined }
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'session-super' } as never,
+      at: '2026-10-15T12:00:00Z' as never,
+    }
+    const src = join(dir, 'report.csv')
+    await writeFile(src, 'a,b\n1,2\n', 'utf8')
+
+    const ok = await runDeliverTool({ source: src, workspace: 'ws', destination: 'inbox/report.csv' }, options, { session: 's' }, ctx)
+    assert.equal(ok.ok, true, JSON.stringify(ok.error))
+    assert.equal(await readFile(join(ws, 'inbox', 'report.csv'), 'utf8'), 'a,b\n1,2\n')
+
+    const escape = await runDeliverTool({ source: src, workspace: 'ws', destination: '../escape.csv' }, options, { session: 's' }, ctx)
+    assert.equal(escape.ok, false)
+    assert.equal(existsSync(join(dir, 'escape.csv')), false)
+
+    const gone = await runDeliverTool({ source: src, workspace: 'gone' }, options, { session: 's' }, ctx)
+    assert.equal(gone.ok, false, 'a removed workspace directory is reported, not a crash')
+
+    const unregistered = await runDeliverTool({ source: src, workspace: 'nope' }, options, { session: 's' }, ctx)
+    assert.equal(unregistered.ok, false)
+
+    const second = await runDeliverTool({ source: src, workspace: 'ws', destination: 'inbox/report.csv' }, options, { session: 's' }, ctx)
+    assert.equal(second.ok, false, 'an existing destination is kept unless overwrite is true')
+    const replaced = await runDeliverTool({ source: src, workspace: 'ws', destination: 'inbox/report.csv', overwrite: true }, options, { session: 's' }, ctx)
+    assert.equal(replaced.ok, true, JSON.stringify(replaced.error))
+  })
+
+  it('registers the fs-roots provider with the sandbox policy and removes it on dispose', async () => {
+    const dir = await scratchDirectory()
+    const home = join(dir, 'super-home')
+    const live = join(dir, 'live')
+    await mkdir(live)
+    const providers: ((session: unknown) => readonly string[] | undefined)[] = []
+    let disposed = false
+    const policy = {
+      registerFsWritableRoots: (provider: (session: unknown) => readonly string[] | undefined) => {
+        providers.push(provider)
+        return () => { disposed = true }
+      },
+    }
+    const registry = new FakeWorkspaceRegistry()
+    await registry.create(home)
+    await registry.create(live)
+    const fakeCtx = {
+      get: (key: string) => key === 'sandboxPolicy' ? policy : key === 'workspaceRegistry' ? registry : undefined,
+    }
+    const contribution = createSuperagentContribution(
+      { ctx: fakeCtx as never, env: {}, clock: () => Date.parse(AT), recorder: createSessionRecorder() },
+      undefined, 2, undefined, undefined, home,
+    )
+    assert.equal(providers.length, 1)
+    assert.deepEqual(providers[0]?.({ header: { cwd: home } }), [realpathSync.native(live)])
+    assert.equal(providers[0]?.({ header: { cwd: dir } }), undefined)
+    contribution.dispose?.()
+    assert.equal(disposed, true)
+  })
+})
+
 describe('superagent: the super workspace', () => {
   it('registers the super home once, and a session there is the dispatcher', async () => {
     const dir = await scratchDirectory()
@@ -807,7 +895,7 @@ describe('superagent: the super workspace', () => {
       assert.equal(isSuperAgentSession(superAgent, home), true)
       assert.deepEqual(
         contribution.tools?.(superAgent).map(tool => tool.name),
-        [WORKSPACE_TOOL_NAME, SESSION_TOOL_NAME, LEDGER_TOOL_NAME, MODELS_TOOL_NAME],
+        [WORKSPACE_TOOL_NAME, SESSION_TOOL_NAME, LEDGER_TOOL_NAME, MODELS_TOOL_NAME, DELIVER_TOOL_NAME],
         'the super agent keeps the workspace roster and the Session verbs, and loses the ledger-bound ones',
       )
       assert.deepEqual(

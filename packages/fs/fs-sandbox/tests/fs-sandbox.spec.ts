@@ -184,6 +184,28 @@ describe('workspace-write containment', () => {
   })
 })
 
+describe('fs-only extra roots', () => {
+  it('lets the fence write under a granted directory and still denies a third one', async () => {
+    await boot('workspace-write')
+    const extra = join(base, 'extra')
+    await mkdir(extra)
+    const policy = { mode: 'workspace-write' as const, workspaceRoot: workspace, fsAdditionalWritableRoots: [extra] }
+    await fs.writeText(await target(join(extra, 'ok.txt')), 'ok', undefined, undefined, policy)
+    expect(await readFile(join(extra, 'ok.txt'), 'utf8')).toBe('ok')
+    await expect(fs.writeText(await target(join(outside, 'no.txt')), 'no', undefined, undefined, policy))
+      .rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+  })
+
+  it('skips a missing fs-only root instead of failing the whole policy', async () => {
+    await boot('workspace-write')
+    const policy = { mode: 'workspace-write' as const, workspaceRoot: workspace, fsAdditionalWritableRoots: [join(base, 'gone')] }
+    await fs.writeText(await target(join(workspace, 'still-ok.txt')), 'ok', undefined, undefined, policy)
+    expect(existsSync(join(workspace, 'still-ok.txt'))).toBe(true)
+    await expect(fs.writeText(await target(join(outside, 'still-denied.txt')), 'no', undefined, undefined, policy))
+      .rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+  })
+})
+
 describe('workspace-write with the filesystem root as the workspace (a root ending in the path separator)', () => {
   it('grants writes anywhere on that volume', async () => {
     // A degenerate but valid config: the filesystem root containing the target.

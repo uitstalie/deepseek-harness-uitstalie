@@ -32,7 +32,7 @@ it owns the conversation, the decisions made in it, and the dispatch ledger for 
 
 Code, documents, data and commands that belong to a registered workspace go to that workspace's
 real Session through \`superagent_session\` (append for follow-up, start only when the person asks
-for a new isolated conversation). Do not edit a workspace's files from this checkout.
+for a new isolated conversation). The one write this checkout performs in a workspace is \`superagent_deliver\`, which copies a file (report, spreadsheet, attachment) into that workspace and names the delivered path in the task; do not edit other workspace files from here.
 
 ## Dispatch workflow
 

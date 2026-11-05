@@ -2981,9 +2981,15 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy',
-        description: 'Resolve the complete policy for one capability call. An approved explicit mode outranks the session\'s last `sandbox/mode` event, which outranks the deployment default. A session cwd is its workspace-write boundary; the configured root is the fallback for agentless calls and sessions without a cwd.',
+        description: 'Resolve the complete policy for one capability call. An approved explicit mode outranks the session\'s last `sandbox/mode` event, which outranks the deployment default. A session cwd is its workspace-write boundary; the configured root is the fallback for agentless calls and sessions without a cwd. Capability-registered fs-only grants are resolved here too, so the in-process filesystem fence can receive directories that process confinement deliberately does not.',
         parameters: [{ name: 'request', description: 'optional session and approved mode override.' }],
         returns: 'the fully resolved per-call mode and absolute workspace root.',
+      },
+      {
+        signature: 'registerFsWritableRoots(provider: FsWritableRootsProvider): () => void',
+        description: 'Register one session-scoped filesystem-fence grant. The provider is consulted on every resolution; a failing provider is logged and ignored so a broken capability cannot take the whole tool surface down. Only absolute entries are kept, and duplicates are dropped. The grant never reaches a process sandbox: see SandboxExecutionPolicy.fsAdditionalWritableRoots.',
+        parameters: [{ name: 'provider', description: 'the session → extra directories function.' }],
+        returns: 'the exact disposer that removes the provider.',
       },
       {
         signature: 'overrideOf(session: Session): SandboxMode | undefined',
@@ -7162,6 +7168,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type FsVersion = Branded<\'FsVersion\'>;',
   },
   {
+    name: 'FsWritableRootsProvider',
+    declaration: 'export type FsWritableRootsProvider = (session: Session) => readonly string[] | undefined;',
+  },
+  {
     name: 'FsWriteIntent',
     declaration: 'export type FsWriteIntent = {\n    kind: \'createIfAbsent\';\n} | {\n    kind: \'replaceIfVersion\';\n    version: FsVersion;\n};',
   },
@@ -8831,7 +8841,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SandboxExecutionPolicy',
-    declaration: 'export interface SandboxExecutionPolicy {\n    mode: SandboxMode;\n    workspaceRoot: string;\n    additionalWritableRoots?: readonly string[];\n    sessionId?: SessionId;\n}',
+    declaration: 'export interface SandboxExecutionPolicy {\n    mode: SandboxMode;\n    workspaceRoot: string;\n    additionalWritableRoots?: readonly string[];\n    fsAdditionalWritableRoots?: readonly string[];\n    sessionId?: SessionId;\n}',
   },
   {
     name: 'SandboxMode',

@@ -212,11 +212,24 @@ The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment default mo
  * mode outranks the session's last `sandbox/mode` event, which outranks the
  * deployment default. A session cwd is its workspace-write boundary; the
  * configured root is the fallback for agentless calls and sessions without a
- * cwd.
+ * cwd. Capability-registered fs-only grants are resolved here too, so the
+ * in-process filesystem fence can receive directories that process
+ * confinement deliberately does not.
  * @param request - optional session and approved mode override.
  * @returns the fully resolved per-call mode and absolute workspace root.
  */
 resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy
+
+/**
+ * Register one session-scoped filesystem-fence grant. The provider is
+ * consulted on every resolution; a failing provider is logged and ignored so
+ * a broken capability cannot take the whole tool surface down. Only absolute
+ * entries are kept, and duplicates are dropped. The grant never reaches a
+ * process sandbox: see {@link SandboxExecutionPolicy.fsAdditionalWritableRoots}.
+ * @param provider - the session → extra directories function.
+ * @returns the exact disposer that removes the provider.
+ */
+registerFsWritableRoots(provider: FsWritableRootsProvider): () => void
 
 /**
  * Read the session override without applying the deployment default.

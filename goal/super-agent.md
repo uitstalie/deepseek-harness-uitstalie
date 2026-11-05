@@ -420,3 +420,5 @@ pass 扫描 → 候选（只读，不动账本）
 **跟进优先追加（DH-719 后续，用户裁定）**：同一工作区的跟进工作默认进**已有会话**——`append` 继续该工作区最近活跃的 Session，`start` 只在人明确要新会话或工作区还没有会话时使用；目标 Session 正在跑时用 `append`/`prompt` 让消息排队，不为同一批文件开并行 Session（并发编辑冲突由"一个工作区一个会话"这条规则避免）。用户点名某会话时先 `list` 再 `prompt`/`fork`/`archive`。
 
 启动 Session 的 preset 由 `superagent_agent_preset` 决定（缺省用部署默认）。
+
+**向工作区投送文件（用户裁定 2026-11-05）**：超级 agent 有两条"把资料交给工作区"的路径——`superagent_deliver` 在 host 进程内复制一个文件（报告、xlsx/csv、用户附件）进已注册工作区（目标必须在工作区物理目录内、默认不覆盖、可读 `$DSH_HOME/attachments`）；同时文件围栏（`dsh-fs-sandbox`）对超级会话额外授予全部已注册工作区（`fsAdditionalWritableRoots`），所以 `write`/`edit` 也能落到那些目录。shell 与 terminal 的沙箱不放宽（Windows ACL 无法表达额外根），且该授予只对 cwd 等于 `superagent_home` 的会话生效；`superagent_write_registered_workspaces: false` 可退回单工作区。

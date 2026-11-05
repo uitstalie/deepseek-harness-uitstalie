@@ -16,9 +16,9 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
-import { mkdir } from 'node:fs/promises'
-import { realpathSync } from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { copyFile, mkdir } from 'node:fs/promises'
+import { existsSync, realpathSync, statSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
 import { clampText, asIdentity, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
@@ -105,6 +105,9 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + 'change through a workspace Session.\n'
     + '- A global change that needs a file outside this workspace: name the file, say why, and ask the '
     + 'person once. A host tool that already owns that setting is preferable to editing a file.\n'
+    + '- When you have a file to hand over (a report, xlsx/csv, an attachment the person dropped here), '
+    + 'copy it into the workspace with `superagent_deliver` and name the delivered path in the task you '
+    + 'append there; do not process that material in this conversation.\n'
     + '- Follow-up work belongs in the workspace\'s existing conversation: use `superagent_session` '
     + 'action `append` with the workspace and the instruction. It continues that workspace\'s most '
     + 'recent Session and its report comes back here.\n'
@@ -841,6 +844,7 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     sessionsKept: { type: 'boolean' },
     sessions: { type: 'array' },
     session: { type: 'object', additionalProperties: true },
+    delivered: { type: 'object', additionalProperties: true },
     model: { type: 'object', additionalProperties: true },
     issue: { type: 'object', additionalProperties: true },
     dispatch: { type: 'object', additionalProperties: true },
@@ -1375,8 +1379,185 @@ export const runWorkspaceTool = async (
   return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
 }
 
-/** The tool that starts a real Session instead of a subagent (DH-702). */
-export const DISPATCH_TOOL_NAME = 'superagent_dispatch'
+/**
+ * The registered workspaces a super-agent session may hand files to.
+ *
+ * This is the capability's contribution to the filesystem fence's fs-only grant, not to process
+ * confinement: the super agent delivers materials (reports, spreadsheets, user attachments) into a
+ * workspace for that workspace's Session to parse, and shell sandboxes stay as narrow as before.
+ * Only registered workspaces are eligible; an entry is skipped when it is missing, is not a
+ * directory, or is spelled through a symlink — a grant must name the physical directory the person
+ * registered, and a workspace that disappeared must not break every later write.
+ * @param ctx - the plugin context carrying the workspace registry.
+ * @param session - the session whose policy is being resolved.
+ * @param home - the configured super workspace path; only sessions there receive the grant.
+ * @returns the physical registered workspace directories, or undefined for other sessions.
+ */
+export const superAgentFsRoots = (ctx: unknown, session: unknown, home: string | undefined): readonly string[] | undefined => {
+  if (home === undefined || home.trim() === '') return undefined
+  const cwd = (session as { header?: { cwd?: string } } | undefined)?.header?.cwd
+  if (cwd === undefined || !sameCheckout(cwd, home)) return undefined
+  const registry = workspaceRegistryOf(ctx)
+  if (registry === undefined) return undefined
+  const roots: string[] = []
+  for (const workspace of registry.list()) {
+    if (sameCheckout(workspace.path, home)) continue
+    const physical = physicalDirectory(workspace.path)
+    if (physical !== undefined && !roots.includes(physical)) roots.push(physical)
+  }
+  return roots.length === 0 ? undefined : Object.freeze(roots)
+}
+
+/**
+ * The physical path of an existing directory, or undefined when it cannot be granted.
+ * @param path - candidate directory, as the registry spells it.
+ * @returns the canonical physical path when the entry is a plain directory.
+ */
+const physicalDirectory = (path: string): string | undefined => {
+  if (path.trim() === '' || !isAbsolute(path) || path.includes('\0')) return undefined
+  try {
+    const physical = realpathSync.native(path)
+    if (!statSync(physical).isDirectory()) return undefined
+    // A symlinked spelling would silently follow a link the person did not register.
+    return resolve(path) === physical ? physical : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Whether `candidate` resolves to a path strictly inside `root` (both physical). */
+const insidePhysicalRoot = (root: string, candidate: string): boolean => {
+  const relativeToRoot = relative(root, candidate)
+  return relativeToRoot !== '' && !relativeToRoot.startsWith('..') && !isAbsolute(relativeToRoot)
+}
+
+/**
+ * The deepest existing ancestor of one path, canonicalized; used to prove that a destination
+ * spelled through a symlinked directory still lands inside the granted workspace.
+ * @param path - an absolute destination path whose leaf may not exist yet.
+ * @returns the physical existing ancestor.
+ */
+const existingAncestor = (path: string): string => {
+  let cursor = path
+  for (;;) {
+    if (existsSync(cursor)) return realpathSync.native(cursor)
+    const parent = dirname(cursor)
+    if (parent === cursor) return parent
+    cursor = parent
+  }
+}
+
+/** `superagent_deliver`'s schema. */
+export const DELIVER_TOOL_NAME = 'superagent_deliver'
+
+/** `superagent_deliver`'s parameters. */
+export const DELIVER_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+  source: {
+    type: 'string',
+    required: true,
+    description: 'Absolute path of the file to hand over. Files the person attached under '
+      + '$DSH_HOME/attachments are readable too.',
+  },
+  workspace: { type: 'string', required: true, description: 'The registered workspace path or title to deliver into.' },
+  destination: { type: 'string', description: 'Path inside the workspace; defaults to the source file name.' },
+  overwrite: { type: 'boolean', description: 'Replace an existing destination file; default false.' },
+})
+
+/** `superagent_deliver`'s description: the one write the super agent performs in a workspace. */
+export const DELIVER_DESCRIPTION =
+  'Hand one local file to a registered workspace by copying it into that workspace\'s directory. '
+  + 'Use it for material the workspace\'s Session should parse (a report, xlsx/csv, an attachment '
+  + 'the person dropped here) instead of reading that material in the super conversation. The '
+  + 'destination must stay inside the workspace; the copy never overwrites unless `overwrite` is true.'
+
+/**
+ * Deliver one local file into a registered workspace.
+ *
+ * The copy happens in the host process, so it does not need (or grant) a process sandbox; the
+ * authority is the narrower one this function enforces: the destination must be a registered
+ * workspace, must stay inside its physical directory (no `..`, no symlinked parent), and an existing
+ * file is replaced only on request. Missing sources, workspaces and directories are reported, never
+ * thrown as a crash.
+ * @param args - the raw tool arguments, validated against {@link DELIVER_PARAMETERS}.
+ * @param options - the caller verdict.
+ * @param me - the caller identity tuple.
+ * @param ctx - the plugin context carrying the workspace registry.
+ * @returns the delivered path and byte count.
+ */
+export const runDeliverTool = async (
+  args: unknown,
+  options: RunOptions,
+  me: unknown,
+  ctx: unknown,
+): Promise<ToolValue> => {
+  const { caller } = options
+  const validated = validateArgs(DELIVER_PARAMETERS, args)
+  if (!validated.ok) return failure(validated.error, caller, me)
+  if (!caller.writable) {
+    return failure(invalidInput('delivering a file needs a session that may write'), caller, me)
+  }
+  const source = asString(validated.value.source)
+  const workspaceArg = asString(validated.value.workspace)
+  const destinationArg = asString(validated.value.destination)
+  const overwrite = validated.value.overwrite === true
+  if (source === undefined || !isAbsolute(source)) {
+    return failure(invalidInput('deliver needs an absolute `source` path'), caller, me)
+  }
+  const registry = workspaceRegistryOf(ctx)
+  if (registry === undefined) {
+    return failure(invalidInput('this deployment has no workspace registry to deliver into'), caller, me)
+  }
+  const workspace = workspaceArg === undefined ? undefined : findWorkspace(registry, workspaceArg)
+  if (workspace === undefined) {
+    return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+  }
+  const workspaceRoot = physicalDirectory(workspace.path)
+  if (workspaceRoot === undefined) {
+    return failure(invalidInput(`${workspace.path} is not an existing directory any more`, { workspace: workspace.path }), caller, me)
+  }
+  let sourceInfo: ReturnType<typeof statSync>
+  try {
+    sourceInfo = statSync(source)
+  } catch (error: unknown) {
+    return failure(invalidInput(`the source ${source} cannot be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+  }
+  if (!sourceInfo.isFile()) {
+    return failure(invalidInput(`the source ${source} is not a regular file`), caller, me)
+  }
+  const destination = resolve(workspaceRoot, destinationArg ?? basename(source))
+  if (!insidePhysicalRoot(workspaceRoot, destination)) {
+    return failure(invalidInput(`the destination must stay inside ${workspace.path}`, { workspace: workspace.path }), caller, me)
+  }
+  // Prove the existing part of the destination is still inside the physical workspace, so a
+  // symlinked directory cannot redirect the copy outside it.
+  const destinationAncestor = existingAncestor(destination)
+  if (destinationAncestor !== workspaceRoot && !insidePhysicalRoot(workspaceRoot, destinationAncestor)) {
+    return failure(invalidInput(`the destination resolves outside ${workspace.path}`, { workspace: workspace.path }), caller, me)
+  }
+  try {
+    await mkdir(dirname(destination), { recursive: true })
+    await copyFile(source, destination, overwrite ? 0 : 1)
+    const bytes = statSync(destination).size
+    return Object.freeze({
+      ok: true,
+      writable: caller.writable,
+      ...(caller.reason === undefined ? {} : { reason: caller.reason }),
+      me,
+      delivered: Object.freeze({
+        source,
+        path: destination,
+        workspace: workspace.path,
+        title: workspace.title,
+        bytes,
+      }),
+    })
+  } catch (error: unknown) {
+    return failure(invalidInput(
+      `the file could not be delivered to ${destination}: ${error instanceof Error ? error.message : String(error)}`,
+      { workspace: workspace.path },
+    ), caller, me)
+  }
+}
 
 /**
  * Find one registered workspace by title, exact path, or the same checkout.
@@ -1755,6 +1936,7 @@ export const runSessionTool = async (
  * @param args - the raw tool arguments, validated against {@link LEDGER_PARAMETERS}.
  * @param options - the caller verdict and clock.
  * @param me - the caller identity tuple, echoed in every result.
+ * @param ctx - the plugin context carrying the workspace registry and Session controller.
  * @returns the ledger rows, or the changed entry plus a memory-write suggestion.
  */
 export const runLedgerTool = async (
@@ -2013,6 +2195,9 @@ export const sessionControllerOf = (ctx: unknown): SessionControllerLike | undef
   }
   return service as SessionControllerLike
 }
+
+/** The tool that starts a real Session instead of a subagent (DH-702). */
+export const DISPATCH_TOOL_NAME = 'superagent_dispatch'
 
 /** `superagent_dispatch`'s schema. */
 export const DISPATCH_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
@@ -2406,6 +2591,9 @@ export interface SuperagentDaemonConfig {
  * @param daemon - the session-less pass configuration; absent or disabled keeps the old behavior.
  * @param home - the configured super workspace path; a session opened there is the super agent.
  * @param permissionPreset - the permission preset a super agent is pinned to; unset keeps the host default.
+ * @param agentPreset - the preset a started workspace Session joins; unset keeps the deployment default.
+ * @param writeRegisteredWorkspaces - whether super-agent sessions may hand files to every registered
+ *   workspace through the in-process filesystem fence; defaults to true.
  * @returns the capability contribution the organizer wires onto root agents.
  */
 export const createSuperagentContribution = (
@@ -2417,6 +2605,7 @@ export const createSuperagentContribution = (
   home?: string,
   permissionPreset?: string,
   agentPreset?: string,
+  writeRegisteredWorkspaces = true,
 ): CapabilityContribution => {
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
@@ -2424,6 +2613,15 @@ export const createSuperagentContribution = (
   const superHome = home === undefined || home.trim() === '' ? undefined : home
   /** Sessions this super agent started or addressed, so their turn ends report back (DH-719). */
   const tasks = new Map<string, TaskSessionRecord>()
+  // The filesystem fence gets the registered workspaces, so the super agent can hand files over
+  // without widening process confinement: shell and terminal backends never see these roots.
+  let fsRootsDispose: (() => void) | undefined
+  if (writeRegisteredWorkspaces && superHome !== undefined) {
+    const sandboxPolicy = (host.ctx as { get?: (key: string) => unknown }).get?.('sandboxPolicy') as
+      | { registerFsWritableRoots?: (provider: (session: unknown) => readonly string[] | undefined) => () => void }
+      | undefined
+    fsRootsDispose = sandboxPolicy?.registerFsWritableRoots?.(session => superAgentFsRoots(host.ctx, session, superHome))
+  }
   const daemonWorkspace = daemon?.workspace
   const daemonEnabled = daemon?.enabled === true && daemonWorkspace !== undefined && daemonWorkspace.trim() !== ''
   const poll = async (): Promise<void> => {
@@ -2620,6 +2818,21 @@ export const createSuperagentContribution = (
       tasks,
     }),
   }
+  const deliver: Spec = {
+    name: DELIVER_TOOL_NAME,
+    description: DELIVER_DESCRIPTION,
+    parameters: DELIVER_PARAMETERS,
+    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+    timeoutMs: 30_000,
+    isConcurrencySafe: () => false,
+    render: (typed) => {
+      const file = typed.delivered as { path?: string; bytes?: number } | undefined
+      return renderText(file?.path === undefined
+        ? 'ok'
+        : `delivered ${file.path} (${String(file.bytes ?? 0)} bytes)`)
+    },
+    run: (args, call) => runDeliverTool(args, runOptionsOf(host, call), call.me, host.ctx),
+  }
   return Object.freeze({
     // DH-703: an executor Session is a root agent, so the scope alone would hand it the dispatcher's
     // verbs. It gets none of them; the jira capability gives it the reading tools and `issue_work`.
@@ -2634,6 +2847,7 @@ export const createSuperagentContribution = (
           defineJiraTool(host, session),
           defineJiraTool(host, ledger),
           defineJiraTool(host, models),
+          defineJiraTool(host, deliver),
         ])
         : Object.freeze([
           defineJiraTool(host, source),
@@ -2689,6 +2903,8 @@ export const createSuperagentContribution = (
       await runSuperagentPass(host, input.agent, input.signal, workerPreset, maxWorkers)
     },
     dispose: () => {
+      fsRootsDispose?.()
+      fsRootsDispose = undefined
       if (timer !== undefined) clearInterval(timer)
       timer = undefined
       liveAgents.clear()

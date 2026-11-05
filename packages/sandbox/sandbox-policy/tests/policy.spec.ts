@@ -85,6 +85,19 @@ describe('SandboxPolicyService', () => {
     expect(Object.isFrozen(ctx.sandboxPolicy.additionalWritableRoots)).toBe(true)
   })
 
+  it('adds a capability fs-only grant for the session its provider names, and removes it on dispose', async () => {
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    const superSession = session('sess-super', '/projects/super')
+    const other = session('sess-other', '/projects/other')
+    const dispose = ctx.sandboxPolicy.registerFsWritableRoots(current =>
+      current.header.cwd === '/projects/super' ? ['/workspaces/a', '/workspaces/b'] : undefined)
+    expect(ctx.sandboxPolicy.resolve({ session: superSession }).fsAdditionalWritableRoots)
+      .toEqual(['/workspaces/a', '/workspaces/b'])
+    expect(ctx.sandboxPolicy.resolve({ session: other }).fsAdditionalWritableRoots).toBeUndefined()
+    dispose()
+    expect(ctx.sandboxPolicy.resolve({ session: superSession }).fsAdditionalWritableRoots).toBeUndefined()
+  })
+
   it('rejects a relative additional writable root at load', async () => {
     const ctx = new Context()
     try {

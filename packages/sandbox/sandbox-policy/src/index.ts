@@ -118,6 +118,14 @@ export interface SandboxPolicyRequest {
   mode?: SandboxMode
 }
 
+/**
+ * Capability-scoped provider of filesystem-fence-only writable directories for
+ * one session. The provider decides from the session alone whether it grants
+ * anything (for example, only a dispatcher's own Sessions); the service
+ * validates that each entry is absolute and never widens a process sandbox.
+ */
+export type FsWritableRootsProvider = (session: Session) => readonly string[] | undefined
+
 /** The sandbox-mode projection's state schema (state equals the public shape). */
 const sandboxModeStateSchema = zod.union([
   zod.literal('read-only'),
@@ -150,6 +158,8 @@ export class SandboxPolicyService extends Service {
   /** The frozen extra writable directories shared by every resolved policy, or `undefined` for none. */
   readonly additionalWritableRoots: readonly string[] | undefined
   private sandboxModeProjectionHandle!: ProjectionHandle<SandboxMode | null>
+  /** Session-scoped fs-only grants contributed by capabilities. */
+  private readonly fsRootProviders = new Set<FsWritableRootsProvider>()
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'sandboxPolicy')
@@ -190,18 +200,56 @@ export class SandboxPolicyService extends Service {
    * mode outranks the session's last `sandbox/mode` event, which outranks the
    * deployment default. A session cwd is its workspace-write boundary; the
    * configured root is the fallback for agentless calls and sessions without a
-   * cwd.
+   * cwd. Capability-registered fs-only grants are resolved here too, so the
+   * in-process filesystem fence can receive directories that process
+   * confinement deliberately does not.
    * @param request - optional session and approved mode override.
    * @returns the fully resolved per-call mode and absolute workspace root.
    */
   resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy {
     const { session } = request
+    const fsRoots = this.fsRootsOf(session)
     return {
       mode: request.mode ?? (session === undefined ? undefined : this.overrideOf(session)) ?? this.defaultMode,
       workspaceRoot: resolveWorkspaceRoot(session?.header.cwd ?? this.workspaceRoot),
       ...this.additionalWritableRoots === undefined ? {} : { additionalWritableRoots: this.additionalWritableRoots },
+      ...fsRoots === undefined ? {} : { fsAdditionalWritableRoots: fsRoots },
       ...session === undefined ? {} : { sessionId: session.id },
     }
+  }
+
+  /**
+   * Register one session-scoped filesystem-fence grant. The provider is
+   * consulted on every resolution; a failing provider is logged and ignored so
+   * a broken capability cannot take the whole tool surface down. Only absolute
+   * entries are kept, and duplicates are dropped. The grant never reaches a
+   * process sandbox: see {@link SandboxExecutionPolicy.fsAdditionalWritableRoots}.
+   * @param provider - the session → extra directories function.
+   * @returns the exact disposer that removes the provider.
+   */
+  registerFsWritableRoots(provider: FsWritableRootsProvider): () => void {
+    this.fsRootProviders.add(provider)
+    return () => { this.fsRootProviders.delete(provider) }
+  }
+
+  /** Collect the registered fs-only grants for one session, validating each entry. */
+  private fsRootsOf(session: Session | undefined): readonly string[] | undefined {
+    if (session === undefined || this.fsRootProviders.size === 0) return undefined
+    const roots: string[] = []
+    for (const provider of this.fsRootProviders) {
+      let contributed: readonly string[] | undefined
+      try {
+        contributed = provider(session)
+      } catch (error: unknown) {
+        this.ctx.logger.warn('sandbox-policy: an fs writable-roots provider failed: %s', String(error))
+        continue
+      }
+      for (const root of contributed ?? []) {
+        if (!isAbsolute(root) || root.includes('\0') || roots.includes(root)) continue
+        roots.push(root)
+      }
+    }
+    return roots.length === 0 ? undefined : Object.freeze(roots)
   }
 
   /**
