@@ -265,6 +265,12 @@ export interface MemoryTierMigrationOptions {
   readonly maxBytes?: number
   /** Maximum entries retained per session; older sections leave the block. */
   readonly maxEntries?: number
+  /**
+   * Whether surface turn ranges may be replaced in this pass. False between compactions: the
+   * document still migrates but the surface stays append-only, and the pending replacement is
+   * retried at the next compaction boundary.
+   */
+  readonly allowSurfaceReplace?: boolean
 }
 
 /** Result of one tier migration pass. */
@@ -996,6 +1002,7 @@ export async function migrateMemoryTiers(
   signal?: AbortSignal,
   options: MemoryTierMigrationOptions = {},
 ): Promise<MemoryTierMigrationResult | undefined> {
+  const allowSurfaceReplace = options.allowSurfaceReplace ?? true
   const window = options.window ?? DEFAULT_MEMORY_WINDOW
   const maxBytes = options.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES
   const compressed = new Map<string, readonly MemoryEntry[]>()
@@ -1010,10 +1017,15 @@ export async function migrateMemoryTiers(
     const briefs = await compressBriefs(ctx, current.document, session, plan, compress, compressed, signal)
     if (plan.toDetail.length === 0 && briefs.length === 0 && plan.toForget.length === 0
       && plan.retry.length === 0) return undefined
-    await checkpointMigrations(ctx, current.document, session, plan, briefs, checkpoints, signal)
+    await checkpointMigrations(ctx, current.document, session, plan, briefs, checkpoints, signal, allowSurfaceReplace)
     const retried = plan.retry.filter(retry => checkpoints.has(rangeKey(retry.action, retry))).length
     const detailed = plan.toDetail.filter(range => checkpoints.has(rangeKey('detail', range))).length
-    if (detailed === 0 && briefs.length === 0 && plan.toForget.length === 0 && retried === 0) return undefined
+    // The document still migrates when surface replacements are deferred (between compactions):
+    // MEMORY.md keeps the tiered summaries for search, and a missing checkpointSeq records the
+    // pending surface action for the next compaction boundary. A deferred detail range alone
+    // changes nothing on disk, so it must not rewrite MEMORY.md on every turn.
+    const documentChanged = detailed > 0 || briefs.length > 0 || plan.toForget.length > 0 || retried > 0
+    if (!documentChanged) return undefined
     // Once a checkpoint left the surface, the metadata write must finish even if the
     // provider was disabled meanwhile: skipping it here is exactly the half-committed
     // state (checkpoint published, MEMORY.md unchanged) this pass avoids.
@@ -1175,7 +1187,13 @@ async function checkpointMigrations(
   briefs: readonly BriefMigration[],
   checkpoints: Map<string, number>,
   signal: AbortSignal | undefined,
+  allowSurfaceReplace: boolean,
 ): Promise<void> {
+  // Between compactions the surface is append-only: rewriting an early turn range would
+  // invalidate the provider's prefix cache for the whole conversation after it. The document
+  // still records the tier migration, and its missing checkpointSeq becomes a surface retry
+  // that the next compaction pass executes (the compaction rewrites history anyway).
+  if (!allowSurfaceReplace) return
   for (const range of plan.toDetail) {
     if (signal?.aborted === true) return
     const key = rangeKey('detail', range)

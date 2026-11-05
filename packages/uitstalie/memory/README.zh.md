@@ -40,9 +40,9 @@ kind: "package-reference"
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `detail` | `6` | turn 的相对年龄达到此值时，detail 摘要替换原文。 |
-| `brief` | `16` | turn 的相对年龄达到此值时，brief 摘要替换 detail checkpoint。 |
-| `forget` | `21` | turn 的相对年龄达到此值时，摘要正文离开上下文。 |
+| `detail` | `6` | turn 的相对年龄达到此值时，detail 摘要写进 MEMORY.md；surface 上的原文替换只在 compaction 边界执行。 |
+| `brief` | `16` | turn 的相对年龄达到此值时，brief 摘要写进 MEMORY.md；surface 替换同样只在 compaction 边界执行。 |
+| `forget` | `21` | turn 的相对年龄达到此值时，摘要正文离开 MEMORY.md 的上下文区（surface 替换只在 compaction 边界）。 |
 | `sessions` | `10` | 文件里保留摘要的会话数量。 |
 | `summarizationProvider` | `""` | 摘要 job 的 provider；为空表示跟随当前路由。 |
 | `summarizationModel` | `""` | 摘要 job 的 model；为空表示跟随当前路由。 |
@@ -151,11 +151,11 @@ snapshot 写入时位于 surface 尾部。替换会保留该节点之前的前�
 
 #### 模型看到什么
 
-已摘要的 turn 年龄达到 `detail` 时，它在 surface 上的 user、tool 与 assistant 原始节点会被替换成一条 `user/message`，来源是 `{ kind: 'memory', form: 'notice', window: { from, to, tier: 'detail' } }`。正文是该 turn 已存的 detail 条目（`- [kind] <正文>`）。年龄达到 `brief` 时，这条 detail checkpoint 被替换成 brief checkpoint：一到两条渲染后的条目，条目正文总计最多 160 字符。年龄达到 `forget` 时，上一个 checkpoint 被替换成一行指针，写明会话、turn 与 seq 区间，并说明原文仍可检索。来源是 notice 而不是 snapshot，因此下一次 snapshot 刷新不会动它。
+已摘要的 turn 年龄达到 `detail` 时，`detail` 摘要写进 MEMORY.md；它在 surface 上的 user、tool 与 assistant 原始节点只**在 compaction 边界**才会被替换成一条 `user/message`（compaction 本来就要重建缓存）。两次 compaction 之间 surface 只追加，原文继续留在模型上下文里，摘要作为可检索副本存在。替换消息的来源是 `{ kind: 'memory', form: 'notice', window: { from, to, tier: 'detail' } }`。正文是该 turn 已存的 detail 条目（`- [kind] <正文>`）。年龄达到 `brief` 时，这条 detail checkpoint 被替换成 brief checkpoint：一到两条渲染后的条目，条目正文总计最多 160 字符。年龄达到 `forget` 时，上一个 checkpoint 被替换成一行指针，写明会话、turn 与 seq 区间，并说明原文仍可检索。来源是 notice 而不是 snapshot，因此下一次 snapshot 刷新不会动它。
 
 #### Token 影响
 
-detail checkpoint 用该 turn 已存的 detail 条目替换原始 turn；brief checkpoint 用最多 160 字符加 `- [kind]` 前缀替换；遗忘指针则用一行替换。只有 detail checkpoint 会随该 turn 的摘要增长，并由文件预算约束；三者都不随该 turn 原始工具输出或 transcript 长度增长。
+detail checkpoint 用该 turn 已存的 detail 条目替换原始 turn；brief checkpoint 用最多 160 字符加 `- [kind]` 前缀替换；遗忘指针则用一行替换。这些都只发生在 compaction 边界；两次 compaction 之间只更新 MEMORY.md。只有 detail checkpoint 会随该 turn 的摘要增长，并由文件预算约束；三者都不随该 turn 原始工具输出或 transcript 长度增长。
 
 #### KV 缓存影响
 

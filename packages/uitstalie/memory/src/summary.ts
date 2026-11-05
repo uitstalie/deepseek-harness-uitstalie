@@ -37,7 +37,7 @@ import {
   readMemoryDocument,
   summaryPaused,
 } from './memory-file.ts'
-import type { MemoryEntry } from './memory-file.ts'
+import type { MemoryDocument, MemoryEntry } from './memory-file.ts'
 import { appendMemoryNotice, refreshMemorySnapshot } from './snapshot.ts'
 import type { SnapshotTextSink } from './tools.ts'
 import type { TurnRange } from './window.ts'
@@ -135,6 +135,43 @@ interface SummaryTarget {
   readonly provider: string
   /** Provider model id. */
   readonly model: string
+}
+
+/**
+ * The last compaction boundary recorded in a session's log, when one happened.
+ *
+ * Compaction rewrites history, so it is the only point where a memory surface replace is free:
+ * the provider's prefix cache is rebuilt for the new history anyway. Between compactions the
+ * surface must stay append-only.
+ * @param session - session whose durable events are scanned.
+ * @returns the newest `compaction/end` seq, or undefined without one.
+ */
+const lastCompactionSeq = (session: Session): number | undefined => {
+  let last: number | undefined
+  // Compaction event types are declared by the compaction package's module augmentation;
+  // memory only reads the durable log, so a local shape is enough here.
+  for (const event of session.snapshotEvents() as readonly { type: string; seq: number }[]) {
+    if (event.type === 'compaction/end') last = event.seq
+  }
+  return last
+}
+
+/**
+ * The highest memory checkpoint seq already recorded for one session in MEMORY.md.
+ * @param document - parsed MEMORY.md, or undefined when none exists.
+ * @param sessionId - session whose turns are inspected.
+ * @returns the highest checkpoint seq, or undefined when no replacement was published.
+ */
+const lastCheckpointSeq = (document: MemoryDocument | undefined, sessionId: string): number | undefined => {
+  const record = document?.sessions.find(session => session.id === sessionId)
+  if (record === undefined) return undefined
+  let last: number | undefined
+  for (const turn of record.turns) {
+    if (turn.checkpointSeq !== undefined && (last === undefined || turn.checkpointSeq > last)) {
+      last = turn.checkpointSeq
+    }
+  }
+  return last
 }
 
 /**
@@ -285,6 +322,12 @@ export class MemorySummaryRunner {
       // Tier migration runs before the append (DH-710): a body at its byte budget would otherwise
       // refuse the append, and the migration that frees space could never run. A migration failure
       // still does not block the summary, which is written below.
+      // Surface tier folding is allowed only at a compaction boundary: between compactions the
+      // surface must stay append-only (a replaced early range breaks the provider prefix cache).
+      const compactionSeq = lastCompactionSeq(input.session)
+      const checkpointSeq = lastCheckpointSeq(current.document, String(input.session.id))
+      const allowSurfaceReplace = compactionSeq !== undefined
+        && (checkpointSeq === undefined || compactionSeq > checkpointSeq)
       try {
         await migrateMemoryTiers(
           this.ctx,
@@ -299,7 +342,12 @@ export class MemorySummaryRunner {
             migrationSignal,
           ),
           signal,
-          { window: this.settings.window, maxBytes: this.settings.maxBytes, maxEntries: this.settings.maxEntries },
+          {
+            window: this.settings.window,
+            maxBytes: this.settings.maxBytes,
+            maxEntries: this.settings.maxEntries,
+            allowSurfaceReplace,
+          },
         )
       } catch (error: unknown) {
         if (signal.aborted) return { status: 'killed' }

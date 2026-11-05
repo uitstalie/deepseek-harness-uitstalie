@@ -1057,6 +1057,7 @@ describe('superagent: context, compaction and memory curation', () => {
       { type: 'tool/call', seq: 2, time: now - 11 * 60_000, data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{}' } },
       { type: 'assistant/message', seq: 3, time: now - 60_000, data: { message: { content: [{ type: 'text', text: 'still working' }] } } },
       { type: 'assistant/message', seq: 4, time: now - 30_000, data: { usage: { inputTokens: 1_000, cacheReadTokens: 9_000, outputTokens: 10, totalTokens: 10_010 } } },
+      { type: 'assistant/message', seq: 5, time: now - 20_000, data: { usage: { inputTokens: 5_000, cacheReadTokens: 5_000, outputTokens: 10, totalTokens: 10_010 } } },
     ]
     const controller = new CompactController()
     const ctx = {
@@ -1075,7 +1076,8 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.ok((row?.status?.elapsedMs ?? 0) >= 12 * 60_000)
     assert.equal(row?.status?.inFlightTool, 'bash')
     assert.equal(row?.longRunning, true)
-    assert.equal((row as { cacheHitPercent?: number }).cacheHitPercent, 90)
+    // Weighted over the recent window, not the last (worst) request: (9000+5000)/(10000+10000) = 70.
+    assert.equal((row as { cacheHitPercent?: number }).cacheHitPercent, 70)
     assert.equal(listed.longRunningMinutes, 10)
   })
 

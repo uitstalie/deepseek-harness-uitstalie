@@ -396,26 +396,25 @@ function composeSnapshot(
 
 /** Render the manifest line, with the compressed runs then the forgotten pointer. */
 function renderWindowLine(window: MemorySnapshotWindow): string {
-  const clauses: string[] = []
+  // Archived summaries live in MEMORY.md even while the raw turns are still in the model
+  // context: the old "summarized" wording claimed they had left the context, which stopped
+  // being true once surface folding moved to compaction boundaries.
   if (window.ranges.length === 0) {
-    clauses.push('no turns summarized yet')
-  } else {
-    clauses.push(window.ranges
-      .map((range, index) => renderRange(range, index === 0))
-      .join(', '))
+    return 'Archived: none yet; raw turns stay in context until the next compaction.'
   }
-  if (window.forgottenThrough !== undefined) {
-    clauses.push(`turns through ${String(window.forgottenThrough)} are removed from context and searchable`)
-  }
-  return `Window: ${clauses.join('; ')}.`
+  const archived = window.ranges.map(range => renderRange(range)).join(', ')
+  const forgotten = window.forgottenThrough === undefined
+    ? ''
+    : ` Turns through ${String(window.forgottenThrough)} are removed from context and searchable.`
+  return `Archived: ${archived}.${forgotten} Raw turns stay in context until the next compaction; use memory_read for the archived details.`
 }
 
 /** Render one run; only the first run repeats `summarized`. */
-function renderRange(range: MemorySnapshotRange, first: boolean): string {
+function renderRange(range: MemorySnapshotRange): string {
   const span = range.startTurn === range.endTurn
     ? `turn ${String(range.startTurn)}`
     : `turns ${String(range.startTurn)}–${String(range.endTurn)}`
-  return first ? `${span} summarized (${range.tier})` : `${span} (${range.tier})`
+  return `${span} (${range.tier})`
 }
 
 /**

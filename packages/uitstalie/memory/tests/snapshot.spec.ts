@@ -130,8 +130,9 @@ function documentFixture(): MemoryDocument {
 }
 
 /** The window manifest the fixture renders for the current session. */
-const FIXTURE_MANIFEST = 'Window: turns 7–10 summarized (detail), turns 17–20 (brief); '
-  + 'turns through 20 are removed from context and searchable.'
+const FIXTURE_MANIFEST = 'Archived: turns 7–10 (detail), turns 17–20 (brief). '
+  + 'Turns through 20 are removed from context and searchable. '
+  + 'Raw turns stay in context until the next compaction; use memory_read for the archived details.'
 
 test('an empty document produces no snapshot and no message', async () => {
   const mounted = await mount()
@@ -163,7 +164,7 @@ test('a write appends exactly one snapshot with the window manifest and the hint
   const text = snapshot === undefined ? '' : snapshotText(snapshot)
   expect(snapshot?.source.sections[0]?.text).toBe(text)
   expect(text).toContain(MEMORY_SNAPSHOT_TITLE)
-  expect(text).toContain('Window: turn 1 summarized (detail).')
+  expect(text).toContain('Archived: turn 1 (detail).')
   expect(text).toContain(MEMORY_SNAPSHOT_HINT)
   expect(snapshotBytes(text)).toBeLessThanOrEqual(MEMORY_SNAPSHOT_MAX_BYTES)
 })
@@ -258,7 +259,7 @@ test('the snapshot indexes other sessions of this workspace', async () => {
 
   const [snapshot] = await memorySnapshots(mounted.ctx, writer.session.id)
   const text = snapshot === undefined ? '' : snapshotText(snapshot)
-  expect(text).toContain('Window: turn 1 summarized (detail).')
+  expect(text).toContain('Archived: turn 1 (detail).')
   expect(text).toContain('- memory-other · [files] touched packages/uitstalie/memory/src/snapshot.ts')
   expect(snapshotBytes(text)).toBeLessThanOrEqual(MEMORY_SNAPSHOT_MAX_BYTES)
 })

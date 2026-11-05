@@ -81,6 +81,14 @@ function registerAdapter(mounted: MemoryTestHarness, adapter: SummaryAdapter): v
   mounted.ctx.llm.registerAdapter(['stub'], adapter)
 }
 
+/** Append a compaction boundary: the only point where a memory surface replace is allowed. */
+function markCompactionBoundary(agent: Agent, turn: number): void {
+  (agent.session as unknown as { append(type: string, data: unknown): void }).append('compaction/end', {
+    compactionId: 'compaction-test',
+    turn,
+  })
+}
+
 /** Append one completed turn's user and assistant text, then close the turn. */
 function completeTurn(agent: Agent, turn: number, user: string, answer: string): void {
   appendUserText(agent, user)
@@ -163,8 +171,9 @@ test('the default window replaces the raw turn with a detail checkpoint at age 6
   expect(occurrences(surface, 'answer one')).toBe(1)
   expect(checkpoints(surface)).toHaveLength(0)
 
-  // Advance to age 6: the raw turn becomes one detail checkpoint.
+  // Advance to age 6: the raw turn becomes one detail checkpoint at the compaction boundary.
   root.session.append('turn/start', { turn: 7 })
+  markCompactionBoundary(root, 7)
   completeTurn(root, 7, 'request seven', 'answer seven')
   await waitForSettledJobs(root, 2)
 
@@ -184,7 +193,7 @@ test('the default window replaces the raw turn with a detail checkpoint at age 6
   // summary pass may append a newer one; the latest describes the current window.
   expect((await memorySnapshots(mounted.ctx, root.id)).length).toBeGreaterThanOrEqual(1)
   const snapshot = await snapshotText(mounted, root.id)
-  expect(snapshot).toContain('turn 1 summarized (detail)')
+  expect(snapshot).toContain('Archived: turn 1 (detail)')
   expect(snapshot).not.toContain('request one')
 })
 
@@ -197,6 +206,7 @@ test('a brief checkpoint replaces the detail checkpoint node instead of appendin
   completeTurn(root, 1, 'request one', 'answer one')
   await waitForSettledJobs(root, 1)
   root.session.append('turn/start', { turn: 3 })
+  markCompactionBoundary(root, 3)
   completeTurn(root, 3, 'request three', 'answer three')
   await waitForSettledJobs(root, 2)
 
@@ -209,6 +219,7 @@ test('a brief checkpoint replaces the detail checkpoint node instead of appendin
   // Age 4: the detail checkpoint node becomes the brief checkpoint, and the raw turn 3
   // becomes its own detail checkpoint in the same pass.
   root.session.append('turn/start', { turn: 5 })
+  markCompactionBoundary(root, 5)
   completeTurn(root, 5, 'request five', 'answer five')
   await waitForSettledJobs(root, 3)
 
@@ -228,5 +239,25 @@ test('a brief checkpoint replaces the detail checkpoint node instead of appendin
   const document = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
   expect(document.sections.map(section => [section.startTurn, section.tier]))
     .toEqual([[1, 'brief'], [3, 'detail'], [5, 'detail']])
-  expect(await snapshotText(mounted, root.id)).toContain('turn 1 summarized (brief)')
+  expect(await snapshotText(mounted, root.id)).toContain('Archived: turn 1 (brief)')
+})
+
+test('keeps the surface append-only between compaction boundaries', async () => {
+  const mounted = await mount()
+  const adapter = new SummaryAdapter(call => decisionReply(`detail ${String(call)}`))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+  for (let turn = 1; turn <= 8; turn += 1) {
+    if (turn > 1) root.session.append('turn/start', { turn })
+    completeTurn(root, turn, `request ${String(turn)}`, `answer ${String(turn)}`)
+    await waitForSettledJobs(root, turn)
+  }
+
+  const surface = (await mounted.ctx.sessionQuery.readSurface(root.id)).events
+  expect(surface.some(event => event.type === 'user/message'
+    && event.surfaceOp !== undefined && typeof event.surfaceOp === 'object' && event.surfaceOp.op === 'replace')).toBe(false)
+  // The fold is owed (turn 1 is past the detail age) but its checkpointSeq is not recorded, so the
+  // next compaction boundary can publish it without rewriting history in between.
+  const document = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
+  expect(document.sessions[0]?.turns[0]?.checkpointSeq).toBeUndefined()
 })

@@ -210,7 +210,7 @@ test('a completed turn runs one memory job that appends a detail section and ref
   expect(snapshots[0]?.source.form).toBe('snapshot')
   const snapshotText = snapshots[0]?.message.content
     .flatMap(block => block.type === 'text' ? [block.text] : []).join('') ?? ''
-  expect(snapshotText).toContain('turn 1 summarized (detail)')
+  expect(snapshotText).toContain('Archived: turn 1 (detail)')
 })
 
 test('a paused workspace skips the completed turn without writing or noticing', async () => {
@@ -483,6 +483,10 @@ test('a later completed turn compresses an old detail section into a brief check
   })
 
   root.session.append('turn/start', { turn: 17 })
+  ;(root.session as unknown as { append(type: string, data: unknown): void }).append('compaction/end', {
+    compactionId: 'compaction-test',
+    turn: 17,
+  })
   completeTurn(root, 17)
   await waitForSettledJobs(root, 1)
 

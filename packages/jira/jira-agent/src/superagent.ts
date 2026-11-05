@@ -1946,25 +1946,30 @@ export const activityOf = (agent: unknown, now: number = Date.now()): SessionAct
 }
 
 /**
- * The most recent assistant message's cache-hit percentage for one live Session.
+ * The weighted cache-hit percentage over the most recent assistant requests of one live Session.
  *
- * `cacheReadTokens / (inputTokens + cacheReadTokens)`: the share of the last request served from
- * the provider's prefix cache. A sudden drop means something rewrote the prompt prefix, which is
- * exactly the regression this metric exists to surface.
+ * `sum(cacheReadTokens) / sum(inputTokens + cacheReadTokens)`: a single request is a poor sample —
+ * the turn's first request is the worst one, because whatever changed between turns is paid there.
+ * Weighting a recent window shows the conversation's real health instead of the last outlier.
  * @param agent - the live Agent whose session log is read.
+ * @param limit - how many recent assistant messages to include (default 20).
  * @returns the percentage (0–100), or undefined without a measurable usage record.
  */
-export const cacheHitOf = (agent: unknown): number | undefined => {
+export const cacheHitOf = (agent: unknown, limit = 20): number | undefined => {
   const events = eventsOf(agent)
-  for (let index = events.length - 1; index >= 0; index -= 1) {
+  let read = 0
+  let total = 0
+  let samples = 0
+  for (let index = events.length - 1; index >= 0 && samples < limit; index -= 1) {
     const event = events[index]
     if (event?.type !== 'assistant/message') continue
     const usage = (event.data as { usage?: { inputTokens?: number; cacheReadTokens?: number } } | undefined)?.usage
     if (usage?.inputTokens === undefined) continue
-    const total = usage.inputTokens + (usage.cacheReadTokens ?? 0)
-    return total === 0 ? undefined : Math.round((usage.cacheReadTokens ?? 0) / total * 100)
+    read += usage.cacheReadTokens ?? 0
+    total += usage.inputTokens + (usage.cacheReadTokens ?? 0)
+    samples += 1
   }
-  return undefined
+  return total === 0 ? undefined : Math.round(read / total * 100)
 }
 
 /** One recent event as `inspect` reports it. */
