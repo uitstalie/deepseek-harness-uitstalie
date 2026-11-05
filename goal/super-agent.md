@@ -422,3 +422,5 @@ pass 扫描 → 候选（只读，不动账本）
 启动 Session 的 preset 由 `superagent_agent_preset` 决定（缺省用部署默认）。
 
 **向工作区投送文件（用户裁定 2026-11-05）**：超级 agent 有两条"把资料交给工作区"的路径——`superagent_deliver` 在 host 进程内复制一个文件（报告、xlsx/csv、用户附件）进已注册工作区（目标必须在工作区物理目录内、默认不覆盖、可读 `$DSH_HOME/attachments`）；同时文件围栏（`dsh-fs-sandbox`）对超级会话额外授予全部已注册工作区（`fsAdditionalWritableRoots`），所以 `write`/`edit` 也能落到那些目录。shell 与 terminal 的沙箱不放宽（Windows ACL 无法表达额外根），且该授予只对 cwd 等于 `superagent_home` 的会话生效；`superagent_write_registered_workspaces: false` 可退回单工作区。
+
+**上下文压缩与记忆梳理（用户裁定 2026-11-05）**：`superagent_session list` 对活会话报告上下文百分比，超过 `superagent_compact_threshold_percent`（默认 30）只给 `recommendCompact` 建议；`compact` 动作与 `append`/`prompt` 的 `compact: true` 走宿主的 `ctx.compaction.compactNow`（与 `/compact` 同一接缝），运行中的会话拒绝（`busy`）而不是被打断，压缩失败就不投递任务；`curate_memory: true` 把整理指令投给工作区会话，由它用自己的 memory 工具整理自己（per-workspace）的 `.dsh/memory`；回报带压缩前后百分比。

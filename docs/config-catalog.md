@@ -1619,7 +1619,7 @@ export interface Config {
 
 - `inject`: `sandboxPolicy`
 - `refs`: [`LocalConfig`](#deepseek-aidsh-fs-local)
-- `source`: [`packages/fs/fs-sandbox/src/index.ts:45`](../packages/fs/fs-sandbox/src/index.ts)
+- `source`: [`packages/fs/fs-sandbox/src/index.ts:46`](../packages/fs/fs-sandbox/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -1954,7 +1954,7 @@ export interface TlsConfig {
 ## `@deepseek-ai/dsh-jira-agent`
 
 - `inject`: `jira` · `tools` · `dafeiyu`
-- `source`: [`packages/jira/jira-agent/src/index.ts:73`](../packages/jira/jira-agent/src/index.ts)
+- `source`: [`packages/jira/jira-agent/src/index.ts:74`](../packages/jira/jira-agent/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -2004,6 +2004,11 @@ export type Config = Readonly<{
    * shell/terminal confinement is unchanged; set false to keep the stricter single-workspace fence.
    */
   superagent_write_registered_workspaces?: boolean
+  /**
+   * Context percentage at which a Session row starts suggesting compaction (default 30). It is
+   * advice for the super agent, never an automatic compaction; the super agent still decides.
+   */
+  superagent_compact_threshold_percent?: number
 }>
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->

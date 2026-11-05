@@ -45,6 +45,7 @@ import {
   SUPERAGENT_CAPABILITY_LABEL,
   SUPERAGENT_SETTINGS_ORDER,
   SUPERAGENT_SETTINGS_SECTION,
+  DEFAULT_COMPACT_THRESHOLD_PERCENT,
   createSuperagentContribution,
   ensureSuperWorkspace,
   superagentHomeProblem,
@@ -109,6 +110,11 @@ export type Config = Readonly<{
    * shell/terminal confinement is unchanged; set false to keep the stricter single-workspace fence.
    */
   superagent_write_registered_workspaces?: boolean
+  /**
+   * Context percentage at which a Session row starts suggesting compaction (default 30). It is
+   * advice for the super agent, never an automatic compaction; the super agent still decides.
+   */
+  superagent_compact_threshold_percent?: number
 }>
 
 /** Schemastery schema for the row configuration. */
@@ -122,6 +128,7 @@ export const Config: z<Config> = z.object({
   superagent_permission_preset: z.string(),
   superagent_agent_preset: z.string(),
   superagent_write_registered_workspaces: z.boolean(),
+  superagent_compact_threshold_percent: z.number(),
 })
 
 /**
@@ -228,6 +235,7 @@ export function apply(ctx: Context, config: Config): void {
         config.superagent_permission_preset ?? 'workspace-write',
         config.superagent_agent_preset,
         config.superagent_write_registered_workspaces !== false,
+        config.superagent_compact_threshold_percent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT,
       ),
   })
   ctx.effect(() => superagent, 'superagent.register()')
@@ -353,9 +361,13 @@ export {
   LEDGER_DESCRIPTION,
   LEDGER_PARAMETERS,
   LEDGER_TOOL_NAME,
+  DEFAULT_COMPACT_THRESHOLD_PERCENT,
   DELIVER_DESCRIPTION,
   DELIVER_PARAMETERS,
   DELIVER_TOOL_NAME,
+  MEMORY_CURATION_INSTRUCTION,
+  compactWorkspaceSession,
+  contextUsageOf,
   MODELS_DESCRIPTION,
   MODELS_PARAMETERS,
   MODELS_TOOL_NAME,

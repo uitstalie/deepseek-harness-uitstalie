@@ -108,6 +108,14 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + '- When you have a file to hand over (a report, xlsx/csv, an attachment the person dropped here), '
     + 'copy it into the workspace with `superagent_deliver` and name the delivered path in the task you '
     + 'append there; do not process that material in this conversation.\n'
+    + '- Before handing more work to a long conversation, check `superagent_session list`: each row\'s '
+    + '`usage` is the context percentage and `recommendCompact` marks a Session at or above the configured '
+    + 'threshold. That is advice; decide yourself. To compact, use action `compact`, or `compact: true` on '
+    + '`append`/`prompt` — it refuses while the Session runs (it never interrupts a task) and the refusal is '
+    + 'in the result, so wait or use another Session. The report shows the context before and after.\n'
+    + '- When the person asks to tidy or evaluate a workspace\'s memory, pass `curate_memory: true` on '
+    + '`append`/`prompt`: the workspace Session reads, merges and expires its OWN memory with its memory '
+    + 'tools. Memory is per-workspace; never edit another workspace\'s `.dsh/memory` from here.\n'
     + '- Follow-up work belongs in the workspace\'s existing conversation: use `superagent_session` '
     + 'action `append` with the workspace and the instruction. It continues that workspace\'s most '
     + 'recent Session and its report comes back here.\n'
@@ -526,8 +534,9 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
       + 'one or the workspace has none. prompt: append to a Session the caller named. list: show one '
       + 'workspace\'s Sessions. archive: hide one Session. fork: branch one Session. delete: erase '
       + 'one stored Session only when the host exposes a real delete API; current hosts do not, and '
-      + 'the tool refuses instead of pretending.',
-    enum: ['append', 'start', 'prompt', 'list', 'archive', 'fork', 'delete'],
+      + 'the tool refuses instead of pretending. compact: compact the Session history now; it refuses '
+      + 'while the Session runs (never interrupts a task).',
+    enum: ['append', 'start', 'prompt', 'list', 'archive', 'fork', 'delete', 'compact'],
   },
   workspace: { type: 'string', description: 'append/start/list: the workspace path or title; prompt/archive/fork/delete use it for the report headline.' },
   task: { type: 'string', description: 'start: the self-contained task for that workspace agent.' },
@@ -541,6 +550,18 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
     description: 'start/append/prompt: optional adapter-owned reasoning effort; requires `provider` and `model`.',
   },
   atSeq: { type: 'number', description: 'fork: branch from this event seq; default the latest completed turn.' },
+  compact: {
+    type: 'boolean',
+    description: 'append/prompt: compact this Session before admitting the text; refuses (and sends nothing) '
+      + 'while the Session runs or when compaction fails. The super agent decides from list usage; nothing '
+      + 'is compacted automatically.',
+  },
+  curate_memory: {
+    type: 'boolean',
+    description: 'append/start/prompt: prepend an instruction that makes the workspace Session curate its own '
+      + 'memory (merge, expire, add conclusions) before the task. Memory stays per-workspace; this tool never '
+      + 'writes another workspace\'s memory.',
+  },
 })
 
 /** `superagent_session`'s description: what the verbs do and where the report goes. */
@@ -554,7 +575,12 @@ export const SESSION_DESCRIPTION =
   + 'one, and `delete` exists only on a host with a real erase API. Current hosts expose no such API: '
   + '`delete` refuses with that limitation instead of archiving behind your back; use `archive` and '
   + 'tell the person the log remains under `~/.dsh/sessions`. Never delete the Session that called '
-  + 'this tool.'
+  + 'this tool. `list` also reports each running Session\'s context usage and marks rows at or above '
+  + 'the configured threshold with `recommendCompact`: that is advice, not an automatic compaction. '
+  + '`compact` compacts one Session now (host-side, through the same seam as `/compact`), and it '
+  + 'refuses while the Session runs rather than interrupting it. `append`/`prompt` accept `compact: '
+  + 'true` to compact before the text is admitted, and `curate_memory: true` to make the workspace '
+  + 'Session tidy its own memory first.'
 
 /** Model discovery for the super agent's workspace Sessions (DH-803). */
 export const MODELS_TOOL_NAME = 'superagent_models'
@@ -810,6 +836,8 @@ export interface TaskSessionRecord {
   readonly workspace: string
   /** The structured dispatch entry this turn will resolve, when the ledger recorded one. */
   readonly ledger?: Readonly<{ root: string; task: DispatchLedgerTask }>
+  /** The Session's context usage measured just before its task was admitted (DH-720). */
+  readonly usageBefore?: ContextUsage
 }
 
 /** What one superagent_session call needs beyond the shared run options. */
@@ -818,6 +846,8 @@ export interface SessionToolContext {
   readonly agentPreset?: string
   /** Sessions this super agent addressed, so their turn ends report back to it. */
   readonly tasks: Map<string, TaskSessionRecord>
+  /** Context percentage at which a list row suggests compacting; a suggestion, never enforcement. */
+  readonly compactThresholdPercent?: number
 }
 
 /** The envelope both tools advertise; `items`, `issue` and `dispatch` carry the payloads. */
@@ -845,6 +875,8 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     sessions: { type: 'array' },
     session: { type: 'object', additionalProperties: true },
     delivered: { type: 'object', additionalProperties: true },
+    usage: { type: 'object', additionalProperties: true },
+    compaction: { type: 'object', additionalProperties: true },
     model: { type: 'object', additionalProperties: true },
     issue: { type: 'object', additionalProperties: true },
     dispatch: { type: 'object', additionalProperties: true },
@@ -1646,6 +1678,163 @@ const applySessionModel = async (
   }
 }
 
+/** One Session's context pressure as a percentage of its window, when the host can read it. */
+export interface ContextUsage {
+  readonly tokens?: number
+  readonly window?: number
+  readonly percent?: number
+}
+
+/** The slice of the host token meter this capability reads. */
+interface TokenMeterLike {
+  contextPressure(session: unknown): { pressureTokens?: number; contextWindow?: number }
+}
+
+/** The slice of the host compaction seam this capability drives. */
+interface CompactionLike {
+  compactNow(agent: unknown, signal: AbortSignal): Promise<{ readonly shadowedTokenCount?: number } | null>
+}
+
+/** The slice of the host agent registry this capability reads; it holds live Sessions only. */
+interface AgentsLike {
+  get(id: string): unknown
+}
+
+/** Read the host token meter when the deployment mounts one. */
+const tokenMeterOf = (ctx: unknown): TokenMeterLike | undefined => {
+  const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
+  const service = typeof get === 'function' ? get.call(ctx, 'tokenMeter') as Partial<TokenMeterLike> | undefined : undefined
+  return service !== undefined && typeof service.contextPressure === 'function' ? service as TokenMeterLike : undefined
+}
+
+/** Read the host compaction seam when the deployment mounts one. */
+const compactionOf = (ctx: unknown): CompactionLike | undefined => {
+  const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
+  const service = typeof get === 'function' ? get.call(ctx, 'compaction') as Partial<CompactionLike> | undefined : undefined
+  return service !== undefined && typeof service.compactNow === 'function' ? service as CompactionLike : undefined
+}
+
+/** Read the host agent registry when the deployment mounts one. */
+const agentsOf = (ctx: unknown): AgentsLike | undefined => {
+  const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
+  const service = typeof get === 'function' ? get.call(ctx, 'agents') as Partial<AgentsLike> | undefined : undefined
+  return service !== undefined && typeof service.get === 'function' ? service as AgentsLike : undefined
+}
+
+/**
+ * Read one Session's context usage. An absent field stays absent: without both the measured tokens
+ * and the routed window there is no honest percentage to report, and inventing a denominator would
+ * turn "unknown" into a misleading suggestion.
+ * @param meter - the host token meter, when mounted.
+ * @param session - the live Session to read.
+ * @returns the usage, or undefined when the host cannot measure it.
+ */
+export const contextUsageOf = (meter: TokenMeterLike | undefined, session: unknown): ContextUsage | undefined => {
+  if (meter === undefined || session === undefined) return undefined
+  const { pressureTokens, contextWindow } = meter.contextPressure(session)
+  if (pressureTokens === undefined || contextWindow === undefined || contextWindow <= 0) return undefined
+  return Object.freeze({
+    tokens: pressureTokens,
+    window: contextWindow,
+    percent: Math.min(100, Math.round(pressureTokens / contextWindow * 100)),
+  })
+}
+
+/**
+ * Render the report's context marker. A compaction shows both sides; otherwise the single
+ * measurement is enough.
+ * @param before - usage before compaction or task admission.
+ * @param after - usage at turn end.
+ * @returns '' when neither side is measurable, else a parenthesized marker.
+ */
+const contextMarker = (before?: ContextUsage, after?: ContextUsage): string => {
+  const text = (usage?: ContextUsage): string | undefined => usage?.percent === undefined ? undefined : `${usage.percent}%`
+  const from = text(before)
+  const to = text(after)
+  if (from === undefined && to === undefined) return ''
+  if (from !== undefined && to !== undefined && from !== to) return ` (context ${from} → ${to})`
+  return ` (context ${to ?? from})`
+}
+
+/** The standing instruction handed to a workspace Session that should curate its own memory first. */
+export const MEMORY_CURATION_INSTRUCTION =
+  'Before starting: curate this workspace\'s memory. Read the memory entries and summaries '
+  + '(`memory_search` / `memory_read`), merge duplicates, mark what is stale, and add one line for a '
+  + 'missing durable conclusion. Memory is per-workspace: do not read or write another workspace\'s '
+  + 'memory. Then do the following work.\n\n'
+
+/**
+ * Prepend the curation instruction when the caller asked for it. The instruction is delivered as
+ * ordinary prompt text so the workspace agent uses its own tools on its own memory store; this
+ * capability never writes another workspace's `.dsh/memory`.
+ * @param text - the caller's task text.
+ * @param curate - whether the caller asked for memory curation first.
+ * @returns the text to admit.
+ */
+const composeTask = (text: string, curate: boolean): string => curate ? MEMORY_CURATION_INSTRUCTION + text : text
+
+/** What one manual compaction attempt reports. */
+export interface CompactionOutcome {
+  readonly before?: ContextUsage
+  readonly after?: ContextUsage
+  readonly compacted?: boolean
+  readonly shadowedTokens?: number
+  readonly error?: string
+  /** The host's stable failure class when it named one (`busy`, `changed`, …). */
+  readonly code?: string
+}
+
+/**
+ * Compact one Session through the host's manual-compaction seam.
+ *
+ * Resolving the Agent first is what makes a cold Session compactable; the engine itself refuses
+ * (`busy`) while a turn is active, so a running task is never interrupted — the refusal is returned
+ * as data for the super agent to observe. Every outcome is measured on both sides where the host
+ * can measure it.
+ * @param ctx - the plugin context carrying the compaction seam and token meter.
+ * @param controller - the host session controller (for `resolveAgent`).
+ * @param sessionId - the Session to compact.
+ * @returns the outcome; `error` is set instead of throwing.
+ */
+export const compactWorkspaceSession = async (
+  ctx: unknown,
+  controller: SessionControllerLike,
+  sessionId: string,
+): Promise<CompactionOutcome> => {
+  const compaction = compactionOf(ctx)
+  if (compaction === undefined) return { error: 'this deployment has no compaction seam' }
+  if (controller.resolveAgent === undefined) return { error: 'this host exposes no resolveAgent for a Session' }
+  let agent: unknown
+  try {
+    const resolved = await controller.resolveAgent(sessionId)
+    agent = resolved.agent
+    if (agent === undefined) {
+      return { error: `the Session could not be resolved: ${String((resolved as { error?: unknown }).error ?? 'unknown')}` }
+    }
+  } catch (error: unknown) {
+    return { error: `the Session could not be resolved: ${error instanceof Error ? error.message : String(error)}` }
+  }
+  const meter = tokenMeterOf(ctx)
+  const before = contextUsageOf(meter, (agent as { session?: unknown }).session)
+  try {
+    const result = await compaction.compactNow(agent, new AbortController().signal)
+    const after = contextUsageOf(meter, (agent as { session?: unknown }).session)
+    return {
+      ...(before === undefined ? {} : { before }),
+      ...(after === undefined ? {} : { after }),
+      compacted: result !== null,
+      shadowedTokens: result?.shadowedTokenCount ?? 0,
+    }
+  } catch (error: unknown) {
+    const code = (error as { code?: unknown }).code
+    return {
+      ...(before === undefined ? {} : { before }),
+      error: error instanceof Error ? error.message : String(error),
+      ...(typeof code === 'string' ? { code } : {}),
+    }
+  }
+}
+
 /**
  * Run one `superagent_session` call: open, continue, list, archive or branch a real workspace Session.
  *
@@ -1693,6 +1882,10 @@ export const runSessionTool = async (
   const taskArg = asString(validated.value.task)
   const atSeq = typeof validated.value.atSeq === 'number' ? validated.value.atSeq : undefined
   const workspace = workspaceArg === undefined ? undefined : findWorkspace(registry, workspaceArg)
+  const meter = tokenMeterOf(ctx)
+  const thresholdPercent = context.compactThresholdPercent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT
+  const wantCompact = validated.value.compact === true
+  const curateMemory = validated.value.curate_memory === true
 
   if (action === 'append') {
     if (workspace === undefined) {
@@ -1716,11 +1909,18 @@ export const runSessionTool = async (
       const sessionId = String(target.sessionId)
       const selected = await applySessionModel(controller, sessionId, validated.value)
       if (selected.error !== undefined) return failure(invalidInput(selected.error, { session: sessionId }), caller, me)
+      const compaction = wantCompact ? await compactWorkspaceSession(ctx, controller, sessionId) : undefined
+      if (compaction?.error !== undefined) {
+        return failure(invalidInput(
+          `the context was not compacted, so the follow-up was not sent: ${compaction.error}`,
+          { session: sessionId, compaction },
+        ), caller, me)
+      }
       await controller.prompt({
         requestId: `superagent-append-${randomUUID()}`,
         sessionId,
         mode: 'queue',
-        content: [{ type: 'text', text: textArg.trim() }],
+        content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
       }, new AbortController().signal)
       const ledger = await recordTaskLedger(caller, workspace, textArg.trim(), sessionId, options.at)
       if (reportTo !== undefined) {
@@ -1728,12 +1928,14 @@ export const runSessionTool = async (
           superSession: reportTo,
           workspace: workspace.path,
           ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+          ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
         })
       }
       return withLedger(Object.freeze({
         ...verdict,
         session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title, appended: true }),
         ...(selected.model === undefined ? {} : { model: selected.model }),
+        ...(compaction === undefined ? {} : { compaction: Object.freeze(compaction) }),
       }), ledger)
     } catch (error: unknown) {
       return failure(invalidInput(
@@ -1764,7 +1966,7 @@ export const runSessionTool = async (
         requestId: `superagent-task-${randomUUID()}`,
         sessionId,
         mode: 'queue',
-        content: [{ type: 'text', text: taskArg.trim() }],
+        content: [{ type: 'text', text: composeTask(taskArg.trim(), curateMemory) }],
       }, new AbortController().signal)
       const ledger = await recordTaskLedger(caller, workspace, taskArg.trim(), sessionId, options.at)
       if (reportTo !== undefined) {
@@ -1797,11 +1999,18 @@ export const runSessionTool = async (
     try {
       const selected = await applySessionModel(controller, sessionArg, validated.value)
       if (selected.error !== undefined) return failure(invalidInput(selected.error, { session: sessionArg }), caller, me)
+      const compaction = wantCompact ? await compactWorkspaceSession(ctx, controller, sessionArg) : undefined
+      if (compaction?.error !== undefined) {
+        return failure(invalidInput(
+          `the context was not compacted, so the follow-up was not admitted: ${compaction.error}`,
+          { session: sessionArg, compaction },
+        ), caller, me)
+      }
       await controller.prompt({
         requestId: `superagent-followup-${randomUUID()}`,
         sessionId: sessionArg,
         mode: 'queue',
-        content: [{ type: 'text', text: textArg.trim() }],
+        content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
       }, new AbortController().signal)
       const ledger: LedgerAttempt = workspace === undefined
         ? Object.freeze({})
@@ -1812,12 +2021,14 @@ export const runSessionTool = async (
           superSession: reportTo,
           workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
           ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+          ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
         })
       }
       return withLedger(Object.freeze({
         ...verdict,
         session: Object.freeze({ id: sessionArg }),
         ...(selected.model === undefined ? {} : { model: selected.model }),
+        ...(compaction === undefined ? {} : { compaction: Object.freeze(compaction) }),
       }), ledger)
     } catch (error: unknown) {
       return failure(invalidInput(
@@ -1827,20 +2038,45 @@ export const runSessionTool = async (
     }
   }
 
+  if (action === 'compact') {
+    if (sessionArg === undefined || sessionArg.trim() === '') {
+      return failure(invalidInput('compact needs `session`: the Session id'), caller, me)
+    }
+    const outcome = await compactWorkspaceSession(ctx, controller, sessionArg.trim())
+    if (outcome.error !== undefined) {
+      return failure(invalidInput(
+        `the Session was not compacted: ${outcome.error}`,
+        { session: sessionArg, compaction: outcome },
+      ), caller, me)
+    }
+    return Object.freeze({
+      ...verdict,
+      session: Object.freeze({ id: sessionArg.trim(), ...(outcome.compacted === false ? { nothingToCompact: true } : {}) }),
+      compaction: Object.freeze(outcome),
+    })
+  }
+
   if (action === 'list') {
     try {
       const listed = await controller.list()
       const rows = listed.items
         .filter(item => item.parentSessionId === undefined && item.origin !== 'subagent')
         .filter(item => workspace === undefined || item.cwd === undefined || sameCheckout(item.cwd, workspace.path))
-        .map(item => Object.freeze({
-          id: String(item.sessionId),
-          running: item.running,
-          blank: item.blank === true,
-          ...(item.cwd === undefined ? {} : { cwd: item.cwd }),
-          ...(item.updatedAt === undefined ? {} : { updatedAt: item.updatedAt }),
-        }))
-      return Object.freeze({ ...verdict, sessions: Object.freeze(rows) })
+        .map((item) => {
+          const id = String(item.sessionId)
+          const live = agentsOf(ctx)?.get(id) as { session?: unknown } | undefined
+          const usage = contextUsageOf(meter, live?.session)
+          return Object.freeze({
+            id,
+            running: item.running,
+            blank: item.blank === true,
+            ...(item.cwd === undefined ? {} : { cwd: item.cwd }),
+            ...(item.updatedAt === undefined ? {} : { updatedAt: item.updatedAt }),
+            ...(usage === undefined ? {} : { usage }),
+            ...(usage?.percent === undefined || usage.percent < thresholdPercent ? {} : { recommendCompact: true }),
+          })
+        })
+      return Object.freeze({ ...verdict, sessions: Object.freeze(rows), compactThresholdPercent: thresholdPercent })
     } catch (error: unknown) {
       return failure(invalidInput(`the Session list could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
     }
@@ -2083,6 +2319,7 @@ export const deliverTaskReport = async (
   const text = lastAssistantText(agent)
   if (text === undefined) return false
   const sessionId = String((agent as { id?: unknown }).id)
+  const usageAfter = contextUsageOf(tokenMeterOf(host.ctx), (agent as { session?: unknown }).session)
   try {
     await controller.prompt({
       requestId: `superagent-report-${randomUUID()}`,
@@ -2091,7 +2328,8 @@ export const deliverTaskReport = async (
       content: [{
         type: 'text',
         text: `[task-report] ${sessionId} in ${record.workspace} finished its turn`
-          + `${record.ledger === undefined ? '' : ` (task ${record.ledger.task.id}, ledger returned)`}.`
+          + `${record.ledger === undefined ? '' : ` (task ${record.ledger.task.id}, ledger returned)`}`
+          + `${contextMarker(record.usageBefore, usageAfter)}.`
           + `\n\n${text}\n\n`
           + 'Record the durable conclusion with memory_write (kind decision/open/files, tags including '
           + 'superagent, the workspace and the task id); use superagent_ledger resolve for any outcome, '
@@ -2115,6 +2353,9 @@ export type { DispatchRecord, DispatchStatus } from './dispatch.ts'
 
 /** How many issues one dispatcher may keep in progress at once, unless the row says otherwise. */
 export const DEFAULT_MAX_WORKERS = 2
+
+/** The context percentage at which a Session row starts suggesting compaction (a suggestion only). */
+export const DEFAULT_COMPACT_THRESHOLD_PERCENT = 30
 
 /** One Session row the list action reports. */
 export interface SessionSummaryLike {
@@ -2168,6 +2409,11 @@ export interface SessionControllerLike {
     readonly model: string
     readonly reasoningEffort?: string
   }): Promise<{ readonly selected: { readonly provider: string; readonly model: string; readonly reasoningEffort?: string } }>
+  /**
+   * Resolve (resuming when cold) the Agent for one Session. Compaction and live-context
+   * measurement are Agent operations, so this is the host seam that makes both reachable.
+   */
+  resolveAgent?(sessionId: string): Promise<{ readonly agent?: unknown; readonly error?: unknown }>
   /** Branch one Session from a completed-turn prefix; optional on a host without the verb. */
   fork?(request: {
     readonly sessionId: string
@@ -2594,6 +2840,8 @@ export interface SuperagentDaemonConfig {
  * @param agentPreset - the preset a started workspace Session joins; unset keeps the deployment default.
  * @param writeRegisteredWorkspaces - whether super-agent sessions may hand files to every registered
  *   workspace through the in-process filesystem fence; defaults to true.
+ * @param compactThresholdPercent - the context percentage at which a Session row suggests compacting;
+ *   a suggestion for the super agent, never an automatic compaction (default 30).
  * @returns the capability contribution the organizer wires onto root agents.
  */
 export const createSuperagentContribution = (
@@ -2606,6 +2854,7 @@ export const createSuperagentContribution = (
   permissionPreset?: string,
   agentPreset?: string,
   writeRegisteredWorkspaces = true,
+  compactThresholdPercent: number = DEFAULT_COMPACT_THRESHOLD_PERCENT,
 ): CapabilityContribution => {
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
@@ -2801,11 +3050,30 @@ export const createSuperagentContribution = (
     isConcurrencySafe: () => false,
     render: (typed) => {
       if (Array.isArray(typed.sessions)) {
-        const rows = typed.sessions as { id: string; running: boolean; cwd?: string; blank?: boolean }[]
+        const rows = typed.sessions as {
+          id: string
+          running: boolean
+          cwd?: string
+          blank?: boolean
+          usage?: { percent?: number }
+          recommendCompact?: boolean
+        }[]
         if (rows.length === 0) return renderText('no Session in that workspace')
         return renderText(rows
-          .map(row => `${row.id}  ${row.running ? 'running' : 'idle'}${row.blank === true ? '  (blank)' : ''}  ${row.cwd ?? ''}`)
+          .map(row => `${row.id}  ${row.running ? 'running' : 'idle'}${row.blank === true ? '  (blank)' : ''}`
+            + `${row.usage?.percent === undefined ? '' : `  context ${row.usage.percent}%`}`
+            + `${row.recommendCompact === true ? '  (consider compact)' : ''}  ${row.cwd ?? ''}`)
           .join('\n'))
+      }
+      const compaction = typed.compaction as {
+        before?: { percent?: number }
+        after?: { percent?: number }
+        shadowedTokens?: number
+      } | undefined
+      if (compaction !== undefined) {
+        return renderText(`compacted${compaction.before?.percent === undefined ? '' : ` ${compaction.before.percent}%`}`
+          + `${compaction.after?.percent === undefined ? '' : ` → ${compaction.after.percent}%`}`
+          + `${compaction.shadowedTokens === undefined ? '' : ` (${compaction.shadowedTokens} tokens shadowed)`}`)
       }
       const one = typed.session as { id?: string; archived?: boolean; forkedFrom?: string } | undefined
       if (one?.id === undefined) return renderText('ok')
@@ -2816,6 +3084,7 @@ export const createSuperagentContribution = (
     run: (args, call) => runSessionTool(args, runOptionsOf(host, call), call.me, host.ctx, {
       ...(agentPreset === undefined ? {} : { agentPreset }),
       tasks,
+      compactThresholdPercent,
     }),
   }
   const deliver: Spec = {

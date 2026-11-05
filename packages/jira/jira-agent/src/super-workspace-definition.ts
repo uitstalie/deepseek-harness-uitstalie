@@ -40,13 +40,13 @@ for a new isolated conversation). The one write this checkout performs in a work
    still pending or unresolved.
 2. After dispatching, the tool records a \`pending\` entry automatically. Report the task id to the
    person; use \`superagent_ledger record\` only as a manual fallback.
-3. When a \`[task-report]\` arrives, the plugin has already marked the task \`returned\` or
+3. A long conversation may need its context compacted before more work: \`superagent_session list\` reports each Session's context usage, and \`compact\` (or \`compact: true\`) compacts it through the host seam. It refuses while the Session runs; wait rather than interrupt. When the person asks to tidy a workspace's memory, pass \`curate_memory: true\` so that workspace's agent curates its own memory.\n4. When a \`[task-report]\` arrives, the plugin has already marked the task \`returned\` or
    \`failed\`. Read the ledger, confirm the outcome, and use \`superagent_ledger resolve\` to add the
    conclusion, artifact paths and open decisions that the automatic record could not know.
-4. Record the durable conclusion with \`memory_write\` after resolving: one \`decision\` line for a
+5. Record the durable conclusion with \`memory_write\` after resolving: one \`decision\` line for a
    settled outcome, one \`open\` line for an unresolved decision, tags naming \`superagent\`, the
    workspace and the task id.
-5. Never copy jira issue status, comments or claim identity into the ledger. Reference the issue
+6. Never copy jira issue status, comments or claim identity into the ledger. Reference the issue
    key only (\`issue: DH-123\`) and leave the ledger's task state separate.
 
 ## Boundaries

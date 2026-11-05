@@ -36,6 +36,7 @@ import {
   WORKSPACE_TOOL_NAME,
   WORK_TOOL_NAME,
   DELIVER_TOOL_NAME,
+  MEMORY_CURATION_INSTRUCTION,
   claimability,
   createJiraContribution,
   createSessionRecorder,
@@ -862,6 +863,158 @@ describe('superagent: file delivery', () => {
     assert.equal(providers[0]?.({ header: { cwd: dir } }), undefined)
     contribution.dispose?.()
     assert.equal(disposed, true)
+  })
+})
+
+describe('superagent: context, compaction and memory curation', () => {
+  const workspacePath = join(tmpdir(), 'compact-workspace')
+
+  class CompactController extends ModelSelectingController {
+    items = [{ sessionId: 'w-session', running: false, cwd: workspacePath, blank: false, updatedAt: 100 }]
+    prompted: { sessionId: string; text: string }[] = []
+    compactCalls = 0
+    async prompt(request: { sessionId: string; content: readonly { text: string }[] }) {
+      this.prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '' })
+      return { accepted: true }
+    }
+    async list() { return { items: this.items } }
+    async create() { return { sessionId: 'w-session' } }
+    async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } }
+  }
+  class CompactRegistry {
+    rows = [{ id: 'w1', path: workspacePath, title: 'hello', sessionIds: [], status: async () => 'ok' }]
+    list() { return this.rows }
+    async create(path: string, title?: string) {
+      return { id: 'w2', path, title: title ?? path, sessionIds: [], status: async () => 'ok' }
+    }
+  }
+  const options = {
+    jira: {} as never,
+    caller: { writable: true, sessionId: 'super-1' } as never,
+    at: '2026-10-15T12:00:00Z' as never,
+  }
+  const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
+
+  it('reports context usage and the compaction suggestion in list', async () => {
+    const controller = new CompactController()
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'agents' ? { get: (id: string) => id === 'w-session' ? { session: {} } : undefined }
+          : key === 'tokenMeter' ? { contextPressure: () => ({ pressureTokens: 70_000, contextWindow: 200_000 }) }
+            : undefined,
+    }
+    const listed = await runSessionTool({ action: 'list' }, options, me, ctx, { tasks: new Map(), compactThresholdPercent: 30 })
+    assert.equal(listed.ok, true, JSON.stringify(listed.error))
+    const row = (listed.sessions as { id: string; usage?: { percent?: number }; recommendCompact?: boolean }[])[0]
+    assert.equal(row?.usage?.percent, 35)
+    assert.equal(row?.recommendCompact, true)
+    assert.equal(listed.compactThresholdPercent, 30)
+  })
+
+  it('compacts before admitting an append and reports both sides', async () => {
+    const controller = new CompactController()
+    const registry = new CompactRegistry()
+    let calls = 0
+    const compaction = { compactNow: async () => { controller.compactCalls += 1; return { shadowedTokenCount: 1200 } } }
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'workspaceRegistry' ? registry
+          : key === 'compaction' ? compaction
+            : key === 'tokenMeter' ? { contextPressure: () => ({ pressureTokens: calls++ === 0 ? 70_000 : 10_000, contextWindow: 200_000 }) }
+              : undefined,
+    }
+    const tasks = new Map<string, { superSession: string; workspace: string; usageBefore?: { percent?: number } }>()
+    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'next step', compact: true }, options, me, ctx, { tasks })
+    assert.equal(result.ok, true, JSON.stringify(result.error))
+    assert.equal(controller.compactCalls, 1)
+    assert.equal(controller.prompted[0]?.text, 'next step')
+    assert.equal((result.compaction as { before?: { percent?: number } }).before?.percent, 35)
+    assert.equal((result.compaction as { after?: { percent?: number } }).after?.percent, 5)
+    assert.equal(tasks.get('w-session')?.usageBefore?.percent, 35)
+  })
+
+  it('delivers a memory-curation instruction when asked', async () => {
+    const controller = new CompactController()
+    const registry = new CompactRegistry()
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'workspaceRegistry' ? registry
+          : undefined,
+    }
+    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'next step', curate_memory: true }, options, me, ctx, { tasks: new Map() })
+    assert.equal(result.ok, true, JSON.stringify(result.error))
+    assert.equal(controller.prompted[0]?.text, MEMORY_CURATION_INSTRUCTION + 'next step')
+  })
+
+  it('refuses to compact a busy Session and sends nothing', async () => {
+    const controller = new CompactController()
+    const registry = new CompactRegistry()
+    const compaction = {
+      compactNow: async () => { throw Object.assign(new Error('the agent is not idle'), { name: 'ManualCompactionError', code: 'busy' }) },
+    }
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'workspaceRegistry' ? registry
+          : key === 'compaction' ? compaction
+            : undefined,
+    }
+    const result = await runSessionTool({ action: 'prompt', session: 'w-session', text: 'more', compact: true }, options, me, ctx, { tasks: new Map() })
+    assert.equal(result.ok, false)
+    assert.equal(controller.prompted.length, 0, 'a failed compaction never admits the task')
+    assert.match(JSON.stringify(result.error), /not compacted/u)
+    assert.match(JSON.stringify(result.error), /not idle/u)
+  })
+
+  it('compacts a Session through the compact action', async () => {
+    const controller = new CompactController()
+    let calls = 0
+    const compaction = { compactNow: async () => { controller.compactCalls += 1; return { shadowedTokenCount: 800 } } }
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'compaction' ? compaction
+          : key === 'tokenMeter' ? { contextPressure: () => ({ pressureTokens: calls++ === 0 ? 70_000 : 10_000, contextWindow: 200_000 }) }
+            : undefined,
+    }
+    const result = await runSessionTool({ action: 'compact', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(result.ok, true, JSON.stringify(result.error))
+    assert.equal(controller.compactCalls, 1)
+    assert.equal((result.compaction as { after?: { percent?: number } }).after?.percent, 5)
+  })
+
+  it('carries the context marker into the turn report', async () => {
+    let report = ''
+    const controller = {
+      async prompt(request: { content: readonly { text: string }[] }) {
+        report = request.content[0]?.text ?? ''
+        return { accepted: true }
+      },
+      async create() { return { sessionId: 'unused' } },
+      async list() { return { items: [] } },
+    }
+    const host = {
+      ctx: {
+        get: (key: string) => key === 'sessionController' ? controller
+          : key === 'tokenMeter' ? { contextPressure: () => ({ pressureTokens: 10_000, contextWindow: 200_000 }) }
+            : undefined,
+      },
+    }
+    const agent = {
+      id: 'w-session',
+      session: {
+        snapshotEvents: () => [{
+          type: 'assistant/message',
+          data: { message: { content: [{ type: 'text', text: 'done' }] } },
+        }],
+      },
+    }
+    const delivered = await deliverTaskReport(
+      host as never,
+      { superSession: 'super-1', workspace: workspacePath, usageBefore: { tokens: 70_000, window: 200_000, percent: 35 } },
+      agent,
+      new AbortController().signal,
+    )
+    assert.equal(delivered, true)
+    assert.match(report, /context 35% → 5%/u)
   })
 })
 

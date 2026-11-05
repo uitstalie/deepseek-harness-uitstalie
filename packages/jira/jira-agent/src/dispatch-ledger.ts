@@ -14,7 +14,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { appendFile, mkdir, readFile, readdir, stat } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
 
 /** Directory, relative to the super workspace, that owns the dispatch ledger. */
 export const DISPATCH_LEDGER_DIR = '.superagent/ledger'
@@ -178,7 +178,7 @@ export const parseLedger = (
     const key = field[1] ?? ''
     const value = field[2] ?? ''
     if (key === 'workspace') current.workspaceTitle = value
-    else if (key === 'path') current.workspacePath = value
+    else if (key === 'path') current.workspacePath = value.replace(/^`(.*)`$/u, '$1')
     else current.fields.set(key, value)
   }
   finish()
@@ -304,7 +304,7 @@ export const listDispatchTasks = async (
   const latest = new Map<string, DispatchLedgerRow>()
   for (const file of files) {
     const text = await readFile(file, 'utf8')
-    const name = file.slice(file.lastIndexOf('/') + 1)
+    const name = basename(file)
     const fallback = {
       workspaceId: name.replace(/\.md$/u, ''),
       workspaceTitle: name.replace(/\.md$/u, ''),

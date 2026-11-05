@@ -58,6 +58,12 @@ export type ToolValue = Readonly<{
   sessions?: unknown
   /** `superagent_deliver`: the file copied into a registered workspace. */
   delivered?: unknown
+  /** `superagent_session`: one Session's context usage (list rows, or the compaction result). */
+  usage?: unknown
+  /** `superagent_session action: 'compact'`: the before/after usage and shadowed token count. */
+  compaction?: unknown
+  /** `superagent_session action: 'list'`: the percentage at which a row starts suggesting compaction. */
+  compactThresholdPercent?: unknown
   /** `superagent_dispatch`: the executor Session that was started (DH-702). */
   dispatch?: unknown
   /** `superagent_dispatch action: 'recover'`: the executors restarted, and the issues left alone. */
