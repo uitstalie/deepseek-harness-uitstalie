@@ -47,7 +47,7 @@ import { existsSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Win32Error } from '@deepseek-ai/dsh-win32-process'
 
-import { grantWrite, revokeWrite } from './acl.ts'
+import { denyWrite, grantWrite, revokeDeny, revokeWrite } from './acl.ts'
 import { allocPtrSlot, decodePtr, isNullPtr, throwLastError, win32 } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
 import { assertPrivateTempDisjoint } from './path-boundary.ts'
@@ -92,6 +92,13 @@ export interface AclSandboxOptions {
    * boundary; this typed seam trusts the union.
    */
   mode: 'read-only' | 'workspace-write'
+  /**
+   * Directories forced read-only inside a granted root — the
+   * `home-write` exclusions. Each receives the inheritable DENY write
+   * ACE for {@link writeSid}; the deny outranks the inherited allow of a
+   * granted drive root. Only meaningful with a write-restricted mode.
+   */
+  excludedDirs?: readonly string[]
   /**
    * Whether this instance owns its DACL grants (default true). False means
    * the CALLER has already materialized the ACEs (the sandbox seam's
@@ -169,6 +176,8 @@ export class AclSandbox {
   readonly tempWriteSid: string | undefined
   /** The file-effect mode — the restricted token's restricting-SID list selection. */
   readonly mode: 'read-only' | 'workspace-write'
+  /** Directories forced read-only by the exclusion deny (validated in the constructor). */
+  readonly excludedDirs: readonly string[]
   private readonly tempDirOption: string | null | undefined
   private readonly manageDacls: boolean
   private tempDirResolved: string | null | undefined
@@ -179,6 +188,7 @@ export class AclSandbox {
   /** The well-known/logon SID allocations init() makes; freed by dispose() alongside the write SIDs. */
   private sidAllocations: NativePtr[] = []
   private grantedPaths: Array<{ path: string; sidPtr: NativePtr }> = []
+  private deniedPaths: Array<{ path: string; sidPtr: NativePtr }> = []
 
   constructor(options: AclSandboxOptions) {
     this.mode = options.mode
@@ -190,6 +200,7 @@ export class AclSandbox {
       }
       return absolute
     })
+    this.excludedDirs = options.excludedDirs ?? []
     this.tempDirOption = options.tempDir
     this.writeSid = options.writeSid
     this.tempWriteSid = options.tempWriteSid
@@ -270,6 +281,14 @@ export class AclSandbox {
           for (const path of this.writableDirs) {
             grantWrite(api, path, this.writeSidPtr, lowLabelSid, worldSid)
           }
+          for (const path of this.excludedDirs) {
+            if (!existsSync(path) || !statSync(path).isDirectory()) {
+              throw new Error(`AclSandbox excluded dir does not exist or is not a directory: ${path}`)
+            }
+            // Record BEFORE denying: a post-apply throw must still revoke.
+            this.deniedPaths.push({ path, sidPtr: this.writeSidPtr })
+            denyWrite(api, path, this.writeSidPtr)
+          }
           if (tempDir !== null && this.tempWriteSidPtr !== undefined) {
             // Record BEFORE granting: grantWrite can throw after a successful
             // apply (a LocalFree failure), and the fail-closed catch must still
@@ -324,6 +343,13 @@ export class AclSandbox {
           cleanupFailures.push(cleanupError)
         }
       }
+      for (const denied of this.deniedPaths) {
+        try {
+          revokeDeny(api, denied.path, denied.sidPtr)
+        } catch (cleanupError) {
+          cleanupFailures.push(cleanupError)
+        }
+      }
       for (const [label, sidPtr] of [['workspace write SID', this.writeSidPtr], ['temp write SID', this.tempWriteSidPtr]] as const) {
         freeSidBestEffort(api, sidPtr, label, cleanupFailures)
       }
@@ -335,6 +361,7 @@ export class AclSandbox {
       this.tempWriteSidPtr = undefined
       this.tempDirResolved = undefined
       this.grantedPaths = []
+      this.deniedPaths = []
       if (cleanupFailures.length > 0) {
         throw new AggregateError(
           [error, ...cleanupFailures],
@@ -418,6 +445,13 @@ export class AclSandbox {
           failures.push(error)
         }
       }
+      for (const denied of this.deniedPaths) {
+        try {
+          revokeDeny(api, denied.path, denied.sidPtr)
+        } catch (error) {
+          failures.push(error)
+        }
+      }
     }
     for (const [label, sidPtr] of [['workspace write SID', this.writeSidPtr], ['temp write SID', this.tempWriteSidPtr]] as const) {
       freeSidBestEffort(api, sidPtr, label, failures)
@@ -440,6 +474,7 @@ export class AclSandbox {
     this.writeSidPtr = undefined
     this.tempWriteSidPtr = undefined
     this.grantedPaths = []
+    this.deniedPaths = []
     if (failures.length > 0) {
       throw new AggregateError(failures, `AclSandbox dispose completed with ${failures.length} cleanup failure(s)`)
     }

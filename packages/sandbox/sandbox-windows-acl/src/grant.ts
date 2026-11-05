@@ -12,7 +12,7 @@
  * @module @deepseek-ai/dsh-sandbox-windows-acl/grant
  */
 
-import { grantWrite, revokeWrite } from './acl.ts'
+import { denyWrite, grantWrite, revokeDeny, revokeWrite } from './acl.ts'
 import { allocPtrSlot, decodePtr, isNullPtr, throwLastError, win32Sync } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
 import { makeWellKnownSid } from './token.ts'
@@ -38,6 +38,7 @@ export class AclWriteGrant {
   private readonly worldSidPtr: NativePtr
   private readonly revocablePaths: string[] = []
   private readonly standingPaths: string[] = []
+  private readonly excludedPaths: string[] = []
 
   private constructor(
     api: Win32Bindings,
@@ -107,9 +108,21 @@ export class AclWriteGrant {
     grantWrite(this.api, path, this.sidPtr, this.lowLabelSidPtr, this.worldSidPtr)
   }
 
+  /**
+   * Force one path read-only for this capability: add the inheritable DENY
+   * write ACE {@link denyWrite} documents. Used by `home-write`'s
+   * `excludePaths`; the deny outranks an inherited allow from a granted root.
+   * Recorded before the edit so a post-apply throw still revokes it.
+   * @param path - the excluded directory.
+   */
+  exclude(path: string): void {
+    this.excludedPaths.push(path)
+    denyWrite(this.api, path, this.sidPtr)
+  }
+
   /** Every directory currently carrying the grant, in grant order. */
   get paths(): readonly string[] {
-    return [...this.standingPaths, ...this.revocablePaths]
+    return [...this.standingPaths, ...this.revocablePaths, ...this.excludedPaths]
   }
 
   /** Revoke every revocable grant (standing security descriptor edits stay) and free the SIDs; reports every cleanup failure. */
@@ -118,6 +131,13 @@ export class AclWriteGrant {
     for (const path of this.revocablePaths) {
       try {
         revokeWrite(this.api, path, this.sidPtr)
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    for (const path of this.excludedPaths) {
+      try {
+        revokeDeny(this.api, path, this.sidPtr)
       } catch (error) {
         failures.push(error)
       }

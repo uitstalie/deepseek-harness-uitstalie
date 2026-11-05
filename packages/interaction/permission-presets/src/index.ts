@@ -24,6 +24,7 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import { SANDBOX_MODES, setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
+import { normalizeSandboxMode } from '@deepseek-ai/dsh-sandbox'
 // Side-effect type import: declaration-merges `ctx.shell` (the capability fact
 // `sandboxMode` this service reads), without a value dependency on the seam.
 import type {} from '@deepseek-ai/dsh-shell'
@@ -110,6 +111,8 @@ const permissionStateSchema: zod.ZodType<PermissionProjectionState> = zod.object
     zod.literal('read-only'),
     zod.literal('workspace-write'),
     zod.literal('home-write'),
+    // Compatibility: configurations written before the mode was folded.
+    zod.literal('non-critical-write').transform(() => 'home-write' as const),
     zod.literal('danger-full-access'),
   ]).nullable(),
   approval: zod.union([zod.literal('ask'), zod.literal('never')]).nullable(),
@@ -176,7 +179,8 @@ export class PermissionPresetService extends TypertRemoteService {
   // Inline schema call: the config catalog walks `static Config` statically.
   static Config = z.object({
     presets: z.dict(z.object({
-      sandbox: z.union(SANDBOX_MODES as SandboxMode[]).required(),
+      // Compatibility: the removed mode name still loads and maps to home-write.
+      sandbox: z.union([...SANDBOX_MODES, 'non-critical-write'] as const).required(),
       approval: z.union(APPROVAL_POLICIES as ApprovalPolicy[]).required(),
       name: z.string(),
       description: z.string(),
@@ -210,7 +214,10 @@ export class PermissionPresetService extends TypertRemoteService {
 
     ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
     // The schema defaulted the table — the cast records that runtime fact.
-    this.presets = config.presets
+    this.presets = Object.fromEntries(Object.entries(config.presets).map(([name, spec]) => [
+      name,
+      { ...spec, sandbox: normalizeSandboxMode(spec.sandbox) },
+    ]))
     if (CUSTOM_PRESET in this.presets) {
       throw new Error(`permission: "${CUSTOM_PRESET}" is reserved for the derived not-a-preset state and cannot name a table entry`)
     }

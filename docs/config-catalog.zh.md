@@ -140,7 +140,7 @@ export interface RulesConfig {
 
 - `inject`: `agents` · `sessions` · `llm` · `tools` · `systemPrompt` · `sessionProjections`
 - `refs`: [`AgentOptions`](subsystems/core.zh.md) · [`SessionId`](subsystems/core.zh.md) · `Volatile` (`@deepseek-ai/cosmokit`)
-- `source`: [`packages/core/agent-loop/src/index.ts:252`](../packages/core/agent-loop/src/index.ts)
+- `source`: [`packages/core/agent-loop/src/index.ts:253`](../packages/core/agent-loop/src/index.ts)
 
 ```ts config-catalog
 /** Agent-loop plugin configuration. */
@@ -2868,7 +2868,7 @@ export interface Config {
 
 - `inject`: `shell` · `approval` · `sessions` · `agents` · `sessionProjections`
 - `refs`: [`ApprovalPolicy`](subsystems/approval.zh.md) · [`SandboxMode`](subsystems/sandbox.zh.md) · `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/interaction/permission-presets/src/index.ts:154`](../packages/interaction/permission-presets/src/index.ts)
+- `source`: [`packages/interaction/permission-presets/src/index.ts:157`](../packages/interaction/permission-presets/src/index.ts)
 
 ```ts config-catalog
 /** The {@link PermissionPresetService} config: preset table and composition default. */
@@ -3291,7 +3291,7 @@ export interface Config {
 
 - `inject`: `sessionProjections`
 - `refs`: [`SandboxMode`](subsystems/sandbox.zh.md)
-- `source`: [`packages/sandbox/sandbox-policy/src/index.ts:161`](../packages/sandbox/sandbox-policy/src/index.ts)
+- `source`: [`packages/sandbox/sandbox-policy/src/index.ts:129`](../packages/sandbox/sandbox-policy/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -3303,7 +3303,7 @@ export interface Config {
  */
 export interface Config {
   /** File-sandbox mode a session starts from (default: `read-only`). */
-  mode?: SandboxMode
+  mode?: SandboxMode | 'non-critical-write'
   /**
    * Absolute fallback root for agentless calls and sessions without a cwd (default:
    * `process.cwd()`). Normal agent calls use their session cwd instead.
@@ -3311,27 +3311,41 @@ export interface Config {
   workspaceRoot?: string
   /**
    * Extra physical absolute directories that `workspace-write` may also write under
-   * (default: none). The supervisor names them explicitly; there is no
-   * automatic repository or gitfile discovery. Entries are execution-world
-   * paths: this service validates absoluteness and detaches the list, while
-   * the enforcing host rejects missing, non-directory, or symlinked paths. They grant nothing under
+   * (default: none). Entries are execution-world paths: this service validates
+   * absoluteness and detaches the list, while the enforcing host rejects
+   * missing, non-directory, or symlinked paths. They grant nothing under
    * `read-only`.
    */
   additionalWritableRoots?: string[]
   /**
-   * Explicit home directory for `home-write`; default `os.homedir()`. On
-   * Windows the default must be under `C:\\Users\\<user>`; a home elsewhere must
-   * be opted in here.
+   * Explicit roots for `home-write`; default: the user home plus every
+   * non-system fixed drive on Windows, the user home elsewhere. Replace the
+   * default, not appended to it. Entries are execution-world paths and may
+   * start with `~`; the session workspace is always added separately. On
+   * Windows a C: root outside the user home is dropped (C: stays read-only).
+   *
+   * Compatibility: `nonCriticalRoots` (the folded mode's old key) and
+   * `homeWriteRoot` (a single root) are accepted aliases.
    */
+  homeWriteRoots?: string[]
+  /** Compatibility alias for `homeWriteRoots` (the folded `non-critical-write` key). */
+  nonCriticalRoots?: string[]
+  /** Compatibility alias for a single-root `homeWriteRoots` configuration. */
   homeWriteRoot?: string
   /**
-   * Force-read-only directories for `home-write`, absolute and canonicalized.
-   * Undefined enables the built-in safety list (`~/.ssh`, `~/.gnupg`,
-   * `~/.aws`, `~/.config/gh`, `~/.kube`, `~/.docker`); an explicit empty array
-   * disables the defaults.
+   * Directories forced read-only inside `home-write`, even when they sit under
+   * a writable root (default: none — the home is fully writable, credential
+   * stores included). Entries are execution-world absolute paths; a leading
+   * `~` expands on the enforcing host. A trailing `/*` or `/**` means the same
+   * directory subtree; any other glob syntax is rejected. The path must exist
+   * when a confined call resolves the policy.
+   *
+   * Compatibility: `homeWriteReadOnlyRoots` is accepted as an alias.
    */
+  excludePaths?: string[]
+  /** Compatibility alias for `excludePaths`. */
   homeWriteReadOnlyRoots?: string[]
-  /** Temporary directories also writable under `home-write`; default `os.tmpdir()`. */
+  /** Temporary directories also writable under `home-write` (default: none). */
   homeWriteTempRoots?: string[]
   /** Allow symlink spellings for configured home-write roots (default false). */
   homeWriteAllowSymlinkedRoots?: boolean

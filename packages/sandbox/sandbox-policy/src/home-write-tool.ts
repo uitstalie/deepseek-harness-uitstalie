@@ -1,7 +1,7 @@
 /**
  * The approval-gated editor for the `home-write` force-read-only list.
  *
- * The tool can only change `homeWriteReadOnlyRoots`; mode, home root, temp
+ * The tool can only change `excludePaths`; mode, home roots, temp
  * roots and symlink policy remain deployment configuration. Every add and
  * remove asks the composed approval channel first; a rejection includes the
  * concrete path that would become writable/read-only. Persisted edits go
@@ -65,9 +65,9 @@ export interface HomeWriteApproval {
 
 /** What the tool needs from the live policy service. */
 export interface HomeWritePolicyView {
-  readonly homeWriteRoot: string
+  readonly homeWriteRoots: readonly string[]
   readonly homeWriteTempRoots: readonly string[]
-  readonly homeWriteReadOnlyRoots: readonly string[]
+  readonly excludePaths: readonly string[]
   readonly homeWriteAllowSymlinkedRoots: boolean
 }
 
@@ -125,9 +125,9 @@ const approve = async (
 ): Promise<void> => {
   if (approval === undefined) throw new Error('home-write read-only changes require an approval service, and this deployment has none')
   const subject = action === 'remove'
-    ? `Remove force-read-only protection for ${JSON.stringify(path)}; under home-write that path becomes writable.`
+    ? `Stop excluding ${JSON.stringify(path)}; under home-write that path becomes writable.`
     : action === 'add'
-      ? `Add force-read-only protection for ${JSON.stringify(path)}.`
+      ? `Exclude (force read-only) the path ${JSON.stringify(path)}.`
       : 'Roll back the previous force-read-only change.'
   const reason = `sandbox home-write ${action}: ${subject} Reason: ${justification}`
   const outcome = await approval.request({
@@ -155,10 +155,10 @@ const approve = async (
 export const homeWriteTool = (ctx: Context, view: HomeWritePolicyView): ToolDefinition => defineTool({
   name: HOME_WRITE_TOOL_NAME,
   description:
-    'List or request an approval-gated change to the home-write force-read-only list. '
+    'List or request an approval-gated change to the home-write excludePaths list. '
     + '`add` and `remove` ask the user through the approval channel; removal is a protection weakening '
     + 'and is shown with that consequence. `rollback` restores the previous audited list. The tool '
-    + 'cannot change the sandbox mode, home root, temp exceptions, or symlink policy.',
+    + 'cannot change the sandbox mode, home roots, temp exceptions, or symlink policy.',
   parameters: {
     action: { type: 'string', required: true, enum: ['list', 'add', 'remove', 'rollback'], description: 'The operation.' },
     path: { type: 'string', description: 'add/remove: absolute directory path.' },
@@ -166,7 +166,7 @@ export const homeWriteTool = (ctx: Context, view: HomeWritePolicyView): ToolDefi
   },
   output: {
     schema: { type: 'object', additionalProperties: false, properties: { roots: { type: 'array', items: { type: 'string' } }, path: { type: 'string' }, message: { type: 'string' } } },
-    render: (_args, value) => [{ type: 'text', text: String(value.message ?? '') }],
+    render: (_args, value) => [{ type: 'text', text: value.message ?? '' }],
   },
   async execute(args, exec) {
     const editor = ctx.get('configEditor') as HomeWriteConfigEditor | undefined
@@ -174,9 +174,9 @@ export const homeWriteTool = (ctx: Context, view: HomeWritePolicyView): ToolDefi
     const entry = editor?.entries().find(row => row.options.id === 'sandbox-policy')
     if (editor === undefined || entry === undefined) throw new Error('persisting the home-write list needs the profile config editor and a sandbox-policy row')
     const auditFile = join(dirname(editor.documentPath), AUDIT_FILE)
-    const list = [...view.homeWriteReadOnlyRoots]
+    const list = [...view.excludePaths]
     if (args.action === 'list') {
-      return { roots: list, message: `Force-read-only roots: ${list.length === 0 ? '(none)' : list.join(', ')}. Audit: ${auditFile}` }
+      return { roots: list, message: `Excluded paths: ${list.length === 0 ? '(none)' : list.join(', ')}. Audit: ${auditFile}` }
     }
     if (args.justification === undefined || args.justification.trim() === '') {
       throw new Error('`justification` must be a non-empty sentence for an approval-gated change')
@@ -192,10 +192,11 @@ export const homeWriteTool = (ctx: Context, view: HomeWritePolicyView): ToolDefi
       next = [...last.before]
       action = 'rollback'
     } else {
-      const resolvedPath = resolveCandidate(String(args.path ?? ''), view.homeWriteAllowSymlinkedRoots)
+      const resolvedPath = resolveCandidate(args.path ?? '', view.homeWriteAllowSymlinkedRoots)
       path = resolvedPath
-      if (!under(view.homeWriteRoot, resolvedPath) && !view.homeWriteTempRoots.some(root => under(root, resolvedPath))) {
-        throw new Error(`\`path\` ${JSON.stringify(resolvedPath)} must stay inside the home or a configured temp exception`)
+      const roots = [...view.homeWriteRoots, ...view.homeWriteTempRoots]
+      if (roots.length > 0 && !roots.some(root => under(root, resolvedPath))) {
+        throw new Error(`\`path\` ${JSON.stringify(resolvedPath)} must stay inside a configured home-write root or temp exception`)
       }
       await approve(approval, exec.agent, exec.callId, exec.signal, args.action, path, args.justification.trim())
       next = args.action === 'add'
@@ -204,12 +205,14 @@ export const homeWriteTool = (ctx: Context, view: HomeWritePolicyView): ToolDefi
     }
     await editor.edit(entry, current => ({
       ...current,
-      homeWriteReadOnlyRoots: next,
+      excludePaths: next,
     }))
     await appendAudit(auditFile, {
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       at: new Date().toISOString(),
-      actor: String((exec.agent as { session?: { id?: unknown } } | undefined)?.session?.id ?? 'unknown'),
+      actor: typeof (exec.agent as { session?: { id?: unknown } } | undefined)?.session?.id === 'string'
+        ? (exec.agent as { session: { id: string } }).session.id
+        : 'unknown',
       action,
       ...(path === undefined ? {} : { path }),
       before: list,
@@ -219,7 +222,7 @@ export const homeWriteTool = (ctx: Context, view: HomeWritePolicyView): ToolDefi
     return {
       roots: next,
       ...(path === undefined ? {} : { path }),
-      message: `Force-read-only roots updated (${action}). ${next.length === 0 ? 'No roots remain.' : next.join(', ')}`,
+      message: `Excluded paths updated (${action}). ${next.length === 0 ? 'No roots remain.' : next.join(', ')}`,
     }
   },
 })

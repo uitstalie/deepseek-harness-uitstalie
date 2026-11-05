@@ -5,10 +5,10 @@
  */
 import { describe, expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { Message, ToolCallId, ToolResultMessage } from '@deepseek-ai/dsh-llm'
+import type { Message, MessageId, ToolCallId, ToolResultMessage } from '@deepseek-ai/dsh-llm'
 import { pairToolCalls } from '../src/tool-pairing.ts'
 
-const id = (text: string) => brandString(text)
+const id = (text: string) => brandString<MessageId>(text)
 
 const assistant = (calls: readonly { id: string; name: string }[], text = ''): Message => ({
   id: id(`assistant-${calls.map(call => call.id).join('-')}`),

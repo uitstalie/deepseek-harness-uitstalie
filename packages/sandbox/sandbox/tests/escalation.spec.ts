@@ -50,8 +50,9 @@ describe('the model-facing markers', () => {
   })
 
   it('the sandbox_permissions description names the family subject', () => {
-    expect(sandboxPermissionsDescription('command')).toBe('The narrowest wider sandbox mode for a one-shot retry of the exact command the sandbox just denied; the retry asks the user for approval.')
-    expect(sandboxPermissionsDescription('operation')).toBe('The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.')
+    expect(sandboxPermissionsDescription('command')).toContain('The narrowest wider sandbox mode for a one-shot retry of the exact command the sandbox just denied; the retry asks the user for approval.')
+    expect(sandboxPermissionsDescription('command')).toContain('home-write')
+    expect(sandboxPermissionsDescription('operation')).toContain('The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.')
   })
 
   it('the hint marker names the family subject', () => {
@@ -116,20 +117,12 @@ describe('approveEscalation', () => {
     expect(seen).toEqual([])
   })
 
-  it('allows workspace-write to home-write only when the workspace is inside the home', async () => {
-    const inside = await approveEscalation(req({
+  it('treats workspace-write to home-write as a widening: the mode keeps the workspace grant', async () => {
+    const widened = await approveEscalation(req({
       requestedMode: 'home-write',
       effectiveMode: 'workspace-write',
-      workspaceRoot: '/home/alice/project',
-      homeWriteRoot: '/home/alice',
     }), ingredients())
-    expect(inside).toBe('home-write')
-    await expect(approveEscalation(req({
-      requestedMode: 'home-write',
-      effectiveMode: 'workspace-write',
-      workspaceRoot: '/srv/project',
-      homeWriteRoot: '/home/alice',
-    }), ingredients())).rejects.toThrow(/outside home/)
+    expect(widened).toBe('home-write')
   })
 
   it('a missing approval service and an agent-less call each fail closed with distinct text', async () => {

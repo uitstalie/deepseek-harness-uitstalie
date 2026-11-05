@@ -47,10 +47,20 @@ kind: "package-reference"
 | `mode` | `read-only` | 会话起始的部署默认模式，加载时验证 |
 | `workspaceRoot` | `process.cwd()` | 无 agent 调用或没有 cwd 的会话所用的绝对回退根目录；相对值在加载时拒绝。普通 agent 调用使用会话的不可变 cwd |
 | `additionalWritableRoots` | `[]` | 在 `workspace-write` 下额外允许写入的显式物理绝对目录；其他受限模式不授予这些目录的写权限 |
+| `homeWriteRoots` | 用户主目录加非系统固定盘（Windows）/ 用户主目录（Linux、macOS） | `home-write` 授予的根目录；替换平台默认值，会话工作区始终额外加入。`homeWriteRoot`（单值）与 `nonCriticalRoots` 是兼容别名 |
+| `excludePaths` | `[]` | 在任意 `home-write` 根目录内强制只读的目录，连主目录本身也可排除。`~` 在强制执行的主机上展开；条目必须已存在，且只接受结尾的 `/*` 或 `/**`。`homeWriteReadOnlyRoots` 是兼容别名。建议的加固清单（`~/.ssh`、`~/.gnupg`、`~/.aws`、`~/.config/gh`、`~/.kube`、`~/.docker`，Windows 另加 `C:\Windows`）只是文档，从不是默认值 |
+| `homeWriteTempRoots` | `[]` | `home-write` 下额外可写的临时目录；Windows 的私有临时目录位于 `~/.dsh/tmp` |
+| `homeWriteAllowSymlinkedRoots` | `false` | 允许配置的 home-write 根目录使用符号链接拼写；解析后的目标必须留在可写区域内 |
 
 对于关联的 Git worktree，调用方可通过 `additionalWritableRoots` 授予共享 Git 目录的写权限。调用方必须显式选择该目录；策略不会读取 Git 文件或授权父检出目录。这些授权是组合中所有会话共享的部署配置，而非保存的 Session 权限。授权整个 Git 目录也允许修改钩子和配置，后续主机 Git 调用可能在沙箱之外执行它们；仅对可信任务使用此授权。使用物理绝对目录路径。执行限制的主机拒绝不存在的路径、文件和符号链接根目录，包括两次调用之间被替换为符号链接的目录。远端授权在远端主机上验证。
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-sandbox-policy)是每个受支持字段及其 JSDoc 的穷尽式真源。
+
+### 修改 home-write 的 excludePaths 清单
+
+`sandbox_home_readonly` 工具列出当前排除项，并为 `add` 或 `remove` 请求审批。两个动作都经过组合的审批应答方；移除会显示为保护弱化，并给出因此变为可写的具体路径。获批的修改经 `configEditor` 持久化到该行的 `excludePaths`，审计记录（操作者、时间、动作、变更前后、理由）追加在 profile patch 旁的 `sandbox-home-readonly-audit.jsonl`；`rollback` 恢复上一次经审计的清单。该工具不能修改模式、`homeWriteRoots`、临时例外或符号链接策略。
+
+`excludePaths` 默认为空：主目录完全可写，包括 `~/.ssh` 与 `~/.dsh`。对不可信工作，请显式配置建议的加固清单。
 
 ### 切换会话模式
 

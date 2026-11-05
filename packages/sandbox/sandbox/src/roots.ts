@@ -17,6 +17,7 @@ import { realpathSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
+import { resolvedExcludePaths } from './home-write.ts'
 import type { SandboxExecutionPolicy } from './index.ts'
 
 /** An explicit directory grant cannot be enforced without changing the caller's selected path. */
@@ -137,37 +138,50 @@ export function fsWritableRoots(policy: SandboxExecutionPolicy): string[] {
   return [...new Set([...writableRoots(policy), ...extra])]
 }
 
-/** Whether `candidate` is the same as or below `root` (canonical inputs). */
+/**
+ * Whether `candidate` is the same as or below `root` (canonical inputs).
+ * @param root - the canonical directory prefix.
+ * @param candidate - the canonical path to test.
+ * @returns true when candidate is root itself or lives beneath it.
+ */
 export function isWithinRoot(root: string, candidate: string): boolean {
   const rel = relative(root, candidate)
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
 /**
- * The writable roots of `home-write`: the home itself plus its configured temp
- * exceptions. The workspace root is deliberately not included; a workspace
- * outside home is read-only under this mode.
+ * The writable roots of `home-write`: the configured home/drive roots, the
+ * session workspace (the documented exception when it sits on C: or outside
+ * the home), and the configured temp exceptions. `excludePaths` does NOT
+ * narrow this list — an allow-list cannot express a hole; each enforcement
+ * layer applies the exclusions itself (Seatbelt deny, bwrap read-only rebind,
+ * Windows deny ACE) and the fs fence refuses a matching target.
  * @param policy - the file-effect policy to derive the roots from.
  * @returns canonical writable roots; empty outside `home-write`.
  */
 export function homeWriteWritableRoots(policy: SandboxExecutionPolicy): string[] {
-  if (policy.mode !== 'home-write' || policy.homeWriteRoot === undefined) return []
-  return [...new Set([canonicalPath(policy.homeWriteRoot), ...(policy.homeWriteTempRoots ?? []).map(canonicalPath)])]
+  if (policy.mode !== 'home-write') return []
+  return [...new Set([
+    ...(policy.homeWriteRoots ?? []).map(canonicalPath),
+    canonicalPath(policy.workspaceRoot),
+    ...(policy.homeWriteTempRoots ?? []).map(canonicalPath),
+  ])]
 }
 
 /**
- * The force-read-only roots of `home-write`, canonical and deduplicated.
+ * The read-only holes of `home-write` (`excludePaths`), canonical and
+ * deduplicated.
  * @param policy - the file-effect policy to derive the roots from.
- * @returns canonical read-only roots; empty outside `home-write`.
+ * @returns canonical exclusion roots; empty outside `home-write`.
  */
 export function homeWriteReadOnlyRoots(policy: SandboxExecutionPolicy): string[] {
   if (policy.mode !== 'home-write') return []
-  return [...new Set((policy.homeWriteReadOnlyRoots ?? []).map(canonicalPath))]
+  return [...new Set(resolvedExcludePaths(policy))]
 }
 
 /**
  * The exact home-write priority decision for one already-canonical path:
- * force-read-only wins, then home/temp, else denied.
+ * an exclusion wins, then home/drive/workspace/temp, else denied.
  * @param policy - the file-effect policy.
  * @param target - canonical target path.
  * @returns whether the path may be written under `home-write`.

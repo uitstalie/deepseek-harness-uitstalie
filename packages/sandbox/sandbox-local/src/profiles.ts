@@ -21,11 +21,12 @@ export function bwrapProfileArgs(policy: SandboxPolicy): string[] {
     for (const root of workspaceWritableRoots(policy)) args.push('--bind', root, root)
   }
   if (policy.mode === 'home-write') {
+    // Every writable root (home, non-system drives on Windows, the session
+    // workspace, temp exceptions) is bound read-write, then each exclusion is
+    // rebound read-only: a later bind on a child wins over its parent mount.
     for (const root of homeWriteWritableRoots(policy)) {
       if (existsSync(root)) args.push('--bind', root, root)
     }
-    // A later ro-bind on a child of the home bind wins over the parent mount, which
-    // is how force-read-only subtrees are expressed without enumerating the home.
     for (const root of homeWriteReadOnlyRoots(policy)) {
       if (existsSync(root)) args.push('--ro-bind', root, root)
     }
@@ -46,7 +47,7 @@ export function landlockProfileArgs(policy: SandboxPolicy): string[] {
   if (policy.mode === 'home-write') {
     if (homeWriteReadOnlyRoots(policy).length > 0) {
       throw new SandboxUnsupportedPolicyError(
-        'Landlock cannot express force-read-only subtrees inside home-write; use the bwrap backend or remove force-read-only roots',
+        'Landlock cannot express excludePaths inside a writable root: its allow-list has no deny rules. Use bubblewrap or remove the exclusions.',
       )
     }
     readWrite.push(...homeWriteWritableRoots(policy))
@@ -76,9 +77,9 @@ export function seatbeltProfileArgs(policy: SandboxPolicy): string[] {
     forms.push(`(allow file-write* ${roots.map(root => `(subpath ${sbplString(root)})`).join(' ')})`)
   }
   if (policy.mode === 'home-write') {
-    const readOnly = homeWriteReadOnlyRoots(policy)
-    if (readOnly.length > 0) {
-      forms.push(`(deny file-write* ${readOnly.map(root => `(subpath ${sbplString(root)})`).join(' ')})`)
+    const excluded = homeWriteReadOnlyRoots(policy)
+    if (excluded.length > 0) {
+      forms.push(`(deny file-write* ${excluded.map(root => `(subpath ${sbplString(root)})`).join(' ')})`)
     }
   }
   return ['-p', forms.join(' ')]

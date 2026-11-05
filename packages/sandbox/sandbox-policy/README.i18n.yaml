@@ -21,10 +21,13 @@
   en: 6704447e52ec295b
   zh: 9ed812d9e29d5533
 /deepseek-ai-dsh-sandbox-policy/use-this-package/minimal-configuration:
-  en: 069de80f17900193
-  zh: 2833f134c8dcb2e4
+  en: 9d545ae7878ac526
+  zh: c773ae84532f8899
+/deepseek-ai-dsh-sandbox-policy/use-this-package/changing-the-home-write-excludepaths-list:
+  en: b551ef97f25bb0cb
+  zh: e39c7a353ab9afff
 /deepseek-ai-dsh-sandbox-policy/use-this-package/switching-a-session-s-mode:
-  en: 957d72691e470e5c
+  en: 167bb5df8c42b5a8
   zh: c22a3a750af0e4a3
 /deepseek-ai-dsh-sandbox-policy/use-this-package/failures-and-recovery:
   en: 9cef5f64a050f468

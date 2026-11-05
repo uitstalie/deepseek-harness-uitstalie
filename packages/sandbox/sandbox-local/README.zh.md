@@ -130,6 +130,7 @@ Windows 档为每个工作区保留一个确定性写入 SID 和常驻 ACE，同
 
 这些限制说明提供方何时不合适，或何时需要特别运维。它们是当前包约束，不是通用平台对比或任务积压。
 
+- **Windows home-write** — 该档位为用户主目录、会话工作区及每个非系统固定盘根目录授予工作区写 SID 与 Low 完整性标签，并为每个 `excludePaths` 条目添加一条可继承 DENY ACE，使排除路径在被授权的根目录内保持只读。Landlock 的 allow-list 没有拒绝规则，无法在被授权的根目录内挖出只读洞，因此只装 Landlock 的宿主机在 `excludePaths` 非空时会失败关闭并建议安装 bubblewrap；没有排除项时 bwrap 与 Landlock 直接授权这些根目录。数据盘通常只继承 Authenticated Users:(M)（不含 WRITE_OWNER），而 Low 标签是一次 SACL 编辑，因此在登录用户对授权目标持有「修改」加「更改权限」之前，该档位会以 `icacls D:\ /grant <user>:(OI)(CI)F` 指引失败关闭。额外根目录的 DENY 与盘符授权在 dispose 时撤销；常驻的工作区 ACE 仍保持其复用缓存生命周期。非系统盘按字面枚举（`D:`…`Z:`），因此带盘符的可移动盘或映射网络盘按固定盘处理，UNC 路径不作为根目录。
 - **Windows 额外根目录**——Windows ACL 在授权或创建子进程前，以 `SANDBOX_UNSUPPORTED_POLICY` 拒绝所有携带额外目录的 workspace-write 子进程。文件系统工具可独立执行这些授权。运行进程操作前，请移除额外授权或使用支持此功能的主机。
 - **Windows ACL 只能实现部分强制执行**——NTFS 硬链接会使工作区路径与外部路径指向同一个文件对象，读取仍不受限，且被其他 AppContainer 工具以包 SID 标记过的目录树对 Low 完整性子进程不可读。提供方报告 `enforcement: 'partial'`，而不会把该边界夸大为完整强制执行。
 - **Landlock 可能只实现部分强制执行**——较旧且受支持的内核 ABI 只能限制自身公开的访问类别，因此报告 `enforcement: 'partial'`，不会夸大为完整强制执行。

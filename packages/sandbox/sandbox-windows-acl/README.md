@@ -67,7 +67,7 @@ The workspace security descriptor edits are granted standing — `dispose()` lea
 
 ### What confinement gives you
 
-Under `workspace-write`, the child may write into the workspace and its private temp directory; other ACL-addressable writes and deletes are denied except the documented hard-link and AppContainer-ACL boundaries. Under `read-only`, no explicit write grants exist, so writes and deletes are denied with the same documented boundaries.
+Under `workspace-write`, the child may write into the workspace and its private temp directory; other ACL-addressable writes and deletes are denied except the documented hard-link and AppContainer-ACL boundaries. Under `home-write`, the user home, the session workspace, and every non-system fixed drive root (or the configured `homeWriteRoots`) are granted with the same workspace SID and Low label, and each `excludePaths` entry receives an inheritable DENY write ACE for that SID so the hole stays read-only; C: outside the user home stays ungranted. A drive-root grant needs the signed-in user to hold Modify plus Change permissions on the target (the label is a SACL edit) and fails closed with that instruction otherwise. Under `read-only`, no explicit write grants exist, so writes and deletes are denied with the same documented boundaries.
 
 Temp isolation is per live session/workspace pair: sessions sharing a workspace share its write authority but cannot write one another's temp directories. A fresh provider always chooses a new temp path and SID, so crash residue cannot block or authorize a resumed session.
 

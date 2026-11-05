@@ -440,7 +440,7 @@ describe.skipIf(!isWin32)('ACL editing', () => {
       mode: 'workspace-write',
     })).toThrow(/must be distinct/)
     expect(() => createRestrictedToken({} as never, 0n as never, 0n as never, [], { world: 0n as never }, 'workspace-write'))
-      .toThrow(/requires at least one write SID/)
+      .toThrow(/needs at least one write SID/)
   })
 
   it('the per-path lock is exclusive: a second immediate lock attempt fails with ERROR_LOCK_VIOLATION until release', async () => {

@@ -224,7 +224,7 @@ export function createRestrictedToken(
   const restrictingSids = buildRestrictingSids(mode === 'read-only'
     ? [logonSid, known.world]
     : writeSids.length === 0
-      ? (() => { throw new Error('createRestrictedToken: workspace-write restricting list requires at least one write SID') })()
+      ? (() => { throw new Error('createRestrictedToken: a write-restricted mode needs at least one write SID') })()
       : [logonSid, known.world, ...writeSids])
   const tokenSlot = allocPtrSlot()
   const created = api.createRestrictedToken(

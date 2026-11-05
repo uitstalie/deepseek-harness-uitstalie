@@ -8,19 +8,22 @@
 
 ## 模式与强制执行
 
-`SandboxMode` 仅管控文件系统效果。`read-only` 要求后端拒绝写入——POSIX runner 还会授予其 shell 所需的 `/dev/null` 接收器，而 Windows ACL runner 不授予任何显式可写根目录，并因环境 ACL 缺口报告部分强制执行；`workspace-write` 允许在工作区根目录、显式额外目录及后端承诺的临时区域下写入；`danger-full-access` 绕过隔离。网络与进程可见性不在此处的定义范围内。
+`SandboxMode` 仅管控文件系统效果。`read-only` 要求后端拒绝写入——POSIX runner 还会授予其 shell 所需的 `/dev/null` 接收器，而 Windows ACL runner 不授予任何显式可写根目录，并因环境 ACL 缺口报告部分强制执行；`workspace-write` 允许在工作区根目录、显式额外目录及后端承诺的临时区域下写入；`home-write` 允许在用户主目录、Windows 上除系统盘之外的每个固定盘、会话工作区及配置的临时例外下写入，`excludePaths` 在任意被授权根目录内挖出只读洞；`danger-full-access` 绕过隔离。网络与进程可见性不在此处的定义范围内。
 
 ```ts type-equiv
 /**
  * File-effect policy for confined processes. `read-only` permits only required
  * sinks such as `/dev/null`; `workspace-write` also permits the workspace,
- * explicit extra roots, and backend-defined temp areas; `danger-full-access` bypasses confinement. Network
- * and process visibility are outside this vocabulary.
+ * explicit extra roots, and backend-defined temp areas; `home-write` permits the canonical
+ * home, every non-system fixed drive on Windows, the session workspace, and configured
+ * temp exceptions, with `excludePaths` carving read-only holes out of all of them;
+ * `danger-full-access` bypasses confinement. Network and process visibility are outside
+ * this vocabulary.
  */
-type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+type SandboxMode = 'read-only' | 'workspace-write' | 'home-write' | 'danger-full-access'
 ```
 
-只有前两种模式可以发送给提供方。`danger-full-access` 的消费方直接 spawn 原始 argv，不调用 `ctx.sandbox`。
+每种受限模式都可以发送给 provider。`danger-full-access` 消费方直接 spawn 原始 argv，不调用 `ctx.sandbox`。
 
 ```ts type-equiv
 /** A confining (non-`danger-full-access`) mode — the modes a {@link SandboxPolicy} can carry. */
@@ -38,6 +41,10 @@ type ConfinedSandboxMode = Exclude<SandboxMode, 'danger-full-access'>
 type SandboxEnforcement = 'full' | 'partial'
 ```
 
+### 决策：`home-write` 是唯一的用户数据模式
+
+`workspace-write` 对产出落在工作区之外的任务太紧，`danger-full-access` 又拆掉所有边界。`home-write` 是两者之间唯一的模式：它允许用户主目录（含隐藏目录）、Windows 上除系统盘之外的每个固定盘、会话工作区及配置的临时例外。因此即使任务要写数据盘，C: 上用户主目录之外的路径仍然只读；所有档位的读取都不受限制。`excludePaths`（默认为空——`~/.ssh`、`~/.dsh`、`~/.gnupg` 不配置就可写）把命中的已存在路径强制为只读，即使位于被授权根目录内；文档建议的加固清单是 `~/.ssh`、`~/.gnupg`、`~/.aws`、`~/.config/gh`、`~/.kube`、`~/.docker`，Windows 部署可再加 `C:\\Windows`。该模式不会替换 `fsAdditionalWritableRoots`：进程内围栏同时叠加两组根目录，进程后端仍忽略仅文件系统的字段。Landlock 无法在被授权根目录内表达只读洞，因此只装 Landlock 的宿主机在 `excludePaths` 非空时失败关闭并建议安装 bubblewrap；Windows ACL 既能授权额外根目录，也能用可继承的 DENY ACE 表达排除。在 Fedora 上 SELinux 标签依然生效——沙箱只写 DACL，从不重新打标签——因此强制策略仍可能拒绝 DACL 允许的写入，这种拒绝会作为操作自身的错误报告，而不是沙箱拒绝。仍写着已折叠 `non-critical-write` 模式或使用 `nonCriticalRoots` 的配置与会话日志，在读取时会映射为 `home-write`。
+
 ## 逐调用策略
 
 完整执行策略会按每次能力调用解析并携带。它包括 `danger-full-access`，因此消费方可以只解析一次策略，再决定是否绕过约束。普通工具调用从调用会话的不可变 cwd 派生 `workspaceRoot`；部署配置提供无 agent 调用的回退值和显式额外写入授权。解析器保留执行环境中的绝对路径写法。执行限制的提供方在文件实际存在的位置规范化根目录，因此包含 `symlink/..` 的 cwd 会标识配套子进程提供方实际运行的目录。
@@ -51,8 +58,23 @@ type SandboxEnforcement = 'full' | 'partial'
 interface SandboxExecutionPolicy {
   /** The file-effect mode this execution runs under. */
   mode: SandboxMode
-  /** Absolute root directory `workspace-write` may write under. */
+  /** Absolute root directory the workspace-writable modes may write under. */
   workspaceRoot: string
+  /**
+   * Explicit `home-write` roots replacing the platform default (Windows: the
+   * user home plus every non-system fixed drive; Linux/macOS: `$HOME`).
+   * Absence means the enforcing host derives the default; `~` expands there.
+   * The session workspace is always added separately.
+   */
+  homeWriteRoots?: readonly string[]
+  /**
+   * Read-only holes carved out of `home-write`: a matching path stays
+   * read-only even inside a writable root. Entries are execution-world paths
+   * (`~` expands on the enforcing host) naming an existing directory; a
+   * trailing `/*` or `/**` means the same directory subtree, and any other glob
+   * syntax is rejected. Absence means no exclusions — the mode's default.
+   */
+  excludePaths?: readonly string[]
   /**
    * Extra physical absolute directories `workspace-write` may also write under.
    * Absence means none. The enforcing host rejects missing, non-directory, and
@@ -60,6 +82,22 @@ interface SandboxExecutionPolicy {
    * These grant nothing under `read-only` or `danger-full-access`.
    */
   additionalWritableRoots?: readonly string[]
+  /**
+   * Extra physical absolute directories only the in-process filesystem fence
+   * (`@deepseek-ai/dsh-fs-sandbox`) may write under.
+   *
+   * This is the narrow grant for a capability that must hand files to a
+   * directory without widening what confined processes (shell, terminal, PTC)
+   * may write: those backends ignore this field, so a host whose confinement
+   * cannot express extra roots (Windows ACL) keeps working. The fence skips
+   * entries that are missing, are not directories, or are symlinked; unlike
+   * {@link additionalWritableRoots}, an unusable entry denies only itself
+   * instead of failing the whole policy. Grants nothing under `read-only` or
+   * `danger-full-access`.
+   */
+  fsAdditionalWritableRoots?: readonly string[]
+  /** Extra directories writable under `home-write` (default: none). */
+  homeWriteTempRoots?: readonly string[]
   /**
    * Opaque identity of the calling session (the branded `dsh-session`
    * SessionId). Backends key per-session state off it (e.g. windows-acl gives

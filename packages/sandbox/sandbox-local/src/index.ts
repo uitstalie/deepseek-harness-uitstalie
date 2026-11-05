@@ -24,7 +24,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, relative } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   LAUNCHER_BIN,
@@ -34,7 +34,7 @@ import {
 } from '@deepseek-ai/node-addon-system/landlock-run'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { SandboxProvider, SandboxUnavailableError, SandboxUnsupportedPolicyError, canonicalPath } from '@deepseek-ai/dsh-sandbox'
+import { SandboxProvider, SandboxUnavailableError, SandboxUnsupportedPolicyError, canonicalPath, homeWriteReadOnlyRoots, homeWriteWritableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { AclWriteGrant, assertTempRootOutsideWorkspace, registerAclDiagnosisSkill, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
@@ -282,6 +282,8 @@ export class LocalSandboxProvider extends SandboxProvider {
    */
   private readonly workspaceGrants = new Map<string, AclWriteGrant>()
   private readonly tempCapabilities = new Map<string, AclTempCapability>()
+  /** Revocable `home-write` grants: home/drive-root allows plus exclusion denies. */
+  private readonly homeWriteGrants = new Map<string, AclWriteGrant>()
 
   constructor(ctx: Context, config: Config) {
     super(ctx)
@@ -378,40 +380,36 @@ export class LocalSandboxProvider extends SandboxProvider {
     if (policy.mode === 'workspace-write' && (policy.additionalWritableRoots?.length ?? 0) > 0) {
       throw new SandboxUnsupportedPolicyError('Windows ACL confinement does not support additional writable directories; remove the extra grants or use a supported host')
     }
-    // home-write is one ACL workspace root: the home. Force-read-only subtrees cannot be
-    // expressed by the restricted token, so they fail closed instead of silently weakening.
     if (policy.mode === 'home-write') {
-      if ((policy.homeWriteReadOnlyRoots?.length ?? 0) > 0) {
-        throw new SandboxUnsupportedPolicyError(
-          'Windows ACL confinement cannot express force-read-only subtrees inside home-write; remove the force-read-only roots or use a host with bwrap/Seatbelt',
-        )
-      }
-      const home = policy.homeWriteRoot
-      if (home === undefined) throw new SandboxUnsupportedPolicyError('home-write has no resolved home directory')
-      const externalTemp = (policy.homeWriteTempRoots ?? []).filter((root) => {
-        const rel = relative(home, root)
-        return rel.startsWith('..') || isAbsolute(rel)
-      })
-      if (externalTemp.length > 0) {
-        throw new SandboxUnsupportedPolicyError('Windows ACL home-write keeps its private temp under the home; external homeWriteTempRoots are unsupported')
-      }
+      const roots = homeWriteWritableRoots(policy)
+      const excludes = homeWriteReadOnlyRoots(policy)
+      const home = policy.homeWriteRoots?.[0]
+      const tempParent = home === undefined ? tmpdir() : join(home, '.dsh', 'tmp')
+      const writable = roots.filter(root => root !== canonicalPath(policy.workspaceRoot))
+      const writableArgs = writable.flatMap(root => ['--writable-root', root])
+      const excludeArgs = excludes.flatMap(root => ['--exclude', root])
       const sessionId = policy.sessionId
       if (sessionId === undefined) {
-        mkdirSync(join(home, '.dsh', 'tmp'), { recursive: true })
+        mkdirSync(tempParent, { recursive: true })
         return [
           ...this.windowsAclRunnerInvocation(),
-          '--workspace', home,
-          '--temp', join(home, '.dsh', 'tmp'),
+          '--workspace', policy.workspaceRoot,
+          '--temp', tempParent,
           '--mode', 'workspace-write',
+          ...writableArgs,
+          ...excludeArgs,
         ]
       }
-      const temp = this.materializeAclGrant(sessionId, home, join(home, '.dsh', 'tmp'), true)
+      const temp = this.materializeAclGrant(sessionId, policy.workspaceRoot, tempParent, true)
+      this.materializeHomeWriteGrant(sessionId, policy.workspaceRoot, writable, excludes)
       return [
         ...this.windowsAclRunnerInvocation(),
-        '--workspace', home,
+        '--workspace', policy.workspaceRoot,
         '--temp', temp.dir,
         '--mode', 'workspace-write',
-        '--write-sid', workspaceWriteSid(home),
+        ...writableArgs,
+        ...excludeArgs,
+        '--write-sid', workspaceWriteSid(policy.workspaceRoot),
         '--temp-write-sid', temp.writeSid,
       ]
     }
@@ -433,6 +431,52 @@ export class LocalSandboxProvider extends SandboxProvider {
       '--write-sid', workspaceWriteSid(policy.workspaceRoot),
       '--temp-write-sid', temp.writeSid,
     ]
+  }
+
+  /**
+   * Materialize the revocable `home-write` grants once per provider lifetime:
+   * one grant per writable root other than the session workspace (the user home
+   * and every non-system drive on Windows) sharing the workspace SID, plus one
+   * DENY ACE per exclusion so the hole stays read-only inside a granted root.
+   * Fail-closed: a partially added grant is disposed before the error
+   * propagates.
+   * @param sessionId - the policy's calling-session identity.
+   * @param workspaceRoot - the resolved policy root (part of the cache key).
+   * @param roots - the canonical writable roots other than the workspace.
+   * @param excludes - the canonical exclusion prefixes.
+   */
+  private materializeHomeWriteGrant(
+    sessionId: SessionId,
+    workspaceRoot: string,
+    roots: readonly string[],
+    excludes: readonly string[],
+  ): void {
+    if (roots.length === 0 && excludes.length === 0) return
+    const key = JSON.stringify(['home-write', String(sessionId), workspaceRoot, roots, excludes])
+    if (this.homeWriteGrants.has(key)) return
+    const grant = AclWriteGrant.create(workspaceWriteSid(workspaceRoot))
+    try {
+      for (const root of roots) grant.add(root)
+      for (const excluded of excludes) grant.exclude(excluded)
+    } catch (error) {
+      try {
+        grant.dispose()
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], 'sandbox-local windows-acl home-write grant failed and its cleanup also failed')
+      }
+      if (error instanceof Error && error.name === 'Win32Error'
+        && 'api' in error && error.api === 'SetNamedSecurityInfoW'
+        && 'win32Code' in error && error.win32Code === 5) {
+        throw new Error(
+          `home-write cannot label ${roots.join(', ')}: the signed-in user needs Modify plus Change permissions on each home-write root (the Low mandatory label is a SACL edit). `
+          + 'Grant it once per drive, for example `icacls D:\\ /grant <user>:(OI)(CI)F`, or configure sandbox `homeWriteRoots` to directories you control. '
+          + `Original failure: ${error.message}`,
+          { cause: error },
+        )
+      }
+      throw error
+    }
+    this.homeWriteGrants.set(key, grant)
   }
 
   /**
@@ -530,9 +574,13 @@ export class LocalSandboxProvider extends SandboxProvider {
    * OS temp hygiene (or manual removal) eventually reclaims it.
    */
   private revokeAclGrants(): void {
-    if (this.workspaceGrants.size === 0 && this.tempCapabilities.size === 0) return
+    if (this.workspaceGrants.size === 0 && this.tempCapabilities.size === 0 && this.homeWriteGrants.size === 0) return
     const failures: unknown[] = []
-    for (const grant of [...this.workspaceGrants.values(), ...[...this.tempCapabilities.values()].map(capability => capability.grant)]) {
+    for (const grant of [
+      ...this.workspaceGrants.values(),
+      ...this.homeWriteGrants.values(),
+      ...[...this.tempCapabilities.values()].map(capability => capability.grant),
+    ]) {
       try {
         grant.dispose()
       } catch (error) {
@@ -547,6 +595,7 @@ export class LocalSandboxProvider extends SandboxProvider {
       }
     }
     this.workspaceGrants.clear()
+    this.homeWriteGrants.clear()
     this.tempCapabilities.clear()
     if (failures.length > 0) {
       this.ctx.logger.warn(`sandbox-local: windows-acl grant cleanup completed with ${failures.length} failure(s)`)

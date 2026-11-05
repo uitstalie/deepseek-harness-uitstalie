@@ -47,24 +47,20 @@ Load the package with a default mode; the fail-safe default is `read-only`, and 
 | `mode` | `read-only` | The deployment default mode a session starts from, validated at load |
 | `workspaceRoot` | `process.cwd()` | Absolute fallback root for agentless calls or sessions without a cwd; relative values fail at load. Normal agent calls use the session's immutable cwd |
 | `additionalWritableRoots` | `[]` | Explicit physical absolute directories also writable under `workspace-write`; other confined modes grant no access to them |
-| `homeWriteRoot` | `os.homedir()` | Canonical home boundary for `home-write`; on Windows the default must be under `C:\\Users\\<user>` unless set explicitly |
-| `homeWriteReadOnlyRoots` | built-in list | Force-read-only absolute directories under `home-write`; omitted uses `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, `~/.kube`, `~/.docker`; an explicit empty array disables the defaults |
-| `homeWriteTempRoots` | `os.tmpdir()` (`[]` on Windows) | Temporary directories writable under `home-write`; Windows keeps its private temp under `~/.dsh/tmp` |
+| `homeWriteRoots` | home plus non-system fixed drives (Windows) / home (Linux, macOS) | Roots granted by `home-write`; replaces the platform default. The session workspace is always added. `homeWriteRoot` (single) and `nonCriticalRoots` are accepted compatibility aliases |
+| `excludePaths` | `[]` | Directories forced read-only inside any `home-write` root, even the home itself. `~` expands on the enforcing host; entries must exist and accept a trailing `/*` or `/**`. `homeWriteReadOnlyRoots` is an accepted compatibility alias. The suggested hardening list (`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, `~/.kube`, `~/.docker`, plus `C:\\Windows`) is documentation only, never a default |
+| `homeWriteTempRoots` | `[]` | Temporary directories also writable under `home-write`; Windows keeps its private temp under `~/.dsh/tmp` |
 | `homeWriteAllowSymlinkedRoots` | `false` | Allow symlink spellings for configured home-write roots; resolved targets must stay in the writable area |
 
 For a linked Git worktree, the caller can grant its shared Git directory with `additionalWritableRoots`. The caller selects that directory explicitly; the policy does not inspect Git files or grant a parent checkout. These grants are deployment configuration shared by the composition's sessions, rather than saved Session permissions. Granting the entire Git directory also permits changes to hooks and configuration that a later host Git invocation can execute outside the sandbox; use that grant only for trusted tasks. Use physical absolute directory paths. The enforcing host rejects missing paths, files, and symlinked roots, including a directory replaced by a symlink between calls. Remote grants are validated on the remote host.
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-sandbox-policy) is the exhaustive source for every accepted field and its JSDoc.
 
-### Changing the home-write force-read-only list
+### Changing the home-write excludePaths list
 
-The `sandbox_home_readonly` tool lists the effective roots and requests approval for `add` or
-`remove`. Both actions go through the composed approval answerer; removal is shown as a protection
-weakening with the concrete path that becomes writable. An approved change is persisted through
-`configEditor` into this row's `homeWriteReadOnlyRoots`, and an audit record (actor, time, action,
-before/after, justification) is appended beside the profile patch as
-`sandbox-home-readonly-audit.jsonl`; `rollback` restores the previous audited list. The tool cannot
-change the mode, `homeWriteRoot`, temp exceptions, or symlink policy.
+The `sandbox_home_readonly` tool lists the effective exclusions and requests approval for `add` or `remove`. Both actions go through the composed approval answerer; removal is shown as a protection weakening with the concrete path that becomes writable. An approved change is persisted through `configEditor` into this row's `excludePaths`, and an audit record (actor, time, action, before/after, justification) is appended beside the profile patch as `sandbox-home-readonly-audit.jsonl`; `rollback` restores the previous audited list. The tool cannot change the mode, `homeWriteRoots`, temp exceptions, or symlink policy.
+
+`excludePaths` is empty by default: the home is fully writable, `~/.ssh` and `~/.dsh` included. For untrusted work, configure the recommended hardening list explicitly.
 
 ### Switching a session's mode
 

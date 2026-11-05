@@ -90,27 +90,30 @@ describe('profile dialects', () => {
     expect(landlockProfileArgs(RO)).toEqual(['--ro', '/', '--rw', '/dev/null'])
   })
 
-  it('home-write profiles: bwrap binds home/temp and ro-binds force roots; Landlock refuses force roots; Seatbelt denies them', () => {
+  it('home-write profiles: bwrap binds home/workspace and ro-binds exclusions; Landlock refuses them; Seatbelt denies them', () => {
     const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-home-')))
+    const ws = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-ws-')))
     const temp = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-temp-')))
     const secret = join(home, '.ssh')
     mkdirSync(secret)
-    tempDirs.push(home, temp)
+    tempDirs.push(home, ws, temp)
     const policy = {
       mode: 'home-write' as const,
-      workspaceRoot: '/ws',
-      homeWriteRoot: home,
+      workspaceRoot: ws,
+      homeWriteRoots: [home],
       homeWriteTempRoots: [temp],
-      homeWriteReadOnlyRoots: [secret],
+      excludePaths: [secret],
     }
     expect(bwrapProfileArgs(policy)).toEqual([
       '--ro-bind', '/', '/', '--dev', '/dev', '--unshare-pid', '--proc', '/proc', '--die-with-parent',
-      '--bind', home, home, '--bind', temp, temp, '--ro-bind', realpathSync.native(secret), realpathSync.native(secret),
+      '--bind', home, home, '--bind', ws, ws, '--bind', temp, temp,
+      '--ro-bind', realpathSync.native(secret), realpathSync.native(secret),
     ])
-    expect(() => landlockProfileArgs(policy)).toThrow(/Landlock cannot express force-read-only/u)
+    expect(() => landlockProfileArgs(policy)).toThrow(/Landlock cannot express excludePaths/u)
     const seatbelt = seatbeltProfileArgs(policy)[1] ?? ''
     expect(seatbelt).toContain('(allow file-write* (subpath')
-    expect(seatbelt).toContain(`(deny file-write* (subpath "${secret}")`)
+    expect(seatbelt).toContain('(deny file-write* (subpath')
+    expect(seatbelt).toContain('.ssh')
   })
 
   it('landlock workspace-write: adds the host /tmp and the workspace root', () => {
@@ -171,6 +174,70 @@ describe('profile dialects', () => {
     })[1] as string
     expect(profile).toContain(`(subpath "${realpathSync.native(extra)}")`)
   })
+
+  it('bwrap home-write: binds home and workspace, and rebinds each exclusion read-only', () => {
+    const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-home-')))
+    const ws = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-ws-')))
+    const excluded = join(home, 'protected')
+    mkdirSync(excluded)
+    tempDirs.push(home, ws)
+    const policy: SandboxPolicy = {
+      mode: 'home-write',
+      workspaceRoot: ws,
+      homeWriteRoots: [home],
+      excludePaths: [excluded],
+    }
+    const args = bwrapProfileArgs(policy)
+    expect(args.slice(0, 7)).toEqual(['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-pid', '--proc'])
+    expect(args).toContain('--die-with-parent')
+    expect(args).toContain(home)
+    expect(args).toContain(ws)
+    expect(args.slice(-3)).toEqual(['--ro-bind', excluded, excluded])
+    expect(args).not.toContain('--tmpfs')
+  })
+
+  it('landlock home-write: refuses exclusions, otherwise grants home and workspace', () => {
+    const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-home-')))
+    const ws = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-ws-')))
+    const excluded = join(home, 'protected')
+    mkdirSync(excluded)
+    tempDirs.push(home, ws)
+    expect(() => landlockProfileArgs({
+      mode: 'home-write',
+      workspaceRoot: ws,
+      homeWriteRoots: [home],
+      excludePaths: [excluded],
+    })).toThrow(/Landlock cannot express excludePaths/u)
+    const grants = landlockProfileArgs({
+      mode: 'home-write',
+      workspaceRoot: ws,
+      homeWriteRoots: [home],
+    })
+    expect(grants.slice(0, 3)).toEqual(['--ro', '/', '--rw'])
+    expect(grants).toContain(home)
+    expect(grants).toContain(ws)
+  })
+
+  it('seatbelt home-write: allows home and workspace, and denies each exclusion', () => {
+    const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-home-')))
+    const ws = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-ws-')))
+    const excluded = join(home, 'protected')
+    mkdirSync(excluded)
+    tempDirs.push(home, ws)
+    const profile = seatbeltProfileArgs({
+      mode: 'home-write',
+      workspaceRoot: ws,
+      homeWriteRoots: [home],
+      excludePaths: [excluded],
+    })[1] as string
+    // SBPL string literals escape backslashes (Windows paths in this unit test).
+    const sbpl = (path: string): string => path.replaceAll('\\', '\\\\')
+    expect(profile).toContain('(subpath "' + sbpl(home) + '")')
+    expect(profile).toContain('(subpath "' + sbpl(ws) + '")')
+    expect(profile).toContain('(deny file-write* (subpath "' + sbpl(excluded) + '"))')
+    expect(profile.lastIndexOf('(allow file-write*')).toBeLessThan(profile.lastIndexOf('(deny file-write*'))
+  })
+
 
   it('seatbelt workspace-write dedups a workspace root that already IS the temp dir', () => {
     const profile = seatbeltProfileArgs({ mode: 'workspace-write', workspaceRoot: tmpdir() })[1] as string
@@ -377,18 +444,27 @@ describe('the platform chains', () => {
 })
 
 describe('windows ACL home-write policy', () => {
-  it('fails closed when a force-read-only subtree must be expressed', async () => {
+  it('expresses home-write roots and exclusions through writable-root and exclude flags', async () => {
     const { sandbox } = await setup({}, {
       chain: ['windows-acl'],
       windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'],
     })
-    await expect(sandbox.confine(['true'], {
+    const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-home-')))
+    const ws = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-ws-')))
+    const secret = join(home, '.ssh')
+    mkdirSync(secret)
+    tempDirs.push(home, ws)
+    const confined = await sandbox.confine(['true'], {
       mode: 'home-write',
-      workspaceRoot: 'C:\\ws',
-      homeWriteRoot: 'C:\\Users\\alice',
-      homeWriteTempRoots: [],
-      homeWriteReadOnlyRoots: ['C:\\Users\\alice\\.ssh'],
-    })).rejects.toThrow(/cannot express force-read-only/u)
+      workspaceRoot: ws,
+      homeWriteRoots: [home],
+      excludePaths: [secret],
+    })
+    expect(confined.argv).toContain('--writable-root')
+    expect(confined.argv).toContain(home)
+    expect(confined.argv).toContain('--exclude')
+    expect(confined.argv).toContain(secret)
+    expect(confined.argv[confined.argv.indexOf('--mode') + 1]).toBe('workspace-write')
   })
 })
 

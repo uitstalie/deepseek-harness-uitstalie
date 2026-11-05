@@ -6,7 +6,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -137,6 +137,71 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     expect(result.stdout).toContain('CIM: PASS')
     expect(existsSync(join(writableDir, 'readonly-child-wrote.txt'))).toBe(false)
   }, 30_000)
+
+  it('home-write: the user-profile root and the non-system drive are writable, C: elsewhere and an exclusion stay read-only', () => {
+    const driveRoot = ['D:\\', 'E:\\', 'F:\\'].find(candidate => existsSync(candidate))
+    if (driveRoot === undefined) return // no non-system fixed drive on this host
+    const homeRoot = mkdtempSync(join(tmpdir(), 'dsh-acl-home-'))
+    const driveDir = mkdtempSync(join(driveRoot, 'dsh-acl-home-write-'))
+    const protectedDir = join(driveDir, 'protected')
+    mkdirSync(protectedDir)
+    // A data drive normally inherits Authenticated Users:(M), which omits
+    // WRITE_OWNER — the Low mandatory label (a SACL edit) then fails with
+    // access denied. A whole-drive grant needs Modify+Change-permissions for
+    // the signed-in user (documented in the package README); this fixture
+    // grants it explicitly, the state a user-created home-write root has.
+    for (const dir of [homeRoot, driveDir, protectedDir]) {
+      const grant = spawnSync('icacls', [dir, '/grant', `${process.env.USERNAME}:(OI)(CI)F`], { encoding: 'utf8' })
+      if (grant.status !== 0) throw new Error(`icacls full-control grant failed: ${grant.stdout}\n${grant.stderr}`)
+    }
+    const cOutside = mkdtempSync(join(tmpdir(), 'dsh-acl-c-outside-'))
+    // A junction inside the granted drive root points at a C: directory: the
+    // write still resolves to a C: object whose DACL carries no capability SID.
+    const junction = join(driveDir, 'escape-c')
+    symlinkSync(cOutside, junction, 'junction')
+    const junctionWrite = join(junction, 'junction-escape.txt')
+    const extendedWrite = `\\\\?\\${join(cOutside, 'extended-escape.txt')}`
+    const homeWrite = join(homeRoot, 'home-ok.txt')
+    const driveWrite = join(driveDir, 'drive-ok.txt')
+    const excludedWrite = join(protectedDir, 'excluded-denied.txt')
+    const cWrite = join(cOutside, 'c-denied.txt')
+    try {
+      const probe = [
+        "$ErrorActionPreference='SilentlyContinue';",
+        `try{Set-Content -Path '${join(writableDir, 'inside.txt')}' -Value ok -ErrorAction Stop;'WORKSPACE-WRITE: OK'}catch{'WORKSPACE-WRITE: DENIED'};`,
+        `try{Set-Content -Path '${homeWrite}' -Value ok -ErrorAction Stop;'HOME-PROFILE-WRITE: OK'}catch{'HOME-PROFILE-WRITE: DENIED'};`,
+        `try{Set-Content -Path '${driveWrite}' -Value ok -ErrorAction Stop;'DRIVE-WRITE: OK'}catch{'DRIVE-WRITE: DENIED'};`,
+        `try{Set-Content -Path '${excludedWrite}' -Value ok -ErrorAction Stop;'EXCLUDED-WRITE: OK'}catch{'EXCLUDED-WRITE: DENIED'};`,
+        `try{Set-Content -Path '${cWrite}' -Value ok -ErrorAction Stop;'C-WRITE: OK'}catch{'C-WRITE: DENIED'};`,
+        `try{Set-Content -Path '${junctionWrite}' -Value ok -ErrorAction Stop;'JUNCTION-WRITE: OK'}catch{'JUNCTION-WRITE: DENIED'};`,
+        `try{Set-Content -Path '${extendedWrite}' -Value ok -ErrorAction Stop;'EXTENDED-WRITE: OK'}catch{'EXTENDED-WRITE: DENIED'};`,
+        'exit 0',
+      ].join(' ')
+      const result = runRunner([
+        '--workspace', writableDir, '--temp', isolatedTemp, '--mode', 'workspace-write',
+        '--writable-root', homeRoot, '--writable-root', driveDir, '--exclude', protectedDir,
+        '--', resolvePwshPath(), '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', probe,
+      ])
+      const output = `${result.stdout}\n${result.stderr}`
+      expect(output, output).toContain('WORKSPACE-WRITE: OK')
+      expect(output, output).toContain('HOME-PROFILE-WRITE: OK')
+      expect(output, output).toContain('DRIVE-WRITE: OK')
+      expect(output, output).toContain('EXCLUDED-WRITE: DENIED')
+      expect(output, output).toContain('C-WRITE: DENIED')
+      expect(output, output).toContain('JUNCTION-WRITE: DENIED')
+      expect(output, output).toContain('EXTENDED-WRITE: DENIED')
+      expect(existsSync(homeWrite)).toBe(true)
+      expect(existsSync(driveWrite)).toBe(true)
+      expect(existsSync(excludedWrite)).toBe(false)
+      expect(existsSync(cWrite)).toBe(false)
+      expect(existsSync(join(cOutside, 'junction-escape.txt'))).toBe(false)
+      expect(existsSync(join(cOutside, 'extended-escape.txt'))).toBe(false)
+    } finally {
+      rmSync(homeRoot, { recursive: true, force: true })
+      rmSync(driveDir, { recursive: true, force: true })
+      rmSync(cOutside, { recursive: true, force: true })
+    }
+  })
 
   it('workspace-write: Remove-Item and Rename-Item succeed in the granted workspace (DELETE + FILE_DELETE_CHILD)', () => {
     // Deleting a file and renaming a directory both hit the second access

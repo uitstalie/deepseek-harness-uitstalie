@@ -3245,6 +3245,7 @@ const lastAssistantText = (agent: unknown): string | undefined => {
  * @param record - the super Session and workspace the report belongs to.
  * @param agent - the workspace Session whose turn just ended.
  * @param signal - the turn-end signal.
+ * @param turnEnd - how the turn ended; a non-`completed` kind reports the failure instead of text.
  * @returns whether a report was delivered.
  */
 export const deliverTaskReport = async (

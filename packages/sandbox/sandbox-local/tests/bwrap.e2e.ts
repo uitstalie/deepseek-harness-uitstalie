@@ -146,9 +146,9 @@ describe.skipIf(!bwrapUsable)('sandbox-local: real bwrap confinement', () => {
     const policy: SandboxPolicy = {
       mode: 'home-write',
       workspaceRoot: temp,
-      homeWriteRoot: home,
+      homeWriteRoots: [home],
       homeWriteTempRoots: [temp],
-      homeWriteReadOnlyRoots: [secret],
+      excludePaths: [secret],
     }
 
     const allowed = await runConfined(sandbox, `printf home-ok > ${home}/allowed.txt`, policy)

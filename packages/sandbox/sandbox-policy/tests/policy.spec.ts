@@ -15,7 +15,7 @@ import SandboxPolicyService, { SANDBOX_MODES, setSandboxMode } from '@deepseek-a
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt, { renderContextSnapshot, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 
-async function mounted(config: { mode?: 'read-only' | 'workspace-write' | 'home-write' | 'danger-full-access'; workspaceRoot?: string; additionalWritableRoots?: string[]; homeWriteRoot?: string; homeWriteReadOnlyRoots?: string[]; homeWriteTempRoots?: string[]; homeWriteAllowSymlinkedRoots?: boolean } = {}) {
+async function mounted(config: { mode?: 'read-only' | 'workspace-write' | 'home-write' | 'danger-full-access'; workspaceRoot?: string; additionalWritableRoots?: string[]; homeWriteRoot?: string; homeWriteRoots?: string[]; excludePaths?: string[]; nonCriticalRoots?: string[]; homeWriteReadOnlyRoots?: string[]; homeWriteTempRoots?: string[]; homeWriteAllowSymlinkedRoots?: boolean } = {}) {
   const ctx = new Context()
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SandboxPolicyService, config)
@@ -173,53 +173,60 @@ describe('SandboxPolicyService', () => {
     expect(ctx.sandboxPolicy.resolve({ session: session('sess-no-cwd') }).workspaceRoot).toBe('/fallback')
   })
 
-  it('resolves home-write with the default safety roots and os.tmpdir()', async () => {
+  it('resolves the configured home roots and the default empty exclusion list', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-home-write-'))
     try {
       const home = join(root, 'home')
       mkdirSync(join(home, '.ssh'), { recursive: true })
-      const ctx = await mounted({ mode: 'home-write', homeWriteRoot: home })
+      const ctx = await mounted({ mode: 'home-write', homeWriteRoots: [home] })
       const policy = ctx.sandboxPolicy.resolve()
       expect(policy.mode).toBe('home-write')
-      expect(policy.homeWriteRoot).toBe(resolve(home))
-      expect(policy.homeWriteTempRoots).toEqual([resolve(tmpdir())])
-      expect(policy.homeWriteReadOnlyRoots).toContain(resolve(home, '.ssh'))
-      expect(policy.homeWriteReadOnlyRoots).toContain(resolve(home, '.gnupg'))
+      expect(policy.homeWriteRoots).toEqual([resolve(home)])
+      expect(policy.homeWriteTempRoots).toEqual([])
+      expect(policy.excludePaths).toBeUndefined()
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
   })
 
-  it('lets an explicit empty force-read-only list disable the defaults', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'dsh-home-write-empty-'))
+  it('accepts the folded mode name and its old config keys as compatibility aliases', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-home-write-alias-'))
     try {
       const home = join(root, 'home')
-      mkdirSync(join(home, '.ssh'), { recursive: true })
-      const ctx = await mounted({ mode: 'home-write', homeWriteRoot: home, homeWriteReadOnlyRoots: [] })
-      expect(ctx.sandboxPolicy.resolve().homeWriteReadOnlyRoots).toEqual([])
+      mkdirSync(home, { recursive: true })
+      const byMode = await mounted({ mode: 'non-critical-write' as never, homeWriteRoots: [home] })
+      expect(byMode.sandboxPolicy.defaultMode).toBe('home-write')
+      const byRootKey = await mounted({ mode: 'home-write', nonCriticalRoots: [home] })
+      expect(byRootKey.sandboxPolicy.homeWriteRoots).toEqual([resolve(home)])
+      const bySingleRoot = await mounted({ mode: 'home-write', homeWriteRoot: home })
+      expect(bySingleRoot.sandboxPolicy.homeWriteRoots).toEqual([resolve(home)])
+      const byExcludeKey = await mounted({
+        mode: 'home-write',
+        homeWriteRoots: [home],
+        homeWriteReadOnlyRoots: [join(home, '.ssh')],
+      })
+      expect(byExcludeKey.sandboxPolicy.excludePaths).toEqual([join(home, '.ssh')])
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
   })
 
-  it('rejects symlink spellings by default, and keeps the opt-in target inside home', async () => {
+  it('rejects symlink spellings unless the deployment opts in', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-home-write-link-'))
     try {
       const home = join(root, 'home')
       const outside = join(root, 'outside')
       mkdirSync(home, { recursive: true })
       mkdirSync(outside, { recursive: true })
-      symlinkSync(outside, join(home, 'linked'))
-      const base = { mode: 'home-write' as const, homeWriteRoot: home, homeWriteTempRoots: [] as string[] }
-      await expect(mounted({ ...base, homeWriteReadOnlyRoots: [join(home, 'linked')] }))
+      try {
+        symlinkSync(outside, join(home, 'linked'))
+      } catch {
+        return // creating symlinks needs a privilege this Windows host may not grant
+      }
+      await expect(mounted({ mode: 'home-write', homeWriteRoots: [join(home, 'linked')] }))
         .rejects.toThrow('symlink spelling')
-      await expect(mounted({ ...base, homeWriteAllowSymlinkedRoots: true, homeWriteReadOnlyRoots: [join(home, 'linked')] }))
-        .rejects.toThrow('must stay inside the home')
-      const inside = join(home, 'inside')
-      mkdirSync(inside)
-      symlinkSync(inside, join(home, 'inside-link'))
-      const ctx = await mounted({ ...base, homeWriteAllowSymlinkedRoots: true, homeWriteReadOnlyRoots: [join(home, 'inside-link')] })
-      expect(ctx.sandboxPolicy.resolve().homeWriteReadOnlyRoots).toEqual([resolve(inside)])
+      const ctx = await mounted({ mode: 'home-write', homeWriteRoots: [join(home, 'linked')], homeWriteAllowSymlinkedRoots: true })
+      expect(ctx.sandboxPolicy.homeWriteRoots).toEqual([resolve(outside)])
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -248,7 +255,7 @@ describe('SandboxPolicyService', () => {
 })
 
 describe('sandbox:policy request context', () => {
-  async function promptMounted(config: { mode?: 'read-only' | 'workspace-write' | 'danger-full-access'; workspaceRoot?: string; additionalWritableRoots?: string[] } = {}): Promise<Context> {
+  async function promptMounted(config: { mode?: 'read-only' | 'workspace-write' | 'home-write' | 'danger-full-access'; workspaceRoot?: string; additionalWritableRoots?: string[]; homeWriteRoots?: string[]; excludePaths?: string[] } = {}): Promise<Context> {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(SessionProjectionRegistry)
@@ -266,6 +273,40 @@ describe('sandbox:policy request context', () => {
     } as const
 
     expect(await policyContext(ctx, session(`sess-${mode}`, '/projects/../projects/current'))).toBe(expected[mode])
+  })
+
+  it('renders the home-write roots and its exclusions', async () => {
+    const ctx = await promptMounted({
+      mode: 'home-write',
+      workspaceRoot: '/fallback',
+      homeWriteRoots: ['/home/dev'],
+      excludePaths: ['~/.ssh', '/home/dev/.dsh'],
+    })
+    const text = await policyContext(ctx, session('sess-home-write', '/projects/current'))
+    expect(text).toContain('home-write')
+    expect(text).toContain('Excluded (forced read-only even inside a writable root): ["~/.ssh","/home/dev/.dsh"]')
+  })
+
+  it('resolves the configured home-write roots and exclusions onto every policy', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'dsh-policy-home-'))
+    const protectedDir = join(home, 'protected')
+    mkdirSync(protectedDir)
+    try {
+      const ctx = await promptMounted({
+        mode: 'home-write',
+        workspaceRoot: '/fallback',
+        homeWriteRoots: [home],
+        excludePaths: [protectedDir],
+      })
+      const resolved = ctx.sandboxPolicy.resolve({ session: session('sess-resolved', '/projects/current') })
+      expect(resolved).toMatchObject({
+        mode: 'home-write',
+        homeWriteRoots: [resolve(home)],
+        excludePaths: [protectedDir],
+      })
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
   })
 
   it('renders explicit extra writable directories under workspace-write', async () => {

@@ -19,13 +19,40 @@ export {
   validateEscalationArgs,
 } from './escalation.ts'
 export type { EscalationApproval, EscalationApprover, EscalationOutcome, EscalationRequest } from './escalation.ts'
-export { canonicalPath, fsWritableRoots, homeWriteReadOnlyRoots, homeWriteWritableRoots, isHomeWriteAllowed, isWithinRoot, workspaceWritableRoots, writableRoots, SandboxInvalidRootError } from './roots.ts'
+export {
+  canonicalPath,
+  fsWritableRoots,
+  homeWriteReadOnlyRoots,
+  homeWriteWritableRoots,
+  isHomeWriteAllowed,
+  isWithinRoot,
+  workspaceWritableRoots,
+  writableRoots,
+  SandboxInvalidRootError,
+} from './roots.ts'
+export {
+  SandboxHomeWriteUnavailableError,
+  SandboxInvalidExcludeError,
+  excludePrefix,
+  expandConfiguredPath,
+  homeWriteRoots,
+  isPathAtOrUnder,
+  matchingExclude,
+  resolvedExcludePaths,
+  resolvedHome,
+  windowsNonSystemDrives,
+} from './home-write.ts'
+export type { HomeWriteRootOptions } from './home-write.ts'
+export { SANDBOX_MODE_ALIASES, normalizeSandboxMode } from './modes.ts'
 
 /**
  * File-effect policy for confined processes. `read-only` permits only required
  * sinks such as `/dev/null`; `workspace-write` also permits the workspace,
- * explicit extra roots, and backend-defined temp areas; `danger-full-access` bypasses confinement. Network
- * and process visibility are outside this vocabulary.
+ * explicit extra roots, and backend-defined temp areas; `home-write` permits the canonical
+ * home, every non-system fixed drive on Windows, the session workspace, and configured
+ * temp exceptions, with `excludePaths` carving read-only holes out of all of them;
+ * `danger-full-access` bypasses confinement. Network and process visibility are outside
+ * this vocabulary.
  */
 export type SandboxMode = 'read-only' | 'workspace-write' | 'home-write' | 'danger-full-access'
 
@@ -40,8 +67,23 @@ export type ConfinedSandboxMode = Exclude<SandboxMode, 'danger-full-access'>
 export interface SandboxExecutionPolicy {
   /** The file-effect mode this execution runs under. */
   mode: SandboxMode
-  /** Absolute root directory `workspace-write` may write under. */
+  /** Absolute root directory the workspace-writable modes may write under. */
   workspaceRoot: string
+  /**
+   * Explicit `home-write` roots replacing the platform default (Windows: the
+   * user home plus every non-system fixed drive; Linux/macOS: `$HOME`).
+   * Absence means the enforcing host derives the default; `~` expands there.
+   * The session workspace is always added separately.
+   */
+  homeWriteRoots?: readonly string[]
+  /**
+   * Read-only holes carved out of `home-write`: a matching path stays
+   * read-only even inside a writable root. Entries are execution-world paths
+   * (`~` expands on the enforcing host) naming an existing directory; a
+   * trailing `/*` or `/**` means the same directory subtree, and any other glob
+   * syntax is rejected. Absence means no exclusions — the mode's default.
+   */
+  excludePaths?: readonly string[]
   /**
    * Extra physical absolute directories `workspace-write` may also write under.
    * Absence means none. The enforcing host rejects missing, non-directory, and
@@ -63,23 +105,8 @@ export interface SandboxExecutionPolicy {
    * `danger-full-access`.
    */
   fsAdditionalWritableRoots?: readonly string[]
-  /**
-   * Canonical home directory the `home-write` mode grants, plus the explicit
-   * temporary exceptions and force-read-only roots resolved by the policy
-   * owner. Present even under another mode when the deployment configured it,
-   * so a one-call escalation from `workspace-write` can compare the workspace
-   * against the home boundary without re-reading deployment config.
-   *
-   * Only `home-write` consumes these fields. `workspace-write`'s
-   * `additionalWritableRoots` and the filesystem-only
-   * `fsAdditionalWritableRoots` are a different authorization model and are
-   * never merged into this one.
-   */
-  homeWriteRoot?: string
-  /** Extra directories writable under `home-write` (default: `os.tmpdir()`). */
+  /** Extra directories writable under `home-write` (default: none). */
   homeWriteTempRoots?: readonly string[]
-  /** Paths that stay read-only under `home-write`; matches win over home. */
-  homeWriteReadOnlyRoots?: readonly string[]
   /**
    * Opaque identity of the calling session (the branded `dsh-session`
    * SessionId). Backends key per-session state off it (e.g. windows-acl gives

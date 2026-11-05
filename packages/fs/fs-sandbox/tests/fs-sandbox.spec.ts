@@ -184,6 +184,52 @@ describe('workspace-write containment', () => {
   })
 })
 
+describe('home-write containment', () => {
+  beforeEach(() => boot('home-write'))
+
+  it('allows a write outside the workspace but inside a home-write root', async () => {
+    const policy = { mode: 'home-write' as const, workspaceRoot: workspace, homeWriteRoots: [outside] }
+    const path = join(outside, 'home-write.txt')
+    await fs.writeText(await target(path), 'allowed', undefined, undefined, policy)
+    expect(await readFile(path, 'utf8')).toBe('allowed')
+  })
+
+  it('keeps the workspace writable even when it is outside the home roots', async () => {
+    const policy = { mode: 'home-write' as const, workspaceRoot: workspace, homeWriteRoots: [outside] }
+    const path = join(workspace, 'workspace.txt')
+    await fs.writeText(await target(path), 'workspace', undefined, undefined, policy)
+    expect(await readFile(path, 'utf8')).toBe('workspace')
+  })
+
+  it('denies a write outside the workspace and outside every home-write root', async () => {
+    const policy = { mode: 'home-write' as const, workspaceRoot: workspace, homeWriteRoots: [outside] }
+    const other = join(base, 'other')
+    await mkdir(other)
+    const path = join(other, 'denied.txt')
+    await expect(fs.writeText(await target(path), 'x', undefined, undefined, policy))
+      .rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+    expect(existsSync(path)).toBe(false)
+  })
+
+  it('forces an excluded path read-only, and the default (no exclusions) stays writable', async () => {
+    const protectedDir = join(outside, 'protected')
+    await mkdir(protectedDir, { recursive: true })
+    const policy = {
+      mode: 'home-write' as const,
+      workspaceRoot: workspace,
+      homeWriteRoots: [outside],
+      excludePaths: [protectedDir],
+    }
+    const denied = join(protectedDir, 'secret.txt')
+    await expect(fs.writeText(await target(denied), 'x', undefined, undefined, policy))
+      .rejects.toThrow(/excluded path/u)
+    expect(existsSync(denied)).toBe(false)
+    const loose = { ...policy, excludePaths: [] }
+    await fs.writeText(await target(denied), 'x', undefined, undefined, loose)
+    expect(await readFile(denied, 'utf8')).toBe('x')
+  })
+})
+
 describe('fs-only extra roots', () => {
   it('lets the fence write under a granted directory and still denies a third one', async () => {
     await boot('workspace-write')
@@ -363,9 +409,8 @@ describe('home-write', () => {
     await homeCtx.plugin(SandboxPolicyService, {
       mode: 'home-write',
       workspaceRoot: '/not-home',
-      homeWriteRoot: home,
-      homeWriteTempRoots: [],
-      homeWriteReadOnlyRoots: [secret],
+      homeWriteRoots: [home],
+      excludePaths: [secret],
     })
     const homeFiber = await homeCtx.plugin(SandboxedFileSystem, { cwd: workspace })
     try {

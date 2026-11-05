@@ -35,9 +35,9 @@ const setup = () => {
     get: (key: string) => key === 'configEditor' ? editor : key === 'approval' ? approval : undefined,
   }
   const view = {
-    homeWriteRoot: home,
+    homeWriteRoots: [home],
     homeWriteTempRoots: [] as readonly string[],
-    homeWriteReadOnlyRoots: [] as readonly string[],
+    excludePaths: [] as readonly string[],
     homeWriteAllowSymlinkedRoots: false,
   }
   const tool = homeWriteTool(ctx as never, view)
@@ -52,8 +52,8 @@ describe('sandbox home-write force-read-only tool', () => {
       const added = await h.tool.execute({ action: 'add', path: h.protectedDir, justification: 'protect credentials' }, h.exec) as Record<string, unknown>
       expect(added.roots).toEqual([h.protectedDir])
       expect(h.approvalCalls).toHaveLength(1)
-      expect(h.approvalCalls[0]?.reason).toContain('Add force-read-only')
-      expect(h.getConfig().homeWriteReadOnlyRoots).toEqual([h.protectedDir])
+      expect(h.approvalCalls[0]?.reason).toContain('Exclude')
+      expect(h.getConfig().excludePaths).toEqual([h.protectedDir])
       const auditPath = join(h.root, 'sandbox-home-readonly-audit.jsonl')
       const audit = readFileSync(auditPath, 'utf8').trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)
       expect(audit[0]).toMatchObject({
@@ -62,7 +62,7 @@ describe('sandbox home-write force-read-only tool', () => {
 
       const rolled = await h.tool.execute({ action: 'rollback', justification: 'revert the change' }, h.exec) as Record<string, unknown>
       expect(rolled.roots).toEqual([])
-      expect(h.getConfig().homeWriteReadOnlyRoots).toEqual([])
+      expect(h.getConfig().excludePaths).toEqual([])
       expect(h.approvalCalls.at(-1)?.reason).toContain('Roll back')
     } finally {
       rmSync(h.root, { recursive: true, force: true })
@@ -80,9 +80,9 @@ describe('sandbox home-write force-read-only tool', () => {
         get: (key: string) => key === 'configEditor' ? h.editor : key === 'approval' ? rejecting : undefined,
       }
       const view = {
-        homeWriteRoot: h.home,
+        homeWriteRoots: [h.home],
         homeWriteTempRoots: [],
-        homeWriteReadOnlyRoots: [h.protectedDir],
+        excludePaths: [h.protectedDir],
         homeWriteAllowSymlinkedRoots: false,
       }
       const tool = homeWriteTool(ctx as never, view)
@@ -90,7 +90,7 @@ describe('sandbox home-write force-read-only tool', () => {
         { action: 'remove', path: h.protectedDir, justification: 'let the agent edit it' },
         h.exec,
       )).rejects.toThrow(/REMOVING protection.*becomes writable/u)
-      expect(h.getConfig().homeWriteReadOnlyRoots).toEqual([h.protectedDir])
+      expect(h.getConfig().excludePaths).toEqual([h.protectedDir])
     } finally {
       rmSync(h.root, { recursive: true, force: true })
     }
@@ -99,7 +99,9 @@ describe('sandbox home-write force-read-only tool', () => {
   it('refuses to change a tool-owned field or escape the home; it can only edit the list', async () => {
     const h = setup()
     try {
-      await expect(h.tool.execute({ action: 'add', path: '/etc', justification: 'outside' }, h.exec))
+      const outside = join(h.root, 'outside')
+      mkdirSync(outside)
+      await expect(h.tool.execute({ action: 'add', path: outside, justification: 'outside' }, h.exec))
         .rejects.toThrow(/must stay inside/u)
       expect(Object.keys(h.getConfig())).toEqual(['mode'])
     } finally {

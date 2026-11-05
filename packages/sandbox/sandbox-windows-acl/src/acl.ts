@@ -429,6 +429,63 @@ export function grantWrite(
 }
 
 /**
+ * Deny the capability SID every write right on `path` — the `home-write`
+ * exclusion. The excluded directory usually inherits its allow ACE from a
+ * granted drive root; an explicit inheritable DENY for the same trustee wins
+ * over that inherited allow (Windows evaluates deny ACEs first), so the hole is
+ * read-only without revoking the parent grant. The Low label is left alone:
+ * the exclusion still needs the parent's label to read, and unrelated granted
+ * siblings keep writing under it. Idempotent on the exact deny ACE.
+ * @param api - the binding table.
+ * @param path - the excluded directory.
+ * @param sidPtr - the capability SID whose write access is denied there.
+ */
+export function denyWrite(api: Win32Bindings, path: string, sidPtr: NativePtr): void {
+  withPathLock(api, path, () => {
+    const { oldAcl, descriptor } = readCurrentSecurity(api, path)
+    if (oldAcl !== null
+      && hasExactEntry(oldAcl, abi.ACCESS_DENIED_ACE_TYPE, abi.SUB_CONTAINERS_AND_OBJECTS_INHERIT, abi.GRANT_MASK, sidPtr)) {
+      if (descriptor !== null) {
+        const freed = api.localFree(descriptor)
+        if (!isNullPtr(freed)) throwLastError(api, 'LocalFree', `denyWrite(${path}) descriptor`)
+      }
+      return
+    }
+    mergeAndApply(
+      api, path, buildExplicitAccess(sidPtr, abi.DENY_ACCESS, abi.GRANT_MASK), oldAcl,
+      { kind: 'keep' }, descriptor, 'denyWrite',
+    )
+  })
+}
+
+/**
+ * Remove the capability-SID deny ACE {@link denyWrite} added (REVOKE_ACCESS
+ * merge for that trustee). Inherited allow ACEs from a granted parent are not
+ * explicit on `path`, so they survive this revoke.
+ * @param api - the binding table.
+ * @param path - the formerly excluded directory.
+ * @param sidPtr - the capability SID whose deny is removed.
+ * @returns whether a DACL was present to edit.
+ */
+export function revokeDeny(api: Win32Bindings, path: string, sidPtr: NativePtr): boolean {
+  return withPathLock(api, path, () => {
+    const { oldAcl, descriptor } = readCurrentSecurity(api, path)
+    if (oldAcl === null) {
+      if (descriptor !== null) {
+        const freed = api.localFree(descriptor)
+        if (!isNullPtr(freed)) throwLastError(api, 'LocalFree', `revokeDeny(${path}) descriptor`)
+      }
+      return false
+    }
+    mergeAndApply(
+      api, path, buildExplicitAccess(sidPtr, abi.REVOKE_ACCESS, 0), oldAcl,
+      { kind: 'keep' }, descriptor, 'revokeDeny',
+    )
+    return true
+  })
+}
+
+/**
  * Remove every ACE for the capability SID from the directory DACL (REVOKE_ACCESS
  * merge — other entries are preserved). The shared Low label is cleared only
  * when no other capability grant remains on the directory: two grants may

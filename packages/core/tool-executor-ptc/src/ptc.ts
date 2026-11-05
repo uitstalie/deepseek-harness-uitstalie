@@ -360,8 +360,6 @@ export function createRunCodeTool(
             justification: args.justification,
             effectiveMode: standingPolicy.mode,
             subject: 'program',
-            workspaceRoot: standingPolicy.workspaceRoot,
-            homeWriteRoot: (ctx.get('sandboxPolicy') as { homeWriteRoot?: string } | undefined)?.homeWriteRoot,
           }, {
             approver: ctx.get('approval'), agent: exec.agent, callId: exec.callId,
             toolName: RUN_CODE_NAME, signal: callSignal,

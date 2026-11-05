@@ -8,19 +8,22 @@ Source: [`packages/sandbox/sandbox/src/index.ts`](../../packages/sandbox/sandbox
 
 ## Modes and enforcement
 
-`SandboxMode` governs filesystem effects only. `read-only` asks the backend to deny writes — the POSIX runners additionally grant the `/dev/null` sink their shells require, while the Windows ACL runner grants no explicit writable root and reports partial enforcement for its ambient ACL gaps; `workspace-write` permits writes under the workspace root, explicit extra directories, and the backend's promised temp area; `home-write` permits writes under the canonical user home and configured temp exceptions, with configured force-read-only paths taking precedence; `danger-full-access` bypasses confinement. Network and process visibility are outside this vocabulary.
+`SandboxMode` governs filesystem effects only. `read-only` asks the backend to deny writes — the POSIX runners additionally grant the `/dev/null` sink their shells require, while the Windows ACL runner grants no explicit writable root and reports partial enforcement for its ambient ACL gaps; `workspace-write` permits writes under the workspace root, explicit extra directories, and the backend's promised temp area; `home-write` permits writes under the user's home and — on Windows — every fixed drive except the system drive, plus the session workspace and configured temp exceptions, with `excludePaths` carving read-only holes out of any granted root; `danger-full-access` bypasses confinement. Network and process visibility are outside this vocabulary.
 
 ```ts type-equiv
 /**
  * File-effect policy for confined processes. `read-only` permits only required
  * sinks such as `/dev/null`; `workspace-write` also permits the workspace,
- * explicit extra roots, and backend-defined temp areas; `danger-full-access` bypasses confinement. Network
- * and process visibility are outside this vocabulary.
+ * explicit extra roots, and backend-defined temp areas; `home-write` permits the canonical
+ * home, every non-system fixed drive on Windows, the session workspace, and configured
+ * temp exceptions, with `excludePaths` carving read-only holes out of all of them;
+ * `danger-full-access` bypasses confinement. Network and process visibility are outside
+ * this vocabulary.
  */
 type SandboxMode = 'read-only' | 'workspace-write' | 'home-write' | 'danger-full-access'
 ```
 
-Only the first three modes can be sent to a provider. A `danger-full-access` consumer spawns its original argv and does not call `ctx.sandbox`.
+Every confining mode can be sent to a provider. A `danger-full-access` consumer spawns its original argv and does not call `ctx.sandbox`.
 
 ```ts type-equiv
 /** A confining (non-`danger-full-access`) mode — the modes a {@link SandboxPolicy} can carry. */
@@ -38,6 +41,10 @@ Enforcement is a reported fact. `full` means the backend governs every file effe
 type SandboxEnforcement = 'full' | 'partial'
 ```
 
+### Decision: `home-write` is the single user-data mode
+
+`workspace-write` was too tight for work whose output lands outside the checkout, and `danger-full-access` removed every boundary. `home-write` is the one mode between them: it grants the signed-in user's home (hidden entries included) and, on Windows, every fixed drive except the system drive, plus the session workspace and configured temp exceptions. C: outside the user's home therefore stays read-only even when a task wants a file on a data drive; reads stay unconfined in every mode. `excludePaths` (default empty — `~/.ssh`, `~/.dsh` and `~/.gnupg` are writable unless configured otherwise) forces matching existing paths read-only even inside a granted root; the documented hardening recommendation is `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, `~/.kube`, `~/.docker` plus `C:\\Windows` where the deployment wants belt-and-braces. The mode composes with, and never replaces, `fsAdditionalWritableRoots`: the in-process fence adds both sets while process backends keep ignoring the fs-only field. Landlock cannot express a read-only hole inside a granted root, so a Landlock-only host fails closed when `excludePaths` is non-empty and recommends bubblewrap; Windows ACL expresses both the extra roots and the holes (an inheritable DENY ACE per exclusion). On Fedora, SELinux labels remain in force — the sandbox writes DACLs and never relabels — so an enforcing policy can still deny a write the DACL allows, and that denial surfaces as the operation's own error rather than a sandbox denial. Configurations and Session logs that still name the folded `non-critical-write` mode, or use `nonCriticalRoots`, are mapped to `home-write` when read.
+
 ## Per-call policy
 
 The complete execution policy is resolved and carried per capability call. It includes `danger-full-access` so a consumer can resolve policy once before deciding whether to bypass confinement. Normal tool calls derive `workspaceRoot` from the calling session's immutable cwd; deployment configuration supplies the agentless fallback and explicit additional write grants. The resolver preserves absolute execution-world spelling. Enforcing providers canonicalize the root where the files exist, so a cwd containing `symlink/..` identifies the directory where the paired subprocess provider actually runs.
@@ -51,8 +58,23 @@ The complete execution policy is resolved and carried per capability call. It in
 interface SandboxExecutionPolicy {
   /** The file-effect mode this execution runs under. */
   mode: SandboxMode
-  /** Absolute root directory `workspace-write` may write under. */
+  /** Absolute root directory the workspace-writable modes may write under. */
   workspaceRoot: string
+  /**
+   * Explicit `home-write` roots replacing the platform default (Windows: the
+   * user home plus every non-system fixed drive; Linux/macOS: `$HOME`).
+   * Absence means the enforcing host derives the default; `~` expands there.
+   * The session workspace is always added separately.
+   */
+  homeWriteRoots?: readonly string[]
+  /**
+   * Read-only holes carved out of `home-write`: a matching path stays
+   * read-only even inside a writable root. Entries are execution-world paths
+   * (`~` expands on the enforcing host) naming an existing directory; a
+   * trailing `/*` or `/**` means the same directory subtree, and any other glob
+   * syntax is rejected. Absence means no exclusions — the mode's default.
+   */
+  excludePaths?: readonly string[]
   /**
    * Extra physical absolute directories `workspace-write` may also write under.
    * Absence means none. The enforcing host rejects missing, non-directory, and
@@ -60,6 +82,22 @@ interface SandboxExecutionPolicy {
    * These grant nothing under `read-only` or `danger-full-access`.
    */
   additionalWritableRoots?: readonly string[]
+  /**
+   * Extra physical absolute directories only the in-process filesystem fence
+   * (`@deepseek-ai/dsh-fs-sandbox`) may write under.
+   *
+   * This is the narrow grant for a capability that must hand files to a
+   * directory without widening what confined processes (shell, terminal, PTC)
+   * may write: those backends ignore this field, so a host whose confinement
+   * cannot express extra roots (Windows ACL) keeps working. The fence skips
+   * entries that are missing, are not directories, or are symlinked; unlike
+   * {@link additionalWritableRoots}, an unusable entry denies only itself
+   * instead of failing the whole policy. Grants nothing under `read-only` or
+   * `danger-full-access`.
+   */
+  fsAdditionalWritableRoots?: readonly string[]
+  /** Extra directories writable under `home-write` (default: none). */
+  homeWriteTempRoots?: readonly string[]
   /**
    * Opaque identity of the calling session (the branded `dsh-session`
    * SessionId). Backends key per-session state off it (e.g. windows-acl gives

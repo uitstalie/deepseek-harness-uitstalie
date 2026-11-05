@@ -6,8 +6,11 @@
   en: e0d4876306b192c3
   zh: 63baaa0c79e87deb
 /process-sandbox/modes-and-enforcement:
-  en: 6777e1b1270ec3e1
-  zh: 22533fb3304c1dd8
+  en: b23855d62da4a6e6
+  zh: e44899008bf18820
+/process-sandbox/modes-and-enforcement/decision-home-write-is-the-single-user-data-mode:
+  en: 98b06e061f60aa04
+  zh: d73d2860d470c061
 /process-sandbox/per-call-policy:
   en: fac6f5d32327dfb6
   zh: 1b8e4a1af48f33e8

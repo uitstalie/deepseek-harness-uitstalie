@@ -32,7 +32,7 @@ import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import type { Config as LocalConfig } from '@deepseek-ai/dsh-fs-local'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsDeleteOutcome, FsMoveOutcome, FsEditOutcome, FsEditRequest, FsRemoveOptions, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
-import { fsWritableRoots, isHomeWriteAllowed } from '@deepseek-ai/dsh-sandbox'
+import { fsWritableRoots, isHomeWriteAllowed, matchingExclude, resolvedExcludePaths } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { isPathUnder } from './containment.ts'
@@ -196,6 +196,13 @@ export class SandboxedFileSystem extends LocalFileSystem {
     // THIS fresh target. home-write checks force-read-only first, then home/temp.
     const fresh = await this.resolve(target.displayPath)
     if (mode === 'home-write') {
+      const excluded = matchingExclude(fresh.targetKey, resolvedExcludePaths(policy))
+      if (excluded !== undefined) {
+        throw new FsError(
+          `cannot write "${target.displayPath}": it is under the excluded path ${JSON.stringify(excluded)}, which is forced read-only under home-write mode`,
+          'FS_SANDBOX_DENIED',
+        )
+      }
       if (!isHomeWriteAllowed(policy, fresh.targetKey)) {
         throw new FsError(`cannot write "${target.displayPath}": file access denied under home-write mode`, 'FS_SANDBOX_DENIED')
       }

@@ -118,30 +118,32 @@ describe('writableRoots', () => {
 })
 
 describe('homeWrite', () => {
-  it('allows home and temp, denies elsewhere, and lets force-read-only win over home', () => {
+  it('allows the home, temp exceptions and the workspace; exclusions win over all of them', () => {
     const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-home-')))
     const temp = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-temp-')))
+    const workspace = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-ws-')))
     const secret = join(home, '.ssh')
     const nested = join(secret, 'keys')
     mkdirSync(nested, { recursive: true })
-    roots.push(home, temp)
+    roots.push(home, temp, workspace)
     const policy = {
       mode: 'home-write' as const,
-      workspaceRoot: '/not-home',
-      homeWriteRoot: home,
+      workspaceRoot: workspace,
+      homeWriteRoots: [home],
       homeWriteTempRoots: [temp],
-      homeWriteReadOnlyRoots: [realpathSync.native(secret)],
+      excludePaths: [realpathSync.native(secret)],
     }
-    expect(homeWriteWritableRoots(policy)).toEqual([home, temp])
+    expect(homeWriteWritableRoots(policy)).toEqual([home, workspace, temp])
     expect(homeWriteReadOnlyRoots(policy)).toEqual([realpathSync.native(secret)])
     expect(isHomeWriteAllowed(policy, join(home, 'notes.txt'))).toBe(true)
     expect(isHomeWriteAllowed(policy, join(temp, 'build'))).toBe(true)
+    expect(isHomeWriteAllowed(policy, join(workspace, 'file'))).toBe(true)
     expect(isHomeWriteAllowed(policy, '/etc/passwd')).toBe(false)
     expect(isHomeWriteAllowed(policy, join(secret, 'config'))).toBe(false)
     expect(isHomeWriteAllowed(policy, join(nested, 'id'))).toBe(false)
   })
 
-  it('does not inherit workspace-write extras or workspace roots', () => {
+  it('ignores workspace-write extras: home-write is a different authorization model', () => {
     const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-home-')))
     const workspace = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-ws-')))
     const extra = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-extra-')))
@@ -149,14 +151,13 @@ describe('homeWrite', () => {
     const policy = {
       mode: 'home-write' as const,
       workspaceRoot: workspace,
-      homeWriteRoot: home,
+      homeWriteRoots: [home],
       homeWriteTempRoots: [],
-      homeWriteReadOnlyRoots: [],
       additionalWritableRoots: [extra],
       fsAdditionalWritableRoots: [workspace],
     }
-    expect(homeWriteWritableRoots(policy)).toEqual([home])
-    expect(isHomeWriteAllowed(policy, join(workspace, 'file'))).toBe(false)
+    expect(homeWriteWritableRoots(policy)).toEqual([home, workspace])
+    expect(isHomeWriteAllowed(policy, join(workspace, 'file'))).toBe(true)
     expect(isHomeWriteAllowed(policy, join(extra, 'file'))).toBe(false)
   })
 })
