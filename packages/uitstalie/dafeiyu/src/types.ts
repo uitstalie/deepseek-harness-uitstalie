@@ -88,7 +88,8 @@ export interface CapabilityContribution {
    */
   onAgentCreated?(agent: Agent): void
   /**
-   * Run once for each successfully completed turn.
+   * Run once for each finished turn, however it ended. `input.event.data.reason.kind` names the
+   * ending (`completed`, `aborted`, `error`, …); a hook that only handles success must check it.
    * @param input - the agent, session, turn number, event, and registration signal.
    * @returns a promise the organizer awaits before dispatching this session's next turn.
    */
@@ -97,7 +98,7 @@ export interface CapabilityContribution {
   dispose?(): void
 }
 
-/** One completed turn handed to a capability hook. */
+/** One finished turn handed to a capability hook. */
 export interface TurnEndInput {
   /** Live agent that owns the session. */
   readonly agent: Agent

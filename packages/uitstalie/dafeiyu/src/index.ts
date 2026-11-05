@@ -332,10 +332,11 @@ export class Dafeiyu extends Service {
     for (const registration of this.registrations.values()) registration.registrations.delete(agent)
   }
 
-  /** Filter and enqueue a completed turn for one session. */
+  /** Filter and enqueue a finished turn for one session, however it ended. */
   private observeSession(session: Session, event: SessionEvent): void {
     if (this.disposed || event.type !== 'turn/end') return
-    if (event.data.reason.kind !== 'completed') return
+    // Every turn ending — completed, aborted, errored — reaches the capabilities: a failure the
+    // hooks never hear about is a silent one (the dispatch-report path depends on it).
     this.enqueueTurnEnd(session, event)
   }
 

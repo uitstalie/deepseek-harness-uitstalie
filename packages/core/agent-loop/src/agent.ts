@@ -41,6 +41,7 @@ import { ReactLoopInbox } from './inbox.ts'
 import { RuntimeContextProjection } from './runtime-context.ts'
 import { AssistantStreamAttempt } from './assistant-stream.ts'
 import { SystemPromptProjection } from './runtime-context.ts'
+import { pairToolCalls } from './tool-pairing.ts'
 
 /** Projected facts consumed by this driver; registration stays with the factory. */
 interface LoopProjections {
@@ -726,15 +727,31 @@ export class ReactLoopAgent implements Agent {
     // canonicalHeader is shallow; append logs a detached snapshot, not these local values.
     deepFreeze(header)
     const boundaryMessages = session.deriveMessages()
-    for (const message of boundaryMessages) {
+    // Never send a dangling assistant tool call: a projection, surface replace or compaction
+    // boundary can remove a result while keeping its call, and strict providers answer the whole
+    // request with a 400 the Session cannot recover from. The repair is request-local — the log
+    // and derived history keep the truthful gap.
+    const paired = pairToolCalls(boundaryMessages)
+    if (paired.repairs.length > 0) {
+      session.append('agent/tool-pair-repair', {
+        turn: position.turn,
+        step: position.step,
+        repaired: paired.repairs.map(repair => ({
+          callId: repair.callId,
+          name: repair.name,
+        })),
+      })
+    }
+    const requestMessages = paired.repairs.length === 0 ? boundaryMessages : paired.messages
+    for (const message of requestMessages) {
       if (this.frozenMessages.has(message)) continue
       deepFreeze(message)
       this.frozenMessages.add(message)
     }
-    Object.freeze(boundaryMessages)
+    Object.freeze(requestMessages)
     const request = markAgentLoopRequest(Object.freeze({
       ...header.config,
-      messages: boundaryMessages,
+      messages: requestMessages,
       toolHistory: session.toolHistory(),
       ...header.tools !== undefined ? { tools: header.tools } : {},
       sessionId: this.session.id,

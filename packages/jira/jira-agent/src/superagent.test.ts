@@ -474,6 +474,20 @@ class ModelSelectingController {
   }
 }
 
+/** Minimal controller with list/create/prompt for the routing and stop tests. */
+class CompactController extends ModelSelectingController {
+  items: { sessionId: string; running: boolean; cwd?: string; blank?: boolean; updatedAt?: number }[] = []
+  prompted: { sessionId: string; text: string; mode?: string }[] = []
+  compactCalls = 0
+  async prompt(request: { sessionId: string; mode?: string; content: readonly { text: string }[] }) {
+    this.prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '', ...(request.mode === undefined ? {} : { mode: request.mode }) })
+    return { accepted: true }
+  }
+  async list() { return { items: this.items } }
+  async create() { return { sessionId: 'w-session' } }
+  async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } }
+}
+
 describe('superagent: workspace Sessions', () => {
   it('runs a workspace Session and routes its report back (DH-719)', async () => {
     const workspacePath = join(tmpdir(), 'task-workspace')
@@ -531,6 +545,7 @@ describe('superagent: workspace Sessions', () => {
     assert.equal(controller.prompted[0]?.text, 'write the README')
     assert.equal(controller.prompted[0]?.sessionId, 'w-session-2')
     assert.deepEqual(tasks.get('w-session-2'), { superSession: 'super-1', workspace: workspacePath })
+    assert.equal((started.session as { workspaceTitle?: string }).workspaceTitle, 'hello')
 
     const followed = await runSessionTool(
       { action: 'prompt', session: 'w-session-2', text: 'add a section' },
@@ -545,18 +560,33 @@ describe('superagent: workspace Sessions', () => {
     const rows = listed.sessions as { id: string }[]
     assert.deepEqual(rows.map(row => row.id), ['w-session'], 'only the workspace Sessions, no children')
 
-    // Follow-up work continues the workspace's most recent Session instead of opening another.
+    // Follow-up work never guesses the conversation: two candidates without `session` refuse.
     controller.items = [
       ...controller.items,
       { sessionId: 'w-newer', running: false, cwd: workspacePath, blank: false, updatedAt: 999 },
     ]
-    const appended = await runSessionTool(
+    const ambiguous = await runSessionTool(
       { action: 'append', workspace: 'hello', text: 'one more section' },
       options, me, ctx, { tasks },
     )
-    assert.equal(appended.ok, true, JSON.stringify(appended.error))
+    assert.equal(ambiguous.ok, false, 'append with several candidates must name the Session')
+    assert.match(JSON.stringify(ambiguous.error), /append needs `session`/u)
+    const candidates = (ambiguous.error as { context?: { candidates?: { id: string }[] } }).context?.candidates
+    assert.deepEqual(candidates?.map(row => row.id), ['w-newer', 'w-session'])
+
+    const routed = await runSessionTool(
+      { action: 'append', workspace: 'hello', text: 'one more section', session: 'latest' },
+      options, me, ctx, { tasks },
+    )
+    assert.equal(routed.ok, true, JSON.stringify(routed.error))
     assert.equal(controller.prompted.at(-1)?.sessionId, 'w-newer')
     assert.equal(tasks.get('w-newer')?.superSession, 'super-1')
+    const foreign = await runSessionTool(
+      { action: 'append', workspace: 'hello', text: 'no', session: 'elsewhere' },
+      options, me, ctx, { tasks },
+    )
+    assert.equal(foreign.ok, false)
+    assert.match(JSON.stringify(foreign.error), /not a Session of/u)
 
     controller.items = []
     const noTarget = await runSessionTool(
@@ -727,16 +757,16 @@ describe('superagent: model selection and discovery', () => {
     )
     assert.equal(started.ok, true, JSON.stringify(started.error))
     assert.deepEqual(controller.selections[0], { sessionId: 'model-child', provider: 'p', model: 'm', reasoningEffort: 'high' })
-    assert.deepEqual(started.model, { provider: 'p', model: 'm', reasoningEffort: 'high' })
+    assert.deepEqual(started.model, { provider: 'p', model: 'm', reasoningEffort: 'high', fallback: false })
 
     controller.list = async () => ({ items: [{ sessionId: 'model-child', running: false, cwd: workspacePath, blank: false }] })
     const followed = await runSessionTool(
-      { action: 'append', workspace: 'model work', text: 'continue', provider: 'p2', model: 'm2' },
+      { action: 'append', workspace: 'model work', text: 'continue', provider: 'p2', model: 'm2', session: 'latest' },
       options, me, ctx, { tasks: new Map() },
     )
     assert.equal(followed.ok, true, JSON.stringify(followed.error))
     assert.deepEqual(controller.selections[1], { sessionId: 'model-child', provider: 'p2', model: 'm2' })
-    assert.deepEqual(followed.model, { provider: 'p2', model: 'm2' })
+    assert.deepEqual(followed.model, { provider: 'p2', model: 'm2', fallback: false })
   })
 
   it('refuses a model on a host without selectModel, and rejects provider-only fields', async () => {
@@ -781,6 +811,286 @@ describe('superagent: model selection and discovery', () => {
     const missing = await runModelsTool({ provider: 'nope' }, options, me, ctx as never)
     assert.equal(missing.ok, false)
     assert.match(JSON.stringify(missing.error), /not registered/u)
+  })
+
+  it('renders effort id, name and default — never [object Object]', async () => {
+    const llm = {
+      listProviders: () => [{ id: 'p', name: 'Provider' }],
+      async listModels() {
+        return [{ id: 'm', name: 'Model', reasoning: {
+          defaultEffort: 'medium',
+          efforts: [{ id: 'low', name: 'Low' }, { id: 'medium', name: 'Medium' }, { id: 'high', name: 'High' }],
+        } }]
+      },
+      async resolveModelInfo() {
+        return { id: 'm', name: 'Model', reasoning: {
+          defaultEffort: 'medium',
+          efforts: [{ id: 'low', name: 'Low' }, { id: 'medium', name: 'Medium' }],
+        } }
+      },
+    }
+    const ctx = { get: (key: string) => key === 'llm' ? llm : undefined }
+    const options = { jira: {} as never, caller: { writable: true }, at: '2026-11-05T00:00:00Z' as never }
+    const listed = await runModelsTool({ provider: 'p' }, options, { session: 's' }, ctx as never)
+    const model = (listed.models as { efforts: readonly { id: string; name: string; default?: boolean }[] }[])[0]
+    assert.deepEqual(model?.efforts, [
+      { id: 'low', name: 'Low' },
+      { id: 'medium', name: 'Medium', default: true },
+      { id: 'high', name: 'High' },
+    ])
+    assert.equal(JSON.stringify(listed.models).includes('[object Object]'), false)
+    const detail = await runModelsTool({ provider: 'p', model: 'm' }, options, { session: 's' }, ctx as never)
+    assert.deepEqual((detail.models as { efforts: unknown[] }[])[0]?.efforts, [
+      { id: 'low', name: 'Low' },
+      { id: 'medium', name: 'Medium', default: true },
+    ])
+  })
+
+  it('requires an explicit effort for a model that advertises them, and validates the value', async () => {
+    const workspacePath = join(tmpdir(), 'effort-workspace')
+    class Controller extends ModelSelectingController {
+      async create() { return { sessionId: 'effort-child' } }
+      async prompt() { return { accepted: true } }
+      async list() { return { items: [{ sessionId: 'effort-child', running: false, cwd: workspacePath, blank: false }] } }
+    }
+    class Registry {
+      rows = [{ id: 'w1', path: workspacePath, title: 'efforts', sessionIds: [], status: async () => 'ok' }]
+      list() { return this.rows }
+      async create(path: string, title?: string) { return { id: 'w2', path, title: title ?? path, sessionIds: [], status: async () => 'ok' } }
+    }
+    const llm = {
+      listProviders: () => [{ id: 'p', name: 'Provider' }],
+      async listModels() { return [] },
+      async resolveModelInfo() {
+        return { id: 'm', name: 'Model', reasoning: {
+          defaultEffort: 'medium',
+          efforts: [{ id: 'low', name: 'Low' }, { id: 'medium', name: 'Medium' }, { id: 'high', name: 'High' }],
+        } }
+      },
+    }
+    const controller = new Controller()
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'workspaceRegistry' ? new Registry()
+          : key === 'llm' ? llm
+            : undefined,
+    }
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: await scratchDirectory() } as never,
+      at: '2026-11-05T00:00:00Z' as never,
+    }
+    const me = { session: 'super-1' }
+
+    // Bare route on a reasoning model: refused, with the effort list — never the silent default.
+    const bare = await runSessionTool(
+      { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm' },
+      options, me, ctx, { tasks: new Map() },
+    )
+    assert.equal(bare.ok, false)
+    assert.match(JSON.stringify(bare.error), /advertises reasoning efforts/u)
+    const details = (bare.error as { context?: { availableEfforts?: string[] } }).context
+    assert.deepEqual(details?.availableEfforts, ['low (Low)', 'medium (Medium), default', 'high (High)'])
+    assert.equal(controller.selections.length, 0, 'a refused effort never reaches the host')
+
+    // An unknown effort is refused with the same list.
+    const unknown = await runSessionTool(
+      { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'ultra' },
+      options, me, ctx, { tasks: new Map() },
+    )
+    assert.equal(unknown.ok, false)
+    assert.match(JSON.stringify(unknown.error), /not a reasoning effort/u)
+    assert.equal(controller.selections.length, 0)
+
+    // An explicit valid effort lands and is echoed.
+    const chosen = await runSessionTool(
+      { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'high' },
+      options, me, ctx, { tasks: new Map() },
+    )
+    assert.equal(chosen.ok, true, JSON.stringify(chosen.error))
+    assert.deepEqual(controller.selections[0], { sessionId: 'effort-child', provider: 'p', model: 'm', reasoningEffort: 'high' })
+    assert.deepEqual(chosen.model, { provider: 'p', model: 'm', reasoningEffort: 'high', fallback: false })
+
+    // The default effort only lands when the caller passes it explicitly.
+    const defaulted = await runSessionTool(
+      { action: 'prompt', session: 'effort-child', text: 'continue', provider: 'p', model: 'm', reasoning_effort: 'medium' },
+      options, me, ctx, { tasks: new Map() },
+    )
+    assert.equal(defaulted.ok, true, JSON.stringify(defaulted.error))
+    assert.deepEqual(controller.selections[1]?.reasoningEffort, 'medium')
+  })
+
+  it('lists each Session with title, model, effort, last task and last turn error', async () => {
+    const workspacePath = join(tmpdir(), 'list-workspace')
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1' } as never,
+      at: '2026-10-15T12:00:00Z' as never,
+    }
+    const me = { session: 'super-1' }
+    const now = Date.now()
+    const events = [
+      { type: 'session/title', seq: 0, time: now - 100_000, data: { title: 'stop feature' } },
+      { type: 'user/message', seq: 1, time: now - 90_000, data: { message: { content: [{ type: 'text', text: 'implement the real stop' }] } } },
+      { type: 'turn/end', seq: 2, time: now - 80_000, data: { turn: 3, reason: { kind: 'error', error: { message: 'provider 400: orphan tool_call pwsh:223', code: 'INVALID_REQUEST', status: 400 } } } },
+    ]
+    const controller = new CompactController()
+    controller.items = [{ sessionId: 'w-session', running: false, cwd: workspacePath, blank: false, updatedAt: now - 80_000 }]
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'agents' ? {
+          get: () => ({
+            session: { header: { cwd: workspacePath }, snapshotEvents: () => events },
+            model: { current: () => ({ provider: 'kimi-code-plan-cn', model: 'k3', reasoningEffort: 'high' }) },
+          }),
+        }
+          : undefined,
+    }
+    const listed = await runSessionTool({ action: 'list' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(listed.ok, true, JSON.stringify(listed.error))
+    const row = (listed.sessions as {
+      title?: string
+      model?: { provider: string; model: string; reasoningEffort?: string }
+      lastTask?: string
+      lastTurnError?: { kind?: string; code?: string; status?: number; turn?: number }
+    }[])[0]
+    assert.equal(row?.title, 'stop feature')
+    assert.deepEqual(row?.model, { provider: 'kimi-code-plan-cn', model: 'k3', reasoningEffort: 'high' })
+    assert.equal(row?.lastTask, 'implement the real stop')
+    assert.deepEqual(row?.lastTurnError, {
+      turn: 3,
+      kind: 'error',
+      message: 'provider 400: orphan tool_call pwsh:223',
+      code: 'INVALID_REQUEST',
+      status: 400,
+    })
+  })
+
+  it('stop cuts a running turn off: nothing is admitted, the queue is cleared', async () => {
+    const workspacePath = join(tmpdir(), 'stop-workspace')
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1' } as never,
+      at: '2026-10-15T12:00:00Z' as never,
+    }
+    const me = { session: 'super-1' }
+    const now = Date.now()
+    const events = [
+      { type: 'turn/start', seq: 1, time: now - 6 * 60_000, data: { turn: 7 } },
+      { type: 'tool/call', seq: 2, time: now - 5 * 60_000, data: { turn: 7, step: 3, callId: 'c1', name: 'pwsh', arguments: '{}' } },
+    ]
+    let cancelled = 0
+    let cancelOptions: unknown
+    const controller = new CompactController()
+    const agent = {
+      session: { header: { cwd: workspacePath }, snapshotEvents: () => events },
+      cancel: (_cause: unknown, options: unknown) => { cancelled += 1; cancelOptions = options },
+      async whenIdle() {},
+    }
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'agents' ? { get: () => agent }
+          : undefined,
+    }
+    const stopped = await runSessionTool({ action: 'stop', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(stopped.ok, true, JSON.stringify(stopped.error))
+    const stop = stopped.stop as {
+      accepted?: boolean
+      wasRunning?: boolean
+      cancelledVia?: string
+      clearedQueue?: boolean
+      idle?: boolean
+      scene?: { status?: { inFlightTool?: string } }
+      boundary?: { seq?: number }
+    }
+    assert.equal(stop.accepted, true)
+    assert.equal(stop.wasRunning, true)
+    assert.equal(stop.cancelledVia, 'agent')
+    assert.equal(stop.clearedQueue, true)
+    assert.equal(stop.idle, true)
+    assert.equal(stop.scene?.status?.inFlightTool, 'pwsh')
+    assert.equal(stop.boundary?.seq, 2)
+    assert.equal(cancelled, 1)
+    assert.deepEqual(cancelOptions, { keepInbox: false })
+    assert.equal(controller.prompted.length, 0, 'stop admits no message and starts no turn')
+
+    // An idle Session is reported, not cancelled.
+    const idleAgent = { session: { header: { cwd: workspacePath }, snapshotEvents: () => [
+      { type: 'turn/start', seq: 1, time: now - 100_000, data: { turn: 1 } },
+      { type: 'turn/end', seq: 2, time: now - 90_000, data: { turn: 1, reason: { kind: 'completed' } } },
+    ] } }
+    const idleCtx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'agents' ? { get: () => idleAgent }
+          : undefined,
+    }
+    const alreadyIdle = await runSessionTool({ action: 'stop', session: 'w-session' }, options, me, idleCtx, { tasks: new Map() })
+    assert.equal(alreadyIdle.ok, true)
+    assert.equal((alreadyIdle.stop as { alreadyIdle?: boolean }).alreadyIdle, true)
+    assert.equal((alreadyIdle.stop as { accepted?: boolean }).accepted, false)
+
+    // A host with no cancel channel says so plainly.
+    const deafAgent = { session: { header: { cwd: workspacePath }, snapshotEvents: () => events } }
+    const noCancel = new CompactController()
+    delete (noCancel as { cancel?: unknown }).cancel
+    const deafCtx = {
+      get: (key: string) => key === 'sessionController' ? noCancel
+        : key === 'agents' ? { get: () => deafAgent }
+          : undefined,
+    }
+    const deaf = await runSessionTool({ action: 'stop', session: 'w-session' }, options, me, deafCtx, { tasks: new Map() })
+    assert.equal(deaf.ok, false)
+    assert.match(JSON.stringify(deaf.error), /no hard cancel channel/u)
+  })
+
+  it('reports a failed turn back to the initiator with reason, code and status', async () => {
+    const workspacePath = join(tmpdir(), 'report-workspace')
+    const controller = new CompactController()
+    const host = {
+      ctx: {
+        get: (key: string) => key === 'sessionController' ? controller : undefined,
+        logger: { warn: () => {} },
+      },
+      env: {},
+      clock: () => Date.parse(AT),
+      recorder: createSessionRecorder(),
+    }
+    const worker = {
+      id: 'w-session',
+      session: { snapshotEvents: () => [] },
+    }
+    const delivered = await deliverTaskReport(
+      host as never,
+      { superSession: 'super-1', workspace: workspacePath },
+      worker,
+      new AbortController().signal,
+      { kind: 'error', error: { message: 'kimi responded 400: orphan tool_call pwsh:223', code: 'INVALID_REQUEST', status: 400 } },
+    )
+    assert.equal(delivered, true)
+    const report = controller.prompted.at(-1)
+    assert.equal(report?.sessionId, 'super-1')
+    assert.match(report?.text ?? '', /\[task-report\] w-session .* FAILED — its turn ended "error" \(code INVALID_REQUEST, status 400\)/u)
+    assert.match(report?.text ?? '', /orphan tool_call pwsh:223/u)
+
+    const aborted = await deliverTaskReport(
+      host as never,
+      { superSession: 'super-1', workspace: workspacePath },
+      worker,
+      new AbortController().signal,
+      { kind: 'aborted' },
+    )
+    assert.equal(aborted, true)
+    assert.match(controller.prompted.at(-1)?.text ?? '', /ended "aborted"/u)
+
+    // A completed turn without text still stays quiet; one with text reports as before.
+    const quiet = await deliverTaskReport(
+      host as never,
+      { superSession: 'super-1', workspace: workspacePath },
+      worker,
+      new AbortController().signal,
+      { kind: 'completed' },
+    )
+    assert.equal(quiet, false)
   })
 })
 
@@ -871,17 +1181,10 @@ describe('superagent: file delivery', () => {
 describe('superagent: context, compaction and memory curation', () => {
   const workspacePath = join(tmpdir(), 'compact-workspace')
 
-  class CompactController extends ModelSelectingController {
-    items = [{ sessionId: 'w-session', running: false, cwd: workspacePath, blank: false, updatedAt: 100 }]
-    prompted: { sessionId: string; text: string; mode?: string }[] = []
-    compactCalls = 0
-    async prompt(request: { sessionId: string; mode?: string; content: readonly { text: string }[] }) {
-      this.prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '', ...(request.mode === undefined ? {} : { mode: request.mode }) })
-      return { accepted: true }
-    }
-    async list() { return { items: this.items } }
-    async create() { return { sessionId: 'w-session' } }
-    async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } }
+  const compactController = (): CompactController => {
+    const controller = new CompactController()
+    controller.items = [{ sessionId: 'w-session', running: false, cwd: workspacePath, blank: false, updatedAt: 100 }]
+    return controller
   }
   class CompactRegistry {
     rows = [{ id: 'w1', path: workspacePath, title: 'hello', sessionIds: [], status: async () => 'ok' }]
@@ -898,7 +1201,7 @@ describe('superagent: context, compaction and memory curation', () => {
   const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
 
   it('reports context usage and the compaction suggestion in list', async () => {
-    const controller = new CompactController()
+    const controller = compactController()
     const ctx = {
       get: (key: string) => key === 'sessionController' ? controller
         : key === 'agents' ? { get: (id: string) => id === 'w-session' ? { session: {} } : undefined }
@@ -914,7 +1217,7 @@ describe('superagent: context, compaction and memory curation', () => {
   })
 
   it('compacts before admitting an append and reports both sides', async () => {
-    const controller = new CompactController()
+    const controller = compactController()
     const registry = new CompactRegistry()
     let calls = 0
     const compaction = { compactNow: async () => { controller.compactCalls += 1; return { shadowedTokenCount: 1200 } } }
@@ -926,7 +1229,7 @@ describe('superagent: context, compaction and memory curation', () => {
               : undefined,
     }
     const tasks = new Map<string, { superSession: string; workspace: string; usageBefore?: { percent?: number } }>()
-    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'next step', compact: true }, options, me, ctx, { tasks })
+    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'next step', compact: true, session: 'latest' }, options, me, ctx, { tasks })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(controller.compactCalls, 1)
     assert.equal(controller.prompted[0]?.text, 'next step')
@@ -936,20 +1239,20 @@ describe('superagent: context, compaction and memory curation', () => {
   })
 
   it('delivers a memory-curation instruction when asked', async () => {
-    const controller = new CompactController()
+    const controller = compactController()
     const registry = new CompactRegistry()
     const ctx = {
       get: (key: string) => key === 'sessionController' ? controller
         : key === 'workspaceRegistry' ? registry
           : undefined,
     }
-    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'next step', curate_memory: true }, options, me, ctx, { tasks: new Map() })
+    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'next step', curate_memory: true, session: 'latest' }, options, me, ctx, { tasks: new Map() })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(controller.prompted[0]?.text, MEMORY_CURATION_INSTRUCTION + 'next step')
   })
 
   it('refuses to compact a busy Session and sends nothing', async () => {
-    const controller = new CompactController()
+    const controller = compactController()
     const registry = new CompactRegistry()
     const compaction = {
       compactNow: async () => { throw Object.assign(new Error('the agent is not idle'), { name: 'ManualCompactionError', code: 'busy' }) },
@@ -968,7 +1271,7 @@ describe('superagent: context, compaction and memory curation', () => {
   })
 
   it('compacts a Session through the compact action', async () => {
-    const controller = new CompactController()
+    const controller = compactController()
     let calls = 0
     const compaction = { compactNow: async () => { controller.compactCalls += 1; return { shadowedTokenCount: 800 } } }
     const ctx = {
@@ -984,7 +1287,7 @@ describe('superagent: context, compaction and memory curation', () => {
   })
 
   it('steers an interrupt into a running Session and reports where it landed', async () => {
-    const controller = new CompactController()
+    const controller = compactController()
     controller.items = [{ sessionId: 'w-run', running: true, cwd: workspacePath, blank: false, updatedAt: 100 }]
     const registry = new CompactRegistry()
     const ctx = {
@@ -993,7 +1296,7 @@ describe('superagent: context, compaction and memory curation', () => {
           : key === 'agents' ? { get: () => ({ session: { snapshotEvents: () => [{ type: 'user/message', seq: 42 }] } }) }
             : undefined,
     }
-    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'stop, use the other branch', delivery: 'interrupt' }, options, me, ctx, { tasks: new Map() })
+    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'stop, use the other branch', delivery: 'interrupt', session: 'latest' }, options, me, ctx, { tasks: new Map() })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(controller.prompted[0]?.mode, 'steer')
     const delivery = result.delivery as {
@@ -1011,19 +1314,19 @@ describe('superagent: context, compaction and memory curation', () => {
   })
 
   it('queues by default and falls back when interrupt meets an idle Session', async () => {
-    const controller = new CompactController()
+    const controller = compactController()
     const registry = new CompactRegistry()
     const ctx = {
       get: (key: string) => key === 'sessionController' ? controller
         : key === 'workspaceRegistry' ? registry
           : undefined,
     }
-    const queued = await runSessionTool({ action: 'append', workspace: 'hello', text: 'new work' }, options, me, ctx, { tasks: new Map() })
+    const queued = await runSessionTool({ action: 'append', workspace: 'hello', text: 'new work', session: 'latest' }, options, me, ctx, { tasks: new Map() })
     assert.equal(queued.ok, true, JSON.stringify(queued.error))
     assert.equal(controller.prompted[0]?.mode, 'queue')
     assert.equal((queued.delivery as { used?: string }).used, 'queue')
 
-    const fallback = await runSessionTool({ action: 'append', workspace: 'hello', text: 'urgent but idle', delivery: 'interrupt' }, options, me, ctx, { tasks: new Map() })
+    const fallback = await runSessionTool({ action: 'append', workspace: 'hello', text: 'urgent but idle', delivery: 'interrupt', session: 'latest' }, options, me, ctx, { tasks: new Map() })
     assert.equal(fallback.ok, true, JSON.stringify(fallback.error))
     assert.equal(controller.prompted[1]?.mode, 'queue')
     const delivery = fallback.delivery as { used?: string; fallback?: boolean }
@@ -1032,7 +1335,7 @@ describe('superagent: context, compaction and memory curation', () => {
   })
 
   it('rejects interrupt on start and compact + interrupt on a running Session', async () => {
-    const controller = new CompactController()
+    const controller = compactController()
     controller.items = [{ sessionId: 'w-run', running: true, cwd: workspacePath, blank: false, updatedAt: 100 }]
     const registry = new CompactRegistry()
     const ctx = {
@@ -1043,7 +1346,7 @@ describe('superagent: context, compaction and memory curation', () => {
     }
     const started = await runSessionTool({ action: 'start', workspace: 'hello', task: 'do it', delivery: 'interrupt' }, options, me, ctx, { tasks: new Map() })
     assert.equal(started.ok, false)
-    const combined = await runSessionTool({ action: 'append', workspace: 'hello', text: 'urgent', delivery: 'interrupt', compact: true }, options, me, ctx, { tasks: new Map() })
+    const combined = await runSessionTool({ action: 'append', workspace: 'hello', text: 'urgent', delivery: 'interrupt', compact: true, session: 'latest' }, options, me, ctx, { tasks: new Map() })
     assert.equal(combined.ok, false)
     assert.match(JSON.stringify(combined.error), /cannot be combined with an interrupt/u)
     assert.equal(controller.prompted.length, 0)
@@ -1059,7 +1362,7 @@ describe('superagent: context, compaction and memory curation', () => {
       { type: 'assistant/message', seq: 4, time: now - 30_000, data: { usage: { inputTokens: 1_000, cacheReadTokens: 9_000, outputTokens: 10, totalTokens: 10_010 } } },
       { type: 'assistant/message', seq: 5, time: now - 20_000, data: { usage: { inputTokens: 5_000, cacheReadTokens: 5_000, outputTokens: 10, totalTokens: 10_010 } } },
     ]
-    const controller = new CompactController()
+    const controller = compactController()
     const ctx = {
       get: (key: string) => key === 'sessionController' ? controller
         : key === 'agents' ? { get: () => ({ session: { header: { cwd: workspacePath }, snapshotEvents: () => events } }) }
@@ -1088,7 +1391,7 @@ describe('superagent: context, compaction and memory curation', () => {
       { type: 'tool/call', seq: 2, time: now - 4 * 60_000, data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{}' } },
       { type: 'tool/result', seq: 3, time: now - 3 * 60_000, data: { turn: 1, step: 1, message: { toolCallId: 'c1', content: [], isError: true }, error: { name: 'BashError', code: 'EXIT', reason: 'exit 1' } } },
     ]
-    const controller = new CompactController()
+    const controller = compactController()
     const agent = { session: { header: { cwd: workspacePath }, snapshotEvents: () => events } }
     const ctx = {
       get: (key: string) => key === 'sessionController' ? controller

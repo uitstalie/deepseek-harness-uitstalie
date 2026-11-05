@@ -88,6 +88,8 @@ export type ToolValue = Readonly<{
   writable: boolean
   reason?: string
   me?: unknown
+  /** `superagent_session stop`: the cut-off report for one running turn. */
+  stop?: unknown
   /** Files this answer had to skip (decision 80); `message` says the answer is therefore partial. */
   rejected?: readonly Readonly<{ file: string; reason: string }>[]
   /** One English sentence explaining a `rejected` list — decision 80's "not silent" half. */

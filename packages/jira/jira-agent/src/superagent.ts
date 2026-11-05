@@ -124,15 +124,21 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + '- Your context carries a `[superagent monitor]` line whenever a workspace Session\'s open turn passes '
     + 'the configured long-running threshold; it refreshes every request without polling. Do not act on '
     + 'age alone: inspect one with action `inspect` (recent steps, in-flight tool, last error), then decide '
-    + 'whether it is a slow task or stuck. A correction belongs in `delivery: "interrupt"`; a genuinely '
-    + 'stuck turn can be aborted and continued with action `abort` plus the recovery instruction — the '
-    + 'result carries the captured scene and the delivery of the continuation. Never abort an idle Session.\n'
-    + '- Follow-up work belongs in the workspace\'s existing conversation: use `superagent_session` '
-    + 'action `append` with the workspace and the instruction. It continues that workspace\'s most '
-    + 'recent Session and its report comes back here.\n'
-    + '- Open a NEW Session (action `start`) only when the person asks for one or the workspace has '
-    + 'none. Do not mirror one workspace\'s work into a second Session: two Sessions editing the same '
-    + 'files is the conflict you must avoid.\n'
+    + 'whether it is a slow task or stuck. A correction belongs in `delivery: "interrupt"`. To end a turn, '
+    + 'choose by intent: `stop` cuts the turn off and starts nothing (the Session ends idle — "stop" is '
+    + 'never "append a note"); `abort` plus `text` stops the turn AND redirects the Session with that '
+    + 'instruction. Never send a message where a stop is meant. Never stop or abort an idle Session.\n'
+    + '- Session routing: before handing work to a workspace, run `superagent_session list` and match the '
+    + 'task to an existing Session by its title and purpose — reuse beats opening. `append` requires the '
+    + 'target: pass `session` (an id, or "latest"); without one the tool refuses and lists candidates. '
+    + 'When the person says "the other session" or "that session", list candidates, say which you '
+    + 'understood ("I take it to be <title> (<id>)"), and ask when it is ambiguous.\n'
+    + '- Open a NEW Session (action `start`, with a `title` naming its purpose — "code review", "stop '
+    + 'feature") only when the person asks for one, no listed Session matches the purpose, or the task '
+    + 'is genuinely isolated. Do not mirror one workspace\'s work into a second Session: two Sessions '
+    + 'editing the same files is the conflict you must avoid.\n'
+    + '- Report every dispatch target in one line: "→ reuse <title> (<id>)" or "→ new <title>, reason: '
+    + '…". The person must be able to see which conversation received the work without asking.\n'
     + '- When the Session you need is already running, append to it — the instruction queues — instead '
     + 'of starting a parallel Session. If the person wants an isolated task, say so and start one.\n'
     + '- Continue a Session the person names with action `prompt` (use `list` to resolve which Session '
@@ -161,8 +167,12 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + 'key only as a reference. Use `record` only when automatic recording failed.\n'
     + '- To answer "use model X next round", first run `superagent_models` (provider list, then provider '
     + 'models, then efforts); then use `superagent_session` `append` or `prompt` with `provider`, `model` '
-    + 'and optional `reasoning_effort`. The host records a Session model selection, so the next turn '
-    + 'uses it without forking; the reply carries the accepted `model`. `start` accepts the same fields '
+    + 'and `reasoning_effort`. The host records a Session model selection, so the next turn '
+    + 'uses it without forking and a running turn is untouched (the switch lands at the next turn '
+    + 'boundary); the reply echoes the accepted route, with `fallback` when the host resolved a '
+    + 'different one. A model advertising reasoning efforts REQUIRES an explicit effort: ask the person '
+    + 'which one — the model default applies only when they say "default" — and a bare route comes back '
+    + 'refused with the effort list. `start` accepts the same fields '
     + 'but so does every later append, so prefer the workspace\'s existing Session when one exists.\n'
     + '- After resolving a task, write the durable conclusion with `memory_write`: one `decision` line '
     + 'for a settled result or one `open` line for a pending decision, tagged `superagent`, the '
@@ -540,27 +550,44 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
   action: {
     type: 'string',
     required: true,
-    description: 'append: continue the workspace\'s most recent Session with more work (the default '
-      + 'for follow-up work in a workspace). start: open a NEW Session, only when the person asks for '
-      + 'one or the workspace has none. prompt: append to a Session the caller named. list: show one '
-      + 'workspace\'s Sessions. archive: hide one Session. fork: branch one Session. delete: erase '
+    description: 'append: continue ONE of the workspace\'s Sessions with more work: with more than '
+      + 'one candidate it refuses and lists them, so pass `session` (an id, or "latest" for the most '
+      + 'recently updated) — never guess which conversation the work belongs to. start: open a NEW '
+      + 'Session (pass `title` naming its purpose), only when the person asks for one, no existing '
+      + 'Session matches the purpose, or the task is genuinely isolated. prompt: append to a Session '
+      + 'the caller named. list: show one workspace\'s Sessions with title, model, context usage and '
+      + 'last error. archive: hide one Session. fork: branch one Session. delete: erase '
       + 'one stored Session only when the host exposes a real delete API; current hosts do not, and '
       + 'the tool refuses instead of pretending. compact: compact the Session history now; it refuses '
       + 'while the Session runs (never interrupts a task). inspect: show a running Session\'s status and '
-      + 'recent steps to judge whether it is stuck. abort: abort the running turn, then continue with '
-      + '`text` (the scene is reported).',
-    enum: ['append', 'start', 'prompt', 'list', 'archive', 'fork', 'delete', 'compact', 'inspect', 'abort'],
+      + 'recent steps to judge whether it is stuck. stop: CUT OFF the running turn — cancel it '
+      + 'immediately, admit no message, start no new turn; the Session ends idle and the result '
+      + 'reports the scene it captured. abort: stop the running turn, THEN continue the Session with '
+      + '`text` (the scene is reported); never substitute a plain message for stop.',
+    enum: ['append', 'start', 'prompt', 'list', 'archive', 'fork', 'delete', 'compact', 'inspect', 'stop', 'abort'],
   },
   workspace: { type: 'string', description: 'append/start/list: the workspace path or title; prompt/archive/fork/delete use it for the report headline.' },
   task: { type: 'string', description: 'start: the self-contained task for that workspace agent.' },
-  session: { type: 'string', description: 'prompt/archive/fork/delete: the Session id.' },
+  title: {
+    type: 'string',
+    description: 'start: the new Session\'s durable purpose title (e.g. "code review", "stop feature '
+      + 'implementation"), so a later `list` tells the conversations apart at a glance.',
+  },
+  session: {
+    type: 'string',
+    description: 'prompt/append/archive/fork/delete/stop/abort: the Session id; append also accepts '
+      + '"latest" for the workspace\'s most recently updated Session.',
+  },
   text: { type: 'string', description: 'append/prompt: the follow-up instruction; abort: the instruction to run after aborting the running turn.' },
   confirm: { type: 'string', description: 'delete: required; repeat the target Session id exactly. Deletion is irreversible.' },
-  provider: { type: 'string', description: 'start/append/prompt: optional LLM provider id; requires `model`.' },
+  provider: { type: 'string', description: 'start/append/prompt: optional LLM provider id; requires `model`. Check superagent_models first.' },
   model: { type: 'string', description: 'start/append/prompt: optional model id; requires `provider`.' },
   reasoning_effort: {
     type: 'string',
-    description: 'start/append/prompt: optional adapter-owned reasoning effort; requires `provider` and `model`.',
+    description: 'start/append/prompt: adapter-owned reasoning effort; requires `provider` and '
+      + '`model`. Mandatory when the chosen model advertises reasoning efforts — ask the person which '
+      + 'one first; the tool refuses the bare route and lists the available efforts. Only the person\'s '
+      + 'explicit "use the default" may pass the id `superagent_models` marks as default.',
   },
   atSeq: { type: 'number', description: 'fork: branch from this event seq; default the latest completed turn.' },
   compact: {
@@ -587,16 +614,27 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
 
 /** `superagent_session`'s description: what the verbs do and where the report goes. */
 export const SESSION_DESCRIPTION =
-  'Run work inside a registered workspace as a real Session of its own. Follow-up work belongs in the '
-  + 'workspace\'s existing conversation: `append` continues its most recent Session (the default), and '
-  + '`prompt` continues one the person named — use `list` to resolve a name. `start` opens a NEW '
-  + 'Session and is only for a task the person wants isolated; that agent decides whether to spawn '
-  + 'subagents or do the work itself. Every Session this super agent addresses reports its turn end '
-  + 'back here as a message. `start`/`append`/`prompt` accept optional `provider` + `model` (+ `reasoning_effort`) to change the model before the next turn: the host records a Session model selection, so an existing conversation can switch without forking. Omit the three fields to keep the current/default route. `archive` hides one Session and keeps its durable log, `fork` branches '
+  'Run work inside a registered workspace as a real Session of its own. Session routing: follow-up '
+  + 'work belongs in the workspace\'s existing conversation — run `list` first, match the purpose by '
+  + 'title, and reuse the matching Session. `append` requires a deliberate target: pass `session` (an '
+  + 'id, or "latest"); with more than one candidate and no `session` it refuses and lists them. '
+  + '`prompt` continues one the person named. `start` opens a NEW Session — only when the person asks '
+  + 'for one, no existing Session matches the purpose, or the task is genuinely isolated — and takes '
+  + '`title` to name the conversation\'s purpose. Report each dispatch as "→ reuse <title> (id)" or '
+  + '"→ new <title>, reason: …". Every Session this super agent addresses reports its turn end '
+  + 'back here as a message, including a failed or aborted one (`[task-report] … failed`). '
+  + '`start`/`append`/`prompt` accept optional `provider` + `model` (+ `reasoning_effort`) to change '
+  + 'the model before the next turn: the host records a Session model selection, so an existing '
+  + 'conversation can switch without forking, and a running turn keeps its current model — the switch '
+  + 'lands at the next turn boundary. A model advertising reasoning efforts REQUIRES `reasoning_effort`: '
+  + 'run `superagent_models` for the available efforts and ask the person which one; the bare route is '
+  + 'refused with the effort list. The reply echoes the accepted `model`, `title` and Session id. '
+  + '`archive` hides one Session and keeps its durable log, `fork` branches '
   + 'one, and `delete` exists only on a host with a real erase API. Current hosts expose no such API: '
   + '`delete` refuses with that limitation instead of archiving behind your back; use `archive` and '
   + 'tell the person the log remains under `~/.dsh/sessions`. Never delete the Session that called '
-  + 'this tool. `list` also reports each running Session\'s context usage and marks rows at or above '
+  + 'this tool. `list` also reports each Session\'s context usage, model and last turn error, and marks '
+  + 'rows at or above '
   + 'the configured threshold with `recommendCompact`: that is advice, not an automatic compaction. '
   + '`compact` compacts one Session now (host-side, through the same seam as `/compact`), and it '
   + 'refuses while the Session runs rather than interrupting it. `append`/`prompt` accept `compact: '
@@ -605,9 +643,11 @@ export const SESSION_DESCRIPTION =
   + 'after the running turn ends, `interrupt` steers it into that turn at its next step without '
   + 'aborting a tool call already in flight; use interrupt for an urgent correction, queue for new '
   + 'work. The result names the delivery actually used and the seq it landed at. `inspect` reports a '
-  + 'running Session\'s status (turn start, elapsed, last activity) and its recent steps. `abort` stops '
-  + 'a running turn, reports the scene it captured, and continues the Session with `text` once it is '
-  + 'idle — it refuses an idle Session rather than pretending.'
+  + 'running Session\'s status (turn start, elapsed, last activity) and its recent steps. `stop` cuts '
+  + 'a running turn off: the turn is cancelled, nothing is admitted, no new turn starts, and the '
+  + 'Session ends idle — it is never a message in disguise. `abort` stops a running turn, reports the '
+  + 'scene it captured, and continues the Session with `text` once it is idle — that is "stop and '
+  + 'redirect", while `stop` is "stop, period"; both refuse an idle Session rather than pretending.'
 
 /** Model discovery for the super agent's workspace Sessions (DH-803). */
 export const MODELS_TOOL_NAME = 'superagent_models'
@@ -625,13 +665,20 @@ export const MODELS_DESCRIPTION =
   + 'reasoning efforts. This is the same `llm` registry `session.selectModel` validates against; '
   + 'subagent authorization policy does not apply to a workspace Session.'
 
+/** One reasoning-effort row: id plus display name, marking the model's default. */
+export interface AdvertisedEffort {
+  readonly id: string
+  readonly name: string
+  readonly default?: boolean
+}
+
 /** One advertised model row as this tool returns it. */
 interface AdvertisedModel {
   readonly provider: string
   readonly id: string
   readonly name: string
   readonly description?: string
-  readonly efforts: readonly string[]
+  readonly efforts: readonly AdvertisedEffort[]
 }
 
 /** The slice of the host LLM runtime used for discovery; duck-typed like every host seam. */
@@ -641,7 +688,10 @@ interface LlmLike {
     readonly id: string
     readonly name: string
     readonly description?: string
-    readonly reasoning?: { readonly efforts?: readonly { readonly id: string; readonly name: string }[] }
+    readonly reasoning?: {
+      readonly defaultEffort?: string
+      readonly efforts?: readonly { readonly id: string; readonly name: string }[]
+    }
   }[]>
   resolveModelInfo?(provider: string, model: string, signal?: AbortSignal): Promise<{
     readonly id: string
@@ -667,7 +717,9 @@ const llmOf = (ctx: unknown): LlmLike | undefined => {
 
 /** Render one provider/model row for the model-facing text. */
 const modelLine = (model: AdvertisedModel): string => {
-  const efforts = model.efforts.length === 0 ? '' : ` [efforts: ${model.efforts.join(', ')}]`
+  const efforts = model.efforts.length === 0
+    ? ''
+    : ` [efforts: ${model.efforts.map(effort => `${effort.id} (${effort.name})${effort.default === true ? ', default' : ''}`).join(', ')}]`
   return `${model.provider}/${model.id} — ${model.name}${model.description === undefined ? '' : `: ${model.description}`}${efforts}`
 }
 
@@ -713,7 +765,11 @@ export const runModelsTool = async (
         id: model.id,
         name: model.name,
         ...(model.description === undefined ? {} : { description: model.description }),
-        efforts: Object.freeze((model.reasoning?.efforts ?? []).map(effort => effort.id)),
+        efforts: Object.freeze((model.reasoning?.efforts ?? []).map(effort => Object.freeze({
+          id: effort.id,
+          name: effort.name,
+          ...(model.reasoning?.defaultEffort === effort.id ? { default: true } : {}),
+        } satisfies AdvertisedEffort))),
       }))
       return Object.freeze({ ...verdictOf(caller, me), models: Object.freeze(models) })
     }
@@ -1678,37 +1734,124 @@ const modelChoiceOf = (values: Readonly<Record<string, unknown>>): Readonly<{ ch
   })
 }
 
+/** The chosen route a Session action accepted, echoed back to the caller. */
+export interface AcceptedModel {
+  readonly provider: string
+  readonly model: string
+  readonly reasoningEffort?: string
+  /** True when the host resolved a different route than requested. */
+  readonly fallback: boolean
+  /** True when the route change was recorded while a turn runs and lands at the next boundary. */
+  readonly deferred?: boolean
+}
+
+/**
+ * The reasoning efforts one model advertises, when the host's LLM registry can resolve them.
+ * @param ctx - the plugin context carrying `llm`.
+ * @param choice - the requested route.
+ * @returns the effort list with the model's default marked, or undefined when unresolvable.
+ */
+const effortsFor = async (
+  ctx: unknown,
+  choice: SessionModelChoice,
+): Promise<readonly AdvertisedEffort[] | undefined> => {
+  const llm = llmOf(ctx)
+  if (llm?.resolveModelInfo === undefined) return undefined
+  try {
+    const info = await llm.resolveModelInfo(choice.provider, choice.model)
+    const efforts = info.reasoning?.efforts ?? []
+    if (efforts.length === 0) return undefined
+    return Object.freeze(efforts.map(effort => Object.freeze({
+      id: effort.id,
+      name: effort.name,
+      ...(info.reasoning?.defaultEffort === effort.id ? { default: true } : {}),
+    })))
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * One failure of a tool action, in the same envelope a success uses: `failure(...)` needs a caller
+ * verdict, so the guard checks that never ran (a thrown middleware before validation) still report.
+ * @param message - the readable failure.
+ * @param details - machine-readable context beside the message.
+ * @returns the frozen failed envelope.
+ */
+const toolFailure = (message: string, details?: Readonly<Record<string, unknown>>): ToolValue =>
+  Object.freeze({
+    ok: false,
+    error: invalidInput(message, details ?? {}),
+    writable: false,
+  })
+
 /**
  * Apply a requested route to an existing Session before its next prompt. The host's
  * `selectModel` writes `model/selection`; the next turn's request header uses it. This is why
- * append/prompt can switch models without forking.
+ * append/prompt can switch models without forking — and why a switch recorded mid-turn never
+ * touches the running turn's requests (the loop reads the selection at the next step/turn
+ * preparation, so a mid-turn selection lands at the following turn boundary).
+ *
+ * A model that advertises reasoning efforts must not be entered silently on its default: the
+ * caller chooses an effort explicitly, or the route is refused with the available list.
  * @param controller - the host Session controller.
  * @param sessionId - the Session whose next turn is being addressed.
  * @param values - validated tool arguments.
+ * @param ctx - the plugin context, for the LLM registry's effort list.
+ * @param running - whether the Session's turn is currently open (marks the echo deferred).
  * @returns the selected model, or the layer that refused it.
  */
 const applySessionModel = async (
   controller: SessionControllerLike,
   sessionId: string,
   values: Readonly<Record<string, unknown>>,
-): Promise<Readonly<{ model?: Readonly<{ provider: string; model: string; reasoningEffort?: string }>; error?: string }>> => {
+  ctx?: unknown,
+  running = false,
+): Promise<Readonly<{ model?: AcceptedModel; error?: string; errorDetails?: Readonly<Record<string, unknown>> }>> => {
   const parsed = modelChoiceOf(values)
   if (parsed.error !== undefined) return Object.freeze({ error: parsed.error })
   if (parsed.choice === undefined) return Object.freeze({})
+  const choice = parsed.choice
+  const efforts = await effortsFor(ctx, choice)
+  if (efforts !== undefined) {
+    const available = Object.freeze(efforts.map(effort => `${effort.id} (${effort.name})${effort.default === true ? ', default' : ''}`))
+    if (choice.reasoningEffort === undefined) {
+      return Object.freeze({
+        error: `${choice.provider}/${choice.model} advertises reasoning efforts, so name one with `
+          + '`reasoning_effort` — ask the person which effort they want (the model default applies '
+          + 'only when they explicitly ask for it)',
+        errorDetails: Object.freeze({ provider: choice.provider, model: choice.model, availableEfforts: available }),
+      })
+    }
+    if (!efforts.some(effort => effort.id === choice.reasoningEffort)) {
+      return Object.freeze({
+        error: `"${choice.reasoningEffort}" is not a reasoning effort of ${choice.provider}/${choice.model}`,
+        errorDetails: Object.freeze({ provider: choice.provider, model: choice.model, availableEfforts: available }),
+      })
+    }
+  }
   if (controller.selectModel === undefined) {
     return Object.freeze({ error: 'this host exposes no Session model-selection API, so the requested model cannot be applied' })
   }
   try {
     const selected = await controller.selectModel({
       sessionId,
-      provider: parsed.choice.provider,
-      model: parsed.choice.model,
-      ...(parsed.choice.reasoningEffort === undefined ? {} : { reasoningEffort: parsed.choice.reasoningEffort }),
+      provider: choice.provider,
+      model: choice.model,
+      ...(choice.reasoningEffort === undefined ? {} : { reasoningEffort: choice.reasoningEffort }),
     })
-    return Object.freeze({ model: Object.freeze({ ...selected.selected }) })
+    const accepted = selected.selected
+    // The host may resolve a different route than the one requested; surface that instead of
+    // echoing the request as if it had landed.
+    const fallback = accepted.provider !== choice.provider
+      || accepted.model !== choice.model
+      || (accepted.reasoningEffort ?? '') !== (choice.reasoningEffort ?? '')
+    return Object.freeze({
+      model: Object.freeze({ ...accepted, fallback, ...(running ? { deferred: true } : {}) }),
+    })
   } catch (error: unknown) {
     return Object.freeze({
-      error: `the host rejected the model selection (${parsed.choice.provider}/${parsed.choice.model}): ${error instanceof Error ? error.message : String(error)}`,
+      error: `the host rejected the model selection (${choice.provider}/${choice.model}): ${error instanceof Error ? error.message : String(error)}`,
     })
   }
 }
@@ -1972,6 +2115,62 @@ export const cacheHitOf = (agent: unknown, limit = 20): number | undefined => {
   return total === 0 ? undefined : Math.round(read / total * 100)
 }
 
+/**
+ * The model a live Session would use on its next turn, when the host exposes it.
+ * @param ctx - plugin context carrying the agent registry.
+ * @param sessionId - Session whose live Agent is asked.
+ * @returns the current route, or undefined without a live Agent or a resolved model.
+ */
+const currentModelOf = (
+  ctx: unknown,
+  sessionId: string,
+): Readonly<{ provider: string; model: string; reasoningEffort?: string }> | undefined => {
+  const live = agentsOf(ctx)?.get(sessionId) as {
+    model?: { current?: () => { provider?: string; model?: string; reasoningEffort?: string } | undefined }
+  } | undefined
+  const current = live?.model?.current?.()
+  if (current?.provider === undefined || current.model === undefined) return undefined
+  return Object.freeze({
+    provider: current.provider,
+    model: current.model,
+    ...(current.reasoningEffort === undefined ? {} : { reasoningEffort: current.reasoningEffort }),
+  })
+}
+
+/**
+ * The latest durable title of one live Session, when it has one.
+ * @param ctx - plugin context carrying the agent registry.
+ * @param sessionId - Session whose log is scanned.
+ * @returns the latest non-empty `session/title`, or undefined.
+ */
+const sessionTitleOf = (ctx: unknown, sessionId: string): string | undefined => {
+  const events = eventsOf(agentsOf(ctx)?.get(sessionId))
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'session/title') continue
+    const title = (event.data as { title?: unknown } | undefined)?.title
+    if (typeof title === 'string' && title.trim() !== '') return title
+  }
+  return undefined
+}
+
+/**
+ * A one-line summary of what a live Session was last asked to do: its latest user message.
+ * @param ctx - plugin context carrying the agent registry.
+ * @param sessionId - Session whose log is scanned.
+ * @returns the latest user text, truncated, or undefined.
+ */
+const lastTaskOf = (ctx: unknown, sessionId: string): string | undefined => {
+  const events = eventsOf(agentsOf(ctx)?.get(sessionId))
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'user/message') continue
+    const text = assistantTextOf(event, 120)
+    if (text !== undefined) return text
+  }
+  return undefined
+}
+
 /** One recent event as `inspect` reports it. */
 export interface RecentActivity {
   readonly seq?: number
@@ -2104,7 +2303,9 @@ const waitForIdle = async (
   if (typeof whenIdle === 'function') {
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<boolean>((resolve) => {
-      timer = setTimeout(() => resolve(false), timeoutMs)
+      timer = setTimeout(() => {
+        resolve(false)
+      }, timeoutMs)
       timer.unref?.()
     })
     try {
@@ -2123,6 +2324,28 @@ const waitForIdle = async (
     await new Promise(resolve => setTimeout(resolve, 100))
   }
   return false
+}
+
+/**
+ * The cancellation boundary of one Session: the latest durable seq and the last turn-end reason.
+ * @param agent - the live Agent whose log is read.
+ * @returns the boundary fields, absent when the log is unreadable.
+ */
+const cancellationBoundary = (agent: unknown): Readonly<{ seq?: number; turnEndReason?: string }> => {
+  const events = eventsOf(agent)
+  const last = events.at(-1)
+  let turnEndReason: string | undefined
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'turn/end') continue
+    const kind = (event.data as { reason?: { kind?: unknown } } | undefined)?.reason?.kind
+    if (typeof kind === 'string') turnEndReason = kind
+    break
+  }
+  return Object.freeze({
+    ...(last?.seq === undefined ? {} : { seq: last.seq }),
+    ...(turnEndReason === undefined ? {} : { turnEndReason }),
+  })
 }
 
 /**
@@ -2237,7 +2460,7 @@ export const runSessionTool = async (
   const { caller } = options
   const validated = validateArgs(SESSION_PARAMETERS, args)
   if (!validated.ok) return failure(validated.error, caller, me)
-  const controller = sessionControllerOf(ctx)
+  const controller: SessionControllerLike | undefined = sessionControllerOf(ctx)
   if (controller === undefined) {
     return failure(invalidInput('this deployment has no session controller, so a workspace Session cannot be run'), caller, me)
   }
@@ -2268,412 +2491,617 @@ export const runSessionTool = async (
   const longRunningMinutes = context.longRunningMinutes ?? DEFAULT_LONG_RUNNING_MINUTES
   const longRunningMs = longRunningMinutes * 60_000
 
-  if (action === 'append') {
-    if (workspace === undefined) {
-      return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
-    }
-    if (textArg === undefined || textArg.trim() === '') {
-      return failure(invalidInput('append needs `text`: the follow-up instruction'), caller, me)
-    }
-    try {
-      const listed = await controller.list()
-      const target = listed.items
-        .filter(item => item.parentSessionId === undefined && item.origin !== 'subagent' && item.blank !== true)
-        .filter(item => item.cwd !== undefined && sameCheckout(item.cwd, workspace.path))
-        .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))[0]
-      if (target === undefined) {
-        return failure(invalidInput(
-          `"${workspace.title}" has no Session to continue yet; start one with superagent_session start`,
-          { workspace: workspace.path },
-        ), caller, me)
-      }
-      const sessionId = String(target.sessionId)
-      const selected = await applySessionModel(controller, sessionId, validated.value)
-      if (selected.error !== undefined) return failure(invalidInput(selected.error, { session: sessionId }), caller, me)
-      const wasRunning = target.running === true
-      const delivery = decideDelivery(requestedDelivery, wasRunning)
-      if (wantCompact && delivery.used === 'interrupt') {
-        return failure(invalidInput(
-          'compaction runs only while a Session is idle, so it cannot be combined with an interrupt of '
-          + 'its running turn; send with delivery "queue" or wait for the turn to end',
-          { session: sessionId },
-        ), caller, me)
-      }
-      const compaction = wantCompact ? await compactWorkspaceSession(ctx, controller, sessionId) : undefined
-      if (compaction?.error !== undefined) {
-        return failure(invalidInput(
-          `the context was not compacted, so the follow-up was not sent: ${compaction.error}`,
-          { session: sessionId, compaction },
-        ), caller, me)
-      }
-      const admitted = await controller.prompt({
-        requestId: `superagent-append-${randomUUID()}`,
-        sessionId,
-        mode: delivery.used === 'interrupt' ? 'steer' : 'queue',
-        content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
-      }, new AbortController().signal)
-      const delivered = deliveryOutcome(
-        requestedDelivery, delivery.used, delivery.fallback, wasRunning, admitted.accepted, insertionSeqOf(ctx, sessionId),
-      )
-      const ledger = await recordTaskLedger(caller, workspace, textArg.trim(), sessionId, options.at)
-      if (reportTo !== undefined) {
-        context.tasks.set(sessionId, {
-          superSession: reportTo,
-          workspace: workspace.path,
-          ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
-          ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
-        })
-      }
-      return withLedger(Object.freeze({
-        ...verdict,
-        session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title, appended: true }),
-        delivery: delivered,
-        ...((agentsOf(ctx)?.get(sessionId) as { session?: unknown } | undefined) === undefined
-          ? {}
-          : { status: Object.freeze(activityOf(agentsOf(ctx)?.get(sessionId), Date.now()) ?? { running: false }) }),
-        ...(selected.model === undefined ? {} : { model: selected.model }),
-        ...(compaction === undefined ? {} : { compaction: Object.freeze(compaction) }),
-      }), ledger)
-    } catch (error: unknown) {
-      return failure(invalidInput(
-        `the follow-up could not be appended: ${error instanceof Error ? error.message : String(error)}`,
-        { workspace: workspace.path },
-      ), caller, me)
-    }
+  // A thrown middleware between validation and the action handlers must still produce a readable
+  // failure, not an uncaught rejection the caller never hears about.
+  try {
+    return await runSessionAction(controller, validated.value)
+  } catch (error: unknown) {
+    return toolFailure(
+      `the Session action "${String(action ?? '')}" failed before it could answer: ${error instanceof Error ? error.message : String(error)}`,
+      { workspace: workspace?.path, session: sessionArg },
+    )
   }
 
-  if (action === 'start') {
-    if (workspace === undefined) {
-      return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
-    }
-    if (taskArg === undefined || taskArg.trim() === '') {
-      return failure(invalidInput('start needs `task`: a self-contained brief for the workspace agent'), caller, me)
-    }
-    if (requestedDelivery === 'interrupt') {
-      return failure(invalidInput(
-        'start opens a new Session, so there is no running turn to interrupt; omit `delivery` or use "queue"',
-        { workspace: workspace.path },
-      ), caller, me)
-    }
-    try {
-      const created = await controller.create({
-        workspaceId: workspace.id,
-        ...(context.agentPreset === undefined || context.agentPreset.trim() === ''
-          ? {}
-          : { agentPreset: context.agentPreset }),
-      })
-      const sessionId = String(created.sessionId)
-      const selected = await applySessionModel(controller, sessionId, validated.value)
-      if (selected.error !== undefined) return failure(invalidInput(selected.error, { session: sessionId }), caller, me)
-      await controller.prompt({
-        requestId: `superagent-task-${randomUUID()}`,
-        sessionId,
-        mode: 'queue',
-        content: [{ type: 'text', text: composeTask(taskArg.trim(), curateMemory) }],
-      }, new AbortController().signal)
-      const ledger = await recordTaskLedger(caller, workspace, taskArg.trim(), sessionId, options.at)
-      if (reportTo !== undefined) {
-        context.tasks.set(sessionId, {
-          superSession: reportTo,
-          workspace: workspace.path,
-          ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
-        })
+  /**
+   * Dispatch the validated Session action. The handlers below keep their own refusal style
+   * (`failure(...)` with the caller verdict); only unexpected throws reach the wrapper above.
+   * @param controller - the host Session controller, already proven present.
+   * @param values - the validated arguments.
+   * @returns the action's envelope.
+   */
+  async function runSessionAction(
+    controller: SessionControllerLike,
+    values: Readonly<Record<string, unknown>>,
+  ): Promise<ToolValue> {
+    if (action === 'append') {
+      if (workspace === undefined) {
+        return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
       }
-      return withLedger(Object.freeze({
-        ...verdict,
-        session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title }),
-        ...(selected.model === undefined ? {} : { model: selected.model }),
-      }), ledger)
-    } catch (error: unknown) {
-      return failure(invalidInput(
-        `the workspace Session could not be started: ${error instanceof Error ? error.message : String(error)}`,
-        { workspace: workspace.path },
-      ), caller, me)
-    }
-  }
-
-  if (action === 'prompt') {
-    if (sessionArg === undefined || sessionArg.trim() === '') {
-      return failure(invalidInput('prompt needs `session`: the Session id'), caller, me)
-    }
-    if (textArg === undefined || textArg.trim() === '') {
-      return failure(invalidInput('prompt needs `text`: the follow-up instruction'), caller, me)
-    }
-    try {
-      const selected = await applySessionModel(controller, sessionArg, validated.value)
-      if (selected.error !== undefined) return failure(invalidInput(selected.error, { session: sessionArg }), caller, me)
-      const listed = await controller.list()
-      const wasRunning = listed.items.some(item => String(item.sessionId) === sessionArg.trim() && item.running === true)
-      const delivery = decideDelivery(requestedDelivery, wasRunning)
-      if (wantCompact && delivery.used === 'interrupt') {
-        return failure(invalidInput(
-          'compaction runs only while a Session is idle, so it cannot be combined with an interrupt of '
-          + 'its running turn; send with delivery "queue" or wait for the turn to end',
-          { session: sessionArg },
-        ), caller, me)
+      if (textArg === undefined || textArg.trim() === '') {
+        return failure(invalidInput('append needs `text`: the follow-up instruction'), caller, me)
       }
-      const compaction = wantCompact ? await compactWorkspaceSession(ctx, controller, sessionArg) : undefined
-      if (compaction?.error !== undefined) {
-        return failure(invalidInput(
-          `the context was not compacted, so the follow-up was not admitted: ${compaction.error}`,
-          { session: sessionArg, compaction },
-        ), caller, me)
-      }
-      const admitted = await controller.prompt({
-        requestId: `superagent-followup-${randomUUID()}`,
-        sessionId: sessionArg,
-        mode: delivery.used === 'interrupt' ? 'steer' : 'queue',
-        content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
-      }, new AbortController().signal)
-      const delivered = deliveryOutcome(
-        requestedDelivery, delivery.used, delivery.fallback, wasRunning, admitted.accepted, insertionSeqOf(ctx, sessionArg),
-      )
-      const ledger: LedgerAttempt = workspace === undefined
-        ? Object.freeze({})
-        : await recordTaskLedger(caller, workspace, textArg.trim(), sessionArg, options.at)
-      if (reportTo !== undefined) {
-        const known = context.tasks.get(sessionArg)
-        context.tasks.set(sessionArg, {
-          superSession: reportTo,
-          workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
-          ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
-          ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
-        })
-      }
-      return withLedger(Object.freeze({
-        ...verdict,
-        session: Object.freeze({ id: sessionArg }),
-        delivery: delivered,
-        ...((agentsOf(ctx)?.get(sessionArg) as { session?: unknown } | undefined) === undefined
-          ? {}
-          : { status: Object.freeze(activityOf(agentsOf(ctx)?.get(sessionArg), Date.now()) ?? { running: false }) }),
-        ...(selected.model === undefined ? {} : { model: selected.model }),
-        ...(compaction === undefined ? {} : { compaction: Object.freeze(compaction) }),
-      }), ledger)
-    } catch (error: unknown) {
-      return failure(invalidInput(
-        `the follow-up could not be admitted: ${error instanceof Error ? error.message : String(error)}`,
-        { session: sessionArg },
-      ), caller, me)
-    }
-  }
-
-  if (action === 'inspect') {
-    if (sessionArg === undefined || sessionArg.trim() === '') {
-      return failure(invalidInput('inspect needs `session`: the Session id'), caller, me)
-    }
-    const live = agentsOf(ctx)?.get(sessionArg.trim())
-    if (live === undefined) {
-      return failure(invalidInput(
-        'that Session has no live Agent right now, so there is no running turn to inspect',
-        { session: sessionArg },
-      ), caller, me)
-    }
-    const status = activityOf(live, Date.now()) ?? { running: false }
-    return Object.freeze({
-      ...verdict,
-      session: Object.freeze({ id: sessionArg.trim() }),
-      status: Object.freeze(status),
-      activity: recentActivityOf(live, 12),
-    })
-  }
-
-  if (action === 'abort') {
-    if (sessionArg === undefined || sessionArg.trim() === '') {
-      return failure(invalidInput('abort needs `session`: the Session id'), caller, me)
-    }
-    if (textArg === undefined || textArg.trim() === '') {
-      return failure(invalidInput('abort needs `text`: the instruction to run after the abort'), caller, me)
-    }
-    const live = agentsOf(ctx)?.get(sessionArg.trim())
-    if (live === undefined) {
-      return failure(invalidInput(
-        'that Session has no live Agent right now; only a running turn can be aborted',
-        { session: sessionArg },
-      ), caller, me)
-    }
-    const now = Date.now()
-    const status = activityOf(live, now) ?? { running: false }
-    const scene = Object.freeze({
-      status,
-      activity: recentActivityOf(live, 8),
-    })
-    if (status.running !== true) {
-      return failure(invalidInput(
-        'the Session is idle, so there is nothing to abort; use append/prompt to continue it',
-        { session: sessionArg, scene },
-      ), caller, me)
-    }
-    if (controller.cancel === undefined) {
-      return failure(invalidInput('this host exposes no Session cancel, so the turn cannot be aborted', { session: sessionArg, scene }), caller, me)
-    }
-    try {
-      await controller.cancel({ sessionId: sessionArg.trim() })
-    } catch (error: unknown) {
-      return failure(invalidInput(
-        `the abort was refused: ${error instanceof Error ? error.message : String(error)}`,
-        { session: sessionArg, scene },
-      ), caller, me)
-    }
-    const idle = await waitForIdle(controller, live, sessionArg.trim(), 15_000)
-    if (!idle) {
-      return failure(invalidInput(
-        'the abort was accepted but the Session did not become idle within 15s, so nothing was continued',
-        { session: sessionArg, scene: Object.freeze({ ...scene, aborted: true }) },
-      ), caller, me)
-    }
-    const admitted = await controller.prompt({
-      requestId: `superagent-recover-${randomUUID()}`,
-      sessionId: sessionArg.trim(),
-      mode: 'queue',
-      content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
-    }, new AbortController().signal)
-    const delivered = deliveryOutcome('queue', 'queue', false, false, admitted.accepted, insertionSeqOf(ctx, sessionArg.trim()))
-    return Object.freeze({
-      ...verdict,
-      session: Object.freeze({ id: sessionArg.trim() }),
-      abort: Object.freeze({ accepted: true, wasRunning: true, scene, resumed: true }),
-      delivery: delivered,
-    })
-  }
-
-  if (action === 'compact') {
-    if (sessionArg === undefined || sessionArg.trim() === '') {
-      return failure(invalidInput('compact needs `session`: the Session id'), caller, me)
-    }
-    const outcome = await compactWorkspaceSession(ctx, controller, sessionArg.trim())
-    if (outcome.error !== undefined) {
-      return failure(invalidInput(
-        `the Session was not compacted: ${outcome.error}`,
-        { session: sessionArg, compaction: outcome },
-      ), caller, me)
-    }
-    return Object.freeze({
-      ...verdict,
-      session: Object.freeze({ id: sessionArg.trim(), ...(outcome.compacted === false ? { nothingToCompact: true } : {}) }),
-      compaction: Object.freeze(outcome),
-    })
-  }
-
-  if (action === 'list') {
-    try {
-      const listed = await controller.list()
-      const rows = listed.items
-        .filter(item => item.parentSessionId === undefined && item.origin !== 'subagent')
-        .filter(item => workspace === undefined || item.cwd === undefined || sameCheckout(item.cwd, workspace.path))
-        .map((item) => {
+      try {
+        const listed = await controller.list()
+        const candidates = listed.items
+          .filter(item => item.parentSessionId === undefined && item.origin !== 'subagent' && item.blank !== true)
+          .filter(item => item.cwd !== undefined && sameCheckout(item.cwd, workspace.path))
+          .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
+        if (candidates.length === 0) {
+          return failure(invalidInput(
+            `"${workspace.title}" has no Session to continue yet; start one with superagent_session start`,
+            { workspace: workspace.path },
+          ), caller, me)
+        }
+        const candidateRows = candidates.map((item) => {
           const id = String(item.sessionId)
-          const live = agentsOf(ctx)?.get(id) as { session?: unknown } | undefined
-          const usage = contextUsageOf(meter, live?.session)
+          const live = agentsOf(ctx)?.get(id)
           const status = live === undefined ? undefined : activityOf(live, Date.now())
-          const cacheHitPercent = live === undefined ? undefined : cacheHitOf(live)
           return Object.freeze({
             id,
             running: item.running,
-            blank: item.blank === true,
-            ...(item.cwd === undefined ? {} : { cwd: item.cwd }),
             ...(item.updatedAt === undefined ? {} : { updatedAt: item.updatedAt }),
-            ...(usage === undefined ? {} : { usage }),
-            ...(usage?.percent === undefined || usage.percent < thresholdPercent ? {} : { recommendCompact: true }),
-            ...(status === undefined ? {} : { status }),
-            ...(cacheHitPercent === undefined ? {} : { cacheHitPercent }),
-            ...(status?.elapsedMs === undefined || status.elapsedMs < longRunningMs ? {} : { longRunning: true }),
+            ...(sessionTitleOf(ctx, id) === undefined ? {} : { title: sessionTitleOf(ctx, id) }),
+            ...(currentModelOf(ctx, id) === undefined ? {} : { model: currentModelOf(ctx, id) }),
+            ...(lastTaskOf(ctx, id) === undefined ? {} : { lastTask: lastTaskOf(ctx, id) }),
+            ...(status?.lastError === undefined ? {} : { lastError: status.lastError }),
           })
         })
+        const explicitSession = sessionArg === undefined || sessionArg.trim() === ''
+          ? undefined
+          : sessionArg.trim()
+        let target: (typeof candidates)[number] | undefined
+        if (explicitSession !== undefined && explicitSession !== 'latest') {
+          target = candidates.find(item => String(item.sessionId) === explicitSession)
+          if (target === undefined) {
+            return failure(invalidInput(
+              `"${explicitSession}" is not a Session of "${workspace.title}"; pass \`session\` from superagent_session list`,
+              { workspace: workspace.path, candidates: candidateRows },
+            ), caller, me)
+          }
+        } else if (explicitSession === 'latest') {
+          target = candidates[0]
+        } else {
+        // Never guess which conversation the work belongs to: routing follow-up work into the
+        // wrong Session is worse than asking.
+          return failure(invalidInput(
+            `append needs \`session\`: which of "${workspace.title}"'s ${String(candidates.length)} Session(s) `
+          + 'to continue (an id, or "latest" for the most recently updated); candidates are in the error details',
+            { workspace: workspace.path, candidates: candidateRows },
+          ), caller, me)
+        }
+        if (target === undefined) {
+          return failure(invalidInput(
+            `"${workspace.title}" has no Session to continue yet; start one with superagent_session start`,
+            { workspace: workspace.path },
+          ), caller, me)
+        }
+        const sessionId = String(target.sessionId)
+        const wasRunning =  target.running
+        const selected = await applySessionModel(controller, sessionId, values, ctx, wasRunning)
+        if (selected.error !== undefined) {
+          return failure(invalidInput(selected.error, { session: sessionId, ...selected.errorDetails ?? {} }), caller, me)
+        }
+        const delivery = decideDelivery(requestedDelivery, wasRunning)
+        if (wantCompact && delivery.used === 'interrupt') {
+          return failure(invalidInput(
+            'compaction runs only while a Session is idle, so it cannot be combined with an interrupt of '
+          + 'its running turn; send with delivery "queue" or wait for the turn to end',
+            { session: sessionId },
+          ), caller, me)
+        }
+        const compaction = wantCompact ? await compactWorkspaceSession(ctx, controller, sessionId) : undefined
+        if (compaction?.error !== undefined) {
+          return failure(invalidInput(
+            `the context was not compacted, so the follow-up was not sent: ${compaction.error}`,
+            { session: sessionId, compaction },
+          ), caller, me)
+        }
+        const admitted = await controller.prompt({
+          requestId: `superagent-append-${randomUUID()}`,
+          sessionId,
+          mode: delivery.used === 'interrupt' ? 'steer' : 'queue',
+          content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
+        }, new AbortController().signal)
+        const delivered = deliveryOutcome(
+          requestedDelivery, delivery.used, delivery.fallback, wasRunning, admitted.accepted, insertionSeqOf(ctx, sessionId),
+        )
+        const ledger = await recordTaskLedger(caller, workspace, textArg.trim(), sessionId, options.at)
+        if (reportTo !== undefined) {
+          context.tasks.set(sessionId, {
+            superSession: reportTo,
+            workspace: workspace.path,
+            ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+            ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
+          })
+        }
+        const sessionTitle = sessionTitleOf(ctx, sessionId)
+        return withLedger(Object.freeze({
+          ...verdict,
+          session: Object.freeze({
+            id: sessionId,
+            workspace: workspace.path,
+            workspaceTitle: workspace.title,
+            ...(sessionTitle === undefined ? {} : { sessionTitle }),
+            appended: true,
+          }),
+          delivery: delivered,
+          ...((agentsOf(ctx)?.get(sessionId) as { session?: unknown } | undefined) === undefined
+            ? {}
+            : { status: Object.freeze(activityOf(agentsOf(ctx)?.get(sessionId), Date.now()) ?? { running: false }) }),
+          ...((selected.model ?? currentModelOf(ctx, sessionId)) === undefined
+            ? {}
+            : { model: selected.model ?? currentModelOf(ctx, sessionId) }),
+          ...(compaction === undefined ? {} : { compaction: Object.freeze(compaction) }),
+        }), ledger)
+      } catch (error: unknown) {
+        return failure(invalidInput(
+          `the follow-up could not be appended: ${error instanceof Error ? error.message : String(error)}`,
+          { workspace: workspace.path },
+        ), caller, me)
+      }
+    }
+
+    if (action === 'start') {
+      if (workspace === undefined) {
+        return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+      }
+      if (taskArg === undefined || taskArg.trim() === '') {
+        return failure(invalidInput('start needs `task`: a self-contained brief for the workspace agent'), caller, me)
+      }
+      if (requestedDelivery === 'interrupt') {
+        return failure(invalidInput(
+          'start opens a new Session, so there is no running turn to interrupt; omit `delivery` or use "queue"',
+          { workspace: workspace.path },
+        ), caller, me)
+      }
+      const titleArg = asString(values.title)?.trim()
+      try {
+        const created = await controller.create({
+          workspaceId: workspace.id,
+          ...(context.agentPreset === undefined || context.agentPreset.trim() === ''
+            ? {}
+            : { agentPreset: context.agentPreset }),
+        })
+        const sessionId = String(created.sessionId)
+        const selected = await applySessionModel(controller, sessionId, values, ctx)
+        if (selected.error !== undefined) {
+          return failure(invalidInput(selected.error, { session: sessionId, ...selected.errorDetails ?? {} }), caller, me)
+        }
+        // Name the conversation before its first task, so a later `list` tells it apart.
+        let title: string | undefined
+        if (titleArg !== undefined && titleArg !== '') {
+          try {
+            title = (await controller.rename?.({ sessionId, title: titleArg }))?.title ?? titleArg
+          } catch (error: unknown) {
+            return failure(invalidInput(
+              `the Session was created but its title could not be recorded: ${error instanceof Error ? error.message : String(error)}`,
+              { session: sessionId },
+            ), caller, me)
+          }
+        }
+        await controller.prompt({
+          requestId: `superagent-task-${randomUUID()}`,
+          sessionId,
+          mode: 'queue',
+          content: [{ type: 'text', text: composeTask(taskArg.trim(), curateMemory) }],
+        }, new AbortController().signal)
+        const ledger = await recordTaskLedger(caller, workspace, taskArg.trim(), sessionId, options.at)
+        if (reportTo !== undefined) {
+          context.tasks.set(sessionId, {
+            superSession: reportTo,
+            workspace: workspace.path,
+            ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+          })
+        }
+        return withLedger(Object.freeze({
+          ...verdict,
+          session: Object.freeze({
+            id: sessionId,
+            workspace: workspace.path,
+            workspaceTitle: workspace.title,
+            ...(title === undefined ? {} : { sessionTitle: title }),
+          }),
+          ...(selected.model === undefined ? {} : { model: selected.model }),
+        }), ledger)
+      } catch (error: unknown) {
+        return failure(invalidInput(
+          `the workspace Session could not be started: ${error instanceof Error ? error.message : String(error)}`,
+          { workspace: workspace.path },
+        ), caller, me)
+      }
+    }
+
+    if (action === 'prompt') {
+      if (sessionArg === undefined || sessionArg.trim() === '') {
+        return failure(invalidInput('prompt needs `session`: the Session id'), caller, me)
+      }
+      if (textArg === undefined || textArg.trim() === '') {
+        return failure(invalidInput('prompt needs `text`: the follow-up instruction'), caller, me)
+      }
+      const sessionId = sessionArg.trim()
+      try {
+        const listed = await controller.list()
+        const wasRunning = listed.items.some(item => String(item.sessionId) === sessionId &&  item.running)
+        const selected = await applySessionModel(controller, sessionId, values, ctx, wasRunning)
+        if (selected.error !== undefined) {
+          return failure(invalidInput(selected.error, { session: sessionId, ...selected.errorDetails ?? {} }), caller, me)
+        }
+        const delivery = decideDelivery(requestedDelivery, wasRunning)
+        if (wantCompact && delivery.used === 'interrupt') {
+          return failure(invalidInput(
+            'compaction runs only while a Session is idle, so it cannot be combined with an interrupt of '
+          + 'its running turn; send with delivery "queue" or wait for the turn to end',
+            { session: sessionArg },
+          ), caller, me)
+        }
+        const compaction = wantCompact ? await compactWorkspaceSession(ctx, controller, sessionArg) : undefined
+        if (compaction?.error !== undefined) {
+          return failure(invalidInput(
+            `the context was not compacted, so the follow-up was not admitted: ${compaction.error}`,
+            { session: sessionArg, compaction },
+          ), caller, me)
+        }
+        const admitted = await controller.prompt({
+          requestId: `superagent-followup-${randomUUID()}`,
+          sessionId: sessionArg,
+          mode: delivery.used === 'interrupt' ? 'steer' : 'queue',
+          content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
+        }, new AbortController().signal)
+        const delivered = deliveryOutcome(
+          requestedDelivery, delivery.used, delivery.fallback, wasRunning, admitted.accepted, insertionSeqOf(ctx, sessionId),
+        )
+        const ledger: LedgerAttempt = workspace === undefined
+          ? Object.freeze({})
+          : await recordTaskLedger(caller, workspace, textArg.trim(), sessionId, options.at)
+        if (reportTo !== undefined) {
+          const known = context.tasks.get(sessionId)
+          context.tasks.set(sessionId, {
+            superSession: reportTo,
+            workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
+            ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+            ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
+          })
+        }
+        const sessionTitle = sessionTitleOf(ctx, sessionId)
+        return withLedger(Object.freeze({
+          ...verdict,
+          session: Object.freeze({ id: sessionId, ...(sessionTitle === undefined ? {} : { sessionTitle }) }),
+          delivery: delivered,
+          ...((agentsOf(ctx)?.get(sessionId) as { session?: unknown } | undefined) === undefined
+            ? {}
+            : { status: Object.freeze(activityOf(agentsOf(ctx)?.get(sessionId), Date.now()) ?? { running: false }) }),
+          ...(selected.model === undefined ? {} : { model: selected.model }),
+          ...(compaction === undefined ? {} : { compaction: Object.freeze(compaction) }),
+        }), ledger)
+      } catch (error: unknown) {
+        return failure(invalidInput(
+          `the follow-up could not be admitted: ${error instanceof Error ? error.message : String(error)}`,
+          { session: sessionArg },
+        ), caller, me)
+      }
+    }
+
+    if (action === 'inspect') {
+      if (sessionArg === undefined || sessionArg.trim() === '') {
+        return failure(invalidInput('inspect needs `session`: the Session id'), caller, me)
+      }
+      const live = agentsOf(ctx)?.get(sessionArg.trim())
+      if (live === undefined) {
+        return failure(invalidInput(
+          'that Session has no live Agent right now, so there is no running turn to inspect',
+          { session: sessionArg },
+        ), caller, me)
+      }
+      const status = activityOf(live, Date.now()) ?? { running: false }
+      const events = eventsOf(live)
+      const lastEnd = lastEventOf(events, 'turn/end')
+      const lastTurnReason = (lastEnd?.data as {
+        reason?: { kind?: string; error?: { message?: string; code?: string; status?: number } }
+      } | undefined)?.reason
+      const model = currentModelOf(ctx, sessionArg.trim())
       return Object.freeze({
         ...verdict,
-        sessions: Object.freeze(rows),
-        compactThresholdPercent: thresholdPercent,
-        longRunningMinutes,
+        session: Object.freeze({ id: sessionArg.trim() }),
+        status: Object.freeze(status),
+        activity: recentActivityOf(live, 12),
+        ...(model === undefined ? {} : { model }),
+        ...(lastTurnReason?.kind === undefined || lastTurnReason.kind === 'completed'
+          ? {}
+          : {
+            lastTurnError: Object.freeze({
+              kind: lastTurnReason.kind,
+              ...(lastTurnReason.error?.message === undefined ? {} : { message: lastTurnReason.error.message }),
+              ...(lastTurnReason.error?.code === undefined ? {} : { code: lastTurnReason.error.code }),
+            }),
+          }),
       })
-    } catch (error: unknown) {
-      return failure(invalidInput(`the Session list could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
     }
-  }
 
-  if (action === 'archive') {
-    if (sessionArg === undefined || sessionArg.trim() === '') {
-      return failure(invalidInput('archive needs `session`: the Session id'), caller, me)
-    }
-    if (registry?.archiveSession === undefined) {
-      return failure(invalidInput('this deployment has no workspace registry archive'), caller, me)
-    }
-    try {
-      await registry.archiveSession(sessionArg)
-      context.tasks.delete(sessionArg)
-      return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionArg, archived: true }) })
-    } catch (error: unknown) {
-      return failure(invalidInput(
-        `the Session could not be archived: ${error instanceof Error ? error.message : String(error)}`,
-        { session: sessionArg },
-      ), caller, me)
-    }
-  }
-
-  if (action === 'delete') {
-    if (sessionArg === undefined || sessionArg.trim() === '') {
-      return failure(invalidInput('delete needs `session`: the Session id'), caller, me)
-    }
-    const callerSession = (me as { readonly session?: unknown } | undefined)?.session
-    if (typeof callerSession === 'string' && callerSession === sessionArg.trim()) {
-      return failure(invalidInput('cannot delete the Session that is calling this tool'), caller, me)
-    }
-    const confirm = asString(validated.value.confirm)
-    if (confirm === undefined || confirm.trim() !== sessionArg.trim()) {
-      return failure(invalidInput(
-        `delete needs \`confirm\` to repeat the Session id exactly; got ${String(confirm ?? 'nothing')}`,
-        { session: sessionArg, accepted: sessionArg },
-      ), caller, me)
-    }
-    if (controller.delete === undefined) {
-      return failure(invalidInput(
-        'this host exposes no Session delete API: a Session log can be hidden with `archive`, but the '
-        + 'durable JSONL under ~/.dsh/sessions survives and this tool will not fake a deletion',
-        { session: sessionArg },
-      ), caller, me)
-    }
-    try {
-      await controller.delete(sessionArg)
-      context.tasks.delete(sessionArg)
-      return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionArg, deleted: true }) })
-    } catch (error: unknown) {
-      return failure(invalidInput(
-        `the Session could not be deleted: ${error instanceof Error ? error.message : String(error)}`,
-        { session: sessionArg },
-      ), caller, me)
-    }
-  }
-
-  if (action === 'fork') {
-    if (sessionArg === undefined || sessionArg.trim() === '') {
-      return failure(invalidInput('fork needs `session`: the Session id'), caller, me)
-    }
-    if (controller.fork === undefined) {
-      return failure(invalidInput('this deployment cannot branch a Session'), caller, me)
-    }
-    try {
-      const forked = await controller.fork({
-        sessionId: sessionArg,
-        ...(atSeq === undefined ? {} : { atSeq }),
-      })
-      const sessionId = String(forked.sessionId)
-      if (reportTo !== undefined) {
-        const known = context.tasks.get(sessionArg)
-        context.tasks.set(sessionId, {
-          superSession: reportTo,
-          workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
+    if (action === 'stop') {
+      if (sessionArg === undefined || sessionArg.trim() === '') {
+        return failure(invalidInput('stop needs `session`: the Session id'), caller, me)
+      }
+      const sessionId = sessionArg.trim()
+      const live = agentsOf(ctx)?.get(sessionId)
+      const status = activityOf(live, Date.now()) ?? { running: false }
+      const scene = Object.freeze({ status, activity: recentActivityOf(live, 8) })
+      if (!status.running) {
+        return Object.freeze({
+          ...verdict,
+          session: Object.freeze({ id: sessionId }),
+          stop: Object.freeze({ accepted: false, wasRunning: false, alreadyIdle: true, scene, boundary: cancellationBoundary(live) }),
         })
       }
-      return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionId, forkedFrom: sessionArg }) })
-    } catch (error: unknown) {
-      return failure(invalidInput(
-        `the Session could not be branched: ${error instanceof Error ? error.message : String(error)}`,
-        { session: sessionArg },
-      ), caller, me)
+      const agentCancel = (live as {
+        cancel?: (cause: { readonly kind: 'user' }, options?: { readonly keepInbox?: boolean }) => void
+      } | undefined)?.cancel
+      let cancelledVia: 'agent' | 'controller'
+      if (typeof agentCancel === 'function') {
+        try {
+        // A true stop: clear queued and steering work too, so the Session ends idle rather than
+        // starting the queued text as a new turn.
+          agentCancel.call(live, { kind: 'user' }, { keepInbox: false })
+          cancelledVia = 'agent'
+        } catch (error: unknown) {
+          return failure(invalidInput(
+            `the stop was refused: ${error instanceof Error ? error.message : String(error)}`,
+            { session: sessionId, scene },
+          ), caller, me)
+        }
+      } else if (controller.cancel !== undefined) {
+        try {
+          await controller.cancel({ sessionId })
+          cancelledVia = 'controller'
+        } catch (error: unknown) {
+          return failure(invalidInput(
+            `the stop was refused: ${error instanceof Error ? error.message : String(error)}`,
+            { session: sessionId, scene },
+          ), caller, me)
+        }
+      } else {
+        return failure(invalidInput(
+          'this host exposes no hard cancel channel (agent.cancel or controller.cancel), so a guaranteed stop is unavailable; use abort with an instruction, or upgrade the host',
+          { session: sessionId, scene },
+        ), caller, me)
+      }
+      const idle = await waitForIdle(controller, live, sessionId, 10_000)
+      return Object.freeze({
+        ...verdict,
+        session: Object.freeze({ id: sessionId }),
+        stop: Object.freeze({
+          accepted: true,
+          wasRunning: true,
+          cancelledVia,
+          clearedQueue: cancelledVia === 'agent',
+          idle,
+          scene,
+          boundary: cancellationBoundary(live),
+        }),
+      })
     }
-  }
 
-  return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
+    if (action === 'abort') {
+      if (sessionArg === undefined || sessionArg.trim() === '') {
+        return failure(invalidInput('abort needs `session`: the Session id'), caller, me)
+      }
+      if (textArg === undefined || textArg.trim() === '') {
+        return failure(invalidInput('abort needs `text`: the instruction to run after the abort'), caller, me)
+      }
+      const live = agentsOf(ctx)?.get(sessionArg.trim())
+      if (live === undefined) {
+        return failure(invalidInput(
+          'that Session has no live Agent right now; only a running turn can be aborted',
+          { session: sessionArg },
+        ), caller, me)
+      }
+      const now = Date.now()
+      const status = activityOf(live, now) ?? { running: false }
+      const scene = Object.freeze({
+        status,
+        activity: recentActivityOf(live, 8),
+      })
+      if (!status.running) {
+        return failure(invalidInput(
+          'the Session is idle, so there is nothing to abort; use append/prompt to continue it',
+          { session: sessionArg, scene },
+        ), caller, me)
+      }
+      if (controller.cancel === undefined) {
+        return failure(invalidInput('this host exposes no Session cancel, so the turn cannot be aborted', { session: sessionArg, scene }), caller, me)
+      }
+      try {
+        await controller.cancel({ sessionId: sessionArg.trim() })
+      } catch (error: unknown) {
+        return failure(invalidInput(
+          `the abort was refused: ${error instanceof Error ? error.message : String(error)}`,
+          { session: sessionArg, scene },
+        ), caller, me)
+      }
+      const idle = await waitForIdle(controller, live, sessionArg.trim(), 15_000)
+      if (!idle) {
+        return failure(invalidInput(
+          'the abort was accepted but the Session did not become idle within 15s, so nothing was continued',
+          { session: sessionArg, scene: Object.freeze({ ...scene, aborted: true }) },
+        ), caller, me)
+      }
+      const admitted = await controller.prompt({
+        requestId: `superagent-recover-${randomUUID()}`,
+        sessionId: sessionArg.trim(),
+        mode: 'queue',
+        content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
+      }, new AbortController().signal)
+      const delivered = deliveryOutcome('queue', 'queue', false, false, admitted.accepted, insertionSeqOf(ctx, sessionArg.trim()))
+      return Object.freeze({
+        ...verdict,
+        session: Object.freeze({ id: sessionArg.trim() }),
+        abort: Object.freeze({ accepted: true, wasRunning: true, scene, resumed: true }),
+        delivery: delivered,
+      })
+    }
+
+    if (action === 'compact') {
+      if (sessionArg === undefined || sessionArg.trim() === '') {
+        return failure(invalidInput('compact needs `session`: the Session id'), caller, me)
+      }
+      const outcome = await compactWorkspaceSession(ctx, controller, sessionArg.trim())
+      if (outcome.error !== undefined) {
+        return failure(invalidInput(
+          `the Session was not compacted: ${outcome.error}`,
+          { session: sessionArg, compaction: outcome },
+        ), caller, me)
+      }
+      return Object.freeze({
+        ...verdict,
+        session: Object.freeze({ id: sessionArg.trim(), ...(outcome.compacted === false ? { nothingToCompact: true } : {}) }),
+        compaction: Object.freeze(outcome),
+      })
+    }
+
+    if (action === 'list') {
+      try {
+        const listed = await controller.list()
+        const rows = listed.items
+          .filter(item => item.parentSessionId === undefined && item.origin !== 'subagent')
+          .filter(item => workspace === undefined || item.cwd === undefined || sameCheckout(item.cwd, workspace.path))
+          .map((item) => {
+            const id = String(item.sessionId)
+            const live = agentsOf(ctx)?.get(id) as { session?: unknown } | undefined
+            const usage = contextUsageOf(meter, live?.session)
+            const status = live === undefined ? undefined : activityOf(live, Date.now())
+            const cacheHitPercent = live === undefined ? undefined : cacheHitOf(live)
+            const title = sessionTitleOf(ctx, id)
+            const model = currentModelOf(ctx, id)
+            const lastTask = lastTaskOf(ctx, id)
+            const events = eventsOf(live)
+            const lastEnd = lastEventOf(events, 'turn/end')
+            const lastTurn = lastEnd === undefined
+              ? undefined
+              : (lastEnd.data as {
+                turn?: number
+                reason?: { kind?: string; error?: { message?: string; code?: string; status?: number } }
+              } | undefined)
+            return Object.freeze({
+              id,
+              ...(title === undefined ? {} : { title }),
+              ...(model === undefined ? {} : { model }),
+              running: item.running,
+              blank: item.blank === true,
+              ...(item.cwd === undefined ? {} : { cwd: item.cwd }),
+              ...(item.updatedAt === undefined ? {} : { updatedAt: item.updatedAt }),
+              ...(lastTask === undefined ? {} : { lastTask }),
+              ...(lastTurn?.reason === undefined || lastTurn.reason.kind === 'completed'
+                ? {}
+                : {
+                  lastTurnError: Object.freeze({
+                    ...(lastTurn.turn === undefined ? {} : { turn: lastTurn.turn }),
+                    kind: lastTurn.reason.kind,
+                    ...(lastTurn.reason.error?.message === undefined ? {} : { message: lastTurn.reason.error.message }),
+                    ...(lastTurn.reason.error?.code === undefined ? {} : { code: lastTurn.reason.error.code }),
+                    ...(lastTurn.reason.error?.status === undefined ? {} : { status: lastTurn.reason.error.status }),
+                  }),
+                }),
+              ...(usage === undefined ? {} : { usage }),
+              ...(usage?.percent === undefined || usage.percent < thresholdPercent ? {} : { recommendCompact: true }),
+              ...(status === undefined ? {} : { status }),
+              ...(cacheHitPercent === undefined ? {} : { cacheHitPercent }),
+              ...(status?.elapsedMs === undefined || status.elapsedMs < longRunningMs ? {} : { longRunning: true }),
+            })
+          })
+        return Object.freeze({
+          ...verdict,
+          sessions: Object.freeze(rows),
+          compactThresholdPercent: thresholdPercent,
+          longRunningMinutes,
+        })
+      } catch (error: unknown) {
+        return failure(invalidInput(`the Session list could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+      }
+    }
+
+    if (action === 'archive') {
+      if (sessionArg === undefined || sessionArg.trim() === '') {
+        return failure(invalidInput('archive needs `session`: the Session id'), caller, me)
+      }
+      if (registry?.archiveSession === undefined) {
+        return failure(invalidInput('this deployment has no workspace registry archive'), caller, me)
+      }
+      try {
+        await registry.archiveSession(sessionArg)
+        context.tasks.delete(sessionArg)
+        return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionArg, archived: true }) })
+      } catch (error: unknown) {
+        return failure(invalidInput(
+          `the Session could not be archived: ${error instanceof Error ? error.message : String(error)}`,
+          { session: sessionArg },
+        ), caller, me)
+      }
+    }
+
+    if (action === 'delete') {
+      if (sessionArg === undefined || sessionArg.trim() === '') {
+        return failure(invalidInput('delete needs `session`: the Session id'), caller, me)
+      }
+      const callerSession = (me as { readonly session?: unknown } | undefined)?.session
+      if (typeof callerSession === 'string' && callerSession === sessionArg.trim()) {
+        return failure(invalidInput('cannot delete the Session that is calling this tool'), caller, me)
+      }
+      const confirm = asString(values.confirm)
+      if (confirm === undefined || confirm.trim() !== sessionArg.trim()) {
+        return failure(invalidInput(
+          `delete needs \`confirm\` to repeat the Session id exactly; got ${String(confirm ?? 'nothing')}`,
+          { session: sessionArg, accepted: sessionArg },
+        ), caller, me)
+      }
+      if (controller.delete === undefined) {
+        return failure(invalidInput(
+          'this host exposes no Session delete API: a Session log can be hidden with `archive`, but the '
+        + 'durable JSONL under ~/.dsh/sessions survives and this tool will not fake a deletion',
+          { session: sessionArg },
+        ), caller, me)
+      }
+      try {
+        await controller.delete(sessionArg)
+        context.tasks.delete(sessionArg)
+        return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionArg, deleted: true }) })
+      } catch (error: unknown) {
+        return failure(invalidInput(
+          `the Session could not be deleted: ${error instanceof Error ? error.message : String(error)}`,
+          { session: sessionArg },
+        ), caller, me)
+      }
+    }
+
+    if (action === 'fork') {
+      if (sessionArg === undefined || sessionArg.trim() === '') {
+        return failure(invalidInput('fork needs `session`: the Session id'), caller, me)
+      }
+      if (controller.fork === undefined) {
+        return failure(invalidInput('this deployment cannot branch a Session'), caller, me)
+      }
+      try {
+        const forked = await controller.fork({
+          sessionId: sessionArg,
+          ...(atSeq === undefined ? {} : { atSeq }),
+        })
+        const sessionId = String(forked.sessionId)
+        if (reportTo !== undefined) {
+          const known = context.tasks.get(sessionArg)
+          context.tasks.set(sessionId, {
+            superSession: reportTo,
+            workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
+          })
+        }
+        return Object.freeze({ ...verdict, session: Object.freeze({ id: sessionId, forkedFrom: sessionArg }) })
+      } catch (error: unknown) {
+        return failure(invalidInput(
+          `the Session could not be branched: ${error instanceof Error ? error.message : String(error)}`,
+          { session: sessionArg },
+        ), caller, me)
+      }
+    }
+
+    return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
+  }
 }
 
 /**
@@ -2765,6 +3193,8 @@ export const runLedgerTool = async (
       const artifacts = asStringList(validated.value.artifacts)
       const decisions = asStringList(validated.value.decisions)
       const resolved = await resolveDispatchTask(root, current, {
+        // Narrowed by isDispatchLedgerStatus above; the ledger writer owns the status vocabulary.
+        // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- the guard narrows runtime, not the type
         status: status as DispatchLedgerStatus,
         updatedAt: options.at,
         ...(asString(validated.value.outcome) === undefined ? {} : { outcome: String(validated.value.outcome) }),
@@ -2822,13 +3252,54 @@ export const deliverTaskReport = async (
   record: TaskSessionRecord,
   agent: unknown,
   signal: AbortSignal,
+  turnEnd?: Readonly<{
+    kind?: string
+    error?: { message?: string; code?: string; status?: number }
+    reason?: { kind?: string }
+  }>,
 ): Promise<boolean> => {
   const controller = sessionControllerOf(host.ctx)
   if (controller === undefined) return false
-  const text = lastAssistantText(agent)
-  if (text === undefined) return false
   const sessionId = String((agent as { id?: unknown }).id)
   const usageAfter = contextUsageOf(tokenMeterOf(host.ctx), (agent as { session?: unknown }).session)
+  // A non-completed turn is never silent: the initiator hears the failure with its identity even
+  // when the Session produced no assistant text.
+  const turnKind = turnEnd?.kind ?? turnEnd?.reason?.kind
+  if (turnKind !== undefined && turnKind !== 'completed') {
+    const failureFacts = [
+      turnEnd?.error?.code === undefined ? undefined : `code ${turnEnd.error.code}`,
+      turnEnd?.error?.status === undefined ? undefined : `status ${String(turnEnd.error.status)}`,
+    ].filter((fact): fact is string => fact !== undefined)
+    const detail = turnEnd?.error?.message === undefined
+      ? ''
+      : `: ${turnEnd.error.message.length <= 600 ? turnEnd.error.message : `${turnEnd.error.message.slice(0, 600)}…`}`
+    try {
+      await controller.prompt({
+        requestId: `superagent-report-${randomUUID()}`,
+        sessionId: record.superSession,
+        mode: 'queue',
+        content: [{
+          type: 'text',
+          text: `[task-report] ${sessionId} in ${record.workspace} FAILED — its turn ended "${turnKind}"`
+            + `${failureFacts.length === 0 ? '' : ` (${failureFacts.join(', ')})`}${detail}.`
+            + contextMarker(record.usageBefore, usageAfter)
+            + '\n\nThe Session is idle now. Inspect it (`superagent_session inspect`), then stop/abort, '
+            + 'retry with a clean turn boundary, or compact; record the outcome with superagent_ledger '
+            + 'resolve (status failed) and memory_write.',
+        }],
+      }, signal)
+      return true
+    } catch (error: unknown) {
+      host.ctx.logger.warn(
+        'superagent: the failure report for %s could not be delivered: %s',
+        record.superSession,
+        error instanceof Error ? error.message : String(error),
+      )
+      return false
+    }
+  }
+  const text = lastAssistantText(agent)
+  if (text === undefined) return false
   try {
     await controller.prompt({
       requestId: `superagent-report-${randomUUID()}`,
@@ -2837,7 +3308,7 @@ export const deliverTaskReport = async (
       content: [{
         type: 'text',
         text: `[task-report] ${sessionId} in ${record.workspace} finished its turn`
-          + `${record.ledger === undefined ? '' : ` (task ${record.ledger.task.id}, ledger returned)`}`
+          + (record.ledger === undefined ? '' : ` (task ${record.ledger.task.id}, ledger returned)`)
           + `${contextMarker(record.usageBefore, usageAfter)}.`
           + `\n\n${text}\n\n`
           + 'Record the durable conclusion with memory_write (kind decision/open/files, tags including '
@@ -2926,6 +3397,11 @@ export interface SessionControllerLike {
     readonly model: string
     readonly reasoningEffort?: string
   }): Promise<{ readonly selected: { readonly provider: string; readonly model: string; readonly reasoningEffort?: string } }>
+  /** Record the Session's durable display title; optional on a host without a title service. */
+  rename?(request: {
+    readonly sessionId: string
+    readonly title: string
+  }): Promise<{ readonly title: string; readonly seq?: unknown }>
   /**
    * Resolve (resuming when cold) the Agent for one Session. Compaction and live-context
    * measurement are Agent operations, so this is the host seam that makes both reachable.
@@ -3410,7 +3886,7 @@ export const createSuperagentContribution = (
       monitorDispose = systemPrompt.context({
         name: 'superagent:running',
         order: 705,
-        text: (context: { agent?: unknown }) => isSuperAgentSession(context.agent as Agent, superHome)
+        text: (context: { agent?: unknown }) => isSuperAgentSession(context.agent, superHome)
           ? longRunningSummary(host.ctx, superHome, longRunningMinutes * 60_000)
           : '',
       })
@@ -3549,7 +4025,7 @@ export const createSuperagentContribution = (
         return renderText(providers.map(provider => `${provider.id} — ${provider.name}`).join('\n'))
       }
       const rows = Array.isArray(typed.models)
-        ? typed.models as { provider: string; id: string; name: string; description?: string; efforts: readonly string[] }[]
+        ? typed.models as { provider: string; id: string; name: string; description?: string; efforts: readonly AdvertisedEffort[] }[]
         : []
       if (rows.length === 0) return renderText('(no models)')
       return renderText(rows.map(row => modelLine({
@@ -3597,22 +4073,46 @@ export const createSuperagentContribution = (
       if (Array.isArray(typed.sessions)) {
         const rows = typed.sessions as {
           id: string
+          title?: string
+          lastTask?: string
+          model?: { provider: string; model: string; reasoningEffort?: string }
           running: boolean
           cwd?: string
           blank?: boolean
+          updatedAt?: number
           usage?: { percent?: number }
           cacheHitPercent?: number
           recommendCompact?: boolean
           longRunning?: boolean
+          lastTurnError?: { turn?: number; kind?: string; message?: string }
           status?: { elapsedMs?: number }
         }[]
         if (rows.length === 0) return renderText('no Session in that workspace')
         return renderText(rows
-          .map(row => `${row.id}  ${row.running ? 'running' : 'idle'}${row.blank === true ? '  (blank)' : ''}`
-            + `${row.status?.elapsedMs === undefined ? '' : `  ${durationText(row.status.elapsedMs)}`}`
-            + `${row.usage?.percent === undefined ? '' : `  context ${row.usage.percent}%`}`
-            + `${row.cacheHitPercent === undefined ? '' : `  cache ${row.cacheHitPercent}%`}`
-            + `${row.recommendCompact === true ? '  (consider compact)' : ''}${row.longRunning === true ? '  (long-running)' : ''}  ${row.cwd ?? ''}`)
+          .map((row) => {
+            const model = row.model === undefined
+              ? ''
+              : `  ${row.model.provider}/${row.model.model}${row.model.reasoningEffort === undefined ? '' : ` (${row.model.reasoningEffort})`}`
+            const lastErrorMessage = row.lastTurnError?.message
+            const error = row.lastTurnError === undefined
+              ? ''
+              : `\n    last turn ${row.lastTurnError.kind}${lastErrorMessage === undefined
+                ? ''
+                : `: ${lastErrorMessage.length <= 160 ? lastErrorMessage : `${lastErrorMessage.slice(0, 160)}…`}`}`
+            const elapsed = row.status?.elapsedMs
+            const parts = [
+              `${row.id}  ${row.title ?? '(untitled)'}  ${row.running ? 'running' : 'idle'}${row.blank === true ? '  (blank)' : ''}`,
+              elapsed === undefined ? '' : `  ${durationText(elapsed)}`,
+              row.usage?.percent === undefined ? '' : `  context ${row.usage.percent}%`,
+              model,
+              row.cacheHitPercent === undefined ? '' : `  cache ${row.cacheHitPercent}%`,
+              `${row.recommendCompact === true ? '  (consider compact)' : ''}${row.longRunning === true ? '  (long-running)' : ''}`,
+              `${row.updatedAt === undefined ? '' : `  active ${new Date(row.updatedAt).toISOString()}`}  ${row.cwd ?? ''}`,
+              row.lastTask === undefined ? '' : `\n    last: ${row.lastTask}`,
+              error,
+            ]
+            return parts.join('')
+          })
           .join('\n'))
       }
       const compaction = typed.compaction as {
@@ -3621,11 +4121,14 @@ export const createSuperagentContribution = (
         shadowedTokens?: number
       } | undefined
       if (compaction !== undefined) {
-        return renderText(`compacted${compaction.before?.percent === undefined ? '' : ` ${compaction.before.percent}%`}`
-          + `${compaction.after?.percent === undefined ? '' : ` → ${compaction.after.percent}%`}`
-          + `${compaction.shadowedTokens === undefined ? '' : ` (${compaction.shadowedTokens} tokens shadowed)`}`)
+        const compactParts = [
+          `compacted${compaction.before?.percent === undefined ? '' : ` ${compaction.before.percent}%`}`,
+          compaction.after?.percent === undefined ? '' : ` → ${compaction.after.percent}%`,
+          compaction.shadowedTokens === undefined ? '' : ` (${compaction.shadowedTokens} tokens shadowed)`,
+        ]
+        return renderText(compactParts.join(''))
       }
-      const one = typed.session as { id?: string; archived?: boolean; forkedFrom?: string } | undefined
+      const one = typed.session as { id?: string; archived?: boolean; forkedFrom?: string; sessionTitle?: string } | undefined
       if (one?.id === undefined) return renderText('ok')
       const status = typed.status as {
         running?: boolean
@@ -3635,10 +4138,37 @@ export const createSuperagentContribution = (
         lastTool?: string
         lastError?: string
       } | undefined
+      const stop = typed.stop as {
+        accepted?: boolean
+        wasRunning?: boolean
+        alreadyIdle?: boolean
+        cancelledVia?: string
+        clearedQueue?: boolean
+        idle?: boolean
+        boundary?: { seq?: number; turnEndReason?: string }
+      } | undefined
+      if (stop !== undefined) {
+        if (stop.accepted !== true) return renderText(`session ${one.id} is already idle; nothing to stop`)
+        const scene = typed.stop as { scene?: { status?: { elapsedMs?: number; inFlightTool?: string; lastTool?: string } } }
+        const sceneStatus = scene.scene?.status
+        const stopParts = [
+          `stopped ${one.id} (cut off`,
+          sceneStatus?.elapsedMs === undefined ? '' : ` after ${durationText(sceneStatus.elapsedMs)}`,
+          sceneStatus?.inFlightTool === undefined ? '' : `, ${sceneStatus.inFlightTool} was in flight`,
+          `, via ${stop.cancelledVia ?? 'the host'}${stop.clearedQueue === true ? ', queue cleared' : ''}`,
+          stop.idle === true ? ', idle now' : ', not idle yet',
+          stop.boundary?.seq === undefined ? '' : `, log ends at seq ${stop.boundary.seq}`,
+          `${stop.boundary?.turnEndReason === undefined ? '' : ` (${stop.boundary.turnEndReason})`})`,
+        ]
+        return renderText(stopParts.join(''))
+      }
       const abort = typed.abort as { resumed?: boolean } | undefined
       if (abort !== undefined) {
-        return renderText(`aborted ${one.id}${status?.elapsedMs === undefined ? '' : ` after ${durationText(status.elapsedMs)}`}`
-          + `${abort.resumed === true ? ' → continued' : ''}`)
+        const abortedParts = [
+          `aborted ${one.id}${status?.elapsedMs === undefined ? '' : ` after ${durationText(status.elapsedMs)}`}`,
+          abort.resumed === true ? ' → continued' : '',
+        ]
+        return renderText(abortedParts.join(''))
       }
       const activity = typed.activity as readonly {
         seq?: number
@@ -3648,20 +4178,35 @@ export const createSuperagentContribution = (
         text?: string
       }[] | undefined
       if (activity !== undefined) {
-        const head = `session ${one.id}${status?.running === true ? ` running ${durationText(status.elapsedMs ?? 0)}` : ' idle'}`
-          + `${status?.inFlightTool === undefined ? '' : `, tool ${status.inFlightTool} in flight`}`
-          + `${status?.lastError === undefined ? '' : `, last error ${status.lastError}`}`
+        const headParts = [
+          `session ${one.id}${status?.running === true ? ` running ${durationText(status.elapsedMs ?? 0)}` : ' idle'}`,
+          status?.inFlightTool === undefined ? '' : `, tool ${status.inFlightTool} in flight`,
+          status?.lastError === undefined ? '' : `, last error ${status.lastError}`,
+        ]
         const trail = activity.map(row => `${String(row.type)}${row.tool === undefined ? '' : ` ${row.tool}`}${row.error === undefined ? '' : ` [${row.error}]`}`).join('\n')
-        return renderText(`${head}\n${trail}`)
+        return renderText(`${headParts.join('')}\n${trail}`)
       }
       if (one.archived === true) return renderText(`archived ${one.id}`)
       if (one.forkedFrom !== undefined) return renderText(`branched ${one.forkedFrom} → ${one.id}`)
       const delivery = typed.delivery as { used?: string; fallback?: boolean; insertedAtSeq?: number } | undefined
-      const how = delivery === undefined
+      const howParts = delivery === undefined
+        ? []
+        : [
+          `  ${delivery.used === 'interrupt' ? 'interrupted' : 'queued'}${delivery.fallback === true ? ' (fallback)' : ''}`,
+          delivery.insertedAtSeq === undefined ? '' : ` at seq ${delivery.insertedAtSeq}`,
+        ]
+      const how = howParts.join('')
+      const echo = typed.model as {
+        provider?: string
+        model?: string
+        reasoningEffort?: string
+        fallback?: boolean
+        deferred?: boolean
+      } | undefined
+      const echoModel = echo?.provider === undefined
         ? ''
-        : `  ${delivery.used === 'interrupt' ? 'interrupted' : 'queued'}${delivery.fallback === true ? ' (fallback)' : ''}`
-          + `${delivery.insertedAtSeq === undefined ? '' : ` at seq ${delivery.insertedAtSeq}`}`
-      return renderText(`session ${one.id}${how}`)
+        : `  → ${echo.provider}/${echo.model}${echo.reasoningEffort === undefined ? '' : ` (${echo.reasoningEffort})`}${echo.fallback === true ? ' (host fallback)' : ''}${echo.deferred === true ? ' (takes effect at the next turn boundary)' : ''}`
+      return renderText(`session ${one.id}${one.sessionTitle === undefined ? '' : ` "${one.sessionTitle}"`}${how}${echoModel}`)
     },
     run: (args, call) => runSessionTool(args, runOptionsOf(host, call), call.me, host.ctx, {
       ...(agentPreset === undefined ? {} : { agentPreset }),
@@ -3729,14 +4274,19 @@ export const createSuperagentContribution = (
     },
     onTurnEnd: async (input: TurnEndInput) => {
       // DH-719: a Session this super agent started addresses reports back here as a queued message,
-      // so the person's conversation is never held while that workspace works.
+      // so the person's conversation is never held while that workspace works. A turn that did not
+      // complete still reports: silence is how a failed workspace Session went unnoticed (DH-722 era).
       const report = tasks.get(String(input.agent.id))
       if (report !== undefined) {
+        const reason = input.event.data.reason as {
+          kind?: string
+          error?: { message?: string; code?: string; status?: number }
+        }
         // The child's turn end is visible here even though its report becomes a new message in the
         // super conversation: resolve the structured ledger now, then deliver the same outcome.
-        const text = lastAssistantText(input.agent)
+        const text = reason.kind === 'completed' ? lastAssistantText(input.agent) : undefined
         try {
-          await resolveReportedTask(report, text, nowUtc(host.clock))
+          await resolveReportedTask(report, text ?? `turn ended ${reason.kind ?? 'unknown'}`, nowUtc(host.clock))
         } catch (error: unknown) {
           host.ctx.logger.warn(
             'superagent: the dispatch ledger entry for %s could not be resolved: %s',
@@ -3744,7 +4294,7 @@ export const createSuperagentContribution = (
             error instanceof Error ? error.message : String(error),
           )
         }
-        await deliverTaskReport(host, report, input.agent, input.signal)
+        await deliverTaskReport(host, report, input.agent, input.signal, reason)
         return
       }
       // An executor Session is a root agent, but it must not propose new work (DH-703 review):

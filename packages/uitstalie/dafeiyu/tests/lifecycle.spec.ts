@@ -110,13 +110,13 @@ test('all scope registers tools and prompt sections on child agents too', async 
   await child.dispose()
 })
 
-test('dispatches one completed turn and skips aborted turns', async () => {
+test('dispatches every turn end, aborted ones included, with its reason', async () => {
   const calls: TurnEndInput[] = []
   const completed = Promise.withResolvers<undefined>()
   const contribution: CapabilityContribution = {
     onTurnEnd: (input) => {
       calls.push(input)
-      completed.resolve(undefined)
+      if (input.event.data.reason.kind === 'completed') completed.resolve(undefined)
     },
   }
   const { ctx, harness } = await mount({}, contribution)
@@ -128,10 +128,13 @@ test('dispatches one completed turn and skips aborted turns', async () => {
   emitTurnEnd(root.session, 3, { kind: 'aborted', reason: { kind: 'user' } })
   await settle()
 
-  expect(calls.map(call => call.turn)).toEqual([2])
-  expect(calls[0]?.agent).toBe(root)
-  expect(calls[0]?.session).toBe(root.session)
-  expect(ctx.dafeiyu.status()[0]?.lastTurnAt).toBe(calls[0]?.event.time)
+  // A turn end is a fact, not a success signal: hooks see the aborted turns too, so a dispatch
+  // report (or any failure accounting) is never silent about how the turn ended.
+  expect(calls.map(call => call.turn)).toEqual([1, 2, 3])
+  expect(calls[0]?.event.data.reason).toEqual({ kind: 'aborted', reason: { kind: 'user' } })
+  expect(calls[1]?.agent).toBe(root)
+  expect(calls[1]?.session).toBe(root.session)
+  expect(ctx.dafeiyu.status()[0]?.lastTurnAt).toBe(calls[2]?.event.time)
 })
 
 test('root-scoped turns skip child agents while all-scoped turns reach them', async () => {
