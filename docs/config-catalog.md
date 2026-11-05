@@ -1954,7 +1954,7 @@ export interface TlsConfig {
 ## `@deepseek-ai/dsh-jira-agent`
 
 - `inject`: `jira` · `tools` · `dafeiyu`
-- `source`: [`packages/jira/jira-agent/src/index.ts:74`](../packages/jira/jira-agent/src/index.ts)
+- `source`: [`packages/jira/jira-agent/src/index.ts:75`](../packages/jira/jira-agent/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -2009,6 +2009,11 @@ export type Config = Readonly<{
    * advice for the super agent, never an automatic compaction; the super agent still decides.
    */
   superagent_compact_threshold_percent?: number
+  /**
+   * Minutes a running workspace Session may run before the monitor names it (default 10). The
+   * summary is a suggestion for the super agent; nothing is aborted or interrupted automatically.
+   */
+  superagent_long_running_minutes?: number
 }>
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->

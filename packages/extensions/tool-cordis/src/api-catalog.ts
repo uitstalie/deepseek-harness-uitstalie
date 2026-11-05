@@ -9032,22 +9032,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SessionAccess = \'read\' | \'write\';',
   },
   {
-    name: 'SessionActivity',
-    declaration: 'export interface SessionActivity {\n    readonly kind: SessionActivityKind;\n    readonly items?: readonly SessionActivityItem[];\n}',
-  },
-  {
-    name: 'SessionActivityItem',
-    declaration: 'export interface SessionActivityItem {\n    readonly id: string;\n    readonly label?: string;\n}',
-  },
-  {
-    name: 'SessionActivityKind',
-    declaration: 'export type SessionActivityKind = keyof SessionActivityKindMap;',
-  },
-  {
-    name: 'SessionActivityKindMap',
-    declaration: 'export interface SessionActivityKindMap {\n}',
-  },
-  {
     name: 'SessionActivityRequest',
     declaration: 'export interface SessionActivityRequest {\n    readonly sessionId: SessionId;\n}',
   },

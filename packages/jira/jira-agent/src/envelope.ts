@@ -66,6 +66,14 @@ export type ToolValue = Readonly<{
   compactThresholdPercent?: unknown
   /** `superagent_session`: how the instruction was delivered and where it landed. */
   delivery?: unknown
+  /** `superagent_session`: a Session's live status (turn start, elapsed, last activity, in-flight tool). */
+  status?: unknown
+  /** `superagent_session action: 'inspect'`: the recent step/tool/error trail. */
+  activity?: unknown
+  /** `superagent_session action: 'abort'`: the captured scene and whether the Session resumed. */
+  abort?: unknown
+  /** `superagent_session action: 'list'`: the long-running suggestion threshold in minutes. */
+  longRunningMinutes?: unknown
   /** `superagent_dispatch`: the executor Session that was started (DH-702). */
   dispatch?: unknown
   /** `superagent_dispatch action: 'recover'`: the executors restarted, and the issues left alone. */

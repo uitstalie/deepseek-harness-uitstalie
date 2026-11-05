@@ -121,6 +121,12 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + 'at its next step; a tool call already in flight is not aborted), while the default `delivery: '
     + '"queue"` waits for that turn to end and suits new work. Use interrupt only for a correction the '
     + 'current turn must see; an idle Session queues either way, and the result names what was used.\n'
+    + '- Your context carries a `[superagent monitor]` line whenever a workspace Session\'s open turn passes '
+    + 'the configured long-running threshold; it refreshes every request without polling. Do not act on '
+    + 'age alone: inspect one with action `inspect` (recent steps, in-flight tool, last error), then decide '
+    + 'whether it is a slow task or stuck. A correction belongs in `delivery: "interrupt"`; a genuinely '
+    + 'stuck turn can be aborted and continued with action `abort` plus the recovery instruction — the '
+    + 'result carries the captured scene and the delivery of the continuation. Never abort an idle Session.\n'
     + '- Follow-up work belongs in the workspace\'s existing conversation: use `superagent_session` '
     + 'action `append` with the workspace and the instruction. It continues that workspace\'s most '
     + 'recent Session and its report comes back here.\n'
@@ -540,13 +546,15 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
       + 'workspace\'s Sessions. archive: hide one Session. fork: branch one Session. delete: erase '
       + 'one stored Session only when the host exposes a real delete API; current hosts do not, and '
       + 'the tool refuses instead of pretending. compact: compact the Session history now; it refuses '
-      + 'while the Session runs (never interrupts a task).',
-    enum: ['append', 'start', 'prompt', 'list', 'archive', 'fork', 'delete', 'compact'],
+      + 'while the Session runs (never interrupts a task). inspect: show a running Session\'s status and '
+      + 'recent steps to judge whether it is stuck. abort: abort the running turn, then continue with '
+      + '`text` (the scene is reported).',
+    enum: ['append', 'start', 'prompt', 'list', 'archive', 'fork', 'delete', 'compact', 'inspect', 'abort'],
   },
   workspace: { type: 'string', description: 'append/start/list: the workspace path or title; prompt/archive/fork/delete use it for the report headline.' },
   task: { type: 'string', description: 'start: the self-contained task for that workspace agent.' },
   session: { type: 'string', description: 'prompt/archive/fork/delete: the Session id.' },
-  text: { type: 'string', description: 'append/prompt: the follow-up instruction.' },
+  text: { type: 'string', description: 'append/prompt: the follow-up instruction; abort: the instruction to run after aborting the running turn.' },
   confirm: { type: 'string', description: 'delete: required; repeat the target Session id exactly. Deletion is irreversible.' },
   provider: { type: 'string', description: 'start/append/prompt: optional LLM provider id; requires `model`.' },
   model: { type: 'string', description: 'start/append/prompt: optional model id; requires `provider`.' },
@@ -596,7 +604,10 @@ export const SESSION_DESCRIPTION =
   + 'Session tidy its own memory first. They also accept `delivery`: `queue` (default) admits the text '
   + 'after the running turn ends, `interrupt` steers it into that turn at its next step without '
   + 'aborting a tool call already in flight; use interrupt for an urgent correction, queue for new '
-  + 'work. The result names the delivery actually used and the seq it landed at.'
+  + 'work. The result names the delivery actually used and the seq it landed at. `inspect` reports a '
+  + 'running Session\'s status (turn start, elapsed, last activity) and its recent steps. `abort` stops '
+  + 'a running turn, reports the scene it captured, and continues the Session with `text` once it is '
+  + 'idle — it refuses an idle Session rather than pretending.'
 
 /** Model discovery for the super agent's workspace Sessions (DH-803). */
 export const MODELS_TOOL_NAME = 'superagent_models'
@@ -864,6 +875,8 @@ export interface SessionToolContext {
   readonly tasks: Map<string, TaskSessionRecord>
   /** Context percentage at which a list row suggests compacting; a suggestion, never enforcement. */
   readonly compactThresholdPercent?: number
+  /** Minutes a running Session may run before the monitor names it (a suggestion, default 10). */
+  readonly longRunningMinutes?: number
 }
 
 /** The envelope both tools advertise; `items`, `issue` and `dispatch` carry the payloads. */
@@ -894,6 +907,11 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     usage: { type: 'object', additionalProperties: true },
     compaction: { type: 'object', additionalProperties: true },
     delivery: { type: 'object', additionalProperties: true },
+    status: { type: 'object', additionalProperties: true },
+    activity: { type: 'array' },
+    abort: { type: 'object', additionalProperties: true },
+    longRunningMinutes: { type: 'number' },
+    longRunning: { type: 'boolean' },
     model: { type: 'object', additionalProperties: true },
     issue: { type: 'object', additionalProperties: true },
     dispatch: { type: 'object', additionalProperties: true },
@@ -1715,6 +1733,7 @@ interface CompactionLike {
 /** The slice of the host agent registry this capability reads; it holds live Sessions only. */
 interface AgentsLike {
   get(id: string): unknown
+  list?(): readonly unknown[]
 }
 
 /** Read the host token meter when the deployment mounts one. */
@@ -1809,6 +1828,206 @@ const insertionSeqOf = (ctx: unknown, sessionId: string): number | undefined => 
   return undefined
 }
 
+/** One Session's live status, derived from its durable event log (DH-722). */
+export interface SessionActivity {
+  /** Whether a turn is open (the last `turn/start` is newer than the last `turn/end`). */
+  readonly running: boolean
+  /** When the open turn started, epoch ms; absent when idle. */
+  readonly turnStartedAt?: number
+  /** How long the open turn has run, ms; absent when idle. */
+  readonly elapsedMs?: number
+  /** When the most recent event was appended, epoch ms. */
+  readonly lastActivityAt?: number
+  /** How long ago that was, ms. */
+  readonly lastActivityAgeMs?: number
+  /** The most recent `tool/call` name. */
+  readonly lastTool?: string
+  /** The `tool/call` still waiting for its result, when one is. */
+  readonly inFlightTool?: string
+  /** The most recent tool failure's reason, when one failed. */
+  readonly lastError?: string
+  /** The most recent assistant text, truncated for diagnosis. */
+  readonly lastAssistantText?: string
+}
+
+/** The event slice this capability reads; duck-typed so older hosts keep working. */
+interface SessionEventLike {
+  readonly type?: string
+  readonly seq?: number
+  readonly time?: number
+  readonly data?: unknown
+}
+
+/** A live Agent's session as far as the monitor reads it. */
+interface LiveSessionLike {
+  snapshotEvents?: () => readonly SessionEventLike[]
+}
+
+/** Read the durable events of a live Agent's session, when it exposes them. */
+const eventsOf = (agent: unknown): readonly SessionEventLike[] => {
+  const session = (agent as { session?: LiveSessionLike } | undefined)?.session
+  return session?.snapshotEvents?.() ?? []
+}
+
+/** The last event of one type, scanning backwards. */
+const lastEventOf = (events: readonly SessionEventLike[], type: string): SessionEventLike | undefined => {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (events[index]?.type === type) return events[index]
+  }
+  return undefined
+}
+
+/** Read one assistant message's text, bounded for diagnostics. */
+const assistantTextOf = (event: SessionEventLike | undefined, limit = 400): string | undefined => {
+  const message = (event?.data as { message?: { content?: readonly { type: string; text?: string }[] } } | undefined)?.message
+  const text = (message?.content ?? [])
+    .filter(block => block.type === 'text')
+    .map(block => block.text ?? '')
+    .join('\n')
+    .trim()
+  if (text === '') return undefined
+  return text.length <= limit ? text : `${text.slice(0, limit)}…`
+}
+
+/**
+ * Derive one Session's live status from its durable log. Everything is read from events, so the
+ * monitor never has to infer activity from wall-clock bookkeeping it does not own.
+ * @param agent - the live Agent (or its session), or anything the host exposes.
+ * @param now - the clock, for elapsed and age calculations.
+ * @returns the activity snapshot, or undefined without a readable session.
+ */
+export const activityOf = (agent: unknown, now: number = Date.now()): SessionActivity | undefined => {
+  const events = eventsOf(agent)
+  if (events.length === 0) return undefined
+  const started = lastEventOf(events, 'turn/start')
+  const ended = lastEventOf(events, 'turn/end')
+  const running = started !== undefined && (ended === undefined || (started.seq ?? 0) > (ended.seq ?? 0))
+  const last = events[events.length - 1]
+  const lastCall = lastEventOf(events, 'tool/call')
+  let inFlightTool: string | undefined
+  if (lastCall !== undefined) {
+    const callId = (lastCall.data as { callId?: unknown } | undefined)?.callId
+    const resultAfter = events.some(event => event.type === 'tool/result'
+      && (event.data as { message?: { toolCallId?: unknown } } | undefined)?.message?.toolCallId === callId
+      && (event.seq ?? 0) > (lastCall.seq ?? 0))
+    if (!resultAfter) inFlightTool = (lastCall.data as { name?: string } | undefined)?.name
+  }
+  const lastError = (() => {
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index]
+      if (event?.type !== 'tool/result') continue
+      const error = (event.data as { error?: { reason?: string; name?: string }; message?: { isError?: boolean } } | undefined)
+      if (error?.error !== undefined) return error.error.reason ?? error.error.name
+      if (error?.message?.isError === true) return 'tool result reported an error'
+    }
+    return undefined
+  })()
+  const lastAssistant = lastEventOf(events, 'assistant/message')
+  const lastAssistantText = assistantTextOf(lastAssistant)
+  const lastName = (lastCall?.data as { name?: unknown } | undefined)?.name
+  const lastTool = typeof lastName === 'string' ? lastName : undefined
+  return Object.freeze({
+    running,
+    ...(running && started?.time !== undefined
+      ? {
+        turnStartedAt: started.time,
+        elapsedMs: Math.max(0, now - started.time),
+      }
+      : {}),
+    ...(last?.time === undefined ? {} : {
+      lastActivityAt: last.time,
+      lastActivityAgeMs: Math.max(0, now - last.time),
+    }),
+    ...(lastTool === undefined ? {} : { lastTool }),
+    ...(inFlightTool === undefined ? {} : { inFlightTool }),
+    ...(lastError === undefined ? {} : { lastError }),
+    ...(lastAssistantText === undefined ? {} : { lastAssistantText }),
+  })
+}
+
+/** One recent event as `inspect` reports it. */
+export interface RecentActivity {
+  readonly seq?: number
+  readonly type: string
+  readonly at?: number
+  readonly tool?: string
+  readonly text?: string
+  readonly error?: string
+}
+
+/**
+ * Summarize the most recent events of one Session, newest last, for a stuck-task diagnosis.
+ * @param agent - the live Agent.
+ * @param limit - how many trailing events to describe.
+ * @returns a compact, model-readable activity list.
+ */
+export const recentActivityOf = (agent: unknown, limit = 10): readonly RecentActivity[] => {
+  const events = eventsOf(agent)
+  return Object.freeze(events.slice(-limit).map((event) => {
+    const type = event.type ?? 'unknown'
+    const data = event.data as Record<string, unknown> | undefined
+    const tool = type === 'tool/call' ? (typeof data?.name === 'string' ? data.name : undefined) : undefined
+    const text = type === 'assistant/message' ? assistantTextOf(event, 200) : undefined
+    const error = (() => {
+      if (type !== 'tool/result') return undefined
+      const failure = data as { error?: { reason?: string; name?: string }; message?: { isError?: boolean } } | undefined
+      return failure?.error?.reason ?? failure?.error?.name ?? (failure?.message?.isError === true ? 'tool result reported an error' : undefined)
+    })()
+    return Object.freeze({
+      ...(event.seq === undefined ? {} : { seq: event.seq }),
+      type,
+      ...(event.time === undefined ? {} : { at: event.time }),
+      ...(tool === undefined ? {} : { tool }),
+      ...(text === undefined ? {} : { text }),
+      ...(error === undefined ? {} : { error }),
+    })
+  }))
+}
+
+/** Render a duration for the model: seconds under a minute, then whole minutes. */
+const durationText = (ms: number): string => ms < 60_000
+  ? `${Math.max(0, Math.round(ms / 1000))}s`
+  : `${Math.round(ms / 60_000)}m`
+
+/**
+ * The one-line monitor the super agent sees on every request: workspace Sessions whose open turn
+ * has exceeded the configured threshold, with their age, last activity and in-flight tool. Empty
+ * when nothing is long-running, so a quiet deployment pays nothing.
+ * @param ctx - the plugin context carrying the agent registry.
+ * @param superHome - the super workspace path; its own sessions are not workspace work.
+ * @param thresholdMs - the configured suggestion threshold.
+ * @param now - the clock.
+ * @returns the context text (possibly empty).
+ */
+export const longRunningSummary = (
+  ctx: unknown,
+  superHome: string | undefined,
+  thresholdMs: number,
+  now: number = Date.now(),
+): string => {
+  const agents = agentsOf(ctx)
+  if (agents?.list === undefined) return ''
+  const rows: string[] = []
+  for (const agent of agents.list()) {
+    const header = (agent as { session?: { header?: { cwd?: string; origin?: string } } }).session?.header
+    if (header?.origin === 'subagent') continue
+    if (superHome !== undefined && header?.cwd !== undefined && sameCheckout(header.cwd, superHome)) continue
+    const activity = activityOf(agent, now)
+    if (activity?.running !== true || activity.elapsedMs === undefined || activity.elapsedMs < thresholdMs) continue
+    const id = String((agent as { id?: unknown }).id)
+    const tail = activity.lastActivityAgeMs === undefined ? '' : `last activity ${durationText(activity.lastActivityAgeMs)} ago`
+    const tool = activity.inFlightTool === undefined
+      ? (activity.lastTool === undefined ? '' : `last tool ${activity.lastTool}`)
+      : `tool ${activity.inFlightTool} (in flight)`
+    rows.push(`${id} ${durationText(activity.elapsedMs)}${tail === '' ? '' : ` — ${tail}`}${tool === '' ? '' : `, ${tool}`}`)
+  }
+  if (rows.length === 0) return ''
+  return `[superagent monitor] ${rows.length} running Session(s) over ${durationText(thresholdMs)}: `
+    + `${rows.join('; ')}. Inspect one with superagent_session action "inspect" before deciding whether to `
+    + 'interrupt it (delivery "interrupt" on append/prompt) or abort and continue it (action "abort").'
+}
+
+
 /** How one admitted instruction reached the Session. */
 export interface DeliveryOutcome {
   /** What the caller asked for. */
@@ -1837,6 +2056,47 @@ const decideDelivery = (requested: 'queue' | 'interrupt', wasRunning: boolean): 
   used: requested === 'interrupt' && wasRunning ? 'interrupt' : 'queue',
   fallback: requested === 'interrupt' && !wasRunning,
 })
+
+/**
+ * Wait for an aborted Session to become idle. The Agent's own `whenIdle` is authoritative when the
+ * host exposes it; otherwise the host list is polled within the same budget. A timeout returns
+ * false, and the caller reports it instead of continuing on a turn that may still be running.
+ * @param controller - the host session controller.
+ * @param agent - the live Agent whose turn was aborted.
+ * @param sessionId - the Session id.
+ * @param timeoutMs - the budget.
+ * @returns whether the Session reached idle inside the budget.
+ */
+const waitForIdle = async (
+  controller: SessionControllerLike,
+  agent: unknown,
+  sessionId: string,
+  timeoutMs: number,
+): Promise<boolean> => {
+  const whenIdle = (agent as { whenIdle?: () => Promise<void> }).whenIdle
+  if (typeof whenIdle === 'function') {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs)
+      timer.unref?.()
+    })
+    try {
+      return await Promise.race([whenIdle.call(agent).then(() => true), timeout])
+    } catch {
+      return false
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const listed = await controller.list()
+    const item = listed.items.find(entry => String(entry.sessionId) === sessionId)
+    if (item?.running !== true) return true
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  return false
+}
 
 /**
  * Assemble the delivery report a result carries, including where the instruction landed.
@@ -1978,6 +2238,8 @@ export const runSessionTool = async (
   const wantCompact = validated.value.compact === true
   const curateMemory = validated.value.curate_memory === true
   const requestedDelivery: 'queue' | 'interrupt' = validated.value.delivery === 'interrupt' ? 'interrupt' : 'queue'
+  const longRunningMinutes = context.longRunningMinutes ?? DEFAULT_LONG_RUNNING_MINUTES
+  const longRunningMs = longRunningMinutes * 60_000
 
   if (action === 'append') {
     if (workspace === undefined) {
@@ -2039,6 +2301,9 @@ export const runSessionTool = async (
         ...verdict,
         session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title, appended: true }),
         delivery: delivered,
+        ...((agentsOf(ctx)?.get(sessionId) as { session?: unknown } | undefined) === undefined
+          ? {}
+          : { status: Object.freeze(activityOf(agentsOf(ctx)?.get(sessionId), Date.now()) ?? { running: false }) }),
         ...(selected.model === undefined ? {} : { model: selected.model }),
         ...(compaction === undefined ? {} : { compaction: Object.freeze(compaction) }),
       }), ledger)
@@ -2152,6 +2417,9 @@ export const runSessionTool = async (
         ...verdict,
         session: Object.freeze({ id: sessionArg }),
         delivery: delivered,
+        ...((agentsOf(ctx)?.get(sessionArg) as { session?: unknown } | undefined) === undefined
+          ? {}
+          : { status: Object.freeze(activityOf(agentsOf(ctx)?.get(sessionArg), Date.now()) ?? { running: false }) }),
         ...(selected.model === undefined ? {} : { model: selected.model }),
         ...(compaction === undefined ? {} : { compaction: Object.freeze(compaction) }),
       }), ledger)
@@ -2161,6 +2429,85 @@ export const runSessionTool = async (
         { session: sessionArg },
       ), caller, me)
     }
+  }
+
+  if (action === 'inspect') {
+    if (sessionArg === undefined || sessionArg.trim() === '') {
+      return failure(invalidInput('inspect needs `session`: the Session id'), caller, me)
+    }
+    const live = agentsOf(ctx)?.get(sessionArg.trim())
+    if (live === undefined) {
+      return failure(invalidInput(
+        'that Session has no live Agent right now, so there is no running turn to inspect',
+        { session: sessionArg },
+      ), caller, me)
+    }
+    const status = activityOf(live, Date.now()) ?? { running: false }
+    return Object.freeze({
+      ...verdict,
+      session: Object.freeze({ id: sessionArg.trim() }),
+      status: Object.freeze(status),
+      activity: recentActivityOf(live, 12),
+    })
+  }
+
+  if (action === 'abort') {
+    if (sessionArg === undefined || sessionArg.trim() === '') {
+      return failure(invalidInput('abort needs `session`: the Session id'), caller, me)
+    }
+    if (textArg === undefined || textArg.trim() === '') {
+      return failure(invalidInput('abort needs `text`: the instruction to run after the abort'), caller, me)
+    }
+    const live = agentsOf(ctx)?.get(sessionArg.trim())
+    if (live === undefined) {
+      return failure(invalidInput(
+        'that Session has no live Agent right now; only a running turn can be aborted',
+        { session: sessionArg },
+      ), caller, me)
+    }
+    const now = Date.now()
+    const status = activityOf(live, now) ?? { running: false }
+    const scene = Object.freeze({
+      status,
+      activity: recentActivityOf(live, 8),
+    })
+    if (status.running !== true) {
+      return failure(invalidInput(
+        'the Session is idle, so there is nothing to abort; use append/prompt to continue it',
+        { session: sessionArg, scene },
+      ), caller, me)
+    }
+    if (controller.cancel === undefined) {
+      return failure(invalidInput('this host exposes no Session cancel, so the turn cannot be aborted', { session: sessionArg, scene }), caller, me)
+    }
+    try {
+      await controller.cancel({ sessionId: sessionArg.trim() })
+    } catch (error: unknown) {
+      return failure(invalidInput(
+        `the abort was refused: ${error instanceof Error ? error.message : String(error)}`,
+        { session: sessionArg, scene },
+      ), caller, me)
+    }
+    const idle = await waitForIdle(controller, live, sessionArg.trim(), 15_000)
+    if (!idle) {
+      return failure(invalidInput(
+        'the abort was accepted but the Session did not become idle within 15s, so nothing was continued',
+        { session: sessionArg, scene: Object.freeze({ ...scene, aborted: true }) },
+      ), caller, me)
+    }
+    const admitted = await controller.prompt({
+      requestId: `superagent-recover-${randomUUID()}`,
+      sessionId: sessionArg.trim(),
+      mode: 'queue',
+      content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
+    }, new AbortController().signal)
+    const delivered = deliveryOutcome('queue', 'queue', false, false, admitted.accepted, insertionSeqOf(ctx, sessionArg.trim()))
+    return Object.freeze({
+      ...verdict,
+      session: Object.freeze({ id: sessionArg.trim() }),
+      abort: Object.freeze({ accepted: true, wasRunning: true, scene, resumed: true }),
+      delivery: delivered,
+    })
   }
 
   if (action === 'compact') {
@@ -2191,6 +2538,7 @@ export const runSessionTool = async (
           const id = String(item.sessionId)
           const live = agentsOf(ctx)?.get(id) as { session?: unknown } | undefined
           const usage = contextUsageOf(meter, live?.session)
+          const status = live === undefined ? undefined : activityOf(live, Date.now())
           return Object.freeze({
             id,
             running: item.running,
@@ -2199,9 +2547,16 @@ export const runSessionTool = async (
             ...(item.updatedAt === undefined ? {} : { updatedAt: item.updatedAt }),
             ...(usage === undefined ? {} : { usage }),
             ...(usage?.percent === undefined || usage.percent < thresholdPercent ? {} : { recommendCompact: true }),
+            ...(status === undefined ? {} : { status }),
+            ...(status?.elapsedMs === undefined || status.elapsedMs < longRunningMs ? {} : { longRunning: true }),
           })
         })
-      return Object.freeze({ ...verdict, sessions: Object.freeze(rows), compactThresholdPercent: thresholdPercent })
+      return Object.freeze({
+        ...verdict,
+        sessions: Object.freeze(rows),
+        compactThresholdPercent: thresholdPercent,
+        longRunningMinutes,
+      })
     } catch (error: unknown) {
       return failure(invalidInput(`the Session list could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
     }
@@ -2482,6 +2837,9 @@ export const DEFAULT_MAX_WORKERS = 2
 /** The context percentage at which a Session row starts suggesting compaction (a suggestion only). */
 export const DEFAULT_COMPACT_THRESHOLD_PERCENT = 30
 
+/** Minutes a running Session may run before the monitor suggests looking at it (a suggestion only). */
+export const DEFAULT_LONG_RUNNING_MINUTES = 10
+
 /** One Session row the list action reports. */
 export interface SessionSummaryLike {
   readonly sessionId: unknown
@@ -2524,6 +2882,11 @@ export interface SessionControllerLike {
   }, signal: AbortSignal): Promise<{ readonly accepted: boolean }>
   /** Every visible Session, so a dispatch can tell whether its executor still runs. */
   list(): Promise<{ readonly items: readonly SessionSummaryLike[] }>
+  /**
+   * Abort one Session's active turn. The host keeps the inbox and records its own turn-end, so the
+   * caller can continue the Session afterwards with an ordinary prompt.
+   */
+  cancel?(request: { readonly sessionId: string }): { readonly accepted: boolean } | Promise<{ readonly accepted: boolean }>
   /**
    * Record a model selection for the Session's next turn. The host validates the route against
    * its LLM registry, then writes the durable selection projection the next step reads.
@@ -2728,6 +3091,7 @@ export const runDispatchTool = async (
     // The executor is running and bound by the `starting` record even if this richer status cannot
     // be written; the claim is not lost, and recovery sees the Session as still running.
     const recorded = await record('started')
+    const running = agentsOf(ctx)?.get(sessionId)
     return Object.freeze({
       ok: true,
       writable: caller.writable,
@@ -2741,6 +3105,7 @@ export const runDispatchTool = async (
         instruction,
         recorded,
         status: recorded ? 'started' : 'starting',
+        ...(running === undefined ? {} : { activity: activityOf(running, Date.now()) }),
       }),
     })
   }
@@ -2967,6 +3332,8 @@ export interface SuperagentDaemonConfig {
  *   workspace through the in-process filesystem fence; defaults to true.
  * @param compactThresholdPercent - the context percentage at which a Session row suggests compacting;
  *   a suggestion for the super agent, never an automatic compaction (default 30).
+ * @param longRunningMinutes - minutes a running Session may run before the monitor names it in the
+ *   super agent's context; a suggestion, never an automatic abort (default 10).
  * @returns the capability contribution the organizer wires onto root agents.
  */
 export const createSuperagentContribution = (
@@ -2980,6 +3347,7 @@ export const createSuperagentContribution = (
   agentPreset?: string,
   writeRegisteredWorkspaces = true,
   compactThresholdPercent: number = DEFAULT_COMPACT_THRESHOLD_PERCENT,
+  longRunningMinutes: number = DEFAULT_LONG_RUNNING_MINUTES,
 ): CapabilityContribution => {
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
@@ -2995,6 +3363,29 @@ export const createSuperagentContribution = (
       | { registerFsWritableRoots?: (provider: (session: unknown) => readonly string[] | undefined) => () => void }
       | undefined
     fsRootsDispose = sandboxPolicy?.registerFsWritableRoots?.(session => superAgentFsRoots(host.ctx, session, superHome))
+  }
+  // The super agent sees a refreshed long-running summary on every request, without polling: the
+  // host rebuilds runtime context per request, and an empty summary contributes nothing.
+  let monitorDispose: (() => void) | undefined
+  const inject = (host.ctx as { inject?: (names: readonly string[], callback: (scope: unknown) => void) => unknown }).inject
+  if (superHome !== undefined && typeof inject === 'function') {
+    inject.call(host.ctx, ['systemPrompt'], (scope) => {
+      const systemPrompt = (scope as {
+        systemPrompt?: { context?: (entry: {
+          name: string
+          order: number
+          text: (context: { agent?: unknown }) => string
+        }) => () => void }
+      }).systemPrompt
+      if (systemPrompt?.context === undefined) return
+      monitorDispose = systemPrompt.context({
+        name: 'superagent:running',
+        order: 705,
+        text: (context: { agent?: unknown }) => isSuperAgentSession(context.agent as Agent, superHome)
+          ? longRunningSummary(host.ctx, superHome, longRunningMinutes * 60_000)
+          : '',
+      })
+    })
   }
   const daemonWorkspace = daemon?.workspace
   const daemonEnabled = daemon?.enabled === true && daemonWorkspace !== undefined && daemonWorkspace.trim() !== ''
@@ -3182,12 +3573,15 @@ export const createSuperagentContribution = (
           blank?: boolean
           usage?: { percent?: number }
           recommendCompact?: boolean
+          longRunning?: boolean
+          status?: { elapsedMs?: number }
         }[]
         if (rows.length === 0) return renderText('no Session in that workspace')
         return renderText(rows
           .map(row => `${row.id}  ${row.running ? 'running' : 'idle'}${row.blank === true ? '  (blank)' : ''}`
+            + `${row.status?.elapsedMs === undefined ? '' : `  ${durationText(row.status.elapsedMs)}`}`
             + `${row.usage?.percent === undefined ? '' : `  context ${row.usage.percent}%`}`
-            + `${row.recommendCompact === true ? '  (consider compact)' : ''}  ${row.cwd ?? ''}`)
+            + `${row.recommendCompact === true ? '  (consider compact)' : ''}${row.longRunning === true ? '  (long-running)' : ''}  ${row.cwd ?? ''}`)
           .join('\n'))
       }
       const compaction = typed.compaction as {
@@ -3202,6 +3596,33 @@ export const createSuperagentContribution = (
       }
       const one = typed.session as { id?: string; archived?: boolean; forkedFrom?: string } | undefined
       if (one?.id === undefined) return renderText('ok')
+      const status = typed.status as {
+        running?: boolean
+        elapsedMs?: number
+        lastActivityAgeMs?: number
+        inFlightTool?: string
+        lastTool?: string
+        lastError?: string
+      } | undefined
+      const abort = typed.abort as { resumed?: boolean } | undefined
+      if (abort !== undefined) {
+        return renderText(`aborted ${one.id}${status?.elapsedMs === undefined ? '' : ` after ${durationText(status.elapsedMs)}`}`
+          + `${abort.resumed === true ? ' → continued' : ''}`)
+      }
+      const activity = typed.activity as readonly {
+        seq?: number
+        type?: string
+        tool?: string
+        error?: string
+        text?: string
+      }[] | undefined
+      if (activity !== undefined) {
+        const head = `session ${one.id}${status?.running === true ? ` running ${durationText(status.elapsedMs ?? 0)}` : ' idle'}`
+          + `${status?.inFlightTool === undefined ? '' : `, tool ${status.inFlightTool} in flight`}`
+          + `${status?.lastError === undefined ? '' : `, last error ${status.lastError}`}`
+        const trail = activity.map(row => `${String(row.type)}${row.tool === undefined ? '' : ` ${row.tool}`}${row.error === undefined ? '' : ` [${row.error}]`}`).join('\n')
+        return renderText(`${head}\n${trail}`)
+      }
       if (one.archived === true) return renderText(`archived ${one.id}`)
       if (one.forkedFrom !== undefined) return renderText(`branched ${one.forkedFrom} → ${one.id}`)
       const delivery = typed.delivery as { used?: string; fallback?: boolean; insertedAtSeq?: number } | undefined
@@ -3215,6 +3636,7 @@ export const createSuperagentContribution = (
       ...(agentPreset === undefined ? {} : { agentPreset }),
       tasks,
       compactThresholdPercent,
+      longRunningMinutes,
     }),
   }
   const deliver: Spec = {
@@ -3302,6 +3724,8 @@ export const createSuperagentContribution = (
       await runSuperagentPass(host, input.agent, input.signal, workerPreset, maxWorkers)
     },
     dispose: () => {
+      monitorDispose?.()
+      monitorDispose = undefined
       fsRootsDispose?.()
       fsRootsDispose = undefined
       if (timer !== undefined) clearInterval(timer)

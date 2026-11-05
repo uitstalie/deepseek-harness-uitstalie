@@ -46,6 +46,7 @@ import {
   SUPERAGENT_SETTINGS_ORDER,
   SUPERAGENT_SETTINGS_SECTION,
   DEFAULT_COMPACT_THRESHOLD_PERCENT,
+  DEFAULT_LONG_RUNNING_MINUTES,
   createSuperagentContribution,
   ensureSuperWorkspace,
   superagentHomeProblem,
@@ -115,6 +116,11 @@ export type Config = Readonly<{
    * advice for the super agent, never an automatic compaction; the super agent still decides.
    */
   superagent_compact_threshold_percent?: number
+  /**
+   * Minutes a running workspace Session may run before the monitor names it (default 10). The
+   * summary is a suggestion for the super agent; nothing is aborted or interrupted automatically.
+   */
+  superagent_long_running_minutes?: number
 }>
 
 /** Schemastery schema for the row configuration. */
@@ -129,6 +135,7 @@ export const Config: z<Config> = z.object({
   superagent_agent_preset: z.string(),
   superagent_write_registered_workspaces: z.boolean(),
   superagent_compact_threshold_percent: z.number(),
+  superagent_long_running_minutes: z.number(),
 })
 
 /**
@@ -236,6 +243,7 @@ export function apply(ctx: Context, config: Config): void {
         config.superagent_agent_preset,
         config.superagent_write_registered_workspaces !== false,
         config.superagent_compact_threshold_percent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT,
+        config.superagent_long_running_minutes ?? DEFAULT_LONG_RUNNING_MINUTES,
       ),
   })
   ctx.effect(() => superagent, 'superagent.register()')
@@ -366,8 +374,11 @@ export {
   DELIVER_PARAMETERS,
   DELIVER_TOOL_NAME,
   MEMORY_CURATION_INSTRUCTION,
+  activityOf,
   compactWorkspaceSession,
   contextUsageOf,
+  longRunningSummary,
+  recentActivityOf,
   MODELS_DESCRIPTION,
   MODELS_PARAMETERS,
   MODELS_TOOL_NAME,

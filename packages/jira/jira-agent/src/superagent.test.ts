@@ -37,6 +37,8 @@ import {
   WORK_TOOL_NAME,
   DELIVER_TOOL_NAME,
   MEMORY_CURATION_INSTRUCTION,
+  activityOf,
+  longRunningSummary,
   claimability,
   createJiraContribution,
   createSessionRecorder,
@@ -1046,6 +1048,112 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.match(JSON.stringify(combined.error), /cannot be combined with an interrupt/u)
     assert.equal(controller.prompted.length, 0)
     assert.equal(controller.compactCalls, 0)
+  })
+
+  it('reports live status and a long-running flag in list', async () => {
+    const now = Date.now()
+    const events = [
+      { type: 'turn/start', seq: 1, time: now - 12 * 60_000, data: { turn: 1 } },
+      { type: 'tool/call', seq: 2, time: now - 11 * 60_000, data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{}' } },
+      { type: 'assistant/message', seq: 3, time: now - 60_000, data: { message: { content: [{ type: 'text', text: 'still working' }] } } },
+    ]
+    const controller = new CompactController()
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'agents' ? { get: () => ({ session: { header: { cwd: workspacePath }, snapshotEvents: () => events } }) }
+          : undefined,
+    }
+    const listed = await runSessionTool({ action: 'list' }, options, me, ctx, { tasks: new Map(), longRunningMinutes: 10 })
+    const row = (listed.sessions as {
+      id: string
+      running: boolean
+      status?: { running?: boolean; elapsedMs?: number; inFlightTool?: string }
+      longRunning?: boolean
+    }[])[0]
+    assert.equal(row?.status?.running, true)
+    assert.ok((row?.status?.elapsedMs ?? 0) >= 12 * 60_000)
+    assert.equal(row?.status?.inFlightTool, 'bash')
+    assert.equal(row?.longRunning, true)
+    assert.equal(listed.longRunningMinutes, 10)
+  })
+
+  it('inspects a running Session and refuses an idle abort', async () => {
+    const now = Date.now()
+    const events = [
+      { type: 'turn/start', seq: 1, time: now - 5 * 60_000, data: { turn: 1 } },
+      { type: 'tool/call', seq: 2, time: now - 4 * 60_000, data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{}' } },
+      { type: 'tool/result', seq: 3, time: now - 3 * 60_000, data: { turn: 1, step: 1, message: { toolCallId: 'c1', content: [], isError: true }, error: { name: 'BashError', code: 'EXIT', reason: 'exit 1' } } },
+    ]
+    const controller = new CompactController()
+    const agent = { session: { header: { cwd: workspacePath }, snapshotEvents: () => events } }
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'agents' ? { get: () => agent }
+          : undefined,
+    }
+    const inspected = await runSessionTool({ action: 'inspect', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(inspected.ok, true, JSON.stringify(inspected.error))
+    assert.equal((inspected.status as { running?: boolean }).running, true)
+    assert.equal((inspected.activity as unknown[]).length, 3)
+    assert.equal((inspected.status as { lastError?: string }).lastError, 'exit 1')
+
+    const idleAgent = { session: { header: { cwd: workspacePath }, snapshotEvents: () => [] } }
+    const idleCtx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'agents' ? { get: () => idleAgent }
+          : undefined,
+    }
+    const refused = await runSessionTool({ action: 'abort', session: 'w-session', text: 'retry' }, options, me, idleCtx, { tasks: new Map() })
+    assert.equal(refused.ok, false)
+    assert.match(JSON.stringify(refused.error), /idle/u)
+  })
+
+  it('aborts a running Session, reports the scene and continues it', async () => {
+    const now = Date.now()
+    const events = [
+      { type: 'turn/start', seq: 1, time: now - 6 * 60_000, data: { turn: 1 } },
+      { type: 'tool/call', seq: 2, time: now - 5 * 60_000, data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{}' } },
+      { type: 'assistant/message', seq: 3, time: now - 4 * 60_000, data: { message: { content: [{ type: 'text', text: 'stuck waiting' }] } } },
+    ]
+    let cancelled = 0
+    let idleCalls = 0
+    class AbortController extends CompactController {
+      async cancel() { cancelled += 1; return { accepted: true } }
+    }
+    const controller = new AbortController()
+    const agent = {
+      session: { header: { cwd: workspacePath }, snapshotEvents: () => events },
+      async whenIdle() { idleCalls += 1 },
+    }
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'agents' ? { get: () => agent }
+          : undefined,
+    }
+    const result = await runSessionTool({ action: 'abort', session: 'w-session', text: 'skip the wait and continue' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(result.ok, true, JSON.stringify(result.error))
+    assert.equal(cancelled, 1)
+    assert.equal(idleCalls, 1)
+    assert.equal(controller.prompted[0]?.text, 'skip the wait and continue')
+    const abort = result.abort as { resumed?: boolean; scene?: { status?: { elapsedMs?: number }; activity?: unknown[] } }
+    assert.equal(abort.resumed, true)
+    assert.ok((abort.scene?.status?.elapsedMs ?? 0) >= 6 * 60_000)
+    assert.equal((abort.scene?.activity as unknown[] | undefined)?.length, 3)
+  })
+
+  it('summarizes long-running Sessions for the super agent context', () => {
+    const now = Date.now()
+    const events = [
+      { type: 'turn/start', seq: 1, time: now - 70 * 60_000, data: { turn: 1 } },
+      { type: 'tool/call', seq: 2, time: now - 65 * 60_000, data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{}' } },
+    ]
+    const agent = { id: 'slow-session', session: { header: { cwd: workspacePath }, snapshotEvents: () => events } }
+    const ctx = { get: (key: string) => key === 'agents' ? { get: () => undefined, list: () => [agent] } : undefined }
+    const text = longRunningSummary(ctx, '/super/home', 10 * 60_000, now)
+    assert.match(text, /slow-session 70m/u)
+    assert.match(text, /tool bash \(in flight\)/u)
+    assert.equal(activityOf(agent, now)?.running, true)
+    assert.equal(longRunningSummary({ get: () => ({ get: () => undefined, list: () => [] }) }, undefined, 10 * 60_000, now), '')
   })
 
   it('carries the context marker into the turn report', async () => {
