@@ -64,6 +64,8 @@ export type ToolValue = Readonly<{
   compaction?: unknown
   /** `superagent_session action: 'list'`: the percentage at which a row starts suggesting compaction. */
   compactThresholdPercent?: unknown
+  /** `superagent_session`: how the instruction was delivered and where it landed. */
+  delivery?: unknown
   /** `superagent_dispatch`: the executor Session that was started (DH-702). */
   dispatch?: unknown
   /** `superagent_dispatch action: 'recover'`: the executors restarted, and the issues left alone. */

@@ -871,10 +871,10 @@ describe('superagent: context, compaction and memory curation', () => {
 
   class CompactController extends ModelSelectingController {
     items = [{ sessionId: 'w-session', running: false, cwd: workspacePath, blank: false, updatedAt: 100 }]
-    prompted: { sessionId: string; text: string }[] = []
+    prompted: { sessionId: string; text: string; mode?: string }[] = []
     compactCalls = 0
-    async prompt(request: { sessionId: string; content: readonly { text: string }[] }) {
-      this.prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '' })
+    async prompt(request: { sessionId: string; mode?: string; content: readonly { text: string }[] }) {
+      this.prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '', ...(request.mode === undefined ? {} : { mode: request.mode }) })
       return { accepted: true }
     }
     async list() { return { items: this.items } }
@@ -979,6 +979,73 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(controller.compactCalls, 1)
     assert.equal((result.compaction as { after?: { percent?: number } }).after?.percent, 5)
+  })
+
+  it('steers an interrupt into a running Session and reports where it landed', async () => {
+    const controller = new CompactController()
+    controller.items = [{ sessionId: 'w-run', running: true, cwd: workspacePath, blank: false, updatedAt: 100 }]
+    const registry = new CompactRegistry()
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'workspaceRegistry' ? registry
+          : key === 'agents' ? { get: () => ({ session: { snapshotEvents: () => [{ type: 'user/message', seq: 42 }] } }) }
+            : undefined,
+    }
+    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'stop, use the other branch', delivery: 'interrupt' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(result.ok, true, JSON.stringify(result.error))
+    assert.equal(controller.prompted[0]?.mode, 'steer')
+    const delivery = result.delivery as {
+      requested?: string
+      used?: string
+      wasRunning?: boolean
+      accepted?: boolean
+      insertedAtSeq?: number
+    }
+    assert.equal(delivery.requested, 'interrupt')
+    assert.equal(delivery.used, 'interrupt')
+    assert.equal(delivery.wasRunning, true)
+    assert.equal(delivery.accepted, true)
+    assert.equal(delivery.insertedAtSeq, 42)
+  })
+
+  it('queues by default and falls back when interrupt meets an idle Session', async () => {
+    const controller = new CompactController()
+    const registry = new CompactRegistry()
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'workspaceRegistry' ? registry
+          : undefined,
+    }
+    const queued = await runSessionTool({ action: 'append', workspace: 'hello', text: 'new work' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(queued.ok, true, JSON.stringify(queued.error))
+    assert.equal(controller.prompted[0]?.mode, 'queue')
+    assert.equal((queued.delivery as { used?: string }).used, 'queue')
+
+    const fallback = await runSessionTool({ action: 'append', workspace: 'hello', text: 'urgent but idle', delivery: 'interrupt' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(fallback.ok, true, JSON.stringify(fallback.error))
+    assert.equal(controller.prompted[1]?.mode, 'queue')
+    const delivery = fallback.delivery as { used?: string; fallback?: boolean }
+    assert.equal(delivery.used, 'queue')
+    assert.equal(delivery.fallback, true)
+  })
+
+  it('rejects interrupt on start and compact + interrupt on a running Session', async () => {
+    const controller = new CompactController()
+    controller.items = [{ sessionId: 'w-run', running: true, cwd: workspacePath, blank: false, updatedAt: 100 }]
+    const registry = new CompactRegistry()
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'workspaceRegistry' ? registry
+          : key === 'compaction' ? { compactNow: async () => { controller.compactCalls += 1; return { shadowedTokenCount: 1 } } }
+            : undefined,
+    }
+    const started = await runSessionTool({ action: 'start', workspace: 'hello', task: 'do it', delivery: 'interrupt' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(started.ok, false)
+    const combined = await runSessionTool({ action: 'append', workspace: 'hello', text: 'urgent', delivery: 'interrupt', compact: true }, options, me, ctx, { tasks: new Map() })
+    assert.equal(combined.ok, false)
+    assert.match(JSON.stringify(combined.error), /cannot be combined with an interrupt/u)
+    assert.equal(controller.prompted.length, 0)
+    assert.equal(controller.compactCalls, 0)
   })
 
   it('carries the context marker into the turn report', async () => {

@@ -116,6 +116,11 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + '- When the person asks to tidy or evaluate a workspace\'s memory, pass `curate_memory: true` on '
     + '`append`/`prompt`: the workspace Session reads, merges and expires its OWN memory with its memory '
     + 'tools. Memory is per-workspace; never edit another workspace\'s `.dsh/memory` from here.\n'
+    + '- When a workspace Session is already running, choose how the instruction lands: `delivery: '
+    + '"interrupt"` steers an urgent correction or pivotal fact into the running turn (the agent sees it '
+    + 'at its next step; a tool call already in flight is not aborted), while the default `delivery: '
+    + '"queue"` waits for that turn to end and suits new work. Use interrupt only for a correction the '
+    + 'current turn must see; an idle Session queues either way, and the result names what was used.\n'
     + '- Follow-up work belongs in the workspace\'s existing conversation: use `superagent_session` '
     + 'action `append` with the workspace and the instruction. It continues that workspace\'s most '
     + 'recent Session and its report comes back here.\n'
@@ -562,6 +567,14 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
       + 'memory (merge, expire, add conclusions) before the task. Memory stays per-workspace; this tool never '
       + 'writes another workspace\'s memory.',
   },
+  delivery: {
+    type: 'string',
+    description: 'append/prompt: queue (default) waits for the running turn to end and admits the text as the '
+      + 'next turn; interrupt steers the text into the running turn, so the Session sees it at its next step '
+      + 'without aborting a tool call already in flight. An idle Session queues regardless. start does not '
+      + 'take this option.',
+    enum: ['queue', 'interrupt'],
+  },
 })
 
 /** `superagent_session`'s description: what the verbs do and where the report goes. */
@@ -580,7 +593,10 @@ export const SESSION_DESCRIPTION =
   + '`compact` compacts one Session now (host-side, through the same seam as `/compact`), and it '
   + 'refuses while the Session runs rather than interrupting it. `append`/`prompt` accept `compact: '
   + 'true` to compact before the text is admitted, and `curate_memory: true` to make the workspace '
-  + 'Session tidy its own memory first.'
+  + 'Session tidy its own memory first. They also accept `delivery`: `queue` (default) admits the text '
+  + 'after the running turn ends, `interrupt` steers it into that turn at its next step without '
+  + 'aborting a tool call already in flight; use interrupt for an urgent correction, queue for new '
+  + 'work. The result names the delivery actually used and the seq it landed at.'
 
 /** Model discovery for the super agent's workspace Sessions (DH-803). */
 export const MODELS_TOOL_NAME = 'superagent_models'
@@ -877,6 +893,7 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     delivered: { type: 'object', additionalProperties: true },
     usage: { type: 'object', additionalProperties: true },
     compaction: { type: 'object', additionalProperties: true },
+    delivery: { type: 'object', additionalProperties: true },
     model: { type: 'object', additionalProperties: true },
     issue: { type: 'object', additionalProperties: true },
     dispatch: { type: 'object', additionalProperties: true },
@@ -1773,6 +1790,80 @@ export const MEMORY_CURATION_INSTRUCTION =
  */
 const composeTask = (text: string, curate: boolean): string => curate ? MEMORY_CURATION_INSTRUCTION + text : text
 
+/**
+ * The durable seq of the newest user message on a Session's log: where an admitted instruction
+ * landed. Best-effort — the host may not expose a live Session, in which case the field is absent.
+ * @param ctx - the plugin context carrying the agent registry.
+ * @param sessionId - the Session that just accepted the instruction.
+ * @returns the newest `user/message` seq, or undefined.
+ */
+const insertionSeqOf = (ctx: unknown, sessionId: string): number | undefined => {
+  const agent = agentsOf(ctx)?.get(sessionId) as
+    | { session?: { snapshotEvents?: () => readonly { type?: string; seq?: number }[] } }
+    | undefined
+  const events = agent?.session?.snapshotEvents?.() ?? []
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type === 'user/message' && typeof event.seq === 'number') return event.seq
+  }
+  return undefined
+}
+
+/** How one admitted instruction reached the Session. */
+export interface DeliveryOutcome {
+  /** What the caller asked for. */
+  readonly requested: 'queue' | 'interrupt'
+  /** What the host actually used (`interrupt` only steers a running turn). */
+  readonly used: 'queue' | 'interrupt'
+  /** Whether the controller admitted the message. */
+  readonly accepted: boolean
+  /** Whether the Session was running at admission. */
+  readonly wasRunning: boolean
+  /** True when `interrupt` was requested on an idle Session, which queued instead. */
+  readonly fallback?: boolean
+  /** The durable seq of the newest user message, when the host exposes the Session log. */
+  readonly insertedAtSeq?: number
+}
+
+/**
+ * Choose the delivery the host can actually honor: only a running turn can be steered, so an
+ * interrupt requested on an idle Session queues instead of failing (the person's instruction still
+ * lands, just as the next turn). The fallback is reported, not silent.
+ * @param requested - what the caller asked for.
+ * @param wasRunning - whether the Session was running at admission.
+ * @returns the mode to use and whether it fell back.
+ */
+const decideDelivery = (requested: 'queue' | 'interrupt', wasRunning: boolean): { used: 'queue' | 'interrupt'; fallback: boolean } => ({
+  used: requested === 'interrupt' && wasRunning ? 'interrupt' : 'queue',
+  fallback: requested === 'interrupt' && !wasRunning,
+})
+
+/**
+ * Assemble the delivery report a result carries, including where the instruction landed.
+ * @param requested - what the caller asked for.
+ * @param used - the mode the host used.
+ * @param fallback - whether interrupt fell back to queue.
+ * @param wasRunning - whether the Session was running at admission.
+ * @param accepted - the controller's acknowledgement.
+ * @param insertedAtSeq - the newest user-message seq, when readable.
+ * @returns the frozen outcome.
+ */
+const deliveryOutcome = (
+  requested: 'queue' | 'interrupt',
+  used: 'queue' | 'interrupt',
+  fallback: boolean,
+  wasRunning: boolean,
+  accepted: boolean,
+  insertedAtSeq: number | undefined,
+): DeliveryOutcome => Object.freeze({
+  requested,
+  used,
+  accepted,
+  wasRunning,
+  ...(fallback ? { fallback: true } : {}),
+  ...(insertedAtSeq === undefined ? {} : { insertedAtSeq }),
+})
+
 /** What one manual compaction attempt reports. */
 export interface CompactionOutcome {
   readonly before?: ContextUsage
@@ -1886,6 +1977,7 @@ export const runSessionTool = async (
   const thresholdPercent = context.compactThresholdPercent ?? DEFAULT_COMPACT_THRESHOLD_PERCENT
   const wantCompact = validated.value.compact === true
   const curateMemory = validated.value.curate_memory === true
+  const requestedDelivery: 'queue' | 'interrupt' = validated.value.delivery === 'interrupt' ? 'interrupt' : 'queue'
 
   if (action === 'append') {
     if (workspace === undefined) {
@@ -1909,6 +2001,15 @@ export const runSessionTool = async (
       const sessionId = String(target.sessionId)
       const selected = await applySessionModel(controller, sessionId, validated.value)
       if (selected.error !== undefined) return failure(invalidInput(selected.error, { session: sessionId }), caller, me)
+      const wasRunning = target.running === true
+      const delivery = decideDelivery(requestedDelivery, wasRunning)
+      if (wantCompact && delivery.used === 'interrupt') {
+        return failure(invalidInput(
+          'compaction runs only while a Session is idle, so it cannot be combined with an interrupt of '
+          + 'its running turn; send with delivery "queue" or wait for the turn to end',
+          { session: sessionId },
+        ), caller, me)
+      }
       const compaction = wantCompact ? await compactWorkspaceSession(ctx, controller, sessionId) : undefined
       if (compaction?.error !== undefined) {
         return failure(invalidInput(
@@ -1916,12 +2017,15 @@ export const runSessionTool = async (
           { session: sessionId, compaction },
         ), caller, me)
       }
-      await controller.prompt({
+      const admitted = await controller.prompt({
         requestId: `superagent-append-${randomUUID()}`,
         sessionId,
-        mode: 'queue',
+        mode: delivery.used === 'interrupt' ? 'steer' : 'queue',
         content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
       }, new AbortController().signal)
+      const delivered = deliveryOutcome(
+        requestedDelivery, delivery.used, delivery.fallback, wasRunning, admitted.accepted, insertionSeqOf(ctx, sessionId),
+      )
       const ledger = await recordTaskLedger(caller, workspace, textArg.trim(), sessionId, options.at)
       if (reportTo !== undefined) {
         context.tasks.set(sessionId, {
@@ -1934,6 +2038,7 @@ export const runSessionTool = async (
       return withLedger(Object.freeze({
         ...verdict,
         session: Object.freeze({ id: sessionId, workspace: workspace.path, title: workspace.title, appended: true }),
+        delivery: delivered,
         ...(selected.model === undefined ? {} : { model: selected.model }),
         ...(compaction === undefined ? {} : { compaction: Object.freeze(compaction) }),
       }), ledger)
@@ -1951,6 +2056,12 @@ export const runSessionTool = async (
     }
     if (taskArg === undefined || taskArg.trim() === '') {
       return failure(invalidInput('start needs `task`: a self-contained brief for the workspace agent'), caller, me)
+    }
+    if (requestedDelivery === 'interrupt') {
+      return failure(invalidInput(
+        'start opens a new Session, so there is no running turn to interrupt; omit `delivery` or use "queue"',
+        { workspace: workspace.path },
+      ), caller, me)
     }
     try {
       const created = await controller.create({
@@ -1999,6 +2110,16 @@ export const runSessionTool = async (
     try {
       const selected = await applySessionModel(controller, sessionArg, validated.value)
       if (selected.error !== undefined) return failure(invalidInput(selected.error, { session: sessionArg }), caller, me)
+      const listed = await controller.list()
+      const wasRunning = listed.items.some(item => String(item.sessionId) === sessionArg.trim() && item.running === true)
+      const delivery = decideDelivery(requestedDelivery, wasRunning)
+      if (wantCompact && delivery.used === 'interrupt') {
+        return failure(invalidInput(
+          'compaction runs only while a Session is idle, so it cannot be combined with an interrupt of '
+          + 'its running turn; send with delivery "queue" or wait for the turn to end',
+          { session: sessionArg },
+        ), caller, me)
+      }
       const compaction = wantCompact ? await compactWorkspaceSession(ctx, controller, sessionArg) : undefined
       if (compaction?.error !== undefined) {
         return failure(invalidInput(
@@ -2006,12 +2127,15 @@ export const runSessionTool = async (
           { session: sessionArg, compaction },
         ), caller, me)
       }
-      await controller.prompt({
+      const admitted = await controller.prompt({
         requestId: `superagent-followup-${randomUUID()}`,
         sessionId: sessionArg,
-        mode: 'queue',
+        mode: delivery.used === 'interrupt' ? 'steer' : 'queue',
         content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
       }, new AbortController().signal)
+      const delivered = deliveryOutcome(
+        requestedDelivery, delivery.used, delivery.fallback, wasRunning, admitted.accepted, insertionSeqOf(ctx, sessionArg),
+      )
       const ledger: LedgerAttempt = workspace === undefined
         ? Object.freeze({})
         : await recordTaskLedger(caller, workspace, textArg.trim(), sessionArg, options.at)
@@ -2027,6 +2151,7 @@ export const runSessionTool = async (
       return withLedger(Object.freeze({
         ...verdict,
         session: Object.freeze({ id: sessionArg }),
+        delivery: delivered,
         ...(selected.model === undefined ? {} : { model: selected.model }),
         ...(compaction === undefined ? {} : { compaction: Object.freeze(compaction) }),
       }), ledger)
@@ -3079,7 +3204,12 @@ export const createSuperagentContribution = (
       if (one?.id === undefined) return renderText('ok')
       if (one.archived === true) return renderText(`archived ${one.id}`)
       if (one.forkedFrom !== undefined) return renderText(`branched ${one.forkedFrom} → ${one.id}`)
-      return renderText(`session ${one.id}`)
+      const delivery = typed.delivery as { used?: string; fallback?: boolean; insertedAtSeq?: number } | undefined
+      const how = delivery === undefined
+        ? ''
+        : `  ${delivery.used === 'interrupt' ? 'interrupted' : 'queued'}${delivery.fallback === true ? ' (fallback)' : ''}`
+          + `${delivery.insertedAtSeq === undefined ? '' : ` at seq ${delivery.insertedAtSeq}`}`
+      return renderText(`session ${one.id}${how}`)
     },
     run: (args, call) => runSessionTool(args, runOptionsOf(host, call), call.me, host.ctx, {
       ...(agentPreset === undefined ? {} : { agentPreset }),
