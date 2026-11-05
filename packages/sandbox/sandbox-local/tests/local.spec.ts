@@ -8,7 +8,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -88,6 +88,29 @@ describe('profile dialects', () => {
     // /dev/null specifically, NOT /dev: a whole-/dev grant would let confined
     // commands write real host paths beneath it (/dev/shm) under read-only.
     expect(landlockProfileArgs(RO)).toEqual(['--ro', '/', '--rw', '/dev/null'])
+  })
+
+  it('home-write profiles: bwrap binds home/temp and ro-binds force roots; Landlock refuses force roots; Seatbelt denies them', () => {
+    const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-home-')))
+    const temp = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-temp-')))
+    const secret = join(home, '.ssh')
+    mkdirSync(secret)
+    tempDirs.push(home, temp)
+    const policy = {
+      mode: 'home-write' as const,
+      workspaceRoot: '/ws',
+      homeWriteRoot: home,
+      homeWriteTempRoots: [temp],
+      homeWriteReadOnlyRoots: [secret],
+    }
+    expect(bwrapProfileArgs(policy)).toEqual([
+      '--ro-bind', '/', '/', '--dev', '/dev', '--unshare-pid', '--proc', '/proc', '--die-with-parent',
+      '--bind', home, home, '--bind', temp, temp, '--ro-bind', realpathSync.native(secret), realpathSync.native(secret),
+    ])
+    expect(() => landlockProfileArgs(policy)).toThrow(/Landlock cannot express force-read-only/u)
+    const seatbelt = seatbeltProfileArgs(policy)[1] ?? ''
+    expect(seatbelt).toContain('(allow file-write* (subpath')
+    expect(seatbelt).toContain(`(deny file-write* (subpath "${secret}")`)
   })
 
   it('landlock workspace-write: adds the host /tmp and the workspace root', () => {
@@ -350,6 +373,22 @@ describe('the platform chains', () => {
       }
     })()
     expect(['usable', 'unavailable']).toContain(verdict)
+  })
+})
+
+describe('windows ACL home-write policy', () => {
+  it('fails closed when a force-read-only subtree must be expressed', async () => {
+    const { sandbox } = await setup({}, {
+      chain: ['windows-acl'],
+      windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'],
+    })
+    await expect(sandbox.confine(['true'], {
+      mode: 'home-write',
+      workspaceRoot: 'C:\\ws',
+      homeWriteRoot: 'C:\\Users\\alice',
+      homeWriteTempRoots: [],
+      homeWriteReadOnlyRoots: ['C:\\Users\\alice\\.ssh'],
+    })).rejects.toThrow(/cannot express force-read-only/u)
   })
 })
 

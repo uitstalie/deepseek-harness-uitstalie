@@ -22,9 +22,9 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   LAUNCHER_BIN,
@@ -378,6 +378,43 @@ export class LocalSandboxProvider extends SandboxProvider {
     if (policy.mode === 'workspace-write' && (policy.additionalWritableRoots?.length ?? 0) > 0) {
       throw new SandboxUnsupportedPolicyError('Windows ACL confinement does not support additional writable directories; remove the extra grants or use a supported host')
     }
+    // home-write is one ACL workspace root: the home. Force-read-only subtrees cannot be
+    // expressed by the restricted token, so they fail closed instead of silently weakening.
+    if (policy.mode === 'home-write') {
+      if ((policy.homeWriteReadOnlyRoots?.length ?? 0) > 0) {
+        throw new SandboxUnsupportedPolicyError(
+          'Windows ACL confinement cannot express force-read-only subtrees inside home-write; remove the force-read-only roots or use a host with bwrap/Seatbelt',
+        )
+      }
+      const home = policy.homeWriteRoot
+      if (home === undefined) throw new SandboxUnsupportedPolicyError('home-write has no resolved home directory')
+      const externalTemp = (policy.homeWriteTempRoots ?? []).filter((root) => {
+        const rel = relative(home, root)
+        return rel.startsWith('..') || isAbsolute(rel)
+      })
+      if (externalTemp.length > 0) {
+        throw new SandboxUnsupportedPolicyError('Windows ACL home-write keeps its private temp under the home; external homeWriteTempRoots are unsupported')
+      }
+      const sessionId = policy.sessionId
+      if (sessionId === undefined) {
+        mkdirSync(join(home, '.dsh', 'tmp'), { recursive: true })
+        return [
+          ...this.windowsAclRunnerInvocation(),
+          '--workspace', home,
+          '--temp', join(home, '.dsh', 'tmp'),
+          '--mode', 'workspace-write',
+        ]
+      }
+      const temp = this.materializeAclGrant(sessionId, home, join(home, '.dsh', 'tmp'), true)
+      return [
+        ...this.windowsAclRunnerInvocation(),
+        '--workspace', home,
+        '--temp', temp.dir,
+        '--mode', 'workspace-write',
+        '--write-sid', workspaceWriteSid(home),
+        '--temp-write-sid', temp.writeSid,
+      ]
+    }
     const sessionId = policy.sessionId
     if (sessionId === undefined || policy.mode === 'read-only') {
       return [
@@ -411,8 +448,13 @@ export class LocalSandboxProvider extends SandboxProvider {
    * @param workspaceRoot - the resolved policy root.
    * @returns the pair's private temp directory and write capability.
    */
-  private materializeAclGrant(sessionId: SessionId, workspaceRoot: string): AclTempCapability {
-    assertTempRootOutsideWorkspace(workspaceRoot, tmpdir())
+  private materializeAclGrant(
+    sessionId: SessionId,
+    workspaceRoot: string,
+    tempParent: string = tmpdir(),
+    allowTempInsideWorkspace = false,
+  ): AclTempCapability {
+    if (!allowTempInsideWorkspace) assertTempRootOutsideWorkspace(workspaceRoot, tempParent)
     const writeSid = workspaceWriteSid(workspaceRoot)
     if (!this.workspaceGrants.has(workspaceRoot)) {
       const grant = AclWriteGrant.create(writeSid)
@@ -447,7 +489,8 @@ export class LocalSandboxProvider extends SandboxProvider {
     const key = JSON.stringify([String(sessionId), workspaceRoot])
     const existing = this.tempCapabilities.get(key)
     if (existing !== undefined) return existing
-    const tempDir = mkdtempSync(join(tmpdir(), 'dsh-'))
+    mkdirSync(tempParent, { recursive: true })
+    const tempDir = mkdtempSync(join(tempParent, 'dsh-'))
     const tempSid = tempWriteSid(tempDir)
     let grant: AclWriteGrant | undefined
     try {

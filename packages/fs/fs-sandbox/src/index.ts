@@ -32,7 +32,7 @@ import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import type { Config as LocalConfig } from '@deepseek-ai/dsh-fs-local'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsDeleteOutcome, FsMoveOutcome, FsEditOutcome, FsEditRequest, FsRemoveOptions, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
-import { fsWritableRoots } from '@deepseek-ai/dsh-sandbox'
+import { fsWritableRoots, isHomeWriteAllowed } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { isPathUnder } from './containment.ts'
@@ -191,10 +191,16 @@ export class SandboxedFileSystem extends LocalFileSystem {
     if (mode === 'read-only') {
       throw new FsError(`cannot write "${target.displayPath}": file access denied under read-only mode`, 'FS_SANDBOX_DENIED')
     }
-    // workspace-write: containment on the FRESH canonical path (catches a
-    // symlink ancestor swapped since the tool resolved this target), and the
-    // mutation delegates with THIS fresh target — never the stale one.
+    // workspace-write and home-write: re-canonicalize NOW (catches a symlink
+    // ancestor swapped since the tool resolved this target) and delegate with
+    // THIS fresh target. home-write checks force-read-only first, then home/temp.
     const fresh = await this.resolve(target.displayPath)
+    if (mode === 'home-write') {
+      if (!isHomeWriteAllowed(policy, fresh.targetKey)) {
+        throw new FsError(`cannot write "${target.displayPath}": file access denied under home-write mode`, 'FS_SANDBOX_DENIED')
+      }
+      return fresh
+    }
     let contained = false
     for (const root of fsWritableRoots(policy)) {
       if (await isPathUnder(fresh.targetKey, root)) {

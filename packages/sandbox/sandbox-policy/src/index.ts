@@ -21,9 +21,12 @@
  * @module @deepseek-ai/dsh-sandbox-policy
  */
 
-import { isAbsolute } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
+import { realpathSync, statSync } from 'node:fs'
+import { isAbsolute, relative, resolve } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { z as zod } from 'zod'
+import { homeWriteTool } from './home-write-tool.ts'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
@@ -32,6 +35,7 @@ import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 
 export { SANDBOX_MODES, setSandboxMode } from './session-mode.ts'
+export { HOME_WRITE_TOOL_NAME, homeWriteTool } from './home-write-tool.ts'
 
 /** Preserve execution-world spelling; enforcing providers resolve filesystem identity on their host. */
 function resolveWorkspaceRoot(path: string): string {
@@ -56,6 +60,60 @@ function resolveAdditionalWritableRoots(roots: readonly string[] | undefined): r
   return Object.freeze([...new Set(roots)])
 }
 
+/** Default force-read-only entries under home when the deployment does not override the list. */
+export const DEFAULT_HOME_WRITE_READ_ONLY_SUBDIRS: readonly string[] = Object.freeze([
+  '.ssh',
+  '.gnupg',
+  '.aws',
+  '.config/gh',
+  '.kube',
+  '.docker',
+])
+
+/** Whether `candidate` is the same as or below `root` (case-insensitive on Windows). */
+const underRoot = (root: string, candidate: string): boolean => {
+  if (process.platform === 'win32') {
+    const base = root.toLowerCase().replace(/[\\/]+$/u, '')
+    const target = candidate.toLowerCase()
+    return target === base || target.startsWith(`${base}\\`) || target.startsWith(`${base}/`)
+  }
+  const rel = relative(root, candidate)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/** Resolve one configured directory, enforcing the physical-path rule and symlink opt-in. */
+const configuredRoot = (path: string, allowSymlinked: boolean, label: string): string => {
+  if (path.trim() === '' || !isAbsolute(path) || path.includes('\0')) {
+    throw new Error(`sandbox-policy: ${label} must be an absolute path without NUL bytes; got ${JSON.stringify(path)}`)
+  }
+  let physical: string
+  try {
+    physical = realpathSync.native(path)
+  } catch (error: unknown) {
+    throw new Error(`sandbox-policy: ${label} ${JSON.stringify(path)} cannot be resolved: ${String(error)}`)
+  }
+  if (!statSync(physical).isDirectory()) {
+    throw new Error(`sandbox-policy: ${label} ${JSON.stringify(path)} is not a directory`)
+  }
+  if (!allowSymlinked && physical !== resolve(path)) {
+    throw new Error(
+      `sandbox-policy: ${label} ${JSON.stringify(path)} is a symlink spelling; use ${JSON.stringify(physical)} or enable homeWriteAllowSymlinkedRoots`,
+    )
+  }
+  return physical
+}
+
+/** Build the read-only defaults from home, keeping lexical paths when a default does not exist yet. */
+const defaultReadOnlyRoots = (home: string): readonly string[] =>
+  Object.freeze(DEFAULT_HOME_WRITE_READ_ONLY_SUBDIRS.map((subdir) => {
+    const path = resolve(home, subdir)
+    try {
+      return realpathSync.native(path)
+    } catch {
+      return path
+    }
+  }))
+
 /** Render the policy without claiming which capabilities are mounted. */
 function renderPolicyContext(policy: SandboxExecutionPolicy): string {
   switch (policy.mode) {
@@ -67,6 +125,15 @@ function renderPolicyContext(policy: SandboxExecutionPolicy): string {
         ? ''
         : ` Additional writable directories: ${JSON.stringify(additional)}.`
       return `Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: ${JSON.stringify(policy.workspaceRoot)}.${extra} Some platform temporary areas may also be writable.`
+    }
+    case 'home-write': {
+      const extra = policy.homeWriteTempRoots === undefined || policy.homeWriteTempRoots.length === 0
+        ? ''
+        : ` Temporary exceptions: ${JSON.stringify(policy.homeWriteTempRoots)}.`
+      const readOnly = policy.homeWriteReadOnlyRoots === undefined || policy.homeWriteReadOnlyRoots.length === 0
+        ? ''
+        : ` Force-read-only directories: ${JSON.stringify(policy.homeWriteReadOnlyRoots)}.`
+      return `Current DSH file policy: home-write. The DSH file sandbox may modify files under the user's home: ${JSON.stringify(policy.homeWriteRoot)}.${extra}${readOnly} Everything else is read-only; force-read-only entries win over the home.`
     }
     case 'danger-full-access':
       return 'Current DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations.'
@@ -108,6 +175,23 @@ export interface Config {
    * `read-only`.
    */
   additionalWritableRoots?: string[]
+  /**
+   * Explicit home directory for `home-write`; default `os.homedir()`. On
+   * Windows the default must be under `C:\\Users\\<user>`; a home elsewhere must
+   * be opted in here.
+   */
+  homeWriteRoot?: string
+  /**
+   * Force-read-only directories for `home-write`, absolute and canonicalized.
+   * Undefined enables the built-in safety list (`~/.ssh`, `~/.gnupg`,
+   * `~/.aws`, `~/.config/gh`, `~/.kube`, `~/.docker`); an explicit empty array
+   * disables the defaults.
+   */
+  homeWriteReadOnlyRoots?: string[]
+  /** Temporary directories also writable under `home-write`; default `os.tmpdir()`. */
+  homeWriteTempRoots?: string[]
+  /** Allow symlink spellings for configured home-write roots (default false). */
+  homeWriteAllowSymlinkedRoots?: boolean
 }
 
 /** Inputs that select the sandbox policy for one capability call. */
@@ -130,6 +214,7 @@ export type FsWritableRootsProvider = (session: Session) => readonly string[] | 
 const sandboxModeStateSchema = zod.union([
   zod.literal('read-only'),
   zod.literal('workspace-write'),
+  zod.literal('home-write'),
   zod.literal('danger-full-access'),
 ]).nullable()
 
@@ -142,11 +227,15 @@ const sandboxModeStateSchema = zod.union([
 export class SandboxPolicyService extends Service {
   // Inline schema call: the config catalog walks `static Config` statically.
   static Config: z<Config> = z.object({
-    mode: z.union(['read-only', 'workspace-write', 'danger-full-access'] as const).default('read-only'),
+    mode: z.union(['read-only', 'workspace-write', 'home-write', 'danger-full-access'] as const).default('read-only'),
     // No schema default: process.cwd() is resolved in the constructor so the
     // stored root is always absolute regardless of how it was supplied.
     workspaceRoot: z.string(),
     additionalWritableRoots: z.array(z.string()).default([]),
+    homeWriteRoot: z.string(),
+    homeWriteReadOnlyRoots: z.array(z.string()).default([...DEFAULT_HOME_WRITE_READ_ONLY_SUBDIRS]),
+    homeWriteTempRoots: z.array(z.string()).default(process.platform === 'win32' ? [] : [tmpdir()]),
+    homeWriteAllowSymlinkedRoots: z.boolean().default(false),
   })
 
   static inject = ['sessionProjections']
@@ -157,6 +246,16 @@ export class SandboxPolicyService extends Service {
   readonly workspaceRoot: string
   /** The frozen extra writable directories shared by every resolved policy, or `undefined` for none. */
   readonly additionalWritableRoots: readonly string[] | undefined
+  /** Canonical home-write boundary; also used to judge workspace-write → home-write escalation. */
+  readonly homeWriteRoot: string
+  /** Canonical temporary exceptions under home-write. */
+  readonly homeWriteTempRoots: readonly string[]
+  /** Canonical force-read-only roots under home-write. */
+  readonly homeWriteReadOnlyRoots: readonly string[]
+  /** Whether configured roots may use a symlink spelling. */
+  readonly homeWriteAllowSymlinkedRoots: boolean
+  /** Why the default Windows home cannot be used; checked only when home-write is selected. */
+  readonly homeWriteProblem?: string
   private sandboxModeProjectionHandle!: ProjectionHandle<SandboxMode | null>
   /** Session-scoped fs-only grants contributed by capabilities. */
   private readonly fsRootProviders = new Set<FsWritableRootsProvider>()
@@ -169,6 +268,32 @@ export class SandboxPolicyService extends Service {
     this.defaultMode = config.mode as SandboxMode
     this.workspaceRoot = resolveWorkspaceRoot(config.workspaceRoot ?? process.cwd())
     this.additionalWritableRoots = resolveAdditionalWritableRoots(config.additionalWritableRoots)
+    const allowSymlinked = config.homeWriteAllowSymlinkedRoots === true
+    const defaultHome = homedir()
+    const homeInput = config.homeWriteRoot ?? defaultHome
+    this.homeWriteAllowSymlinkedRoots = allowSymlinked
+    this.homeWriteRoot = configuredRoot(homeInput, allowSymlinked, 'homeWriteRoot')
+    const tempInputs = config.homeWriteTempRoots ?? (process.platform === 'win32' ? [] : [tmpdir()])
+    this.homeWriteTempRoots = Object.freeze([...new Set(tempInputs.map(path => configuredRoot(path, true, 'homeWriteTempRoots')))])
+    const readonlyInputs = config.homeWriteReadOnlyRoots
+    const usesDefaultReadOnly = readonlyInputs === undefined
+      || (readonlyInputs.length === DEFAULT_HOME_WRITE_READ_ONLY_SUBDIRS.length
+        && readonlyInputs.every((entry, index) => entry === DEFAULT_HOME_WRITE_READ_ONLY_SUBDIRS[index]))
+    this.homeWriteReadOnlyRoots = usesDefaultReadOnly
+      ? defaultReadOnlyRoots(this.homeWriteRoot)
+      : Object.freeze(readonlyInputs.map((path) => {
+        const physical = configuredRoot(path, allowSymlinked, 'homeWriteReadOnlyRoots')
+        if (allowSymlinked
+          && !this.homeWriteTempRoots.some(root => underRoot(root, physical))
+          && !underRoot(this.homeWriteRoot, physical)) {
+          throw new Error(`sandbox-policy: homeWriteReadOnlyRoots target ${JSON.stringify(physical)} must stay inside the home or a temp exception`)
+        }
+        return physical
+      }))
+    if (process.platform === 'win32' && config.homeWriteRoot === undefined
+      && !/^[a-z]:[\\/]Users[\\/]/iu.test(this.homeWriteRoot)) {
+      this.homeWriteProblem = 'on Windows the default homeWriteRoot must be under C:\\Users\\<user>; set homeWriteRoot explicitly for a home elsewhere'
+    }
   }
 
   protected async [Service.init](): Promise<void> {
@@ -179,6 +304,15 @@ export class SandboxPolicyService extends Service {
       stateSchema: sandboxModeStateSchema,
       init: () => null,
       apply: (state, event) => (event.type === 'sandbox/mode' ? event.data.mode : state),
+    })
+
+    ctx.inject(['tools'], (scope: Context) => {
+      scope.tools.register(homeWriteTool(scope, {
+        homeWriteRoot: this.homeWriteRoot,
+        homeWriteTempRoots: this.homeWriteTempRoots,
+        homeWriteReadOnlyRoots: this.homeWriteReadOnlyRoots,
+        homeWriteAllowSymlinkedRoots: this.homeWriteAllowSymlinkedRoots,
+      }))
     })
 
     ctx.inject(['systemPrompt'], (scope: Context) => {
@@ -208,12 +342,25 @@ export class SandboxPolicyService extends Service {
    */
   resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy {
     const { session } = request
-    const fsRoots = this.fsRootsOf(session)
+    const mode = request.mode ?? (session === undefined ? undefined : this.overrideOf(session)) ?? this.defaultMode
+    if (mode === 'home-write' && this.homeWriteProblem !== undefined) {
+      throw new Error(`sandbox-policy: ${this.homeWriteProblem}`)
+    }
+    const fsRoots = mode === 'workspace-write' ? this.fsRootsOf(session) : undefined
     return {
-      mode: request.mode ?? (session === undefined ? undefined : this.overrideOf(session)) ?? this.defaultMode,
+      mode,
       workspaceRoot: resolveWorkspaceRoot(session?.header.cwd ?? this.workspaceRoot),
-      ...this.additionalWritableRoots === undefined ? {} : { additionalWritableRoots: this.additionalWritableRoots },
+      ...mode === 'workspace-write' && this.additionalWritableRoots !== undefined
+        ? { additionalWritableRoots: this.additionalWritableRoots }
+        : {},
       ...fsRoots === undefined ? {} : { fsAdditionalWritableRoots: fsRoots },
+      ...mode === 'home-write'
+        ? {
+          homeWriteRoot: this.homeWriteRoot,
+          homeWriteTempRoots: this.homeWriteTempRoots,
+          homeWriteReadOnlyRoots: this.homeWriteReadOnlyRoots,
+        }
+        : {},
       ...session === undefined ? {} : { sessionId: session.id },
     }
   }

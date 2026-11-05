@@ -961,7 +961,7 @@ describe('sandbox escalation API (write/edit)', () => {
     const { ctx } = await setupConfining()
     for (const name of ['write', 'edit'] as const) {
       const props = fsSchema(ctx, name).parameters.properties
-      expect(props['sandbox_permissions']?.enum).toEqual(['workspace-write', 'danger-full-access'])
+      expect(props['sandbox_permissions']?.enum).toEqual(['workspace-write', 'home-write', 'danger-full-access'])
       expect(props['justification']).toBeDefined()
     }
   })

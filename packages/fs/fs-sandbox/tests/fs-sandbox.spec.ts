@@ -352,3 +352,33 @@ describe('mkdir and remove fence', () => {
   })
 })
 // END uitstalie-k3
+
+describe('home-write', () => {
+  it('writes home, denies force-read-only and everywhere else, and does not inherit workspace extras', async () => {
+    const home = join(base, 'home')
+    const secret = join(home, '.ssh')
+    await mkdir(secret, { recursive: true })
+    const homeCtx = new Context()
+    await homeCtx.plugin(SessionProjectionRegistry)
+    await homeCtx.plugin(SandboxPolicyService, {
+      mode: 'home-write',
+      workspaceRoot: '/not-home',
+      homeWriteRoot: home,
+      homeWriteTempRoots: [],
+      homeWriteReadOnlyRoots: [secret],
+    })
+    const homeFiber = await homeCtx.plugin(SandboxedFileSystem, { cwd: workspace })
+    try {
+      const homeFs = homeCtx.fs as SandboxedFileSystem
+      await homeFs.writeText(await homeFs.resolve(join(home, 'notes.txt')), 'ok')
+      await expect(homeFs.writeText(await homeFs.resolve(join(secret, 'key')), 'no'))
+        .rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+      await expect(homeFs.writeText(await homeFs.resolve(join(outside, 'outside.txt')), 'no'))
+        .rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+      expect(existsSync(join(home, 'notes.txt'))).toBe(true)
+      expect(existsSync(join(secret, 'key'))).toBe(false)
+    } finally {
+      await homeFiber.dispose()
+    }
+  })
+})

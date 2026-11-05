@@ -93,7 +93,7 @@ describe('PermissionPresetService', () => {
 
   it('advertises the preset table in declaration order and resolves bundles', async () => {
     const ctx = await mounted()
-    expect(ctx.permissionPresets.names).toEqual(['workspace-write', 'danger-full-access'])
+    expect(ctx.permissionPresets.names).toEqual(['workspace-write', 'home-write', 'danger-full-access'])
     expect(ctx.permissionPresets.resolve('danger-full-access')).toMatchObject({ sandbox: 'danger-full-access', approval: 'never' })
     expect(() => ctx.permissionPresets.resolve('plan')).toThrow(/unknown preset "plan"/)
   })
@@ -101,7 +101,7 @@ describe('PermissionPresetService', () => {
   it('publishes an effect-scoped current-session preset and removes it on unload', async () => {
     const ctx = await mounted()
     const fiber = await mountAuto(ctx)
-    expect(ctx.permissionPresets.names).toEqual(['workspace-write', 'danger-full-access', AUTO_PRESET])
+    expect(ctx.permissionPresets.names).toEqual(['workspace-write', 'home-write', 'danger-full-access', AUTO_PRESET])
     expect(ctx.permissionPresets.resolve(AUTO_PRESET)).toEqual({
       sandbox: 'danger-full-access', approval: 'ask',
     })
@@ -111,7 +111,7 @@ describe('PermissionPresetService', () => {
     })
 
     await fiber.dispose()
-    expect(ctx.permissionPresets.names).toEqual(['workspace-write', 'danger-full-access'])
+    expect(ctx.permissionPresets.names).toEqual(['workspace-write', 'home-write', 'danger-full-access'])
     expect(() => ctx.permissionPresets.resolve(AUTO_PRESET)).toThrow(/unknown preset "auto"/)
   })
 

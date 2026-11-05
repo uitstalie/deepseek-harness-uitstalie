@@ -5,7 +5,8 @@
  */
 
 import { grantArgs as landlockGrantArgs } from '@deepseek-ai/node-addon-system/landlock-run'
-import { workspaceWritableRoots, writableRoots } from '@deepseek-ai/dsh-sandbox'
+import { existsSync } from 'node:fs'
+import { SandboxUnsupportedPolicyError, homeWriteReadOnlyRoots, homeWriteWritableRoots, workspaceWritableRoots, writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 
 /**
@@ -19,6 +20,16 @@ export function bwrapProfileArgs(policy: SandboxPolicy): string[] {
     args.push('--tmpfs', '/tmp')
     for (const root of workspaceWritableRoots(policy)) args.push('--bind', root, root)
   }
+  if (policy.mode === 'home-write') {
+    for (const root of homeWriteWritableRoots(policy)) {
+      if (existsSync(root)) args.push('--bind', root, root)
+    }
+    // A later ro-bind on a child of the home bind wins over the parent mount, which
+    // is how force-read-only subtrees are expressed without enumerating the home.
+    for (const root of homeWriteReadOnlyRoots(policy)) {
+      if (existsSync(root)) args.push('--ro-bind', root, root)
+    }
+  }
   return args
 }
 
@@ -31,6 +42,14 @@ export function landlockProfileArgs(policy: SandboxPolicy): string[] {
   const readWrite = ['/dev/null']
   if (policy.mode === 'workspace-write') {
     readWrite.push('/tmp', ...workspaceWritableRoots(policy))
+  }
+  if (policy.mode === 'home-write') {
+    if (homeWriteReadOnlyRoots(policy).length > 0) {
+      throw new SandboxUnsupportedPolicyError(
+        'Landlock cannot express force-read-only subtrees inside home-write; use the bwrap backend or remove force-read-only roots',
+      )
+    }
+    readWrite.push(...homeWriteWritableRoots(policy))
   }
   return landlockGrantArgs({ readOnly: ['/'], readWrite })
 }
@@ -52,9 +71,15 @@ function sbplString(path: string): string {
  */
 export function seatbeltProfileArgs(policy: SandboxPolicy): string[] {
   const forms = ['(version 1)', '(allow default)', '(deny file-write*)', `(allow file-write* (literal ${sbplString('/dev/null')}))`]
-  const roots = writableRoots(policy)
+  const roots = policy.mode === 'home-write' ? homeWriteWritableRoots(policy) : writableRoots(policy)
   if (roots.length > 0) {
     forms.push(`(allow file-write* ${roots.map(root => `(subpath ${sbplString(root)})`).join(' ')})`)
+  }
+  if (policy.mode === 'home-write') {
+    const readOnly = homeWriteReadOnlyRoots(policy)
+    if (readOnly.length > 0) {
+      forms.push(`(deny file-write* ${readOnly.map(root => `(subpath ${sbplString(root)})`).join(' ')})`)
+    }
   }
   return ['-p', forms.join(' ')]
 }

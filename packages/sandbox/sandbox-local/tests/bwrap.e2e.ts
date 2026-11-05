@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readlinkSync, rmSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -135,6 +135,36 @@ describe.skipIf(!bwrapUsable)('sandbox-local: real bwrap confinement', () => {
     const denied = await runConfined(sandbox, `echo hi > ${outside}/denied.txt`, { mode: 'workspace-write', workspaceRoot: workdir })
     expect(denied.result.status).not.toBe(0)
     expect(existsSync(join(outside, 'denied.txt'))).toBe(false)
+  })
+
+  it('home-write allows home and temp, and force-read-only wins over the home bind', async () => {
+    const home = await tempDir(homedir())
+    const secret = join(home, '.ssh')
+    await mkdir(secret)
+    const temp = await tempDir(tmpdir())
+    const sandbox = await provider()
+    const policy: SandboxPolicy = {
+      mode: 'home-write',
+      workspaceRoot: temp,
+      homeWriteRoot: home,
+      homeWriteTempRoots: [temp],
+      homeWriteReadOnlyRoots: [secret],
+    }
+
+    const allowed = await runConfined(sandbox, `printf home-ok > ${home}/allowed.txt`, policy)
+    expect(allowed.result.status).toBe(0)
+    expect(readFileSync(join(home, 'allowed.txt'), 'utf8')).toBe('home-ok')
+
+    const tmp = await runConfined(sandbox, `printf tmp-ok > ${temp}/allowed.txt`, policy)
+    expect(tmp.result.status).toBe(0)
+
+    const protectedWrite = await runConfined(sandbox, `printf no > ${secret}/key`, policy)
+    expect(protectedWrite.result.status).not.toBe(0)
+    expect(existsSync(join(secret, 'key'))).toBe(false)
+
+    const outside = await runConfined(sandbox, 'printf no > /etc/dsh-home-write-probe', policy)
+    expect(outside.result.status).not.toBe(0)
+    expect(existsSync('/etc/dsh-home-write-probe')).toBe(false)
   })
 
   it('workspace-write mounts an EPHEMERAL /tmp: the write succeeds inside, the host /tmp stays untouched', async () => {

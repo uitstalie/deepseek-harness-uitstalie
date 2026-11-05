@@ -20,13 +20,13 @@ import type { EscalationApprover, EscalationOutcome } from '@deepseek-ai/dsh-san
 
 describe('the strictly-wider ladder', () => {
   it('read-only escalates to either wider mode; workspace-write only to full access', () => {
-    expect(WIDER_MODES['read-only']).toEqual(['workspace-write', 'danger-full-access'])
-    expect(WIDER_MODES['workspace-write']).toEqual(['danger-full-access'])
+    expect(WIDER_MODES['read-only']).toEqual(['workspace-write', 'home-write', 'danger-full-access'])
+    expect(WIDER_MODES['workspace-write']).toEqual(['home-write', 'danger-full-access'])
     expect(WIDER_MODES['danger-full-access']).toBeUndefined()
   })
 
   it('the target enum is the closed set every session could escalate TO (read-only is the floor)', () => {
-    expect(ESCALATION_TARGETS).toEqual(['workspace-write', 'danger-full-access'])
+    expect(ESCALATION_TARGETS).toEqual(['workspace-write', 'home-write', 'danger-full-access'])
   })
 })
 
@@ -114,6 +114,22 @@ describe('approveEscalation', () => {
     await expect(approveEscalation(req({ requestedMode: 'unknown-mode' }), spy))
       .rejects.toThrow(/not strictly wider/)
     expect(seen).toEqual([])
+  })
+
+  it('allows workspace-write to home-write only when the workspace is inside the home', async () => {
+    const inside = await approveEscalation(req({
+      requestedMode: 'home-write',
+      effectiveMode: 'workspace-write',
+      workspaceRoot: '/home/alice/project',
+      homeWriteRoot: '/home/alice',
+    }), ingredients())
+    expect(inside).toBe('home-write')
+    await expect(approveEscalation(req({
+      requestedMode: 'home-write',
+      effectiveMode: 'workspace-write',
+      workspaceRoot: '/srv/project',
+      homeWriteRoot: '/home/alice',
+    }), ingredients())).rejects.toThrow(/outside home/)
   })
 
   it('a missing approval service and an agent-less call each fail closed with distinct text', async () => {

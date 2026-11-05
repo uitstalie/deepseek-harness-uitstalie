@@ -100,7 +100,7 @@ export class FsSandboxController {
     }
     const policy = standingPolicy as SandboxExecutionPolicy
     const approvedMode = await approveEscalation(
-      { requestedMode: args.sandbox_permissions, justification: args.justification, effectiveMode: policy.mode, subject: 'operation' },
+      { requestedMode: args.sandbox_permissions, justification: args.justification, effectiveMode: policy.mode, subject: 'operation', workspaceRoot: policy.workspaceRoot, homeWriteRoot: this.policy?.homeWriteRoot },
       {
         approver: this.ctx.get('approval'),
         agent: exec.agent,

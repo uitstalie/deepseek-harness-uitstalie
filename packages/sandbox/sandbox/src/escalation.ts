@@ -16,6 +16,7 @@
  * @module dsh-sandbox/escalation
  */
 
+import { relative, isAbsolute } from 'node:path'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { escalationDisplayReason } from './locales.ts'
 import type { SandboxMode } from './index.ts'
@@ -27,8 +28,9 @@ import type { SandboxMode } from './index.ts'
  * registry-global while the effective mode is per-call truth.
  */
 export const WIDER_MODES: Record<string, readonly SandboxMode[]> = {
-  'read-only': ['workspace-write', 'danger-full-access'],
-  'workspace-write': ['danger-full-access'],
+  'read-only': ['workspace-write', 'home-write', 'danger-full-access'],
+  'workspace-write': ['home-write', 'danger-full-access'],
+  'home-write': ['danger-full-access'],
 }
 
 /**
@@ -39,7 +41,7 @@ export const WIDER_MODES: Record<string, readonly SandboxMode[]> = {
  * mode sits below it (a `danger-full-access` default would advertise nothing
  * while a narrower-switched session stays confined with no lever).
  */
-export const ESCALATION_TARGETS: readonly SandboxMode[] = ['workspace-write', 'danger-full-access']
+export const ESCALATION_TARGETS: readonly SandboxMode[] = ['workspace-write', 'home-write', 'danger-full-access']
 
 /**
  * Validate the escalation argument pairing a tool schema cannot express:
@@ -157,6 +159,10 @@ export interface EscalationRequest {
   effectiveMode: SandboxMode
   /** The family's noun for the escalated action in user-facing texts (`command` for bash, `operation` for fs). */
   subject: string
+  /** The current session workspace root, for the home-write comparability check. */
+  workspaceRoot?: string | undefined
+  /** The resolved home-write boundary, when the policy owner has one. */
+  homeWriteRoot?: string | undefined
 }
 
 /**
@@ -177,6 +183,24 @@ export async function approveEscalation<A, C>(request: EscalationRequest, approv
   // vocabulary; the effective mode is per-call truth).
   if (!(WIDER_MODES[effectiveMode] ?? []).includes(mode as SandboxMode)) {
     throw new Error(`sandbox escalation to "${mode}" is not strictly wider than this call's current "${effectiveMode}" mode`)
+  }
+  // home-write contains the workspace only when the workspace lives inside the home. Outside it,
+  // workspace-write -> home-write would LOSE the workspace grant, so it is not a widening and must
+  // not be presented as one. The user can switch the session mode explicitly instead.
+  if (effectiveMode === 'workspace-write' && mode === 'home-write') {
+    const workspace = request.workspaceRoot
+    const home = request.homeWriteRoot
+    if (workspace === undefined || home === undefined) {
+      throw new Error('sandbox escalation to "home-write" needs the session workspace and home boundary to decide whether it is wider')
+    }
+    const rel = relative(home, workspace)
+    const inside = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+      || (process.platform === 'win32' && workspace.toLowerCase().startsWith(home.toLowerCase().replace(/[\\/]+$/u, '') + '\\'))
+    if (!inside) {
+      throw new Error(
+        `sandbox escalation to "home-write" is not wider for this call: workspace ${JSON.stringify(workspace)} is outside home ${JSON.stringify(home)}, so the workspace grant would be lost; switch the session mode explicitly if that is intended`,
+      )
+    }
   }
   if (approval.approver === undefined) {
     throw new Error(`sandbox escalation to "${mode}" requires approval, but no approval service is composed`)

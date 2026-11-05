@@ -109,6 +109,7 @@ const permissionStateSchema: zod.ZodType<PermissionProjectionState> = zod.object
   sandbox: zod.union([
     zod.literal('read-only'),
     zod.literal('workspace-write'),
+    zod.literal('home-write'),
     zod.literal('danger-full-access'),
   ]).nullable(),
   approval: zod.union([zod.literal('ask'), zod.literal('never')]).nullable(),
@@ -183,6 +184,10 @@ export class PermissionPresetService extends TypertRemoteService {
       'workspace-write': {
         sandbox: 'workspace-write', approval: 'ask',
         name: 'workspace-write', description: 'Write inside the workspace and permitted temporary directories; wider retries require approval.',
+      },
+      'home-write': {
+        sandbox: 'home-write', approval: 'ask',
+        name: 'home-write', description: 'Write inside the user home except force-read-only paths; wider retries require approval.',
       },
       'danger-full-access': {
         sandbox: 'danger-full-access', approval: 'never',

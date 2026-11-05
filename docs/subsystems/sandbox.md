@@ -8,7 +8,7 @@ Source: [`packages/sandbox/sandbox/src/index.ts`](../../packages/sandbox/sandbox
 
 ## Modes and enforcement
 
-`SandboxMode` governs filesystem effects only. `read-only` asks the backend to deny writes — the POSIX runners additionally grant the `/dev/null` sink their shells require, while the Windows ACL runner grants no explicit writable root and reports partial enforcement for its ambient ACL gaps; `workspace-write` permits writes under the workspace root, explicit extra directories, and the backend's promised temp area; `danger-full-access` bypasses confinement. Network and process visibility are outside this vocabulary.
+`SandboxMode` governs filesystem effects only. `read-only` asks the backend to deny writes — the POSIX runners additionally grant the `/dev/null` sink their shells require, while the Windows ACL runner grants no explicit writable root and reports partial enforcement for its ambient ACL gaps; `workspace-write` permits writes under the workspace root, explicit extra directories, and the backend's promised temp area; `home-write` permits writes under the canonical user home and configured temp exceptions, with configured force-read-only paths taking precedence; `danger-full-access` bypasses confinement. Network and process visibility are outside this vocabulary.
 
 ```ts type-equiv
 /**
@@ -17,10 +17,10 @@ Source: [`packages/sandbox/sandbox/src/index.ts`](../../packages/sandbox/sandbox
  * explicit extra roots, and backend-defined temp areas; `danger-full-access` bypasses confinement. Network
  * and process visibility are outside this vocabulary.
  */
-type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+type SandboxMode = 'read-only' | 'workspace-write' | 'home-write' | 'danger-full-access'
 ```
 
-Only the first two modes can be sent to a provider. A `danger-full-access` consumer spawns its original argv and does not call `ctx.sandbox`.
+Only the first three modes can be sent to a provider. A `danger-full-access` consumer spawns its original argv and does not call `ctx.sandbox`.
 
 ```ts type-equiv
 /** A confining (non-`danger-full-access`) mode — the modes a {@link SandboxPolicy} can carry. */

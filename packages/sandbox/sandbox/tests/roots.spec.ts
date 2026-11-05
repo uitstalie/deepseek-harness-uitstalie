@@ -5,11 +5,11 @@
  * additional set stays one shared derivation across backend dialects.
  */
 
-import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { canonicalPath, fsWritableRoots, workspaceWritableRoots, writableRoots } from '@deepseek-ai/dsh-sandbox'
+import { canonicalPath, fsWritableRoots, homeWriteReadOnlyRoots, homeWriteWritableRoots, isHomeWriteAllowed, workspaceWritableRoots, writableRoots } from '@deepseek-ai/dsh-sandbox'
 
 /** Every temp root created by this file, removed after each test. */
 const roots: string[] = []
@@ -114,5 +114,49 @@ describe('writableRoots', () => {
       workspaceRoot: ws,
       additionalWritableRoots: [extra],
     })).toContain(realpathSync.native(extra))
+  })
+})
+
+describe('homeWrite', () => {
+  it('allows home and temp, denies elsewhere, and lets force-read-only win over home', () => {
+    const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-home-')))
+    const temp = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-temp-')))
+    const secret = join(home, '.ssh')
+    const nested = join(secret, 'keys')
+    mkdirSync(nested, { recursive: true })
+    roots.push(home, temp)
+    const policy = {
+      mode: 'home-write' as const,
+      workspaceRoot: '/not-home',
+      homeWriteRoot: home,
+      homeWriteTempRoots: [temp],
+      homeWriteReadOnlyRoots: [realpathSync.native(secret)],
+    }
+    expect(homeWriteWritableRoots(policy)).toEqual([home, temp])
+    expect(homeWriteReadOnlyRoots(policy)).toEqual([realpathSync.native(secret)])
+    expect(isHomeWriteAllowed(policy, join(home, 'notes.txt'))).toBe(true)
+    expect(isHomeWriteAllowed(policy, join(temp, 'build'))).toBe(true)
+    expect(isHomeWriteAllowed(policy, '/etc/passwd')).toBe(false)
+    expect(isHomeWriteAllowed(policy, join(secret, 'config'))).toBe(false)
+    expect(isHomeWriteAllowed(policy, join(nested, 'id'))).toBe(false)
+  })
+
+  it('does not inherit workspace-write extras or workspace roots', () => {
+    const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-home-')))
+    const workspace = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-ws-')))
+    const extra = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-extra-')))
+    roots.push(home, workspace, extra)
+    const policy = {
+      mode: 'home-write' as const,
+      workspaceRoot: workspace,
+      homeWriteRoot: home,
+      homeWriteTempRoots: [],
+      homeWriteReadOnlyRoots: [],
+      additionalWritableRoots: [extra],
+      fsAdditionalWritableRoots: [workspace],
+    }
+    expect(homeWriteWritableRoots(policy)).toEqual([home])
+    expect(isHomeWriteAllowed(policy, join(workspace, 'file'))).toBe(false)
+    expect(isHomeWriteAllowed(policy, join(extra, 'file'))).toBe(false)
   })
 })

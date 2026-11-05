@@ -236,7 +236,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     }
     const effectiveMode = (standingPolicy as SandboxExecutionPolicy).mode
     return approveEscalation(
-      { requestedMode: mode, justification, effectiveMode, subject: 'command' },
+      { requestedMode: mode, justification, effectiveMode, subject: 'command', workspaceRoot: (standingPolicy as SandboxExecutionPolicy).workspaceRoot, homeWriteRoot: (sandboxPolicy as { homeWriteRoot?: string } | undefined)?.homeWriteRoot },
       {
         approver: ctx.get('approval'),
         agent: exec.agent,

@@ -15,7 +15,7 @@
 
 import { realpathSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, relative, resolve } from 'node:path'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import type { SandboxExecutionPolicy } from './index.ts'
 
@@ -135,4 +135,45 @@ export function fsWritableRoots(policy: SandboxExecutionPolicy): string[] {
     .map(fsAdditionalRoot)
     .filter((root): root is string => root !== undefined)
   return [...new Set([...writableRoots(policy), ...extra])]
+}
+
+/** Whether `candidate` is the same as or below `root` (canonical inputs). */
+export function isWithinRoot(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/**
+ * The writable roots of `home-write`: the home itself plus its configured temp
+ * exceptions. The workspace root is deliberately not included; a workspace
+ * outside home is read-only under this mode.
+ * @param policy - the file-effect policy to derive the roots from.
+ * @returns canonical writable roots; empty outside `home-write`.
+ */
+export function homeWriteWritableRoots(policy: SandboxExecutionPolicy): string[] {
+  if (policy.mode !== 'home-write' || policy.homeWriteRoot === undefined) return []
+  return [...new Set([canonicalPath(policy.homeWriteRoot), ...(policy.homeWriteTempRoots ?? []).map(canonicalPath)])]
+}
+
+/**
+ * The force-read-only roots of `home-write`, canonical and deduplicated.
+ * @param policy - the file-effect policy to derive the roots from.
+ * @returns canonical read-only roots; empty outside `home-write`.
+ */
+export function homeWriteReadOnlyRoots(policy: SandboxExecutionPolicy): string[] {
+  if (policy.mode !== 'home-write') return []
+  return [...new Set((policy.homeWriteReadOnlyRoots ?? []).map(canonicalPath))]
+}
+
+/**
+ * The exact home-write priority decision for one already-canonical path:
+ * force-read-only wins, then home/temp, else denied.
+ * @param policy - the file-effect policy.
+ * @param target - canonical target path.
+ * @returns whether the path may be written under `home-write`.
+ */
+export function isHomeWriteAllowed(policy: SandboxExecutionPolicy, target: string): boolean {
+  const denied = homeWriteReadOnlyRoots(policy).some(root => isWithinRoot(root, target))
+  if (denied) return false
+  return homeWriteWritableRoots(policy).some(root => isWithinRoot(root, target))
 }

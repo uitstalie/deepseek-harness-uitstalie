@@ -2868,7 +2868,7 @@ export interface Config {
 
 - `inject`: `shell` · `approval` · `sessions` · `agents` · `sessionProjections`
 - `refs`: [`ApprovalPolicy`](subsystems/approval.zh.md) · [`SandboxMode`](subsystems/sandbox.zh.md) · `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/interaction/permission-presets/src/index.ts:153`](../packages/interaction/permission-presets/src/index.ts)
+- `source`: [`packages/interaction/permission-presets/src/index.ts:154`](../packages/interaction/permission-presets/src/index.ts)
 
 ```ts config-catalog
 /** The {@link PermissionPresetService} config: preset table and composition default. */
@@ -3291,7 +3291,7 @@ export interface Config {
 
 - `inject`: `sessionProjections`
 - `refs`: [`SandboxMode`](subsystems/sandbox.zh.md)
-- `source`: [`packages/sandbox/sandbox-policy/src/index.ts:94`](../packages/sandbox/sandbox-policy/src/index.ts)
+- `source`: [`packages/sandbox/sandbox-policy/src/index.ts:161`](../packages/sandbox/sandbox-policy/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -3318,6 +3318,23 @@ export interface Config {
    * `read-only`.
    */
   additionalWritableRoots?: string[]
+  /**
+   * Explicit home directory for `home-write`; default `os.homedir()`. On
+   * Windows the default must be under `C:\\Users\\<user>`; a home elsewhere must
+   * be opted in here.
+   */
+  homeWriteRoot?: string
+  /**
+   * Force-read-only directories for `home-write`, absolute and canonicalized.
+   * Undefined enables the built-in safety list (`~/.ssh`, `~/.gnupg`,
+   * `~/.aws`, `~/.config/gh`, `~/.kube`, `~/.docker`); an explicit empty array
+   * disables the defaults.
+   */
+  homeWriteReadOnlyRoots?: string[]
+  /** Temporary directories also writable under `home-write`; default `os.tmpdir()`. */
+  homeWriteTempRoots?: string[]
+  /** Allow symlink spellings for configured home-write roots (default false). */
+  homeWriteAllowSymlinkedRoots?: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-sandbox-policy -->

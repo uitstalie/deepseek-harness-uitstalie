@@ -323,7 +323,7 @@ export function createRunCodeTool(
             type: 'object',
             additionalProperties: false,
             properties: {
-              mode: { type: 'string', required: true, enum: ['read-only', 'workspace-write', 'danger-full-access'] },
+              mode: { type: 'string', required: true, enum: ['read-only', 'workspace-write', 'home-write', 'danger-full-access'] },
               denied: { type: 'boolean', required: true },
               enforcement: { type: 'string', enum: ['full', 'partial'] },
             },
@@ -360,6 +360,8 @@ export function createRunCodeTool(
             justification: args.justification,
             effectiveMode: standingPolicy.mode,
             subject: 'program',
+            workspaceRoot: standingPolicy.workspaceRoot,
+            homeWriteRoot: (ctx.get('sandboxPolicy') as { homeWriteRoot?: string } | undefined)?.homeWriteRoot,
           }, {
             approver: ctx.get('approval'), agent: exec.agent, callId: exec.callId,
             toolName: RUN_CODE_NAME, signal: callSignal,

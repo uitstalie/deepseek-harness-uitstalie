@@ -15,7 +15,7 @@ import SandboxPolicyService, { SANDBOX_MODES, setSandboxMode } from '@deepseek-a
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt, { renderContextSnapshot, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 
-async function mounted(config: { mode?: 'read-only' | 'workspace-write' | 'danger-full-access'; workspaceRoot?: string; additionalWritableRoots?: string[] } = {}) {
+async function mounted(config: { mode?: 'read-only' | 'workspace-write' | 'home-write' | 'danger-full-access'; workspaceRoot?: string; additionalWritableRoots?: string[]; homeWriteRoot?: string; homeWriteReadOnlyRoots?: string[]; homeWriteTempRoots?: string[]; homeWriteAllowSymlinkedRoots?: boolean } = {}) {
   const ctx = new Context()
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SandboxPolicyService, config)
@@ -173,6 +173,58 @@ describe('SandboxPolicyService', () => {
     expect(ctx.sandboxPolicy.resolve({ session: session('sess-no-cwd') }).workspaceRoot).toBe('/fallback')
   })
 
+  it('resolves home-write with the default safety roots and os.tmpdir()', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-home-write-'))
+    try {
+      const home = join(root, 'home')
+      mkdirSync(join(home, '.ssh'), { recursive: true })
+      const ctx = await mounted({ mode: 'home-write', homeWriteRoot: home })
+      const policy = ctx.sandboxPolicy.resolve()
+      expect(policy.mode).toBe('home-write')
+      expect(policy.homeWriteRoot).toBe(resolve(home))
+      expect(policy.homeWriteTempRoots).toEqual([resolve(tmpdir())])
+      expect(policy.homeWriteReadOnlyRoots).toContain(resolve(home, '.ssh'))
+      expect(policy.homeWriteReadOnlyRoots).toContain(resolve(home, '.gnupg'))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('lets an explicit empty force-read-only list disable the defaults', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-home-write-empty-'))
+    try {
+      const home = join(root, 'home')
+      mkdirSync(join(home, '.ssh'), { recursive: true })
+      const ctx = await mounted({ mode: 'home-write', homeWriteRoot: home, homeWriteReadOnlyRoots: [] })
+      expect(ctx.sandboxPolicy.resolve().homeWriteReadOnlyRoots).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects symlink spellings by default, and keeps the opt-in target inside home', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-home-write-link-'))
+    try {
+      const home = join(root, 'home')
+      const outside = join(root, 'outside')
+      mkdirSync(home, { recursive: true })
+      mkdirSync(outside, { recursive: true })
+      symlinkSync(outside, join(home, 'linked'))
+      const base = { mode: 'home-write' as const, homeWriteRoot: home, homeWriteTempRoots: [] as string[] }
+      await expect(mounted({ ...base, homeWriteReadOnlyRoots: [join(home, 'linked')] }))
+        .rejects.toThrow('symlink spelling')
+      await expect(mounted({ ...base, homeWriteAllowSymlinkedRoots: true, homeWriteReadOnlyRoots: [join(home, 'linked')] }))
+        .rejects.toThrow('must stay inside the home')
+      const inside = join(home, 'inside')
+      mkdirSync(inside)
+      symlinkSync(inside, join(home, 'inside-link'))
+      const ctx = await mounted({ ...base, homeWriteAllowSymlinkedRoots: true, homeWriteReadOnlyRoots: [join(home, 'inside-link')] })
+      expect(ctx.sandboxPolicy.resolve().homeWriteReadOnlyRoots).toEqual([resolve(inside)])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('rejects a mode outside the closed vocabulary at load', async () => {
     const ctx = new Context()
     // Config validation runs when the fiber activates, and the policy seam
@@ -286,7 +338,7 @@ describe('sandbox:policy request context', () => {
 
 describe('the sandbox/mode session kit', () => {
   it('SANDBOX_MODES lists every mode for advertisement and validation', () => {
-    expect(SANDBOX_MODES).toEqual(['read-only', 'workspace-write', 'danger-full-access'])
+    expect(SANDBOX_MODES).toEqual(['read-only', 'workspace-write', 'home-write', 'danger-full-access'])
   })
 
   it('the sandboxMode projection folds to the last switch, or null without one', async () => {

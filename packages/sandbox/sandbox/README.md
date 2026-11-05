@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use `dsh-sandbox` to run a subprocess and everything it spawns under a per-call file-access policy. A command can run without writes (`read-only`), write only inside its workspace (`workspace-write`), or run unrestricted (`danger-full-access`). If the requested mode cannot be enforced, the call fails with `SANDBOX_UNAVAILABLE` instead of running unconfined. After a denied call, the model can request one strictly wider mode for human approval. This is same-world confinement: the process still shares the host kernel and filesystem; use a container, microVM, or remote executor when the whole environment must be isolated.
+Use `dsh-sandbox` to run a subprocess and everything it spawns under a per-call file-access policy. A command can run without writes (`read-only`), write only inside its workspace (`workspace-write`), write inside the user home except configured force-read-only paths (`home-write`), or run unrestricted (`danger-full-access`). If the requested mode cannot be enforced, the call fails with `SANDBOX_UNAVAILABLE` instead of running unconfined. After a denied call, the model can request one strictly wider mode for human approval. This is same-world confinement: the process still shares the host kernel and filesystem; use a container, microVM, or remote executor when the whole environment must be isolated.
 
 ## Table of Contents
 
@@ -57,6 +57,7 @@ The mode names the file effects a command may perform; enforcement completeness 
 |---|---|
 | `read-only` | Denies writes except required sinks such as `/dev/null` |
 | `workspace-write` | Allows writes under the workspace root, explicitly configured additional roots, and a backend-defined temp area |
+| `home-write` | Allows writes under the user home and configured temp exceptions; configured force-read-only paths win; never merges workspace extras |
 | `danger-full-access` | Bypasses confinement; the consumer spawns its original argv |
 
 Enforcement is reported per call: `full` means the backend governs every promised file effect, while `partial` means an active backend or older kernel ABI governs only a subset — the Windows ACL rung and older Landlock ABIs are the current partial cases, so a consumer that requires the absolute boundary can reject or surface them.
@@ -101,7 +102,7 @@ This section explains the design decisions behind the contract and points at the
 
 ### Escalation choreography
 
-The ladder is a closed table — `read-only` may escalate to `workspace-write` or `danger-full-access`, `workspace-write` only to `danger-full-access` — checked at execution, never baked into a tool schema, whose enum stays the closed target vocabulary. [`approveEscalation`](src/escalation.ts) returns the current mode without approval when it is repeated, rejects narrower or unsupported targets, and requests approval for wider modes. Callers validate the `sandbox_permissions`/`justification` pairing first.
+The ladder is a closed table — `read-only` may escalate to `workspace-write`, `home-write` or `danger-full-access`; `workspace-write` may escalate to either, with `home-write` requiring the workspace to be inside the home; `home-write` only to `danger-full-access` — checked at execution, never baked into a tool schema, whose enum stays the closed target vocabulary. [`approveEscalation`](src/escalation.ts) returns the current mode without approval when it is repeated, rejects narrower or unsupported targets, and requests approval for wider modes. Callers validate the `sandbox_permissions`/`justification` pairing first.
 
 ### Writable roots
 

@@ -106,6 +106,8 @@ export function apply(ctx: Context): void {
       await approveEscalation({
         requestedMode: 'danger-full-access', effectiveMode: policy.mode, subject: 'plugin management operation',
         justification: `plugin_manager ${JSON.stringify(args)}. Profile changes persist across sessions; installed Host code runs outside the workspace sandbox.`,
+        workspaceRoot: policy.workspaceRoot,
+        homeWriteRoot: ctx.sandboxPolicy.homeWriteRoot,
       }, { approver: ctx.get('approval'), agent: exec.agent, callId: exec.callId,
         toolName: 'plugin_manager', signal: exec.signal })
       exec.signal.throwIfAborted()
