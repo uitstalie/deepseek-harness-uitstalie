@@ -89,9 +89,9 @@ tier 迁移 pass 在 detail 追加之后运行。`planTierMigrations` 读取刚�
 
 live surface 决定替换是否可行。辅助函数先找已记录的 checkpoint seq，再找 window 相同的 live checkpoint，最后才是该 turn 连续的 surface 节点。区间缺失、包含 memory snapshot、或包含 compaction checkpoint 时，只记 debug 日志跳过；detail 区间在下一个 pass 会再次被规划（它的文件 tier 未变），brief 或遗忘区间仍记录新 tier 并用已存文本重试。原始 turn 的最终移除由 compaction 负责。追加会引用所有被遮住的 surface 节点。checkpoint 发布会在 surface 读取之前与追加之前各检查一次 provider 的取消信号：慢读取期间被 disable 时什么都不发布。checkpoint 一旦发布，记录其 seq 的 MEMORY.md 写入不再可取消——提交这份元数据正是避免“有 checkpoint 却没有对应 tier 状态”的方式。压缩失败保留 detail 区块；文件写入 stale 时重读并只重新应用一次计划，不会追加第二个 checkpoint。detail 摘要成功写入后，迁移失败不会丢掉那份摘要。
 
-snapshot 是文件面向模型的持久视图。每次 `memory_write` 成功后，`refreshMemorySnapshot` 读取 MEMORY.md、渲染文本，并用 `ctx.sessionQuery.readSurface` 扫出 surface 上最后一条来源为 memory snapshot 的消息。找到就用 `surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq }` 与 `sourceEventSeqs: [seq]` 原地替换该节点；找不到就 append。surface 因目标已离开而拒绝替换时退回 append，由下一次刷新替换该节点。snapshot 失败只记日志，不改变已经提交的写入结果。
+snapshot 是文件面向模型的持久视图。每次 `memory_write` 成功后，若会话已有快照，就只在尾部追加一条 `user/message` 更新（来源 `{ kind: 'memory', form: 'notice', summary }`，正文 `Memory updated: - [kind] <条目>` 加上指向 `memory_read`/`memory_search` 的提示）；**绝不原地替换更早的节点**——替换靠前的节点会让提供方的 KV-cache 前缀整段作废（实测命中率掉到约 16.9k token 的前缀、每 turn 首条请求只有 17–36%）。会话还没有快照时（全新会话第一次写入、或恢复时 surface 上尚无快照），`refreshMemorySnapshot` 才追加一条完整快照。快照失败只记日志，不改变已经提交的写入结果。
 
-在 MEMORY.md 已有会话或条目的工作区里恢复的 root agent，会在组织者的 `onAgentCreated` 钩子里收到一条 snapshot。该钩子跳过全新会话：此时 surface 仍为空，追加的 user 消息会排在系统提示词之前。全新会话由第一次成功写入送出 snapshot。提供者不保存 seq 状态，因此进程重启后仅凭 live surface 重建替换目标。文本有预算：`MEMORY_SNAPSHOT_MAX_BYTES`（16 KiB）覆盖标题、`Window:` 清单、跨会话索引与结尾提示；超出预算时从最旧的索引行开始丢弃，清单保持原位。
+在 MEMORY.md 已有会话或条目的工作区里恢复的 root agent，会在组织者的 `onAgentCreated` 钩子里追加一条 snapshot。该钩子跳过全新会话：此时 surface 仍为空，追加的 user 消息会排在系统提示词之前。全新会话由第一次成功写入送出 snapshot。文本未变化时不追加；变了才在尾部再追加一条（不替换旧节点）。提供者不保存 seq 状态。文本有预算：`MEMORY_SNAPSHOT_MAX_BYTES`（16 KiB）覆盖标题、`Window:` 清单、跨会话索引与结尾提示；超出预算时从最旧的索引行开始丢弃，清单保持原位。
 
 条目 kind 注册表（`decision`、`files`、`open`、`preference`）是 `memory-file.ts` 里的数据。解析器、渲染器、工具 schema 与诊断都读它；文件或工具调用里出现未知 kind 时，错误会带上可用列表。
 

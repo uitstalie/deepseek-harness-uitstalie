@@ -13,7 +13,7 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
-import { createStoreAwareness } from './awareness.ts'
+import { createStoreAwareness, JIRA_AWARENESS_ORDER, JIRA_AWARENESS_SECTION_NAME } from './awareness.ts'
 import { callerSessionId, isExecutorSession, isSubagent } from './caller.ts'
 import { type HostEnv } from './env.ts'
 import { nowUtc } from './envelope.ts'
@@ -145,13 +145,39 @@ export const createJiraContribution = (host: ContributionHost, workerPreset?: st
    */
   const isWorker = (agent: Agent): boolean => isSubagent(agent) || isExecutorSession(agent, workerPreset)
 
+  // The awareness line is a runtime context (appended when it changes), not a system-prompt
+  // section: the ledger counts change while a conversation is open, and a changing system prefix
+  // invalidates the provider's cache for the entire conversation.
+  let awarenessContextDispose: (() => void) | undefined
+  const inject = (host.ctx as { inject?: (names: readonly string[], callback: (scope: unknown) => void) => unknown }).inject
+  if (typeof inject === 'function') {
+    inject.call(host.ctx, ['systemPrompt'], (scope) => {
+      const systemPrompt = (scope as {
+        systemPrompt?: { context?: (entry: {
+          name: string
+          order: number
+          text: (context: { agent?: Agent }) => string
+        }) => () => void }
+      }).systemPrompt
+      if (systemPrompt?.context === undefined) return
+      awarenessContextDispose = systemPrompt.context({
+        name: JIRA_AWARENESS_SECTION_NAME,
+        order: JIRA_AWARENESS_ORDER,
+        text: (context: { agent?: Agent }) => {
+          const agent = context.agent
+          return agent === undefined || isWorker(agent) ? '' : awareness.text()
+        },
+      })
+    })
+  }
+
   return Object.freeze({
     // DH-512/514/703: a worker gets the ledger's three tools for reading the issue it was
     // dispatched for (their writes stay refused, decision 89, and `jira_kb` checks the same
     // verdict) plus `issue_work`, which is the only surface it may write through.
     scope: 'all',
     tools: (agent: Agent) => (isWorker(agent) ? Object.freeze([...tools, ...workerTools]) : tools),
-    promptSections: (agent: Agent) => (isWorker(agent) ? [EXECUTOR_SECTION] : [awareness.section]),
+    promptSections: (agent: Agent) => (isWorker(agent) ? [EXECUTOR_SECTION] : []),
     onAgentCreated: (agent: Agent) => {
       // A worker neither settles the ledger nor scans the session's commits: it writes one issue
       // through `issue_work`, and the dispatcher owns the commit history.
@@ -165,6 +191,8 @@ export const createJiraContribution = (host: ContributionHost, workerPreset?: st
       await settleCompletedTurn(host, input.agent, input.turn, await (heads.get(input.agent) ?? headAtStart(host)))
     },
     dispose: () => {
+      awarenessContextDispose?.()
+      awarenessContextDispose = undefined
       awareness.dispose()
     },
   })

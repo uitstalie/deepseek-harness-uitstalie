@@ -1056,6 +1056,7 @@ describe('superagent: context, compaction and memory curation', () => {
       { type: 'turn/start', seq: 1, time: now - 12 * 60_000, data: { turn: 1 } },
       { type: 'tool/call', seq: 2, time: now - 11 * 60_000, data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{}' } },
       { type: 'assistant/message', seq: 3, time: now - 60_000, data: { message: { content: [{ type: 'text', text: 'still working' }] } } },
+      { type: 'assistant/message', seq: 4, time: now - 30_000, data: { usage: { inputTokens: 1_000, cacheReadTokens: 9_000, outputTokens: 10, totalTokens: 10_010 } } },
     ]
     const controller = new CompactController()
     const ctx = {
@@ -1074,6 +1075,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.ok((row?.status?.elapsedMs ?? 0) >= 12 * 60_000)
     assert.equal(row?.status?.inFlightTool, 'bash')
     assert.equal(row?.longRunning, true)
+    assert.equal((row as { cacheHitPercent?: number }).cacheHitPercent, 90)
     assert.equal(listed.longRunningMinutes, 10)
   })
 
@@ -1330,7 +1332,7 @@ describe('superagent: the dispatcher\'s surface', () => {
       assert.deepEqual(childNames, ['issue_work', 'jira_issue', 'jira_kb', 'jira_list'])
       // The standing instructions are the child's persona: paid once, cached, and the reason a
       // dispatch instruction only names the issue.
-      assert.deepEqual(contribution.promptSections?.(main).map(section => section.name), ['jira:store'])
+      assert.deepEqual(contribution.promptSections?.(main).map(section => section.name), [])
       assert.deepEqual(contribution.promptSections?.(worker).map(section => section.name), ['jira:executor'])
     } finally {
       await harness.dispose()

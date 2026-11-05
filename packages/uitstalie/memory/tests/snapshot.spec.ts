@@ -26,6 +26,7 @@ import type { MemoryDocument } from '../src/index.ts'
 import {
   callTool,
   createRoot,
+  memoryNotices,
   memorySnapshots,
   messageText,
   mountMemory,
@@ -167,7 +168,7 @@ test('a write appends exactly one snapshot with the window manifest and the hint
   expect(snapshotBytes(text)).toBeLessThanOrEqual(MEMORY_SNAPSHOT_MAX_BYTES)
 })
 
-test('a second write replaces the existing snapshot instead of appending another', async () => {
+test('a second write appends an update notice instead of rewriting the snapshot', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
 
@@ -176,11 +177,15 @@ test('a second write replaces the existing snapshot instead of appending another
 
   await callTool(mounted.ctx, root, 'memory_write', { kind: 'open', content: 'second conclusion' })
   const snapshots = await memorySnapshots(mounted.ctx, root.session.id)
+  const notices = await memoryNotices(mounted.ctx, root.session.id)
 
   expect(first).toBeDefined()
+  // The trunk snapshot stays byte-identical: a replacement at its early position would
+  // invalidate the provider's cache for the whole conversation after it.
   expect(snapshots).toHaveLength(1)
-  expect(snapshots[0]?.seq).toBeGreaterThan(first?.seq ?? SessionSeq(0))
-  expect(snapshots[0]?.source.form).toBe('snapshot')
+  expect(snapshots[0]?.seq).toBe(first?.seq)
+  expect(notices).toHaveLength(1)
+  expect(messageText(notices[0]!)).toContain('Memory updated: - [open] second conclusion')
 })
 
 test('a provider mounted over a session that already has a snapshot replaces it once', async () => {
@@ -215,22 +220,23 @@ test('a provider mounted over a session that already has a snapshot replaces it 
     expect(observed.at(-1)?.seq).toBeGreaterThan(SessionSeq(1))
   })
   const restored = await memorySnapshots(mounted.ctx, handle.agent.session.id)
-  expect(restored).toHaveLength(1)
-  expect(snapshotText(restored[0]!)).toContain('- memory-first · [decision] keep the store path relative')
-  expect(restored[0]?.source.sections[0]?.text).toBe(snapshotText(restored[0]!))
+  expect(restored.length).toBeGreaterThanOrEqual(2)
+  const latest = restored.at(-1)!
+  expect(snapshotText(latest)).toContain('- memory-first · [decision] keep the store path relative')
+  expect(latest.source.sections[0]?.text).toBe(snapshotText(latest))
 
   await vi.waitFor(() => {
     expect(mounted.ctx.tools.get('memory_write', handle.agent)).toBeDefined()
   })
-  const before = restored[0]?.seq ?? SessionSeq(0)
+  const before = restored.length
   const result = await callTool(mounted.ctx, handle.agent, 'memory_write', {
     kind: 'open',
     content: 'the restart path writes again',
   })
   expect(result.isError, textOf(result)).toBe(false)
   const written = await memorySnapshots(mounted.ctx, handle.agent.session.id)
-  expect(written).toHaveLength(1)
-  expect(written[0]?.seq).toBeGreaterThan(before)
+  // The write appends an update notice; the trunk snapshot count does not grow.
+  expect(written).toHaveLength(before)
   await handle.dispose()
 })
 

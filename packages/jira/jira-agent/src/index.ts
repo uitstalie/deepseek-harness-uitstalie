@@ -375,6 +375,7 @@ export {
   DELIVER_TOOL_NAME,
   MEMORY_CURATION_INSTRUCTION,
   activityOf,
+  cacheHitOf,
   compactWorkspaceSession,
   contextUsageOf,
   longRunningSummary,

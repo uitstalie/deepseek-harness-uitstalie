@@ -31,7 +31,7 @@ import {
 } from './memory-file.ts'
 import type { MemoryEntryKind, MemorySection } from './memory-file.ts'
 import { readMemoryWindow } from './read.ts'
-import { refreshMemorySnapshot } from './snapshot.ts'
+import { appendMemoryUpdate, lastSnapshotText, refreshMemorySnapshot } from './snapshot.ts'
 
 /** Maximum `content` of one `memory_write` entry, in UTF-8 bytes. */
 const MEMORY_WRITE_CONTENT_MAX_BYTES = 8 * 1024
@@ -161,11 +161,24 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapsho
         turn: facts.turn,
         seq: facts.seq,
       }, exec.signal, { window: settings.window, maxBytes: settings.maxBytes, maxEntries: settings.maxEntries })
-      await refreshMemorySnapshot(ctx, exec.agent, exec.signal, {
-        template: settings.snapshotTemplate,
-        position: settings.snapshotPosition,
-        ...onSnapshotText === undefined ? {} : { onText: onSnapshotText },
-      })
+      // A surface read failure must not fail the committed write; treat it as "no snapshot"
+      // and let the refresh below report (and swallow) the failure.
+      const hasSnapshot = await lastSnapshotText(ctx, String(session.id))
+        .then(text => text !== undefined)
+        .catch(() => false)
+      if (settings.snapshotPosition === 'prompt' || !hasSnapshot) {
+        // Prompt mode renders a system section; a session without a snapshot yet gets its trunk
+        // here (a fresh session receives none before its first write).
+        await refreshMemorySnapshot(ctx, exec.agent, exec.signal, {
+          template: settings.snapshotTemplate,
+          position: settings.snapshotPosition,
+          ...onSnapshotText === undefined ? {} : { onText: onSnapshotText },
+        })
+      } else {
+        // Append only the new fact: replacing the snapshot node (or re-injecting the whole state)
+        // on every write collapsed the KV-cache prefix from the snapshot's early position.
+        appendMemoryUpdate(session, written.kind, content)
+      }
       return {
         path: written.path,
         kind: written.kind,

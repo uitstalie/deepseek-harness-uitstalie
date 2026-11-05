@@ -135,6 +135,7 @@ export {
   MEMORY_STATE_SECTION_NAME,
   MEMORY_STATE_SECTION_ORDER,
   applySnapshotTemplate,
+  appendMemoryUpdate,
   refreshMemorySnapshot,
   renderMemorySnapshot,
   syncMemorySnapshot,

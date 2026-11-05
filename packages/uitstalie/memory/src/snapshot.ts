@@ -27,7 +27,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextSnapshotSection, MessageSource, UserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { Session, SessionSeq } from '@deepseek-ai/dsh-session'
+import type { Session } from '@deepseek-ai/dsh-session'
 import type { MemoryCheckpointWindow } from './checkpoint.ts'
 import { readMemoryDocument } from './memory-file.ts'
 import type { MemoryDocument, MemorySection, MemorySessionRecord, MemoryTier, MemoryTurnRecord } from './memory-file.ts'
@@ -225,9 +225,27 @@ export async function syncMemorySnapshot(
   if (text === undefined) return
   if (options.position === 'prompt') return
   signal?.throwIfAborted()
-  const target = await findSnapshotSeq(ctx, agent.session.id)
+  const previous = await lastSnapshotText(ctx, agent.session.id)
   signal?.throwIfAborted()
-  appendSnapshot(ctx, agent.session, text, target)
+  if (previous === text) return
+  appendSnapshot(agent.session, text)
+}
+
+/**
+ * The last snapshot's rendered text on the live surface, when one is still present.
+ * @param ctx - context carrying `sessionQuery`.
+ * @param sessionId - session to scan.
+ * @returns the text, or undefined without a live snapshot.
+ */
+export async function lastSnapshotText(ctx: Context, sessionId: string): Promise<string | undefined> {
+  const surface = await ctx.sessionQuery.readSurface(SessionId(sessionId))
+  for (let index = surface.events.length - 1; index >= 0; index -= 1) {
+    const event = surface.events[index]
+    if (event?.type !== 'user/message') continue
+    if (!isMemorySnapshotSource(event.data.source)) continue
+    return event.data.source.sections.map(section => section.text).join('')
+  }
+  return undefined
 }
 
 /**
@@ -400,37 +418,38 @@ function renderRange(range: MemorySnapshotRange, first: boolean): string {
   return first ? `${span} summarized (${range.tier})` : `${span} (${range.tier})`
 }
 
-/** Locate the last memory snapshot on the session's current model surface. */
-async function findSnapshotSeq(ctx: Context, sessionId: SessionId): Promise<SessionSeq | undefined> {
-  const surface = await ctx.sessionQuery.readSurface(sessionId)
-  let target: SessionSeq | undefined
-  for (const event of surface.events) {
-    if (event.type !== 'user/message') continue
-    if (!isMemorySnapshotSource(event.data.source)) continue
-    target = event.seq
-  }
-  return target
+/**
+ * Append the snapshot at the tail. The snapshot is never replaced in place: a replace of an early
+ * node invalidates the whole KV-cache prefix after it, and this message is emitted mostly on
+ * session start and at summary boundaries, where the trunk should stay byte-stable.
+ */
+function appendSnapshot(session: Session, text: string): void {
+  session.append('user/message', createSnapshotMessage(text), { surfaceOp: 'append' })
 }
 
-/** Append the snapshot, replacing the prior node when it is still on the surface. */
-function appendSnapshot(ctx: Context, session: Session, text: string, target: SessionSeq | undefined): void {
-  const message = createSnapshotMessage(text)
-  if (target === undefined) {
-    session.append('user/message', message, { surfaceOp: 'append' })
-    return
-  }
-  try {
-    session.append('user/message', message, {
-      surfaceOp: { op: 'replace', startSeq: target, endSeq: target },
-      sourceEventSeqs: [target],
-    })
-  } catch (error: unknown) {
-    /* The surface changed since the scan; keep the new state as an appended node
-     * and let the next refresh replace it. */
-    ctx.logger.debug('memory: appending the snapshot instead of replacing: %s', errorMessage(error))
-    session.append('user/message', message, { surfaceOp: 'append' })
-  }
+/**
+ * Append one append-only update after a successful `memory_write`.
+ *
+ * The update names the new conclusion and points at the detail tools instead of re-injecting the
+ * whole snapshot: replacing the snapshot (or sending a full copy) on every write made the KV-cache
+ * prefix collapse at the snapshot's original, early position. Appending keeps the trunk stable and
+ * carries only the new fact; the full state is one `memory_read` away.
+ * @param session - session that receives the update.
+ * @param kind - entry kind, echoed in the label.
+ * @param text - the entry text as written.
+ * @returns after the message landed on the surface.
+ */
+export function appendMemoryUpdate(session: Session, kind: string, text: string): void {
+  const body = text.length <= MEMORY_UPDATE_MAX_CHARS ? text : `${text.slice(0, MEMORY_UPDATE_MAX_CHARS)}…`
+  const notice = `Memory updated: - [${kind}] ${body}`
+  session.append('user/message', createUserMessage({
+    content: [{ type: 'text', text: `${notice}\nUse memory_read / memory_search for the full entry.` }],
+    source: { kind: 'memory', form: 'notice', summary: boundContextSummary(notice) },
+  }), { surfaceOp: 'append' })
 }
+
+/** Maximum characters of one appended memory update. */
+const MEMORY_UPDATE_MAX_CHARS = 600
 
 /** Build the durable snapshot message. */
 function createSnapshotMessage(text: string): UserMessage {

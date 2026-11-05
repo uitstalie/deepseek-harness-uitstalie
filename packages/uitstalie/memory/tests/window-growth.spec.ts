@@ -180,7 +180,9 @@ test('the default window replaces the raw turn with a detail checkpoint at age 6
   const document = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
   expect(document.sessions[0]?.turns[0]).toMatchObject({ turn: 1, tier: 'detail' })
   expect(document.sessions[0]?.turns[0]?.checkpointSeq).toEqual(expect.any(Number))
-  expect(await memorySnapshots(mounted.ctx, root.id)).toHaveLength(1)
+  // Snapshots are append-only now: the trunk snapshot from session start stays, and each
+  // summary pass may append a newer one; the latest describes the current window.
+  expect((await memorySnapshots(mounted.ctx, root.id)).length).toBeGreaterThanOrEqual(1)
   const snapshot = await snapshotText(mounted, root.id)
   expect(snapshot).toContain('turn 1 summarized (detail)')
   expect(snapshot).not.toContain('request one')

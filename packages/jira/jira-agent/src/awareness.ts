@@ -5,11 +5,13 @@
  * open issues would be noise; what an agent needs to know is that a ledger exists, where it is,
  * and whether it may write. The line names the store and its counts and nothing else.
  *
- * The text is a prompt section rather than a dynamic context source because that is the
- * contribution `dafeiyu` wires onto a root agent. It is kept out of the request until the
+ * The text is a runtime-context contribution, not a prompt section: the line changes when the
+ * ledger commits, and a changing prompt section rewrites the stable system prefix (killing the
+ * provider's KV-cache hit for the whole conversation). The runtime context is appended at the
+ * tail each time it changes, so the prefix stays intact. It is kept out of the request until the
  * capability is enabled, and it is refreshed when the ledger commits — `changed` is the single
  * refresh source the contract names, so there is no file watch and no polling. An empty ledger
- * still says nothing at all, exactly like the line it replaces.
+ * still says nothing at all, exactly like the line it replaced.
  *
  * @module @deepseek-ai/dsh-jira-agent/awareness
  */
@@ -17,7 +19,7 @@
 import { basename } from 'node:path'
 import { injectionLine } from '@deepseek-ai/dsh-jira-core'
 import type { JiraServiceApi } from '@deepseek-ai/dsh-jira-service'
-import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
+
 
 /** Registry name of the jira awareness section. */
 export const JIRA_AWARENESS_SECTION_NAME = 'jira:store'
@@ -31,10 +33,10 @@ export const JIRA_AWARENESS_ORDER = 700
 /** What the awareness line needs from the ledger service. */
 export type AwarenessSource = Pick<JiraServiceApi, 'on' | 'counts' | 'root'>
 
-/** The registered section plus the bookkeeping that keeps its text current. */
+/** The registered runtime context plus the bookkeeping that keeps its text current. */
 export interface StoreAwareness {
-  /** The prompt section to contribute to a root agent. */
-  readonly section: PromptSection
+  /** The current line; an empty string means the ledger is empty or unreadable. */
+  text(): string
   /**
    * Re-read the ledger and replace the cached line.
    * @returns a promise that settles once this read (or the read already in flight) finished.
@@ -93,11 +95,7 @@ export const createStoreAwareness = (jira: AwarenessSource): StoreAwareness => {
   })
 
   return Object.freeze({
-    section: Object.freeze({
-      name: JIRA_AWARENESS_SECTION_NAME,
-      order: JIRA_AWARENESS_ORDER,
-      text: () => text,
-    }),
+    text: () => text,
     refresh,
     dispose: unsubscribe,
   })

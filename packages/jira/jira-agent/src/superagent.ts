@@ -1945,6 +1945,28 @@ export const activityOf = (agent: unknown, now: number = Date.now()): SessionAct
   })
 }
 
+/**
+ * The most recent assistant message's cache-hit percentage for one live Session.
+ *
+ * `cacheReadTokens / (inputTokens + cacheReadTokens)`: the share of the last request served from
+ * the provider's prefix cache. A sudden drop means something rewrote the prompt prefix, which is
+ * exactly the regression this metric exists to surface.
+ * @param agent - the live Agent whose session log is read.
+ * @returns the percentage (0–100), or undefined without a measurable usage record.
+ */
+export const cacheHitOf = (agent: unknown): number | undefined => {
+  const events = eventsOf(agent)
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'assistant/message') continue
+    const usage = (event.data as { usage?: { inputTokens?: number; cacheReadTokens?: number } } | undefined)?.usage
+    if (usage?.inputTokens === undefined) continue
+    const total = usage.inputTokens + (usage.cacheReadTokens ?? 0)
+    return total === 0 ? undefined : Math.round((usage.cacheReadTokens ?? 0) / total * 100)
+  }
+  return undefined
+}
+
 /** One recent event as `inspect` reports it. */
 export interface RecentActivity {
   readonly seq?: number
@@ -2539,6 +2561,7 @@ export const runSessionTool = async (
           const live = agentsOf(ctx)?.get(id) as { session?: unknown } | undefined
           const usage = contextUsageOf(meter, live?.session)
           const status = live === undefined ? undefined : activityOf(live, Date.now())
+          const cacheHitPercent = live === undefined ? undefined : cacheHitOf(live)
           return Object.freeze({
             id,
             running: item.running,
@@ -2548,6 +2571,7 @@ export const runSessionTool = async (
             ...(usage === undefined ? {} : { usage }),
             ...(usage?.percent === undefined || usage.percent < thresholdPercent ? {} : { recommendCompact: true }),
             ...(status === undefined ? {} : { status }),
+            ...(cacheHitPercent === undefined ? {} : { cacheHitPercent }),
             ...(status?.elapsedMs === undefined || status.elapsedMs < longRunningMs ? {} : { longRunning: true }),
           })
         })
@@ -3572,6 +3596,7 @@ export const createSuperagentContribution = (
           cwd?: string
           blank?: boolean
           usage?: { percent?: number }
+          cacheHitPercent?: number
           recommendCompact?: boolean
           longRunning?: boolean
           status?: { elapsedMs?: number }
@@ -3581,6 +3606,7 @@ export const createSuperagentContribution = (
           .map(row => `${row.id}  ${row.running ? 'running' : 'idle'}${row.blank === true ? '  (blank)' : ''}`
             + `${row.status?.elapsedMs === undefined ? '' : `  ${durationText(row.status.elapsedMs)}`}`
             + `${row.usage?.percent === undefined ? '' : `  context ${row.usage.percent}%`}`
+            + `${row.cacheHitPercent === undefined ? '' : `  cache ${row.cacheHitPercent}%`}`
             + `${row.recommendCompact === true ? '  (consider compact)' : ''}${row.longRunning === true ? '  (long-running)' : ''}  ${row.cwd ?? ''}`)
           .join('\n'))
       }

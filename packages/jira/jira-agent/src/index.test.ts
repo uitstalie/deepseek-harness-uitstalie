@@ -155,7 +155,7 @@ const settle = async (): Promise<void> => {
 const awarenessSettled = async (harness: JiraHarness, agent: ReturnType<typeof testAgent>): Promise<void> => {
   await waitFor(async () => {
     const assembly = await harness.ctx.systemPrompt.assemble(assembleContextFor(agent))
-    return assembly.sections.some(section => section.name === JIRA_AWARENESS_SECTION_NAME && section.text !== '')
+    return assembly.contexts.some(context => context.name === JIRA_AWARENESS_SECTION_NAME && context.text !== '')
       ? true
       : undefined
   })
@@ -204,12 +204,12 @@ describe('agent: the capability and its surfaces (contract §3)', () => {
     }
   })
 
-  it('contributes the awareness line as a prompt section, refreshed from the ledger', async () => {
+  it('contributes the awareness line as a runtime context, refreshed from the ledger', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       const section = await waitFor(async () => {
         const assembly = await harness.ctx.systemPrompt.assemble(assembleContextFor(agent))
-        const found = assembly.sections.find(entry => entry.name === JIRA_AWARENESS_SECTION_NAME)
+        const found = assembly.contexts.find(entry => entry.name === JIRA_AWARENESS_SECTION_NAME)
         return found !== undefined && found.text !== '' ? found : undefined
       })
       assert.match(section.text, /^\[store\] .*\d+ projects · \d+ knowledge · \d+ open issues( \| read-only: \d+)?$/u)
@@ -226,7 +226,7 @@ describe('agent: the capability and its surfaces (contract §3)', () => {
     try {
       await settle()
       const assembly = await harness.ctx.systemPrompt.assemble(assembleContextFor(agent))
-      const section = assembly.sections.find(entry => entry.name === JIRA_AWARENESS_SECTION_NAME)
+      const section = assembly.contexts.find(entry => entry.name === JIRA_AWARENESS_SECTION_NAME)
       assert.equal(section?.text ?? '', '', 'an empty store injects no line')
     } finally {
       await harness.dispose()

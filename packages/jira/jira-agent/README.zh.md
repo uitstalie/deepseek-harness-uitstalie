@@ -30,7 +30,7 @@ kind: "package-reference"
 | `tools.ts` | 注册表定义（root 与执行者两套）与每次调用的 store/caller 解析 |
 | `workIssue.ts` | 执行者的工具：它的 schema、范围检查与 runner |
 | `superagent.ts` | 认领闭环：可领性判定、提案与认领 |
-| `awareness.ts` | `jira:store` 提示词段及其由 `changed` 驱动的刷新 |
+| `awareness.ts` | `jira:store` 运行时上下文行及其由 `changed` 驱动的刷新 |
 | `wiring.ts` | 写守卫、`/jira` 命令注册与 skill 注册 |
 | `toolIssue.ts` / `toolList.ts` / `toolKb.ts` | 工具 schema、描述与 runner |
 | `envelope.ts` / `caller.ts` | wire 与实体转换、身份元组、谁在提问 |
