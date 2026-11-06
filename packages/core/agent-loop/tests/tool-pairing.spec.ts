@@ -135,10 +135,31 @@ describe('pairToolCalls: the request never carries an unanswered tool call', () 
     expect((result.messages.at(-1) as ToolResultMessage).toolCallId).toBe('tail')
   })
 
-  it('repairs a result shadowed out of order: the call is answered later but after the next assistant', () => {
-    // The c25e7107 failure shape: a two-call batch whose second result was shadowed by a prune
-    // replace, so the NEXT assistant message starts while the call is still open — kimi answers
-    // the whole request 400 ("tool_call_ids did not have response messages").
+  it('relocates a real answer that a notice split away from its call', () => {
+    // The memory plugin appends its "Memory updated" notice from inside the tool handler, so the
+    // notice lands between the call and the call's own result. Synthesizing a second answer made
+    // the DeepSeek serializer reject the request ("tool result has no matching call") on every
+    // turn, which bricked the Session: the gap is durable, so each retry repeated it.
+    const history = [
+      user('go'),
+      assistant([{ id: 'm1', name: 'memory_write' }]),
+      user('Memory updated: - [decision] sandbox tiers'),
+      tool('m1'),
+      assistant([], 'done'),
+    ]
+    const result = pairToolCalls(history)
+    expect(result.repairs.map(repair => repair.callId)).toEqual(['m1'])
+    // One answer, moved into the slot providers require, then the notice.
+    expect(roles(result.messages)).toEqual(['user', 'assistant', 'tool', 'user', 'assistant'])
+    expect(result.messages.filter(message => message.role === 'tool')).toHaveLength(1)
+    expect((result.messages[2] as ToolResultMessage).toolCallId).toBe('m1')
+  })
+
+  it('relocates a result shadowed out of order instead of answering its call twice', () => {
+    // A two-call batch whose second result was shadowed by a prune replace, so the NEXT assistant
+    // message starts while the call is still open — kimi answers the whole request 400
+    // ("tool_call_ids did not have response messages"). The answer still exists later in the
+    // history, so it moves into its window rather than being duplicated by a synthetic result.
     const history = [
       assistant([{ id: 'first', name: 'read' }, { id: 'shadowed', name: 'pwsh' }]),
       tool('first'),
@@ -150,9 +171,9 @@ describe('pairToolCalls: the request never carries an unanswered tool call', () 
     ]
     const result = pairToolCalls(history)
     expect(result.repairs.map(repair => repair.callId)).toEqual(['shadowed'])
-    // The synthetic answer lands before the second assistant message; the late real result stays.
-    expect(roles(result.messages)).toEqual(['assistant', 'tool', 'tool', 'assistant', 'tool', 'tool', 'user'])
+    // The real answer lands before the second assistant message and is not repeated later.
+    expect(roles(result.messages)).toEqual(['assistant', 'tool', 'tool', 'assistant', 'tool', 'user'])
+    expect(result.messages.filter(message => message.role === 'tool')).toHaveLength(3)
     expect((result.messages[2] as ToolResultMessage).toolCallId).toBe('shadowed')
-    expect((result.messages[5] as ToolResultMessage).toolCallId).toBe('shadowed')
   })
 })

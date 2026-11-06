@@ -727,10 +727,10 @@ export class ReactLoopAgent implements Agent {
     // canonicalHeader is shallow; append logs a detached snapshot, not these local values.
     deepFreeze(header)
     const boundaryMessages = session.deriveMessages()
-    // Never send a dangling assistant tool call: a projection, surface replace or compaction
-    // boundary can remove a result while keeping its call, and strict providers answer the whole
-    // request with a 400 the Session cannot recover from. The repair is request-local — the log
-    // and derived history keep the truthful gap.
+    // Never send a dangling or doubly-answered assistant tool call: a projection, surface replace,
+    // compaction boundary or interleaved notice can remove a result or leave the real one outside
+    // its window, and strict providers reject the whole request with an error the Session cannot
+    // recover from. The repair is request-local — the log and derived history keep the truth.
     const paired = pairToolCalls(boundaryMessages)
     if (paired.repairs.length > 0) {
       session.append('agent/tool-pair-repair', {

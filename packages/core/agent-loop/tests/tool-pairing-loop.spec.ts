@@ -103,6 +103,49 @@ describe('request tool-call pairing at the loop boundary', () => {
     }
   })
 
+  it('a notice appended inside a tool handler travels after the real result, which stays single', async () => {
+    // The memory plugin appends its "Memory updated" snapshot from inside memory_write's handler, so
+    // the notice lands between the assistant call and the call's own tool result. The request must
+    // still carry exactly one answer for that call: a synthesized duplicate made the DeepSeek
+    // serializer reject every later request with "tool result has no matching call".
+    const adapter = new MockAdapter([
+      toolCallResponse('noticed', 'notice-fixture', {}),
+      textResponse('second request'),
+    ])
+    const ctx = await harness(adapter)
+    try {
+      ctx.tools.register(defineContentToolFixture({
+        name: 'notice-fixture',
+        description: 'appends a user notice before its own result is committed',
+        parameters: {},
+        execute: async (_args, exec) => {
+          exec.agent?.session.append('user/message', createUserMessage({
+            content: [{ type: 'text', text: 'Memory updated: - [decision] noticed' }],
+            source: { kind: 'user' },
+          }), { surfaceOp: 'append' })
+          return [{ type: 'text', text: 'recorded' }]
+        },
+      }))
+      const agent = await ctx.agentLoop.create(SessionId('pair-after-notice'), { provider: 'mock', model: 'mock' })
+
+      send(agent, 'call the tool')
+      await agent.whenIdle()
+      send(agent, 'continue')
+      await agent.whenIdle()
+
+      const request = adapter.requests[1]!
+      const answers = request.messages.filter(message => message.role === 'tool'
+        && String((message as { toolCallId?: string }).toolCallId) === 'noticed')
+      // The relocated real result, not a synthetic duplicate of it.
+      expect(answers).toHaveLength(1)
+      expect((answers[0] as { isError?: boolean }).isError).not.toBe(true)
+      const { calls } = pairings(request.messages)
+      expect(calls).toEqual(['noticed'])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('a surface replace that removes a result is repaired in the request, and the repair is logged', async () => {
     const adapter = new MockAdapter([
       toolCallResponse('victim', 'echo-fixture', { text: 'x' }),
