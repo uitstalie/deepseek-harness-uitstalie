@@ -430,6 +430,15 @@ describe('projectToolUpdates', () => {
     expect(projectToolUpdates([prompt], undefined, undefined, history).tools).toBeUndefined()
   })
 
+  it('keeps developer text while dropping tool changes the route cannot express', () => {
+    const update = developer([{ type: 'text', text: 'Keep this guidance.' }, { type: 'tool-addition', toolName: 'fetch' }])
+    const history: ToolHistory = { tools: [search], updates: [{ messageId: update.id, additions: [fetch] }] }
+    const deferred = [search, { ...fetch, deferLoading: true as const }]
+    const projected = projectToolUpdates([prompt, update, prompt], deferred, undefined, history, true)
+    expect(projected.tools).toEqual([search, fetch])
+    expect(projected.messages).toEqual([prompt, { ...update, content: [{ type: 'text', text: 'Keep this guidance.' }] }, prompt])
+  })
+
   it.each(['addition-only', 'in-history'] as const)('activates explicitly deferred baseline tools on %s routes', (mode) => {
     const deferred = { ...search, deferLoading: true as const }
     const added = developer([{ type: 'tool-addition', toolName: 'search' }])

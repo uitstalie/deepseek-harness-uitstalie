@@ -1108,7 +1108,9 @@ export class LlmRuntime extends TypertRemoteService {
         projectedMessages = projectImagesForTextModel(projectedMessages)
       }
       // Tool changes are logged on every route; the route's declared mode selects what it receives.
-      const projectedTools = projectToolUpdates(projectedMessages, resolvedOptions.tools, modelInfo.toolUpdate, resolvedOptions.toolHistory)
+      // A route that still reads later system messages keeps developer text when its tool changes are unsupported.
+      const projectedTools = projectToolUpdates(projectedMessages, resolvedOptions.tools, modelInfo.toolUpdate, resolvedOptions.toolHistory,
+        modelInfo.systemPromptUpdate === 'in-history')
       projectedMessages = projectedTools.messages
       let projectedOptions = resolvedOptions
       if (projectedMessages !== resolvedOptions.messages || projectedTools.tools !== resolvedOptions.tools) {

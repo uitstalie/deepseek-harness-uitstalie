@@ -379,6 +379,35 @@ function withoutDeveloperMessages(messages: readonly RequestMessage[]): readonly
   return retained.length === messages.length ? messages : retained
 }
 
+/**
+ * Drop only the tool changes a route cannot represent, keeping every other developer block.
+ * A route that still reads system messages mid-conversation must not lose instructions that
+ * happened to share one developer event with a tool change it cannot express.
+ */
+function withoutToolUpdateBlocks(messages: readonly RequestMessage[]): readonly RequestMessage[] {
+  let changed = false
+  const retained: RequestMessage[] = []
+  for (const message of messages) {
+    if (message.role !== 'developer') {
+      retained.push(message)
+      continue
+    }
+    const content = message.content.filter(block => block.type !== 'tool-addition' && block.type !== 'tool-removal')
+    if (content.length === message.content.length) {
+      retained.push(message)
+      continue
+    }
+    changed = true
+    if (content.length > 0) retained.push({ ...message, content })
+  }
+  return changed ? retained : messages
+}
+
+/** Strip tool updates from history: unsupported routes drop the events, system-capable routes keep their text. */
+function withoutToolUpdates(messages: readonly RequestMessage[], keepDeveloperContent: boolean): readonly RequestMessage[] {
+  return keepDeveloperContent ? withoutToolUpdateBlocks(messages) : withoutDeveloperMessages(messages)
+}
+
 function toolDeclarations(history: ToolHistory): Map<string, ToolSchema> {
   const declarations = new Map(history.tools.map(tool => [tool.name, tool]))
   for (const update of history.updates) {
@@ -434,6 +463,8 @@ function rebaseAdditionOnlyHistory(
  * @param tools - currently active tool schemas.
  * @param toolUpdate - the resolved route's update mode.
  * @param history - immutable state folded from committed headers and developer messages.
+ * @param keepDeveloperContent - whether the route still reads system messages mid-conversation,
+ *   so developer text survives as instructions even where its tool changes cannot be expressed.
  * @returns provider declarations and the corresponding filtered history.
  */
 export function projectToolUpdates(
@@ -441,6 +472,7 @@ export function projectToolUpdates(
   tools: readonly ToolSchema[] | undefined,
   toolUpdate: ToolUpdate | undefined,
   history?: ToolHistory,
+  keepDeveloperContent = false,
 ): ProjectedToolUpdates {
   if (toolUpdate === undefined) {
     // Unsupported routes need immediately available tools and no update messages.
@@ -448,17 +480,17 @@ export function projectToolUpdates(
     if (tools?.some(tool => tool.deferLoading === true)) {
       immediateTools = tools.map(({ deferLoading: _loading, ...tool }) => tool)
     }
-    return { messages: withoutDeveloperMessages(messages), tools: immediateTools }
+    return { messages: withoutToolUpdates(messages, keepDeveloperContent), tools: immediateTools }
   }
 
   if (history === undefined) {
     // Current schemas alone cannot resolve definitions referenced by past updates.
-    return { messages: withoutDeveloperMessages(messages), tools }
+    return { messages: withoutToolUpdates(messages, keepDeveloperContent), tools }
   }
   const updates = new Map(messages.flatMap(message => message.role === 'developer' ? [[message.id, message.content] as const] : []))
   if (history.updates.some(update => !updates.has(update.messageId))) {
     // An auxiliary prefix may omit updates needed to activate historical declarations.
-    return { messages: withoutDeveloperMessages(messages), tools }
+    return { messages: withoutToolUpdates(messages, keepDeveloperContent), tools }
   }
 
   const projectedHistory = toolUpdate === 'addition-only' ? rebaseAdditionOnlyHistory(history, updates) : history

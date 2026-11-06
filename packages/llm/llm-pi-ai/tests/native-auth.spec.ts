@@ -17,7 +17,9 @@ describe('provider metadata', () => {
     expect(Object.keys(PROVIDER_DATA)).toEqual(builtinProviders().map(provider => provider.id))
   })
 
-  it('checks the staged snapshot even when the working file is fresh, without changing either', () => {
+  // Three checks each spawn the provider-data generator, so the case pays process creation three
+  // times and must not time out merely because other test files share the worker host.
+  it('checks the staged snapshot even when the working file is fresh, without changing either', { timeout: 30_000 }, () => {
     const fixture = mkdtempSync(join(tmpdir(), 'dsh-provider-data-'))
     const relative = 'packages/llm/llm-pi-ai/src/provider-data.generated.ts'
     const snapshot = readFileSync(new URL('../src/provider-data.generated.ts', import.meta.url), 'utf8')

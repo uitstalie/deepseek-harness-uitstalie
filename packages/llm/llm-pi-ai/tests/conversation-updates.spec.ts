@@ -249,23 +249,24 @@ describe('historical tool availability on the wire', () => {
     })
   })
 
-  it('loads Codex tool additions through tool-search output', async () => {
+  it('loads Codex tool additions through additional_tools', async () => {
     // Codex extracts an account id from the token before contacting the mock server.
     const payload = Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'fixture-account' } })).toString('base64url')
     const token = `e30.${payload}.fixture`
     const update = addition()
-    const { requests } = await send('openai-codex', 'gpt-5.5', {
+    const { requests } = await send('openai-codex', 'gpt-5.6-sol', {
       messages: [user('first'), update], tools: [baseline, added],
       toolHistory: { tools: [baseline], updates: [{ messageId: update.id, additions: [added] }] },
     }, token)
     expect(requests).toHaveLength(1)
+    expect(requests[0]).not.toHaveProperty('tools')
     expect(requests[0]).toMatchObject({
-      tools: [{ type: 'function', name: 'read' }],
       input: [
+        { type: 'additional_tools', role: 'developer', tools: [{ type: 'function', name: 'read' }] },
         { role: 'user', content: [{ type: 'input_text', text: 'first' }] },
-        { type: 'tool_search_call', execution: 'client', arguments: { query: 'search', limit: 1 } },
-        { type: 'tool_search_output', execution: 'client', tools: [
-          { type: 'function', name: 'search', description: added.description, parameters: added.parameters, defer_loading: true },
+        { role: 'developer', content: expect.stringContaining('incremental tools update') },
+        { type: 'additional_tools', role: 'developer', tools: [
+          { type: 'function', name: 'search', description: added.description, parameters: added.parameters },
         ] },
         { role: 'developer', content: 'Instruction one.\nInstruction two.' },
       ],

@@ -271,7 +271,10 @@ const thinkingBudgets = z.object({
  * One `chat_template_kwargs` or `chat_template_args` value. The `$var` member
  * is pi-ai's placeholder for a value dispatch fills from the request's
  * thinking state, which makes a template-driven gateway configurable without
- * restating its template.
+ * restating its template. The cast is the same boundary the efforts schema
+ * uses: schemastery's inferred object type marks every member required for
+ * output, while pi-ai states `omitWhenOff` optional and `undefined`-wide, and
+ * both accept the same configuration.
  */
 const chatTemplateKwarg: z<ChatTemplateKwargValue> = z.union([
   z.string(),
@@ -282,7 +285,7 @@ const chatTemplateKwarg: z<ChatTemplateKwargValue> = z.union([
     $var: z.union(CHAT_TEMPLATE_VARS).required(),
     omitWhenOff: z.boolean(),
   }),
-])
+]) as unknown as z<ChatTemplateKwargValue>
 
 const compatProfile: z<PiAiCompatProfile> = z.object({
   supportsStore: z.boolean(),

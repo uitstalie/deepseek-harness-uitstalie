@@ -476,26 +476,27 @@ export type EveryProfileFieldIsOffered = AssertNever<Exclude<keyof PiAiCompatPro
  */
 export type EveryOfferedFieldIsDocumented = AssertNever<Exclude<OfferedCompatField, keyof PiAiCompatProfile>>
 
-/** Compile-time constraint that `T` is `true`. */
-type AssertTrue<T extends true> = T
-
 /** Every compat type a gate classifies, merged so one `Pick` reaches all offered fields. */
 type UpstreamCompat = OpenAICompletionsCompat & OpenAIResponsesCompat & AnthropicMessagesCompat & BedrockCompat & MistralConversationsCompat
 
 /**
  * Proof that each documented field carries its upstream type, not a hand-copied
  * restatement of it. The name gates above pin *which* fields exist; this pins
- * their types, in both directions because each catches a different drift. A
- * profile field wider than upstream accepts a value the provider rejects, and
- * `resolveModelCompat`'s cast to `ModelCompat` would hide it; a narrower one
- * refuses a value the provider accepts, which is how an upgrade that widens a
- * union would otherwise leave configuration silently behind.
+ * their types, in both directions because each catches a different drift, and
+ * names every field whose two types diverge. A profile field wider than
+ * upstream accepts a value the provider rejects, and `resolveModelCompat`'s
+ * cast to `ModelCompat` would hide it; a narrower one refuses a value the
+ * provider accepts, which is how an upgrade that widens a union would otherwise
+ * leave configuration silently behind. Each field is compared through
+ * `NonNullable` so an upstream that states an optional property's `undefined`
+ * explicitly does not read as a different type.
  */
-export type EveryProfileFieldMatchesUpstream = AssertTrue<
-  PiAiCompatProfile extends Partial<Pick<UpstreamCompat, OfferedCompatField>>
-    ? Partial<Pick<UpstreamCompat, OfferedCompatField>> extends PiAiCompatProfile ? true : false
-    : false
->
+export type EveryProfileFieldMatchesUpstream = AssertNever<{
+  [K in OfferedCompatField]:
+  [NonNullable<PiAiCompatProfile[K]>] extends [NonNullable<Pick<UpstreamCompat, K>[K]>]
+    ? [NonNullable<Pick<UpstreamCompat, K>[K]>] extends [NonNullable<PiAiCompatProfile[K]>] ? never : K
+    : K
+}[OfferedCompatField]>
 
 /**
  * The compat entries a profile actually set.
