@@ -45,6 +45,8 @@ import {
   createSuperagentContribution,
   daemonIdentityOf,
   deliverTaskReport,
+  handleTaskTurnEnd,
+  pendingDispatchForSession,
   enforceSuperAgentPermission,
   ensureSuperWorkspace,
   isBlocked,
@@ -65,7 +67,7 @@ import {
   superagentHomeProblem,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
-import { type DispatchLedgerTask } from './dispatch-ledger.ts'
+import { type DispatchLedgerTask, listDispatchTasks, recordDispatch, resolveDispatchTask } from './dispatch-ledger.ts'
 import { callerOf, identityOf } from './tools.ts'
 import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent, waitFor } from './testing/host.ts'
 
@@ -727,6 +729,186 @@ describe('superagent: the dispatch ledger', () => {
   })
 })
 
+describe('superagent: report recovery after a plugin remount', () => {
+  interface RecoveryPrompt {
+    readonly sessionId: string
+    readonly text: string
+  }
+
+  const recoveryController = (root: string): {
+    prompted: RecoveryPrompt[]
+    create(): Promise<{ sessionId: string }>
+    list(): Promise<{ items: readonly { sessionId: string; running: boolean; cwd: string; updatedAt: number }[] }>
+    prompt(request: { sessionId: unknown; content: readonly { text: string }[] }): Promise<{ accepted: boolean }>
+  } => {
+    const prompted: RecoveryPrompt[] = []
+    return {
+      prompted,
+      async create() { return { sessionId: 'unused' } },
+      async list() {
+        return { items: [{ sessionId: 'super-1', running: false, cwd: root, updatedAt: 1 }] }
+      },
+      async prompt(request) {
+        prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '' })
+        return { accepted: true }
+      },
+    }
+  }
+
+  const recoveryHost = (controller: unknown, warnings: unknown[][] = []) => ({
+    ctx: {
+      get: (key: string) => key === 'sessionController' ? controller : undefined,
+      logger: {
+        warn: (...args: unknown[]) => { warnings.push(args) },
+        info: () => {},
+      },
+    },
+    env: {},
+    clock: () => Date.parse(AT),
+    recorder: createSessionRecorder(),
+  })
+
+  const completed = (id: string, text?: string) => {
+    const events = text === undefined
+      ? []
+      : [{ type: 'assistant/message', data: { message: { content: [{ type: 'text', text }] } } }]
+    const agent = { id, session: { snapshotEvents: () => events } }
+    return {
+      agent,
+      session: agent.session,
+      turn: 1,
+      event: { data: { reason: { kind: 'completed' } } },
+      signal: new AbortController().signal,
+    }
+  }
+
+  it('recovers a pending ledger binding when the in-memory map is empty', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    const recorded = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'finish the task', dispatchedAt: AT, sessionId: 'child-1',
+    })
+    const warnings: unknown[][] = []
+    const handled = await handleTaskTurnEnd(
+      recoveryHost(controller, warnings) as never,
+      completed('child-1', 'the work is complete') as never,
+      new Map(),
+      [],
+      root,
+    )
+
+    assert.equal(handled, true)
+    assert.match(controller.prompted[0]?.text ?? '', /\[task-report\] child-1/u)
+    assert.match(controller.prompted[0]?.text ?? '', /the work is complete/u)
+    const rows = await listDispatchTasks(root, { status: 'returned' })
+    assert.equal(rows[0]?.id, recorded.task.id)
+    assert.equal(rows[0]?.status, 'returned')
+    assert.deepEqual(warnings, [])
+  })
+
+  it('does not revive a returned or failed task after the map is gone', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    const returned = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'already done', dispatchedAt: AT, sessionId: 'child-2',
+    })
+    await resolveDispatchTask(root, returned.task, { status: 'returned', updatedAt: AT, outcome: 'done' })
+    const failed = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'already failed', dispatchedAt: AT, sessionId: 'child-2-failed',
+    })
+    await resolveDispatchTask(root, failed.task, { status: 'failed', updatedAt: AT, outcome: 'failed' })
+
+    for (const sessionId of ['child-2', 'child-2-failed']) {
+      const handled = await handleTaskTurnEnd(
+        recoveryHost(controller) as never,
+        completed(sessionId, 'a late duplicate') as never,
+        new Map(),
+        [],
+        root,
+      )
+      assert.equal(handled, false)
+    }
+    assert.deepEqual(controller.prompted, [])
+  })
+
+  it('leaves a Session with no ledger binding alone', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    const handled = await handleTaskTurnEnd(
+      recoveryHost(controller) as never,
+      completed('ordinary-child', 'not dispatched') as never,
+      new Map(),
+      [],
+      root,
+    )
+
+    assert.equal(handled, false)
+    assert.deepEqual(controller.prompted, [])
+  })
+
+  it('sends a minimal report and warns when the completed turn has no assistant text', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    const warnings: unknown[][] = []
+    const recorded = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'finished silently', dispatchedAt: AT, sessionId: 'child-3',
+    })
+
+    const handled = await handleTaskTurnEnd(
+      recoveryHost(controller, warnings) as never,
+      completed('child-3') as never,
+      new Map(),
+      [],
+      root,
+    )
+
+    assert.equal(handled, true)
+    assert.match(controller.prompted[0]?.text ?? '', /no assistant text/u)
+    assert.match(controller.prompted[0]?.text ?? '', new RegExp(recorded.task.id, 'u'))
+    assert.equal(warnings.length, 1)
+    const rows = await listDispatchTasks(root, { status: 'returned' })
+    assert.equal(rows[0]?.status, 'returned')
+  })
+
+  it('resolves the ledger and warns without throwing when delivery fails', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    controller.prompt = async () => { throw new Error('queue is closed') }
+    const warnings: unknown[][] = []
+    const recorded = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'delivery failure', dispatchedAt: AT, sessionId: 'child-4',
+    })
+
+    const handled = await handleTaskTurnEnd(
+      recoveryHost(controller, warnings) as never,
+      completed('child-4', 'the work is complete') as never,
+      new Map(),
+      [],
+      root,
+    )
+
+    assert.equal(handled, true)
+    assert.equal(warnings.length, 1)
+    assert.match(String(warnings[0]?.[0] ?? ''), /could not be delivered/u)
+    const rows = await listDispatchTasks(root, { status: 'returned' })
+    assert.equal(rows[0]?.id, recorded.task.id)
+    assert.equal(rows[0]?.status, 'returned')
+  })
+
+  it('finds the newest pending task for one Session', async () => {
+    const root = await scratchDirectory()
+    const first = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'older', dispatchedAt: '2026-10-15T11:00:00Z' as Timestamp, sessionId: 'shared-child',
+    })
+    const second = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'newer', dispatchedAt: AT, sessionId: 'shared-child',
+    })
+
+    assert.equal((await pendingDispatchForSession(root, 'shared-child'))?.id, second.task.id)
+    assert.notEqual(first.task.id, second.task.id)
+  })
+})
+
 describe('superagent: model selection and discovery', () => {
   it('selects a model for start and for a later follow-up, and reports the accepted route', async () => {
     const workspacePath = join(tmpdir(), 'model-workspace')
@@ -1082,7 +1264,7 @@ describe('superagent: model selection and discovery', () => {
     assert.equal(aborted, true)
     assert.match(controller.prompted.at(-1)?.text ?? '', /ended "aborted"/u)
 
-    // A completed turn without text still stays quiet; one with text reports as before.
+    // A completed turn without text is not silent: it sends a minimal report and warns.
     const quiet = await deliverTaskReport(
       host as never,
       { superSession: 'super-1', workspace: workspacePath },
@@ -1090,7 +1272,8 @@ describe('superagent: model selection and discovery', () => {
       new AbortController().signal,
       { kind: 'completed' },
     )
-    assert.equal(quiet, false)
+    assert.equal(quiet, true)
+    assert.match(controller.prompted.at(-1)?.text ?? '', /no assistant text/u)
   })
 })
 

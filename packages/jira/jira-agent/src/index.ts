@@ -405,6 +405,8 @@ export {
   dispatchRecordOf,
   enforceSuperAgentPermission,
   ensureSuperWorkspace,
+  handleTaskTurnEnd,
+  pendingDispatchForSession,
   isBlocked,
   isSuperAgentSession,
   openProposal,

@@ -3263,7 +3263,13 @@ export const deliverTaskReport = async (
   }>,
 ): Promise<boolean> => {
   const controller = sessionControllerOf(host.ctx)
-  if (controller === undefined) return false
+  if (controller === undefined) {
+    host.ctx.logger.warn(
+      'superagent: no session controller is available, so the task report for %s could not be delivered',
+      record.superSession,
+    )
+    return false
+  }
   const sessionId = String((agent as { id?: unknown }).id)
   const usageAfter = contextUsageOf(tokenMeterOf(host.ctx), (agent as { session?: unknown }).session)
   // A non-completed turn is never silent: the initiator hears the failure with its identity even
@@ -3303,22 +3309,32 @@ export const deliverTaskReport = async (
     }
   }
   const text = lastAssistantText(agent)
-  if (text === undefined) return false
+  if (text === undefined) {
+    host.ctx.logger.warn(
+      'superagent: the task report for %s from %s has no assistant text; sending a minimal report',
+      record.superSession,
+      sessionId,
+    )
+  }
+  const body = text === undefined
+    ? `[task-report] ${sessionId} in ${record.workspace} finished its turn`
+      + (record.ledger === undefined ? '' : ` (task ${record.ledger.task.id}, ledger returned)`)
+      + `${contextMarker(record.usageBefore, usageAfter)}, but produced no assistant text.`
+      + '\n\nInspect the Session (`superagent_session inspect`) and record the outcome with '
+      + 'superagent_ledger resolve; do not assume the task succeeded.'
+    : `[task-report] ${sessionId} in ${record.workspace} finished its turn`
+      + (record.ledger === undefined ? '' : ` (task ${record.ledger.task.id}, ledger returned)`)
+      + `${contextMarker(record.usageBefore, usageAfter)}.`
+      + `\n\n${text}\n\n`
+      + 'Record the durable conclusion with memory_write (kind decision/open/files, tags including '
+      + 'superagent, the workspace and the task id); use superagent_ledger resolve for any outcome, '
+      + 'artifact or decision the automatic record could not know.'
   try {
     await controller.prompt({
       requestId: `superagent-report-${randomUUID()}`,
       sessionId: record.superSession,
       mode: 'queue',
-      content: [{
-        type: 'text',
-        text: `[task-report] ${sessionId} in ${record.workspace} finished its turn`
-          + (record.ledger === undefined ? '' : ` (task ${record.ledger.task.id}, ledger returned)`)
-          + `${contextMarker(record.usageBefore, usageAfter)}.`
-          + `\n\n${text}\n\n`
-          + 'Record the durable conclusion with memory_write (kind decision/open/files, tags including '
-          + 'superagent, the workspace and the task id); use superagent_ledger resolve for any outcome, '
-          + 'artifact or decision the automatic record could not know.',
-      }],
+      content: [{ type: 'text', text: body }],
     }, signal)
     return true
   } catch (error: unknown) {
@@ -3329,6 +3345,161 @@ export const deliverTaskReport = async (
     )
     return false
   }
+}
+
+/**
+ * Find the newest pending dispatch whose ledger `session` field names this workspace Session.
+ *
+ * The in-memory task map is intentionally not the source of truth: a live plugin reload while a
+ * long workspace turn runs replaces the map, but the ledger survives. Only `pending` tasks match;
+ * a returned or failed task is a historical record and must not produce a second report.
+ * @param root - the super workspace root that owns `.superagent/ledger`.
+ * @param sessionId - the workspace Session whose turn just ended.
+ * @returns the pending task, or undefined when none is bound to this Session.
+ */
+export const pendingDispatchForSession = async (
+  root: string,
+  sessionId: string,
+): Promise<DispatchLedgerTask | undefined> => {
+  const rows = await listDispatchTasks(root, { status: 'pending', limit: 100 })
+  return rows.find(row => row.sessionId === sessionId)
+}
+
+/**
+ * Pick the visible super Session that owns a recovered report. The ledger records the child
+ * Session but not its dispatcher, so prefer the newest visible Session in the super workspace;
+ * fall back to a live root agent when the controller cannot list Sessions.
+ * @param host - the plugin host, for the session controller.
+ * @param superHome - the super workspace root.
+ * @param liveAgents - agents currently known to the capability.
+ * @returns the receiving Session id, or undefined when no dispatcher is visible.
+ */
+const superSessionForReport = async (
+  host: ToolHost,
+  superHome: string,
+  liveAgents: Iterable<unknown>,
+): Promise<string | undefined> => {
+  const controller = sessionControllerOf(host.ctx)
+  if (controller !== undefined) {
+    try {
+      const listed = await controller.list()
+      const candidates = listed.items
+        .filter(item => item.parentSessionId === undefined && item.origin !== 'subagent')
+        .filter(item => item.cwd !== undefined && sameCheckout(item.cwd, superHome))
+        .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
+      const newest = candidates[0]
+      if (newest !== undefined) return String(newest.sessionId)
+    } catch (error: unknown) {
+      host.ctx.logger.warn(
+        'superagent: could not list Sessions to recover a pending dispatch report: %s',
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+  }
+  for (const agent of liveAgents) {
+    if (isSuperAgentSession(agent, superHome)) return String((agent as { id?: unknown }).id)
+  }
+  return undefined
+}
+
+/**
+ * Resolve a dispatched Session's turn end into a report, with a ledger fallback for a lost map.
+ *
+ * This is the logic behind `onTurnEnd`, kept separate so a remount can be exercised with an empty
+ * {@link SessionToolContext.tasks} map. The ledger is resolved before delivery; neither a missing
+ * report recipient nor a failed delivery may throw out of the turn-end hook.
+ * @param host - the plugin host.
+ * @param input - the child Session's turn-end input.
+ * @param tasks - the capability's live dispatch map (possibly empty after a reload).
+ * @param liveAgents - currently known agents, used only when the controller cannot list.
+ * @param superHome - the configured super workspace root.
+ * @returns whether this turn end belonged to a dispatched Session and was handled.
+ */
+export const handleTaskTurnEnd = async (
+  host: ToolHost,
+  input: TurnEndInput,
+  tasks: Map<string, TaskSessionRecord>,
+  liveAgents: Iterable<unknown>,
+  superHome: string | undefined,
+): Promise<boolean> => {
+  const sessionId = String(input.agent.id)
+  let report = tasks.get(sessionId)
+
+  if (report === undefined && superHome !== undefined) {
+    let pending: DispatchLedgerTask | undefined
+    try {
+      pending = await pendingDispatchForSession(superHome, sessionId)
+    } catch (error: unknown) {
+      host.ctx.logger.warn(
+        'superagent: could not read the dispatch ledger while recovering a report for %s: %s',
+        sessionId,
+        error instanceof Error ? error.message : String(error),
+      )
+      return false
+    }
+    if (pending !== undefined) {
+      const superSession = await superSessionForReport(host, superHome, liveAgents)
+      if (superSession === undefined) {
+        const unresolved: TaskSessionRecord = {
+          superSession: '',
+          workspace: pending.workspacePath,
+          ledger: { root: superHome, task: pending },
+        }
+        try {
+          await resolveReportedTask(unresolved, 'turn ended; no visible super Session was available to receive the report', nowUtc(host.clock))
+        } catch (error: unknown) {
+          host.ctx.logger.warn(
+            'superagent: recovered pending dispatch %s but could not resolve its ledger entry: %s',
+            pending.id,
+            error instanceof Error ? error.message : String(error),
+          )
+        }
+        host.ctx.logger.warn(
+          'superagent: pending dispatch %s for %s was recovered from the ledger, but no super Session is visible to receive the report',
+          pending.id,
+          sessionId,
+        )
+        return true
+      }
+      report = {
+        superSession,
+        workspace: pending.workspacePath,
+        ledger: { root: superHome, task: pending },
+      }
+      host.ctx.logger.info(
+        'superagent: recovered pending dispatch %s for %s from the ledger after an in-memory miss',
+        pending.id,
+        sessionId,
+      )
+    }
+  }
+
+  if (report === undefined) return false
+
+  const reason = input.event.data.reason as {
+    kind?: string
+    error?: { message?: string; code?: string; status?: number }
+  }
+  const text = reason.kind === 'completed' ? lastAssistantText(input.agent) : undefined
+  try {
+    await resolveReportedTask(report, text ?? `turn ended ${reason.kind ?? 'unknown'}`, nowUtc(host.clock))
+  } catch (error: unknown) {
+    host.ctx.logger.warn(
+      'superagent: the dispatch ledger entry for %s could not be resolved: %s',
+      report.ledger?.task.id ?? report.workspace,
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+  try {
+    await deliverTaskReport(host, report, input.agent, input.signal, reason)
+  } catch (error: unknown) {
+    host.ctx.logger.warn(
+      'superagent: the task report for %s could not be delivered: %s',
+      report.superSession,
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+  return true
 }
 
 /** The dispatch record lives in its own module so `issue_work` can read the same binding. */
@@ -4280,27 +4451,10 @@ export const createSuperagentContribution = (
       // DH-719: a Session this super agent started addresses reports back here as a queued message,
       // so the person's conversation is never held while that workspace works. A turn that did not
       // complete still reports: silence is how a failed workspace Session went unnoticed (DH-722 era).
-      const report = tasks.get(String(input.agent.id))
-      if (report !== undefined) {
-        const reason = input.event.data.reason as {
-          kind?: string
-          error?: { message?: string; code?: string; status?: number }
-        }
-        // The child's turn end is visible here even though its report becomes a new message in the
-        // super conversation: resolve the structured ledger now, then deliver the same outcome.
-        const text = reason.kind === 'completed' ? lastAssistantText(input.agent) : undefined
-        try {
-          await resolveReportedTask(report, text ?? `turn ended ${reason.kind ?? 'unknown'}`, nowUtc(host.clock))
-        } catch (error: unknown) {
-          host.ctx.logger.warn(
-            'superagent: the dispatch ledger entry for %s could not be resolved: %s',
-            report.ledger?.task.id ?? report.workspace,
-            error instanceof Error ? error.message : String(error),
-          )
-        }
-        await deliverTaskReport(host, report, input.agent, input.signal, reason)
-        return
-      }
+      // The task map is only a fast path: a live reload during a long turn replaces it, while the
+      // ledger keeps the pending dispatch and its `session` binding. handleTaskTurnEnd recovers that
+      // binding before delivering, so a remount cannot silently drop the report.
+      if (await handleTaskTurnEnd(host, input, tasks, liveAgents, superHome)) return
       // An executor Session is a root agent, but it must not propose new work (DH-703 review):
       // its turn end is delivery, not dispatch.
       if (isExecutorSession(input.agent, workerPreset)) return
