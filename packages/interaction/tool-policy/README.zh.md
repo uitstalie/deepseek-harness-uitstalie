@@ -75,7 +75,7 @@ kind: "package-reference"
 
 ### 选择 profile
 
-`/policy` 报告或切换当前会话的 profile。它把 profile 名写入复用的 `permission/preset` 会话事件，因此旧构建会把该选择视为未知预设并回退，而不是崩溃。优先级是会话选择，然后是部署的 `defaultProfile`；agent preset 只能收紧、不能放宽部署基线。模型不能修改 profile。
+`/policy` 报告或切换当前会话的 profile。它把 profile 名写入复用的 `permission/preset` 会话事件，因此旧构建会把该选择视为未知预设并回退，而不是崩溃。优先级是会话选择，然后是部署的 `defaultProfile`。模型不能修改 profile。
 
 已下线的 `DSH_PERMISSION_MODE` 环境变量保留一个版本的别名：`danger-full-access` 选择 `unrestricted`，其余值选择 `guarded`，插件会记录一条弃用警告并说明最终选中的 profile。它覆盖配置的 `defaultProfile`，与沙箱配置原先的优先级一致。
 

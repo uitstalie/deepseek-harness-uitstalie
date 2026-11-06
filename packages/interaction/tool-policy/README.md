@@ -75,7 +75,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Selecting a profile
 
-`/policy` reports or switches the profile for the current session. It writes the reused `permission/preset` session event with the profile name, so an older build sees the selection as an unknown preset and falls back instead of crashing. Precedence is session selection, then the deployment `defaultProfile`; an agent preset may tighten, never widen, the deployment baseline. The model cannot change the profile.
+`/policy` reports or switches the profile for the current session. It writes the reused `permission/preset` session event with the profile name, so an older build sees the selection as an unknown preset and falls back instead of crashing. Precedence is session selection, then the deployment `defaultProfile`. The model cannot change the profile.
 
 The retired `DSH_PERMISSION_MODE` environment variable remains a one-release alias: `danger-full-access` selects `unrestricted`, every other value selects `guarded`, and the plugin logs a deprecation warning naming the selected profile. It overrides the configured `defaultProfile`, matching the precedence the sandbox configuration used.
 
