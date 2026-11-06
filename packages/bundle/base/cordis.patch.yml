@@ -184,10 +184,20 @@
       config:
         root: !!js dshHomePath('storages')
 
+    # Point-sized durable records (superagent dispatch) use one SQLite file; JSON remains the
+    # default for the human-inspectable domains. The path is deployment configuration, never a
+    # hard-coded home lookup.
+    - id: storage-sqlite
+      name: '@deepseek-ai/dsh-storage-sqlite'
+      config:
+        path: !!js dshHomePath('storages', 'superagent.sqlite')
+
     - id: storage-domain
       name: '@deepseek-ai/dsh-storage-domain'
       config:
         backend: json
+        routes:
+          superagent_dispatch: sqlite
 
     # Persisted projection cache: throttled write-behind over the
     # session_projcache domain (per-record layout — one version-stamped

@@ -295,11 +295,8 @@ export const listLedgerFiles = async (root: string): Promise<readonly string[]> 
   }
 }
 
-/** Pick the latest task per id across every workspace file. */
-export const listDispatchTasks = async (
-  root: string,
-  query: DispatchLedgerQuery = {},
-): Promise<DispatchLedgerRow[]> => {
+/** Read the latest section per task id across every workspace file, without filtering. */
+const latestTasks = async (root: string): Promise<DispatchLedgerRow[]> => {
   const files = await listLedgerFiles(root)
   const latest = new Map<string, DispatchLedgerRow>()
   for (const file of files) {
@@ -315,10 +312,24 @@ export const listDispatchTasks = async (
       latest.set(task.id, Object.freeze({ ...task, file }))
     }
   }
+  return [...latest.values()]
+}
+
+/** Every latest task, unfiltered and unsliced; used by the one-time storage migration. */
+export const listAllDispatchTasks = async (root: string): Promise<DispatchLedgerRow[]> => {
+  const tasks = await latestTasks(root)
+  return tasks.sort((left, right) => left.dispatchedAt < right.dispatchedAt ? 1 : left.dispatchedAt > right.dispatchedAt ? -1 : 0)
+}
+
+/** Pick the latest task per id across every workspace file. */
+export const listDispatchTasks = async (
+  root: string,
+  query: DispatchLedgerQuery = {},
+): Promise<DispatchLedgerRow[]> => {
   const needle = query.query?.trim().toLowerCase() ?? ''
   const workspace = query.workspace?.trim().toLowerCase()
   const limit = Math.max(1, Math.min(100, Math.floor(query.limit ?? 20)))
-  return [...latest.values()]
+  return (await latestTasks(root))
     .filter(task => task.status === (query.status ?? task.status))
     .filter(task => workspace === undefined || task.workspaceTitle.toLowerCase() === workspace
       || task.workspacePath.toLowerCase() === workspace || task.workspaceId === query.workspace)

@@ -249,6 +249,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() => superagent, 'superagent.register()')
 }
 
+export { DISPATCH_DOMAIN_NAME, dispatchDomainSpec } from './dispatch-store.ts'
 export { JIRA_AWARENESS_ORDER, JIRA_AWARENESS_SECTION_NAME, createStoreAwareness } from './awareness.ts'
 export type { AwarenessSource, StoreAwareness } from './awareness.ts'
 export {

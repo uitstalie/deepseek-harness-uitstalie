@@ -25,12 +25,14 @@ import { clampText, asIdentity, invalidInput, leaseIsActive, renderIssueHuman, v
 import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
 import { dispatchBody, dispatchRecordOf } from './dispatch.ts'
+import { createDispatchStore, taskFromRecord, type DispatchStore } from './dispatch-store.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, nowUtc, okValue } from './envelope.ts'
 import { callerCwd, isExecutorSession, isSubagent, type Caller } from './caller.ts'
 import { ensureSuperWorkspaceDefinition } from './super-workspace-definition.ts'
 import {
   isDispatchLedgerStatus,
   listDispatchTasks,
+  pendingTask,
   recordDispatch,
   resolveDispatchTask,
   type DispatchLedgerStatus,
@@ -860,14 +862,33 @@ type LedgerAttempt = Readonly<{ ledger?: Readonly<{ root: string; task: Dispatch
  * @returns the recorded entry or the failure text.
  */
 const recordTaskLedger = async (
+  ctx: ToolHost['ctx'],
   caller: Caller,
   workspace: WorkspaceLike,
   task: string,
   sessionId: string,
   at: Timestamp,
+  superSession?: string,
+  store?: DispatchStore,
 ): Promise<LedgerAttempt> => {
   const root = caller.cwd
   if (root === undefined) return Object.freeze({ error: 'the caller has no checkout, so no ledger root is known' })
+  const pending = pendingTask({
+    workspaceId: workspace.id,
+    workspaceTitle: workspace.title,
+    workspacePath: workspace.path,
+    task,
+    dispatchedAt: at,
+    sessionId,
+  })
+  if (store !== undefined) {
+    try {
+      const persisted = await store.record(pending, superSession)
+      if (persisted !== undefined) return Object.freeze({ ledger: Object.freeze({ root, task: persisted.task }) })
+    } catch (error: unknown) {
+      ctx.logger.warn('superagent: durable dispatch record failed; falling back to Markdown: %s', String(error))
+    }
+  }
   try {
     const recorded = await recordDispatch(root, {
       id: workspace.id,
@@ -896,13 +917,19 @@ export const resolveReportedTask = async (
   record: TaskSessionRecord,
   text: string | undefined,
   at: Timestamp,
+  store?: DispatchStore,
 ): Promise<void> => {
   if (record.ledger === undefined) return
-  await resolveDispatchTask(record.ledger.root, record.ledger.task, {
-    status: 'returned',
+  const patch = {
+    status: 'returned' as const,
     updatedAt: at,
     outcome: text ?? 'The child turn ended without assistant text.',
-  })
+  }
+  if (store !== undefined) {
+    const resolved = await store.resolve(record.ledger.task.id, patch)
+    if (resolved !== undefined) return
+  }
+  await resolveDispatchTask(record.ledger.root, record.ledger.task, patch)
 }
 
 /** Add the ledger fields to a dispatch result without hiding a ledger failure. */
@@ -932,6 +959,8 @@ export interface SessionToolContext {
   readonly agentPreset?: string
   /** Sessions this super agent addressed, so their turn ends report back to it. */
   readonly tasks: Map<string, TaskSessionRecord>
+  /** Durable dispatch store; absent means the Markdown-only compatibility path. */
+  readonly store?: DispatchStore
   /** Context percentage at which a list row suggests compacting; a suggestion, never enforcement. */
   readonly compactThresholdPercent?: number
   /** Minutes a running Session may run before the monitor names it (a suggestion, default 10). */
@@ -2608,7 +2637,7 @@ export const runSessionTool = async (
         const delivered = deliveryOutcome(
           requestedDelivery, delivery.used, delivery.fallback, wasRunning, admitted.accepted, insertionSeqOf(ctx, sessionId),
         )
-        const ledger = await recordTaskLedger(caller, workspace, textArg.trim(), sessionId, options.at)
+        const ledger = await recordTaskLedger(ctx as ToolHost['ctx'], caller, workspace, textArg.trim(), sessionId, options.at, reportTo, context.store)
         if (reportTo !== undefined) {
           context.tasks.set(sessionId, {
             superSession: reportTo,
@@ -2688,7 +2717,7 @@ export const runSessionTool = async (
           mode: 'queue',
           content: [{ type: 'text', text: composeTask(taskArg.trim(), curateMemory) }],
         }, new AbortController().signal)
-        const ledger = await recordTaskLedger(caller, workspace, taskArg.trim(), sessionId, options.at)
+        const ledger = await recordTaskLedger(ctx as ToolHost['ctx'], caller, workspace, taskArg.trim(), sessionId, options.at, reportTo, context.store)
         if (reportTo !== undefined) {
           context.tasks.set(sessionId, {
             superSession: reportTo,
@@ -2755,7 +2784,7 @@ export const runSessionTool = async (
         )
         const ledger: LedgerAttempt = workspace === undefined
           ? Object.freeze({})
-          : await recordTaskLedger(caller, workspace, textArg.trim(), sessionId, options.at)
+          : await recordTaskLedger(ctx as ToolHost['ctx'], caller, workspace, textArg.trim(), sessionId, options.at, reportTo, context.store)
         if (reportTo !== undefined) {
           const known = context.tasks.get(sessionId)
           context.tasks.set(sessionId, {
@@ -3120,6 +3149,7 @@ export const runLedgerTool = async (
   options: RunOptions,
   me: unknown,
   ctx: ToolHost['ctx'],
+  store?: DispatchStore,
 ): Promise<ToolValue> => {
   const { caller } = options
   const validated = validateArgs(LEDGER_PARAMETERS, args)
@@ -3138,12 +3168,14 @@ export const runLedgerTool = async (
   if (action === 'list') {
     try {
       const status = validated.value.status
-      const rows = await listDispatchTasks(root, {
+      const query = {
         ...(asString(validated.value.workspace) === undefined ? {} : { workspace: String(validated.value.workspace) }),
         ...(isDispatchLedgerStatus(status) ? { status } : {}),
         ...(asString(validated.value.query) === undefined ? {} : { query: String(validated.value.query) }),
         ...(typeof validated.value.limit === 'number' ? { limit: validated.value.limit } : {}),
-      })
+      }
+      const durable = await store?.list(query)
+      const rows = durable ?? await listDispatchTasks(root, query)
       return Object.freeze({ ...verdict, entries: Object.freeze(rows) })
     } catch (error: unknown) {
       return failure(invalidInput(`the dispatch ledger could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
@@ -3165,6 +3197,19 @@ export const runLedgerTool = async (
       return failure(invalidInput(`"${selector}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
     }
     try {
+      const issue = asString(validated.value.issue)
+      if (store !== undefined) {
+        const pending = pendingTask({
+          workspaceId: workspace.id,
+          workspaceTitle: workspace.title,
+          workspacePath: workspace.path,
+          task: task.trim(),
+          dispatchedAt: options.at,
+          ...(issue === undefined ? {} : { issue: String(issue) }),
+        })
+        const durable = await store.record(pending, caller.sessionId)
+        if (durable !== undefined) return Object.freeze({ ...verdict, task: durable.task, file: durable.file })
+      }
       const recorded = await recordDispatch(root, {
         id: workspace.id,
         title: workspace.title,
@@ -3172,7 +3217,7 @@ export const runLedgerTool = async (
       }, {
         task: task.trim(),
         dispatchedAt: options.at,
-        ...(asString(validated.value.issue) === undefined ? {} : { issue: String(validated.value.issue) }),
+        ...(issue === undefined ? {} : { issue: String(issue) }),
       })
       return Object.freeze({ ...verdict, task: recorded.task, file: recorded.file })
     } catch (error: unknown) {
@@ -3188,14 +3233,9 @@ export const runLedgerTool = async (
       return failure(invalidInput('resolve needs `status` of pending, returned or failed'), caller, me)
     }
     try {
-      const rows = await listDispatchTasks(root, { limit: 100 })
-      const current = rows.find(row => row.id === id.trim())
-      if (current === undefined) {
-        return failure(invalidInput(`no ledger task "${id}" was found`, { id }), caller, me)
-      }
       const artifacts = asStringList(validated.value.artifacts)
       const decisions = asStringList(validated.value.decisions)
-      const resolved = await resolveDispatchTask(root, current, {
+      const patch = {
         // Narrowed by isDispatchLedgerStatus above; the ledger writer owns the status vocabulary.
         // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- the guard narrows runtime, not the type
         status: status as DispatchLedgerStatus,
@@ -3204,7 +3244,22 @@ export const runLedgerTool = async (
         ...(artifacts === undefined ? {} : { artifacts }),
         ...(decisions === undefined ? {} : { decisions }),
         ...(asString(validated.value.issue) === undefined ? {} : { issue: String(validated.value.issue) }),
-      })
+      }
+      const durable = store === undefined ? undefined : await store.resolve(id.trim(), patch)
+      if (durable !== undefined) {
+        const memory = Object.freeze({
+          kind: status === 'failed' || status === 'pending' ? 'open' : 'decision',
+          content: `${durable.task.workspaceTitle} ${durable.task.id}: ${durable.task.outcome ?? durable.task.task}`,
+          tags: Object.freeze(['superagent', durable.task.workspaceTitle, durable.task.id]),
+        })
+        return Object.freeze({ ...verdict, task: durable.task, file: durable.file, memory })
+      }
+      const rows = await listDispatchTasks(root, { limit: 100 })
+      const current = rows.find(row => row.id === id.trim())
+      if (current === undefined) {
+        return failure(invalidInput(`no ledger task "${id}" was found`, { id }), caller, me)
+      }
+      const resolved = await resolveDispatchTask(root, current, patch)
       // The ledger is the structured truth; memory is the durable conclusion layer. This hint is
       // intentionally not a write: memory_write is a separate tool and remains the model's call.
       const memory = Object.freeze({
@@ -3421,10 +3476,64 @@ export const handleTaskTurnEnd = async (
   tasks: Map<string, TaskSessionRecord>,
   liveAgents: Iterable<unknown>,
   superHome: string | undefined,
+  store?: DispatchStore,
 ): Promise<boolean> => {
   const sessionId = String(input.agent.id)
-  let report = tasks.get(sessionId)
+  const known = tasks.get(sessionId)
+  let report = known
 
+  // The durable store is authoritative. A pending record carries its own superSession, so a
+  // reload cannot route a report by "newest visible super session" when the original is known.
+  if (store !== undefined) {
+    try {
+      const lookup = await store.lookupSession(sessionId)
+      if (lookup.available && lookup.record !== undefined) {
+        const durable = lookup.record
+        if (durable.status !== 'pending' || durable.orphanedAt !== undefined) return true
+        const root = superHome ?? store.root
+        const superSession = durable.superSession?.trim() === '' || durable.superSession === undefined
+          ? await superSessionForReport(host, root, liveAgents)
+          : durable.superSession
+        if (superSession === undefined) {
+          const unresolved: TaskSessionRecord = {
+            superSession: '',
+            workspace: durable.workspace.path,
+            ledger: { root, task: taskFromRecord(durable, lookup.id ?? '') },
+          }
+          try {
+            await resolveReportedTask(unresolved, 'turn ended; no visible super Session was available to receive the report', nowUtc(host.clock), store)
+          } catch (error: unknown) {
+            host.ctx.logger.warn(
+              'superagent: pending dispatch %s could not be resolved: %s',
+              lookup.id,
+              error instanceof Error ? error.message : String(error),
+            )
+          }
+          host.ctx.logger.warn(
+            'superagent: pending dispatch %s for %s was recovered from the durable store, but no super Session is visible to receive the report',
+            lookup.id,
+            sessionId,
+          )
+          return true
+        }
+        report = {
+          superSession,
+          workspace: durable.workspace.path,
+          ledger: { root, task: taskFromRecord(durable, lookup.id ?? '') },
+          ...(known?.usageBefore === undefined ? {} : { usageBefore: known.usageBefore }),
+        }
+      }
+    } catch (error: unknown) {
+      host.ctx.logger.warn(
+        'superagent: could not read the durable dispatch store for %s; trying the Markdown ledger: %s',
+        sessionId,
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+  }
+
+  // Compatibility path: an old host has no domain, and an old deployment may have a Markdown-only
+  // pending entry that predates the first migration. Historical returned/failed rows are filtered.
   if (report === undefined && superHome !== undefined) {
     let pending: DispatchLedgerTask | undefined
     try {
@@ -3446,7 +3555,7 @@ export const handleTaskTurnEnd = async (
           ledger: { root: superHome, task: pending },
         }
         try {
-          await resolveReportedTask(unresolved, 'turn ended; no visible super Session was available to receive the report', nowUtc(host.clock))
+          await resolveReportedTask(unresolved, 'turn ended; no visible super Session was available to receive the report', nowUtc(host.clock), store)
         } catch (error: unknown) {
           host.ctx.logger.warn(
             'superagent: recovered pending dispatch %s but could not resolve its ledger entry: %s',
@@ -3482,7 +3591,7 @@ export const handleTaskTurnEnd = async (
   }
   const text = reason.kind === 'completed' ? lastAssistantText(input.agent) : undefined
   try {
-    await resolveReportedTask(report, text ?? `turn ended ${reason.kind ?? 'unknown'}`, nowUtc(host.clock))
+    await resolveReportedTask(report, text ?? `turn ended ${reason.kind ?? 'unknown'}`, nowUtc(host.clock), store)
   } catch (error: unknown) {
     host.ctx.logger.warn(
       'superagent: the dispatch ledger entry for %s could not be resolved: %s',
@@ -4035,6 +4144,8 @@ export const createSuperagentContribution = (
   const superHome = home === undefined || home.trim() === '' ? undefined : home
   /** Sessions this super agent started or addressed, so their turn ends report back (DH-719). */
   const tasks = new Map<string, TaskSessionRecord>()
+  // Optional by design: a composition without storageDomain keeps the Markdown ledger.
+  const dispatchStore = superHome === undefined ? undefined : createDispatchStore(host.ctx, superHome)
   // The filesystem fence gets the registered workspaces, so the super agent can hand files over
   // without widening process confinement: shell and terminal backends never see these roots.
   let fsRootsDispose: (() => void) | undefined
@@ -4091,6 +4202,44 @@ export const createSuperagentContribution = (
       polling = false
     }
   }
+  // Archive/stop is the lifecycle signal available to a capability; retain the durable record and
+  // mark it orphaned rather than deleting audit history. The Markdown projection stays untouched.
+  let orphanDispose: (() => void) | undefined
+  let domainChangeDispose: (() => void) | undefined
+  const onEvent = (host.ctx as {
+    on?: (event: string, handler: (payload: { sessionId: unknown }) => Promise<void> | void) => () => void
+  }).on
+  if (dispatchStore !== undefined && typeof onEvent === 'function') {
+    orphanDispose = onEvent.call(host.ctx, 'workspace/session-stop', async ({ sessionId }) => {
+      try {
+        await dispatchStore.markOrphaned(String(sessionId), nowUtc(host.clock))
+      } catch (error: unknown) {
+        host.ctx.logger.warn('superagent: could not mark dispatch records for %s orphaned: %s', String(sessionId), String(error))
+      }
+    })
+  }
+  // Plain archive (without stopActivity) emits no workspace/session-stop; the workspace domain's
+  // global archivedSessionIds set is the durable archive signal. Mark records orphaned there too.
+  const onDomain = (host.ctx as {
+    on?: (event: string, handler: (change: unknown) => void) => () => void
+  }).on
+  if (dispatchStore !== undefined && typeof onDomain === 'function') {
+    domainChangeDispose = onDomain.call(host.ctx, 'domain/changed', (change: unknown) => {
+      const event = change as {
+        domain?: string
+        table?: string
+        operation?: string
+        value?: { archivedSessionIds?: unknown }
+      }
+      if (event.domain !== 'workspace' || event.table !== '' || event.operation !== 'put'
+        || !Array.isArray(event.value?.archivedSessionIds)) return
+      const archived = event.value.archivedSessionIds.filter((id): id is string => typeof id === 'string')
+      void dispatchStore.markArchivedSessions(archived, nowUtc(host.clock)).catch((error: unknown) => {
+        host.ctx.logger.warn('superagent: could not mark archived dispatch records orphaned: %s', String(error))
+      })
+    })
+  }
+
   timer = setInterval(() => { void poll() }, SUPERAGENT_POLL_MS)
   timer.unref?.()
 
@@ -4234,7 +4383,7 @@ export const createSuperagentContribution = (
         ? 'ok'
         : `${String(task.id)}  ${String(task.status)}  ${String(task.workspaceTitle)}`)
     },
-    run: (args, call) => runLedgerTool(args, runOptionsOf(host, call), call.me, host.ctx),
+    run: (args, call) => runLedgerTool(args, runOptionsOf(host, call), call.me, host.ctx, dispatchStore),
   }
   const session: Spec = {
     name: SESSION_TOOL_NAME,
@@ -4386,6 +4535,7 @@ export const createSuperagentContribution = (
     run: (args, call) => runSessionTool(args, runOptionsOf(host, call), call.me, host.ctx, {
       ...(agentPreset === undefined ? {} : { agentPreset }),
       tasks,
+      ...(dispatchStore === undefined ? {} : { store: dispatchStore }),
       compactThresholdPercent,
       longRunningMinutes,
     }),
@@ -4454,7 +4604,7 @@ export const createSuperagentContribution = (
       // The task map is only a fast path: a live reload during a long turn replaces it, while the
       // ledger keeps the pending dispatch and its `session` binding. handleTaskTurnEnd recovers that
       // binding before delivering, so a remount cannot silently drop the report.
-      if (await handleTaskTurnEnd(host, input, tasks, liveAgents, superHome)) return
+      if (await handleTaskTurnEnd(host, input, tasks, liveAgents, superHome, dispatchStore)) return
       // An executor Session is a root agent, but it must not propose new work (DH-703 review):
       // its turn end is delivery, not dispatch.
       if (isExecutorSession(input.agent, workerPreset)) return
@@ -4467,6 +4617,13 @@ export const createSuperagentContribution = (
       monitorDispose = undefined
       fsRootsDispose?.()
       fsRootsDispose = undefined
+      orphanDispose?.()
+      orphanDispose = undefined
+      domainChangeDispose?.()
+      domainChangeDispose = undefined
+      void dispatchStore?.close().catch((error: unknown) => {
+        host.ctx.logger.warn('superagent: closing the dispatch store failed: %s', String(error))
+      })
       if (timer !== undefined) clearInterval(timer)
       timer = undefined
       liveAgents.clear()

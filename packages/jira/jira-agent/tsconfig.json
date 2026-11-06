@@ -43,6 +43,15 @@
     },
     {
       "path": "../../core/tool-executor-native"
+    },
+    {
+      "path": "../../storage/storage"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../storage/storage-json"
     }
   ]
 }

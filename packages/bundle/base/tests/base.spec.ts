@@ -52,6 +52,13 @@ describe('dsh-base bundle', () => {
       name: '@deepseek-ai/dsh-web-search-deepseek', config: { apiKeyEnv: 'DEEPSEEK_API_KEY' },
     })
     expect(rows.find(row => row.id === 'tool-web')?.config).toMatchObject({ fetch: true })
+    expect(rows.find(row => row.id === 'storage-sqlite')?.config).toEqual({
+      path: { __jsExpr: "dshHomePath('storages', 'superagent.sqlite')" },
+    })
+    expect(rows.find(row => row.id === 'storage-domain')?.config).toEqual({
+      backend: 'json',
+      routes: { superagent_dispatch: 'sqlite' },
+    })
     expect(manifest.dependencies).not.toHaveProperty('@deepseek-ai/dsh-subagent-codex')
     expect(manifest.dependencies).not.toHaveProperty('@deepseek-ai/dsh-subagent-claude-code')
     expect(manifest.dependencies).toHaveProperty('@deepseek-ai/dsh-web-fetch-http')
