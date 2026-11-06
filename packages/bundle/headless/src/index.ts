@@ -34,6 +34,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 // Optional service peers stay type-only so profiles can omit their packages.
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
+// uitstalie-deepseek-flash, 2026/11/06, DH-905, optional soft-policy peer
 import type {} from '@deepseek-ai/dsh-tool-policy'
 import type {} from './startup.ts'
 import { internals } from './runner-internals.ts'
@@ -53,6 +54,7 @@ export interface Config {
   sessionId?: string
   /** Whether stdout carries the machine-readable event stream instead of final text. */
   json?: boolean
+  // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, policy profile config replaces the preset spelling
   /** Soft-policy profile applied before the task; an explicit CLI flag takes precedence. Omission keeps the session selection. */
   policy?: string
   /**
@@ -60,6 +62,7 @@ export interface Config {
    * @deprecated Use {@link policy}; the spelling is removed with the CLI alias.
    */
   permissionMode?: string
+  // END uitstalie-deepseek-flash
   /** Approval behavior applied after preset selection; an explicit CLI flag takes precedence. Omission keeps current policy. */
   approvalPolicy?: ApprovalPolicy
 }
@@ -68,6 +71,7 @@ export const Config: z<Config> = z.object({
   task: z.string(),
   sessionId: z.string(),
   json: z.boolean(),
+  // uitstalie-deepseek-flash, 2026/11/06, DH-905, policy profile config replaces the preset spelling
   policy: z.string(),
   permissionMode: z.string(),
   approvalPolicy: z.union([...APPROVAL_POLICIES]),
@@ -343,11 +347,14 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
   }
 
   const startup = ctx.get('headlessStartup')
+  // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, accept either spelling and apply it to the mounted policy seam
   // oxlint-disable-next-line typescript/no-deprecated -- the retired spelling stays readable for one release
   const legacyPolicy = startup?.permissionMode ?? config.permissionMode
   const policy = startup?.policy ?? config.policy ?? legacyPolicy
+  // END uitstalie-deepseek-flash
   const approvalPolicy = startup?.approvalPolicy ?? config.approvalPolicy
   const approval = ctx.get('approval')
+  // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, prefer the soft policy and fall back to the preset service
   const toolPolicy = ctx.get('toolPolicy')
   const permissions = ctx.get('permissionPresets')
   if (policy !== undefined) {
@@ -358,6 +365,7 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     else if (permissions !== undefined) permissions.resolve(policy)
     else throw new Error('headless --policy requires the toolPolicy or permissionPresets service')
   }
+  // END uitstalie-deepseek-flash
   if (approvalPolicy !== undefined && approval === undefined) {
     throw new Error('headless --approval-policy requires the approval service')
   }
@@ -414,10 +422,12 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     // re-read the log the runner holds before submitting the task.
     assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
   }
+  // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, select on the mounted policy seam
   if (policy !== undefined) {
     if (toolPolicy !== undefined) toolPolicy.select(agent.session, policy)
     else permissions?.set(agent.session, policy)
   }
+  // END uitstalie-deepseek-flash
   if (approvalPolicy !== undefined && approval?.overrideOf(agent.session) !== approvalPolicy) {
     setApprovalPolicy(agent.session, approvalPolicy)
   }

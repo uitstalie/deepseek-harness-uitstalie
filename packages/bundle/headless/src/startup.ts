@@ -31,6 +31,7 @@ export interface HeadlessStartupValues {
   sessionId: string | undefined
   /** Whether stdout carries the machine-readable event stream instead of final text. */
   json: boolean
+  // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, --policy replaces the permission-preset flag
   /** Soft-policy profile (or legacy permission preset) to apply before the task; absent preserves the session selection. */
   policy?: string
   /**
@@ -38,6 +39,7 @@ export interface HeadlessStartupValues {
    * release because cordis overlays and scripts still pass it.
    */
   permissionMode?: string
+  // END uitstalie-deepseek-flash
   /** Approval behavior applied after the permission preset; absent keeps the current policy. */
   approvalPolicy?: ApprovalPolicy
   /** Explicit absolute write grants for this invocation; absent adds no directories. */
@@ -62,8 +64,10 @@ function headlessCommand(): Command {
     .helpOption('-h, --help', 'show this help')
     .option('--json', 'write newline-delimited run events to stdout instead of the final message')
     .option('--session-id <id>', 'adopt the persisted Session with this id; an unknown id is an error')
+    // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, --policy flag and its deprecated alias
     .option('--policy <profile>', 'select a tool-policy profile (or a legacy permission preset) for this task, including on resume')
     .option('--permission-mode <preset>', 'deprecated alias for --policy')
+    // END uitstalie-deepseek-flash
     .addOption(new Option('--approval-policy <policy>', 'set approval behavior after selecting the policy')
       .choices([...APPROVAL_POLICIES]))
     .option('--add-dir <path>', 'allow an additional physical absolute directory under workspace-write (repeatable)',
@@ -93,6 +97,7 @@ function jsonRequested(argv: readonly string[]): boolean {
     const argument = argv[index]
     if (argument === '--') return false
     if (argument === '--json') return true
+    // uitstalie-deepseek-flash, 2026/11/06, DH-905, skip the new flag's operand too
     if (argument === '--session-id' || argument === '--policy' || argument === '--permission-mode'
       || argument === '--approval-policy' || argument === '--add-dir') index += 1
   }
@@ -137,6 +142,7 @@ export function apply(ctx: Context): void {
     const options = program.opts<{
       json?: boolean
       sessionId?: string
+      // uitstalie-deepseek-flash, 2026/11/06, DH-905, new flag spelling
       policy?: string
       permissionMode?: string
       approvalPolicy?: ApprovalPolicy
@@ -148,6 +154,7 @@ export function apply(ctx: Context): void {
     if (sessionId !== undefined && sessionId.trim() === '') {
       program.error('error: --session-id requires a non-empty session id')
     }
+    // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, --policy selection with a deprecated alias and stderr notice
     const legacyPermissionMode = options.permissionMode?.trim()
     const policy = options.policy?.trim() ?? legacyPermissionMode
     if (policy === '') {
@@ -157,6 +164,7 @@ export function apply(ctx: Context): void {
       // stderr, not stdout: --json callers keep the event stream parseable.
       internals.stderr.write('dsh: --permission-mode is deprecated; use --policy.\n')
     }
+    // END uitstalie-deepseek-flash
     if (options.addDir?.some(path => !isAbsolute(path) || path.includes('\0')) === true) {
       program.error('error: --add-dir requires an absolute directory path in the execution environment')
     }
@@ -164,9 +172,11 @@ export function apply(ctx: Context): void {
       task,
       sessionId,
       json: options.json === true,
+      // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, publish both spellings for one release
       ...policy === undefined ? {} : { policy },
       // oxlint-disable-next-line typescript/no-deprecated -- the retired spelling stays published for one release
       ...legacyPermissionMode === undefined ? {} : { permissionMode: legacyPermissionMode },
+      // END uitstalie-deepseek-flash
       ...options.approvalPolicy === undefined ? {} : { approvalPolicy: options.approvalPolicy },
       ...options.addDir === undefined ? {} : { additionalWritableRoots: [...new Set(options.addDir)] },
     } satisfies HeadlessStartupValues)

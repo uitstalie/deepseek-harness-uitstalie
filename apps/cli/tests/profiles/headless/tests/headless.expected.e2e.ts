@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+// uitstalie-deepseek-flash, 2026/11/06, DH-905, the canonical flag is --policy; the old spelling stays a deprecated alias
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'

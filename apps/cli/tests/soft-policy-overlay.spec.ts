@@ -7,6 +7,8 @@
  * composed rows for the services the acceptance names, with source builtins so
  * a clean checkout needs no built `lib/`; rows outside that set are not part of
  * this test's claim.
+ *
+ * uitstalie-deepseek-flash, 2026/11/06, DH-905, new branch test
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'

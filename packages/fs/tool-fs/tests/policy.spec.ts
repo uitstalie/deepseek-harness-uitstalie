@@ -18,6 +18,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import { assertFilePolicy } from '../src/policy.ts'
+// uitstalie-deepseek-flash, 2026/11/06, DH-905, imports for the mounted-policy denial case
 
 const target: FsTarget = { targetKey: FsTargetKey('/home/u/.ssh/id_rsa'), displayPath: '/home/u/.ssh/id_rsa' }
 const exec = { name: 'read', callId: 'call-1', arguments: {}, signal: new AbortController().signal } as ToolExecution
@@ -42,6 +43,7 @@ describe('assertFilePolicy', () => {
   })
 })
 
+// BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, mounted-policy denial over the real tool stack
 describe('mounted soft policy over the real tool stack', () => {
   it('rejects a denied read with FS_POLICY_DENIED and still allows an unlisted path', async () => {
     const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-tool-fs-policy-mounted-')))
@@ -91,3 +93,4 @@ describe('mounted soft policy over the real tool stack', () => {
     }
   })
 })
+// END uitstalie-deepseek-flash

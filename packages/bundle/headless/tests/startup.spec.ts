@@ -20,6 +20,8 @@ import {
 } from '../src/startup.ts'
 import { internals as startupInternals } from '../src/startup-internals.ts'
 
+// uitstalie-deepseek-flash, 2026/11/06, DH-905, this suite covers --policy and its deprecated --permission-mode alias
+
 /** What one boot of the fixture tree observed. */
 interface Observed {
   exits: number[]

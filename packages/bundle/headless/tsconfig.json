@@ -44,9 +44,11 @@
     {
       "path": "../../interaction/permission-presets"
     },
+    // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, optional soft-policy peer for the --policy seam
     {
       "path": "../../interaction/tool-policy"
     },
+    // END uitstalie-deepseek-flash
     {
       "path": "../../sandbox/sandbox-policy"
     },
