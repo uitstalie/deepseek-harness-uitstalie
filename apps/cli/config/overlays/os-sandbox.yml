@@ -1,0 +1,45 @@
+# OS sandbox rollback overlay (DH-905): restores the base composition when
+# `soft-policy.yml` was applied earlier in the same patch stack. Apply it last:
+#
+#   dsh --profile headless \
+#     --patch apps/cli/config/overlays/soft-policy.yml \
+#     --patch apps/cli/config/overlays/os-sandbox.yml "task"
+#
+# Applying it without `soft-policy.yml` is harmless but warns about the unknown
+# `fs-local`, `bash-local`, `pwsh-local`, and `tool-policy` ids it disables.
+#
+# Rows here restate the platform gates and the approval default the base layer
+# owns, because a patch replaces the targeted row's whole `disabled`/`config`.
+- id: sandbox
+  disabled: false
+
+- id: sandbox-policy
+  disabled: false
+
+- id: bash-sandbox
+  disabled: !!js process.platform === 'win32'
+
+- id: pwsh-sandbox
+  disabled: !!js process.platform !== 'win32'
+
+- id: fs-sandbox
+  disabled: false
+
+- id: permission
+  disabled: false
+
+- id: approval
+  config:
+    policy: !!js "(process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === 'danger-full-access' ? 'never' : 'ask'"
+
+- id: fs-local
+  disabled: true
+
+- id: bash-local
+  disabled: true
+
+- id: pwsh-local
+  disabled: true
+
+- id: tool-policy
+  disabled: true

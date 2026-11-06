@@ -112,6 +112,8 @@ export const SERVICE_PAGE: Record<string, string> = {
   terminals: 'terminal.md',
   sandbox: 'sandbox.md',
   sandboxPolicy: 'sandbox.md',
+  // uitstalie-deepseek-flash, 2026/11/06, DH-905, the soft tool policy service lives on the same subsystem page
+  toolPolicy: 'sandbox.md',
   ssh: 'ssh.md',
   sessionPersistence: 'persistence.md',
   sessionQuery: 'session-query.md',
@@ -705,6 +707,10 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   TerminalSpawnRequest: 'terminal.md',
   TerminalSpawnResult: 'terminal.md',
   SandboxPolicyRequest: 'sandbox.md',
+  // uitstalie-deepseek-flash, 2026/11/06, DH-905, types referenced by the ctx.toolPolicy methods
+  PreparedProfile: 'sandbox.md',
+  FileAccessOperation: 'sandbox.md',
+  PathDenial: 'sandbox.md',
   SshConnection: 'ssh.md',
   SshStreamEndpoint: 'ssh.md',
   ScopeKey: 'scope.md',

@@ -444,6 +444,9 @@
     { "path": "./packages/interaction/user-questions" },
     { "path": "./packages/interaction/user-approval" },
     { "path": "./packages/interaction/permission-presets" },
+    // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, 注册软工具策略包进 Host 聚合程序（Phase 0 只建包未注册）
+    { "path": "./packages/interaction/tool-policy" },
+    // END uitstalie-deepseek-flash
     { "path": "./packages/experimental/auto-review" },
     { "path": "./packages/experimental/claude-code-mods" },
     { "path": "./packages/core/tools" },

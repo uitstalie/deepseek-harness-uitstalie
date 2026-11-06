@@ -45,6 +45,9 @@
       "path": "../../interaction/permission-presets"
     },
     {
+      "path": "../../interaction/tool-policy"
+    },
+    {
       "path": "../../sandbox/sandbox-policy"
     },
     {

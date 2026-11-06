@@ -76,6 +76,23 @@ export const BUILTIN_PROFILES: Readonly<Record<string, ProfileConfig>> = Object.
 /** The default profile name when the config does not name one. */
 export const DEFAULT_PROFILE = 'guarded'
 
+/**
+ * Retired environment variable kept as a one-release alias. It selected one of
+ * the four sandbox presets; the soft policy maps it instead of honoring it.
+ */
+export const LEGACY_PERMISSION_MODE_ENV = 'DSH_PERMISSION_MODE'
+
+/**
+ * Map a retired `DSH_PERMISSION_MODE` value onto a profile name:
+ * `danger-full-access` becomes `unrestricted`; every other value becomes
+ * `guarded`, the narrow baseline.
+ * @param value - the raw environment value.
+ * @returns the profile name the alias selects.
+ */
+export function mapLegacyPermissionMode(value: string): string {
+  return value === 'danger-full-access' ? 'unrestricted' : 'guarded'
+}
+
 /** A validated profile set plus the deployment default. */
 export interface PreparedProfiles {
   readonly profiles: ReadonlyMap<string, PreparedProfile>

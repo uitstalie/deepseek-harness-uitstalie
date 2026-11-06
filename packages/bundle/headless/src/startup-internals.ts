@@ -8,7 +8,9 @@
 export const internals: {
   stdinIsTty: () => boolean
   stdout: { write(chunk: string): unknown }
+  stderr: { write(chunk: string): unknown }
 } = {
   stdinIsTty: () => process.stdin.isTTY,
   stdout: process.stdout,
+  stderr: process.stderr,
 }

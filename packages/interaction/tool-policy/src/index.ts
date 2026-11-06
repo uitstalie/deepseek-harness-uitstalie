@@ -11,7 +11,9 @@
  * - the `tool-policy` runtime context replaces the retired
  *   `Current DSH file policy: …` line and states the bypass surface;
  * - `/policy` selects a profile and records it in the reused
- *   `permission/preset` session event.
+ *   `permission/preset` session event;
+ * - the retired `DSH_PERMISSION_MODE` variable maps to a profile at load and is
+ *   announced as deprecated.
  *
  * It is a **soft, best-effort policy, not an OS sandbox**: shell commands, PTC
  * code, MCP tools, and direct native file access are outside its reach.
@@ -36,13 +38,15 @@ import { installPolicyCommand } from './command.ts'
 import { installToolGuard } from './guard.ts'
 import { findDeniedPath } from './match.ts'
 import type { PathDenial } from './match.ts'
-import { prepareProfiles } from './profiles.ts'
+import { LEGACY_PERMISSION_MODE_ENV, mapLegacyPermissionMode, prepareProfiles } from './profiles.ts'
 import { renderToolPolicyPrompt } from './prompt.ts'
 import { installVisibility } from './visibility.ts'
 import type { Config, FileAccessOperation, PreparedProfile } from './types.ts'
 
 export type * from './types.ts'
-export { BUILTIN_PROFILES, DEFAULT_PROFILE } from './profiles.ts'
+export {
+  BUILTIN_PROFILES, DEFAULT_PROFILE, LEGACY_PERMISSION_MODE_ENV, mapLegacyPermissionMode,
+} from './profiles.ts'
 export { defaultCaseSensitive, canonicalizeTarget, compareKey, expandHome, isWithin } from './canonicalize.ts'
 export { findDeniedPath } from './match.ts'
 export { renderToolPolicyPrompt } from './prompt.ts'
@@ -89,7 +93,19 @@ export class ToolPolicyService extends Service {
     super(ctx, 'toolPolicy')
     const prepared = prepareProfiles(config)
     this.profileMap = prepared.profiles
-    this.defaultProfile = prepared.defaultProfile
+    // The retired sandbox variable stays a one-release alias. It is honored
+    // after config validation and announced, so a deployment that still exports
+    // it learns which profile the process actually runs under.
+    const legacyMode = process.env[LEGACY_PERMISSION_MODE_ENV]
+    if (legacyMode === undefined) {
+      this.defaultProfile = prepared.defaultProfile
+    } else {
+      const alias = mapLegacyPermissionMode(legacyMode)
+      this.defaultProfile = prepared.profiles.has(alias) ? alias : prepared.defaultProfile
+      ctx.logger.warn(
+        `tool-policy: ${LEGACY_PERMISSION_MODE_ENV} is deprecated; selected profile "${this.defaultProfile}" for ${JSON.stringify(legacyMode)}`,
+      )
+    }
   }
 
   protected async [Service.init](): Promise<void> {

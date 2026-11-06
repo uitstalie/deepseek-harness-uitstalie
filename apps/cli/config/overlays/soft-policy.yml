@@ -1,0 +1,62 @@
+# Soft tool policy composition overlay (DH-905): replaces the OS sandbox with a
+# best-effort blacklist over model tool calls. Apply it after the profile's own
+# layers, e.g.
+#
+#   dsh --profile headless --patch apps/cli/config/overlays/soft-policy.yml "task"
+#
+# This is a security downgrade. The process keeps full user permissions; the
+# `tool-policy` row only denies model tool calls by name and file-tool targets.
+# Shell commands, PTC code, MCP tools, and direct native file access bypass it.
+# See docs/subsystems/sandbox.md.
+#
+# The base composition is untouched, so `os-sandbox.yml` is the rollback path.
+- id: sandbox
+  disabled: true
+
+- id: sandbox-policy
+  disabled: true
+
+- id: bash-sandbox
+  disabled: true
+
+- id: pwsh-sandbox
+  disabled: true
+
+- id: fs-sandbox
+  disabled: true
+
+# `/permission` and its four sandbox presets retire with the sandbox rows;
+# `tool-policy` registers `/policy` over named profiles instead.
+- id: permission
+  disabled: true
+
+# Approval is independent of the policy profile: the profile cannot widen it,
+# and `never` is an explicit deployment choice rather than a danger-full-access
+# side effect.
+- id: approval
+  config:
+    policy: !!js "process.env.DSH_APPROVAL_POLICY ?? 'ask'"
+
+- insert:
+    # The unconfined filesystem backend: `ctx.fs.cwd` defaults to the process
+    # working directory and absolute paths stay unrestricted.
+    - id: fs-local
+      name: '@deepseek-ai/dsh-fs-local'
+
+    # The unconfined shell executors, platform-gated like the sandbox rows they
+    # replace so exactly one mounts.
+    - id: bash-local
+      name: '@deepseek-ai/dsh-bash-local'
+      disabled: !!js process.platform === 'win32'
+
+    - id: pwsh-local
+      name: '@deepseek-ai/dsh-pwsh-local'
+      disabled: !!js process.platform !== 'win32'
+
+    # Named profiles over model tool calls. `guarded` is the narrow baseline
+    # (credential and DSH-home paths denied, `run_code` disabled); `guarded`'s
+    # deprecated DSH_PERMISSION_MODE alias is applied by the plugin at load.
+    - id: tool-policy
+      name: '@deepseek-ai/dsh-tool-policy'
+      config:
+        defaultProfile: guarded

@@ -31,7 +31,12 @@ export interface HeadlessStartupValues {
   sessionId: string | undefined
   /** Whether stdout carries the machine-readable event stream instead of final text. */
   json: boolean
-  /** Permission preset to apply before the task; absent preserves session policy. */
+  /** Soft-policy profile (or legacy permission preset) to apply before the task; absent preserves the session selection. */
+  policy?: string
+  /**
+   * @deprecated The `--permission-mode` alias for {@link policy}. Kept for one
+   * release because cordis overlays and scripts still pass it.
+   */
   permissionMode?: string
   /** Approval behavior applied after the permission preset; absent keeps the current policy. */
   approvalPolicy?: ApprovalPolicy
@@ -57,8 +62,9 @@ function headlessCommand(): Command {
     .helpOption('-h, --help', 'show this help')
     .option('--json', 'write newline-delimited run events to stdout instead of the final message')
     .option('--session-id <id>', 'adopt the persisted Session with this id; an unknown id is an error')
-    .option('--permission-mode <preset>', 'select a configured permission preset for this task, including on resume')
-    .addOption(new Option('--approval-policy <policy>', 'set approval behavior after selecting the permission preset')
+    .option('--policy <profile>', 'select a tool-policy profile (or a legacy permission preset) for this task, including on resume')
+    .option('--permission-mode <preset>', 'deprecated alias for --policy')
+    .addOption(new Option('--approval-policy <policy>', 'set approval behavior after selecting the policy')
       .choices([...APPROVAL_POLICIES]))
     .option('--add-dir <path>', 'allow an additional physical absolute directory under workspace-write (repeatable)',
       (value: string, previous?: string[]) => [...previous ?? [], value])
@@ -69,8 +75,9 @@ Examples:
   echo "run the tests" | dsh --profile headless   read the task from stdin
   dsh --profile headless --json "run the tests"   emit machine-readable run events
   dsh --profile headless --session-id session-… "continue"   resume an existing Session
+  dsh --profile headless --policy guarded "run the tests"    select the soft-policy profile
   dsh --profile headless --permission-mode workspace-write --add-dir /repo/.git "commit the fix"
-                                                        grant shared Git metadata for this task
+                                                        deprecated preset flag for an os-sandbox grant
 `)
 }
 
@@ -86,7 +93,8 @@ function jsonRequested(argv: readonly string[]): boolean {
     const argument = argv[index]
     if (argument === '--') return false
     if (argument === '--json') return true
-    if (argument === '--session-id' || argument === '--permission-mode' || argument === '--approval-policy' || argument === '--add-dir') index += 1
+    if (argument === '--session-id' || argument === '--policy' || argument === '--permission-mode'
+      || argument === '--approval-policy' || argument === '--add-dir') index += 1
   }
   return false
 }
@@ -129,6 +137,7 @@ export function apply(ctx: Context): void {
     const options = program.opts<{
       json?: boolean
       sessionId?: string
+      policy?: string
       permissionMode?: string
       approvalPolicy?: ApprovalPolicy
       addDir?: string[]
@@ -139,8 +148,14 @@ export function apply(ctx: Context): void {
     if (sessionId !== undefined && sessionId.trim() === '') {
       program.error('error: --session-id requires a non-empty session id')
     }
-    if (options.permissionMode !== undefined && options.permissionMode.trim() === '') {
-      program.error('error: --permission-mode requires a non-empty preset name')
+    const legacyPermissionMode = options.permissionMode?.trim()
+    const policy = options.policy?.trim() ?? legacyPermissionMode
+    if (policy === '') {
+      program.error('error: --policy requires a non-empty profile name')
+    }
+    if (legacyPermissionMode !== undefined) {
+      // stderr, not stdout: --json callers keep the event stream parseable.
+      internals.stderr.write('dsh: --permission-mode is deprecated; use --policy.\n')
     }
     if (options.addDir?.some(path => !isAbsolute(path) || path.includes('\0')) === true) {
       program.error('error: --add-dir requires an absolute directory path in the execution environment')
@@ -149,7 +164,9 @@ export function apply(ctx: Context): void {
       task,
       sessionId,
       json: options.json === true,
-      ...options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode.trim() },
+      ...policy === undefined ? {} : { policy },
+      // oxlint-disable-next-line typescript/no-deprecated -- the retired spelling stays published for one release
+      ...legacyPermissionMode === undefined ? {} : { permissionMode: legacyPermissionMode },
       ...options.approvalPolicy === undefined ? {} : { approvalPolicy: options.approvalPolicy },
       ...options.addDir === undefined ? {} : { additionalWritableRoots: [...new Set(options.addDir)] },
     } satisfies HeadlessStartupValues)

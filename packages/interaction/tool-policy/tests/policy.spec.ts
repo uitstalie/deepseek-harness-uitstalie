@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { onTestFinished, describe, expect, it, vi } from 'vitest'
+import { onTestFinished, afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
@@ -61,6 +61,32 @@ describe('ToolPolicyService profiles', () => {
     expect(ctx.toolPolicy.names).toEqual(['unrestricted', 'guarded', 'guarded-no-shell', 'files-read-only'])
     expect(ctx.toolPolicy.has('guarded-no-shell')).toBe(true)
     expect(ctx.toolPolicy.has('read-only')).toBe(false)
+  })
+})
+
+describe('legacy DSH_PERMISSION_MODE alias', () => {
+  afterEach(() => { vi.unstubAllEnvs() })
+
+  it('maps danger-full-access to unrestricted and announces the mapping', async () => {
+    vi.stubEnv('DSH_PERMISSION_MODE', 'danger-full-access')
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    const warn = vi.spyOn(ctx.logger, 'warn')
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(ToolPolicyService)
+    expect(ctx.toolPolicy.defaultProfile).toBe('unrestricted')
+    expect(warn.mock.calls.flat().join(' ')).toContain('DSH_PERMISSION_MODE is deprecated')
+  })
+
+  it.each(['read-only', 'workspace-write', 'home-write', 'unexpected'])('maps %s to guarded', async (value) => {
+    vi.stubEnv('DSH_PERMISSION_MODE', value)
+    const ctx = await mounted()
+    expect(ctx.toolPolicy.defaultProfile).toBe('guarded')
+  })
+
+  it('leaves the configured default alone without the variable', async () => {
+    const ctx = await mounted({ defaultProfile: 'files-read-only' })
+    expect(ctx.toolPolicy.defaultProfile).toBe('files-read-only')
   })
 })
 

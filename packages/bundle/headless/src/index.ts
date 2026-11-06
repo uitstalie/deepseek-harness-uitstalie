@@ -34,6 +34,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 // Optional service peers stay type-only so profiles can omit their packages.
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
+import type {} from '@deepseek-ai/dsh-tool-policy'
 import type {} from './startup.ts'
 import { internals } from './runner-internals.ts'
 import { projectJsonRun, boundJsonLine } from './json-stream.ts'
@@ -52,7 +53,12 @@ export interface Config {
   sessionId?: string
   /** Whether stdout carries the machine-readable event stream instead of final text. */
   json?: boolean
-  /** Permission preset applied before the task; an explicit CLI flag takes precedence. Omission keeps current policy. */
+  /** Soft-policy profile applied before the task; an explicit CLI flag takes precedence. Omission keeps the session selection. */
+  policy?: string
+  /**
+   * Legacy config spelling of {@link policy}; a profile overlay may still set it.
+   * @deprecated Use {@link policy}; the spelling is removed with the CLI alias.
+   */
   permissionMode?: string
   /** Approval behavior applied after preset selection; an explicit CLI flag takes precedence. Omission keeps current policy. */
   approvalPolicy?: ApprovalPolicy
@@ -62,6 +68,7 @@ export const Config: z<Config> = z.object({
   task: z.string(),
   sessionId: z.string(),
   json: z.boolean(),
+  policy: z.string(),
   permissionMode: z.string(),
   approvalPolicy: z.union([...APPROVAL_POLICIES]),
 })
@@ -336,13 +343,20 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
   }
 
   const startup = ctx.get('headlessStartup')
-  const permissionMode = startup?.permissionMode ?? config.permissionMode
+  // oxlint-disable-next-line typescript/no-deprecated -- the retired spelling stays readable for one release
+  const legacyPolicy = startup?.permissionMode ?? config.permissionMode
+  const policy = startup?.policy ?? config.policy ?? legacyPolicy
   const approvalPolicy = startup?.approvalPolicy ?? config.approvalPolicy
   const approval = ctx.get('approval')
+  const toolPolicy = ctx.get('toolPolicy')
   const permissions = ctx.get('permissionPresets')
-  if (permissionMode !== undefined) {
-    if (permissions === undefined) throw new Error('headless --permission-mode requires the permissionPresets service')
-    permissions.resolve(permissionMode)
+  if (policy !== undefined) {
+    // The soft-policy composition mounts `toolPolicy`; the os-sandbox
+    // composition mounts the retired preset service. Exactly one applies, so a
+    // profile name and a permission preset name never need to coexist.
+    if (toolPolicy !== undefined) toolPolicy.profile(policy)
+    else if (permissions !== undefined) permissions.resolve(policy)
+    else throw new Error('headless --policy requires the toolPolicy or permissionPresets service')
   }
   if (approvalPolicy !== undefined && approval === undefined) {
     throw new Error('headless --approval-policy requires the approval service')
@@ -400,7 +414,10 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     // re-read the log the runner holds before submitting the task.
     assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
   }
-  if (permissionMode !== undefined && permissions !== undefined) permissions.set(agent.session, permissionMode)
+  if (policy !== undefined) {
+    if (toolPolicy !== undefined) toolPolicy.select(agent.session, policy)
+    else permissions?.set(agent.session, policy)
+  }
   if (approvalPolicy !== undefined && approval?.overrideOf(agent.session) !== approvalPolicy) {
     setApprovalPolicy(agent.session, approvalPolicy)
   }

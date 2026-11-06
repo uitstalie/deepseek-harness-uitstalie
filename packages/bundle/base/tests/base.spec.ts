@@ -18,13 +18,17 @@ describe('dsh-base bundle', () => {
       readFileSync(resolve(root, 'package.json'), 'utf8'),
     ) as {
       dependencies?: Record<string, string>
-      dsh?: { bundle?: { patch?: string } }
+      dsh?: { bundle?: { patch?: string | readonly string[] } }
     }
-    expect(manifest.dsh?.bundle?.patch).toBe('./cordis.patch.yml')
-    const parsed = yaml.load(
-      readFileSync(resolve(root, manifest.dsh!.bundle!.patch!), 'utf8'),
+    // uitstalie-deepseek-flash, 2026/11/06, DH-905, the branch adds cordis.patch.uitstalie.yml after the upstream layer
+    const declared = manifest.dsh?.bundle?.patch
+    const patchFiles = typeof declared === 'string' ? [declared] : declared ?? []
+    expect(patchFiles[0]).toBe('./cordis.patch.yml')
+    expect(patchFiles).toContain('./cordis.patch.uitstalie.yml')
+    const parsed = patchFiles.flatMap(file => yaml.load(
+      readFileSync(resolve(root, file), 'utf8'),
       { schema: entryListSchema },
-    )
+    ) as { insert?: { id?: string; config?: Record<string, unknown>; disabled?: boolean }[] }[])
     expect(Array.isArray(parsed)).toBe(true)
     // The base layer is one insert list over the empty profile root.
     const rows = (parsed as { insert?: { id?: string; config?: Record<string, unknown>; disabled?: boolean }[] }[]).flatMap(

@@ -320,7 +320,7 @@ describe('headless stream-json snapshots', () => {
           label: `Auto shutdown wake ${wake}`,
           binArgs: [
             ...args, '--patch', autoIntegrationPath, '--json',
-            ...wake === 1 ? ['--permission-mode', 'auto'] : ['--session-id', sessionId],
+            ...wake === 1 ? ['--policy', 'auto'] : ['--session-id', sessionId],
             'Record this wake without calling tools.',
           ],
           inspect: async () => {
@@ -346,7 +346,7 @@ describe('headless stream-json snapshots', () => {
         ...options,
         label: 'Auto restore without its integration',
         expectedExitCode: 1,
-        binArgs: [...args, '--json', '--session-id', sessionId, '--permission-mode', 'read-only', 'Continue.'],
+        binArgs: [...args, '--json', '--session-id', sessionId, '--policy', 'read-only', 'Continue.'],
       })
       expect(unavailable.stderr).toContain('cannot restore preset "auto" without its active integration')
       expect(parseJsonl(unavailable.stdout).some(event => event.type === 'final')).toBe(false)
@@ -367,7 +367,7 @@ describe('headless stream-json snapshots', () => {
         label: 'Change restored Auto to Read only with its integration',
         binArgs: [
           ...args, '--patch', autoIntegrationPath, '--json',
-          '--session-id', sessionId, '--permission-mode', 'read-only', 'Continue.',
+          '--session-id', sessionId, '--policy', 'read-only', 'Continue.',
         ],
         inspect: async () => {
           const log = (await persistedLogs(cwd, join(cwd, '.dsh', 'sessions')))[0]!
@@ -428,7 +428,7 @@ describe('headless stream-json snapshots', () => {
       configPath: headlessOverlayPath,
       binArgs: [
         '--profile', 'headless', '--patch', headlessOverlayPath,
-        '--permission-mode', 'workspace-write',
+        '--policy', 'workspace-write',
         ...process.platform === 'win32' ? [] : ['--add-dir', await realpath(tmpdir())],
         '--json', task,
       ],
@@ -517,7 +517,7 @@ describe('headless stream-json snapshots', () => {
         configPath: headlessOverlayPath,
         binArgs: [
           '--profile', 'headless', '--patch', headlessOverlayPath,
-          '--json', '--permission-mode', 'read-only', '--session-id', sessionId, secondTask,
+          '--json', '--policy', 'read-only', '--session-id', sessionId, secondTask,
         ],
         tsconfigPath,
         env,
@@ -552,7 +552,7 @@ describe('headless stream-json snapshots', () => {
       configPath: autoReviewOverlayPath,
       binArgs: [
         '--profile', 'headless', '--patch', headlessOverlayPath, '--patch', autoReviewOverlayPath,
-        '--permission-mode', 'auto', '--approval-policy', 'never', '--json', 'Run the CLI probe.',
+        '--policy', 'auto', '--approval-policy', 'never', '--json', 'Run the CLI probe.',
       ],
       tsconfigPath,
       env: { DSH_AUTO_REVIEW_TEST_MODE: mode, DSH_TELEMETRY_DISABLED: '1' },
@@ -589,7 +589,7 @@ describe('headless stream-json snapshots', () => {
     const result = await runLoaderSmoke({
       label: 'headless absent Auto integration', tempDirPrefix: 'headless-auto-absent-',
       binScript: dshBinScript, configPath: headlessOverlayPath,
-      binArgs: ['--profile', 'headless', '--patch', headlessOverlayPath, '--permission-mode', 'auto', '--json', 'Do it.'],
+      binArgs: ['--profile', 'headless', '--patch', headlessOverlayPath, '--policy', 'auto', '--json', 'Do it.'],
       tsconfigPath, expectedExitCode: 1, env: { DSH_TELEMETRY_DISABLED: '1' },
     })
     const events = parseJsonl(result.stdout)
@@ -604,7 +604,7 @@ describe('headless stream-json snapshots', () => {
     try {
       const first = await runLoaderSmoke({
         label: 'headless Auto denied wake', cwd, binScript: dshBinScript, configPath: autoReviewOverlayPath,
-        binArgs: [...args, '--permission-mode', 'auto', '--approval-policy', 'never', 'Run the CLI probe.'], tsconfigPath,
+        binArgs: [...args, '--policy', 'auto', '--approval-policy', 'never', 'Run the CLI probe.'], tsconfigPath,
         env: { DSH_AUTO_REVIEW_TEST_MODE: 'deny', DSH_TELEMETRY_DISABLED: '1' },
       })
       const sessionId = parseJsonl(first.stdout)[0]?.sessionId
