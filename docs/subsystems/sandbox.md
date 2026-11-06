@@ -35,6 +35,28 @@ The process-sandbox seam of [dsh-sandbox](../../packages/sandbox/sandbox) wraps 
 
 Source: [`packages/sandbox/sandbox/src/index.ts`](../../packages/sandbox/sandbox/src/index.ts)
 
+<a id="windows-acl-backend-limitation-disk-scoped-not-process-scoped"></a>
+
+<!-- uitstalie-deepseek-flash, 2026/11/06, DH-906, record the disk-scoped Windows ACL limitation and its constraint -->
+
+## Windows ACL backend limitation: disk-scoped, not process-scoped
+
+The Windows backend writes **disk state**, not process state. It applies a `SetNamedSecurityInfoW(..., LABEL_SECURITY_INFORMATION, ...)` call that sets an inheritable `SYSTEM_MANDATORY_LABEL_ACE` to Low (`S-1-16-4096`) on a granted root, plus DACL grant and deny ACEs. The label ACE carries `(OI)(CI)`, and the call rewrites every already-existing descendant, not only future files; on the development machine `%TEMP%` came back as `Mandatory Label\Low Mandatory Level:(I)(OI)(CI)(NW)` after a home-root grant.
+
+That state survives the session. Ending the session, switching back to `workspace-write`, and a crash all leave the labels and DACLs in place; the backend has no automatic rollback. Recovery is manual and needs elevation:
+
+```powershell
+icacls "<root>"
+icacls "<root>" /setintegritylevel "(OI)(CI)M" /T
+icacls "<root>" /setintegritylevel "(OI)(CI)M"
+```
+
+The first command inspects the mandatory label and DACL. `/T` restores the root and every existing descendant; without it, only the root and future children change. A DACL deny ACE added by a grant must be removed separately; restoring the label does not remove it. Sign out or restart affected applications afterwards to drop cached state. The full incident record lives in [goal/windows-sandbox-limitation.md](../../goal/windows-sandbox-limitation.md).
+
+The label also follows the executable into the process. A Medium-integrity process that starts a Low-labelled executable runs **as Low**: `whoami` inside that child reported `S-1-16-4096` even though the parent was Medium. Any program installed on a relabelled drive therefore loses access to Medium-only locations — the SP Flash Tool failed with `boost::filesystem::create_directories: Permission denied` while creating a directory under `C:\ProgramData`, and `adb` could not write `%TEMP%\adb.log`. The damage is not confined to the workspace; it covers every program on that volume. Choosing the home root or a drive root as the workspace relabels the whole machine or drive, and restoring this machine's `D:` full tree took about five minutes of `icacls /T` work.
+
+**Constraint for every later sandbox change.** A sandbox change MUST NOT write integrity labels or DACL entries to a home root, a drive root, or any other broad directory. Isolation MUST follow the process — a restricted token, a Job object, an AppContainer, a separate user, or remote execution — and it MUST be revocable and least-scope: leaving the session, switching modes, or crashing must leave no disk state behind. Restoring an ACL-based backend requires both properties to be proven by tests (cleanup on exit and on crash, and no whole-subtree relabel) before it can be offered again.
+
 ## Modes and enforcement
 
 `SandboxMode` governs filesystem effects only. `read-only` asks the backend to deny writes — the POSIX runners additionally grant the `/dev/null` sink their shells require, while the Windows ACL runner grants no explicit writable root and reports partial enforcement for its ambient ACL gaps; `workspace-write` permits writes under the workspace root, explicit extra directories, and the backend's promised temp area; `home-write` permits writes under the user's home and — on Windows — every fixed drive except the system drive, plus the session workspace and configured temp exceptions, with `excludePaths` carving read-only holes out of any granted root; `danger-full-access` bypasses confinement. Network and process visibility are outside this vocabulary.

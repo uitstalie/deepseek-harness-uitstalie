@@ -9,8 +9,11 @@
   en: 34c457b2236d6fdb
   zh: 420ad1fe5825cd89
 /sandbox-and-soft-tool-policy/process-sandbox:
-  en: d17237f8ea22dcf7
-  zh: 0da461739bd61329
+  en: c6ce1ffd1363ed01
+  zh: 6cd491dc61821fa1
+/sandbox-and-soft-tool-policy/windows-acl-backend-limitation-disk-scoped-not-process-scoped:
+  en: 2caae37f8b39aa1c
+  zh: 9ed790c26b6dede0
 /sandbox-and-soft-tool-policy/modes-and-enforcement:
   en: b23855d62da4a6e6
   zh: e44899008bf18820

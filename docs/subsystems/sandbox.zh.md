@@ -35,6 +35,28 @@ dsh --profile headless --patch apps/cli/config/overlays/soft-policy.yml \
 
 源码：[`packages/sandbox/sandbox/src/index.ts`](../../packages/sandbox/sandbox/src/index.ts)
 
+<a id="windows-acl-backend-limitation-disk-scoped-not-process-scoped"></a>
+
+<!-- uitstalie-deepseek-flash, 2026/11/06, DH-906, record the disk-scoped Windows ACL limitation and its constraint -->
+
+## Windows ACL 后端的限制：磁盘级，而非进程级
+
+Windows 后端写的是**磁盘状态**，不是进程状态。它调用 `SetNamedSecurityInfoW(..., LABEL_SECURITY_INFORMATION, ...)`，给被授权的根写入一个可继承的 `SYSTEM_MANDATORY_LABEL_ACE`（Low，`S-1-16-4096`），另外还有 DACL 的 grant 与 deny ACE。该标签 ACE 带 `(OI)(CI)`，调用会把**已经存在的整棵子树**一并重标，而不只是之后新建的文件；在本机做一次 home 根授权后，`%TEMP%` 变成 `Mandatory Label\Low Mandatory Level:(I)(OI)(CI)(NW)`。
+
+这些状态会活过会话。结束会话、切回 `workspace-write`、进程崩溃，都不会撤掉标签与 DACL；后端没有自动回滚。恢复只能手动做，且需要提升权限：
+
+```powershell
+icacls "<root>"
+icacls "<root>" /setintegritylevel "(OI)(CI)M" /T
+icacls "<root>" /setintegritylevel "(OI)(CI)M"
+```
+
+第一条命令查看强制标签与 DACL；`/T` 恢复根及所有已存在的子项，不带 `/T` 只改根与未来的子项。授权写入的 DACL deny ACE 需要另行移除；恢复标签不会移除它。之后注销或重启受影响的程序，才能清掉缓存状态。完整事故记录见 [goal/windows-sandbox-limitation.md](../../goal/windows-sandbox-limitation.md)。
+
+标签还会跟着可执行文件“传染”到进程。Medium 完整性的进程启动一个带 Low 标签的可执行文件后，**子进程就是 Low**：在那样的子进程里执行 `whoami` 报 `S-1-16-4096`，尽管父进程是 Medium。因此安装在被重标盘上的任何程序都会失去对仅限 Medium 位置的访问——本机 SP Flash Tool 在 `C:\ProgramData` 下创建目录时报 `boost::filesystem::create_directories: Permission denied`，`adb` 也写不了 `%TEMP%\adb.log`。影响范围不是工作区，而是该卷上的所有程序。把 home 根或盘根选作工作区会让整机或整盘降级；本机恢复 `D:` 全盘重标花了约五分钟的 `icacls /T`。
+
+**对之后每一项沙箱改动的约束。** 沙箱改动**不得**对 home 根、盘根或任何其他宽目录写完整性标签或 DACL 项。隔离**必须**跟着进程走——受限令牌、Job 对象、AppContainer、独立用户或远程执行——并且**必须**可撤销、作用域最小：离开会话、切换模式或崩溃都不能留下磁盘状态。若将来恢复基于 ACL 的后端，必须先用测试证明这两个性质（退出与崩溃都能清理、不做整棵子树重标），才能再次提供该后端。
+
 ## 模式与强制执行
 
 `SandboxMode` 仅管控文件系统效果。`read-only` 要求后端拒绝写入——POSIX runner 还会授予其 shell 所需的 `/dev/null` 接收器，而 Windows ACL runner 不授予任何显式可写根目录，并因环境 ACL 缺口报告部分强制执行；`workspace-write` 允许在工作区根目录、显式额外目录及后端承诺的临时区域下写入；`home-write` 允许在用户主目录、Windows 上除系统盘之外的每个固定盘、会话工作区及配置的临时例外下写入，`excludePaths` 在任意被授权根目录内挖出只读洞；`danger-full-access` 绕过隔离。网络与进程可见性不在此处的定义范围内。
