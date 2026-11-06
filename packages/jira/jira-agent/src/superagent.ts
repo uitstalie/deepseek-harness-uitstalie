@@ -2350,8 +2350,6 @@ export const compactWorkspaceSession = async (
   controller: SessionControllerLike,
   sessionId: string,
 ): Promise<CompactionOutcome> => {
-  const compaction = compactionOf(ctx)
-  if (compaction === undefined) return { error: 'this deployment has no compaction seam' }
   if (controller.resolveAgent === undefined) return { error: 'this host exposes no resolveAgent for a Session' }
   let agent: unknown
   try {
@@ -2363,7 +2361,13 @@ export const compactWorkspaceSession = async (
   } catch (error: unknown) {
     return { error: `the Session could not be resolved: ${error instanceof Error ? error.message : String(error)}` }
   }
-  const meter = tokenMeterOf(ctx)
+  // In the product composition compaction is owned by an agent-preset isolate, so the plugin's
+  // root context cannot see it. The resolved Agent carries its own scoped context; prefer that
+  // seam, with the root fallback kept for hosts that mount compaction globally.
+  const agentCtx = (agent as { ctx?: unknown }).ctx
+  const compaction = compactionOf(agentCtx) ?? compactionOf(ctx)
+  if (compaction === undefined) return { error: 'this deployment has no compaction seam' }
+  const meter = tokenMeterOf(agentCtx) ?? tokenMeterOf(ctx)
   const before = contextUsageOf(meter, (agent as { session?: unknown }).session)
   try {
     const result = await compaction.compactNow(agent, new AbortController().signal)

@@ -52,6 +52,18 @@
     },
     {
       "path": "../../storage/storage-json"
+    },
+    {
+      "path": "../../core/agent-loop"
+    },
+    {
+      "path": "../../test-support/agent-loop-testkit"
+    },
+    {
+      "path": "../../compaction/compaction-basic"
+    },
+    {
+      "path": "../../llm/token-meter"
     }
   ]
 }
