@@ -50,7 +50,7 @@ import { Win32Error } from '@deepseek-ai/dsh-win32-process'
 import { denyWrite, grantWrite, revokeDeny, revokeWrite } from './acl.ts'
 import { allocPtrSlot, decodePtr, isNullPtr, throwLastError, win32 } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
-import { assertPrivateTempDisjoint } from './path-boundary.ts'
+import { assertPrivateTempDisjoint, assertPrivateTempInsideWritable } from './path-boundary.ts'
 import { drainPipe, spawnSandboxed, spawnSandboxedInherited, waitForExit } from './spawn.ts'
 import { createRestrictedToken, findLogonSid, makeWellKnownSid, openCurrentProcessToken, restrictTokenIntegrity, setTokenDefaultDaclGrant } from './token.ts'
 import * as abi from './win32-abi.ts'
@@ -99,6 +99,17 @@ export interface AclSandboxOptions {
    * granted drive root. Only meaningful with a write-restricted mode.
    */
   excludedDirs?: readonly string[]
+  /**
+   * Whether the private temp directory deliberately sits inside a granted
+   * writable directory (default false). `home-write` grants the entire user
+   * home, so its per-session temp lives under the home and must be allowed to
+   * nest: the enclosing grant already confers every right the temp capability
+   * would add, and the two capabilities are not meaningfully separate. With
+   * this option set, {@link assertPrivateTempInsideWritable} replaces the
+   * disjointness check; a temp that is NOT inside a writable directory still
+   * fails closed.
+   */
+  allowTempInsideWritable?: boolean
   /**
    * Whether this instance owns its DACL grants (default true). False means
    * the CALLER has already materialized the ACEs (the sandbox seam's
@@ -179,6 +190,7 @@ export class AclSandbox {
   /** Directories forced read-only by the exclusion deny (validated in the constructor). */
   readonly excludedDirs: readonly string[]
   private readonly tempDirOption: string | null | undefined
+  private readonly allowTempInsideWritable: boolean
   private readonly manageDacls: boolean
   private tempDirResolved: string | null | undefined
   private api: Win32Bindings | undefined
@@ -192,6 +204,7 @@ export class AclSandbox {
 
   constructor(options: AclSandboxOptions) {
     this.mode = options.mode
+    this.allowTempInsideWritable = options.allowTempInsideWritable ?? false
     this.manageDacls = options.manageDacls ?? true
     this.writableDirs = options.writableDirs.map((directory) => {
       const absolute = resolve(directory)
@@ -260,7 +273,11 @@ export class AclSandbox {
         if (!existsSync(tempDir) || !statSync(tempDir).isDirectory()) {
           throw new Error(`AclSandbox temp dir does not exist or is not a directory: ${tempDir}`)
         }
-        assertPrivateTempDisjoint(this.writableDirs, tempDir)
+        // home-write's temp sits inside the granted home; there the enclosing
+        // grant already covers it, so the disjointness rule would reject the
+        // mode's own temp layout. The exemption still has to prove the nesting.
+        if (this.allowTempInsideWritable) assertPrivateTempInsideWritable(this.writableDirs, tempDir)
+        else assertPrivateTempDisjoint(this.writableDirs, tempDir)
       }
       this.tempDirResolved = tempDir
 

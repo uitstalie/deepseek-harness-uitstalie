@@ -1041,6 +1041,26 @@ describe('sandbox escalation API (write/edit)', () => {
     }])
   })
 
+  it('an approved home-write escalation carries the resolved home-write roots', async () => {
+    // Regression: the approved mode must be resolved THROUGH the service.
+    // Spreading the standing workspace-write policy yields mode "home-write"
+    // with no homeWriteRoots, so the fence denies every path outside the
+    // workspace while the mode claims the home and drives.
+    const { ctx, fs } = await setupConfining({ approval: true })
+    ctx.on('approval/request', () => Promise.resolve('allowed-once' as const))
+    await executeToolFixture(ctx, {
+      callId: ToolCallId('call-fs-esc-home'),
+      name: 'write',
+      arguments: { file_path: 'a.txt', content: 'x', sandbox_permissions: 'home-write', justification: 'write into the user home' },
+      agent: escalationAgent() as never,
+      signal: new AbortController().signal,
+    })
+    const stamped = fs.stamped[0]
+    expect(stamped?.mode).toBe('home-write')
+    expect(stamped?.workspaceRoot).toBe('/session-project')
+    expect((stamped?.homeWriteRoots?.length ?? 0)).toBeGreaterThan(0)
+  })
+
   it.each(['workspace-write', 'danger-full-access'] as const)('writes under repeated %s without approval', async (mode) => {
     const { ctx, fs } = await setupConfining()
     const result = await call(ctx, 'write', {

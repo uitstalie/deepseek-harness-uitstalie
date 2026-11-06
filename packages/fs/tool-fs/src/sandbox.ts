@@ -109,7 +109,16 @@ export class FsSandboxController {
         signal: exec.signal,
       },
     )
-    return { ...policy, mode: approvedMode }
+    // Resolve THROUGH the service with the approved mode, not by spreading the
+    // standing (narrower) policy: resolve() attaches the mode's own roots
+    // (homeWriteRoots/excludePaths for home-write), and a spread of a
+    // workspace-write policy would carry mode "home-write" with no roots — the
+    // fence then denies everything outside the workspace while the mode claims
+    // more, and the Windows backend provisions a workspace-only grant.
+    return (this.policy as SandboxPolicyService).resolve({
+      ...exec.agent === undefined ? {} : { session: exec.agent.session },
+      mode: approvedMode,
+    })
   }
 
   /**

@@ -464,7 +464,23 @@ describe('windows ACL home-write policy', () => {
     expect(confined.argv).toContain(home)
     expect(confined.argv).toContain('--exclude')
     expect(confined.argv).toContain(secret)
+    // home-write's private temp lives under the granted home; the flag tells
+    // the runner that the enclosing home grant already covers it.
+    expect(confined.argv).toContain('--temp-inside-writable')
     expect(confined.argv[confined.argv.indexOf('--mode') + 1]).toBe('workspace-write')
+  })
+
+  it('refuses a home-write policy that lost its resolved roots instead of narrowing to workspace-write', async () => {
+    const { sandbox } = await setup({}, {
+      chain: ['windows-acl'],
+      windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'],
+    })
+    const ws = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-ws-')))
+    tempDirs.push(ws)
+    await expect(sandbox.confine(['true'], {
+      mode: 'home-write',
+      workspaceRoot: ws,
+    })).rejects.toThrow('requires resolved homeWriteRoots')
   })
 })
 

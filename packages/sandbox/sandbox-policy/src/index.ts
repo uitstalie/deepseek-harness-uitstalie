@@ -262,15 +262,9 @@ export class SandboxPolicyService extends Service {
           ? [config.homeWriteRoot]
           : undefined
     this.homeWriteRoots = Object.freeze(homeWriteRoots(rootInputs === undefined ? {} : { configured: rootInputs })
-      .map((path) => {
-        try {
-          return configuredRoot(path, allowSymlinked, 'homeWriteRoots')
-        } catch {
-          // A configured root that is missing is dropped by homeWriteRoots
-          // already; anything else is a real configuration error.
-          throw new Error(`sandbox-policy: homeWriteRoots entry ${JSON.stringify(path)} is not a usable directory`)
-        }
-      }))
+      // configuredRoot owns the diagnostic (symlink spelling, not a directory,
+      // unresolvable); homeWriteRoots already dropped a missing entry.
+      .map(path => configuredRoot(path, allowSymlinked, 'homeWriteRoots')))
     const tempInputs = config.homeWriteTempRoots ?? []
     this.homeWriteTempRoots = Object.freeze([...new Set(tempInputs.map(path => configuredRoot(path, true, 'homeWriteTempRoots')))])
     const excludeInputs = config.excludePaths !== undefined && config.excludePaths.length > 0

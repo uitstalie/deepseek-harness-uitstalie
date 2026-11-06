@@ -22,6 +22,7 @@ import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
 import { escalationHintMarker, sandboxDenialMarker } from '@deepseek-ai/dsh-sandbox'
+import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import * as ToolBash from '@deepseek-ai/dsh-tool-bash'
 import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
@@ -135,6 +136,7 @@ function fakeExecution(proc: ShellProcess, result?: () => Promise<ShellRunResult
 
 class RecordingSandboxExecutor extends ShellExecutor {
   readonly modes: Array<string | undefined> = []
+  readonly policies: Array<SandboxExecutionPolicy | undefined> = []
 
   override get sandboxMode() {
     return 'read-only' as const
@@ -154,6 +156,7 @@ class RecordingSandboxExecutor extends ShellExecutor {
 
   async execute(spec: ShellExecSpec): Promise<ShellExecution> {
     this.modes.push(spec.sandboxPolicy?.mode)
+    this.policies.push(spec.sandboxPolicy)
     // One settled handle serves every path: a job's starter reads it and a
     // foreground call projects its result.
     return fakeExecution({
@@ -911,6 +914,19 @@ describe('sandbox escalation through the generic task producer', () => {
     ctx.on('approval/request', () => Promise.resolve<ApprovalOutcome>('allowed-once'))
     await call(ctx, 'bash', { ...escalate, sandbox_permissions: 'danger-full-access' }, agent)
     expect(bash.modes).toEqual(['workspace-write', 'danger-full-access'])
+  })
+
+  it('an approved home-write escalation carries the resolved home-write roots', async () => {
+    // Regression: spreading the standing policy stamps mode "home-write"
+    // without homeWriteRoots, so the backend provisions a workspace-only grant.
+    const { ctx, bash } = await setupSandboxed(true)
+    ctx.on('approval/request', () => Promise.resolve<ApprovalOutcome>('allowed-once'))
+    const result = await call(ctx, 'bash', {
+      command: 'true', description: 'write into the user home', sandbox_permissions: 'home-write', justification: 'write into the user home',
+    }, sandboxAgent())
+    expect(result.isError, text(result)).toBe(false)
+    expect(bash.modes).toEqual(['home-write'])
+    expect((bash.policies[0]?.homeWriteRoots?.length ?? 0)).toBeGreaterThan(0)
   })
 
   it('omits sandbox facts the executor did not acquire from the canonical result', async () => {

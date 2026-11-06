@@ -699,6 +699,22 @@ describe('sandbox escalation through ctx.approval', () => {
     expect(bash.modes).toEqual([mode])
   })
 
+  it('an approved home-write escalation carries the resolved home-write roots', async () => {
+    // Regression: spreading the standing policy stamps mode "home-write"
+    // without homeWriteRoots, so the backend provisions a workspace-only grant.
+    const { ctx, bash } = await setupSandboxed(true)
+    ctx.on('approval/request', () => Promise.resolve<ApprovalOutcome>('allowed-once'))
+    const result = await call(ctx, 'pwsh', {
+      command: 'Write-Output ok',
+      description: 'write into the user home',
+      sandbox_permissions: 'home-write',
+      justification: 'write into the user home',
+    }, sandboxAgent())
+    expect(result.isError, text(result)).toBe(false)
+    expect(bash.modes).toEqual(['home-write'])
+    expect((bash.requests[0]?.sandboxPolicy?.homeWriteRoots?.length ?? 0)).toBeGreaterThan(0)
+  })
+
   it('fails closed when approval cannot be routed', async () => {
     const withoutService = await setupSandboxed()
     expect(text(await call(withoutService.ctx, 'pwsh', escalate, sandboxAgent()))).toContain('no approval service')

@@ -10,6 +10,8 @@
  * keep the same contract):
  *   [node, runner.js, '--workspace', <dir>, '--temp', <dir>,
  *    '--mode', <read-only|workspace-write>,
+ *    ['--writable-root', <dir>..., '--exclude', <dir>...,
+ *     '--temp-inside-writable'],
  *    ['--write-sid', <S-1-4-…>,
  *     '--temp-write-sid', <S-1-4-…>], '--', <argv...>]
  *
@@ -17,6 +19,14 @@
  *  - workspace-write: the workspace and temp directories carry distinct
  *    capability-SID Write grants; other ACL-addressable writes are denied
  *    except for the documented Everyone and hard-link boundaries.
+ *  - home-write (the seam's `workspace-write` plus `--writable-root`s):
+ *    `--writable-root` adds the home and non-system drives to the writable
+ *    set, and `--temp-inside-writable` declares that the private temp sits
+ *    inside one of them (the home), where the enclosing grant already covers
+ *    it. That declaration replaces the temp/workspace disjointness rule —
+ *    which would otherwise reject the mode's own temp layout with "private
+ *    temp directory must be disjoint from writable directories" on every
+ *    command. Without it the disjointness rule stands unchanged.
  *  - read-only: no capability-SID grants; the restricting list carries no
  *    capability SID, so a standing grant ACE from an earlier
  *    workspace-write period stays inert. BOTH modes drop Authenticated Users
@@ -69,6 +79,7 @@ interface ParsedArgs {
   mode: 'read-only' | 'workspace-write'
   writableRoots: string[]
   exclude: string[]
+  tempInsideWritable: boolean
   writeSid: string | undefined
   tempWriteSid: string | undefined
   command: string
@@ -81,6 +92,7 @@ function parseArgs(raw: string[]): ParsedArgs {
   let mode: string | undefined
   const writableRoots: string[] = []
   const exclude: string[] = []
+  let tempInsideWritable = false
   let writeSid: string | undefined
   let parsedTempWriteSid: string | undefined
   let index = 0
@@ -89,6 +101,10 @@ function parseArgs(raw: string[]): ParsedArgs {
     if (token === '--') {
       index++
       break
+    }
+    if (token === '--temp-inside-writable') {
+      tempInsideWritable = true
+      continue
     }
     index++
     const value = raw[index]
@@ -110,7 +126,10 @@ function parseArgs(raw: string[]): ParsedArgs {
   const argv = raw.slice(index)
   const command = argv[0]
   if (command === undefined) fail('missing command after --')
-  return { workspace, temp, mode, writableRoots, exclude, writeSid, tempWriteSid: parsedTempWriteSid, command, args: argv.slice(1) }
+  return {
+    workspace, temp, mode, writableRoots, exclude, tempInsideWritable,
+    writeSid, tempWriteSid: parsedTempWriteSid, command, args: argv.slice(1),
+  }
 }
 
 function requireDirectory(label: string, path: string): void {
@@ -135,10 +154,17 @@ async function main(): Promise<number> {
     fail(`${parsed.mode} requires --write-sid and --temp-write-sid together`)
   }
   if (writeRestricted) {
-    assertTempRootOutsideWorkspace(parsed.workspace, parsed.temp)
+    // home-write nests its temp inside the granted home; the enclosing grant
+    // already covers it, so the workspace-disjointness rule is the wrong one
+    // there (the seam sets --temp-inside-writable). Elsewhere the invariant
+    // stays: a temp under the workspace would inherit its capability.
+    if (!parsed.tempInsideWritable) assertTempRootOutsideWorkspace(parsed.workspace, parsed.temp)
   }
-  if (!writeRestricted && (parsed.writableRoots.length > 0 || parsed.exclude.length > 0)) {
-    fail('--writable-root and --exclude require --mode workspace-write')
+  if (!writeRestricted && (parsed.writableRoots.length > 0 || parsed.exclude.length > 0 || parsed.tempInsideWritable)) {
+    fail('--writable-root, --exclude and --temp-inside-writable require --mode workspace-write')
+  }
+  if (parsed.tempInsideWritable && parsed.writableRoots.length === 0) {
+    fail('--temp-inside-writable requires at least one --writable-root to sit inside')
   }
   for (const root of parsed.writableRoots) requireDirectory('--writable-root', root)
   for (const path of parsed.exclude) requireDirectory('--exclude', path)
@@ -176,6 +202,7 @@ async function main(): Promise<number> {
       ...parsed.exclude.length === 0 ? {} : { excludedDirs: parsed.exclude },
       tempDir: privateTempDir,
       mode: parsed.mode,
+      ...parsed.tempInsideWritable ? { allowTempInsideWritable: true } : {},
       ...writeSid === undefined ? {} : { writeSid },
       ...privateTempSid === undefined ? {} : { tempWriteSid: privateTempSid },
       manageDacls: !seamManaged,

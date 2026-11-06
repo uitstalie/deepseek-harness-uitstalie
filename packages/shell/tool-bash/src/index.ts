@@ -482,9 +482,15 @@ export function apply(ctx: Context, config: Config = {}): void {
         const approvedMode = args.sandbox_permissions !== undefined && args.justification !== undefined
           ? await approveBashEscalation(args.sandbox_permissions, args.justification, exec, standingPolicy)
           : undefined
+        // Resolve the approved mode through the service, never by spreading the
+        // standing (narrower) policy: home-write roots ride on the resolved
+        // policy, and a spread would leave mode "home-write" with no roots.
         const policy = approvedMode === undefined
           ? standingPolicy
-          : { ...(standingPolicy as SandboxExecutionPolicy), mode: approvedMode }
+          : (sandboxPolicy as SandboxPolicyService).resolve({
+            ...exec.agent === undefined ? {} : { session: exec.agent.session },
+            mode: approvedMode,
+          })
         const cwd = exec.agent === undefined ? undefined : await ctx.workingDirectory.ensure(exec.agent, exec.signal)
         const workdir = resolveWorkdir(args.workdir, cwd)
         const dshEnv = ctx.shellEnv.collect(exec)

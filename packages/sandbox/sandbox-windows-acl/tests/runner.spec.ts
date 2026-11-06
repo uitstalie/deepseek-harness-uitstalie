@@ -203,6 +203,53 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   })
 
+  it('home-write: a private temp nested in a granted home runs only with --temp-inside-writable', () => {
+    // The production home-write shape: the session temp lives under the
+    // granted home (~/.dsh/tmp/...), so the temp is inside a writable root.
+    // The disjointness rule must reject that layout by default and accept it
+    // when the seam declares the nesting — otherwise EVERY home-write command
+    // fails with "private temp directory must be disjoint from writable
+    // directories" before the child is ever spawned.
+    const homeRoot = mkdtempSync(join(tmpdir(), 'dsh-acl-home-temp-'))
+    const homeWorkspace = mkdtempSync(join(tmpdir(), 'dsh-acl-home-temp-ws-'))
+    for (const dir of [homeRoot, homeWorkspace]) {
+      const grant = spawnSync('icacls', [dir, '/grant', `${process.env.USERNAME}:(OI)(CI)F`], { encoding: 'utf8' })
+      if (grant.status !== 0) throw new Error(`icacls full-control grant failed: ${grant.stdout}\n${grant.stderr}`)
+    }
+    const homeWrite = join(homeRoot, 'home-temp-write.txt')
+    const workspaceWrite = join(homeWorkspace, 'workspace-write.txt')
+    const probe = [
+      "$ErrorActionPreference='SilentlyContinue';",
+      `try{Set-Content -Path '${workspaceWrite}' -Value ok -ErrorAction Stop;'WORKSPACE-WRITE: OK'}catch{'WORKSPACE-WRITE: DENIED'};`,
+      `try{Set-Content -Path '${homeWrite}' -Value ok -ErrorAction Stop;'HOME-WRITE: OK'}catch{'HOME-WRITE: DENIED'}`,
+    ].join('')
+    const args = [
+      '--workspace', homeWorkspace, '--temp', homeRoot, '--mode', 'workspace-write',
+      '--writable-root', homeRoot,
+      '--', resolvePwshPath(), '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', probe,
+    ]
+    try {
+      // Without the declaration the temp/host boundary fails closed: the
+      // child never runs and the runner reports its own exit 127.
+      const rejected = runRunner(args)
+      expect(rejected.status, `stderr: ${rejected.stderr}`).toBe(127)
+      expect(rejected.stderr).toContain('private temp directory must be disjoint from writable directories')
+      expect(existsSync(workspaceWrite)).toBe(false)
+
+      const separator = args.indexOf('--')
+      const accepted = runRunner([...args.slice(0, separator), '--temp-inside-writable', ...args.slice(separator)])
+      const output = `${accepted.stdout}\n${accepted.stderr}`
+      expect(accepted.status, output).toBe(0)
+      expect(output).toContain('WORKSPACE-WRITE: OK')
+      expect(output).toContain('HOME-WRITE: OK')
+      expect(existsSync(workspaceWrite)).toBe(true)
+      expect(existsSync(homeWrite)).toBe(true)
+    } finally {
+      rmSync(homeRoot, { recursive: true, force: true })
+      rmSync(homeWorkspace, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it('workspace-write: Remove-Item and Rename-Item succeed in the granted workspace (DELETE + FILE_DELETE_CHILD)', () => {
     // Deleting a file and renaming a directory both hit the second access
     // check on the workspace itself: the grant must carry DELETE (on the

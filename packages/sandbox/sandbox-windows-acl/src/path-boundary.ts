@@ -38,3 +38,19 @@ export function assertPrivateTempDisjoint(writableDirs: readonly string[], tempD
     }
   }
 }
+
+/**
+ * Assert the counterpart of {@link assertPrivateTempDisjoint} for a caller that
+ * deliberately places the private temp inside an already-granted writable root
+ * (`home-write`, whose roots include the whole user home). There the enclosing
+ * grant already confers every right the temp capability would add, so nesting
+ * merges no authority; the check only keeps the exemption honest by requiring
+ * the nesting to actually exist.
+ * @param writableDirs - directories carrying the standing capability.
+ * @param tempDir - the private temp directory that must sit inside one of them.
+ */
+export function assertPrivateTempInsideWritable(writableDirs: readonly string[], tempDir: string): void {
+  if (!writableDirs.some(writableDir => containsDirectory(writableDir, tempDir))) {
+    throw new Error(`AclSandbox private temp directory was declared inside a writable directory but is not: writable=${writableDirs.join(', ')}; temp=${tempDir}`)
+  }
+}

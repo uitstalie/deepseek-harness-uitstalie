@@ -381,6 +381,15 @@ export class LocalSandboxProvider extends SandboxProvider {
       throw new SandboxUnsupportedPolicyError('Windows ACL confinement does not support additional writable directories; remove the extra grants or use a supported host')
     }
     if (policy.mode === 'home-write') {
+      // A home-write policy without its resolved roots would silently run
+      // workspace-write-only while the mode's context promises the home and
+      // drives. Fail closed instead of narrowing the grant behind the mode's
+      // back (the escalation path used to synthesize exactly such a policy).
+      if ((policy.homeWriteRoots?.length ?? 0) === 0) {
+        throw new SandboxUnsupportedPolicyError(
+          'Windows ACL home-write confinement requires resolved homeWriteRoots; refusing to run with a workspace-only grant under a home-write policy',
+        )
+      }
       const roots = homeWriteWritableRoots(policy)
       const excludes = homeWriteReadOnlyRoots(policy)
       const home = policy.homeWriteRoots?.[0]
@@ -398,6 +407,7 @@ export class LocalSandboxProvider extends SandboxProvider {
           '--mode', 'workspace-write',
           ...writableArgs,
           ...excludeArgs,
+          '--temp-inside-writable',
         ]
       }
       const temp = this.materializeAclGrant(sessionId, policy.workspaceRoot, tempParent, true)
@@ -409,6 +419,10 @@ export class LocalSandboxProvider extends SandboxProvider {
         '--mode', 'workspace-write',
         ...writableArgs,
         ...excludeArgs,
+        // The private temp lives under the granted home; declare it so the
+        // runner skips the workspace/disjointness rule that rejects the mode's
+        // own temp layout. The enclosing home grant already covers that temp.
+        '--temp-inside-writable',
         '--write-sid', workspaceWriteSid(policy.workspaceRoot),
         '--temp-write-sid', temp.writeSid,
       ]
@@ -530,7 +544,12 @@ export class LocalSandboxProvider extends SandboxProvider {
       }
       this.workspaceGrants.set(workspaceRoot, grant)
     }
-    const key = JSON.stringify([String(sessionId), workspaceRoot])
+    // The cache key includes the temp PARENT: the same session/workspace pair
+    // can move between modes (workspace-write's ambient temp vs home-write's
+    // temp under the home), and a reused directory from the other mode is
+    // either inside a writable root it must not be in, or outside the one its
+    // mode expects.
+    const key = JSON.stringify([String(sessionId), workspaceRoot, tempParent, allowTempInsideWorkspace])
     const existing = this.tempCapabilities.get(key)
     if (existing !== undefined) return existing
     mkdirSync(tempParent, { recursive: true })
