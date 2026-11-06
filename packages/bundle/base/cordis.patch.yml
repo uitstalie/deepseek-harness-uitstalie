@@ -271,6 +271,9 @@
           workspace-write:
             sandbox: workspace-write
             approval: ask
+          home-write:
+            sandbox: home-write
+            approval: ask
           danger-full-access:
             sandbox: danger-full-access
             approval: never
