@@ -1,5 +1,7 @@
 # Home-write sandbox mode — design proposal
 
+> **2026/11/06（DH-902）：`home-write` 已禁用。** 本文是实现前的设计记录，不再代表当前可选行为；入口与使用入口的禁用点、恢复命令与回滚方式见 [home-write-disabled.md](home-write-disabled.md)。
+
 Status: **decisions accepted; implementation follows this document.**
 Audience: the person who will approve the open defaults and the implementation constraints.
 
