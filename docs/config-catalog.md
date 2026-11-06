@@ -4631,6 +4631,61 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-lsp -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-policy -->
+<a id="deepseek-aidsh-tool-policy"></a>
+
+## `@deepseek-ai/dsh-tool-policy`
+
+- `inject`: `sessionProjections`
+- `source`: [`packages/interaction/tool-policy/src/types.ts:52`](../packages/interaction/tool-policy/src/types.ts)
+
+```ts config-catalog
+/** Plugin config: named profiles plus the deployment default. */
+export interface Config {
+  /** Profile a session starts from (default: `guarded`). */
+  defaultProfile?: string
+  /** Profiles; entries merge over the built-ins and may override them. */
+  profiles?: Record<string, ProfileConfig>
+}
+
+/** One named policy profile as configured in `cordis.yml`. */
+export interface ProfileConfig {
+  /** One sentence shown by `/policy` and in the prompt. */
+  description?: string
+  /** Path prefixes denied for the listed operations. */
+  paths?: readonly PathRuleConfig[]
+  /** Tools denied for the whole call, independent of arguments. */
+  tools?: readonly ToolRuleConfig[]
+}
+
+/**
+ * One configured path deny rule. Matching is by canonical path prefix, on both
+ * the lexical and the physical (symlink-resolved) spelling.
+ */
+export interface PathRuleConfig {
+  /** Absolute path or a leading `~`; canonicalized when the profile is prepared. */
+  path: string
+  /** Operations to deny (default: every operation). */
+  operations?: readonly FileAccessOperation[]
+  /** Whether the path itself is denied (default: true). */
+  includeSelf?: boolean
+  /** Optional model-facing explanation appended to the denial. */
+  reason?: string
+}
+
+/** One configured tool deny rule. Names are exact and case-sensitive. */
+export interface ToolRuleConfig {
+  /** Exact model-visible tool name. */
+  name: string
+  /** Optional model-facing explanation appended to the denial. */
+  reason?: string
+}
+
+/** A model file operation a path rule can deny. */
+export type FileAccessOperation = 'read' | 'write' | 'list'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-policy -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-present -->
 <a id="deepseek-aidsh-tool-present"></a>
 
