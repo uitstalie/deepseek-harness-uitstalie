@@ -750,7 +750,7 @@ describe('sandbox escalation through the generic task producer', () => {
     const { ctx } = await setupSandboxed()
     const schema = ctx.tools.schemas().find(item => item.name === 'bash')!
     const properties = schema.parameters.properties as Record<string, { enum?: string[]; description?: string }>
-    expect(properties['sandbox_permissions']?.enum).toEqual(['workspace-write', 'home-write', 'danger-full-access'])
+    expect(properties['sandbox_permissions']?.enum).toEqual(['workspace-write', 'danger-full-access'])
     expect(properties['sandbox_permissions']?.description).toContain('asks the user for approval')
 
     for (const args of [
@@ -916,17 +916,16 @@ describe('sandbox escalation through the generic task producer', () => {
     expect(bash.modes).toEqual(['workspace-write', 'danger-full-access'])
   })
 
-  it('an approved home-write escalation carries the resolved home-write roots', async () => {
-    // Regression: spreading the standing policy stamps mode "home-write"
-    // without homeWriteRoots, so the backend provisions a workspace-only grant.
+  it('refuses a home-write escalation with the disabled-mode error', async () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
     const { ctx, bash } = await setupSandboxed(true)
     ctx.on('approval/request', () => Promise.resolve<ApprovalOutcome>('allowed-once'))
     const result = await call(ctx, 'bash', {
       command: 'true', description: 'write into the user home', sandbox_permissions: 'home-write', justification: 'write into the user home',
     }, sandboxAgent())
-    expect(result.isError, text(result)).toBe(false)
-    expect(bash.modes).toEqual(['home-write'])
-    expect((bash.policies[0]?.homeWriteRoots?.length ?? 0)).toBeGreaterThan(0)
+    expect(result.isError, text(result)).toBe(true)
+    expect(text(result)).toContain('home-write is disabled')
+    expect(bash.modes).toEqual([])
   })
 
   it('omits sandbox facts the executor did not acquire from the canonical result', async () => {

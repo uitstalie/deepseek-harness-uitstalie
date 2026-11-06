@@ -444,7 +444,8 @@ describe('the platform chains', () => {
 })
 
 describe('windows ACL home-write policy', () => {
-  it('expresses home-write roots and exclusions through writable-root and exclude flags', async () => {
+  it('refuses to grant home-write roots or exclusions through the ACL backend', async () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
     const { sandbox } = await setup({}, {
       chain: ['windows-acl'],
       windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'],
@@ -454,23 +455,16 @@ describe('windows ACL home-write policy', () => {
     const secret = join(home, '.ssh')
     mkdirSync(secret)
     tempDirs.push(home, ws)
-    const confined = await sandbox.confine(['true'], {
+    await expect(sandbox.confine(['true'], {
       mode: 'home-write',
       workspaceRoot: ws,
       homeWriteRoots: [home],
       excludePaths: [secret],
-    })
-    expect(confined.argv).toContain('--writable-root')
-    expect(confined.argv).toContain(home)
-    expect(confined.argv).toContain('--exclude')
-    expect(confined.argv).toContain(secret)
-    // home-write's private temp lives under the granted home; the flag tells
-    // the runner that the enclosing home grant already covers it.
-    expect(confined.argv).toContain('--temp-inside-writable')
-    expect(confined.argv[confined.argv.indexOf('--mode') + 1]).toBe('workspace-write')
+    })).rejects.toThrow(/home-write is disabled/)
   })
 
-  it('refuses a home-write policy that lost its resolved roots instead of narrowing to workspace-write', async () => {
+  it('refuses a home-write policy before the missing-roots check', async () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled
     const { sandbox } = await setup({}, {
       chain: ['windows-acl'],
       windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'],
@@ -480,7 +474,7 @@ describe('windows ACL home-write policy', () => {
     await expect(sandbox.confine(['true'], {
       mode: 'home-write',
       workspaceRoot: ws,
-    })).rejects.toThrow('requires resolved homeWriteRoots')
+    })).rejects.toThrow(/home-write is disabled/)
   })
 })
 

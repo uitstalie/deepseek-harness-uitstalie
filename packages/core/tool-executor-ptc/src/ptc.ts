@@ -101,6 +101,9 @@ const RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION
     + 'Examples: "Count TODO markers across packages"; '
     + '"Read failing test and its fixture"; "Rename config key in every cordis.yml".'
 
+// uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: the reported run mode can never be the disabled one
+const RUN_CODE_OBSERVED_MODES: readonly SandboxExecutionPolicy['mode'][] = ['read-only', 'workspace-write', 'danger-full-access']
+
 const RUN_CODE_CONTROLS = {
   timeoutMs: { type: 'number', description: 'Positive elapsed-time budget in milliseconds, capped by the deployment maximum.' },
   sandbox_permissions: { type: 'string', enum: [...ESCALATION_TARGETS], description: 'Wider sandbox mode for this complete program execution; requires justification and approval.' },
@@ -323,7 +326,8 @@ export function createRunCodeTool(
             type: 'object',
             additionalProperties: false,
             properties: {
-              mode: { type: 'string', required: true, enum: ['read-only', 'workspace-write', 'home-write', 'danger-full-access'] },
+              // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: the observed-mode enum omits the disabled mode
+              mode: { type: 'string', required: true, enum: [...RUN_CODE_OBSERVED_MODES] },
               denied: { type: 'boolean', required: true },
               enforcement: { type: 'string', enum: ['full', 'partial'] },
             },

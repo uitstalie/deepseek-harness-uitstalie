@@ -20,13 +20,15 @@ import type { EscalationApprover, EscalationOutcome } from '@deepseek-ai/dsh-san
 
 describe('the strictly-wider ladder', () => {
   it('read-only escalates to either wider mode; workspace-write only to full access', () => {
-    expect(WIDER_MODES['read-only']).toEqual(['workspace-write', 'home-write', 'danger-full-access'])
-    expect(WIDER_MODES['workspace-write']).toEqual(['home-write', 'danger-full-access'])
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled
+    expect(WIDER_MODES['read-only']).toEqual(['workspace-write', 'danger-full-access'])
+    expect(WIDER_MODES['workspace-write']).toEqual(['danger-full-access'])
     expect(WIDER_MODES['danger-full-access']).toBeUndefined()
   })
 
   it('the target enum is the closed set every session could escalate TO (read-only is the floor)', () => {
-    expect(ESCALATION_TARGETS).toEqual(['workspace-write', 'home-write', 'danger-full-access'])
+    expect(ESCALATION_TARGETS).toEqual(['workspace-write', 'danger-full-access'])
+    expect(ESCALATION_TARGETS).not.toContain('home-write')
   })
 })
 
@@ -51,7 +53,8 @@ describe('the model-facing markers', () => {
 
   it('the sandbox_permissions description names the family subject', () => {
     expect(sandboxPermissionsDescription('command')).toContain('The narrowest wider sandbox mode for a one-shot retry of the exact command the sandbox just denied; the retry asks the user for approval.')
-    expect(sandboxPermissionsDescription('command')).toContain('home-write')
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: the disabled target is not advertised
+    expect(sandboxPermissionsDescription('command')).not.toContain('home-write')
     expect(sandboxPermissionsDescription('operation')).toContain('The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.')
   })
 
@@ -117,12 +120,19 @@ describe('approveEscalation', () => {
     expect(seen).toEqual([])
   })
 
-  it('treats workspace-write to home-write as a widening: the mode keeps the workspace grant', async () => {
-    const widened = await approveEscalation(req({
+  it('refuses the disabled home-write target before asking for approval', async () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+    const seen: unknown[] = []
+    const spy = ingredients({ approver: approver('allowed-once', r => seen.push(r)) })
+    await expect(approveEscalation(req({
       requestedMode: 'home-write',
       effectiveMode: 'workspace-write',
-    }), ingredients())
-    expect(widened).toBe('home-write')
+    }), spy)).rejects.toThrow(/home-write is disabled/)
+    await expect(approveEscalation(req({
+      requestedMode: 'home-write',
+      effectiveMode: 'read-only',
+    }), spy)).rejects.toThrow(/home-write is disabled/)
+    expect(seen).toEqual([])
   })
 
   it('a missing approval service and an agent-less call each fail closed with distinct text', async () => {

@@ -11,12 +11,14 @@ export type PermissionPresetLabelKey =
   | 'preset.readOnly'
   | 'preset.workspaceWrite'
   | 'preset.fullAccess'
-  | 'preset.homeWrite'
+  // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: no built-in label for a preset the host no longer offers
 
 const PRESET_LABEL_KEYS = new Map<string, PermissionPresetLabelKey>([
   ['read-only', 'preset.readOnly'],
   ['workspace-write', 'preset.workspaceWrite'],
-  ['home-write', 'preset.homeWrite'],
+  // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+  // ['home-write', 'preset.homeWrite'],
+  // END uitstalie-deepseek-flash
   [FULL_ACCESS_PRESET, 'preset.fullAccess'],
 ])
 
@@ -24,7 +26,7 @@ const DEFAULT_PRESET_LABELS: Record<PermissionPresetLabelKey, string> = {
   'preset.readOnly': en['preset.readOnly'],
   'preset.workspaceWrite': en['preset.workspaceWrite'],
   'preset.fullAccess': en['preset.fullAccess'],
-  'preset.homeWrite': en['preset.homeWrite'],
+  // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: label intentionally not mapped
 }
 
 /**

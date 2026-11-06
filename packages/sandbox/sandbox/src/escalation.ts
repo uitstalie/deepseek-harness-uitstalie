@@ -18,7 +18,18 @@
 
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { escalationDisplayReason } from './locales.ts'
+// uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+import { HOME_WRITE_DISABLED_MESSAGE, HOME_WRITE_ENABLED } from './modes.ts'
 import type { SandboxMode } from './index.ts'
+
+// BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled
+/**
+ * The wider targets contributed by the disabled mode. Empty while
+ * {@link HOME_WRITE_ENABLED} is off, so neither the advertised enum nor the
+ * strict-wider check can name it.
+ */
+const HOME_WRITE_TARGETS: readonly SandboxMode[] = HOME_WRITE_ENABLED ? ['home-write'] : []
+// END uitstalie-deepseek-flash
 
 /**
  * The strictly-wider table: what a call whose effective mode is the key may
@@ -27,8 +38,8 @@ import type { SandboxMode } from './index.ts'
  * registry-global while the effective mode is per-call truth.
  */
 export const WIDER_MODES: Record<string, readonly SandboxMode[]> = {
-  'read-only': ['workspace-write', 'home-write', 'danger-full-access'],
-  'workspace-write': ['home-write', 'danger-full-access'],
+  'read-only': ['workspace-write', ...HOME_WRITE_TARGETS, 'danger-full-access'],
+  'workspace-write': [...HOME_WRITE_TARGETS, 'danger-full-access'],
   'home-write': ['danger-full-access'],
 }
 
@@ -40,7 +51,8 @@ export const WIDER_MODES: Record<string, readonly SandboxMode[]> = {
  * mode sits below it (a `danger-full-access` default would advertise nothing
  * while a narrower-switched session stays confined with no lever).
  */
-export const ESCALATION_TARGETS: readonly SandboxMode[] = ['workspace-write', 'home-write', 'danger-full-access']
+// uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: the target enum omits it while the switch is off
+export const ESCALATION_TARGETS: readonly SandboxMode[] = ['workspace-write', ...HOME_WRITE_TARGETS, 'danger-full-access']
 
 /**
  * Validate the escalation argument pairing a tool schema cannot express:
@@ -95,10 +107,15 @@ export function escalationHintMarker(subject: string): string {
  * @returns the parameter description, exactly as the model sees it.
  */
 export function sandboxPermissionsDescription(subject: string): string {
+  // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: the disabled mode is not advertised
+  const homeWrite = HOME_WRITE_ENABLED
+    ? '`home-write` (the user home and, on Windows, every non-system fixed drive, plus the session '
+      + 'workspace; configured excludePaths stay read-only), and '
+    : ''
   return `The narrowest wider sandbox mode for a one-shot retry of the exact ${subject} the sandbox just denied; the retry asks the user for approval. `
     + 'Modes, narrowest first: `workspace-write` (the workspace, its extra grants, and temp), '
-    + '`home-write` (the user home and, on Windows, every non-system fixed drive, plus the session '
-    + 'workspace; configured excludePaths stay read-only), and `danger-full-access` (unrestricted).'
+    + homeWrite
+    + '`danger-full-access` (unrestricted).'
 }
 
 /**
@@ -175,6 +192,9 @@ export interface EscalationRequest {
  */
 export async function approveEscalation<A, C>(request: EscalationRequest, approval: EscalationApproval<A, C>): Promise<SandboxMode> {
   const { requestedMode: mode, effectiveMode, justification, subject } = request
+  // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: refuse the target even when an old caller or a
+  // persisted effective mode still names it (before the repeat short-circuit below).
+  if (mode === 'home-write' && !HOME_WRITE_ENABLED) throw new Error(HOME_WRITE_DISABLED_MESSAGE)
   if (mode === effectiveMode) return effectiveMode
   // Strict widening is an EXECUTION check against the call's effective mode —
   // deliberately not a schema constraint (the enum is the closed target

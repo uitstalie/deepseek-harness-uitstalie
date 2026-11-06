@@ -34,7 +34,8 @@ import {
 } from '@deepseek-ai/node-addon-system/landlock-run'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { SandboxProvider, SandboxUnavailableError, SandboxUnsupportedPolicyError, canonicalPath, homeWriteReadOnlyRoots, homeWriteWritableRoots } from '@deepseek-ai/dsh-sandbox'
+// uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+import { HOME_WRITE_ENABLED, SandboxProvider, SandboxUnavailableError, SandboxUnsupportedPolicyError, canonicalPath, homeWriteReadOnlyRoots, homeWriteWritableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { AclWriteGrant, assertTempRootOutsideWorkspace, registerAclDiagnosisSkill, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
@@ -381,6 +382,18 @@ export class LocalSandboxProvider extends SandboxProvider {
       throw new SandboxUnsupportedPolicyError('Windows ACL confinement does not support additional writable directories; remove the extra grants or use a supported host')
     }
     if (policy.mode === 'home-write') {
+      // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+      // Refuse at the grant entry, BEFORE any ACL write: SetNamedSecurityInfoW
+      // relabels the whole existing home/drive subtree Low and never rolls back.
+      if (!HOME_WRITE_ENABLED) {
+        throw new SandboxUnsupportedPolicyError(
+          'Windows ACL home-write confinement is disabled in this build: it relabels the whole existing home/drive '
+          + 'subtree Low integrity and never restores it, so shortcuts and applications under the home behave as '
+          + 'Internet-sourced files. Use workspace-write instead; restore an already-relabelled tree with '
+          + 'icacls "<root>" /setintegritylevel (OI)(CI)M',
+        )
+      }
+      // END uitstalie-deepseek-flash
       // A home-write policy without its resolved roots would silently run
       // workspace-write-only while the mode's context promises the home and
       // drives. Fail closed instead of narrowing the grant behind the mode's

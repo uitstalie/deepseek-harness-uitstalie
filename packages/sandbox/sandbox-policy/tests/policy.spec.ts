@@ -173,63 +173,37 @@ describe('SandboxPolicyService', () => {
     expect(ctx.sandboxPolicy.resolve({ session: session('sess-no-cwd') }).workspaceRoot).toBe('/fallback')
   })
 
-  it('resolves the configured home roots and the default empty exclusion list', async () => {
+  it('refuses the disabled home-write mode at load, including the folded alias and its root keys', async () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
     const root = mkdtempSync(join(tmpdir(), 'dsh-home-write-'))
     try {
       const home = join(root, 'home')
       mkdirSync(join(home, '.ssh'), { recursive: true })
-      const ctx = await mounted({ mode: 'home-write', homeWriteRoots: [home] })
-      const policy = ctx.sandboxPolicy.resolve()
-      expect(policy.mode).toBe('home-write')
-      expect(policy.homeWriteRoots).toEqual([resolve(home)])
-      expect(policy.homeWriteTempRoots).toEqual([])
-      expect(policy.excludePaths).toBeUndefined()
+      await expect(mounted({ mode: 'home-write', homeWriteRoots: [home] }))
+        .rejects.toThrow(/home-write is disabled/)
+      await expect(mounted({ mode: 'non-critical-write' as never, homeWriteRoots: [home] }))
+        .rejects.toThrow(/home-write is disabled/)
+      await expect(mounted({ mode: 'home-write', nonCriticalRoots: [home] }))
+        .rejects.toThrow(/home-write is disabled/)
+      await expect(mounted({ mode: 'home-write', homeWriteRoot: home }))
+        .rejects.toThrow(/home-write is disabled/)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
   })
 
-  it('accepts the folded mode name and its old config keys as compatibility aliases', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'dsh-home-write-alias-'))
-    try {
-      const home = join(root, 'home')
-      mkdirSync(home, { recursive: true })
-      const byMode = await mounted({ mode: 'non-critical-write' as never, homeWriteRoots: [home] })
-      expect(byMode.sandboxPolicy.defaultMode).toBe('home-write')
-      const byRootKey = await mounted({ mode: 'home-write', nonCriticalRoots: [home] })
-      expect(byRootKey.sandboxPolicy.homeWriteRoots).toEqual([resolve(home)])
-      const bySingleRoot = await mounted({ mode: 'home-write', homeWriteRoot: home })
-      expect(bySingleRoot.sandboxPolicy.homeWriteRoots).toEqual([resolve(home)])
-      const byExcludeKey = await mounted({
-        mode: 'home-write',
-        homeWriteRoots: [home],
-        homeWriteReadOnlyRoots: [join(home, '.ssh')],
-      })
-      expect(byExcludeKey.sandboxPolicy.excludePaths).toEqual([join(home, '.ssh')])
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-    }
+  it('refuses an explicit home-write override at resolve', async () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    expect(() => ctx.sandboxPolicy.resolve({ mode: 'home-write' })).toThrow(/home-write is disabled/)
   })
 
-  it('rejects symlink spellings unless the deployment opts in', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'dsh-home-write-link-'))
-    try {
-      const home = join(root, 'home')
-      const outside = join(root, 'outside')
-      mkdirSync(home, { recursive: true })
-      mkdirSync(outside, { recursive: true })
-      try {
-        symlinkSync(outside, join(home, 'linked'))
-      } catch {
-        return // creating symlinks needs a privilege this Windows host may not grant
-      }
-      await expect(mounted({ mode: 'home-write', homeWriteRoots: [join(home, 'linked')] }))
-        .rejects.toThrow('symlink spelling')
-      const ctx = await mounted({ mode: 'home-write', homeWriteRoots: [join(home, 'linked')], homeWriteAllowSymlinkedRoots: true })
-      expect(ctx.sandboxPolicy.homeWriteRoots).toEqual([resolve(outside)])
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-    }
+  it('refuses a persisted home-write session override at resolve', async () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    const active = session('sess-persisted-home', '/projects/home')
+    active.append('sandbox/mode', { mode: 'home-write' })
+    expect(() => ctx.sandboxPolicy.resolve({ session: active })).toThrow(/home-write is disabled/)
   })
 
   it('rejects a mode outside the closed vocabulary at load', async () => {
@@ -275,38 +249,14 @@ describe('sandbox:policy request context', () => {
     expect(await policyContext(ctx, session(`sess-${mode}`, '/projects/../projects/current'))).toBe(expected[mode])
   })
 
-  it('renders the home-write roots and its exclusions', async () => {
-    const ctx = await promptMounted({
+  it('refuses the disabled home-write mode when assembling the policy context', async () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+    await expect(promptMounted({
       mode: 'home-write',
       workspaceRoot: '/fallback',
       homeWriteRoots: ['/home/dev'],
       excludePaths: ['~/.ssh', '/home/dev/.dsh'],
-    })
-    const text = await policyContext(ctx, session('sess-home-write', '/projects/current'))
-    expect(text).toContain('home-write')
-    expect(text).toContain('Excluded (forced read-only even inside a writable root): ["~/.ssh","/home/dev/.dsh"]')
-  })
-
-  it('resolves the configured home-write roots and exclusions onto every policy', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'dsh-policy-home-'))
-    const protectedDir = join(home, 'protected')
-    mkdirSync(protectedDir)
-    try {
-      const ctx = await promptMounted({
-        mode: 'home-write',
-        workspaceRoot: '/fallback',
-        homeWriteRoots: [home],
-        excludePaths: [protectedDir],
-      })
-      const resolved = ctx.sandboxPolicy.resolve({ session: session('sess-resolved', '/projects/current') })
-      expect(resolved).toMatchObject({
-        mode: 'home-write',
-        homeWriteRoots: [resolve(home)],
-        excludePaths: [protectedDir],
-      })
-    } finally {
-      rmSync(home, { recursive: true, force: true })
-    }
+    })).rejects.toThrow(/home-write is disabled/)
   })
 
   it('renders explicit extra writable directories under workspace-write', async () => {
@@ -378,8 +328,16 @@ describe('sandbox:policy request context', () => {
 })
 
 describe('the sandbox/mode session kit', () => {
-  it('SANDBOX_MODES lists every mode for advertisement and validation', () => {
-    expect(SANDBOX_MODES).toEqual(['read-only', 'workspace-write', 'home-write', 'danger-full-access'])
+  it('SANDBOX_MODES lists every selectable mode for advertisement and validation', () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+    expect(SANDBOX_MODES).toEqual(['read-only', 'workspace-write', 'danger-full-access'])
+  })
+
+  it('setSandboxMode refuses the disabled home-write mode without logging a switch', () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled
+    const disabled = Session.create(SessionId('sess-disabled-home-write'))
+    expect(() => { setSandboxMode(disabled, 'home-write') }).toThrow(/home-write is disabled/)
+    expect(disabled.snapshotEvents()).toHaveLength(0)
   })
 
   it('the sandboxMode projection folds to the last switch, or null without one', async () => {

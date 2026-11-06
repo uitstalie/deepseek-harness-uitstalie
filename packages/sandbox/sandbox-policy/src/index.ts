@@ -28,7 +28,8 @@ import { z as zod } from 'zod'
 import { homeWriteTool } from './home-write-tool.ts'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent'
-import { homeWriteRoots, normalizeSandboxMode } from '@deepseek-ai/dsh-sandbox'
+// uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+import { HOME_WRITE_ENABLED, assertSandboxModeEnabled, homeWriteRoots, normalizeSandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
@@ -95,6 +96,9 @@ function renderPolicyContext(policy: SandboxExecutionPolicy): string {
       return `Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: ${JSON.stringify(policy.workspaceRoot)}.${extra} Some platform temporary areas may also be writable.`
     }
     case 'home-write': {
+      // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: kept
+      // for the preserved implementation; `resolve()` refuses the mode before
+      // this branch can render.
       const extra = policy.homeWriteTempRoots === undefined || policy.homeWriteTempRoots.length === 0
         ? ''
         : ` Temporary exceptions: ${JSON.stringify(policy.homeWriteTempRoots)}.`
@@ -196,6 +200,9 @@ export type FsWritableRootsProvider = (session: Session) => readonly string[] | 
 const sandboxModeStateSchema = zod.union([
   zod.literal('read-only'),
   zod.literal('workspace-write'),
+  // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: kept so a
+  // persisted home-write/non-critical-write override still decodes; `resolve()`
+  // then refuses it with the disabled-mode error instead of silently widening.
   zod.literal('home-write'),
   // Compatibility: logs written before the mode was folded into home-write.
   zod.literal('non-critical-write').transform(() => 'home-write' as const),
@@ -211,11 +218,17 @@ const sandboxModeStateSchema = zod.union([
 export class SandboxPolicyService extends Service {
   // Inline schema call: the config catalog walks `static Config` statically.
   static Config: z<Config> = z.object({
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled:
+    // the literals stay accepted so the constructor refuses them with the
+    // explicit disabled-home-write message instead of a generic union error.
     mode: z.union(['read-only', 'workspace-write', 'home-write', 'non-critical-write', 'danger-full-access'] as const).default('read-only'),
     // No schema default: process.cwd() is resolved in the constructor so the
     // stored root is always absolute regardless of how it was supplied.
     workspaceRoot: z.string(),
     additionalWritableRoots: z.array(z.string()).default([]),
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: the
+    // homeWrite* keys stay accepted so existing profiles keep loading, but they
+    // grant nothing because the mode itself is refused at load and on resolve.
     homeWriteRoots: z.array(z.string()).default([]),
     nonCriticalRoots: z.array(z.string()).default([]),
     homeWriteRoot: z.string(),
@@ -250,6 +263,8 @@ export class SandboxPolicyService extends Service {
     // The schema union accepts the folded mode name; every consumer sees the
     // current vocabulary while old configurations keep loading.
     this.defaultMode = normalizeSandboxMode(config.mode ?? 'read-only')
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: fail the deployment default at load
+    assertSandboxModeEnabled(this.defaultMode)
     this.workspaceRoot = resolveWorkspaceRoot(config.workspaceRoot ?? process.cwd())
     this.additionalWritableRoots = resolveAdditionalWritableRoots(config.additionalWritableRoots)
     const allowSymlinked = config.homeWriteAllowSymlinkedRoots === true
@@ -284,12 +299,17 @@ export class SandboxPolicyService extends Service {
     })
 
     ctx.inject(['tools'], (scope: Context) => {
-      scope.tools.register(homeWriteTool(scope, {
-        homeWriteRoots: this.homeWriteRoots,
-        homeWriteTempRoots: this.homeWriteTempRoots,
-        excludePaths: this.excludePaths ?? [],
-        homeWriteAllowSymlinkedRoots: this.homeWriteAllowSymlinkedRoots,
-      }))
+      // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+      /* v8 ignore next 8 -- disabled gate; the registration body is preserved for a documented re-enable. */
+      if (HOME_WRITE_ENABLED) {
+        scope.tools.register(homeWriteTool(scope, {
+          homeWriteRoots: this.homeWriteRoots,
+          homeWriteTempRoots: this.homeWriteTempRoots,
+          excludePaths: this.excludePaths ?? [],
+          homeWriteAllowSymlinkedRoots: this.homeWriteAllowSymlinkedRoots,
+        }))
+      }
+      // END uitstalie-deepseek-flash
     })
 
     ctx.inject(['systemPrompt'], (scope: Context) => {
@@ -320,6 +340,8 @@ export class SandboxPolicyService extends Service {
   resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy {
     const { session } = request
     const mode = normalizeSandboxMode(request.mode ?? (session === undefined ? undefined : this.overrideOf(session)) ?? this.defaultMode)
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: refuse session/approved overrides before any backend sees the mode
+    assertSandboxModeEnabled(mode)
     const fsRoots = mode === 'workspace-write' ? this.fsRootsOf(session) : undefined
     return {
       mode,

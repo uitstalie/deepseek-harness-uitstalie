@@ -44,6 +44,8 @@ export {
 } from './home-write.ts'
 export type { HomeWriteRootOptions } from './home-write.ts'
 export { SANDBOX_MODE_ALIASES, normalizeSandboxMode } from './modes.ts'
+// uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: one switch every entry point consults
+export { HOME_WRITE_DISABLED_MESSAGE, HOME_WRITE_ENABLED, assertSandboxModeEnabled } from './modes.ts'
 
 /**
  * File-effect policy for confined processes. `read-only` permits only required

@@ -19,6 +19,8 @@
  */
 
 import type { Session } from '@deepseek-ai/dsh-session'
+// uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+import { HOME_WRITE_ENABLED, assertSandboxModeEnabled } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 
 declare module '@deepseek-ai/dsh-session/types' {
@@ -39,7 +41,16 @@ declare module '@deepseek-ai/dsh-session/types' {
 }
 
 /** Every {@link SandboxMode}, for option advertisement and runtime validation of untrusted mode strings. */
-export const SANDBOX_MODES: readonly SandboxMode[] = ['read-only', 'workspace-write', 'home-write', 'danger-full-access']
+// BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+export const SANDBOX_MODES: readonly SandboxMode[] = [
+  'read-only',
+  'workspace-write',
+  // The mode stays in the type vocabulary (implementation preserved) but is not
+  // advertised or selectable while the switch is off.
+  ...(HOME_WRITE_ENABLED ? ['home-write' as const] : []),
+  'danger-full-access',
+]
+// END uitstalie-deepseek-flash
 
 /**
  * THE write path for a session's sandbox-mode override: appends exactly one
@@ -51,5 +62,7 @@ export const SANDBOX_MODES: readonly SandboxMode[] = ['read-only', 'workspace-wr
  *   under (until the next switch).
  */
 export function setSandboxMode(session: Session, mode: SandboxMode): void {
+  // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: refuse the write path, not just the read path
+  assertSandboxModeEnabled(mode)
   session.append('sandbox/mode', { mode })
 }

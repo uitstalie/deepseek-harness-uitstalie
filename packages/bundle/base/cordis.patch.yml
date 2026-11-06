@@ -271,9 +271,11 @@
           workspace-write:
             sandbox: workspace-write
             approval: ask
-          home-write:
-            sandbox: home-write
-            approval: ask
+          # BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+          # home-write:
+          #   sandbox: home-write
+          #   approval: ask
+          # END uitstalie-deepseek-flash
           danger-full-access:
             sandbox: danger-full-access
             approval: never

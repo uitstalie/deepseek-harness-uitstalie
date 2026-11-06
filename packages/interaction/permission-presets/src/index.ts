@@ -24,7 +24,8 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import { SANDBOX_MODES, setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
-import { normalizeSandboxMode } from '@deepseek-ai/dsh-sandbox'
+// uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+import { assertSandboxModeEnabled, normalizeSandboxMode } from '@deepseek-ai/dsh-sandbox'
 // Side-effect type import: declaration-merges `ctx.shell` (the capability fact
 // `sandboxMode` this service reads), without a value dependency on the seam.
 import type {} from '@deepseek-ai/dsh-shell'
@@ -179,8 +180,10 @@ export class PermissionPresetService extends TypertRemoteService {
   // Inline schema call: the config catalog walks `static Config` statically.
   static Config = z.object({
     presets: z.dict(z.object({
-      // Compatibility: the removed mode name still loads and maps to home-write.
-      sandbox: z.union([...SANDBOX_MODES, 'non-critical-write'] as const).required(),
+      // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: only the
+      // advertised modes are configurable, and the folded non-critical-write alias
+      // is no longer accepted (its mode cannot be selected).
+      sandbox: z.union([...SANDBOX_MODES] as const).required(),
       approval: z.union(APPROVAL_POLICIES as ApprovalPolicy[]).required(),
       name: z.string(),
       description: z.string(),
@@ -189,10 +192,12 @@ export class PermissionPresetService extends TypertRemoteService {
         sandbox: 'workspace-write', approval: 'ask',
         name: 'workspace-write', description: 'Write inside the workspace and permitted temporary directories; wider retries require approval.',
       },
-      'home-write': {
-        sandbox: 'home-write', approval: 'ask',
-        name: 'home-write', description: 'Write inside the user home except force-read-only paths; wider retries require approval.',
-      },
+      // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
+      // 'home-write': {
+      //   sandbox: 'home-write', approval: 'ask',
+      //   name: 'home-write', description: 'Write inside the user home except force-read-only paths; wider retries require approval.',
+      // },
+      // END uitstalie-deepseek-flash
       'danger-full-access': {
         sandbox: 'danger-full-access', approval: 'never',
         name: 'danger-full-access', description: 'Full file access without approval prompts.',
@@ -214,10 +219,12 @@ export class PermissionPresetService extends TypertRemoteService {
 
     ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
     // The schema defaulted the table — the cast records that runtime fact.
-    this.presets = Object.fromEntries(Object.entries(config.presets).map(([name, spec]) => [
-      name,
-      { ...spec, sandbox: normalizeSandboxMode(spec.sandbox) },
-    ]))
+    this.presets = Object.fromEntries(Object.entries(config.presets).map(([name, spec]) => {
+      const sandbox = normalizeSandboxMode(spec.sandbox)
+      // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: defence in depth for a programmatic bypass of the schema
+      assertSandboxModeEnabled(sandbox)
+      return [name, { ...spec, sandbox }]
+    }))
     if (CUSTOM_PRESET in this.presets) {
       throw new Error(`permission: "${CUSTOM_PRESET}" is reserved for the derived not-a-preset state and cannot name a table entry`)
     }

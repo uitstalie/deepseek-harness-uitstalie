@@ -961,7 +961,7 @@ describe('sandbox escalation API (write/edit)', () => {
     const { ctx } = await setupConfining()
     for (const name of ['write', 'edit'] as const) {
       const props = fsSchema(ctx, name).parameters.properties
-      expect(props['sandbox_permissions']?.enum).toEqual(['workspace-write', 'home-write', 'danger-full-access'])
+      expect(props['sandbox_permissions']?.enum).toEqual(['workspace-write', 'danger-full-access'])
       expect(props['justification']).toBeDefined()
     }
   })
@@ -1041,24 +1041,23 @@ describe('sandbox escalation API (write/edit)', () => {
     }])
   })
 
-  it('an approved home-write escalation carries the resolved home-write roots', async () => {
-    // Regression: the approved mode must be resolved THROUGH the service.
-    // Spreading the standing workspace-write policy yields mode "home-write"
-    // with no homeWriteRoots, so the fence denies every path outside the
-    // workspace while the mode claims the home and drives.
+  it('refuses a home-write escalation with the disabled-mode error', async () => {
+    // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
     const { ctx, fs } = await setupConfining({ approval: true })
     ctx.on('approval/request', () => Promise.resolve('allowed-once' as const))
-    await executeToolFixture(ctx, {
+    const result = await executeToolFixture(ctx, {
       callId: ToolCallId('call-fs-esc-home'),
       name: 'write',
       arguments: { file_path: 'a.txt', content: 'x', sandbox_permissions: 'home-write', justification: 'write into the user home' },
       agent: escalationAgent() as never,
       signal: new AbortController().signal,
     })
-    const stamped = fs.stamped[0]
-    expect(stamped?.mode).toBe('home-write')
-    expect(stamped?.workspaceRoot).toBe('/session-project')
-    expect((stamped?.homeWriteRoots?.length ?? 0)).toBeGreaterThan(0)
+    expect(result.isError).toBe(true)
+    // The disabled mode is not in the advertised enum, so the call is refused
+    // at argument validation before any approval or mutation.
+    expect(text(result)).toContain('"sandbox_permissions" must be one of')
+    expect(text(result)).not.toContain('home-write')
+    expect(fs.stamped).toHaveLength(0)
   })
 
   it.each(['workspace-write', 'danger-full-access'] as const)('writes under repeated %s without approval', async (mode) => {
