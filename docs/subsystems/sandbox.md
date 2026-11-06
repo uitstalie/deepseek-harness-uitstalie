@@ -1,6 +1,35 @@
-# Process Sandbox
+# Sandbox and soft tool policy
 
 English | [中文](sandbox.zh.md)
+
+A deployment chooses one of two file-effect layers. The base composition confines the process with the process-sandbox seam; the [soft-policy overlay](../../apps/cli/config/overlays/soft-policy.yml) replaces that confinement with [dsh-tool-policy](../../packages/interaction/tool-policy/README.md), a best-effort blacklist over model tool calls. **The soft policy is a security downgrade, not another sandbox.** The process keeps the signed-in user's full permissions, and shell commands, PTC `run_code`, MCP servers, third-party plugins, git hooks, and any code that opens a file directly are not path-checked by it. Choose it only when accidental exposure of credential directories to file tools is the threat worth addressing and OS-level confinement is not required.
+
+<!-- uitstalie-deepseek-flash, 2026/11/06, DH-905, the page now leads with the soft tool policy; the sandbox remains as the rollback composition -->
+
+## Soft tool policy
+
+`dsh-tool-policy` registers `ctx.toolPolicy` and owns named profiles. A profile combines tool names denied for the whole call with path rules denied per file operation (`read`, `write`, `list`). The overlay disables the `sandbox`, `sandbox-policy`, `bash-sandbox`, `pwsh-sandbox`, `fs-sandbox`, and `permission` rows and mounts `dsh-fs-local`, one local shell executor (`dsh-bash-local` or `dsh-pwsh-local`), and `dsh-tool-policy` with `defaultProfile: guarded`. Approval stays available and is selected by `DSH_APPROVAL_POLICY`; the policy profile neither implies nor overrides it. The default base composition is unchanged, so `os-sandbox.yml` applied after the soft-policy overlay restores the sandbox rows.
+
+| Profile | What it denies |
+|---|---|
+| `unrestricted` | Nothing. The process is still unconfined. |
+| `guarded` (default) | `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, `~/.kube`, `~/.docker`, and `~/.dsh` to file tools; `run_code`. Shell tools stay available. |
+| `guarded-no-shell` | `guarded` plus `bash`, `pwsh`, and `run_code`. |
+| `files-read-only` | `write`, `edit`, `apply_patch`, `str_replace_editor`, `bash`, `pwsh`, and `run_code`; reads stay allowed. |
+
+The policy enforces four layers: per-agent schema restriction hides a denied tool; a monotonic `ctx.tools.guard()` refuses it even when it is called; `dsh-tool-fs` checks the canonical target of `read`, `read_image`, `write`, `edit`, and every `apply_patch` file before the operation; and a `tool-policy` runtime-context section tells the model the active profile, the denied targets, and the bypass surface. The session profile is selected by `/policy` and recorded in the reused `permission/preset` event, so an older build falls back instead of failing. The retired `DSH_PERMISSION_MODE` variable is mapped once at load (`danger-full-access` to `unrestricted`, every other value to `guarded`) and announced as deprecated.
+
+Enforce and roll back with patch overlays; both files ship in the repository:
+
+```sh
+dsh --profile headless --patch apps/cli/config/overlays/soft-policy.yml "task"
+dsh --profile headless --patch apps/cli/config/overlays/soft-policy.yml \
+  --patch apps/cli/config/overlays/os-sandbox.yml "task"
+```
+
+The soft-policy composition has no `ctx.sandboxPolicy`. Rows that inject it — the Web workspace-files and terminal controllers, `workflow-ptc`, and the PTC runtime — stay unmounted until a later phase gives them a policy source, so those capabilities are absent rather than unconfined. The [package README](../../packages/interaction/tool-policy/README.md) owns the config, the exact prompt and denial text, and the full bypass list.
+
+## Process sandbox
 
 The process-sandbox seam of [dsh-sandbox](../../packages/sandbox/sandbox) wraps a same-world subprocess argv in a file-effect policy without coupling consumers to a platform runner. [dsh-sandbox-local](../../packages/sandbox/sandbox-local) supplies Linux bwrap/Landlock, macOS Seatbelt, and the Windows ACL restricted-token backend; [dsh-bash-sandbox](../../packages/shell/bash-sandbox) and [dsh-pwsh-sandbox](../../packages/shell/pwsh-sandbox) consume it. [dsh-sandbox-ssh](../../packages/ssh/sandbox-ssh/README.md) applies the same policy through a remote backend paired with the SSH filesystem and subprocess providers.
 
@@ -43,7 +72,7 @@ type SandboxEnforcement = 'full' | 'partial'
 
 ### Decision: `home-write` is the single user-data mode
 
-`workspace-write` was too tight for work whose output lands outside the checkout, and `danger-full-access` removed every boundary. `home-write` is the one mode between them: it grants the signed-in user's home (hidden entries included) and, on Windows, every fixed drive except the system drive, plus the session workspace and configured temp exceptions. C: outside the user's home therefore stays read-only even when a task wants a file on a data drive; reads stay unconfined in every mode. `excludePaths` (default empty — `~/.ssh`, `~/.dsh` and `~/.gnupg` are writable unless configured otherwise) forces matching existing paths read-only even inside a granted root; the documented hardening recommendation is `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, `~/.kube`, `~/.docker` plus `C:\\Windows` where the deployment wants belt-and-braces. The mode composes with, and never replaces, `fsAdditionalWritableRoots`: the in-process fence adds both sets while process backends keep ignoring the fs-only field. Landlock cannot express a read-only hole inside a granted root, so a Landlock-only host fails closed when `excludePaths` is non-empty and recommends bubblewrap; Windows ACL expresses both the extra roots and the holes (an inheritable DENY ACE per exclusion). On Fedora, SELinux labels remain in force — the sandbox writes DACLs and never relabels — so an enforcing policy can still deny a write the DACL allows, and that denial surfaces as the operation's own error rather than a sandbox denial. Configurations and Session logs that still name the folded `non-critical-write` mode, or use `nonCriticalRoots`, are mapped to `home-write` when read.
+`workspace-write` was too tight for work whose output lands outside the checkout, and `danger-full-access` removed every boundary. `home-write` is the one mode between them: it grants the signed-in user's home (hidden entries included) and, on Windows, every fixed drive except the system drive, plus the session workspace and configured temp exceptions. C: outside the user's home therefore stays read-only even when a task wants a file on a data drive; reads stay unconfined in every mode. `excludePaths` (default empty — `~/.ssh`, `~/.dsh` and `~/.gnupg` are writable unless configured otherwise) forces matching existing paths read-only even inside a granted root; the documented hardening recommendation is `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, `~/.kube`, `~/.docker` plus `C:\\Windows` where the deployment wants belt-and-braces. The mode composes with, and never replaces, `fsAdditionalWritableRoots`: the in-process fence adds both sets while process backends keep ignoring the fs-only field. Landlock cannot express a read-only hole inside a granted root, so a Landlock-only host fails closed when `excludePaths` is non-empty and recommends bubblewrap; Windows ACL expresses both the extra roots and the holes (an inheritable DENY ACE per exclusion). On Fedora, SELinux labels remain in force — the sandbox writes DACLs and never relabels — so an enforcing policy can still deny a write the DACL allows, and that denial surfaces as the operation's own error rather than a sandbox denial. Configurations and Session logs that still name the folded `non-critical-write` mode, or use `nonCriticalRoots`, are mapped to `home-write` when read. In this build `home-write` itself is disabled: `HOME_WRITE_ENABLED` is false, so `SANDBOX_MODES` omits it, `resolve()` and `setSandboxMode()` reject it, the Windows ACL grant branch refuses before writing any label, and `sandbox_home_readonly` is not registered. The implementation stays for a later lifecycle-safe restore.
 
 ## Per-call policy
 
@@ -280,4 +309,84 @@ overrideOf(session: Session): SandboxMode | undefined
 Types: [Session](session.md)
 
 Source: [`packages/sandbox/sandbox-policy/src/index.ts`](../../packages/sandbox/sandbox-policy/src/index.ts)
+
+<a id="ctxtoolpolicy--toolpolicyservice"></a>
+
+### `ctx.toolPolicy` — `ToolPolicyService`
+
+Named soft-policy profiles over model tool calls. Requires the session projection registry (the profile fold) and the agent registry (per-agent visibility); the tools, prompt, and command registries are optional children.
+
+```ts cordis-catalog
+/**
+ * Whether a profile is defined.
+ * @param name - candidate profile name.
+ * @returns true when `/policy` may select it.
+ */
+has(name: string): boolean
+
+/**
+ * Look up a profile.
+ * @param name - profile name.
+ * @returns the prepared profile.
+ * @throws when the name is unknown.
+ */
+profile(name: string): PreparedProfile
+
+/**
+ * Resolve the profile in force for a session: the last reused
+ * `permission/preset` name wins when it names a defined profile; otherwise
+ * the deployment default. A retired permission preset (e.g.
+ * `workspace-write`) is not a profile, so it falls back instead of throwing.
+ * @param session - the calling session, if any.
+ * @returns the prepared profile.
+ */
+profileForSession(session: Session | undefined): PreparedProfile
+
+/**
+ * Resolve the profile for an agent.
+ * @param agent - the calling agent.
+ * @returns the prepared profile.
+ */
+profileForAgent(agent: Agent): PreparedProfile
+
+/**
+ * Denial reason for one tool call, used by the monotonic guard.
+ * @param toolName - the model-visible tool name.
+ * @param exec - the pending execution (its agent selects the profile).
+ * @returns the model-facing denial reason, or undefined to allow.
+ */
+toolDenialReason(toolName: string, exec?: ToolExecution): string | undefined
+
+/**
+ * Canonicalize and check one file target without throwing on a denial.
+ * @param operation - read, write, or list.
+ * @param hostPath - the backend's process path for the target.
+ * @param exec - the calling tool execution.
+ * @returns the matched rule and target, or undefined when allowed.
+ * @throws {FsError} `FS_POLICY_DENIED` when the path cannot be canonicalized.
+ */
+checkFileAccess(operation: FileAccessOperation, hostPath: string, exec?: ToolExecution): PathDenial | undefined
+
+/**
+ * Assert that a file target may be touched under the calling session's
+ * profile. Tool implementations call this after resolving the target.
+ * @param operation - read, write, or list.
+ * @param hostPath - the backend's process path for the target.
+ * @param exec - the calling tool execution.
+ * @throws {FsError} `FS_POLICY_DENIED` with the matched rule.
+ */
+assertFileAccess(operation: FileAccessOperation, hostPath: string, exec?: ToolExecution): void
+
+/**
+ * Select a profile for one session. The selection is durable through the
+ * reused `permission/preset` event; only a user-facing command calls this.
+ * @param session - the session whose profile changes.
+ * @param name - a defined profile name.
+ */
+select(session: Session, name: string): void
+```
+
+Types: [Agent](core.md) · [Session](session.md) · [ToolExecution](tools.md)
+
+Source: [`packages/interaction/tool-policy/src/index.ts`](../../packages/interaction/tool-policy/src/index.ts)
 <!-- END GENERATED cordis-surface -->

@@ -1793,8 +1793,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
-        signature: 'permissionMode?: string',
-        description: 'Permission preset to apply before the task; absent preserves session policy.',
+        signature: 'policy?: string',
+        description: 'Soft-policy profile (or legacy permission preset) to apply before the task; absent preserves the session selection.',
         parameters: [],
       },
       {
@@ -2971,12 +2971,32 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'readonly workspaceRoot: string',
-        description: 'The absolute `workspace-write` fallback root for calls without a session cwd.',
+        description: 'The absolute workspace-write fallback root for calls without a session cwd.',
         parameters: [],
       },
       {
         signature: 'readonly additionalWritableRoots: readonly string[] | undefined',
         description: 'The frozen extra writable directories shared by every resolved policy, or `undefined` for none.',
+        parameters: [],
+      },
+      {
+        signature: 'readonly homeWriteRoots: readonly string[]',
+        description: 'Canonical home-write roots (home and, on Windows, every non-system drive).',
+        parameters: [],
+      },
+      {
+        signature: 'readonly homeWriteTempRoots: readonly string[]',
+        description: 'Canonical temporary exceptions under home-write (default: none).',
+        parameters: [],
+      },
+      {
+        signature: 'readonly excludePaths: readonly string[] | undefined',
+        description: 'Canonical read-only holes under home-write (`excludePaths`; default: none).',
+        parameters: [],
+      },
+      {
+        signature: 'readonly homeWriteAllowSymlinkedRoots: boolean',
+        description: 'Whether configured roots may use a symlink spelling.',
         parameters: [],
       },
       {
@@ -4505,6 +4525,67 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Heuristically price one model-visible message (instance face of the pure `estimateMessage` export from `estimate.ts`).',
         parameters: [{ name: 'message', description: 'message to price without mutation.' }],
         returns: 'content and role-framing tokens under the fixed service heuristic.',
+      },
+    ],
+  },
+  {
+    key: 'toolPolicy',
+    summary: 'Named soft-policy profiles over model tool calls.',
+    description: 'Named soft-policy profiles over model tool calls. Requires the session projection registry (the profile fold) and the agent registry (per-agent visibility); the tools, prompt, and command registries are optional children.',
+    methods: [
+      {
+        signature: 'readonly defaultProfile: string',
+        description: 'Deployment default profile name.',
+        parameters: [],
+      },
+      {
+        signature: 'has(name: string): boolean',
+        description: 'Whether a profile is defined.',
+        parameters: [{ name: 'name', description: 'candidate profile name.' }],
+        returns: 'true when `/policy` may select it.',
+      },
+      {
+        signature: 'profile(name: string): PreparedProfile',
+        description: 'Look up a profile.',
+        parameters: [{ name: 'name', description: 'profile name.' }],
+        returns: 'the prepared profile.',
+        throws: ['when the name is unknown.'],
+      },
+      {
+        signature: 'profileForSession(session: Session | undefined): PreparedProfile',
+        description: 'Resolve the profile in force for a session: the last reused `permission/preset` name wins when it names a defined profile; otherwise the deployment default. A retired permission preset (e.g. `workspace-write`) is not a profile, so it falls back instead of throwing.',
+        parameters: [{ name: 'session', description: 'the calling session, if any.' }],
+        returns: 'the prepared profile.',
+      },
+      {
+        signature: 'profileForAgent(agent: Agent): PreparedProfile',
+        description: 'Resolve the profile for an agent.',
+        parameters: [{ name: 'agent', description: 'the calling agent.' }],
+        returns: 'the prepared profile.',
+      },
+      {
+        signature: 'toolDenialReason(toolName: string, exec?: ToolExecution): string | undefined',
+        description: 'Denial reason for one tool call, used by the monotonic guard.',
+        parameters: [{ name: 'toolName', description: 'the model-visible tool name.' }, { name: 'exec', description: 'the pending execution (its agent selects the profile).' }],
+        returns: 'the model-facing denial reason, or undefined to allow.',
+      },
+      {
+        signature: 'checkFileAccess(operation: FileAccessOperation, hostPath: string, exec?: ToolExecution): PathDenial | undefined',
+        description: 'Canonicalize and check one file target without throwing on a denial.',
+        parameters: [{ name: 'operation', description: 'read, write, or list.' }, { name: 'hostPath', description: 'the backend\'s process path for the target.' }, { name: 'exec', description: 'the calling tool execution.' }],
+        returns: 'the matched rule and target, or undefined when allowed.',
+        throws: ['{FsError} `FS_POLICY_DENIED` when the path cannot be canonicalized.'],
+      },
+      {
+        signature: 'assertFileAccess(operation: FileAccessOperation, hostPath: string, exec?: ToolExecution): void',
+        description: 'Assert that a file target may be touched under the calling session\'s profile. Tool implementations call this after resolving the target.',
+        parameters: [{ name: 'operation', description: 'read, write, or list.' }, { name: 'hostPath', description: 'the backend\'s process path for the target.' }, { name: 'exec', description: 'the calling tool execution.' }],
+        throws: ['{FsError} `FS_POLICY_DENIED` with the matched rule.'],
+      },
+      {
+        signature: 'select(session: Session, name: string): void',
+        description: 'Select a profile for one session. The selection is durable through the reused `permission/preset` event; only a user-facing command calls this.',
+        parameters: [{ name: 'session', description: 'the session whose profile changes.' }, { name: 'name', description: 'a defined profile name.' }],
       },
     ],
   },
@@ -6308,6 +6389,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ButtonProps {\n    readonly label: string;\n    readonly hotkey?: string | undefined;\n    readonly disabled?: boolean | undefined;\n    readonly onPress?: (() => unknown) | undefined;\n}',
   },
   {
+    name: 'CanonicalTarget',
+    declaration: 'export interface CanonicalTarget {\n    lexical: string;\n    physical?: string;\n    platform: NodeJS.Platform;\n    caseSensitive: boolean;\n}',
+  },
+  {
     name: 'CapabilityProvider',
     declaration: 'export type CapabilityProvider = CapabilityProviderV1 | CapabilityProviderV2;',
   },
@@ -6942,6 +7027,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FiberState',
     declaration: 'export const enum FiberState {\n    PENDING,\n    LOADING,\n    ACTIVE,\n    FAILED,\n    DISPOSED,\n    UNLOADING\n}',
+  },
+  {
+    name: 'FileAccessOperation',
+    declaration: 'export type FileAccessOperation = \'read\' | \'write\' | \'list\';',
   },
   {
     name: 'FileAttachmentRef',
@@ -8244,6 +8333,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PatchHunk {\n    lineNumber: number;\n    context?: string;\n    oldLines: string[];\n    newLines: string[];\n    isEndOfFile: boolean;\n}',
   },
   {
+    name: 'PathDenial',
+    declaration: 'export interface PathDenial {\n    readonly rule: PreparedPathRule;\n    readonly target: CanonicalTarget;\n}',
+  },
+  {
     name: 'PeerAdmission',
     declaration: 'export type PeerAdmission = {\n    readonly peer: PeerScope;\n} | {\n    readonly rejection: 401 | 403;\n};',
   },
@@ -8400,8 +8493,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PreparedLlmCall {\n    readonly config: LlmCallConfig;\n    readonly retryPolicy: ResolvedRetryPolicy;\n    readonly context?: LlmModelContext;\n    readonly inputModalities?: readonly ModelModality[];\n    readonly systemPromptUpdate?: SystemPromptUpdate;\n    readonly toolUpdate?: ToolUpdate;\n    readonly adapterDefaults: LlmCallConfigAdapterDefaults;\n    stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
   },
   {
+    name: 'PreparedPathRule',
+    declaration: 'export interface PreparedPathRule {\n    displayPath: string;\n    lexical: string;\n    physical?: string;\n    operations: ReadonlySet<FileAccessOperation>;\n    includeSelf: boolean;\n    reason?: string;\n}',
+  },
+  {
+    name: 'PreparedProfile',
+    declaration: 'export interface PreparedProfile {\n    name: string;\n    description: string;\n    paths: readonly PreparedPathRule[];\n    tools: readonly PreparedToolRule[];\n}',
+  },
+  {
     name: 'PreparedReferencedMessage',
     declaration: 'export interface PreparedReferencedMessage {\n    content: ContentBlock[];\n    additionalContext?: UserMessage;\n}',
+  },
+  {
+    name: 'PreparedToolRule',
+    declaration: 'export interface PreparedToolRule {\n    name: string;\n    reason?: string;\n}',
   },
   {
     name: 'PrepareSessionOptions',
@@ -8841,11 +8946,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SandboxExecutionPolicy',
-    declaration: 'export interface SandboxExecutionPolicy {\n    mode: SandboxMode;\n    workspaceRoot: string;\n    additionalWritableRoots?: readonly string[];\n    fsAdditionalWritableRoots?: readonly string[];\n    sessionId?: SessionId;\n}',
+    declaration: 'export interface SandboxExecutionPolicy {\n    mode: SandboxMode;\n    workspaceRoot: string;\n    homeWriteRoots?: readonly string[];\n    excludePaths?: readonly string[];\n    additionalWritableRoots?: readonly string[];\n    fsAdditionalWritableRoots?: readonly string[];\n    homeWriteTempRoots?: readonly string[];\n    sessionId?: SessionId;\n}',
   },
   {
     name: 'SandboxMode',
-    declaration: 'export type SandboxMode = \'read-only\' | \'workspace-write\' | \'danger-full-access\';',
+    declaration: 'export type SandboxMode = \'read-only\' | \'workspace-write\' | \'home-write\' | \'danger-full-access\';',
   },
   {
     name: 'SandboxPolicy',

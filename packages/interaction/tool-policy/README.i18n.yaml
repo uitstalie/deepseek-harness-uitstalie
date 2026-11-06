@@ -1,0 +1,64 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/interaction/tool-policy/README.md
+/:
+  en: ab4ea32d479d9b23
+  zh: 0b59002c1fc995cd
+/deepseek-ai-dsh-tool-policy:
+  en: 20fdeb18a2ab40b8
+  zh: fc5e54cbfeeaad2e
+/deepseek-ai-dsh-tool-policy/summary:
+  en: 282ccac59d1bbd5e
+  zh: 9b8367eb1568bcb4
+/deepseek-ai-dsh-tool-policy/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: f12b5e92439976c1
+/deepseek-ai-dsh-tool-policy/use-this-package:
+  en: 477fc5017423f298
+  zh: 792bbd2ae89b3c57
+/deepseek-ai-dsh-tool-policy/use-this-package/security-disclosure:
+  en: a08f4fd2de4907fd
+  zh: 94a7cf7dda199d0e
+/deepseek-ai-dsh-tool-policy/use-this-package/minimal-composition:
+  en: 1fba7556231d1bfa
+  zh: 57ea645f644d7b62
+/deepseek-ai-dsh-tool-policy/use-this-package/profiles:
+  en: 1b40a89bf1683f85
+  zh: 7c13e42498d06e83
+/deepseek-ai-dsh-tool-policy/use-this-package/configuration:
+  en: 94f5dc52ba7d274a
+  zh: cd5f6848dad3aa2d
+/deepseek-ai-dsh-tool-policy/use-this-package/selecting-a-profile:
+  en: 98efac4a8f2a9d0d
+  zh: 26d625d15ecff2e9
+/deepseek-ai-dsh-tool-policy/use-this-package/enabling-and-rolling-back:
+  en: 63faafc4cfbfad79
+  zh: 4ed2abb781bb10b5
+/deepseek-ai-dsh-tool-policy/understand-the-implementation:
+  en: 5418ec09e50cc9ef
+  zh: bce1194462dbb944
+/deepseek-ai-dsh-tool-policy/further-exploration:
+  en: 1c47998281313a6a
+  zh: 87722aea0998bc69
+/deepseek-ai-dsh-tool-policy/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-tool-policy/model-experience/tool-policy-context-and-denials:
+  en: 5ee94a5f78fdbb89
+  zh: cc275594e29ecd5f
+/deepseek-ai-dsh-tool-policy/model-experience/tool-policy-context-and-denials/what-the-model-sees:
+  en: 46231a81eede6e1d
+  zh: bcd6b4c4fd547bbb
+/deepseek-ai-dsh-tool-policy/model-experience/tool-policy-context-and-denials/token-effect:
+  en: df1632817f008622
+  zh: cc667e07daf54081
+/deepseek-ai-dsh-tool-policy/model-experience/tool-policy-context-and-denials/kv-cache-effect:
+  en: 093a08d805bffcf9
+  zh: 7f06ddcee9646674
+/deepseek-ai-dsh-tool-policy/known-limitations-and-deferred-work:
+  en: 8a21654a92d45db9
+  zh: 54bf660a8ee8893f
+/deepseek-ai-dsh-tool-policy/known-limitations-and-deferred-work/dev-note:
+  en: 31787bf85f2397a2
+  zh: 309832cb12ca540a

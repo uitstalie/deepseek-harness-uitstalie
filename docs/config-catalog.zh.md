@@ -1658,7 +1658,7 @@ export interface Config {
 
 - `inject`: `agentDefaultModel` · `agents` · `sessions`
 - `refs`: [`ApprovalPolicy`](subsystems/approval.zh.md)
-- `source`: [`packages/bundle/headless/src/index.ts:48`](../packages/bundle/headless/src/index.ts)
+- `source`: [`packages/bundle/headless/src/index.ts:49`](../packages/bundle/headless/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: the task and run options resolved from this app's injected provider service. */
@@ -1669,7 +1669,12 @@ export interface Config {
   sessionId?: string
   /** Whether stdout carries the machine-readable event stream instead of final text. */
   json?: boolean
-  /** Permission preset applied before the task; an explicit CLI flag takes precedence. Omission keeps current policy. */
+  /** Soft-policy profile applied before the task; an explicit CLI flag takes precedence. Omission keeps the session selection. */
+  policy?: string
+  /**
+   * Legacy config spelling of {@link policy}; a profile overlay may still set it.
+   * @deprecated Use {@link policy}; the spelling is removed with the CLI alias.
+   */
   permissionMode?: string
   /** Approval behavior applied after preset selection; an explicit CLI flag takes precedence. Omission keeps current policy. */
   approvalPolicy?: ApprovalPolicy

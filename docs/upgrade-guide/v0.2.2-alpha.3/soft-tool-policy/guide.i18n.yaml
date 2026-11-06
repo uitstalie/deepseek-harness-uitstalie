@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-alpha.3/soft-tool-policy/guide.md
+/:
+  en: 08d9b1cb029ee4d0
+  zh: 42138a95d13e2219
+/tool-policy-and-the-soft-policy-overlay:
+  en: 83fe3e14de34fae2
+  zh: 64ea3a80635c2312
+/tool-policy-and-the-soft-policy-overlay/change:
+  en: 41ddcc37ae2bd295
+  zh: 5bf57b6a549728a7
+/tool-policy-and-the-soft-policy-overlay/migration:
+  en: af3a2713e132691e
+  zh: 10ad6bcddced4347
+/tool-policy-and-the-soft-policy-overlay/verification:
+  en: 2a20ffff3d7c8791
+  zh: 45b21882a87196e2

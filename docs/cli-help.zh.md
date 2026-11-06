@@ -118,10 +118,12 @@ Options:
                               instead of the final message
   --session-id <id>           adopt the persisted Session with this id; an
                               unknown id is an error
-  --permission-mode <preset>  select a configured permission preset for this
-                              task, including on resume
-  --approval-policy <policy>  set approval behavior after selecting the
-                              permission preset (choices: "ask", "never")
+  --policy <profile>          select a tool-policy profile (or a legacy
+                              permission preset) for this task, including on
+                              resume
+  --permission-mode <preset>  deprecated alias for --policy
+  --approval-policy <policy>  set approval behavior after selecting the policy
+                              (choices: "ask", "never")
   --add-dir <path>            allow an additional physical absolute directory
                               under workspace-write (repeatable)
   -h, --help                  show this help
@@ -131,8 +133,9 @@ Examples:
   echo "run the tests" | dsh --profile headless   read the task from stdin
   dsh --profile headless --json "run the tests"   emit machine-readable run events
   dsh --profile headless --session-id session-… "continue"   resume an existing Session
+  dsh --profile headless --policy guarded "run the tests"    select the soft-policy profile
   dsh --profile headless --permission-mode workspace-write --add-dir /repo/.git "commit the fix"
-                                                        grant shared Git metadata for this task
+                                                        deprecated preset flag for an os-sandbox grant
 
 ```
 

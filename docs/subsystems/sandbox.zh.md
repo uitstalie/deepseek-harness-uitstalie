@@ -1,6 +1,35 @@
-# 进程沙箱
+# 沙箱与软工具策略
 
 [English](sandbox.md) | 中文
+
+部署会在两种文件效果层之间选一种。base 组合用进程沙箱 seam隔离进程；[soft-policy overlay](../../apps/cli/config/overlays/soft-policy.yml) 用 [dsh-tool-policy](../../packages/interaction/tool-policy/README.zh.md) 取代该隔离——那是一层作用在模型工具调用上的 best-effort 黑名单。**软策略是安全性降级，不是另一种沙箱。** 进程保留登录用户的完整权限；shell 命令、PTC `run_code`、MCP 服务器、第三方插件、git hook，以及任何直接打开文件的代码都不受它的路径检查。只有当风险是“文件工具误碰凭据目录”、且确实不需要 OS 级隔离时才选择它。
+
+<!-- uitstalie-deepseek-flash, 2026/11/06, DH-905, the page now leads with the soft tool policy; the sandbox remains as the rollback composition -->
+
+## 软工具策略
+
+`dsh-tool-policy` 注册 `ctx.toolPolicy` 并维护命名 profile。一个 profile 同时包含按工具名整次调用拒绝的工具规则，和按文件操作（`read`、`write`、`list`）拒绝的路径规则。overlay 禁用 `sandbox`、`sandbox-policy`、`bash-sandbox`、`pwsh-sandbox`、`fs-sandbox`、`permission` 行，挂载 `dsh-fs-local`、一个本地 shell 执行器（`dsh-bash-local` 或 `dsh-pwsh-local`），并以 `defaultProfile: guarded` 挂载 `dsh-tool-policy`。审批仍然可用，由 `DSH_APPROVAL_POLICY` 选择；策略 profile 既不隐含也不覆盖它。base 默认组合不变，因此在软策略 overlay 之后应用 `os-sandbox.yml` 即可恢复沙箱行。
+
+| Profile | 拒绝内容 |
+|---|---|
+| `unrestricted` | 不拒绝任何内容。进程依然不受隔离。 |
+| `guarded`（默认） | 对文件工具拒绝 `~/.ssh`、`~/.gnupg`、`~/.aws`、`~/.config/gh`、`~/.kube`、`~/.docker`、`~/.dsh`；拒绝 `run_code`。shell 工具保持可用。 |
+| `guarded-no-shell` | 在 `guarded` 之上再拒绝 `bash`、`pwsh`、`run_code`。 |
+| `files-read-only` | 拒绝 `write`、`edit`、`apply_patch`、`str_replace_editor`、`bash`、`pwsh`、`run_code`；读取保持允许。 |
+
+策略分四层强制执行：per-agent schema 限制隐藏被禁工具；单调的 `ctx.tools.guard()` 即使工具被调用也拒绝；`dsh-tool-fs` 在操作前检查 `read`、`read_image`、`write`、`edit` 以及 `apply_patch` 每个文件目标的规范化路径；`tool-policy` 运行时上下文段告诉模型当前 profile、被拒绝目标和绕过面。会话 profile 由 `/policy` 选择并写入复用的 `permission/preset` 事件，因此旧构建会回退而不是失败。已下线的 `DSH_PERMISSION_MODE` 变量在加载时映射一次（`danger-full-access` 映射为 `unrestricted`，其余值映射为 `guarded`），并以弃用警告告知。
+
+用 patch overlay 启用与回滚；两个文件都随仓库提供：
+
+```sh
+dsh --profile headless --patch apps/cli/config/overlays/soft-policy.yml "task"
+dsh --profile headless --patch apps/cli/config/overlays/soft-policy.yml \
+  --patch apps/cli/config/overlays/os-sandbox.yml "task"
+```
+
+软策略组合没有 `ctx.sandboxPolicy`。注入它的行——Web 的 workspace-files 与 terminal 控制器、`workflow-ptc`、PTC runtime——会保持未挂载，直到后续阶段为它们提供策略来源；因此这些能力是缺失，而不是不受限。配置、精确的提示词与拒绝文案、完整绕过清单由[包 README](../../packages/interaction/tool-policy/README.zh.md) 负责。
+
+## 进程沙箱
 
 [dsh-sandbox](../../packages/sandbox/sandbox) 的进程沙箱 seam 将与配套子进程提供方共享执行环境的子进程 argv 包装在文件效果策略中，而不将消费方耦合到特定平台运行器。[dsh-sandbox-local](../../packages/sandbox/sandbox-local) 提供 Linux bwrap/Landlock、macOS Seatbelt 与 Windows ACL 受限令牌后端；[dsh-bash-sandbox](../../packages/shell/bash-sandbox) 和 [dsh-pwsh-sandbox](../../packages/shell/pwsh-sandbox) 是其消费方。[dsh-sandbox-ssh](../../packages/ssh/sandbox-ssh/README.zh.md) 通过与 SSH 文件系统及子进程提供方配套的远端后端执行同一策略。
 
@@ -43,7 +72,7 @@ type SandboxEnforcement = 'full' | 'partial'
 
 ### 决策：`home-write` 是唯一的用户数据模式
 
-`workspace-write` 对产出落在工作区之外的任务太紧，`danger-full-access` 又拆掉所有边界。`home-write` 是两者之间唯一的模式：它允许用户主目录（含隐藏目录）、Windows 上除系统盘之外的每个固定盘、会话工作区及配置的临时例外。因此即使任务要写数据盘，C: 上用户主目录之外的路径仍然只读；所有档位的读取都不受限制。`excludePaths`（默认为空——`~/.ssh`、`~/.dsh`、`~/.gnupg` 不配置就可写）把命中的已存在路径强制为只读，即使位于被授权根目录内；文档建议的加固清单是 `~/.ssh`、`~/.gnupg`、`~/.aws`、`~/.config/gh`、`~/.kube`、`~/.docker`，Windows 部署可再加 `C:\\Windows`。该模式不会替换 `fsAdditionalWritableRoots`：进程内围栏同时叠加两组根目录，进程后端仍忽略仅文件系统的字段。Landlock 无法在被授权根目录内表达只读洞，因此只装 Landlock 的宿主机在 `excludePaths` 非空时失败关闭并建议安装 bubblewrap；Windows ACL 既能授权额外根目录，也能用可继承的 DENY ACE 表达排除。在 Fedora 上 SELinux 标签依然生效——沙箱只写 DACL，从不重新打标签——因此强制策略仍可能拒绝 DACL 允许的写入，这种拒绝会作为操作自身的错误报告，而不是沙箱拒绝。仍写着已折叠 `non-critical-write` 模式或使用 `nonCriticalRoots` 的配置与会话日志，在读取时会映射为 `home-write`。
+`workspace-write` 对产出落在工作区之外的任务太紧，`danger-full-access` 又拆掉所有边界。`home-write` 是两者之间唯一的模式：它允许用户主目录（含隐藏目录）、Windows 上除系统盘之外的每个固定盘、会话工作区及配置的临时例外。因此即使任务要写数据盘，C: 上用户主目录之外的路径仍然只读；所有档位的读取都不受限制。`excludePaths`（默认为空——`~/.ssh`、`~/.dsh`、`~/.gnupg` 不配置就可写）把命中的已存在路径强制为只读，即使位于被授权根目录内；文档建议的加固清单是 `~/.ssh`、`~/.gnupg`、`~/.aws`、`~/.config/gh`、`~/.kube`、`~/.docker`，Windows 部署可再加 `C:\\Windows`。该模式不会替换 `fsAdditionalWritableRoots`：进程内围栏同时叠加两组根目录，进程后端仍忽略仅文件系统的字段。Landlock 无法在被授权根目录内表达只读洞，因此只装 Landlock 的宿主机在 `excludePaths` 非空时失败关闭并建议安装 bubblewrap；Windows ACL 既能授权额外根目录，也能用可继承的 DENY ACE 表达排除。在 Fedora 上 SELinux 标签依然生效——沙箱只写 DACL，从不重新打标签——因此强制策略仍可能拒绝 DACL 允许的写入，这种拒绝会作为操作自身的错误报告，而不是沙箱拒绝。仍写着已折叠 `non-critical-write` 模式或使用 `nonCriticalRoots` 的配置与会话日志，在读取时会映射为 `home-write`。本构建里 `home-write` 本身已禁用：`HOME_WRITE_ENABLED` 为 false，因此 `SANDBOX_MODES` 不含它，`resolve()` 与 `setSandboxMode()` 拒绝它，Windows ACL 授权分支在写入任何标签之前就拒绝，且 `sandbox_home_readonly` 不再注册。实现保留，留待具备生命周期安全恢复能力后再启用。
 
 ## 逐调用策略
 
@@ -280,4 +309,84 @@ overrideOf(session: Session): SandboxMode | undefined
 Types: [Session](session.zh.md)
 
 Source: [`packages/sandbox/sandbox-policy/src/index.ts`](../../packages/sandbox/sandbox-policy/src/index.ts)
+
+<a id="ctxtoolpolicy--toolpolicyservice"></a>
+
+### `ctx.toolPolicy` — `ToolPolicyService`
+
+Named soft-policy profiles over model tool calls. Requires the session projection registry (the profile fold) and the agent registry (per-agent visibility); the tools, prompt, and command registries are optional children.
+
+```ts cordis-catalog
+/**
+ * Whether a profile is defined.
+ * @param name - candidate profile name.
+ * @returns true when `/policy` may select it.
+ */
+has(name: string): boolean
+
+/**
+ * Look up a profile.
+ * @param name - profile name.
+ * @returns the prepared profile.
+ * @throws when the name is unknown.
+ */
+profile(name: string): PreparedProfile
+
+/**
+ * Resolve the profile in force for a session: the last reused
+ * `permission/preset` name wins when it names a defined profile; otherwise
+ * the deployment default. A retired permission preset (e.g.
+ * `workspace-write`) is not a profile, so it falls back instead of throwing.
+ * @param session - the calling session, if any.
+ * @returns the prepared profile.
+ */
+profileForSession(session: Session | undefined): PreparedProfile
+
+/**
+ * Resolve the profile for an agent.
+ * @param agent - the calling agent.
+ * @returns the prepared profile.
+ */
+profileForAgent(agent: Agent): PreparedProfile
+
+/**
+ * Denial reason for one tool call, used by the monotonic guard.
+ * @param toolName - the model-visible tool name.
+ * @param exec - the pending execution (its agent selects the profile).
+ * @returns the model-facing denial reason, or undefined to allow.
+ */
+toolDenialReason(toolName: string, exec?: ToolExecution): string | undefined
+
+/**
+ * Canonicalize and check one file target without throwing on a denial.
+ * @param operation - read, write, or list.
+ * @param hostPath - the backend's process path for the target.
+ * @param exec - the calling tool execution.
+ * @returns the matched rule and target, or undefined when allowed.
+ * @throws {FsError} `FS_POLICY_DENIED` when the path cannot be canonicalized.
+ */
+checkFileAccess(operation: FileAccessOperation, hostPath: string, exec?: ToolExecution): PathDenial | undefined
+
+/**
+ * Assert that a file target may be touched under the calling session's
+ * profile. Tool implementations call this after resolving the target.
+ * @param operation - read, write, or list.
+ * @param hostPath - the backend's process path for the target.
+ * @param exec - the calling tool execution.
+ * @throws {FsError} `FS_POLICY_DENIED` with the matched rule.
+ */
+assertFileAccess(operation: FileAccessOperation, hostPath: string, exec?: ToolExecution): void
+
+/**
+ * Select a profile for one session. The selection is durable through the
+ * reused `permission/preset` event; only a user-facing command calls this.
+ * @param session - the session whose profile changes.
+ * @param name - a defined profile name.
+ */
+select(session: Session, name: string): void
+```
+
+Types: [Agent](core.zh.md) · [Session](session.zh.md) · [ToolExecution](tools.zh.md)
+
+Source: [`packages/interaction/tool-policy/src/index.ts`](../../packages/interaction/tool-policy/src/index.ts)
 <!-- END GENERATED cordis-surface -->
