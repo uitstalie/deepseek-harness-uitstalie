@@ -133,9 +133,15 @@ export class RepositoryCleaner {
           continue
         }
 
-        // A manifest-less package directory is stale only when every remaining
-        // entry is known generated residue; unknown files make the whole clean fail.
+        // A manifest-less directory is only a candidate for deletion when it
+        // contains at least one build-residue entry. A directory made entirely of
+        // source files (for example packages/jira/tests) was never a build
+        // product; silently skip it instead of treating its sources as orphans.
         const entries = await readdir(packageDirectory)
+        const residue = entries.some(entry => knownOrphanEntries.has(entry) || entry.endsWith('.tsbuildinfo'))
+        if (!residue) continue
+        // Once residue is present, every other entry must be known residue too:
+        // unknown files make the whole clean fail so real sources are not deleted.
         const unknown = entries.filter(entry => !knownOrphanEntries.has(entry) && !entry.endsWith('.tsbuildinfo'))
         if (unknown.length > 0) {
           unsafeOrphans.push(...unknown.map(entry => repositoryPath(this.root, join(packageDirectory, entry))))

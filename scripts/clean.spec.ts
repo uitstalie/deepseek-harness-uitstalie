@@ -63,14 +63,29 @@ describe('RepositoryCleaner', () => {
     expect(existsSync(join(root, 'packages/removed/ghost'))).toBe(false)
   })
 
-  it('does not delete any target when a manifest-less package contains an unknown file', async () => {
+  it('does not delete any target when a manifest-less package with build residue contains an unknown file', async () => {
     const root = fixture()
     addProject(root, 'products/shell')
     write(join(root, 'products/shell/lib/types/index.js'))
+    write(join(root, 'packages/removed/ghost/lib/index.js'))
     write(join(root, 'packages/removed/ghost/notes.txt'))
 
     await expect(new RepositoryCleaner(root).clean()).rejects.toThrow('packages/removed/ghost/notes.txt')
     expect(existsSync(join(root, 'products/shell/lib'))).toBe(true)
+    expect(existsSync(join(root, 'packages/removed/ghost/lib/index.js'))).toBe(true)
+  })
+
+  it('keeps a source-only manifest-less directory and still cleans safely', async () => {
+    const root = fixture()
+    addProject(root, 'products/shell')
+    write(join(root, 'products/shell/lib/types/index.js'))
+    write(join(root, 'packages/jira/tests/parity.spec.ts'), 'export {}\n')
+
+    const removed = await new RepositoryCleaner(root).clean()
+
+    expect(removed).not.toContain('packages/jira/tests')
+    expect(existsSync(join(root, 'products/shell/lib'))).toBe(false)
+    expect(existsSync(join(root, 'packages/jira/tests/parity.spec.ts'))).toBe(true)
   })
 
   it('removes the native Landlock entry output and solution build info', async () => {
