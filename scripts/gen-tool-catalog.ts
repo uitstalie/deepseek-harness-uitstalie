@@ -793,10 +793,11 @@ export type ToolCatalog = CatalogPackage[]
  */
 export function assertManifestComplete(packages: ToolPackage[] = TOOL_PACKAGES, scanRoot: string = root): void {
   // Native execution owns no tool definitions; PTC contributes run_code.
+  // uitstalie-deepseek-flash, 2026/11/06, DH-904, tool-policy is a soft-policy plugin, not a tool package
   const onDisk = globSync('packages/*/tool-*', { cwd: scanRoot })
     .filter(path => basename(dirname(path)) !== 'test-support')
     .map(p => basename(p))
-    .filter(dir => dir !== 'tool-executor-native').sort()
+    .filter(dir => dir !== 'tool-executor-native' && dir !== 'tool-policy').sort()
   const listed = new Set(packages.map(p => p.dir))
   const missing = onDisk.filter(dir => !listed.has(dir))
   if (missing.length > 0) {

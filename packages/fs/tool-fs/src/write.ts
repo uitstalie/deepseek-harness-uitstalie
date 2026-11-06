@@ -14,6 +14,8 @@ import { computeHunkDiffs, diffsFromMeta, pathFromMeta } from './diff.ts'
 import { remediateFsError } from './error.ts'
 import { mutationResult } from './mutation-result.ts'
 import { sessionResolveOptions } from './session-cwd.ts'
+// uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy bridge
+import { assertFilePolicy } from './policy.ts'
 import type { FsSandboxController } from './sandbox.ts'
 
 /**
@@ -116,6 +118,9 @@ export function applyWriteTool(ctx: Context, sandbox: FsSandboxController): void
       // an escalating call throws its distinct text on any non-grant.
       const sandboxPolicy = await sandbox.resolvePolicy('write', args, exec)
       const target = await ctx.fs.resolve(input.filePath, await sessionResolveOptions(ctx, exec))
+      // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy check (not an OS sandbox)
+      assertFilePolicy(ctx, exec, 'write', target)
+      // END uitstalie-deepseek-flash
       // Single-slot decision: the policy plugin produces createIfAbsent/
       // replaceIfVersion; the bare default is undefined (unconditional). No stat.
       const intent = await ctx.waterfall('fs/write-intent', target, exec, () => undefined)

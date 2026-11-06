@@ -13,6 +13,8 @@ import { computeHunkDiffs, diffsFromMeta } from './diff.ts'
 import { remediateFsError } from './error.ts'
 import { mutationResult } from './mutation-result.ts'
 import { sessionResolveOptions } from './session-cwd.ts'
+// uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy bridge
+import { assertFilePolicy } from './policy.ts'
 import type { FsSandboxController } from './sandbox.ts'
 
 /** Validated `edit` arguments after defaulting. */
@@ -122,6 +124,9 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
       // > backend default, plus the session cwd root) BEFORE anything executes.
       const sandboxPolicy = await sandbox.resolvePolicy('edit', args, exec)
       const target = await ctx.fs.resolve(input.filePath, await sessionResolveOptions(ctx, exec))
+      // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy check (not an OS sandbox)
+      assertFilePolicy(ctx, exec, 'write', target)
+      // END uitstalie-deepseek-flash
       // Single-slot decision: the policy plugin returns { version: vObserved } or
       // throws FS_NOT_OBSERVED; the bare default is undefined (unconditional edit).
       // No stat — the bare default never manufactures a version basis. The intent

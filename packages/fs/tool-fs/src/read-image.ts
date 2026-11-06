@@ -20,6 +20,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolExecution } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-fs'
 import { resolveRegularReadTarget } from './read-target.ts'
+// uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy bridge
+import { assertFilePolicy } from './policy.ts'
 
 /** Extensions `read_image` accepts; magic-byte validation at the attachment service stays authoritative. */
 const IMAGE_EXTENSIONS: Readonly<Record<string, ImageMediaType>> = {
@@ -257,6 +259,9 @@ export function applyReadImageTool(ctx: Context): void {
       await assertImageCapableRoute(ctx, exec, args.file_path)
 
       const { target, info } = await resolveRegularReadTarget(ctx, exec, args.file_path)
+      // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy check (not an OS sandbox)
+      assertFilePolicy(ctx, exec, 'read', target)
+      // END uitstalie-deepseek-flash
 
       // The tool result is one message carrying one image, so the per-message
       // aggregate bound applies beside the per-image bound.

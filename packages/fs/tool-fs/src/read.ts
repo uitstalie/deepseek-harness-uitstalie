@@ -10,6 +10,8 @@ import type { GenericCallView, ReadResultView, ToolResult } from '@deepseek-ai/d
 import type {} from '@deepseek-ai/dsh-fs'
 import { buildWindow, formatReadOutput, langFromPath, readMetaFromMeta } from './read-render.ts'
 import { resolveRegularReadTarget } from './read-target.ts'
+// uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy bridge
+import { assertFilePolicy } from './policy.ts'
 
 /** Default and maximum number of lines returned by one `read` call (the `readLimit` config). */
 export const READ_LIMIT = 2000
@@ -139,6 +141,9 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
       // One stat: absence observation OR type check + size routing + present version.
       // A concurrent write can only make a later guarded mutation fail stale and require reread.
       const { target, info } = await resolveRegularReadTarget(ctx, exec, input.filePath)
+      // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy check (not an OS sandbox)
+      assertFilePolicy(ctx, exec, 'read', target)
+      // END uitstalie-deepseek-flash
 
       // Stream when the file is large OR size is unknown, so a size-less backend
       // never buffers an arbitrarily large file.

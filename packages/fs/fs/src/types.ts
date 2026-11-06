@@ -203,6 +203,8 @@ export const FS_ERROR_CODES = [
   'FS_TOO_LARGE',
   'FS_PERMISSION_DENIED',
   'FS_SANDBOX_DENIED',
+  // uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy denial (not an OS sandbox)
+  'FS_POLICY_DENIED',
   'FS_IO_ERROR',
   'FS_STALE_VERSION',
   'FS_NOT_OBSERVED',

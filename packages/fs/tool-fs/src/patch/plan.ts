@@ -9,6 +9,8 @@ import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { remediateFsError } from '../error.ts'
 import type { FsSandboxController } from '../sandbox.ts'
 import { sessionResolveOptions } from '../session-cwd.ts'
+// uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy bridge
+import { assertFilePolicy } from '../policy.ts'
 import type { PatchExecutionRequest, PatchFailure, PatchOperationRecord, PatchPlan, PlannedOperation } from './types.ts'
 
 /**
@@ -26,6 +28,11 @@ export async function planPatch(
   const targets = new Map<FsTargetKey, FsTarget>()
   const resolve = async (path: string): Promise<FsTarget> => {
     const target = await ctx.fs.resolve(path, await sessionResolveOptions(ctx, exec))
+    // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-904, soft tool policy check (not an OS sandbox)
+    // Every `*** Add/Update/Delete File:` and `*** Move to:` path is checked
+    // here; a denial is an FsError caught below as a preflight refusal.
+    assertFilePolicy(ctx, exec, 'write', target)
+    // END uitstalie-deepseek-flash
     const prior = targets.get(target.targetKey)
     if (prior) return prior
     targets.set(target.targetKey, target)
