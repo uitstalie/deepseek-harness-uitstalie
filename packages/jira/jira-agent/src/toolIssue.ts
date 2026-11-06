@@ -5,7 +5,7 @@
  * together so the tool's surface is edited in exactly one place; `index.ts` only registers them.
  */
 
-import { type IssueKey, isLinkType } from '@deepseek-ai/dsh-jira-core'
+import { LINK_TYPES, type IssueKey, isLinkType } from '@deepseek-ai/dsh-jira-core'
 import { formatError, invalidInput, readOnlySession } from '@deepseek-ai/dsh-jira-core'
 import { type FieldSpec, pickKnownKeys, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import type { IssueMutation } from '@deepseek-ai/dsh-jira-service'
@@ -38,28 +38,56 @@ export const ISSUE_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.free
     description: `What to do: ${ACTIONS.join(' / ')}.`,
     enum: ACTIONS,
   },
-  key: { type: 'string', description: 'Issue key, e.g. DH-12. Required for every action except create, tag_create and batch_close.' },
-  keys: { type: 'array', description: 'batch_close: the issue keys to close (all-or-nothing: one refusal writes nothing).' },
-  project: { type: 'string', description: 'Project key for create, e.g. DH (the key prefix).' },
+  key: { type: 'string', description: 'Issue key; not used by create, tag_create or batch_close.' },
+  keys: { type: 'array', items: { type: 'string' }, description: 'batch_close keys; all-or-nothing.' },
+  project: { type: 'string', description: 'Project key for create.' },
   data: {
     type: 'object',
-    description: `create: { ${CREATE_FIELDS.join(', ')} } · update: { ${UPDATE_FIELDS.join(', ')} } `
-      + `· tag_create: { ${TAG_CREATE_FIELDS.join(', ')} } `
-      + '(`description` is the Markdown body; `note` is the mutable reminder; `name` is the tag, lower-kebab).',
+    description: 'Action-scoped fields; actions use different subsets.',
+    properties: {
+      issue_type: { type: 'string' },
+      summary: { type: 'string' },
+      priority: { type: 'string' },
+      status: { type: 'string' },
+      tags: { type: 'array', items: { type: 'string' }, description: 'Existing tag names.' },
+      note: {
+        oneOf: [{ type: 'string' }, { type: 'null' }],
+        description: 'Mutable reminder; null clears on update.',
+      },
+      assignee: { type: 'string', description: 'Assignee or self.' },
+      description: { type: 'string', description: 'Markdown body.' },
+      kb_refs: { type: 'array', items: { type: 'string' }, description: 'Knowledge entry keys.' },
+      name: { type: 'string', description: 'tag_create: lower-kebab name.' },
+      alias: { type: 'string', description: 'tag_create: optional alias.' },
+    },
   },
-  to: { type: 'string', description: 'switch_state: the target status, which must be a declared transition.' },
-  resolution: { type: 'string', description: 'switch_state: required when the target status is a closed one.' },
-  resolution_note: { type: 'string', description: 'switch_state: required when resolution is "limitation".' },
+  to: { type: 'string', description: 'switch_state: a declared target status.' },
+  resolution: { type: 'string', description: 'switch_state: required for a closed target.' },
+  resolution_note: { type: 'string', description: 'switch_state: required for resolution "limitation".' },
   assignee: {
     type: 'string',
-    description: 'assignee: "self" to claim, "none" to release.',
+    description: 'assignee: self claims, none releases.',
     enum: ['self', 'none'],
   },
-  link: { type: 'object', description: 'link: { type, target, op } with op being "add" or "remove".' },
-  comment: { type: 'object', description: 'comment: { body }. Comments are append-only.' },
-  expected_revision: { type: 'number', description: 'Refuse the write if the issue is not at this revision.' },
-  ack_conflict: { type: 'boolean', description: 'Set when writing to an issue marked conflicted.' },
-  override: { type: 'boolean', description: 'Decision 24: a human may claim an issue that is still blocked; the override is recorded as a comment.' },
+  link: {
+    type: 'object',
+    description: 'Directed issue link.',
+    properties: {
+      type: { type: 'string', required: true, enum: LINK_TYPES },
+      target: { type: 'string', required: true },
+      op: { type: 'string', enum: ['add', 'remove'], description: 'Default add.' },
+    },
+  },
+  comment: {
+    type: 'object',
+    description: 'Append-only comment.',
+    properties: {
+      body: { type: 'string', required: true },
+    },
+  },
+  expected_revision: { type: 'number', description: 'Refuse unless the issue is at this revision.' },
+  ack_conflict: { type: 'boolean', description: 'Acknowledge a conflicted issue.' },
+  override: { type: 'boolean', description: 'A human may claim a still-blocked issue; recorded as a comment.' },
 })
 
 /**
@@ -70,11 +98,9 @@ export const ISSUE_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.free
  */
 export const ISSUE_DESCRIPTION =
   'Read or change one issue in the local dsh-jira ledger (a git repository, one Markdown file per issue). '
-  + '`get` returns the issue; every other action **writes**. A write is refused unless this session may '
-  + 'write: read-only and delegated sessions get `ok: false` with `writable: false` and a `reason`, and the '
-  + 'host guard denies the call before it runs (decision 9). So check `writable` on a read first instead of '
-  + 'attempting a write you will be refused. '
-  + 'Tags must exist before an issue can use them: `tag_create` registers one (decision 192).'
+  + '`get` reads; every other action writes. Writes require a writable session: read-only and delegated '
+  + 'sessions get `ok: false`, `writable: false`, and a `reason`. Check `writable` on a read before '
+  + 'attempting a write. Tags must exist first; `tag_create` registers one.'
 
 /** The envelope `jira_issue` advertises to the host, with `ok`, `writable` and `me` always present. */
 export const ISSUE_OUTPUT_SCHEMA = Object.freeze({
@@ -173,7 +199,7 @@ export const runIssueTool = async (
     if (!fields.ok) return failure(fields.error, caller, me)
     const description = asString(fields.value.description) ?? ''
     if (description.trim() === '') {
-      return failure(invalidInput('tag_create needs `description`: the registry exists to explain the tag (decision 26)'), caller, me)
+      return failure(invalidInput('tag_create needs `description`: the registry exists to explain the tag'), caller, me)
     }
     const created = await jira.createTag(actor, {
       name: asString(fields.value.name) ?? '',

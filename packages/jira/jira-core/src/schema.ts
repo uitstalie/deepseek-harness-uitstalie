@@ -22,10 +22,19 @@ export type FieldType = 'string' | 'number' | 'integer' | 'boolean' | 'object' |
  * model, and the values it accepts when it is an enumeration.
  */
 export type FieldSpec = Readonly<{
-  type: FieldType
+  /** Omitted only for a `oneOf` property. */
+  type?: FieldType
   required?: boolean
   description?: string
   enum?: readonly string[]
+  /** Nested object properties, emitted as a real JSON Schema object. */
+  properties?: Readonly<Record<string, FieldSpec>>
+  /** Array item schema, emitted as `items`. */
+  items?: FieldSpec
+  /** Object closure; defaults to false when `properties` is present. */
+  additionalProperties?: boolean
+  /** Exact-one union for nullable/scalar variants; emits a JSON Schema `oneOf`. */
+  oneOf?: readonly FieldSpec[]
 }>
 
 /** A JSON Schema object as this package declares it: a plain frozen record the host serializes. */
@@ -42,11 +51,7 @@ export const objectSchema = (fields: Readonly<Record<string, FieldSpec>>): JsonS
   const properties: Record<string, unknown> = {}
   const required: string[] = []
   for (const [name, spec] of Object.entries(fields)) {
-    properties[name] = Object.freeze({
-      type: spec.type,
-      ...(spec.description === undefined ? {} : { description: spec.description }),
-      ...(spec.enum === undefined ? {} : { enum: spec.enum }),
-    })
+    properties[name] = propertySchema(spec)
     if (spec.required === true) required.push(name)
   }
   // The host's runtime dialect is standard JSON Schema: `required` is an **array of
@@ -58,6 +63,27 @@ export const objectSchema = (fields: Readonly<Record<string, FieldSpec>>): JsonS
     additionalProperties: false,
     properties: Object.freeze(properties),
     ...(required.length === 0 ? {} : { required: Object.freeze(required) }),
+  })
+}
+
+/** Render one property, recursively expanding nested object/array declarations. */
+const propertySchema = (spec: FieldSpec): Record<string, unknown> => {
+  const nested = spec.properties === undefined ? undefined : Object.entries(spec.properties)
+  const required = nested === undefined
+    ? []
+    : nested.filter(([, property]) => property.required === true).map(([name]) => name)
+  return Object.freeze({
+    ...(spec.oneOf === undefined ? { type: spec.type } : { oneOf: spec.oneOf.map(propertySchema) }),
+    ...(spec.description === undefined ? {} : { description: spec.description }),
+    ...(spec.enum === undefined ? {} : { enum: spec.enum }),
+    ...(nested === undefined
+      ? {}
+      : {
+        properties: Object.freeze(Object.fromEntries(nested.map(([name, property]) => [name, propertySchema(property)]))),
+        ...(required.length === 0 ? {} : { required: Object.freeze(required) }),
+        additionalProperties: spec.additionalProperties ?? false,
+      }),
+    ...(spec.items === undefined ? {} : { items: propertySchema(spec.items) }),
   })
 }
 
@@ -108,7 +134,7 @@ export const validateArgs = (
       if (spec.required === true) issues.push(`missing required argument "${name}"`)
       continue
     }
-    if (!matchesType(value, spec.type)) {
+    if (spec.type !== undefined && !matchesType(value, spec.type)) {
       issues.push(`argument "${name}" must be ${spec.type}`)
       continue
     }

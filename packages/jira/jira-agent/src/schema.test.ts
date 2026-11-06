@@ -16,7 +16,7 @@ import {
   validateJsonSchemaValue,
   type ToolDefinition,
 } from '@deepseek-ai/dsh-tools'
-import { KB_TOOL_NAME, LIST_TOOL_NAME, TOOL_NAME, createJiraContribution } from './index.ts'
+import { ISSUE_PARAMETERS, KB_TOOL_NAME, LIST_TOOL_NAME, TOOL_NAME, createJiraContribution } from './index.ts'
 import { createLedgerFixture, dispatchTool, mountJira, testAgent, type JiraHarness } from './testing/host.ts'
 import { removeTree } from '@deepseek-ai/dsh-jira-core'
 
@@ -86,6 +86,28 @@ describe('schema: what we register belongs to the host subset', () => {
     assert.deepEqual(schema.required, ['action'])
     assert.equal(Object.hasOwn((schema.properties as Record<string, unknown>).action as object, 'required'), false)
     assert.doesNotThrow(() => { assertSupportedJsonSchema(schema) })
+  })
+
+  it('emits nested object properties, required names and closed objects for jira_issue', () => {
+    type Shape = {
+      type?: string
+      additionalProperties?: boolean
+      required?: readonly string[]
+      properties?: Record<string, unknown>
+      items?: { type?: string }
+      oneOf?: unknown[]
+    }
+    const schema = objectSchema(ISSUE_PARAMETERS) as { properties: Record<string, Shape> }
+    const data = schema.properties.data
+    assert.equal(data?.type, 'object')
+    assert.equal(data?.additionalProperties, false)
+    assert.ok(Object.hasOwn(data?.properties ?? {}, 'summary'))
+    assert.ok(Object.hasOwn(data?.properties ?? {}, 'kb_refs'))
+    assert.deepEqual((data?.properties?.note as { oneOf?: unknown[] }).oneOf?.length, 2)
+    assert.deepEqual((schema.properties.link as { required?: readonly string[] }).required, ['type', 'target'])
+    assert.equal((schema.properties.link as { additionalProperties?: boolean }).additionalProperties, false)
+    assert.deepEqual((schema.properties.comment as { required?: readonly string[] }).required, ['body'])
+    assert.deepEqual((schema.properties.keys as { items?: { type?: string } }).items, { type: 'string' })
   })
 
   it('keeps a spec with no required field free of the keyword entirely', () => {
