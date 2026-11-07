@@ -9,6 +9,13 @@
  * @module @deepseek-ai/dsh-tool-policy/types
  */
 
+// The session profile reuses the `permission/preset` event owned by
+// `@deepseek-ai/dsh-permission-presets` (the selected preset or profile name),
+// so an older build can replay this session without an unknown event type.
+// Type-only: the preset service is absent wherever the soft-policy overlay
+// disables it, and the policy needs no value from it.
+import type {} from '@deepseek-ai/dsh-permission-presets'
+
 /** A model file operation a path rule can deny. */
 export type FileAccessOperation = 'read' | 'write' | 'list'
 
@@ -102,17 +109,4 @@ export interface CanonicalTarget {
   platform: NodeJS.Platform
   /** Comparison case sensitivity for this target. */
   caseSensitive: boolean
-}
-
-/**
- * The session profile is stored in the existing `permission/preset` event so
- * that an older build can replay a newer session without an unknown event type.
- * The payload is a profile name here; the retired permission presets used the
- * same payload for preset names.
- */
-declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
-    /** Reused by the soft tool policy: the selected policy profile name. */
-    'permission/preset': { preset: string }
-  }
 }

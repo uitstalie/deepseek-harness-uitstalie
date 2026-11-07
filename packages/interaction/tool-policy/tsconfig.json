@@ -36,6 +36,9 @@
       "path": "../commands"
     },
     {
+      "path": "../permission-presets"
+    },
+    {
       "path": "../../session/session-projection"
     }
   ]
