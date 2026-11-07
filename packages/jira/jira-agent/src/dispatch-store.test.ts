@@ -70,6 +70,38 @@ const taskFor = (id: string, overrides: Partial<DispatchLedgerTask> = {}): Dispa
   ...overrides,
 })
 
+/** One Session log whose turns each carry the prompt identity of their queued dispatch. */
+const turnLog = (id: string, turns: readonly { requestId: string; text: string }[]) => {
+  const events: { type: string; seq: number; data: unknown }[] = []
+  const ends: { type: string; seq: number; data: unknown }[] = []
+  let seq = 0
+  for (const [index, turn] of turns.entries()) {
+    const number = index + 1
+    events.push({ type: 'turn/start', seq: ++seq, data: { turn: number } })
+    events.push({
+      type: 'user/message',
+      seq: ++seq,
+      data: { role: 'user', content: [], source: { kind: 'user', rpcId: turn.requestId } },
+    })
+    events.push({ type: 'assistant/message', seq: ++seq, data: { message: { content: [{ type: 'text', text: turn.text }] } } })
+    const end = { type: 'turn/end', seq: ++seq, data: { turn: number, reason: { kind: 'completed' } } }
+    events.push(end)
+    ends.push(end)
+  }
+  const agent = { id, session: { snapshotEvents: () => events } }
+  return {
+    agent,
+    session: agent.session,
+    input: (index: number) => ({
+      agent,
+      session: agent.session,
+      turn: index + 1,
+      event: ends[index],
+      signal: new AbortController().signal,
+    }),
+  }
+}
+
 describe('superagent: durable dispatch store', () => {
   it('round-trips records, arrays and statuses through the storage domain and Markdown projection', async () => {
     const root = await scratch()
@@ -276,6 +308,137 @@ describe('superagent: durable dispatch store', () => {
     assert.deepEqual(prompted.map(row => row.sessionId), ['super-a', 'super-b'])
     assert.match(prompted[0]?.text ?? '', /task-a/u)
     assert.match(prompted[1]?.text ?? '', /task-b/u)
+  })
+
+  it('reports two queued dispatches to their own turns from the durable store', async () => {
+    const root = await scratch()
+    const { storageCtx } = await withStorage()
+    const store = new DispatchStore(storageCtx, root)
+    stores.push(store)
+    assert.equal(await store.available(), true)
+    await store.record(taskFor('task-sync', {
+      sessionId: 'child-queued',
+      requestId: 'req-sync',
+      dispatchedAt: '2026-11-07T00:00:00.000Z' as Timestamp,
+    }), 'super-1')
+    await store.record(taskFor('task-fserror', {
+      sessionId: 'child-queued',
+      requestId: 'req-fserror',
+      dispatchedAt: '2026-11-07T00:01:00.000Z' as Timestamp,
+    }), 'super-1')
+    const child = turnLog('child-queued', [
+      { requestId: 'req-sync', text: 'sync done' },
+      { requestId: 'req-fserror', text: 'FsError done' },
+    ])
+
+    const prompted: string[] = []
+    const controller = {
+      async create() { return { sessionId: 'unused' } },
+      async list() { return { items: [] } },
+      async prompt(request: { sessionId: unknown; content: readonly { text: string }[] }) {
+        prompted.push(request.content[0]?.text ?? '')
+        return { accepted: true }
+      },
+    }
+    const host = {
+      ctx: {
+        get: (key: string) => key === 'sessionController' ? controller : undefined,
+        logger: { warn: () => {}, info: () => {} },
+      },
+      env: {},
+      clock: () => Date.parse(AT),
+      recorder: createSessionRecorder(),
+    }
+
+    assert.equal(await handleTaskTurnEnd(host as never, child.input(0) as never, new Map(), [], root, store), true)
+    assert.equal(await handleTaskTurnEnd(host as never, child.input(1) as never, new Map(), [], root, store), true)
+    assert.equal(prompted.length, 2)
+    assert.match(prompted[0] ?? '', /task-sync/u)
+    assert.match(prompted[0] ?? '', /sync done/u)
+    assert.doesNotMatch(prompted[0] ?? '', /task-fserror/u)
+    assert.match(prompted[1] ?? '', /task-fserror/u)
+    assert.match(prompted[1] ?? '', /FsError done/u)
+
+    const rows = await store.list({ limit: 100 })
+    assert.equal(rows?.find(row => row.id === 'task-sync')?.outcome, 'sync done')
+    assert.equal(rows?.find(row => row.id === 'task-fserror')?.outcome, 'FsError done')
+  })
+
+  it('corrects a misattributed returned outcome when the real turn arrives', async () => {
+    const root = await scratch()
+    const { storageCtx } = await withStorage()
+    const store = new DispatchStore(storageCtx, root)
+    stores.push(store)
+    assert.equal(await store.available(), true)
+    await store.record(taskFor('task-fserror', {
+      sessionId: 'child-returned',
+      requestId: 'req-fserror',
+      dispatchedAt: AT,
+    }), 'super-1')
+    await store.resolve('task-fserror', {
+      status: 'returned',
+      updatedAt: AT,
+      outcome: 'the earlier sync result',
+    })
+    const child = turnLog('child-returned', [{ requestId: 'req-fserror', text: 'the real FsError outcome' }])
+
+    const prompted: string[] = []
+    const controller = {
+      async create() { return { sessionId: 'unused' } },
+      async list() { return { items: [] } },
+      async prompt(request: { sessionId: unknown; content: readonly { text: string }[] }) {
+        prompted.push(request.content[0]?.text ?? '')
+        return { accepted: true }
+      },
+    }
+    const host = {
+      ctx: {
+        get: (key: string) => key === 'sessionController' ? controller : undefined,
+        logger: { warn: () => {}, info: () => {} },
+      },
+      env: {},
+      clock: () => Date.parse(AT),
+      recorder: createSessionRecorder(),
+    }
+
+    assert.equal(await handleTaskTurnEnd(host as never, child.input(0) as never, new Map(), [], root, store), true)
+    assert.equal(prompted.length, 1)
+    assert.match(prompted[0] ?? '', /the real FsError outcome/u)
+    const rows = await store.list({ limit: 100 })
+    assert.equal(rows?.find(row => row.id === 'task-fserror')?.status, 'returned')
+    assert.equal(rows?.find(row => row.id === 'task-fserror')?.outcome, 'the real FsError outcome')
+  })
+
+  it('does not report an unrelated turn over a pending dispatch', async () => {
+    const root = await scratch()
+    const { storageCtx } = await withStorage()
+    const store = new DispatchStore(storageCtx, root)
+    stores.push(store)
+    assert.equal(await store.available(), true)
+    await store.record(taskFor('task-queued', {
+      sessionId: 'child-mixed',
+      requestId: 'req-queued',
+      dispatchedAt: AT,
+    }), 'super-1')
+    const child = turnLog('child-mixed', [{ requestId: 'req-someone-else', text: 'unrelated' }])
+
+    const controller = {
+      async create() { return { sessionId: 'unused' } },
+      async list() { return { items: [] } },
+      async prompt() { throw new Error('an unrelated turn must not produce a report') },
+    }
+    const host = {
+      ctx: {
+        get: (key: string) => key === 'sessionController' ? controller : undefined,
+        logger: { warn: () => {}, info: () => {} },
+      },
+      env: {},
+      clock: () => Date.parse(AT),
+      recorder: createSessionRecorder(),
+    }
+
+    assert.equal(await handleTaskTurnEnd(host as never, child.input(0) as never, new Map(), [], root, store), false)
+    assert.equal((await store.list({ status: 'pending' }))?.find(row => row.id === 'task-queued')?.status, 'pending')
   })
 
   it('marks a pending record orphaned when its Session is archived', async () => {

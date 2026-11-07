@@ -42,6 +42,8 @@ export const dispatchRecordSchema = z.object({
   workspace: dispatchWorkspaceSchema,
   task: z.string(),
   sessionId: z.string().optional(),
+  /** The prompt request identity that carried the task; see `DispatchLedgerTask.requestId`. */
+  requestId: z.string().optional(),
   superSession: z.string().optional(),
   status: z.enum(['pending', 'returned', 'failed']),
   dispatchedAt: z.string(),
@@ -105,6 +107,7 @@ export const recordFromTask = (task: DispatchLedgerTask, superSession?: string):
   },
   task: task.task,
   ...(task.sessionId === undefined ? {} : { sessionId: task.sessionId }),
+  ...(task.requestId === undefined ? {} : { requestId: task.requestId }),
   ...(superSession === undefined || superSession === '' ? {} : { superSession }),
   status: task.status,
   dispatchedAt: task.dispatchedAt,
@@ -126,6 +129,7 @@ export const taskFromRecord = (record: DispatchRecord, id: string): DispatchLedg
   status: record.status,
   updatedAt: record.updatedAt,
   ...(record.sessionId === undefined ? {} : { sessionId: record.sessionId }),
+  ...(record.requestId === undefined ? {} : { requestId: record.requestId }),
   ...(record.issue === undefined ? {} : { issue: record.issue }),
   artifacts: Object.freeze([...record.artifacts]),
   ...(record.outcome === undefined ? {} : { outcome: record.outcome }),
@@ -140,6 +144,7 @@ const sameProjection = (projected: DispatchLedgerTask | undefined, record: Dispa
     && projected.updatedAt === current.updatedAt
     && projected.outcome === current.outcome
     && projected.sessionId === current.sessionId
+    && projected.requestId === current.requestId
     && projected.issue === current.issue
     && projected.artifacts.join('\u0000') === current.artifacts.join('\u0000')
     && projected.decisions.join('\u0000') === current.decisions.join('\u0000')
@@ -262,15 +267,26 @@ export class DispatchStore {
    * Resolve one task in the domain. A task already returned/failed is returned unchanged and is
    * never projected twice; a missing task returns undefined so the caller can try the old Markdown
    * ledger once.
+   *
+   * `correctResolved` is the report path only: a turn that is genuinely bound to a task may arrive
+   * after an earlier, misattributed turn already resolved it. That later outcome replaces the old
+   * one (same status), and an identical outcome stays a no-op.
    */
-  async resolve(id: string, patch: DispatchTaskPatch): Promise<DispatchWrite | undefined> {
+  async resolve(
+    id: string,
+    patch: DispatchTaskPatch,
+    options: { readonly correctResolved?: boolean } = {},
+  ): Promise<DispatchWrite | undefined> {
     const table = await this.readyTable()
     if (table === undefined) return undefined
     const current = table.get(id)
     if (current === undefined) return undefined
     const file = ledgerFileOf(this.root, current.workspace.id)
     if (current.status !== 'pending') {
-      return { task: taskFromRecord(current, id), file }
+      if (options.correctResolved !== true) return { task: taskFromRecord(current, id), file }
+      if (current.status === patch.status && current.outcome === (patch.outcome ?? current.outcome)) {
+        return { task: taskFromRecord(current, id), file }
+      }
     }
     const next: DispatchRecord = {
       ...current,
@@ -283,7 +299,7 @@ export class DispatchStore {
       ...(patch.issue === undefined ? {} : { issue: patch.issue }),
     }
     await table.put(id, next)
-    if (next.status !== current.status) {
+    if (next.status !== current.status || next.outcome !== current.outcome) {
       try {
         await appendDispatchTask(this.root, next.workspace, taskFromRecord(next, id))
       } catch (error: unknown) {
@@ -293,17 +309,30 @@ export class DispatchStore {
     return { task: taskFromRecord(next, id), file }
   }
 
+  /** Every record bound to one Session, oldest dispatch first (FIFO; ties keep insertion order). */
+  async recordsForSession(sessionId: string): Promise<readonly { id: string; record: DispatchRecord }[]> {
+    const table = await this.readyTable()
+    if (table === undefined) return []
+    return [...table.entries()]
+      .filter(([, record]) => record.sessionId === sessionId)
+      .map(([id, record]) => ({ id, record }))
+      .sort((left, right) => left.record.dispatchedAt < right.record.dispatchedAt
+        ? -1
+        : left.record.dispatchedAt > right.record.dispatchedAt
+          ? 1
+          : 0)
+  }
+
   /** The newest record for a Session, including its dispatcher binding. */
   async lookupSession(sessionId: string): Promise<DispatchLookup> {
-    const table = await this.readyTable()
-    if (table === undefined) return { available: false }
-    const entries = [...table.entries()]
-      .filter(([, record]) => record.sessionId === sessionId)
-      .sort((left, right) => left[1].dispatchedAt < right[1].dispatchedAt ? 1 : left[1].dispatchedAt > right[1].dispatchedAt ? -1 : 0)
-    const newest = entries[0]
-    return newest === undefined
-      ? { available: true }
-      : { available: true, id: newest[0], record: newest[1] }
+    const records = await this.recordsForSession(sessionId)
+    const newest = records.at(-1)
+    if (records.length === 0) return { available: (await this.readyTable()) !== undefined }
+    return {
+      available: true,
+      ...(newest?.id === undefined ? {} : { id: newest.id }),
+      ...(newest?.record === undefined ? {} : { record: newest.record }),
+    }
   }
 
   /** Mark pending records for an archived/stopped Session; audit history stays in the domain. */

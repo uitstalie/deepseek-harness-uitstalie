@@ -33,6 +33,14 @@ export interface DispatchLedgerTask {
   readonly status: DispatchLedgerStatus
   readonly updatedAt: string
   readonly sessionId?: string
+  /**
+   * The prompt request identity of the message that carried this task.
+   *
+   * `user/message.source.rpcId` preserves it, so a turn end can match the turn it actually
+   * belongs to instead of guessing from the Session. Records written before this field existed
+   * leave it undefined and use the FIFO fallback.
+   */
+  readonly requestId?: string
   readonly issue?: string
   readonly artifacts: readonly string[]
   readonly outcome?: string
@@ -48,6 +56,8 @@ export interface NewDispatchTask {
   readonly task: string
   readonly dispatchedAt: string
   readonly sessionId?: string
+  /** The prompt request identity bound to this task; see {@link DispatchLedgerTask.requestId}. */
+  readonly requestId?: string
   readonly issue?: string
   readonly status?: DispatchLedgerStatus
 }
@@ -85,7 +95,7 @@ export interface DispatchLedgerWorkspace {
 }
 
 const STATUSES: readonly DispatchLedgerStatus[] = Object.freeze(['pending', 'returned', 'failed'])
-const FIELD = /^- (workspace|path|task|dispatched|updated|session|issue|artifacts|outcome|decisions): (.*)$/u
+const FIELD = /^- (workspace|path|task|dispatched|updated|session|request|issue|artifacts|outcome|decisions): (.*)$/u
 const HEADING = /^## (\S+) · (pending|returned|failed)$/u
 
 /** Whether a string is one of the three ledger statuses. */
@@ -122,6 +132,7 @@ export const renderTaskSection = (task: DispatchLedgerTask): string => {
     `- dispatched: ${task.dispatchedAt}`,
     `- updated: ${task.updatedAt}`,
     ...(task.sessionId === undefined ? [] : [`- session: ${task.sessionId}`]),
+    ...(task.requestId === undefined ? [] : [`- request: ${task.requestId}`]),
     ...(task.issue === undefined ? [] : [`- issue: ${task.issue}`]),
     ...(task.artifacts.length === 0 ? [] : [`- artifacts: ${task.artifacts.join('; ')}`]),
     ...(task.outcome === undefined ? [] : [`- outcome: ${task.outcome}`]),
@@ -187,6 +198,7 @@ export const parseLedger = (
     if (draft === undefined) return []
     const dispatchedAt = draft.fields.get('dispatched') ?? ''
     const sessionId = draft.fields.get('session')
+    const requestId = draft.fields.get('request')
     const issue = draft.fields.get('issue')
     const outcome = draft.fields.get('outcome')
     return [Object.freeze({
@@ -199,6 +211,7 @@ export const parseLedger = (
       status: draft.status,
       updatedAt: draft.fields.get('updated') ?? dispatchedAt,
       ...(sessionId === undefined ? {} : { sessionId }),
+      ...(requestId === undefined ? {} : { requestId }),
       ...(issue === undefined ? {} : { issue }),
       artifacts: Object.freeze(listOf(draft.fields.get('artifacts'))),
       ...(outcome === undefined ? {} : { outcome }),
@@ -267,6 +280,7 @@ export const pendingTask = (input: NewDispatchTask): DispatchLedgerTask => Objec
   status: input.status ?? 'pending',
   updatedAt: input.dispatchedAt,
   ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+  ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
   ...(input.issue === undefined ? {} : { issue: input.issue }),
   artifacts: Object.freeze([]),
   decisions: Object.freeze([]),

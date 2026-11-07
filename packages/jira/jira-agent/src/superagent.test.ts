@@ -532,7 +532,7 @@ describe('superagent: workspace Sessions', () => {
     const ctx = {
       get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? registry : undefined,
     }
-    const tasks = new Map<string, { superSession: string; workspace: string }>()
+    const tasks = new Map<string, { superSession: string; workspace: string }[]>()
     const options = {
       jira: {} as never,
       caller: { writable: true, sessionId: 'super-1' } as never,
@@ -548,7 +548,9 @@ describe('superagent: workspace Sessions', () => {
     assert.deepEqual(controller.created, [{ workspaceId: 'w1', agentPreset: 'cordis' }])
     assert.equal(controller.prompted[0]?.text, 'write the README')
     assert.equal(controller.prompted[0]?.sessionId, 'w-session-2')
-    assert.deepEqual(tasks.get('w-session-2'), { superSession: 'super-1', workspace: workspacePath })
+    assert.equal(tasks.get('w-session-2')?.length, 1)
+    assert.equal(tasks.get('w-session-2')?.[0]?.superSession, 'super-1')
+    assert.equal(tasks.get('w-session-2')?.[0]?.workspace, workspacePath)
     assert.equal((started.session as { workspaceTitle?: string }).workspaceTitle, 'hello')
 
     const followed = await runSessionTool(
@@ -557,7 +559,8 @@ describe('superagent: workspace Sessions', () => {
     )
     assert.equal(followed.ok, true, JSON.stringify(followed.error))
     assert.equal(controller.prompted[1]?.text, 'add a section')
-    assert.equal(tasks.get('w-session-2')?.superSession, 'super-1')
+    assert.equal(tasks.get('w-session-2')?.at(-1)?.superSession, 'super-1')
+    assert.equal(tasks.get('w-session-2')?.length, 2, 'a queued follow-up must not overwrite the running task')
 
     const listed = await runSessionTool({ action: 'list', workspace: 'hello' }, options, me, ctx, { tasks })
     assert.equal(listed.ok, true, JSON.stringify(listed.error))
@@ -584,7 +587,7 @@ describe('superagent: workspace Sessions', () => {
     )
     assert.equal(routed.ok, true, JSON.stringify(routed.error))
     assert.equal(controller.prompted.at(-1)?.sessionId, 'w-newer')
-    assert.equal(tasks.get('w-newer')?.superSession, 'super-1')
+    assert.equal(tasks.get('w-newer')?.at(-1)?.superSession, 'super-1')
     const foreign = await runSessionTool(
       { action: 'append', workspace: 'hello', text: 'no', session: 'elsewhere' },
       options, me, ctx, { tasks },
@@ -633,7 +636,7 @@ describe('superagent: workspace Sessions', () => {
     const forked = await runSessionTool({ action: 'fork', session: 'w-session', atSeq: 7 }, options, me, ctx, { tasks })
     assert.equal(forked.ok, true, JSON.stringify(forked.error))
     assert.deepEqual(controller.forked, [{ sessionId: 'w-session', atSeq: 7 }])
-    assert.equal(tasks.get('w-session-fork')?.superSession, 'super-1')
+    assert.equal(tasks.get('w-session-fork')?.at(-1)?.superSession, 'super-1')
 
     // The report is an ordinary queued message in the super Session, not a held turn.
     const host = {
@@ -784,6 +787,48 @@ describe('superagent: report recovery after a plugin remount', () => {
     }
   }
 
+  type TurnScript = Readonly<{ requestId?: string; text?: string; kind?: string }>
+
+  /**
+   * Build one Session log with several turns, each carrying the prompt identity its dispatch
+   * admitted. This is what the real agent loop records: `user/message.source.rpcId` survives from
+   * the controller's `prompt({ requestId })`.
+   */
+  const turnSession = (id: string, turns: readonly TurnScript[]) => {
+    const events: { type: string; seq: number; data: unknown }[] = []
+    const ends: { type: string; seq: number; data: unknown }[] = []
+    let seq = 0
+    for (const [index, turn] of turns.entries()) {
+      const number = index + 1
+      events.push({ type: 'turn/start', seq: ++seq, data: { turn: number } })
+      if (turn.requestId !== undefined) {
+        events.push({
+          type: 'user/message',
+          seq: ++seq,
+          data: { role: 'user', content: [], source: { kind: 'user', rpcId: turn.requestId } },
+        })
+      }
+      if (turn.text !== undefined) {
+        events.push({ type: 'assistant/message', seq: ++seq, data: { message: { content: [{ type: 'text', text: turn.text }] } } })
+      }
+      const end = { type: 'turn/end', seq: ++seq, data: { turn: number, reason: { kind: turn.kind ?? 'completed' } } }
+      events.push(end)
+      ends.push(end)
+    }
+    const agent = { id, session: { snapshotEvents: () => events } }
+    return {
+      agent,
+      session: agent.session,
+      input: (index: number) => ({
+        agent,
+        session: agent.session,
+        turn: index + 1,
+        event: ends[index],
+        signal: new AbortController().signal,
+      }),
+    }
+  }
+
   it('recovers a pending ledger binding when the in-memory map is empty', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
@@ -897,7 +942,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal(rows[0]?.status, 'returned')
   })
 
-  it('finds the newest pending task for one Session', async () => {
+  it('finds the oldest pending task for one Session (FIFO)', async () => {
     const root = await scratchDirectory()
     const first = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
       task: 'older', dispatchedAt: '2026-10-15T11:00:00Z' as Timestamp, sessionId: 'shared-child',
@@ -906,8 +951,123 @@ describe('superagent: report recovery after a plugin remount', () => {
       task: 'newer', dispatchedAt: AT, sessionId: 'shared-child',
     })
 
-    assert.equal((await pendingDispatchForSession(root, 'shared-child'))?.id, second.task.id)
+    assert.equal((await pendingDispatchForSession(root, 'shared-child'))?.id, first.task.id)
     assert.notEqual(first.task.id, second.task.id)
+  })
+
+  it('falls back to FIFO for records written before prompt identities existed', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    const first = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'older task',
+      dispatchedAt: '2026-10-15T11:00:00Z' as Timestamp,
+      sessionId: 'legacy-child',
+    })
+    const second = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'newer task',
+      dispatchedAt: AT,
+      sessionId: 'legacy-child',
+    })
+    const child = turnSession('legacy-child', [
+      { text: 'the older result' },
+      { text: 'the newer result' },
+    ])
+
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(0) as never, new Map(), [], root), true)
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(1) as never, new Map(), [], root), true)
+
+    assert.equal(controller.prompted.length, 2)
+    assert.match(controller.prompted[0]?.text ?? '', new RegExp(first.task.id, 'u'))
+    assert.match(controller.prompted[0]?.text ?? '', /the older result/u)
+    assert.match(controller.prompted[1]?.text ?? '', new RegExp(second.task.id, 'u'))
+    assert.match(controller.prompted[1]?.text ?? '', /the newer result/u)
+  })
+
+  it('routes two queued dispatches to the task each turn actually ran', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    const sync = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'sync the ledger',
+      dispatchedAt: '2026-10-15T11:00:00Z' as Timestamp,
+      sessionId: 'shared-child',
+      requestId: 'req-sync',
+    })
+    const fsError = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'investigate the FsError',
+      dispatchedAt: AT,
+      sessionId: 'shared-child',
+      requestId: 'req-fserror',
+    })
+    const child = turnSession('shared-child', [
+      { requestId: 'req-sync', text: 'the sync finished' },
+      { requestId: 'req-fserror', text: 'the FsError root cause is a stale handle' },
+    ])
+
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(0) as never, new Map(), [], root), true)
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(1) as never, new Map(), [], root), true)
+
+    assert.equal(controller.prompted.length, 2)
+    assert.match(controller.prompted[0]?.text ?? '', new RegExp(sync.task.id, 'u'))
+    assert.match(controller.prompted[0]?.text ?? '', /the sync finished/u)
+    assert.doesNotMatch(controller.prompted[0]?.text ?? '', new RegExp(fsError.task.id, 'u'))
+    assert.match(controller.prompted[1]?.text ?? '', new RegExp(fsError.task.id, 'u'))
+    assert.match(controller.prompted[1]?.text ?? '', /the FsError root cause/u)
+    assert.doesNotMatch(controller.prompted[1]?.text ?? '', new RegExp(sync.task.id, 'u'))
+
+    const rows = await listDispatchTasks(root, { limit: 100 })
+    assert.equal(rows.find(row => row.id === sync.task.id)?.status, 'returned')
+    assert.equal(rows.find(row => row.id === sync.task.id)?.outcome, 'the sync finished')
+    assert.equal(rows.find(row => row.id === fsError.task.id)?.status, 'returned')
+    assert.equal(rows.find(row => row.id === fsError.task.id)?.outcome, 'the FsError root cause is a stale handle')
+  })
+
+  it('reports a genuinely bound turn even when the task was already marked returned', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    const recorded = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'investigate the FsError',
+      dispatchedAt: AT,
+      sessionId: 'returned-child',
+      requestId: 'req-fserror',
+    })
+    // An earlier turn was misattributed to this task and settled it with the wrong text.
+    await resolveDispatchTask(root, recorded.task, {
+      status: 'returned',
+      updatedAt: AT,
+      outcome: 'the earlier sync result',
+    })
+    const child = turnSession('returned-child', [{ requestId: 'req-fserror', text: 'the real FsError outcome' }])
+
+    const handled = await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(0) as never, new Map(), [], root)
+
+    assert.equal(handled, true)
+    assert.equal(controller.prompted.length, 1)
+    assert.match(controller.prompted[0]?.text ?? '', new RegExp(recorded.task.id, 'u'))
+    assert.match(controller.prompted[0]?.text ?? '', /the real FsError outcome/u)
+    const rows = await listDispatchTasks(root, { limit: 100 })
+    assert.equal(rows.find(row => row.id === recorded.task.id)?.outcome, 'the real FsError outcome')
+  })
+
+  it('sends no task report for a turn with no bound dispatch', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    const ordinary = turnSession('ordinary-child', [{ requestId: 'req-human', text: 'just chatting' }])
+
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, ordinary.input(0) as never, new Map(), [], root), false)
+    assert.deepEqual(controller.prompted, [])
+
+    // A pending dispatch exists, but this turn carries another prompt: never steal it for the task.
+    const recorded = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      task: 'still queued',
+      dispatchedAt: AT,
+      sessionId: 'mixed-child',
+      requestId: 'req-queued',
+    })
+    const unrelated = turnSession('mixed-child', [{ requestId: 'req-someone-else', text: 'unrelated turn' }])
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, unrelated.input(0) as never, new Map(), [], root), false)
+    assert.deepEqual(controller.prompted, [])
+    const rows = await listDispatchTasks(root, { status: 'pending' })
+    assert.equal(rows.find(row => row.id === recorded.task.id)?.status, 'pending')
   })
 })
 
@@ -1413,14 +1573,14 @@ describe('superagent: context, compaction and memory curation', () => {
             : key === 'tokenMeter' ? { contextPressure: () => ({ pressureTokens: calls++ === 0 ? 70_000 : 10_000, contextWindow: 200_000 }) }
               : undefined,
     }
-    const tasks = new Map<string, { superSession: string; workspace: string; usageBefore?: { percent?: number } }>()
+    const tasks = new Map<string, { superSession: string; workspace: string; usageBefore?: { percent?: number } }[]>()
     const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'next step', compact: true, session: 'latest' }, options, me, ctx, { tasks })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(controller.compactCalls, 1)
     assert.equal(controller.prompted[0]?.text, 'next step')
     assert.equal((result.compaction as { before?: { percent?: number } }).before?.percent, 35)
     assert.equal((result.compaction as { after?: { percent?: number } }).after?.percent, 5)
-    assert.equal(tasks.get('w-session')?.usageBefore?.percent, 35)
+    assert.equal(tasks.get('w-session')?.at(-1)?.usageBefore?.percent, 35)
   })
 
   it('delivers a memory-curation instruction when asked', async () => {

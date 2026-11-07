@@ -775,6 +775,9 @@ type LedgerAttempt = Readonly<{ ledger?: Readonly<{ root: string; task: Dispatch
  * @param task - the instruction sent to the Session.
  * @param sessionId - the child Session id.
  * @param at - the dispatch instant, fixed-width UTC.
+ * @param superSession - the receiving super Session, persisted for reload recovery.
+ * @param store - the durable store, when the deployment composes one.
+ * @param requestId - the prompt identity bound to this task, matched at turn end.
  * @returns the recorded entry or the failure text.
  */
 const recordTaskLedger = async (
@@ -786,6 +789,7 @@ const recordTaskLedger = async (
   at: Timestamp,
   superSession?: string,
   store?: DispatchStore,
+  requestId?: string,
 ): Promise<LedgerAttempt> => {
   const root = caller.cwd
   if (root === undefined) return Object.freeze({ error: 'the caller has no checkout, so no ledger root is known' })
@@ -796,6 +800,7 @@ const recordTaskLedger = async (
     task,
     dispatchedAt: at,
     sessionId,
+    ...(requestId === undefined ? {} : { requestId }),
   })
   if (store !== undefined) {
     try {
@@ -824,9 +829,15 @@ const recordTaskLedger = async (
 /**
  * Resolve the ledger entry when a dispatched child finishes: the hook sees this even though the
  * report is delivered as a new message in the super conversation.
+ *
+ * A turn that is matched to this task by its own prompt may arrive after an earlier, misattributed
+ * turn already resolved the ledger entry; `correctResolved` lets that turn replace the wrong
+ * outcome instead of silently keeping it. The default (tool) path remains append-once.
  * @param record - the task bookkeeping captured at dispatch.
  * @param text - the child's last assistant text, when it produced one.
  * @param at - the turn-end instant.
+ * @param store - the durable store, when the deployment composes one.
+ * @param options - `correctResolved` for a turn bound to the task by its prompt identity.
  * @returns after the outcome section is appended; a record without a ledger is a no-op.
  */
 export const resolveReportedTask = async (
@@ -834,6 +845,7 @@ export const resolveReportedTask = async (
   text: string | undefined,
   at: Timestamp,
   store?: DispatchStore,
+  options: { readonly correctResolved?: boolean } = {},
 ): Promise<void> => {
   if (record.ledger === undefined) return
   const patch = {
@@ -842,10 +854,17 @@ export const resolveReportedTask = async (
     outcome: text ?? 'The child turn ended without assistant text.',
   }
   if (store !== undefined) {
-    const resolved = await store.resolve(record.ledger.task.id, patch)
+    const resolved = await store.resolve(record.ledger.task.id, patch, {
+      correctResolved: options.correctResolved === true,
+    })
     if (resolved !== undefined) return
   }
-  await resolveDispatchTask(record.ledger.root, record.ledger.task, patch)
+  const current = record.ledger.task
+  if (current.status !== 'pending') {
+    if (options.correctResolved !== true) return
+    if (current.status === patch.status && current.outcome === patch.outcome) return
+  }
+  await resolveDispatchTask(record.ledger.root, current, patch)
 }
 
 /** Add the ledger fields to a dispatch result without hiding a ledger failure. */
@@ -865,6 +884,14 @@ export interface TaskSessionRecord {
   readonly workspace: string
   /** The structured dispatch entry this turn will resolve, when the ledger recorded one. */
   readonly ledger?: Readonly<{ root: string; task: DispatchLedgerTask }>
+  /**
+   * The prompt request identity (`requestId`) of the message that carried this task.
+   *
+   * The accepted `user/message` echoes it as `source.rpcId`, so a turn end matches the task by the
+   * turn's own prompt instead of the Session's newest task. Records from older deployments lack it
+   * and fall back to FIFO.
+   */
+  readonly requestId?: string
   /** The Session's context usage measured just before its task was admitted (DH-720). */
   readonly usageBefore?: ContextUsage
 }
@@ -873,14 +900,35 @@ export interface TaskSessionRecord {
 export interface SessionToolContext {
   /** The configured preset a started Session joins; unset keeps the deployment default. */
   readonly agentPreset?: string
-  /** Sessions this super agent addressed, so their turn ends report back to it. */
-  readonly tasks: Map<string, TaskSessionRecord>
+  /**
+   * Sessions this super agent addressed, in dispatch order per Session.
+   *
+   * A Session can hold several queued dispatches, so the value is a FIFO list: overwriting a single
+   * record is what routed a later task's id onto an earlier turn's report.
+   */
+  readonly tasks: Map<string, readonly TaskSessionRecord[]>
   /** Durable dispatch store; absent means the Markdown-only compatibility path. */
   readonly store?: DispatchStore
   /** Context percentage at which a list row suggests compacting; a suggestion, never enforcement. */
   readonly compactThresholdPercent?: number
   /** Minutes a running Session may run before the monitor names it (a suggestion, default 10). */
   readonly longRunningMinutes?: number
+}
+
+/** The newest dispatch record for a Session, if it has one. */
+const lastTaskRecord = (
+  tasks: Map<string, readonly TaskSessionRecord[]>,
+  sessionId: string,
+): TaskSessionRecord | undefined => tasks.get(sessionId)?.at(-1)
+
+/** Append one dispatch record to a Session's FIFO queue; queued dispatches never overwrite. */
+const enqueueTaskRecord = (
+  tasks: Map<string, readonly TaskSessionRecord[]>,
+  sessionId: string,
+  record: TaskSessionRecord,
+): void => {
+  const queue = tasks.get(sessionId) ?? []
+  tasks.set(sessionId, Object.freeze([...queue, Object.freeze(record)]))
 }
 
 /** The envelope both tools advertise; `items`, `issue` and `dispatch` carry the payloads. */
@@ -1973,6 +2021,45 @@ const lastEventOf = (events: readonly SessionEventLike[], type: string): Session
   return undefined
 }
 
+/**
+ * The event range of one finished turn: the matching `turn/start` (exclusive) and the `turn/end`
+ * event (exclusive upper bound).
+ *
+ * Reading a turn's own slice is what keeps a later turn's assistant text from being attributed to
+ * an earlier one when the log already contains it. Without a turn number (a duck-typed host), the
+ * whole log below the end event is used.
+ * @param events - the Session snapshot.
+ * @param turn - the ending turn number, when known.
+ * @param endEvent - the committed `turn/end` event, for its identity and seq.
+ * @returns indexes into `events`; `lower` is -1 when no matching start is visible.
+ */
+const turnBounds = (
+  events: readonly SessionEventLike[],
+  turn: number | undefined,
+  endEvent: unknown,
+): Readonly<{ lower: number; upper: number }> => {
+  const endSeq = (endEvent as { seq?: number } | undefined)?.seq
+  const endTurn = (endEvent as { data?: { turn?: number } } | undefined)?.data?.turn ?? turn
+  let upper = endSeq === undefined ? events.length : events.findIndex(event => event.seq === endSeq)
+  if (upper < 0) upper = events.length
+  let lower = -1
+  let untagged = -1
+  for (let index = upper - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'turn/start') continue
+    const eventTurn = (event.data as { turn?: number } | undefined)?.turn
+    if (endTurn === undefined || eventTurn === endTurn) {
+      lower = index
+      break
+    }
+    // A start without a turn number is the best bound an older log can offer; keep looking for an
+    // exact match first, so a nearby untagged turn cannot swallow a later tagged one.
+    if (eventTurn === undefined && untagged === -1) untagged = index
+  }
+  if (lower === -1) lower = untagged
+  return Object.freeze({ lower, upper })
+}
+
 /** Read one assistant message's text, bounded for diagnostics. */
 const assistantTextOf = (event: SessionEventLike | undefined, limit = 400): string | undefined => {
   const message = (event?.data as { message?: { content?: readonly { type: string; text?: string }[] } } | undefined)?.message
@@ -2554,8 +2641,9 @@ export const runSessionTool = async (
             { session: sessionId, compaction },
           ), caller, me)
         }
+        const requestId = `superagent-append-${randomUUID()}`
         const admitted = await controller.prompt({
-          requestId: `superagent-append-${randomUUID()}`,
+          requestId,
           sessionId,
           mode: delivery.used === 'interrupt' ? 'steer' : 'queue',
           content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
@@ -2563,11 +2651,14 @@ export const runSessionTool = async (
         const delivered = deliveryOutcome(
           requestedDelivery, delivery.used, delivery.fallback, wasRunning, admitted.accepted, insertionSeqOf(ctx, sessionId),
         )
-        const ledger = await recordTaskLedger(ctx as ToolHost['ctx'], caller, workspace, textArg.trim(), sessionId, options.at, reportTo, context.store)
+        const ledger = await recordTaskLedger(
+          ctx as ToolHost['ctx'], caller, workspace, textArg.trim(), sessionId, options.at, reportTo, context.store, requestId,
+        )
         if (reportTo !== undefined) {
-          context.tasks.set(sessionId, {
+          enqueueTaskRecord(context.tasks, sessionId, {
             superSession: reportTo,
             workspace: workspace.path,
+            requestId,
             ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
             ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
           })
@@ -2637,17 +2728,21 @@ export const runSessionTool = async (
             ), caller, me)
           }
         }
+        const requestId = `superagent-task-${randomUUID()}`
         await controller.prompt({
-          requestId: `superagent-task-${randomUUID()}`,
+          requestId,
           sessionId,
           mode: 'queue',
           content: [{ type: 'text', text: composeTask(taskArg.trim(), curateMemory) }],
         }, new AbortController().signal)
-        const ledger = await recordTaskLedger(ctx as ToolHost['ctx'], caller, workspace, taskArg.trim(), sessionId, options.at, reportTo, context.store)
+        const ledger = await recordTaskLedger(
+          ctx as ToolHost['ctx'], caller, workspace, taskArg.trim(), sessionId, options.at, reportTo, context.store, requestId,
+        )
         if (reportTo !== undefined) {
-          context.tasks.set(sessionId, {
+          enqueueTaskRecord(context.tasks, sessionId, {
             superSession: reportTo,
             workspace: workspace.path,
+            requestId,
             ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
           })
         }
@@ -2699,8 +2794,9 @@ export const runSessionTool = async (
             { session: sessionArg, compaction },
           ), caller, me)
         }
+        const requestId = `superagent-followup-${randomUUID()}`
         const admitted = await controller.prompt({
-          requestId: `superagent-followup-${randomUUID()}`,
+          requestId,
           sessionId: sessionArg,
           mode: delivery.used === 'interrupt' ? 'steer' : 'queue',
           content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
@@ -2710,12 +2806,15 @@ export const runSessionTool = async (
         )
         const ledger: LedgerAttempt = workspace === undefined
           ? Object.freeze({})
-          : await recordTaskLedger(ctx as ToolHost['ctx'], caller, workspace, textArg.trim(), sessionId, options.at, reportTo, context.store)
+          : await recordTaskLedger(
+            ctx as ToolHost['ctx'], caller, workspace, textArg.trim(), sessionId, options.at, reportTo, context.store, requestId,
+          )
         if (reportTo !== undefined) {
-          const known = context.tasks.get(sessionId)
-          context.tasks.set(sessionId, {
+          const known = lastTaskRecord(context.tasks, sessionId)
+          enqueueTaskRecord(context.tasks, sessionId, {
             superSession: reportTo,
             workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
+            requestId,
             ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
             ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
           })
@@ -3043,8 +3142,8 @@ export const runSessionTool = async (
         })
         const sessionId = String(forked.sessionId)
         if (reportTo !== undefined) {
-          const known = context.tasks.get(sessionArg)
-          context.tasks.set(sessionId, {
+          const known = lastTaskRecord(context.tasks, sessionArg)
+          enqueueTaskRecord(context.tasks, sessionId, {
             superSession: reportTo,
             workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
           })
@@ -3202,12 +3301,22 @@ export const runLedgerTool = async (
   return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
 }
 
-/** The last assistant text of one Session, skipping reasoning and tool-call blocks. */
-const lastAssistantText = (agent: unknown): string | undefined => {
-  const session = (agent as { session?: { snapshotEvents?: () => readonly { type: string; data?: unknown }[] } }).session
-  const events = session?.snapshotEvents?.() ?? []
-  for (const event of [...events].reverse()) {
-    if (event.type !== 'assistant/message') continue
+/**
+ * The last assistant text of one turn, skipping reasoning and tool-call blocks.
+ *
+ * Bound to the turn that just ended: a later turn's message already in the log must not become
+ * this turn's task outcome.
+ * @param agent - the Session whose turn ended.
+ * @param turn - the ending turn number, when known.
+ * @param endEvent - the committed `turn/end` event, when available.
+ * @returns the last assistant text inside the turn, or undefined.
+ */
+const lastAssistantText = (agent: unknown, turn?: number, endEvent?: unknown): string | undefined => {
+  const events = eventsOf(agent)
+  const { lower, upper } = turnBounds(events, turn, endEvent)
+  for (let index = upper - 1; index > lower; index -= 1) {
+    const event = events[index]
+    if (event?.type !== 'assistant/message') continue
     const message = (event.data as { message?: { content?: readonly { type: string; text?: string }[] } }).message
     const text = (message?.content ?? [])
       .filter(block => block.type === 'text')
@@ -3230,6 +3339,7 @@ const lastAssistantText = (agent: unknown): string | undefined => {
  * @param agent - the workspace Session whose turn just ended.
  * @param signal - the turn-end signal.
  * @param turnEnd - how the turn ended; a non-`completed` kind reports the failure instead of text.
+ * @param endEvent - the committed `turn/end` event, so the outcome is that turn's last text.
  * @returns whether a report was delivered.
  */
 export const deliverTaskReport = async (
@@ -3242,6 +3352,7 @@ export const deliverTaskReport = async (
     error?: { message?: string; code?: string; status?: number }
     reason?: { kind?: string }
   }>,
+  endEvent?: unknown,
 ): Promise<boolean> => {
   const controller = sessionControllerOf(host.ctx)
   if (controller === undefined) {
@@ -3289,7 +3400,7 @@ export const deliverTaskReport = async (
       return false
     }
   }
-  const text = lastAssistantText(agent)
+  const text = lastAssistantText(agent, undefined, endEvent)
   if (text === undefined) {
     host.ctx.logger.warn(
       'superagent: the task report for %s from %s has no assistant text; sending a minimal report',
@@ -3329,21 +3440,212 @@ export const deliverTaskReport = async (
 }
 
 /**
- * Find the newest pending dispatch whose ledger `session` field names this workspace Session.
+ * Find the oldest pending dispatch whose ledger `session` field names this workspace Session.
  *
+ * This is the compatibility/FIFO view for records written before prompt identities were stored.
  * The in-memory task map is intentionally not the source of truth: a live plugin reload while a
- * long workspace turn runs replaces the map, but the ledger survives. Only `pending` tasks match;
- * a returned or failed task is a historical record and must not produce a second report.
+ * long workspace turn runs replaces the map, but the ledger survives.
  * @param root - the super workspace root that owns `.superagent/ledger`.
  * @param sessionId - the workspace Session whose turn just ended.
- * @returns the pending task, or undefined when none is bound to this Session.
+ * @returns the oldest pending task, or undefined when none is bound to this Session.
  */
 export const pendingDispatchForSession = async (
   root: string,
   sessionId: string,
 ): Promise<DispatchLedgerTask | undefined> => {
   const rows = await listDispatchTasks(root, { status: 'pending', limit: 100 })
-  return rows.find(row => row.sessionId === sessionId)
+  return rows.filter(row => row.sessionId === sessionId).at(-1)
+}
+
+/**
+ * One dispatch binding that may own a workspace Session's turn.
+ *
+ * `requestId` is the deterministic key: the accepted `user/message` carries it as `source.rpcId`,
+ * so a turn end can name the task the turn actually ran instead of the newest task on the Session.
+ */
+interface DispatchCandidate {
+  readonly taskId?: string
+  readonly requestId?: string
+  readonly status?: DispatchLedgerStatus
+  readonly dispatchedAt: string
+  readonly orphaned: boolean
+  readonly record: TaskSessionRecord
+}
+
+/** Stable identity for de-duplicating one candidate across store, ledger and memory. */
+const candidateKey = (candidate: DispatchCandidate): string =>
+  candidate.taskId ?? candidate.requestId ?? `${candidate.record.workspace}\u0000${candidate.dispatchedAt}`
+
+/** Build one candidate from a ledger task, filling requestId/usage from the live record when known. */
+const candidateOfTask = (
+  task: DispatchLedgerTask,
+  known: TaskSessionRecord | undefined,
+  superSession: string,
+  root: string,
+): DispatchCandidate => {
+  const requestId = task.requestId ?? known?.requestId
+  return {
+    taskId: task.id,
+    ...(requestId === undefined ? {} : { requestId }),
+    status: task.status,
+    dispatchedAt: task.dispatchedAt,
+    orphaned: false,
+    record: {
+      superSession,
+      workspace: task.workspacePath,
+      ledger: Object.freeze({ root, task }),
+      ...(requestId === undefined ? {} : { requestId }),
+      ...(known?.usageBefore === undefined ? {} : { usageBefore: known.usageBefore }),
+    },
+  }
+}
+
+/**
+ * Every dispatch binding known for one Session, from the durable store, the Markdown projection and
+ * the live map.
+ *
+ * The store is authoritative; Markdown remains the compatibility projection for a deployment
+ * without storage, and the live map keeps records whose ledger write failed. Candidates include
+ * returned and failed tasks on purpose: a turn that is genuinely bound to one of them must still
+ * report, and only the binding decides that — not the ledger status.
+ * @param host - the plugin host, for logging.
+ * @param sessionId - the workspace Session whose turn ended.
+ * @param tasks - the live dispatch queues.
+ * @param store - the durable store, when composed.
+ * @param superHome - the super workspace root, when known.
+ * @returns candidates plus an index by prompt identity.
+ */
+const dispatchCandidatesForSession = async (
+  host: ToolHost,
+  sessionId: string,
+  tasks: Map<string, readonly TaskSessionRecord[]>,
+  store: DispatchStore | undefined,
+  superHome: string | undefined,
+): Promise<Readonly<{ candidates: readonly DispatchCandidate[]; byRequest: ReadonlyMap<string, DispatchCandidate> }>> => {
+  const knownList = tasks.get(sessionId) ?? []
+  const knownByTask = new Map<string, TaskSessionRecord>()
+  const knownByRequest = new Map<string, TaskSessionRecord>()
+  for (const record of knownList) {
+    if (record.ledger !== undefined) knownByTask.set(record.ledger.task.id, record)
+    if (record.requestId !== undefined) knownByRequest.set(record.requestId, record)
+  }
+
+  const root = superHome ?? store?.root
+  const candidates: DispatchCandidate[] = []
+  const seenTask = new Set<string>()
+  const seenRequest = new Set<string>()
+  const remember = (candidate: DispatchCandidate): void => {
+    candidates.push(candidate)
+    if (candidate.taskId !== undefined) seenTask.add(candidate.taskId)
+    if (candidate.requestId !== undefined) seenRequest.add(candidate.requestId)
+  }
+
+  if (store !== undefined) {
+    try {
+      for (const { id, record } of await store.recordsForSession(sessionId)) {
+        const task = taskFromRecord(record, id)
+        const known = knownByTask.get(id) ?? (task.requestId === undefined ? undefined : knownByRequest.get(task.requestId))
+        const requestId = task.requestId ?? known?.requestId
+        const superSession = record.superSession?.trim() === '' || record.superSession === undefined
+          ? known?.superSession ?? ''
+          : record.superSession
+        remember({
+          taskId: id,
+          ...(requestId === undefined ? {} : { requestId }),
+          status: task.status,
+          dispatchedAt: task.dispatchedAt,
+          orphaned: record.orphanedAt !== undefined,
+          record: {
+            superSession,
+            workspace: task.workspacePath,
+            ledger: Object.freeze({ root: root ?? store.root, task }),
+            ...(requestId === undefined ? {} : { requestId }),
+            ...(known?.usageBefore === undefined ? {} : { usageBefore: known.usageBefore }),
+          },
+        })
+      }
+    } catch (error: unknown) {
+      host.ctx.logger.warn(
+        'superagent: could not read the durable dispatch store for %s; trying the Markdown ledger: %s',
+        sessionId,
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+  }
+
+  if (root !== undefined) {
+    try {
+      for (const row of await listDispatchTasks(root, { limit: 100 })) {
+        if (row.sessionId !== sessionId || seenTask.has(row.id)) continue
+        const known = knownByTask.get(row.id)
+          ?? (row.requestId === undefined ? undefined : knownByRequest.get(row.requestId))
+        remember(candidateOfTask(row, known, known?.superSession ?? '', root))
+      }
+    } catch (error: unknown) {
+      host.ctx.logger.warn(
+        'superagent: could not read the dispatch ledger while recovering a report for %s: %s',
+        sessionId,
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+  }
+
+  // A record whose ledger write failed exists only in memory; it can still be matched and reported.
+  for (const record of knownList) {
+    if (record.requestId === undefined || seenRequest.has(record.requestId)) continue
+    const task = record.ledger?.task
+    if (task !== undefined && seenTask.has(task.id)) continue
+    remember({
+      ...(task === undefined ? {} : { taskId: task.id, status: task.status }),
+      requestId: record.requestId,
+      dispatchedAt: task?.dispatchedAt ?? '',
+      orphaned: false,
+      record,
+    })
+  }
+
+  const byRequest = new Map<string, DispatchCandidate>()
+  for (const candidate of candidates) {
+    if (candidate.requestId !== undefined && !byRequest.has(candidate.requestId)) {
+      byRequest.set(candidate.requestId, candidate)
+    }
+  }
+  return Object.freeze({ candidates: Object.freeze(candidates), byRequest })
+}
+
+/** The prompt identities one turn claimed, read from its own `user/message` events. */
+interface TurnPromptScan {
+  /** Request identities in claim order; each is the `requestId` of one admitted dispatch. */
+  readonly requestIds: readonly string[]
+  /** Whether the turn carries any prompt identity at all. */
+  readonly sawPrompt: boolean
+}
+
+/**
+ * Read the prompt identities recorded inside one turn.
+ *
+ * The turn boundary comes from the `turn/start` matching the ending turn; when the log does not
+ * carry turn numbers (older/duck-typed hosts), the whole visible log is scanned rather than
+ * guessing from dispatch time.
+ * @param agent - the Session whose turn ended.
+ * @param turn - the ending turn number, when known.
+ * @param endEvent - the committed `turn/end` event, for its seq.
+ * @returns the request identities and whether any prompt was seen.
+ */
+const turnPromptScan = (agent: unknown, turn: number | undefined, endEvent: unknown): TurnPromptScan => {
+  const events = eventsOf(agent)
+  const { lower, upper } = turnBounds(events, turn, endEvent)
+  const requestIds: string[] = []
+  let sawPrompt = false
+  for (let index = lower + 1; index < upper; index += 1) {
+    const event = events[index]
+    if (event?.type !== 'user/message') continue
+    const source = (event.data as { source?: { kind?: string; rpcId?: string } } | undefined)?.source
+    if (source?.kind !== 'user' || typeof source.rpcId !== 'string' || source.rpcId === '') continue
+    sawPrompt = true
+    if (!requestIds.includes(source.rpcId)) requestIds.push(source.rpcId)
+  }
+  return Object.freeze({ requestIds: Object.freeze(requestIds), sawPrompt })
 }
 
 /**
@@ -3384,157 +3686,156 @@ const superSessionForReport = async (
 }
 
 /**
- * Resolve a dispatched Session's turn end into a report, with a ledger fallback for a lost map.
+ * Resolve a dispatched Session's turn end into the report of the task that turn actually ran.
+ *
+ * The binding is the prompt identity (`requestId`) recorded when the task was admitted: the turn's
+ * `user/message.source.rpcId` names it, so several tasks queued on one Session settle one per turn,
+ * in dispatch order, and a task whose ledger entry was already resolved by an earlier misattributed
+ * turn is corrected by its own turn instead of being dropped. Only records without a prompt identity
+ * (written before this binding existed) fall back to FIFO.
  *
  * This is the logic behind `onTurnEnd`, kept separate so a remount can be exercised with an empty
  * {@link SessionToolContext.tasks} map. The ledger is resolved before delivery; neither a missing
  * report recipient nor a failed delivery may throw out of the turn-end hook.
  * @param host - the plugin host.
  * @param input - the child Session's turn-end input.
- * @param tasks - the capability's live dispatch map (possibly empty after a reload).
+ * @param tasks - the capability's live dispatch queues (possibly empty after a reload).
  * @param liveAgents - currently known agents, used only when the controller cannot list.
  * @param superHome - the configured super workspace root.
+ * @param store - the durable dispatch store, when composed.
  * @returns whether this turn end belonged to a dispatched Session and was handled.
  */
 export const handleTaskTurnEnd = async (
   host: ToolHost,
   input: TurnEndInput,
-  tasks: Map<string, TaskSessionRecord>,
+  tasks: Map<string, readonly TaskSessionRecord[]>,
   liveAgents: Iterable<unknown>,
   superHome: string | undefined,
   store?: DispatchStore,
 ): Promise<boolean> => {
   const sessionId = String(input.agent.id)
-  const known = tasks.get(sessionId)
-  let report = known
+  let loaded: Awaited<ReturnType<typeof dispatchCandidatesForSession>>
+  try {
+    loaded = await dispatchCandidatesForSession(host, sessionId, tasks, store, superHome)
+  } catch (error: unknown) {
+    host.ctx.logger.warn(
+      'superagent: the dispatch bindings for %s could not be read: %s',
+      sessionId,
+      error instanceof Error ? error.message : String(error),
+    )
+    return false
+  }
+  const { candidates, byRequest } = loaded
+  if (candidates.length === 0) return false
 
-  // The durable store is authoritative. A pending record carries its own superSession, so a
-  // reload cannot route a report by "newest visible super session" when the original is known.
-  if (store !== undefined) {
-    try {
-      const lookup = await store.lookupSession(sessionId)
-      if (lookup.available && lookup.record !== undefined) {
-        const durable = lookup.record
-        if (durable.status !== 'pending' || durable.orphanedAt !== undefined) return true
-        const root = superHome ?? store.root
-        const superSession = durable.superSession?.trim() === '' || durable.superSession === undefined
-          ? await superSessionForReport(host, root, liveAgents)
-          : durable.superSession
-        if (superSession === undefined) {
-          const unresolved: TaskSessionRecord = {
-            superSession: '',
-            workspace: durable.workspace.path,
-            ledger: { root, task: taskFromRecord(durable, lookup.id ?? '') },
-          }
-          try {
-            await resolveReportedTask(unresolved, 'turn ended; no visible super Session was available to receive the report', nowUtc(host.clock), store)
-          } catch (error: unknown) {
-            host.ctx.logger.warn(
-              'superagent: pending dispatch %s could not be resolved: %s',
-              lookup.id,
-              error instanceof Error ? error.message : String(error),
-            )
-          }
-          host.ctx.logger.warn(
-            'superagent: pending dispatch %s for %s was recovered from the durable store, but no super Session is visible to receive the report',
-            lookup.id,
-            sessionId,
-          )
-          return true
-        }
-        report = {
-          superSession,
-          workspace: durable.workspace.path,
-          ledger: { root, task: taskFromRecord(durable, lookup.id ?? '') },
-          ...(known?.usageBefore === undefined ? {} : { usageBefore: known.usageBefore }),
-        }
-      }
-    } catch (error: unknown) {
-      host.ctx.logger.warn(
-        'superagent: could not read the durable dispatch store for %s; trying the Markdown ledger: %s',
-        sessionId,
-        error instanceof Error ? error.message : String(error),
-      )
+  const turn = typeof input.turn === 'number'
+    ? input.turn
+    : (input.event.data as { turn?: number } | undefined)?.turn
+  const scan = turnPromptScan(input.agent, turn, input.event)
+  const matched: DispatchCandidate[] = []
+  const matchedKeys = new Set<string>()
+  for (const requestId of scan.requestIds) {
+    const candidate = byRequest.get(requestId)
+    if (candidate === undefined || candidate.orphaned) continue
+    const key = candidateKey(candidate)
+    if (matchedKeys.has(key)) continue
+    matched.push(candidate)
+    matchedKeys.add(key)
+  }
+
+  let targets = matched
+  // A matched turn is bound to its task, so it may correct an outcome an earlier turn wrote.
+  let corrected = true
+  if (targets.length === 0) {
+    const pending = candidates
+      .filter(candidate => !candidate.orphaned
+        && (candidate.status === undefined || candidate.status === 'pending'))
+      .sort((left, right) => left.dispatchedAt === right.dispatchedAt
+        ? 0
+        : left.dispatchedAt < right.dispatchedAt ? -1 : 1)
+    // A pre-binding record cannot be matched to a prompt; FIFO is the only order left. A record
+    // with a binding falls back to FIFO only when the log carries no prompt identity at all.
+    const legacy = pending.find(candidate => candidate.requestId === undefined)
+    const fallback = legacy ?? (scan.sawPrompt ? undefined : pending[0])
+    if (fallback !== undefined) {
+      targets = [fallback]
+      corrected = false
     }
   }
 
-  // Compatibility path: an old host has no domain, and an old deployment may have a Markdown-only
-  // pending entry that predates the first migration. Historical returned/failed rows are filtered.
-  if (report === undefined && superHome !== undefined) {
-    let pending: DispatchLedgerTask | undefined
-    try {
-      pending = await pendingDispatchForSession(superHome, sessionId)
-    } catch (error: unknown) {
-      host.ctx.logger.warn(
-        'superagent: could not read the dispatch ledger while recovering a report for %s: %s',
-        sessionId,
-        error instanceof Error ? error.message : String(error),
-      )
-      return false
-    }
-    if (pending !== undefined) {
-      const superSession = await superSessionForReport(host, superHome, liveAgents)
-      if (superSession === undefined) {
-        const unresolved: TaskSessionRecord = {
-          superSession: '',
-          workspace: pending.workspacePath,
-          ledger: { root: superHome, task: pending },
-        }
-        try {
-          await resolveReportedTask(unresolved, 'turn ended; no visible super Session was available to receive the report', nowUtc(host.clock), store)
-        } catch (error: unknown) {
-          host.ctx.logger.warn(
-            'superagent: recovered pending dispatch %s but could not resolve its ledger entry: %s',
-            pending.id,
-            error instanceof Error ? error.message : String(error),
-          )
-        }
-        host.ctx.logger.warn(
-          'superagent: pending dispatch %s for %s was recovered from the ledger, but no super Session is visible to receive the report',
-          pending.id,
-          sessionId,
-        )
-        return true
-      }
-      report = {
-        superSession,
-        workspace: pending.workspacePath,
-        ledger: { root: superHome, task: pending },
-      }
-      host.ctx.logger.info(
-        'superagent: recovered pending dispatch %s for %s from the ledger after an in-memory miss',
-        pending.id,
-        sessionId,
-      )
-    }
+  if (targets.length === 0) {
+    // A known dispatched Session whose turn owns no task stays consumed; an archived record in
+    // particular must not fall through to the dispatcher pass.
+    return candidates.some(candidate => candidate.orphaned)
   }
-
-  if (report === undefined) return false
 
   const reason = input.event.data.reason as {
     kind?: string
     error?: { message?: string; code?: string; status?: number }
   }
-  const text = reason.kind === 'completed' ? lastAssistantText(input.agent) : undefined
-  try {
-    await resolveReportedTask(report, text ?? `turn ended ${reason.kind ?? 'unknown'}`, nowUtc(host.clock), store)
-  } catch (error: unknown) {
-    host.ctx.logger.warn(
-      'superagent: the dispatch ledger entry for %s could not be resolved: %s',
-      report.ledger?.task.id ?? report.workspace,
-      error instanceof Error ? error.message : String(error),
-    )
+  const text = reason.kind === 'completed' ? lastAssistantText(input.agent, turn, input.event) : undefined
+  const at = nowUtc(host.clock)
+  let handled = false
+  for (const target of targets) {
+    const reportRoot = target.record.ledger?.root ?? superHome ?? store?.root
+    let report = target.record
+    if (report.superSession.trim() === '') {
+      const superSession = reportRoot === undefined
+        ? undefined
+        : await superSessionForReport(host, reportRoot, liveAgents)
+      if (superSession === undefined) {
+        try {
+          await resolveReportedTask(
+            report,
+            'turn ended; no visible super Session was available to receive the report',
+            at,
+            store,
+            { correctResolved: corrected },
+          )
+        } catch (error: unknown) {
+          host.ctx.logger.warn(
+            'superagent: dispatch %s could not be resolved: %s',
+            target.taskId ?? sessionId,
+            error instanceof Error ? error.message : String(error),
+          )
+        }
+        host.ctx.logger.warn(
+          'superagent: dispatch %s for %s was recovered, but no super Session is visible to receive the report',
+          target.taskId ?? '(unrecorded)',
+          sessionId,
+        )
+        handled = true
+        continue
+      }
+      report = { ...report, superSession }
+    }
+    try {
+      await resolveReportedTask(
+        report,
+        text ?? `turn ended ${reason.kind ?? 'unknown'}`,
+        at,
+        store,
+        { correctResolved: corrected },
+      )
+    } catch (error: unknown) {
+      host.ctx.logger.warn(
+        'superagent: the dispatch ledger entry for %s could not be resolved: %s',
+        report.ledger?.task.id ?? report.workspace,
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+    try {
+      await deliverTaskReport(host, report, input.agent, input.signal, reason, input.event)
+    } catch (error: unknown) {
+      host.ctx.logger.warn(
+        'superagent: the task report for %s could not be delivered: %s',
+        report.superSession,
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+    handled = true
   }
-  try {
-    await deliverTaskReport(host, report, input.agent, input.signal, reason)
-  } catch (error: unknown) {
-    host.ctx.logger.warn(
-      'superagent: the task report for %s could not be delivered: %s',
-      report.superSession,
-      error instanceof Error ? error.message : String(error),
-    )
-  }
-  return true
+  return handled
 }
 
 /** The dispatch record lives in its own module so `issue_work` can read the same binding. */
@@ -4073,7 +4374,7 @@ export const createSuperagentContribution = (
   let disposed = false
   const superHome = home === undefined || home.trim() === '' ? undefined : home
   /** Sessions this super agent started or addressed, so their turn ends report back (DH-719). */
-  const tasks = new Map<string, TaskSessionRecord>()
+  const tasks = new Map<string, readonly TaskSessionRecord[]>()
   // Optional by design: a composition without storageDomain keeps the Markdown ledger.
   const dispatchStore = superHome === undefined ? undefined : createDispatchStore(host.ctx, superHome)
   // The filesystem fence gets the registered workspaces, so the super agent can hand files over
