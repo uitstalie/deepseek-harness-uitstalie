@@ -165,6 +165,20 @@ describe('jira bundle composition', () => {
     expect(existsSync(fileURLToPath(STANDALONE_BUNDLE))).toBe(false)
   })
 
+  it('pairs the dispatch surface with the executor preset it requires', async () => {
+    // The dispatch tool refuses to start an executor Session unless the row names a worker
+    // preset, and the delivered composition is the only place that pairing can be made.
+    const rows = shippedJiraPatches()
+      .flatMap(patch => (patch.insert ?? []) as readonly { id?: string; config?: unknown }[])
+    const agent = rows.find(row => row.id === 'jira-agent')
+    expect(agent?.config).toMatchObject({ superagent_worker_preset: 'jira-worker' })
+    const workerPatch = await readFile(
+      new URL('../../bundle/web-app/presets/jira-worker.patch.yml', import.meta.url),
+      'utf8',
+    )
+    expect(workerPatch).toContain('id: jira-worker')
+  })
+
   it('registers three tools, /jira and three skills once, then writes what the command reads (DH-308)', async () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-jira-compose-'))
     const ledger = join(root, 'ledger')

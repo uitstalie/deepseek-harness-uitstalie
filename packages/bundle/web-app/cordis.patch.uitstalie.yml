@@ -34,6 +34,12 @@
           enabled: false
     - id: jira-agent
       name: '@deepseek-ai/dsh-jira-agent'
+      config:
+        # The executor preset shipped by this same bundle (presets/jira-worker.patch.yml). The
+        # dispatch tool refuses to start an executor Session without it, so the delivered
+        # composition must pair the two; the super agent itself stays opt-in through
+        # `superagent_home`, which a person chooses from the jira settings page.
+        superagent_worker_preset: jira-worker
     - id: agent-instructions-plus
       name: '@deepseek-ai/dsh-agent-instructions-plus'
     - id: ui-models-dev
