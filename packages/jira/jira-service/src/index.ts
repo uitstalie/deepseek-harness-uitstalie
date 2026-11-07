@@ -254,9 +254,6 @@ export class JiraService extends Service implements JiraServiceApi {
     this.host = host
     this.pushEnabled = pushEnabled
     this.generation += 1
-    this.root = root
-    this.host = host
-    this.pushEnabled = pushEnabled
     // The queue refuses new work immediately and resolves after the flush it already admitted has
     // observed the close; a later open on the new root cannot be affected by that outcome because
     // `onOutcome` only records into the queue the service currently publishes.

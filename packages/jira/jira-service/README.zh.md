@@ -1,5 +1,5 @@
 ---
-description: "jira 账本的唯一写入者：解析根目录、打开存储、持有 push 队列与 settle、注册 ctx.jira 服务，并发布 remote.jira 浏览器面；该面唯一的写入是人类对提案的确认。"
+description: "jira 账本的唯一写入者：解析根目录、打开存储、持有 push 队列与 settle、注册 ctx.jira 服务，并发布 remote.jira 浏览器面；该面唯一的账本写入是人类对提案的确认，另有一个选择超级工作区的宿主配置写入。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-jira-service` 是账本的唯一写入者：一行拥有一个账本，解析它的根目录、读取本机身份、打开存储、持有唯一的 push 队列、重新生成派生文件，并在每次提交后发出 `changed`。浏览器、其他能力与 CLI 都通过 `ctx.jira` 共享这个服务，因此一个账本永远不会有两个写入者。它还发布 `remote.jira`，即浏览器面：页面需要的读取，加上一个由账本仓库的 `git user.name` 署名的人类确认；其余任意写入仍走 `ctx.jira`。push 默认关闭：写入先是本地提交，直到 `push.enabled` 打开队列。
+`dsh-jira-service` 是账本的唯一写入者：一行拥有一个账本，解析它的根目录、读取本机身份、打开存储、持有唯一的 push 队列、重新生成派生文件，并在每次提交后发出 `changed`。浏览器、其他能力与 CLI 都通过 `ctx.jira` 共享这个服务，因此一个账本永远不会有两个写入者。它还发布 `remote.jira`，即浏览器面：页面需要的读取、一个由账本仓库的 `git user.name` 署名的人类确认，以及持久化 `superagent_home` 的超级工作区设置；其余任意账本写入仍走 `ctx.jira`。push 默认关闭：写入先是本地提交，直到 `push.enabled` 打开队列。
 
 ## 目录
 
@@ -29,7 +29,7 @@ kind: "package-reference"
 
 第二个消费方——UI、另一个能力、一个 shell——通过 `ctx.jira` 共享这个服务；其他任何人都不 push。跨进程时，存储自身的文件锁就是守卫，因此 CLI 可以在宿主会话打开时提交。
 
-`ctx.jira` 实现 [`src/types.ts`](src/types.ts) 里的约定：读方法（`list`、`listWithRejected`、`get`、`readIssue`、`board`、`doctor`、`searchKnowledge`、`kbGet`、`counts`、`superagentStatus`、`superagentHistory`、`superagentTriggers`）、写方法（`create`、`createIssue`、`mutateIssue`、`batchClose`、`createTag`、`transact`、`kbCreate`、`kbUpdate`）、`gitHead`、`recordSession`、`closeOutSession`、`sync` 与 `settle`，以及 `changed` 订阅。每个方法返回 `Result`；错误是带十二个错误码之一的 `JiraError`；权限不在这里判定——`jira-agent` 的守卫在写入到达账本之前就拒绝它。
+`ctx.jira` 实现 [`src/types.ts`](src/types.ts) 里的约定：读方法（`status`、`list`、`listWithRejected`、`get`、`readIssue`、`board`、`doctor`、`snapshot`、`queryIssues`、`tagsLint`、`syncState`、`searchKnowledge`、`kbGet`、`counts`、`superagentStatus`、`superagentHistory`、`superagentTriggers`）、写方法（`create`、`createIssue`、`mutateIssue`、`batchClose`、`createTag`、`transact`、`kbCreate`、`kbUpdate`、`superagentConfirm`）、`gitHead`、`recordSession`、`closeOutSession`、`sync` 与 `settle`，以及 `changed` 订阅。每个方法返回 `Result`；错误是带十二个错误码之一的 `JiraError`；权限不在这里判定——`jira-agent` 的守卫在写入到达账本之前就拒绝它。
 
 工具 runner 不再持有存储：它们调用 `ctx.jira`，由服务自己记录每次写入，因此 `changed` 与 push 队列无法被绕过。`/jira` 的人类视图仍直接打开存储；那一面单独跟踪（DH-205）。
 
@@ -51,8 +51,10 @@ kind: "package-reference"
 | `superagentConfirm(key)` | 记录人类对当前提案的 `[claim-approved]` 确认；幂等 |
 | `superagentHistory(limit?, before?)` | 最近的账本提交，最新在前 |
 | `superagentTriggers(limit?, before?)` | 最近的提案评论，最新在前 |
+| `superagentState()` | 超级 agent 现在住在哪里（以 profile 行当前记录为准） |
+| `superagentSetup(path)` | 选择超级工作区：创建目录、注册并置顶，然后把 `superagent_home` 持久化到 `jira-agent` 行 |
 
-唯一的写入是 `superagentConfirm`：它追加一条与 CLI 写法相同的 `human:<git user.name>` `[claim-approved]` 评论，浏览器不能选择这个名字，也写不了别的。其余写入仍走模型的工具或 CLI，由 agent 的守卫约束。每个结果都是纯 JSON——branded id、时间戳与身份都以 `string` 到达——因此浏览器不需要账本类型。账本失败会变成 `RemoteError`，其 code 是 `jira/<kebab-code>`（每个 `jira-core` 错误码一个），`details.jiraCode` 是账本自己的错误码；message 是账本格式化后的报告。
+浏览器面有两个写入。`superagentConfirm` 追加一条与 CLI 写法相同的 `human:<git user.name>` `[claim-approved]` 评论，浏览器不能选择这个名字。`superagentSetup` 改的是宿主配置而不是账本：它创建所选目录、注册并置顶工作区，并通过宿主的配置编辑器写入 `superagent_home`（没有配置编辑器的部署以 `jira/write-failed` 拒绝）。其余写入仍走模型的工具或 CLI，由 agent 的守卫约束。每个结果都是纯 JSON——branded id、时间戳与身份都以 `string` 到达——因此浏览器不需要账本类型。账本失败会变成 `RemoteError`，其 code 是 `jira/<kebab-code>`（每个 `jira-core` 错误码一个），`details.jiraCode` 是账本自己的错误码；message 是账本格式化后的报告。
 
 <a id="configuration"></a>
 

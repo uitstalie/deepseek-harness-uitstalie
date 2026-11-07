@@ -1,5 +1,5 @@
 ---
-description: "The jira ledger's single writer: resolves the root, opens the store, owns the push queue and settle, registers the ctx.jira service, and publishes the remote.jira browser face, whose one write is a person's confirmation of a proposal."
+description: "The jira ledger's single writer: resolves the root, opens the store, owns the push queue and settle, registers the ctx.jira service, and publishes the remote.jira browser face, whose only ledger write is a person's confirmation of a proposal and whose one host-configuration write chooses the super workspace."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-jira-service` is the ledger's single writer: one row owns one ledger, resolves its root, reads this machine's identity, opens the store, holds the one push queue, regenerates the derived files, and emits `changed` whenever it commits. The browser, other capabilities, and the CLI share that service through `ctx.jira`, so a ledger never has two writers. It also publishes `remote.jira`, the browser face: the reads a page needs plus one human confirmation, authored by the ledger repository's `git user.name`; every arbitrary write stays on `ctx.jira`. Push is off by default: writes stay local commits until `push.enabled` turns the queue on.
+`dsh-jira-service` is the ledger's single writer: one row owns one ledger, resolves its root, reads this machine's identity, opens the store, holds the one push queue, regenerates the derived files, and emits `changed` whenever it commits. The browser, other capabilities, and the CLI share that service through `ctx.jira`, so a ledger never has two writers. It also publishes `remote.jira`, the browser face: the reads a page needs, one human confirmation authored by the ledger repository's `git user.name`, and the super-workspace setup that persists `superagent_home`; every arbitrary ledger write stays on `ctx.jira`. Push is off by default: writes stay local commits until `push.enabled` turns the queue on.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ One `jira-service` row owns one ledger: it resolves the root, reads this machine
 
 A second consumer — a UI, another capability, a shell — shares this service through `ctx.jira`; nobody else pushes. Across processes the store's own file locks are the guard, so the CLI can commit while a host session is open.
 
-`ctx.jira` implements the contract in [`src/types.ts`](src/types.ts): read methods (`list`, `listWithRejected`, `get`, `readIssue`, `board`, `doctor`, `searchKnowledge`, `kbGet`, `counts`, `superagentStatus`, `superagentHistory`, `superagentTriggers`), write methods (`create`, `createIssue`, `mutateIssue`, `batchClose`, `createTag`, `transact`, `kbCreate`, `kbUpdate`), `gitHead`, `recordSession`, `closeOutSession`, `sync` and `settle`, plus the `changed` subscription. Every method returns a `Result`; errors are `JiraError` with one of the twelve codes, and permission is not decided here — the guard in `jira-agent` refuses a write before it reaches the ledger.
+`ctx.jira` implements the contract in [`src/types.ts`](src/types.ts): read methods (`status`, `list`, `listWithRejected`, `get`, `readIssue`, `board`, `doctor`, `snapshot`, `queryIssues`, `tagsLint`, `syncState`, `searchKnowledge`, `kbGet`, `counts`, `superagentStatus`, `superagentHistory`, `superagentTriggers`), write methods (`create`, `createIssue`, `mutateIssue`, `batchClose`, `createTag`, `transact`, `kbCreate`, `kbUpdate`, `superagentConfirm`), `gitHead`, `recordSession`, `closeOutSession`, `sync` and `settle`, plus the `changed` subscription. Every method returns a `Result`; errors are `JiraError` with one of the twelve codes, and permission is not decided here — the guard in `jira-agent` refuses a write before it reaches the ledger.
 
 The tool runners no longer hold the store: they call `ctx.jira`, and the service records each write itself, so `changed` and the push queue cannot be bypassed. `/jira` still opens the store for its human-facing views; that surface is tracked separately (DH-205).
 
@@ -51,8 +51,10 @@ The tool runners no longer hold the store: they call `ctx.jira`, and the service
 | `superagentConfirm(key)` | records a person's `[claim-approved]` confirmation of the pending proposal; idempotent |
 | `superagentHistory(limit?, before?)` | recent ledger commits, newest first |
 | `superagentTriggers(limit?, before?)` | recent proposal comments, newest first |
+| `superagentState()` | where the super agent lives, as the profile row currently records it |
+| `superagentSetup(path)` | chooses the super workspace: creates the directory, registers and pins it, then persists `superagent_home` on the `jira-agent` row |
 
-The only write is `superagentConfirm`: it appends the same `human:<git user.name>` `[claim-approved]` comment a person would write with the CLI, and the browser cannot choose that name or write anything else. Every other write goes through the model's tools or the CLI, which the agent's guard constrains. Every result is plain JSON — branded ids, timestamps and identities arrive as `string` — so the browser needs no ledger types. A ledger failure becomes a `RemoteError` whose code is `jira/<kebab-code>` (one per `jira-core` code) and whose `details.jiraCode` is the ledger's own code; the message is the ledger's formatted report.
+The browser face has two writes. `superagentConfirm` appends the same `human:<git user.name>` `[claim-approved]` comment a person would write with the CLI; the browser cannot choose that name. `superagentSetup` changes host configuration rather than the ledger: it creates the chosen directory, registers and pins the workspace, and writes `superagent_home` through the host's config editor (so a deployment without one refuses with `jira/write-failed`). Every other write goes through the model's tools or the CLI, which the agent's guard constrains. Every result is plain JSON — branded ids, timestamps and identities arrive as `string` — so the browser needs no ledger types. A ledger failure becomes a `RemoteError` whose code is `jira/<kebab-code>` (one per `jira-core` code) and whose `details.jiraCode` is the ledger's own code; the message is the ledger's formatted report.
 
 <a id="configuration"></a>
 

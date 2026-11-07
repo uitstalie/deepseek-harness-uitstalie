@@ -80,6 +80,20 @@ describe('jira-service writable row fields', () => {
     expect(service.status().pushEnabled).toBe(true)
   })
 
+  it('applies root, host and push from one committed update', async () => {
+    const service = await mount({ root: '/tmp/ledger-a', host: 'host-a', push: { enabled: false } })
+
+    if (captured === undefined) throw new Error('the row configuration was not captured')
+    updateVolatile(captured.root, JiraService.Config({ root: '/tmp/ledger-b' }).root)
+    updateVolatile(captured.host, JiraService.Config({ host: 'host-b' }).host)
+    updateVolatile(captured.push.enabled, JiraService.Config({ push: { enabled: true } }).push.enabled)
+    // One commit applies every changed field together; a single assignment step must not leave one
+    // of them at its previous value.
+    commit([])
+
+    expect(service.status()).toMatchObject({ root: '/tmp/ledger-b', host: 'host-b', pushEnabled: true })
+  })
+
   it('retires the opened queue on a root switch and awaits teardown', async () => {
     const first = await mkdtemp(join(tmpdir(), 'dsh-jira-ownership-a-'))
     const second = await mkdtemp(join(tmpdir(), 'dsh-jira-ownership-b-'))
