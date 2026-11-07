@@ -39,6 +39,7 @@ import {
 } from './memory-file.ts'
 import type { MemoryDocument, MemoryEntry } from './memory-file.ts'
 import { appendMemoryNotice, refreshMemorySnapshot } from './snapshot.ts'
+import { byteLength, errorMessage, truncateToBytes } from './text.ts'
 import type { SnapshotTextSink } from './tools.ts'
 import type { TurnRange } from './window.ts'
 
@@ -177,9 +178,9 @@ const lastCheckpointSeq = (document: MemoryDocument | undefined, sessionId: stri
 /**
  * Per-session summary job coordinator.
  *
- * The organizer calls {@link MemorySummaryRunner.onTurnEnd} for completed root
- * turns only. A session with a running pass records the latest turn as pending;
- * when the pass settles, exactly one follow-up pass starts for that turn.
+ * The provider filters turn endings before calling {@link MemorySummaryRunner.onTurnEnd}, so this
+ * runner only ever sees completed root turns. A session with a running pass records the latest
+ * turn as pending; when the pass settles, exactly one follow-up pass starts for that turn.
  */
 export class MemorySummaryRunner {
   private readonly sessions = new Map<SessionId, SessionSummaryState>()
@@ -708,34 +709,9 @@ function singleLine(text: string): string {
   return text.replaceAll(/\s+/gu, ' ').trim()
 }
 
-/** Count UTF-8 bytes. */
-function byteLength(text: string): number {
-  return Buffer.byteLength(text, 'utf8')
-}
-
 /** Truncate text to a character budget, appending an ellipsis when shortened. */
 function truncateChars(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text
   if (maxChars <= 1) return '…'.slice(0, maxChars)
   return `${text.slice(0, maxChars - 1)}…`
-}
-
-/** Truncate text to a byte budget, appending an ellipsis when shortened. */
-function truncateToBytes(text: string, maxBytes: number): string {
-  if (byteLength(text) <= maxBytes) return text
-  const ellipsis = '…'
-  let used = byteLength(ellipsis)
-  if (used > maxBytes) return ''
-  const kept: string[] = []
-  for (const character of text) {
-    used += byteLength(character)
-    if (used > maxBytes) break
-    kept.push(character)
-  }
-  return `${kept.join('')}${ellipsis}`
-}
-
-/** Flatten a thrown value into one line. */
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

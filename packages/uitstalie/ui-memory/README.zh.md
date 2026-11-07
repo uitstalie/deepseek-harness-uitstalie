@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 摘要
 
-`dsh-client-ui-memory` 是 memory provider 的设置页。它编辑 `memory` 行的 volatile 字段——detail、brief、forget 的轮次年龄，`MEMORY.md` 保留的会话数，正文预算，以及摘要 provider 与模型——并把改动作为一次带修订号的变更保存。它不持有记忆数据，也不注册工具：宿主 provider 在下次写入或摘要时应用保存的值。
+`dsh-client-ui-memory` 是 memory provider 的设置页。它编辑 `memory` 行 10 个 volatile 字段中的 7 个——detail、brief、forget 的轮次年龄，`MEMORY.md` 保留的会话数，正文预算，以及摘要 provider 与模型——并把改动作为一次带修订号的变更保存。`maxEntries`、`snapshotTemplate` 与 `snapshotPosition` 仍留在 profile YAML 里：第一个是保留上限，后两个改变 snapshot 到达模型的方式（见 provider 的 README）。它不持有记忆数据，也不注册工具：宿主 provider 在下次写入或摘要时应用保存的值。
 
 ## 目录
 

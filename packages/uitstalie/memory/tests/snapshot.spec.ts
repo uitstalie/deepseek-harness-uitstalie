@@ -189,7 +189,7 @@ test('a second write appends an update notice instead of rewriting the snapshot'
   expect(messageText(notices[0]!)).toContain('Memory updated: - [open] second conclusion')
 })
 
-test('a provider mounted over a session that already has a snapshot replaces it once', async () => {
+test('a provider mounted over a session that already has a snapshot appends a fresh one', async () => {
   const mounted = await mount()
   const first = await createRoot(mounted, 'memory-first')
   await callTool(mounted.ctx, first, 'memory_write', {

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-memory` 是 memory 能力提供者。它向 `dafeiyu` 组织者注册一个能力，由组织者把一段固定系统提示词与三个工具接到 root agent 上，并把完成的 turn 转回提供者。提供者拥有遗忘窗口、工作区 `.dsh/memory/sessions/MEMORY.md` 文件、条目模型、写入后自我替换的 snapshot，以及一个按会话运行的 job：写入 detail 摘要，把原始 turn 替换成 detail 与 brief checkpoint，并遗忘其正文。本步交付固定提示词段、带版本守卫写入的仓库、16 KiB 的 snapshot、分层摘要，以及可用的 `memory_write`、`memory_search` 与 `memory_read`。
+`dsh-memory` 是 memory 能力提供者。它向 `dafeiyu` 组织者注册一个能力，由组织者把一段固定系统提示词与三个工具接到 root agent 上，并把完成的 turn 转回提供者。提供者拥有遗忘窗口、工作区 `.dsh/memory/sessions/MEMORY.md` 文件、条目模型、只追加的 snapshot，以及一个按会话运行的 job：写入 detail 摘要，把原始 turn 替换成 detail 与 brief checkpoint，并遗忘其正文。本步交付固定提示词段、带版本守卫写入的仓库、16 KiB 的 snapshot、分层摘要，以及可用的 `memory_write`、`memory_search` 与 `memory_read`。
 
 ## 目录
 
@@ -53,9 +53,9 @@ kind: "package-reference"
 
 每次写入都会按归一化文本去重，且每个会话最多保留 `maxEntries` 条：超出时先丢最旧的整块（连同 frontmatter 的 turn 记录），因此文件不会无界增长。`/memory stats` 显示当前条目数、字节、kind 与 turn 区间；`/memory prune [keep]` 按需执行同样的去重与截断，并报告删除了多少。
 
-窗口阈值必须从 `detail` 到 `brief` 再到 `forget` 严格递增；摘要 provider 与 model 必须同时设置或同时为空；违反任一条的加载直接失败，而不是静默降级。提供者对六个服务是硬组合依赖：`ctx.dafeiyu`（组织者）、`ctx.dshStore`（`.dsh` 存储）、`ctx.fs`（其背后的文件系统）、`ctx.sessionQuery`（搜索、摘要与 turn 读取用的会话历史）、`ctx.jobs`（后台 job 注册表，且需有服务该 agent 的 controller），以及 `ctx.llm`（摘要模型调用）。组合里缺少任一个时本行保持 inactive。
+窗口阈值必须从 `detail` 到 `brief` 再到 `forget` 严格递增；摘要 provider 与 model 必须同时设置或同时为空；违反任一条的加载直接失败，而不是静默降级。提供者对五个服务是硬组合依赖：`ctx.dafeiyu`（组织者）、`ctx.dshStore`（`.dsh` 存储）、`ctx.sessionQuery`（搜索、摘要与 turn 读取用的会话历史）、`ctx.jobs`（后台 job 注册表，且需有服务该 agent 的 controller），以及 `ctx.llm`（摘要模型调用）。组合里缺少任一个时本行保持 inactive。它还直接 import `@deepseek-ai/dsh-session` 与 `@deepseek-ai/dsh-llm`（消息与会话类型）以及 `@deepseek-ai/dsh-fs`（存储错误类型）。
 
-组织者接线的贡献是 `scope: 'root'`：root agent 得到提示词段与三个工具，子 agent 两者都没有。哪些 agent 被接线、哪些完成的 turn 进入 `onTurnEnd`，由组织者而不是本包决定。
+组织者接线的贡献是 `scope: 'root'`：root agent 得到提示词段与三个工具，子 agent 两者都没有。哪些 agent 被接线由组织者决定；每一次 turn 结束都会进入 `onTurnEnd`，本包只对 `completed` 的 turn 启动摘要。
 
 <a id="understand-the-implementation"></a>
 
@@ -68,7 +68,7 @@ kind: "package-reference"
 - `src/window.ts` 是纯规划器。它按最新完成的 turn 计算每个 turn 的相对年龄，返回应转为 detail checkpoint 的区间，以及应转为 brief 或遗忘的区块，并报告 frontmatter 的窗口值，不触碰存储、模型或 surface。
 - `src/checkpoint.ts` 构造 memory checkpoint 消息，并用它替换 live surface 上的一段区间。来源是 memory 生产者的 `form: 'notice'` 加 `window: { from, to, tier }` 字段；这既把它与 snapshot 区分开，也让重启后的提供者找到自己的上一个节点。
 - `src/prompt.ts` 持有唯一的固定提示词段：名字 `memory`，顺序 `2350`（在 `2300` 的 session-query 工具与 `2400` 的 goal 工具之间），文本静态，不随 turn 或 agent 变化。
-- `src/snapshot.ts` 通过 `MessageSourceMap` 把 `memory` 消息来源声明为 `{ form: 'snapshot' } | { form: 'notice' }` 联合，渲染 snapshot 文本，并把持久 user 消息 append 或 replace 到 live surface 上。notice 形式可携带 checkpoint 的 window。
+- `src/snapshot.ts` 通过 `MessageSourceMap` 把 `memory` 消息来源声明为 `{ form: 'snapshot' } | { form: 'notice' }` 联合，渲染 snapshot 文本，并把持久 user 消息追加到 live surface 尾部。notice 形式可携带 checkpoint 的 window。
 - `src/summary.ts` 拥有按会话运行的摘要 job：turn 提取、模型选择、严格 JSON 解析、detail 追加、brief 压缩调用、迁移 pass、snapshot 刷新、失败隔离，以及每会话一次的 notice。
 - `src/tools.ts` 构造 `memory_write`、`memory_search` 与 `memory_read`，从 live 会话日志折出当前 turn 号与 seq 区间，并在写入成功后刷新 snapshot。
 - `src/read.ts` 提供 `memory_read`：目标授权、turn 与 seq 解析、邻接事件扩展，以及带上限的对话面渲染。
@@ -77,7 +77,7 @@ kind: "package-reference"
 
 `/memory` 命令是人工维护面：组合了命令注册表时就会注册。`summaries` 列出本会话的区块、turn 区间、tier、来源与版本；`stats` 报告条目/来源/kind/字节/turn 计数与 `maxEntries` 上限，`prune [keep]` 按需删除重复条目与超出上限的最旧整块；`pause` / `resume` 写 frontmatter 的 `summaryPaused`，暂停后每个完成的 turn 都直接跳过，不写文件也不追加 notice；`edit <turn> <text>` 替换该 turn 的条目文本（归并为一行，空文本或超预算拒绝），并记录 `source: manual` 与递增的 revision；`revert <turn>` 恢复最近一次编辑前的文本。编辑与回退都追加到 `MEMORY.history.json`，因此模型写的摘要不是最终版本。窗口调度与 snapshot/checkpoint 消息不受影响：编辑后的条目在下一次 snapshot 或 checkpoint 渲染时到达模型。
 
-摘要 job 由 `onTurnEnd` 触发，组织者只会对 root agent 的 `completed` turn 调用它。提供者启动一个 `kind: 'memory'`、owner 为会话、label 为 `memory summary` 的 job；它运行期间，更新的完成 turn 只更新一个 pending 输入，本次 pass 结束后只再跑一次覆盖最新 turn 的 pass，因此同一会话的 pass 永不重叠。job 用 `ctx.jobs.wait` 认领自己的结算，所以这个内部 job 不会作为 `tool-jobs` 完成通知到达模型，也不会唤醒空闲 owner；结算后提供者删除该记录，因此 `job_list` 不会累积内部任务行。缺少注册表，或注册表没有已附加的 controller 时，只记 debug 日志并跳过该 turn，不让 turn 失败。
+摘要 job 由 `onTurnEnd` 触发。组织者会对**每一种** turn 结束都派发，因此提供者先做过滤：只有 root agent 的 `completed` turn 才启动 job；aborted、blocked、failed、token 上限、interrupted 与 fork 收尾的 turn 都不启动，也不写失败 notice。提供者启动一个 `kind: 'memory'`、owner 为会话、label 为 `memory summary` 的 job；它运行期间，更新的完成 turn 只更新一个 pending 输入，本次 pass 结束后只再跑一次覆盖最新 turn 的 pass，因此同一会话的 pass 永不重叠。job 用 `ctx.jobs.wait` 认领自己的结算，所以这个内部 job 不会作为 `tool-jobs` 完成通知到达模型，也不会唤醒空闲 owner；结算后提供者删除该记录，因此 `job_list` 不会累积内部任务行。缺少注册表，或注册表没有已附加的 controller 时，只记 debug 日志并跳过该 turn，不让 turn 失败。
 
 一次 pass 通过 `ctx.sessionQuery.observeSession` 读取该 turn 的事件，只保留对话面：user 文本、assistant 文本，以及带 `ok`/`error` 状态的工具名。工具输出、reasoning、系统提示词与 memory 自己的消息都不取；每段文本截断到 2 KiB，整段 transcript 截断到 24 KiB 并带截断说明。模型选择：两个 `summarizationProvider`/`summarizationModel` 都配置时用配置值，否则用最新的 `request/header` config，再否则用 agent 显式的 provider 与 model。回复必须是 `decision`、`files`、`open`、`preference` 的严格 JSON 条目；非法条目被丢弃，无法解析的回复变成一条 `decision` 条目，正文取原始输出（最多 300 字符）。条目经 `appendTurnSummary` 写入，随后运行 tier 迁移 pass，再由 `refreshMemorySnapshot` 更新 snapshot；迁移或 snapshot 失败只记日志，不会撤销已经写入的 detail 摘要。摘要本身失败时保留旧 MEMORY.md，记录 turn、输入字节、模型与耗时，并按会话追加一条 `form: 'notice'` 消息。
 
@@ -85,13 +85,13 @@ kind: "package-reference"
 
 读取把日志中的事件渲染成对话记录，而不是原始事件本身。user 与 assistant 文本按每条 2 KiB 截断；每次工具调用与结果各占一行 `- tool <name> · <status> · seq <n>`，参数与输出都不会到达模型；reasoning、系统提示词与 memory 自己的消息都省略。完整文本上限 16 KiB，发生截断时由一行说明如何收窄请求。工作区之外的会话、不存在的会话、不存在的 turn，以及不属于任何 turn 的 seq，都只返回一行短文本，不让调用失败。
 
-tier 迁移 pass 在 detail 追加之后运行。`planTierMigrations` 读取刚写入的文档，返回年龄跨过 `detail`、`brief` 或 `forget` 的区间；`migrateMemoryTiers` 把每个 detail 区间在 live surface 上替换成 detail checkpoint（正文取已存的 detail 条目），用与摘要相同的模型目标压缩每个到达 `brief` 的 detail 区块，并通过版本守卫和一次 stale 重试写入整批结果。区间在年龄达到 `detail` 时转为 detail：surface 上的 user、tool、assistant 原始节点被替换成一条携带已存 detail 条目的 checkpoint。区块在年龄达到 `brief` 时转为 brief：托管区块的标题与条目被替换为最多两条、总计最多 160 字符的条目，live surface 上的 detail checkpoint 被替换成 brief checkpoint。区块在年龄达到 `forget` 时被遗忘：正文离开托管区块，`forgottenThrough` 前进，上一个 checkpoint 被替换成一行指针，写明会话、turn 与 seq 区间。checkpoint 来源是 `{ kind: 'memory', form: 'notice', window: { from, to, tier } }`，因此 snapshot 判定仍只识别 snapshot，重启后的提供者也能按 window 找到上一个 checkpoint。
+tier 迁移 pass 在 detail 追加之前运行。`planTierMigrations` 读取刚写入的文档，返回年龄跨过 `detail`、`brief` 或 `forget` 的区间；`migrateMemoryTiers` 把每个 detail 区间在 live surface 上替换成 detail checkpoint（正文取已存的 detail 条目），用与摘要相同的模型目标压缩每个到达 `brief` 的 detail 区块，并通过版本守卫和一次 stale 重试写入整批结果。区间在年龄达到 `detail` 时转为 detail：surface 上的 user、tool、assistant 原始节点被替换成一条携带已存 detail 条目的 checkpoint。区块在年龄达到 `brief` 时转为 brief：托管区块的标题与条目被替换为最多两条、总计最多 160 字符的条目，live surface 上的 detail checkpoint 被替换成 brief checkpoint。区块在年龄达到 `forget` 时被遗忘：正文离开托管区块，`forgottenThrough` 前进，上一个 checkpoint 被替换成一行指针，写明会话、turn 与 seq 区间。checkpoint 来源是 `{ kind: 'memory', form: 'notice', window: { from, to, tier } }`，因此 snapshot 判定仍只识别 snapshot，重启后的提供者也能按 window 找到上一个 checkpoint。
 
 live surface 决定替换是否可行。辅助函数先找已记录的 checkpoint seq，再找 window 相同的 live checkpoint，最后才是该 turn 连续的 surface 节点。区间缺失、包含 memory snapshot、或包含 compaction checkpoint 时，只记 debug 日志跳过；detail 区间在下一个 pass 会再次被规划（它的文件 tier 未变），brief 或遗忘区间仍记录新 tier 并用已存文本重试。原始 turn 的最终移除由 compaction 负责。追加会引用所有被遮住的 surface 节点。checkpoint 发布会在 surface 读取之前与追加之前各检查一次 provider 的取消信号：慢读取期间被 disable 时什么都不发布。checkpoint 一旦发布，记录其 seq 的 MEMORY.md 写入不再可取消——提交这份元数据正是避免“有 checkpoint 却没有对应 tier 状态”的方式。压缩失败保留 detail 区块；文件写入 stale 时重读并只重新应用一次计划，不会追加第二个 checkpoint。detail 摘要成功写入后，迁移失败不会丢掉那份摘要。
 
 snapshot 是文件面向模型的持久视图。每次 `memory_write` 成功后，若会话已有快照，就只在尾部追加一条 `user/message` 更新（来源 `{ kind: 'memory', form: 'notice', summary }`，正文 `Memory updated: - [kind] <条目>` 加上指向 `memory_read`/`memory_search` 的提示）；**绝不原地替换更早的节点**——替换靠前的节点会让提供方的 KV-cache 前缀整段作废（实测命中率掉到约 16.9k token 的前缀、每 turn 首条请求只有 17–36%）。会话还没有快照时（全新会话第一次写入、或恢复时 surface 上尚无快照），`refreshMemorySnapshot` 才追加一条完整快照。快照失败只记日志，不改变已经提交的写入结果。
 
-在 MEMORY.md 已有会话或条目的工作区里恢复的 root agent，会在组织者的 `onAgentCreated` 钩子里追加一条 snapshot。该钩子跳过全新会话：此时 surface 仍为空，追加的 user 消息会排在系统提示词之前。全新会话由第一次成功写入送出 snapshot。文本未变化时不追加；变了才在尾部再追加一条（不替换旧节点）。提供者不保存 seq 状态。文本有预算：`MEMORY_SNAPSHOT_MAX_BYTES`（16 KiB）覆盖标题、`Window:` 清单、跨会话索引与结尾提示；超出预算时从最旧的索引行开始丢弃，清单保持原位。
+在 MEMORY.md 已有会话或条目的工作区里恢复的 root agent，会在组织者的 `onAgentCreated` 钩子里追加一条 snapshot。该钩子跳过全新会话：此时 surface 仍为空，追加的 user 消息会排在系统提示词之前。全新会话由第一次成功写入送出 snapshot。文本未变化时不追加；变了才在尾部再追加一条（不替换旧节点）。提供者不保存 seq 状态。文本有预算：`MEMORY_SNAPSHOT_MAX_BYTES`（16 KiB）覆盖标题、`Archived:` 清单、跨会话索引与结尾提示；超出预算时从最旧的索引行开始丢弃，清单保持原位。
 
 条目 kind 注册表（`decision`、`files`、`open`、`preference`）是 `memory-file.ts` 里的数据。解析器、渲染器、工具 schema 与诊断都读它；文件或工具调用里出现未知 kind 时，错误会带上可用列表。
 
@@ -141,11 +141,11 @@ root agent 可见这些工具时，每次请求的固定 schema 成本。结果�
 
 #### Token 影响
 
-每次请求最多 16 KiB 文本；工作区文档既无会话也无条目时完全没有这条消息。预算不足时先丢索引行；无论清单覆盖多少 turn，它都保持一行。
+每条 snapshot 消息最多 16 KiB 文本；工作区文档既无会话也无条目时完全没有这条消息。snapshot 采用追加而非替换，因此长会话里可能有多条（每条都有上限）；预算不足时先丢索引行；无论清单覆盖多少 turn，它都保持一行。
 
 #### KV 缓存影响
 
-snapshot 写入时位于 surface 尾部。替换会保留该节点之前的前缀，因此系统提示词与更早的 turn 仍在缓存中；snapshot 文本及其后的内容会重新分词。`snapshotPosition: prompt` 时文本进入系统提示词的 `memory-state` 段，与前缀一起缓存；snapshot 变化会从该段之后重新分词。
+snapshot 写入时位于 surface 尾部。追加会保留该节点之前的前缀，因此系统提示词与更早的 turn 仍在缓存中；snapshot 文本及其后的内容会重新分词。`snapshotPosition: prompt` 时文本进入系统提示词的 `memory-state` 段，与前缀一起缓存；snapshot 变化会从该段之后重新分词。位置切换对已经接线的 agent 生效：`memory-state` 段始终注册，`depth-0` 时渲染为空。
 
 ### memory turn checkpoint
 
@@ -173,7 +173,7 @@ detail checkpoint 用该 turn 已存的 detail 条目替换原始 turn；brief c
 
 #### KV 缓存影响
 
-追加在尾部，不让更早的缓存前缀失效；其后的 snapshot 替换会保留该 notice 节点。
+追加在尾部，不让更早的缓存前缀失效；其后的 snapshot 也是追加，notice 节点保持原位。
 
 <a id="known-limitations-and-deferred-work"></a>
 
@@ -182,9 +182,10 @@ detail checkpoint 用该 turn 已存的 detail 条目替换原始 turn；brief c
 - **`memory_read` 一次只读一个 turn** — `before` 与 `after` 各最多向相邻事件扩展十条，且没有跨 turn 区间参数；读取更长跨度需要按 turn 分多次调用。
 - **全新会话启动时没有 snapshot** — 启动钩子跳过没有 surface 的会话，因为此时追加的 user 消息会排在系统提示词之前。第一次成功写入会送出 snapshot；恢复的会话在启动时就有。
 - **带标记的条目按 turn 迁移** — 写入时带 turn 标记的条目允许 detail 区块拆分：同龄的连续 turn 作为一个 range 迁移，更新的 turn 保留自己的区块。标记出现之前的条目（以及 brief 区块）仍以整个区块为单位迁移，因此旧文件最多滞后一个最宽区块的跨度。
-- **被跳过的 surface checkpoint 会在后续 pass 重试** — live 区间缺失、不连续、包含 snapshot 或包含 compaction checkpoint 时，surface 替换被跳过。detail 区间在下一个 pass 会再次被规划（无需改文件即可重试）；brief 或遗忘区间仍记录新 tier，并用已存文本重试（不会二次压缩）：brief 区块重发它的条目，遗忘区间重发指针。仍无法替换的区间会继续重试；原始 turn 可能留在 surface 上，直到 compaction 移除它。
+- **被跳过的 surface checkpoint 会在后续 pass 重试** — live 区间缺失、不连续、包含 snapshot 或包含 compaction checkpoint 时，surface 替换被跳过。detail 区间在下一个 pass 会再次被规划（无需改文件即可重试）；brief 或遗忘区间仍记录新 tier，并用已存文本重试（不会二次压缩）：brief 区块重发它的条目，遗忘区间重发指针。仍无法替换的区间会继续重试；原始 turn 可能留在 surface 上，直到 compaction 移除它。若某个 turn 的区间里包含本会话的第一条 snapshot 消息，该区间永远无法折叠（解析时拒绝任何含 snapshot 的区间），只能等 compaction。
 - **一次 pass 只覆盖一个 turn** — pending 机制只覆盖最新完成的 turn；pass 运行期间完成的 turn 不会合并进本次，因此每完成一个 turn 会产生一次摘要调用，另外每个跨过 brief 年龄的区块各产生一次压缩调用。
 - **`maxBytes` 只覆盖托管区块** — 提供者拥有的正文默认上限 16 KiB，snapshot 另有固定的 16 KiB 预算（`MEMORY_SNAPSHOT_MAX_BYTES`）。当前会话自身正文超过托管区块预算时仍会明确失败，而不是静默丢掉最新写入。
+- **Snapshot 采用追加而非替换** — 每个摘要边界都可能新增一条 snapshot 消息，因此长会话会按边界累积（每条最多 16 KiB）。淘汰旧 snapshot 意味着替换靠前节点，正是 DH-723 去掉的 KV-cache 代价；compaction 会移除它覆盖的消息，但从不 compaction 的会话会按 snapshot 条数线性增长。
 - **`tags` 内联存储** — 带标签的条目渲染为 `- [kind] 正文 <!-- tags: a, b -->`，手改时删掉后缀也就删掉了标签。标签出现之前写入的文件照常解析；标签只是元数据，`memory_search` 不匹配标签文本。
 - **会话命中不带 turn 号** — `memory_search` 返回搜索后端给出的事件 seq；把该 seq 传给 `memory_read`，它会选中包含该事件的 turn 并打印 turn 与 seq 区间。
 - **标题是展示元数据** — 每次搜索与 snapshot 刷新都会为要展示的会话折叠最新标题（一次语料观察，单会话失败互不影响）；没有标题事件的会话渲染它的 id，`memory_search` 也不匹配标签文本。
@@ -193,7 +194,7 @@ detail checkpoint 用该 turn 已存的 detail 条目替换原始 turn；brief c
 - **多进程写入只重试一次** — 两个进程写同一工作区会竞争；失败方重读并重试一次，随后带旧文件原样失败。没有跨进程锁。
 - **暂停是工作区级** — `summaryPaused` 标志在同一个 MEMORY.md frontmatter 里，暂停会停掉该工作区所有会话的自动摘要；恢复后从当前窗口继续，不回填暂停期间的 turn。
 - **编辑按 turn 且为人工操作** — `/memory` 按 turn 号编辑当前会话的条目，早于逐 turn 标注的条目无法定位。回退只恢复最近记录的文本；删除或修改源消息不会自动回滚摘要：会话日志是追加式的，surface 的编辑或压缩只是移除节点而不是删除 turn，摘要仍然描述发生过的事。`/memory revert <turn>` 是显式回滚。
-- **注入位置与模板是 row 配置** — `snapshotPosition` 默认 depth-0 消息；`prompt` 把同一段文本移进 `memory-state` 段，`snapshotTemplate` 负责包裹。改动任一字段需要 reload 该 row，不是 per-session 设置。
+- **注入位置与模板是运行期设置** — `snapshotPosition` 默认 depth-0 消息；`prompt` 把同一段文本移进 `memory-state` 段，`snapshotTemplate` 负责包裹。两者都是 volatile：模板改动在下一次 snapshot 刷新时生效；位置切换会到达已经接线的 agent，因为 `memory-state` 段始终注册（`depth-0` 时渲染为空）。从 depth-0 切到 `prompt` 时，早先的 depth-0 snapshot 消息仍留在 surface 上，因此会话会短暂同时携带旧消息与新段。
 
 <a id="dev-note"></a>
 

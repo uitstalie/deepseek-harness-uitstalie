@@ -15,6 +15,7 @@ import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { MessageSource, UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionSeq, SurfaceEvent } from '@deepseek-ai/dsh-session'
 import type { MemoryTier } from './memory-file.ts'
+import { errorMessage } from './text.ts'
 import type { TurnRange } from './window.ts'
 
 /** Turn-window metadata carried by a memory checkpoint's source. */
@@ -224,9 +225,4 @@ function createCheckpointMessage(range: TurnRange, checkpoint: SurfaceCheckpoint
       window: { from: range.startTurn, to: range.endTurn, tier: checkpoint.tier },
     },
   })
-}
-
-/** Flatten a thrown value into one line. */
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

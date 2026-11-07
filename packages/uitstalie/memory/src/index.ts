@@ -30,8 +30,8 @@ import { MemorySummaryRunner } from './summary.ts'
 import { memoryTools } from './tools.ts'
 
 export const name = 'memory'
-/** The organizer, the store, filesystem access, session history, model calls, and the job registry. */
-export const inject = ['dafeiyu', 'dshStore', 'fs', 'sessionQuery', 'jobs', 'llm']
+/** The organizer, the store, session history, model calls, and the job registry. */
+export const inject = ['dafeiyu', 'dshStore', 'sessionQuery', 'jobs', 'llm']
 
 /** Stable capability id this provider registers with the organizer. */
 export const MEMORY_CAPABILITY_ID = 'memory'
@@ -236,13 +236,20 @@ export function apply(ctx: Context, config: Config): void {
       const summaries = new MemorySummaryRunner(ctx, settings, runtime.signal, onSnapshotText)
       return {
         scope: 'root',
-        promptSections: (agent: Agent) => settings.snapshotPosition === 'prompt'
-          ? [MEMORY_PROMPT_SECTION, {
+        // The state section is always wired, even while `snapshotPosition` is `depth-0`: an empty
+        // text contributes nothing to the prompt, and a later switch to `prompt` then reaches the
+        // agents that were created before the change. Deciding the section set at wiring time left
+        // those agents without any snapshot after the switch.
+        promptSections: (agent: Agent) => [
+          MEMORY_PROMPT_SECTION,
+          {
             name: MEMORY_STATE_SECTION_NAME,
             order: MEMORY_STATE_SECTION_ORDER,
-            text: () => snapshotTexts.get(String(agent.session.id)) ?? '',
-          }]
-          : [MEMORY_PROMPT_SECTION],
+            text: () => settings.snapshotPosition === 'prompt'
+              ? snapshotTexts.get(String(agent.session.id)) ?? ''
+              : '',
+          },
+        ],
         tools: () => memoryTools(ctx, settings, onSnapshotText),
         onAgentCreated: (agent: Agent) => {
           // A resumed session already has a surface; a fresh one is empty until
@@ -255,6 +262,11 @@ export function apply(ctx: Context, config: Config): void {
           })
         },
         onTurnEnd: (input) => {
+          // The organizer dispatches every turn ending, including aborted, blocked, failed and
+          // token-ceiling turns (dafeiyu's contract). Only a completed turn has a conversation to
+          // summarize; without this filter an aborted turn starts a job that can only fail, and
+          // appends a misleading "Memory summary failed" notice.
+          if (input.event.data.reason.kind !== 'completed') return
           validateTurnEnd(input)
           summaries.onTurnEnd(input)
         },

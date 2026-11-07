@@ -21,6 +21,7 @@ import {
   MEMORY_SUMMARY_FAILURE_NOTICE,
   MEMORY_SUMMARY_JOB_KIND,
   MEMORY_SUMMARY_JOB_LABEL,
+  MEMORY_SNAPSHOT_MAX_BYTES,
   parseBriefEntries,
   parseMemoryDocument,
   parseSummaryEntries,
@@ -247,6 +248,25 @@ test('an aborted turn does not start a summary job', async () => {
 
   expect(adapter.requests).toHaveLength(0)
   expect(mounted.ctx.jobs.list(root.id)).toHaveLength(0)
+  expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(0)
+  await expect(stat(memoryFilePath(project))).rejects.toThrow()
+})
+
+test('a blocked turn starts no summary job and writes no failure notice', async () => {
+  const mounted = await mount()
+  const adapter = new SummaryAdapter(() => jsonReply([{ kind: 'decision', text: 'never written' }]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+
+  appendUserText(root, 'blocked request')
+  appendAssistantText(root, 1, 'blocked answer')
+  root.session.append('turn/end', { turn: 1, reason: { kind: 'blocked' } })
+  await settle()
+  await settle()
+
+  expect(adapter.requests).toHaveLength(0)
+  expect(mounted.ctx.jobs.list(root.id)).toHaveLength(0)
+  expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(0)
   await expect(stat(memoryFilePath(project))).rejects.toThrow()
 })
 
@@ -571,4 +591,29 @@ test('parseSummaryEntries accepts fenced JSON, drops invalid entries, and bounds
   ])
   expect(parseSummaryEntries(JSON.stringify({ entries: [{ kind: 'decision', text: 'x'.repeat(400) }] }))[0]?.text)
     .toHaveLength(300)
+})
+
+test('summary boundaries append bounded snapshots instead of rewriting the trunk', async () => {
+  const mounted = await mount({ config: { detail: 2, brief: 16, forget: 21 } })
+  const adapter = new SummaryAdapter(call => jsonReply([{ kind: 'decision', text: `summary ${String(call)}` }]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+
+  completeTurn(root, 1)
+  await waitForSettledJobs(root, 1)
+  root.session.append('turn/start', { turn: 2 })
+  completeTurn(root, 2)
+  await waitForSettledJobs(root, 2)
+
+  const snapshots = await memorySnapshots(mounted.ctx, root.id)
+  // Append-only by design (DH-723): each summary boundary appends a fresh snapshot, so the
+  // surface carries more than one over a long session. This pins the documented behaviour: none
+  // is rewritten, and every one stays inside the snapshot byte budget.
+  expect(snapshots).toHaveLength(2)
+  expect(snapshots[1]?.seq).toBeGreaterThan(snapshots[0]?.seq ?? 0)
+  expect(snapshots[0]?.source.sections[0]?.text).toContain('Archived:')
+  for (const snapshot of snapshots) {
+    const text = snapshot.source.sections.map(section => section.text).join('')
+    expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(MEMORY_SNAPSHOT_MAX_BYTES)
+  }
 })

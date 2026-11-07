@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-memory` is the memory provider's settings page. It edits the volatile fields of the `memory` row — the detail, brief and forget turn ages, the sessions kept in `MEMORY.md`, the body budget, and the summary provider and model — and saves them as one revision-fenced mutation. It owns no memory data and no tools: the host provider applies a saved value on its next write or summary pass.
+`dsh-client-ui-memory` is the memory provider's settings page. It edits seven of the `memory` row's ten volatile fields — the detail, brief and forget turn ages, the sessions kept in `MEMORY.md`, the body budget, and the summary provider and model — and saves them as one revision-fenced mutation. `maxEntries`, `snapshotTemplate` and `snapshotPosition` stay profile-YAML settings: the first is a retention cap, and the other two change how the snapshot reaches the model (described in the provider's README). It owns no memory data and no tools: the host provider applies a saved value on its next write or summary pass.
 
 ## Table of Contents
 

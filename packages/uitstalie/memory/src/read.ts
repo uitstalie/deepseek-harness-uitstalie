@@ -22,6 +22,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Session, SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import type { SessionResultFilter } from '@deepseek-ai/dsh-session-query'
+import { byteLength, truncateToBytes } from './text.ts'
 
 /** Maximum rendered size of one `memory_read` result, in UTF-8 bytes. */
 export const MEMORY_READ_MAX_BYTES = 16 * 1024
@@ -289,25 +290,6 @@ function boundRead(header: string, chunks: readonly string[]): string {
   if (byteLength(text) <= MEMORY_READ_MAX_BYTES) return text
   const budget = MEMORY_READ_MAX_BYTES - byteLength(MEMORY_READ_NARROW_HINT) - 1
   return `${truncateToBytes(text, budget)}\n${MEMORY_READ_NARROW_HINT}`
-}
-
-/** Truncate text to a byte budget, appending an ellipsis when shortened. */
-function truncateToBytes(text: string, maxBytes: number): string {
-  if (byteLength(text) <= maxBytes) return text
-  const ellipsis = '…'
-  let used = byteLength(ellipsis)
-  const kept: string[] = []
-  for (const character of text) {
-    used += byteLength(character)
-    if (used > maxBytes) break
-    kept.push(character)
-  }
-  return `${kept.join('')}${ellipsis}`
-}
-
-/** Count UTF-8 bytes. */
-function byteLength(text: string): number {
-  return Buffer.byteLength(text, 'utf8')
 }
 
 /** Short text result for a target outside the caller's workspace. */

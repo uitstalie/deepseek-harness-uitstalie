@@ -4,21 +4,20 @@
  * A snapshot reports the current forgetting state and the recent-session index
  * as a `user/message` carrying `source.kind === 'memory'` and
  * `source.form === 'snapshot'`. The provider appends one after a successful
- * `memory_write` and replaces the previous snapshot on the live surface, so the
- * surface normally carries one. The snapshot text is bounded and never duplicates
- * per-turn summaries: the window manifest names the compressed ranges, and the
- * index names one outline per other session.
+ * `memory_write` or a summary pass, but never replaces an earlier snapshot: a
+ * replacement would invalidate the provider's KV-cache prefix from that early
+ * position onward. The text is bounded and never duplicates per-turn summaries:
+ * the window manifest names the compressed ranges, and the index names one
+ * outline per other session.
  *
  * The live surface is the only state: a restarted provider scans it for the
- * last memory snapshot instead of remembering a seq. A replacement whose target
- * left the surface falls back to an append, so a compaction that removed the
- * node never fails the write.
+ * last memory snapshot to decide whether the text changed instead of
+ * remembering a seq.
  *
- * The `memory` source is a union. A snapshot is the global state message that a
- * later snapshot replaces. A `notice` is either a one-off failure report with no
- * replacement target or a tier checkpoint carrying `window`; the checkpoint
- * helper owns that node, while this module's snapshot predicate still selects
- * only `form: 'snapshot'`.
+ * The `memory` source is a union. A snapshot is the global state message; a
+ * `notice` is either a one-off failure report or a tier checkpoint carrying
+ * `window`; the checkpoint helper owns that node, while this module's snapshot
+ * predicate still selects only `form: 'snapshot'`.
  * @module @deepseek-ai/dsh-memory/snapshot
  */
 
@@ -31,6 +30,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { MemoryCheckpointWindow } from './checkpoint.ts'
 import { readMemoryDocument } from './memory-file.ts'
 import type { MemoryDocument, MemorySection, MemorySessionRecord, MemoryTier, MemoryTurnRecord } from './memory-file.ts'
+import { byteLength, errorMessage, truncateToBytes } from './text.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -193,12 +193,13 @@ export interface MemorySnapshotOptions {
 }
 
 /**
- * Append or replace the workspace memory snapshot on one agent's live surface.
+ * Append the workspace memory snapshot to one agent's live surface.
  *
  * The document is read through the store, so an absent file or a document with
- * no sessions and no entries produces no message. The last live memory snapshot
- * is the replacement target; when that node has left the surface, the message is
- * appended instead.
+ * no sessions and no entries produces no message. When the last live memory
+ * snapshot already carries this text, nothing is appended; otherwise the text
+ * is appended at the tail. An earlier snapshot is never replaced in place: that
+ * would invalidate the provider's KV-cache prefix from its position onward.
  * @param ctx - context carrying `dshStore` and `sessionQuery`.
  * @param agent - root agent whose session receives the snapshot.
  * @param signal - cancellation for the store read and the surface scan.
@@ -460,29 +461,4 @@ function createSnapshotMessage(text: string): UserMessage {
       sections: [{ name: MEMORY_SNAPSHOT_SECTION_NAME, text }],
     },
   })
-}
-
-/** Count UTF-8 bytes. */
-function byteLength(text: string): number {
-  return Buffer.byteLength(text, 'utf8')
-}
-
-/** Ellipsize text to the byte budget; an unrepresentable budget yields an empty string. */
-function truncateToBytes(text: string, maxBytes: number): string {
-  if (byteLength(text) <= maxBytes) return text
-  const ellipsis = '…'
-  let used = byteLength(ellipsis)
-  if (used > maxBytes) return ''
-  const kept: string[] = []
-  for (const character of text) {
-    used += byteLength(character)
-    if (used > maxBytes) break
-    kept.push(character)
-  }
-  return `${kept.join('')}${ellipsis}`
-}
-
-/** Flatten a thrown value into one line. */
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

@@ -23,6 +23,7 @@ import { FsError } from '@deepseek-ai/dsh-fs'
 import { parse as parseYaml } from 'yaml'
 import type { StoreWriteOptions } from '@deepseek-ai/dsh-store-atom'
 import { replaceSurfaceRange } from './checkpoint.ts'
+import { errorMessage } from './text.ts'
 import { planTierMigrations } from './window.ts'
 import type { SurfaceRetry, TierMigrationPlan, TurnRange } from './window.ts'
 
@@ -2191,9 +2192,4 @@ function writeOptions(signal: AbortSignal | undefined, expected: string | undefi
 /** Whether a write failure is the store's stale-version refusal. */
 function isStaleVersion(error: unknown): boolean {
   return error instanceof FsError && error.code === 'FS_STALE_VERSION'
-}
-
-/** Flatten a thrown value into one line. */
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
