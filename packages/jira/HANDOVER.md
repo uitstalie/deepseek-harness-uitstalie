@@ -1,5 +1,8 @@
 # 交接文档（"遗书"）— dsh-jira
 
+> **历史文档（2026-10-23，外部仓 `uitstalie/dsh-plugin-multidevice-jira` 迁移前的状态）。**
+> 本文描述的是**单包**布局（`src/core`、`src/cli`、`src/plugin`、`dist/`）与当时的 199 条决策 / 702 个测试；这些路径与数字都**不再适用于**当前的 `packages/jira/{jira-core,jira-service,jira-agent,jira-cli,ui-jira}` 五包结构。当前的操作说明在每个包的 README、[MIGRATION.md](MIGRATION.md) 与 [README.md](README.md)；本文只保留为迁移前的历史记录（[ARCHIVE-SOURCE.md](ARCHIVE-SOURCE.md) 记录了迁入方式），不要按它执行命令。下面第 3 行起的旧状态说明同样按历史读。
+
 > **如果我不在了、或换一个 agent 接手：从 §0.1 开始读。细节全在 `DESIGN.md`，不必回看任何对话记录。** 最后更新：**2026-10-23**（**199 条决策**、**702 测试全绿**、烟测 33/33、两个仓库同步干净） §0.1 是**当前的**状态与待办；§1 与 §2 写于 2026-10-15 夜（设计期），保留作历史，**以 §0.1 为准**。
 
 ---

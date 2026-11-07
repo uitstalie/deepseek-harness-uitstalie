@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-`jira` 是跨机器 issue 账本背后的包组：一个由 Markdown 文件组成的本地 git 仓库，DSH agent 跨会话、跨机器读写它。`jira-core` 持有领域与 git 原子，`jira-service` 是唯一写入者，持有 sync 与 `ctx.jira` 服务，`jira-agent` 通过三个工具、注入行与写守卫把账本暴露给模型，`jira-cli` 给人 `jira` 命令，`ui-jira` 增加浏览器段落。分支的 `web-app` 层把三行作为单一组合挂载。
+`jira` 是跨机器 issue 账本背后的包组：一个由 Markdown 文件组成的本地 git 仓库，DSH agent 跨会话、跨机器读写它。`jira-core` 持有领域与 git 原子，`jira-service` 是唯一写入者，持有 sync 与 `ctx.jira` 服务，`jira-agent` 通过三个工具、执行者的 `issue_work`、注入行与写守卫把账本暴露给模型；它还注册独立 gate 的 `superagent` 能力（认领、派发与工作区工具）。`jira-cli` 给人 `jira` 命令，`ui-jira` 增加浏览器段落。分支的 `web-app` 层把三行作为单一组合挂载。
 
 ## 目录
 
@@ -29,7 +29,7 @@ kind: "package-group"
 |---|---|---|
 | [`jira-core`](jira-core/README.zh.md) | 账本原子：实体、编解码、带锁事务、git 与 push 原语、派生、doctor、知识库，以及共享的只读查询 | 无行；由其他包 import |
 | [`jira-service`](jira-service/README.zh.md) | 唯一写入者：解析根目录、打开存储、持有 push 队列与 settle、注册 `ctx.jira`，并发布 `remote.jira` | 行 `jira-service` |
-| [`jira-agent`](jira-agent/README.zh.md) | 模型面：三个 jira 工具、注入行、写守卫、`/jira`、skill 与 turn 结束时的 settle | 行 `jira-agent` |
+| [`jira-agent`](jira-agent/README.zh.md) | 模型面：三个 jira 工具、执行者 `issue_work`、注入行、写守卫、`/jira`、skill 与 turn 结束时的 settle | 行 `jira-agent` |
 | [`jira-cli`](jira-cli/README.zh.md) | 人面：带 23 个子命令、退出码与中文输出的 `jira` 命令 | `jira` bin；无行 |
 | [`ui-jira`](ui-jira/README.zh.md) | 浏览器面：带账本状态、只读看板、issue 详情与知识搜索的 `jira` 设置页段落 | 行 `jira-ui` |
 
@@ -39,8 +39,8 @@ kind: "package-group"
 
 ## 相关文档
 
-- [DESIGN.md](DESIGN.md)——账本的决策记录，从外部仓库迁入。
-- [HANDOVER.md](HANDOVER.md)——交接与操作记录：当前状态、机器设置与未完成工作。
+- [DESIGN.md](DESIGN.md)——账本的决策记录，从外部仓库迁入。其中的单包布局与“零宿主依赖”前提是历史；[MIGRATION.md](MIGRATION.md) 记录了取代它的五包拆分。
+- [HANDOVER.md](HANDOVER.md)——迁移前的操作交接（历史文档：仍描述 `src/core`/`dist/`）。当前命令见各包 README。
 - [MIGRATION.md](MIGRATION.md)——已执行的三层拆分及其约定。
 - [ARCHIVE-SOURCE.md](ARCHIVE-SOURCE.md)——从外部仓库迁入了什么、未迁入什么，以及归档它的退出条件。
 - [jira 能力约定](../../goal/jira-contract.md)——拆分背后的服务 API、提供方描述符、配置与 UI 约定。

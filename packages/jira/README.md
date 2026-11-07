@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`jira` is the package group behind the multi-machine issue ledger: a local git repository of Markdown files that DSH agents read and write across sessions and machines. `jira-core` holds the domain and git atoms, `jira-service` is the single writer that owns sync and the `ctx.jira` service, `jira-agent` exposes the ledger to the model through three tools plus the awareness line and write guard, `jira-cli` gives a person the `jira` command, and `ui-jira` adds the browser section. The branch's `web-app` layer mounts the three rows as one composition.
+`jira` is the package group behind the multi-machine issue ledger: a local git repository of Markdown files that DSH agents read and write across sessions and machines. `jira-core` holds the domain and git atoms, `jira-service` is the single writer that owns sync and the `ctx.jira` service, `jira-agent` exposes the ledger to the model through three tools plus the executor's `issue_work` tool, the awareness line and write guard, `jira-cli` gives a person the `jira` command, and `ui-jira` adds the browser section. `jira-agent` also registers the separately gated `superagent` capability (claim, dispatch and workspace tools). The branch's `web-app` layer mounts the three rows as one composition.
 
 ## Table of Contents
 
@@ -39,8 +39,8 @@ Each row names the package's contribution and the row, entry, or bundle that mou
 
 ## Related documentation
 
-- [DESIGN.md](DESIGN.md) — the ledger's decision log, copied from the external repository.
-- [HANDOVER.md](HANDOVER.md) — the operator handover: current state, machine setup, and open work.
+- [DESIGN.md](DESIGN.md) — the ledger's decision log, copied from the external repository. Its single-package layout and zero-host-dependency premises are historical; [MIGRATION.md](MIGRATION.md) records the five-package split that replaced them.
+- [HANDOVER.md](HANDOVER.md) — the pre-migration operator handover (historical: it still describes `src/core`/`dist/`). Read the package READMEs for current commands.
 - [MIGRATION.md](MIGRATION.md) — the executed three-layer split and its contracts.
 - [ARCHIVE-SOURCE.md](ARCHIVE-SOURCE.md) — what was ported from the external repository, what was not, and the exit criteria for archiving it.
 - [jira capability contract](../../goal/jira-contract.md) — the service API, provider descriptor, configuration, and UI contract behind the split.
