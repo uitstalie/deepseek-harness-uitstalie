@@ -223,12 +223,12 @@ export class JiraLedgerSettingsController {
     }
   }
 
-  /** Publish the current projection. */
   /** The accepted row snapshot, or the unavailable one when no settings service is composed. */
   private accepted(): ConfigFormSnapshot<JiraLedgerSettings> {
     return this.form?.getSnapshot() ?? UNAVAILABLE
   }
 
+  /** Publish the current projection. */
   private publish(): void {
     this.store.set(this.projection())
   }

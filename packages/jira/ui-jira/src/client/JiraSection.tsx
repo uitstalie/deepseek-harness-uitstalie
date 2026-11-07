@@ -46,15 +46,51 @@ export interface JiraSectionInjected {
 /** The page's props: the inject face, flattened, so a test may supply a subset. */
 export type JiraSectionProps = Partial<InjectFace<JiraSectionInjected>>
 
+/** A stable fallback for a deployment that does not serve the ledger-settings form. */
+const noLedgerSettings = (): undefined => undefined
+
 /** The jira settings page. */
 export function JiraSection(props: JiraSectionProps) {
   const { controller, useSnapshot, t, activate, ledgerSettings, useLedgerSettings } = props
-  useEffect(() => { activate?.() }, [activate])
-  const settingsState = useLedgerSettings === undefined
-    ? undefined
-    : useLedgerSettings(snapshot => snapshot)
   // The assembly guarantees the page face; the partial props are the test path that supplies it.
   if (controller === undefined || useSnapshot === undefined || t === undefined) return null
+  return (
+    <JiraSectionBody
+      controller={controller}
+      useSnapshot={useSnapshot}
+      t={t}
+      activate={activate}
+      ledgerSettings={ledgerSettings}
+      useLedgerSettings={useLedgerSettings ?? noLedgerSettings}
+    />
+  )
+}
+
+/**
+ * The page body, with every required inject value present.
+ *
+ * Kept separate so both hooks run unconditionally: the previous layout returned before
+ * `useSnapshot` when a prop was missing, which changes the hook count if the props arrive later.
+ * @param props - the page controller, its hooks, the editable settings block and the copy lookup.
+ * @returns the settings page.
+ */
+function JiraSectionBody({
+  controller,
+  useSnapshot,
+  t,
+  activate,
+  ledgerSettings,
+  useLedgerSettings,
+}: {
+  controller: JiraStore
+  useSnapshot: <T>(select: (state: JiraState) => T) => T
+  t: (key: JiraKey) => string
+  activate: (() => void) | undefined
+  ledgerSettings: JiraSectionInjected['ledgerSettings'] | undefined
+  useLedgerSettings: <T>(select: (state: JiraLedgerSettingsState) => T) => T | undefined
+}) {
+  useEffect(() => { activate?.() }, [activate])
+  const settingsState = useLedgerSettings(snapshot => snapshot)
   const state = useSnapshot(snapshot => snapshot)
 
   return (

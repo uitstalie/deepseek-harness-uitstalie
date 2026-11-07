@@ -46,6 +46,18 @@ export function MemorySection(props: MemorySectionProps) {
   const { controller, t } = props
   // The assembly guarantees the page face; the partial props are the test path that supplies it.
   if (controller === undefined || t === undefined) return null
+  return <MemorySectionBody controller={controller} t={t} />
+}
+
+/**
+ * The page body, with every inject value present.
+ *
+ * Kept separate so the hooks run unconditionally: a conditional early return before
+ * `useSyncExternalStore` changes the hook count if the props ever arrive in two stages.
+ * @param props - the page controller and copy lookup.
+ * @returns the settings form.
+ */
+function MemorySectionBody({ controller, t }: { controller: MemorySettingsController; t: (key: MemoryKey) => string }) {
   const state = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot)
 
   if (!state.available) return <p className={styles.notice}>{t('unavailable')}</p>
