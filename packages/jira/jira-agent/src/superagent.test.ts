@@ -31,6 +31,7 @@ import {
   SESSION_TOOL_NAME,
   SOURCE_TOOL_NAME,
   STATUS_TOOL_NAME,
+  SUPERAGENT_OUTPUT_SCHEMA,
   SUPERAGENT_SECTION_NAME,
   TOOL_NAME,
   WORKSPACE_TOOL_NAME,
@@ -56,6 +57,7 @@ import {
   pinWorkspaceFirst,
   runDaemonPass,
   runDeliverTool,
+  sessionActionFailure,
   superAgentFsRoots,
   resolveReportedTask,
   runLedgerTool,
@@ -2455,5 +2457,40 @@ describe('superagent daemon: the session-less dispatcher', () => {
     } finally {
       await harness.dispose()
     }
+  })
+})
+
+describe('superagent: the session action failure envelope', () => {
+  it('carries every field the output schema requires', () => {
+    const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
+    const failed = sessionActionFailure('the action threw', me, { session: 'w-1' })
+    assert.equal(failed.ok, false)
+    assert.equal(failed.writable, false)
+    assert.deepEqual(failed.me, me)
+    const required = SUPERAGENT_OUTPUT_SCHEMA.required as readonly string[]
+    for (const key of required) {
+      assert.ok(key in failed, 'the failure envelope lacks required output field ' + key)
+    }
+    // The registry validates this detached value and throws ToolOutputError on a violation.
+    assert.doesNotThrow(() => structuredClone(failed))
+  })
+})
+
+
+describe('superagent: teardown', () => {
+  it('admits no turn-end work after dispose and tolerates a repeated dispose', async () => {
+    const contribution = createSuperagentContribution({
+      ctx: {
+        get: () => undefined,
+        on: () => () => {},
+        logger: { warn() {}, debug() {}, info() {}, error() {} },
+      },
+      env: {},
+      clock: () => 0,
+      recorder: { recordOnce: async () => undefined },
+    } as never)
+    contribution.dispose?.()
+    contribution.dispose?.()
+    await assert.doesNotReject(async () => { await contribution.onTurnEnd?.({} as never) })
   })
 })

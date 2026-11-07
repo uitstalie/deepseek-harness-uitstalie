@@ -1722,15 +1722,20 @@ const effortsFor = async (
 /**
  * One failure of a tool action, in the same envelope a success uses: `failure(...)` needs a caller
  * verdict, so the guard checks that never ran (a thrown middleware before validation) still report.
+ *
+ * `me` is mandatory: the tool's output schema requires `ok`, `writable` and `me` on every result,
+ * and the registry throws `ToolOutputError` when a value omits one of them.
  * @param message - the readable failure.
+ * @param me - the caller identity tuple the output schema requires.
  * @param details - machine-readable context beside the message.
  * @returns the frozen failed envelope.
  */
-const toolFailure = (message: string, details?: Readonly<Record<string, unknown>>): ToolValue =>
+export const sessionActionFailure = (message: string, me: unknown, details?: Readonly<Record<string, unknown>>): ToolValue =>
   Object.freeze({
     ok: false,
     error: invalidInput(message, details ?? {}),
     writable: false,
+    me,
   })
 
 /**
@@ -2448,8 +2453,9 @@ export const runSessionTool = async (
   try {
     return await runSessionAction(controller, validated.value)
   } catch (error: unknown) {
-    return toolFailure(
+    return sessionActionFailure(
       `the Session action "${String(action ?? '')}" failed before it could answer: ${error instanceof Error ? error.message : String(error)}`,
+      me,
       { workspace: workspace?.path, session: sessionArg },
     )
   }
@@ -4061,6 +4067,10 @@ export const createSuperagentContribution = (
   const liveAgents = new Set<Agent>()
   let timer: ReturnType<typeof setInterval> | undefined
   let polling = false
+  // Set by dispose(). The timer stops immediately, but a pass already admitted keeps running until
+  // its next checkpoint; every entry point re-checks the flag so a disabled capability cannot
+  // write a proposal or start a daemon pass after its teardown began.
+  let disposed = false
   const superHome = home === undefined || home.trim() === '' ? undefined : home
   /** Sessions this super agent started or addressed, so their turn ends report back (DH-719). */
   const tasks = new Map<string, TaskSessionRecord>()
@@ -4101,7 +4111,7 @@ export const createSuperagentContribution = (
   const daemonWorkspace = daemon?.workspace
   const daemonEnabled = daemon?.enabled === true && daemonWorkspace !== undefined && daemonWorkspace.trim() !== ''
   const poll = async (): Promise<void> => {
-    if (polling) return
+    if (disposed || polling) return
     polling = true
     try {
       const live = [...liveAgents].find(agent => callerOf(host, agent).writable)
@@ -4115,8 +4125,9 @@ export const createSuperagentContribution = (
           ...(daemonWorkspace === undefined ? {} : { cwd: daemonWorkspace }),
           propose: live === undefined,
         })
+        if (disposed) return
       }
-      if (live === undefined) return
+      if (live === undefined || disposed) return
       await runSuperagentPass(host, live, undefined, workerPreset, maxWorkers)
     } finally {
       polling = false
@@ -4518,6 +4529,7 @@ export const createSuperagentContribution = (
       }
     },
     onTurnEnd: async (input: TurnEndInput) => {
+      if (disposed) return
       // DH-719: a Session this super agent started addresses reports back here as a queued message,
       // so the person's conversation is never held while that workspace works. A turn that did not
       // complete still reports: silence is how a failed workspace Session went unnoticed (DH-722 era).
@@ -4533,6 +4545,7 @@ export const createSuperagentContribution = (
       await runSuperagentPass(host, input.agent, input.signal, workerPreset, maxWorkers)
     },
     dispose: () => {
+      disposed = true
       monitorDispose?.()
       monitorDispose = undefined
       fsRootsDispose?.()
@@ -4541,6 +4554,9 @@ export const createSuperagentContribution = (
       orphanDispose = undefined
       domainChangeDispose?.()
       domainChangeDispose = undefined
+      // The capability contract's dispose() is synchronous, so this close is deliberately not
+      // awaited: the identity, timers and listeners above stop immediately, while the durable
+      // store finishes its own close on its own task. Its failure is logged, never thrown.
       void dispatchStore?.close().catch((error: unknown) => {
         host.ctx.logger.warn('superagent: closing the dispatch store failed: %s', String(error))
       })
