@@ -805,6 +805,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'User-facing preset table (`workspace-write`/`danger-full-access`) bundling the sandbox-mode and approval-policy knobs; a switch writes one `permission/preset` event through to both knob events.',
   },
   {
+    key: 'toolPolicy',
+    pkg: 'tool-policy',
+    title: 'Soft tool policy',
+    mode: 'service',
+    consumers: ['tool-fs', 'headless'],
+    note: 'Named profiles pair a tool blacklist with file-target blacklists; denied tools leave the model schema and are refused by the monotonic tool guard, tool-fs asks before file access, and headless applies or selects a profile. The process keeps the user permissions.',
+  },
+  {
     key: 'ptcRuntime',
     pkg: 'ptc-runtime',
     title: 'PTC execution seam',

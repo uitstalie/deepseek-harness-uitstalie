@@ -76,6 +76,8 @@ flowchart LR
   cfg --> plugin_dsh_base_storage
   plugin_dsh_base_storage_json["storage-json<br/>@deepseek-ai/dsh-storage-json"]
   cfg --> plugin_dsh_base_storage_json
+  plugin_dsh_base_storage_sqlite["storage-sqlite<br/>@deepseek-ai/dsh-storage-sqlite"]
+  cfg --> plugin_dsh_base_storage_sqlite
   plugin_dsh_base_storage_domain["storage-domain<br/>@deepseek-ai/dsh-storage-domain"]
   cfg --> plugin_dsh_base_storage_domain
   plugin_dsh_base_session_projection_cache["session-projection-cache<br/>@deepseek-ai/dsh-session-projection-cache"]
@@ -244,6 +246,7 @@ flowchart LR
 | `session-projection` | `@deepseek-ai/dsh-session-projection` |
 | `storage` | `@deepseek-ai/dsh-storage` |
 | `storage-json` | `@deepseek-ai/dsh-storage-json` |
+| `storage-sqlite` | `@deepseek-ai/dsh-storage-sqlite` |
 | `storage-domain` | `@deepseek-ai/dsh-storage-domain` |
 | `session-projection-cache` | `@deepseek-ai/dsh-session-projection-cache` |
 | `otel` | `@deepseek-ai/dsh-otel` |

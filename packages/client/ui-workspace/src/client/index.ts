@@ -291,22 +291,15 @@ export function apply(ctx: Context): void {
       ? [{ id: 'delete', label: ctx.locale.bind(NS)('delete.workspace'), icon: { key: 'workspace.delete' }, danger: true, separatorBefore: true,
         run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'delete') } }] : [],
   }), 'workspace: delete menu action')
+  // Row menu triggers render the shared `contextMenu.button` factory, which
+  // owns toggling and target identity; only the workspace-group registry stays
+  // in the injected share.
   const browserInjected = (): WorkspaceBrowserInjected => ({
     workspaceGroups: {
       list: () => workspaceGroups.list(),
       subscribe: listener => workspaceGroups.subscribe(listener),
     },
-    openWorkspaceMenu: (workspaceId, path, displayTitle, point, mode) => {
-      const target = ctx.contextMenus.active.getSnapshot()
-      if (mode === 'toggle' && target?.kind === 'workspace' && target.value.workspaceId === workspaceId) ctx.contextMenus.close()
-      else ctx.contextMenus.open({ kind: 'workspace', value: { workspaceId, path, displayTitle } }, point)
-    },
     settleWorkspaceAction: () => { workspaceActionRequest.set(null) },
-    openSessionMenu: (sessionId, displayTitle, point, mode) => {
-      const target = ctx.contextMenus.active.getSnapshot()
-      if (mode === 'toggle' && target?.kind === 'session' && target.value.sessionId === sessionId) ctx.contextMenus.close()
-      else ctx.contextMenus.open({ kind: 'session', value: { sessionId, displayTitle } }, point)
-    },
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
     startSession: (workspaceId, options) => { uiWorkspace.startSession(workspaceId, options) },
