@@ -47,7 +47,6 @@ import {
   daemonIdentityOf,
   deliverTaskReport,
   handleTaskTurnEnd,
-  pendingDispatchForSession,
   enforceSuperAgentPermission,
   ensureSuperWorkspace,
   isBlocked,
@@ -69,7 +68,8 @@ import {
   superagentHomeProblem,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
-import { type DispatchLedgerTask, listDispatchTasks, recordDispatch, resolveDispatchTask } from './dispatch-ledger.ts'
+import { type DispatchLedgerTask, listDispatchTasks, recordDispatch } from './dispatch-ledger.ts'
+import { DispatchReportStore } from './dispatch-reports.ts'
 import { callerOf, identityOf } from './tools.ts'
 import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent, waitFor } from './testing/host.ts'
 
@@ -535,7 +535,7 @@ describe('superagent: workspace Sessions', () => {
     const tasks = new Map<string, { superSession: string; workspace: string }[]>()
     const options = {
       jira: {} as never,
-      caller: { writable: true, sessionId: 'super-1' } as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: workspacePath } as never,
       at: '2026-10-15T12:00:00Z' as never,
     }
     const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
@@ -829,11 +829,42 @@ describe('superagent: report recovery after a plugin remount', () => {
     }
   }
 
-  it('recovers a pending ledger binding when the in-memory map is empty', async () => {
+  const journalOf = (root: string): DispatchReportStore => new DispatchReportStore(root)
+
+  /**
+   * Seed one superagent-owned report binding. This replaces the old ledger seeding: the report
+   * journal, not the jira ledger, is what binds a child turn to its dispatch.
+   */
+  const seedBinding = async (root: string, input: {
+    readonly sessionId: string
+    readonly requestId?: string
+    readonly task?: string
+    readonly dispatchedAt?: string
+    readonly superSession?: string
+    readonly ledger?: { readonly root: string; readonly taskId: string }
+  }): Promise<void> => {
+    await journalOf(root).record({
+      workspace: { id: 'w1', title: 'workspace', path: root },
+      sessionId: input.sessionId,
+      superSession: input.superSession ?? 'super-1',
+      ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
+      task: input.task ?? 'finish the task',
+      dispatchedAt: input.dispatchedAt ?? AT,
+      ...(input.ledger === undefined ? {} : { ledger: input.ledger }),
+    })
+  }
+
+  it('recovers a pending report binding when the in-memory map is empty', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
-    const recorded = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'finish the task', dispatchedAt: AT, sessionId: 'child-1',
+    await seedBinding(root, {
+      sessionId: 'child-1',
+      requestId: 'req-1',
+      task: 'finish the task',
+      ledger: { root, taskId: 'ledger-1' },
+    })
+    await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      id: 'ledger-1', task: 'finish the task', dispatchedAt: AT, sessionId: 'child-1', requestId: 'req-1',
     })
     const warnings: unknown[][] = []
     const handled = await handleTaskTurnEnd(
@@ -847,59 +878,39 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal(handled, true)
     assert.match(controller.prompted[0]?.text ?? '', /\[task-report\] child-1/u)
     assert.match(controller.prompted[0]?.text ?? '', /the work is complete/u)
+    const binding = (await journalOf(root).forSession('child-1'))[0]
+    assert.equal(binding?.status, 'delivered')
+    // The human ledger projection follows the delivery, and is not what bound the report.
     const rows = await listDispatchTasks(root, { status: 'returned' })
-    assert.equal(rows[0]?.id, recorded.task.id)
+    assert.equal(rows[0]?.id, 'ledger-1')
     assert.equal(rows[0]?.status, 'returned')
     assert.deepEqual(warnings, [])
   })
 
-  it('does not revive a returned or failed task after the map is gone', async () => {
+  it('delivers the report even when the dispatch has no ledger entry at all', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
-    const returned = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'already done', dispatchedAt: AT, sessionId: 'child-2',
-    })
-    await resolveDispatchTask(root, returned.task, { status: 'returned', updatedAt: AT, outcome: 'done' })
-    const failed = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'already failed', dispatchedAt: AT, sessionId: 'child-2-failed',
-    })
-    await resolveDispatchTask(root, failed.task, { status: 'failed', updatedAt: AT, outcome: 'failed' })
+    await seedBinding(root, { sessionId: 'child-no-ledger', requestId: 'req-noledger', task: 'no ledger for this one' })
 
-    for (const sessionId of ['child-2', 'child-2-failed']) {
-      const handled = await handleTaskTurnEnd(
-        recoveryHost(controller) as never,
-        completed(sessionId, 'a late duplicate') as never,
-        new Map(),
-        [],
-        root,
-      )
-      assert.equal(handled, false)
-    }
-    assert.deepEqual(controller.prompted, [])
-  })
-
-  it('leaves a Session with no ledger binding alone', async () => {
-    const root = await scratchDirectory()
-    const controller = recoveryController(root)
     const handled = await handleTaskTurnEnd(
       recoveryHost(controller) as never,
-      completed('ordinary-child', 'not dispatched') as never,
+      completed('child-no-ledger', 'done without a ledger') as never,
       new Map(),
       [],
       root,
     )
 
-    assert.equal(handled, false)
-    assert.deepEqual(controller.prompted, [])
+    assert.equal(handled, true)
+    assert.equal(controller.prompted.length, 1)
+    assert.match(controller.prompted[0]?.text ?? '', /done without a ledger/u)
+    assert.equal((await journalOf(root).forSession('child-no-ledger'))[0]?.status, 'delivered')
   })
 
   it('sends a minimal report and warns when the completed turn has no assistant text', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     const warnings: unknown[][] = []
-    const recorded = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'finished silently', dispatchedAt: AT, sessionId: 'child-3',
-    })
+    await seedBinding(root, { sessionId: 'child-3', requestId: 'req-3', task: 'finished silently' })
 
     const handled = await handleTaskTurnEnd(
       recoveryHost(controller, warnings) as never,
@@ -911,20 +922,16 @@ describe('superagent: report recovery after a plugin remount', () => {
 
     assert.equal(handled, true)
     assert.match(controller.prompted[0]?.text ?? '', /no assistant text/u)
-    assert.match(controller.prompted[0]?.text ?? '', new RegExp(recorded.task.id, 'u'))
     assert.equal(warnings.length, 1)
-    const rows = await listDispatchTasks(root, { status: 'returned' })
-    assert.equal(rows[0]?.status, 'returned')
+    assert.equal((await journalOf(root).forSession('child-3'))[0]?.status, 'delivered')
   })
 
-  it('resolves the ledger and warns without throwing when delivery fails', async () => {
+  it('marks the report failed and warns when delivery fails', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     controller.prompt = async () => { throw new Error('queue is closed') }
     const warnings: unknown[][] = []
-    const recorded = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'delivery failure', dispatchedAt: AT, sessionId: 'child-4',
-    })
+    await seedBinding(root, { sessionId: 'child-4', requestId: 'req-4', task: 'delivery failure' })
 
     const handled = await handleTaskTurnEnd(
       recoveryHost(controller, warnings) as never,
@@ -935,39 +942,30 @@ describe('superagent: report recovery after a plugin remount', () => {
     )
 
     assert.equal(handled, true)
-    assert.equal(warnings.length, 1)
+    assert.ok(warnings.length >= 1)
     assert.match(String(warnings[0]?.[0] ?? ''), /could not be delivered/u)
-    const rows = await listDispatchTasks(root, { status: 'returned' })
-    assert.equal(rows[0]?.id, recorded.task.id)
-    assert.equal(rows[0]?.status, 'returned')
+    assert.equal((await journalOf(root).forSession('child-4'))[0]?.status, 'failed')
   })
 
-  it('finds the oldest pending task for one Session (FIFO)', async () => {
+  it('never posts the same report twice', async () => {
     const root = await scratchDirectory()
-    const first = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'older', dispatchedAt: '2026-10-15T11:00:00Z' as Timestamp, sessionId: 'shared-child',
-    })
-    const second = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'newer', dispatchedAt: AT, sessionId: 'shared-child',
-    })
+    const controller = recoveryController(root)
+    await seedBinding(root, { sessionId: 'child-dup', requestId: 'req-dup', task: 'one report only' })
+    const input = (): never => completed('child-dup', 'the single outcome') as never
 
-    assert.equal((await pendingDispatchForSession(root, 'shared-child'))?.id, first.task.id)
-    assert.notEqual(first.task.id, second.task.id)
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, input(), new Map(), [], root), true)
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, input(), new Map(), [], root), true)
+
+    assert.equal(controller.prompted.length, 1)
+    assert.match(controller.prompted[0]?.text ?? '', /the single outcome/u)
+    assert.equal((await journalOf(root).forSession('child-dup'))[0]?.status, 'delivered')
   })
 
   it('falls back to FIFO for records written before prompt identities existed', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
-    const first = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'older task',
-      dispatchedAt: '2026-10-15T11:00:00Z' as Timestamp,
-      sessionId: 'legacy-child',
-    })
-    const second = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'newer task',
-      dispatchedAt: AT,
-      sessionId: 'legacy-child',
-    })
+    await seedBinding(root, { sessionId: 'legacy-child', task: 'older task', dispatchedAt: '2026-10-15T11:00:00Z' })
+    await seedBinding(root, { sessionId: 'legacy-child', task: 'newer task', dispatchedAt: AT })
     const child = turnSession('legacy-child', [
       { text: 'the older result' },
       { text: 'the newer result' },
@@ -977,27 +975,29 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(1) as never, new Map(), [], root), true)
 
     assert.equal(controller.prompted.length, 2)
-    assert.match(controller.prompted[0]?.text ?? '', new RegExp(first.task.id, 'u'))
     assert.match(controller.prompted[0]?.text ?? '', /the older result/u)
-    assert.match(controller.prompted[1]?.text ?? '', new RegExp(second.task.id, 'u'))
     assert.match(controller.prompted[1]?.text ?? '', /the newer result/u)
+    const bindings = await journalOf(root).forSession('legacy-child')
+    assert.deepEqual(bindings.map(binding => binding.status), ['delivered', 'delivered'])
   })
 
   it('routes two queued dispatches to the task each turn actually ran', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
-    const sync = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'sync the ledger',
-      dispatchedAt: '2026-10-15T11:00:00Z' as Timestamp,
+    const sync = await seedBinding(root, {
       sessionId: 'shared-child',
       requestId: 'req-sync',
+      task: 'sync the ledger',
+      dispatchedAt: '2026-10-15T11:00:00Z',
     })
-    const fsError = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'investigate the FsError',
-      dispatchedAt: AT,
+    const fsError = await seedBinding(root, {
       sessionId: 'shared-child',
       requestId: 'req-fserror',
+      task: 'investigate the FsError',
+      dispatchedAt: AT,
     })
+    void sync
+    void fsError
     const child = turnSession('shared-child', [
       { requestId: 'req-sync', text: 'the sync finished' },
       { requestId: 'req-fserror', text: 'the FsError root cause is a stale handle' },
@@ -1007,45 +1007,12 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(1) as never, new Map(), [], root), true)
 
     assert.equal(controller.prompted.length, 2)
-    assert.match(controller.prompted[0]?.text ?? '', new RegExp(sync.task.id, 'u'))
     assert.match(controller.prompted[0]?.text ?? '', /the sync finished/u)
-    assert.doesNotMatch(controller.prompted[0]?.text ?? '', new RegExp(fsError.task.id, 'u'))
-    assert.match(controller.prompted[1]?.text ?? '', new RegExp(fsError.task.id, 'u'))
+    assert.doesNotMatch(controller.prompted[0]?.text ?? '', /the FsError root cause/u)
     assert.match(controller.prompted[1]?.text ?? '', /the FsError root cause/u)
-    assert.doesNotMatch(controller.prompted[1]?.text ?? '', new RegExp(sync.task.id, 'u'))
-
-    const rows = await listDispatchTasks(root, { limit: 100 })
-    assert.equal(rows.find(row => row.id === sync.task.id)?.status, 'returned')
-    assert.equal(rows.find(row => row.id === sync.task.id)?.outcome, 'the sync finished')
-    assert.equal(rows.find(row => row.id === fsError.task.id)?.status, 'returned')
-    assert.equal(rows.find(row => row.id === fsError.task.id)?.outcome, 'the FsError root cause is a stale handle')
-  })
-
-  it('reports a genuinely bound turn even when the task was already marked returned', async () => {
-    const root = await scratchDirectory()
-    const controller = recoveryController(root)
-    const recorded = await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
-      task: 'investigate the FsError',
-      dispatchedAt: AT,
-      sessionId: 'returned-child',
-      requestId: 'req-fserror',
-    })
-    // An earlier turn was misattributed to this task and settled it with the wrong text.
-    await resolveDispatchTask(root, recorded.task, {
-      status: 'returned',
-      updatedAt: AT,
-      outcome: 'the earlier sync result',
-    })
-    const child = turnSession('returned-child', [{ requestId: 'req-fserror', text: 'the real FsError outcome' }])
-
-    const handled = await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(0) as never, new Map(), [], root)
-
-    assert.equal(handled, true)
-    assert.equal(controller.prompted.length, 1)
-    assert.match(controller.prompted[0]?.text ?? '', new RegExp(recorded.task.id, 'u'))
-    assert.match(controller.prompted[0]?.text ?? '', /the real FsError outcome/u)
-    const rows = await listDispatchTasks(root, { limit: 100 })
-    assert.equal(rows.find(row => row.id === recorded.task.id)?.outcome, 'the real FsError outcome')
+    assert.doesNotMatch(controller.prompted[1]?.text ?? '', /the sync finished/u)
+    const bindings = await journalOf(root).forSession('shared-child')
+    assert.deepEqual(bindings.map(binding => binding.status), ['delivered', 'delivered'])
   })
 
   it('sends no task report for a turn with no bound dispatch', async () => {
@@ -1068,6 +1035,122 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.deepEqual(controller.prompted, [])
     const rows = await listDispatchTasks(root, { status: 'pending' })
     assert.equal(rows.find(row => row.id === recorded.task.id)?.status, 'pending')
+  })
+
+  it('never steals another prompt on the same Session', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    await seedBinding(root, { sessionId: 'mixed-child', requestId: 'req-queued', task: 'still queued' })
+    const unrelated = turnSession('mixed-child', [{ requestId: 'req-someone-else', text: 'unrelated turn' }])
+
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, unrelated.input(0) as never, new Map(), [], root), false)
+    assert.deepEqual(controller.prompted, [])
+    assert.equal((await journalOf(root).forSession('mixed-child'))[0]?.status, 'pending')
+  })
+})
+
+describe('superagent: dispatch report binding', () => {
+  const workspacePath = join(tmpdir(), 'report-binding-workspace')
+
+  class BindingRegistry {
+    rows = [{ id: 'w1', path: workspacePath, title: 'hello', sessionIds: [], status: async () => 'ok' }]
+    list() { return this.rows }
+    async create(path: string, title?: string) {
+      return { id: 'w2', path, title: title ?? path, sessionIds: [], status: async () => 'ok' }
+    }
+  }
+
+  const bindingHost = (controller: unknown) => ({
+    ctx: {
+      get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? new BindingRegistry() : undefined,
+      logger: { warn: () => {}, info: () => {} },
+    },
+    env: {},
+    clock: () => Date.parse(AT),
+    recorder: createSessionRecorder(),
+  })
+
+  it('records the binding before the child prompt and reports an immediate turn end exactly once', async () => {
+    const root = await scratchDirectory()
+    const childPrompts: string[] = []
+    const parentReports: string[] = []
+    const bindingAtChildPrompt: string[] = []
+    class ImmediateController {
+      async create() { return { sessionId: 'child-immediate' } }
+      async list() { return { items: [] } }
+      async prompt(request: { sessionId: string; content: readonly { text: string }[] }) {
+        const sessionId = String(request.sessionId)
+        const text = request.content[0]?.text ?? ''
+        if (sessionId === 'super-1') {
+          parentReports.push(text)
+          return { accepted: true }
+        }
+        const [binding] = await new DispatchReportStore(root).forSession(sessionId)
+        bindingAtChildPrompt.push(binding?.status ?? 'missing')
+        childPrompts.push(text)
+        return { accepted: true }
+      }
+    }
+    const controller = new ImmediateController()
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
+      at: AT as never,
+    }
+    const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
+    const started = await runSessionTool(
+      { action: 'start', workspace: 'hello', task: 'do the thing' },
+      options, me, bindingHost(controller).ctx as never, { tasks: new Map() },
+    )
+    assert.equal(started.ok, true, JSON.stringify(started.error))
+    assert.equal(childPrompts.length, 1)
+    // The binding existed then and there, before the child prompt was admitted.
+    assert.deepEqual(bindingAtChildPrompt, ['pending'])
+    const [binding] = await new DispatchReportStore(root).forSession('child-immediate')
+    assert.equal(binding?.status, 'pending')
+    assert.equal(binding?.superSession, 'super-1')
+    assert.ok(binding?.requestId?.startsWith('superagent-task-'), String(binding?.requestId))
+
+    // The child turn ends immediately after its prompt was admitted. Its own prompt identity is the key.
+    const events = [
+      { type: 'turn/start', seq: 1, data: { turn: 1 } },
+      { type: 'user/message', seq: 2, data: { role: 'user', content: [], source: { kind: 'user', rpcId: binding?.requestId } } },
+      { type: 'assistant/message', seq: 3, data: { message: { content: [{ type: 'text', text: 'immediate result' }] } } },
+      { type: 'turn/end', seq: 4, data: { turn: 1, reason: { kind: 'completed' } } },
+    ]
+    const agent = { id: 'child-immediate', session: { snapshotEvents: () => events } }
+    const input = { agent, session: agent.session, turn: 1, event: events[3], signal: new AbortController().signal }
+    assert.equal(await handleTaskTurnEnd(bindingHost(controller) as never, input as never, new Map(), [], root), true)
+    assert.equal(await handleTaskTurnEnd(bindingHost(controller) as never, input as never, new Map(), [], root), true)
+
+    assert.equal(parentReports.length, 1)
+    assert.match(parentReports[0] ?? '', /immediate result/u)
+    assert.equal((await new DispatchReportStore(root).forSession('child-immediate'))[0]?.status, 'delivered')
+  })
+
+  it('refuses to dispatch when the report binding cannot be recorded', async () => {
+    const root = await scratchDirectory()
+    // A file where the journal directory belongs makes the journal unwritable.
+    await writeFile(join(root, '.superagent'), 'not a directory')
+    const prompted: string[] = []
+    class NeverController {
+      async create() { return { sessionId: 'child-unbound' } }
+      async list() { return { items: [] } }
+      async prompt(request: { sessionId: string }) { prompted.push(String(request.sessionId)); return { accepted: true } }
+    }
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
+      at: AT as never,
+    }
+    const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
+    const started = await runSessionTool(
+      { action: 'start', workspace: 'hello', task: 'should not be admitted' },
+      options, me, bindingHost(new NeverController()).ctx as never, { tasks: new Map() },
+    )
+    assert.equal(started.ok, false)
+    assert.match(JSON.stringify(started.error), /report binding could not be recorded/u)
+    assert.deepEqual(prompted, [], 'no prompt is admitted without a report binding')
   })
 })
 
@@ -1540,7 +1623,7 @@ describe('superagent: context, compaction and memory curation', () => {
   }
   const options = {
     jira: {} as never,
-    caller: { writable: true, sessionId: 'super-1' } as never,
+    caller: { writable: true, sessionId: 'super-1', cwd: workspacePath } as never,
     at: '2026-10-15T12:00:00Z' as never,
   }
   const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }

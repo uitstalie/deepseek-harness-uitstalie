@@ -122,20 +122,28 @@ export const ledgerFileOf = (root: string, workspaceId: string): string => {
 const listOf = (value: string | undefined): readonly string[] =>
   value === undefined ? [] : value.split(';').map(item => item.trim()).filter(item => item !== '')
 
+/** Render a possibly multi-line field, indenting continuation lines so a section never ends early. */
+const fieldLines = (name: string, value: string): string[] => {
+  const [first = '', ...rest] = value.split(/\r?\n/u)
+  return [`- ${name}: ${first}`, ...rest.map(line => `  ${line}`)]
+}
+
 /** Render one task section; every present field is one line, lists are `; `-joined. */
 export const renderTaskSection = (task: DispatchLedgerTask): string => {
   const lines = [
     `## ${task.id} · ${task.status}`,
     `- workspace: ${task.workspaceTitle}`,
     `- path: \`${task.workspacePath}\``,
-    `- task: ${task.task}`,
+    // A task or outcome is free text and routinely spans lines; continuation lines are indented so
+    // an embedded `##` heading cannot make the reader treat the rest of the section as a new task.
+    ...fieldLines('task', task.task),
     `- dispatched: ${task.dispatchedAt}`,
     `- updated: ${task.updatedAt}`,
     ...(task.sessionId === undefined ? [] : [`- session: ${task.sessionId}`]),
     ...(task.requestId === undefined ? [] : [`- request: ${task.requestId}`]),
     ...(task.issue === undefined ? [] : [`- issue: ${task.issue}`]),
     ...(task.artifacts.length === 0 ? [] : [`- artifacts: ${task.artifacts.join('; ')}`]),
-    ...(task.outcome === undefined ? [] : [`- outcome: ${task.outcome}`]),
+    ...(task.outcome === undefined ? [] : fieldLines('outcome', task.outcome)),
     ...(task.decisions.length === 0 ? [] : [`- decisions: ${task.decisions.join('; ')}`]),
   ]
   return `${lines.join('\n')}\n\n`
@@ -162,11 +170,13 @@ export const parseLedger = (
   const latest = new Map<string, Draft>()
   const order: string[] = []
   let current: Draft | undefined
+  let lastKey: string | undefined
   const finish = (): void => {
     if (current === undefined) return
     latest.set(current.id, current)
     if (!order.includes(current.id)) order.push(current.id)
     current = undefined
+    lastKey = undefined
   }
   for (const line of text.split(/\r?\n/u)) {
     const heading = HEADING.exec(line)
@@ -179,18 +189,24 @@ export const parseLedger = (
       }
       continue
     }
-    if (line.startsWith('## ')) {
-      finish()
+    if (current === undefined) continue
+    // Only a real task heading ends a section. Free text may contain its own `##` headings; older
+    // records wrote them unindented, so treating them as prose is what lets those records keep the
+    // structured fields that follow the task text.
+    if (line.startsWith('## ')) continue
+    const continuation = /^ {2,}(.*)$/u.exec(line)
+    if (continuation !== null && lastKey !== undefined) {
+      const previous = current.fields.get(lastKey) ?? ''
+      current.fields.set(lastKey, previous === '' ? continuation[1] ?? '' : `${previous}\n${continuation[1] ?? ''}`)
       continue
     }
-    if (current === undefined) continue
     const field = FIELD.exec(line)
     if (field === null) continue
     const key = field[1] ?? ''
     const value = field[2] ?? ''
-    if (key === 'workspace') current.workspaceTitle = value
-    else if (key === 'path') current.workspacePath = value.replace(/^`(.*)`$/u, '$1')
-    else current.fields.set(key, value)
+    if (key === 'workspace') { current.workspaceTitle = value; lastKey = undefined }
+    else if (key === 'path') { current.workspacePath = value.replace(/^`(.*)`$/u, '$1'); lastKey = undefined }
+    else { current.fields.set(key, value); lastKey = key }
   }
   finish()
   return order.flatMap((id): readonly DispatchLedgerTask[] => {
