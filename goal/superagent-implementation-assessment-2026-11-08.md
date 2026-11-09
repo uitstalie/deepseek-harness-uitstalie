@@ -278,3 +278,24 @@ Memory 报告中的默认检索失败、每轮快照、淘汰和重复结论会�
 - `goal/memory-plugin-assessment-2026-11-08.md`：memory 实际调用、检索/快照/淘汰问题与 Windows 注意。
 - 隔离性结论的可复核回读在上述 super session 行 2330/seq 2328；它不是一篇独立落盘的 goal 报告，本文没有伪造不存在的文件。
 - 报告只写当前调查证据；当前新任务后续是否完成不属于本报告事前事实。复跑必须另存 runtime/build 身份和真实报告状态，不能只比较文件是否存在。
+
+## 2026-11-10 进展
+
+基线说明：本节记录基于 `60d56470e8` 加本地 Stage A/B/C 的后续进展；原审查及其 Fedora 证据保持不变。`docs/reviews/windows-superagent-eval-2026-11-09.md` 的「失败不可重试」描述评测时的 `7174ff024d`，不代表当前 HEAD。
+
+### 已修
+
+- **journal 与 dispatch domain/store 已迁出 Jira 实现。** Stage A `2655640fe8` 将报告 journal 放入 `@deepseek-ai/dsh-superagent-core`；Stage B `155551aa9b` 迁入 dispatch 域与 store，以 `DispatchProjection` 接口注入 Jira Markdown 行为。证据：`packages/superagent/superagent-core/src/index.ts:22-24`、`dispatch-types.ts`、`dispatch-store.ts`。
+- **Stage C `0e52db8525` 已落地并验证限定的报告生命周期。** journal 支持 pending→delivering→delivered/failed、list/ack 和重复投递保护；初始化扫描重投有正文的 pending/delivering，failed 保持可见且不自动循环。abort 后续 prompt 有新任务绑定，缺失/归档 recipient 不改投最新 super Session，stop 的 turn-end 被抑制。证据：`packages/superagent/superagent-core/src/recovery.ts:31-78`、`packages/jira/jira-agent/src/superagent.ts:3326-3348,4094-4097,4873-4890`。
+- **source-only 回归已通过。** core journal/domain 26/26、Jira superagent 95/95；相关测试包括 `recovers saved pending reports once without reopening delivered or failed work`、`takes over a fresh delivering claim during startup recovery and preserves acknowledged work`、`refuses a missing or archived recipient rather than rerouting to the latest super Session` 和 `stop cuts a running turn off: nothing is admitted, the queue is cleared`。
+- **Windows 相关修复已进入当前基线。** `c81bc261ca` 修复 Jira 工具结果与实际写入不一致；`9b99e909d4` 保留非关键未知 Session 事件；`6f9e2a8bbb` 使 Windows ACL 后端 fail-closed 禁用，`a2c2ccd29e`/`1209706f27` 又加固直接构造与导出边界。这些 Windows 修复未在 Fedora 上做对应实机复测；`60d56470e8` 的工具合并是独立变更。
+
+### 部分修
+
+- **启动恢复已有初始化调用与 core 单测，但没有真实组合下的独立启动恢复集成测试。** dispose 会取消恢复，不等待已接纳恢复完成；这只证明本轮 source-only 范围，不证明崩溃时序已闭合。证据：`packages/jira/jira-agent/src/superagent.ts:4873-4890,5278-5282`、`0e52db8525` 提交正文。
+- **archive/stop 现在覆盖 pending 与 delivering 的可见失败状态，但只验证了绑定、recipient 和 turn-end 抑制路径。** 没有声称真实 Windows 进程、跨 Host 归档竞态或 UI 已验收。证据：`packages/superagent/superagent-core/src/index.ts:341-352`。
+
+### 未处理 / 未验证
+
+- **控制面完整拆分仍未做。** `superagent.ts` 仍为约 5k 行的 Jira 控制面；无 Jira composition 的 dispatch→result→report→retry、Remote/UI、结构化结果和权限/提问编排不在 A–C 范围。
+- **多 Host 重复投递与生命周期残留风险仍在。** 没有跨进程原子 claim，dispose 未等待恢复结算；不得把本轮幂等测试解释为跨 Host exactly-once。证据：`0e52db8525` 提交正文及 core README 的限制段。

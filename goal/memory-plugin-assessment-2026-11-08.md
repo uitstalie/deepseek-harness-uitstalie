@@ -323,3 +323,19 @@ superagent 的 start/append/prompt、journal、dispatch 状态、compaction 和�
 - dev MEMORY.md 在 2026-11-08 22:37 左右复核时为 15,544 bytes、5 个 session、49 条；super MEMORY.md 在约 21:39 的独立读取中为 9,832 bytes，且只保留一个活跃 session 的末段。后者是随父会话继续变化的运行时文件，不是固定截点快照；它证明淘汰已发生，不能用旧 session 的全部写入数推断当前文件仍保存全部正文。
 - 本报告的数字复核脚本未落盘：用 Python `subprocess` 调只读 `zstd -dc`，逐行解析 JSONL，以 `time <= 1794144661034` 固定截点，按上述事件类型计数；Windows 复跑应把同等逻辑写成临时/内存脚本，不依赖 shell 工具集。
 - 先前未跟踪的 `prompt-audit/` 提供过工具文本/token 测量和缓存背景，但仍是未跟踪材料；本报告没有修改、提交或把它当当前运行的独立证明。
+
+## 2026-11-10 进展
+
+基线说明：本节记录基于 `60d56470e8` 加本地 Stage A/B/C 的后续进展；原审查及其 Fedora 证据保持不变。`docs/reviews/windows-superagent-eval-2026-11-09.md` 的「失败不可重试」描述评测时的 `7174ff024d`，不代表当前 HEAD。
+
+### 已修
+
+- **本轮没有 memory 实现修复。** 截至 `60d56470e8` 与 Stage A `2655640fe8`、Stage B `155551aa9b`、Stage C `0e52db8525`，未修改 `packages/uitstalie/memory` 或 `packages/uitstalie/ui-memory`；原审查关于检索、摘要队列、stale 重试、checkpoint 和快照成本的结论仍有效，不在本轮修复范围内。证据：`git diff-tree 60d56470e8`、`0e52db8525` 的提交文件列表。
+
+### 部分修
+
+- **只有 superagent 的报告生命周期发生了改变，不能据此推断 memory 已改善。** Stage C `0e52db8525` 的 26 个 core 与 95 个 Jira source-only 测试不覆盖 memory 的搜索/读取、摘要队列或 Windows 文件锁。Stage A/B/C 均不改变 memory 的职责边界。
+
+### 未处理 / 未验证
+
+- **默认检索、连续 turn 摘要覆盖、维护命令 stale 重试、跨文件事务及 Windows 复跑仍按原审查待处理。** Windows 的九个后续提交包括 Jira 工具面、Session 未知事件和 sandbox ACL 修复，但没有 memory 实现变更；Fedora 未对这些 Windows 修复或 memory 原问题做新的实机复测。

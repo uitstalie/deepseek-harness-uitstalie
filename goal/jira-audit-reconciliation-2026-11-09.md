@@ -74,3 +74,22 @@
 - 投递失败时业务结果仍可查，UI/工具显示 failed 与原因；重试和重启不会重复 delivered 报告。
 - abort/archive/stop 处理 pending 与 delivering，不向 archived Session 或另一 recipient 错投。
 - Windows 实机覆盖路径大小写/斜杠/junction、journal 追加与重载、锁和进程退出；多宿主未具备原子 claim 时部署层拒绝第二个写者。
+
+## 2026-11-10 进展
+
+基线说明：本节记录基于 `60d56470e8` 加本地 Stage A/B/C 的后续进展；原对账及其 Windows 证据保持不变。`docs/reviews/windows-superagent-eval-2026-11-09.md` 的「失败不可重试」描述评测时的 `7174ff024d`，不代表当前 HEAD。
+
+### 已修
+
+- **Phase 2 的 A/B/C 已完成并推送。** A `2655640fe8` 把报告 journal 抽到 `@deepseek-ai/dsh-superagent-core`；B `155551aa9b` 迁入 dispatch domain/store，以接口注入 Jira Markdown 投影；C `0e52db8525` 加入报告 list/ack、幂等结算、启动恢复和 abort/archive/stop 的限定一致性处理。证据：`packages/superagent/superagent-core/src/index.ts:241-262`、`recovery.ts:31-78`、`packages/jira/jira-agent/src/superagent.ts:3326-3348,4094-4097,4873-4890`。
+- **本阶段验证为 core journal/domain 26/26、Jira superagent 95/95，定向 tsc 和 102 包依赖检查通过。** 这些结果只覆盖 source-only 定向路径；C 的提交正文明确记录未验证项。
+
+### 部分修
+
+- **Phase 2 的依赖边界已部分建立，控制面尚未迁出。** core 生产代码不依赖 Jira 类型/parser，但 `superagent.ts` 仍承担工具、路由和生命周期；启动恢复有初始化调用和 core 单测，尚无真实组合启动恢复集成测试，dispose 不等待恢复结算。证据：`packages/superagent/superagent-core/src/dispatch-types.ts`、`0e52db8525` 提交正文。
+- **Windows 侧九个后续提交中的相关修复已入基线，但不是 Fedora 复测结论。** `c81bc261ca` 修复 Jira 工具面，`9b99e909d4` 保留非关键未知 Session 事件，`6f9e2a8bbb` 禁用 Windows ACL 后端且 fail-closed，`a2c2ccd29e`/`1209706f27` 加固该边界；`60d56470e8` 完成 workspace/session 工具合并。其余提交为权限、审查文档与设计记录；不把它们写成新的 Fedora 实机证据。
+
+### 未处理 / 未验证（Phase 2 D/E）
+
+- **D 未完成：** 将约 5248 行的 `superagent.ts` 与工具面拆成无 Jira 的 control 服务，并以无 Jira composition 验收 dispatch→result→report→retry。
+- **E 未完成：** 单事务 claim、移除旧导出/Markdown 回退、UI/Remote 与多 Host 支持。journal 仍无跨进程原子 claim；自动接管 delivering 不能保证多 Host 不重复投递，也未验证真实多 Host 崩溃/重启。证据：`0e52db8525` 提交正文及 core README 限制段。

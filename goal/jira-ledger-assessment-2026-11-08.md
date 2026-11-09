@@ -373,3 +373,24 @@ Windows 要改为自己 clone 的绝对路径，不能依赖 Linux 日志中的�
 - `$DSH_HOME/dsh-jira/machine-id` 当前为 `m-596433ad`；共享 machines 文件还保留 Windows 与误建身份的记录。
 - dispatch Markdown 路径：`/home/uitstalie/桌面/dsh/superagent/.superagent/ledger/`；错挂示例在 `7515b01c-6587-4cd2-ab3f-9f129d2561c6.md:2446-2534`，同 id 多段可从该文件后续 returned 标题复核。
 - `574de923a3` 新增 journal 的源码在调查时已提交；实际 super home 下尚无 `reports.jsonl`，所以 Windows 复跑必须另做新链路的实机验证。
+
+## 2026-11-10 进展
+
+基线说明：本节记录基于 `60d56470e8` 加本地 Stage A/B/C 的后续进展；原审查及其 Fedora 证据保持不变。`docs/reviews/windows-superagent-eval-2026-11-09.md` 的「失败不可重试」描述评测时的 `7174ff024d`，不代表当前 HEAD。
+
+### 已修
+
+- **报告 journal 已独立于 Jira 台账。** Stage A `2655640fe8` 将 journal 移入 `@deepseek-ai/dsh-superagent-core`，Jira 保留兼容 re-export；报告绑定、投递与重试不再以 issue/Markdown 台账为前置条件。证据：`packages/superagent/superagent-core/src/index.ts:1-24`。
+- **dispatch 业务域与存储已迁入 core。** Stage B `155551aa9b` 用 core 自有类型和 `DispatchProjection` 接口替代 Jira 类型/parser 依赖，Jira 注入 Markdown 投影并保留旧导入路径。证据：`packages/superagent/superagent-core/src/dispatch-types.ts`、`packages/jira/jira-agent/src/dispatch-projection.ts`。
+- **Stage C `0e52db8525` 补齐已验证的投递查询与生命周期路径。** journal 提供 `list` 与 `ack`，记录 attempt/error/recipient/时间，并防止已 delivered 报告被重复 claim；启动扫描重投已保存的 pending/delivering 报告，failed 不自动重试。abort 后续建立新绑定，缺失/归档 recipient 不错投到其他 super Session，stop 的 turn-end 不投递。证据：`packages/superagent/superagent-core/src/index.ts:241-262`、`recovery.ts:31-78`、`packages/jira/jira-agent/src/superagent.ts:3326-3348,3786-3877,4094-4097,4873-4890,5203`。
+- **Windows 工具面修复已入基线。** `c81bc261ca` 修复 Jira 结果渲染、嵌套校验、dispatch resolve/列表计数及失败可见性；这些是 Windows 侧修复，未在 Fedora 上对同一实机场景复测。证据：`c81bc261ca` 及 `packages/jira/jira-agent/src/index.test.ts` 的 35 个真实组合测试。
+
+### 部分修
+
+- **报告可见性和恢复仍限单实例验证。** Stage C source-only 验证为 core journal/domain 26/26、Jira superagent 95/95；尚无独立的真实组合启动恢复集成测试，dispose 取消恢复但不等待其结算。证据：`0e52db8525` 的提交正文及上述测试。
+- **业务结果与投递分离已落到 domain/journal 和投影接口，但控制面仍在 Jira 包。** `superagent.ts`、工具注册、recipient 路由与 UI 尚未迁入独立控制服务；本轮不是无 Jira 组合验收。
+
+### 未处理 / 未验证
+
+- **多 Host 不是 exactly-once。** journal 的 Promise 队列和 claim 仍是单实例/进程内保护，自动接管 delivering 没有跨进程原子锁；Windows 合成多进程实验的旧风险仍然成立，未宣称已解决。证据：`0e52db8525` 提交正文、`packages/superagent/superagent-core/README.md:37-41`。
+- **Jira 包内控制面、旧 claim 事务、UI、旧导出/Markdown 回退移除均未完成。** Windows 的九个后续提交没有改变本轮 memory 或这些控制面边界；Stage C 也未做 Windows/Fedora 实机重启验证。
