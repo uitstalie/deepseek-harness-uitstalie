@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Callers can bind a workspace Session and prompt identity to a dispatch before admitting work, then retain and settle its report delivery independently of any issue ledger. The journal stores pending, delivering, delivered, and failed states with attempts and errors, and supports reading failed reports for an explicit retry.
+Callers can bind a workspace Session and prompt identity to a dispatch before admitting work, then retain and settle its report delivery independently of any issue ledger. The journal stores pending, delivering, delivered, and failed states with attempts and errors, and supports reading failed reports for an explicit retry. `DispatchStore` persists business results in the dispatch domain and accepts an explicit projection interface for human-readable output.
 
 ## Table of Contents
 
@@ -30,7 +30,7 @@ Use `DispatchReportStore` with the super workspace root. The caller must record 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The package contains only the journal's record model and filesystem operations. It does not import a Jira service, issue types, or Markdown parser. Writes are serialized per store instance; a new instance can read the latest record for each task from the journal. The caller remains responsible for delivery, retry policy, and lifecycle orchestration.
+The package contains the journal, the dispatch domain model, and the domain store's filesystem operations. It does not import a Jira service, issue types, or Markdown parser. Journal writes are serialized per store instance; a new instance can read the latest record for each task. The domain store accepts a `DispatchProjection` for legacy Markdown import and projection, while business results remain in the domain. The caller remains responsible for delivery, retry policy, and lifecycle orchestration.
 
 -----
 

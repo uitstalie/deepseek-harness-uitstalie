@@ -18,18 +18,30 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./dispatch": {
+      "types": "./lib/types/dispatch.d.ts",
+      "default": "./lib/dispatch.js"
+    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
+    "lib/dispatch.js",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-storage-domain": "workspace:*"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-storage": "workspace:*",
+    "@deepseek-ai/dsh-storage-domain": "workspace:*",
+    "@deepseek-ai/dsh-storage-json": "workspace:*"
   }
 }

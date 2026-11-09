@@ -9,7 +9,7 @@ kind: "package-library"
 
 ## 概述
 
-调用方可以在允许工作开始前，把工作区 Session 与 prompt 身份绑定到一次派发，再独立保存和结算它的报告投递，不依赖 issue 台账。journal 保存 pending、delivering、delivered 和 failed 状态及尝试次数、错误，并支持读取失败报告以显式重试。
+调用方可以在允许工作开始前，把工作区 Session 与 prompt 身份绑定到一次派发，再独立保存和结算它的报告投递，不依赖 issue 台账。journal 保存 pending、delivering、delivered 和 failed 状态及尝试次数、错误，并支持读取失败报告以显式重试。`DispatchStore` 将业务结果持久化到 dispatch domain，并接受显式投影接口来输出人可读内容。
 
 ## 目录
 
@@ -30,7 +30,7 @@ kind: "package-library"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-本包只包含 journal 的记录模型与文件操作，不导入 Jira 服务、issue 类型或 Markdown parser。写入按 store 实例串行；新实例可以从 journal 读取每个任务的最新记录。调用方仍负责投递、重试策略与生命周期编排。
+本包包含 journal、dispatch domain 模型及 domain store 的文件操作，不导入 Jira 服务、issue 类型或 Markdown parser。journal 写入按 store 实例串行；新实例可以读取每个任务的最新记录。domain store 通过 `DispatchProjection` 接收旧 Markdown 的导入与投影，业务结果仍保留在 domain。调用方仍负责投递、重试策略与生命周期编排。
 
 -----
 

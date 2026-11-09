@@ -16,8 +16,12 @@
  * a plugin remount, it needs no storage-domain composition, and a person can read it. The class is
  * the seam for a later move into a storage domain without touching callers.
  *
- * @module @deepseek-ai/dsh-jira-agent/dispatch-reports
+ * @module @deepseek-ai/dsh-superagent-core
  */
+
+export * from './dispatch-types.ts'
+export * from './dispatch-store.ts'
+
 
 import { randomUUID } from 'node:crypto'
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
