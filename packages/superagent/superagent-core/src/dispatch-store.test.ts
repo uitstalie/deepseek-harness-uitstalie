@@ -178,7 +178,8 @@ describe('superagent: durable dispatch store', () => {
 
   it('returns a bounded DispatchLedgerList from query', async () => {
     const { storageCtx } = await withStorage()
-    const store = new DispatchStore(storageCtx, 'unused-root', testMarkdownProjection('unused-root'))
+    const root = await scratch()
+    const store = new DispatchStore(storageCtx, root, testMarkdownProjection(root))
     stores.push(store)
     await store.record(taskFor('task-query-1'), 'super-1')
     await store.record(taskFor('task-query-2'), 'super-1')
