@@ -11,7 +11,7 @@ import { appendFile, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
-import { DISPATCH_REPORT_DIR, DISPATCH_REPORT_FILE, DispatchReportStore, newDispatchReportId } from './dispatch-reports.ts'
+import { DISPATCH_REPORT_DIR, DISPATCH_REPORT_FILE, DispatchReportStore, newDispatchReportId } from './index.ts'
 
 const AT = '2026-11-08T00:00:00.000Z'
 const LATER = '2026-11-08T00:06:00.000Z'

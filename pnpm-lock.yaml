@@ -3496,6 +3496,9 @@ importers:
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:*
         version: link:../../subprocess/subprocess
+      '@deepseek-ai/dsh-superagent-core':
+        specifier: workspace:*
+        version: link:../../superagent/superagent-core
       '@deepseek-ai/dsh-system-environment':
         specifier: workspace:*
         version: link:../../uitstalie/system-environment
@@ -13164,6 +13167,9 @@ importers:
       '@deepseek-ai/dsh-storage-domain':
         specifier: workspace:*
         version: link:../../storage/storage-domain
+      '@deepseek-ai/dsh-superagent-core':
+        specifier: workspace:*
+        version: link:../../superagent/superagent-core
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -17277,6 +17283,12 @@ importers:
       koffi:
         specifier: 3.1.1
         version: 3.1.1
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+
+  packages/superagent/superagent-core:
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~

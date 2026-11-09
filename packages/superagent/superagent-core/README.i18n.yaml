@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/superagent/superagent-core/README.md
+/:
+  en: 6e2d60dc74632f9c
+  zh: cea8d67517327703
+/deepseek-ai-dsh-superagent-core:
+  en: edb123ecf5c6f3c7
+  zh: 5d613322f302ad72
+/deepseek-ai-dsh-superagent-core/summary:
+  en: cafc292467e1f5b5
+  zh: eb3131e25854387a
+/deepseek-ai-dsh-superagent-core/table-of-contents:
+  en: 9be40445baed505c
+  zh: e72e4ab5685d4c1f
+/deepseek-ai-dsh-superagent-core/use-this-package:
+  en: 764298fffe64b27d
+  zh: a6b54a069370d541
+/deepseek-ai-dsh-superagent-core/understand-the-implementation:
+  en: df73632ee642b190
+  zh: f0a820b4bf67be0c
+/deepseek-ai-dsh-superagent-core/known-limitations-and-deferred-work:
+  en: cce04870c4eda8e0
+  zh: a1e41b6bdf914ba2
+/deepseek-ai-dsh-superagent-core/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

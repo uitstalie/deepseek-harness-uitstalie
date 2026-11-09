@@ -29,6 +29,7 @@
     "@deepseek-ai/dsh-jira-core": "workspace:*",
     "@deepseek-ai/dsh-storage": "workspace:*",
     "@deepseek-ai/dsh-storage-domain": "workspace:*",
+    "@deepseek-ai/dsh-superagent-core": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
     "zod": "4.4.3"
   },
