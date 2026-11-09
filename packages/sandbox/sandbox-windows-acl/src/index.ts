@@ -4,16 +4,12 @@
  * windows-acl-restrict-poc @ 10e4dfb (the fixed revision): a WRITE_RESTRICTED
  * token whose restricting SIDs include distinct workspace and temp write
  * SIDs that this sandbox adds to their owning directories' DACLs — the
- * intersection check then allows writes exactly where either capability has
- * a Write ACE, and nowhere else those SIDs are concerned (the check ALSO
- * inherits the ambient write ACEs of the other restricting SIDs — the
+ * intersection check then allows writes where either capability has a Write
+ * ACE, alongside write access conferred by the other restricting SIDs (the
  * keep-alive group logon SID + Everyone; Authenticated Users, INTERACTIVE,
- * and LOCAL are absent from both lists — see the seam's dual-list contract
- * in `packages/sandbox/sandbox-local` and the package README's Modes section
- * for the complete boundary). The intersection covers only the object's own
- * access check, so the token is also lowered to Low integrity and every
- * granted directory carries a Low no-write-up label and the ambient-delete
- * deny the `acl` module documents. The write SID is the per-WORKSPACE identity
+ * and LOCAL are absent from both lists). The token runs at Medium integrity;
+ * new grants change only capability ACEs and never relabel the granted tree.
+ * The write SID is the per-WORKSPACE identity
  * ({@link workspaceWriteSid}): deterministic from the canonical workspace
  * path, so the workspace-root ACE materializes once per workspace per
  * machine and every later provision hits the exact-ACE skip — the
@@ -288,15 +284,14 @@ export class AclSandbox {
       // provision would re-propagate the whole tree) and the temp ACE is
       // REVOCABLE (dispose() removes it before the private directory is
       // deleted; the ambient temp root is never granted).
-      // The Low label SID and the world SID the grants deny and label with.
-      const lowLabelSid = makeWellKnownSid(api, abi.WinLowLabelSid)
+      const mediumLabelSid = makeWellKnownSid(api, abi.WinMediumLabelSid)
       const worldSid = makeWellKnownSid(api, abi.WinWorldSid)
-      this.sidAllocations.push(lowLabelSid, worldSid)
+      this.sidAllocations.push(mediumLabelSid, worldSid)
 
       if (this.manageDacls) {
         if (this.writeSidPtr !== undefined) {
           for (const path of this.writableDirs) {
-            grantWrite(api, path, this.writeSidPtr, lowLabelSid, worldSid)
+            grantWrite(api, path, this.writeSidPtr)
           }
           for (const path of this.excludedDirs) {
             if (!existsSync(path) || !statSync(path).isDirectory()) {
@@ -311,7 +306,7 @@ export class AclSandbox {
             // apply (a LocalFree failure), and the fail-closed catch must still
             // revoke that path (revoking an ungranted path is a no-op merge).
             this.grantedPaths.push({ path: tempDir, sidPtr: this.tempWriteSidPtr })
-            grantWrite(api, tempDir, this.tempWriteSidPtr, lowLabelSid, worldSid)
+            grantWrite(api, tempDir, this.tempWriteSidPtr)
           }
         }
       }
@@ -323,7 +318,7 @@ export class AclSandbox {
         { world: worldSid },
         this.mode,
       )
-      restrictTokenIntegrity(api, restrictedToken, lowLabelSid)
+      restrictTokenIntegrity(api, restrictedToken, mediumLabelSid)
       this.token = restrictedToken
       // The restricted token's default DACL still names only the user's
       // ambient SIDs — none of the restricting SIDs. Every NEW object the

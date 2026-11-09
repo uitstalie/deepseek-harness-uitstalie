@@ -57,17 +57,17 @@ export const SYSTEM_MANDATORY_LABEL_NO_WRITE_UP = 0x00000001
 export const TokenIntegrityLevel = 25
 /** Group attribute marking the integrity SID of a TOKEN_MANDATORY_LABEL. */
 export const SE_GROUP_INTEGRITY = 0x00000020
-/** WELL_KNOWN_SID_TYPE value for the Low mandatory level (S-1-16-4096). */
-export const WinLowLabelSid = 66
+/** WELL_KNOWN_SID_TYPE value for the Medium mandatory level (S-1-16-8192). */
+export const WinMediumLabelSid = 67
 /** x64 TOKEN_MANDATORY_LABEL byte size (the SID is referenced, not embedded). */
 export const TOKEN_MANDATORY_LABEL_SIZE = 16
 /** x64 ACL header byte size (AclRevision, Sbz1, AclSize, AceCount, Sbz2). */
 export const ACL_HEADER_SIZE = 8
-/** Bytes a SYSTEM_MANDATORY_LABEL_ACE occupies beyond the ACL header and its SID. */
+/** Bytes a mandatory-label ACE occupies beyond the ACL header and its SID. */
 export const MANDATORY_ACE_OVERHEAD = 8
 /** ACL revision accepted by InitializeAcl and AddMandatoryAce. */
 export const ACL_REVISION = 2
-/** LocalAlloc flag selecting zero-initialized fixed memory (LMEM_FIXED | LMEM_ZEROINIT). */
+/** LocalAlloc flag selecting zero-initialized fixed memory. */
 export const LPTR = 0x0040
 /** SE_OBJECT_TYPE value for filesystem objects. */
 export const SE_FILE_OBJECT = 1
@@ -85,8 +85,7 @@ export const DENY_ACCESS = 3
 export const REVOKE_ACCESS = 4
 /** ACE inheritance flags for child containers and objects. */
 export const SUB_CONTAINERS_AND_OBJECTS_INHERIT = 0x3
-/** ACE inheritance flag for child containers only (directories; files do not inherit). */
-export const CONTAINER_INHERIT_ACE = 0x2
+
 /** Legacy Win32 maximum path character count used by GetTempPathW. */
 export const MAX_PATH = 260
 /** Successful Win32 status code. */

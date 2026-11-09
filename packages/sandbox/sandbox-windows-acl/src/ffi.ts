@@ -41,6 +41,8 @@ export interface Win32Bindings extends Win32ProcessBindings {
   openProcessToken(process: NativePtr, desiredAccess: number, tokenHandle: NativePtr): number
   localAlloc(flags: number, bytes: number): NativePtr
   localFree(memory: NativePtr): NativePtr
+  initializeAcl(acl: NativePtr, length: number, revision: number): number
+  addMandatoryAce(acl: NativePtr, revision: number, flags: number, policy: number, sid: NativePtr): number
   convertStringSidToSidW(stringSid: string, sid: NativePtr): number
   createWellKnownSid(type: number, domainSid: null, sid: NativePtr, size: NativePtr): number
   isValidSid(sid: NativePtr): number
@@ -60,8 +62,6 @@ export interface Win32Bindings extends Win32ProcessBindings {
     newToken: NativePtr,
   ): number
   setEntriesInAclW(count: number, entries: Buffer, oldAcl: NativePtr | null, newAcl: NativePtr): number
-  initializeAcl(acl: NativePtr, length: number, revision: number): number
-  addMandatoryAce(acl: NativePtr, revision: number, aceFlags: number, policy: number, sid: NativePtr): number
   setNamedSecurityInfoW(
     path: string,
     objectType: number,
@@ -244,6 +244,8 @@ function bindings(): Win32Bindings {
       'int', PVOID, PVOID, koffi.pointer('uint32'),
     ]),
     isValidSid: bind(advapi32, 'IsValidSid', 'int', [PVOID]),
+    initializeAcl: bind(advapi32, 'InitializeAcl', 'int', [PVOID, 'uint32', 'uint32']),
+    addMandatoryAce: bind(advapi32, 'AddMandatoryAce', 'int', [PVOID, 'uint32', 'uint32', 'uint32', PVOID]),
     getLengthSid: bind(advapi32, 'GetLengthSid', 'uint32', [PVOID]),
     copySid: bind(advapi32, 'CopySid', 'int', ['uint32', PVOID, PVOID]),
     getTokenInformation: bind(advapi32, 'GetTokenInformation', 'int', [
@@ -254,8 +256,6 @@ function bindings(): Win32Bindings {
       PVOID, 'uint32', 'uint32', PVOID, 'uint32', PVOID, 'uint32', PVOID, PPVOID,
     ]),
     setEntriesInAclW: bind(advapi32, 'SetEntriesInAclW', 'uint32', ['uint32', PVOID, PVOID, PPVOID]),
-    initializeAcl: bind(advapi32, 'InitializeAcl', 'int', [PVOID, 'uint32', 'uint32']),
-    addMandatoryAce: bind(advapi32, 'AddMandatoryAce', 'int', [PVOID, 'uint32', 'uint32', 'uint32', PVOID]),
     setNamedSecurityInfoW: bind(advapi32, 'SetNamedSecurityInfoW', 'uint32', [
       'str16', 'int', 'uint32', PVOID, PVOID, PVOID, PVOID,
     ]),

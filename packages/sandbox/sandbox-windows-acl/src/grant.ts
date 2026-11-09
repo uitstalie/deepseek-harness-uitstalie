@@ -5,6 +5,8 @@
  * derivation and their standing ACE; temp identities derive from random
  * private paths and are deliberately new after a restart.
  *
+ * New grants modify only the capability allow ACE. Revoking a private temp
+ * grant also restores Medium over the legacy Low label when no other capability remains.
  * Fail-closed: `add` throws on any grant failure and the caller disposes the
  * instance (revoking every path granted so far); `dispose` revokes every
  * revocable grant, leaves the standing workspace edits in place, and reports
@@ -15,50 +17,34 @@
 import { denyWrite, grantWrite, revokeDeny, revokeWrite } from './acl.ts'
 import { allocPtrSlot, decodePtr, isNullPtr, throwLastError, win32Sync } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
-import { makeWellKnownSid } from './token.ts'
-import * as abi from './win32-abi.ts'
 
 /**
  * One write SID's provider-lifetime grant materialization: the parsed SID
- * pointer plus every directory whose DACL currently carries its ACE and whose
- * label ACL carries the Low mandatory label. Workspace paths are added
- * STANDING (their security descriptor edits are the cross-session reuse cache
- * and outlive the grant — dispose() skips revoking them, or the next
- * provision would re-propagate the whole tree); temp paths are revocable
- * (dispose() revokes them — an inheritable ACE must not outlive its
- * session's temp directory). Create with {@link AclWriteGrant.create};
- * dispose revokes the revocable paths and frees every SID.
+ * pointer plus every directory whose DACL currently carries its ACE.
+ * Workspace paths are added STANDING (their security descriptor edits are the
+ * cross-session reuse cache and outlive the grant — dispose() skips revoking
+ * them, or the next provision would re-propagate the whole tree); temp paths
+ * are revocable. Create with {@link AclWriteGrant.create}; dispose revokes the
+ * revocable paths and frees the SID.
  */
 export class AclWriteGrant {
   /** The write SID in SDDL string form. */
   readonly writeSid: string
   private readonly api: Win32Bindings
   private readonly sidPtr: NativePtr
-  private readonly lowLabelSidPtr: NativePtr
-  private readonly worldSidPtr: NativePtr
   private readonly revocablePaths: string[] = []
   private readonly standingPaths: string[] = []
   private readonly excludedPaths: string[] = []
 
-  private constructor(
-    api: Win32Bindings,
-    sidPtr: NativePtr,
-    lowLabelSidPtr: NativePtr,
-    worldSidPtr: NativePtr,
-    writeSid: string,
-  ) {
+  private constructor(api: Win32Bindings, sidPtr: NativePtr, writeSid: string) {
     this.api = api
     this.sidPtr = sidPtr
-    this.lowLabelSidPtr = lowLabelSidPtr
-    this.worldSidPtr = worldSidPtr
     this.writeSid = writeSid
   }
 
   /**
-   * Parse the SID string, create the Low integrity SID the grants label with
-   * and the world SID their ambient-delete deny names, and open the binding
-   * table (lazily, once per server). Fail-closed: any failure throws — nothing
-   * is granted yet.
+   * Parse the capability SID and open the binding table (lazily, once per
+   * server). Fail-closed: any failure throws — nothing is granted yet.
    * @param writeSid - the workspace (`S-1-4-x-y`) or temp (`S-1-4-x-y-1`) capability SID string.
    * @param api - optional already-resolved bindings (tests).
    * @returns the ready grant (no ACEs yet).
@@ -71,48 +57,28 @@ export class AclWriteGrant {
     }
     const sidPtr = decodePtr(sidSlot)
     if (sidPtr === null) throwLastError(bindings, 'ConvertStringSidToSidW', `null SID for ${writeSid}`)
-    try {
-      const lowLabelSidPtr = makeWellKnownSid(bindings, abi.WinLowLabelSid)
-      try {
-        const worldSidPtr = makeWellKnownSid(bindings, abi.WinWorldSid)
-        return new AclWriteGrant(bindings, sidPtr, lowLabelSidPtr, worldSidPtr, writeSid)
-      } catch (error) {
-        // The Low label SID is LocalAlloc'd: release it before the world-SID
-        // failure propagates to the sidPtr release below.
-        bindings.localFree(lowLabelSidPtr)
-        throw error
-      }
-    } catch (error) {
-      bindings.localFree(sidPtr)
-      throw error
-    }
+    return new AclWriteGrant(bindings, sidPtr, writeSid)
   }
 
   /**
-   * Grant the write ACE, the ambient-delete deny, and the Low mandatory label
-   * on one directory (idempotent: an already-standing exact ACE, deny, and
-   * label skip the eager full-tree re-propagation — see {@link grantWrite})
-   * and record the path for {@link dispose} unless it is standing. The path is
-   * recorded BEFORE the grant: a post-apply throw (a LocalFree failure after
-   * SetNamedSecurityInfoW succeeded) must still revoke it, and revoking an
-   * ungranted path is a no-op merge. Callers treat a throw as a failed
-   * materialization and dispose the instance to revoke the paths granted so
-   * far.
-   * @param path - the directory whose DACL and label gain the grant.
-   * @param standing - the edits outlive this grant (the workspace reuse
-   *   cache; dispose() skips revoking it). Default false (revoked on
-   *   dispose — the temp-directory lifecycle).
+   * Grant only the capability ACE on one directory. No mandatory label or
+   * Everyone deny is written. The path is recorded BEFORE the grant: a
+   * post-apply throw must still revoke it, and revoking an ungranted path is a
+   * no-op merge.
+   * @param path - the directory whose DACL gains the grant.
+   * @param standing - the ACE outlives this grant (the workspace reuse cache).
+   *   Default false (revoked on dispose — the temp-directory lifecycle).
    */
   add(path: string, standing = false): void {
     ;(standing ? this.standingPaths : this.revocablePaths).push(path)
-    grantWrite(this.api, path, this.sidPtr, this.lowLabelSidPtr, this.worldSidPtr)
+    grantWrite(this.api, path, this.sidPtr)
   }
 
   /**
    * Force one path read-only for this capability: add the inheritable DENY
-   * write ACE {@link denyWrite} documents. Used by `home-write`'s
-   * `excludePaths`; the deny outranks an inherited allow from a granted root.
-   * Recorded before the edit so a post-apply throw still revokes it.
+   * write ACE {@link denyWrite} documents. Used by the disabled `home-write`
+   * implementation's `excludePaths`. Recorded before the edit so a post-apply
+   * throw still revokes it.
    * @param path - the excluded directory.
    */
   exclude(path: string): void {
@@ -125,7 +91,7 @@ export class AclWriteGrant {
     return [...this.standingPaths, ...this.revocablePaths, ...this.excludedPaths]
   }
 
-  /** Revoke every revocable grant (standing security descriptor edits stay) and free the SIDs; reports every cleanup failure. */
+  /** Revoke every revocable grant (standing ACEs stay), free the SID, and report every cleanup failure. */
   dispose(): void {
     const failures: unknown[] = []
     for (const path of this.revocablePaths) {
@@ -142,17 +108,11 @@ export class AclWriteGrant {
         failures.push(error)
       }
     }
-    for (const [label, sidPtr] of [
-      ['write SID', this.sidPtr],
-      ['Low label SID', this.lowLabelSidPtr],
-      ['world SID', this.worldSidPtr],
-    ] as const) {
-      try {
-        const freed = this.api.localFree(sidPtr)
-        if (!isNullPtr(freed)) throwLastError(this.api, 'LocalFree', label)
-      } catch (error) {
-        failures.push(error)
-      }
+    try {
+      const freed = this.api.localFree(this.sidPtr)
+      if (!isNullPtr(freed)) throwLastError(this.api, 'LocalFree', 'write SID')
+    } catch (error) {
+      failures.push(error)
     }
     if (failures.length > 0) {
       throw new AggregateError(failures, `AclWriteGrant dispose completed with ${failures.length} cleanup failure(s)`)

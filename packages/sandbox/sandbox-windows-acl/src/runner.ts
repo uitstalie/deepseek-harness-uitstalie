@@ -64,6 +64,8 @@ import { tempWriteSid, workspaceWriteSid } from './workspace-sid.ts'
 
 const RUNNER_SIGNATURE = 'windows-acl-run'
 const RUNNER_FAILURE_EXIT = 127
+const WINDOWS_ACL_DISABLED_MESSAGE = 'Windows ACL sandboxing is disabled: its former workspace Low labels and Everyone delete denies affect ordinary user processes. No replacement filesystem boundary is configured.'
+const WINDOWS_ACL_ENABLED = false
 
 class RunnerFailure extends Error {}
 
@@ -139,6 +141,7 @@ function requireDirectory(label: string, path: string): void {
 }
 
 async function main(): Promise<number> {
+  if (!WINDOWS_ACL_ENABLED) fail(WINDOWS_ACL_DISABLED_MESSAGE)
   const parsed = parseArgs(process.argv.slice(2))
   // Both directories are validated in both modes: a provider bug that passes
   // a bogus root must fail loudly at the runner boundary, never mid-child.

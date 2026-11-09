@@ -14,10 +14,8 @@
  * every later provision O(1) instead of re-propagating the tree per
  * session); the private-temp ACEs are revoked on dispose. The runner
  * receives both SIDs (their presence marks the seam-managed contract) and
- * stops managing DACLs itself. The rung reports partial enforcement because
- * NTFS hard links alias one file object across paths, reads stay unconfined,
- * and a tree another AppContainer tool has ACL'd with a package SID is not
- * readable by the Low-integrity child.
+ * stops managing DACLs itself. The production Windows chain is empty because
+ * this backend cannot preserve user permissions and enforce its modes together.
  * @module @deepseek-ai/dsh-sandbox-local
  */
 
@@ -161,10 +159,10 @@ interface AclTempCapability {
 const PLATFORM_CHAINS: Record<string, readonly SelectedRunner['runner'][]> = {
   linux: ['bwrap', 'landlock'],
   darwin: ['seatbelt'],
-  // The Windows restricted-token runner (@deepseek-ai/dsh-sandbox-windows-acl):
-  // a sole candidate, selected without a probe — its execution-time refusal
-  // fails closed through its stderr signature (windows-acl-run:) and exit 127.
-  win32: ['windows-acl'],
+  // Windows ACL grants cannot confine a Medium token without also denying the
+  // ambient user parent-directory delete right. The old Low-label design damaged
+  // ordinary user operations, so no built-in Windows runner is available.
+  win32: [],
 }
 
 /**
@@ -180,12 +178,8 @@ const STATIC_ENFORCEMENT: Record<SelectedRunner['runner'], SandboxEnforcement> =
   bwrap: 'full',
   landlock: 'full',
   seatbelt: 'full',
-  // Everyone stays in both restricting lists for process initialization, but
-  // the Low label denies the write authority it used to confer. NTFS hard
-  // links still alias a granted workspace file to a path outside it, reads
-  // stay unconfined, and an AppContainer-ACL'd tree is unreadable to the
-  // child: the backend enforces the remaining ACL-addressable surface but
-  // must not advertise the absolute promise.
+  // Retained for the legacy test hook and failure vocabulary. The production
+  // Windows chain is empty; an injected chain must not report full enforcement.
   'windows-acl': 'partial',
 }
 
@@ -540,19 +534,16 @@ export class LocalSandboxProvider extends SandboxProvider {
         } catch (cleanupError) {
           throw new AggregateError([error, cleanupError], 'sandbox-local windows-acl workspace grant failed and its cleanup also failed')
         }
-        // BEGIN uitstalie-k3, 2026/10/12, task34, 工作区授权失败时把 Win32 码翻成可执行的下一步
-        // （原生只抛 `SetNamedSecurityInfoW failed (Win32 N): grantWrite(<path>)`，用户看不出缺什么、该做什么）
         if (error instanceof Error && error.name === 'Win32Error'
           && 'api' in error && error.api === 'SetNamedSecurityInfoW'
           && 'win32Code' in error && error.win32Code === 5) {
           throw new Error(
-            `The sandbox cannot grant write access to this workspace at ${workspaceRoot}: Windows additionally requires the signed-in user to hold the change-owner right there, and a directory whose access entries are only inherited does not. `
+            `The sandbox cannot grant write access to this workspace at ${workspaceRoot}: the signed-in user needs permission to change its Windows file permissions. `
             + 'Run the diagnose-windows-sandbox-acl skill once for this path: it inspects the folder and every parent, repairs only what it proves, and prints the command that restores the previous permissions. '
             + `Original failure: ${error.message}`,
             { cause: error },
           )
         }
-        // END uitstalie-k3
         throw error
       }
       this.workspaceGrants.set(workspaceRoot, grant)

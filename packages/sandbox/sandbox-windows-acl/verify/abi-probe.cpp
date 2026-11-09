@@ -60,7 +60,7 @@ int wmain()
   P(SYSTEM_MANDATORY_LABEL_NO_WRITE_UP);
   P((int)TokenIntegrityLevel);
   P(SE_GROUP_INTEGRITY);
-  P((int)WinLowLabelSid);
+  P((int)WinMediumLabelSid);
   P(sizeof(TOKEN_MANDATORY_LABEL));
   P(offsetof(TOKEN_MANDATORY_LABEL, Label));
   P(sizeof(ACL));

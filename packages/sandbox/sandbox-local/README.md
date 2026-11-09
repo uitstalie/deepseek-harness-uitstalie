@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-sandbox-local` confines commands and their descendants on Linux, macOS, and Windows while sharing the host kernel and filesystem. It chooses a supported platform runner automatically and fails with `SANDBOX_UNAVAILABLE` when none is usable, so commands never silently run without confinement. Each execution reports `full` or `partial` enforcement plus denial and runner-failure signatures, allowing callers to distinguish an unavailable or broken sandbox from a policy denial. Choose it for host-local bash or pwsh execution; use a container or remote executor when the process needs an isolated environment.
+`dsh-sandbox-local` confines commands and their descendants on supported local backends while sharing the host kernel and filesystem. It chooses a supported platform runner automatically and fails with `SANDBOX_UNAVAILABLE` when none is usable, so commands never silently run without confinement. Each execution reports `full` or `partial` enforcement plus denial and runner-failure signatures, allowing callers to distinguish an unavailable or broken sandbox from a policy denial. Choose it for host-local bash or pwsh execution; use a container or remote executor when the process needs an isolated environment.
 
 ## Table of Contents
 
@@ -50,7 +50,8 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Confined execution and enforcement
 
-With the provider mounted, a command runs under the mode you resolve per call. Enforcement is a reported fact, not a promise: `full` means the backend governs every promised file effect, while `partial` means it governs only a subset — the Windows ACL rung (hard-link, unconfined-read, and AppContainer-ACL boundaries) and older Landlock ABIs are the current partial cases, so a consumer that requires an absolute boundary can reject or surface them. Denied file effects surface through the backend's denial dialect, and a runner that fails before executing the command reports a structured runner-failure signature.
+With the provider mounted, a command runs under the mode resolved per call. Enforcement is reported as `full` or `partial`; older Landlock ABIs are the current partial case. A caller that requires a complete boundary can reject `partial`. A runner failure before command execution is distinct from a policy denial.
+
 
 ### Failures and recovery
 
@@ -70,9 +71,11 @@ This section explains runner selection, the per-platform profiles, and the failu
 
 ### Runner selection
 
-Selection is by platform first, probes second: each platform has a runner chain (`linux`: `bwrap` then Landlock; `darwin`: Seatbelt; `win32`: the ACL restricted-token runner). A sole candidate is selected without a probe; competing candidates are functionally probed once in chain order, and the first usable verdict is cached for the provider's lifetime. A platform with no chain, or a chain where every probe fails, is unavailable and fails closed at `confine()`.
+Selection is by platform first, probes second: Linux tries `bwrap` then Landlock; macOS selects Seatbelt; Windows has no built-in runner. A sole candidate is selected without a probe; competing candidates are functionally probed once in chain order, and the first usable verdict is cached for the provider's lifetime. A platform with no chain, or a chain where every probe fails, is unavailable and fails closed at `confine()`.
 
 ### Platform profiles
+
+The built-in Windows ACL runner is disabled because its directory labels and delete denies affect ordinary user processes. The Windows chain is empty and reports `SANDBOX_UNAVAILABLE`; the direct runner refuses before changing a directory or spawning a command. An explicitly configured `runnerCommand` remains an operator-owned alternative. The ACL diagnosis skill stays available for repairing existing permissions.
 
 The bwrap profile combines a read-only host root, a fresh `/dev`, and `/proc` from a private PID namespace — commands manage their descendants but cannot see host processes, so procfs magic links cannot bypass the mounts; `workspace-write` adds an ephemeral `/tmp` and writable binds for the workspace and each explicit extra root. The [historical private-PID note](../../../.agents/notes/archived/bug-fix/2026-08-06-bwrap-private-pid-namespace.md) records the boundary.
 
@@ -80,15 +83,12 @@ The `@deepseek-ai/node-addon-system/landlock-run` API supplies the platform laun
 
 The Seatbelt profile is allow-default with `(deny file-write*)` plus write allow-lists derived from the shared `writableRoots` helper, so exactly the mode's promised file effects are governed; every root is canonicalized because Seatbelt matches resolved paths (`/tmp` IS `/private/tmp`).
 
-The Windows rung keeps one deterministic write SID and standing ACE per workspace, while every live session/workspace pair gets a random private temp directory with a distinct SID and revocable ACE — sessions sharing a workspace share its intended write authority without inheriting one another's temp authority. A fresh provider always chooses a new temp path and SID, so crash residue cannot block or authorize a resumed session. The rung reports `partial` enforcement because NTFS hard links alias one file object across paths, reads stay unconfined, and a tree another AppContainer tool has ACL'd with a package SID is unreadable to the Low-integrity child.
 
-With the built-in Windows runner and a skill registry, this provider registers the [ACL diagnosis skill](../sandbox-windows-acl/README.md#failures-and-recovery). An operator-supplied `runnerCommand` does not register it; provider disposal removes the skill and its extracted resources.
+With the built-in Windows runner and a skill registry, this provider registers the [ACL diagnosis skill](../sandbox-windows-acl/README.md#repair-permissions). An operator-supplied `runnerCommand` does not register it; provider disposal removes the skill and its extracted resources.
 
-When the built ACL runner is absent, source launch pins the `tsx/esm/api` loader and TypeScript path mapping to this installation. The command's working directory and ambient `TSX_TSCONFIG_PATH` cannot select the runner's source dependencies.
 
 ### Denial and runner-failure dialects
 
-Each runner's kernel speaks its own denial dialect, carried on every wrap as `denialSignatures`, and `runnerFailureRules` give each runner's fatal signature, so consumers classify a runner refusal before checking denial signatures. The exact strings and exit codes live in [`src/index.ts`](src/index.ts). A dialect lists only phrasings its own kernel produces: the Windows ACL rung keeps its two Windows phrasings and omits the generic POSIX ones, which unrelated tools also print (an SSH key rejection, a package manager's own access error), so including them would classify those failures as this backend's denials. <!-- uitstalie-k3, 2026/10/12, task26, 追溯补标记：原 task12 的拒绝短语收窄 -->
 
 ### Source map
 
@@ -128,11 +128,7 @@ No direct invalidation; the named consumers own any request-prefix changes.
 <a id="known-limitations-and-deferred-work"></a>
 
 
-These limits define when the provider is a poor fit or needs special operational care. They are current package constraints, not a general platform comparison or a task backlog.
-
-- **Windows home-write** — the mode grants the user home, the session workspace, and each non-system fixed drive root the workspace write SID plus the Low mandatory label, and adds one inheritable DENY ACE per `excludePaths` entry so an exclusion stays read-only inside a granted root. Landlock cannot express a read-only hole inside a granted root (its allow-list has no deny rules), so a Landlock-only host fails closed when `excludePaths` is non-empty and recommends bubblewrap; without exclusions both bwrap and Landlock grant the roots directly. A data drive normally inherits Authenticated Users:(M), which omits WRITE_OWNER; the Low label is a SACL edit, so the mode fails closed with `icacls D:\ /grant <user>:(OI)(CI)F` guidance until the signed-in user holds Modify plus Change permissions on the grant target. The extra-root denies and drive grants are revocable on dispose; the standing workspace ACE keeps its usual reuse-cache lifecycle. Non-system drives are enumerated lexically (`D:`…`Z:`), so a removable or mapped network drive that carries a letter is treated like a fixed drive and UNC paths are not roots.
-- **Windows extra roots** — Windows ACL rejects every workspace-write subprocess carrying extra directories with `SANDBOX_UNSUPPORTED_POLICY`, before grants or child creation. Filesystem tools can enforce these grants independently. Remove the extra grants or use a supported host for process operations.
-- **Windows ACL enforcement is partial** — NTFS hard links alias one file object across workspace and external paths, reads stay unconfined, and a tree another AppContainer tool has ACL'd with a package SID is unreadable to the Low-integrity child. The provider reports `enforcement: 'partial'` rather than overstating that boundary as full.
+- **No built-in Windows execution** — the retired ACL runner cannot preserve ordinary user permissions while enforcing its modes. Configure an isolated `runnerCommand` or use a remote/container executor.
 - **Landlock may be partial** — older supported kernel ABIs confine only the access classes they expose, reported as `enforcement: 'partial'` rather than overstated as full.
 - **Seatbelt depends on deprecated `sandbox-exec`** — macOS still ships it, but this provider cannot replace or probe that private policy engine if Apple removes it.
 - **Runner selection is cached for the provider lifetime** — installing, removing, or repairing a runner requires reloading the plugin before selection changes.

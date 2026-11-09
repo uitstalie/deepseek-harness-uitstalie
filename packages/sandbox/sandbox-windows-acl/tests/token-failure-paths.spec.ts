@@ -377,7 +377,7 @@ describe('setTokenDefaultDaclGrant failure paths', () => {
 })
 
 describe('restrictTokenIntegrity', () => {
-  it('sets TokenIntegrityLevel to the Low label SID with SE_GROUP_INTEGRITY', () => {
+  it('sets TokenIntegrityLevel to the Medium label SID with SE_GROUP_INTEGRITY', () => {
     const lowSid = allocBytes(12)
     const setTokenInformation = vi.fn((
       _token: unknown, cls: number, info: Buffer, length: number,
@@ -393,7 +393,7 @@ describe('restrictTokenIntegrity', () => {
     expect(setTokenInformation).toHaveBeenCalledTimes(1)
   })
 
-  it('fails closed when the Low label SID has no length', () => {
+  it('fails closed when the Medium label SID has no length', () => {
     const api = stubBindings({
       getLengthSid: vi.fn(() => 0),
       getLastError: vi.fn(() => 87),

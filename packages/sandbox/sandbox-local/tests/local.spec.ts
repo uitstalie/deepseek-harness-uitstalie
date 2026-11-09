@@ -428,6 +428,12 @@ describe('the platform chains', () => {
     expect(['usable', 'unavailable']).toContain(verdict)
   })
 
+  it('refuses the built-in Windows ACL runner before it mutates a user directory', async () => {
+    const { sandbox } = await setup({}, { platform: 'win32' })
+    await expect(sandbox.confine(['true'], RO)).rejects.toThrow(SandboxUnavailableError)
+    await expect(sandbox.confine(['true'], WW)).rejects.toThrow(SandboxUnavailableError)
+  })
+
   it('walks the real platform chain when nothing is injected (usable here or fail closed there)', async () => {
     const { sandbox } = await setup({}, {})
     const verdict = await (async () => {

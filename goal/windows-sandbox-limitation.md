@@ -85,3 +85,6 @@ icacls "<root>" /setintegritylevel "(OI)(CI)M"         # 只改根与未来子�
 - ACL 后端实现：`packages/sandbox/sandbox-windows-acl/`
 - home-write 禁用记录：[home-write-disabled.md](home-write-disabled.md)（DH-902）
 - 风险与恢复建议：DH-901；软沙箱设计：[soft-tool-policy-design.md](soft-tool-policy-design.md)（DH-904/DH-905）
+- 构建工具链结论与默认软沙箱建议（建议/待实施）：[Windows super agent 评测 §3.8](../docs/reviews/windows-superagent-eval-2026-11-09.md#38-windows-沙盒结论workspace-write-acl-不适用于构建工具链应改用完全权限软沙盒)
+
+2026-11-09 禁用旧后端的验证边界：`acl-disabled.spec.ts` 与 `runner-disabled.spec.ts` 各 2/2 通过，证明两种模式均在授权或启动子进程前拒绝。完整 Windows ACL 套件未通过：`probe.spec.ts` 的旧隔离用例观察到 `ESCAPE-WRITE: OK` 而非 DENIED，`control.spec.ts` 报 exit 127 / `write EOF`，`provider-chain.spec.ts` 因生产链为空抛 `SandboxUnavailableError`；这些旧用例与已禁用后端不再构成可运行的验收路径，不作为通过证据。`sandbox-local/tests/local.spec.ts` 属于本机排除的 POSIX 套件，未执行。

@@ -36,7 +36,6 @@ interface HappyStubs {
   createJobObjectW: MockFn
   getNamedSecurityInfoW: MockFn
   setTokenInformation: MockFn
-  addMandatoryAce: MockFn
 }
 
 const state = vi.hoisted(() => ({ stubs: undefined as HappyStubs | undefined }))
@@ -106,8 +105,6 @@ function happyStubs(): HappyStubs {
   })
   const setNamedSecurityInfoW = vi.fn(() => 0)
   const localAlloc = vi.fn(() => fresh())
-  const initializeAcl = vi.fn(() => 1)
-  const addMandatoryAce = vi.fn(() => 1)
   const getTokenInformation = vi.fn((_token: unknown, cls: number, info: Buffer | null, _length: number, needed: NativePtr) => {
     if (info === null) {
       koffi.encode(needed, 'uint32', cls === abi.TokenGroups ? 24 : 8)
@@ -169,7 +166,7 @@ function happyStubs(): HappyStubs {
     openProcess, openProcessToken, convertStringSidToSidW, getTempPathW, createFileW,
     lockFileEx: vi.fn(() => 1), unlockFileEx: vi.fn(() => 1),
     getNamedSecurityInfoW, setEntriesInAclW, setNamedSecurityInfoW, getTokenInformation,
-    localAlloc, initializeAcl, addMandatoryAce,
+    localAlloc,
     getLengthSid, copySid, createWellKnownSid, isValidSid, createRestrictedToken,
     setTokenInformation, createPipe, setHandleInformation, createProcessAsUserW,
     peekNamedPipe, readFile, waitForSingleObject, getExitCodeProcess, createJobObjectW,
@@ -179,7 +176,7 @@ function happyStubs(): HappyStubs {
   })
   return {
     api, setNamedSecurityInfoW, convertStringSidToSidW, closeHandle, localFree,
-    createRestrictedToken, createJobObjectW, getNamedSecurityInfoW, setTokenInformation, addMandatoryAce,
+    createRestrictedToken, createJobObjectW, getNamedSecurityInfoW, setTokenInformation,
   }
 }
 
@@ -365,7 +362,7 @@ describe('AclSandbox init', () => {
       tempWriteSid: 'S-1-4-9000-10-1',
       mode: 'workspace-write',
     })
-    // Five SID frees/mutations fail plus the Low label SID the init allocated.
+    // Token closing, the revocable grant, two parsed SIDs, and two well-known SIDs fail cleanup.
     await expect(sandbox.init()).rejects.toThrow(/6 cleanup operation\(s\) also failed/u)
     expect(sandbox.tempDir).toBeUndefined()
   })

@@ -28,12 +28,6 @@ function grantThenFailApi(): { api: Win32Bindings; failReads: () => void } {
       koffi.encode(slot, PVOID, 42n)
       return 1
     }),
-    createWellKnownSid: vi.fn(() => 1),
-    isValidSid: vi.fn(() => 1),
-    getLengthSid: vi.fn(() => 12),
-    localAlloc: vi.fn(() => 11n as NativePtr),
-    initializeAcl: vi.fn(() => 1),
-    addMandatoryAce: vi.fn(() => 1),
     getTempPathW: vi.fn((_length: number, buffer: Buffer) => {
       const temp = tmpdir().endsWith('/') || tmpdir().endsWith('\\') ? tmpdir() : `${tmpdir()}/`
       buffer.write(temp, 'utf16le')
@@ -102,8 +96,6 @@ describe('AclWriteGrant failure paths', () => {
         koffi.encode(slot, PVOID, 42n)
         return 1
       }),
-      createWellKnownSid: vi.fn(() => 1),
-      isValidSid: vi.fn(() => 1),
       localFree: vi.fn(() => 1n as NativePtr), // non-NULL: LocalFree "failed"
       getLastError: vi.fn(() => 87),
       formatMessageW: vi.fn(() => 0),
@@ -112,38 +104,19 @@ describe('AclWriteGrant failure paths', () => {
     expect(() =>{  grant.dispose() }).toThrow(AggregateError)
   })
 
-  it('create fails closed when the Low label SID cannot be created', () => {
-    const localFree = vi.fn(() => 0n as NativePtr)
+  it('create allocates only the capability SID and never creates well-known label or world SIDs', () => {
+    const createWellKnownSid = vi.fn()
     const api = stubBindings({
       convertStringSidToSidW: vi.fn((_sid: string, slot: NativePtr) => {
         koffi.encode(slot, PVOID, 42n)
         return 1
       }),
-      createWellKnownSid: vi.fn(() => 0),
-      localFree,
-      getLastError: vi.fn(() => 87),
-      formatMessageW: vi.fn(() => 0),
+      createWellKnownSid,
+      localFree: vi.fn(() => 0n as NativePtr),
     })
-    expect(() => AclWriteGrant.create('S-1-4-42-42', api)).toThrow(/CreateWellKnownSid/)
-    expect(localFree).toHaveBeenCalledWith(42n) // the parsed capability SID is not stranded
-  })
-
-  it('create frees both earlier SIDs when the world SID cannot be created', () => {
-    const localFree = vi.fn(() => 0n as NativePtr)
-    let calls = 0
-    const api = stubBindings({
-      convertStringSidToSidW: vi.fn((_sid: string, slot: NativePtr) => {
-        koffi.encode(slot, PVOID, 42n)
-        return 1
-      }),
-      createWellKnownSid: vi.fn(() => (++calls === 1 ? 1 : 0)), // the Low label SID succeeds, the world SID fails
-      isValidSid: vi.fn(() => 1),
-      localFree,
-      getLastError: vi.fn(() => 87),
-      formatMessageW: vi.fn(() => 0),
-    })
-    expect(() => AclWriteGrant.create('S-1-4-42-42', api)).toThrow(/CreateWellKnownSid/)
-    expect(localFree).toHaveBeenCalledTimes(2)
-    expect(localFree).toHaveBeenCalledWith(42n)
+    const grant = AclWriteGrant.create('S-1-4-42-42', api)
+    expect(createWellKnownSid).not.toHaveBeenCalled()
+    grant.dispose()
+    expect(api.localFree).toHaveBeenCalledWith(42n)
   })
 })

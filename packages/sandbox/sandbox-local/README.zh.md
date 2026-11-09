@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-sandbox-local` 在共享宿主内核和文件系统的同时，限制 Linux、macOS 与 Windows 上的命令及其派生进程。它自动选择受支持的平台 runner；没有可用 runner 时以 `SANDBOX_UNAVAILABLE` 失败，因此命令绝不会静默无限制运行。每次执行都会报告 `full` 或 `partial` 强制执行，以及拒绝和 runner 失败签名，让调用方能区分不可用或损坏的沙箱与策略拒绝。宿主本地 bash 或 pwsh 执行适合选择它；进程需要隔离环境时应改用容器或远程执行器。
+`dsh-sandbox-local` 在共享宿主内核和文件系统的同时，通过受支持的本地后端限制命令及其派生进程。它自动选择受支持的平台 runner；没有可用 runner 时以 `SANDBOX_UNAVAILABLE` 失败，因此命令绝不会静默无限制运行。每次执行都会报告 `full` 或 `partial` 强制执行，以及拒绝和 runner 失败签名，让调用方能区分不可用或损坏的沙箱与策略拒绝。宿主本地 bash 或 pwsh 执行适合选择它；进程需要隔离环境时应改用容器或远程执行器。
 
 ## 目录
 
@@ -50,7 +50,8 @@ kind: "package-reference"
 
 ### 受限执行与强制执行
 
-挂载提供方后，命令在你逐调用解析的模式下运行。强制执行是报告的事实，而非承诺：`full` 表示后端管辖模式承诺的每个文件操作，`partial` 表示它只管辖子集——Windows ACL 档（硬链接、读取不受限与 AppContainer ACL 边界）与较旧的 Landlock ABI 是当前的部分强制执行情形，因此需要绝对边界的消费方可以拒绝或向上暴露它们。被拒绝的文件操作通过后端的拒绝方言呈现，执行命令前失败的 runner 会报告结构化的 runner 失败签名。
+挂载提供方后，命令按逐调用解析的模式运行。强制执行报告为 `full` 或 `partial`；较旧的 Landlock ABI 是当前的部分强制执行情形。需要完整边界的调用方可以拒绝 `partial`。命令执行前的 runner 故障与策略拒绝分别报告。
+
 
 ### 失败与恢复
 
@@ -70,9 +71,11 @@ Seatbelt、bwrap 和 Landlock 在 `workspace-write` 下包含策略显式指定�
 
 ### runner 选择
 
-选择按平台优先、探测其次：每个平台都有 runner 链（`linux`：`bwrap` 再 Landlock；`darwin`：Seatbelt；`win32`：ACL 受限令牌 runner）。唯一候选直接选择、不探测；竞争候选按链序各执行一次功能探测，首个可用结论在提供方生命周期内缓存。没有链的平台、或链上所有探测都失败时，平台不可用，`confine()` 会拒绝执行。
+选择按平台优先、探测其次：Linux 依次尝试 `bwrap` 与 Landlock；macOS 选择 Seatbelt；Windows 没有内置 runner。唯一候选直接选择、不探测；竞争候选按链序各执行一次功能探测，首个可用结论在提供方生命周期内缓存。没有链的平台、或链上所有探测都失败时，平台不可用，`confine()` 会拒绝执行。
 
 ### 平台 profile
+
+内置 Windows ACL runner 已禁用，因为它的目录标签与删除拒绝项会影响普通用户进程。Windows 链为空并报告 `SANDBOX_UNAVAILABLE`；直接调用 runner 也会在修改目录或启动命令之前拒绝。显式配置的 `runnerCommand` 仍可作为操作方负责的替代方案。ACL 诊断技能仍可用于修复现有权限。
 
 bwrap profile 组合只读宿主根目录、全新 `/dev` 与私有 PID 命名空间中的 `/proc`——命令可管理其后代，但看不到宿主进程，因此 procfs 魔法链接无法绕过挂载；`workspace-write` 另加临时的 `/tmp` 与工作区与每个显式额外根目录的可写绑定挂载。[历史私有 PID 笔记](../../../.agents/notes/archived/bug-fix/2026-08-06-bwrap-private-pid-namespace.md)记录该边界。
 
@@ -80,15 +83,12 @@ bwrap profile 组合只读宿主根目录、全新 `/dev` 与私有 PID 命名�
 
 Seatbelt profile 默认允许，带 `(deny file-write*)` 与来自共享 `writableRoots` 辅助函数的写入 allow-list，因此恰好管辖模式承诺的文件操作；每个根目录都经过规范化，因为 Seatbelt 匹配解析后的路径（`/tmp` 就是 `/private/tmp`）。
 
-Windows 档为每个工作区保留一个确定性写入 SID 和常驻 ACE，同时为每个活跃的会话/工作区对分配一个随机私有临时目录，以及不同的 SID 和可撤销 ACE——共享工作区的会话共享其预期写权限，却不会继承彼此的临时目录权限。新的提供方总会选择新的临时路径和 SID，因此崩溃残留既无法阻止恢复的会话，也无法向其授权。该档报告 `partial` 强制执行，因为 NTFS 硬链接会把同一文件对象别名为多个路径、读取仍不受限，且被其他 AppContainer 工具以包 SID 标记过的目录树对 Low 完整性子进程不可读。
 
-当内置 Windows runner 与技能注册表同时可用时，此提供方会注册 [ACL 诊断技能](../sandbox-windows-acl/README.zh.md#failures-and-recovery)。自定义 `runnerCommand` 不注册该技能；提供方释放时移除技能及其提取的资源。
+当内置 Windows runner 与技能注册表同时可用时，此提供方会注册 [ACL 诊断技能](../sandbox-windows-acl/README.zh.md#repair-permissions)。自定义 `runnerCommand` 不注册该技能；提供方释放时移除技能及其提取的资源。
 
-构建后的 ACL runner 缺失时，源码启动将 `tsx/esm/api` 加载器和 TypeScript 路径映射固定到本安装目录。命令的工作目录和环境中的 `TSX_TSCONFIG_PATH` 无法选择 runner 的源码依赖。
 
 ### 拒绝与 runner 失败方言
 
-每个 runner 的内核都有自己的拒绝方言，随每次包装以 `denialSignatures` 携带，`runnerFailureRules` 则给出每个 runner 的致命签名，因此消费方先分类 runner 拒绝，再检查拒绝签名。精确的字符串与退出码位于 [`src/index.ts`](src/index.ts)。方言只列出自身内核会产生的措辞：Windows ACL 档保留其两条 Windows 措辞，省略通用的 POSIX 措辞——无关工具也会打印它们（SSH 密钥被拒、包管理器自身的访问错误），纳入后会把那些失败判成此后端的拒绝。 <!-- uitstalie-k3, 2026/10/12, task26, 追溯补标记：原 task12 的拒绝短语收窄 -->
 
 ### 源码地图
 
@@ -128,11 +128,7 @@ Windows 档为每个工作区保留一个确定性写入 SID 和常驻 ACE，同
 <a id="known-limitations-and-deferred-work"></a>
 
 
-这些限制说明提供方何时不合适，或何时需要特别运维。它们是当前包约束，不是通用平台对比或任务积压。
-
-- **Windows home-write** — 该档位为用户主目录、会话工作区及每个非系统固定盘根目录授予工作区写 SID 与 Low 完整性标签，并为每个 `excludePaths` 条目添加一条可继承 DENY ACE，使排除路径在被授权的根目录内保持只读。Landlock 的 allow-list 没有拒绝规则，无法在被授权的根目录内挖出只读洞，因此只装 Landlock 的宿主机在 `excludePaths` 非空时会失败关闭并建议安装 bubblewrap；没有排除项时 bwrap 与 Landlock 直接授权这些根目录。数据盘通常只继承 Authenticated Users:(M)（不含 WRITE_OWNER），而 Low 标签是一次 SACL 编辑，因此在登录用户对授权目标持有「修改」加「更改权限」之前，该档位会以 `icacls D:\ /grant <user>:(OI)(CI)F` 指引失败关闭。额外根目录的 DENY 与盘符授权在 dispose 时撤销；常驻的工作区 ACE 仍保持其复用缓存生命周期。非系统盘按字面枚举（`D:`…`Z:`），因此带盘符的可移动盘或映射网络盘按固定盘处理，UNC 路径不作为根目录。
-- **Windows 额外根目录**——Windows ACL 在授权或创建子进程前，以 `SANDBOX_UNSUPPORTED_POLICY` 拒绝所有携带额外目录的 workspace-write 子进程。文件系统工具可独立执行这些授权。运行进程操作前，请移除额外授权或使用支持此功能的主机。
-- **Windows ACL 只能实现部分强制执行**——NTFS 硬链接会使工作区路径与外部路径指向同一个文件对象，读取仍不受限，且被其他 AppContainer 工具以包 SID 标记过的目录树对 Low 完整性子进程不可读。提供方报告 `enforcement: 'partial'`，而不会把该边界夸大为完整强制执行。
+- **没有内置 Windows 执行后端**——退役的 ACL runner 无法同时保留普通用户权限并强制执行其模式。请配置隔离的 `runnerCommand`，或使用远程/容器执行器。
 - **Landlock 可能只实现部分强制执行**——较旧且受支持的内核 ABI 只能限制自身公开的访问类别，因此报告 `enforcement: 'partial'`，不会夸大为完整强制执行。
 - **Seatbelt 依赖已弃用的 `sandbox-exec`**——macOS 仍会提供它，但若 Apple 移除该私有策略引擎，该提供方无法替换或探测。
 - **runner 选择在提供方生命周期内缓存**——安装、移除或修复 runner 后，必须重载插件才能改变选择。
