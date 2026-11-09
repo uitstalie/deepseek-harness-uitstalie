@@ -21,7 +21,7 @@ import { existsSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
-import { clampText, asIdentity, invalidInput, leaseIsActive, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
+import { clampText, asIdentity, invalidInput, ioFailed, leaseIsActive, notFound, readOnlySession, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
 import { dispatchBody, dispatchRecordOf } from './dispatch.ts'
@@ -31,13 +31,14 @@ import { type RunOptions, type ToolValue, actorFor, asString, asStringList, fail
 import { callerCwd, isExecutorSession, isSubagent, type Caller } from './caller.ts'
 import { ensureSuperWorkspaceDefinition } from './super-workspace-definition.ts'
 import {
+  findDispatchTask,
   isDispatchLedgerStatus,
+  listAllDispatchTasks,
   listDispatchTasks,
   pendingTask,
-  readLedgerFile,
+  queryDispatchTasks,
   recordDispatch,
   resolveDispatchTask,
-  type DispatchLedgerStatus,
   type DispatchLedgerTask,
 } from './dispatch-ledger.ts'
 import { type Spec, type ToolHost, callerOf, defineJiraTool, identityOf, runOptionsOf } from './tools.ts'
@@ -752,17 +753,18 @@ export const LEDGER_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fre
     type: 'string',
     required: true,
     description: 'list: read the dispatch ledger, optionally by workspace/status/query. record: append a '
-      + 'pending task manually when automatic dispatch recording is unavailable. resolve: append a '
-      + 'returned/failed outcome for an existing task id.',
-    enum: ['list', 'record', 'resolve'],
+      + 'pending task manually when automatic dispatch recording is unavailable. resolve: settle or '
+      + 'correct the business result of an existing task id, including artifacts and open decisions. '
+      + 'report_status: list failed or unsettled deliveries with reasons. retry_report: retry one saved failed report by id.',
+    enum: ['list', 'record', 'resolve', 'report_status', 'retry_report'],
   },
   workspace: { type: 'string', description: 'record/list: the workspace id, title, or path.' },
   task: { type: 'string', description: 'record: the one-line task sent to the workspace.' },
-  id: { type: 'string', description: 'resolve: the task id returned by the dispatch or `record`.' },
-  status: { type: 'string', enum: ['pending', 'returned', 'failed'], description: 'resolve: the new state.' },
-  outcome: { type: 'string', description: 'resolve: the conclusion the workspace reported back.' },
-  decisions: { type: 'array', description: 'resolve: unresolved decisions, one per array entry.' },
-  artifacts: { type: 'array', description: 'resolve: paths produced by the workspace.' },
+  id: { type: 'string', description: 'resolve/retry_report: the task id returned by the dispatch or `record`.' },
+  status: { type: 'string', enum: ['pending', 'returned', 'failed'], description: 'list: optional filter; resolve: returned or failed, never pending.' },
+  outcome: { type: 'string', description: 'resolve: the conclusion; required when first settling a pending task and when correcting a failed result.' },
+  decisions: { type: 'array', items: { type: 'string' }, description: 'resolve: unresolved decisions, one per array entry.' },
+  artifacts: { type: 'array', items: { type: 'string' }, description: 'resolve: paths produced by the workspace.' },
   issue: { type: 'string', description: 'record/resolve: optional jira issue key this task references.' },
   query: { type: 'string', description: 'list: match task, outcome, workspace, artifact and decision text.' },
   limit: { type: 'number', description: 'list: maximum rows, default 20, maximum 100.' },
@@ -773,8 +775,13 @@ export const LEDGER_DESCRIPTION =
   'Read and correct the super workspace\'s dispatch ledger. The ledger is the structured task truth: '
   + 'dispatch records `pending` automatically, and the child turn end records `returned`/`failed`; '
   + 'use `record` only as a manual fallback and `resolve` to add the conclusion, artifact paths and '
-  + 'open decisions the automatic record could not know. It is append-only Markdown under '
-  + '`.superagent/ledger/` and references jira issue keys without copying issue state. `memory_write` '
+  + 'open decisions the automatic record could not know. The storage domain owns task results; '
+  + 'Markdown under `.superagent/ledger/` is a human-readable projection, with a Markdown-only '
+  + 'compatibility store when no domain is composed. Report delivery is separate: a task result does '
+  + 'not prove its report reached the super Session. Use `report_status` to inspect failed deliveries '
+  + 'and `retry_report` to resend the exact saved report after the recipient is available. The ledger '
+  + 'references jira issue keys without '
+  + 'copying issue state. `memory_write` '
   + 'is the separate durable conclusion layer: record the decision/open outcome there, not a copy of '
   + 'the ledger.'
 
@@ -937,14 +944,13 @@ const failDispatchReport = async (
  * Resolve the ledger entry when a dispatched child finishes: the hook sees this even though the
  * report is delivered as a new message in the super conversation.
  *
- * A turn that is matched to this task by its own prompt may arrive after an earlier, misattributed
- * turn already resolved the ledger entry; `correctResolved` lets that turn replace the wrong
- * outcome instead of silently keeping it. The default (tool) path remains append-once.
+ * A turn bound by its own prompt may correct an earlier misattributed result. `project: false`
+ * records the business result without writing the human projection before report delivery.
  * @param record - the task bookkeeping captured at dispatch.
  * @param text - the child's last assistant text, when it produced one.
  * @param at - the turn-end instant.
  * @param store - the durable store, when the deployment composes one.
- * @param options - `correctResolved` for a turn bound to the task by its prompt identity.
+ * @param options - whether to append the human-readable projection.
  * @returns after the outcome section is appended; a record without a ledger is a no-op.
  */
 export const resolveReportedTask = async (
@@ -952,7 +958,7 @@ export const resolveReportedTask = async (
   text: string | undefined,
   at: Timestamp,
   store?: DispatchStore,
-  options: { readonly correctResolved?: boolean } = {},
+  options: { readonly project?: boolean } = {},
 ): Promise<void> => {
   if (record.ledger === undefined) return
   const patch = {
@@ -961,16 +967,12 @@ export const resolveReportedTask = async (
     outcome: text ?? 'The child turn ended without assistant text.',
   }
   if (store !== undefined) {
-    const resolved = await store.resolve(record.ledger.task.id, patch, {
-      correctResolved: options.correctResolved === true,
-    })
-    if (resolved !== undefined) return
+    const resolved = await store.resolve(record.ledger.task.id, patch, options)
+    if (resolved !== undefined || options.project === false) return
   }
   const current = record.ledger.task
-  if (current.status !== 'pending') {
-    if (options.correctResolved !== true) return
-    if (current.status === patch.status && current.outcome === patch.outcome) return
-  }
+  if (options.project === false) return
+  if (current.status === patch.status && current.outcome === patch.outcome) return
   await resolveDispatchTask(record.ledger.root, current, patch)
 }
 
@@ -978,7 +980,11 @@ export const resolveReportedTask = async (
 const withLedger = (value: ToolValue, attempt: LedgerAttempt): ToolValue => Object.freeze({
   ...value,
   ...(attempt.ledger === undefined ? {} : {
-    ledger: Object.freeze({ taskId: attempt.ledger.task.id, file: join(attempt.ledger.root, '.superagent', 'ledger') }),
+    ledger: Object.freeze({
+      taskId: attempt.ledger.task.id,
+      directory: join(attempt.ledger.root, '.superagent', 'ledger'),
+      file: join(attempt.ledger.root, '.superagent', 'ledger', `${attempt.ledger.task.workspaceId}.md`),
+    }),
   }),
   ...(attempt.error === undefined ? {} : { ledgerError: attempt.error }),
 })
@@ -1003,6 +1009,8 @@ export interface TaskSessionRecord {
   readonly requestId?: string
   /** The Session's context usage measured just before its task was admitted (DH-720). */
   readonly usageBefore?: ContextUsage
+  /** Exact report saved in the journal for an explicit retry after a failed delivery. */
+  readonly reportText?: string
 }
 
 /** What one superagent_session call needs beyond the shared run options. */
@@ -2650,6 +2658,28 @@ export const runSessionTool = async (
   const wantCompact = validated.value.compact === true
   const curateMemory = validated.value.curate_memory === true
   const requestedDelivery: 'queue' | 'interrupt' = validated.value.delivery === 'interrupt' ? 'interrupt' : 'queue'
+  const actionRequirements: Partial<Record<string, readonly string[]>> = {
+    append: ['workspace', 'session', 'text'],
+    start: ['workspace', 'task'],
+    prompt: ['session', 'text'],
+    inspect: ['session'],
+    stop: ['session'],
+    abort: ['session', 'text'],
+    compact: ['session'],
+    archive: ['session'],
+    delete: ['session', 'confirm'],
+    fork: ['session'],
+  }
+  const missing = (actionRequirements[action ?? ''] ?? []).filter((name) => {
+    const value = validated.value[name]
+    return value === undefined || (typeof value === 'string' && value.trim() === '')
+  })
+  if (missing.length > 0) {
+    return failure(invalidInput(`${String(action)} needs ${missing.map(name => `\`${name}\``).join(', ')}`, {
+      action,
+      missing: Object.freeze(missing),
+    }), caller, me)
+  }
   const longRunningMinutes = context.longRunningMinutes ?? DEFAULT_LONG_RUNNING_MINUTES
   const longRunningMs = longRunningMinutes * 60_000
 
@@ -3373,7 +3403,9 @@ export const runLedgerTool = async (
   me: unknown,
   ctx: ToolHost['ctx'],
   store?: DispatchStore,
+  reports?: DispatchReportStore,
 ): Promise<ToolValue> => {
+  const retryHost = { ctx, env: {}, clock: () => Date.parse(options.at), recorder: options.jira as never }
   const { caller } = options
   const validated = validateArgs(LEDGER_PARAMETERS, args)
   if (!validated.ok) return failure(validated.error, caller, me)
@@ -3397,16 +3429,70 @@ export const runLedgerTool = async (
         ...(asString(validated.value.query) === undefined ? {} : { query: String(validated.value.query) }),
         ...(typeof validated.value.limit === 'number' ? { limit: validated.value.limit } : {}),
       }
-      const durable = await store?.list(query)
-      const rows = durable ?? await listDispatchTasks(root, query)
-      return Object.freeze({ ...verdict, entries: Object.freeze(rows) })
+      const durable = await store?.query(query)
+      const listed = durable ?? queryDispatchTasks(await listAllDispatchTasks(root), query)
+      return Object.freeze({ ...verdict, ...listed })
     } catch (error: unknown) {
-      return failure(invalidInput(`the dispatch ledger could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+      return failure(ioFailed(`the dispatch ledger could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+    }
+  }
+
+  if (action === 'report_status') {
+    if (reports === undefined) return failure(invalidInput('this dispatch has no report journal'), caller, me)
+    try {
+      return Object.freeze({ ...verdict, entries: Object.freeze(await reports.failures()) })
+    } catch (error: unknown) {
+      return failure(ioFailed(`the report journal could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
     }
   }
 
   if (!caller.writable) {
-    return failure(invalidInput('changing the dispatch ledger needs a session that may write'), caller, me)
+    return failure(readOnlySession(caller.reason ?? 'changing the dispatch ledger needs a writable session'), caller, me)
+  }
+
+  if (action === 'retry_report') {
+    const id = asString(validated.value.id)
+    if (id === undefined || id.trim() === '') return failure(invalidInput('retry_report needs `id`: the failed task id'), caller, me)
+    if (reports === undefined) return failure(invalidInput('this dispatch has no report journal'), caller, me)
+    try {
+      const current = (await reports.all()).get(id.trim())
+      if (current === undefined) return failure(notFound(id.trim(), 'dispatch report'), caller, me)
+      if (current.status !== 'failed') return failure(invalidInput(`report ${id.trim()} is ${current.status}, not failed`), caller, me)
+      if (current.reportText === undefined) {
+        return failure(invalidInput(`report ${id.trim()} predates saved report text; inspect the child Session and handle it manually`), caller, me)
+      }
+      const reopened = await reports.retry(id.trim(), options.at)
+      if (reopened === undefined) return failure(invalidInput(`report ${id.trim()} could not be reopened`), caller, me)
+      const claimed = await reports.claim(id.trim(), options.at)
+      if (claimed === undefined) return failure(ioFailed(`report ${id.trim()} was reopened but could not be claimed; retry again`), caller, me)
+      const delivered = await deliverTaskReport(retryHost, {
+        superSession: current.superSession,
+        workspace: current.workspace.path === '' ? current.workspace.title : current.workspace.path,
+        taskId: current.id,
+        reportText: current.reportText,
+      }, { id: current.sessionId }, new AbortController().signal)
+      let settled
+      try {
+        settled = await reports.settle(id.trim(), delivered ? 'delivered' : 'failed', options.at,
+          delivered ? undefined : 'the explicit report retry could not be delivered')
+      } catch (error: unknown) {
+        return failure(ioFailed(
+          `report ${id.trim()} was ${delivered ? 'accepted by the recipient' : 'not delivered'}, but its delivery settlement could not be saved: ${error instanceof Error ? error.message : String(error)}; inspect report_status before retrying`,
+        ), caller, me)
+      }
+      if (settled === undefined) return failure(ioFailed(`report ${id.trim()} has no journal entry after its delivery attempt`), caller, me)
+      if (delivered && current.result !== undefined && current.outcome !== undefined) {
+        await projectReportToLedger(retryHost, current, current.outcome, current.result, options.at, store)
+      }
+      return Object.freeze({
+        ...verdict,
+        task: Object.freeze({ id: current.id, result: current.result, outcome: current.outcome }),
+        delivery: Object.freeze({ status: delivered ? 'delivered' : 'failed', attempts: claimed.record.attempts }),
+        ...(delivered ? {} : { message: 'The retry failed; report_status retains the reason and the saved report can be retried again.' }),
+      })
+    } catch (error: unknown) {
+      return failure(ioFailed(`the report could not be retried: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+    }
   }
 
   if (action === 'record') {
@@ -3444,7 +3530,7 @@ export const runLedgerTool = async (
       })
       return Object.freeze({ ...verdict, task: recorded.task, file: recorded.file })
     } catch (error: unknown) {
-      return failure(invalidInput(`the task could not be recorded: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+      return failure(ioFailed(`the task could not be recorded: ${error instanceof Error ? error.message : String(error)}`), caller, me)
     }
   }
 
@@ -3452,47 +3538,44 @@ export const runLedgerTool = async (
     const id = asString(validated.value.id)
     const status = validated.value.status
     if (id === undefined || id.trim() === '') return failure(invalidInput('resolve needs `id`: the task id'), caller, me)
-    if (!isDispatchLedgerStatus(status)) {
-      return failure(invalidInput('resolve needs `status` of pending, returned or failed'), caller, me)
+    if (status !== 'returned' && status !== 'failed') {
+      return failure(invalidInput('resolve needs `status` of returned or failed; it cannot make a task pending'), caller, me)
     }
+    const outcome = asString(validated.value.outcome)
     try {
       const artifacts = asStringList(validated.value.artifacts)
       const decisions = asStringList(validated.value.decisions)
+      const durable = store === undefined ? undefined : await store.find(id.trim())
+      const current = durable?.task ?? await findDispatchTask(root, id.trim())
+      if (current === undefined) return failure(notFound(id.trim(), 'dispatch task'), caller, me)
+      if (current.status === 'pending' && (outcome === undefined || outcome.trim() === '')) {
+        return failure(invalidInput('the first resolution of a pending task needs a non-empty `outcome`'), caller, me)
+      }
+      if (current.status === 'failed' && status === 'returned' && (outcome === undefined || outcome.trim() === '')) {
+        return failure(invalidInput('correcting a failed task to returned needs a non-empty `outcome`'), caller, me)
+      }
+      const nextStatus: 'returned' | 'failed' = status
       const patch = {
-        // Narrowed by isDispatchLedgerStatus above; the ledger writer owns the status vocabulary.
-        // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- the guard narrows runtime, not the type
-        status: status as DispatchLedgerStatus,
+        status: nextStatus,
         updatedAt: options.at,
-        ...(asString(validated.value.outcome) === undefined ? {} : { outcome: String(validated.value.outcome) }),
+        ...(outcome === undefined ? {} : { outcome }),
         ...(artifacts === undefined ? {} : { artifacts }),
         ...(decisions === undefined ? {} : { decisions }),
         ...(asString(validated.value.issue) === undefined ? {} : { issue: String(validated.value.issue) }),
       }
-      const durable = store === undefined ? undefined : await store.resolve(id.trim(), patch)
-      if (durable !== undefined) {
-        const memory = Object.freeze({
-          kind: status === 'failed' || status === 'pending' ? 'open' : 'decision',
-          content: `${durable.task.workspaceTitle} ${durable.task.id}: ${durable.task.outcome ?? durable.task.task}`,
-          tags: Object.freeze(['superagent', durable.task.workspaceTitle, durable.task.id]),
-        })
-        return Object.freeze({ ...verdict, task: durable.task, file: durable.file, memory })
-      }
-      const rows = await listDispatchTasks(root, { limit: 100 })
-      const current = rows.find(row => row.id === id.trim())
-      if (current === undefined) {
-        return failure(invalidInput(`no ledger task "${id}" was found`, { id }), caller, me)
-      }
-      const resolved = await resolveDispatchTask(root, current, patch)
-      // The ledger is the structured truth; memory is the durable conclusion layer. This hint is
-      // intentionally not a write: memory_write is a separate tool and remains the model's call.
+      const resolved = durable === undefined
+        ? await resolveDispatchTask(root, current, patch)
+        : await store?.resolve(id.trim(), patch)
+      if (resolved === undefined) return failure(notFound(id.trim(), 'dispatch task'), caller, me)
+      // Memory is a separate durable conclusion layer. This hint is not a write.
       const memory = Object.freeze({
-        kind: status === 'failed' || status === 'pending' ? 'open' : 'decision',
+        kind: status === 'failed' ? 'open' : 'decision',
         content: `${resolved.task.workspaceTitle} ${resolved.task.id}: ${resolved.task.outcome ?? resolved.task.task}`,
         tags: Object.freeze(['superagent', resolved.task.workspaceTitle, resolved.task.id]),
       })
       return Object.freeze({ ...verdict, task: resolved.task, file: resolved.file, memory })
     } catch (error: unknown) {
-      return failure(invalidInput(`the ledger task could not be resolved: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+      return failure(ioFailed(`the ledger task could not be resolved: ${error instanceof Error ? error.message : String(error)}`), caller, me)
     }
   }
 
@@ -3551,21 +3634,55 @@ export const deliverTaskReport = async (
     reason?: { kind?: string }
   }>,
   endEvent?: unknown,
+  reports?: DispatchReportStore,
+  store?: DispatchStore,
 ): Promise<boolean> => {
-  const controller = sessionControllerOf(host.ctx)
-  if (controller === undefined) {
-    host.ctx.logger.warn(
-      'superagent: no session controller is available, so the task report for %s could not be delivered',
-      record.superSession,
-    )
+  const turnKind = turnEnd?.kind ?? turnEnd?.reason?.kind
+  const taskId = record.taskId ?? record.ledger?.task.id
+  const prepareReport = async (body: string): Promise<boolean> => {
+    if (reports === undefined || taskId === undefined) return true
+    const result = turnKind !== undefined && turnKind !== 'completed' ? 'failed' : 'returned'
+    const outcome = result === 'returned'
+      ? lastAssistantText(agent, undefined, endEvent) ?? 'the turn ended completed without assistant text'
+      : `the turn ended ${turnKind}${turnEnd?.error?.message === undefined ? '' : `: ${turnEnd.error.message}`}`
+    try {
+      const bound = await reports.prepare(taskId, nowUtc(host.clock), body, outcome, result)
+      if (bound !== undefined) {
+        await projectReportToLedger(host, bound, outcome, result, nowUtc(host.clock), store, false)
+        return true
+      }
+    } catch (error: unknown) {
+      host.ctx.logger.warn('superagent: the report for %s could not be saved for retry: %s', taskId, String(error))
+    }
     return false
   }
+  const controller = sessionControllerOf(host.ctx)
   const sessionId = String((agent as { id?: unknown }).id)
-  const taskId = record.taskId ?? record.ledger?.task.id
+  if (controller === undefined) {
+    host.ctx.logger.warn('superagent: no session controller is available to deliver task %s', taskId ?? sessionId)
+    return false
+  }
+  if (record.reportText !== undefined) {
+    try {
+      await controller.prompt({
+        requestId: `superagent-report-${randomUUID()}`,
+        sessionId: record.superSession,
+        mode: 'queue',
+        content: [{ type: 'text', text: record.reportText }],
+      }, signal)
+      return true
+    } catch (error: unknown) {
+      host.ctx.logger.warn(
+        'superagent: the saved task report for %s could not be delivered: %s',
+        record.superSession,
+        error instanceof Error ? error.message : String(error),
+      )
+      return false
+    }
+  }
   const usageAfter = contextUsageOf(tokenMeterOf(host.ctx), (agent as { session?: unknown }).session)
   // A non-completed turn is never silent: the initiator hears the failure with its identity even
   // when the Session produced no assistant text.
-  const turnKind = turnEnd?.kind ?? turnEnd?.reason?.kind
   if (turnKind !== undefined && turnKind !== 'completed') {
     const failureFacts = [
       turnEnd?.error?.code === undefined ? undefined : `code ${turnEnd.error.code}`,
@@ -3574,20 +3691,19 @@ export const deliverTaskReport = async (
     const detail = turnEnd?.error?.message === undefined
       ? ''
       : `: ${turnEnd.error.message.length <= 600 ? turnEnd.error.message : `${turnEnd.error.message.slice(0, 600)}…`}`
+    const body = `[task-report] ${sessionId} in ${record.workspace} FAILED — its turn ended "${turnKind}"`
+      + `${failureFacts.length === 0 ? '' : ` (${failureFacts.join(', ')})`}${detail}.`
+      + contextMarker(record.usageBefore, usageAfter)
+      + '\n\nThe Session is idle now. Inspect it (`superagent_session inspect`), then stop/abort, '
+      + 'retry with a clean turn boundary, or compact; record the outcome with superagent_ledger '
+      + 'resolve (status failed) and memory_write.'
+    if (await prepareReport(body) === false) return false
     try {
       await controller.prompt({
         requestId: `superagent-report-${randomUUID()}`,
         sessionId: record.superSession,
         mode: 'queue',
-        content: [{
-          type: 'text',
-          text: `[task-report] ${sessionId} in ${record.workspace} FAILED — its turn ended "${turnKind}"`
-            + `${failureFacts.length === 0 ? '' : ` (${failureFacts.join(', ')})`}${detail}.`
-            + contextMarker(record.usageBefore, usageAfter)
-            + '\n\nThe Session is idle now. Inspect it (`superagent_session inspect`), then stop/abort, '
-            + 'retry with a clean turn boundary, or compact; record the outcome with superagent_ledger '
-            + 'resolve (status failed) and memory_write.',
-        }],
+        content: [{ type: 'text', text: body }],
       }, signal)
       return true
     } catch (error: unknown) {
@@ -3620,6 +3736,7 @@ export const deliverTaskReport = async (
       + 'Record the durable conclusion with memory_write (kind decision/open/files, tags including '
       + 'superagent, the workspace and the task id); use superagent_ledger resolve for any outcome, '
       + 'artifact or decision the automatic record could not know.'
+  if (await prepareReport(body) === false) return false
   try {
     await controller.prompt({
       requestId: `superagent-report-${randomUUID()}`,
@@ -3779,27 +3896,28 @@ const projectReportToLedger = async (
   status: 'returned' | 'failed',
   at: Timestamp,
   store?: DispatchStore,
+  project = true,
 ): Promise<void> => {
   const ledger = report.ledger
   if (ledger === undefined) return
   try {
-    const tasks = await readLedgerFile(ledger.root, {
-      id: report.workspace.id,
-      title: report.workspace.title,
-      path: report.workspace.path,
-    })
-    const task = tasks.find(candidate => candidate.id === ledger.taskId)
+    const patch = { status, updatedAt: at, outcome }
+    if (store !== undefined) {
+      const resolved = await store.resolve(ledger.taskId, patch, { project })
+      if (resolved !== undefined && !project) return
+      if (project) {
+        const projected = await store.project(ledger.taskId)
+        if (projected !== undefined) return
+      }
+    }
+    if (!project) return
+    const task = await findDispatchTask(ledger.root, ledger.taskId)
     if (task === undefined) {
       host.ctx.logger.warn(
         'superagent: the ledger projection for dispatch %s is missing; the report delivery is unaffected',
         ledger.taskId,
       )
       return
-    }
-    const patch = { status, updatedAt: at, outcome }
-    if (store !== undefined) {
-      const resolved = await store.resolve(task.id, patch, { correctResolved: true })
-      if (resolved !== undefined) return
     }
     await resolveDispatchTask(ledger.root, task, patch)
   } catch (error: unknown) {
@@ -3948,8 +4066,6 @@ export const handleTaskTurnEnd = async (
     const outcome = completed
       ? text ?? 'the turn ended completed without assistant text'
       : `the turn ended ${turnKind ?? 'unknown'}${reason.error?.message === undefined ? '' : `: ${reason.error.message}`}`
-    // The ledger projection is a courtesy record and can never decide whether the report is sent.
-    await projectReportToLedger(host, report, outcome, completed ? 'returned' : 'failed', at, store)
     const known = report.requestId === undefined
       ? tasks.get(sessionId)?.at(-1)
       : tasks.get(sessionId)?.find(candidate => candidate.requestId === report.requestId)
@@ -3962,7 +4078,7 @@ export const handleTaskTurnEnd = async (
     }
     let delivered = false
     try {
-      delivered = await deliverTaskReport(host, taskRecord, input.agent, input.signal, reason, input.event)
+      delivered = await deliverTaskReport(host, taskRecord, input.agent, input.signal, reason, input.event, journal, store)
     } catch (error: unknown) {
       host.ctx.logger.warn(
         'superagent: the task report for %s from %s could not be delivered: %s',
@@ -3973,9 +4089,10 @@ export const handleTaskTurnEnd = async (
     }
     if (delivered) {
       await settleReport(host, journal, report.id, 'delivered', at)
+      await projectReportToLedger(host, report, outcome, completed ? 'returned' : 'failed', at, store)
     } else {
       host.ctx.logger.warn(
-        'superagent: dispatch %s for %s finished its turn but the report was NOT delivered; marking the dispatch failed',
+        'superagent: dispatch %s for %s finished its turn but the report was NOT delivered; marking the report delivery failed',
         report.id,
         sessionId,
       )
@@ -4766,17 +4883,22 @@ export const createSuperagentContribution = (
     render: (typed) => {
       if (Array.isArray(typed.entries)) {
         const rows = typed.entries as { id: string; status: string; workspaceTitle: string; task: string }[]
-        if (rows.length === 0) return renderText('the dispatch ledger has no matching task')
-        return renderText(rows
-          .map(row => `${row.id}  ${row.status}  ${row.workspaceTitle}  ${row.task}`)
-          .join('\n'))
+        const counts = typed.counts as { remaining?: number } | undefined
+        const suffix = counts?.remaining === undefined || counts.remaining === 0
+          ? ''
+          : `\n… ${String(counts.remaining)} more matching task(s); narrow the query or raise \`limit\``
+        return renderText((rows.length === 0
+          ? 'the dispatch ledger has no matching task'
+          : rows.map(row => 'reportText' in row
+            ? `${row.id}  report ${row.status}  ${row.workspaceTitle}  ${row.task}${'error' in row && typeof row.error === 'string' ? `\n  ${row.error}` : ''}`
+            : `${row.id}  ${row.status}  ${row.workspaceTitle}  ${row.task}`).join('\n')) + suffix)
       }
       const task = typed.task as { id?: string; status?: string; workspaceTitle?: string } | undefined
       return renderText(task?.id === undefined
         ? 'ok'
         : `${String(task.id)}  ${String(task.status)}  ${String(task.workspaceTitle)}`)
     },
-    run: (args, call) => runLedgerTool(args, runOptionsOf(host, call), call.me, host.ctx, dispatchStore),
+    run: (args, call) => runLedgerTool(args, runOptionsOf(host, call), call.me, host.ctx, dispatchStore, reportStore),
   }
   const permission: Spec = {
     name: PERMISSION_TOOL_NAME,

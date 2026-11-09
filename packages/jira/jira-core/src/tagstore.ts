@@ -139,7 +139,7 @@ export const createTag = async (
   store: Store,
   actor: Actor,
   input: CreateTagInput,
-): Promise<Result<Readonly<{ tag: TagRecord; committed: boolean }>, JiraError>> => {
+): Promise<Result<Readonly<{ tag: TagRecord; committed: boolean; commitError?: JiraError }>, JiraError>> => {
   const name = input.name.trim().toLowerCase()
   if (!isTagName(name)) {
     return err(invalidInput(
@@ -182,5 +182,9 @@ export const createTag = async (
   if (!written.ok) return written
   const commit = await commitStoreWrite(store, actor.at, [tagPath(name)], `tag ${name} [no-issue]`)
   if (!commit.ok) return commit
-  return ok(Object.freeze({ tag: record, committed: commit.value.committed }))
+  return ok(Object.freeze({
+    tag: record,
+    committed: commit.value.committed,
+    ...(commit.value.error === undefined ? {} : { commitError: commit.value.error }),
+  }))
 }

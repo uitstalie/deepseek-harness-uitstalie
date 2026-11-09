@@ -124,28 +124,70 @@ export const validateArgs = (
   }
   const input = args as Record<string, unknown>
   const issues: string[] = []
+  validateObject(fields, input, '', false, issues)
 
-  for (const name of Object.keys(input)) {
-    if (!(name in fields)) issues.push(`unknown argument "${name}"`)
-  }
-  for (const [name, spec] of Object.entries(fields)) {
-    const value = input[name]
-    if (value === undefined || value === null) {
-      if (spec.required === true) issues.push(`missing required argument "${name}"`)
-      continue
-    }
-    if (spec.type !== undefined && !matchesType(value, spec.type)) {
-      issues.push(`argument "${name}" must be ${spec.type}`)
-      continue
-    }
-    if (spec.enum !== undefined && !spec.enum.includes(String(value))) {
-      issues.push(`argument "${name}" must be one of: ${spec.enum.join(', ')}`)
-    }
-  }
-
+  const message = issues.length === 1 && issues[0]?.startsWith('unknown ')
+    ? issues[0]
+    : `${issues.length} argument problem(s)`
   return issues.length === 0
     ? ok(Object.freeze({ ...input }))
-    : err(invalidInput(`${issues.length} argument problem(s)`, { issues: Object.freeze(issues) }))
+    : err(invalidInput(message, { issues: Object.freeze(issues) }))
+}
+
+const childPath = (path: string, name: string): string => path === '' ? name : `${path}.${name}`
+
+const validateObject = (
+  fields: Readonly<Record<string, FieldSpec>>,
+  input: Readonly<Record<string, unknown>>,
+  path: string,
+  additionalProperties: boolean,
+  issues: string[],
+): void => {
+  for (const name of Object.keys(input)) {
+    if (!Object.hasOwn(fields, name) && !additionalProperties) {
+      issues.push(path === ''
+        ? `unknown argument "${name}"`
+        : `unknown ${path} field(s): ${name}`)
+    }
+  }
+  for (const [name, spec] of Object.entries(fields)) {
+    const fieldPath = childPath(path, name)
+    const value = input[name]
+    if (value === undefined) {
+      if (spec.required === true) issues.push(`missing required argument "${fieldPath}"`)
+      continue
+    }
+    validateField(value, spec, fieldPath, issues)
+  }
+}
+
+const validateField = (value: unknown, spec: FieldSpec, path: string, issues: string[]): void => {
+  if (spec.oneOf !== undefined) {
+    const alternatives = spec.oneOf.map((alternative) => {
+      const alternativeIssues: string[] = []
+      validateField(value, alternative, path, alternativeIssues)
+      return alternativeIssues
+    })
+    if (!alternatives.some(alternativeIssues => alternativeIssues.length === 0)) {
+      issues.push(`argument "${path}" must match one of: ${spec.oneOf.map(alternative => alternative.type ?? 'oneOf').join(', ')}`)
+    }
+    return
+  }
+  if (spec.type !== undefined && !matchesType(value, spec.type)) {
+    issues.push(`argument "${path}" must be ${spec.type}`)
+    return
+  }
+  if (spec.enum !== undefined && !spec.enum.includes(String(value))) {
+    issues.push(`argument "${path}" must be one of: ${spec.enum.join(', ')}`)
+  }
+  if (spec.properties !== undefined && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    validateObject(spec.properties, value as Record<string, unknown>, path, spec.additionalProperties ?? false, issues)
+  }
+  if (spec.items !== undefined && Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      validateField(item, spec.items, `${path}[${String(index)}]`, issues)
+    }
+  }
 }
 
 /**

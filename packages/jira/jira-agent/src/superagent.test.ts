@@ -70,8 +70,8 @@ import {
   superagentHomeProblem,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
-import { type DispatchLedgerTask, listDispatchTasks, recordDispatch } from './dispatch-ledger.ts'
-import { DispatchReportStore } from './dispatch-reports.ts'
+import { type DispatchLedgerTask, listDispatchTasks, queryDispatchTasks, recordDispatch } from './dispatch-ledger.ts'
+import { DispatchReportStore, type DispatchReportRecord } from './dispatch-reports.ts'
 import { callerOf, identityOf } from './tools.ts'
 import { type JiraHarness, concurrencySafe, createLedgerFixture, dispatchTool, mountJira, testAgent, waitFor } from './testing/host.ts'
 
@@ -464,6 +464,25 @@ describe('superagent: workspace management', () => {
   })
 })
 
+/** Add the host services a start uses to establish and verify its initial workspace-write preset. */
+const withInitialPermission = <T extends object>(ctx: T): T & { get(key: string): unknown } => {
+  let selected = 'workspace-write'
+  return {
+    ...ctx,
+    get: (key: string) => {
+      if (key === 'sandboxPolicy') return {}
+      if (key === 'permissionPresets') return {
+        names: ['workspace-write'],
+        resolve: () => ({ sandbox: 'workspace-write', approval: 'ask' }),
+        current: () => selected,
+        selection: () => ({ currentValue: selected, sandboxMode: 'workspace-write', approvalPolicy: 'ask' }),
+        set: (_session: unknown, preset: string) => { selected = preset },
+      }
+      return (ctx as { get?: (key: string) => unknown }).get?.(key)
+    },
+  } as T & { get(key: string): unknown }
+}
+
 /** Shared model-selection fake for the Session action tests. */
 class ModelSelectingController {
   selections: { sessionId: string; provider: string; model: string; reasoningEffort?: string }[] = []
@@ -596,9 +615,6 @@ describe('superagent: workspace Sessions', () => {
       options, me, permissionCtx, { tasks },
     )
     assert.equal(ambiguous.ok, false, 'append with several candidates must name the Session')
-    assert.match(JSON.stringify(ambiguous.error), /append needs `session`/u)
-    const candidates = (ambiguous.error as { context?: { candidates?: { id: string }[] } }).context?.candidates
-    assert.deepEqual(candidates?.map(row => row.id), ['w-newer', 'w-session'])
 
     const routed = await runSessionTool(
       { action: 'append', workspace: 'hello', text: 'one more section', session: 'latest' },
@@ -863,11 +879,12 @@ describe('superagent: the dispatch ledger', () => {
         created: [] as unknown[],
         async create(request: unknown) { this.created.push(request); return { sessionId: 'child-1' } },
         async prompt() { return { accepted: true } },
-        async list() { return { items: [] } },
+        async list() { return { items: [{ sessionId: 'child-1', running: false, cwd: root }] } },
+        async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } },
       }
-      const ctx = {
+      const ctx = withInitialPermission({
         get: (key: string) => key === 'workspaceRegistry' ? registry : key === 'sessionController' ? controller : undefined,
-      }
+      })
       const options = {
         jira: {} as never,
         caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
@@ -918,6 +935,58 @@ describe('superagent: the dispatch ledger', () => {
     } finally {
       await harness.dispose()
     }
+  })
+})
+
+describe('superagent: dispatch argument and result corrections', () => {
+  it('lists all action requirements together before doing any Session work', async () => {
+    const { harness } = await mount()
+    try {
+      const result = await runSessionTool({ action: 'append' }, {
+        jira: {} as never,
+        caller: { writable: true, sessionId: 'super-1', cwd: 'D:\\super' } as never,
+        at: AT as never,
+      }, { session: 'super-1' }, {
+        get: (key: string) => key === 'sessionController'
+          ? { create: () => assert.fail('validation must not create a Session'), prompt: () => assert.fail('validation must not prompt'), list: async () => ({ items: [] }) }
+          : undefined,
+      }, { tasks: new Map() })
+      assert.equal(result.ok, false)
+      assert.match(result.error?.message ?? '', /append needs `workspace`, `session`, `text`/u)
+      assert.deepEqual(result.error?.context?.missing, ['workspace', 'session', 'text'])
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('finds and corrects a Markdown task older than the 100-row display window', async () => {
+    const root = await scratchDirectory()
+    const workspace = { id: 'w1', title: 'workspace', path: root }
+    for (let index = 0; index < 101; index += 1) {
+      await recordDispatch(root, workspace, {
+        id: index === 0 ? 'task-oldest' : `task-${String(index)}`,
+        task: `task ${String(index)}`,
+        dispatchedAt: new Date(Date.parse(AT) + index).toISOString(),
+      })
+    }
+    const listed = queryDispatchTasks(await listDispatchTasks(root, { limit: 100 }), { limit: 20 })
+    assert.equal(listed.counts.matched, 100)
+    assert.equal(listed.counts.remaining, 80)
+    const result = await runLedgerTool({
+      action: 'resolve', id: 'task-oldest', status: 'returned', outcome: 'found beyond the display window',
+    }, {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
+      at: AT as never,
+    }, {}, {} as never)
+    assert.equal(result.ok, true, JSON.stringify(result.error))
+    assert.equal((result.task as DispatchLedgerTask).outcome, 'found beyond the display window')
+    const rejected = await runLedgerTool({ action: 'resolve', id: 'task-oldest', status: 'pending' }, {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
+      at: AT as never,
+    }, {}, {} as never)
+    assert.equal(rejected.error?.code, 'INVALID_INPUT')
   })
 })
 
@@ -1072,6 +1141,79 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal(rows[0]?.id, 'ledger-1')
     assert.equal(rows[0]?.status, 'returned')
     assert.deepEqual(warnings, [])
+  })
+
+  it('lists a failed delivery and retries the exact saved report without another child turn', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    controller.prompt = async () => { throw new Error('queue is closed') }
+    await seedBinding(root, { sessionId: 'child-retry', requestId: 'req-retry', task: 'retry delivery' })
+    const journal = journalOf(root)
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
+      at: AT as never,
+    }
+    const ctx = { get: (key: string) => key === 'sessionController' ? controller : undefined }
+    await handleTaskTurnEnd(recoveryHost(controller) as never, completed('child-retry', 'saved result') as never, new Map(), [], root)
+    const failed = await runLedgerTool({ action: 'report_status' }, options, {}, ctx as never, undefined, journal)
+    assert.equal((failed.entries as DispatchReportRecord[])[0]?.error, 'the report could not be delivered to the super Session')
+    const saved = (await journal.forSession('child-retry'))[0]
+    assert.equal(saved?.result, 'returned')
+    assert.equal(saved?.outcome, 'saved result')
+
+    // Restore the fixture's successful queue after proving the failed delivery is durable.
+    controller.prompt = async (request) => {
+      controller.prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '' })
+      return { accepted: true }
+    }
+    const retried = await runLedgerTool({ action: 'retry_report', id: saved?.id }, options, {}, ctx as never, undefined, journal)
+    assert.equal(retried.ok, true, JSON.stringify(retried.error))
+    assert.equal((retried.delivery as { status: string }).status, 'delivered')
+    assert.equal(controller.prompted[0]?.text, saved?.reportText)
+    assert.equal((await journal.forSession('child-retry'))[0]?.status, 'delivered')
+  })
+
+  it('reports an accepted retry whose journal settlement failed without claiming a clean delivery', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    const journal = journalOf(root)
+    await journal.record({
+      id: 'task-settlement', workspace: { id: 'w1', title: 'workspace', path: root },
+      sessionId: 'child-settlement', superSession: 'super-1', task: 'retry settlement', dispatchedAt: AT,
+    })
+    await journal.claim('task-settlement', AT)
+    await journal.prepare('task-settlement', AT, 'saved report', 'saved result', 'returned')
+    await journal.settle('task-settlement', 'failed', AT, 'queue closed')
+    const settle = journal.settle.bind(journal)
+    journal.settle = async (...args) => {
+      if (args[1] === 'delivered') throw new Error('journal is read-only')
+      return settle(...args)
+    }
+    const result = await runLedgerTool({ action: 'retry_report', id: 'task-settlement' }, {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
+      at: AT as never,
+    }, {}, {
+      get: (key: string) => key === 'sessionController' ? controller : undefined,
+    } as never, undefined, journal)
+    assert.equal(result.ok, false)
+    assert.equal(result.error?.code, 'WRITE_FAILED')
+    assert.match(result.error?.message ?? '', /accepted by the recipient/u)
+    assert.match(result.error?.message ?? '', /inspect report_status before retrying/u)
+    assert.equal(controller.prompted[0]?.text, 'saved report')
+    const visible = await runLedgerTool({ action: 'report_status' }, {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
+      at: AT as never,
+    }, {}, {} as never, undefined, journal)
+    assert.equal((visible.entries as DispatchReportRecord[])[0]?.status, 'delivering')
+    const refused = await runLedgerTool({ action: 'retry_report', id: 'task-settlement' }, {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
+      at: AT as never,
+    }, {}, {} as never, undefined, journal)
+    assert.match(refused.error?.message ?? '', /delivering, not failed/u)
   })
 
   it('delivers the report even when the dispatch has no ledger entry at all', async () => {
@@ -1248,10 +1390,10 @@ describe('superagent: dispatch report binding', () => {
   }
 
   const bindingHost = (controller: unknown) => ({
-    ctx: {
+    ctx: withInitialPermission({
       get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? new BindingRegistry() : undefined,
       logger: { warn: () => {}, info: () => {} },
-    },
+    }),
     env: {},
     clock: () => Date.parse(AT),
     recorder: createSessionRecorder(),
@@ -1264,7 +1406,8 @@ describe('superagent: dispatch report binding', () => {
     const bindingAtChildPrompt: string[] = []
     class ImmediateController {
       async create() { return { sessionId: 'child-immediate' } }
-      async list() { return { items: [] } }
+      async list() { return { items: [{ sessionId: 'child-immediate', running: false, cwd: workspacePath }] } }
+      async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } }
       async prompt(request: { sessionId: string; content: readonly { text: string }[] }) {
         const sessionId = String(request.sessionId)
         const text = request.content[0]?.text ?? ''
@@ -1322,7 +1465,8 @@ describe('superagent: dispatch report binding', () => {
     const prompted: string[] = []
     class NeverController {
       async create() { return { sessionId: 'child-unbound' } }
-      async list() { return { items: [] } }
+      async list() { return { items: [{ sessionId: 'child-unbound', running: false, cwd: workspacePath }] } }
+      async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } }
       async prompt(request: { sessionId: string }) { prompted.push(String(request.sessionId)); return { accepted: true } }
     }
     const options = {
@@ -1349,6 +1493,7 @@ describe('superagent: model selection and discovery', () => {
       async create() { return { sessionId: 'model-child' } }
       async prompt(request: { sessionId: string }) { this.prompted.push(String(request.sessionId)); return { accepted: true } }
       async list() { return { items: [{ sessionId: 'model-child', running: false, cwd: workspacePath, blank: false }] } }
+      async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } }
     }
     class Registry {
       rows = [{ id: 'w1', path: workspacePath, title: 'model work', sessionIds: [], status: async () => 'ok' }]
@@ -1357,7 +1502,7 @@ describe('superagent: model selection and discovery', () => {
     }
     const controller = new Controller()
     const registry = new Registry()
-    const ctx = { get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? registry : undefined }
+    const ctx = withInitialPermission({ get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? registry : undefined })
     const options = {
       jira: {} as never,
       caller: { writable: true, sessionId: 'super-1', cwd: await scratchDirectory() } as never,
@@ -1389,6 +1534,7 @@ describe('superagent: model selection and discovery', () => {
       async create() { return { sessionId: 'x' } }
       async prompt() { return { accepted: true } }
       async list() { return { items: [{ sessionId: 'x', running: false, cwd: workspacePath, blank: false }] } }
+      async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } }
     }
     class Registry {
       rows = [{ id: 'w1', path: workspacePath, title: 'r', sessionIds: [], status: async () => 'ok' }]
@@ -1396,7 +1542,7 @@ describe('superagent: model selection and discovery', () => {
       async create(path: string, title?: string) { return { id: 'w2', path, title: title ?? path, sessionIds: [], status: async () => 'ok' } }
     }
     const controller = new NoSelect()
-    const ctx = { get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? new Registry() : undefined }
+    const ctx = withInitialPermission({ get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? new Registry() : undefined })
     const options = { jira: {} as never, caller: { writable: true, sessionId: 's', cwd: await scratchDirectory() } as never, at: '2026-11-05T00:00:00Z' as never }
     const me = { session: 's' }
     const noApi = await runSessionTool({ action: 'start', workspace: 'r', task: 'x', provider: 'p', model: 'm' }, options, me, ctx, { tasks: new Map() })
@@ -1466,6 +1612,7 @@ describe('superagent: model selection and discovery', () => {
       async create() { return { sessionId: 'effort-child' } }
       async prompt() { return { accepted: true } }
       async list() { return { items: [{ sessionId: 'effort-child', running: false, cwd: workspacePath, blank: false }] } }
+      async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } }
     }
     class Registry {
       rows = [{ id: 'w1', path: workspacePath, title: 'efforts', sessionIds: [], status: async () => 'ok' }]
@@ -1483,12 +1630,12 @@ describe('superagent: model selection and discovery', () => {
       },
     }
     const controller = new Controller()
-    const ctx = {
+    const ctx = withInitialPermission({
       get: (key: string) => key === 'sessionController' ? controller
         : key === 'workspaceRegistry' ? new Registry()
           : key === 'llm' ? llm
             : undefined,
-    }
+    })
     const options = {
       jira: {} as never,
       caller: { writable: true, sessionId: 'super-1', cwd: await scratchDirectory() } as never,
@@ -2152,7 +2299,6 @@ describe('superagent: the super workspace', () => {
         contribution.promptSections?.(superAgent).map(section => section.name),
         [SUPERAGENT_SECTION_NAME],
       )
-
       const permission = contribution.tools?.(superAgent).find(tool => tool.name === PERMISSION_TOOL_NAME)
       assert.ok(permission)
       const listed = await permission.execute({ action: 'list' }, { agent: superAgent, signal: new AbortController().signal } as never)

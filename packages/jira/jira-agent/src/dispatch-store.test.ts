@@ -99,26 +99,141 @@ describe('superagent: durable dispatch store', () => {
       outcome: 'done',
       artifacts: ['one.md', 'two.md'],
       decisions: ['ship it'],
+      sessionId: 'child-returned',
+      issue: 'DH-123',
     })
     assert.equal(resolved?.task.status, 'returned')
+    assert.equal(resolved?.task.outcome, 'done')
+    assert.equal(resolved?.task.sessionId, 'child-returned')
+    assert.equal(resolved?.task.issue, 'DH-123')
     assert.deepEqual(resolved?.task.artifacts, ['one.md', 'two.md'])
     assert.deepEqual(resolved?.task.decisions, ['ship it'])
     const listed = await store.list({ status: 'returned' })
     assert.deepEqual(listed?.[0]?.decisions, ['ship it'])
 
+    // A human can supplement a returned result without replacing its other fields.
+    const supplemented = await store.resolve(task.id, {
+      status: 'returned',
+      updatedAt: '2026-11-07T00:02:00.000Z' as Timestamp,
+      artifacts: ['one.md', 'two.md', 'three.md'],
+      decisions: ['ship it', 'document it'],
+    })
+    assert.equal(supplemented?.task.outcome, 'done')
+    assert.equal(supplemented?.task.sessionId, 'child-returned')
+    assert.equal(supplemented?.task.issue, 'DH-123')
+    assert.deepEqual(supplemented?.task.artifacts, ['one.md', 'two.md', 'three.md'])
+    assert.deepEqual(supplemented?.task.decisions, ['ship it', 'document it'])
+
     const projection = await readFile(join(root, '.superagent/ledger/w1.md'), 'utf8')
     assert.match(projection, /task-round-trip · pending/u)
     assert.match(projection, /task-round-trip · returned/u)
+    assert.match(projection, /- outcome: done/u)
+    assert.match(projection, /- session: child-returned/u)
+    assert.match(projection, /- issue: DH-123/u)
+    assert.match(projection, /- artifacts: one\.md; two\.md; three\.md/u)
+    assert.match(projection, /- decisions: ship it; document it/u)
+    assert.equal((projection.match(/task-round-trip · returned/gu) ?? []).length, 2)
 
-    // A repeated resolve is a no-op and does not append a second returned section.
+    // A timestamp alone is not a correction: repeat the same fields without appending or writing.
     const again = await store.resolve(task.id, {
       status: 'returned',
-      updatedAt: '2026-11-07T00:02:00.000Z' as Timestamp,
-      outcome: 'duplicate',
+      updatedAt: '2026-11-07T00:03:00.000Z' as Timestamp,
+      artifacts: ['one.md', 'two.md', 'three.md'],
+      decisions: ['ship it', 'document it'],
     })
     assert.equal(again?.task.outcome, 'done')
+    assert.equal(again?.task.updatedAt, supplemented?.task.updatedAt)
     const afterAgain = await readFile(join(root, '.superagent/ledger/w1.md'), 'utf8')
-    assert.equal((afterAgain.match(/task-round-trip · returned/gu) ?? []).length, 1)
+    assert.equal(afterAgain, projection)
+  })
+
+  it('allows a human to correct a failed task to returned and projects the result', async () => {
+    const root = await scratch()
+    const { storageCtx } = await withStorage()
+    const store = new DispatchStore(storageCtx, root)
+    stores.push(store)
+    await store.record(taskFor('task-failed-to-returned'), 'super-1')
+
+    const failed = await store.resolve('task-failed-to-returned', {
+      status: 'failed',
+      updatedAt: '2026-11-07T00:01:00.000Z' as Timestamp,
+      outcome: 'worker failed',
+      issue: 'DH-100',
+    })
+    assert.equal(failed?.task.status, 'failed')
+    const corrected = await store.resolve('task-failed-to-returned', {
+      status: 'returned',
+      updatedAt: '2026-11-07T00:02:00.000Z' as Timestamp,
+      outcome: 'manually recovered',
+      artifacts: ['recovery.md'],
+      decisions: ['accept the manual result'],
+    })
+    assert.equal(corrected?.task.status, 'returned')
+    assert.equal(corrected?.task.outcome, 'manually recovered')
+    assert.deepEqual(corrected?.task.artifacts, ['recovery.md'])
+    assert.deepEqual(corrected?.task.decisions, ['accept the manual result'])
+
+    const projection = await readFile(join(root, '.superagent/ledger/w1.md'), 'utf8')
+    assert.match(projection, /## task-failed-to-returned · failed\n[\s\S]*?- outcome: worker failed/u)
+    assert.match(projection, /## task-failed-to-returned · returned\n[\s\S]*?- outcome: manually recovered/u)
+    assert.equal((await store.list({ status: 'returned' }))?.[0]?.outcome, 'manually recovered')
+  })
+
+  it('returns a bounded DispatchLedgerList from query', async () => {
+    const { storageCtx } = await withStorage()
+    const store = new DispatchStore(storageCtx, 'unused-root')
+    stores.push(store)
+    await store.record(taskFor('task-query-1'), 'super-1')
+    await store.record(taskFor('task-query-2'), 'super-1')
+
+    const result = await store.query({ status: 'pending', limit: 1 })
+    assert.deepEqual(result?.counts, { matched: 2, returned: 1, remaining: 1 })
+    assert.equal(result?.entries.length, 1)
+    assert.equal(result?.truncated, true)
+    assert.equal(result?.limit, 1)
+  })
+
+  it('updates only the domain when projection is disabled', async () => {
+    const root = await scratch()
+    const { storageCtx } = await withStorage()
+    const store = new DispatchStore(storageCtx, root)
+    stores.push(store)
+    await store.record(taskFor('task-domain-only'), 'super-1')
+    const file = join(root, '.superagent/ledger/w1.md')
+    const before = await readFile(file, 'utf8')
+
+    const resolved = await store.resolve('task-domain-only', {
+      status: 'returned',
+      updatedAt: '2026-11-07T00:01:00.000Z' as Timestamp,
+      outcome: 'domain only',
+      artifacts: ['domain.md'],
+    }, { project: false })
+    assert.equal(resolved?.task.status, 'returned')
+    assert.equal(resolved?.task.outcome, 'domain only')
+    assert.deepEqual(resolved?.task.artifacts, ['domain.md'])
+    assert.equal(await readFile(file, 'utf8'), before, 'project:false must not append Markdown')
+    assert.equal((await store.find('task-domain-only'))?.task.outcome, 'domain only')
+
+    await store.project('task-domain-only')
+    assert.match(await readFile(file, 'utf8'), /task-domain-only · returned/u)
+    const projected = await readFile(file, 'utf8')
+    await store.project('task-domain-only')
+    assert.equal(await readFile(file, 'utf8'), projected, 'an already current projection is not appended twice')
+  })
+
+  it('records a domain result when its Markdown task projection is missing', async () => {
+    const root = await scratch()
+    const { storageCtx } = await withStorage()
+    const store = new DispatchStore(storageCtx, root)
+    stores.push(store)
+    await store.record(taskFor('task-missing-projection'), 'super-1')
+    await rm(join(root, '.superagent/ledger/w1.md'))
+
+    const resolved = await store.resolve('task-missing-projection', {
+      status: 'returned', updatedAt: AT, outcome: 'domain survives',
+    }, { project: false })
+    assert.equal(resolved?.task.outcome, 'domain survives')
+    assert.equal((await store.find('task-missing-projection'))?.task.status, 'returned')
   })
 
   it('imports Markdown once, preserving task ids and timestamps, and reopens idempotently', async () => {

@@ -583,7 +583,11 @@ export class JiraService extends Service implements JiraServiceApi {
     })
     if (!created.ok) return created
     this.notifyWrite(input.name)
-    return result.ok(Object.freeze({ tag: created.value.tag, committed: created.value.committed }))
+    return result.ok(Object.freeze({
+      tag: created.value.tag,
+      committed: created.value.committed,
+      ...(created.value.commitError === undefined ? {} : { commitError: created.value.commitError }),
+    }))
   }
 
   /**

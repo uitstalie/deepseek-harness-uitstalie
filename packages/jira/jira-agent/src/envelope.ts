@@ -25,6 +25,8 @@ export type ToolValue = Readonly<{
   comments?: unknown
   /** `jira_kb`: one entry, or the hits of a search (decisions 54/75). */
   item?: unknown
+  /** KB cross-reference updates that failed after the entry itself was written. */
+  mirror?: { readonly failed?: readonly Readonly<{ key: string; error: JiraError }>[] }
   hits?: unknown
   /** `jira_list`: ready issues first, the blocked group last (decision 53). */
   items?: unknown

@@ -18,6 +18,7 @@ import { after, before, describe, it } from 'node:test'
 
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import { checkGenerated } from '@deepseek-ai/dsh-jira-core'
+import { type Timestamp, acquireLock, asIssueKey, issueLockPath, lockOwnerOf, releaseLock } from '@deepseek-ai/dsh-jira-core'
 import { initializeRepository, runGit, stageAllAndCommit } from '@deepseek-ai/dsh-jira-core'
 import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core'
 import { createStore, storePaths } from '@deepseek-ai/dsh-jira-core'
@@ -121,6 +122,18 @@ const call = async (
 
 /** The issue of a successful envelope. */
 const issueOf = (envelope: Record<string, unknown>): Record<string, unknown> => recordOf(envelope.issue)
+
+/** Dispatch one call and return the text the model receives. */
+const renderCall = async (
+  harness: JiraHarness,
+  agent: ReturnType<typeof testAgent>,
+  args: unknown,
+  name: string = TOOL_NAME,
+): Promise<string> => {
+  const result = await dispatchTool(harness, agent, name, args, `render-${String(++calls)}`)
+  assert.equal(result.isError, false, textOf(result))
+  return textOf(result)
+}
 
 /** Mount the plugin as its own fiber and wire it onto one root agent. */
 const mountWired = async (
@@ -605,6 +618,8 @@ describe('agent: jira_list and jira_kb', () => {
 
       const found = await call(harness, agent, { action: 'get', key: 'KB-1' }, KB_TOOL_NAME)
       assert.equal(recordOf(found.item).title, 'Windows 上的锁必须用 mkdir')
+      const rendered = await renderCall(harness, agent, { action: 'get', key: 'KB-1' }, KB_TOOL_NAME)
+      assert.match(rendered, /flock 在 Windows 上不是原子的，用 mkdir。/u)
 
       const search = await call(harness, agent, { action: 'search', query: 'mkdir' }, KB_TOOL_NAME)
       const hits = listOf(search.hits)
@@ -731,9 +746,7 @@ describe('agent: the wire and the render path (decisions 41/159)', () => {
     const { harness, agent } = await mountWired(root)
     try {
       const render = async (args: unknown, name: string): Promise<string> => {
-        const result = await dispatchTool(harness, agent, name, args, `render-${String(++calls)}`)
-        assert.equal(result.isError, false, textOf(result))
-        const text = textOf(result)
+        const text = await renderCall(harness, agent, args, name)
         assert.ok(text.length > 0, `${name} must render something`)
         return text
       }
@@ -741,6 +754,52 @@ describe('agent: the wire and the render path (decisions 41/159)', () => {
       assert.match(await render({ include_closed: true }, LIST_TOOL_NAME), /DH-12/u)
       assert.match(await render({ action: 'search', query: 'nothing' }, KB_TOOL_NAME), /./u)
       assert.match(await render({ action: 'get', key: 'DH-99' }, TOOL_NAME), /NOT_FOUND/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('keeps create and tag commit failures visible', async () => {
+    const dir = await storeWithoutGenerated()
+    const { harness, agent } = await mountWired(dir)
+    try {
+      assert.equal((await call(harness, agent, { action: 'create', project: 'DH', data: { summary: 'initialize git' } })).ok, true)
+      // A plain file cannot be a git repository, so the commit fails deterministically while the
+      // ledger file remains writable. The fixture never changes git configuration outside itself.
+      await rmSync(join(dir, '.git'), { recursive: true, force: true })
+      writeFileSync(join(dir, '.git'), 'not a repository\n')
+
+      const created = await dispatchTool(harness, agent, TOOL_NAME, {
+        action: 'create', project: 'DH', data: { summary: 'written but not committed' },
+      }, `render-${String(++calls)}`)
+      assert.equal(textOf(created).includes('written but not committed'), true)
+      const createValue = envelopeOf(created)
+      assert.equal(createValue.ok, true, JSON.stringify(createValue))
+      assert.match(String(createValue.message), /commit failed/u)
+      assert.equal(recordOf(listOf(createValue.rejected)[0]).file, 'git')
+
+      const tagged = await dispatchTool(harness, agent, TOOL_NAME, {
+        action: 'tag_create', data: { name: 'uncommitted', description: 'a tag whose commit failed' },
+      }, `render-${String(++calls)}`)
+      const tagValue = envelopeOf(tagged)
+      assert.equal(recordOf(recordOf(tagValue.issue).tag).name, 'uncommitted')
+      assert.equal(recordOf(tagValue.issue).committed, false)
+      assert.match(textOf(tagged), /tag: uncommitted — a tag whose commit failed/u)
+      assert.match(textOf(tagged), /committed: false/u)
+      assert.match(textOf(tagged), /rejected: git:/u, JSON.stringify(tagValue))
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  it('shows comments returned by issue get', async () => {
+    const dir = await storeWithoutGenerated()
+    const { harness, agent } = await mountWired(dir)
+    try {
+      await call(harness, agent, { action: 'comment', key: 'DH-12', comment: { body: 'visible model comment' } })
+      const text = await renderCall(harness, agent, { action: 'get', key: 'DH-12' })
+      assert.match(text, /comments \(1\):/u)
+      assert.match(text, /visible model comment/u)
     } finally {
       await harness.dispose()
     }
@@ -760,6 +819,9 @@ describe('agent: a partial read says so, and says which file (decision 80)', () 
       assert.equal(recordOf(rejected[0]).file, 'projects/DH/issues/DH-13.md')
       assert.match(String(value.message), /partial/u)
       assert.equal(recordOf(value.me).machine, MACHINE, 'and the envelope is intact')
+      const text = await renderCall(harness, agent, { include_closed: true }, LIST_TOOL_NAME)
+      assert.match(text, /this answer is partial/u)
+      assert.match(text, /rejected: projects\/DH\/issues\/DH-13\.md/u)
     } finally {
       await harness.dispose()
     }
@@ -772,14 +834,82 @@ describe('agent: a pure tool session can build the tag vocabulary (decision 192)
     throwaway.push(dir)
     await initializeRepository(dir)
     await writeFile(join(dir, 'config.md'), CONFIG_FIXTURE, 'utf8')
+    const readinessKey = asIssueKey('DH-1')
+    assert.ok(readinessKey !== undefined)
+    await writeTextAtomic(storePaths.issue(dir, 'DH', readinessKey), [
+      '---', 'schema: issue/v2', 'type: task', 'status: todo', 'priority: S3',
+      'reporter: human:test', 'created_at: 2026-10-15T12:00:00Z', 'updated_at: 2026-10-15T12:00:00Z',
+      'revision: 1', '---', '', '# readiness fixture', '',
+    ].join('\n'))
     const { harness, agent } = await mountWired(dir)
     try {
+      await awarenessSettled(harness, agent)
       const tagged = await call(harness, agent, { action: 'tag_create', data: { name: 'mcp', description: 'the MCP surface' } })
       assert.equal(tagged.ok, true, JSON.stringify(tagged))
+      const text = await renderCall(harness, agent, { action: 'tag_create', data: { name: 'tools', description: 'the tool surface' } })
+      assert.match(text, /tag: tools — the tool surface/u)
+      assert.match(text, /committed: true/u)
       const created = await call(harness, agent, { action: 'create', project: 'DH', data: { summary: 'tagged', tags: ['mcp'] } })
       assert.deepEqual(listOf(issueOf(created).tags), ['mcp'])
       const unknown = failureOf(await call(harness, agent, { action: 'create', project: 'DH', data: { summary: 'x', tags: ['nope'] } }))
-      assert.deepEqual(listOf(unknown.context?.registered), ['mcp'])
+      assert.deepEqual(listOf(unknown.context?.registered), ['mcp', 'tools'])
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
+
+describe('agent: knowledge mirror failures are visible (decision 198)', () => {
+  it('shows the issue whose kb_refs could not be updated', async () => {
+    const dir = await storeWithoutGenerated()
+    const { harness, agent } = await mountWired(dir)
+    try {
+      const text = await renderCall(harness, agent, {
+        action: 'create',
+        data: {
+          domain: 'locking', type: 'pitfall', title: 'mirror failure', body: 'body\n', issues: ['DH-999'],
+        },
+      }, KB_TOOL_NAME)
+      assert.match(text, /mirror\.failed: DH-999: NOT_FOUND:/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
+
+describe('agent: batch close shows partial writes (decision 196)', () => {
+  it('shows the closed keys and the failed key after validation', async () => {
+    const dir = await storeWithoutGenerated()
+    const { harness, agent } = await mountWired(dir)
+    try {
+      await call(harness, agent, { action: 'create', project: 'DH', data: { summary: 'close first' } })
+      await call(harness, agent, { action: 'create', project: 'DH', data: { summary: 'close second' } })
+      await call(harness, agent, { action: 'switch_state', key: 'DH-13', to: 'in_progress' })
+      await call(harness, agent, { action: 'switch_state', key: 'DH-14', to: 'in_progress' })
+      const at = '2026-10-15T12:00:00Z' as Timestamp
+      const lock = await acquireLock(
+        issueLockPath(dir, 'DH-14'),
+        lockOwnerOf(harness.ctx.jira, at),
+        { timeoutMs: 1_000 },
+      )
+      assert.equal(lock.ok, true, JSON.stringify(lock))
+      if (!lock.ok) return
+      try {
+        const result = await dispatchTool(harness, agent, TOOL_NAME, {
+          action: 'batch_close', keys: ['DH-13', 'DH-14'], resolution: 'fixed',
+        }, `render-${String(++calls)}`)
+        assert.equal(result.isError, false, textOf(result))
+        const value = envelopeOf(result)
+        const batch = recordOf(value.issue)
+        assert.deepEqual(listOf(batch.closed), ['DH-13'])
+        assert.equal(recordOf(recordOf(batch.partial).failed).key, 'DH-14')
+        const text = textOf(result)
+        assert.match(text, /closed: DH-13/u)
+        assert.match(text, /partial: LOCK_TIMEOUT:/u)
+        assert.match(text, /failed: DH-14/u)
+      } finally {
+        await releaseLock(lock.value)
+      }
     } finally {
       await harness.dispose()
     }

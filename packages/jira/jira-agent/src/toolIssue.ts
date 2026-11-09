@@ -165,6 +165,9 @@ export const runIssueTool = async (
       actor,
     )
     if (!created.ok) return failure(created.error, caller, me)
+    const rejected = created.value.created.commitError === undefined
+      ? []
+      : [{ file: 'git', reason: formatError(created.value.created.commitError) }]
     if (options.session !== undefined && caller.sessionId !== undefined && options.recordSession !== undefined) {
       await options.recordSession(options.jira, actor, caller.sessionId, options.session)
     }
@@ -173,7 +176,7 @@ export const runIssueTool = async (
       // Decision 195: the key is absent in the common case, and present only when this call
       // registered the project — the service's own fact, never a re-derivation here.
       ...(created.value.projectCreated ? { project_created: true } : {}),
-    })
+    }, undefined, rejected, 'write')
   }
 
   if (action === 'batch_close') {
@@ -207,7 +210,13 @@ export const runIssueTool = async (
       ...(asString(fields.value.alias) === undefined ? {} : { alias: asString(fields.value.alias) as string }),
     })
     if (!created.ok) return failure(created.error, caller, me)
-    return okValue(caller, me, { tag: created.value.tag, committed: created.value.committed })
+    const rejected = created.value.commitError === undefined
+      ? []
+      : [{ file: 'git', reason: formatError(created.value.commitError) }]
+    return okValue(caller, me, {
+      tag: created.value.tag,
+      committed: created.value.committed,
+    }, undefined, rejected, 'write')
   }
 
   if (key === undefined) return failure(invalidInput(`\`${action}\` needs a \`key\``), caller, me)

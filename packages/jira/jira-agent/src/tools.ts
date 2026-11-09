@@ -13,9 +13,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { type Issue } from '@deepseek-ai/dsh-jira-core'
+import { type BatchClosed, type Comment, type Issue, type TagRecord } from '@deepseek-ai/dsh-jira-core'
 import { formatError } from '@deepseek-ai/dsh-jira-core'
-import { type KnowledgeEntry } from '@deepseek-ai/dsh-jira-core'
+import { type KnowledgeEntry, renderKbEntry } from '@deepseek-ai/dsh-jira-core'
 import { type KbSearch, renderKbSearch } from '@deepseek-ai/dsh-jira-core'
 import { type ListResult, renderIssueListForModel } from '@deepseek-ai/dsh-jira-core'
 import { clampText, fromWire, renderIssueHuman, toWire } from '@deepseek-ai/dsh-jira-core'
@@ -85,6 +85,36 @@ const actionOf = (args: unknown): string | undefined => {
 
 /** One text block, clamped to the model's budget; every renderer returns exactly this. */
 const renderValue = (text: string): ContentBlock[] => [{ type: 'text', text: clampText(text) }]
+
+/** A successful answer, followed by any partial-read or uncommitted-write warning. */
+const renderSuccess = (typed: ToolValue, text: string): ContentBlock[] => renderValue([
+  text,
+  ...(typed.message === undefined ? [] : [typed.message]),
+  ...(typed.rejected ?? []).map(rejection => `rejected: ${rejection.file}: ${rejection.reason}`),
+].join('\n'))
+
+/** A batch close, including a failure after earlier keys were written. */
+const renderBatchClose = (typed: ToolValue): string => {
+  const { closed, partial } = typed.issue as BatchClosed
+  return [
+    `closed: ${closed.join(', ') || '(none)'}`,
+    ...(partial === undefined ? [] : [`partial: ${formatError(partial.failed.error)} (failed: ${partial.failed.key})`]),
+  ].join('\n')
+}
+
+/** A tag registration and whether its file became a commit. */
+const renderTag = (payload: { readonly tag: TagRecord; readonly committed: boolean }): string => {
+  return [
+    `tag: ${payload.tag.name} — ${payload.tag.description}`,
+    `committed: ${String(payload.committed)}`,
+  ].join('\n')
+}
+
+/** A knowledge write, including issue citations the mirror could not update. */
+const renderMirrorFailures = (value: Pick<ToolValue, 'mirror'>): readonly string[] => {
+  const mirror = value.mirror
+  return (mirror?.failed ?? []).map(failure => `mirror.failed: ${String(failure.key)}: ${formatError(failure.error)}`)
+}
 
 /** The caller facts for one execution, shared by the tools and the write guard. */
 export const callerOf = (
@@ -192,13 +222,17 @@ export const jiraTools = (host: ToolHost): readonly ToolDefinition[] => {
       return action !== undefined && READ_ACTIONS.includes(action)
     },
     render: (typed) => {
-      const issue = typed.issue as Partial<Issue> | undefined
-      // `tag_create` reports the registered tag rather than an issue; the envelope keeps the
-      // standalone plugin's payload under `issue`, so the renderer recognizes it by the missing key.
-      const text = issue === undefined || issue.key === undefined
+      const issue = typed.issue
+      if (issue !== null && typeof issue === 'object' && 'closed' in issue) {
+        return renderSuccess(typed, renderBatchClose(typed as ToolValue & { readonly issue: BatchClosed }))
+      }
+      if (issue !== null && typeof issue === 'object' && 'tag' in issue) {
+        return renderSuccess(typed, renderTag(issue as { readonly tag: TagRecord; readonly committed: boolean }))
+      }
+      const text = issue === null || typeof issue !== 'object' || !('key' in issue) || typeof issue.key !== 'string'
         ? 'ok'
-        : renderIssueHuman(issue as Issue, [], nowUtc(host.clock)).replace(/\n$/u, '')
-      return renderValue(text)
+        : renderIssueHuman(issue as Issue, (typed.comments ?? []) as readonly Comment[], nowUtc(host.clock)).replace(/\n$/u, '')
+      return renderSuccess(typed, text)
     },
     run: (args, call, exec) => runIssueTool(args, {
       ...runOptionsOf(host, call),
@@ -215,7 +249,7 @@ export const jiraTools = (host: ToolHost): readonly ToolDefinition[] => {
     outputSchema: LIST_OUTPUT_SCHEMA,
     timeoutMs: READ_TIMEOUT_MS,
     isConcurrencySafe: () => true,
-    render: typed => renderValue(renderIssueListForModel(typed as ListResult)),
+    render: typed => renderSuccess(typed, renderIssueListForModel(typed as ListResult)),
     run: (args, call) => runListTool(args, runOptionsOf(host, call), call.me),
   }
 
@@ -235,7 +269,7 @@ export const jiraTools = (host: ToolHost): readonly ToolDefinition[] => {
       if (typed.hits !== undefined) {
         const hits = typed.hits as KbSearch['hits']
         const counts = typed.counts as { matched?: number } | undefined
-        return renderValue(renderKbSearch({
+        return renderSuccess(typed, renderKbSearch({
           hits,
           matched: counts?.matched ?? hits.length,
           truncated: typed.truncated === true,
@@ -243,12 +277,8 @@ export const jiraTools = (host: ToolHost): readonly ToolDefinition[] => {
         }))
       }
       const item = typed.item as KnowledgeEntry | undefined
-      if (item === undefined) return renderValue('ok')
-      return renderValue([
-        `${item.key}  ${item.kbType}  ${item.title}`,
-        `${item.domain} · captured ${item.source.capturedAt} · ${item.source.machineId}`,
-        ...(item.issues.length === 0 ? [] : [`issues: ${item.issues.join(', ')}`]),
-      ].join('\n'))
+      const text = item === undefined ? 'ok' : renderKbEntry(item)
+      return renderSuccess(typed, [text, ...renderMirrorFailures(typed)].join('\n'))
     },
     run: (args, call) => runKbTool(args, runOptionsOf(host, call), call.me),
   }
@@ -279,7 +309,7 @@ export const jiraWorkerTools = (host: ToolHost): readonly ToolDefinition[] => {
       const text = issue === undefined || issue.key === undefined
         ? 'ok'
         : renderIssueHuman(issue as Issue, [], nowUtc(host.clock)).replace(/\n$/u, '')
-      return renderValue(text)
+      return renderSuccess(typed, text)
     },
     run: (args, call) => runWorkTool(args, runOptionsOf(host, call), call.me),
   }

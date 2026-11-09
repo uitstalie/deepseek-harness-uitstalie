@@ -90,6 +90,11 @@ export interface DispatchReportRecord {
   readonly deliveredAt?: string
   /** Why the last delivery attempt failed; the turn-end hook already logged the same message. */
   readonly error?: string
+  /** Complete message accepted by the recipient; retained so a failed delivery can be retried. */
+  readonly reportText?: string
+  /** Business outcome at turn end, independent of whether delivery succeeded. */
+  readonly outcome?: string
+  readonly result?: 'returned' | 'failed'
   readonly ledger?: DispatchReportLedgerRef
 }
 
@@ -131,6 +136,9 @@ const parseRecord = (line: string): DispatchReportRecord | undefined => {
     attempts: typeof record.attempts === 'number' ? record.attempts : 0,
     ...(typeof record.deliveredAt === 'string' ? { deliveredAt: record.deliveredAt } : {}),
     ...(typeof record.error === 'string' ? { error: record.error } : {}),
+    ...(typeof record.reportText === 'string' ? { reportText: record.reportText } : {}),
+    ...(typeof record.outcome === 'string' ? { outcome: record.outcome } : {}),
+    ...(record.result === 'returned' || record.result === 'failed' ? { result: record.result } : {}),
     ...(typeof record.ledger === 'object' && record.ledger !== null
       && typeof (record.ledger as DispatchReportLedgerRef).root === 'string'
       && typeof (record.ledger as DispatchReportLedgerRef).taskId === 'string'
@@ -279,6 +287,41 @@ export class DispatchReportStore {
         failed += 1
       }
       return failed
+    })
+  }
+
+  /** Save the exact report and business outcome before its first delivery attempt. */
+  async prepare(
+    id: string,
+    at: string,
+    reportText: string,
+    outcome: string,
+    result: 'returned' | 'failed',
+  ): Promise<DispatchReportRecord | undefined> {
+    return await this.exclusive(async () => {
+      const current = (await this.all()).get(id)
+      if (current === undefined || current.status !== 'delivering') return undefined
+      const next = Object.freeze({ ...current, reportText, outcome, result, updatedAt: at })
+      await this.append(next)
+      return next
+    })
+  }
+
+  /** List failed or unsettled deliveries for an operator, oldest attempt first. */
+  async failures(): Promise<readonly DispatchReportRecord[]> {
+    return [...(await this.all()).values()]
+      .filter(record => record.status === 'failed' || record.status === 'delivering')
+      .sort((left, right) => left.updatedAt < right.updatedAt ? -1 : left.updatedAt > right.updatedAt ? 1 : 0)
+  }
+
+  /** Re-open a saved failed report for an explicit retry; delivered reports never reopen. */
+  async retry(id: string, at: string): Promise<DispatchReportRecord | undefined> {
+    return await this.exclusive(async () => {
+      const current = (await this.all()).get(id)
+      if (current === undefined || current.status !== 'failed' || current.reportText === undefined) return undefined
+      const next = Object.freeze({ ...current, status: 'pending' as const, updatedAt: at })
+      await this.append(next)
+      return next
     })
   }
 

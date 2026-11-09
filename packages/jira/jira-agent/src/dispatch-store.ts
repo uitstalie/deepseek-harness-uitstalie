@@ -17,6 +17,8 @@ import {
   appendDispatchTask,
   ledgerFileOf,
   listAllDispatchTasks,
+  queryDispatchTasks,
+  type DispatchLedgerList,
   type DispatchLedgerQuery,
   type DispatchLedgerRow,
   type DispatchLedgerTask,
@@ -230,22 +232,41 @@ export class DispatchStore {
     return await this.opening ? this.table : undefined
   }
 
-  /** Rows from the authoritative domain; undefined means "no storage, use Markdown". */
-  async list(query: DispatchLedgerQuery = {}): Promise<DispatchLedgerRow[] | undefined> {
+  /** A bounded domain listing with counts for every match; undefined means "use Markdown". */
+  async query(query: DispatchLedgerQuery = {}): Promise<DispatchLedgerList | undefined> {
     const table = await this.readyTable()
     if (table === undefined) return undefined
-    const needle = query.query?.trim().toLowerCase() ?? ''
-    const workspace = query.workspace?.trim().toLowerCase()
-    const limit = Math.max(1, Math.min(100, Math.floor(query.limit ?? 20)))
-    return [...table.entries()]
+    const rows = [...table.entries()]
       .map(([id, record]) => Object.freeze({ ...taskFromRecord(record, id), file: ledgerFileOf(this.root, record.workspace.id) }))
-      .filter(task => task.status === (query.status ?? task.status))
-      .filter(task => workspace === undefined || task.workspaceTitle.toLowerCase() === workspace
-        || task.workspacePath.toLowerCase() === workspace || task.workspaceId === query.workspace)
-      .filter(task => needle === '' || [task.id, task.task, task.workspaceTitle, task.workspacePath, task.outcome ?? '', ...task.artifacts, ...task.decisions]
-        .some(value => value.toLowerCase().includes(needle)))
-      .sort((left, right) => left.dispatchedAt < right.dispatchedAt ? 1 : left.dispatchedAt > right.dispatchedAt ? -1 : 0)
-      .slice(0, limit)
+    return queryDispatchTasks(rows, query)
+  }
+
+  /** Rows from the authoritative domain; undefined means "no storage, use Markdown". */
+  async list(query: DispatchLedgerQuery = {}): Promise<DispatchLedgerRow[] | undefined> {
+    const entries = (await this.query(query))?.entries
+    return entries === undefined ? undefined : [...entries]
+  }
+
+  /** Append the current domain state when its human projection is absent or stale. */
+  async project(id: string): Promise<DispatchWrite | undefined> {
+    const table = await this.readyTable()
+    if (table === undefined) return undefined
+    const record = table.get(id)
+    if (record === undefined) return undefined
+    const projected = (await listAllDispatchTasks(this.root)).find(row => row.id === id)
+    if (!sameProjection(projected, record, id)) {
+      await appendDispatchTask(this.root, record.workspace, taskFromRecord(record, id))
+    }
+    return { task: taskFromRecord(record, id), file: ledgerFileOf(this.root, record.workspace.id) }
+  }
+
+  /** Look up one task without applying the bounded list window. */
+  async find(id: string): Promise<DispatchWrite | undefined> {
+    const table = await this.readyTable()
+    if (table === undefined) return undefined
+    const record = table.get(id)
+    if (record === undefined) return undefined
+    return { task: taskFromRecord(record, id), file: ledgerFileOf(this.root, record.workspace.id) }
   }
 
   /** Persist a new pending task, then append its human projection. */
@@ -263,31 +284,26 @@ export class DispatchStore {
     return { task: taskFromRecord(record, task.id), file }
   }
 
+  /** Whether a resolve changes a projected field rather than only its update timestamp. */
+  private changed(current: DispatchRecord, next: DispatchRecord): boolean {
+    return !sameProjection(taskFromRecord(current, 'current'), { ...next, updatedAt: current.updatedAt }, 'next')
+  }
+
   /**
-   * Resolve one task in the domain. A task already returned/failed is returned unchanged and is
-   * never projected twice; a missing task returns undefined so the caller can try the old Markdown
-   * ledger once.
-   *
-   * `correctResolved` is the report path only: a turn that is genuinely bound to a task may arrive
-   * after an earlier, misattributed turn already resolved it. That later outcome replaces the old
-   * one (same status), and an identical outcome stays a no-op.
+   * Resolve or correct one task in the domain, including after an automatic result. A missing task
+   * returns undefined so the caller can try the Markdown compatibility store. An unchanged patch is
+   * a no-op; every changed field is persisted and appended to the human projection.
    */
   async resolve(
     id: string,
     patch: DispatchTaskPatch,
-    options: { readonly correctResolved?: boolean } = {},
+    options: { readonly project?: boolean } = {},
   ): Promise<DispatchWrite | undefined> {
     const table = await this.readyTable()
     if (table === undefined) return undefined
     const current = table.get(id)
     if (current === undefined) return undefined
     const file = ledgerFileOf(this.root, current.workspace.id)
-    if (current.status !== 'pending') {
-      if (options.correctResolved !== true) return { task: taskFromRecord(current, id), file }
-      if (current.status === patch.status && current.outcome === (patch.outcome ?? current.outcome)) {
-        return { task: taskFromRecord(current, id), file }
-      }
-    }
     const next: DispatchRecord = {
       ...current,
       status: patch.status,
@@ -298,8 +314,9 @@ export class DispatchStore {
       ...(patch.sessionId === undefined ? {} : { sessionId: patch.sessionId }),
       ...(patch.issue === undefined ? {} : { issue: patch.issue }),
     }
+    if (!this.changed(current, next)) return { task: taskFromRecord(current, id), file }
     await table.put(id, next)
-    if (next.status !== current.status || next.outcome !== current.outcome) {
+    if (options.project !== false) {
       try {
         await appendDispatchTask(this.root, next.workspace, taskFromRecord(next, id))
       } catch (error: unknown) {

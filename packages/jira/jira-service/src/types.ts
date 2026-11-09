@@ -242,6 +242,8 @@ export interface TagCreateInput {
 export interface TagCreateResult {
   readonly tag: unknown
   readonly committed: boolean
+  /** The tag file exists but its commit failed; the next flush may retry it. */
+  readonly commitError?: JiraError
 }
 
 /** The all-or-nothing batch close result. */

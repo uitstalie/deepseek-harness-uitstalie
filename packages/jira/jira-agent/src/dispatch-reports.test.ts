@@ -39,6 +39,11 @@ const binding = (overrides: Partial<Parameters<DispatchReportStore['record']>[0]
 })
 
 describe('dispatch reports: journal', () => {
+  const journalRows = async (root: string): Promise<Record<string, unknown>[]> => {
+    const text = await readFile(join(root, DISPATCH_REPORT_DIR, DISPATCH_REPORT_FILE), 'utf8')
+    return text.trim().split(/\r?\n/u).map(line => JSON.parse(line) as Record<string, unknown>)
+  }
+
   it('records a pending binding keyed by child Session and prompt identity', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
@@ -77,6 +82,83 @@ describe('dispatch reports: journal', () => {
     assert.equal(await store.claim('task-claim', AT), undefined, 'a delivered report is never claimed again')
     assert.equal((await store.forSession('child-1'))[0]?.status, 'delivered')
     assert.equal((await store.forSession('child-1'))[0]?.deliveredAt, AT)
+  })
+
+  it('prepares a report only while its claim is delivering', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    await store.record(binding({ id: 'task-prepare' }))
+    assert.equal(await store.prepare('task-prepare', AT, 'too early', 'work done', 'returned'), undefined)
+    assert.equal((await journalRows(root)).length, 1, 'a rejected prepare does not append JSONL')
+
+    await store.claim('task-prepare', AT)
+    const prepared = await store.prepare('task-prepare', LATER, '# Completed\n\nThe work is done.', 'work done', 'returned')
+    assert.equal(prepared?.status, 'delivering')
+    assert.equal(prepared?.reportText, '# Completed\n\nThe work is done.')
+    assert.equal(prepared?.outcome, 'work done')
+    assert.equal(prepared?.result, 'returned')
+    assert.equal(prepared?.updatedAt, LATER)
+    assert.equal(prepared?.attempts, 1)
+
+    // Read the durable rows rather than trusting the returned record.
+    const rows = await journalRows(root)
+    assert.equal(rows.length, 3)
+    assert.equal(rows[2]?.id, 'task-prepare')
+    assert.equal(rows[2]?.status, 'delivering')
+    assert.equal(rows[2]?.reportText, '# Completed\n\nThe work is done.')
+    assert.equal(rows[2]?.outcome, 'work done')
+    assert.equal(rows[2]?.result, 'returned')
+    assert.equal((await new DispatchReportStore(root).all()).get('task-prepare')?.reportText, '# Completed\n\nThe work is done.')
+
+    await store.settle('task-prepare', 'delivered', LATER)
+    assert.equal(await store.prepare('task-prepare', LATER, 'late edit', 'changed', 'failed'), undefined)
+    assert.equal((await journalRows(root)).length, 4, 'prepare after delivery does not append JSONL')
+  })
+
+  it('lists failures oldest first and retries only failed reports with saved text', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    await store.record(binding({ id: 'task-retry', dispatchedAt: AT }))
+    await store.claim('task-retry', AT)
+    await store.prepare('task-retry', '2026-11-08T00:02:00.000Z', 'saved report', 'completed', 'returned')
+    await store.settle('task-retry', 'failed', '2026-11-08T00:03:00.000Z', 'queue closed')
+    await store.record(binding({ id: 'task-no-text', dispatchedAt: '2026-11-08T00:01:00.000Z' }))
+    await store.settle('task-no-text', 'failed', '2026-11-08T00:01:30.000Z', 'missing result')
+    await store.record(binding({ id: 'task-delivered', dispatchedAt: '2026-11-08T00:02:00.000Z' }))
+    await store.claim('task-delivered', AT)
+    await store.prepare('task-delivered', AT, 'delivered report', 'completed', 'returned')
+    await store.settle('task-delivered', 'delivered', AT)
+
+    const failures = await store.failures()
+    assert.deepEqual(failures.map(row => row.id), ['task-no-text', 'task-retry'])
+    assert.equal(failures[1]?.reportText, 'saved report')
+    await store.record(binding({ id: 'task-unsettled' }))
+    await store.claim('task-unsettled', LATER)
+    assert.equal((await store.failures()).some(row => row.id === 'task-unsettled' && row.status === 'delivering'), true)
+    assert.equal(failures[1]?.error, 'queue closed')
+
+    assert.equal(await store.retry('task-no-text', LATER), undefined, 'a failure without saved text cannot retry')
+    assert.equal(await store.retry('task-delivered', LATER), undefined, 'a delivered report never reopens')
+    assert.equal(await store.retry('missing', LATER), undefined)
+    const beforeRetry = await journalRows(root)
+    const retried = await store.retry('task-retry', LATER)
+    assert.equal(retried?.status, 'pending')
+    assert.equal(retried?.updatedAt, LATER)
+    assert.equal(retried?.reportText, 'saved report')
+    assert.equal(retried?.outcome, 'completed')
+    assert.equal(retried?.result, 'returned')
+    assert.equal(retried?.error, 'queue closed', 'retry retains the previous error for audit')
+    assert.equal(retried?.attempts, 1)
+
+    const afterRetry = await journalRows(root)
+    assert.equal(afterRetry.length, beforeRetry.length + 1)
+    assert.equal(afterRetry.at(-1)?.id, 'task-retry')
+    assert.equal(afterRetry.at(-1)?.status, 'pending')
+    assert.equal(afterRetry.at(-1)?.reportText, 'saved report')
+    const reloaded = await new DispatchReportStore(root).all()
+    assert.equal(reloaded.get('task-retry')?.status, 'pending')
+    assert.equal(reloaded.get('task-delivered')?.status, 'delivered')
+    assert.equal(reloaded.get('task-no-text')?.status, 'failed')
   })
 
   it('retries a stale delivering claim after the lease and reports the retry', async () => {

@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { objectSchema, type FieldSpec } from '@deepseek-ai/dsh-jira-core'
+import { objectSchema, validateArgs, type FieldSpec, type JiraError } from '@deepseek-ai/dsh-jira-core'
 import {
   assertSupportedJsonSchema,
   validateJsonSchemaValue,
@@ -26,6 +26,67 @@ const definitionsOf = (harness: JiraHarness): readonly ToolDefinition[] => {
   assert.ok(contribution.tools !== undefined, 'the capability must contribute tools')
   return contribution.tools(testAgent(harness.ctx, 'schema-agent'))
 }
+
+describe('schema: validateArgs checks nested arguments', () => {
+  const issuesOf = (error: JiraError): readonly string[] => {
+    const issues = error.context?.issues
+    assert.ok(Array.isArray(issues))
+    return issues as readonly string[]
+  }
+
+  it('lists nested array item errors with their complete paths', () => {
+    const parameters: Readonly<Record<string, FieldSpec>> = {
+      tags: { type: 'array', items: { type: 'string' } },
+      kb_refs: { type: 'array', items: { type: 'string' } },
+      keys: { type: 'array', items: { type: 'string' } },
+      artifacts: { type: 'array', items: { type: 'string' } },
+    }
+    const result = validateArgs(parameters, {
+      tags: ['valid', 1, null],
+      kb_refs: [false],
+      keys: ['DH-1', { key: 'DH-2' }],
+      artifacts: 'out/result.md',
+    })
+    assert.equal(result.ok, false)
+    if (result.ok) assert.fail('invalid array arguments must fail')
+    assert.deepEqual(issuesOf(result.error), [
+      'argument "tags[1]" must be string',
+      'argument "tags[2]" must be string',
+      'argument "kb_refs[0]" must be string',
+      'argument "keys[1]" must be string',
+      'argument "artifacts" must be array',
+    ])
+  })
+
+  it('lists unknown, missing, type and enum errors inside nested objects together', () => {
+    const result = validateArgs(ISSUE_PARAMETERS, {
+      action: 'link',
+      link: { type: 'sideways', target: 12, extra: true },
+      comment: { text: 'body is missing' },
+    })
+    assert.equal(result.ok, false)
+    if (result.ok) assert.fail('invalid nested objects must fail')
+    assert.deepEqual(issuesOf(result.error), [
+      'unknown link field(s): extra',
+      'argument "link.type" must be one of: related, duplicate, is_blocked_by, parent',
+      'argument "link.target" must be string',
+      'unknown comment field(s): text',
+      'missing required argument "comment.body"',
+    ])
+  })
+
+  it('allows an explicitly nullable oneOf without treating null as missing elsewhere', () => {
+    const valid = validateArgs(ISSUE_PARAMETERS, { action: 'update', key: 'DH-1', data: { note: null } })
+    assert.equal(valid.ok, true)
+    if (!valid.ok) assert.fail('the nullable note must accept null')
+    assert.equal(valid.value.data !== undefined && (valid.value.data as { note?: unknown }).note, null)
+
+    const required = validateArgs({ required: { type: 'string', required: true } }, { required: null })
+    assert.equal(required.ok, false)
+    if (required.ok) assert.fail('null must not satisfy a required string')
+    assert.deepEqual(issuesOf(required.error), ['argument "required" must be string'])
+  })
+})
 
 describe('schema: what we register belongs to the host subset', () => {
   it('registers both tools with schemas the host accepts, object-rooted', async () => {

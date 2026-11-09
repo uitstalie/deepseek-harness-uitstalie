@@ -87,6 +87,14 @@ export interface DispatchLedgerQuery {
   readonly limit?: number
 }
 
+/** One bounded dispatch listing and the counts of the complete matching set. */
+export interface DispatchLedgerList {
+  readonly entries: readonly DispatchLedgerRow[]
+  readonly counts: Readonly<{ matched: number; returned: number; remaining: number }>
+  readonly truncated: boolean
+  readonly limit: number
+}
+
 /** The workspace identity a ledger writer needs. */
 export interface DispatchLedgerWorkspace {
   readonly id: string
@@ -351,23 +359,40 @@ export const listAllDispatchTasks = async (root: string): Promise<DispatchLedger
   return tasks.sort((left, right) => left.dispatchedAt < right.dispatchedAt ? 1 : left.dispatchedAt > right.dispatchedAt ? -1 : 0)
 }
 
-/** Pick the latest task per id across every workspace file. */
-export const listDispatchTasks = async (
-  root: string,
+/** Return the newest task with this id without applying the list display limit. */
+export const findDispatchTask = async (root: string, id: string): Promise<DispatchLedgerRow | undefined> =>
+  (await latestTasks(root)).find(task => task.id === id)
+
+/** Apply one query to either storage backend and retain the pre-limit counts. */
+export const queryDispatchTasks = (
+  tasks: readonly DispatchLedgerRow[],
   query: DispatchLedgerQuery = {},
-): Promise<DispatchLedgerRow[]> => {
+): DispatchLedgerList => {
   const needle = query.query?.trim().toLowerCase() ?? ''
   const workspace = query.workspace?.trim().toLowerCase()
   const limit = Math.max(1, Math.min(100, Math.floor(query.limit ?? 20)))
-  return (await latestTasks(root))
+  const matched = tasks
     .filter(task => task.status === (query.status ?? task.status))
     .filter(task => workspace === undefined || task.workspaceTitle.toLowerCase() === workspace
       || task.workspacePath.toLowerCase() === workspace || task.workspaceId === query.workspace)
     .filter(task => needle === '' || [task.id, task.task, task.workspaceTitle, task.workspacePath, task.outcome ?? '', ...task.artifacts, ...task.decisions]
       .some(value => value.toLowerCase().includes(needle)))
     .sort((left, right) => left.dispatchedAt < right.dispatchedAt ? 1 : left.dispatchedAt > right.dispatchedAt ? -1 : 0)
-    .slice(0, limit)
+  const entries = matched.slice(0, limit)
+  return Object.freeze({
+    entries: Object.freeze(entries),
+    counts: Object.freeze({ matched: matched.length, returned: entries.length, remaining: matched.length - entries.length }),
+    truncated: matched.length > entries.length,
+    limit,
+  })
 }
+
+/** Pick the latest task per id across every workspace file. */
+export const listDispatchTasks = async (
+  root: string,
+  query: DispatchLedgerQuery = {},
+): Promise<DispatchLedgerRow[]> =>
+  [...queryDispatchTasks(await latestTasks(root), query).entries]
 
 /**
  * Append a corrected section for one task. The caller finds the task first so the workspace file
