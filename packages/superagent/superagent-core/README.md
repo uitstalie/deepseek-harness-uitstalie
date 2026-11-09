@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Callers can bind a workspace Session and prompt identity to a dispatch before admitting work, then retain and settle its report delivery independently of any issue ledger. The journal stores pending, delivering, delivered, and failed states with attempts and errors, and supports reading failed reports for an explicit retry. `DispatchStore` persists business results in the dispatch domain and accepts an explicit projection interface for human-readable output.
+Callers can bind a workspace Session and prompt identity to a dispatch before admitting work, then retain and settle its report delivery independently of any issue ledger. The journal stores pending, delivering, delivered, failed, and acknowledged states with attempts, recipients, and errors. It supports listing states, acknowledging delivered reports, and explicit retries; startup recovery re-delivers saved pending or delivering reports without reopening failed work. `DispatchStore` persists business results in the dispatch domain and accepts an explicit projection interface for human-readable output.
 
 ## Table of Contents
 

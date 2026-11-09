@@ -9,7 +9,7 @@ kind: "package-library"
 
 ## 概述
 
-调用方可以在允许工作开始前，把工作区 Session 与 prompt 身份绑定到一次派发，再独立保存和结算它的报告投递，不依赖 issue 台账。journal 保存 pending、delivering、delivered 和 failed 状态及尝试次数、错误，并支持读取失败报告以显式重试。`DispatchStore` 将业务结果持久化到 dispatch domain，并接受显式投影接口来输出人可读内容。
+调用方可以在允许工作开始前，把工作区 Session 与 prompt 身份绑定到一次派发，再独立保存和结算它的报告投递，不依赖 issue 台账。journal 保存 pending、delivering、delivered、failed 和 acknowledged 状态及尝试次数、接收方、错误，支持按状态查询、确认已投递报告与显式重试；启动恢复会重发保存的 pending 或 delivering 报告，不自动重开 failed 工作。`DispatchStore` 将业务结果持久化到 dispatch domain，并接受显式投影接口来输出人可读内容。
 
 ## 目录
 

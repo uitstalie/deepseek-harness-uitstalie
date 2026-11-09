@@ -26,7 +26,7 @@ import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
 import { dispatchBody, dispatchRecordOf } from './dispatch.ts'
 import { createDispatchStore, type DispatchStore } from './dispatch-store.ts'
-import { DispatchReportStore, newDispatchReportId, type DispatchReportRecord, type DispatchReportWorkspace } from './dispatch-reports.ts'
+import { DispatchReportStore, newDispatchReportId, recoverDispatchReports, type DispatchReportRecord, type DispatchReportWorkspace } from './dispatch-reports.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, nowUtc, okValue } from './envelope.ts'
 import { callerCwd, isExecutorSession, isSubagent, type Caller } from './caller.ts'
 import { ensureSuperWorkspaceDefinition } from './super-workspace-definition.ts'
@@ -308,6 +308,8 @@ export interface WorkspaceRegistryLike {
   insertBefore?(id: string, beforeId?: string): Promise<readonly string[]>
   /** Hide one Session from every grouping surface; optional because a host may not compose it. */
   archiveSession?(sessionId: string, options?: { readonly stopActivity?: boolean }): Promise<void>
+  /** Durable archive membership, when the host exposes it. */
+  readonly archivedSessionIds?: readonly string[]
 }
 
 /**
@@ -1078,6 +1080,18 @@ const withLedger = (value: ToolValue, attempt: LedgerAttempt): ToolValue => Obje
   ...(attempt.error === undefined ? {} : { ledgerError: attempt.error }),
 })
 
+/** Read whether the report's original recipient still exists and is not archived. */
+const recipientAvailable = async (ctx: unknown, sessionId: string): Promise<boolean> => {
+  if (sessionId.trim() === '') return false
+  const controller = sessionControllerOf(ctx)
+  if (controller === undefined) return false
+  const registry = workspaceRegistryOf(ctx)
+  if (registry?.archivedSessionIds?.includes(sessionId) === true) return false
+  const listed = await controller.list()
+  if (!listed.items.some(item => String(item.sessionId) === sessionId)) return false
+  return true
+}
+
 /** One Session a super agent started or addressed, so its report can be routed back. */
 export interface TaskSessionRecord {
   /** The super agent Session that receives the report. */
@@ -1125,6 +1139,8 @@ export interface SessionToolContext {
   readonly compactThresholdPercent?: number
   /** Minutes a running Session may run before the monitor names it (a suggestion, default 10). */
   readonly longRunningMinutes?: number
+  /** Sessions whose current turn was deliberately stopped; their turn-end is not a task report. */
+  readonly stopped?: Set<string>
 }
 
 /** The newest dispatch record for a Session, if it has one. */
@@ -3206,6 +3222,7 @@ export const runSessionTool = async (
           stop: Object.freeze({ accepted: false, wasRunning: false, alreadyIdle: true, scene, boundary: cancellationBoundary(live) }),
         })
       }
+      context.stopped?.add(sessionId)
       const agentCancel = (live as {
         cancel?: (cause: { readonly kind: 'user' }, options?: { readonly keepInbox?: boolean }) => void
       } | undefined)?.cancel
@@ -3298,12 +3315,31 @@ export const runSessionTool = async (
           { session: sessionArg, scene: Object.freeze({ ...scene, aborted: true }) },
         ), caller, me)
       }
-      const admitted = await controller.prompt({
-        requestId: `superagent-recover-${randomUUID()}`,
-        sessionId: sessionArg.trim(),
-        mode: 'queue',
-        content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
-      }, new AbortController().signal)
+      const requestId = `superagent-recover-${randomUUID()}`
+      const taskId = newDispatchReportId()
+      const knownBefore = lastTaskRecord(context.tasks, sessionArg.trim())
+      const reportWorkspace: DispatchReportWorkspace = {
+        id: knownBefore?.taskId ?? '',
+        title: knownBefore?.workspace ?? 'its workspace',
+        path: knownBefore?.workspace ?? '',
+      }
+      await recordDispatchReport(
+        context, caller, reportWorkspace, textArg.trim(), sessionArg.trim(), options.at, reportTo, requestId, taskId,
+      )
+      let admitted: { readonly accepted: boolean }
+      try {
+        admitted = await controller.prompt({
+          requestId,
+          sessionId: sessionArg.trim(),
+          mode: 'queue',
+          content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
+        }, new AbortController().signal)
+      } catch (error) {
+        await failDispatchReport(context, caller, taskId, options.at, error)
+        throw error
+      }
+      if (!admitted.accepted) await failDispatchReport(context, caller, taskId, options.at, new Error('the recovery prompt was not accepted'))
+      if (reportTo !== undefined) enqueueTaskRecord(context.tasks, sessionArg.trim(), { superSession: reportTo, workspace: knownBefore?.workspace ?? 'its workspace', taskId, requestId })
       const delivered = deliveryOutcome('queue', 'queue', false, false, admitted.accepted, insertionSeqOf(ctx, sessionArg.trim()))
       return Object.freeze({
         ...verdict,
@@ -3747,11 +3783,22 @@ export const deliverTaskReport = async (
   }
   const controller = sessionControllerOf(host.ctx)
   const sessionId = String((agent as { id?: unknown }).id)
+  const recipientReady = async (): Promise<boolean> => {
+    try {
+      if (await recipientAvailable(host.ctx, record.superSession)) return true
+      host.ctx.logger.warn('superagent: the report recipient for %s is missing or archived: %s', taskId ?? sessionId, record.superSession)
+    } catch (error) {
+      host.ctx.logger.warn('superagent: could not verify the report recipient for %s: %s', taskId ?? sessionId, String(error))
+    }
+    return false
+  }
+  // Saved retries already contain their business outcome. Check the recipient only at delivery.
   if (controller === undefined) {
     host.ctx.logger.warn('superagent: no session controller is available to deliver task %s', taskId ?? sessionId)
     return false
   }
   if (record.reportText !== undefined) {
+    if (!(await recipientReady())) return false
     try {
       await controller.prompt({
         requestId: `superagent-report-${randomUUID()}`,
@@ -3787,6 +3834,7 @@ export const deliverTaskReport = async (
       + 'retry with a clean turn boundary, or compact; record the outcome with superagent_ledger '
       + 'resolve (status failed) and memory_write.'
     if (await prepareReport(body) === false) return false
+    if (!(await recipientReady())) return false
     try {
       await controller.prompt({
         requestId: `superagent-report-${randomUUID()}`,
@@ -3826,6 +3874,7 @@ export const deliverTaskReport = async (
       + 'superagent, the workspace and the task id); use superagent_ledger resolve for any outcome, '
       + 'artifact or decision the automatic record could not know.'
   if (await prepareReport(body) === false) return false
+  if (!(await recipientReady())) return false
   try {
     await controller.prompt({
       requestId: `superagent-report-${randomUUID()}`,
@@ -3906,33 +3955,6 @@ const turnPromptScan = (agent: unknown, turn: number | undefined, endEvent: unkn
  * @param liveAgents - agents currently known to the capability.
  * @returns the receiving Session id, or undefined when no dispatcher is visible.
  */
-const superSessionForReport = async (
-  host: ToolHost,
-  superHome: string,
-  liveAgents: Iterable<unknown>,
-): Promise<string | undefined> => {
-  const controller = sessionControllerOf(host.ctx)
-  if (controller !== undefined) {
-    try {
-      const listed = await controller.list()
-      const candidates = listed.items
-        .filter(item => item.parentSessionId === undefined && item.origin !== 'subagent')
-        .filter(item => item.cwd !== undefined && sameCheckout(item.cwd, superHome))
-        .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
-      const newest = candidates[0]
-      if (newest !== undefined) return String(newest.sessionId)
-    } catch (error: unknown) {
-      host.ctx.logger.warn(
-        'superagent: could not list Sessions to recover a pending dispatch report: %s',
-        error instanceof Error ? error.message : String(error),
-      )
-    }
-  }
-  for (const agent of liveAgents) {
-    if (isSuperAgentSession(agent, superHome)) return String((agent as { id?: unknown }).id)
-  }
-  return undefined
-}
 
 /**
  * Settle one dispatch report after a delivery attempt, logging (never throwing) a journal failure.
@@ -4037,7 +4059,6 @@ const projectReportToLedger = async (
  * @param host - the plugin host.
  * @param input - the child Session's turn-end input.
  * @param tasks - the capability's live dispatch queues, used only for pre-dispatch usage facts.
- * @param livingAgents - currently known agents, used only when the controller cannot list.
  * @param superHome - the configured super workspace root.
  * @param store - the durable ledger store, used only for the best-effort ledger projection.
  * @param reports - the report journal; defaults to the journal at {@link superHome}.
@@ -4047,10 +4068,11 @@ export const handleTaskTurnEnd = async (
   host: ToolHost,
   input: TurnEndInput,
   tasks: Map<string, readonly TaskSessionRecord[]>,
-  livingAgents: Iterable<unknown>,
+  _livingAgents: Iterable<unknown>,
   superHome: string | undefined,
   store?: DispatchStore,
   reports?: DispatchReportStore,
+  stopped?: Set<string>,
 ): Promise<boolean> => {
   const sessionId = String(input.agent.id)
   const journal = reports ?? (superHome === undefined ? undefined : reportStoreAt(superHome))
@@ -4069,6 +4091,10 @@ export const handleTaskTurnEnd = async (
   // No binding means this turn was not dispatched through this capability; staying quiet is the
   // only correct behaviour (a person's own Session must not be treated as a lost report).
   if (bindings.length === 0) return false
+  if (stopped?.has(sessionId)) {
+    stopped.delete(sessionId)
+    return true
+  }
 
   const turn = typeof input.turn === 'number'
     ? input.turn
@@ -4139,7 +4165,7 @@ export const handleTaskTurnEnd = async (
     handled = true
     let report = claimed.record
     if (report.superSession.trim() === '') {
-      const superSession = await superSessionForReport(host, journal.root, livingAgents)
+      const superSession = undefined
       if (superSession === undefined) {
         const message = 'turn ended; no visible super Session was available to receive the report'
         host.ctx.logger.warn(
@@ -4733,6 +4759,9 @@ export const createSuperagentContribution = (
   // The report journal is superagent-owned and deliberately outside the ledger: it binds a child
   // turn to its dispatch before the prompt is admitted, so reports never depend on ledger state.
   const reportStore = superHome === undefined ? undefined : reportStoreAt(superHome)
+  const stopped = new Set<string>()
+  let recoveryAbort: AbortController | undefined
+  let recoveryDone: Promise<void> | undefined
   // The filesystem fence gets the registered workspaces, so the super agent can hand files over
   // without widening process confinement: shell and terminal backends never see these roots.
   let fsRootsDispose: (() => void) | undefined
@@ -4807,7 +4836,7 @@ export const createSuperagentContribution = (
         host.ctx.logger.warn('superagent: could not mark dispatch records for %s orphaned: %s', id, String(error))
       }
       try {
-        await reportStore?.failPendingForSessions([id], at, 'the Session was stopped before its report was delivered')
+        await reportStore?.failUnsettledForSessions([id], at, 'the Session was stopped before its report was delivered')
       } catch (error: unknown) {
         host.ctx.logger.warn('superagent: could not fail pending reports for stopped Session %s: %s', id, String(error))
       }
@@ -4833,10 +4862,32 @@ export const createSuperagentContribution = (
       void dispatchStore?.markArchivedSessions(archived, at).catch((error: unknown) => {
         host.ctx.logger.warn('superagent: could not mark archived dispatch records orphaned: %s', String(error))
       })
-      void reportStore?.failPendingForSessions(archived, at, 'the Session was archived before its report was delivered').catch((error: unknown) => {
+      void reportStore?.failUnsettledForSessions(archived, at, 'the Session was archived before its report was delivered').catch((error: unknown) => {
         host.ctx.logger.warn('superagent: could not fail pending reports for archived Sessions: %s', String(error))
       })
     })
+  }
+
+  if (reportStore !== undefined) {
+    recoveryAbort = new AbortController()
+    recoveryDone = recoverDispatchReports(reportStore, {
+      at: nowUtc(host.clock),
+      signal: recoveryAbort.signal,
+      supersede: (record, at) => reportStore.supersedeClaim(record.id, at),
+      canDeliver: report => recipientAvailable(host.ctx, report.superSession),
+      deliver: async (report) => {
+        const controller = sessionControllerOf(host.ctx)
+        if (controller === undefined || report.reportText === undefined) return false
+        const admitted = await controller.prompt({
+          requestId: `superagent-recovery-${randomUUID()}`,
+          sessionId: report.superSession,
+          mode: 'queue',
+          content: [{ type: 'text', text: report.reportText }],
+        }, new AbortController().signal)
+        return admitted.accepted
+      },
+      log: (level, message) => { if (level === 'info') host.ctx.logger.info(message); else host.ctx.logger.warn(message) },
+    }).then(() => { if (recoveryAbort?.signal.aborted) host.ctx.logger.info('superagent: startup report recovery was cancelled') }).catch((error: unknown) => { host.ctx.logger.warn('superagent: startup report recovery failed: %s', String(error)) })
   }
 
   timer = setInterval(() => { void poll() }, SUPERAGENT_POLL_MS)
@@ -5149,6 +5200,7 @@ export const createSuperagentContribution = (
       ...(reportStore === undefined ? {} : { reports: reportStore }),
       compactThresholdPercent,
       longRunningMinutes,
+      stopped,
     }),
   }
   const deliver: Spec = {
@@ -5216,7 +5268,7 @@ export const createSuperagentContribution = (
       // The task map is only a fast path: a live reload during a long turn replaces it, while the
       // ledger keeps the pending dispatch and its `session` binding. handleTaskTurnEnd recovers that
       // binding before delivering, so a remount cannot silently drop the report.
-      if (await handleTaskTurnEnd(host, input, tasks, liveAgents, superHome, dispatchStore, reportStore)) return
+      if (await handleTaskTurnEnd(host, input, tasks, liveAgents, superHome, dispatchStore, reportStore, stopped)) return
       // An executor Session is a root agent, but it must not propose new work (DH-703 review):
       // its turn end is delivery, not dispatch.
       if (isExecutorSession(input.agent, workerPreset)) return
@@ -5226,6 +5278,8 @@ export const createSuperagentContribution = (
     },
     dispose: () => {
       disposed = true
+      recoveryAbort?.abort()
+      void recoveryDone?.catch(() => {})
       monitorDispose?.()
       monitorDispose = undefined
       fsRootsDispose?.()

@@ -11,7 +11,7 @@ import { appendFile, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
-import { DISPATCH_REPORT_DIR, DISPATCH_REPORT_FILE, DispatchReportStore, newDispatchReportId } from './index.ts'
+import { DISPATCH_REPORT_DIR, DISPATCH_REPORT_FILE, DispatchReportStore, newDispatchReportId, recoverDispatchReports } from './index.ts'
 
 const AT = '2026-11-08T00:00:00.000Z'
 const LATER = '2026-11-08T00:06:00.000Z'
@@ -216,6 +216,112 @@ describe('dispatch reports: journal', () => {
     assert.equal(stopped.find(row => row.id === 'task-pending')?.error, 'the Session was archived')
     assert.equal(stopped.find(row => row.id === 'task-done')?.status, 'delivered', 'a settled report stays settled')
     assert.equal((await store.forSession('child-other'))[0]?.status, 'pending')
+  })
+
+  it('lists every state and acknowledges delivery without creating another delivery', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    await store.record(binding({ id: 'task-ack' }))
+    await store.claim('task-ack', AT)
+    await store.prepare('task-ack', AT, 'done', 'work done', 'returned')
+    await store.settle('task-ack', 'delivered', AT)
+    assert.deepEqual((await store.list(['delivered'])).map(row => row.id), ['task-ack'])
+    const acked = await store.ack('task-ack', LATER)
+    assert.equal(acked?.status, 'acknowledged')
+    assert.equal(acked?.acknowledgedAt, LATER)
+    assert.equal((await store.list(['acknowledged'])).length, 1)
+    assert.equal((await store.ack('task-ack', LATER))?.acknowledgedAt, LATER)
+    assert.equal(await store.claim('task-ack', LATER), undefined)
+    assert.equal(await store.retry('task-ack', LATER), undefined)
+  })
+
+  it('recovers saved pending reports once without reopening delivered or failed work', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    await store.record(binding({ id: 'task-recover' }))
+    await store.claim('task-recover', AT)
+    await store.prepare('task-recover', AT, 'saved report', 'work done', 'returned')
+    await store.record(binding({ id: 'task-delivered' }))
+    await store.claim('task-delivered', AT)
+    await store.prepare('task-delivered', AT, 'delivered report', 'done', 'returned')
+    await store.settle('task-delivered', 'delivered', AT)
+    await store.record(binding({ id: 'task-failed' }))
+    await store.claim('task-failed', AT)
+    await store.prepare('task-failed', AT, 'failed report', 'failed', 'failed')
+    await store.settle('task-failed', 'failed', AT, 'recipient closed')
+    await store.record(binding({ id: 'task-unsaved' }))
+    const sent: string[] = []
+    const logs: string[] = []
+    const summary = await recoverDispatchReports(store, {
+      at: LATER,
+      canDeliver: () => true,
+      deliver: (report) => { sent.push(report.id); return true },
+      log: (level, message) => logs.push(`${level}:${message}`),
+    })
+    assert.deepEqual(sent, ['task-recover'])
+    assert.equal(summary.attempted, 1)
+    assert.equal(summary.delivered, 1)
+    assert.equal(summary.failed, 0)
+    assert.deepEqual(summary.skipped.map(row => row.id), ['task-delivered', 'task-failed', 'task-unsaved'])
+    assert.equal((await store.forSession('child-1')).find(row => row.id === 'task-recover')?.status, 'delivered')
+    assert.equal(logs.some(message => message.includes('attempt 2')), true)
+    const again = await recoverDispatchReports(store, { at: LATER, canDeliver: () => true, deliver: () => { throw new Error('must not run') }, log: () => {} })
+    assert.equal(again.attempted, 0)
+  })
+
+  it('takes over a fresh delivering claim during startup recovery and preserves acknowledged work', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    await store.record(binding({ id: 'task-fresh' }))
+    await store.claim('task-fresh', AT)
+    await store.prepare('task-fresh', AT, 'saved report', 'work done', 'returned')
+    await store.record(binding({ id: 'task-acked' }))
+    await store.claim('task-acked', AT)
+    await store.prepare('task-acked', AT, 'already delivered', 'done', 'returned')
+    await store.settle('task-acked', 'delivered', AT)
+    await store.ack('task-acked', AT)
+    const sent: string[] = []
+    const summary = await recoverDispatchReports(store, {
+      at: AT,
+      canDeliver: () => true,
+      deliver: (report) => { sent.push(report.id); return true },
+      log: () => {},
+      supersede: record => store.supersedeClaim(record.id, AT),
+    })
+    assert.deepEqual(sent, ['task-fresh'])
+    assert.equal((await store.forSession('child-1')).find(row => row.id === 'task-acked')?.status, 'acknowledged')
+    assert.equal(summary.attempted, 1)
+  })
+
+  it('stops recovery before admitting another report when cancelled', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    await store.record(binding({ id: 'task-cancelled' }))
+    await store.claim('task-cancelled', AT)
+    await store.prepare('task-cancelled', AT, 'saved report', 'work done', 'returned')
+    const controller = new AbortController()
+    controller.abort()
+    const summary = await recoverDispatchReports(store, { at: AT, signal: controller.signal, canDeliver: () => true, deliver: () => { throw new Error('must not deliver') }, log: () => {} })
+    assert.equal(summary.attempted, 0)
+    assert.equal((await store.list(['delivering'])).length, 1)
+  })
+
+  it('keeps an unavailable recovery recipient visible as failed instead of rerouting it', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    await store.record(binding({ id: 'task-unavailable', superSession: 'original-super' }))
+    await store.claim('task-unavailable', AT)
+    await store.prepare('task-unavailable', AT, 'saved report', 'work done', 'returned')
+    const summary = await recoverDispatchReports(store, {
+      at: LATER,
+      canDeliver: () => false,
+      deliver: () => { throw new Error('must not deliver') },
+      log: () => {},
+    })
+    assert.equal(summary.failed, 1)
+    const record = (await store.list(['failed']))[0]
+    assert.equal(record?.superSession, 'original-super')
+    assert.match(record?.error ?? '', /original recipient/u)
   })
 
   it('keeps one journal per super workspace root', async () => {

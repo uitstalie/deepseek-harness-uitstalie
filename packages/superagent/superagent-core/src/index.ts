@@ -21,6 +21,7 @@
 
 export * from './dispatch-types.ts'
 export * from './dispatch-store.ts'
+export * from './recovery.ts'
 
 
 import { randomUUID } from 'node:crypto'
@@ -40,7 +41,7 @@ export const DISPATCH_REPORT_FILE = 'reports.jsonl'
 const DELIVERY_LEASE_MS = 5 * 60_000
 
 /** The lifecycle of one dispatch report. */
-export type DispatchReportStatus = 'pending' | 'delivering' | 'delivered' | 'failed'
+export type DispatchReportStatus = 'pending' | 'delivering' | 'delivered' | 'failed' | 'acknowledged'
 
 /** The workspace a dispatched Session works in, copied as plain data. */
 export interface DispatchReportWorkspace {
@@ -92,6 +93,8 @@ export interface DispatchReportRecord {
   /** Delivery attempts claimed so far; more than one means an earlier claim never settled. */
   readonly attempts: number
   readonly deliveredAt?: string
+  /** When a delivered report was acknowledged for recovery/UI purposes. */
+  readonly acknowledgedAt?: string
   /** Why the last delivery attempt failed; the turn-end hook already logged the same message. */
   readonly error?: string
   /** Complete message accepted by the recipient; retained so a failed delivery can be retried. */
@@ -105,7 +108,7 @@ export interface DispatchReportRecord {
 /** Mint a task id that is stable in the journal and readable in a report. */
 export const newDispatchReportId = (): string => `task-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
 
-const STATUSES: readonly DispatchReportStatus[] = Object.freeze(['pending', 'delivering', 'delivered', 'failed'])
+const STATUSES: readonly DispatchReportStatus[] = Object.freeze(['pending', 'delivering', 'delivered', 'failed', 'acknowledged'])
 
 const isStatus = (value: unknown): value is DispatchReportStatus =>
   typeof value === 'string' && (STATUSES as readonly string[]).includes(value)
@@ -139,6 +142,7 @@ const parseRecord = (line: string): DispatchReportRecord | undefined => {
     updatedAt: record.updatedAt,
     attempts: typeof record.attempts === 'number' ? record.attempts : 0,
     ...(typeof record.deliveredAt === 'string' ? { deliveredAt: record.deliveredAt } : {}),
+    ...(typeof record.acknowledgedAt === 'string' ? { acknowledgedAt: record.acknowledgedAt } : {}),
     ...(typeof record.error === 'string' ? { error: record.error } : {}),
     ...(typeof record.reportText === 'string' ? { reportText: record.reportText } : {}),
     ...(typeof record.outcome === 'string' ? { outcome: record.outcome } : {}),
@@ -233,6 +237,28 @@ export class DispatchReportStore {
     })
   }
 
+  /** List the latest report states, oldest update first, with optional status filters. */
+  async list(statuses?: readonly DispatchReportStatus[]): Promise<readonly DispatchReportRecord[]> {
+    const allowed = statuses === undefined ? undefined : new Set(statuses)
+    return [...(await this.all()).values()]
+      .filter(record => allowed === undefined || allowed.has(record.status))
+      .sort((left, right) => left.updatedAt === right.updatedAt
+        ? (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+        : left.updatedAt < right.updatedAt ? -1 : 1)
+  }
+
+  /** Acknowledge a delivered report; this is a read-side close, not another delivery attempt. */
+  async ack(id: string, at: string): Promise<DispatchReportRecord | undefined> {
+    return await this.exclusive(async () => {
+      const current = (await this.all()).get(id)
+      if (current === undefined || current.status !== 'delivered' && current.status !== 'acknowledged') return undefined
+      if (current.status === 'acknowledged') return current
+      const next = Object.freeze({ ...current, status: 'acknowledged' as const, updatedAt: at, acknowledgedAt: at })
+      await this.append(next)
+      return next
+    })
+  }
+
   /** Every binding for one workspace Session, oldest dispatch first. */
   async forSession(sessionId: string): Promise<readonly DispatchReportRecord[]> {
     const latest = await this.all()
@@ -252,7 +278,7 @@ export class DispatchReportStore {
     return await this.exclusive(async () => {
       const current = (await this.all()).get(id)
       if (current === undefined) return undefined
-      if (current.status === 'delivered' || current.status === 'failed') return undefined
+      if (current.status === 'delivered' || current.status === 'failed' || current.status === 'acknowledged') return undefined
       const retried = current.status === 'delivering'
       if (retried) {
         const claimedAt = Date.parse(current.updatedAt)
@@ -311,6 +337,20 @@ export class DispatchReportStore {
     })
   }
 
+  /** Fail a still-unsettled report when its Session can no longer run; delivered/acknowledged stay intact. */
+  async failUnsettledForSessions(sessionIds: readonly string[], at: string, reason: string): Promise<number> {
+    return await this.exclusive(async () => {
+      const stopped = new Set(sessionIds)
+      let failed = 0
+      for (const record of (await this.all()).values()) {
+        if (!stopped.has(record.sessionId) || record.status !== 'pending' && record.status !== 'delivering') continue
+        await this.append(Object.freeze({ ...record, status: 'failed' as const, updatedAt: at, error: reason }))
+        failed += 1
+      }
+      return failed
+    })
+  }
+
   /** List failed or unsettled deliveries for an operator, oldest attempt first. */
   async failures(): Promise<readonly DispatchReportRecord[]> {
     return [...(await this.all()).values()]
@@ -323,6 +363,17 @@ export class DispatchReportStore {
     return await this.exclusive(async () => {
       const current = (await this.all()).get(id)
       if (current === undefined || current.status !== 'failed' || current.reportText === undefined) return undefined
+      const next = Object.freeze({ ...current, status: 'pending' as const, updatedAt: at })
+      await this.append(next)
+      return next
+    })
+  }
+
+  /** Return a delivering claim to pending for a new startup recovery generation. */
+  async supersedeClaim(id: string, at: string): Promise<DispatchReportRecord | undefined> {
+    return await this.exclusive(async () => {
+      const current = (await this.all()).get(id)
+      if (current === undefined || current.status !== 'delivering') return undefined
       const next = Object.freeze({ ...current, status: 'pending' as const, updatedAt: at })
       await this.append(next)
       return next

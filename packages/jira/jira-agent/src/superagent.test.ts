@@ -714,6 +714,7 @@ describe('superagent: workspace Sessions', () => {
         }],
       },
     }
+    controller.items = [...controller.items, { sessionId: 'super-1', running: false, cwd: workspacePath, blank: false, updatedAt: 500 }]
     const delivered = await deliverTaskReport(
       host as never, { superSession: 'super-1', workspace: workspacePath }, worker, new AbortController().signal,
     )
@@ -1482,7 +1483,7 @@ describe('superagent: dispatch report binding', () => {
     const bindingAtChildPrompt: string[] = []
     class ImmediateController {
       async create() { return { sessionId: 'child-immediate' } }
-      async list() { return { items: [{ sessionId: 'child-immediate', running: false, cwd: workspacePath }] } }
+      async list() { return { items: [{ sessionId: 'child-immediate', running: false, cwd: workspacePath }, { sessionId: 'super-1', running: false, cwd: workspacePath }] } }
       async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } }
       async prompt(request: { sessionId: string; content: readonly { text: string }[] }) {
         const sessionId = String(request.sessionId)
@@ -1829,9 +1830,10 @@ describe('superagent: model selection and discovery', () => {
         : key === 'agents' ? { get: () => agent }
           : undefined,
     }
-    const stopped = await runControlTool({ action: 'stop', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
-    assert.equal(stopped.ok, true, JSON.stringify(stopped.error))
-    const stop = stopped.stop as {
+    const stopped = new Set<string>()
+    const stopResult = await runControlTool({ action: 'stop', session: 'w-session' }, options, me, ctx, { tasks: new Map(), stopped })
+    assert.equal(stopResult.ok, true, JSON.stringify(stopResult.error))
+    const stop = stopResult.stop as {
       accepted?: boolean
       wasRunning?: boolean
       cancelledVia?: string
@@ -1847,6 +1849,15 @@ describe('superagent: model selection and discovery', () => {
     assert.equal(stop.idle, true)
     assert.equal(stop.scene?.status?.inFlightTool, 'pwsh')
     assert.equal(stop.boundary?.seq, 2)
+    assert.equal(stopped.has('w-session'), true, 'the production stop context owns the suppression marker')
+    const reports = new DispatchReportStore(await scratchDirectory())
+    await reports.record({ id: 'task-stop', workspace: { id: 'w1', title: 'stop', path: workspacePath }, sessionId: 'w-session', superSession: 'super-1', task: 'stop', dispatchedAt: AT })
+    const stopHost = { ctx: { get: () => undefined, logger: { warn: () => {} } }, clock: () => Date.parse(AT) }
+    assert.equal(await handleTaskTurnEnd(stopHost as never, {
+      agent: { id: 'w-session', session: { snapshotEvents: () => [] } },
+      session: { snapshotEvents: () => [] }, turn: 1, event: { data: { turn: 1 } }, signal: new AbortController().signal,
+    } as never, new Map() as never, [], workspacePath, undefined, reports, stopped), true)
+    assert.equal(stopped.has('w-session'), false)
     assert.equal(cancelled, 1)
     assert.deepEqual(cancelOptions, { keepInbox: false })
     assert.equal(controller.prompted.length, 0, 'stop admits no message and starts no turn')
@@ -1880,9 +1891,30 @@ describe('superagent: model selection and discovery', () => {
     assert.match(JSON.stringify(deaf.error), /no hard cancel channel/u)
   })
 
+  it('refuses a missing or archived recipient rather than rerouting to the latest super Session', async () => {
+    const workspacePath = join(tmpdir(), 'recipient-workspace')
+    const controller = new CompactController()
+    controller.items = [{ sessionId: 'other-super', running: false, cwd: workspacePath }]
+    const host = {
+      ctx: { get: (key: string) => key === 'sessionController' ? controller : undefined, logger: { warn: () => {} } },
+      env: {}, clock: () => Date.parse(AT), recorder: createSessionRecorder(),
+    }
+    const worker = { id: 'w-session', session: { snapshotEvents: () => [] } }
+    assert.equal(await deliverTaskReport(host as never, { superSession: 'missing-super', workspace: workspacePath }, worker, new AbortController().signal), false)
+    assert.equal(controller.prompted.length, 0)
+    controller.items = [{ sessionId: 'super-1', running: false, cwd: workspacePath }]
+    const archivedHost = {
+      ...host,
+      ctx: { ...host.ctx, get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? { list: () => [], create: async () => { throw new Error('unused') }, archivedSessionIds: ['super-1'] } : undefined },
+    }
+    assert.equal(await deliverTaskReport(archivedHost as never, { superSession: 'super-1', workspace: workspacePath }, worker, new AbortController().signal), false)
+    assert.equal(controller.prompted.length, 0)
+  })
+
   it('reports a failed turn back to the initiator with reason, code and status', async () => {
     const workspacePath = join(tmpdir(), 'report-workspace')
     const controller = new CompactController()
+    controller.items = [{ sessionId: 'super-1', running: false, cwd: workspacePath }]
     const host = {
       ctx: {
         get: (key: string) => key === 'sessionController' ? controller : undefined,
@@ -2254,6 +2286,7 @@ describe('superagent: context, compaction and memory curation', () => {
   })
 
   it('aborts a running Session, reports the scene and continues it', async () => {
+    const root = await scratchDirectory()
     const now = Date.now()
     const events = [
       { type: 'turn/start', seq: 1, time: now - 6 * 60_000, data: { turn: 1 } },
@@ -2275,11 +2308,16 @@ describe('superagent: context, compaction and memory curation', () => {
         : key === 'agents' ? { get: () => agent }
           : undefined,
     }
-    const result = await runControlTool({ action: 'abort', session: 'w-session', text: 'skip the wait and continue' }, options, me, ctx, { tasks: new Map() })
+    const result = await runControlTool({ action: 'abort', session: 'w-session', text: 'skip the wait and continue' }, { ...options, caller: { writable: true, sessionId: 'super-1', cwd: root } as never }, me, ctx, { tasks: new Map() })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(cancelled, 1)
     assert.equal(idleCalls, 1)
     assert.equal(controller.prompted[0]?.text, 'skip the wait and continue')
+    const bound = await new DispatchReportStore(root).list()
+    assert.equal(bound.length, 1)
+    assert.equal(bound[0]?.status, 'pending')
+    assert.equal(bound[0]?.superSession, 'super-1')
+    assert.equal(bound[0]?.requestId?.startsWith('superagent-recover-'), true)
     const abort = result.abort as { resumed?: boolean; scene?: { status?: { elapsedMs?: number }; activity?: unknown[] } }
     assert.equal(abort.resumed, true)
     assert.ok((abort.scene?.status?.elapsedMs ?? 0) >= 6 * 60_000)
@@ -2309,7 +2347,7 @@ describe('superagent: context, compaction and memory curation', () => {
         return { accepted: true }
       },
       async create() { return { sessionId: 'unused' } },
-      async list() { return { items: [] } },
+      async list() { return { items: [{ sessionId: 'super-1', running: false }] } },
     }
     const host = {
       ctx: {
