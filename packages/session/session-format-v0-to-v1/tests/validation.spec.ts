@@ -65,7 +65,7 @@ const validPayloads: Readonly<Record<string, SessionFormatJsonValue>> = {
   },
   'llm/retry-started': { retryId: 'retry-1', turn: 1, step: 0, retry: 1 },
   'model/selection': { provider: 'mock', model: 'mock', reasoningEffort: 'high' },
-  'permission/preset': { preset: 'default' },
+  'permission/preset': { preset: 'default', reason: 'super agent switched the target Session' },
   'plan/mode': { active: true },
   'request/context': { provider: 'mock', model: 'mock', contextWindow: 8192 },
   'request/header': {

@@ -30,6 +30,13 @@ const CATALOG: PermissionCatalog = {
 
 const t: PermissionSelectProps['t'] = makeTranslate(accessZh)
 
+/** Complete the effective knobs the Host now publishes beside the selection. */
+const selectionOf = (currentValue: string): PermissionSelection => ({
+  currentValue,
+  sandboxMode: currentValue === 'read-only' ? 'read-only' : currentValue === 'custom' ? 'workspace-write' : 'danger-full-access',
+  approvalPolicy: currentValue === 'danger-full-access' ? 'never' : 'ask',
+})
+
 function setup(options: {
   selection?: PermissionSelection | undefined
   catalog?: PermissionCatalog | null
@@ -37,7 +44,7 @@ function setup(options: {
   select?: (preset: string) => Promise<boolean>
 } = {}) {
   const selection = createSnapshotStore<{ value: PermissionSelection | undefined }>({
-    value: 'selection' in options ? options.selection : { currentValue: 'workspace-write' },
+    value: 'selection' in options ? options.selection : selectionOf('workspace-write'),
   })
   const catalog = createSnapshotStore<PermissionCatalogState>({
     value: options.catalog === undefined ? CATALOG : options.catalog,
@@ -61,6 +68,11 @@ function trigger(): HTMLButtonElement {
 }
 
 describe('PermissionSelect', () => {
+  it('continues to render a selection from the previous Host projection shape', () => {
+    const previous = setup({ selection: { currentValue: 'workspace-write' } as PermissionSelection })
+    expect(previous.view.container.textContent).toContain('工作区内修改')
+  })
+
   it('renders only when both the Session selection and process catalog exist', () => {
     const missingSelection = setup({ selection: undefined })
     expect(missingSelection.view.container.innerHTML).toBe('')
@@ -72,7 +84,7 @@ describe('PermissionSelect', () => {
   it('renders process options and submits an ordinary choice optimistically', async () => {
     const submitted = Promise.withResolvers<boolean>()
     const { select } = setup({
-      selection: { currentValue: 'read-only' },
+      selection: selectionOf('read-only'),
       select: () => submitted.promise,
     })
     expect(trigger().textContent).toBe('仅可查看')
@@ -156,7 +168,7 @@ describe('PermissionSelect', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '我已了解这些风险，并愿意继续' }))
     fireEvent.click(screen.getByRole('button', { name: '启用自动审查' }))
     expect(select).toHaveBeenCalledExactlyOnceWith('auto')
-    act(() => { selection.set({ value: { currentValue: 'auto' } }) })
+    act(() => { selection.set({ value: selectionOf('auto') }) })
     await act(async () => {})
 
     expect(trigger().getAttribute('aria-label')).toBe('访问模式，当前：自动审查')
@@ -212,7 +224,7 @@ describe('PermissionSelect', () => {
       expect(trigger().textContent).toBe('自动审查')
 
       act(() => {
-        selection.set({ value: { currentValue: 'danger-full-access' } })
+        selection.set({ value: selectionOf('danger-full-access') })
         catalog.set({ value: withoutAuto })
       })
       expect(trigger().textContent).toBe('完全权限')
@@ -226,7 +238,7 @@ describe('PermissionSelect', () => {
 
   it('falls back to an unknown current value and clears a rejected optimistic choice', async () => {
     const select = vi.fn(() => Promise.reject(new Error('rejected')))
-    const { selection } = setup({ selection: { currentValue: 'custom' }, select })
+    const { selection } = setup({ selection: selectionOf('custom'), select })
     expect(trigger().textContent).toBe('Custom')
     expect(trigger().querySelectorAll('svg')).toHaveLength(1)
 
@@ -235,7 +247,7 @@ describe('PermissionSelect', () => {
     expect(trigger().textContent).toBe('工作区内修改')
     await act(async () => {})
     expect(trigger().textContent).toBe('Custom')
-    act(() => { selection.set({ value: { currentValue: 'workspace-write' } }) })
+    act(() => { selection.set({ value: selectionOf('workspace-write') }) })
     expect(trigger().textContent).toBe('工作区内修改')
   })
 })

@@ -52,7 +52,7 @@ declare module '@deepseek-ai/dsh-session/types' {
      * out of the model transcript and lets the permission projection unit
      * preserve a selection when bundles match.
      */
-    'permission/preset': { preset: string }
+    'permission/preset': { preset: string; reason?: string }
   }
 }
 
@@ -254,6 +254,8 @@ export class PermissionPresetService extends TypertRemoteService {
     }, { prepend: true })
     const selectionSchema = zod.object({
       currentValue: zod.string().min(1),
+      sandboxMode: zod.string().min(1),
+      approvalPolicy: zod.string().min(1),
     }) as zod.ZodType<PermissionSelection>
     this.permissionProjectionHandle = await ctx.sessionProjections.register({
       key: 'permissions',
@@ -261,7 +263,11 @@ export class PermissionPresetService extends TypertRemoteService {
       stateSchema: permissionStateSchema,
       init: () => ({ ...EMPTY_KNOBS, seeded: false }),
       apply: applyPermissionEvent,
-      wire: { viewSchema: selectionSchema, view: state => ({ currentValue: this.derive(state) }) },
+      wire: { viewSchema: selectionSchema, view: (state) => {
+        const sandboxMode = state.sandbox ?? this.ctx.shell.sandboxMode as SandboxMode
+        const approvalPolicy = state.approval ?? this.ctx.approval.config.policy ?? 'ask'
+        return { currentValue: this.derive(state), sandboxMode, approvalPolicy }
+      } },
     })
     for (const agent of ctx.agents.list()) {
       this.pinInitialPermission(agent.session)
@@ -287,7 +293,7 @@ export class PermissionPresetService extends TypertRemoteService {
           if (!this.names.includes(name)) {
             return { kind: 'error', text: `unknown preset "${name}" (available: ${this.names.join(', ')})` }
           }
-          this.apply(agent.session, name, (policy) => { this.ctx.approval.setPolicy(agent, policy) })
+          this.apply(agent.session, name, undefined, (policy) => { this.ctx.approval.setPolicy(agent, policy) })
           return { kind: 'success', text: `preset ${name}` }
         },
       })
@@ -363,6 +369,20 @@ export class PermissionPresetService extends TypertRemoteService {
     return this.derive(this.permissionState(session))
   }
 
+  /**
+   * Read the preset identity and both effective knobs from one projection snapshot.
+   * @param session - the Session whose permission is read.
+   * @returns the current preset and the sandbox/approval values enforcement will use.
+   */
+  selection(session: Session): PermissionSelection {
+    const state = this.permissionState(session)
+    return {
+      currentValue: this.derive(state),
+      sandboxMode: state.sandbox ?? this.ctx.shell.sandboxMode as SandboxMode,
+      approvalPolicy: state.approval ?? this.ctx.approval.config.policy ?? 'ask',
+    }
+  }
+
   /** Resolve the preset for one folded knob state (the shared mathematics of `current` and the projection unit). */
   private derive(state: KnobState): string {
     const sandbox = state.sandbox ?? this.ctx.shell.sandboxMode
@@ -410,30 +430,69 @@ export class PermissionPresetService extends TypertRemoteService {
 
   /**
    * Record a changed preset, then update each changed knob through its own
-   * setter. Selecting the effective preset again appends nothing.
+   * setter. Selecting the effective preset again appends nothing. A failed write attempts
+   * compensation to the previous effective values and throws with the compensation outcome.
    * @param session - the session the switch belongs to.
    * @param name - the preset to switch to; unknown names throw.
+   * @param reason - optional audit reason retained on the preset event.
    */
-  set(session: Session, name: string): void {
-    this.apply(session, name, (policy) => { setApprovalPolicy(session, policy) })
+  set(session: Session, name: string, reason?: string): void {
+    this.apply(session, name, reason, (policy) => { setApprovalPolicy(session, policy) })
   }
 
-  /** Apply one preset through its durable identity and canonical knob setters. */
-  private apply(session: Session, name: string, setApproval: (policy: ApprovalPolicy) => void): void {
+  /**
+   * Apply one preset through its durable identity and canonical knob setters.
+   *
+   * The append-only log cannot undo a committed event. If a knob write fails, the method attempts
+   * one compensation back to the snapshot's effective values. It reports whether that completed;
+   * a failed compensation leaves a readable mixed permission state rather than a false success.
+   */
+  private apply(
+    session: Session,
+    name: string,
+    reason: string | undefined,
+    setApproval: (policy: ApprovalPolicy) => void,
+  ): void {
     const spec = this.resolve(name)
     if (name === AUTO_PRESET) this.autoAdmit?.()
-    const current = this.current(session)
     const knobs = this.permissionState(session)
-    const updateKnobs = (): void => {
-      if (spec.sandbox !== (knobs.sandbox ?? this.ctx.shell.sandboxMode)) {
-        setSandboxMode(session, spec.sandbox)
-      }
-      if (spec.approval !== (knobs.approval ?? this.ctx.approval.config.policy ?? 'ask')) {
-        setApproval(spec.approval)
-      }
+    const before = {
+      preset: this.derive(knobs),
+      sandbox: knobs.sandbox ?? this.ctx.shell.sandboxMode as SandboxMode,
+      approval: knobs.approval ?? this.ctx.approval.config.policy ?? 'ask',
     }
-    if (current !== name) session.append('permission/preset', { preset: name })
-    updateKnobs()
+    try {
+      if (before.preset !== name) {
+        session.append('permission/preset', {
+          preset: name,
+          ...reason === undefined || reason.trim() === '' ? {} : { reason: reason.trim() },
+        })
+      }
+      if (spec.sandbox !== before.sandbox) setSandboxMode(session, spec.sandbox)
+      if (spec.approval !== before.approval) setApproval(spec.approval)
+    } catch (error: unknown) {
+      const compensationErrors: string[] = []
+      const compensate = (label: string, write: () => void): void => {
+        try { write() } catch (compensationError: unknown) {
+          compensationErrors.push(`${label}: ${String(compensationError)}`)
+        }
+      }
+      if (this.permissionState(session).preset !== before.preset) {
+        compensate('preset', () => {
+          session.append('permission/preset', { preset: before.preset, reason: 'compensate a failed permission switch' })
+        })
+      }
+      if (this.permissionState(session).sandbox !== before.sandbox) {
+        compensate('sandbox', () => { setSandboxMode(session, before.sandbox) })
+      }
+      if (this.permissionState(session).approval !== before.approval) {
+        compensate('approval', () => { setApproval(before.approval) })
+      }
+      const detail = compensationErrors.length === 0
+        ? 'the previous permission was restored through compensating events'
+        : `compensation failed (${compensationErrors.join('; ')}); read the effective permission before continuing`
+      throw new Error(`permission: could not select "${name}": ${String(error)}; ${detail}`, { cause: error })
+    }
   }
 
   /**

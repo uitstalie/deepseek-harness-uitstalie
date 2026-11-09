@@ -62,7 +62,7 @@ describe('permissions projection unit', () => {
   it('serves only the pinned new-session current value', async () => {
     const { ctx, session } = await harness()
     const value = ctx.sessionProjections.snapshot(session).values.permissions
-    expect(value).toEqual({ currentValue: 'workspace-write' })
+    expect(value).toEqual({ currentValue: 'workspace-write', sandboxMode: 'workspace-write', approvalPolicy: 'ask' })
     expect(value).not.toHaveProperty('options')
   })
 
@@ -84,7 +84,7 @@ describe('permissions projection unit', () => {
     const { ctx, session } = await harness()
     session.append('sandbox/mode', { mode: 'read-only' })
     const value = ctx.sessionProjections.snapshot(session).values.permissions
-    expect(value).toEqual({ currentValue: 'custom' })
+    expect(value).toEqual({ currentValue: 'custom', sandboxMode: 'read-only', approvalPolicy: 'ask' })
   })
 
   it('publishes Auto only through the process catalog and never changes Session seq or projection', async () => {
@@ -121,9 +121,7 @@ describe('permissions projection unit', () => {
     const warned = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => undefined)
     ctx.on('permission-presets/catalog-changed', () => { throw new Error('sync observer failed') })
     ctx.on('permission-presets/catalog-changed', () => { throw 'sync non-error failed' })
-    // oxlint-disable-next-line typescript/no-misused-promises -- the runtime intentionally contains thenable listeners.
     ctx.on('permission-presets/catalog-changed', () => Promise.reject(new Error('async observer failed')))
-    // oxlint-disable-next-line typescript/no-misused-promises -- the runtime intentionally contains thenable listeners.
     ctx.on('permission-presets/catalog-changed', async () => { throw 'async non-error failed' })
 
     const fiber = await mountAuto(ctx)

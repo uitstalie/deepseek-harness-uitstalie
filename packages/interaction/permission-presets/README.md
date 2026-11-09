@@ -53,7 +53,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Switching presets
 
-Switching to Auto first runs its synchronous admission check; every preset switch then changes only the knobs whose effective value differs, and selecting the preset already in effect changes nothing. The current value resolves as the still-matching last recorded selection, including a recorded Auto selection under the `never` approval policy, else the first matching configured entry, else `custom`. Users switch through the `/permission` command: a bare invocation reports the current preset and every available entry, and a preset argument switches to it.
+Switching to Auto first runs its synchronous admission check; every preset switch then changes only the knobs whose effective value differs, and selecting the preset already in effect changes nothing. An optional audit reason is retained on a changed `permission/preset` event. A failed write attempts compensation to the previous effective values and reports whether that succeeded; the append-only events remain available for audit. The current value resolves as the still-matching last recorded selection, including a recorded Auto selection under the `never` approval policy, else the first matching configured entry, else `custom`. Users switch through the `/permission` command: a bare invocation reports the current preset and every available entry, and a preset argument switches to it. The authorized super agent can address another workspace Session through `superagent_permission`; its read result includes the effective sandbox and approval values.
 
 ### What users see
 
@@ -96,7 +96,7 @@ Mounting pins the Sessions of every live and future Agent: a genuinely fresh ses
 
 ### Catalog, projection, and optional command
 
-The service requires `ctx.sessionProjections` and awaits registration of `permissions`; its client view contains only `currentValue`. Its process-level `catalog()` Remote returns one complete selectable snapshot. Registering or removing Auto emits the payload-free `permission-presets/catalog-changed` notification, so clients subscribe first and then re-read the catalog without appending a Session event, publishing a Session projection frame, or changing Session sequence. The `/permission` command registers only when a `ctx.commands` registry is composed. Calls that derive the current preset or pin an initial selection use the retained projection handle.
+The service requires `ctx.sessionProjections` and awaits registration of `permissions`; its client view contains `currentValue`, `sandboxMode`, and `approvalPolicy`, all resolved over composition defaults. Its process-level `catalog()` Remote returns one complete selectable snapshot. Registering or removing Auto emits the payload-free `permission-presets/catalog-changed` notification, so clients subscribe first and then re-read the catalog without appending a Session event, publishing a Session projection frame, or changing Session sequence. The `/permission` command registers only when a `ctx.commands` registry is composed. Calls that derive the current preset or pin an initial selection use the retained projection handle.
 
 </details>
 

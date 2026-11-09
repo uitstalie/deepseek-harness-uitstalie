@@ -41,6 +41,14 @@ import {
   type DispatchLedgerTask,
 } from './dispatch-ledger.ts'
 import { type Spec, type ToolHost, callerOf, defineJiraTool, identityOf, runOptionsOf } from './tools.ts'
+import {
+  applySessionPermission,
+  PERMISSION_DESCRIPTION,
+  PERMISSION_PARAMETERS,
+  PERMISSION_TOOL_NAME,
+  runPermissionTool,
+  WORKSPACE_SESSION_PERMISSION,
+} from './superagent-permission.ts'
 
 /** The capability id this provider registers with the organizer. */
 export const SUPERAGENT_CAPABILITY_ID = 'superagent'
@@ -130,7 +138,11 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + 'the person can see, continue, archive and branch. Do not claim or dispatch jira ledger issues '
     + 'from here: this workspace dispatches work, it does not run the claim loop.\n'
     + '- When a file must be handed over (a report, spreadsheet, or attachment), deliver it into the '
-    + 'target workspace and name the delivered path in the task; do not process the material here.\n',
+    + 'target workspace and name the delivered path in the task; do not process the material here.\n'
+    + '- Use `superagent_permission` to list, read, or switch one explicitly addressed workspace '
+    + 'Session\'s permission. New Sessions start with workspace-write. `soft` selects the guarded '
+    + 'tool/path blacklist only in the unconfined soft-policy composition; it is not an OS sandbox. '
+    + 'Widening access requires a reason, which the tool records; no extra human approval is needed.\n',
 })
 
 /** Whether an issue can be taken right now, and why not when it cannot. */
@@ -1068,6 +1080,9 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     longRunningMinutes: { type: 'number' },
     longRunning: { type: 'boolean' },
     model: { type: 'object', additionalProperties: true },
+    permission: { type: 'object', additionalProperties: true },
+    presets: { type: 'array' },
+    defaultPreset: { type: 'string' },
     issue: { type: 'object', additionalProperties: true },
     dispatch: { type: 'object', additionalProperties: true },
     me: { type: 'object', additionalProperties: true },
@@ -2842,6 +2857,15 @@ export const runSessionTool = async (
             : { agentPreset: context.agentPreset }),
         })
         const sessionId = String(created.sessionId)
+        const initialPermission = await applySessionPermission(
+          ctx, controller, workspace.id, sessionId, WORKSPACE_SESSION_PERMISSION, 'explicit default for a superagent-created workspace Session',
+        )
+        if (initialPermission.error !== undefined) {
+          return failure(invalidInput(
+            `the Session was created but its default workspace-write permission could not be set; no task was sent: ${initialPermission.error}`,
+            { session: sessionId },
+          ), caller, me)
+        }
         const selected = await applySessionModel(controller, sessionId, values, ctx)
         if (selected.error !== undefined) {
           return failure(invalidInput(selected.error, { session: sessionId, ...selected.errorDetails ?? {} }), caller, me)
@@ -2898,6 +2922,7 @@ export const runSessionTool = async (
             workspaceTitle: workspace.title,
             ...(title === undefined ? {} : { sessionTitle: title }),
           }),
+          permission: initialPermission.permission,
           ...(selected.model === undefined ? {} : { model: selected.model }),
         }), ledger)
       } catch (error: unknown) {
@@ -4753,6 +4778,23 @@ export const createSuperagentContribution = (
     },
     run: (args, call) => runLedgerTool(args, runOptionsOf(host, call), call.me, host.ctx, dispatchStore),
   }
+  const permission: Spec = {
+    name: PERMISSION_TOOL_NAME,
+    description: PERMISSION_DESCRIPTION,
+    parameters: PERMISSION_PARAMETERS,
+    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
+    timeoutMs: 30_000,
+    isConcurrencySafe: args => (args as { action?: unknown }).action !== 'set',
+    render: (typed) => {
+      if (Array.isArray(typed.presets)) {
+        const rows = typed.presets as { preset: string; description: string }[]
+        return renderText(rows.map(row => `${row.preset} — ${row.description}`).join('\n'))
+      }
+      const current = typed.permission as { session?: string; preset?: string; kind?: string; toolPolicy?: string } | undefined
+      return renderText(current?.session === undefined ? 'ok' : `${current.session}  ${current.preset ?? current.kind ?? 'unavailable'}`)
+    },
+    run: (args, call) => runPermissionTool(args, runOptionsOf(host, call), call.me, host.ctx),
+  }
   const session: Spec = {
     name: SESSION_TOOL_NAME,
     description: SESSION_DESCRIPTION,
@@ -4938,6 +4980,7 @@ export const createSuperagentContribution = (
           defineJiraTool(host, session),
           defineJiraTool(host, ledger),
           defineJiraTool(host, models),
+          defineJiraTool(host, permission),
           defineJiraTool(host, deliver),
         ])
         : Object.freeze([

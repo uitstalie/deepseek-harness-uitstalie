@@ -36,6 +36,10 @@ export interface PermissionCatalog {
 export interface PermissionSelection {
   /** The effective current value: a configured preset key, `auto`, or `custom`. */
   currentValue: string
+  /** The effective sandbox mode after composition defaults apply. */
+  sandboxMode: string
+  /** The effective approval policy after composition defaults apply. */
+  approvalPolicy: string
 }
 
 declare module '@deepseek-ai/cordis' {

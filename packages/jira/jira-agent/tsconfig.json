@@ -64,6 +64,30 @@
     },
     {
       "path": "../../llm/token-meter"
+    },
+    {
+      "path": "../../fs/fs-local"
+    },
+    {
+      "path": "../../fs/fs-sandbox"
+    },
+    {
+      "path": "../../fs/tool-fs"
+    },
+    {
+      "path": "../../interaction/permission-presets"
+    },
+    {
+      "path": "../../interaction/tool-policy"
+    },
+    {
+      "path": "../../sandbox/sandbox-policy"
+    },
+    {
+      "path": "../../session/working-directory"
+    },
+    {
+      "path": "../../test-support/tool-testkit"
     }
   ]
 }

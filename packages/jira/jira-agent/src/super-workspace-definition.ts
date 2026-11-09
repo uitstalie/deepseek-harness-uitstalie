@@ -55,6 +55,10 @@ for a new isolated conversation). The one write this checkout performs in a work
 - The ledger is append-only; corrections append a new section for the same task id.
 - The jira ledger owns issue lifecycle; this ledger owns "which task went to which workspace and
   what came back".
+- \`superagent_permission\` lists, reads or switches the permission of one explicitly addressed
+  workspace Session. New Sessions explicitly start with \`workspace-write\`. \`soft\` selects the
+  \`guarded\` tool/path blacklist only in the unconfined soft-policy composition; it never disables
+  an active OS sandbox. Widening access requires a reason recorded in the Session event.
 `
 
 /** Absolute path of the definition inside one super workspace. */

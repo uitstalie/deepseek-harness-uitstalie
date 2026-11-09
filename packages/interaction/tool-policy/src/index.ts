@@ -266,13 +266,17 @@ export class ToolPolicyService extends Service {
 
   /**
    * Select a profile for one session. The selection is durable through the
-   * reused `permission/preset` event; only a user-facing command calls this.
+   * reused `permission/preset` event; the user command and authorized super-agent tool call this.
    * @param session - the session whose profile changes.
    * @param name - a defined profile name.
+   * @param reason - optional audit reason retained on the profile event.
    */
-  select(session: Session, name: string): void {
+  select(session: Session, name: string, reason?: string): void {
     this.profile(name)
-    session.append('permission/preset', { preset: name })
+    session.append('permission/preset', {
+      preset: name,
+      ...reason === undefined || reason.trim() === '' ? {} : { reason: reason.trim() },
+    })
   }
 }
 

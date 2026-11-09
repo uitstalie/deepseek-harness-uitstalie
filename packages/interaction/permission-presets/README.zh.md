@@ -53,7 +53,7 @@ kind: "package-reference"
 
 ### 切换预设
 
-切换到 Auto 时，服务先同步执行其准入检查；每次预设切换随后只改变实际值不同的旋钮，再次选择当前已生效的预设不会产生任何变化。当前值解析顺序为：仍匹配的最近一次记录选择（已记录的 Auto 选择在 `never` 审批策略下也匹配），其次是配置表中的第一个匹配项，否则为 `custom`。用户通过 `/permission` 命令切换：不带参数调用时报告当前预设与所有可用条目，带预设参数时切换过去。
+切换到 Auto 时，服务先同步执行其准入检查；每次预设切换随后只改变实际值不同的旋钮，再次选择当前已生效的预设不会产生任何变化。可选的审计 reason 保留在变化的 `permission/preset` 事件中。写入失败时，服务尝试通过补偿事件恢复之前的有效值，并报告补偿是否成功；append-only 事件仍保留供审计。当前值解析顺序为：仍匹配的最近一次记录选择（已记录的 Auto 选择在 `never` 审批策略下也匹配），其次是配置表中的第一个匹配项，否则为 `custom`。用户通过 `/permission` 命令切换：不带参数调用时报告当前预设与所有可用条目，带预设参数时切换过去。获授权的 super agent 可以通过 `superagent_permission` 读取或切换另一个 workspace Session；读取结果包含实际生效的沙盒与审批值。
 
 ### 用户看到什么
 
@@ -96,7 +96,7 @@ kind: "package-reference"
 
 ### 目录、投影与可选命令
 
-该服务要求 `ctx.sessionProjections`，并等待 `permissions` 注册完成；其客户端视图只含 `currentValue`。进程级 `catalog()` Remote 返回一份完整的可选快照。注册或移除 Auto 会发出无 payload 的 `permission-presets/catalog-changed` 通知，因此客户端先订阅再重新读取目录；该过程不会追加 Session 事件、发布 Session 投影帧或改变 Session 序列。`/permission` 命令仅在组合了 `ctx.commands` 注册表时注册。派生当前预设或固定初始选择的调用使用保留的投影句柄。
+该服务要求 `ctx.sessionProjections`，并等待 `permissions` 注册完成；其客户端视图含 `currentValue`、`sandboxMode` 与 `approvalPolicy`，均包含组合默认值的解析结果。进程级 `catalog()` Remote 返回一份完整的可选快照。注册或移除 Auto 会发出无 payload 的 `permission-presets/catalog-changed` 通知，因此客户端先订阅再重新读取目录；该过程不会追加 Session 事件、发布 Session 投影帧或改变 Session 序列。`/permission` 命令仅在组合了 `ctx.commands` 注册表时注册。派生当前预设或固定初始选择的调用使用保留的投影句柄。
 
 </details>
 

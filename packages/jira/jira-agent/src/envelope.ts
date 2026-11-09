@@ -40,6 +40,10 @@ export type ToolValue = Readonly<{
   models?: unknown
   /** `superagent_session`: the model route selected for the next turn, when one was requested. */
   model?: unknown
+  /** `superagent_permission`: available presets or the verified permission of the target Session. */
+  permission?: unknown
+  presets?: unknown
+  defaultPreset?: unknown
   /** `superagent_ledger`: the rows or the changed task, and the optional memory-write suggestion. */
   entries?: unknown
   task?: unknown

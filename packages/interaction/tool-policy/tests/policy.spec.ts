@@ -37,6 +37,8 @@ describe('ToolPolicyService profiles', () => {
     ctx.toolPolicy.select(session, 'unrestricted')
     expect(ctx.toolPolicy.profileForSession(session).name).toBe('unrestricted')
     expect(session.snapshotEvents().filter(event => event.type === 'permission/preset')).toHaveLength(1)
+    ctx.toolPolicy.select(session, 'guarded', 'authorized super agent switch')
+    expect(session.snapshotEvents().at(-1)?.data).toEqual({ preset: 'guarded', reason: 'authorized super agent switch' })
   })
 
   it('falls back to the default for a retired permission preset name', async () => {

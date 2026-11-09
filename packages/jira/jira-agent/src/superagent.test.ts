@@ -28,6 +28,7 @@ import {
   SCAN_TOOL_NAME,
   LEDGER_TOOL_NAME,
   MODELS_TOOL_NAME,
+  PERMISSION_TOOL_NAME,
   SESSION_TOOL_NAME,
   SOURCE_TOOL_NAME,
   STATUS_TOOL_NAME,
@@ -61,6 +62,7 @@ import {
   resolveReportedTask,
   runLedgerTool,
   runModelsTool,
+  runPermissionTool,
   runSessionTool,
   runSourceTool,
   runSuperagentPass,
@@ -71,7 +73,7 @@ import * as jiraAgent from './index.ts'
 import { type DispatchLedgerTask, listDispatchTasks, recordDispatch } from './dispatch-ledger.ts'
 import { DispatchReportStore } from './dispatch-reports.ts'
 import { callerOf, identityOf } from './tools.ts'
-import { type JiraHarness, createLedgerFixture, dispatchTool, mountJira, testAgent, waitFor } from './testing/host.ts'
+import { type JiraHarness, concurrencySafe, createLedgerFixture, dispatchTool, mountJira, testAgent, waitFor } from './testing/host.ts'
 
 /** An agent handle the harness built. */
 type AgentHandle = ReturnType<typeof testAgent>
@@ -506,7 +508,11 @@ describe('superagent: workspace Sessions', () => {
       ]
       async create(request: { workspaceId?: string; agentPreset?: string }) {
         this.created.push(request)
+        this.items.push({ sessionId: 'w-session-2', running: false, cwd: workspacePath, blank: false, updatedAt: 400 })
         return { sessionId: 'w-session-2' }
+      }
+      async resolveAgent(sessionId: string) {
+        return { agent: testAgent(new Context(), sessionId, { cwd: workspacePath }) }
       }
       async prompt(request: { sessionId: string; content: readonly { text: string }[] }) {
         this.prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '' })
@@ -532,6 +538,18 @@ describe('superagent: workspace Sessions', () => {
     const ctx = {
       get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? registry : undefined,
     }
+    const permissionCalls: { session: unknown; preset: string }[] = []
+    const permissionCtx = {
+      get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? registry : key === 'sandboxPolicy' ? {} : key === 'permissionPresets'
+        ? {
+          names: ['workspace-write'],
+          resolve: () => ({ sandbox: 'workspace-write', approval: 'ask' }),
+          current: () => 'workspace-write',
+          selection: () => ({ currentValue: 'workspace-write', sandboxMode: 'workspace-write', approvalPolicy: 'ask' }),
+          set: (session: unknown, preset: string) => { permissionCalls.push({ session, preset }) },
+        }
+        : undefined,
+    }
     const tasks = new Map<string, { superSession: string; workspace: string }[]>()
     const options = {
       jira: {} as never,
@@ -542,10 +560,11 @@ describe('superagent: workspace Sessions', () => {
 
     const started = await runSessionTool(
       { action: 'start', workspace: 'hello', task: 'write the README' },
-      options, me, ctx, { agentPreset: 'cordis', tasks },
+      options, me, permissionCtx, { agentPreset: 'cordis', tasks },
     )
     assert.equal(started.ok, true, JSON.stringify(started.error))
     assert.deepEqual(controller.created, [{ workspaceId: 'w1', agentPreset: 'cordis' }])
+    assert.deepEqual(permissionCalls.map(call => call.preset), ['workspace-write'])
     assert.equal(controller.prompted[0]?.text, 'write the README')
     assert.equal(controller.prompted[0]?.sessionId, 'w-session-2')
     assert.equal(tasks.get('w-session-2')?.length, 1)
@@ -565,7 +584,7 @@ describe('superagent: workspace Sessions', () => {
     const listed = await runSessionTool({ action: 'list', workspace: 'hello' }, options, me, ctx, { tasks })
     assert.equal(listed.ok, true, JSON.stringify(listed.error))
     const rows = listed.sessions as { id: string }[]
-    assert.deepEqual(rows.map(row => row.id), ['w-session'], 'only the workspace Sessions, no children')
+    assert.deepEqual(rows.map(row => row.id).sort(), ['w-session', 'w-session-2'], 'only the workspace Sessions, no children')
 
     // Follow-up work never guesses the conversation: two candidates without `session` refuse.
     controller.items = [
@@ -574,7 +593,7 @@ describe('superagent: workspace Sessions', () => {
     ]
     const ambiguous = await runSessionTool(
       { action: 'append', workspace: 'hello', text: 'one more section' },
-      options, me, ctx, { tasks },
+      options, me, permissionCtx, { tasks },
     )
     assert.equal(ambiguous.ok, false, 'append with several candidates must name the Session')
     assert.match(JSON.stringify(ambiguous.error), /append needs `session`/u)
@@ -662,6 +681,174 @@ describe('superagent: workspace Sessions', () => {
     assert.equal(report?.sessionId, 'super-1')
     assert.match(report?.text ?? '', /\[task-report\] w-session/u)
     assert.match(report?.text ?? '', /README written and verified/u)
+  })
+})
+
+describe('superagent: workspace Session permissions', () => {
+  function fixture() {
+    const cwd = join(tmpdir(), 'permission-workspace')
+    const registry = {
+      rows: [{ id: 'w1', title: 'work', path: cwd, sessionIds: [], status: async () => 'ok' }],
+      list() { return this.rows },
+      async create(path: string, title?: string) { return { id: 'created', title: title ?? path, path, sessionIds: [], status: async () => 'ok' } },
+    }
+    const targetCtx = new Context()
+    targetCtx.provide('workspaceRegistry', registry)
+    const target = testAgent(targetCtx, 'target-permission', { cwd })
+    const controller = {
+      async list() { return { items: [{ sessionId: 'target-permission', cwd, running: false }] } },
+      async create() { return { sessionId: 'target-permission' } },
+      async prompt() { return { accepted: true } },
+      async resolveAgent() { return { agent: target } },
+    }
+    const services: Record<string, unknown> = { sessionController: controller, workspaceRegistry: registry }
+    const ctx = { get: (key: string) => services[key] }
+    const options = { jira: {} as never, caller: { writable: true }, at: '2026-11-09T00:00:00Z' as never }
+    return { controller, target, services, ctx, options }
+  }
+
+  it('lists, reads and switches the registered OS presets with durable audit events', async () => {
+    const f = fixture()
+    let current = 'workspace-write'
+    const calls: { preset: string; reason?: string }[] = []
+    f.services['sandboxPolicy'] = {}
+    f.services['permissionPresets'] = {
+      names: ['read-only', 'workspace-write', 'danger-full-access'],
+      resolve: (preset: string) => ({
+        'read-only': { sandbox: 'read-only', approval: 'ask' },
+        'workspace-write': { sandbox: 'workspace-write', approval: 'ask' },
+        'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' },
+      })[preset],
+      current: () => current,
+      selection: () => ({
+        currentValue: current,
+        sandboxMode: current === 'custom' ? 'read-only' : current,
+        approvalPolicy: current === 'danger-full-access' ? 'never' : 'ask',
+      }),
+      set: (_session: unknown, preset: string, reason?: string) => {
+        current = preset
+        calls.push({ preset, ...reason === undefined ? {} : { reason } })
+      },
+    }
+    const listed = await runPermissionTool({ action: 'list' }, f.options, {}, f.ctx)
+    assert.equal(listed.ok, true)
+    assert.deepEqual((listed.presets as { preset: string }[]).map(row => row.preset), ['read-only', 'workspace-write', 'danger-full-access'])
+    assert.equal((await runPermissionTool({ action: 'get', workspace: 'w1', session: 'target-permission' }, f.options, {}, f.ctx)).ok, true)
+    for (const preset of ['read-only', 'workspace-write', 'danger-full-access']) {
+      const result = await runPermissionTool(
+        { action: 'set', workspace: 'w1', session: 'target-permission', preset, reason: 'permission regression' }, f.options, {}, f.ctx,
+      )
+      assert.equal(result.ok, true, JSON.stringify(result.error))
+    }
+    assert.deepEqual(calls, [
+      { preset: 'read-only', reason: 'permission regression' },
+      { preset: 'workspace-write', reason: 'permission regression' },
+      { preset: 'danger-full-access', reason: 'permission regression' },
+    ])
+    const noReason = await runPermissionTool(
+      { action: 'set', workspace: 'w1', session: 'target-permission', preset: 'danger-full-access' }, f.options, {}, f.ctx,
+    )
+    assert.equal(noReason.ok, true, 'an already-effective preset needs no new widening audit')
+  })
+
+  it('refuses unknown presets, missing or foreign Sessions, and widening without an audit reason', async () => {
+    const f = fixture()
+    let writes = 0
+    f.services['sandboxPolicy'] = {}
+    f.services['permissionPresets'] = {
+      names: ['workspace-write', 'danger-full-access'],
+      resolve: (preset: string) => preset === 'workspace-write' ? { sandbox: preset, approval: 'ask' } : { sandbox: preset, approval: 'never' },
+      current: () => 'workspace-write',
+      selection: () => ({ currentValue: 'workspace-write', sandboxMode: 'workspace-write', approvalPolicy: 'ask' }),
+      set: () => { writes += 1 },
+    }
+    for (const args of [
+      { action: 'set', workspace: 'w1', session: 'target-permission', preset: 'arbitrary', reason: 'test' },
+      { action: 'set', workspace: 'w1', session: 'latest', preset: 'read-only' },
+      { action: 'set', workspace: 'w1', session: 'missing', preset: 'read-only' },
+      { action: 'set', workspace: 'missing', session: 'target-permission', preset: 'read-only' },
+      { action: 'set', workspace: 'w1', session: 'target-permission', preset: 'danger-full-access' },
+      { action: 'get', session: 'target-permission' },
+    ]) {
+      assert.equal((await runPermissionTool(args, f.options, {}, f.ctx)).ok, false, JSON.stringify(args))
+    }
+    assert.equal(writes, 0)
+    assert.equal((await runPermissionTool({ action: 'get', workspace: 'w1', session: 'target-permission' }, { ...f.options, caller: { writable: false } }, {}, f.ctx)).ok, false)
+  })
+
+  it('maps soft to guarded only in the unconfined tool-policy composition', async () => {
+    const f = fixture()
+    let profile = 'unrestricted'
+    const calls: { name: string; reason?: string }[] = []
+    f.services['toolPolicy'] = {
+      has: (name: string) => name === 'guarded',
+      profile: () => ({ description: 'guarded paths and tools' }),
+      profileForSession: () => ({ name: profile, description: `${profile} policy` }),
+      select: (_session: unknown, name: string, reason?: string) => {
+        profile = name
+        calls.push({ name, ...reason === undefined ? {} : { reason } })
+      },
+    }
+    const listed = await runPermissionTool({ action: 'list' }, f.options, {}, f.ctx)
+    assert.deepEqual((listed.presets as { preset: string }[]).map(row => row.preset), ['soft'])
+    assert.equal((await runPermissionTool(
+      { action: 'set', workspace: 'w1', session: 'target-permission', preset: 'soft' }, f.options, {}, f.ctx,
+    )).ok, false, 'widening into soft always carries an audit reason')
+    const result = await runPermissionTool(
+      { action: 'set', workspace: 'w1', session: 'target-permission', preset: 'soft', reason: 'build tools need ordinary file semantics' }, f.options, {}, f.ctx,
+    )
+    assert.equal(result.ok, true, JSON.stringify(result.error))
+    assert.deepEqual(calls, [{ name: 'guarded', reason: 'build tools need ordinary file semantics' }])
+    assert.deepEqual(result.permission, {
+      workspace: f.services['workspaceRegistry'] === undefined ? undefined : (f.services['workspaceRegistry'] as { rows: { path: string }[] }).rows[0]?.path,
+      session: 'target-permission', kind: 'soft-policy', preset: 'soft', sandbox: 'unconfined', toolPolicy: 'guarded', description: 'guarded policy',
+    })
+    assert.equal((await runPermissionTool(
+      { action: 'set', workspace: 'w1', session: 'target-permission', preset: 'workspace-write' }, f.options, {}, f.ctx,
+    )).ok, false, 'soft-only composition cannot invent OS confinement')
+
+    f.services['sandboxPolicy'] = {}
+    assert.deepEqual((await runPermissionTool({ action: 'list' }, f.options, {}, f.ctx)).presets, [])
+  })
+
+  it('does not send a new task when its explicit default permission cannot be established', async () => {
+    const f = fixture()
+    const prompts: unknown[] = []
+    f.controller.prompt = async () => { prompts.push(true); return { accepted: true } }
+    f.ctx.get = (key: string) => f.services[key]
+    const result = await runSessionTool(
+      { action: 'start', workspace: 'w1', task: 'must not run' }, f.options, { session: 'super' }, f.ctx, { tasks: new Map() },
+    )
+    assert.equal(result.ok, false)
+    assert.match(JSON.stringify(result.error), /default workspace-write permission/u)
+    assert.equal(prompts.length, 0)
+  })
+
+  it('reports a committed preset only when its effective knobs match', async () => {
+    const f = fixture()
+    f.services['sandboxPolicy'] = {}
+    f.services['permissionPresets'] = {
+      names: ['danger-full-access'],
+      resolve: () => ({ sandbox: 'danger-full-access', approval: 'never' }),
+      current: () => 'custom',
+      set: () => {},
+    }
+    const result = await runPermissionTool(
+      { action: 'set', workspace: 'w1', session: 'target-permission', preset: 'danger-full-access', reason: 'test verification' }, f.options, {}, f.ctx,
+    )
+    assert.equal(result.ok, false)
+    assert.match(JSON.stringify(result.error), /not fully committed/u)
+  })
+
+  it('reports target resolution and service failures without a false success', async () => {
+    const f = fixture()
+    f.controller.resolveAgent = async () => ({ error: 'unavailable' }) as never
+    assert.equal((await runPermissionTool({ action: 'get', workspace: 'w1', session: 'target-permission' }, f.options, {}, f.ctx)).ok, false)
+    delete f.services['workspaceRegistry']
+    assert.equal((await runPermissionTool({ action: 'get', workspace: 'w1', session: 'target-permission' }, f.options, {}, f.ctx)).ok, false)
+    f.ctx.get = () => { throw new Error('service lookup failed') }
+    assert.equal((await runPermissionTool({ action: 'get', workspace: 'w1', session: 'target-permission' }, f.options, {}, f.ctx)).ok, false)
+    assert.equal((await runPermissionTool({ action: 'get', workspace: 'w1', session: 'target-permission' }, { ...f.options, caller: { writable: true } }, {}, {})).ok, false)
   })
 })
 
@@ -1958,13 +2145,20 @@ describe('superagent: the super workspace', () => {
       assert.equal(isSuperAgentSession(superAgent, home), true)
       assert.deepEqual(
         contribution.tools?.(superAgent).map(tool => tool.name),
-        [WORKSPACE_TOOL_NAME, SESSION_TOOL_NAME, LEDGER_TOOL_NAME, MODELS_TOOL_NAME, DELIVER_TOOL_NAME],
+        [WORKSPACE_TOOL_NAME, SESSION_TOOL_NAME, LEDGER_TOOL_NAME, MODELS_TOOL_NAME, PERMISSION_TOOL_NAME, DELIVER_TOOL_NAME],
         'the super agent keeps the workspace roster and the Session verbs, and loses the ledger-bound ones',
       )
       assert.deepEqual(
         contribution.promptSections?.(superAgent).map(section => section.name),
         [SUPERAGENT_SECTION_NAME],
       )
+
+      const permission = contribution.tools?.(superAgent).find(tool => tool.name === PERMISSION_TOOL_NAME)
+      assert.ok(permission)
+      const listed = await permission.execute({ action: 'list' }, { agent: superAgent, signal: new AbortController().signal } as never)
+      assert.equal((listed as { ok: boolean }).ok, true)
+      assert.equal(concurrencySafe(permission, { action: 'list' }), true)
+      assert.equal(concurrencySafe(permission, { action: 'set' }), false)
 
       // Any other checkout keeps the full dispatcher surface and no section.
       const other = testAgent(harness.ctx, 'main-2', { cwd: dir })

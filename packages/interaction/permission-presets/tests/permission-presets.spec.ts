@@ -183,6 +183,45 @@ describe('PermissionPresetService', () => {
     expect(ctx.permissionPresets.current(session)).toBe(AUTO_PRESET)
   })
 
+  it('records a switch reason and restores effective knobs when a later write fails', async () => {
+    const ctx = await mounted()
+    const session = freshSession('sess-permission-audit')
+    ctx.permissionPresets.set(session, 'danger-full-access', 'run the trusted toolchain')
+    expect(session.snapshotEvents().map(event => [event.type, event.data])).toEqual([
+      ['permission/preset', { preset: 'danger-full-access', reason: 'run the trusted toolchain' }],
+      ['sandbox/mode', { mode: 'danger-full-access' }],
+      ['approval/policy', { policy: 'never' }],
+    ])
+    expect(ctx.permissionPresets.selection(session)).toEqual({
+      currentValue: 'danger-full-access', sandboxMode: 'danger-full-access', approvalPolicy: 'never',
+    })
+
+    const append = session.append.bind(session)
+    const failApproval = true
+    session.append = (type, data, ...opts) => {
+      if (type === 'approval/policy' && failApproval && (data as { policy?: string }).policy === 'ask') throw new Error('approval write failed')
+      return append(type, data, ...opts)
+    }
+    expect(() => { ctx.permissionPresets.set(session, 'workspace-write', 'restore confinement') })
+      .toThrow(/previous permission was restored through compensating events/)
+    expect(ctx.permissionPresets.selection(session)).toEqual({
+      currentValue: 'danger-full-access', sandboxMode: 'danger-full-access', approvalPolicy: 'never',
+    })
+    expect(session.snapshotEvents().map(event => event.type)).toEqual([
+      'permission/preset', 'sandbox/mode', 'approval/policy',
+      'permission/preset', 'sandbox/mode', 'permission/preset', 'sandbox/mode',
+    ])
+
+    session.append = (type, data, ...opts) => {
+      if (type === 'approval/policy') throw new Error('approval write failed')
+      if (type === 'sandbox/mode' && (data as { mode?: string }).mode === 'danger-full-access') throw new Error('sandbox restoration failed')
+      return append(type, data, ...opts)
+    }
+    expect(() => { ctx.permissionPresets.set(session, 'workspace-write', 'retry') })
+      .toThrow(/compensation failed/)
+    expect(session.snapshotEvents().at(-1)?.type).toBe('permission/preset')
+  })
+
   it('current() derives from the effective knobs: composition defaults hit workspace-write, a switch hits its preset', async () => {
     const ctx = await mounted()
     const session = freshSession('sess-current')

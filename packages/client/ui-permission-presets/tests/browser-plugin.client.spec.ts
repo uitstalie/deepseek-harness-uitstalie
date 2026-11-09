@@ -180,7 +180,7 @@ describe('ui-permission browser plugin', () => {
     await injected!.select('read-only')
     const select = b.permissionSelect()!
     const injectSelect = select.inject as unknown as (sessionId: SessionId) => PermissionSelectInjected
-    b.values.set(sid('s1'), { currentValue: 'workspace-write' })
+    b.values.set(sid('s1'), { currentValue: 'workspace-write', sandboxMode: 'workspace-write', approvalPolicy: 'ask' })
     const selectInjected = injectSelect(sid('s1'))
     expect(selectInjected?.hooks.permissionCatalog.getSnapshot().value).toEqual(CATALOG)
     await expect(selectInjected.select('auto')).resolves.toBe(true)
@@ -193,12 +193,12 @@ describe('ui-permission browser plugin', () => {
     const c = b.decoration()!
     const proj = { sessionId: sid('s1') }
     expect(c.available(proj)).toBe(false)
-    b.values.set(sid('s1'), { currentValue: 'custom' })
+    b.values.set(sid('s1'), { currentValue: 'custom', sandboxMode: 'read-only', approvalPolicy: 'ask' })
     expect(c.available(proj)).toBe(true)
     const options = await b.popup().options(proj, new AbortController().signal)
     expect(options.map(option => option.id)).toEqual(['read-only', 'workspace-write', 'danger-full-access', 'auto'])
     expect(options.every(option => option.active !== true)).toBe(true)
-    b.values.set(sid('s1'), { currentValue: 'workspace-write' })
+    b.values.set(sid('s1'), { currentValue: 'workspace-write', sandboxMode: 'workspace-write', approvalPolicy: 'ask' })
     const again = await b.popup().options(proj, new AbortController().signal)
     expect(again.find(option => option.id === 'workspace-write')?.active).toBe(true)
     expect(again.find(option => option.id === 'read-only')?.detail).toBe('Reads only.')
@@ -257,7 +257,7 @@ describe('ui-permission browser plugin', () => {
     const b = await bench()
     const c = b.decoration()!
     const proj = { sessionId: sid('s1') }
-    b.values.set(sid('s1'), { currentValue: 'workspace-write' })
+    b.values.set(sid('s1'), { currentValue: 'workspace-write', sandboxMode: 'workspace-write', approvalPolicy: 'ask' })
     b.setCatalogFailure('catalog read failed')
     b.setCatalog(CATALOG)
 
@@ -275,7 +275,7 @@ describe('ui-permission browser plugin', () => {
 
   it('keeps the open picker and its retry through the real popup shell after a failed read', async () => {
     const b = await bench()
-    b.values.set(sid('s1'), { currentValue: 'workspace-write' })
+    b.values.set(sid('s1'), { currentValue: 'workspace-write', sandboxMode: 'workspace-write', approvalPolicy: 'ask' })
     b.setCatalogFailure('catalog read failed')
     b.setCatalog(CATALOG)
 
@@ -294,7 +294,7 @@ describe('ui-permission browser plugin', () => {
 
   it('closes an open picker only when the catalog is invalidated', async () => {
     const b = await bench()
-    b.values.set(sid('s1'), { currentValue: 'workspace-write' })
+    b.values.set(sid('s1'), { currentValue: 'workspace-write', sandboxMode: 'workspace-write', approvalPolicy: 'ask' })
     const shell = b.openShell()
     await vi.waitFor(() => { expect(shell.state.getSnapshot().status).toBe('ready') })
 
@@ -306,7 +306,7 @@ describe('ui-permission browser plugin', () => {
     const b = await bench()
     b.ctx.locale.setLocale('zh')
     const proj = { sessionId: sid('s1') }
-    b.values.set(sid('s1'), { currentValue: 'workspace-write' })
+    b.values.set(sid('s1'), { currentValue: 'workspace-write', sandboxMode: 'workspace-write', approvalPolicy: 'ask' })
     const options = await b.popup().options(proj, new AbortController().signal)
     expect(options.find(option => option.id === 'auto')?.detail)
       .toBe('无沙箱运行；每次原生工具调用和 PTC 内层调用前由同一模型进行实验性审查。')
@@ -315,7 +315,7 @@ describe('ui-permission browser plugin', () => {
   it('a pick submits the /permission line; rejection and unmatched throw', async () => {
     const b = await bench()
     const proj = { sessionId: sid('s1') }
-    b.values.set(sid('s1'), { currentValue: 'workspace-write' })
+    b.values.set(sid('s1'), { currentValue: 'workspace-write', sandboxMode: 'workspace-write', approvalPolicy: 'ask' })
     await b.popup().onSelect({ id: 'danger-full-access', label: 'danger-full-access' }, proj)
     expect(b.commands).toEqual(['/permission danger-full-access'])
     b.setResult({ ok: false })
