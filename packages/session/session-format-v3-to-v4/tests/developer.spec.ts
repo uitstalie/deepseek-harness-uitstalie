@@ -212,11 +212,14 @@ describe('V4 developer messages', () => {
     expect(restoreReleasedV4Artifact(artifact, new Set(inherited.map(event => event.type)))).toBe(artifact)
   })
 
-  it('refuses developer history when the reader does not know the event type', () => {
+  it('skips developer history when the reader does not know the event type', () => {
     const input = events()
     const known = new Set(input.map(event => event.type))
     known.delete('developer/message')
-    expect(() => restoreReleasedV4Artifact({ header, events: input, inheritedEventCount: 0 }, known)).toThrow('unknown event type')
+    const artifact = { header, events: input, inheritedEventCount: 0 }
+    expect(restoreReleasedV4Artifact(artifact, known)).toBe(artifact)
+    const critical = input.map(event => event.type === 'developer/message' ? { ...event, critical: true } : event)
+    expect(() => restoreReleasedV4Artifact({ header, events: critical, inheritedEventCount: 0 }, known)).toThrow('critical unknown event type')
   })
 
   it('checks request coordinates and the open step', () => {

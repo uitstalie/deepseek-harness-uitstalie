@@ -20,6 +20,8 @@ interface SessionHandleReadResult {
   readonly eventState: SessionSeedEventState
   /** Event values in a caller-owned outer array. */
   readonly events: readonly SessionEvent[]
+  /** Unknown non-critical events excluded from reconstruction in the complete source log, not only this slice. */
+  readonly skipped?: SessionSkippedEvents | undefined
 }
 ```
 
@@ -190,7 +192,7 @@ interface SessionHeader {
 
 ## Format refusal — logs a build cannot faithfully read
 
-A backend refuses a log it cannot faithfully interpret with `SessionFormatUnsupportedError`, distinct from `SessionPersistenceCorruptionError` because nothing is damaged. `stat` and `list` classify the highest canonical generation and translate a supported historical header without reading or mutating its body. Historical `open` calls share one per-session migration preparation before returning current logical values and leave every source path, byte, and inode unchanged. The JSONL provider returns a read handle from that in-memory result without publishing; a write open holds its single-writer claim and file lease while it reuses the preparation, exclusively publishes the final current generation, and only then returns the writable handle. A future highest generation refuses even when an older readable generation remains. Current-format restoration retains installed extensions and unknown events carrying `ignorable: true`; historical v0/v1/v2 migration refuses an unknown type even when marked ignorable. The message appends the selected raw log path when the backend keeps one artifact per session. An out-of-tree backend must enforce equivalent current-only handle values and direction-aware refusals at its physical-format entry. The [released-format migration decision](../../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md) owns the chain and immutable-publication rules.
+A backend refuses a log it cannot faithfully interpret with `SessionFormatUnsupportedError`, distinct from `SessionPersistenceCorruptionError` because nothing is damaged. `stat` and `list` classify the highest canonical generation and translate a supported historical header without reading or mutating its body. Historical `open` calls share one per-session migration preparation before returning current logical values and leave every source path, byte, and inode unchanged. The JSONL provider returns a read handle from that in-memory result without publishing; a write open holds its single-writer claim and file lease while it reuses the preparation, exclusively publishes the final current generation, and only then returns the writable handle. A future highest generation refuses even when an older readable generation remains. Current-format restoration retains installed extensions and unknown non-critical events as opaque records; only unknown events marked `critical: true` refuse. Writers mark informational events `ignorable: true` for older fail-closed readers. Historical v0/v1/v2 migration refuses an unknown type even when marked ignorable. The message appends the selected raw log path when the backend keeps one artifact per session. An out-of-tree backend must enforce equivalent current-only handle values and direction-aware refusals at its physical-format entry. The [released-format migration decision](../../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md) owns the chain and immutable-publication rules.
 
 ## `CreateSessionOptions` — seeding and metadata
 
@@ -354,7 +356,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 Durable append-only session storage addressed through per-session handles.
 
-Storage semantics shared by every backend: events are contiguous from seq 0 and never rewritten; a torn physical tail is never returned to a reader and is truncated by the write path before its first append; reads validate current-format records only and refuse unknown vocabulary fail-closed. `append` persists best-effort; `flush` — per handle or service-wide — is the durability barrier.
+Storage semantics shared by every backend: events are contiguous from seq 0 and never rewritten; a torn physical tail is never returned to a reader and is truncated by the write path before its first append; reads validate current-format records, skip unknown non-critical events, and refuse critical unknown types. `append` persists best-effort; `flush` — per handle or service-wide — is the durability barrier.
 
 Visibility: a created session is observable through `stat`/`list`/`open` in this process from the moment `create` resolves, even while a backend defers physical materialization (a pure optimization); other processes see the session only once it materializes, and a session that never materialized before a crash never existed. `SessionHandle.flush` forces materialization.
 

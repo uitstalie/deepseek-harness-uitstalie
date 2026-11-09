@@ -2,7 +2,7 @@
  * JSONL durable session-persistence backend. It stores a header and contiguous
  * events in immutable generation files under one directory per session and serves the handle-based
  * `SessionPersistence` API: `create`/`open` return per-session handles, and
- * every read validates the same fail-closed storage contract.
+ * every read validates the same forward-compatible storage contract.
  * @module @deepseek-ai/dsh-session-persistence-jsonl
  */
 
@@ -26,7 +26,7 @@ import {
   SessionAlreadyExistsError, SessionPersistenceNotFoundError,
   assertStoredId, materializeCreateHeader, sessionFormatVersionRefusal, validateStoredEvents,
   type SessionAccess, type SessionHandle,
-  type SessionHandleReadResult,
+  type SessionHandleReadResult, type SessionSkippedEvents,
   type SessionLocation, type SessionPersistenceCreateOptions,
   type SessionPersistenceListOptions, type SessionPersistenceOpenOptions,
   type SessionPersistenceSnapshot, type SessionPersistenceStatOptions,
@@ -34,7 +34,7 @@ import {
 } from '@deepseek-ai/dsh-session-persistence'
 import { JsonlBackendTracker, JsonlSessionHandle, type StorageHandleState } from './storage.ts'
 import { SessionWriteLease } from './lease.ts'
-import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionId, SessionHeader, SessionLogOffset as SessionLogOffsetType } from '@deepseek-ai/dsh-session'
 import {
   assertNoRetiredHeaderFields, encodeSegment, eventLines, generationLogFilename, generationLogPath, logPath, logSuffix,
@@ -170,6 +170,16 @@ function freezeStoredEvent(event: SessionEvent): void {
       }
     }
   }
+}
+
+/**
+ * Summarize unknown events omitted from reconstruction without exposing their payloads.
+ * @param events - complete stored log to inspect.
+ * @returns count and sorted types, or undefined when every type is installed.
+ */
+export function skippedStoredEvents(events: readonly SessionEvent[]): SessionSkippedEvents | undefined {
+  const types = [...new Set(events.filter(event => !KNOWN_SESSION_EVENT_TYPES.has(event.type)).map(event => event.type))].sort()
+  return types.length === 0 ? undefined : { count: events.filter(event => !KNOWN_SESSION_EVENT_TYPES.has(event.type)).length, types }
 }
 
 /** Establish immutable sharing for one decoded event graph and report that state. */
@@ -733,6 +743,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       validateRelatedSources,
       meta,
       ...freezeStoredEvents(events),
+      skipped: skippedStoredEvents(events),
       tornTruncateTo: undefined,
       recoveredTail: [],
       inheritedEventCount: SessionLogOffset(prepared.artifact.inheritedEventCount),
@@ -865,6 +876,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       status: 'current',
       ...rest,
       ...freezeStoredEvents(events),
+      skipped: skippedStoredEvents(events),
       revision,
     }
     this.memoizeStoredLog(expectedId, stored)

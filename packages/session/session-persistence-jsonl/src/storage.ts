@@ -29,6 +29,7 @@ import type {
   SessionHandleFlushOptions,
   SessionHandleReadOptions,
   SessionHandleReadResult,
+  SessionSkippedEvents,
 } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionWriteLease } from './lease.ts'
 
@@ -74,6 +75,8 @@ export interface StorageHandleState {
   inheritedEventCount: SessionLogOffset
   /** The validated stored prefix from a write open, served to reads until the first append. */
   primed?: SessionHandleReadResult | undefined
+  /** Unknown non-critical events omitted from reconstruction in the complete source log. */
+  skipped?: SessionSkippedEvents | undefined
 }
 
 /**
@@ -158,7 +161,7 @@ export class JsonlSessionHandle implements SessionHandle {
   /** Read one slice from the prepared historical prefix retained by this handle. */
   private readPrimed(source: SessionHandleReadResult, offset: number, length: number): SessionHandleReadResult {
     this.observedLength = Math.max(this.observedLength, source.events.length)
-    return { eventState: source.eventState, events: source.events.slice(offset, offset + length) }
+    return { eventState: source.eventState, events: source.events.slice(offset, offset + length), skipped: source.skipped }
   }
 
   /** Read one current physical generation and enforce this handle's monotonic view. */
@@ -176,6 +179,7 @@ export class JsonlSessionHandle implements SessionHandle {
     return {
       eventState: source.eventState,
       events: source.events.slice(offset, offset + length),
+      skipped: source.skipped,
     }
   }
 

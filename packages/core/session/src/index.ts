@@ -15,7 +15,7 @@ import type { Scoped } from '@deepseek-ai/dsh-scope'
 import type { Message } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from './types.ts'
 import type { TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
-import type { CreateSessionOptions, EpochHeader, PluginRecord, PluginRecordMap, PluginRecordType, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SessionId, SessionSeedEventState, SurfaceIntent, SurfaceEventType } from './types.ts'
+import type { CreateSessionOptions, EpochHeader, PluginRecord, PluginRecordMap, PluginRecordType, PrepareSessionOptions, RequestContext, SessionAppendCompatibility, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SessionId, SessionSeedEventState, SurfaceIntent, SurfaceEventType } from './types.ts'
 import { SurfaceManager, validateSessionEventData, validateSurfaceMetadata } from './surface.ts'
 import type { SessionSurface, SessionMessageProjection } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
@@ -214,6 +214,7 @@ function assertSessionEventEnvelope(value: unknown, index: number): asserts valu
       case 'surfaceOp':
       case 'sourceEventSeqs':
       case 'ignorable':
+      case 'critical':
         break
       default:
         throw new Error(`seed event at index ${index} has an invalid event envelope`)
@@ -226,7 +227,8 @@ function assertSessionEventEnvelope(value: unknown, index: number): asserts valu
     || typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 0 || Object.is(seq, -0)
     || typeof time !== 'number' || !Number.isSafeInteger(time)
     || event['data'] === undefined
-    || (event['ignorable'] !== undefined && event['ignorable'] !== true)) {
+    || (event['ignorable'] !== undefined && event['ignorable'] !== true)
+    || (event['critical'] !== undefined && event['critical'] !== true)) {
     throw new Error(`seed event at index ${index} has an invalid event envelope`)
   }
   validateSessionEventData(event as SessionEvent, `seed ${type} at index ${index}`)
@@ -451,7 +453,7 @@ function isPluginRecordType(type: string): type is PluginRecordType {
 /**
  * Type one constructed plugin record as a log event after checking its type
  * against the plugin record grammar. A restored Session already holds events
- * whose types are outside `SessionEventMap` when they are marked ignorable;
+ * whose types are outside `SessionEventMap`;
  * a plugin record is such an event.
  * @param value - the frozen record envelope built by {@link Session}.
  * @throws when the record type is outside the plugin record grammar.
@@ -774,7 +776,8 @@ export class Session {
    *
    * @param type - The event type (key of {@link SessionEventMap}).
    * @param data - The event payload; must be JSON-serializable.
-   * @param opts - Surface metadata: `surfaceOp` controls how the event enters
+   * @param opts - Log-only events may explicitly set `ignorable`; surface events supply
+   *   `surfaceOp` to control how the event enters
    *   the ordered surface; `sourceEventSeqs` lists the seq numbers of earlier
    *   events this one derives from. REQUIRED for
    *   {@link SurfaceEventType} events (every message-producing event must
@@ -806,11 +809,12 @@ export class Session {
   append<T extends SessionEventType>(
     type: T,
     data: SessionEventMap[T],
-    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T>] : []
+    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T>] : [opts?: SessionAppendCompatibility]
   ): SessionEvent<T> {
     this.publicationEntry()
-    const surfaceOpts: SurfaceIntent | undefined = opts[0]
+    const surfaceOpts = opts[0] as (SurfaceIntent & SessionAppendCompatibility) | undefined
     const surfaceMetadata = {
+      ...surfaceOpts?.ignorable === undefined ? {} : { ignorable: surfaceOpts.ignorable },
       ...surfaceOpts?.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: surfaceOpts.sourceEventSeqs },
       ...surfaceOpts?.surfaceOp === undefined ? {} : { surfaceOp: surfaceOpts.surfaceOp },
     }
@@ -829,7 +833,7 @@ export class Session {
       seq: SessionSeq(this.log.length),
       time: Date.now(),
       data: dataSnapshot,
-      ...(surfaceMetadataSnapshot as { surfaceOp?: unknown; sourceEventSeqs?: unknown }),
+      ...(surfaceMetadataSnapshot as { ignorable?: true; surfaceOp?: unknown; sourceEventSeqs?: unknown }),
     } as unknown as SessionEvent<T>)
     validateSessionEventData(event, `session event "${type}" at seq ${event.seq}`)
     this.commit(event as SessionEvent, entry)

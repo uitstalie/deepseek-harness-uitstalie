@@ -22,6 +22,7 @@ export type {
   SessionHandleFlushOptions,
   SessionHandleReadOptions,
   SessionHandleReadResult,
+  SessionSkippedEvents,
 } from './handle.ts'
 export {
   SessionAlreadyExistsError,
@@ -127,7 +128,7 @@ declare module '@deepseek-ai/cordis' {
  * Storage semantics shared by every backend: events are contiguous from seq 0
  * and never rewritten; a torn physical tail is never returned to a reader and
  * is truncated by the write path before its first append; reads validate
- * current-format records only and refuse unknown vocabulary fail-closed.
+ * current-format records, skip unknown non-critical events, and refuse critical unknown types.
  * `append` persists best-effort; `flush` — per handle or service-wide — is
  * the durability barrier.
  *

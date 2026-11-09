@@ -4,4 +4,4 @@ export { releasedV1SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v0
 export * from './codec.ts'
 export * from './dispositions.ts'
 export * from './migration.ts'
-export { assertReleasedV2Header, restoreReleasedV2Artifact } from './validation.ts'
+export { assertReleasedV2Header, assertReleasedV2PhysicalArtifact, restoreReleasedV2Artifact } from './validation.ts'

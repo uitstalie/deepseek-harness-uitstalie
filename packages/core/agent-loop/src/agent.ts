@@ -740,7 +740,7 @@ export class ReactLoopAgent implements Agent {
           callId: repair.callId,
           name: repair.name,
         })),
-      })
+      }, { ignorable: true })
     }
     const requestMessages = paired.repairs.length === 0 ? boundaryMessages : paired.messages
     for (const message of requestMessages) {

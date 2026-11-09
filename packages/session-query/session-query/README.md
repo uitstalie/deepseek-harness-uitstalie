@@ -42,7 +42,7 @@ Use `ctx.sessionQuery` from application code when you need to read or search ses
 | `traceEvent(request)` | One event's positional replacements and cited source-event relationships |
 | `searchSessions(request)` / `searchEvents(request)` | Full-text search pages, implemented by the mounted backend |
 
-Body-free records expose only `SessionHeader.isSeeded`. Reads that return event bodies (`readSession`, `readSurface`, `readEvent`) and retained `SessionObservation` values also carry the exact `inheritedEventCount`, so callers can distinguish inherited and owned events without inferring a cut from the log.
+Body-free records expose only `SessionHeader.isSeeded`. Reads that return event bodies (`readSession`, `readSurface`, `readEvent`) and retained `SessionObservation` values also carry the exact `inheritedEventCount`, so callers can distinguish inherited and owned events without inferring a cut from the log. A cold observation with unknown non-critical events reports their complete-log `count` and sorted `types` in `skipped`; the reader warns once per cached preparation, retains their opaque envelopes, and excludes them from reconstruction.
 
 ### Filters
 

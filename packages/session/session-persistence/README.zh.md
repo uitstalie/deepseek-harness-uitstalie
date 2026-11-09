@@ -64,7 +64,7 @@ await ctx.sessionPersistence.flush()                           // backend-wide d
 
 对于版本化产物，`stat` 与 `list` 通过 `formatStatus` 暴露 `current` 或 `migration-required`。独立的 `header` 仍是当前逻辑元数据。该状态描述存储，不描述内存准备或迁移任务；没有这项信息的提供方省略该字段。已物化快照还包含 `location`，在后端保留独立产物时给出后端解析的选中每 Session 产物路径；这项观察元数据用于诊断与导出，不是持久化 Session 内容，未物化的待定 Session 省略它。
 
-当前构建无法忠实解读的存储日志会被拒绝，并返回指明拒绝方向的错误，绝不会被误读。`SessionHandle` 只暴露由 `SESSION_FORMAT_VERSION` 标识的当前逻辑记录；提供方必须在返回句柄前转换任何受支持的历史存储，随产品交付的 JSONL 提供方会通过静态 catalog 迁移受支持的历史代际。更新的格式会要求操作者升级 harness。本构建不认识的事件类型会被拒绝，除非其信封标记为 `ignorable`；已提交前缀中的损坏以 `SessionPersistenceCorruptionError` 拒绝。
+当前构建无法忠实解读的存储日志会被拒绝，并返回指明拒绝方向的错误，绝不会被误读。`SessionHandle` 只暴露由 `SESSION_FORMAT_VERSION` 标识的当前逻辑记录；提供方必须在返回句柄前转换任何受支持的历史存储，随产品交付的 JSONL 提供方会通过静态 catalog 迁移受支持的历史代际。更新的格式会要求操作者升级 harness。本构建不认识的事件类型会保留在日志中但不参与状态重建，除非其信封标记为 `critical: true`；读取结果会报告跳过数量与类型。写入端用 `ignorable: true` 标记信息性事件以兼容旧读取端。已提交前缀中的损坏以 `SessionPersistenceCorruptionError` 拒绝。
 
 -----
 
@@ -86,7 +86,7 @@ await ctx.sessionPersistence.flush()                           // backend-wide d
 - **撕裂的物理尾部绝不到达读取方。** 它属于一次从未完成的 append；写路径在第一次新 append 之前将其持久截断。
 - **无损 JSON 数据。** 批次与 header 经过共享的单遍校验并快照边界（`materializeAppendBatch`/`materializeCreateHeader`）；无法序列化的载荷在调用处被拒绝。
 - **持久性。** `append` 尽力而为地持久化；`flush`——逐句柄或服务级——是承诺存储并同时把空会话实体化的屏障。
-- **遇到未知或无效格式时拒绝读取。** `validateStoredEvents` 拒绝未知事件词汇与已废弃的预发布形态；`assertVersion` 拒绝外来格式版本。
+- **前向兼容读取。** `validateStoredEvents` 将未知的非 critical 事件保留为不透明记录，拒绝 critical 未知类型与已废弃的预发布形态；`assertVersion` 拒绝外来格式版本。
 - **每个后端实例单写者。** 提供方的进程内认领在 `create`/`open('write')` 时取得，在句柄关闭时释放。
 
 ### 源码地图
@@ -95,7 +95,7 @@ await ctx.sessionPersistence.flush()                           // backend-wide d
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：抽象 `SessionPersistence` 服务与重新导出的 seam 词汇 |
 | [`src/handle.ts`](src/handle.ts) | `SessionHandle` 约定：read/append/flush/close 语义与新鲜度规则 |
-| [`src/storage-contract.ts`](src/storage-contract.ts) | 共享校验：版本门禁、未知事件词汇拒绝、批次实体化、连续性 |
+| [`src/storage-contract.ts`](src/storage-contract.ts) | 共享校验：版本门禁、前向兼容事件接纳、批次实体化、连续性 |
 | [`src/errors.ts`](src/errors.ts) | 稳定的句柄/所有权失败与格式拒绝 |
 | [`src/revision.ts`](src/revision.ts) | 带品牌类型的不透明修订值 token |
 
@@ -105,7 +105,7 @@ await ctx.sessionPersistence.flush()                           // backend-wide d
 
 ### 存储记录校验
 
-seam 的共享辅助函数校验由 `SESSION_FORMAT_VERSION` 标识的当前逻辑记录，append 只写当前格式（[理由](../../../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.zh.md)）。历史解码与不可变后继发布属于各提供方内部，并在其返回句柄前完成。每个后端都在句柄读取与写 open 预热时运行 `storage-contract` 校验，把未知事件类型作为 `SessionFormatUnsupportedError` 拒绝，把格式错误的当前记录作为 `SessionPersistenceCorruptionError` 拒绝，并在后端为每个会话保留一份产物时附上原始日志的 `SessionLocation`。
+seam 的共享辅助函数校验由 `SESSION_FORMAT_VERSION` 标识的当前逻辑记录，append 只写当前格式（[理由](../../../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.zh.md)）。历史解码与不可变后继发布属于各提供方内部，并在其返回句柄前完成。每个后端都在句柄读取与写 open 预热时运行 `storage-contract` 校验，把 critical 未知事件类型作为 `SessionFormatUnsupportedError` 拒绝，把格式错误的当前记录作为 `SessionPersistenceCorruptionError` 拒绝，并在后端为每个会话保留一份产物时附上原始日志的 `SessionLocation`。
 
 </details>
 -----

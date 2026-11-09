@@ -689,7 +689,7 @@ describe('JsonlSessionPersistence: stored-format refusals', () => {
     ].join('\n'))
 
     await expect(readAll(ctx.sessionPersistence, m.id))
-      .rejects.toThrow(/contains event type "request\/header-delta" \(seq 1\) unknown to this harness/)
+      .rejects.toThrow(/contains retired event type "request\/header-delta" \(seq 1\)/)
   })
 
   it('rejects a stored full header carrying the legacy fallback reason', async () => {

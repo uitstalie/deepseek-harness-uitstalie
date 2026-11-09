@@ -3,7 +3,7 @@
 import { interruptedTurnClosers } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId, SessionLogOffset, SessionSeedEventState } from '@deepseek-ai/dsh-session'
 import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
-import type { SessionHandleReadResult } from '@deepseek-ai/dsh-session-persistence'
+import type { SessionHandleReadResult, SessionSkippedEvents } from '@deepseek-ai/dsh-session-persistence'
 
 /** A stored session log balanced for read-only viewing. */
 export interface ColdSessionLog {
@@ -15,6 +15,8 @@ export interface ColdSessionLog {
   readonly inheritedEventCount: SessionLogOffset
   /** Stored events plus deterministic in-memory closers for an interrupted final turn; nothing is written back. */
   readonly events: SessionEvent[]
+  /** Unknown non-critical events omitted from reconstruction in the stored log. */
+  readonly skipped?: SessionSkippedEvents | undefined
 }
 
 /**
@@ -53,5 +55,6 @@ export async function readColdSessionLog(
     header: handle.header,
     inheritedEventCount: handle.inheritedEventCount,
     events: [...events, ...interruptedTurnClosers(events)],
+    skipped: read.skipped,
   }
 }

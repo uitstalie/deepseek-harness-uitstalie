@@ -119,13 +119,14 @@ describe('V4 framing and restoration', () => {
       .toThrow('unseeded Session contains an inherited end-seed marker')
   })
 
-  it('preserves unknown ignorable values and requires installed vocabulary for unknown required events', () => {
+  it('preserves unknown values and requires installed vocabulary only for critical events', () => {
     const opaque = { type: 'external/opaque', seq: 0, time: 1, data: { untouched: ['a', 3] }, ignorable: true }
     expect(restore([opaque]).events[0]).toBe(opaque)
-    const required = { type: 'external/required', seq: 0, time: 1, data: null }
-    expect(() => restore([required])).toThrow('unknown event type')
-    const artifact = { header, events: [required], inheritedEventCount: 0 }
-    expect(restoreReleasedV4Artifact(artifact, new Set([required.type]))).toBe(artifact)
+    const optional = { type: 'external/optional', seq: 0, time: 1, data: null }
+    expect(restore([optional]).events[0]).toBe(optional)
+    const artifact = { header, events: [{ ...optional, critical: true }], inheritedEventCount: 0 }
+    expect(() => restoreReleasedV4Artifact({ header, events: [{ ...optional, critical: true, ignorable: true }], inheritedEventCount: 0 }, new Set())).toThrow('critical unknown event type')
+    expect(restoreReleasedV4Artifact(artifact, new Set([optional.type]))).toBe(artifact)
   })
 
   it('refuses wrapper-shaped and malformed native tool results before recovery', () => {

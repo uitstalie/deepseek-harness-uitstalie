@@ -55,7 +55,7 @@ export const releasedV4SessionFormatCodec = Object.freeze({
 
 /**
  * Apply native V4 admission before a scanner discards a recoverable suffix.
- * Ignorable developer payloads require reader vocabulary; physical decoding defers them.
+ * Unknown developer payloads require reader vocabulary; physical decoding defers them.
  * @param row - parsed physical row before framing and source-event range decoding.
  * @param knownEventTypes - installed event types, supplied by native readers before tail recovery.
  */

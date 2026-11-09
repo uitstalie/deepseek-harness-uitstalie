@@ -118,22 +118,30 @@ describe('validateStoredEvents', () => {
     expect(validateStoredEvents(m, events)).toBe(events)
   })
 
-  it('refuses an unknown event type before adopting anything', () => {
+  it('retains an unmarked unknown event as opaque', () => {
     const m = meta('unknown-type')
     const events = [
-      { type: 'mystery/event', seq: 0, time: 1, data: {} },
+      { type: 'mystery/event', seq: 0, time: 1, data: { future: true } },
     ] as unknown as SessionEvent[]
-    expect(() => validateStoredEvents(m, events)).toThrow(SessionFormatUnsupportedError)
-    expect(() => validateStoredEvents(m, events)).toThrow(
-      'session "unknown-type" contains event type "mystery/event" (seq 0) unknown to this harness',
-    )
-    // With an artifact, the refusal points at the raw log.
+    expect(validateStoredEvents(m, events)).toBe(events)
+    expect(events[0]).toMatchObject({ type: 'mystery/event', data: { future: true } })
+  })
+
+  it('refuses a critical unknown event and identifies the supported correction', () => {
+    const m = meta('critical-unknown')
+    const events = [
+      { type: 'mystery/event', seq: 0, time: 1, data: {}, critical: true },
+    ] as unknown as SessionEvent[]
     let refusal: unknown
     try {
       validateStoredEvents(m, events, LOCATION)
     } catch (error) {
       refusal = error
     }
+    expect(refusal).toBeInstanceOf(SessionFormatUnsupportedError)
+    expect((refusal as Error).message).toContain(
+      'session "critical-unknown" contains critical event type "mystery/event" (seq 0) unknown to this harness; use the writing harness or a reader that supports this event type',
+    )
     expect((refusal as Error).message).toContain(`(raw log: ${LOCATION.path})`)
     expect((refusal as SessionFormatUnsupportedError).location).toBe(LOCATION)
   })

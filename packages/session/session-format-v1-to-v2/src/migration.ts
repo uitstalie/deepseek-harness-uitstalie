@@ -24,7 +24,7 @@ import {
 import { assertReleasedV2Header } from './validation.ts'
 
 const CHUNK_EVENT_REQUIRED = ['type', 'seq', 'time', 'data'] as const
-const CHUNK_EVENT_OPTIONAL = ['ignorable', 'sourceEventSeqs', 'surfaceOp'] as const
+const CHUNK_EVENT_OPTIONAL = ['ignorable', 'critical', 'sourceEventSeqs', 'surfaceOp'] as const
 const CHUNK_EVENT_KEYS: ReadonlySet<string> = new Set([...CHUNK_EVENT_REQUIRED, ...CHUNK_EVENT_OPTIONAL])
 
 interface AttemptGroup {
@@ -174,6 +174,9 @@ function assertChunkEnvelope(event: SessionFormatEvent): void {
   if (missing !== undefined) throw refusal(`assistant/chunk ${event.seq} lacks required member ${missing}`)
   if (event.ignorable !== undefined && event.ignorable !== true) {
     throw refusal(`assistant/chunk ${event.seq} ignorable must be true when present`)
+  }
+  if (event['critical'] !== undefined && event['critical'] !== true) {
+    throw refusal(`assistant/chunk ${event.seq} critical must be true when present`)
   }
 }
 

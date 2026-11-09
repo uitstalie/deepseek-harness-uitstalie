@@ -302,8 +302,8 @@ function isReplaceOp(value: object): value is Extract<SurfaceOp, { op: 'replace'
 function surfaceOpOf(event: SessionEvent): SurfaceOp | undefined {
   const raw: { surfaceOp?: unknown; sourceEventSeqs?: unknown } = event
   if (!isSurfaceEligibleType(event.type)) {
-    // Unknown ignorable records retain opaque metadata without affecting history.
-    if (!KNOWN_SESSION_EVENT_TYPES.has(event.type) && event.ignorable === true) return
+    // Unknown records retain opaque metadata without affecting history.
+    if (!KNOWN_SESSION_EVENT_TYPES.has(event.type)) return
     if (raw.surfaceOp !== undefined) {
       throw new Error(`session event "${event.type}" is not surface-eligible and cannot carry surfaceOp`)
     }
@@ -397,8 +397,8 @@ function assertDeveloperHeader(
 /**
  * Validate one event's surface metadata without checking membership in a log or surface.
  * @param event - event whose marker and source sequence values are inspected.
- * Unknown ignorable records retain opaque metadata and never change the surface.
- * @returns the validated operation, or undefined for a log-only or unknown ignorable event.
+ * Unknown records retain opaque metadata and never change the surface.
+ * @returns the validated operation, or undefined for a log-only or unknown event.
  * @throws when metadata violates event-local eligibility, marker, or source-sequence rules.
  */
 export function validateSurfaceMetadata(event: SessionEvent): SurfaceOp | undefined {

@@ -275,15 +275,18 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
     data: SessionEventMap[K]
     /**
      * Marks an event a reader may safely skip when it does not recognize
-     * `type`. Absent means required: a reader meeting an unrecognized type
-     * without this marker MUST refuse to reconstruct the session instead of
-     * silently dropping the event, because an unrecognized required event may
-     * change how the rest of the log is interpreted. A writer sets `true` only
-     * on purely informational records whose loss cannot affect reconstruction;
-     * defaulting to required means a forgotten marker over-refuses (an
-     * inconvenience) rather than silently resuming a gutted session.
+     * `type`. Unknown events are skipped by default and retain their original
+     * sequence numbers and opaque payloads. Writers set this explicitly on
+     * informational records so older readers with a fail-closed vocabulary can
+     * skip them too.
      */
     ignorable?: true
+    /**
+     * Refuses reconstruction by a reader that does not recognize `type`.
+     * Use only when omitting the event could change the meaning of later
+     * events. Readers that recognize the type ignore this marker.
+     */
+    critical?: true
   } & (K extends SurfaceEventType ? SurfaceIntent<K> : {
     surfaceOp?: never
     sourceEventSeqs?: never
@@ -291,9 +294,9 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }[T]
 ```
 
-`SessionEventType = keyof SessionEventMap`。由于 `SessionEventMap` 可通过合并扩展，对 `SessionEvent` 的 switch 语句禁止使用 `assertNever`：插件添加的变体是合法的未知值；处理已知 case 后在 `default` 中放行。
+`SessionEventType = keyof SessionEventMap`。`SessionAppendCompatibility` 为信息性的仅日志事件提供可选 `ignorable?: true`。由于 `SessionEventMap` 可通过合并扩展，对 `SessionEvent` 的 switch 语句禁止使用 `assertNever`：插件添加的变体是合法的未知值；处理已知 case 后在 `default` 中放行。
 
-每个 surface 事件都要求 `surfaceOp`；已知仅日志事件禁止两个 surface 元数据字段。原生未知或已退役的可忽略信封保持不透明。`assistant/message` 嵌入其提供方 stream，并禁止 `sourceEventSeqs`。System、user 与 tool surface 事件可以在来源归属或替换覆盖需要时引用完整、非空且唯一的较早事件集合。`tool/result` 仅在消息带有 `isError: true` 时可以携带 `data.error`；失败结果的失败身份仍可省略。
+每个 surface 事件都要求 `surfaceOp`；已知仅日志事件禁止两个 surface 元数据字段。原生未知的非 critical 事件或已退役的可忽略信封保持不透明。`assistant/message` 嵌入其提供方 stream，并禁止 `sourceEventSeqs`。System、user 与 tool surface 事件可以在来源归属或替换覆盖需要时引用完整、非空且唯一的较早事件集合。`tool/result` 仅在消息带有 `isError: true` 时可以携带 `data.error`；失败结果的失败身份仍可省略。
 
 <a id="surface-types"></a>
 
@@ -588,7 +591,8 @@ declare class Session {
    *
    * @param type - The event type (key of {@link SessionEventMap}).
    * @param data - The event payload; must be JSON-serializable.
-   * @param opts - Surface metadata: `surfaceOp` controls how the event enters
+   * @param opts - Log-only events may explicitly set `ignorable`; surface events supply
+   *   `surfaceOp` to control how the event enters
    *   the ordered surface; `sourceEventSeqs` lists the seq numbers of earlier
    *   events this one derives from. REQUIRED for
    *   {@link SurfaceEventType} events (every message-producing event must
@@ -620,7 +624,7 @@ declare class Session {
   append<T extends SessionEventType>(
     type: T,
     data: SessionEventMap[T],
-    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T>] : []
+    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T>] : [opts?: SessionAppendCompatibility]
     ): SessionEvent<T>;
   /**
    * The {@link EpochHeader} in force after the log's last header event — the

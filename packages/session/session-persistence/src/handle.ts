@@ -19,6 +19,14 @@ export interface SessionHandleReadOptions {
   readonly signal?: AbortSignal
 }
 
+/** Unknown non-critical events omitted from Session reconstruction. */
+export interface SessionSkippedEvents {
+  /** Number of skipped events in this read. */
+  readonly count: number
+  /** Sorted distinct skipped event types. */
+  readonly types: readonly string[]
+}
+
 /** One persistence event slice returned by {@link SessionHandle.read}. */
 export interface SessionHandleReadResult {
   /**
@@ -28,6 +36,8 @@ export interface SessionHandleReadResult {
   readonly eventState: SessionSeedEventState
   /** Event values in a caller-owned outer array. */
   readonly events: readonly SessionEvent[]
+  /** Unknown non-critical events excluded from reconstruction in the complete source log, not only this slice. */
+  readonly skipped?: SessionSkippedEvents | undefined
 }
 
 /** Options for {@link SessionHandle.append}. */

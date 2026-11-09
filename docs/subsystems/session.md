@@ -275,15 +275,18 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
     data: SessionEventMap[K]
     /**
      * Marks an event a reader may safely skip when it does not recognize
-     * `type`. Absent means required: a reader meeting an unrecognized type
-     * without this marker MUST refuse to reconstruct the session instead of
-     * silently dropping the event, because an unrecognized required event may
-     * change how the rest of the log is interpreted. A writer sets `true` only
-     * on purely informational records whose loss cannot affect reconstruction;
-     * defaulting to required means a forgotten marker over-refuses (an
-     * inconvenience) rather than silently resuming a gutted session.
+     * `type`. Unknown events are skipped by default and retain their original
+     * sequence numbers and opaque payloads. Writers set this explicitly on
+     * informational records so older readers with a fail-closed vocabulary can
+     * skip them too.
      */
     ignorable?: true
+    /**
+     * Refuses reconstruction by a reader that does not recognize `type`.
+     * Use only when omitting the event could change the meaning of later
+     * events. Readers that recognize the type ignore this marker.
+     */
+    critical?: true
   } & (K extends SurfaceEventType ? SurfaceIntent<K> : {
     surfaceOp?: never
     sourceEventSeqs?: never
@@ -291,9 +294,9 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }[T]
 ```
 
-`SessionEventType = keyof SessionEventMap`. Because `SessionEventMap` is merge-extensible, switches over `SessionEvent` must NOT use `assertNever` — a plugin-added variant is a valid unknown value; handle the known cases and fall through `default`.
+`SessionEventType = keyof SessionEventMap`. `SessionAppendCompatibility` carries optional `ignorable?: true` for informational log-only events. Because `SessionEventMap` is merge-extensible, switches over `SessionEvent` must NOT use `assertNever` — a plugin-added variant is a valid unknown value; handle the known cases and fall through `default`.
 
-Every surface event requires `surfaceOp`; known log-only events forbid both surface metadata fields. Native unknown or obsolete ignorable envelopes remain opaque. `assistant/message` embeds its provider stream and forbids `sourceEventSeqs`. System, user, and tool surface events may cite a complete non-empty set of unique earlier events when source attribution or replacement coverage requires it. A `tool/result` may carry `data.error` only when its message has `isError: true`; failure identity remains optional for failed results.
+Every surface event requires `surfaceOp`; known log-only events forbid both surface metadata fields. Native unknown non-critical or obsolete ignorable envelopes remain opaque. `assistant/message` embeds its provider stream and forbids `sourceEventSeqs`. System, user, and tool surface events may cite a complete non-empty set of unique earlier events when source attribution or replacement coverage requires it. A `tool/result` may carry `data.error` only when its message has `isError: true`; failure identity remains optional for failed results.
 
 ## Surface types
 
@@ -586,7 +589,8 @@ declare class Session {
    *
    * @param type - The event type (key of {@link SessionEventMap}).
    * @param data - The event payload; must be JSON-serializable.
-   * @param opts - Surface metadata: `surfaceOp` controls how the event enters
+   * @param opts - Log-only events may explicitly set `ignorable`; surface events supply
+   *   `surfaceOp` to control how the event enters
    *   the ordered surface; `sourceEventSeqs` lists the seq numbers of earlier
    *   events this one derives from. REQUIRED for
    *   {@link SurfaceEventType} events (every message-producing event must
@@ -618,7 +622,7 @@ declare class Session {
   append<T extends SessionEventType>(
     type: T,
     data: SessionEventMap[T],
-    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T>] : []
+    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T>] : [opts?: SessionAppendCompatibility]
     ): SessionEvent<T>;
   /**
    * The {@link EpochHeader} in force after the log's last header event — the

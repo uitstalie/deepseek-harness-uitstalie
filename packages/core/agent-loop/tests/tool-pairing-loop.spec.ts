@@ -191,7 +191,7 @@ describe('request tool-call pairing at the loop boundary', () => {
       expect(JSON.stringify(results[0])).toContain('no result was recorded')
       // The repair is a durable, log-only fact.
       const repair = agent.session.snapshotEvents().find(e => e.type === 'agent/tool-pair-repair')
-      expect(repair).toBeDefined()
+      expect(repair).toMatchObject({ ignorable: true })
       // The derived history keeps the truthful gap — only the request was repaired.
       expect(agent.session.deriveMessages()
         .some(m => m.role === 'tool' && String((m as { toolCallId?: string }).toolCallId) === 'victim')).toBe(false)

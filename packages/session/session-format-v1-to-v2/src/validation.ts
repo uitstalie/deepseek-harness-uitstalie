@@ -18,8 +18,8 @@ const HEADER_REQUIRED = ['version', 'id', 'createdAt', 'isSeeded', 'delegationDe
 const HEADER_OPTIONAL = ['cwd', 'parentSession', 'origin', 'agentPreset'] as const
 const EVENT_REQUIRED = ['type', 'seq', 'time', 'data'] as const
 const SURFACE_TYPES = new Set(['user/message', 'assistant/message', 'tool/result'])
-const SURFACE_OPTIONAL = ['ignorable', 'sourceEventSeqs', 'surfaceOp'] as const
-const LOG_OPTIONAL = ['ignorable'] as const
+const SURFACE_OPTIONAL = ['ignorable', 'critical', 'sourceEventSeqs', 'surfaceOp'] as const
+const LOG_OPTIONAL = ['ignorable', 'critical'] as const
 const RELEASED_V2_RELATIONSHIP_EXTENSIONS = {
   stepEvents: new Set(['assistant/attempt']),
   preservedSourceTitleRequestText: true,
@@ -83,6 +83,9 @@ function validateReleasedV2Artifact(
     sessionFormatSafeInteger(record['time'], `format v2 event ${index} time`)
     if (record['ignorable'] !== undefined && record['ignorable'] !== true) {
       throw new SessionFormatError(`format v2 event ${index} ignorable must be true when present`)
+    }
+    if (record['critical'] !== undefined && record['critical'] !== true) {
+      throw new SessionFormatError(`format v2 event ${index} critical must be true when present`)
     }
     if (type === 'session/end-seed') {
       const data = releasedV2Record(event.data, `session/end-seed ${index} data`)

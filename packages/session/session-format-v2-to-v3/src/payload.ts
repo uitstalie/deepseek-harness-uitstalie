@@ -258,7 +258,7 @@ function assertFeedback(type: string, data: SessionFormatJsonObject): void {
 
 /**
  * Validate one canonical V3 event without interpreting plugin-owned payloads or log relationships.
- * Unclassified metadata is deferred to vocabulary-aware restoration; unknown required types must not become recoverable corruption.
+ * Unclassified metadata is deferred to vocabulary-aware restoration; critical unknown types must not become recoverable corruption.
  * @param event - decoded logical event.
  * @param knownEventTypes - additional installed event types whose envelopes are interpreted.
  */
@@ -273,12 +273,15 @@ export function assertV3Event(event: SessionFormatEvent, knownEventTypes?: Reado
     || knownEventTypes?.has(event.type) === true)
   const opaque = !known
   keys(value, ['type', 'seq', 'time', 'data'],
-    SURFACE_TYPES.has(event.type) || opaque ? ['ignorable', 'surfaceOp', 'sourceEventSeqs'] : ['ignorable'], subject)
+    SURFACE_TYPES.has(event.type) || opaque ? ['ignorable', 'critical', 'surfaceOp', 'sourceEventSeqs'] : ['ignorable', 'critical'], subject)
   if (typeof event.type !== 'string') throw new SessionFormatError(`${subject} type must be a string`)
   sessionFormatCount(event.seq, `${subject} seq`)
   sessionFormatSafeInteger(event.time, `${subject} time`)
   if (Object.hasOwn(value, 'ignorable') && value['ignorable'] !== true) {
     throw new SessionFormatError(`${subject} ignorable must be true when present`)
+  }
+  if (Object.hasOwn(value, 'critical') && value['critical'] !== true) {
+    throw new SessionFormatError(`${subject} critical must be true when present`)
   }
   if (SURFACE_TYPES.has(event.type)) {
     const operation = value['surfaceOp']

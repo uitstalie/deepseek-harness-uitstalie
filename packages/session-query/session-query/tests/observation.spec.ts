@@ -48,6 +48,7 @@ interface StoredEntry {
   header: SessionHeader
   events: SessionEvent[]
   revision: string
+  skipped?: { count: number; types: readonly string[] }
 }
 
 interface StubCounters {
@@ -117,7 +118,7 @@ function stubPersistence(
         }
         const events = structuredClone(entry.events)
         hooks.onReadResult?.(events)
-        return Promise.resolve({ eventState: 'detached', events })
+        return Promise.resolve({ eventState: 'detached', events, skipped: entry.skipped })
       },
       append: () => Promise.reject(new SessionReadOnlyError(id, 'append')),
       flush: () => Promise.reject(new SessionReadOnlyError(id, 'flush')),
@@ -238,6 +239,28 @@ describe('SessionObservationReader cold path', () => {
     expect(observed.projections).toBeUndefined()
     // Balancing is in-memory only: nothing was written back to the store.
     expect(store.get(meta.id)?.events).toHaveLength(2)
+    await ctx.fiber.dispose()
+  })
+
+  it('warns once and reports unknown events skipped from a cached cold observation', async () => {
+    const ctx = await readerContext()
+    const meta = header('unknown-cold')
+    const store = new Map([[meta.id, {
+      header: meta, events: [messageEvent(0, 'before'), messageEvent(1, 'after')], revision: 'r1',
+      skipped: { count: 1, types: ['agent/tool-pair-repair'] },
+    }]])
+    ctx.provide('sessionPersistence', stubPersistence(store, { stat: 0, open: 0, read: 0 }))
+    const warning = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => undefined)
+    const reader = new SessionObservationReader(ctx)
+
+    using first = await reader.read(meta.id, { projectionMode: 'none' })
+    using second = await reader.read(meta.id, { projectionMode: 'none' })
+
+    expect(first.skipped).toEqual({ count: 1, types: ['agent/tool-pair-repair'] })
+    expect(first.events.map(event => (event.data as { content: { text: string }[] }).content[0]?.text)).toEqual(['before', 'after'])
+    expect(second.skipped).toBe(first.skipped)
+    expect(warning).toHaveBeenCalledOnce()
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('skipped 1 unknown event(s): agent/tool-pair-repair'))
     await ctx.fiber.dispose()
   })
 

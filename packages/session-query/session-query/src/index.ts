@@ -81,6 +81,7 @@ export {
 } from './filters.ts'
 export { assertSessionHeadersCompatible } from './sources.ts'
 export type { SessionObservation, SessionObservationOptions } from './observation.ts'
+export type { SessionSkippedEvents } from '@deepseek-ai/dsh-session-persistence'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

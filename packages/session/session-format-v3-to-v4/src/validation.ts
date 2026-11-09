@@ -1,7 +1,7 @@
 /** Native V4 metadata and generation-owned relationship validation. */
 
 import { isAbsolute } from 'node:path'
-import { SessionFormatError, SessionFormatUnsupportedMigrationError, isSessionFormatJsonObject, sessionFormatCount } from '@deepseek-ai/dsh-session-format'
+import { SessionFormatError, SessionFormatUnsupportedMigrationError, isSessionFormatJsonObject, sessionFormatCount, sessionFormatSafeInteger } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatArtifact, SessionFormatEvent, SessionFormatJsonObject, SessionFormatJsonValue } from '@deepseek-ai/dsh-session-format'
 import { assertV4DeveloperData } from './developer.ts'
 import { assertV4LifecycleRelationships } from './relationships.ts'
@@ -56,12 +56,22 @@ export function restoreReleasedV4Artifact(artifact: SessionFormatArtifact, known
   if (!artifact.header.isSeeded && cut !== 0) throw new SessionFormatError('unseeded format v4 Session has inherited events')
   let lastInheritedMarker: number | undefined
   for (const [index, event] of artifact.events.entries()) {
-    if (!knownEventTypes.has(event.type) && event['ignorable'] !== true) {
+    if (!isSessionFormatJsonObject(event)) throw new SessionFormatError(`format v4 event ${index} must be an object`)
+    if (event.seq !== index) throw new SessionFormatError(`format v4 event ${index} is not dense`)
+    for (const key of ['type', 'time', 'data']) {
+      if (!Object.hasOwn(event, key)) throw new SessionFormatError(`format v4 event ${index} lacks required field ${key}`)
+    }
+    const unexpected = Object.keys(event).find(key => !['type', 'seq', 'time', 'data', 'ignorable', 'critical', 'sourceEventSeqs', 'surfaceOp'].includes(key))
+    if (unexpected !== undefined) throw new SessionFormatError(`format v4 event ${index} has unexpected field ${unexpected}`)
+    if (typeof event.type !== 'string') throw new SessionFormatError(`format v4 event ${index} type must be a string`)
+    sessionFormatSafeInteger(event.time, `format v4 event ${index} time`)
+    if (event['ignorable'] !== undefined && event['ignorable'] !== true) throw new SessionFormatError(`format v4 event ${index} ignorable must be true`)
+    if (event['critical'] !== undefined && event['critical'] !== true) throw new SessionFormatError(`format v4 event ${index} critical must be true`)
+    if (!knownEventTypes.has(event.type) && event['critical'] === true) {
       throw new SessionFormatUnsupportedMigrationError(
-        `format v4 contains unknown event type ${JSON.stringify(event.type)} at seq ${index}`,
+        `format v4 contains critical unknown event type ${JSON.stringify(event.type)} at seq ${index}`,
       )
     }
-    if (event.seq !== index) throw new SessionFormatError(`format v4 event ${index} is not dense`)
     if (!knownEventTypes.has(event.type)) continue
     assertV4RetiredSyntax(event)
     assertV4SystemMessageFields(event)
@@ -102,8 +112,8 @@ export function validateDeliveryAccepted(event: SessionFormatEvent, currentVersi
 /**
  * Validate native developer fields, message sources, lifecycle, catalog, and delivery
  * relationships without changing event vocabulary or tail recovery.
- * The owning admission stage rejects unknown required events;
- * unknown ignorable records retain their uninterpreted payloads.
+ * The owning admission stage rejects critical unknown events;
+ * other unknown records retain their uninterpreted payloads.
  * @param artifact - decoded artifact with its final inherited cut.
  * @param knownEventTypes - installed event types whose payloads this reader interprets.
  */

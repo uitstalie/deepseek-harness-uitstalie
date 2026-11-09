@@ -151,7 +151,7 @@ describe('V3 to V4 source preservation', () => {
     expect(() => migrate([fact, seed, { ...foreign, seq: 2 }], { ...header, isSeeded: true, parentSession: 'ancestor' })).toThrow('wrong Session')
   })
 
-  it('retains unknown ignorable values and refuses unknown required events during strict catalog restoration', () => {
+  it('retains unknown values and refuses critical unknown events during strict catalog restoration', () => {
     const opaque: SessionFormatEvent = {
       type: 'external/opaque', seq: 0, time: -5, ignorable: true,
       data: { nested: { seq: 40 }, content: ['opaque'] }, surfaceOp: { future: { ref: 9 } },
@@ -159,6 +159,7 @@ describe('V3 to V4 source preservation', () => {
     expect(restore([opaque]).events).toEqual([{ ...opaque, type: 'plugin:external/opaque' }])
     const { ignorable: _ignorable, ...required } = opaque
     expect(() => restore([required])).toThrow('unknown event type')
+    expect(() => restore([{ ...opaque, critical: true }])).toThrow('critical unknown event type')
     expect(() => restore([{ ...fact, time: 1.5 }])).toThrow('time')
     expect(() => restore([{ ...fact, extra: 1 }])).toThrow(/field|member/)
   })

@@ -438,6 +438,11 @@ export interface SessionEventMap {
 /** The appendable event-type keys of {@link SessionEventMap}, plugin-merged extensions included. */
 export type SessionEventType = keyof SessionEventMap
 
+/** Explicit forward-compatibility marker for an informational log-only event. */
+export interface SessionAppendCompatibility {
+  readonly ignorable?: true
+}
+
 /**
  * The subset of {@link SessionEventType} values whose events produce LLM
  * messages and are eligible to appear on the ordered surface. Only these
@@ -508,15 +513,18 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
     data: SessionEventMap[K]
     /**
      * Marks an event a reader may safely skip when it does not recognize
-     * `type`. Absent means required: a reader meeting an unrecognized type
-     * without this marker MUST refuse to reconstruct the session instead of
-     * silently dropping the event, because an unrecognized required event may
-     * change how the rest of the log is interpreted. A writer sets `true` only
-     * on purely informational records whose loss cannot affect reconstruction;
-     * defaulting to required means a forgotten marker over-refuses (an
-     * inconvenience) rather than silently resuming a gutted session.
+     * `type`. Unknown events are skipped by default and retain their original
+     * sequence numbers and opaque payloads. Writers set this explicitly on
+     * informational records so older readers with a fail-closed vocabulary can
+     * skip them too.
      */
     ignorable?: true
+    /**
+     * Refuses reconstruction by a reader that does not recognize `type`.
+     * Use only when omitting the event could change the meaning of later
+     * events. Readers that recognize the type ignore this marker.
+     */
+    critical?: true
   } & (K extends SurfaceEventType ? SurfaceIntent<K> : {
     surfaceOp?: never
     sourceEventSeqs?: never

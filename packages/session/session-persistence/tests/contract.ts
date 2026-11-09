@@ -500,37 +500,30 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
       }
     })
 
-    it('vocabulary fail-closed: an unknown stored event type refuses reads and write opens', async () => {
+    it('skips unknown stored events but refuses critical unknown types', async () => {
       const { persistence, dispose } = await make()
       try {
         const m = meta('foreign-vocabulary')
         const handle = await persistence.create(m)
-        // The append side is permissive — a newer producer's event type is
-        // stored verbatim…
         await handle.append(oneTurnLog())
         await handle.append([
           { type: 'mystery/event', seq: SessionSeq(6), time: 7, data: { payload: true } },
         ] as unknown as SessionEvent[])
         await handle.close()
 
-        // …but this build refuses to interpret the stored log: a write open
-        // rejects, and a read handle (or its first read) rejects.
-        await expect(persistence.open(m.id, 'write')).rejects.toBeInstanceOf(SessionFormatUnsupportedError)
-        // The failed write open released its ownership claim: retrying yields
-        // the same refusal, never SessionAlreadyOwnedError.
-        await expect(persistence.open(m.id, 'write')).rejects.toBeInstanceOf(SessionFormatUnsupportedError)
-        const readFailure = await persistence.open(m.id, 'read').then(
-          async (reader) => {
-            try {
-              return await reader.read().then(() => undefined, (error: unknown) => error)
-            } finally {
-              await reader.close()
-            }
-          },
-          (error: unknown) => error,
-        )
-        expect(readFailure).toBeInstanceOf(SessionFormatUnsupportedError)
-        expect((readFailure as Error).message).toContain('mystery/event')
+        const reader = await persistence.open(m.id, 'read')
+        await expect(reader.read()).resolves.toMatchObject({ skipped: { count: 1, types: ['mystery/event'] } })
+        await reader.close()
+        const writer = await persistence.open(m.id, 'write')
+        await writer.close()
+
+        const critical = await persistence.create(meta('critical-vocabulary'))
+        await critical.append([
+          { type: 'mystery/critical', seq: SessionSeq(0), time: 1, data: {}, critical: true },
+        ] as unknown as SessionEvent[])
+        await critical.close()
+        await expect(persistence.open(SessionId('critical-vocabulary'), 'write')).rejects.toBeInstanceOf(SessionFormatUnsupportedError)
+        await expect(persistence.open(SessionId('critical-vocabulary'), 'write')).rejects.toBeInstanceOf(SessionFormatUnsupportedError)
       } finally {
         await dispose()
       }

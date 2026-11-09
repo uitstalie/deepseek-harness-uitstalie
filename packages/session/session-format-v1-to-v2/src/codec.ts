@@ -19,7 +19,7 @@ import { assertReleasedV2Header } from './validation.ts'
 const HEADER_REQUIRED = ['type', 'version', 'id', 'createdAt', 'isSeeded', 'delegationDepth'] as const
 const HEADER_OPTIONAL = ['cwd', 'parentSession', 'origin', 'agentPreset'] as const
 const EVENT_REQUIRED = ['type', 'seq', 'time', 'data'] as const
-const EVENT_OPTIONAL = ['ignorable', 'sourceEventSeqs', 'surfaceOp'] as const
+const EVENT_OPTIONAL = ['ignorable', 'critical', 'sourceEventSeqs', 'surfaceOp'] as const
 const EVENT_KEYS: ReadonlySet<string> = new Set([...EVENT_REQUIRED, ...EVENT_OPTIONAL])
 /** Frozen physical JSON codec for released v2. */
 export const releasedV2SessionFormatCodec = Object.freeze({
@@ -143,6 +143,9 @@ function decodeEvent(value: unknown, rowIndex: number): SessionFormatEvent {
   sessionFormatSafeInteger(record['time'], `released v2 row ${rowIndex} time`)
   if (record['ignorable'] !== undefined && record['ignorable'] !== true) {
     throw new SessionFormatError(`released v2 row ${rowIndex} ignorable must be true when present`)
+  }
+  if (record['critical'] !== undefined && record['critical'] !== true) {
+    throw new SessionFormatError(`released v2 row ${rowIndex} critical must be true when present`)
   }
   if (record['sourceEventSeqs'] === undefined) return record as SessionFormatEvent
   const seq = sessionFormatCount(record['seq'], `released v2 row ${rowIndex} seq`)

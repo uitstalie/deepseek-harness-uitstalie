@@ -1,6 +1,6 @@
 /**
- * Backend-shared storage validation: the version gate, the fail-closed event
- * vocabulary, append-batch materialization, and contiguity — one place so
+ * Backend-shared storage validation: the version gate, forward-compatible event
+ * admission, append-batch materialization, and contiguity — one place so
  * every backend refuses the same inputs identically.
  * @module @deepseek-ai/dsh-session-persistence/storage-contract
  */
@@ -54,11 +54,9 @@ export function assertVersion(
 
 /**
  * Validate one exclusively owned stored event array in place: adopt each
- * record (validating and freezing it) and refuse any event type this build
- * does not know, unless its writer marked it `ignorable: true` — silently
- * skipping an unknown required event could reconstruct a wrong session (the
- * envelope contract on `SessionEvent.ignorable`). Unknown required types and
- * retired pre-release shapes refuse here; this validator performs no migration.
+ * record (validating and freezing it) and refuse an unknown event type only
+ * when its writer marked it `critical: true`. Other unknown events remain
+ * opaque and do not affect state reconstruction; this validator performs no migration.
  * @param meta - the stored header the events belong to.
  * @param events - exclusively owned decoded events; validated in place.
  * @param location - the backend's artifact location for refusals, when one exists.
@@ -72,9 +70,16 @@ export function validateStoredEvents(
   location?: SessionLocation,
 ): SessionEvent[] {
   for (const event of events) {
-    if (!KNOWN_SESSION_EVENT_TYPES.has(event.type) && event.ignorable !== true) {
+    if (!KNOWN_SESSION_EVENT_TYPES.has(event.type) && event.critical === true) {
       throw unsupported(
-        `session "${meta.id}" contains event type "${event.type}" (seq ${event.seq}) unknown to this harness and not marked ignorable; refusing to interpret the log — it was likely written by a newer harness`,
+        `session "${meta.id}" contains critical event type "${event.type}" (seq ${event.seq}) unknown to this harness; use the writing harness or a reader that supports this event type`,
+        location,
+      )
+    }
+    const eventType: string = event.type
+    if (eventType === 'request/header-delta') {
+      throw unsupported(
+        `session "${meta.id}" contains retired event type "request/header-delta" (seq ${event.seq}); use a harness that supports its historical migration`,
         location,
       )
     }

@@ -7,6 +7,7 @@ import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
 import type {
   SessionPersistenceRevision,
   SessionPersistenceSnapshot,
+  SessionSkippedEvents,
 } from '@deepseek-ai/dsh-session-persistence'
 import type { ProjectionSnapshot } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
@@ -31,6 +32,8 @@ export interface SessionObservation extends Disposable {
   readonly cursor: SessionSeqCursor
   /** Durable source revision for a cold prepared observation. */
   readonly revision?: SessionPersistenceRevision
+  /** Unknown non-critical events excluded from reconstruction, with a warning on first cold read. */
+  readonly skipped?: SessionSkippedEvents | undefined
   /** Exact projection baseline at {@link cursor}, when the registry is mounted. */
   readonly projections?: ProjectionSnapshot
   /**
@@ -62,6 +65,8 @@ interface PreparedEntry {
   readonly session: Session
   /** Immutable balanced log (stored events plus in-memory interrupted-turn closers). */
   readonly events: readonly SessionEvent[]
+  /** Unknown non-critical events omitted from reconstruction. */
+  readonly skipped?: SessionSkippedEvents | undefined
   /** Active observation leases; a pinned entry (`refs > 0`) is never evicted. */
   refs: number
 }
@@ -138,11 +143,17 @@ export class SessionObservationReader {
             { cause: error },
           )
         }
+        if (loaded.skipped !== undefined) {
+          this.ctx.logger.warn(
+            `session "${sessionId}" skipped ${loaded.skipped.count} unknown event(s): ${loaded.skipped.types.join(', ')}; their payloads were not reconstructed`,
+          )
+        }
         entry = {
           persistenceIdentity: persistence.identity,
           revision: snapshot.revision,
           session,
           events: Object.freeze(seed),
+          skipped: loaded.skipped,
           refs: 0,
         }
         this.store(sessionId, entry)
@@ -255,6 +266,7 @@ export class SessionObservationReader {
         events: entry.events,
         cursor: entry.events.at(-1)?.seq ?? -1,
         revision: entry.revision,
+        skipped: entry.skipped,
         ...projections === undefined ? {} : { projections },
         retain: () => {
           if (disposed) throw new Error(`session observation "${sessionId}" is disposed`)
