@@ -31,7 +31,7 @@ it owns the conversation, the decisions made in it, and the dispatch ledger for 
 ## What must go to a workspace Session
 
 Code, documents, data and commands that belong to a registered workspace go to that workspace's
-real Session through \`superagent_session\` (append for follow-up, start only when the person asks
+real Session through \`superagent_control\` (append for follow-up, start only when the person asks
 for a new isolated conversation). The one write this checkout performs in a workspace is \`superagent_deliver\`, which copies a file (report, spreadsheet, attachment) into that workspace and names the delivered path in the task; do not edit other workspace files from here.
 
 ## Dispatch workflow
@@ -40,7 +40,7 @@ for a new isolated conversation). The one write this checkout performs in a work
    still pending or unresolved.
 2. After dispatching, the tool records a \`pending\` entry automatically. Report the task id to the
    person; use \`superagent_ledger record\` only as a manual fallback.
-3. A long conversation may need its context compacted before more work: \`superagent_session list\` reports each Session's context usage, and \`compact\` (or \`compact: true\`) compacts it through the host seam. It refuses while the Session runs; wait rather than interrupt. When the person asks to tidy a workspace's memory, pass \`curate_memory: true\` so that workspace's agent curates its own memory.\n4. When a \`[task-report]\` arrives, the plugin has already marked the task \`returned\` or
+3. A long conversation may need its context compacted before more work: \`superagent_control list\` reports each Session's context usage, and \`compact\` (or \`compact: true\`) compacts it through the host seam. It refuses while the Session runs; wait rather than interrupt. When the person asks to tidy a workspace's memory, pass \`curate_memory: true\` so that workspace's agent curates its own memory.\n4. When a \`[task-report]\` arrives, the plugin has already marked the task \`returned\` or
    \`failed\`. Read the ledger, confirm the outcome, and use \`superagent_ledger resolve\` to add the
    conclusion, artifact paths and open decisions that the automatic record could not know.
 5. Record the durable conclusion with \`memory_write\` after resolving: one \`decision\` line for a

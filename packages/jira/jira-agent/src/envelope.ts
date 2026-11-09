@@ -34,13 +34,13 @@ export type ToolValue = Readonly<{
   counts?: unknown
   /** `superagent_status`: what needs a person now. */
   needsPerson?: unknown
-  /** `superagent_workspace`: the registered workspaces, or the one just registered. */
+  /** `superagent_control`: the registered workspaces, or the one just registered. */
   workspaces?: unknown
   workspace?: unknown
   /** `superagent_models`: the providers, models, or one model's effort rows. */
   providers?: unknown
   models?: unknown
-  /** `superagent_session`: the model route selected for the next turn, when one was requested. */
+  /** `superagent_control`: the model route selected for the next turn, when one was requested. */
   model?: unknown
   /** `superagent_permission`: available presets or the verified permission of the target Session. */
   permission?: unknown
@@ -53,32 +53,32 @@ export type ToolValue = Readonly<{
   memory?: unknown
   ledger?: unknown
   ledgerError?: unknown
-  /** `superagent_workspace remove/rename`: whether the registration changed, and what was kept. */
+  /** `superagent_control remove_workspace/rename_workspace`: the changed registration and retained files. */
   removed?: unknown
   renamed?: unknown
   directoryKept?: unknown
   sessionsKept?: unknown
-  /** `superagent_session`: the workspace Session started, continued, archived or branched (DH-719). */
+  /** `superagent_control`: the workspace Session started, continued, archived or branched (DH-719). */
   session?: unknown
-  /** `superagent_session action: 'list'`: the Sessions of one workspace. */
+  /** `superagent_control action: 'list'`: the Sessions of one workspace. */
   sessions?: unknown
   /** `superagent_deliver`: the file copied into a registered workspace. */
   delivered?: unknown
-  /** `superagent_session`: one Session's context usage (list rows, or the compaction result). */
+  /** `superagent_control`: one Session's context usage (list rows, or the compaction result). */
   usage?: unknown
-  /** `superagent_session action: 'compact'`: the before/after usage and shadowed token count. */
+  /** `superagent_control action: 'compact'`: the before/after usage and shadowed token count. */
   compaction?: unknown
-  /** `superagent_session action: 'list'`: the percentage at which a row starts suggesting compaction. */
+  /** `superagent_control action: 'list'`: the percentage at which a row starts suggesting compaction. */
   compactThresholdPercent?: unknown
-  /** `superagent_session`: how the instruction was delivered and where it landed. */
+  /** `superagent_control`: how the instruction was delivered and where it landed. */
   delivery?: unknown
-  /** `superagent_session`: a Session's live status (turn start, elapsed, last activity, in-flight tool). */
+  /** `superagent_control`: a Session's live status (turn start, elapsed, last activity, in-flight tool). */
   status?: unknown
-  /** `superagent_session action: 'inspect'`: the recent step/tool/error trail. */
+  /** `superagent_control action: 'inspect'`: the recent step/tool/error trail. */
   activity?: unknown
-  /** `superagent_session action: 'abort'`: the captured scene and whether the Session resumed. */
+  /** `superagent_control action: 'abort'`: the captured scene and whether the Session resumed. */
   abort?: unknown
-  /** `superagent_session action: 'list'`: the long-running suggestion threshold in minutes. */
+  /** `superagent_control action: 'list'`: the long-running suggestion threshold in minutes. */
   longRunningMinutes?: unknown
   /** `superagent_dispatch`: the executor Session that was started (DH-702). */
   dispatch?: unknown
@@ -94,7 +94,7 @@ export type ToolValue = Readonly<{
   writable: boolean
   reason?: string
   me?: unknown
-  /** `superagent_session stop`: the cut-off report for one running turn. */
+  /** `superagent_control stop`: the cut-off report for one running turn. */
   stop?: unknown
   /** Files this answer had to skip (decision 80); `message` says the answer is therefore partial. */
   rejected?: readonly Readonly<{ file: string; reason: string }>[]

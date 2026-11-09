@@ -45,7 +45,7 @@ export const PERMISSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object
 export const PERMISSION_DESCRIPTION =
   'Inspect or change the permission of ONE Session in a named registered workspace. `list` needs no '
   + 'target; `get` and `set` require both `workspace` and an exact `session` id. New Sessions started '
-  + 'with superagent_session explicitly use workspace-write. Use list before set: only registered '
+  + 'with superagent_control explicitly use workspace-write. Use list before set: only registered '
   + 'names are accepted. `soft` means full process file access plus the guarded tool/path blacklist, '
   + 'not OS confinement; it is refused while an OS sandbox is active. Changes are durable and apply '
   + 'to subsequent tool calls. Widening access needs `reason`; no separate human approval is requested.'

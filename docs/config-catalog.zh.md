@@ -2001,7 +2001,7 @@ export type Config = Readonly<{
    */
   superagent_permission_preset?: string
   /**
-   * The preset a workspace Session started by `superagent_session start` joins; unset keeps the
+   * The preset a workspace Session started by `superagent_control start` joins; unset keeps the
    * deployment's default composition (DH-719).
    */
   superagent_agent_preset?: string

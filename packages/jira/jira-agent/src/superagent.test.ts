@@ -29,13 +29,12 @@ import {
   LEDGER_TOOL_NAME,
   MODELS_TOOL_NAME,
   PERMISSION_TOOL_NAME,
-  SESSION_TOOL_NAME,
+  CONTROL_TOOL_NAME,
   SOURCE_TOOL_NAME,
   STATUS_TOOL_NAME,
   SUPERAGENT_OUTPUT_SCHEMA,
   SUPERAGENT_SECTION_NAME,
   TOOL_NAME,
-  WORKSPACE_TOOL_NAME,
   WORK_TOOL_NAME,
   DELIVER_TOOL_NAME,
   MEMORY_CURATION_INSTRUCTION,
@@ -63,7 +62,7 @@ import {
   runLedgerTool,
   runModelsTool,
   runPermissionTool,
-  runSessionTool,
+  runControlTool,
   runSourceTool,
   runSuperagentPass,
   runWorkspaceTool,
@@ -358,7 +357,11 @@ describe('superagent: the workspace roster', () => {
   it('says so plainly when the deployment has no workspace registry', async () => {
     const { harness, main } = await mount()
     try {
-      const refused = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'roster' })
+      const refused = await call(harness, main, CONTROL_TOOL_NAME, { action: 'roster' })
+      const oldWorkspace = await dispatchTool(harness, main, 'superagent_workspace', { action: 'roster' }, 'old-workspace-refused')
+      const oldSession = await dispatchTool(harness, main, 'superagent_session', { action: 'list' }, 'old-session-refused')
+      assert.equal(oldWorkspace.isError, true)
+      assert.equal(oldSession.isError, true)
       assert.equal(refused.ok, false)
       assert.match(JSON.stringify(refused.error), /no workspace registry/u)
     } finally {
@@ -373,20 +376,42 @@ describe('superagent: the workspace roster', () => {
       const dir = await scratchDirectory()
       const target = join(dir, 'checkout')
 
-      const registered = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'ensure', path: target, title: 'the work' })
+      const registered = await call(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: target, title: 'the work' })
       assert.equal(registered.ok, true, JSON.stringify(registered.error))
+      const { CONTROL_DESCRIPTION, CONTROL_PARAMETERS } = jiraAgent
+      assert.equal(CONTROL_DESCRIPTION.includes('`ensure` registers'), true)
+      assert.deepEqual(Object.keys(CONTROL_PARAMETERS).sort(), [
+        'action', 'workspace', 'path', 'title', 'session', 'task', 'text', 'confirm',
+        'provider', 'model', 'reasoning_effort', 'atSeq', 'compact', 'curate_memory', 'delivery',
+      ].sort())
+      assert.equal(CONTROL_PARAMETERS.task?.required, undefined, 'task is required by start, not by every action')
+      assert.deepEqual(CONTROL_PARAMETERS.action?.enum, [
+        'roster', 'orphans', 'ensure', 'remove_workspace', 'rename_workspace',
+        'start', 'append', 'prompt', 'list', 'inspect', 'stop', 'abort', 'fork', 'archive', 'compact', 'delete',
+      ])
       const workspace = registered.workspace as Record<string, unknown>
       assert.equal(workspace.path, target)
       assert.equal(workspace.status, 'ok')
 
-      const again = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'ensure', path: target })
+      const again = await call(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: target })
       assert.equal(again.ok, true, JSON.stringify(again.error))
       assert.equal(registry.rows.length, 1, 'ensure is idempotent')
 
-      const roster = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'roster' })
+      const rosterCall = await dispatchTool(harness, main, CONTROL_TOOL_NAME, { action: 'roster' }, 'control-roster-render')
+      const roster = rosterCall.value as Record<string, unknown>
       const rows = roster.workspaces as Record<string, unknown>[]
       assert.equal(rows.length, 1)
       assert.equal(rows[0]?.title, 'the work')
+      assert.match(JSON.stringify(rosterCall.content), /the work.*checkout.*ok.*0 session/u)
+      const ensured = await dispatchTool(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: target }, 'control-ensure-render')
+      assert.match(JSON.stringify(ensured.content), /the work.*checkout/u)
+      const definition = harness.ctx.tools.get(CONTROL_TOOL_NAME, main)
+      assert.ok(definition !== undefined)
+      assert.equal(concurrencySafe(definition, { action: 'roster' }), true)
+      assert.equal(concurrencySafe(definition, { action: 'list' }), true)
+      assert.equal(concurrencySafe(definition, { action: 'inspect', session: 'one' }), true)
+      assert.equal(concurrencySafe(definition, { action: 'ensure', path: target }), false)
+      assert.equal(concurrencySafe(definition, { action: 'start', workspace: 'work', task: 'go' }), false)
     } finally {
       await harness.dispose()
     }
@@ -401,21 +426,21 @@ describe('superagent: workspace management', () => {
       const dir = await scratchDirectory()
       const qec = join(dir, 'qec')
       const work = join(dir, 'work')
-      await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'ensure', path: qec, title: 'qec' })
-      await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'ensure', path: work, title: 'the work' })
+      await call(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: qec, title: 'qec' })
+      await call(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: work, title: 'the work' })
       const qecRow = registry.rows.find(row => row.title === 'qec')
       assert.ok(qecRow !== undefined)
 
-      const refused = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'remove', workspace: 'qec', confirm: 'wrong' })
+      const refused = await call(harness, main, CONTROL_TOOL_NAME, { action: 'remove_workspace', workspace: 'qec', confirm: 'wrong' })
       assert.equal(refused.ok, false)
       assert.match(JSON.stringify(refused.error), /confirm/u)
       assert.equal(registry.rows.length, 2, 'a refused removal changes nothing')
 
-      const renamed = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'rename', workspace: 'the work', title: 'renamed' })
+      const renamed = await call(harness, main, CONTROL_TOOL_NAME, { action: 'rename_workspace', workspace: 'the work', title: 'renamed' })
       assert.equal(renamed.ok, true, JSON.stringify(renamed.error))
       assert.equal(registry.rows.find(row => row.path === work)?.title, 'renamed')
 
-      const removed = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'remove', workspace: 'qec', confirm: 'qec' })
+      const removed = await call(harness, main, CONTROL_TOOL_NAME, { action: 'remove_workspace', workspace: 'qec', confirm: 'qec' })
       assert.equal(removed.ok, true, JSON.stringify(removed.error))
       assert.equal(removed.removed, true)
       assert.equal(removed.directory_kept, true)
@@ -427,12 +452,12 @@ describe('superagent: workspace management', () => {
       const orphan = registry.rows.find(row => row.path === work)
       assert.ok(orphan !== undefined)
       orphan.status = async () => 'missing-dir'
-      const orphans = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'orphans' })
+      const orphans = await call(harness, main, CONTROL_TOOL_NAME, { action: 'orphans' })
       const rows = orphans.workspaces as Record<string, unknown>[]
       assert.deepEqual(rows.map(row => row.path), [work])
       assert.equal(rows[0]?.status, 'missing-dir')
 
-      const self = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'remove', workspace: 'qec', confirm: 'qec' })
+      const self = await call(harness, main, CONTROL_TOOL_NAME, { action: 'remove_workspace', workspace: 'qec', confirm: 'qec' })
       assert.equal(self.ok, false, 'the removed workspace is no longer found')
     } finally {
       await harness.dispose()
@@ -577,7 +602,7 @@ describe('superagent: workspace Sessions', () => {
     }
     const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
 
-    const started = await runSessionTool(
+    const started = await runControlTool(
       { action: 'start', workspace: 'hello', task: 'write the README' },
       options, me, permissionCtx, { agentPreset: 'cordis', tasks },
     )
@@ -591,7 +616,7 @@ describe('superagent: workspace Sessions', () => {
     assert.equal(tasks.get('w-session-2')?.[0]?.workspace, workspacePath)
     assert.equal((started.session as { workspaceTitle?: string }).workspaceTitle, 'hello')
 
-    const followed = await runSessionTool(
+    const followed = await runControlTool(
       { action: 'prompt', session: 'w-session-2', text: 'add a section' },
       options, me, ctx, { tasks },
     )
@@ -600,7 +625,7 @@ describe('superagent: workspace Sessions', () => {
     assert.equal(tasks.get('w-session-2')?.at(-1)?.superSession, 'super-1')
     assert.equal(tasks.get('w-session-2')?.length, 2, 'a queued follow-up must not overwrite the running task')
 
-    const listed = await runSessionTool({ action: 'list', workspace: 'hello' }, options, me, ctx, { tasks })
+    const listed = await runControlTool({ action: 'list', workspace: 'hello' }, options, me, ctx, { tasks })
     assert.equal(listed.ok, true, JSON.stringify(listed.error))
     const rows = listed.sessions as { id: string }[]
     assert.deepEqual(rows.map(row => row.id).sort(), ['w-session', 'w-session-2'], 'only the workspace Sessions, no children')
@@ -610,20 +635,20 @@ describe('superagent: workspace Sessions', () => {
       ...controller.items,
       { sessionId: 'w-newer', running: false, cwd: workspacePath, blank: false, updatedAt: 999 },
     ]
-    const ambiguous = await runSessionTool(
+    const ambiguous = await runControlTool(
       { action: 'append', workspace: 'hello', text: 'one more section' },
       options, me, permissionCtx, { tasks },
     )
     assert.equal(ambiguous.ok, false, 'append with several candidates must name the Session')
 
-    const routed = await runSessionTool(
+    const routed = await runControlTool(
       { action: 'append', workspace: 'hello', text: 'one more section', session: 'latest' },
       options, me, ctx, { tasks },
     )
     assert.equal(routed.ok, true, JSON.stringify(routed.error))
     assert.equal(controller.prompted.at(-1)?.sessionId, 'w-newer')
     assert.equal(tasks.get('w-newer')?.at(-1)?.superSession, 'super-1')
-    const foreign = await runSessionTool(
+    const foreign = await runControlTool(
       { action: 'append', workspace: 'hello', text: 'no', session: 'elsewhere' },
       options, me, ctx, { tasks },
     )
@@ -631,24 +656,24 @@ describe('superagent: workspace Sessions', () => {
     assert.match(JSON.stringify(foreign.error), /not a Session of/u)
 
     controller.items = []
-    const noTarget = await runSessionTool(
+    const noTarget = await runControlTool(
       { action: 'append', workspace: 'hello', text: 'nothing to continue' },
       options, me, ctx, { tasks },
     )
     assert.equal(noTarget.ok, false, 'append refuses when the workspace has no Session yet')
 
-    const archived = await runSessionTool({ action: 'archive', session: 'w-session-2' }, options, me, ctx, { tasks })
+    const archived = await runControlTool({ action: 'archive', session: 'w-session-2' }, options, me, ctx, { tasks })
     assert.equal(archived.ok, true, JSON.stringify(archived.error))
     assert.deepEqual(registry.archived, ['w-session-2'])
     assert.equal(tasks.has('w-session-2'), false)
 
-    const selfDelete = await runSessionTool(
+    const selfDelete = await runControlTool(
       { action: 'delete', session: 'super-1', confirm: 'super-1' },
       options, me, ctx, { tasks },
     )
     assert.equal(selfDelete.ok, false, 'the calling Session cannot delete itself')
 
-    const noDeleteApi = await runSessionTool(
+    const noDeleteApi = await runControlTool(
       { action: 'delete', session: 'w-session', confirm: 'w-session' },
       options, me, ctx, { tasks },
     )
@@ -660,7 +685,7 @@ describe('superagent: workspace Sessions', () => {
     deletingController.deleted = []
     deletingController.delete = async function (sessionId: string) { this.deleted.push(sessionId) }
     const deletingCtx = { get: (key: string) => key === 'sessionController' ? deletingController : key === 'workspaceRegistry' ? registry : undefined }
-    const deleted = await runSessionTool(
+    const deleted = await runControlTool(
       { action: 'delete', session: 'w-session', confirm: 'w-session' },
       options, me, deletingCtx, { tasks },
     )
@@ -668,7 +693,7 @@ describe('superagent: workspace Sessions', () => {
     assert.deepEqual(deletingController.deleted, ['w-session'])
     assert.equal(tasks.has('w-session'), false)
 
-    const forked = await runSessionTool({ action: 'fork', session: 'w-session', atSeq: 7 }, options, me, ctx, { tasks })
+    const forked = await runControlTool({ action: 'fork', session: 'w-session', atSeq: 7 }, options, me, ctx, { tasks })
     assert.equal(forked.ok, true, JSON.stringify(forked.error))
     assert.deepEqual(controller.forked, [{ sessionId: 'w-session', atSeq: 7 }])
     assert.equal(tasks.get('w-session-fork')?.at(-1)?.superSession, 'super-1')
@@ -832,7 +857,7 @@ describe('superagent: workspace Session permissions', () => {
     const prompts: unknown[] = []
     f.controller.prompt = async () => { prompts.push(true); return { accepted: true } }
     f.ctx.get = (key: string) => f.services[key]
-    const result = await runSessionTool(
+    const result = await runControlTool(
       { action: 'start', workspace: 'w1', task: 'must not run' }, f.options, { session: 'super' }, f.ctx, { tasks: new Map() },
     )
     assert.equal(result.ok, false)
@@ -891,7 +916,7 @@ describe('superagent: the dispatch ledger', () => {
         at: '2026-11-05T00:00:00Z' as never,
       }
       const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
-      const started = await runSessionTool(
+      const started = await runControlTool(
         { action: 'start', workspace: 'rimworld', task: 'build the colony' },
         options, me, ctx, { agentPreset: 'worker', tasks: new Map() },
       )
@@ -942,7 +967,7 @@ describe('superagent: dispatch argument and result corrections', () => {
   it('lists all action requirements together before doing any Session work', async () => {
     const { harness } = await mount()
     try {
-      const result = await runSessionTool({ action: 'append' }, {
+      const result = await runControlTool({ action: 'append' }, {
         jira: {} as never,
         caller: { writable: true, sessionId: 'super-1', cwd: 'D:\\super' } as never,
         at: AT as never,
@@ -952,10 +977,61 @@ describe('superagent: dispatch argument and result corrections', () => {
           : undefined,
       }, { tasks: new Map() })
       assert.equal(result.ok, false)
-      assert.match(result.error?.message ?? '', /append needs `workspace`, `session`, `text`/u)
-      assert.deepEqual(result.error?.context?.missing, ['workspace', 'session', 'text'])
+      assert.match(result.error?.message ?? '', /append has 3 argument problem\(s\)/u)
+      assert.deepEqual(result.error?.context?.issues, [
+        'missing required argument "workspace"',
+        'missing required argument "session"',
+        'missing required argument "text"',
+      ])
     } finally {
       await harness.dispose()
+    }
+  })
+
+  it('preflights every combined-action rule before any registry or Session write', async () => {
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: 'D:\\super' } as never,
+      at: AT as never,
+    }
+    const me = { session: 'super-1' }
+    const controller = {
+      create: () => assert.fail('validation must not create a Session'),
+      prompt: () => assert.fail('validation must not prompt'),
+      list: async () => ({ items: [] }),
+    }
+    const ctx = { get: (key: string) => key === 'sessionController' ? controller : undefined }
+    const cases = [
+      [{ action: 'start', session: 'old', text: 'follow-up' }, ['workspace', 'task', 'not session or text']],
+      [{ action: 'append', workspace: 'work', session: 'one' }, ['text']],
+      [{ action: 'prompt' }, ['session', 'text']],
+      [{ action: 'abort', session: 'one' }, ['text']],
+      [{ action: 'ensure' }, ['path']],
+      [{ action: 'remove_workspace' }, ['workspace', 'confirm']],
+      [{ action: 'prompt', session: 'one', text: 'go', provider: 'p' }, ['model is required']],
+      [{ action: 'prompt', session: 'one', text: 'go', model: 'm' }, ['provider is required']],
+      [{ action: 'prompt', session: 'one', text: 'go', reasoning_effort: 'high' }, ['provider is required', 'model is required']],
+      [{ action: 'prompt', session: 'one', text: 'go', compact: true, delivery: 'queue' }, ['delivery and compact cannot be combined']],
+    ] as const
+    for (const [args, fragments] of cases) {
+      const result = await runControlTool(args, options, me, ctx, { tasks: new Map() })
+      assert.equal(result.ok, false, JSON.stringify(args))
+      assert.equal(result.error?.code, 'INVALID_INPUT')
+      for (const fragment of fragments) assert.match(JSON.stringify(result.error?.context?.issues), new RegExp(fragment, 'u'))
+    }
+    const readOnly = { jira: options.jira, caller: { writable: false, sessionId: 'super-1', cwd: 'D:\\super' }, at: options.at }
+    const listed = await runControlTool({ action: 'list' }, readOnly, me, ctx, { tasks: new Map() })
+    assert.equal(listed.ok, true, JSON.stringify(listed.error))
+    assert.deepEqual(listed.sessions, [], 'read-only Sessions may still list workspace Sessions')
+    for (const action of ['ensure', 'start', 'append', 'prompt', 'stop', 'abort', 'fork', 'archive', 'compact', 'delete']) {
+      const refused = await runControlTool({ action }, readOnly, me, ctx, { tasks: new Map() })
+      assert.equal(refused.error?.code, 'INVALID_INPUT')
+      assert.match(JSON.stringify(refused.error?.context?.issues), /needs a writable session/u)
+    }
+    for (const action of ['remove', 'rename']) {
+      const refused = await runControlTool({ action }, options, me, ctx, { tasks: new Map() })
+      assert.equal(refused.ok, false)
+      assert.match(JSON.stringify(refused.error), /must be one of/u)
     }
   })
 
@@ -1428,7 +1504,7 @@ describe('superagent: dispatch report binding', () => {
       at: AT as never,
     }
     const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
-    const started = await runSessionTool(
+    const started = await runControlTool(
       { action: 'start', workspace: 'hello', task: 'do the thing' },
       options, me, bindingHost(controller).ctx as never, { tasks: new Map() },
     )
@@ -1475,7 +1551,7 @@ describe('superagent: dispatch report binding', () => {
       at: AT as never,
     }
     const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
-    const started = await runSessionTool(
+    const started = await runControlTool(
       { action: 'start', workspace: 'hello', task: 'should not be admitted' },
       options, me, bindingHost(new NeverController()).ctx as never, { tasks: new Map() },
     )
@@ -1510,7 +1586,7 @@ describe('superagent: model selection and discovery', () => {
     }
     const me = { session: 'super-1' }
 
-    const started = await runSessionTool(
+    const started = await runControlTool(
       { action: 'start', workspace: 'model work', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'high' },
       options, me, ctx, { tasks: new Map() },
     )
@@ -1519,7 +1595,7 @@ describe('superagent: model selection and discovery', () => {
     assert.deepEqual(started.model, { provider: 'p', model: 'm', reasoningEffort: 'high', fallback: false })
 
     controller.list = async () => ({ items: [{ sessionId: 'model-child', running: false, cwd: workspacePath, blank: false }] })
-    const followed = await runSessionTool(
+    const followed = await runControlTool(
       { action: 'append', workspace: 'model work', text: 'continue', provider: 'p2', model: 'm2', session: 'latest' },
       options, me, ctx, { tasks: new Map() },
     )
@@ -1545,12 +1621,12 @@ describe('superagent: model selection and discovery', () => {
     const ctx = withInitialPermission({ get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? new Registry() : undefined })
     const options = { jira: {} as never, caller: { writable: true, sessionId: 's', cwd: await scratchDirectory() } as never, at: '2026-11-05T00:00:00Z' as never }
     const me = { session: 's' }
-    const noApi = await runSessionTool({ action: 'start', workspace: 'r', task: 'x', provider: 'p', model: 'm' }, options, me, ctx, { tasks: new Map() })
+    const noApi = await runControlTool({ action: 'start', workspace: 'r', task: 'x', provider: 'p', model: 'm' }, options, me, ctx, { tasks: new Map() })
     assert.equal(noApi.ok, false)
     assert.match(JSON.stringify(noApi.error), /no Session model-selection API/u)
-    const providerOnly = await runSessionTool({ action: 'prompt', session: 'x', text: 'x', provider: 'p' }, options, me, ctx, { tasks: new Map() })
+    const providerOnly = await runControlTool({ action: 'prompt', session: 'x', text: 'x', provider: 'p' }, options, me, ctx, { tasks: new Map() })
     assert.equal(providerOnly.ok, false)
-    assert.match(JSON.stringify(providerOnly.error), /provider.*model/u)
+    assert.match(JSON.stringify(providerOnly.error), /model is required when provider/u)
   })
 
   it('lists providers, models and reasoning efforts from the same LLM registry', async () => {
@@ -1644,7 +1720,7 @@ describe('superagent: model selection and discovery', () => {
     const me = { session: 'super-1' }
 
     // Bare route on a reasoning model: refused, with the effort list — never the silent default.
-    const bare = await runSessionTool(
+    const bare = await runControlTool(
       { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm' },
       options, me, ctx, { tasks: new Map() },
     )
@@ -1655,7 +1731,7 @@ describe('superagent: model selection and discovery', () => {
     assert.equal(controller.selections.length, 0, 'a refused effort never reaches the host')
 
     // An unknown effort is refused with the same list.
-    const unknown = await runSessionTool(
+    const unknown = await runControlTool(
       { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'ultra' },
       options, me, ctx, { tasks: new Map() },
     )
@@ -1664,7 +1740,7 @@ describe('superagent: model selection and discovery', () => {
     assert.equal(controller.selections.length, 0)
 
     // An explicit valid effort lands and is echoed.
-    const chosen = await runSessionTool(
+    const chosen = await runControlTool(
       { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'high' },
       options, me, ctx, { tasks: new Map() },
     )
@@ -1673,7 +1749,7 @@ describe('superagent: model selection and discovery', () => {
     assert.deepEqual(chosen.model, { provider: 'p', model: 'm', reasoningEffort: 'high', fallback: false })
 
     // The default effort only lands when the caller passes it explicitly.
-    const defaulted = await runSessionTool(
+    const defaulted = await runControlTool(
       { action: 'prompt', session: 'effort-child', text: 'continue', provider: 'p', model: 'm', reasoning_effort: 'medium' },
       options, me, ctx, { tasks: new Map() },
     )
@@ -1707,7 +1783,7 @@ describe('superagent: model selection and discovery', () => {
         }
           : undefined,
     }
-    const listed = await runSessionTool({ action: 'list' }, options, me, ctx, { tasks: new Map() })
+    const listed = await runControlTool({ action: 'list' }, options, me, ctx, { tasks: new Map() })
     assert.equal(listed.ok, true, JSON.stringify(listed.error))
     const row = (listed.sessions as {
       title?: string
@@ -1753,7 +1829,7 @@ describe('superagent: model selection and discovery', () => {
         : key === 'agents' ? { get: () => agent }
           : undefined,
     }
-    const stopped = await runSessionTool({ action: 'stop', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
+    const stopped = await runControlTool({ action: 'stop', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
     assert.equal(stopped.ok, true, JSON.stringify(stopped.error))
     const stop = stopped.stop as {
       accepted?: boolean
@@ -1785,7 +1861,7 @@ describe('superagent: model selection and discovery', () => {
         : key === 'agents' ? { get: () => idleAgent }
           : undefined,
     }
-    const alreadyIdle = await runSessionTool({ action: 'stop', session: 'w-session' }, options, me, idleCtx, { tasks: new Map() })
+    const alreadyIdle = await runControlTool({ action: 'stop', session: 'w-session' }, options, me, idleCtx, { tasks: new Map() })
     assert.equal(alreadyIdle.ok, true)
     assert.equal((alreadyIdle.stop as { alreadyIdle?: boolean }).alreadyIdle, true)
     assert.equal((alreadyIdle.stop as { accepted?: boolean }).accepted, false)
@@ -1799,7 +1875,7 @@ describe('superagent: model selection and discovery', () => {
         : key === 'agents' ? { get: () => deafAgent }
           : undefined,
     }
-    const deaf = await runSessionTool({ action: 'stop', session: 'w-session' }, options, me, deafCtx, { tasks: new Map() })
+    const deaf = await runControlTool({ action: 'stop', session: 'w-session' }, options, me, deafCtx, { tasks: new Map() })
     assert.equal(deaf.ok, false)
     assert.match(JSON.stringify(deaf.error), /no hard cancel channel/u)
   })
@@ -1970,7 +2046,7 @@ describe('superagent: context, compaction and memory curation', () => {
           : key === 'tokenMeter' ? { contextPressure: () => ({ pressureTokens: 70_000, contextWindow: 200_000 }) }
             : undefined,
     }
-    const listed = await runSessionTool({ action: 'list' }, options, me, ctx, { tasks: new Map(), compactThresholdPercent: 30 })
+    const listed = await runControlTool({ action: 'list' }, options, me, ctx, { tasks: new Map(), compactThresholdPercent: 30 })
     assert.equal(listed.ok, true, JSON.stringify(listed.error))
     const row = (listed.sessions as { id: string; usage?: { percent?: number }; recommendCompact?: boolean }[])[0]
     assert.equal(row?.usage?.percent, 35)
@@ -1991,7 +2067,7 @@ describe('superagent: context, compaction and memory curation', () => {
               : undefined,
     }
     const tasks = new Map<string, { superSession: string; workspace: string; usageBefore?: { percent?: number } }[]>()
-    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'next step', compact: true, session: 'latest' }, options, me, ctx, { tasks })
+    const result = await runControlTool({ action: 'append', workspace: 'hello', text: 'next step', compact: true, session: 'latest' }, options, me, ctx, { tasks })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(controller.compactCalls, 1)
     assert.equal(controller.prompted[0]?.text, 'next step')
@@ -2008,7 +2084,7 @@ describe('superagent: context, compaction and memory curation', () => {
         : key === 'workspaceRegistry' ? registry
           : undefined,
     }
-    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'next step', curate_memory: true, session: 'latest' }, options, me, ctx, { tasks: new Map() })
+    const result = await runControlTool({ action: 'append', workspace: 'hello', text: 'next step', curate_memory: true, session: 'latest' }, options, me, ctx, { tasks: new Map() })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(controller.prompted[0]?.text, MEMORY_CURATION_INSTRUCTION + 'next step')
   })
@@ -2025,7 +2101,7 @@ describe('superagent: context, compaction and memory curation', () => {
           : key === 'compaction' ? compaction
             : undefined,
     }
-    const result = await runSessionTool({ action: 'prompt', session: 'w-session', text: 'more', compact: true }, options, me, ctx, { tasks: new Map() })
+    const result = await runControlTool({ action: 'prompt', session: 'w-session', text: 'more', compact: true }, options, me, ctx, { tasks: new Map() })
     assert.equal(result.ok, false)
     assert.equal(controller.prompted.length, 0, 'a failed compaction never admits the task')
     assert.match(JSON.stringify(result.error), /not compacted/u)
@@ -2042,7 +2118,7 @@ describe('superagent: context, compaction and memory curation', () => {
           : key === 'tokenMeter' ? { contextPressure: () => ({ pressureTokens: calls++ === 0 ? 70_000 : 10_000, contextWindow: 200_000 }) }
             : undefined,
     }
-    const result = await runSessionTool({ action: 'compact', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
+    const result = await runControlTool({ action: 'compact', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(controller.compactCalls, 1)
     assert.equal((result.compaction as { after?: { percent?: number } }).after?.percent, 5)
@@ -2058,7 +2134,7 @@ describe('superagent: context, compaction and memory curation', () => {
           : key === 'agents' ? { get: () => ({ session: { snapshotEvents: () => [{ type: 'user/message', seq: 42 }] } }) }
             : undefined,
     }
-    const result = await runSessionTool({ action: 'append', workspace: 'hello', text: 'stop, use the other branch', delivery: 'interrupt', session: 'latest' }, options, me, ctx, { tasks: new Map() })
+    const result = await runControlTool({ action: 'append', workspace: 'hello', text: 'stop, use the other branch', delivery: 'interrupt', session: 'latest' }, options, me, ctx, { tasks: new Map() })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(controller.prompted[0]?.mode, 'steer')
     const delivery = result.delivery as {
@@ -2083,12 +2159,12 @@ describe('superagent: context, compaction and memory curation', () => {
         : key === 'workspaceRegistry' ? registry
           : undefined,
     }
-    const queued = await runSessionTool({ action: 'append', workspace: 'hello', text: 'new work', session: 'latest' }, options, me, ctx, { tasks: new Map() })
+    const queued = await runControlTool({ action: 'append', workspace: 'hello', text: 'new work', session: 'latest' }, options, me, ctx, { tasks: new Map() })
     assert.equal(queued.ok, true, JSON.stringify(queued.error))
     assert.equal(controller.prompted[0]?.mode, 'queue')
     assert.equal((queued.delivery as { used?: string }).used, 'queue')
 
-    const fallback = await runSessionTool({ action: 'append', workspace: 'hello', text: 'urgent but idle', delivery: 'interrupt', session: 'latest' }, options, me, ctx, { tasks: new Map() })
+    const fallback = await runControlTool({ action: 'append', workspace: 'hello', text: 'urgent but idle', delivery: 'interrupt', session: 'latest' }, options, me, ctx, { tasks: new Map() })
     assert.equal(fallback.ok, true, JSON.stringify(fallback.error))
     assert.equal(controller.prompted[1]?.mode, 'queue')
     const delivery = fallback.delivery as { used?: string; fallback?: boolean }
@@ -2106,11 +2182,11 @@ describe('superagent: context, compaction and memory curation', () => {
           : key === 'compaction' ? { compactNow: async () => { controller.compactCalls += 1; return { shadowedTokenCount: 1 } } }
             : undefined,
     }
-    const started = await runSessionTool({ action: 'start', workspace: 'hello', task: 'do it', delivery: 'interrupt' }, options, me, ctx, { tasks: new Map() })
+    const started = await runControlTool({ action: 'start', workspace: 'hello', task: 'do it', delivery: 'interrupt' }, options, me, ctx, { tasks: new Map() })
     assert.equal(started.ok, false)
-    const combined = await runSessionTool({ action: 'append', workspace: 'hello', text: 'urgent', delivery: 'interrupt', compact: true, session: 'latest' }, options, me, ctx, { tasks: new Map() })
+    const combined = await runControlTool({ action: 'append', workspace: 'hello', text: 'urgent', delivery: 'interrupt', compact: true, session: 'latest' }, options, me, ctx, { tasks: new Map() })
     assert.equal(combined.ok, false)
-    assert.match(JSON.stringify(combined.error), /cannot be combined with an interrupt/u)
+    assert.match(JSON.stringify(combined.error), /delivery and compact cannot be combined/u)
     assert.equal(controller.prompted.length, 0)
     assert.equal(controller.compactCalls, 0)
   })
@@ -2130,7 +2206,7 @@ describe('superagent: context, compaction and memory curation', () => {
         : key === 'agents' ? { get: () => ({ session: { header: { cwd: workspacePath }, snapshotEvents: () => events } }) }
           : undefined,
     }
-    const listed = await runSessionTool({ action: 'list' }, options, me, ctx, { tasks: new Map(), longRunningMinutes: 10 })
+    const listed = await runControlTool({ action: 'list' }, options, me, ctx, { tasks: new Map(), longRunningMinutes: 10 })
     const row = (listed.sessions as {
       id: string
       running: boolean
@@ -2160,7 +2236,7 @@ describe('superagent: context, compaction and memory curation', () => {
         : key === 'agents' ? { get: () => agent }
           : undefined,
     }
-    const inspected = await runSessionTool({ action: 'inspect', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
+    const inspected = await runControlTool({ action: 'inspect', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
     assert.equal(inspected.ok, true, JSON.stringify(inspected.error))
     assert.equal((inspected.status as { running?: boolean }).running, true)
     assert.equal((inspected.activity as unknown[]).length, 3)
@@ -2172,7 +2248,7 @@ describe('superagent: context, compaction and memory curation', () => {
         : key === 'agents' ? { get: () => idleAgent }
           : undefined,
     }
-    const refused = await runSessionTool({ action: 'abort', session: 'w-session', text: 'retry' }, options, me, idleCtx, { tasks: new Map() })
+    const refused = await runControlTool({ action: 'abort', session: 'w-session', text: 'retry' }, options, me, idleCtx, { tasks: new Map() })
     assert.equal(refused.ok, false)
     assert.match(JSON.stringify(refused.error), /idle/u)
   })
@@ -2199,7 +2275,7 @@ describe('superagent: context, compaction and memory curation', () => {
         : key === 'agents' ? { get: () => agent }
           : undefined,
     }
-    const result = await runSessionTool({ action: 'abort', session: 'w-session', text: 'skip the wait and continue' }, options, me, ctx, { tasks: new Map() })
+    const result = await runControlTool({ action: 'abort', session: 'w-session', text: 'skip the wait and continue' }, options, me, ctx, { tasks: new Map() })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(cancelled, 1)
     assert.equal(idleCalls, 1)
@@ -2292,7 +2368,7 @@ describe('superagent: the super workspace', () => {
       assert.equal(isSuperAgentSession(superAgent, home), true)
       assert.deepEqual(
         contribution.tools?.(superAgent).map(tool => tool.name),
-        [WORKSPACE_TOOL_NAME, SESSION_TOOL_NAME, LEDGER_TOOL_NAME, MODELS_TOOL_NAME, PERMISSION_TOOL_NAME, DELIVER_TOOL_NAME],
+        [CONTROL_TOOL_NAME, LEDGER_TOOL_NAME, MODELS_TOOL_NAME, PERMISSION_TOOL_NAME, DELIVER_TOOL_NAME],
         'the super agent keeps the workspace roster and the Session verbs, and loses the ledger-bound ones',
       )
       assert.deepEqual(
@@ -2444,7 +2520,7 @@ describe('superagent: the dispatcher\'s surface', () => {
     try {
       await provideRegistry(harness)
       const target = join(await scratchDirectory(), 'checkout')
-      const registered = await call(harness, main, WORKSPACE_TOOL_NAME, { action: 'ensure', path: target, title: 'checkout' })
+      const registered = await call(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: target, title: 'checkout' })
       const workspace = registered.workspace as Record<string, unknown>
 
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })

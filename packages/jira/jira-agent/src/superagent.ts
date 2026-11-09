@@ -275,7 +275,7 @@ export const CLAIM_DESCRIPTION =
   + 'steps, and do not claim an issue they have not confirmed.'
 
 /** The tool name for workspace selection. */
-export const WORKSPACE_TOOL_NAME = 'superagent_workspace'
+export const CONTROL_TOOL_NAME = 'superagent_control'
 
 /**
  * The slice of the host's workspace registry this capability uses.
@@ -468,8 +468,8 @@ export const enforceSuperAgentPermission = (
   return true
 }
 
-/** `superagent_workspace`'s schema. */
-export const WORKSPACE_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+/** The workspace runner's internal schema; its public actions are exposed by `superagent_control`. */
+const WORKSPACE_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
   action: {
     type: 'string',
     required: true,
@@ -489,25 +489,92 @@ export const WORKSPACE_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.
   },
 })
 
+const CONTROL_REQUIREMENTS: Partial<Record<ControlAction, readonly string[]>> = {
+  ensure: ['path'],
+  remove_workspace: ['workspace', 'confirm'],
+  rename_workspace: ['workspace', 'title'],
+  start: ['workspace', 'task'],
+  append: ['workspace', 'session', 'text'],
+  prompt: ['session', 'text'],
+  inspect: ['session'],
+  stop: ['session'],
+  abort: ['session', 'text'],
+  fork: ['session'],
+  archive: ['session'],
+  compact: ['session'],
+  delete: ['session', 'confirm'],
+}
+
+/** Whether one action is allowed to change durable state rather than only inspect it. */
+const controlWrites = (action: ControlAction): boolean => !CONTROL_READ_ACTIONS.includes(action)
+
 /**
- * `superagent_workspace`'s description.
- *
- * The `ensure` half writes outside the ledger, so it says what it will do to the filesystem and who
- * decides the path.
+ * Validate and route the merged tool without owning workspace or Session business behavior.
+ * All missing and conflicting fields are returned together before either runner can write.
+ * @param args - the raw arguments, including the action and its optional fields.
+ * @param options - the store, caller verdict and clock for this run.
+ * @param me - the caller's identity tuple, returned in every result.
+ * @param ctx - the plugin context supplying the workspace registry and Session controller.
+ * @param context - the Session preset and report bookkeeping forwarded to the Session runner.
+ * @returns the selected runner's envelope, or an aggregated INVALID_INPUT before any action runs.
  */
-export const WORKSPACE_DESCRIPTION =
-  'Inspect or change the host\'s workspace list so a dispatch can name the checkout it works in. '
-  + 'Use `roster`/`orphans` to find one. Ask the person which directory before `ensure` creates it. '
-  + '`remove` unregisters through the live registry (never by editing a storage file), keeps its '
-  + 'directory and Session logs, and requires `confirm` to repeat the target id, title or path. '
-  + '`rename` changes only the display title. Never remove or rename the super workspace this Session '
-  + 'runs in.'
+export const runControlTool = async (
+  args: unknown,
+  options: RunOptions,
+  me: unknown,
+  ctx: unknown,
+  context: SessionToolContext,
+): Promise<ToolValue> => {
+  const validated = validateArgs(CONTROL_PARAMETERS, args)
+  if (!validated.ok) return failure(validated.error, options.caller, me)
+  const action = String(validated.value.action) as ControlAction
+  const values = validated.value
+  const issues: string[] = []
+  for (const name of CONTROL_REQUIREMENTS[action] ?? []) {
+    const value = values[name]
+    if (value === undefined || (typeof value === 'string' && value.trim() === '')) issues.push(`missing required argument "${name}"`)
+  }
+  if (action === 'start' && (values.session !== undefined || values.text !== undefined)) {
+    issues.push('start creates a new Session and accepts task, not session or text')
+  }
+  if (values.provider !== undefined || values.model !== undefined || values.reasoning_effort !== undefined) {
+    if (values.provider === undefined) issues.push('provider is required when model or reasoning_effort is supplied')
+    if (values.model === undefined) issues.push('model is required when provider or reasoning_effort is supplied')
+  }
+  if (values.delivery !== undefined && values.compact !== undefined) {
+    issues.push('delivery and compact cannot be combined; send compact work with delivery omitted')
+  }
+  if (values.delivery !== undefined && !['append', 'prompt'].includes(action)) {
+    issues.push('delivery is only accepted by append or prompt')
+  }
+  if (!options.caller.writable && controlWrites(action)) issues.push('this action needs a writable session')
+  if (issues.length > 0) {
+    return failure(invalidInput(`${action} has ${String(issues.length)} argument problem(s)`, {
+      action, issues: Object.freeze(issues),
+      ...(values.workspace === undefined ? {} : { workspace: values.workspace }),
+      ...(values.session === undefined ? {} : { session: values.session }),
+      ...(values.task === undefined ? {} : { task: values.task }),
+    }), options.caller, me)
+  }
+  if (WORKSPACE_CONTROL_ACTIONS.includes(action)) {
+    const workspaceAction = action === 'remove_workspace' ? 'remove' : action === 'rename_workspace' ? 'rename' : action
+    return runWorkspaceTool({ ...values, action: workspaceAction }, options, me, ctx as ToolHost['ctx'])
+  }
+  return runSessionTool(values, options, me, ctx, context)
+}
 
-/** The tool a super agent uses to run and steer real workspace Sessions (DH-719). */
-export const SESSION_TOOL_NAME = 'superagent_session'
+const CONTROL_ACTIONS = [
+  'roster', 'orphans', 'ensure', 'remove_workspace', 'rename_workspace',
+  'start', 'append', 'prompt', 'list', 'inspect', 'stop', 'abort', 'fork', 'archive', 'compact', 'delete',
+] as const
 
-/** `superagent_session`'s schema. */
-export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+type ControlAction = (typeof CONTROL_ACTIONS)[number]
+
+const WORKSPACE_CONTROL_ACTIONS: readonly ControlAction[] = ['roster', 'orphans', 'ensure', 'remove_workspace', 'rename_workspace']
+const CONTROL_READ_ACTIONS: readonly ControlAction[] = ['roster', 'orphans', 'list', 'inspect']
+
+/** Session lifecycle fields used by the internal Session runner. */
+const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
   action: {
     type: 'string',
     required: true,
@@ -555,7 +622,7 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
     type: 'boolean',
     description: 'append/prompt: compact this Session before admitting the text; refuses (and sends nothing) '
       + 'while the Session runs or when compaction fails. The super agent decides from list usage; nothing '
-      + 'is compacted automatically.',
+      + 'is compacted automatically. Cannot be combined with delivery.',
   },
   curate_memory: {
     type: 'boolean',
@@ -567,22 +634,44 @@ export const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fr
     type: 'string',
     description: 'append/prompt: queue (default) waits for the running turn to end and admits the text as the '
       + 'next turn; interrupt steers the text into the running turn, so the Session sees it at its next step '
-      + 'without aborting a tool call already in flight. An idle Session queues regardless. start does not '
-      + 'take this option.',
+      + 'without aborting a tool call already in flight. An idle Session queues regardless. Cannot be '
+      + 'combined with compact; other actions do not take this option.',
     enum: ['queue', 'interrupt'],
   },
 })
 
-/** `superagent_session`'s description: what the verbs do and where the report goes. */
-export const SESSION_DESCRIPTION =
-  'Run work in a registered workspace as a real Session of its own. Use it for work owned by a '
-  + 'workspace; list before choosing, reuse a matching Session by title and purpose, and never guess '
-  + 'a route. `append` requires an explicit `session` (an id or "latest"); `start` only when no '
-  + 'existing Session fits, the person asks for a new one, or the task is genuinely isolated. Every '
-  + 'Session you address reports its completed, failed, or aborted turn back here as a new message. '
-  + '`stop` cancels the running turn and starts nothing; `abort` cancels it and then sends `text` as '
-  + 'the redirect; never use a message where a stop is meant. See the parameter descriptions for the '
-  + 'per-action requirements.'
+/** `superagent_control`'s description: workspace registration and Session lifecycle. */
+export const CONTROL_DESCRIPTION =
+  'Manage registered workspaces and their real Sessions. `roster`/`orphans` inspect registrations; '
+  + '`ensure` registers a directory after the person chooses it; `remove_workspace` unregisters through '
+  + 'the live registry, requires exact '
+  + 'confirmation and keeps its files and Session logs; `rename_workspace` changes only its title. '
+  + 'Never remove or rename the super workspace this Session runs in. '
+  + 'Use `list` before addressing a Session. Reuse a Session whose title and purpose match, or pass '
+  + 'an id (append also accepts latest); never guess. Start only for a new or isolated conversation. '
+  + '`start` needs workspace and task; `append` needs workspace, session and text; `prompt` and '
+  + '`abort` need session and text. `stop` cancels without '
+  + 'admitting text; `abort` cancels then sends text. `fork`, `archive`, `compact`, `inspect` and '
+  + '`delete` keep the host lifecycle semantics. Reports arrive separately; use superagent_ledger '
+  + 'for business results and delivery recovery, and superagent_deliver for file handoff.'
+
+/** Workspace and Session fields; requiredness depends on action and is checked by the control runner. */
+export const CONTROL_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
+  ...SESSION_PARAMETERS,
+  ...WORKSPACE_PARAMETERS,
+  action: {
+    type: 'string', required: true, enum: CONTROL_ACTIONS,
+    description: CONTROL_ACTIONS.join(' / '),
+  },
+  path: { type: 'string', description: 'ensure: directory to register; created after the person chooses it.' },
+  workspace: {
+    type: 'string',
+    description: 'start/append: required registered workspace id, title, or canonical path; list/remove_workspace/'
+      + 'rename_workspace use the same selector. prompt/archive/fork/delete may use it for the report headline.',
+  },
+  title: { type: 'string', description: 'ensure/rename_workspace: display title; start: durable Session purpose.' },
+  confirm: { type: 'string', description: 'remove_workspace: repeat the workspace id/title/path; delete: repeat the Session id.' },
+})
 
 /** Model discovery for the super agent's workspace Sessions (DH-803). */
 export const MODELS_TOOL_NAME = 'superagent_models'
@@ -1013,7 +1102,7 @@ export interface TaskSessionRecord {
   readonly reportText?: string
 }
 
-/** What one superagent_session call needs beyond the shared run options. */
+/** What one superagent_control call needs beyond the shared run options. */
 export interface SessionToolContext {
   /** The configured preset a started Session joins; unset keeps the deployment default. */
   readonly agentPreset?: string
@@ -1458,7 +1547,7 @@ export const runDaemonPass = async (host: ToolHost, options: DaemonPassOptions =
 }
 
 /**
- * `superagent_workspace`: list the registered workspaces, or register one.
+ * `superagent_control`: list the registered workspaces, or register one.
  * @param args - the raw tool arguments, validated against `WORKSPACE_PARAMETERS`.
  * @param options - the store, caller verdict and clock for this run.
  * @param me - the caller's identity tuple, returned in every result.
@@ -1487,7 +1576,7 @@ const isCurrentWorkspace = (workspace: WorkspaceLike, caller: Caller): boolean =
   caller.cwd !== undefined && sameCheckout(workspace.path, caller.cwd)
 
 /**
- * `superagent_workspace`: list, create, unregister, rename, or find orphaned registrations.
+ * `superagent_control`: list, create, unregister, rename, or find orphaned registrations.
  * @param args - the raw tool arguments, validated against `WORKSPACE_PARAMETERS`.
  * @param options - the store, caller verdict and clock for this run.
  * @param me - the caller's identity tuple, returned in every result.
@@ -1550,7 +1639,7 @@ export const runWorkspaceTool = async (
   const selector = asString(validated.value.workspace)
   const workspace = selector === undefined ? undefined : findWorkspace(registry, selector)
   if (workspace === undefined) {
-    return failure(invalidInput(`"${String(selector ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+    return failure(invalidInput(`"${String(selector ?? '')}" is not a registered workspace; run superagent_control roster first`), caller, me)
   }
   // The workspace that hosts this Session is the dispatcher's own home: unregistering or even
   // renaming it would make the running role disappear. The title check is a second guard for a
@@ -1754,7 +1843,7 @@ export const runDeliverTool = async (
   }
   const workspace = workspaceArg === undefined ? undefined : findWorkspace(registry, workspaceArg)
   if (workspace === undefined) {
-    return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+    return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_control roster first`), caller, me)
   }
   const workspaceRoot = physicalDirectory(workspace.path)
   if (workspaceRoot === undefined) {
@@ -2415,7 +2504,7 @@ export const longRunningSummary = (
   }
   if (rows.length === 0) return ''
   return `[superagent monitor] ${rows.length} running Session(s) over ${durationText(thresholdMs)}: `
-    + `${rows.join('; ')}. Inspect one with superagent_session action "inspect" before deciding whether to `
+    + `${rows.join('; ')}. Inspect one with superagent_control action "inspect" before deciding whether to `
     + 'interrupt it (delivery "interrupt" on append/prompt) or abort and continue it (action "abort").'
 }
 
@@ -2607,7 +2696,7 @@ export const compactWorkspaceSession = async (
 }
 
 /**
- * Run one `superagent_session` call: open, continue, list, archive or branch a real workspace Session.
+ * Run one `superagent_control` call: open, continue, list, archive or branch a real workspace Session.
  *
  * `start` creates the Session through the host controller with `workspaceId`, which is what makes it
  * appear under that workspace and lets the person talk to it directly; the spawned agent decides
@@ -2634,7 +2723,7 @@ export const runSessionTool = async (
   if (controller === undefined) {
     return failure(invalidInput('this deployment has no session controller, so a workspace Session cannot be run'), caller, me)
   }
-  if (!caller.writable) {
+  if (!caller.writable && !['list', 'inspect'].includes(String(validated.value.action))) {
     return failure(invalidInput('running a workspace Session needs a session that may write'), caller, me)
   }
   const verdict = Object.freeze({
@@ -2708,7 +2797,7 @@ export const runSessionTool = async (
   ): Promise<ToolValue> {
     if (action === 'append') {
       if (workspace === undefined) {
-        return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+        return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_control roster first`), caller, me)
       }
       if (textArg === undefined || textArg.trim() === '') {
         return failure(invalidInput('append needs `text`: the follow-up instruction'), caller, me)
@@ -2727,7 +2816,7 @@ export const runSessionTool = async (
           .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
         if (candidates.length === 0) {
           return failure(invalidInput(
-            `"${workspace.title}" has no Session to continue yet; start one with superagent_session start`,
+            `"${workspace.title}" has no Session to continue yet; start one with superagent_control start`,
             { workspace: workspace.path },
           ), caller, me)
         }
@@ -2753,7 +2842,7 @@ export const runSessionTool = async (
           target = candidates.find(item => String(item.sessionId) === explicitSession)
           if (target === undefined) {
             return failure(invalidInput(
-              `"${explicitSession}" is not a Session of "${workspace.title}"; pass \`session\` from superagent_session list`,
+              `"${explicitSession}" is not a Session of "${workspace.title}"; pass \`session\` from superagent_control list`,
               { workspace: workspace.path, candidates: candidateRows },
             ), caller, me)
           }
@@ -2770,7 +2859,7 @@ export const runSessionTool = async (
         }
         if (target === undefined) {
           return failure(invalidInput(
-            `"${workspace.title}" has no Session to continue yet; start one with superagent_session start`,
+            `"${workspace.title}" has no Session to continue yet; start one with superagent_control start`,
             { workspace: workspace.path },
           ), caller, me)
         }
@@ -2861,7 +2950,7 @@ export const runSessionTool = async (
 
     if (action === 'start') {
       if (workspace === undefined) {
-        return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+        return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_control roster first`), caller, me)
       }
       if (taskArg === undefined || taskArg.trim() === '') {
         return failure(invalidInput('start needs `task`: a self-contained brief for the workspace agent'), caller, me)
@@ -3503,7 +3592,7 @@ export const runLedgerTool = async (
     if (selector === undefined) return failure(invalidInput('record needs `workspace`'), caller, me)
     const workspace = findWorkspace(registry, selector)
     if (workspace === undefined) {
-      return failure(invalidInput(`"${selector}" is not a registered workspace; run superagent_workspace roster first`), caller, me)
+      return failure(invalidInput(`"${selector}" is not a registered workspace; run superagent_control roster first`), caller, me)
     }
     try {
       const issue = asString(validated.value.issue)
@@ -3694,7 +3783,7 @@ export const deliverTaskReport = async (
     const body = `[task-report] ${sessionId} in ${record.workspace} FAILED — its turn ended "${turnKind}"`
       + `${failureFacts.length === 0 ? '' : ` (${failureFacts.join(', ')})`}${detail}.`
       + contextMarker(record.usageBefore, usageAfter)
-      + '\n\nThe Session is idle now. Inspect it (`superagent_session inspect`), then stop/abort, '
+      + '\n\nThe Session is idle now. Inspect it (`superagent_control inspect`), then stop/abort, '
       + 'retry with a clean turn boundary, or compact; record the outcome with superagent_ledger '
       + 'resolve (status failed) and memory_write.'
     if (await prepareReport(body) === false) return false
@@ -3727,7 +3816,7 @@ export const deliverTaskReport = async (
     ? `[task-report] ${sessionId} in ${record.workspace} finished its turn`
       + (taskId === undefined ? '' : ` (task ${taskId})`)
       + `${contextMarker(record.usageBefore, usageAfter)}, but produced no assistant text.`
-      + '\n\nInspect the Session (`superagent_session inspect`) and record the outcome with '
+      + '\n\nInspect the Session (`superagent_control inspect`) and record the outcome with '
       + 'superagent_ledger resolve; do not assume the task succeeded.'
     : `[task-report] ${sessionId} in ${record.workspace} finished its turn`
       + (taskId === undefined ? '' : ` (task ${taskId})`)
@@ -4822,29 +4911,6 @@ export const createSuperagentContribution = (
     },
     run: (args, call) => runClaimTool(args, runOptionsOf(host, call), call.me, maxWorkers),
   }
-  const workspace: Spec = {
-    name: WORKSPACE_TOOL_NAME,
-    description: WORKSPACE_DESCRIPTION,
-    parameters: WORKSPACE_PARAMETERS,
-    outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
-    timeoutMs: 30_000,
-    // `ensure` touches the filesystem, so the conservative default applies to both verbs.
-    isConcurrencySafe: () => false,
-    render: (typed) => {
-      if (Array.isArray(typed.workspaces)) {
-        const rows = typed.workspaces as { id: string; path: string; title: string; status: string; sessions: number }[]
-        if (rows.length === 0) return renderText('no workspace is registered')
-        return renderText(rows
-          .map(row => `${row.title}  ${row.path}  ${row.status}  ${String(row.sessions)} session(s)`)
-          .join('\n'))
-      }
-      const registered = typed.workspace as { path?: string; title?: string } | undefined
-      return renderText(registered?.path === undefined
-        ? 'ok'
-        : `${String(registered.title)}  ${String(registered.path)}`)
-    },
-    run: (args, call) => runWorkspaceTool(args, runOptionsOf(host, call), call.me, host.ctx),
-  }
   const models: Spec = {
     name: MODELS_TOOL_NAME,
     description: MODELS_DESCRIPTION,
@@ -4917,15 +4983,22 @@ export const createSuperagentContribution = (
     },
     run: (args, call) => runPermissionTool(args, runOptionsOf(host, call), call.me, host.ctx),
   }
-  const session: Spec = {
-    name: SESSION_TOOL_NAME,
-    description: SESSION_DESCRIPTION,
-    parameters: SESSION_PARAMETERS,
+  const control: Spec = {
+    name: CONTROL_TOOL_NAME,
+    description: CONTROL_DESCRIPTION,
+    parameters: CONTROL_PARAMETERS,
     outputSchema: SUPERAGENT_OUTPUT_SCHEMA,
     timeoutMs: 30_000,
-    // Starting or prompting a Session mutates the conversation, so the conservative default applies.
-    isConcurrencySafe: () => false,
+    // Only inspection actions overlap; every write keeps the conservative default.
+    isConcurrencySafe: args => CONTROL_READ_ACTIONS.includes((args as { action?: ControlAction }).action as ControlAction),
     render: (typed) => {
+      if (Array.isArray(typed.workspaces)) {
+        const rows = typed.workspaces as { id: string; path: string; title: string; status: string; sessions: number }[]
+        if (rows.length === 0) return renderText('no workspace is registered')
+        return renderText(rows
+          .map(row => `${row.title}  ${row.path}  ${row.status}  ${String(row.sessions)} session(s)`)
+          .join('\n'))
+      }
       if (Array.isArray(typed.sessions)) {
         const rows = typed.sessions as {
           id: string
@@ -4985,7 +5058,12 @@ export const createSuperagentContribution = (
         return renderText(compactParts.join(''))
       }
       const one = typed.session as { id?: string; archived?: boolean; forkedFrom?: string; sessionTitle?: string } | undefined
-      if (one?.id === undefined) return renderText('ok')
+      if (one?.id === undefined) {
+        const registered = typed.workspace as { path?: string; title?: string } | undefined
+        return renderText(registered?.path === undefined
+          ? 'ok'
+          : `${String(registered.title)}  ${String(registered.path)}`)
+      }
       const status = typed.status as {
         running?: boolean
         elapsedMs?: number
@@ -5064,7 +5142,7 @@ export const createSuperagentContribution = (
         : `  → ${echo.provider}/${echo.model}${echo.reasoningEffort === undefined ? '' : ` (${echo.reasoningEffort})`}${echo.fallback === true ? ' (host fallback)' : ''}${echo.deferred === true ? ' (takes effect at the next turn boundary)' : ''}`
       return renderText(`session ${one.id}${one.sessionTitle === undefined ? '' : ` "${one.sessionTitle}"`}${how}${echoModel}`)
     },
-    run: (args, call) => runSessionTool(args, runOptionsOf(host, call), call.me, host.ctx, {
+    run: (args, call) => runControlTool(args, runOptionsOf(host, call), call.me, host.ctx, {
       ...(agentPreset === undefined ? {} : { agentPreset }),
       tasks,
       ...(dispatchStore === undefined ? {} : { store: dispatchStore }),
@@ -5098,8 +5176,7 @@ export const createSuperagentContribution = (
       ? Object.freeze([])
       : isSuperAgentSession(agent, superHome)
         ? Object.freeze([
-          defineJiraTool(host, workspace),
-          defineJiraTool(host, session),
+          defineJiraTool(host, control),
           defineJiraTool(host, ledger),
           defineJiraTool(host, models),
           defineJiraTool(host, permission),
@@ -5109,7 +5186,7 @@ export const createSuperagentContribution = (
           defineJiraTool(host, source),
           defineJiraTool(host, scan),
           defineJiraTool(host, claim),
-          defineJiraTool(host, workspace),
+          defineJiraTool(host, control),
           defineJiraTool(host, status),
           defineJiraTool(host, dispatcher(host, workerPreset, maxWorkers)),
         ])),
