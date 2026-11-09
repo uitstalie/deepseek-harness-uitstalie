@@ -43,6 +43,16 @@ import { existsSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Win32Error } from '@deepseek-ai/dsh-win32-process'
 
+/** The retired direct backend cannot enforce the requested mode. */
+export class AclSandboxUnavailableError extends Error {
+  readonly code = 'SANDBOX_UNAVAILABLE'
+
+  constructor(mode: AclSandboxOptions['mode']) {
+    super(`AclSandbox ${mode} is unavailable: Medium-token capability grants do not enforce write confinement`)
+    this.name = 'AclSandboxUnavailableError'
+  }
+}
+
 import { denyWrite, grantWrite, revokeDeny, revokeWrite } from './acl.ts'
 import { allocPtrSlot, decodePtr, isNullPtr, throwLastError, win32 } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
@@ -166,7 +176,9 @@ function freeSidBestEffort(
 }
 
 /**
- * One write-restricted sandbox instance: token + write-SID grants + spawn.
+ * The retired write-restriction implementation. Public construction throws SandboxUnavailableError
+ * because Medium-token capability grants do not enforce confinement. Only the explicitly unsafe
+ * unit-test subclass reaches the mocked Win32 implementation.
  * `init()` is fail-closed — any Win32 failure revokes the revocable (temp)
  * grants and throws; `dispose()` revokes the temp grants, leaves the
  * standing workspace ACEs in place (the cross-instance reuse cache), frees
@@ -188,6 +200,7 @@ export class AclSandbox {
   private readonly tempDirOption: string | null | undefined
   private readonly allowTempInsideWritable: boolean
   private readonly manageDacls: boolean
+  private readonly directExecutionDisabled: boolean
   private tempDirResolved: string | null | undefined
   private api: Win32Bindings | undefined
   private token: NativePtr | undefined
@@ -199,6 +212,8 @@ export class AclSandbox {
   private deniedPaths: Array<{ path: string; sidPtr: NativePtr }> = []
 
   constructor(options: AclSandboxOptions) {
+    this.directExecutionDisabled = new.target === AclSandbox
+    if (this.directExecutionDisabled) throw new AclSandboxUnavailableError(options.mode)
     this.mode = options.mode
     this.allowTempInsideWritable = options.allowTempInsideWritable ?? false
     this.manageDacls = options.manageDacls ?? true
@@ -243,6 +258,7 @@ export class AclSandbox {
 
   /** Create the restricted token and apply the capability-SID grants. Idempotent-unsafe: once per instance. */
   async init(): Promise<void> {
+    if (this.directExecutionDisabled) throw new AclSandboxUnavailableError(this.mode)
     if (this.api !== undefined) throw new Error('AclSandbox is already initialized')
     const api = await win32()
     const currentToken = openCurrentProcessToken(api)
@@ -395,6 +411,7 @@ export class AclSandbox {
    * @returns the running child.
    */
   spawn(options: AclSandboxSpawnOptions): AclSandboxChild {
+    if (this.directExecutionDisabled) throw new AclSandboxUnavailableError(this.mode)
     const api = this.api
     const token = this.token
     if (api === undefined || token === undefined) throw new Error('AclSandbox is not initialized: call init() first')

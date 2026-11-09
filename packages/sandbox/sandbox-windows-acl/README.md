@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package retains Windows ACL primitives and the ACL diagnosis skill, but the built-in runner is disabled. Its former Low workspace labels and Everyone delete-deny entries also affected ordinary user processes; a Medium restricted token cannot preserve the former write boundary. `dsh-sandbox-local` reports Windows confinement unavailable, and the direct runner refuses before changing a directory or spawning the command. New grant helpers modify only a capability-SID allow ACE: never a Low label or an Everyone delete deny.
+This package retains Windows ACL primitives and the ACL diagnosis skill, but confined execution is disabled. Its former Low workspace labels and Everyone delete-deny entries also affected ordinary user processes; a Medium restricted token cannot preserve the former write boundary. `dsh-sandbox-local`, the direct runner, and public `AclSandbox` construction refuse before changing a directory or spawning the command. New grant helpers modify only a capability-SID allow ACE: never a Low label or an Everyone delete deny.
 
 ## Table of Contents
 

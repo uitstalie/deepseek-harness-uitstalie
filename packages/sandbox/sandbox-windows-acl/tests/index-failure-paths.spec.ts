@@ -18,7 +18,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import koffi from 'koffi'
 
 import type { NativePtr, Win32Bindings } from '../src/ffi.ts'
-import { AclSandbox } from '../src/index.ts'
+import { UnsafeUnitTestAclSandbox as AclSandbox } from '../src/testing.ts'
 import * as abi from '../src/win32-abi.ts'
 
 const PVOID = koffi.pointer('void')

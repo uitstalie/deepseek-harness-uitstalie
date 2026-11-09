@@ -9,7 +9,7 @@ kind: "package-library"
 
 ## 概述
 
-本包保留 Windows ACL 原语与 ACL 诊断技能，但内置 runner 已禁用。旧实现写入工作区的 Low 标签与 Everyone 删除拒绝项也会影响普通用户进程；Medium 受限令牌无法维持原有写入边界。`dsh-sandbox-local` 会报告 Windows 隔离不可用，直接调用 runner 也会在修改目录或启动命令之前拒绝。新的授权辅助函数只修改能力 SID 允许 ACE：绝不写入 Low 标签或 Everyone 删除拒绝项。
+本包保留 Windows ACL 原语与 ACL 诊断技能，但受限执行已禁用。旧实现写入工作区的 Low 标签与 Everyone 删除拒绝项也会影响普通用户进程；Medium 受限令牌无法维持原有写入边界。`dsh-sandbox-local`、直接调用 runner 与公开 `AclSandbox` 构造都会在修改目录或启动命令之前拒绝。新的授权辅助函数只修改能力 SID 允许 ACE：绝不写入 Low 标签或 Everyone 删除拒绝项。
 
 ## 目录
 
