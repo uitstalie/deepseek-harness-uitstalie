@@ -22,7 +22,7 @@
       "types": "./lib/types/runner.d.ts",
       "default": "./lib/runner.js"
     },
-    "./src/*": "./src/*",
+    "./src/runner.ts": "./src/runner.ts",
     "./package.json": "./package.json"
   },
   "files": [
