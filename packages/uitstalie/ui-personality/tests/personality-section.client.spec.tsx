@@ -92,7 +92,7 @@ test('saves a provider field through the shared configuration form', async () =>
     set: vi.fn(async () => true),
     unset: vi.fn(async () => true),
   }
-  const settings = new PersonalitySettingsController(form as never)
+  const settings = new PersonalitySettingsController(form)
   const controller: PersonalityProposalController = {
     list: vi.fn(async () => []),
     decide: vi.fn(async () => proposal()),

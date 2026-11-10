@@ -1,7 +1,6 @@
 /** cli/commands/assignee — `jira assignee <KEY> [--set self|none] [--override]`: claim/release. */
 
 import { booleanFlag, stringFlag } from '@deepseek-ai/dsh-jira-core'
-import { type Identity } from '@deepseek-ai/dsh-jira-core'
 import { invalidInput } from '@deepseek-ai/dsh-jira-core'
 import { blockersOf } from '@deepseek-ai/dsh-jira-core'
 import { applyAssignee } from '@deepseek-ai/dsh-jira-core'
@@ -21,12 +20,12 @@ export const assigneeCommand: Handler = ctx =>
     if (wanted !== 'none') {
       const blockers = await blockersOf(ctx.store, key)
       if (!blockers.ok) return planStore(blockers.error)
-      options = { blockers: blockers.value, override: booleanFlag(ctx.flags, 'override') === true }
+      options = { blockers: blockers.value, override:  booleanFlag(ctx.flags, 'override') }
     }
     return ok({
       mutate: (issue, changeContext) => applyAssignee(
         issue,
-        wanted === 'none' ? null : (actor.by as Identity),
+        wanted === 'none' ? null : (actor.by),
         changeContext,
       ),
       what: wanted === 'none' ? 'release' : 'claim',

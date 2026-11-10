@@ -19,7 +19,7 @@ export const boardCommand: Handler = async (ctx) => {
     ctx.say(issues)
     return 0
   }
-  if (booleanFlag(ctx.flags, 'html') === true) {
+  if (booleanFlag(ctx.flags, 'html')) {
     const html = renderBoardHtml(issues, vocab, {
       title: `${[...new Set(issues.map(issue => issue.project))].join(', ') || 'jira'} 看板`,
       generatedAt: nowUtc(),

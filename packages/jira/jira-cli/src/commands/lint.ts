@@ -10,7 +10,7 @@ import { fail, type Handler } from '../runtime.ts'
 
 export const lintCommand: Handler = async (ctx) => {
   const issues = await listIssues(ctx.root)
-  if (booleanFlag(ctx.flags, 'keys') === true) {
+  if (booleanFlag(ctx.flags, 'keys')) {
     // Decision 94: the key inventory, and — with `--compare` — the collision list a merge needs.
     const inventory = keyInventory(issues.issues)
     const other = stringFlag(ctx.flags, 'compare')

@@ -193,4 +193,4 @@ export const renderRebase = (outcome: RebaseOutcome): string => {
  * @param key - the issue key, taken as given when it is not a valid key.
  * @returns the issue lock directory path.
  */
-export const rebaseLockPathOf = (store: Store, key: string): string => issueLockPath(store.files.root, asIssueKey(key) ?? (key as IssueKey))
+export const rebaseLockPathOf = (store: Store, key: string): string => issueLockPath(store.files.root, asIssueKey(key) ?? key)

@@ -135,7 +135,7 @@ export function SuperagentPanel(props: SuperagentPanelProps) {
                         type="button"
                         className={styles.superagentConfirm}
                         disabled={confirmState?.status === 'loading'}
-                        onClick={() => onConfirm(row.key)}
+                        onClick={() => { onConfirm(row.key) }}
                       >
                         {confirmState?.key === row.key && confirmState.status === 'loading'
                           ? t('superagentConfirming')

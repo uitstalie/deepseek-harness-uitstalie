@@ -151,12 +151,12 @@ const parseRecord = (line: string): DispatchReportRecord | undefined => {
     ...(typeof record.outcome === 'string' ? { outcome: record.outcome } : {}),
     ...(record.result === 'returned' || record.result === 'failed' ? { result: record.result } : {}),
     ...(typeof record.ledger === 'object' && record.ledger !== null
-      && typeof (record.ledger as DispatchReportLedgerRef).root === 'string'
-      && typeof (record.ledger as DispatchReportLedgerRef).taskId === 'string'
+      && typeof (record.ledger).root === 'string'
+      && typeof (record.ledger).taskId === 'string'
       ? {
         ledger: Object.freeze({
-          root: (record.ledger as DispatchReportLedgerRef).root,
-          taskId: (record.ledger as DispatchReportLedgerRef).taskId,
+          root: (record.ledger).root,
+          taskId: (record.ledger).taskId,
         }),
       }
       : {}),

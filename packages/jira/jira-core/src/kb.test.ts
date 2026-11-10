@@ -160,7 +160,7 @@ describe('kb: reading is tolerant (decision 49)', () => {
   })
 
   it('warns about an unknown key, a wrong schema and a bad cross reference', () => {
-    const noisy = `${text().replace('schema: kb/v1', 'schema: kb/v0')}`
+    const noisy = text().replace('schema: kb/v1', 'schema: kb/v0')
       .replace('issues: [DH-12]', 'issues: [DH-12, nope]')
       .replace('tags:', 'future_field: 1\ntags:')
     const decoded = unwrap(decodeKnowledge(noisy, 'KB-7', 'locking'))

@@ -15,7 +15,7 @@
 import { basename, join } from 'node:path'
 
 import { system, systemFor } from './system/index.ts'
-import { type Timestamp, projectRelPath } from './entity.ts'
+import { projectRelPath } from './entity.ts'
 import { type JiraError, foreignMachineReadOnly, invalidInput } from './errors.ts'
 import { parseFrontmatter, renderFrontmatter, type Frontmatter } from './frontmatter.ts'
 import { noIssueSubject } from './git.ts'
@@ -136,7 +136,7 @@ export const readProjectFile = (text: string, key: string): Result<ProjectFile, 
     ...(name === undefined ? {} : { name }),
     remotes,
     paths: list(fm.paths),
-    agentWritePolicy: policy as 'shared' | 'owner-machine',
+    agentWritePolicy: policy,
     ...(owner === undefined ? {} : { ownerMachine: owner }),
   }))
 }
@@ -204,7 +204,7 @@ const writeProjectFile = async (store: Store, actor: Actor, project: ProjectFile
   return withLock(issueLockPath(store.files.root, project.key), lockOwnerOf(store, actor.at), lockOptionsOf(store), async () => {
     const written = await writeTextAtomic(join(store.files.root, ...path.split('/')), encodeProjectFile(project))
     if (!written.ok) return written
-    const commit = await commitStoreWrite(store, actor.at as Timestamp, [path], noIssueSubject('project '))
+    const commit = await commitStoreWrite(store, actor.at, [path], noIssueSubject('project '))
     if (!commit.ok) return commit
     return ok(project)
   })
@@ -410,7 +410,7 @@ export const ensureWorkspaceProject = async (
   const hasRemote = binding.remote !== undefined && binding.remote !== ''
   const project: ProjectFile = Object.freeze({
     key,
-    remotes: Object.freeze(hasRemote ? [normalizeRemote(binding.remote as string)] : []),
+    remotes: Object.freeze(hasRemote ? [normalizeRemote(binding.remote)] : []),
     paths: Object.freeze([normalizePath(binding.cwd)]),
     agentWritePolicy: hasRemote ? 'shared' as const : 'owner-machine' as const,
     ...(hasRemote ? {} : { ownerMachine: machineId }),

@@ -450,12 +450,12 @@ export class JiraService extends Service implements JiraServiceApi {
     const mutate = (original: Parameters<typeof applyUpdate>[0], ctx: Parameters<typeof applyUpdate>[2]) => {
       const expected = options.expectedRevision
       if (expected !== undefined && expected !== original.revision) return err(staleRevision(expected, original.revision))
-      if (original.conflicted === true && options.ackConflict !== true) {
+      if (original.conflicted && options.ackConflict !== true) {
         return err(invalidInput(`${original.key} is marked conflicted; pass ack_conflict to overwrite it deliberately`, {
           key: original.key,
         }))
       }
-      const acked = original.conflicted === true && options.ackConflict === true
+      const acked =  original.conflicted && options.ackConflict === true
         ? applyAckConflict(original, ctx)
         : ok(Object.freeze({ issue: original, comments: Object.freeze([]) }))
       if (!acked.ok) return acked
@@ -480,7 +480,7 @@ export class JiraService extends Service implements JiraServiceApi {
         case 'comment':
           return finish(applyComment(issue, mutation.body, ctx))
         case 'assignee':
-          return finish(applyAssignee(issue, mutation.value === 'none' ? null : (ctx.by as Identity), ctx))
+          return finish(applyAssignee(issue, mutation.value === 'none' ? null : (ctx.by), ctx))
         case 'link':
           return finish(applyLink(issue, { type: mutation.type, target: mutation.target, op: mutation.op }, ctx))
       }

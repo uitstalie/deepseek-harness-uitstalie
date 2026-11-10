@@ -104,7 +104,7 @@ describe('list: the order the contract promises', () => {
     ], vocab)
     assert.deepEqual(result.groups.map(group => group.name), ['DH · todo', 'KB · in_progress'])
     for (const group of result.groups) {
-      assert.equal(group.items.every(item => item.blocked === false), true)
+      assert.equal(group.items.every(item => !item.blocked), true)
     }
     const grouped = result.groups.flatMap(group => group.items.map(item => item.key))
     assert.deepEqual([...grouped].sort(), keysOf(result).slice().sort())

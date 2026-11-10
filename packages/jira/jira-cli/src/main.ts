@@ -16,7 +16,7 @@
 
 import { parseArgs, type FlagSpec } from '@deepseek-ai/dsh-jira-core'
 import { type JiraError, invalidInput } from '@deepseek-ai/dsh-jira-core'
-import { type Issue, type IssueKey, asIssueKey } from '@deepseek-ai/dsh-jira-core'
+import { type Issue, asIssueKey } from '@deepseek-ai/dsh-jira-core'
 import { type Result, err, ok } from '@deepseek-ai/dsh-jira-core'
 import { createStore, readIssueText } from '@deepseek-ai/dsh-jira-core'
 import { system } from '@deepseek-ai/dsh-jira-core'
@@ -308,9 +308,9 @@ export const runCli = async (request: CliRequest): Promise<number> => {
 export const getIssue = async (root: string, key: string): Promise<Result<Issue, JiraError>> => {
   const parsedKey = asIssueKey(key)
   if (parsedKey === undefined) return err(invalidInput(`"${key}" is not an issue key`))
-  const text = await readIssueText(createStore({ root, machineId: 'cli' }), parsedKey as IssueKey)
+  const text = await readIssueText(createStore({ root, machineId: 'cli' }), parsedKey)
   if (!text.ok) return text
   const { decodeIssue } = await import('@deepseek-ai/dsh-jira-core')
-  const decoded = decodeIssue(text.value, parsedKey as IssueKey)
+  const decoded = decodeIssue(text.value, parsedKey)
   return decoded.ok ? ok(decoded.value.issue) : decoded
 }

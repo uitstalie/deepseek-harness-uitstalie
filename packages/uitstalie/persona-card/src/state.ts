@@ -330,7 +330,7 @@ export function personaStateTool(ctx: Context, target: PersonaStateTarget): Tool
           if (typeof values !== 'object' || values === null || Array.isArray(values)) {
             throw new Error('persona_state patch needs `values` as a JSON object')
           }
-          const record = target.store.apply(sessionId, cardId, schema, { kind: 'patch', values: values as PersonaStateValues })
+          const record = target.store.apply(sessionId, cardId, schema, { kind: 'patch', values: values })
           syncPersonaStateMessage(ctx, agent.session, record, target.targets)
           return state()
         }

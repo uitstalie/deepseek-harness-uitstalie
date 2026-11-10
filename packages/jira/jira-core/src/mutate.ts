@@ -230,7 +230,7 @@ export const applyUpdate = (issue: Issue, patch: IssuePatch, ctx: ChangeContext)
         }))
       }
     }
-    next.kbRefs = Object.freeze([...patch.kbRefs]) as never
+    next.kbRefs = Object.freeze([...patch.kbRefs])
   }
 
   // `note` is the one field where "not given" and "cleared" differ, so it is handled
@@ -536,7 +536,7 @@ export const applyConflictMark = (issue: Issue, ctx: ChangeContext): Result<Chan
  * @returns the change; an already-acknowledged issue is returned unchanged.
  */
 export const applyAckConflict = (issue: Issue, ctx: ChangeContext): Result<Change, JiraError> =>
-  issue.conflicted !== true
+  !issue.conflicted
     ? ok(freezeChange(issue, []))
     : ok(freezeChange(Object.freeze({
       ...issue,

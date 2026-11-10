@@ -243,7 +243,7 @@ describe('store: a refused create does not burn a number (decision 190)', () => 
         assert.equal(refused.ok, false, JSON.stringify(input))
         if (!refused.ok) {
           assert.equal(
-            (refused.error.context as Record<string, unknown> | undefined)?.['keyAllocated'],
+            (refused.error.context)?.['keyAllocated'],
             false,
             `the refusal must say the number survives: ${JSON.stringify(input)}`,
           )

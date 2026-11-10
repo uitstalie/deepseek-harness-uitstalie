@@ -113,69 +113,69 @@ function readStub(dacl: NativePtr | null, label: NativePtr | null, descriptor: b
 describe('withPathLock failure paths', () => {
   it('fails closed when CreateFileW returns an invalid handle', () => {
     const api = aclApi({ createFileW: vi.fn(() => 0n as NativePtr) })
-    expect(() => withPathLock(api, 'C:\\locked', () => {})).toThrowError(expect.objectContaining({ api: 'CreateFileW' }))
+    expect(() => { withPathLock(api, 'C:\\locked', () => {}) }).toThrowError(expect.objectContaining({ api: 'CreateFileW' }))
   })
 
   it('closes the handle and reports when LockFileEx fails', () => {
     const closeHandle = vi.fn(() => 1)
     const api = aclApi({ lockFileEx: vi.fn(() => 0), closeHandle })
-    expect(() => withPathLock(api, 'C:\\locked', () => {})).toThrowError(expect.objectContaining({ api: 'LockFileEx' }))
+    expect(() => { withPathLock(api, 'C:\\locked', () => {}) }).toThrowError(expect.objectContaining({ api: 'LockFileEx' }))
     expect(closeHandle).toHaveBeenCalledWith(7n)
   })
 
   it('closes the handle and reports when UnlockFileEx fails', () => {
     const closeHandle = vi.fn(() => 1)
     const api = aclApi({ unlockFileEx: vi.fn(() => 0), closeHandle })
-    expect(() => withPathLock(api, 'C:\\locked', () => {})).toThrowError(expect.objectContaining({ api: 'UnlockFileEx' }))
+    expect(() => { withPathLock(api, 'C:\\locked', () => {}) }).toThrowError(expect.objectContaining({ api: 'UnlockFileEx' }))
     expect(closeHandle).toHaveBeenCalledWith(7n)
   })
 
   it('reports a failed CloseHandle after a successful action', () => {
     const api = aclApi({ closeHandle: vi.fn(() => 0) })
-    expect(() => withPathLock(api, 'C:\\locked', () => {})).toThrowError(expect.objectContaining({ api: 'CloseHandle' }))
+    expect(() => { withPathLock(api, 'C:\\locked', () => {}) }).toThrowError(expect.objectContaining({ api: 'CloseHandle' }))
   })
 })
 
 describe('mergeAndApply failure paths', () => {
   it('reports a SetEntriesInAclW failure when the directory carries no descriptor to free', () => {
     const api = aclApi({ setEntriesInAclW: vi.fn(() => 5) })
-    expect(() => grantWrite(api, 'C:\\granted', craftSid(1, 0))).toThrowError(expect.objectContaining({ api: 'SetEntriesInAclW' }))
+    expect(() => { grantWrite(api, 'C:\\granted', craftSid(1, 0)) }).toThrowError(expect.objectContaining({ api: 'SetEntriesInAclW' }))
   })
 
   it('reports a NULL merged ACL when there is no descriptor to free', () => {
     const api = aclApi({ setEntriesInAclW: vi.fn(() => 0) })
-    expect(() => grantWrite(api, 'C:\\granted', craftSid(1, 0))).toThrowError(expect.objectContaining({ api: 'SetEntriesInAclW' }))
+    expect(() => { grantWrite(api, 'C:\\granted', craftSid(1, 0)) }).toThrowError(expect.objectContaining({ api: 'SetEntriesInAclW' }))
   })
 
   it('frees the descriptor and reports when SetEntriesInAclW fails', () => {
     const localFree = vi.fn(() => 0n as NativePtr)
     const api = aclApi({ getNamedSecurityInfoW: readStub(null, null, 6n), setEntriesInAclW: vi.fn(() => 5), localFree })
-    expect(() => grantWrite(api, 'C:\\granted', craftSid(1, 0))).toThrowError(expect.objectContaining({ api: 'SetEntriesInAclW' }))
+    expect(() => { grantWrite(api, 'C:\\granted', craftSid(1, 0)) }).toThrowError(expect.objectContaining({ api: 'SetEntriesInAclW' }))
     expect(localFree).toHaveBeenCalledWith(6n)
   })
 
   it('frees the descriptor and reports a NULL merged ACL', () => {
     const localFree = vi.fn(() => 0n as NativePtr)
     const api = aclApi({ getNamedSecurityInfoW: readStub(null, null, 6n), setEntriesInAclW: vi.fn(() => 0), localFree })
-    expect(() => grantWrite(api, 'C:\\granted', craftSid(1, 0))).toThrowError(expect.objectContaining({ api: 'SetEntriesInAclW' }))
+    expect(() => { grantWrite(api, 'C:\\granted', craftSid(1, 0)) }).toThrowError(expect.objectContaining({ api: 'SetEntriesInAclW' }))
     expect(localFree).toHaveBeenCalledWith(6n)
   })
 
   it('frees the merged ACL and reports when SetNamedSecurityInfoW fails', () => {
     const localFree = vi.fn(() => 0n as NativePtr)
     const api = aclApi({ setNamedSecurityInfoW: vi.fn(() => 5), localFree })
-    expect(() => grantWrite(api, 'C:\\granted', craftSid(1, 0))).toThrowError(expect.objectContaining({ api: 'SetNamedSecurityInfoW' }))
+    expect(() => { grantWrite(api, 'C:\\granted', craftSid(1, 0)) }).toThrowError(expect.objectContaining({ api: 'SetNamedSecurityInfoW' }))
     expect(localFree).toHaveBeenCalledWith(9n)
   })
 
   it('reports a failed descriptor LocalFree after a successful apply', () => {
     const api = aclApi({ getNamedSecurityInfoW: readStub(null, null, 6n), localFree: vi.fn(() => 1n as NativePtr) })
-    expect(() => grantWrite(api, 'C:\\granted', craftSid(1, 0))).toThrowError(expect.objectContaining({ api: 'LocalFree' }))
+    expect(() => { grantWrite(api, 'C:\\granted', craftSid(1, 0)) }).toThrowError(expect.objectContaining({ api: 'LocalFree' }))
   })
 
   it('reports a failed merged-ACL LocalFree after a successful apply', () => {
     const api = aclApi({ localFree: vi.fn(() => 1n as NativePtr) })
-    expect(() => grantWrite(api, 'C:\\granted', craftSid(1, 0))).toThrowError(expect.objectContaining({ api: 'LocalFree' }))
+    expect(() => { grantWrite(api, 'C:\\granted', craftSid(1, 0)) }).toThrowError(expect.objectContaining({ api: 'LocalFree' }))
   })
 
   it('frees the descriptor when SetEntriesInAclW fails during a revoke', () => {
@@ -289,7 +289,7 @@ describe('the exact-ACE skip and ACL-walk defenses', () => {
       getNamedSecurityInfoW: readStub(craftAcl(abi.ACCESS_ALLOWED_ACE_TYPE, abi.GRANT_MASK, sid, true), null, 6n),
       localFree: vi.fn(() => 1n as NativePtr),
     })
-    expect(() => grantWrite(api, 'C:\\granted', sid)).toThrowError(expect.objectContaining({ api: 'LocalFree' }))
+    expect(() => { grantWrite(api, 'C:\\granted', sid) }).toThrowError(expect.objectContaining({ api: 'LocalFree' }))
   })
 
   it('does not skip an ACE with a different access type, mask, or trustee', () => {

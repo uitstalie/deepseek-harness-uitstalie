@@ -97,7 +97,7 @@ export const registerSkills = async (
       content: body.value,
       source: 'runtime',
     }))
-    if (typeof undo === 'function') undoS.push(undo as () => void)
+    if (typeof undo === 'function') undoS.push(undo)
     registered.push(entry.name)
   }
   return Object.freeze({

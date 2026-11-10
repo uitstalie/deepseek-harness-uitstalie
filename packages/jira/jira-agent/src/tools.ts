@@ -224,7 +224,7 @@ export const jiraTools = (host: ToolHost): readonly ToolDefinition[] => {
     render: (typed) => {
       const issue = typed.issue
       if (issue !== null && typeof issue === 'object' && 'closed' in issue) {
-        return renderSuccess(typed, renderBatchClose(typed as ToolValue & { readonly issue: BatchClosed }))
+        return renderSuccess(typed, renderBatchClose(typed))
       }
       if (issue !== null && typeof issue === 'object' && 'tag' in issue) {
         return renderSuccess(typed, renderTag(issue as { readonly tag: TagRecord; readonly committed: boolean }))

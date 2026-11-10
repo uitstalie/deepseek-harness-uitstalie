@@ -188,9 +188,10 @@ export const claimKey = (
     // handed out — never on the block's end, or one block could silently straddle the cap.
     if (start > MAX_KEY_NUMBER) return err(keyExhausted(project, MAX_KEY_NUMBER, start))
     const end = start + BLOCK_SIZE - 1
+    const block: Block = [start, end]
     const claimed: ProjectCounter = Object.freeze({
       next: start + 1,
-      blocks: Object.freeze([...(entry?.blocks ?? []), Object.freeze([start, end]) as Block]),
+      blocks: Object.freeze([...(entry?.blocks ?? []), Object.freeze(block)]),
     })
     const counters = Object.freeze({
       ...mine,
@@ -208,9 +209,10 @@ export const claimKey = (
     // The seed pushed us past our own block: claim the next one from that point instead of straddling.
     const start = Math.max(highestClaim(files, project), seed) + 1
     if (start > MAX_KEY_NUMBER) return err(keyExhausted(project, MAX_KEY_NUMBER, start))
+    const block: Block = [start, start + BLOCK_SIZE - 1]
     const claimed: ProjectCounter = Object.freeze({
       next: start + 1,
-      blocks: Object.freeze([...entry.blocks, Object.freeze([start, start + BLOCK_SIZE - 1]) as Block]),
+      blocks: Object.freeze([...entry.blocks, Object.freeze(block)]),
     })
     return ok(Object.freeze({
       key: `${project}-${start}`,

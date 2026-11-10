@@ -38,7 +38,7 @@ afterEach(cleanup)
 describe('MemorySection', () => {
   it('shows the accepted values and saves a staged change', async () => {
     const { form, mutate } = formOf()
-    const controller = new MemorySettingsController(form as never)
+    const controller = new MemorySettingsController(form)
     render(<MemorySection controller={controller} t={key => en[key]} />)
 
     const input = screen.getByDisplayValue('10') as HTMLInputElement
@@ -52,13 +52,13 @@ describe('MemorySection', () => {
 
   it('marks an invalid number and disables saving', () => {
     const { form } = formOf()
-    const controller = new MemorySettingsController(form as never)
+    const controller = new MemorySettingsController(form)
     render(<MemorySection controller={controller} t={key => en[key]} />)
 
     fireEvent.change(screen.getByDisplayValue('4096'), { target: { value: '0' } })
 
     expect(screen.getByRole('alert').textContent).toBe(en.invalidField)
-    expect((screen.getByRole('button', { name: en.save }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: en.save }).disabled).toBe(true)
     controller.dispose()
   })
 

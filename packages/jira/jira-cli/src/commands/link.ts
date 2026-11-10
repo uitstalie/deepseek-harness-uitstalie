@@ -13,11 +13,11 @@ export const linkCommand: Handler = ctx =>
     const target = asIssueKey(stringFlag(ctx.flags, 'target') ?? '')
     if (type === undefined) return planUsage(invalidInput('link 需要 --type（例如 --type is_blocked_by）'))
     if (target === undefined) return planUsage(invalidInput('link 需要 --target <KEY>'))
-    const op = booleanFlag(ctx.flags, 'remove') === true ? 'remove' : 'add'
+    const op =  booleanFlag(ctx.flags, 'remove') ? 'remove' : 'add'
     return ok({
       mutate: (issue, changeContext) => applyLink(
         issue,
-        { type: type as LinkType, target: target as never, op },
+        { type: type as LinkType, target: target, op },
         changeContext,
       ),
       what: `link ${op}`,

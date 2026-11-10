@@ -45,7 +45,7 @@ const searchAction = async (ctx: CommandContext): Promise<number> => {
 }
 
 const getAction = async (ctx: CommandContext, key: KnowledgeKey): Promise<number> => {
-  const found = await findKnowledge(ctx.store, key as never)
+  const found = await findKnowledge(ctx.store, key)
   if (!found.ok) return fail(ctx.io, found.error, 1)
   const item = found.value.entry
   for (const warning of found.value.warnings) ctx.io.err(`warning: ${warning}`)
@@ -77,7 +77,7 @@ const createAction = async (ctx: CommandContext): Promise<number> => {
 
 const updateAction = async (ctx: CommandContext, key: KnowledgeKey): Promise<number> => {
   const origin = originFromIdentity(undefined, ctx.store.machineId)
-  const updated = await updateKnowledge(ctx.store, key as never, await ctx.actorFor(), origin, optFlags<KnowledgePatch>(ctx.flags, {
+  const updated = await updateKnowledge(ctx.store, key, await ctx.actorFor(), origin, optFlags<KnowledgePatch>(ctx.flags, {
     title: 'string',
     type: { kind: 'string', to: 'kbType' },
     tags: 'list',

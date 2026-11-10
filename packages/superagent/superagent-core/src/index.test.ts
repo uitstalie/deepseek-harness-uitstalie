@@ -109,7 +109,7 @@ describe('dispatch reports: journal', () => {
     const results = await Promise.all(children.map(async ({ child, stdout }) => {
       const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
         child.once('error', reject)
-        child.once('exit', (code, signal) => resolve({ code, signal }))
+        child.once('exit', (code, signal) => { resolve({ code, signal }) })
       })
       assert.deepEqual(exit, { code: 0, signal: null })
       return JSON.parse(stdout()) as { status: string; attempts?: number }

@@ -26,7 +26,7 @@ import { CapabilitiesSection } from './CapabilitiesSection.tsx'
 import type { CapabilitiesSectionInjected } from './CapabilitiesSection.tsx'
 import { en, zh, type CapabilityKey } from './locales.ts'
 import { CapabilityStore } from './store.ts'
-import type { CapabilityGate, CapabilityGateValue, CapabilityWire } from './store.ts'
+import type { CapabilityGateValue } from './store.ts'
 import { CAPABILITIES_SETTINGS_ORDER, CAPABILITIES_SETTINGS_SECTION } from '../section.ts'
 
 export type { CapabilitiesSectionInjected, CapabilitiesSectionProps } from './CapabilitiesSection.tsx'
@@ -65,7 +65,7 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
   const gate = ctx.configForms.get<CapabilityGateValue>('dafeiyu')
 
   ctx.inject(['slots', 'remote.dafeiyu'], (scoped) => {
-    const controller = new CapabilityStore(scoped.remote.dafeiyu as CapabilityWire, gate as CapabilityGate)
+    const controller = new CapabilityStore(scoped.remote.dafeiyu, gate)
     scoped.slots.inject('settings.section', () => scoped.slots.register({
       name: 'settings.section',
       id: CAPABILITIES_SETTINGS_SECTION,

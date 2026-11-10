@@ -112,7 +112,7 @@ export const readOwner = async (path: string): Promise<LockOwner | undefined> =>
       pid: parsed.pid,
       host: String(parsed.host ?? 'unknown'),
       machine_id: String(parsed.machine_id ?? 'unknown'),
-      at: parsed.at as Timestamp,
+      at: parsed.at,
     })
   } catch {
     return undefined

@@ -30,7 +30,6 @@ import type {
   CapabilityConfig,
   CapabilityContribution,
   CapabilityProvider,
-  CapabilityProviderV2,
   CapabilityRuntime,
   CapabilityStatus,
   TurnEndInput,
@@ -719,7 +718,7 @@ function enabledByDefaultOf(provider: CapabilityProvider): boolean {
 /** Reject a v2 descriptor that cannot render in the capability list. */
 function assertDescriptor(provider: CapabilityProvider): void {
   if (provider.contractVersion !== 2) return
-  const descriptor = provider as CapabilityProviderV2
+  const descriptor = provider
   if (typeof descriptor.label !== 'string' || descriptor.label.trim() === '') {
     throw new Error(`dafeiyu: capability "${descriptor.id}" declares contractVersion 2 without a label`)
   }

@@ -15,7 +15,6 @@ import {
   type Issue,
   type IssueKey,
   type Link,
-  type LinkType,
   type Timestamp,
   asIssueKey,
   isLinkType,
@@ -106,7 +105,7 @@ const decodeLinks = (value: unknown): Result<readonly Link[], JiraError> => {
     if (!isLinkType(type)) return err(invalidInput(`unknown link type "${type}"`, { type }))
     const key = asIssueKey(target)
     if (key === undefined) return err(invalidInput(`link target "${target}" is not an issue key`, { target }))
-    links.push(Object.freeze({ type: type as LinkType, target: key }))
+    links.push(Object.freeze({ type: type, target: key }))
   }
   return ok(Object.freeze(links))
 }
@@ -211,7 +210,7 @@ export const decodeIssue = (text: string, key: IssueKey): Result<DecodedIssue, J
     conflicted: frontmatter.conflicted === true,
     body,
   })
-  return ok(Object.freeze({ issue, warnings: Object.freeze(warnings), unknownKeys: Object.freeze(unknownKeys), schema: schema as string }))
+  return ok(Object.freeze({ issue, warnings: Object.freeze(warnings), unknownKeys: Object.freeze(unknownKeys), schema: schema }))
 }
 
 const diskLinks = (links: readonly Link[]): readonly FrontmatterMap[] =>

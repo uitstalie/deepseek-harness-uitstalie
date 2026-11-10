@@ -45,7 +45,7 @@ const asMapList = (value: unknown): readonly FrontmatterMap[] =>
 
 const requiredList = (frontmatter: Frontmatter, key: string): Result<readonly string[], JiraError> => {
   const value = frontmatter[key]
-  const list = asScalarList(value as never)
+  const list = asScalarList(value)
   return list.length === 0
     ? err(invalidInput(`config.md is missing a non-empty \`${key}\``, { field: key }))
     : ok(list)

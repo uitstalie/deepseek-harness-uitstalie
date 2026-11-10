@@ -92,7 +92,7 @@ describe('superagent: durable dispatch store', () => {
 
     const resolved = await store.resolve(task.id, {
       status: 'returned',
-      updatedAt: '2026-11-07T00:01:00.000Z' as Timestamp,
+      updatedAt: '2026-11-07T00:01:00.000Z',
       outcome: 'done',
       artifacts: ['one.md', 'two.md'],
       decisions: ['ship it'],
@@ -111,7 +111,7 @@ describe('superagent: durable dispatch store', () => {
     // A human can supplement a returned result without replacing its other fields.
     const supplemented = await store.resolve(task.id, {
       status: 'returned',
-      updatedAt: '2026-11-07T00:02:00.000Z' as Timestamp,
+      updatedAt: '2026-11-07T00:02:00.000Z',
       artifacts: ['one.md', 'two.md', 'three.md'],
       decisions: ['ship it', 'document it'],
     })
@@ -134,7 +134,7 @@ describe('superagent: durable dispatch store', () => {
     // A timestamp alone is not a correction: repeat the same fields without appending or writing.
     const again = await store.resolve(task.id, {
       status: 'returned',
-      updatedAt: '2026-11-07T00:03:00.000Z' as Timestamp,
+      updatedAt: '2026-11-07T00:03:00.000Z',
       artifacts: ['one.md', 'two.md', 'three.md'],
       decisions: ['ship it', 'document it'],
     })
@@ -153,14 +153,14 @@ describe('superagent: durable dispatch store', () => {
 
     const failed = await store.resolve('task-failed-to-returned', {
       status: 'failed',
-      updatedAt: '2026-11-07T00:01:00.000Z' as Timestamp,
+      updatedAt: '2026-11-07T00:01:00.000Z',
       outcome: 'worker failed',
       issue: 'DH-100',
     })
     assert.equal(failed?.task.status, 'failed')
     const corrected = await store.resolve('task-failed-to-returned', {
       status: 'returned',
-      updatedAt: '2026-11-07T00:02:00.000Z' as Timestamp,
+      updatedAt: '2026-11-07T00:02:00.000Z',
       outcome: 'manually recovered',
       artifacts: ['recovery.md'],
       decisions: ['accept the manual result'],
@@ -202,7 +202,7 @@ describe('superagent: durable dispatch store', () => {
 
     const resolved = await store.resolve('task-domain-only', {
       status: 'returned',
-      updatedAt: '2026-11-07T00:01:00.000Z' as Timestamp,
+      updatedAt: '2026-11-07T00:01:00.000Z',
       outcome: 'domain only',
       artifacts: ['domain.md'],
     }, { project: false })

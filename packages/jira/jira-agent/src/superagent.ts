@@ -3909,7 +3909,7 @@ export const deliverTaskReport = async (
       + '\n\nThe Session is idle now. Inspect it (`superagent_control inspect`), then stop/abort, '
       + 'retry with a clean turn boundary, or compact; record the outcome with superagent_ledger '
       + 'resolve (status failed) and memory_write.'
-    if (await prepareReport(body) === false) return false
+    if (!(await prepareReport(body))) return false
     if (!(await recipientReady())) return false
     try {
       await controller.prompt({
@@ -3949,7 +3949,7 @@ export const deliverTaskReport = async (
       + 'Record the durable conclusion with memory_write (kind decision/open/files, tags including '
       + 'superagent, the workspace and the task id); use superagent_ledger resolve for any outcome, '
       + 'artifact or decision the automatic record could not know.'
-  if (await prepareReport(body) === false) return false
+  if (!(await prepareReport(body))) return false
   if (!(await recipientReady())) return false
   try {
     await controller.prompt({

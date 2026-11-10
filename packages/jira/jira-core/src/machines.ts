@@ -12,7 +12,6 @@
 
 import { join } from 'node:path'
 
-import { type Timestamp } from './entity.ts'
 import { type JiraError, invalidInput } from './errors.ts'
 import { parseFrontmatter, renderFrontmatter, type Frontmatter } from './frontmatter.ts'
 import { noIssueSubject } from './git.ts'
@@ -151,7 +150,7 @@ export const labelMachine = async (
       renderFrontmatter(frontmatter, `Label for ${machineId}.\n`),
     )
     if (!written.ok) return written
-    const commit = await commitStoreWrite(store, actor.at as Timestamp, [path], noIssueSubject('machines label '))
+    const commit = await commitStoreWrite(store, actor.at, [path], noIssueSubject('machines label '))
     if (!commit.ok) return commit
     return ok(Object.freeze({
       machineId,

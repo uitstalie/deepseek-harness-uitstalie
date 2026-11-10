@@ -85,7 +85,7 @@ const call = async (
   const result = await dispatchTool(harness, agent, name, args, `${name}-${String(Math.random()).slice(2)}`)
   const value = result.value
   assert.ok(typeof value === 'object' && value !== null && !Array.isArray(value), `expected an envelope for ${name}`)
-  return value as Record<string, unknown>
+  return value
 }
 
 /** Claim one issue as the main agent, which is what opens the executor's write window. */

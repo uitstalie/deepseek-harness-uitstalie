@@ -81,7 +81,7 @@ describe('kbstore: creating', () => {
     ] as const
     for (const [input, needle] of cases) {
       const before = unwrap(await listKnowledge(store)).entries.length
-      const result = await createKnowledge(store, LATER, ORIGIN, input as never)
+      const result = await createKnowledge(store, LATER, ORIGIN, input)
       assert.equal(result.ok, false, JSON.stringify(input))
       if (!result.ok) assert.match(result.error.message, needle)
       assert.equal(unwrap(await listKnowledge(store)).entries.length, before, 'nothing was written')
@@ -90,11 +90,11 @@ describe('kbstore: creating', () => {
 
   it('does not burn a KB number on a refused draft (decision 190)', async () => {
     // KB-1 and KB-2 exist from the tests above; a refusal must leave the counter untouched.
-    const refused = await createKnowledge(store, LATER, ORIGIN, { domain: 'locking', kbType: 'note', title: 'x' } as never)
+    const refused = await createKnowledge(store, LATER, ORIGIN, { domain: 'locking', kbType: 'note', title: 'x' })
     assert.equal(refused.ok, false)
     if (!refused.ok) {
       assert.equal(
-        (refused.error.context as Record<string, unknown> | undefined)?.['keyAllocated'],
+        (refused.error.context)?.['keyAllocated'],
         false,
         'the refusal must say the number survives',
       )

@@ -147,7 +147,7 @@ const parseMetadata = (input: Readonly<Record<string, unknown>>): PersonaMetadat
     if (!METADATA_KEYS.includes(key as typeof METADATA_KEYS[number])) extra[key] = value
   }
   if (Object.keys(extra).length > 0) metadata['import_extra'] = Object.freeze(extra)
-  return Object.freeze(metadata) as PersonaMetadata
+  return Object.freeze(metadata)
 }
 
 /**

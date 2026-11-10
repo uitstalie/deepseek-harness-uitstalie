@@ -108,7 +108,7 @@ describe('tagstore: registering a tag (decision 26)', () => {
     const decoded = unwrap(decodeTag(text, 'demo'))
     assert.equal(decoded.record.description, 'a demo tag')
     assert.deepEqual(decoded.unknownKeys, [])
-    const odd = unwrap(decodeTag(`${text.replace('type: tag', 'type: tag\nsurprise: 1')}`, 'demo'))
+    const odd = unwrap(decodeTag(text.replace('type: tag', 'type: tag\nsurprise: 1'), 'demo'))
     assert.deepEqual(odd.unknownKeys, ['surprise'])
   })
 })

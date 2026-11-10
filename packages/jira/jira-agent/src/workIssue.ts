@@ -118,7 +118,7 @@ export interface WorkTarget {
 export const workAccess = (
   issue: WorkTarget,
   caller: Caller,
-  dispatchedTo?: string | undefined,
+  dispatchedTo?: string,
 ): WorkAccess => {
   if (caller.reason === 'dsh-read-only') return DENIED('this deployment marks the session read-only')
   if (caller.sessionId === undefined) {

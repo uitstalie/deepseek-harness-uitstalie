@@ -146,7 +146,7 @@ const call = async (
   const result = await dispatchTool(harness, agent, name, args, `${name}-${String(Math.random()).slice(2)}`)
   const value = result.value
   assert.ok(typeof value === 'object' && value !== null && !Array.isArray(value), `expected an envelope for ${name}`)
-  return value as Record<string, unknown>
+  return value
 }
 
 /** The issue an envelope returned. */
@@ -482,7 +482,7 @@ describe('superagent: workspace management', () => {
       }
       const refused = await runWorkspaceTool(
         { action: 'remove', workspace: workspace.id, confirm: workspace.id },
-        options, {}, harness.ctx as never,
+        options, {}, harness.ctx,
       )
       assert.equal(refused.ok, false)
       assert.match(JSON.stringify(refused.error), /runs in|super workspace/u)
@@ -509,7 +509,7 @@ const withInitialPermission = <T extends object>(ctx: T): T & { get(key: string)
       }
       return (ctx as { get?: (key: string) => unknown }).get?.(key)
     },
-  } as T & { get(key: string): unknown }
+  }
 }
 
 /** Shared model-selection fake for the Session action tests. */
@@ -657,7 +657,7 @@ describe('superagent: workspace Sessions', () => {
     failingController.create = async () => { throw new Error('injected start failure') }
     const failed = await runControlTool(
       { action: 'start', workspace: 'hello', task: 'must not become pending' },
-      { ...options, caller: { writable: true, sessionId: 'super-1', cwd: failureRoot } as never },
+      { ...options, caller: { writable: true, sessionId: 'super-1', cwd: failureRoot } },
       me,
       { get: (key: string) => key === 'sessionController' ? failingController : key === 'workspaceRegistry' ? registry : undefined },
       { tasks: new Map() },
@@ -739,7 +739,7 @@ describe('superagent: workspace Sessions', () => {
     }
     controller.items = [...controller.items, { sessionId: 'super-1', running: false, cwd: workspacePath, blank: false, updatedAt: 500 }]
     const delivered = await deliverTaskReport(
-      host as never, { superSession: 'super-1', workspace: workspacePath }, worker, new AbortController().signal,
+      host, { superSession: 'super-1', workspace: workspacePath }, worker, new AbortController().signal,
     )
     assert.equal(delivered, true)
     const report = controller.prompted.at(-1)
@@ -962,7 +962,7 @@ describe('superagent: the dispatch ledger', () => {
         superSession: 'super-1',
         workspace: root,
         ledger: { root, task: rows[0] as unknown as DispatchLedgerTask },
-      }, 'colony survived automatically', AT as never)
+      }, 'colony survived automatically', AT)
       const auto = await runLedgerTool({ action: 'list', workspace: 'rimworld', status: 'returned' }, options, me, ctx as never)
       assert.equal((auto.entries as unknown[]).length, 1)
 
@@ -993,8 +993,8 @@ describe('superagent: dispatch argument and result corrections', () => {
     try {
       const result = await runControlTool({ action: 'append' }, {
         jira: {} as never,
-        caller: { writable: true, sessionId: 'super-1', cwd: 'D:\\super' } as never,
-        at: AT as never,
+        caller: { writable: true, sessionId: 'super-1', cwd: 'D:\\super' },
+        at: AT,
       }, { session: 'super-1' }, {
         get: (key: string) => key === 'sessionController'
           ? { create: () => assert.fail('validation must not create a Session'), prompt: () => assert.fail('validation must not prompt'), list: async () => ({ items: [] }) }
@@ -1076,15 +1076,15 @@ describe('superagent: dispatch argument and result corrections', () => {
       action: 'resolve', id: 'task-oldest', status: 'returned', outcome: 'found beyond the display window',
     }, {
       jira: {} as never,
-      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
-      at: AT as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root },
+      at: AT,
     }, {}, {} as never)
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal((result.task as DispatchLedgerTask).outcome, 'found beyond the display window')
     const rejected = await runLedgerTool({ action: 'resolve', id: 'task-oldest', status: 'pending' }, {
       jira: {} as never,
-      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
-      at: AT as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root },
+      at: AT,
     }, {}, {} as never)
     assert.equal(rejected.error?.code, 'INVALID_INPUT')
   })
@@ -1292,8 +1292,8 @@ describe('superagent: report recovery after a plugin remount', () => {
     }
     const result = await runLedgerTool({ action: 'retry_report', id: 'task-settlement' }, {
       jira: {} as never,
-      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
-      at: AT as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root },
+      at: AT,
     }, {}, {
       get: (key: string) => key === 'sessionController' ? controller : undefined,
     } as never, undefined, journal)
@@ -1304,14 +1304,14 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal(controller.prompted[0]?.text, 'saved report')
     const visible = await runLedgerTool({ action: 'report_status' }, {
       jira: {} as never,
-      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
-      at: AT as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root },
+      at: AT,
     }, {}, {} as never, undefined, journal)
     assert.equal((visible.entries as DispatchReportRecord[])[0]?.status, 'delivering')
     const refused = await runLedgerTool({ action: 'retry_report', id: 'task-settlement' }, {
       jira: {} as never,
-      caller: { writable: true, sessionId: 'super-1', cwd: root } as never,
-      at: AT as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: root },
+      at: AT,
     }, {}, {} as never, undefined, journal)
     assert.match(refused.error?.message ?? '', /delivering, not failed/u)
   })
@@ -1421,20 +1421,18 @@ describe('superagent: report recovery after a plugin remount', () => {
   it('routes two queued dispatches to the task each turn actually ran', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
-    const sync = await seedBinding(root, {
+    await seedBinding(root, {
       sessionId: 'shared-child',
       requestId: 'req-sync',
       task: 'sync the ledger',
       dispatchedAt: '2026-10-15T11:00:00Z',
     })
-    const fsError = await seedBinding(root, {
+    await seedBinding(root, {
       sessionId: 'shared-child',
       requestId: 'req-fserror',
       task: 'investigate the FsError',
       dispatchedAt: AT,
     })
-    void sync
-    void fsError
     const child = turnSession('shared-child', [
       { requestId: 'req-sync', text: 'the sync finished' },
       { requestId: 'req-fserror', text: 'the FsError root cause is a stale handle' },
@@ -1538,7 +1536,7 @@ describe('superagent: dispatch report binding', () => {
     const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
     const started = await runControlTool(
       { action: 'start', workspace: 'hello', task: 'do the thing' },
-      options, me, bindingHost(controller).ctx as never, { tasks: new Map() },
+      options, me, bindingHost(controller).ctx, { tasks: new Map() },
     )
     assert.equal(started.ok, true, JSON.stringify(started.error))
     assert.equal(childPrompts.length, 1)
@@ -1585,7 +1583,7 @@ describe('superagent: dispatch report binding', () => {
     const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
     const started = await runControlTool(
       { action: 'start', workspace: 'hello', task: 'should not be admitted' },
-      options, me, bindingHost(new NeverController()).ctx as never, { tasks: new Map() },
+      options, me, bindingHost(new NeverController()).ctx, { tasks: new Map() },
     )
     assert.equal(started.ok, false)
     assert.match(JSON.stringify(started.error), /report binding could not be recorded/u)
@@ -2378,7 +2376,7 @@ describe('superagent: context, compaction and memory curation', () => {
         assert.equal((cold as { lastTurnError?: { message?: string } }).lastTurnError?.message, 'persisted failure')
         const contribution = createSuperagentContribution({
           ctx: coldCtx, env: {}, clock: () => now, recorder: createSessionRecorder(),
-        } as never)
+        })
         const definition = contribution.tools?.({ id: 'super-1', cwd: coldRoot } as never).find(tool => tool.name === CONTROL_TOOL_NAME)
         assert.ok(definition !== undefined)
         const rendered = definition.output.render({ action: 'inspect', session: 'cold-session' }, cold as unknown as JsonValue).map(block => block.type === 'text' ? block.text : '').join('\n')
@@ -2428,7 +2426,7 @@ describe('superagent: context, compaction and memory curation', () => {
         : key === 'agents' ? { get: () => agent }
           : undefined,
     }
-    const result = await runControlTool({ action: 'abort', session: 'w-session', text: 'skip the wait and continue' }, { ...options, caller: { writable: true, sessionId: 'super-1', cwd: root } as never }, me, ctx, { tasks: new Map() })
+    const result = await runControlTool({ action: 'abort', session: 'w-session', text: 'skip the wait and continue' }, { ...options, caller: { writable: true, sessionId: 'super-1', cwd: root } }, me, ctx, { tasks: new Map() })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(cancelled, 1)
     assert.equal(idleCalls, 1)
@@ -2441,7 +2439,7 @@ describe('superagent: context, compaction and memory curation', () => {
     const abort = result.abort as { resumed?: boolean; scene?: { status?: { elapsedMs?: number }; activity?: unknown[] } }
     assert.equal(abort.resumed, true)
     assert.ok((abort.scene?.status?.elapsedMs ?? 0) >= 6 * 60_000)
-    assert.equal((abort.scene?.activity as unknown[] | undefined)?.length, 3)
+    assert.equal(abort.scene?.activity?.length, 3)
   })
 
   it('summarizes long-running Sessions for the super agent context', () => {
@@ -3284,7 +3282,7 @@ describe('superagent: the session action failure envelope', () => {
     assert.equal(failed.ok, false)
     assert.equal(failed.writable, false)
     assert.deepEqual(failed.me, me)
-    const required = SUPERAGENT_OUTPUT_SCHEMA.required as readonly string[]
+    const required = SUPERAGENT_OUTPUT_SCHEMA.required
     for (const key of required) {
       assert.ok(key in failed, 'the failure envelope lacks required output field ' + key)
     }
