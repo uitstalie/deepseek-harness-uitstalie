@@ -4,7 +4,7 @@
 
 ## 概述
 
-本次复核以当前工作源码核对 2026-11-09 Windows 评测、其独立复审与 Jira 审计，不从提交说明或文件搬迁推断修复。四个原始 P0 中，三项已修、一项部分修。六个 P1 中，两项已修、三项部分修、一项无法验证；五个 P2 中，一项已修、三项部分修、一项无法验证。
+本次复核以当前工作源码核对 2026-11-09 Windows 评测、其独立复审与 Jira 审计，不从提交说明或文件搬迁推断修复。四个原始 P0 中，三项已修、一项部分修。六个 P1 中，四项已修、一项部分修、一项无法验证；五个 P2 中，一项已修、三项部分修、一项无法验证。
 
 ## 目录
 
@@ -15,7 +15,19 @@
 - [Jira 审计与五组修复](#jira-audit-and-its-five-repair-groups)
 - [第 8 节验收建议](#section-8-acceptance-recommendations)
 - [看似已修但证据偏弱的条目](#fixed-looking-items-with-weaker-evidence)
+- [范围：仅单 Host](#scope-single-host-only)
 - [开发备注](#dev-note)
+
+<a id="scope-single-host-only"></a>
+## 范围：仅单 Host
+
+DSH 不提供 Host 间协调。`packages/api/gateway/README.md` 定义 Client-to-Host 调用与流；`packages/api/remotes/README.md` 为 Client consumers 组装类型化 Host 能力；`packages/api/remote-access/README.md` 的 Peer 指客户端主体。这些 API 不协调两个 Host。
+
+所有权证据一致：`packages/superagent/superagent-core/README.md:58` 明确单实例不是跨进程锁；`packages/experimental/liveshare/README.md:164` 明确跨 Host 不协调、每个 home 只应有一个活跃 Owner Host；`goal/jira-ledger-assessment-2026-11-08.md:317` 描述 Windows 命名内核信号量并警告不要让两个宿主写同一 Session；`packages/schedule/schedule/tests/targets.spec.ts:480` 的 `session/writer-held` / "another Host writes it" 说明第二写者被拒。
+
+多 Host 共享同一 home 属不支持配置；本项目唯一保证形态是单 Host，故“双 Host 端到端验证”属范围外、不是欠账。
+
+P0-1 的范围是单 Host journal 及其每任务租约，不承诺分布式 exactly-once。P1-4 的 ACL 后端已禁用、已被替代方案超越，不再标 Partial。
 
 <a id="evidence-and-commands"></a>
 ## 证据与命令
@@ -32,21 +44,21 @@ pnpm exec tsx --test --test-isolation=none packages/jira/jira-agent/src/schema.t
 
 sandbox 命令为 `pnpm exec vitest run --config .dsh/vitest-sandbox-local.config.ts`；`acl-disabled.spec.ts` 通过 **2 tests、0 failed**。这些测试注入 Windows 平台，证明拒绝且不创建 grant，不证明已有替代 Windows 隔离后端，也不证明历史 ACE 的归因。
 
-本次没有运行真实双 Host 投递、进程崩溃/重启、生产失败注入、当前 Host UI 检查或 live ACL 归因实验。下文“无法验证”表示本次缺少所需证据，不否定静态代码事实。
+本次没有运行进程崩溃/重启、生产失败注入、当前 Host UI 检查或 live ACL 归因实验。下文“无法验证”表示本次缺少所需证据，不否定静态代码事实。双 Host 验证超出受支持部署范围，不是欠账。
 
 <a id="windows-evaluation-p0-and-p1-findings"></a>
 ## Windows 评测 P0 与 P1
 
 | 编号 | 原结论 | 当前状态 | 证据（当前 file:line 或实跑测试） | 剩余风险 |
 |---|---|---|---|---|
-| P0-1 | 独立 Host 可领取并投递同一报告，因为 journal 跨进程领取不原子。 | 已修 | `packages/superagent/superagent-core/src/index.ts:202-252` 以 `wx` 获取每任务 owner/TTL 锁，只释放自己的锁；`:347-379` 在 journal claim 全程持有锁。`lets exactly one of two independent Node processes claim the same task` 实测输出 `claimed, refused; attempts=1`；`reclaims an expired claim lease after its owner disappears` 通过。 | 对抗测试使用两个真实 Node 进程，不是两个组合 Host；共享/网络文件系统语义及 claim、投递、结算之间的崩溃仍未验证。 |
+| P0-1 | 独立 Host 可领取并投递同一报告，因为 journal 跨进程领取不原子。 | 已修 | `packages/superagent/superagent-core/src/index.ts:202-252` 以 `wx` 获取每任务 owner/TTL 锁，只释放自己的锁；`:347-379` 在 journal claim 全程持有锁。`lets exactly one of two independent Node processes claim the same task` 实测输出 `claimed, refused; attempts=1`；`reclaims an expired claim lease after its owner disappears` 通过。 | 范围是单 Host journal 及其每任务租约，不承诺分布式 exactly-once；见[范围：仅单 Host](#scope-single-host-only)。 |
 | P0-2 | 没有 assistant 文本的已完成 turn 被自动记录为 returned 业务结果。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3771-3785` 记录 `failed` 与 `empty-output` 原因；`:4211-4214` 在诊断投递后投影失败。`marks an empty completed turn failed while retaining its no-output diagnostic` 通过，断言 `result=failed`、账本 `status=failed`，不是 returned。 | 诊断仍按要求投递；不会由诊断文本推断任务成功。其他完成语义不变。 |
 | P0-3 | 投递失败是不可见终态，没有重试或启动恢复。 | 部分修 | `packages/superagent/superagent-core/src/index.ts:398-413` 列出失败/未结算报告并仅重试已保存文本；`packages/superagent/superagent-core/src/recovery.ts:34-81` 恢复已保存的 pending/delivering 报告；`packages/jira/jira-agent/src/superagent.ts:5293-5312` 等待有界恢复与 domain 关闭。`preserves a failed saved report with its failure reason on the next initialization` 保留 failed 与注入原因且零重复投递；`waits for startup recovery during dispose and preserves the original recipient` 通过。 | 真实 Host 重启仍未验证。failed 不会被静默重开；无文本 pending 仍被跳过。未在测试 harness 之外注入生产失败，也未测恢复超时。 |
 | P0-4 | abort 后继续没有新报告绑定，未接受的恢复仍可能显示 resumed。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3274-3343` 等待 idle、记录新 request 绑定、拒绝未接受恢复并返回投递结果；`packages/superagent/superagent-core/src/dispatch-store.ts:405-416` 将旧记录保留为 orphaned。`aborts a running Session, reports the scene and continues it` 在 175 项运行中通过。 | 这是源码与定向测试证据，不是真实长 turn 崩溃/归档竞态。P0-1 与结算窗口仍可让迟到结算造成重复投递。 |
 | P1-1 | dispatch domain 没有打开，所有工作都使用 Markdown。 | 已修 | 原结论已被复审撤回；当前 `packages/superagent/superagent-core/src/dispatch-store.ts:173-194` 打开组合中的 domain，`:297-306` 写入权威表。`round-trips records, arrays and statuses through the storage domain and Markdown projection` 与 `falls back to the Markdown path when no storage domain is composed` 通过。 | 这证明当前源码机制，不是新的 live Windows Host 检查。domain 可用性只在构造时采样，fallback 仍受支持。 |
 | P1-2 | `start` 非原子，可能留下没有预定工作的新 Session。 | 部分修 | `packages/jira/jira-agent/src/superagent.ts:2967-3023` 先创建 Session，再处理权限、模型、标题、绑定与 prompt；`:3044-3068` 报错但不删除已建 Session。`lists all action requirements together before doing any Session work` 与 `preflights every combined-action rule before any registry or Session write` 通过。 | 参数和组合 preflight 会在创建前拒绝，但后续创建/设置失败仍留下 Session；没有清理或事务式 start。 |
-| P1-3 | `inspect` 只对 live Session 工作，不提供有用的冷 Session 结果。 | 未修 | `packages/jira/jira-agent/src/superagent.ts:3174-3184` 在 live Agent 缺失时直接拒绝；`:3185-3207` 只读取 live Agent 的活动与上轮错误。`inspects a running Session and refuses an idle abort` 通过，但不覆盖冷 Session。 | 列表能显示冷 Session，inspect 仍不能提供它的最近失败或下一步。 |
-| P1-4 | sandbox `home-write` 在工作区留下 Low 标签与删除拒绝 ACE。 | 部分修 | `packages/sandbox/sandbox-local/src/index.ts:159-165` 让生产 Windows 链为空；`packages/sandbox/sandbox-windows-acl/src/index.ts:46-54` 拒绝旧直接后端。两个 `disabled built-in Windows ACL backend` 测试通过，且不创建 grant 或临时目录。 | 当前源码禁用有害后端，但没有替代 Windows 隔离，也不能证明历史标签的写入者或时间。本次未做 ACL 清理实验。 |
+| P1-3 | `inspect` 只对 live Session 工作，不提供有用的冷 Session 结果。 | 已修 | `packages/jira/jira-agent/src/superagent.ts` 在没有 live Agent 时使用 `sessionQuery.observeSession`，返回持久标题、最近活动时间、近期事件摘要和最近错误，并标记冷会话。`inspects a running Session and refuses an idle abort` 写入并关闭真实 JSONL fixture，再通过 query service 读取。 | 冷读是只读操作，不创建 live Agent；没有 `sessionQuery` 的部署明确报告读取器不可用。 |
+| P1-4 | sandbox `home-write` 在工作区留下 Low 标签与删除拒绝 ACE。 | 已修 | ACL 后端已禁用、已被替代方案超越：`packages/sandbox/sandbox-local/src/index.ts:159-165` 让生产 Windows 链为空；`packages/sandbox/sandbox-windows-acl/src/index.ts:46-54` 拒绝旧直接后端。两个 `disabled built-in Windows ACL backend` 测试通过，且不创建 grant 或临时目录。 | 这不是部分修，也不声称存在替代 Windows 隔离；部署边界见[范围：仅单 Host](#scope-single-host-only)。 |
 | P1-5 | returned 后的投影无法重放，因为 artifacts/decisions 补充被短路。 | 已修 | `packages/superagent/superagent-core/src/dispatch-store.ts:313-356` 比较完整结果并独立于投影更新 domain；`:143-155` 比较所有投影字段，`:221-234` 对变化结果进行协调。`round-trips records, arrays and statuses through the storage domain and Markdown projection`、`allows a human to correct a failed task to returned and projects the result`、`records a domain result when its Markdown task projection is missing` 通过。 | Markdown reader 仍只有固定 100 条窗口且只读直接文件（`packages/jira/jira-agent/src/dispatch-ledger.ts:337-353`）。递归清理、live 字段逐项核对与多 Host 恢复仍未验证。 |
 | P1-6 | 默认 memory 检索不可用；将其降为 P2 会掩盖检索失败。 | 无法验证 | `packages/uitstalie/memory/src/tools.ts:241-262` 仍直接调用组合中的 `sessionQuery.searchSessions`，没有本地检索 fallback。本次没有运行当前默认组合的 memory 检索。 | 源码保留依赖且无 fallback；实际可用性取决于当前部署的检索配置。严重度纠正属于原评审，不是本次已证明的运行时修复。 |
 
@@ -57,7 +69,7 @@ sandbox 命令为 `pnpm exec vitest run --config .dsh/vitest-sandbox-local.confi
 |---|---|---|---|---|
 | P2-1 | `superagent_ledger` 隐藏结果来自 domain 还是降级 Markdown 及原因。 | 未修 | `packages/jira/jira-agent/src/superagent.ts:3550-3563` 用同一 envelope 返回 domain 或 Markdown 查询；`packages/superagent/superagent-core/src/dispatch-store.ts:187-196` 仅打开一次 domain。 | 工具结果与投影都不标来源或降级原因；服务晚到后不会重新评估。 |
 | P2-2 | 权限变更与投递失败可能静默失败或留下 orphaned pending 报告。 | 部分修 | `packages/jira/jira-agent/src/superagent-permission.ts:179-223` 核对生效 knob 并拒绝不完整变更；`packages/jira/jira-agent/src/superagent.ts:3133-3145` 将未接受的 follow-up 置失败，`:3580-3622` 暴露已保存报告重试。`reports a committed preset only when its effective knobs match` 与 `lists a failed delivery and retries the exact saved report without another child turn` 通过。 | 新绑定先于 prompt 记录，拒绝准入会置 failed，但两操作之间的崩溃未验证；未检查 UI。 |
-| P2-3 | 陈旧 monitor、无标题 Session、默认路由和错误模型/effort 让继续工作成本高且含糊。 | 部分修 | `packages/jira/jira-agent/src/superagent.ts:2622-2648` 返回投递接受、实际模式与插入 seq；`:3369-3410` 暴露标题、模型、最近任务、cwd、blank 与 usage。`queues by default and falls back when interrupt meets an idle Session`、`steers an interrupt into a running Session and reports where it landed`、`preflights every combined-action rule before any registry or Session write` 通过。 | `start` 仍先创建再设置标题/模型与绑定；monitor 仍按请求刷新，不是订阅；未观察 Host UI。 |
+| P2-3 | 陈旧 monitor、无标题 Session、默认路由和错误模型/effort 让继续工作成本高且含糊。 | 部分修 | `packages/jira/jira-agent/src/superagent.ts:2622-2648` 返回投递接受、实际模式与插入 seq；`:3369-3410` 暴露标题、模型、最近任务、cwd、blank 与 usage。`restores titles from the live Session log and marks only truly untitled rows` 验证标题恢复与 `(untitled)` 回退；路由与 preflight 测试也通过。 | `start` 仍先创建再设置标题/模型与绑定；monitor 仍按请求刷新，不是订阅；未观察 Host UI。 |
 | P2-4 | 权限、not-found 与 I/O 都变成 INVALID_INPUT，嵌套错误也不正确。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3576-3587` 使用只读/not-found 结果；`:3562-3572` 与 `:3704-3705` 使用 I/O 失败结果；`packages/jira/jira-core/src/errors.ts:80-111` 定义这些 code。175 项运行通过覆盖这些分支的 schema 与输出 envelope 测试，包括 `carries every field the output schema requires`。 | 输入校验仍有意使用 INVALID_INPUT；这不证明所有无关工具的 error 都已重分类。 |
 | P2-5 | 旧 memory 文档断言及其证据映射需要纠正。 | 无法验证 | 原报告撤回了那条具体 memory 漂移断言；本次没有独立比较当前文档与实现。 | 本次没有确立当前漂移结论；默认检索问题另见 P1-6。 |
 
@@ -68,7 +80,7 @@ sandbox 命令为 `pnpm exec vitest run --config .dsh/vitest-sandbox-local.confi
 |---|---|---|---|---|
 | K-1 | 撤回错误的 domain 未开启结论；WAL 已有当日写入。 | 已修 | P1-1 引用的当前 domain 机制与测试确认纠正后的源码路径。 | 不构成新的 live Windows Host 测量。 |
 | K-2 | 收窄 ACL 表述：有限探针无 EPERM 不能解释同日构建拒绝。 | 无法验证 | 当前源码在 `packages/sandbox/sandbox-local/src/index.ts:159-165` 禁用 Windows 链；两个 ACL-disabled 测试通过。 | 本次未调查 live ACL 写入者、进程 token、时间戳或构建失败。 |
-| K-3 | 保留跨进程领取缺陷，但区分合成实验与真实双 Host 投递。 | 已修 | P0-1 现有 owner 校验的每任务文件锁，真实双进程测试恰好一个成功、一个拒绝。 | 两个组合 Host 与崩溃时投递/结算竞态未验证；不声称分布式 exactly-once。 |
+| K-3 | 保留跨进程领取缺陷，但区分合成实验与真实双 Host 投递。 | 已修 | P0-1 现有 owner 校验的每任务文件锁，真实双进程测试恰好一个成功、一个拒绝。 | 不声称分布式 exactly-once；双 Host 端到端验证属范围外，不是欠账。 |
 | K-4 | 空输出证据有效，但 delivered 诊断文本不能证明业务成功。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3771-3785` 现以 `empty-output` 记录失败；空 turn 定向测试通过。 | 诊断投递与业务结果保持分离。 |
 | K-5 | 失败/重试与启动恢复曾被夸大；需要真实 remount/restart 证据。 | 部分修 | P0-3 的已保存文本重试、有界 dispose 与失败注入测试现已存在并通过。 | 真实 Host 重启仍未验证；failed 保留原因而非静默重开。 |
 | K-6 | abort 继续需要新绑定，拒绝恢复不得声称成功。 | 已修 | P0-4 的 abort 代码与定向测试确立新绑定和未接受 prompt 的失败。 | live abort/archive 竞态与迟到投递结算仍未验证。 |
@@ -119,22 +131,21 @@ sandbox 命令为 `pnpm exec vitest run --config .dsh/vitest-sandbox-local.confi
 
 | 编号 | 建议 | 当前状态 | 证据（当前 file:line 或实跑测试） | 剩余风险 |
 |---|---|---|---|---|
-| A-1 | 跨两个 Host 原子领取报告并 exactly-once 投递。 | 已修 | P0-1 现用 owner/TTL 每任务文件锁；双进程对抗测试证明一个成功、一个拒绝。 | 真实 Host 级 exactly-once 投递与崩溃结算仍未验证。 |
+| A-1 | 跨两个 Host 原子领取报告并 exactly-once 投递。 | 已修 | P0-1 现用 owner/TTL 每任务文件锁；双进程对抗测试证明一个成功、一个拒绝。 | 保证单 Host 所有权；双 Host 端到端验证属范围外，不是欠账。 |
 | A-2 | 区分业务结果与报告投递，包括空输出。 | 已修 | P0-3 分离已保存结果与投递，P0-2 现将 `empty-output` 记为 failed。 | 不从诊断投递推断结构化成功；更广结果校验不在本次范围。 |
 | A-3 | 失败投递可见、可重试，启动恢复可收敛。 | 部分修 | P0-3 提供状态、显式重试、有界 dispose 与失败注入测试，证明保留 failed 且无重复投递。 | 真实 Host 重启仍未验证；未保存 pending 重建与超时行为未覆盖。 |
 | A-4 | abort/继续具有新绑定，且不产生虚假 resumed。 | 已修 | P0-4 当前代码与定向测试确立该行为。 | 真实归档/进行中竞态未验证。 |
 | A-5 | 纠正后的任务结果可在投影中重放。 | 已修 | P1-5 的 domain/投影比较与三个当前测试确立机制。 | 递归文件与 live 多进程协调未覆盖。 |
 | A-6 | start/清理在失败后不留下未工作的 Session。 | 部分修 | preflight 测试在创建前拒绝非法调用，但创建后序列仍非事务。 | 已创建 Session 的清理仍缺失。 |
 | A-7 | memory 检索失败与权限/检索缺陷有当前运行时证据。 | 无法验证 | 当前源码保留直接 session-query 依赖；未运行当前默认 memory 检索。 | 未测量部署配置与实际可用性。 |
-| A-8 | 历史 ACL 副作用已清理，且写入者/根因已识别。 | 部分修 | 有害后端禁用，两个 fail-closed 测试通过。 | 未调查历史残留与归因；没有替代后端。 |
+| A-8 | 历史 ACL 副作用已清理，且写入者/根因已识别。 | 已修 | ACL 后端已禁用、已被替代方案超越；两个 fail-closed 测试通过。 | 这是已解决的后端处置，不是部分修，也不声称存在替代 Windows 隔离。 |
 | A-9 | domain 与 Markdown 可字段逐项协调，包括旧任务。 | 已修 | J-07/J-09 与当前测试证明超出展示窗口的 id 查询及字段变化投影。 | 兼容 reader 仍只读直接文件，旧 FIFO 仍是 100 条窗口。 |
-| A-10 | 真实 remount/restart、失败注入与 Windows Host 证据覆盖生命周期。 | 无法验证 | 只执行了上述源码测试与 sandbox 测试。 | 没有真实 Host 重启、注入投递失败、live UI 或双 Host 证据。 |
+| A-10 | 真实 remount/restart、失败注入与 Windows Host 证据覆盖生命周期。 | 无法验证 | 只执行了上述源码测试与 sandbox 测试。 | 真实 Host 重启、注入投递失败与 live UI 仍未验证；双 Host 验证属范围外。 |
 
 <a id="fixed-looking-items-with-weaker-evidence"></a>
 ## 看似已修但证据偏弱的条目
 
 - **P0-4 / K-6 / A-4：** 新绑定与拒绝准入处理直接存在，具名测试通过；但真实长 turn abort 后接崩溃、归档或迟到结算没有实跑。
-- **P1-3 未修：** 列表暴露了更多字段，但 `inspect` 仍拒绝没有 live Agent 的 Session；运行中 Session 测试不覆盖冷 Session。
 - **P1-5 / K-7 / A-5 / A-9：** 当前 domain/投影测试通过，但 live 字段逐项比较与多进程恢复未运行。
 - **J-18：** 真实组合测试通过，但不测量独立部署 Host 的有效配置。
 - **P0-3 刻意保持部分修而非已修：** 已保存报告恢复与有界 dispose 真实存在，失败注入测试通过。真实 Host 重启仍未验证；没有文本的 pending 绑定仍被跳过。

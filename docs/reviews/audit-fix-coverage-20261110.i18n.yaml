@@ -6,32 +6,35 @@
   en: 7dd5aedac7b5c299
   zh: ab1f2ab26b8463dd
 /audit-fix-coverage-after-the-super-agent-changes/summary:
-  en: 2eb2b2fc8c4f77a8
-  zh: f70507ffce89df7e
+  en: 690332108a52d746
+  zh: f712a2eb3d891861
 /audit-fix-coverage-after-the-super-agent-changes/table-of-contents:
-  en: 07c2f094090a6a8e
-  zh: 866c635748ec5b1f
+  en: 71aa019bb1142878
+  zh: 8560722f14291b3d
+/audit-fix-coverage-after-the-super-agent-changes/scope-single-host-only:
+  en: cd62c582f4e11684
+  zh: d7bf1717177ba84d
 /audit-fix-coverage-after-the-super-agent-changes/evidence-and-commands:
-  en: 6f4237f315c69c6d
-  zh: a7a2140f9fb66334
+  en: 3fe934aac4fb90fd
+  zh: 5a7804d7332a5575
 /audit-fix-coverage-after-the-super-agent-changes/windows-evaluation-p0-and-p1-findings:
-  en: e4a4e47251077071
-  zh: 20b51d72ce6e2f24
+  en: 2f70b38c6c3b4d94
+  zh: 1cab8e93f542aa94
 /audit-fix-coverage-after-the-super-agent-changes/windows-evaluation-p2-findings:
-  en: f3fad030c7f727a1
-  zh: 4cba979bd497fac0
+  en: 1c1ed4aa88e75b24
+  zh: a968f1fecbdeef17
 /audit-fix-coverage-after-the-super-agent-changes/independent-re-review-corrections:
-  en: ac672dd652f59f0d
-  zh: 3c566912e22771f6
+  en: 8d2d988187b91563
+  zh: 22f7a9ebec2f8ce4
 /audit-fix-coverage-after-the-super-agent-changes/jira-audit-and-its-five-repair-groups:
   en: c3c8442cc0657ef4
   zh: 3d023742776d7e31
 /audit-fix-coverage-after-the-super-agent-changes/section-8-acceptance-recommendations:
-  en: 823ce761697f637a
-  zh: 6cc1ad27abc89af0
+  en: 5347383908d308e7
+  zh: b0822564debe1e29
 /audit-fix-coverage-after-the-super-agent-changes/fixed-looking-items-with-weaker-evidence:
-  en: 3794adcc75dba273
-  zh: 0f1164d5cc80d830
+  en: d5cc0a97d98edb44
+  zh: 6594bd94841bc3f3
 /audit-fix-coverage-after-the-super-agent-changes/dev-note:
   en: b75c8458928b72b9
   zh: 003ba4e17b4b5269
