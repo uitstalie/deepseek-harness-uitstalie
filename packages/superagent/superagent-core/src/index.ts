@@ -25,7 +25,7 @@ export * from './recovery.ts'
 
 
 import { randomUUID } from 'node:crypto'
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { appendFile, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 
 /** Directory (relative to the super workspace) that owns the report journal. */
@@ -169,6 +169,15 @@ export interface DispatchReportClaim {
   readonly retried: boolean
 }
 
+interface ClaimLease {
+  readonly id: string
+  readonly owner: string
+  readonly expiresAt: number
+  readonly release: () => Promise<void>
+}
+
+const CLAIM_LEASE_MS = DELIVERY_LEASE_MS
+
 /**
  * The superagent report journal for one super workspace.
  *
@@ -198,6 +207,48 @@ export class DispatchReportStore {
     this.ensured ??= mkdir(dirname(this.file), { recursive: true }).then(() => undefined)
     await this.ensured
     await appendFile(this.file, `${JSON.stringify(record)}\n`, 'utf8')
+  }
+
+  /** Acquire the one cross-process lease for a report without guessing from journal state. */
+  private async claimLease(id: string, at: string): Promise<ClaimLease | undefined> {
+    const path = resolve(this.root, DISPATCH_REPORT_DIR, 'claims', `${encodeURIComponent(id)}.json`)
+    const now = Date.parse(at)
+    if (!Number.isFinite(now)) throw new Error(`invalid report claim time: ${at}`)
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const owner = `${String(process.pid)}:${randomUUID()}`
+      let handle
+      try {
+        await mkdir(dirname(path), { recursive: true })
+        handle = await open(path, 'wx', 0o600)
+        await handle.writeFile(JSON.stringify({ id, owner, expiresAt: now + CLAIM_LEASE_MS }), 'utf8')
+        return { id, owner, expiresAt: now + CLAIM_LEASE_MS, release: () => rm(path, { force: true }) }
+      } catch (error: unknown) {
+        await handle?.close().catch(() => {})
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+        let lease: { owner?: unknown; expiresAt?: unknown }
+        try {
+          lease = JSON.parse(await readFile(path, 'utf8')) as { owner?: unknown; expiresAt?: unknown }
+        } catch {
+          continue
+        }
+        if (typeof lease.expiresAt !== 'number' || !Number.isFinite(lease.expiresAt) || lease.expiresAt > now) return undefined
+        const nextOwner = `${String(process.pid)}:${randomUUID()}`
+        const replacement = resolve(this.root, DISPATCH_REPORT_DIR, 'claims', `${encodeURIComponent(id)}.${randomUUID()}.reclaim`)
+        await writeFile(replacement, JSON.stringify({ id, owner: nextOwner, expiresAt: now + CLAIM_LEASE_MS }), { flag: 'wx', mode: 0o600 })
+        try {
+          // Only expired owners are replaceable. The rename makes the new owner visible atomically.
+          await rename(replacement, path)
+          return { id, owner: nextOwner, expiresAt: now + CLAIM_LEASE_MS, release: () => rm(path, { force: true }) }
+        } catch (error: unknown) {
+          await rm(replacement, { force: true })
+          if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue
+          throw error
+        }
+      } finally {
+        await handle?.close().catch(() => {})
+      }
+    }
+    return undefined
   }
 
   /**
@@ -302,23 +353,29 @@ export class DispatchReportStore {
    */
   async claim(id: string, at: string): Promise<DispatchReportClaim | undefined> {
     return await this.exclusive(async () => {
-      const current = (await this.all()).get(id)
-      if (current === undefined) return undefined
-      if (current.status === 'delivered' || current.status === 'failed' || current.status === 'acknowledged') return undefined
-      const retried = current.status === 'delivering'
-      if (retried) {
-        const claimedAt = Date.parse(current.updatedAt)
-        const now = Date.parse(at)
-        if (Number.isFinite(claimedAt) && Number.isFinite(now) && now - claimedAt < DELIVERY_LEASE_MS) return undefined
+      const lease = await this.claimLease(id, at)
+      if (lease === undefined) return undefined
+      try {
+        const current = (await this.all()).get(id)
+        if (current === undefined) return undefined
+        if (current.status === 'delivered' || current.status === 'failed' || current.status === 'acknowledged') return undefined
+        const retried = current.status === 'delivering'
+        if (retried) {
+          const claimedAt = Date.parse(current.updatedAt)
+          const now = Date.parse(at)
+          if (Number.isFinite(claimedAt) && Number.isFinite(now) && now - claimedAt < DELIVERY_LEASE_MS) return undefined
+        }
+        const next: DispatchReportRecord = Object.freeze({
+          ...current,
+          status: 'delivering',
+          updatedAt: at,
+          attempts: current.attempts + 1,
+        })
+        await this.append(next)
+        return Object.freeze({ record: next, retried })
+      } finally {
+        await lease.release()
       }
-      const next: DispatchReportRecord = Object.freeze({
-        ...current,
-        status: 'delivering',
-        updatedAt: at,
-        attempts: current.attempts + 1,
-      })
-      await this.append(next)
-      return Object.freeze({ record: next, retried })
     })
   }
 

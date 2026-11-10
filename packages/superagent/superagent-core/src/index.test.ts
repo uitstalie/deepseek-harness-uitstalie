@@ -7,7 +7,8 @@
  */
 
 import assert from 'node:assert/strict'
-import { appendFile, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
@@ -82,6 +83,52 @@ describe('dispatch reports: journal', () => {
     assert.equal(await store.claim('task-claim', AT), undefined, 'a delivered report is never claimed again')
     assert.equal((await store.forSession('child-1'))[0]?.status, 'delivered')
     assert.equal((await store.forSession('child-1'))[0]?.deliveredAt, AT)
+  })
+
+  it('lets exactly one of two independent Node processes claim the same task', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    await store.record(binding({ id: 'task-cross-process' }))
+    const source = `
+      import { readFileSync, writeFileSync } from 'node:fs'
+      import { DispatchReportStore } from ${JSON.stringify(new URL('./index.ts', import.meta.url).href)}
+      const root = process.argv[1]
+      const at = process.argv[2]
+      readFileSync(at, 'utf8')
+      const claimed = await new DispatchReportStore(root).claim('task-cross-process', '2026-11-08T00:00:00.000Z')
+      console.log(JSON.stringify({ status: claimed === undefined ? 'refused' : 'claimed', attempts: claimed?.record.attempts }))
+    `
+    const children = [0, 1].map(() => {
+      const child = spawn(process.execPath, ['--import', 'tsx', '--eval', source, root, join(root, 'claim-at.txt')], { stdio: ['ignore', 'pipe', 'inherit'] })
+      let stdout = ''
+      child.stdout.setEncoding('utf8')
+      child.stdout.on('data', (chunk) => { stdout += chunk })
+      return { child, stdout: () => stdout }
+    })
+    await writeFile(join(root, 'claim-at.txt'), 'claim')
+    const results = await Promise.all(children.map(async ({ child, stdout }) => {
+      const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+        child.once('error', reject)
+        child.once('exit', (code, signal) => resolve({ code, signal }))
+      })
+      assert.deepEqual(exit, { code: 0, signal: null })
+      return JSON.parse(stdout()) as { status: string; attempts?: number }
+    }))
+    assert.deepEqual(results.map(result => result.status).sort(), ['claimed', 'refused'])
+    assert.equal(results.find(result => result.status === 'claimed')?.attempts, 1)
+    assert.equal((await store.all()).get('task-cross-process')?.attempts, 1)
+    console.log(`cross-process claim: ${results.map(result => result.status).join(', ')}; attempts=1`)
+  })
+
+  it('reclaims an expired claim lease after its owner disappears', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    await store.record(binding({ id: 'task-expired' }))
+    await mkdir(join(root, DISPATCH_REPORT_DIR, 'claims'), { recursive: true })
+    await writeFile(join(root, DISPATCH_REPORT_DIR, 'claims', 'task-expired.json'), JSON.stringify({ owner: 'gone', expiresAt: 0 }))
+    const claimed = await store.claim('task-expired', AT)
+    assert.equal(claimed?.record.status, 'delivering')
+    assert.equal(claimed?.record.attempts, 1)
   })
 
   it('prepares a report only while its claim is delivering', async () => {
