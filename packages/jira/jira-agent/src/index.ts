@@ -439,4 +439,5 @@ export {
   sessionControllerOf,
   superagentHomeProblem,
   workspaceRegistryOf,
+  workspaceRosterLines,
 } from './superagent.ts'

@@ -19,7 +19,18 @@ import { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { type Comment, type Identity, type Issue, type Timestamp, removeTree } from '@deepseek-ai/dsh-jira-core'
 import SessionStore, { SessionSeq, SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
-import { MessageId, ToolCallId } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, {
+  LlmAdapter,
+  MessageId,
+  ToolCallId,
+  createUserMessage,
+  type LlmResolvedModelInfo,
+  type StreamChunk,
+} from '@deepseek-ai/dsh-llm'
+import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
+import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import { renderContextSections, renderContextSnapshot } from '@deepseek-ai/dsh-system-prompt'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SqliteSessionQueryEngine from '@deepseek-ai/dsh-session-query-sqlite'
 import {
@@ -71,6 +82,7 @@ import {
   runSuperagentPass,
   runWorkspaceTool,
   superagentHomeProblem,
+  workspaceRosterLines,
 } from './index.ts'
 import * as jiraAgent from './index.ts'
 import { type DispatchLedgerTask, listDispatchTasks, queryDispatchTasks, recordDispatch } from './dispatch-ledger.ts'
@@ -3561,5 +3573,227 @@ void describe('superagent: teardown', () => {
     await contribution.dispose?.()
     await contribution.dispose?.()
     await assert.doesNotReject(async () => { await contribution.onTurnEnd?.({} as never) })
+  })
+})
+
+/** A keyless model: the roster tests need a real turn, not a provider call. */
+class RosterModelAdapter extends LlmAdapter {
+  override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+    return Promise.resolve({ provider, id: model, name: model })
+  }
+
+  async * stream(): AsyncIterable<StreamChunk> {
+    // A real provider's first token arrives after a tick; keep that async boundary so the loop
+    // consumes a streaming adapter rather than a pre-built array.
+    await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+    const text = 'noted'
+    yield { type: 'block-start', index: 0, blockType: 'text' }
+    yield { type: 'text-delta', index: 0, text }
+    yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+    yield { type: 'finish', reason: { kind: 'stop' } }
+  }
+}
+
+/**
+ * Record the runtime-context snapshots a Session commits, oldest first.
+ *
+ * The loop appends a snapshot only when its rendered text differs from the retained one, so the
+ * committed events are exactly the appends under test.
+ * @param ctx - the composition that emits the Session events.
+ * @param agent - the agent whose Session is watched.
+ * @returns a live array of committed snapshot texts.
+ */
+const recordContextSnapshots = (ctx: Context, agent: Agent): string[] => {
+  const snapshots: string[] = []
+  ctx.on('session/event', (subject, event) => {
+    if (subject !== agent.session || event.type !== 'user/message') return
+    // Widened on purpose: the `runtime-context` source belongs to the projection module, and this
+    // test observes what that projection appended rather than narrowing the source union.
+    const kind: string = event.data.source.kind
+    if (kind !== 'runtime-context') return
+    snapshots.push(event.data.content.flatMap(block => block.type === 'text' ? [block.text] : []).join(''))
+  })
+  return snapshots
+}
+
+/** A registry row with only the fields the roster reads; `status` counts any accidental call. */
+const rosterRow = (
+  id: string,
+  path: string,
+  title: string,
+  sessionIds: readonly string[] = [],
+): { row: FakeWorkspace; calls: { status: number } } => {
+  const calls = { status: 0 }
+  return {
+    calls,
+    row: {
+      id,
+      path,
+      title,
+      sessionIds: [...sessionIds],
+      status() {
+        calls.status += 1
+        return Promise.resolve('ok')
+      },
+      setTitle(next: string): Promise<void> {
+        this.title = next
+        return Promise.resolve()
+      },
+    },
+  }
+}
+
+/** A context that exposes exactly the registry service the roster reads. */
+const registryContext = (registry: FakeWorkspaceRegistry): unknown => ({
+  get: (key: string) => key === 'workspaceRegistry' ? registry : undefined,
+})
+
+/**
+ * Mount a real agent loop over the superagent capability.
+ *
+ * The roster becomes a runtime-context snapshot, so the evidence for prompt-cache stability is a
+ * real turn: the roster is rendered at the pre-step and again at the request step, and only one
+ * snapshot may survive.
+ * @returns the mounted composition, its registry, the shared scratch directory and the super agent.
+ */
+const mountRosterLoop = async (): Promise<{
+  harness: JiraHarness
+  registry: FakeWorkspaceRegistry
+  dir: string
+  home: string
+  agent: Agent
+}> => {
+  const dir = await scratchDirectory()
+  const home = join(dir, 'super-agent')
+  const harness = await mountJira(await fixture(), { enabled: false, superagent: true })
+  const registry = await provideRegistry(harness)
+  await harness.ctx.plugin(LlmRuntime)
+  await harness.ctx.plugin(SessionStore)
+  await harness.ctx.plugin(SessionProjectionRegistry)
+  await harness.ctx.plugin(AgentRegistry)
+  await harness.ctx.plugin(AgentLoop, { agents: [] })
+  harness.ctx.llm.registerAdapter(['roster'], new RosterModelAdapter())
+  await harness.ctx.plugin(jiraAgent, { superagent_home: home })
+  await waitFor(() => (registry.rows.length > 0 ? registry.rows : undefined))
+  const agent = await harness.ctx.agentLoop.create(
+    SessionId('super-roster'),
+    { provider: 'roster', model: 'roster' },
+    { cwd: home },
+  )
+  return { harness, registry, dir, home, agent }
+}
+
+void describe('superagent: the workspace roster context', () => {
+  void it('renders one deterministic registry line for the same registry', () => {
+    const dir = tmpdir()
+    const first = rosterRow('w-2', join(dir, 'analyze'), 'analyze', ['s-1'])
+    const second = rosterRow('w-1', join(dir, 'system_img'), 'system_img', ['s-2', 's-3'])
+    const registry = new FakeWorkspaceRegistry()
+    registry.rows.push(first.row, second.row)
+    const ctx = registryContext(registry)
+
+    const text = workspaceRosterLines(ctx, join(dir, 'super-agent'))
+    assert.equal(workspaceRosterLines(ctx, join(dir, 'super-agent')), text, 'the same registry renders byte for byte')
+    // A title equal to the directory name is written once: `w-1 · <directory>`.
+    assert.equal(text, '[superagent workspaces] 2 registered — id · title · directory\n'
+      + `  w-1 · ${join(dir, 'system_img')}\n  w-2 · ${join(dir, 'analyze')}`)
+    assert.equal(text.split('\n')[1]?.startsWith('  w-1'), true, 'rows sort by id, not insertion order')
+  })
+
+  void it('carries no volatile field, and ignores a Session-count change', () => {
+    const dir = tmpdir()
+    const first = rosterRow('w-2', join(dir, 'analyze'), 'analyze', ['s-1'])
+    const second = rosterRow('w-1', join(dir, 'system_img'), 'system_img', ['s-2', 's-3'])
+    const registry = new FakeWorkspaceRegistry()
+    registry.rows.push(first.row, second.row)
+    const text = workspaceRosterLines(registryContext(registry), join(dir, 'super-agent'))
+
+    // The text must carry nothing that changes while a conversation is open: no Session count, no
+    // clock, no status, no age.
+    const other = rosterRow('w-1', join(dir, 'system_img'), 'system_img', ['s-9'])
+    const changed = new FakeWorkspaceRegistry()
+    changed.rows.push(other.row, rosterRow('w-2', join(dir, 'analyze'), 'analyze').row)
+    assert.equal(workspaceRosterLines(registryContext(changed), join(dir, 'super-agent')), text,
+      'a Session-count change must not change the roster')
+    assert.equal(first.calls.status + second.calls.status + other.calls.status, 0, 'the roster never asks for a status')
+    assert.doesNotMatch(text, /\d{4}-\d{2}-\d{2}T/u)
+    assert.doesNotMatch(text, /\bms\b/u)
+    assert.doesNotMatch(text, /session|running|idle|updated|last activity/iu)
+  })
+
+  void it('contributes nothing when there is no super home or no registry', () => {
+    const registry = new FakeWorkspaceRegistry()
+    registry.rows.push(rosterRow('w-1', join(tmpdir(), 'one'), 'one').row)
+    assert.equal(workspaceRosterLines(registryContext(registry), undefined), '')
+    assert.equal(workspaceRosterLines(registryContext(registry), '   '), '')
+    assert.equal(workspaceRosterLines({ get: () => undefined }, join(tmpdir(), 'super')), '')
+    assert.equal(workspaceRosterLines(registryContext(new FakeWorkspaceRegistry()), join(tmpdir(), 'super')), '')
+  })
+
+  void it('keeps one runtime-context snapshot across repeated assemblies of an unchanged registry', async (t) => {
+    const { harness, agent } = await mountRosterLoop()
+    try {
+      const snapshots = recordContextSnapshots(harness.ctx, agent)
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: 'what is running?' }],
+        source: { kind: 'user' },
+      }))
+      await agent.whenIdle()
+
+      t.diagnostic(`one turn renders the roster twice (pre-step and request step) → ${String(snapshots.length)} runtime-context snapshot`)
+      assert.equal(snapshots.length, 1, 'the second identical projection must not append a snapshot')
+      assert.match(snapshots[0] ?? '', /^Current runtime context\./u)
+      assert.match(snapshots[0] ?? '', /\[superagent workspaces\] 1 registered/u)
+      assert.match(snapshots[0] ?? '', /Super agent/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  void it('appends exactly one new snapshot when a workspace is registered', async () => {
+    const { harness, registry, dir, agent } = await mountRosterLoop()
+    try {
+      const snapshots = recordContextSnapshots(harness.ctx, agent)
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: 'first' }],
+        source: { kind: 'user' },
+      }))
+      await agent.whenIdle()
+      assert.equal(snapshots.length, 1, 'the first turn keeps one snapshot')
+      const first = snapshots[0]
+
+      await registry.create(join(dir, 'analyze'), 'analyze')
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: 'second' }],
+        source: { kind: 'user' },
+      }))
+      await agent.whenIdle()
+
+      assert.equal(snapshots.length, 2, 'one registry change appends exactly one snapshot, not one per assembly')
+      assert.equal(snapshots[0], first, 'the earlier snapshot stays untouched')
+      assert.match(snapshots[1] ?? '', /\[superagent workspaces\] 2 registered/u)
+      assert.match(snapshots[1] ?? '', /analyze/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  void it('contributes nothing outside the super workspace', async () => {
+    const { harness, dir, home } = await mountRosterLoop()
+    try {
+      const other = testAgent(harness.ctx, 'other-session', { cwd: dir })
+      const otherAssembly = await harness.ctx.systemPrompt.assemble({ agent: other, scope: other })
+      assert.equal(
+        renderContextSections(otherAssembly).some(section => section.text.includes('[superagent workspaces]')),
+        false,
+      )
+      assert.equal(renderContextSnapshot(otherAssembly).includes('[superagent workspaces]'), false)
+
+      const superAgent = testAgent(harness.ctx, 'super-again', { cwd: home })
+      const superAssembly = await harness.ctx.systemPrompt.assemble({ agent: superAgent, scope: superAgent })
+      assert.equal(renderContextSnapshot(superAssembly).includes('[superagent workspaces]'), true)
+    } finally {
+      await harness.dispose()
+    }
   })
 })
