@@ -65,7 +65,10 @@ function ProviderSettings(props: {
   readonly t: (key: PersonalityKey) => string
 }) {
   const { controller, t } = props
-  const state = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot)
+  const state = useSyncExternalStore(
+    onChange => controller.store.subscribe(onChange),
+    () => controller.store.getSnapshot(),
+  )
 
   if (!state.available) return <p className={styles.note}>{t('settingsUnavailable')}</p>
   return (

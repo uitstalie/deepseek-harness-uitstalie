@@ -134,9 +134,11 @@ const initialState = (): JiraState => ({
  * @param call - the Remote call.
  * @returns the value, or the message to show.
  */
-async function read<T>(call: () => Promise<RemoteResult<T>>): Promise<Read<T>> {
+async function read<T>(call: () => Promise<RemoteResult<T>> | undefined): Promise<Read<T>> {
   try {
-    const answer = await call()
+    const pending = call()
+    if (pending === undefined) return { ok: false, error: 'the Remote method is unavailable' }
+    const answer = await pending
     return answer.ok ? { ok: true, value: answer.value } : { ok: false, error: answer.error.message }
   } catch (error) {
     // Only assembly faults reject (a namespace that is not mounted, a closed connection); the
@@ -190,18 +192,15 @@ export class JiraStore {
     })
     const board = await read(() => this.wire.board())
     const status = await read(() => this.wire.status())
-    const readSuperagent = this.wire.superagentStatus
-    const superagent = readSuperagent === undefined
+    const superagent = this.wire.superagentStatus === undefined
       ? null
-      : await read(() => readSuperagent())
-    const readHistory = this.wire.superagentHistory
-    const history = readHistory === undefined
+      : await read(() => this.wire.superagentStatus?.())
+    const history = this.wire.superagentHistory === undefined
       ? null
-      : await read(() => readHistory(10))
-    const readTriggers = this.wire.superagentTriggers
-    const triggers = readTriggers === undefined
+      : await read(() => this.wire.superagentHistory?.(10))
+    const triggers = this.wire.superagentTriggers === undefined
       ? null
-      : await read(() => readTriggers(10))
+      : await read(() => this.wire.superagentTriggers?.(10))
     // A change (or a retry) started another load while these were in flight: that one owns the
     // state, and this answer is older than the truth it would replace.
     if (generation !== this.boardRead) return
@@ -240,11 +239,10 @@ export class JiraStore {
    */
   async loadMoreTriggers(): Promise<void> {
     const view = this.store.getSnapshot().superagentTriggers.view
-    const wire = this.wire.superagentTriggers
-    if (view === null || !view.hasMore || wire === undefined) return
+    if (view === null || !view.hasMore || this.wire.superagentTriggers === undefined) return
     const before = view.entries.at(-1)?.at
     if (before === undefined) return
-    const next = await read(() => wire(10, before))
+    const next = await read(() => this.wire.superagentTriggers?.(10, before))
     if (!next.ok) return
     this.store.update((draft) => {
       const current = draft.superagentTriggers.view
@@ -262,11 +260,10 @@ export class JiraStore {
    */
   async loadMoreHistory(): Promise<void> {
     const view = this.store.getSnapshot().superagentHistory.view
-    const wire = this.wire.superagentHistory
-    if (view === null || !view.hasMore || wire === undefined) return
+    if (view === null || !view.hasMore || this.wire.superagentHistory === undefined) return
     const before = view.entries.at(-1)?.at
     if (before === undefined) return
-    const next = await read(() => wire(10, before))
+    const next = await read(() => this.wire.superagentHistory?.(10, before))
     if (!next.ok) return
     this.store.update((draft) => {
       const current = draft.superagentHistory.view
@@ -284,13 +281,12 @@ export class JiraStore {
    * @param key - the issue whose latest comment is the proposal.
    */
   async confirm(key: string): Promise<void> {
-    const wire = this.wire.superagentConfirm
-    if (wire === undefined) return
+    if (this.wire.superagentConfirm === undefined) return
     const generation = ++this.confirmRead
     this.store.update((draft) => {
       draft.superagentConfirm = { key, status: 'loading', error: null }
     })
-    const answer = await read(() => wire(key))
+    const answer = await read(() => this.wire.superagentConfirm?.(key))
     this.store.update((draft) => {
       if (generation !== this.confirmRead) return
       draft.superagentConfirm = answer.ok

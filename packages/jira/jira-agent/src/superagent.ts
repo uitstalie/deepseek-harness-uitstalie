@@ -2682,7 +2682,11 @@ export const compactWorkspaceSession = async (
     const resolved = await controller.resolveAgent(sessionId)
     agent = resolved.agent
     if (agent === undefined) {
-      return { error: `the Session could not be resolved: ${String((resolved as { error?: unknown }).error ?? 'unknown')}` }
+      const resolutionError = (resolved as { error?: unknown }).error
+      const reason = resolutionError instanceof Error
+        ? resolutionError.message
+        : typeof resolutionError === 'string' ? resolutionError : 'unknown'
+      return { error: `the Session could not be resolved: ${reason}` }
     }
   } catch (error: unknown) {
     return { error: `the Session could not be resolved: ${error instanceof Error ? error.message : String(error)}` }

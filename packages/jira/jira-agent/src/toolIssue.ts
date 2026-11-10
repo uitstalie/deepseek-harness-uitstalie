@@ -233,6 +233,10 @@ export const runIssueTool = async (
   if (action === 'update') {
     const fields = pickKnownKeys(input.data, UPDATE_FIELDS, 'data')
     if (!fields.ok) return failure(fields.error, caller, me)
+    const note = asString(fields.value.note)
+    if (fields.value.note !== undefined && fields.value.note !== null && note === undefined) {
+      return failure(invalidInput('data.note must be a string or null'), caller, me)
+    }
     mutation = {
       action: 'update' as const,
       patch: {
@@ -240,7 +244,7 @@ export const runIssueTool = async (
         ...(asString(fields.value.issue_type) === undefined ? {} : { issueType: asString(fields.value.issue_type) as string }),
         ...(asString(fields.value.priority) === undefined ? {} : { priority: asString(fields.value.priority) as string }),
         ...(asStringList(fields.value.tags) === undefined ? {} : { tags: asStringList(fields.value.tags) as readonly string[] }),
-        ...(fields.value.note === undefined ? {} : { note: fields.value.note === null ? null : String(fields.value.note) }),
+        ...(note === undefined ? (fields.value.note === null ? { note: null } : {}) : { note }),
         ...(asString(fields.value.description) === undefined ? {} : { body: asString(fields.value.description) as string }),
         ...(asStringList(fields.value.kb_refs) === undefined ? {} : { kbRefs: asStringList(fields.value.kb_refs) as readonly string[] }),
       },

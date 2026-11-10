@@ -58,7 +58,10 @@ export function MemorySection(props: MemorySectionProps) {
  * @returns the settings form.
  */
 function MemorySectionBody({ controller, t }: { controller: MemorySettingsController; t: (key: MemoryKey) => string }) {
-  const state = useSyncExternalStore(controller.store.subscribe, controller.store.getSnapshot)
+  const state = useSyncExternalStore(
+    onChange => controller.store.subscribe(onChange),
+    () => controller.store.getSnapshot(),
+  )
 
   if (!state.available) return <p className={styles.notice}>{t('unavailable')}</p>
   return (

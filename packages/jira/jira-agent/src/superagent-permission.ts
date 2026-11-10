@@ -128,7 +128,12 @@ export async function resolvePermissionTarget(
   if (controller.resolveAgent === undefined) return { error: 'this host cannot resolve the target Session, so its permission cannot be changed or read' }
   const resolved = await controller.resolveAgent(id)
   const agent = resolved.agent as { session?: SessionLike } | undefined
-  if (agent?.session === undefined) return { error: `the Session could not be resolved: ${String(resolved.error ?? 'unknown')}` }
+  if (agent?.session === undefined) {
+    const reason = resolved.error instanceof Error
+      ? resolved.error.message
+      : typeof resolved.error === 'string' ? resolved.error : 'unknown'
+    return { error: `the Session could not be resolved: ${reason}` }
+  }
   return { target: { id, session: agent.session, workspace } }
 }
 

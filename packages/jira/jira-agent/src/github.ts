@@ -38,8 +38,9 @@ export const ghRunner: GhRunner = async args => new Promise<string>((resolve, re
     maxBuffer: 4 * 1024 * 1024,
     windowsHide: true,
   }, (error, stdout) => {
-    if (error !== null) reject(error)
-    else resolve(stdout)
+    if (error !== null) {
+      reject(error instanceof Error ? error : new Error('gh failed without a readable error'))
+    } else resolve(stdout)
   })
 })
 
