@@ -203,7 +203,7 @@ const parseInlineArray = (
   let braces = 0
   let brackets = 0
   for (let index = 0; index < inner.length; index += 1) {
-    const char = inner[index]
+    const char = inner[index] ?? ''
     if (quote === '"') {
       buffer += char
       if (char === '\\') {

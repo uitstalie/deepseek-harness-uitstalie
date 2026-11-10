@@ -8,7 +8,7 @@ import { ok } from '@deepseek-ai/dsh-jira-core'
 import { planUsage, writeCommand, type Handler } from '../runtime.ts'
 
 export const closeCommand: Handler = ctx =>
-  writeCommand(ctx, 'close', async (key) => {
+  writeCommand(ctx, 'close', (key) => {
     const resolution = stringFlag(ctx.flags, 'resolution')
     if (resolution === undefined || resolution === '') return planUsage(invalidInput(CLOSE_NEEDS_RESOLUTION))
     const to = stringFlag(ctx.flags, 'to')

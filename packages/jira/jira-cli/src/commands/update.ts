@@ -6,7 +6,7 @@ import { ok } from '@deepseek-ai/dsh-jira-core'
 import { writeCommand, type Handler } from '../runtime.ts'
 
 export const updateCommand: Handler = ctx =>
-  writeCommand(ctx, 'update', async key =>
+  writeCommand(ctx, 'update', key =>
     ok({
       mutate: (issue, changeContext) => applyUpdate(issue, optFlags<IssuePatch>(ctx.flags, {
         summary: 'string',

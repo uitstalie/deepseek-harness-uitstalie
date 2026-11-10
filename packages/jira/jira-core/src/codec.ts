@@ -182,6 +182,10 @@ export const decodeIssue = (text: string, key: IssueKey): Result<DecodedIssue, J
   }
 
   const assigneeValue = frontmatter.assignee
+  const assignee = asString(assigneeValue)
+  if (assigneeValue !== undefined && assigneeValue !== null && assignee === undefined) {
+    return err(invalidInput('`assignee` must be a string', { assignee: assigneeValue }))
+  }
   const issue: Issue = Object.freeze({
     key,
     project: (parts.project as { value: string }).value,
@@ -198,7 +202,7 @@ export const decodeIssue = (text: string, key: IssueKey): Result<DecodedIssue, J
     createdAt: (parts.createdAt as { value: string }).value as Timestamp,
     updatedAt: (parts.updatedAt as { value: string }).value as Timestamp,
     reporter: (parts.reporter as { value: string }).value as Identity,
-    ...(assigneeValue === undefined || assigneeValue === null ? {} : { assignee: String(assigneeValue) as Identity }),
+    ...(assignee === undefined ? {} : { assignee: assignee as Identity }),
     // §4.8's lease: two flat scalars, meaningful only with an assignee — the assignee is the authority.
     ...(assigneeValue === undefined || assigneeValue === null || asString(frontmatter.claimed_at) === undefined
       ? {}

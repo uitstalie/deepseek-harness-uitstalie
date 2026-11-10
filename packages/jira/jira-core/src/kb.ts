@@ -163,7 +163,10 @@ export const decodeKnowledge = (
       warnings.push(`unknown frontmatter key "${field}"`)
     }
   }
-  if (frontmatter.schema !== KB_SCHEMA) warnings.push(`schema is "${String(frontmatter.schema)}", expected "${KB_SCHEMA}"`)
+  if (frontmatter.schema !== KB_SCHEMA) {
+    const actual = typeof frontmatter.schema === 'string' ? frontmatter.schema : `(non-string ${typeof frontmatter.schema})`
+    warnings.push(`schema is "${actual}", expected "${KB_SCHEMA}"`)
+  }
 
   const required: readonly (readonly [string, string | undefined])[] = [
     ['title', asText(frontmatter.title)],

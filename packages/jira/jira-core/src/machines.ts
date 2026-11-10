@@ -85,8 +85,10 @@ export const listMachines = async (store: Store): Promise<Result<readonly Machin
     for (const field of ['label', 'os', 'first_seen', 'note'] as const) {
       if (fm[field] !== undefined && typeof fm[field] !== 'string') warnings.push(`"${field}" must be a string`)
     }
-    if (fm.machine_id !== undefined && String(fm.machine_id) !== machineId) {
-      warnings.push(`machine_id "${String(fm.machine_id)}" disagrees with the file name`)
+    if (fm.machine_id !== undefined && typeof fm.machine_id !== 'string') {
+      warnings.push('"machine_id" must be a string')
+    } else if (fm.machine_id !== undefined && fm.machine_id !== machineId) {
+      warnings.push(`machine_id "${fm.machine_id}" disagrees with the file name`)
     }
     const str = (value: unknown): string | undefined =>
       typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined

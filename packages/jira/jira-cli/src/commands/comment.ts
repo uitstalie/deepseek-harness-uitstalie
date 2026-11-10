@@ -7,7 +7,7 @@ import { ok } from '@deepseek-ai/dsh-jira-core'
 import { planUsage, writeCommand, type Handler } from '../runtime.ts'
 
 export const commentCommand: Handler = ctx =>
-  writeCommand(ctx, 'comment', async (key) => {
+  writeCommand(ctx, 'comment', (key) => {
     const body = stringFlag(ctx.flags, 'body')
     if (body === undefined || body === '') return planUsage(invalidInput('comment 需要 --body'))
     return ok({

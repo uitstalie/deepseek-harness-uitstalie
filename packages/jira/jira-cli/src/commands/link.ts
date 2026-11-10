@@ -8,7 +8,7 @@ import { ok } from '@deepseek-ai/dsh-jira-core'
 import { planUsage, writeCommand, type Handler } from '../runtime.ts'
 
 export const linkCommand: Handler = ctx =>
-  writeCommand(ctx, 'link', async (key) => {
+  writeCommand(ctx, 'link', (key) => {
     const type = stringFlag(ctx.flags, 'type')
     const target = asIssueKey(stringFlag(ctx.flags, 'target') ?? '')
     if (type === undefined) return planUsage(invalidInput('link 需要 --type（例如 --type is_blocked_by）'))

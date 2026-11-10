@@ -62,11 +62,12 @@ export const parseVocab = (text: string): Result<Vocab, JiraError> => {
   const frontmatter = parsed.value.frontmatter
 
   const schema = frontmatter.schema
+  const scalar = (value: unknown): string => typeof value === 'string' ? value : `(non-string ${typeof value})`
   if (schema !== CONFIG_SCHEMA) {
-    return err(invalidInput(`config.md \`schema\` must be "${CONFIG_SCHEMA}"`, { schema: String(schema) }))
+    return err(invalidInput(`config.md \`schema\` must be "${CONFIG_SCHEMA}"`, { schema: scalar(schema) }))
   }
   if (frontmatter.type !== CONFIG_DOCUMENT_TYPE) {
-    return err(invalidInput(`config.md \`type\` must be "${CONFIG_DOCUMENT_TYPE}"`, { type: String(frontmatter.type) }))
+    return err(invalidInput(`config.md \`type\` must be "${CONFIG_DOCUMENT_TYPE}"`, { type: scalar(frontmatter.type) }))
   }
 
   const issueTypes = requiredList(frontmatter, 'issue_types')

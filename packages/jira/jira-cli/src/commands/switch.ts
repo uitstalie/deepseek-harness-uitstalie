@@ -7,7 +7,7 @@ import { ok } from '@deepseek-ai/dsh-jira-core'
 import { planUsage, writeCommand, type Handler } from '../runtime.ts'
 
 export const switchCommand: Handler = ctx =>
-  writeCommand(ctx, 'switch', async (key) => {
+  writeCommand(ctx, 'switch', (key) => {
     const to = stringFlag(ctx.flags, 'to')
     if (to === undefined || to === '') return planUsage(invalidInput('switch 需要 --to'))
     return ok({

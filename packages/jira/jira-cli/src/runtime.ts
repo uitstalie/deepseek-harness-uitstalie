@@ -224,7 +224,7 @@ export const planStore = (error: JiraError): Result<never, PlanFailure> =>
 export const writeCommand = async (
   ctx: CommandContext,
   command: string,
-  prepare: (key: IssueKey, actor: Actor) => Promise<Result<WritePlan, PlanFailure>>,
+  prepare: (key: IssueKey, actor: Actor) => Result<WritePlan, PlanFailure> | Promise<Result<WritePlan, PlanFailure>>,
 ): Promise<number> => {
   const rawKey = ctx.positionals[0] ?? ''
   const key = asIssueKey(rawKey)
