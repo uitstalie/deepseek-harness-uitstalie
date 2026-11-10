@@ -9,7 +9,8 @@ import { Context } from '@deepseek-ai/cordis'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
-import { type Timestamp } from '@deepseek-ai/dsh-jira-core'
+type Timestamp = string
+import { testMarkdownProjection, recordTestDispatch } from './dispatch-projection.testkit.ts'
 import {
   DISPATCH_DOMAIN_NAME,
   DispatchStore,
@@ -17,11 +18,7 @@ import {
   recordFromTask,
   taskFromRecord,
 } from './dispatch-store.ts'
-import {
-  pendingTask,
-  recordDispatch,
-  type DispatchLedgerTask,
-} from './dispatch-ledger.ts'
+import { pendingTask, type DispatchLedgerTask } from './dispatch-types.ts'
 
 const AT = '2026-11-07T00:00:00.000Z' as Timestamp
 
@@ -73,7 +70,7 @@ describe('superagent: durable dispatch store', () => {
   it('round-trips records, arrays and statuses through the storage domain and Markdown projection', async () => {
     const root = await scratch()
     const { storageCtx } = await withStorage()
-    const store = new DispatchStore(storageCtx, root)
+    const store = new DispatchStore(storageCtx, root, testMarkdownProjection(root))
     stores.push(store)
     assert.equal(await store.available(), true)
 
@@ -150,7 +147,7 @@ describe('superagent: durable dispatch store', () => {
   it('allows a human to correct a failed task to returned and projects the result', async () => {
     const root = await scratch()
     const { storageCtx } = await withStorage()
-    const store = new DispatchStore(storageCtx, root)
+    const store = new DispatchStore(storageCtx, root, testMarkdownProjection(root))
     stores.push(store)
     await store.record(taskFor('task-failed-to-returned'), 'super-1')
 
@@ -181,7 +178,8 @@ describe('superagent: durable dispatch store', () => {
 
   it('returns a bounded DispatchLedgerList from query', async () => {
     const { storageCtx } = await withStorage()
-    const store = new DispatchStore(storageCtx, 'unused-root')
+    const root = await scratch()
+    const store = new DispatchStore(storageCtx, root, testMarkdownProjection(root))
     stores.push(store)
     await store.record(taskFor('task-query-1'), 'super-1')
     await store.record(taskFor('task-query-2'), 'super-1')
@@ -196,7 +194,7 @@ describe('superagent: durable dispatch store', () => {
   it('updates only the domain when projection is disabled', async () => {
     const root = await scratch()
     const { storageCtx } = await withStorage()
-    const store = new DispatchStore(storageCtx, root)
+    const store = new DispatchStore(storageCtx, root, testMarkdownProjection(root))
     stores.push(store)
     await store.record(taskFor('task-domain-only'), 'super-1')
     const file = join(root, '.superagent/ledger/w1.md')
@@ -224,7 +222,7 @@ describe('superagent: durable dispatch store', () => {
   it('records a domain result when its Markdown task projection is missing', async () => {
     const root = await scratch()
     const { storageCtx } = await withStorage()
-    const store = new DispatchStore(storageCtx, root)
+    const store = new DispatchStore(storageCtx, root, testMarkdownProjection(root))
     stores.push(store)
     await store.record(taskFor('task-missing-projection'), 'super-1')
     await rm(join(root, '.superagent/ledger/w1.md'))
@@ -238,11 +236,10 @@ describe('superagent: durable dispatch store', () => {
 
   it('imports Markdown once, preserving task ids and timestamps, and reopens idempotently', async () => {
     const root = await scratch()
-    const old = await recordDispatch(root, { id: 'w1', title: 'workspace', path: '/workspace' }, {
-      task: 'old pending', dispatchedAt: AT, sessionId: 'child-old',
-    })
+    await recordTestDispatch(root, 'task-old', AT, 'child-old')
+    const old = { task: { id: 'task-old' } }
     const firstStorage = await withStorage()
-    const first = new DispatchStore(firstStorage.storageCtx, root)
+    const first = new DispatchStore(firstStorage.storageCtx, root, testMarkdownProjection(root))
     stores.push(first)
     assert.equal(await first.available(), true)
     const imported = await first.list({ status: 'pending' })
@@ -254,7 +251,7 @@ describe('superagent: durable dispatch store', () => {
     stores.splice(stores.indexOf(first), 1)
 
     const secondStorage = await withStorage(firstStorage.storageRoot)
-    const second = new DispatchStore(secondStorage.storageCtx, root)
+    const second = new DispatchStore(secondStorage.storageCtx, root, testMarkdownProjection(root))
     stores.push(second)
     assert.equal(await second.available(), true)
     const rows = await second.list({ limit: 100 })
@@ -266,7 +263,7 @@ describe('superagent: durable dispatch store', () => {
   it('keeps durable records after the store is closed and reopened', async () => {
     const root = await scratch()
     const firstStorage = await withStorage()
-    const first = new DispatchStore(firstStorage.storageCtx, root)
+    const first = new DispatchStore(firstStorage.storageCtx, root, testMarkdownProjection(root))
     stores.push(first)
     assert.equal(await first.available(), true)
     await first.record(taskFor('task-reload', { sessionId: 'child-reload' }), 'super-reload')
@@ -274,7 +271,7 @@ describe('superagent: durable dispatch store', () => {
     stores.splice(stores.indexOf(first), 1)
 
     const secondStorage = await withStorage(firstStorage.storageRoot)
-    const second = new DispatchStore(secondStorage.storageCtx, root)
+    const second = new DispatchStore(secondStorage.storageCtx, root, testMarkdownProjection(root))
     stores.push(second)
     assert.equal(await second.available(), true)
     const rows = await second.list({ limit: 100 })
@@ -286,7 +283,7 @@ describe('superagent: durable dispatch store', () => {
     const root = await scratch()
     const plainCtx = new Context()
     contexts.push(plainCtx)
-    const store = new DispatchStore(plainCtx, root)
+    const store = new DispatchStore(plainCtx, root, testMarkdownProjection(root))
     stores.push(store)
     assert.equal(await store.available(), false)
     assert.equal(await store.list(), undefined)
@@ -299,7 +296,7 @@ describe('superagent: durable dispatch store', () => {
   it('marks a pending record orphaned when its Session is archived', async () => {
     const root = await scratch()
     const { storageCtx } = await withStorage()
-    const store = new DispatchStore(storageCtx, root)
+    const store = new DispatchStore(storageCtx, root, testMarkdownProjection(root))
     stores.push(store)
     assert.equal(await store.available(), true)
     await store.record(taskFor('task-orphan', { sessionId: 'child-orphan' }), 'super-1')

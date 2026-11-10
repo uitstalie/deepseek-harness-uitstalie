@@ -27,6 +27,8 @@ Parse an untrusted `persona/v1` object, render it, or import a SillyTavern-style
 ```ts
 import { importCharacterCard, parsePersonaCard, renderPersonaText } from '@deepseek-ai/dsh-persona-card'
 
+const candidate: unknown = { schema: 'persona/v1', name: '小鲸鱼' }
+const cardJson: unknown = { spec: 'chara_card_v2', data: { name: '小鲸鱼' } }
 const parsed = parsePersonaCard(candidate, { maxBytes: 4096 })
 if (!parsed.ok) throw new Error(parsed.error.message)
 const text = renderPersonaText(parsed.value, { userName: 'Dai' })

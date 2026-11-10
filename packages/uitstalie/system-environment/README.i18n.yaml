@@ -10,10 +10,10 @@
   zh: c09de9f47a0d78b6
 /deepseek-ai-dsh-system-environment/summary:
   en: a69c7275d263eedc
-  zh: 13522867a597f5fb
+  zh: e5aeb1284563f1b3
 /deepseek-ai-dsh-system-environment/table-of-contents:
-  en: 622f29770fb2d853
-  zh: 40abf3a01924c955
+  en: ffb84c2858905086
+  zh: b452f760cc9b91f2
 /deepseek-ai-dsh-system-environment/use-this-package:
   en: fe3052c4d92424a9
   zh: 38a9b20f80c62bd8
@@ -21,5 +21,8 @@
   en: 6708bedda7d4dbfa
   zh: 17e3bd44cdbacf83
 /deepseek-ai-dsh-system-environment/known-limitations-and-deferred-work:
-  en: f091bbde081d981c
-  zh: da66efb63dd5aa80
+  en: a6ca588fef8b74a6
+  zh: bb5d376c742f5575
+/deepseek-ai-dsh-system-environment/known-limitations-and-deferred-work/dev-note:
+  en: 0a1253c6f7b5e8b9
+  zh: 9f56528562c7c914

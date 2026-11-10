@@ -9,8 +9,8 @@
   en: 594808e8ae085902
   zh: ced69017ae5a3c51
 /deepseek-ai-dsh-jira-agent/summary:
-  en: 543aa5c569f73b5b
-  zh: b7e4a4663123b72f
+  en: 7378e7d1a7fdda99
+  zh: cf032b9779e1ae8e
 /deepseek-ai-dsh-jira-agent/table-of-contents:
   en: 0da18700a9c78dfd
   zh: 2e76184b7bb77e61
@@ -51,14 +51,35 @@
   en: c2cf0476db119101
   zh: ed84c12c24079096
 /deepseek-ai-dsh-jira-agent/model-experience/the-claim-loop/what-the-model-sees:
-  en: b09b55e65416e753
-  zh: 3d47cb85d9a96656
+  en: 3cecf1b58d43dab6
+  zh: 75334f02f64961c6
+/deepseek-ai-dsh-jira-agent/model-experience/the-claim-loop/what-the-model-sees/lifecycle-and-report-semantics:
+  en: 264765b9be52beee
+  zh: 26e687234511fd0b
+/deepseek-ai-dsh-jira-agent/model-experience/the-claim-loop/what-the-model-sees/dispatch-and-monitor-results:
+  en: 5e54756fffaefadd
+  zh: 4487db01bdaa0d8e
 /deepseek-ai-dsh-jira-agent/model-experience/the-claim-loop/token-effect:
   en: fbac95f3c7dc0d2b
   zh: 818112e83e00cbc2
 /deepseek-ai-dsh-jira-agent/model-experience/the-claim-loop/kv-cache-effect:
   en: 093aefe9e745a1ed
   zh: 14d4aff33ac4a5cf
+/deepseek-ai-dsh-jira-agent/model-experience/workspace-handoff-and-reporting:
+  en: 9a913b2a1a7190a8
+  zh: f5c7118ba16b8026
+/deepseek-ai-dsh-jira-agent/model-experience/workspace-handoff-and-reporting/what-the-model-sees:
+  en: 9c5973b6e03570bd
+  zh: 5cbb62ac47f8b7d0
+/deepseek-ai-dsh-jira-agent/model-experience/workspace-handoff-and-reporting/what-the-model-sees/permission-setup-and-switches:
+  en: be8a58404ee49b1a
+  zh: ba63aae5e4e70c2f
+/deepseek-ai-dsh-jira-agent/model-experience/workspace-handoff-and-reporting/token-effect:
+  en: 54bfd9f2882b63a5
+  zh: 29f3a8df7b4cc72e
+/deepseek-ai-dsh-jira-agent/model-experience/workspace-handoff-and-reporting/kv-cache-effect:
+  en: 16f80b73faa75c33
+  zh: fd3955fb778f9636
 /deepseek-ai-dsh-jira-agent/known-limitations-and-deferred-work:
   en: ba8a391ed531d3fc
   zh: a799fcc782846f41

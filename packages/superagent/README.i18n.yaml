@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/superagent/README.md
+/:
+  en: a88fbf98638386bc
+  zh: f8b12987f21630be
+/superagent-durable-dispatch-state-and-reports:
+  en: d82c1f78fb218bce
+  zh: 4fe24be627a7e00c
+/superagent-durable-dispatch-state-and-reports/summary:
+  en: 79f2091c2cea9ea2
+  zh: 73dc6879f46a8f76
+/superagent-durable-dispatch-state-and-reports/table-of-contents:
+  en: 1eb35b015a6c423f
+  zh: a8a3dceee2c9e943
+/superagent-durable-dispatch-state-and-reports/packages:
+  en: f0e63580279df902
+  zh: 440adca1a0df60b0
+/superagent-durable-dispatch-state-and-reports/related-documentation:
+  en: 67935a4d195f495f
+  zh: 30fd9e0107304a7d
+/superagent-durable-dispatch-state-and-reports/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

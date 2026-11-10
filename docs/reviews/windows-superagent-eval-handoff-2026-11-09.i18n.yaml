@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for windows-superagent-eval-handoff-2026-11-09.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/reviews/windows-superagent-eval-handoff-2026-11-09.md
+/windows-super-agent-evaluation-handoff:
+  en: c9d37395c5156e4e
+  zh: dedd615b37f4d728
+/windows-super-agent-evaluation-handoff/0-sources-and-limits:
+  en: e392c600a7f791e1
+  zh: d1a3e2f18c1b346d
+/windows-super-agent-evaluation-handoff/1-preliminary-assessment-windows-to-be-verified:
+  en: 665d5981e145a9fa
+  zh: bb2b02e61229e6f3
+/windows-super-agent-evaluation-handoff/2-evidence-observed-on-windows:
+  en: 12077f4fc2a0f811
+  zh: f336b401f26d0d75
+/windows-super-agent-evaluation-handoff/2-evidence-observed-on-windows/2-1-reports-and-ledger:
+  en: 7c4c17fa5841e50d
+  zh: 3337f32416264003
+/windows-super-agent-evaluation-handoff/2-evidence-observed-on-windows/2-2-sessions-and-routing:
+  en: 37f21931069c7d48
+  zh: 1ba9d9bca0bcb3d4
+/windows-super-agent-evaluation-handoff/2-evidence-observed-on-windows/2-3-windows-sandbox-and-build:
+  en: ae7c7e452114f84e
+  zh: e176958b998fcf3a
+/windows-super-agent-evaluation-handoff/2-evidence-observed-on-windows/2-4-memory-and-retrieval:
+  en: f6e4cce1250f497e
+  zh: 854148d0a307d3bd
+/windows-super-agent-evaluation-handoff/3-rerun-matrix-using-the-existing-criteria:
+  en: 458813bc9dd4b5ce
+  zh: a8a4e49441d7ed23
+/windows-super-agent-evaluation-handoff/4-deliverable-requirements:
+  en: 75842bbfdeda1bf1
+  zh: d3ebf910bb3f93f0
+/windows-super-agent-evaluation-handoff/5-one-instruction-for-dev:
+  en: 9df681bb7283baa7
+  zh: 7fd8c11ccf7ae74d

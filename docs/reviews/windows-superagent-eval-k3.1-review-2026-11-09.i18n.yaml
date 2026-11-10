@@ -1,0 +1,67 @@
+# Bilingual-pair consistency record for windows-superagent-eval-k3.1-review-2026-11-09.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/reviews/windows-superagent-eval-k3.1-review-2026-11-09.md
+/independent-review-of-the-windows-super-agent-evaluation-k3-1:
+  en: 58b94599483288bd
+  zh: 3d01e3734ac7d42c
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/1-review-conclusion:
+  en: 0077bc9f5869a82c
+  zh: 3c75ac12238f7fc4
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/2-item-by-item-p0-verification-table:
+  en: f64899dac2815cf9
+  zh: a5b7d9b397e598af
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/2-item-by-item-p0-verification-table/p0-1-measurement-basis:
+  en: dc2e2db42d3ee603
+  zh: 7cdaf52e6e40d90b
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/2-item-by-item-p0-verification-table/p0-3-recovery-semantics:
+  en: 53736b1dddacb937
+  zh: 5c126ffaf9526525
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/3-version-and-terminology-issues:
+  en: 82284074ff6c3a85
+  zh: 149ef4bdac97d8fe
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/3-version-and-terminology-issues/3-1-version-boundaries-are-basically-sound:
+  en: 9bf512e6684b1c58
+  zh: a9fb819610b70de5
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/3-version-and-terminology-issues/3-2-fedora-the-old-runtime-and-current-windows-are-not-systematically-conflated:
+  en: c2d1f040fc373e6b
+  zh: fd586736a154343f
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/3-version-and-terminology-issues/3-3-memory-severity-is-inconsistent-with-the-supplied-scale:
+  en: dc1ec7aadc994070
+  zh: 06feb0d903a62faf
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/4-accuracy-of-the-windows-specific-observations:
+  en: a4b021275ff06e3d
+  zh: bf0f81c282251222
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/4-accuracy-of-the-windows-specific-observations/4-1-dispatch-domain-the-original-conclusion-is-factually-incorrect-and-p1-1-should-be-withdrawn:
+  en: 682e8b8d2d0bd407
+  zh: fa0b13b4b5aa95ae
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/4-accuracy-of-the-windows-specific-observations/4-2-acl-and-low-the-current-state-is-accurate-but-attribution-and-historical-relationships-need-rewriting:
+  en: 18533ae46d529ff8
+  zh: 60eb04977be68b20
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/4-accuracy-of-the-windows-specific-observations/4-3-eperm-failure-to-reproduce-with-a-probe-does-not-mean-this-round-had-no-permission-failure:
+  en: 17c13b97098f235d
+  zh: 304d33cf467b9e4b
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/5-omissions-and-overstatements:
+  en: c2fc0a39b5273ea1
+  zh: 4067f06a0bfb3521
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/5-omissions-and-overstatements/5-1-lifecycle-risks-that-should-be-added:
+  en: cd72dee9acef4061
+  zh: dcf4f9597a000fad
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/5-omissions-and-overstatements/5-2-other-conclusions-that-need-correction-or-narrower-limits:
+  en: 889bac605b00d69b
+  zh: 052c789d5491f9d5
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/5-omissions-and-overstatements/5-3-unsupported-stronger-conclusions:
+  en: 7ed2a2d5b3a67328
+  zh: fe81b9164b5b91f9
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/6-recommended-final-rating-and-next-steps:
+  en: 69df8049237b3da8
+  zh: 563bb6bca2b6c950
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/6-recommended-final-rating-and-next-steps/6-1-final-rating:
+  en: 5bb595b46e5a227b
+  zh: 7e42d7fbe4e6091b
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/6-recommended-final-rating-and-next-steps/6-2-minimum-reproduction-and-acceptance-in-execution-order:
+  en: 6f09652cd18e338f
+  zh: 01474843dd0d5a6d
+/independent-review-of-the-windows-super-agent-evaluation-k3-1/6-recommended-final-rating-and-next-steps/6-3-review-method-and-limits:
+  en: eddde1a09b343574
+  zh: 4e2ac526ca5d81a6

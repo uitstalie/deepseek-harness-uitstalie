@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 `dsh-system-environment` 提供 `ctx.systemEnvironment`：分支插件询问平台、路径拼写与比较、环境变量以及用户 home 与 Harness home 的唯一入口。两套规则（`win32` 与 `posix`）在任意宿主上都可用，因此 Windows 行为可以在 Linux 上测试，反之亦然。它没有模型面，也没有 UI；需要比较路径或展开 `~` 的插件注入这个服务，而不是各自 import `node:path` / `node:os` 再把同一个问题决定第二遍。
 
@@ -16,6 +16,7 @@ kind: "package-reference"
 - [使用本包](#use-this-package)
 - [理解实现](#understand-the-implementation)
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
 
 <a id="use-this-package"></a>
 
@@ -31,6 +32,13 @@ kind: "package-reference"
 插件声明 `inject: ['systemEnvironment']`，然后问服务，而不是重新推导：
 
 ```ts
+import { createSystemEnvironment } from '@deepseek-ai/dsh-system-environment'
+
+const ctx = { systemEnvironment: createSystemEnvironment() }
+const workspaceRoot = '/workspace'
+const candidate = '/workspace/src'
+const left = candidate
+const right = '/workspace/src/index.ts'
 const under = ctx.systemEnvironment.isUnder(workspaceRoot, candidate)
 const home = ctx.systemEnvironment.dshHome()
 const programFiles = ctx.systemEnvironment.env('ProgramFiles')
@@ -57,3 +65,9 @@ const same = ctx.systemEnvironment.samePath(left, right)
 - **不做文件系统操作。** 这里只是查找与比较，不是针对磁盘的解析：需要证明目标存在的消费者仍然自己 stat。
 - **默认 Harness home 跟随 OS home。** 只覆盖 `HOME` 的测试，`dshHome()` 仍会看到真实 OS home，除非固定 `DSH_HOME` 或使用 `env` 缝。
 - **原生包保留自己的规则。** 分支层挂载后，home-backup 与 store-atom 改读本服务，并各自保留宿主原生的兜底，使独立组合的原子仍可工作。sandbox 诊断仍留在原生 sandbox 包：宿主包不能依赖分支原子，因此它的平台规则在那里继续作为可参数的测试 seam，而不是服务读取。
+
+<a id="dev-note"></a>
+
+### 开发备注
+
+无。

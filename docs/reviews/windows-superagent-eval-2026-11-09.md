@@ -1,112 +1,84 @@
-# Windows 实机评测：super agent（报告闭环 / 生命周期 / 路由 / 提问权限 / 环境 / memory）
+# Windows on-machine evaluation: super agent (report loop / lifecycle / routing / question permissions / environment / memory)
 
-日期：2026-11-09。评测对象：Windows 10 实机上**正在运行**的 super agent（`@deepseek-ai/dsh-jira-agent` 的 `superagent_session` / `superagent_ledger` / 报告 journal / dispatch 台账），按
-`goal/superagent-implementation-assessment-2026-11-08.md`、`goal/memory-plugin-assessment-2026-11-08.md`、
-`goal/jira-ledger-assessment-2026-11-08.md` 的严重度尺度判定；`goal/linux-sandbox-audit.md` 只作平台差异参考。
-交接文件：`docs/reviews/windows-superagent-eval-handoff-2026-11-09.md`。
+English | [中文](windows-superagent-eval-2026-11-09.zh.md)
 
-**性质**：只读评测。未改生产代码、未改配置、未 commit、未 push；临时脚本与日志在 `.tmp-eval/`（未跟踪，见 §9）。
-本文的三个事实等级严格分开：**代码已提交** / **runtime 已加载** / **Windows 实机复现**。
 
----
+Date: 2026-11-09. Subject: the **running** super agent on a physical Windows 10 machine (`@deepseek-ai/dsh-jira-agent`'s `superagent_session` / `superagent_ledger` / report journal / dispatch ledger), assessed using the severity scales in `goal/superagent-implementation-assessment-2026-11-08.md`, `goal/memory-plugin-assessment-2026-11-08.md`, and `goal/jira-ledger-assessment-2026-11-08.md`; `goal/linux-sandbox-audit.md` is used only as a reference for platform differences. Handoff file: `docs/reviews/windows-superagent-eval-handoff-2026-11-09.md`.
 
-## 0. 结论摘要
-
-1. **Windows 上的“正常报告闭环”这次真的成立了，且是实机证据，不是推断。** 2026-11-09 落盘截点
-   journal 累计 13 个 task id：**10 个 `delivered`、3 个仍 `pending`（含本评测会话自己）**，
-   且每个 delivered 恰好一条；super 会话收到 10 条 `[task-report]`，与 10 个 delivered 一一对应，
-   子会话 turn/end 与投递时间差 1–2 秒（§3.1）。这与 Fedora 报告“完成后没有自动回传”的历史结论**不同**：
-   当前 runtime（`7174ff024d`，含报告 journal）的 happy path 已工作。
-2. **但 P0 没有关闭，只是换了几条。** 4 个 P0 的证据等级不同（复审已核）：
-   跨进程重复领取同一报告（**Windows 合成多进程 store 实验**，26 次领取 / 6 个应领；非真实双 Host 线上复现，原始 stdout 见 §3.1 与 `.tmp-eval/journal-race-stdout.txt`）；
-   空输出 turn 被自动记成 `returned`（**实机复现**）；
-   投递失败是不可重试的终态且无启动恢复（**代码+单测**，实机未制造失败）；
-   `abort` 后继续不产生新绑定（**代码+单测**，实机未触发）。
-3. **先纠正我自己的一处错误结论：dispatch domain 并没有停用。** 我最初只读主库（mtime 09:31:48、`-wal` 0 B）得出
-   “75 行、当日 0 行”，是**漏读 WAL**。把 `superagent.sqlite` + `-wal` + `-shm` 复制到临时目录后重查：
-   **90 行、当日 15 行**，包含本评测任务与复审任务；`task-mw8m5yg4` 在 domain 的 `failed@02:12:52` 与人工 resolve 同一时刻。
-   所以 domain 已被 dispatch/resolve 实际使用（复审 §4.1 的更正成立）；需要核对的是它与 Markdown 投影的**权威关系与来源可观测性**，
-   而不是“未打开”。原 P1-1 撤销，改为 P2 可观测性项。
-4. **沙箱副作用当前状态属实，但归因不能坐实。** `deepseek-harness-uitstalie-dev`、`superAgent`、`system_img` 三个
-   工作区根仍带 `Everyone:(CI)(DENY)(S,DC)` 与 `Low Mandatory Level:(OI)(CI)(NW)`；`D:\dqc\analyze` 是 Medium。
-   交接文件记录了 11-07 的成功清理，所以“当时清理过”与“现在又出现”可以并存；ACE 无时间戳，写入者与时间未定。
-   **本次 ACL 根目录探针未复现历史 rename EPERM**；但同日 Web/esbuild 删除临时文件出现 `Access is denied`，
-   普通构建未通过（§3.5）。补充诊断已定位 esbuild 删除失败为 Low 进程受 Medium 文件的 No-Write-Up 限制（§3.8），
-   这不改变工作区持久标签写入者与时间未定的结论。
-5. **总体评级：C+（“可用但完整性与可恢复性未成立”）。** 按既有尺度，P0 未关闭，不建议判定为已收敛；
-   但也不能沿用“Windows 上报告根本回不来”的旧结论——那条已经不成立。
-
-**最关键 3 条**：跨进程 claim 无原子性（§4 P0-1）；空输出/无报告被自动写成 `returned`（P0-2）；
-投递失败无重试、无启动扫描（P0-3）。第 4 条 P0 是 abort 绑定（P0-4）。
+**Nature**: read-only evaluation. No production code or configuration was changed, and nothing was committed or pushed; temporary scripts and logs are in `.tmp-eval/` (untracked; see §9). The three evidence levels in this report are strictly separate: **committed code** / **loaded by the runtime** / **reproduced on the physical Windows machine**.
 
 ---
 
-## 1. 版本、环境与三种事实
+## 0. Executive summary
 
-### 1.1 运行中的 runtime
+1. **The “normal report loop” on Windows really worked this time, with on-machine evidence rather than inference.** At the snapshot written to disk on 2026-11-09, the journal contained 13 task ids in total: **10 `delivered` and 3 still `pending` (including this evaluation session itself)**, with exactly one entry for each delivered task; the super Session received 10 `[task-report]` messages, corresponding one-to-one with the 10 delivered tasks, and the delay between the child Session's turn/end and delivery was 1–2 seconds (§3.1). This **differs** from the Fedora report's historical conclusion that “there was no automatic return after completion”: the happy path of the current runtime at the 2026-11-09 permission-fix baseline, including the report journal, works.
+2. **But the P0s have not been closed; only some of them have changed.** The four P0s have different evidence levels (confirmed by re-review): duplicate cross-process claims of the same report (**synthetic multiprocess store experiment on Windows**, 26 claims for 6 items that should have been claimed; not a live reproduction with two real Hosts; raw stdout in §3.1 and `.tmp-eval/journal-race-stdout.txt`); a turn with empty output was automatically recorded as `returned` (**reproduced on-machine**); delivery failure is a terminal state with no retry and no startup recovery (**code + unit tests**; no failure was induced on-machine); continuing after `abort` creates no new binding (**code + unit tests**; not triggered on-machine).
+3. **First, I correct one of my own erroneous conclusions: the dispatch domain has not been disabled.** I initially read only the main database (mtime 09:31:48, `-wal` 0 B) and concluded “75 rows, 0 rows today” because I **missed the WAL**. After copying `superagent.sqlite` + `-wal` + `-shm` to a temporary directory and querying again: **90 rows, 15 rows today**, including this evaluation task and the re-review task; `task-mw8m5yg4` became `failed@02:12:52` in the domain at the same moment as the manual resolve. The domain is therefore actually used by dispatch/resolve (the correction in re-review §4.1 is valid); what needs checking is its **authority relationship and source observability** relative to the Markdown projection, not whether it is “unopened.” The original P1-1 is withdrawn and replaced by a P2 observability item.
+4. **The current sandbox side effects are real, but their attribution cannot be established.** The roots of the `deepseek-harness-uitstalie-dev`, `superAgent`, and `system_img` workspaces still carry `Everyone:(CI)(DENY)(S,DC)` and `Low Mandatory Level:(OI)(CI)(NW)`; `D:\dqc\analyze` is Medium. The handoff file records a successful cleanup on 11-07, so “it was cleaned up then” and “it has appeared again now” can both be true; ACEs have no timestamps, so the writer and time remain undetermined. **This evaluation's ACL root-directory probe did not reproduce the historical rename EPERM**; however, Web/esbuild encountered `Access is denied` while deleting a temporary file on the same day, and the normal build did not pass (§3.5). Supplementary diagnosis located the esbuild deletion failure in the No-Write-Up restriction imposed on a Low process by a Medium file (§3.8), which does not change the conclusion that the writer and time of the persistent workspace labels remain undetermined.
+5. **Overall rating: C+ (“usable, but integrity and recoverability are not established”).** Under the existing scale, P0s remain open, so the system should not be judged converged; nor can we retain the old conclusion that “reports simply do not come back on Windows”—that conclusion is no longer valid.
 
-| 项 | 实测值 | 证据 |
+**The three most critical items**: cross-process claims are not atomic (§4 P0-1); empty output/no report is automatically written as `returned` (P0-2); delivery failure has no retry and no startup scan (P0-3). The fourth P0 is abort binding (P0-4).
+
+---
+
+## 1. Version, environment, and the three kinds of evidence
+
+### 1.1 Running runtime
+
+| Item | Measured value | Evidence |
 |---|---|---|
-| runtime checkout | `D:\dqc\deepseek-harness-uitstalie` | 进程命令行 |
-| runtime HEAD | `7174ff024da9328f84d98c44576b1f5fe3f1fee1`（`cli-desktop`，工作树 **0** 个改动） | `git -C … rev-parse HEAD`、`git status --porcelain` 空 |
-| 启动方式 | `node --import tsx/esm apps/cli/src/bin.ts web`，PID 5084，启动于 **2026-11-09 09:45:03** | `Get-CimInstance Win32_Process -Filter "ProcessId=5084"` |
-| 解释器 / 版本 | Node **v24.13.0**；根 package `@deepseek-ai/dsh-root@0.2.2-rc.1` | `node --version`、`package.json` |
-| 监听 | `127.0.0.1:3080`（HTTP 401，需启动 token） | `netstat -ano`、`Invoke-WebRequest` |
-| profile / home | `DSH_PROFILE=web`，`DSH_HOME=C:\Users\TS\.dsh`，super home `D:\dqc\superAgent` | 进程 env、`~/.dsh/profiles/web/cordis.patch.yml` |
+| runtime checkout | `D:\dqc\deepseek-harness-uitstalie` | Process command line |
+| runtime HEAD | `2026-11-09 权限修复基线` (`cli-desktop`, **0** worktree changes) | `git -C … rev-parse HEAD`, empty `git status --porcelain` |
+| Launch method | `node --import tsx/esm apps/cli/src/bin.ts web`, PID 5084, started at **2026-11-09 09:45:03** | `Get-CimInstance Win32_Process -Filter "ProcessId=5084"` |
+| Interpreter / version | Node **v24.13.0**; root package `@deepseek-ai/dsh-root@0.2.2-rc.1` | `node --version`, `package.json` |
+| Listener | `127.0.0.1:3080` (HTTP 401, startup token required) | `netstat -ano`, `Invoke-WebRequest` |
+| profile / home | `DSH_PROFILE=web`, `DSH_HOME=C:\Users\TS\.dsh`, super home `D:\dqc\superAgent` | Process env, `~/.dsh/profiles/web/cordis.patch.yml` |
 
-关键事实：runtime 用 **tsx 直接跑 TypeScript 源码**，不经过打包产物。因此“runtime 加载的代码”就是
-**干净工作树上的 `7174ff024d`**，不是 `apps/web/dist` 的构建产物。
+Key fact: the runtime uses **tsx to execute the TypeScript source directly**, without bundled artifacts. The “code loaded by the runtime” is therefore **the clean runtime worktree**, not build artifacts from `apps/web/dist`.
 
-### 1.2 dev checkout 与 runtime 的一致性
+### 1.2 Consistency between the dev checkout and the runtime
 
-- dev：`D:\dqc\deepseek-harness-uitstalie-dev`，分支 `cli-desktop`，HEAD `7174ff024d`——**与 runtime 同 commit**。
-- 但 dev 工作树有 **79 个 status 条目（73 个已跟踪文件修改）**，包括 `agent.ts`、`session/src/*`、
-  `jira-agent/src/api-catalog.ts` 等。runtime 工作树是干净的，所以：
-  **runtime 没有加载 dev 的未提交改动**。任何“dev 已修但 runtime 未必加载”的判断，在这台机器上是反向的：
-  dev 上那些未提交修复**确实没有**被运行实例加载。
-- 本次实测的代码基线是 `7174ff024d`，不是 `deepseek-harness-uitstalie-dev` 工作树。
+- dev: `D:\dqc\deepseek-harness-uitstalie-dev`, branch `cli-desktop`, on the same baseline as the runtime.
+- However, the dev worktree has **79 status entries (73 modified tracked files)**, including `agent.ts`, `session/src/*`, `jira-agent/src/api-catalog.ts`, and others. The runtime worktree is clean, so: **the runtime did not load dev's uncommitted changes**. On this machine, any assumption that “dev has been fixed but the runtime may not have loaded it” is reversed: the running instance **definitely did not** load those uncommitted fixes in dev.
+- The code baseline measured in this evaluation is the runtime checkout, not the `deepseek-harness-uitstalie-dev` worktree.
 
-### 1.3 机器与权限
+### 1.3 Machine and permissions
 
-- Windows 10 Pro 22H2，build **19045.6466**，x64。
-- 用户 `TS-20240229UGAL\TS`，**非管理员**（`IsInRole(Administrator)=False`），进程完整性 **Medium**。
-- 评测会话 cwd：`D:\dqc\deepseek-harness-uitstalie-dev`；super 会话 `session-ecc925ac…` 的 cwd：`D:\dqc\superAgent`。
-- 评测中途会话文件策略由 `workspace-write` 改为 `danger-full-access`（用户操作），不影响下述只读结论；
-  memory 工具与 ACL 探测在两种策略下都做过。
+- Windows 10 Pro 22H2, build **19045.6466**, x64.
+- User `TS-20240229UGAL\TS`, **not an administrator** (`IsInRole(Administrator)=False`), process integrity **Medium**.
+- Evaluation Session cwd: `D:\dqc\deepseek-harness-uitstalie-dev`; super Session `session-ecc925ac…` cwd: `D:\dqc\superAgent`.
+- During the evaluation, a user action changed the Session file policy from `workspace-write` to `danger-full-access`; this does not affect the read-only conclusions below. The memory tools and ACL probes were exercised under both policies.
 
-### 1.4 三种事实分级（本文引用规则）
+### 1.4 Three evidence levels (citation rules for this report)
 
-| 等级 | 含义 | 本文用法 |
+| Level | Meaning | Use in this report |
 |---|---|---|
-| 代码已提交 | `7174ff024d` 的源码/测试存在 | 只用于解释机制与给行号，不单独当结论 |
-| runtime 已加载 | 当前 3080 进程执行到该代码 | 由 live journal/台账/工具输出反证 |
-| Windows 实机复现 | 本轮在这台机器上真实发生并可复核 | 结论的唯一硬证据 |
+| Committed code | Source/tests exist at the measured baseline | Used only to explain mechanisms and give line numbers, never as a conclusion by itself |
+| Loaded by the runtime | The current process on port 3080 executed the code | Corroborated by the live journal/ledger/tool output |
+| Reproduced on the physical Windows machine | Actually occurred on this machine in this round and can be rechecked | The only hard evidence for conclusions |
 
 ---
 
-## 2. 现场数据（2026-11-09，runtime 自身产生）
+## 2. Live data (2026-11-09, produced by the runtime itself)
 
-- 报告 journal：`D:\dqc\superAgent\.superagent\reports.jsonl`，评测期间持续增长（10:12:12 仍在写）。
-- dispatch 台账：`D:\dqc\superAgent\.superagent\ledger\*.md`（`544e144b…md` 537 KB）。
-- dispatch domain：`C:\Users\TS\.dsh\storages\superagent.sqlite`（**90 行、当日 15 行**；必须连 `-wal` 一起读，见 §3.2）。
-- super 会话日志：`C:\Users\TS\.dsh\sessions\--D-dqc-superAgent--\session-ecc925ac-d736-45f2-b1f6-8e84a8abe0ec\session.v4.jsonl.zstd`。
-- 子会话日志：`…\--D-dqc-deepseek-harness-uitstalie-dev--\session-6e0cddc9-d2d7-487f-b93c-b97dbdc31c56\…`。
-- 本评测任务自身也是被派遣的：`task-mw8mct4b-de1cbbd1`，子会话就是 `session-5599a833…`（本会话），
-  journal 在 prompt 之前已写入 `pending@2026-11-09T02:05:23Z`。
+- Report journal: `D:\dqc\superAgent\.superagent\reports.jsonl`, which continued to grow during the evaluation (still being written at 10:12:12).
+- Dispatch ledger: `D:\dqc\superAgent\.superagent\ledger\*.md` (`ledger-544e144b…md`, 537 KB).
+- Dispatch domain: `C:\Users\TS\.dsh\storages\superagent.sqlite` (**90 rows, 15 rows today**; must be read together with `-wal`; see §3.2).
+- Super Session log: `C:\Users\TS\.dsh\sessions\--D-dqc-superAgent--\session-ecc925ac-d736-45f2-b1f6-8e84a8abe0ec\session.v4.jsonl.zstd`.
+- Child Session log: `…\--D-dqc-deepseek-harness-uitstalie-dev--\session-6e0cddc9-d2d7-487f-b93c-b97dbdc31c56\…`.
+- This evaluation task was itself dispatched: `task-mw8mct4b-de1cbbd1`, whose child Session is `session-5599a833…` (this Session). The journal had already written `pending@2026-11-09T02:05:23Z` before the prompt.
 
-> 日志解码方法：session 日志是 **1911 个拼接的 zstd frame**，无长度前缀。Node 的 `zstdDecompressSync` 与
-> `createZstdDecompress` 都**只返回第一帧**（2.7 MB → 217 B），必须按 `28 b5 2f fd` 逐帧切片解压
-> （`.tmp-eval/decode-session.mjs`）。这是 Windows 复跑的硬坑：没有 `zstd` CLI，一次性 API 会静默截断。
+> Log decoding method: the Session log consists of **1911 concatenated zstd frames** with no length prefix. Node's `zstdDecompressSync` and `createZstdDecompress` both **return only the first frame** (2.7 MB → 217 B), so the data must be split at each `28 b5 2f fd` and decompressed frame by frame (`.tmp-eval/decode-session.mjs`). This is a serious pitfall when rerunning on Windows: there is no `zstd` CLI, and the one-shot API silently truncates the data.
 
 ---
 
-## 3. 实测矩阵
+## 3. Measurement matrix
 
-### 3.1 A. 报告闭环
+### 3.1 A. Report loop
 
-#### A-1 正常完成：成立（实机）
+#### A-1 Normal completion: works (on-machine)
 
-journal 逐条（评测中段截点 02:12Z：`lines=20 records=20 distinct ids=8`；下文 §3.1 A-4 说明 8 与 13 的关系）：
+Journal entries (mid-evaluation snapshot at 02:12Z: `lines=20 records=20 distinct ids=8`; §3.1 A-4 below explains the relationship between 8 and 13):
 
 ```
 lines=20 records=20 distinct ids=8
@@ -117,7 +89,7 @@ task-mw8m5yg4…  pending@02:00:03Z -> delivering@02:12:12Z -> delivered@02:12:1
 task-mw8m9vx1… pending@02:03:07Z -> delivering@02:08:13Z -> delivered@02:08:13Z
 ```
 
-子会话 turn 边界（`session-log.mjs … turns`）：
+Child Session turn boundaries (`session-log.mjs … turns`):
 
 ```
 2906 2026-11-09 01:50:42Z turn/end {"turn":7,"reason":{"kind":"completed"}}
@@ -126,7 +98,7 @@ task-mw8m9vx1… pending@02:03:07Z -> delivering@02:08:13Z -> delivered@02:08:13
 3163 2026-11-09 02:12:10Z turn/end {"turn":10,"reason":{"kind":"completed"}}
 ```
 
-super 会话收到的对应 `[task-report]`（`kind:"user"`，`rpcId:"superagent-report-…"`）：
+Corresponding `[task-report]` messages received by the super Session (`kind:"user"`, `rpcId:"superagent-report-…"`):
 
 ```
 607 01:57:35Z [task-report] session-a20c592e… task-mw8lret8-5650a2b5 (context 16%).
@@ -135,16 +107,14 @@ super 会话收到的对应 `[task-report]`（`kind:"user"`，`rpcId:"superagent
 856 02:12:12Z [task-report] session-6e0cddc9… task-mw8m5yg4-c19b2a0a (context 63%), but produced no assistant text.
 ```
 
-投递延迟 1–2 s；每个 task 一条；全天 10 条 delivered，无重复。**这是“runtime 已加载 + 实机复现”。**
+Delivery latency was 1–2 s; one message per task; 10 delivered messages for the day, with no duplicates. **This is “loaded by the runtime + reproduced on-machine.”**
 
-#### A-2 无报告（空输出）：被看见，但台账写成成功（实机，P0）
+#### A-2 No report (empty output): observed, but the ledger records success (on-machine, P0)
 
-`turn 10` 完成但没有任何 assistant 文本。系统做了两件事：
+`turn 10` completed without any assistant text. The system did two things:
 
-1. 报告正文是诊断句，**这是对的**：
-   `[task-report] … finished its turn (task task-mw8m5yg4-c19b2a0a) … but produced no assistant text. Inspect the Session … do not assume the task succeeded.`（super 日志 seq 856）
-2. 但台账投影在投递前就写了 `returned`（`superagent.ts:3927` → `projectReportToLedger`），
-   文件证据 `544e144b-651b-4202-a71b-ad04d7660f63.md`：
+1. The report body was a diagnostic sentence, **which is correct**: `[task-report] … finished its turn (task task-mw8m5yg4-c19b2a0a) … but produced no assistant text. Inspect the Session … do not assume the task succeeded.` (super log seq 856)
+2. However, the ledger projection wrote `returned` before delivery (`superagent.ts:3927` → `projectReportToLedger`). File evidence: `ledger-544e144b-651b-4202-a71b-ad04d7660f63.md`:
 
 ```
 6050: ## task-mw8m5yg4-c19b2a0a · returned
@@ -154,13 +124,11 @@ super 会话收到的对应 `[task-report]`（`kind:"user"`，`rpcId:"superagent
 6102: ## task-mw8m5yg4-c19b2a0a · failed
 ```
 
-`superagent_ledger list` 在 02:12:14 也确实返回 `returned`（super 日志 seq 863），到 02:12:52 才被人工
-`resolve status=failed` 改成 failed（seq 911-912）。**“没有产出”被自动记成 `returned`，需要人纠正。**
-这就是 Fedora P0“业务结果在投递前写成 returned”的一个更尖锐的实例：连空输出也 returned。
+`superagent_ledger list` did return `returned` at 02:12:14 (super log seq 863), and only at 02:12:52 did a manual `resolve status=failed` change it to failed (seq 911-912). **“No output” was automatically recorded as `returned` and required human correction.** This is an even sharper instance of Fedora P0, “business result written as returned before delivery”: even empty output was returned.
 
-#### A-3 投递失败：机制存在，但仍是终态（代码+单测，实机未制造）
+#### A-3 Delivery failure: the mechanism exists, but it remains terminal (code + unit tests; not induced on-machine)
 
-`handleTaskTurnEnd` 的失败分支只 warn + settle failed，不重试：
+The failure branch of `handleTaskTurnEnd` only warns and settles as failed; it does not retry:
 
 ```
 3949: if (delivered) { await settleReport(… 'delivered' …) }
@@ -168,345 +136,165 @@ super 会话收到的对应 `[task-report]`（`kind:"user"`，`rpcId:"superagent
 3957:   await settleReport(host, journal, report.id, 'failed', at, 'the report could not be delivered …')
 ```
 
-`claim` 明确不领取 failed：`dispatch-reports.ts:243 if (status === 'delivered' || status === 'failed') return undefined`。
-单元测试 `marks the report failed and warns when delivery fails` 通过；但**没有 retry 工具、没有 UI 重试入口**，
-journal 也只有 `forSession/claim/all` 读接口。启动时也不扫描 pending/delivering：本轮读遍 capability 初始化（`superagent.ts:4483-4527`）与
-`handleTaskTurnEnd`，唯一恢复是“下一次 turn-end 触发 claim，lease 过期后 retry”（`dispatch-reports.ts:244-249`）；
-`superSessionForReport`（`superagent.ts:3670-3700`）只回退接收者，不是启动恢复。
+`claim` explicitly does not claim failed reports: `dispatch-reports.ts:243 if (status === 'delivered' || status === 'failed') return undefined`. The unit test `marks the report failed and warns when delivery fails` passes, but **there is no retry tool and no UI retry entry point**, and the journal exposes only the `forSession/claim/all` read interfaces. Startup does not scan pending/delivering either: this round examined all capability initialization (`superagent.ts:4483-4527`) and `handleTaskTurnEnd`; the only recovery is “the next turn-end triggers claim, then retry after the lease expires” (`dispatch-reports.ts:244-249`). `superSessionForReport` (`superagent.ts:3670-3700`) only falls back to another recipient; it is not startup recovery.
 
-**限制**：本轮没有关闭接收方或注入写失败，无法在 live 上展示“failed 后用户看到什么”。因此“失败可见/可重试”按
-**代码+单测成立、实机未验证**计。
+**Limitation**: this round neither closed the recipient nor injected a write failure, so it could not show “what the user sees after failed” live. “Failure visibility/retryability” therefore counts as **established by code + unit tests, not verified on-machine**.
 
-#### A-4 重复报告：journal 不重复，台账重复（实机）
+#### A-4 Duplicate reports: no duplicates in the journal, duplicates in the ledger (on-machine)
 
-- journal（截点 02:12Z）：`lines=20`、`ids=8`、6 个 delivered；到报告落盘时增长为 **13 个 id：10 delivered / 3 pending**。
-  始终没有出现同一 id 的两条 delivered；评测中段每 id 恰好一条。
-- 台账：同一 task 会有多段。`task-mw8lnutt-aa5ccf25` 有**两段 returned**（`:5347`、`:5462`），
-  一段来自自动投影、一段来自人工 resolve；`m5yg4` 有 returned + failed 两段。
-  报告本身只投递一次（super 日志只有一条 `task-mw8m5yg4` 报告），**所谓“重复报告”在当前 Windows 运行里
-  表现为台账重复段，不是重复投递**。这与 Fedora 报告“不同 task id 重复到达”的历史现象不同。
+- Journal (snapshot at 02:12Z): `lines=20`, `ids=8`, 6 delivered; by the time the report was written to disk, this had grown to **13 ids: 10 delivered / 3 pending**. Two delivered entries for the same id never appeared; at the mid-evaluation snapshot, each id had exactly one.
+- Ledger: the same task can have multiple sections. `task-mw8lnutt-aa5ccf25` has **two returned sections** (`:5347`, `:5462`), one from automatic projection and one from manual resolve; `m5yg4` has returned + failed sections. The report itself was delivered only once (the super log contains only one `task-mw8m5yg4` report), so **the so-called “duplicate reports” in the current Windows run appear as duplicate ledger sections, not duplicate deliveries**. This differs from the Fedora report's historical phenomenon of “duplicate arrivals with different task ids.”
 
-#### A-5 ledger / journal / domain / UI 是否同一状态
+#### A-5 Whether the ledger / journal / domain / UI show the same state
 
-| 面 | 今天的 `task-mw8m5yg4` | 结论 |
+| Surface | Today's `task-mw8m5yg4` | Conclusion |
 |---|---|---|
-| journal | `delivered`（02:12:12） | 投递事实 |
-| 台账 Markdown | 先 `returned`（6050），后人工 `failed`（6102） | 业务事实被人纠正 |
-| dispatch domain | 02:12:52 起为 `failed`；此前自动投影期为 `returned`（最终态 failed，见 §3.2） | 自动状态先错 40 秒，人工纠正后正确 |
-| UI 面板 | 未打开（3080 要 token） | 未验证 |
+| journal | `delivered` (02:12:12) | Delivery fact |
+| Ledger Markdown | First `returned` (6050), then manually `failed` (6102) | Business fact corrected by a person |
+| dispatch domain | `failed` from 02:12:52; `returned` during the preceding automatic-projection period (final state failed; see §3.2) | Automatic state was wrong for 40 seconds, then correct after manual correction |
+| UI panel | Not opened (port 3080 requires a token) | Not verified |
 
-四个面**没有显示同一状态**。domain 的缺失不是这条任务特有，而是全局的（§3.2）。
+The four surfaces **did not show the same state**. The domain absence was not specific to this task, but global (§3.2).
 
-### 3.2 dispatch domain：已打开并被使用；权威关系与来源需核对（原结论撤销）
+### 3.2 dispatch domain: opened and used; authority relationship and data source need checking (original conclusion withdrawn)
 
-> **修订（2026-11-09，k3.1 复审后）**：本节初版断言“domain 未打开、全程 Markdown、今日 0 条”，**错误**。
-> 错因：只用 `node:sqlite` 只读打开主库、未应用 WAL，读到的是 09:31 的旧快照。以下为重查结果与更正。
+> **Revision (2026-11-09, after k3.1 re-review)**: the first version of this section asserted “domain unopened, Markdown throughout, 0 entries today,” which was **wrong**. Cause: only the main database was opened read-only with `node:sqlite`, without applying the WAL, so the query read an old 09:31 snapshot. The recheck results and corrections follow.
 
-- **重查方法**：把 `C:\Users\TS\.dsh\storages\superagent.sqlite` **连同 `-wal`（267,832 B）与 `-shm`** 复制到
-  `.tmp-eval/dbcopy/`，以读写方式打开副本（SQLite 自动恢复 WAL），再查 `u_superagent_dispatch_dispatches`。
-- **结果**：`rows 90`，状态 `{"returned":63,"pending":23,"failed":4}`，当日（2026-11-09）**15 行**；
-  `task-mw8lnutt` 在 01:45:59 创建、01:50:57 returned；`task-mw8m5yg4` 在 **02:12:52 failed**（与人工 resolve 同刻）；
-  本评测任务 `task-mw8mct4b` 与复审任务 `task-mw8n3mda` 也都在 domain 里。
-- **结论**：当前 runtime 的 `DispatchStore` 已打开，dispatch/resolve 确实写入 SQLite。原报告“domain 未打开／
-  `store.list` 返回 undefined／Markdown 独有任务”的推理链不成立：`superagent_ledger list` 返回的任务在 domain 中同样存在，
-  不能据此反推数据源（复审 §4.1）。P1-1 撤销。
-- **仍需保留的弱结论（P2）**：`superagent_ledger` 不暴露“这条来自 domain 还是 Markdown、是否降级及原因”，
-  人只能从结果猜；`DispatchStore` 构造时单次采样 `storageDomain`（`dispatch-store.ts:169-171`）仍是“晚到服务即永久降级”的
-  静态生命周期风险，但**不是本次实机根因**（本次已正常打开）。
-- **权威关系**：domain 与 Markdown 投影同时存在（`dispatch-store.ts:214-227` 投影同步）。本轮**未**对同一 id 做
-  domain/投影逐字段比对；`artifacts/decisions` 在 domain 已 returned 后被 `dispatch-store.ts:282-289` 短路、
-  投影不可重放的问题仍由复审提出（未实跑），列 P2/未验证。
+- **Recheck method**: copy `C:\Users\TS\.dsh\storages\superagent.sqlite` **together with `-wal` (267,832 B) and `-shm`** to `.tmp-eval/dbcopy/`, open the copy read-write (SQLite automatically recovers the WAL), then query `u_superagent_dispatch_dispatches`.
+- **Result**: `rows 90`, statuses `{"returned":63,"pending":23,"failed":4}`, **15 rows** today (2026-11-09); `task-mw8lnutt` was created at 01:45:59 and returned at 01:50:57; `task-mw8m5yg4` became **failed at 02:12:52** (the same moment as the manual resolve); this evaluation task `task-mw8mct4b` and the re-review task `task-mw8n3mda` are also in the domain.
+- **Conclusion**: the current runtime's `DispatchStore` is open, and dispatch/resolve really writes to SQLite. The original report's chain of reasoning—“domain unopened / `store.list` returned undefined / tasks present only in Markdown”—does not hold: tasks returned by `superagent_ledger list` also exist in the domain, so the data source cannot be inferred from that result (re-review §4.1). P1-1 is withdrawn.
+- **Weak conclusion that remains (P2)**: `superagent_ledger` does not expose “whether this entry comes from the domain or Markdown, whether it is degraded, and why,” so a person can only guess from the result; the single sampling of `storageDomain` during `DispatchStore` construction (`dispatch-store.ts:169-171`) still poses the static lifecycle risk that “a late-arriving service causes permanent degradation,” but **this was not the root cause on-machine** (the domain opened normally this time).
+- **Authority relationship**: the domain and Markdown projection coexist (`dispatch-store.ts:214-227` projection synchronization). This round **did not** compare the domain/projection field by field for the same id; the re-review still raises the issue (not run on-machine) that `artifacts/decisions` are short-circuited by `dispatch-store.ts:282-289` after the domain has returned, making the projection non-replayable. This is listed as P2/unverified.
 
-### 3.3 B. 生命周期
+### 3.3 B. Lifecycle
 
-- **`start` 多步失败残留空 Session**（代码确认，实机未制造）：
-  `2817` start → `2838 controller.create` → `2845` 选模型 → `2853` rename → `2864` 写报告绑定 → `2872` prompt。
-  模型失败（2847）、标题失败（2855）、绑定失败（2867）都直接 `return failure`，**不删除、不标记、不提供继续入口**。
-  唯一“先解析”的是 workspace/task/reportTo（2818-2835）。没有测试覆盖逐步失败残留。
-- **`abort` 后继续没有新绑定**（代码确认，实机未触发）：
-  `3113-3169`：cancel → waitForIdle → `prompt({ requestId: 'superagent-recover-…' })`。
-  **没有 `recordDispatchReport`**，所以 abort 后那段 instruction 完成时不会按新任务回传。
-  单测 `aborts a running Session, reports the scene and continues it` 只断言了 `resumed`，没有断言新报告。
-  与 Fedora P0 3.3 一致，未修复。
-- **`archive` 后的 pending/delivering**：单测 `fails pending reports when their Session is archived or stopped` 通过；
-  `failPendingForSessions` 只处理 **pending**（`dispatch-reports.ts:271-279`），**不处理 delivering**；
-  capability 的 archive/stop 路径（`superagent.ts:4570-4607`）也不等待在途 deliver/settle，归档后仍可能迟到发送。
-- **唯一 super Session 的 recipient**：journal 的 `superSession` 在派发时写入（`superagent.ts:890`），
-  空时才回退 `superSessionForReport`（`:3670-3703`），选“最近更新的 super root Session”，**可能不是原派遣者**；
-  找不到就 settle failed + warn（`3911-3919`）。本轮 10 条报告全部带 `superSession`，**没有用到回退**；回退行为未实跑。
-- **`abort` 的 `accepted:false` 未检查**：`3157-3168` 在 `admitted.accepted` 为 false 时仍返回 `resumed:true`；
-  正常 `append/prompt` 同样可能留下 pending binding。应纳入 P0-4 验收。
-- **settle 失败残留 delivering**：`3716-3733` 把 journal 的 settle 写失败只记 warning；实际已送达但 delivered 未落盘时，
-  之后可能在 lease 后重发，启动仍不扫描。属 P0-3 的静态扩展。
-- **模块级 journal owner 不参与 dispose 静默**：`reportJournals` 是模块级 Map（`836-851`），dispose（`4985-5004`）
-  不清 Map、也不等待已开始的 report 处理，存在 dispose 后迟发/迟写的窗口（复审 §5.1，未实跑）。
+- **A multi-step `start` failure leaves an empty Session** (confirmed in code; not induced on-machine): `2817` start → `2838 controller.create` → `2845` select model → `2853` rename → `2864` write report binding → `2872` prompt. Model failure (2847), title failure (2855), and binding failure (2867) all directly `return failure`; they **do not delete or mark the Session, or provide an entry point for continuing it**. Only workspace/task/reportTo are resolved first (2818-2835). No test covers the residue left by each step's failure.
+- **Continuing after `abort` creates no new binding** (confirmed in code; not triggered on-machine): `3113-3169`: cancel → waitForIdle → `prompt({ requestId: 'superagent-recover-…' })`. **There is no `recordDispatchReport`**, so completion of that instruction after abort is not reported back as a new task. The unit test `aborts a running Session, reports the scene and continues it` asserts only `resumed`, not a new report. This matches Fedora P0 3.3 and remains unfixed.
+- **pending/delivering after `archive`**: the unit test `fails pending reports when their Session is archived or stopped` passes; `failPendingForSessions` handles only **pending** (`dispatch-reports.ts:271-279`), **not delivering**; nor do the capability's archive/stop paths (`superagent.ts:4570-4607`) wait for in-flight deliver/settle, so a late send remains possible after archival.
+- **Recipient for the sole super Session**: the journal's `superSession` is written at dispatch (`superagent.ts:890`), and only when empty does it fall back to `superSessionForReport` (`:3670-3703`), which selects the “most recently updated super root Session” and **may not be the original dispatcher**; if none is found, it settles failed + warns (`3911-3919`). All 10 reports in this round carried `superSession`, so **the fallback was not used**; fallback behavior was not run on-machine.
+- **`accepted:false` from `abort` is not checked**: `3157-3168` still returns `resumed:true` when `admitted.accepted` is false; a normal `append/prompt` can likewise leave a pending binding. This should be included in P0-4 acceptance.
+- **A settle failure leaves delivering**: `3716-3733` records a journal settle write failure only as a warning; if delivery actually succeeded but delivered was not persisted, a resend may occur after the lease, and startup still does not scan. This is a static extension of P0-3.
+- **The module-level journal owner does not participate in dispose quiescence**: `reportJournals` is a module-level Map (`836-851`), and dispose (`4985-5004`) neither clears the Map nor waits for report handling that has already started, leaving a window for late sending/writing after dispose (re-review §5.1; not run on-machine).
 
-### 3.4 C. Session 路由
+### 3.4 C. Session routing
 
-- **缺显式 session 会拒绝**（代码+实机行为）：`append` 在未给 session 时返回
-  `append needs \`session\`: which of …`（`2703-2724`）；本轮 super 的每次 append 都显式带了
-  `session-6e0cddc9…` / `session-a20c592e…`（super 日志 seq 569、590、673、732、839）。
-- **未注册 workspace 会拒绝**：`"…" is not a registered workspace`（`2665-2666`）。
-- **`list` 的信息足够用**（实机）：返回 title/model/effort/context%/cache%/lastTask/running/idle
-  （super 日志 seq 667：`session-6e0cddc9… memory 与 jira 插件实现审查 running 2m context 61% deepseek-official/deepseek-flash cache 100% (consider compact)`）。
-- **untitled/重名**：今天新建的会话都有标题（`Windows super agent 评测`、`反馈记录分析 2026-11-06～2026-11-09`），
-  未出现 untitled；历史 untitled 行为未在本轮复现。
-- **递归台账文件名（历史遗留，实机可见）**：
-  `ledger/` 下存在
-  `D__dqc_superAgent_.superagent_ledger_544e144b….md`、
-  `…_D__dqc_superAgent_.superagent_ledger_544e144b….md`（两层、三层嵌套），时间 2026-11-05；
-  domain 里对应记录的 `workspace.id` 被写成这个 slug、`path` 带反引号（`` `D:\dqc\…` ``）。
-  当前 `append` 已拒绝未注册 workspace，但 `DispatchStore.migrate()` 仍会把这些历史行读进 domain
-  （`dispatch-store.ts:205-211`），`ledgerFileOf` 继续按 id 生成文件名（`dispatch-ledger.ts:116-117`）。
+- **A missing explicit session is rejected** (code + on-machine behavior): when no session is supplied, `append` returns `append needs \`session\`: which of …` (`2703-2724`); every super append in this round explicitly supplied `session-6e0cddc9…` / `session-a20c592e…` (super log seq 569, 590, 673, 732, 839).
+- **An unregistered workspace is rejected**: `"…" is not a registered workspace` (`2665-2666`).
+- **`list` provides enough information** (on-machine): it returns title/model/effort/context%/cache%/lastTask/running/idle (super log seq 667: `session-6e0cddc9… memory 与 jira 插件实现审查 running 2m context 61% deepseek-official/deepseek-flash cache 100% (consider compact)`).
+- **Untitled/duplicate names**: all Sessions created today had titles (`Windows super agent 评测`, `反馈记录分析 2026-11-06～2026-11-09`); no untitled Session appeared; historical untitled behavior was not reproduced in this round.
+- **Recursive ledger filenames (historical residue, visible on-machine)**: `ledger/` contains `D__dqc_superAgent_.superagent_ledger_544e144b….md` and `…_D__dqc_superAgent_.superagent_ledger_544e144b….md` (two- and three-level nesting), dated 2026-11-05; the corresponding domain records have this slug as `workspace.id`, and `path` contains backticks (`` `D:\dqc\…` ``). The current `append` rejects unregistered workspaces, but `DispatchStore.migrate()` still reads these historical rows into the domain (`dispatch-store.ts:205-211`), and `ledgerFileOf` continues to generate filenames from ids (`dispatch-ledger.ts:116-117`).
 
-### 3.5 E. Windows 环境
+### 3.5 E. Windows environment
 
-- **ACL/完整性标签仍在**（实机，与交接文件 §2.3 冲突）：
+- **ACL/integrity labels remain** (on-machine; conflicts with handoff file §2.3):
 
-| 工作区 | `Everyone:(CI)(DENY)(S,DC)` | 完整性标签 |
+| Workspace | `Everyone:(CI)(DENY)(S,DC)` | Integrity label |
 |---|---|---|
-| `D:\dqc\deepseek-harness-uitstalie-dev` | 有 | **Low** `(OI)(CI)(NW)` |
-| `D:\dqc\superAgent` | 有 | **Low** |
-| `D:\dqc\system_img` | 有 | **Low** |
-| `D:\dqc\analyze`（今天未打开） | 无 | **Medium** |
+| `D:\dqc\deepseek-harness-uitstalie-dev` | Present | **Low** `(OI)(CI)(NW)` |
+| `D:\dqc\superAgent` | Present | **Low** |
+| `D:\dqc\system_img` | Present | **Low** |
+| `D:\dqc\analyze` (not opened today) | Absent | **Medium** |
 
-- **当前残留属实，归因未定**：ACE 无时间戳，无法区分“11-07 未清净”“后续旧进程重写”还是“本次打开工作区时重新施加”。
-  交接文件所依据的台账确实记录了 11-07 的现场清理（`544e144b….md:4023-4069`：清 15 个路径 DENY、9 个目录 Low→Medium，
-  7 个工作区验证；`:4075-4083`：代码不再写 Low/DENY、旧后端默认禁用 fail-closed）。**“当时清理成功”与“现在又出现”
-  可以同时成立**，不能据此说 handoff 造假。`analyze` 为 Medium 也不足以单独证明“未打开”是唯一原因。
-- **本次 ACL 根目录探针未复现历史 rename EPERM**（限定口径）：Medium 进程（非管理员）对工作区根做
-  `write/rename/unlink/mkdir/rename dir/rm -r` 全部 OK（`.tmp-eval/acl-probe.mjs`），且只覆盖这一组 token/路径/操作。
-  这只能说明**该探针未报错**，不能推出“当前没有 EPERM”或“DENY 对所有删除路径都不生效”；目录/文件、父目录
-  DELETE_CHILD、目标 DELETE、继承标志与 restricted token 需分别验证。
-- **同日构建权限故障已由补充诊断定位**：台账 `:6294-6312` 记录 02:22 的 `pnpm run build` **9/10 gates**，
-  失败在 Web build：`[vite:esbuild-transpile] remove C:\Users\TS\AppData\Local\Temp\esbuild-...: Access is denied.`，
-  三次重试、改 TEMP、脱离 Vite 的 `esbuild.transform` 最小复现均失败。补充诊断读取真实残留文件的 ACL 与当前 token，
-  确认 Low 完整性进程受 Medium 文件的 No-Write-Up 限制；根因与平台建议见 §3.8。
-- **普通权限构建**：本评测没有重跑全仓 `pnpm run build`（只读约束 + dev 树 79 个未提交改动 + 会动 `node_modules`）。
-  同机台账显示 `tsc -b tsconfig.host.json` 与 `pnpm run typecheck` 已通过、build 9/10（卡在 Web/esbuild），
-  但这仍是**引用证据**；本评测独立跑的只有 `pnpm install --frozen-lockfile`（成功）与 `node:test`（全绿）。
-  `vitest run` 该两个 `.test.ts` 返回 `No test files found`（exit 1），**不计为通过**。
-- **junction / 路径别名、文件锁、并发写 memory**：**未验证**（原因见 §7）。多进程 journal 已单独做合成实验（P0-1）。
+- **The current residue is real, but its attribution is undetermined**: ACEs have no timestamps, so it is impossible to distinguish “not fully cleaned on 11-07,” “rewritten later by an old process,” and “reapplied when the workspace was opened this time.” The ledger underlying the handoff file does record the live cleanup on 11-07 (`ledger-544e144b….md:4023-4069`: DENY cleared on 15 paths, 9 directories changed Low→Medium, 7 workspaces verified; `:4075-4083`: code no longer writes Low/DENY, and the old backend is fail-closed and disabled by default). **“Cleanup succeeded then” and “it has appeared again now” can both be true**, so this does not show that the handoff was fabricated. `analyze` being Medium is also insufficient by itself to prove that “not opened” is the only reason.
+- **This evaluation's ACL root-directory probe did not reproduce the historical rename EPERM** (limited scope): a Medium process (non-administrator) performed `write/rename/unlink/mkdir/rename dir/rm -r` on the workspace root, all successfully (`.tmp-eval/acl-probe.mjs`), covering only this set of tokens/paths/operations. This shows only that **the probe reported no error**; it does not imply “there is currently no EPERM” or “DENY is ineffective for every deletion path.” Directory/file distinctions, parent-directory DELETE_CHILD, target DELETE, inheritance flags, and restricted tokens require separate verification.
+- **Supplementary diagnosis located the same-day build permission failure**: ledger `:6294-6312` records a `pnpm run build` at 02:22 with **9/10 gates**, failing in the Web build: `[vite:esbuild-transpile] remove C:\Users\TS\AppData\Local\Temp\esbuild-...: Access is denied.` Three retries, a changed TEMP, and a minimal `esbuild.transform` reproduction outside Vite all failed. Supplementary diagnosis read the actual residual file's ACL and the current token, confirming that a Low-integrity process is subject to the Medium file's No-Write-Up restriction; see §3.8 for the root cause and platform recommendation.
+- **Normal-permission build**: this evaluation did not rerun the full-repository `pnpm run build` (read-only constraint + 79 uncommitted changes in the dev tree + it would touch `node_modules`). The ledger on the same machine shows that `tsc -b tsconfig.host.json` and `pnpm run typecheck` passed and build reached 9/10 (blocked at Web/esbuild), but this remains **cited evidence**; the only operations this evaluation ran independently were `pnpm install --frozen-lockfile` (successful) and `node:test` (all green). `vitest run` on those two `.test.ts` files returned `No test files found` (exit 1), which **does not count as passing**.
+- **junction / path aliases, file locking, concurrent memory writes**: **not verified** (reasons in §7). A separate synthetic experiment covered the multiprocess journal (P0-1).
 
-### 3.6 D. 提问 / 权限
+### 3.6 D. Questions / permissions
 
-- **`ask_user_question` 取消/超时**：Windows 本轮**没有发生提问**。子会话 `6e0cddc9` 只有 1 次
-  `approval/asked` + 1 次 `approval/decided`（工具目录里有 `ask_user_question`，但没有调用）。
-  跨会话 `memory_read` 被拒绝的实测见 §3.7。**D 的提问路径未验证。**
-- **permission preset 按任务生效**：`start` 没有 permission 参数（`SESSION_PARAMETERS` 只有
-  workspace/task/title/model/effort/session/delivery/compact/curate_memory 等），super 自身由
-  `superagent_permission_preset` 固定（`index.ts` config）；子会话的 preset 来自 `agentPreset`（`superagent.ts:2840-2842`）。
-  **“按任务选权限”在工具面上不存在**，本轮也未改配置验证。未验证。
-- **effort 是否强制人工往返**：今天 `start` 未传 effort，子会话 header 已是 `reasoningEffort:"high"`
-  （`request/header` seq 13），说明默认值生效、**没有人工往返**。但工具对“声明了 efforts 的模型”仍强制
-  `reasoning_effort`（`superagent.ts:536`、`1925`）；`kimi-code-plan-cn/k3.1-pro` 正声明 low/high/max
-  （super 日志 seq 755-756），对它派发就会往返。**该分支未实跑**。
+- **`ask_user_question` cancellation/timeout**: **no question occurred** in this Windows round. Child Session `6e0cddc9` had only one `approval/asked` + one `approval/decided` (the tool catalog includes `ask_user_question`, but it was not called). See §3.7 for the measured rejection of cross-Session `memory_read`. **The question path in D was not verified.**
+- **Permission presets applied per task**: `start` has no permission parameter (`SESSION_PARAMETERS` contains only workspace/task/title/model/effort/session/delivery/compact/curate_memory, etc.); super itself is fixed by `superagent_permission_preset` (`index.ts` config); the child Session's preset comes from `agentPreset` (`superagent.ts:2840-2842`). **“Selecting permissions per task” does not exist in the tool interface**, and this round did not change configuration to verify it. Not verified.
+- **Whether effort forces a manual round trip**: today's `start` did not pass effort, and the child Session header already had `reasoningEffort:"high"` (`request/header` seq 13), showing that the default took effect with **no manual round trip**. However, the tool still requires `reasoning_effort` for “models that declare efforts” (`superagent.ts:536`, `1925`); `kimi-code-plan-cn/k3.1-pro` declares low/high/max (super log seq 755-756), so dispatching to it causes a round trip. **That branch was not run on-machine.**
 
-### 3.7 F. memory 检索
+### 3.7 F. memory retrieval
 
-- **默认 `memory_search` 不可用**（实机，本会话 + super 会话都复现；**P1**，按 `goal/memory-plugin-assessment-2026-11-08.md:138-144` 与交接文件）：
-  ```
-  Error: session search is disabled: this deployment configures the session-query index with openAt "never"
-  ```
-  本会话工具直调、super 会话 `seq 754`（`isError:true`）各一次。与 Fedora 结论一致：base/web 默认
-  `openAt:'never'` 直接拒绝，且**没有局部降级**（先搜 session 再读 MEMORY.md）。
-- **`memory_read` 不区分 aborted/failed**（实机）：读 `session-6e0cddc9` 的 **turn 2**（该 turn 的
-  `turn/end` 是 `{"kind":"interrupted"}`，seq 2320）正常返回：
-  `session session-6e0cddc9…, turn 2–2, seqs 893–2320`，并把中断轮的完整对话当普通 turn 输出（截断 16 KiB）。
-  证实 Fedora P2“read 配对任何 turn/end，默认最新 turn 可能是 aborted/failed”。
-- **跨工作区读取被拒**：super 会话尝试 `memory_read` 子会话时得到
-  `memory_read: session session-6e0cddc9… is outside the caller workspace.`（seq 905，`isError:false`）。
-  这是权限边界生效，但也意味着 super 无法用 memory 读子会话，只能用 `superagent_session inspect`。
-- **search 降级路径**：不存在（同一条错误，没有 partial）。未改配置，故“openAt 改 first-search 后”的分支未测。
-
-### 3.8 Windows 沙盒结论：workspace-write ACL 不适用于构建工具链，应改用完全权限软沙盒
-
-**状态：建议 / 待实施。** 本次补充诊断把 esbuild 的删除失败定位为 Windows 默认 `workspace-write` ACL 沙盒的完整性级别限制；以下为平台结论，不表示默认配置已经切换。
-
-- **证据链**：Web build 报 `[vite:esbuild-transpile] remove C:\Users\TS\AppData\Local\Temp\esbuild-...: Access is denied.`；真实 `%TEMP%\esbuild-*` 残留带 `Mandatory Label\Medium Mandatory Level:(I)(NW)`，当前进程为 `Low Mandatory Level (S-1-16-4096)`。残留文件的 DACL 已给 `TS` 用户 `(F)`、owner 也是 `TS`，但沙盒内 Node `unlink` 返回 `EPERM`、PowerShell `Remove-Item` 也返回 `Access is denied`。这与此前普通权限进程可删、仅 esbuild.exe 失败的对照共同排除了 esbuild 自身逻辑：Low 进程不能对 Medium + No-Write-Up 文件执行删除/write-up，DACL 的完全控制不能绕过该限制。补充诊断中的单独 `pnpm run build:web` 在 pnpm 启动阶段以 `unable to open database file` 提前失败，未作为新的 esbuild 删除复现计数。
-- **影响面**：这不是 esbuild 个案。pnpm/npm 临时文件与状态数据库、构建缓存、编译器子进程、IDE 和工具链都可能遇到同类跨完整性访问问题；限制属于进程与文件的 Windows 安全机制，不依赖 Vite 或 esbuild 的特定实现。
-- **平台结论**：Windows 默认 `workspace-write` ACL 沙盒与构建工具链不兼容，不应继续作为 Windows 默认。
-- **建议**：Windows 默认改为完全权限的软沙盒：完全文件访问，加插件、路径和工具黑名单。硬 ACL/Low 完整性仅作为可选强隔离，不作为默认。设计、安全降级与覆盖范围见 [软沙盒设计](../../goal/soft-tool-policy-design.md)，磁盘标签的持久副作用见 [Windows 原生沙盒限制](../../goal/windows-sandbox-limitation.md)。
-- **边界**：软沙盒不是无约束；黑名单、工具策略与审计日志仍须保留。这些是策略层约束，不是 ACL 强制，也不是 OS 安全边界；shell、子进程、MCP/第三方插件和直接文件 API 可绕过工具路径检查，需要真正隔离时仍应使用容器、VM 或远程执行环境。
-
-本节只补充平台建议与已有 P1 构建故障的根因，不改变 C+ 评级或 4 项 P0。
-
----
-
-## 4. P0 / P1 / P2 清单
-
-严重度沿用既有尺度：P0 = 核心报告/任务状态可错误终结或产生不可恢复工作；P1 = 重要边界缺失/显著人工成本；
-P2 = 观测、易用、文档。
-
-### P0
-
-| # | 问题 | 等级证据 | 影响 |
-|---|---|---|---|
-| **P0-1** | **跨进程 claim 无原子性，同一报告可被重复领取** | **Windows 合成多进程 store 实验复现（非双 Host 线上）**：3000 行 seed journal、12 个独立 Node 子进程、3 轮、每轮 2 个待领；结果 `["race-0-a",7],["race-0-b",4]`、`["race-1-a",4],["race-1-b",1]`、`["race-2-a",7],["race-2-b",3]`，**26 个非空 claim / 6 个应领 1 次**；journal 3032 行、0 损坏行。脚本 `.tmp-eval/journal-race.mjs`、`.tmp-eval/claim-child.mjs`；原始 stdout 转录 `.tmp-eval/journal-race-stdout.txt`（评测会话记录，非程序另行落盘）。边界：barrier 不保证 12 个子进程都已就绪；未覆盖 settle、崩溃、接收方去重或真实 Cordis Host；**未由复审独立复跑**。机制：`dispatch-reports.ts:239-258` 读全表→追加，只有单实例 Promise 链（`:172-176`），无跨进程锁 | 共享 superHome 的两个 Host/遗留进程/两个 store 实例可合法交错并重复 claim；重复投递风险成立，但**未证明线上已发生** |
-| **P0-2** | **空输出/无 assistant 文本被自动记成 `returned`** | **实机复现**：`544e144b….md:6050` returned，`:6100` outcome `the turn ended completed without assistant text`；journal 同时 `delivered`；02:12:52 才人工 `failed`（`:6102`）。机制：`superagent.ts:3881-3885,3923-3927` 对 completed 且无文本仍选 returned 并先投影；`949` 同语义。注意 `delivered` 只表示诊断消息已排队，不等于业务成功 | 台账/domain 自动状态会把“没干活”先显示为成功约 40 秒（02:12:12 投影 returned → 02:12:52 人工 failed）；`delivered` 只表示诊断送达 |
-| **P0-3** | **投递失败是不可重试的终态，且无启动恢复** | **代码+单测**：失败即 `settleReport(… 'failed')`（`:3949-3957`）；`claim` 不领 failed（`dispatch-reports.ts:243`）；ledger resolve 不能重投 journal；无 retry 工具/UI；capability 不扫描（`:4477-4504`），只由 turn-end 进入（`:4969-4977`）。单测 `marks the report failed and warns…`（`:929-948`）只验证一次失败，不验证 retry/restart；`:857-888` 的 remount 测试只是空 Map 下直接调用 handler，**不是启动恢复**。**实机未制造失败** | 一次瞬时投递失败即可让已完成工作的报告永久丢失；恢复语义（仅同一子 Session 下一次 turn-end、requestId 匹配）比“任意 turn-end 可恢复”窄得多 |
-| **P0-4** | **`abort` 后继续不产生新报告绑定** | **代码+单测**：`superagent.ts:3113-3169` 只 cancel + `prompt(requestId: superagent-recover-…)`，无 `newDispatchReportId`/`recordDispatchReport`/ledger pending；单测 `:1846-1877` 只断言 cancel/idle/prompt/resumed。且 `3157-3168` 未检查 `admitted.accepted` 就返回 `resumed:true`。**实机未触发 abort** | 续跑的新 instruction 失去任务身份，完成后不会按新任务回报；旧 binding 仍可能被 aborted 旧 turn 按旧 requestId 领取并发失败报告（不是“绝不出现报告”） |
-
-### P1
-
-| # | 问题 | 证据 |
-|---|---|---|
-| **P1-1** | **默认 `memory_search` 不可用且无降级**（按评价尺度为 P1，原报告误列 P2） | 实机两次 `SESSION_QUERY_SEARCH_DISABLED`（本会话 + super seq 754）；`goal/memory-plugin-assessment-2026-11-08.md:138-144` 与交接文件均列为 P1 |
-| **P1-2** | **当前工作区残留/重新出现的 ACL + Low 完整性标签（写入者与时间未定）** | dev/superAgent/system_img 根：`Everyone:(CI)(DENY)(S,DC)` + `Low (OI)(CI)(NW)`；`analyze` Medium。交接文件有 11-07 清理成功的台账记录，故只能列为“当前持久副作用待查”，不能断言“沙箱仍在写” |
-| **P1-3** | **Windows 默认 `workspace-write` ACL 沙盒不适用于构建工具链** | 同日 Web/esbuild 删除临时文件 `Access is denied`，普通构建 9/10；补充诊断确认真实残留为 Medium + No-Write-Up、当前进程为 Low，DACL `(F)` 仍无法删除，Node/PowerShell 沙盒内对照也失败。根因与完全权限软沙盒建议见 §3.8；**建议/待实施** |
-| **P1-4** | **`start` 多步失败留空 Session，无统一部分状态** | `superagent.ts:2838/2845/2853/2864/2872`，失败分支 2847/2855/2867 直接 return，不清理；无测试 |
-| **P1-5** | **台账投影语义：自动 returned 后补写被短路、投影不可重放；历史递归/污染 id** | `dispatch-store.ts:282-289` 对已终结记录直接返回旧值；`:5347` 自动 returned 与 `:5462` 人工补充 returned 是追加式投影历史，不是重复投递；`ledger/` 3 个 `D__dqc_superAgent_…` 历史嵌套文件与污染 workspace.id（2026-11-05），当前入口是否仍生成未验证 |
-| **P1-6** | **UI 不显示报告投递状态** | `ui-jira/SuperagentPanel` 只有 issue 计数/needsPerson/trigger/git history（Fedora 3.1）；**本轮未打开 UI 验证**（401） |
-
-### P2
-
-| # | 问题 | 证据 |
-|---|---|---|
-| **P2-1** | domain/Markdown 数据源与降级原因不可见；`storageDomain` 单次采样仍是静态晚到服务风险 | `superagent_ledger` 结果不标来源（domain vs Markdown/是否降级）；`dispatch-store.ts:169-171` 构造时采样一次。**本次已正常打开，不是实机根因** |
-| **P2-2** | `memory_read` 把 interrupted/failed turn 当 completed | 实机读 turn 2（interrupted）正常返回 |
-| **P2-3** | 声明 efforts 的模型仍强制人工选 effort | `superagent.ts:536,1925`；k3.1 声明 low/high/max（seq 755-756），该分支未实跑 |
-| **P2-4** | 失败/警告只在宿主 logger，用户不可见 | `3942-3947`、`3952-3957`；无日志文件可回看（`~/.dsh` 无 log）。**该可见性是 P0-3 的验收条件，不是纯观测点缀** |
-| **P2-5** | 文档/行数漂移 | 交接文件已指出 `superagent.ts` 行数；本轮确认仍 5006 行。memory §4.8 的具体漂移断言**撤销**，改由 goal 评估自述，未在本轮复核 |
-
----
-
-## 5. 与 Fedora 评估的差异（只写有 Windows 证据的）
-
-| Fedora 结论 | Windows 本轮 | 性质 |
-|---|---|---|
-| 任务完成但 super 侧仍 pending，需人工 resolve | **截点 10 delivered / 3 pending**（复审时 14/12/2；pending 是仍在跑或尚未 turn-end）；仍需人工 resolve 是因为“空输出被记 returned”和补 outcome，不是丢报告 | **推翻旧结论**（旧 runtime/旧版本） |
-| 报告绑定依赖 Markdown、多行正文截断导致丢报告 | 当前 journal 先绑定后 prompt，live 每个 turn 都对上 | 旧根因已修（当前 runtime 有效） |
-| `DispatchReportStore` 单实例队列不能跨进程 exactly-once | **Windows 合成多进程 store 实验复现重复领取 26 个 claim / 6 个应领**；非双 Host 线上，未独立复跑 | 确认机制，升级为 P0；不外推线上故障率 |
-| domain 权威、Markdown 是投影 | **domain 已打开并写入当日 15 行**；原“未打开”结论经 WAL 复查后**撤销**；权威关系/投影重放待核 | 更正原报告事实错误 |
-| abort 后无新 taskId/绑定 | 代码仍如此，未复现 | 维持 |
-| `start` 多步失败留空 Session | 代码仍如此，未制造 | 维持 |
-| 默认检索不可用 | 实机再次复现（按尺度 **P1**） | 维持并修正严重度 |
-| 提问取消导致整轮 abort | Windows 本轮无提问，未验证 | 未验证 |
-| Windows ACL 已清理、旧后端 fail-closed | 三个活跃工作区仍有 Low + DENY（写入者/时间未定）；ACL 探针未复现 rename EPERM，但同日 esbuild 删除 `Access is denied` 已定位为 Low→Medium No-Write-Up 限制，build 9/10 | 构建故障根因已定位；持久标签写入者仍未定，不作“清理失败”定论 |
-
----
-
-## 6. 可复核命令（Windows 原生，无 zstd/jq 依赖）
-
-```powershell
-# 版本
-git -C D:\dqc\deepseek-harness-uitstalie rev-parse HEAD
-Get-CimInstance Win32_Process -Filter "ProcessId=5084" | Select CommandLine
-# journal 状态
-node .tmp-eval\journal-summary.mjs D:\dqc\superAgent\.superagent\reports.jsonl
-# domain
-# domain（必须带 WAL：复制 db + -wal + -shm 后以读写方式打开副本）
-Copy-Item C:\Users\TS\.dsh\storages\superagent.sqlite* .tmp-eval\dbcopy\
-node --input-type=module -e "… new DatabaseSync('.tmp-eval/dbcopy/superagent.sqlite') …"
-# 会话日志（逐 zstd frame）
-node .tmp-eval\session-log.mjs <session.v4.jsonl.zstd> turns
-# 并发 claim
-node --import tsx .tmp-eval\journal-race.mjs .tmp-eval\journal-race-big 3 12 3000
-# 单测
-cd D:\dqc\deepseek-harness-uitstalie\packages\jira\jira-agent
-node --import tsx --test "src/dispatch-reports.test.ts" "src/dispatch-store.test.ts" "src/superagent.test.ts"
+- **Default `memory_search` is unavailable** (on-machine, reproduced in both this Session and the super Session; **P1**, per `goal/memory-plugin-assessment-2026-11-08.md:138-144` and the handoff file):
+```
+Error: session search is disabled: this deployment configures the session-query index with openAt "never"
 ```
 
-本轮单测结果（Windows，`7174ff024d`）：
-`dispatch-reports` + `dispatch-store` **15/15 pass**；`superagent.test.ts` **83/83 pass**（152 s）。
-覆盖“绑定先于 prompt”“同 turn 只投一次”“空文本最小报告 + 警告”“失败置 failed”等。
-**注意**：`vitest run` 该两个 `.test.ts` 返回 `No test files found`（exit 1）——它们由 `node:test` 跑，不能计入 vitest 通过；
-`:857-888` 的 “remount 恢复” 只是空 Map 下直接调用 turn-end handler，**不能证明启动恢复**。
+Unit test results for this round (Windows, measured runtime baseline): `dispatch-reports` + `dispatch-store` **15/15 pass**; `superagent.test.ts` **83/83 pass** (152 s). Coverage includes “binding before prompt,” “deliver only once per turn,” “minimal report for empty text + warning,” and “set failed on failure.” **Note**: `vitest run` on those two `.test.ts` files returned `No test files found` (exit 1)—they run under `node:test` and cannot be counted as vitest passes. The “remount recovery” at `:857-888` merely calls the turn-end handler directly with an empty Map; it **does not demonstrate startup recovery**.
 
 ---
 
-## 7. 未验证事项与原因
+## 7. Unverified items and reasons
 
-| 项 | 原因 |
+| Item | Reason |
 |---|---|
-| 真投递失败在 live 的可见性/可重试/UI | 未关闭接收方或注入写失败；只做了单测与代码路径 |
-| 重启后的启动恢复 | 不能重启 3080（会中断用户会话）；journal 无启动扫描可由代码确认 |
-| `ask_user_question` 取消/超时 | Windows 本轮子会话无提问（只有 1 次 approval） |
-| permission preset 按任务生效 | 工具面没有 permission 参数；未改配置 |
-| UI 面板是否显示投递状态 | 3080 需要启动 token（`?token=` 43 字符），未驱动浏览器 |
-| junction / 路径别名 | 未测；需要构造 junction 并比对 `sameCheckout`/memory 的逐字 cwd |
-| 文件锁（Session lease） | 未测；需要两个宿主同时写同一 Session |
-| 并发写同一 `MEMORY.md` | 未测；需要第二个 memory-capable 宿主/进程，属改配置范围 |
-| 全仓 `pnpm run build` | 本评测未独立重跑；只有同机台账的 9/10 与 esbuild `Access is denied`（引用证据，未复跑） |
-| domain 与 Markdown 投影的逐字段一致性 | 本次只核对了行数/状态/时间，未对同一 id 做 artifacts/decisions 逐字段比对 |
-| `abort` 实机续跑 | 未构造运行中 turn；代码与单测确认无新绑定 |
-| 递归文件名是否仍能新生成 | 当前 `append` 拒绝未注册 workspace；`start` 是否也拒绝未单独验证 |
+| Visibility/retryability/UI of a real delivery failure live | Did not close the recipient or inject a write failure; only unit tests and code paths were examined |
+| Startup recovery after restart | Port 3080 could not be restarted (would interrupt the user's Session); the absence of a journal startup scan is confirmed by code |
+| `ask_user_question` cancellation/timeout | No question occurred in the Windows child Session this round (only one approval) |
+| Permission presets applied per task | The tool interface has no permission parameter; configuration was not changed |
+| Whether the UI panel displays delivery status | Port 3080 requires a startup token (`?token=`, 43 characters); the browser was not driven |
+| junction / path aliases | Not tested; requires constructing a junction and comparing the literal cwd in `sameCheckout`/memory |
+| File locking (Session lease) | Not tested; requires two hosts writing the same Session simultaneously |
+| Concurrent writes to the same `MEMORY.md` | Not tested; requires a second memory-capable host/process, which falls under changing configuration |
+| Full-repository `pnpm run build` | Not independently rerun in this evaluation; only the same-machine ledger's 9/10 and esbuild `Access is denied` (cited evidence, not rerun) |
+| Field-by-field consistency between the domain and Markdown projection | This evaluation checked only row counts/statuses/times, not artifacts/decisions field by field for the same id |
+| Continuing after `abort` on-machine | No running turn was constructed; code and unit tests confirm no new binding |
+| Whether recursive filenames can still be newly generated | Current `append` rejects unregistered workspaces; whether `start` also rejects them was not separately verified |
 
 ---
 
-## 8. 建议（按“先正确、再收敛”）
+## 8. Recommendations (“correctness first, then convergence”)
 
-1. **P0-1**：给 journal 一个真正的跨进程 claim——同目录锁文件（`mkdir`/独占打开）+ 租约，或把 claim 变成
-   原子 rename/单写者；至少把“同一 superHome 只允许一个投递者”做成显式拒绝而不是靠部署约束。
-2. **P0-2**：把“业务结果”和“投递状态”分开落账：无 assistant 文本 / 投递失败时自动投影必须是 `failed`（或
-   `unknown`），不要先写 `returned`；`projectReportToLedger` 放在 `deliver` 成功之后，或在 outcome 里显式标注
-   “无产出”。
-3. **P0-3**：失败不是终态。给 `superagent_ledger` 加 `retry`，启动时扫描 pending/delivering（含 lease 过期），
-   并在 UI 显示 failed + 原因。
-4. **P0-4**：`abort` 续跑的 prompt 也走 `recordDispatchReport`（新 taskId + requestId），否则续跑永远不会回报。
-5. **P1-1**：解耦 `memory_search` 与 session FTS——`openAt:"never"` 时仍返回 MEMORY.md 命中并显式标 `partial`；
-   不要把“检索不可用”留给调用者 grep 兜底。
-6. **P1-2/P1-3**：继续做受控的 ACL 前后快照与持久标签写入者定位，区分历史残留、旧进程重写和当前入口施加；Windows 默认按 §3.8 改为完全权限软沙盒，保留黑名单、工具策略和审计日志，硬 ACL/Low 完整性只作可选强隔离。该建议待实施，本文不代表配置已切换。
-7. **P1-4**：`start` 先解析 model/title/permission/binding 能力，再 create；无法避免的失败写
-   `created/configured/admitted/failed` 并可继续/清理。
-8. **P1-5**：投影必须可重放；已 returned 后补 artifacts/decisions 不能被短路；历史非法 workspace id 与嵌套 ledger
-   只归档、不删证据。
-9. **P2-1**：`superagent_ledger` 返回里标明数据源（domain/Markdown）与降级原因；`storageDomain` 晚到时可重试或显式拒绝。
+1. **P0-1**: Give the journal a genuine cross-process claim—a same-directory lock file (`mkdir`/exclusive open) + lease, or make claim an atomic rename/single writer; at minimum, explicitly reject more than one deliverer for the same superHome instead of relying on a deployment constraint.
+2. **P0-2**: Record “business result” and “delivery status” separately: with no assistant text / on delivery failure, automatic projection must be `failed` (or `unknown`), not `returned` first; place `projectReportToLedger` after successful `deliver`, or explicitly mark “no output” in the outcome.
+3. **P0-3**: Failure must not be terminal. Add `retry` to `superagent_ledger`, scan pending/delivering at startup (including expired leases), and display failed + reason in the UI.
+4. **P0-4**: The prompt for continuing after `abort` must also go through `recordDispatchReport` (new taskId + requestId); otherwise the continuation never reports back.
+5. **P1-1**: Decouple `memory_search` from session FTS—with `openAt:"never"`, still return MEMORY.md hits and explicitly mark them `partial`; do not leave “retrieval unavailable” for the caller to work around with grep.
+6. **P1-2/P1-3**: Continue controlled before/after ACL snapshots and identification of the persistent-label writer, distinguishing historical residue, rewrites by old processes, and application by the current entry point; on Windows, change the default to the full-permission soft sandbox described in §3.8, retaining deny lists, tool policies, and audit logs, with hard ACL/Low integrity only as optional strong isolation. This recommendation is pending implementation; this report does not state that the configuration has been switched.
+7. **P1-4**: `start` should resolve model/title/permission/binding capability before create; unavoidable failures should record `created/configured/admitted/failed` and permit continuation/cleanup.
+8. **P1-5**: The projection must be replayable; supplementing artifacts/decisions after returned must not be short-circuited; archive historical invalid workspace ids and nested ledgers without deleting evidence.
+9. **P2-1**: Identify the data source (domain/Markdown) and degradation reason in `superagent_ledger` results; retry or explicitly reject when `storageDomain` arrives late.
 
 ---
 
-## 9. 临时文件
+## 9. Temporary files
 
-`.tmp-eval/` 为未跟踪临时目录，现保留**脚本、测试日志与竞态 stdout 转录**（约 30 KB）：
-`journal-summary.mjs`、`domain-dump.mjs`、`decode-session.mjs`、`session-log.mjs`、`journal-race.mjs`、
-`claim-child.mjs`、`acl-probe.mjs`、`journal-race-stdout.txt`，以及 `nodetest-{dispatch,superagent}.log`、`vitest-dispatch.log`。
-合成 journal（3000 行）、`dbcopy/` 与 ACL 探测残留已删除；可随时整体删除 `.tmp-eval/`。
-未改动生产代码/配置，未 commit/push；未删除任何既有台账、journal、Session 日志。
+`.tmp-eval/` is an untracked temporary directory that currently retains **scripts, test logs, and the race stdout transcript** (about 30 KB): `journal-summary.mjs`, `domain-dump.mjs`, `decode-session.mjs`, `session-log.mjs`, `journal-race.mjs`, `claim-child.mjs`, `acl-probe.mjs`, `journal-race-stdout.txt`, plus `nodetest-{dispatch,superagent}.log` and `vitest-dispatch.log`. The synthetic journal (3000 lines), `dbcopy/`, and ACL probe residue have been deleted; all of `.tmp-eval/` can be deleted at any time. No production code/configuration was changed, and nothing was committed/pushed; no existing ledger, journal, or Session log was deleted.
 
 ---
 
-## 附录：证据索引
+## Appendix: Evidence index
 
-| 主题 | 位置 |
+| Topic | Location |
 |---|---|
-| 报告 journal 格式与 claim | `packages/jira/jira-agent/src/dispatch-reports.ts:147-305`（claim 239-258、failed 终态 243、lease 244-249） |
-| 自动投影先于投递 | `packages/jira/jira-agent/src/superagent.ts:3923-3927` |
-| 无文本 outcome | `superagent.ts:949`；live `544e144b….md:6100` |
-| 投递失败终态 | `superagent.ts:3949-3957` |
-| `abort` 无绑定 | `superagent.ts:3113-3169` |
-| `start` 顺序与失败残留 | `superagent.ts:2817-2896`（create 2838、model 2845、rename 2853、bind 2864、prompt 2872） |
-| `append` 显式 session / 未注册 workspace | `superagent.ts:2664-2724` |
-| ledger list 的 domain 回退 | `superagent.ts:3375-3376`；`dispatch-store.ts:234-236` |
-| domain 单次采样 | `dispatch-store.ts:170-171`；`storage-domain/src/index.ts:223-234` |
-| 递归文件名 | `dispatch-ledger.ts:116-117`；`D:\dqc\superAgent\.superagent\ledger\D__dqc_…` |
-| effort 强制 | `superagent.ts:536,1925` |
-| 本机 live 证据 | `D:\dqc\superAgent\.superagent\reports.jsonl`；`…\ledger\544e144b….md:5347,5462,6050,6100,6102`；`~\.dsh\storages\superagent.sqlite`；super 会话 `session-ecc925ac…` |
-| 评测脚本 | `.tmp-eval/{journal-summary,domain-dump,decode-session,session-log,journal-race,claim-child,acl-probe}.mjs`；竞态 stdout 转录 `.tmp-eval/journal-race-stdout.txt` |
+| Report journal format and claim | `packages/jira/jira-agent/src/dispatch-reports.ts:147-305` (claim 239-258, failed terminal state 243, lease 244-249) |
+| Automatic projection before delivery | `packages/jira/jira-agent/src/superagent.ts:3923-3927` |
+| No-text outcome | `superagent.ts:949`; live `ledger-544e144b….md:6100` |
+| Delivery-failure terminal state | `superagent.ts:3949-3957` |
+| No binding after `abort` | `superagent.ts:3113-3169` |
+| `start` order and failure residue | `superagent.ts:2817-2896` (create 2838, model 2845, rename 2853, bind 2864, prompt 2872) |
+| `append` explicit session / unregistered workspace | `superagent.ts:2664-2724` |
+| Domain fallback for ledger list | `superagent.ts:3375-3376`; `dispatch-store.ts:234-236` |
+| Single domain sampling | `dispatch-store.ts:170-171`; `storage-domain/src/index.ts:223-234` |
+| Recursive filenames | `dispatch-ledger.ts:116-117`; `D:\dqc\superAgent\.superagent\ledger\D__dqc_…` |
+| Effort requirement | `superagent.ts:536,1925` |
+| Live evidence on this machine | `D:\dqc\superAgent\.superagent\reports.jsonl`; `…\ledger\544e144b….md:5347,5462,6050,6100,6102`; `~\.dsh\storages\superagent.sqlite`; super Session `session-ecc925ac…` |
+| Evaluation scripts | `.tmp-eval/{journal-summary,domain-dump,decode-session,session-log,journal-race,claim-child,acl-probe}.mjs`; race stdout transcript `.tmp-eval/journal-race-stdout.txt` |
 
 ---
 
-## k3.1 复审修订记录
+## k3.1 re-review revision record
 
-复审报告：[windows-superagent-eval-k3.1-review-2026-11-09.md](windows-superagent-eval-k3.1-review-2026-11-09.md)。
-结论：**部分接受；维持 C+ 与 4 条 P0，0 降级**。本报告按复审修正如下（只改证据与口径，不改结论）。
+Re-review report: [windows-superagent-eval-k3.1-review-2026-11-09.md](windows-superagent-eval-k3.1-review-2026-11-09.md). Conclusion: **partially accepted; C+ and 4 P0s maintained, 0 downgraded**. This report incorporates the re-review corrections as follows (only evidence and framing changed, not conclusions).
 
-| # | 复审意见 | 本报告修改 |
+| # | Re-review comment | Changes to this report |
 |---|---|---|
-| 1 | **dispatch domain 结论错误**：SQLite（含 WAL）在截点前已有当日写入；主库 mtime 未变是 WAL 所致；“list 返回 Markdown 任务”不能反推 `store.list` undefined | **撤销原 P1-1** 与“domain 未打开/全走 Markdown/今日 0 条/75 行”全部表述；§3.2 重写为重查（**90 行、当日 15 行**，含本评测与复审任务），说明错因是只读主库漏 WAL、给出 WAL 安全查询方法；domain 权威关系改为待核（P2-1），单次采样只作静态风险 |
-| 2 | **EPERM 口径过宽**：ACL 根目录探针未复现 ≠ 当前没有 EPERM；同日 Web/esbuild 删除临时文件 `Access is denied`、普通构建 9/10 | §3.5 改为“**本次 ACL 根目录探针未复现历史 rename EPERM**（限定 token/路径/操作）”，并列同日 esbuild 权限故障（台账 `:6294-6312`，引用证据、未独立复跑），明确两类错误不能互相证明/否定；P1-2 标题改为“当前残留/重新出现，写入者与时间未定”，P1-3 单列构建权限调查 |
-| 3 | **26/6 缺原始日志与实验边界**：应写“合成多进程 store 实验”，不能写成线上双 Host 已重复投递 | P0-1 改为 **Windows 合成多进程 store 实验复现（非双 Host 线上）**，补脚本路径与 `.tmp-eval/journal-race-stdout.txt`（标注为会话转录、非程序落盘），写明 barrier/seed/未覆盖 settle、崩溃、接收方去重，注明**复审未独立复跑**；§5 同步改为“确认机制，不外推线上故障率” |
-| 4 | **memory_search 应恢复为 P1**（既有尺度 `goal/memory-plugin…:138-144`、交接文件） | P2-1 → **P1-1**；§3.7 标注 P1；§5 表“维持并修正严重度”。`memory_read` 不分 interrupted/failed 保持 P2 |
+| 1 | **Dispatch-domain conclusion was wrong**: SQLite (including the WAL) already had writes for today before the snapshot; the unchanged main-database mtime was caused by the WAL; “list returned Markdown tasks” cannot be used to infer `store.list` undefined | **Original P1-1 withdrawn**, along with all statements that the “domain was unopened / everything used Markdown / 0 entries today / 75 rows”; §3.2 rewritten as a recheck (**90 rows, 15 rows today**, including this evaluation and the re-review task), explaining that reading only the main database missed the WAL and giving a WAL-safe query method; domain authority changed to pending verification (P2-1), with single sampling treated only as a static risk |
+| 2 | **EPERM framing was too broad**: failure to reproduce with the ACL root probe ≠ no current EPERM; same-day Web/esbuild temporary-file deletion `Access is denied`, normal build 9/10 | §3.5 changed to “**this evaluation's ACL root-directory probe did not reproduce the historical rename EPERM** (limited tokens/paths/operations),” and lists the same-day esbuild permission failure (ledger `:6294-6312`, cited evidence, not independently rerun), explicitly stating that the two kinds of errors cannot prove/disprove each other; P1-2 title changed to “current residue/reappearance, writer and time undetermined,” and P1-3 separately lists the build-permission investigation |
+| 3 | **26/6 lacked raw logs and experiment boundaries**: should say “synthetic multiprocess store experiment,” not that duplicate delivery occurred live with two Hosts | P0-1 changed to **reproduced in a synthetic multiprocess store experiment on Windows (not live with two Hosts)**, with script paths and `.tmp-eval/journal-race-stdout.txt` added (labeled as a Session transcript, not separately persisted by the program), stating the barrier/seed and that settle, crashes, and recipient deduplication were not covered, and noting that **the re-review did not independently rerun it**; §5 correspondingly changed to “mechanism confirmed; do not extrapolate a live failure rate” |
+| 4 | **`memory_search` should be restored to P1** (existing scale `goal/memory-plugin…:138-144`, handoff file) | P2-1 → **P1-1**; §3.7 marked P1; §5 table says “maintained with corrected severity.” `memory_read` not distinguishing interrupted/failed remains P2 |
 
-复审同时指出、本报告一并修正的次级问题：
+Secondary issues also identified by the re-review and corrected in this report:
 
-- **P0-3/P0-4 证据扩展**：补 settle 失败残留 delivering（`superagent.ts:3716-3733`）、archive/stop 不等待在途
-  （`dispatch-reports.ts:271-279`、`superagent.ts:4570-4607`）、`accepted:false` 未检查（`:3157-3168`）、
-  recipient 回退（`:3670-3703`）、模块级 `reportJournals` 不随 dispose 清理（`:836-851`、`:4985-5004`）。
-- **remount 测试≠启动恢复**：`:857-888` 只是空 Map 下直接调用 handler，已在 P0-3 与 §6 注明。
-- **测试口径**：`vitest run` 这两个 `.test.ts` 实际是 `No test files found`（exit 1），不再计入通过；`node:test` 15/15 与 83/83 仍成立。
-- **重复台账段**：`:5347`/`:5462` 是追加式投影历史，不是重复投递；真正问题是已 returned 后补写被 `dispatch-store.ts:282-289` 短路、投影不可重放。
-- **memory §4.8 文档漂移**：撤销该具体断言（P2-5 改写），不再把它当作已复核的当前漂移。
-- **“推翻旧结论”限缩**：只表示当前 Windows runtime 已观察的 happy path 会自动回传；不表示重启/多 Host/注入失败路径可靠。
+- **P0-3/P0-4 evidence expanded**: added settle failure leaving delivering (`superagent.ts:3716-3733`), archive/stop not waiting for in-flight work (`dispatch-reports.ts:271-279`, `superagent.ts:4570-4607`), unchecked `accepted:false` (`:3157-3168`), recipient fallback (`:3670-3703`), and module-level `reportJournals` not cleared on dispose (`:836-851`, `:4985-5004`).
+- **Remount test ≠ startup recovery**: `:857-888` merely calls the handler directly with an empty Map, as noted in P0-3 and §6.
+- **Test accounting**: `vitest run` on these two `.test.ts` files actually returned `No test files found` (exit 1) and is no longer counted as passing; `node:test` 15/15 and 83/83 remain valid.
+- **Duplicate ledger sections**: `:5347`/`:5462` are append-only projection history, not duplicate delivery; the real problem is that supplements after returned are short-circuited by `dispatch-store.ts:282-289`, making the projection non-replayable.
+- **memory §4.8 documentation drift**: that specific assertion is withdrawn (P2-5 rewritten) and is no longer treated as currently verified drift.
+- **“Overturning the old conclusion” narrowed**: it means only that the observed happy path of the current Windows runtime automatically reports back; it does not mean restart/multiple-Host/injected-failure paths are reliable.
 
-**未补足的证据与影响**：P0-1 仍无真实双 Host 端到端投递证据、无复审独立复跑；P0-3/P0-4 仍是静态确认、无实机失败注入；
-domain 与投影未做逐字段一致性比对。这些降低的是**证据覆盖率**，不改变 4 条 P0 的确定性缺陷判定，C+ 与 P0 数量不变。
+**Evidence still missing and its impact**: P0-1 still has no real two-Host end-to-end delivery evidence and no independent re-review rerun; P0-3/P0-4 remain statically confirmed, with no on-machine failure injection; the domain and projection have not been compared field by field. These limitations reduce **evidence coverage**, but do not change the determination that the 4 P0s are definite defects; C+ and the P0 count remain unchanged.

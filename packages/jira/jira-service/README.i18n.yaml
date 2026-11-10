@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/jira/jira-service/README.md
 /:
-  en: d07190abf946bca7
-  zh: db3a7d4c76899f13
+  en: c8b08ce36cf25a3d
+  zh: 7d96462c18d67dab
 /deepseek-ai-dsh-jira-service:
   en: ff9165ae10acc42c
   zh: 27198bb4f13f1ee7
 /deepseek-ai-dsh-jira-service/summary:
-  en: bc90b32bfea9baa9
-  zh: e1a1cc183f784a8b
+  en: 34086d17810c22fe
+  zh: 1730e592e1fd79ee
 /deepseek-ai-dsh-jira-service/table-of-contents:
   en: 376f3a2de7412b7e
   zh: a3b02809bfb2dff4
 /deepseek-ai-dsh-jira-service/service:
-  en: 3b1821c1f1e988fc
-  zh: c6ece22197d4f50e
+  en: 2d82a8734ff9d43d
+  zh: 344225a3a02e9a98
 /deepseek-ai-dsh-jira-service/remote:
-  en: 6b47f7c55e2d90fd
-  zh: 0ed53e0fa57d0c1b
+  en: f2b0a7ce76272ddb
+  zh: 077ccd40ed6359ac
 /deepseek-ai-dsh-jira-service/configuration:
   en: 19c7e59a93c633a9
   zh: 8eb810abbcb195af

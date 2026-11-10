@@ -294,7 +294,7 @@ pass 扫描 → 候选（只读，不动账本）
 [门 2：人复核]        → closed + fixed / 打回 in_progress
 ```
 
-**已落地**（DH-512 / DH-513 / DH-514，提交 `5b19fbc99b` / `271dc5a708` / `a9e74d5236` + `3ad9b9e4be`；执行者边界、派遣记录与人类确认于 2026-11-03 按复审补全）：两端都在 `jira-agent` 里，各开各的能力门。
+**已落地**（DH-512 / DH-513 / DH-514；执行者边界、派遣记录与人类确认于 2026-11-03 按复审补全）：两端都在 `jira-agent` 里，各开各的能力门。
 
 - 执行者端 `issue_work`：授权是**派遣记录绑定**，不是父会话——`[dispatch:session] <session>` 在首个 prompt 之前写进 issue，`issue_work` 要求调用者的 Session 就是最新记录里的那个；`deliver` 一次事务完成"交回复审 + 证据"；`blocked` 只留 `[blocked:person|dependency]` 标记，不造状态。子 agent 与执行者会话都另有三个账本读工具与一段常驻 `jira:executor` 说明；执行者会话被 `describeCaller` 判为 `writable: false, reason: 'executor'`，普通 `jira_issue` 写在 guard 层被拒，turn-end 也不再提案。
 - 调度端 `superagent_scan` / `superagent_claim`：提案是 `[claim-proposal]` 评论；`claim` 要求 issue 的**最新一条评论是人类作者（`human:`）的 `[claim-approved]`**，状态迁移随后花掉这条凭据。`claim` 返回 `dispatch { key, cwd, instruction }`。
@@ -341,7 +341,7 @@ pass 扫描 → 候选（只读，不动账本）
 1. **agent preset（收窄"看得见什么"）**：`tool-subagent` 支持 `agent_preset` —— 配置里 `agentPreset` 强制指定，或 `allowedAgentPresets` 暴露给模型选。"The selected preset owns persona and tool composition." 两个限制：**只有 `spawn` provider 支持独立 preset**（`fork` 会直接报 `does not support independent agent preset selection`）；preset 只管可见面。
 2. **工具层授权（收窄"写得了什么"）**：`installWriteGuard` 是**单调拦截点**，只认 `jira_issue`，所以它挡不到一个新工具；新工具的可写面必须由它自己的 scope check 决定，而不是把 `writable: boolean` 扩成能力集。
 
-**实现结果**（DH-512，提交 `5b19fbc99b`；2026-11-03 复审后修正授权）：只做了第 2 条的 scope check，**没动 guard 的语义边界，也没把执行者做成可写 root**——能力的 scope 由 `root` 改成 `all` 并按 agent 分流：root 拿完整工具，子 agent / 执行者只拿读工具 + `issue_work`。授权 = issue 的最新 `[dispatch:session]` 记录里的 Session 等于调用者的 `SessionHeader`；拒绝复用 `READ_ONLY_SESSION`，`reason` 说清是哪一种。执行者会话的 `writable` 为 false（`reason: 'executor'`），普通写由 guard 拒绝。
+**实现结果**（DH-512；2026-11-03 复审后修正授权）：只做了第 2 条的 scope check，**没动 guard 的语义边界，也没把执行者做成可写 root**——能力的 scope 由 `root` 改成 `all` 并按 agent 分流：root 拿完整工具，子 agent / 执行者只拿读工具 + `issue_work`。授权 = issue 的最新 `[dispatch:session]` 记录里的 Session 等于调用者的 `SessionHeader`；拒绝复用 `READ_ONLY_SESSION`，`reason` 说清是哪一种。执行者会话的 `writable` 为 false（`reason: 'executor'`），普通写由 guard 拒绝。
 
 ### 8.2 解单流程的三个动词
 

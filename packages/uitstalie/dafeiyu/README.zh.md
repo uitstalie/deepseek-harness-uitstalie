@@ -96,7 +96,7 @@ const statuses = await ctx.remote.dafeiyu.status()
 
 收到 `agent/created` 时，组织者等待所有尚未 settle 的注册，然后给 scope 匹配的每个 active 能力接线。`scope: 'root'` 跳过子 agent；由于运行态 `Agent` 句柄不暴露父 agent 字段，这里通过 live agent 注册表（`ctx.agents.roots()`）判断。工具用 `agent.ctx.tools.register` 注册，prompt 段用 `agent.ctx.systemPrompt.section` 注册，disposer 全部保留；`onAgentCreated` 最后调用。接线过程中某个 provider 失败时，只回滚该能力给这个 agent 添加的内容并把该能力标记为 failed，不影响其他能力。
 
-收到 `session/event` 中 `reason.kind === 'completed'` 的 `turn/end` 时，组织者用 `ctx.agents.get(session.id)` 取得 live agent，套用同样的 scope 过滤，并在同一 session 内串行调用各 `onTurnEnd`；不同 session 并行分发。取消、报错、blocked、max-token、interrupted 与 forked 的 turn 一律跳过。每个钩子失败都会被捕获、摘要并记为 `failed`，后续能力照常执行。
+收到 `session/event` 的 `turn/end` 时——包括 aborted、errored、blocked、max-token、interrupted 与 fork 收尾——组织者用 `ctx.agents.get(session.id)` 取得 live agent，套用同样的 scope 过滤，并在同一 session 内串行调用各 `onTurnEnd`；不同 session 并行分发。只摘要成功工作的 provider 自己检查 `input.event.data.reason.kind`。每个钩子失败都会被捕获、摘要并记为 `failed`，后续能力照常执行。
 
 卸载时先 abort 每条注册、等待它已接纳的 turn 钩子与尚未 settle 的 `create()`，再 dispose 各贡献、执行保留的 agent 级 disposer，最后清空注册表。单个 `register()` 的 disposer 对一条注册走同一路径。reload 会先 abort 并排空旧代次再重新 `create()`，随后给原本已接线的 agent 重新接线。
 

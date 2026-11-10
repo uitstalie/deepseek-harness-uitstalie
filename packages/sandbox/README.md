@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The `sandbox/` group confines subprocess execution to a file-effect policy: commands run `read-only`, write only under the session workspace (`workspace-write`), write inside the user home and every non-system fixed drive, plus the session workspace unless configured exclusions say otherwise (`home-write`), or run unrestricted (`danger-full-access`). Four packages deliver it: the confinement service (`sandbox/`), the per-platform backends for Linux, macOS, and Windows (`sandbox-local/`), the shared policy resolver (`sandbox-policy/`), and the Windows write-restriction backend (`sandbox-windows-acl/`). A confined call that a policy denies can retry through a user-approved one-time escalation. Confinement is same-world only: it shares the host kernel and filesystem, while containers, microVMs, and remote executors replace whole capabilities instead of registering here.
+The `sandbox/` group confines subprocesses to a file-effect policy: `read-only`, workspace-only writes (`workspace-write`), user-home and non-system fixed-drive writes plus the workspace unless excluded (`home-write`), or unrestricted execution (`danger-full-access`). Four packages provide the confinement service (`sandbox/`), Linux, macOS, and Windows backends (`sandbox-local/`), shared policy resolution (`sandbox-policy/`), and Windows write restriction (`sandbox-windows-acl/`). A policy-denied call can retry through user-approved one-time escalation. Confinement shares the host kernel and filesystem; containers, microVMs, and remote executors replace whole capabilities instead.
 
 ## Table of Contents
 

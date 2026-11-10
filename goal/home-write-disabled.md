@@ -110,9 +110,9 @@ icacls "D:\" /setintegritylevel (OI)(CI)M /T           # 若 D: 整盘被授权�
 
 现状（2026/11/06 18:30 左右核对）：
 
-- 运行实例 checkout：`D:\dqc\deepseek-harness-uitstalie`，branch `cli-desktop`，HEAD `af255ad8ba`；进程 7776 的命令行是 `node --import tsx/esm apps/cli/src/bin.ts "web"`（**直接跑 TS 源码，host 侧无需预编译**）。
-- 开发 checkout：`D:\dqc\deepseek-harness-uitstalie-dev`，branch `cli-desktop`，HEAD `8f0af59871` + 本次未提交改动。
-- `af255ad8ba` 是 dev HEAD 的**祖先**（`git merge-base af255ad8ba <dev HEAD>` = `af255ad8ba`），所以可以把 dev 的提交**快进**到运行 checkout，不需要 cherry-pick 或重建历史。
+- 运行实例 checkout：`D:\dqc\deepseek-harness-uitstalie`，branch `cli-desktop`，HEAD 为当时的权限修复基线；进程 7776 的命令行是 `node --import tsx/esm apps/cli/src/bin.ts "web"`（**直接跑 TS 源码，host 侧无需预编译**）。
+- 开发 checkout：`D:\dqc\deepseek-harness-uitstalie-dev`，branch `cli-desktop`，HEAD 为同一基线加本次未提交改动。
+- 当时的 runtime HEAD 是 dev HEAD 的**祖先**（已由 `git merge-base` 验证），所以可以把 dev 的提交**快进**到运行 checkout，不需要 cherry-pick 或重建历史。
 - 本机 web profile `C:\Users\TS\.dsh\profiles\web\cordis.patch.yml` **没有** `home-write` 预设，不需要改用户配置；预设来自 base bundle。
 - 当前没有单独的 `pnpm run dev:web` 进程，所以 `ui-permission-presets` 的 client 产物需要重新构建后刷新页面。
 

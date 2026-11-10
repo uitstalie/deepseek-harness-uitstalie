@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`jira` is the package group behind the multi-machine issue ledger: a local git repository of Markdown files that DSH agents read and write across sessions and machines. `jira-core` holds the domain and git atoms, `jira-service` is the single writer that owns sync and the `ctx.jira` service, `jira-agent` exposes the ledger to the model through three tools plus the executor's `issue_work` tool, the awareness line and write guard, `jira-cli` gives a person the `jira` command, and `ui-jira` adds the browser section. `jira-agent` also registers the separately gated `superagent` capability (claim, dispatch and workspace tools). The branch's `web-app` layer mounts the three rows as one composition.
+Use a local Git repository of Markdown issues across sessions and machines. `jira-core` owns domain and Git operations; `jira-service` owns the single-writer `ctx.jira` service and synchronization; `jira-agent` exposes model tools and the write guard; `jira-cli` provides the human command; `ui-jira` provides the browser section. The separately gated superagent capability adds claim, dispatch, and workspace controls. The branch's `web-app` layer mounts the three service rows together.
 
 ## Table of Contents
 

@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/superagent/superagent-core/README.md
+/:
+  en: 37cb332d84df0d53
+  zh: 4a23592c3bff2b86
+/deepseek-ai-dsh-superagent-core:
+  en: edb123ecf5c6f3c7
+  zh: 5d613322f302ad72
+/deepseek-ai-dsh-superagent-core/summary:
+  en: 8c5087183eba3894
+  zh: 5fb5b3465f4bfc3b
+/deepseek-ai-dsh-superagent-core/table-of-contents:
+  en: 76368b6b1da79c80
+  zh: 65d41aa3cc8d0ebd
+/deepseek-ai-dsh-superagent-core/use-this-package:
+  en: 764298fffe64b27d
+  zh: a6b54a069370d541
+/deepseek-ai-dsh-superagent-core/understand-the-implementation:
+  en: 6a91abfa123051d3
+  zh: 65830fa2dd03bea8
+/deepseek-ai-dsh-superagent-core/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-superagent-core/model-experience/no-model-context:
+  en: 377f7946f7126ee8
+  zh: da1931d18c9b6099
+/deepseek-ai-dsh-superagent-core/model-experience/no-model-context/what-the-model-sees:
+  en: 6157c151dc7e1fa1
+  zh: b066181764a890c1
+/deepseek-ai-dsh-superagent-core/model-experience/no-model-context/token-effect:
+  en: b02a30ec6d1337ac
+  zh: be18bdc7976499c1
+/deepseek-ai-dsh-superagent-core/model-experience/no-model-context/kv-cache-effect:
+  en: a677330399418eeb
+  zh: 28a072a74ec83ffc
+/deepseek-ai-dsh-superagent-core/known-limitations-and-deferred-work:
+  en: cce04870c4eda8e0
+  zh: a1e41b6bdf914ba2
+/deepseek-ai-dsh-superagent-core/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

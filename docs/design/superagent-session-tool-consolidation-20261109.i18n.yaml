@@ -1,0 +1,55 @@
+# Bilingual-pair consistency record for superagent-session-tool-consolidation-20261109.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/design/superagent-session-tool-consolidation-20261109.md
+/super-agent-session-tool-consolidation-assessment-2026-11-09:
+  en: 8d039e03bb14d3cb
+  zh: d6f88886acd7c186
+/super-agent-session-tool-consolidation-assessment-2026-11-09/conclusion:
+  en: 0eb58d30ad2d15b4
+  zh: 5a1eabd11bbfcda7
+/super-agent-session-tool-consolidation-assessment-2026-11-09/1-current-inventory:
+  en: b5a5fdeed6687804
+  zh: 2e64e816f1e95b23
+/super-agent-session-tool-consolidation-assessment-2026-11-09/1-current-inventory/superagent-workspace:
+  en: 8f790ce055398776
+  zh: 11917d46e3bb511d
+/super-agent-session-tool-consolidation-assessment-2026-11-09/1-current-inventory/superagent-session:
+  en: 7fd018ff264fca61
+  zh: 9cbef8c23a9500ab
+/super-agent-session-tool-consolidation-assessment-2026-11-09/1-current-inventory/superagent-ledger:
+  en: b5a7e8e277c61b82
+  zh: 1606e4809f22b044
+/super-agent-session-tool-consolidation-assessment-2026-11-09/1-current-inventory/superagent-deliver:
+  en: fed644424ff1a6d0
+  zh: f3c4607031587ee6
+/super-agent-session-tool-consolidation-assessment-2026-11-09/2-option-a-merge-everything-into-superagent-action:
+  en: 7a5f69e94c339b22
+  zh: 301f19c967788e07
+/super-agent-session-tool-consolidation-assessment-2026-11-09/3-option-b-merge-registration-and-lifecycle-only:
+  en: fcbebf2f280d69e9
+  zh: ecf7f32e5b5abcb4
+/super-agent-session-tool-consolidation-assessment-2026-11-09/4-hard-constraints-and-costs:
+  en: 17853a35d60b215a
+  zh: 39afbbdff3026173
+/super-agent-session-tool-consolidation-assessment-2026-11-09/4-hard-constraints-and-costs/parameter-and-description-budgets:
+  en: 4463c822eda7022f
+  zh: 2aaad3cc9c000e74
+/super-agent-session-tool-consolidation-assessment-2026-11-09/4-hard-constraints-and-costs/requiredness-and-cross-field-relations:
+  en: b2562c5134aea282
+  zh: 2c68ffa8d26f77e2
+/super-agent-session-tool-consolidation-assessment-2026-11-09/4-hard-constraints-and-costs/error-and-return-semantics:
+  en: cbd339cf23b0613e
+  zh: 69dd60c68f5fab4d
+/super-agent-session-tool-consolidation-assessment-2026-11-09/4-hard-constraints-and-costs/breaking-surface:
+  en: 686107a47815155a
+  zh: ef1149bf7266e622
+/super-agent-session-tool-consolidation-assessment-2026-11-09/5-recommendation-and-work-estimate:
+  en: 21f9be97a34551e1
+  zh: 799f661e74ded761
+/super-agent-session-tool-consolidation-assessment-2026-11-09/5-recommendation-and-work-estimate/recommendation:
+  en: 328d64faa6c836cb
+  zh: 5615a208ca5410d8
+/super-agent-session-tool-consolidation-assessment-2026-11-09/6-counter-evidence-when-merging-is-worse:
+  en: 1496afc6d048c7eb
+  zh: 033379a7f7c7c4f7

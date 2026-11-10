@@ -42,7 +42,11 @@ export interface CanonicalizeOptions {
 
 type PathModule = typeof posix
 
-/** Linux compares case-sensitively; Windows and (by default) macOS do not. */
+/**
+ * Select the platform's ordinary path-comparison case behavior.
+ * @param platform - the platform grammar to compare under.
+ * @returns true on Linux, false on Windows and the other supported desktop platforms.
+ */
 export function defaultCaseSensitive(platform: NodeJS.Platform): boolean {
   return platform === 'linux'
 }
@@ -165,7 +169,13 @@ export function canonicalizeTarget(input: string, options: CanonicalizeOptions =
   }
 }
 
-/** Case-folding key used only for comparison, never for display. */
+/**
+ * Build a comparison key without changing the displayed path.
+ * @param path - the canonical path to compare.
+ * @param platform - selects whether Windows separators are normalized.
+ * @param caseSensitive - whether letter case remains significant.
+ * @returns the normalized, optionally case-folded comparison key.
+ */
 export function compareKey(path: string, platform: NodeJS.Platform, caseSensitive: boolean): string {
   const spelled = platform === 'win32' ? path.replaceAll('/', '\\') : path
   return caseSensitive ? spelled : spelled.toLowerCase()

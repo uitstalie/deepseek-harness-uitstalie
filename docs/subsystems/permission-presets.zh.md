@@ -68,6 +68,20 @@ interface PresetOption {
 }
 ```
 
+`permissions` 投影保留生效的预设与两个 knob 值，因此消费方读取一份当前选择，而不必分别从多个服务重建它。
+
+```ts type-equiv
+/** Whole `permissions` Session projection: current durable selection only. */
+interface PermissionSelection {
+  /** The effective current value: a configured preset key, `auto`, or `custom`. */
+  currentValue: string
+  /** The effective sandbox mode after composition defaults apply. */
+  sandboxMode: string
+  /** The effective approval policy after composition defaults apply. */
+  approvalPolicy: string
+}
+```
+
 ## 切换与 `permission/preset` 事件
 
 `set(session, name)` 解析预设（未知名称抛出异常），在适用时运行 Auto 准入，在 `name` 尚不是生效预设时追加一条仅记日志的 `permission/preset` 事件，然后通过各旋钮自己的 setter（[dsh-sandbox-policy](../../packages/sandbox/sandbox-policy) 的 `setSandboxMode` 与 [dsh-user-approval](../../packages/interaction/user-approval) 的 `setApprovalPolicy`）写入，且仅当该 knob 的生效值发生变化时才写。同一轮次内，选择事件先于旋钮事件出现；重新选择当前生效的预设则什么都不追加。
@@ -115,6 +129,13 @@ registerAuto(admit: () => void): () => Promise<void>
 current(session: Session): string
 
 /**
+ * Read the preset identity and both effective knobs from one projection snapshot.
+ * @param session - the Session whose permission is read.
+ * @returns the current preset and the sandbox/approval values enforcement will use.
+ */
+selection(session: Session): PermissionSelection
+
+/**
  * Resolve an available preset's knob bundle.
  * @param name - the preset name to resolve.
  * @returns the configured bundle.
@@ -133,11 +154,13 @@ optionOf(name: string): PresetOption
 
 /**
  * Record a changed preset, then update each changed knob through its own
- * setter. Selecting the effective preset again appends nothing.
+ * setter. Selecting the effective preset again appends nothing. A failed write attempts
+ * compensation to the previous effective values and throws with the compensation outcome.
  * @param session - the session the switch belongs to.
  * @param name - the preset to switch to; unknown names throw.
+ * @param reason - optional audit reason retained on the preset event.
  */
-set(session: Session, name: string): void
+set(session: Session, name: string, reason?: string): void
 ```
 
 Types: [Session](session.zh.md)

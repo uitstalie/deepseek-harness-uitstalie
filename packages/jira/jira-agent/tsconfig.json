@@ -42,6 +42,9 @@
       "path": "../jira-service"
     },
     {
+      "path": "../../superagent/superagent-core"
+    },
+    {
       "path": "../../core/tool-executor-native"
     },
     {

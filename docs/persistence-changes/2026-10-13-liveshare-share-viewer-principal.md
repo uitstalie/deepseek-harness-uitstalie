@@ -27,19 +27,19 @@ id: 2026-10-13-liveshare-share-viewer-principal
 baseline: false
 changes:
   - root: "event:agent/inbox/spliced"
-    previous: "2026-10-25-skill-catalog-incomplete"
+    previous: "2026-10-13-user-rpc-principal"
     after: "cdf988172b589b230f2bce868489def1bb575eb0501076ac757a8f369ac5c64e"
     decision: same-version
   - root: "event:developer/message"
-    previous: "2026-10-25-skill-catalog-incomplete"
+    previous: "2026-10-13-user-rpc-principal"
     after: "70d2acdec1ebcfea56d02f7233ebb9ec0f7f494447fb952884c22c3afdc01d6f"
     decision: same-version
   - root: "event:session/title-llm-request"
-    previous: "2026-10-25-skill-catalog-incomplete"
+    previous: "2026-10-13-user-rpc-principal"
     after: "2e505098f9209e52eebd577f1a6f9d4e773ec4d78987aff28a7c786442b9f54c"
     decision: same-version
   - root: "event:user/message"
-    previous: "2026-10-25-skill-catalog-incomplete"
+    previous: "2026-10-13-user-rpc-principal"
     after: "5bb231bc5afdb532a6898a20604e76bf0c1db438bfcdc17d4847dceaddc02451"
     decision: same-version
 ```

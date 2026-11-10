@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-policy` is a **soft, best-effort policy over model tool calls**, not an OS sandbox. It registers `ctx.toolPolicy`, which owns named profiles combining a tool blacklist with file-target blacklists: denied tools disappear from the model schema and are refused by the monotonic tool guard, and `dsh-tool-fs` asks the service before it reads, writes, edits, or patches a file. The process keeps the user's full permissions, so shell commands, PTC code, MCP tools, plugins, and any direct `node:fs` caller bypass the policy entirely. Choose it when a deployment wants to keep credential directories and a few tools out of the model's reach without paying for process confinement; choose [`dsh-sandbox-local`](../../sandbox/sandbox-local/README.md) with the sandbox-backed filesystem and shell when the file-effect boundary must hold.
+Use named profiles to deny selected model tools and file-tool targets without OS confinement. Denied tools disappear from the model schema and are refused by the tool guard; `dsh-tool-fs` checks paths before every file operation. The process keeps full user permissions: shell commands, PTC code, MCP tools, plugins, and direct `node:fs` callers bypass the policy. Choose this soft policy to keep credential directories out of model reach; choose [`dsh-sandbox-local`](../../sandbox/sandbox-local/README.md) with its sandbox-backed filesystem and shell when file effects need an OS boundary.
 
 ## Table of Contents
 
@@ -141,11 +141,19 @@ Path rules match on two spellings. A configured rule is expanded (`~`), made abs
 
 #### What the model sees
 
-Every request carries one runtime-context section, rendered from the profile in force. A `guarded` composition produces:
+Every request carries one runtime-context section, rendered from the profile in force. A `guarded` composition produces the following context.
 
-> Current DSH tool policy: guarded (soft policy; the process has full user permissions and is NOT OS-confined). Baseline soft policy: credential/DSH paths are denied to file tools; run_code is disabled. File-tool access is denied for: `~/.ssh` (read/write/list), … . Tools denied: run_code (…). This policy only checks model tool calls. Shell commands, scripts, PTC code, MCP tools, and direct native file access are not path-checked by it; do not use them to reach a denied path.
+##### Guarded policy context
 
+```markdown
+Current DSH tool policy: guarded (soft policy; the process has full user permissions and is NOT OS-confined). Baseline soft policy: credential/DSH paths are denied to file tools; run_code is disabled. File-tool access is denied for: `~/.ssh` (read/write/list), … . Tools denied: run_code (…). This policy only checks model tool calls. Shell commands, scripts, PTC code, MCP tools, and direct native file access are not path-checked by it; do not use them to reach a denied path.
+```
+
+##### Denial results
+
+```markdown
 A denied tool call returns `tool "<name>" is denied by DSH tool policy "<profile>": <reason>`. A denied file target fails with code `FS_POLICY_DENIED` and the text `cannot <operation> "<path>": it is under the tool-policy denied path "<rule>" (<operations>) in profile "<profile>"; <reason>. This is a soft policy over model tool calls, not an OS sandbox.` Allowed calls are unchanged: the policy adds no schema fields and no approval prompts.
+```
 
 #### Token effect
 

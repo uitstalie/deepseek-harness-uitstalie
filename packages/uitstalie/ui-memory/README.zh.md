@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 `dsh-client-ui-memory` 是 memory provider 的设置页。它编辑 `memory` 行 10 个 volatile 字段中的 7 个——detail、brief、forget 的轮次年龄，`MEMORY.md` 保留的会话数，正文预算，以及摘要 provider 与模型——并把改动作为一次带修订号的变更保存。`maxEntries`、`snapshotTemplate` 与 `snapshotPosition` 仍留在 profile YAML 里：第一个是保留上限，后两个改变 snapshot 到达模型的方式（见 provider 的 README）。它不持有记忆数据，也不注册工具：宿主 provider 在下次写入或摘要时应用保存的值。
 
@@ -17,6 +17,7 @@ kind: "package-reference"
 - [理解实现](#understand-the-implementation)
 - [模型体验](#model-experience)
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
 
 <a id="use-this-package"></a>
 
@@ -55,3 +56,9 @@ kind: "package-reference"
 
 - **不编辑记忆内容** —— 本页只编辑 provider 配置；`MEMORY.md` 条目由工具与摘要任务写入。
 - **表单依赖设置服务** —— 组合未挂载 `configForms` 时，本段显示不可用提示且不提供控件。
+
+<a id="dev-note"></a>
+
+### 开发备注
+
+无。

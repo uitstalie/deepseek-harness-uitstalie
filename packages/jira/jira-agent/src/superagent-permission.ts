@@ -97,7 +97,14 @@ function serviceOf<T>(ctx: unknown, name: string): T | undefined {
   return typeof get === 'function' ? get.call(ctx, name) as T | undefined : undefined
 }
 
-/** Resolve a registered workspace and prove that the exact Session belongs to it. */
+/**
+ * Resolve a registered workspace and prove that the exact Session belongs to it.
+ * @param ctx - the plugin context supplying the workspace registry.
+ * @param controller - the host Session controller used to list and resolve the target.
+ * @param workspaceArg - the registered workspace id, title, or path.
+ * @param sessionArg - the exact target Session id; `latest` is not accepted.
+ * @returns the resolved target, or an error before any permission changes.
+ */
 export async function resolvePermissionTarget(
   ctx: unknown,
   controller: SessionControllerLike,
@@ -125,7 +132,11 @@ export async function resolvePermissionTarget(
   return { target: { id, session: agent.session, workspace } }
 }
 
-/** Every preset this composition can actually select. */
+/**
+ * List every permission preset this composition can actually select.
+ * @param ctx - the plugin context carrying the sandbox or soft-policy services.
+ * @returns the supported preset options in service declaration order.
+ */
 export function permissionOptions(ctx: unknown): readonly PermissionOption[] {
   const presets = serviceOf(ctx, 'sandboxPolicy') === undefined ? undefined : serviceOf<PermissionPresetsLike>(ctx, 'permissionPresets')
   const options: PermissionOption[] = (presets?.names ?? []).map((preset) => {
@@ -196,6 +207,12 @@ function permissionWidens(before: PermissionSelectionLike | undefined, next: { s
 
 /**
  * Apply and verify one new or existing Session's permission.
+ * @param ctx - the plugin context carrying the workspace and permission services.
+ * @param controller - the host Session controller used to resolve the target.
+ * @param workspace - the registered workspace owning the Session.
+ * @param session - the exact Session whose permission is changing.
+ * @param preset - the selected permission preset.
+ * @param reason - the audit reason required when access widens.
  * @returns the committed state, or an error before any dependent prompt may be sent.
  */
 export async function applySessionPermission(

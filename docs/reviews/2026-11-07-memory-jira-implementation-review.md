@@ -1,346 +1,347 @@
-# memory / jira 插件实现审查报告
+# memory / jira plugin implementation review
 
-> 审查对象：`D:\dqc\deepseek-harness-uitstalie-dev`，分支 `cli-desktop`，HEAD `4315198591bf210cab83c564ff740aefd4b91ac7`
-> 审查方式：只读代码审查 + 只读测试运行；**未修改任何被审查代码或配置，未 commit、未 push**。
-> 审查日期：2026-11-07
+English | [中文](2026-11-07-memory-jira-implementation-review.zh.md)
 
----
 
-## 0. 结论摘要
-
-### memory — 评级 **C**（可用但有缺口；HEAD 上测试是红的）
-
-`@deepseek-ai/dsh-memory` 与 `@deepseek-ai/dsh-client-ui-memory` 已把声明的能力基本落地：三个工具、append-only 快照、`detail/brief/forget` 三级迁移、`/memory` 的 7 个子命令、history 侧车、版本守卫、job 去重都有真实实现，不是一个骨架。但它当前存在一个**可在 HEAD 稳定复现的正确性缺陷**，加上文档与实现大面积互相矛盾，因此给 C 而不是 B。
-
-最关键 3 个问题：
-
-1. **被取消/出错的 turn 也会启动摘要 job，并写入「Memory summary failed」用户消息。** 组织者对所有 `turn/end` 派发（[packages/uitstalie/dafeiyu/src/index.ts:336](packages/uitstalie/dafeiyu/src/index.ts#L336)），memory 的 `onTurnEnd` 不检查 `reason.kind`（[packages/uitstalie/memory/src/index.ts:257](packages/uitstalie/memory/src/index.ts#L257)），而 `readTurnConversation` 只认 `completed` 并抛错（[packages/uitstalie/memory/src/summary.ts:448](packages/uitstalie/memory/src/summary.ts#L448)、[:455](packages/uitstalie/memory/src/summary.ts#L455)）→ 失败分支写 notice（[:374](packages/uitstalie/memory/src/summary.ts#L374)）。memory 自己的测试就断言「aborted turn 不启动 job」，**该测试在 HEAD 上稳定失败**（[packages/uitstalie/memory/tests/summary.spec.ts:236](packages/uitstalie/memory/tests/summary.spec.ts#L236)）。
-2. **文档把已经改掉的语义写成现状，且中英/同文互相矛盾。** 英文 README 仍写 `refreshMemorySnapshot`「原地 replace 快照、`surfaceOp: replace`」（[README.md:67](packages/uitstalie/memory/README.md#L67)、[:88](packages/uitstalie/memory/README.md#L88)），实现早已改成 `surfaceOp: 'append'` 且注释明确「never replaced in place」（[snapshot.ts:420](packages/uitstalie/memory/src/snapshot.ts#L420)-[:427](packages/uitstalie/memory/src/snapshot.ts#L427)）；README 内部 [:134](packages/uitstalie/memory/README.md#L134)、[:148](packages/uitstalie/memory/README.md#L148) 又是新语义。迁移顺序、`onTurnEnd` 契约、`Window:` 字样也同样是旧描述。
-3. **配置/依赖面有漂移，且一处运行期配置切换会静默失效。** `inject` 声明了从未使用的 `ctx.fs`（[index.ts:34](packages/uitstalie/memory/src/index.ts#L34)），`package.json` 缺 `dsh-llm`/`dsh-session` 运行依赖（[package.json:26](packages/uitstalie/memory/package.json#L26)-[:32](packages/uitstalie/memory/package.json#L32)）；`snapshotPosition` 改为 `prompt` 后，已接线 agent 的 `promptSections` 不会重算，而 `syncMemorySnapshot` 在 prompt 模式直接 return（[snapshot.ts:226](packages/uitstalie/memory/src/snapshot.ts#L226)）→ 该会话从此收不到任何快照，且不报错。
-
-### jira — 评级 **B**（实现完整；superagent 子系统可用但有缺口）
-
-台账本体（`jira-core` / `jira-service` / `jira-agent` / `jira-cli` / `ui-jira`）已经完整落地：单写者服务、`ctx.jira`、`remote.jira`、三个常驻工具 + 执行者 `issue_work`、写守卫、`/jira`、三个技能、推送队列与 settle 都有真实实现和厚测试。**node 套件 774 个测试全绿**。扣分主要在 superagent 子系统的失败路径、交付组合的可达性，以及一个 4350 行单文件带来的维护成本。
-
-最关键 3 个问题：
-
-1. **`toolFailure` 违反自己声明的 output schema。** `SUPERAGENT_OUTPUT_SCHEMA` 把 `me` 列为 required（[superagent.ts:928](packages/jira/jira-agent/src/superagent.ts#L928)），而 `toolFailure` 只返回 `ok/error/writable`（[:1729](packages/jira/jira-agent/src/superagent.ts#L1729)-[:1734](packages/jira/jira-agent/src/superagent.ts#L1734)）。它被 `runSessionTool` 的兜底 catch 使用（[:2451](packages/jira/jira-agent/src/superagent.ts#L2451)），于是「本意是可读失败」的分支会被宿主的 `ToolOutputError` 覆盖。
-2. **交付组合里整条派发链不可达。** `superagent` 能力默认关（`enabledByDefault: homeProblem === undefined`，[index.ts:228](packages/jira/jira-agent/src/index.ts#L228)），行 patch 没有配置 `superagent_home`（[cordis.patch.uitstalie.yml:35](packages/bundle/web-app/cordis.patch.uitstalie.yml#L35)），也没有配置 `superagent_worker_preset`；而 `superagentDispatch` 在 preset 未设置时直接拒绝（[superagent.ts:3700](packages/jira/jira-agent/src/superagent.ts#L3700) 附近）。UI 的 setup 只会写 `superagent_home`（[superagent-setup.ts:111](packages/jira/jira-service/src/superagent-setup.ts#L111)-[:115](packages/jira/jira-service/src/superagent-setup.ts#L115)），用户无法从界面补上 worker preset。`packages/bundle/web-app/presets/jira-worker.patch.yml` 定义了 `jira-worker` preset，但没有接上。
-3. **结构债与文档债叠加。** `superagent.ts` 4350 行（含 653 行 `runSessionTool`、505 行 `createSuperagentContribution`）；同时 `jira-service` README 仍称「唯一的写是 `superagentConfirm`」（[README.md:55](packages/jira/jira-service/README.md#L55)），而 `superagentSetup` 会建目录、注册 workspace、写 profile 配置（[remote.ts:230](packages/jira/jira-service/src/remote.ts#L230)-[:259](packages/jira/jira-service/src/remote.ts#L259)）。`HANDOVER.md` 整篇仍是外部仓的单包结构（`src/core`、`dist/`、702 测试）。
+> Review target: `D:\dqc\deepseek-harness-uitstalie-dev`, branch `cli-desktop`, HEAD at the review-day `cli-desktop` baseline Review method: read-only code review + read-only test runs; **no reviewed code or configuration was modified, and nothing was committed or pushed**. Review date: 2026-11-07
 
 ---
 
-## 1. 审查范围、方法与“哪些不是本次审查对象”
+## 0. Executive summary
 
-### 1.1 状态切分
+### memory — Rating **C** (usable but has gaps; tests are red at HEAD)
 
-| 类别 | 内容 | 处理 |
+`@deepseek-ai/dsh-memory` and `@deepseek-ai/dsh-client-ui-memory` have substantially implemented their declared capabilities: three tools, append-only snapshots, `detail/brief/forget` three-tier migration, the 7 `/memory` subcommands, the history sidecar, the version guard, and job deduplication all have real implementations; this is not a skeleton. However, it currently has a **correctness defect that reproduces consistently at HEAD**, together with extensive contradictions between the documentation and implementation, so it receives C rather than B.
+
+The 3 most critical issues:
+
+1. **Canceled or errored turns also start summary jobs and write a “Memory summary failed” user message.** The organizer dispatches every `turn/end` (`packages/uitstalie/dafeiyu/src/index.ts#L336`), memory's `onTurnEnd` does not check `reason.kind` (`packages/uitstalie/memory/src/index.ts#L257`), and `readTurnConversation` accepts only `completed` and throws otherwise (`packages/uitstalie/memory/src/summary.ts#L448`, `packages/uitstalie/memory/src/summary.ts#L455`) → the failure branch writes a notice (`packages/uitstalie/memory/src/summary.ts#L374`). Memory's own test asserts that “an aborted turn does not start a summary job”; **that test fails consistently at HEAD** (`packages/uitstalie/memory/tests/summary.spec.ts#L236`).
+2. **The documentation presents superseded semantics as current behavior, and the two languages and even the same document contradict one another.** The English README still says that `refreshMemorySnapshot` “replaces the snapshot in place, `surfaceOp: replace`” (`packages/uitstalie/memory/README.md#L67`, `packages/uitstalie/memory/README.md#L88`), while the implementation has long since changed to `surfaceOp: 'append'` and its comment explicitly says “never replaced in place” (`packages/uitstalie/memory/src/snapshot.ts#L420`-`packages/uitstalie/memory/src/snapshot.ts#L427`); elsewhere in the same README, `packages/uitstalie/memory/README.md#L134` and `packages/uitstalie/memory/README.md#L148` already describe the new semantics. The migration order, `onTurnEnd` contract, and `Window:` label are likewise old descriptions.
+3. **The configuration and dependency declarations have drifted, and one runtime configuration switch silently stops working.** `inject` declares a `ctx.fs` dependency that is never used (`packages/uitstalie/memory/src/index.ts#L34`), and `package.json` lacks the `dsh-llm`/`dsh-session` runtime dependencies (`packages/uitstalie/memory/package.json#L26`-`packages/uitstalie/memory/package.json#L32`); after `snapshotPosition` changes to `prompt`, the already-wired agent's `promptSections` are not recomputed, while `syncMemorySnapshot` returns immediately in prompt mode (`packages/uitstalie/memory/src/snapshot.ts#L226`) → that session receives no further snapshots and reports no error.
+
+### jira — Rating **B** (complete implementation; superagent subsystem usable but has gaps)
+
+The ledger itself (`jira-core` / `jira-service` / `jira-agent` / `jira-cli` / `ui-jira`) is fully implemented: the single-writer service, `ctx.jira`, `remote.jira`, the three resident tools plus the executor `issue_work`, the write guard, `/jira`, three skills, and the push queue and settle behavior all have real implementations and substantial test coverage. **All 774 tests in the node suite pass.** The main deductions concern failure paths in the superagent subsystem, the reachability of the delivery composition, and the maintenance cost of a single 4,350-line file.
+
+The 3 most critical issues:
+
+1. **`toolFailure` violates its own declared output schema.** `SUPERAGENT_OUTPUT_SCHEMA` lists `me` as required (`packages/jira/jira-agent/src/superagent.ts#L928`), while `toolFailure` returns only `ok/error/writable` (`packages/jira/jira-agent/src/superagent.ts#L1729`-`packages/jira/jira-agent/src/superagent.ts#L1734`). It is used by `runSessionTool`'s fallback catch (`packages/jira/jira-agent/src/superagent.ts#L2451`), so the branch intended to produce a readable failure is instead masked by the host's `ToolOutputError`.
+2. **The entire dispatch chain is unreachable in the delivery composition.** The `superagent` capability is disabled by default (`enabledByDefault: homeProblem === undefined`, `packages/jira/jira-agent/src/index.ts#L228`); the row patch does not configure `superagent_home` (`packages/bundle/web-app/cordis.patch.uitstalie.yml#L35`) or `superagent_worker_preset`, and `superagentDispatch` rejects immediately when the preset is unset (around `packages/jira/jira-agent/src/superagent.ts#L3700`). UI setup writes only `superagent_home` (`packages/jira/jira-service/src/superagent-setup.ts#L111`-`packages/jira/jira-service/src/superagent-setup.ts#L115`), so users cannot add the worker preset through the interface. `packages/bundle/web-app/presets/jira-worker.patch.yml` defines the `jira-worker` preset, but it is not connected.
+3. **Structural debt and documentation debt compound each other.** `superagent.ts` has 4,350 lines (including a 653-line `runSessionTool` and a 505-line `createSuperagentContribution`); meanwhile, the `jira-service` README still says that “the only write is `superagentConfirm`” (`packages/jira/jira-service/README.md#L55`), while `superagentSetup` creates directories, registers a workspace, and writes profile configuration (`packages/jira/jira-service/src/remote.ts#L230`-`packages/jira/jira-service/src/remote.ts#L259`). All of `HANDOVER.md` still describes the external repository's single-package structure (`src/core`, `dist/`, 702 tests).
+
+---
+
+## 1. Review scope, method, and exclusions
+
+### 1.1 State separation
+
+| Category | Content | Treatment |
 |---|---|---|
-| 已提交在 HEAD | memory 两包、jira 五包及组级测试、`cordis.patch.uitstalie.yml`、`jira-worker.patch.yml`、jira 文档四件套 | **本次审查对象** |
-| 工作树未提交改动 | 审查开始时 `git status` 共 78 项（不含本报告），集中在 `packages/core/session*`、`agent-loop`、`session-query`、`session-persistence*`、`packages/sandbox/*`、`docs/persistence*`、`tool-cordis/api-catalog.ts` | **与 memory/jira 无关，未审查**；仅作为“测试运行时环境”披露 |
-| 未跟踪文件 | `.dsh/`、`_tmp/`、两个 sandbox 测试、`.dsh-probe.txt` | 与本次审查无关 |
-| 历史/实验文档 | `packages/jira/DESIGN.md`、`HANDOVER.md`、`MIGRATION.md`、`ARCHIVE-SOURCE.md` 从外部仓迁入；`packages/jira/tests/*` 是组级套件 | 作为“文档过时”的审查对象，但**不作为当前实现规格** |
+| Committed at HEAD | The two memory packages, the five jira packages and their group-level tests, `cordis.patch.uitstalie.yml`, `jira-worker.patch.yml`, and the four jira documents | **Reviewed here** |
+| Uncommitted working-tree changes | At the start of the review, `git status` listed 78 entries (excluding this report), concentrated in `packages/core/session*`, `agent-loop`, `session-query`, `session-persistence*`, `packages/sandbox/*`, `docs/persistence*`, and `tool-cordis/api-catalog.ts` | **Unrelated to memory/jira and not reviewed**; disclosed only as the environment in which tests ran |
+| Untracked files | `.dsh/`, `_tmp/`, two sandbox tests, `.dsh-probe.txt` | Unrelated to this review |
+| Historical/experimental documents | `packages/jira/DESIGN.md`, `HANDOVER.md`, `MIGRATION.md`, and `ARCHIVE-SOURCE.md` were migrated from the external repository; `packages/jira/tests/*` is the group-level suite | Reviewed for stale documentation, but **not treated as the current implementation specification** |
 
-已核实：`git status --porcelain -- packages/jira packages/uitstalie` 为空，`git ls-files --others` 在两组下也为空。**因此两个插件的审查结论完全对应 HEAD `4315198591`，不受工作树改动影响。**
+Verified: `git status --porcelain -- packages/jira packages/uitstalie` was empty, and `git ls-files --others` was also empty under both groups. **The review conclusions for both plugins therefore correspond exactly to the review-day HEAD and are unaffected by working-tree changes.**
 
-### 1.2 实际运行过的验证
+### 1.2 Verification actually run
 
-| 命令 | 结果 |
+| Command | Result |
 |---|---|
-| `node node_modules/vitest/vitest.mjs run packages/uitstalie/memory packages/uitstalie/ui-memory` | **1 failed / 118 passed**（失败：`summary.spec.ts` 的 “an aborted turn does not start a summary job”，`expected length 0, got 1`） |
-| 同上，只跑 `packages/uitstalie/memory/tests/summary.spec.ts` | **稳定复现同一失败**（15 passed / 1 failed），排除测试顺序影响 |
-| `node node_modules/vitest/vitest.mjs run packages/jira` | **1 failed / 93 passed**；失败是 `packages/jira/tests/superagent-real-loop.spec.ts:162` 的 60s 超时（真 Session 控制器用例） |
-| `pnpm run test:jira:node` | **774 passed**（`jira-agent` 171、`jira-cli` 38、`jira-core` 565） |
+| `node node_modules/vitest/vitest.mjs run packages/uitstalie/memory packages/uitstalie/ui-memory` | **1 failed / 118 passed** (failure: “an aborted turn does not start a summary job” in `summary.spec.ts`, `expected length 0, got 1`) |
+| Same command, running only `packages/uitstalie/memory/tests/summary.spec.ts` | **The same failure reproduced consistently** (15 passed / 1 failed), ruling out test-order effects |
+| `node node_modules/vitest/vitest.mjs run packages/jira` | **1 failed / 93 passed**; the failure was a 60s timeout at `packages/jira/tests/superagent-real-loop.spec.ts:162` (a real Session controller case) |
+| `pnpm run test:jira:node` | **774 passed** (`jira-agent` 171, `jira-cli` 38, `jira-core` 565) |
 
-未运行：全仓 `pnpm test`（受本工作树其他未提交改动影响，且耗时）、GUI 真机组合、`verify-translation-pairing` 等文档门禁。详见 §9。
-
----
-
-## 2. 逐维度发现
-
-### 2.1 维度 1：实现程度
-
-#### memory
-
-| 声明能力 | 状态 | 证据与说明 |
-|---|---|---|
-| 固定 prompt section | 已实现 | [prompt.ts](packages/uitstalie/memory/src/prompt.ts) + [index.ts:239](packages/uitstalie/memory/src/index.ts#L239) |
-| `memory_write` / `memory_search` / `memory_read` | 已实现 | [tools.ts:109](packages/uitstalie/memory/src/tools.ts#L109)、[:192](packages/uitstalie/memory/src/tools.ts#L192)、[:268](packages/uitstalie/memory/src/tools.ts#L268) 起 |
-| 快照（depth-0 消息 / `memory-state` section） | 已实现，**运行期切换有洞** | [snapshot.ts:209](packages/uitstalie/memory/src/snapshot.ts#L209)-[:232](packages/uitstalie/memory/src/snapshot.ts#L232)；见 2.2 |
-| `detail`/`brief`/`forget` 三级迁移 | 已实现，生产受 compaction 门控 | [summary.ts:327](packages/uitstalie/memory/src/summary.ts#L327)-[:330](packages/uitstalie/memory/src/summary.ts#L330)、[:349](packages/uitstalie/memory/src/summary.ts#L349) |
-| `/memory summaries\|stats\|prune\|pause\|resume\|edit\|revert` | 已实现 | [commands.ts:67](packages/uitstalie/memory/src/commands.ts#L67)-[:198](packages/uitstalie/memory/src/commands.ts#L198) |
-| `MEMORY.history.json` 侧车 | 已实现 | [memory-file.ts:784](packages/uitstalie/memory/src/memory-file.ts#L784)、[:508](packages/uitstalie/memory/src/memory-file.ts#L508) |
-| 版本守卫 + 一次重试 | 已实现 | [memory-file.ts:755](packages/uitstalie/memory/src/memory-file.ts#L755)、[:858](packages/uitstalie/memory/src/memory-file.ts#L858) |
-| 每会话单 job + pending 合并 | 已实现 | [summary.ts:206](packages/uitstalie/memory/src/summary.ts#L206)-[:290](packages/uitstalie/memory/src/summary.ts#L290) |
-| 失败 notice | **部分实现（触发条件错误）** | [summary.ts:374](packages/uitstalie/memory/src/summary.ts#L374)-[:386](packages/uitstalie/memory/src/summary.ts#L386)；见 2.1「看起来有但不工作」 |
-| 会话半边搜索 | 已实现但**无测试覆盖** | 测试的 `SessionQueryEngine` 恒返回空（[tests/harness.ts:47](packages/uitstalie/memory/tests/harness.ts#L47)-[:55](packages/uitstalie/memory/tests/harness.ts#L55)） |
-
-“看起来有但不工作 / 只有 happy path”：
-
-- **aborted/errored turn 的失败 notice**（上文）。这不只是“多一条消息”：每个被取消的 turn 都会占一个 job、跑一次失败路径，并可能在用户只是按了取消之后给出「Memory summary failed」的误导性提示。
-- **含首条 snapshot 的 turn 永远无法折叠**：`rawTurnTarget` 明确拒绝包含 memory snapshot 的区间（[checkpoint.ts:185](packages/uitstalie/memory/src/checkpoint.ts#L185)-[:191](packages/uitstalie/memory/src/checkpoint.ts#L191)）；而会话第一次 `memory_write` 在没有既有快照时会追加一条完整快照（[tools.ts:158](packages/uitstalie/memory/src/tools.ts#L158)-[:171](packages/uitstalie/memory/src/tools.ts#L171)）→ 该 turn 的区间永久不可替换，每个后续 pass 都会重试并打 debug 日志。README 的“重试”说法没有说明“有些区间永远不会成功”。
-- **`jobs` 缺失分支不可达**：`inject` 已声明 `jobs`（[index.ts:34](packages/uitstalie/memory/src/index.ts#L34)），`summary.ts` 里 `ctx.get('jobs') === undefined` 的分支（[summary.ts:236](packages/uitstalie/memory/src/summary.ts#L236)）在真实宿主里不会出现；对应测试只证明了“没有 jobs 时插件不激活”，不是该分支。
-- **`/memory revert <turn> 多余文字` 静默接受**：`revertOne` 只取 `parsed.turn`（[commands.ts:187](packages/uitstalie/memory/src/commands.ts#L187)-[:190](packages/uitstalie/memory/src/commands.ts#L190)），多余参数被丢弃而不是报错。
-
-结论：memory **可用但有缺口**；主流程完整，失败路径和一个静默死路径是短板。评级 C。
-
-#### jira
-
-| 声明能力 | 状态 | 证据与说明 |
-|---|---|---|
-| `jira_issue` 十动词 | 已实现 | [toolIssue.ts](packages/jira/jira-agent/src/toolIssue.ts) 的 `ISSUE_PARAMETERS`；组级 parity 测试守护动词映射 |
-| `jira_list` / `jira_kb` | 已实现 | [toolList.ts](packages/jira/jira-agent/src/toolList.ts)、[toolKb.ts](packages/jira/jira-agent/src/toolKb.ts) |
-| 执行者 `issue_work` | 已实现 | [workIssue.ts](packages/jira/jira-agent/src/workIssue.ts)；`scope: 'all'` + worker 分流（[contribution.ts:174](packages/jira/jira-agent/src/contribution.ts#L174)-[:180](packages/jira/jira-agent/src/contribution.ts#L180)） |
-| `jira:store` 运行时上下文 | 已实现 | [contribution.ts:151](packages/jira/jira-agent/src/contribution.ts#L151)-[:172](packages/jira/jira-agent/src/contribution.ts#L172) |
-| 单调写守卫 | **部分实现** | 只拦 `jira_issue`（[wiring.ts:35](packages/jira/jira-agent/src/wiring.ts#L35)-[:42](packages/jira/jira-agent/src/wiring.ts#L42)）；`jira_kb` 的写由 handler 自查（[toolKb.ts:82](packages/jira/jira-agent/src/toolKb.ts#L82)），不是 guard 兜底 |
-| `/jira` + 三技能 | 已实现 | [wiring.ts:57](packages/jira/jira-agent/src/wiring.ts#L57)、[:89](packages/jira/jira-agent/src/wiring.ts#L89) |
-| turn-end settle + 推送队列 | 已实现 | [contribution.ts:104](packages/jira/jira-agent/src/contribution.ts#L104)-[:124](packages/jira/jira-agent/src/contribution.ts#L124)；[jira-service/src/index.ts:928](packages/jira/jira-service/src/index.ts#L928) |
-| superagent 10 个工具 | 已实现，但**每个 agent 只拿到 6 或 5 个** | 普通 root：source/scan/claim/workspace/status/dispatch（[superagent.ts:4494](packages/jira/jira-agent/src/superagent.ts#L4494)-[:4501](packages/jira/jira-agent/src/superagent.ts#L4501)）；super agent：workspace/session/ledger/models/deliver（[:4486](packages/jira/jira-agent/src/superagent.ts#L4486)-[:4493](packages/jira/jira-agent/src/superagent.ts#L4493)） |
-| daemon（无会话 dispatcher） | 已实现，opt-in | [superagent.ts:4101](packages/jira/jira-agent/src/superagent.ts#L4101)-[:4124](packages/jira/jira-agent/src/superagent.ts#L4124) |
-| dispatch / recover | 已实现，**交付组合不可达** | 见结论摘要第 2 条 |
-
-结论：jira 台账本体 **完整**；superagent **可用但有缺口**；整体 B。
-
-### 2.2 维度 2：设计方案是否符合预期
-
-#### memory
-
-memory 没有独立的设计文档，**README 本身承担设计规格**（“Understand the implementation” + “Model Experience”）。把 README 当作设计意图对照，结论是：**核心设计意图（append-only、KV-cache 友好、compaction 边界折叠、分级遗忘）在实现里成立，但文档停留在上一版语义，导致“设计意图”与“实现”在纸面上冲突。**
-
-| 设计意图（README） | 实际实现 | 差距 |
-|---|---|---|
-| 快照原地 replace，保持前缀不变（[:67](packages/uitstalie/memory/README.md#L67)、[:88](packages/uitstalie/memory/README.md#L88)、[:142](packages/uitstalie/memory/README.md#L142)） | `appendSnapshot` 只 append（[snapshot.ts:425](packages/uitstalie/memory/src/snapshot.ts#L425)），注释解释 replace 会击穿 KV cache | **文档错误**；同一 README 的 [:134](packages/uitstalie/memory/README.md#L134)、[:148](packages/uitstalie/memory/README.md#L148) 已是新语义 |
-| 迁移在 detail append 之后运行（[:84](packages/uitstalie/memory/README.md#L84)） | 先 `migrateMemoryTiers` 再 `appendTurnSummary`（[summary.ts:331](packages/uitstalie/memory/src/summary.ts#L331)-[:360](packages/uitstalie/memory/src/summary.ts#L360)），即 DH-710 | **文档错误** |
-| `onTurnEnd` 只收 completed root turn（[:76](packages/uitstalie/memory/README.md#L76)） | 组织者对所有 `turn/end` 派发（dafeiyu [:336](packages/uitstalie/dafeiyu/src/index.ts#L336)） | **文档错误**，且实现没有补上过滤 |
-| `snapshotPosition` / `snapshotTemplate` 改动是 row reload（[:188](packages/uitstalie/memory/README.md#L188)） | 二者都是 `.volatile()`（[config.ts:75](packages/uitstalie/memory/src/config.ts#L75)-[:76](packages/uitstalie/memory/src/config.ts#L76)），模板下一次刷新即生效；`position` 则因为接线时已固定而“改了不生效也不报错” | **文档错误 + 实现缺陷** |
-| 快照每次请求最多 16 KiB（[:138](packages/uitstalie/memory/README.md#L138)） | 每个摘要 pass 都可能追加一条新快照（[summary.ts:361](packages/uitstalie/memory/src/summary.ts#L361) → [snapshot.ts:230](packages/uitstalie/memory/src/snapshot.ts#L230)），只与“上一条快照”做整串相等去重 | **语义漂移**：单条 ≤16 KiB，但 surface 上会累积多条 |
-| `Window:` 清单（[:90](packages/uitstalie/memory/README.md#L90)） | 实际渲染 `Archived:`（[snapshot.ts:403](packages/uitstalie/memory/src/snapshot.ts#L403)、[:409](packages/uitstalie/memory/src/snapshot.ts#L409)）；代码注释解释了改名原因 | **文档错误** |
-
-判断：memory 的设计意图与实现没有**架构级**冲突；问题在于 DH-723/724 改语义后文档没有同步，导致 README 既不能当规格也不能当用户说明。
-
-#### jira
-
-jira 的设计意图主要在三处：`DESIGN.md`（决策日志，1–223 条）、`MIGRATION.md`（三层拆分目标形状）、各包 README（当前行为）。
-
-对齐结果：
-
-| 设计意图 | 实际实现 | 差距 |
-|---|---|---|
-| MIGRATION：一个 bundle + 五个包，四种表面只依赖 `ctx.jira` | 五包齐全；`jira-agent` 只 type-only import `jira-service`；`ui-jira` 走 `remote.jira`；CLI 直接驱动 core | **符合**；但 `jira-agent` 的运行器仍绕过服务直接读 jira-core（见 README:107，已与实际不符） |
-| DESIGN 64/108：单包、适配层零宿主依赖 | 已拆成五包；`jira-agent/src` 有 102 处 `@deepseek-ai/*` import | **被 MIGRATION 取代**；文档未标注 |
-| DESIGN 141/96：恰好一个写守卫，覆盖“写动作 × 不可写会话” | 守卫只判断 `jira_issue` 的 `action`（[wiring.ts:36](packages/jira/jira-agent/src/wiring.ts#L36)-[:38](packages/jira/jira-agent/src/wiring.ts#L38)） | **范围窄于设计表述**；`jira_kb` 写靠 handler，`issue_work` 靠 claim |
-| DESIGN 200–223：superagent 派发链 | 工具、daemon、dispatch、recover、ledger 都有实现 | **实现超越设计文档的细节覆盖**，但交付组合未接线（见 2.6） |
-| DESIGN 15/148：推送前 settle，保证推出去的与源一致 | `sync()` 用 `flushNow({ settle: true })`（[jira-service/src/index.ts:907](packages/jira/jira-service/src/index.ts#L907)-[:921](packages/jira/jira-service/src/index.ts#L921)）；`settle()` 重生成并提交（[:928](packages/jira/jira-service/src/index.ts#L928)-[:936](packages/jira/jira-service/src/index.ts#L936)） | **符合** |
-
-另外，`jira-service/src/index.ts` 的 `reconfigure()` 有一段**逐字重复的赋值**（[:253](packages/jira/jira-service/src/index.ts#L253)-[:255](packages/jira/jira-service/src/index.ts#L255) 与 [:257](packages/jira/jira-service/src/index.ts#L257)-[:259](packages/jira/jira-service/src/index.ts#L259)），是实现期遗留的复制粘贴，不影响行为但说明该路径缺少审阅。
-
-### 2.3 维度 3：代码简洁性与复用性
-
-#### memory
-
-- **长函数/大类**：`MemorySummaryRunner` 从 [summary.ts:184](packages/uitstalie/memory/src/summary.ts#L184) 到 [:399](packages/uitstalie/memory/src/summary.ts#L399)，约 216 行；其中 `runPass` 约 95 行（[:293](packages/uitstalie/memory/src/summary.ts#L293)-[:387](packages/uitstalie/memory/src/summary.ts#L387)）。`apply` 约 72 行（[index.ts:201](packages/uitstalie/memory/src/index.ts#L201)-[:272](packages/uitstalie/memory/src/index.ts#L272)），把“读配置、注册能力、注册命令、快照缓存”四件事放在一个函数里。
-- **复制粘贴（已核实定义处）**：`truncateToBytes` 3 份（[read.ts:295](packages/uitstalie/memory/src/read.ts#L295)、[snapshot.ts:471](packages/uitstalie/memory/src/snapshot.ts#L471)、[summary.ts:724](packages/uitstalie/memory/src/summary.ts#L724)）；`byteLength` 3 份（[read.ts:309](packages/uitstalie/memory/src/read.ts#L309)、[snapshot.ts:466](packages/uitstalie/memory/src/snapshot.ts#L466)、[summary.ts:712](packages/uitstalie/memory/src/summary.ts#L712)）；`errorMessage` 4 份（[checkpoint.ts:230](packages/uitstalie/memory/src/checkpoint.ts#L230)、[memory-file.ts:2197](packages/uitstalie/memory/src/memory-file.ts#L2197)、[snapshot.ts:486](packages/uitstalie/memory/src/snapshot.ts#L486)、[summary.ts:739](packages/uitstalie/memory/src/summary.ts#L739)）。这些是纯文本工具，抽一个 `text.ts` 即可，风险很低。
-- **隐式状态**：`snapshotTexts` 是 `apply` 闭包里的 `Map`（[index.ts:223](packages/uitstalie/memory/src/index.ts#L223)-[:227](packages/uitstalie/memory/src/index.ts#L227)），只增不减，`dispose` 不清理；`MemorySummaryRunner` 的 `sessions`/`noticed` 同理（[summary.ts:185](packages/uitstalie/memory/src/summary.ts#L185)-[:187](packages/uitstalie/memory/src/summary.ts#L187)）。它们有界于“进程内见过的 session 数”，不是泄漏级，但属于“状态没有单一所有者”。
-- **错误模型不一致**：`memory-file.ts` 用 `MemoryDocumentError`，其余模块大量用裸 `Error`（[config.ts:116](packages/uitstalie/memory/src/config.ts#L116)、[summary.ts:455](packages/uitstalie/memory/src/summary.ts#L455)、[tools.ts:155](packages/uitstalie/memory/src/tools.ts#L155) 等）。对“文档损坏”与“参数非法”无法在上层区分。
-- **手写 mini 格式**：`memory-file.ts` 用 5 条正则解析条目后缀并逆序剥离（[memory-file.ts:326](packages/uitstalie/memory/src/memory-file.ts#L326)-[:341](packages/uitstalie/memory/src/memory-file.ts#L341)）；`parseSummaryJson` 用“第一个 `[`/`{` 到最后一个 `]`/`}`”的启发式（[summary.ts:658](packages/uitstalie/memory/src/summary.ts#L658)-[:670](packages/uitstalie/memory/src/summary.ts#L670)）。managed block 是自造格式，可以接受；但对模型输出做括号切片在含 `}` 的散文上不稳。
-- **无意义抽象**：`MEMORY_ENTRY_LABELS = MEMORY_ENTRY_KINDS`（[commands.ts:32](packages/uitstalie/memory/src/commands.ts#L32)）只是别名；`findSection`/`sameSection` 与 `findContainingSection` 是两套查找（[memory-file.ts:1124](packages/uitstalie/memory/src/memory-file.ts#L1124)、[:1337](packages/uitstalie/memory/src/memory-file.ts#L1337)）。
-
-#### jira
-
-- **单文件过大**：`superagent.ts` 4350 行。最长函数：`createSuperagentContribution` [4048](packages/jira/jira-agent/src/superagent.ts#L4048)-[4552](packages/jira/jira-agent/src/superagent.ts#L4552)（505 行）、`runSessionTool` [2405](packages/jira/jira-agent/src/superagent.ts#L2405)-[3057](packages/jira/jira-agent/src/superagent.ts#L3057)（653 行）。
-- **同一信封手写多次**：`toolFailure` 之外，`{ ok: true, writable, me, ... }` 在多个 runner 里重复展开；`verdictOf`（[:725](packages/jira/jira-agent/src/superagent.ts#L725)）只被 models 一个工具使用，其余位置没有用它。
-- **`createSuperagentContribution` 职责混杂**：同一个函数里做 fs roots 授权（[:4072](packages/jira/jira-agent/src/superagent.ts#L4072)-[:4077](packages/jira/jira-agent/src/superagent.ts#L4077)）、systemPrompt 注入（[:4081](packages/jira/jira-agent/src/superagent.ts#L4081)-[:4100](packages/jira/jira-agent/src/superagent.ts#L4100)）、domain/事件订阅（[:4129](packages/jira/jira-agent/src/superagent.ts#L4129)-[:4161](packages/jira/jira-agent/src/superagent.ts#L4161)）、定时器（[:4163](packages/jira/jira-agent/src/superagent.ts#L4163)）和 10 个 spec 的定义与渲染。这是“注册 + IO + 业务 + 渲染”四合一。
-- **服务层重复赋值**：`reconfigure()` 的 6 行重复（见 2.2）。
-- **UI 的 staged-form 控制器重复**：`ui-memory/src/client/settings.ts:119` 的 `MemorySettingsController` 与 `ui-personality/src/client/settings-form.ts:112` 的 `PersonalitySettingsController` 结构逐项对应（`FIELDS`/`NUMERIC`/`EMPTY`/`UNAVAILABLE`/`draftOf`/`validNumber`/`edit`/`discard`/`save`）；这是两个插件而不是一个插件内部，但“配置表单控制器”本可以抽到 `ui-primitives` 或共享基类。
-- **死 JSDoc**：`ledger-settings.ts:226` 的「Publish the current projection」被挂在 `accepted()` 前面，`publish()` 本体在 [:232](packages/jira/ui-jira/src/client/ledger-settings.ts#L232) 且无注释（[:226](packages/jira/ui-jira/src/client/ledger-settings.ts#L226)-[:232](packages/jira/ui-jira/src/client/ledger-settings.ts#L232)）。
-- **`result.ts` 的 13 个组合子**：`map/mapErr/andThen/orElse/unwrapOr/collect/partition/pipe/isOk/isErr` 只在 `result.ts` 与 `result.test.ts` 里出现，生产代码只用 `ok`/`err`/`Result`（grep 全组确认）。这是一个**没有消费者的公共 API**，测试在为它维持成本。
-
-类型与错误处理（jira）：`JiraError` + `Result` 模型在 core 里非常一致（非测试源码零 `throw`），这是本项目最好的部分之一；问题只在 agent 适配层的信封与 UI 边界。
-
-### 2.4 维度 4：是否重复造轮子
-
-判断标准：**有明确平台/离线理由且行为正确的封装**算“合理封装”；**仓库里已有同能力、同语义设施**才算重复造轮子。
-
-| 重复实现 | 位置 | 已有替代 | 判断与建议 |
-|---|---|---|---|
-| 原子写（tmp + rename + 3 次退避） | [jira-core/src/io.ts:178](packages/jira/jira-core/src/io.ts#L178) `writeTextAtomic`；重试常量在 [system/policy.ts:17](packages/jira/jira-core/src/system/policy.ts#L17) | `packages/util/atomic-write` 的 `writeFileAtomic` / `withFileLock`，被 `boot/config-editor`、`credentials-local`、`boot/plugin-manager` 等 10+ 生产包使用 | **重复造轮子**。若保留 jira 的“零依赖/离线拷贝”前提，至少应复用同一套重试与错误语义；在 monorepo 里该前提已弱化 |
-| 跨进程锁（mkdir + owner + 心跳/回收） | [jira-core/src/lock.ts:1](packages/jira/jira-core/src/lock.ts#L1)-[:50](packages/jira/jira-core/src/lock.ts#L50) | `atomic-write` 的 `withFileLock`；`session-persistence-jsonl` 的 lease/flock | **合理封装 + 部分重复**：mkdir 锁有 Windows 反杀软的真实理由（决策 59），但仓库已有两套锁，第三套应至少共享接口与超时语义 |
-| 受限 YAML/frontmatter 解析 | [jira-core/src/frontmatter.ts:1](packages/jira/jira-core/src/frontmatter.ts#L1)-[:40](packages/jira/jira-core/src/frontmatter.ts#L40) | `yaml` 已是 workspace 依赖并被 `store-atom`、`personality` 等使用；memory 也直接用 `yaml` | **有理由的封装**（严格拒绝、文本真相、决策 105），但“必须离线拷贝、零运行时依赖”（决策 65）在五包 monorepo 里已不成立；建议在文档里更新理由，不建议现在重写 |
-| 手写 JSON Schema 子集 + 参数校验 | [jira-core/src/schema.ts:1](packages/jira/jira-core/src/schema.ts#L1)-[:15](packages/jira/jira-core/src/schema.ts#L15)、`validate.ts` | `zod@4.4.3` 已是 `jira-agent` 的直接依赖（[package.json:33](packages/jira/jira-agent/package.json#L33)），`z.toJSONSchema` 可产出宿主方言；`schemastery` 也在用 | **重复造轮子**（最硬的一条）。理由仍是“适配层不 import 宿主”，但 `jira-agent` 本来就 import 宿主；建议把参数校验移到 agent 适配层用 zod，core 只保留输出形状 |
-| home/`~` 解析 | [jira-core/src/system/env.ts](packages/jira/jira-core/src/system/env.ts)、`superagent-setup.ts:55` | `@deepseek-ai/dsh-home-paths` 的 `resolveDshHome` | **合理封装但已漂移一次**（HANDOVER 记录过）；建议复用或加交叉测试 |
-| tag 文件的正则读取 | [jira-core/src/store.ts:114](packages/jira/jira-core/src/store.ts#L114)-[:130](packages/jira/jira-core/src/store.ts#L130) | 同包 `tagstore.ts` 的 `decodeTag` | **内部重复**，应合并；同一文件两种解码器迟早漂移 |
-| session 事件派生（标题/活动/缓存/最近任务） | `superagent.ts` 的 `activityOf`/`cacheHitOf`/`sessionTitleOf`/`lastTaskOf` | `session-stats`、`session-turn-outline`、Session projections | **部分重复**（静态阅读判定）：superagent 需要“跨 workspace 的会话概览”，现有包未直接提供；但重放 `snapshotEvents()` 并硬编码事件名，长期会与 session 事件词表脱节 |
-| UI 配置表单控制器 | [ui-memory/src/client/settings.ts:119](packages/uitstalie/ui-memory/src/client/settings.ts#L119) vs [ui-personality/src/client/settings-form.ts:112](packages/uitstalie/ui-personality/src/client/settings-form.ts#L112) | 无共享基类 | **复制粘贴**，建议抽 `StagedConfigFormController` |
-| `.superagent` 路径规则与 home 校验 | [jira-service/src/superagent-setup.ts:67](packages/jira/jira-service/src/superagent-setup.ts#L67)、[:87](packages/jira/jira-service/src/superagent-setup.ts#L87) vs [jira-agent/src/superagent.ts:324](packages/jira/jira-agent/src/superagent.ts#L324)、[:366](packages/jira/jira-agent/src/superagent.ts#L366) | 两份实现 | **重复且已漂移**：agent 侧用 `realpathSync`，service 侧用 `resolve` 的词法比较；两个入口对“同一个目录”的判断可能不同 |
-
-“合理封装，不算重复”的部分：`jira-core` 的 `Result`/`JiraError` 模型、`git.ts` 的 `runGit`、`system/*` 的平台适配、`boardHtml.ts` 的离线单文件看板、`ui-jira` 的 `remote.jira` 读模型。
-
-### 2.5 维度 5：解耦程度
-
-#### memory
-
-| 耦合点 | 证据 | 影响 |
-|---|---|---|
-| 多声明未使用的 `fs` | `inject` 含 `fs`（[index.ts:34](packages/uitstalie/memory/src/index.ts#L34)）；`ctx.fs` 只在测试里被 spy（`checkpoint.spec.ts:167` 等），生产代码从不读 | 缺 `fs` 的合法组合会被拒绝，能力被不必要地绑死在 fs 上 |
-| 隐藏依赖 `tool-jobs` 的 controller | `jobs.start` 可用但 controller 必须由 `tool-jobs` attach（`summary.ts:236` 只判 `jobs` 存在） | 组合里没有 `tool-jobs` 时摘要静默跳过，`inject` 无法表达这层依赖 |
-| 直接读 Agent 内部 | `agent.options`、`agent.session.requestHeader()`（[summary.ts:426](packages/uitstalie/memory/src/summary.ts#L426)-[:431](packages/uitstalie/memory/src/summary.ts#L431)）、`agent.session.surface.nodes`（[index.ts:250](packages/uitstalie/memory/src/index.ts#L250)） | 宿主 Agent/Session 结构变化会直接打穿 provider；没有适配层 |
-| 硬编码存储路径写进提示词 | prompt 文本与工具描述写 `.dsh/memory`（[prompt.ts:21](packages/uitstalie/memory/src/prompt.ts#L21)、[tools.ts:115](packages/uitstalie/memory/src/tools.ts#L115)），与 `store-atom` 的 `STORE_DIR_NAME` 是第二份真相 | 换存储根/改目录名时，模型提示会撒谎 |
-| UI 与 host 的配置字段双写 | `ui-memory` 的 7 个字段名（[settings.ts:35](packages/uitstalie/ui-memory/src/client/settings.ts#L35)-[:43](packages/uitstalie/ui-memory/src/client/settings.ts#L43)）与 host 的 10 字段（[config.ts:66](packages/uitstalie/memory/src/config.ts#L66)-[:77](packages/uitstalie/memory/src/config.ts#L77)）各写一份；sectionId/order 也在两处（[index.ts:40](packages/uitstalie/memory/src/index.ts#L40)、[ui-memory/src/section.ts:7](packages/uitstalie/ui-memory/src/section.ts#L7)） | 改字段名不会编译报错，只表现为空值或保存被拒 |
-| 换存储 / 换 provider | 存储走 `ctx.dshStore` + `dsh-fs` 的 `FS_STALE_VERSION`；模型走 `ctx.llm` + 路由回退 | 换存储要重写 `memory-file` 的版本冲突判断；换 provider 无影响（设计正确） |
-
-#### jira
-
-- **好的边界**：`jira-core` 真的零宿主 import（`boundaries.spec.ts` + 我的复核）；`jira-service` 是唯一写者；`ui-jira` 只走 `remote.jira`；`jira-cli` 不依赖 `jira-agent`。
-- **agent 对宿主的直接依赖**：9 个 duck-typed 服务（`sessionController`、`workspaceRegistry`、`llm`、`agents`、`tokenMeter`、`compaction`、`sandboxPolicy`、`permissionPresets`、`storageDomain`）；以及 `agent.ctx.effect`（[superagent.ts:4507](packages/jira/jira-agent/src/superagent.ts#L4507)）、`session.snapshotEvents`、`agent.cancel({..})`、`whenIdle` 等 Agent 内部 API。缺席即静默降级，没有类型检查。
-- **为绕过 `inject` 而做的 cast**：`contribution.ts:152`、`superagent.ts:4081` 把 `ctx` 断言成 `{ inject?: ... }` 再手工调用，而不是用 Cordis 的 `ctx.inject` 声明。能工作，但把生命周期交给了调用者（见 2.6）。
-- **UI 绕过 typert 类型**：`ui-jira/src/client/index.ts:157`、[:174](packages/jira/ui-jira/src/client/index.ts#L174) 用 `as unknown as` 访问 `superagentSetup` / `superagentState`，而 `store.ts` 的 `JiraWire` 没有这两个方法（[store.ts:32](packages/jira/ui-jira/src/client/store.ts#L32)-[:49](packages/jira/ui-jira/src/client/store.ts#L49)）。协议变更不会在这里报错。
-- **硬编码**：`.superagent/ledger`（`dispatch-ledger.ts:20`）、`Super agent` 标题、`workspace-write` 默认、`~/.dsh/sessions`、`$DSH_HOME/attachments`。这些是产品选择，但都散落在代码而不是一个配置/常量模块。
-- **循环依赖**：无。`jira-agent` 只 type-only import `jira-service`；`jira-service` 不 import `jira-agent`。但 `jira-agent/package.json` 把 `jira-service` 放在 `devDependencies`（[:43](packages/jira/jira-agent/package.json#L43)），而 `tools.ts:25` 的类型会出现在发布的 `lib/types` 里 —— 对消费者来说这是一个未声明的类型依赖。
-
-### 2.6 维度 6：组合性
-
-#### memory
-
-- **可单独禁用**：Loader 行可整行关闭；`/memory` 用 `ctx.inject(['commands'])` 可选挂载（[index.ts:269](packages/uitstalie/memory/src/index.ts#L269)-[:271](packages/uitstalie/memory/src/index.ts#L271)），这是正确的组合写法。
-- **声明不准确**：`inject` 6 项里 `fs` 未用；`jobs` 只是“存在”，真正可用还依赖 `tool-jobs` attach controller。两者都让“可选能力”实际上不可选。
-- **配置暴露不全**：10 个字段里 UI 只编辑 7 个（缺 `maxEntries`、`snapshotTemplate`、`snapshotPosition`）；后两者只能改 profile YAML。
-- **section 契约无交叉校验**：host 的 `MEMORY_SETTINGS_SECTION/ORDER` 与 UI 的 `section.ts` 各写一份，改一处不会编译失败。
-
-#### jira
-
-- **两个能力独立 gate 是优点**：`jira` 与 `superagent` 分别注册、分别 `enabledByDefault`，dafeiyu 可按 id 开关（[index.ts:205](packages/jira/jira-agent/src/index.ts#L205)-[:249](packages/jira/jira-agent/src/index.ts#L249)）。
-- **但默认值与组合不一致**：`jira` 在交付 patch 里被显式打开（[cordis.patch.uitstalie.yml:9](packages/bundle/web-app/cordis.patch.uitstalie.yml#L9)-[:13](packages/bundle/web-app/cordis.patch.uitstalie.yml#L13)）；`superagent` 没有条目，按 `enabledByDefault`（home 未配置 → false）关闭。`jira-worker` preset 已经随 bundle 发布（`presets/jira-worker.patch.yml`），却没有任何行配置把它与 `superagent_worker_preset` 连起来 → **“preset 存在但派发永远拒绝”**。
-- **“个人分支层”被塞进公开 bundle**：`@deepseek-ai/dsh-web-app` 的 `dsh.bundle.patch` 无条件列出 `./cordis.patch.uitstalie.yml`（[packages/bundle/web-app/package.json:50](packages/bundle/web-app/package.json#L50)-[:57](packages/bundle/web-app/package.json#L57)），于是安装这个公开包的人会一并挂上 memory、jira、persona-card 等分支插件；要关掉只能改 patch。组合边界是“分支层”而不是“可选 bundle”。
-- **依赖声明**：`jira-core` 声明了 `peerDependencies: cordis`（[jira-core/package.json:23](packages/jira/jira-core/package.json#L23)-[:25](packages/jira/jira-core/package.json#L25)），但它零宿主 import，这个 peer 是空的；memory 则相反，缺了两个实际运行依赖。两种方向的“声明不准”都存在。
-- **生命周期**：`createSuperagentContribution` 的 `dispose` 是同步的（`CapabilityContribution.dispose?(): void`，dafeiyu [types.ts:98](packages/uitstalie/dafeiyu/src/types.ts#L98)），所以 `void dispatchStore?.close()`（[superagent.ts:4544](packages/jira/jira-agent/src/superagent.ts#L4544)）无法被等待；同时 `poll()` 没有 `disposed` 标志，定时器清掉后**已启动的一轮 pass 仍会继续**（[:4103](packages/jira/jira-agent/src/superagent.ts#L4103)-[:4124](packages/jira/jira-agent/src/superagent.ts#L4124)）。dafeiyu 的 `contain` 对返回的 Promise 只做 `catch`、不 `await`（[dafeiyu/src/index.ts:526](packages/uitstalie/dafeiyu/src/index.ts#L526)-[:535](packages/uitstalie/dafeiyu/src/index.ts#L535)）。影响：禁用能力后仍可能产生一条 proposal 评论；关闭 dispatch store 与 storageDomain 撤出并发。属于**契约限制下的未收口**，不是必现数据损坏。
-
-### 2.7 维度 7：文档是否过时
-
-原则：**“文档缺失”与“文档错误”分开列**。
-
-#### 文档错误（可指到代码）
-
-| 文档位置 | 过时内容 | 代码现状 | 应改成 |
-|---|---|---|---|
-| [memory/README.md:67](packages/uitstalie/memory/README.md#L67)、[:88](packages/uitstalie/memory/README.md#L88)、[:142](packages/uitstalie/memory/README.md#L142) | 快照“append or replace”“原地 replace、`surfaceOp: replace`” | 只 append（[snapshot.ts:425](packages/uitstalie/memory/src/snapshot.ts#L425)、[:420](packages/uitstalie/memory/src/snapshot.ts#L420)-[:424](packages/uitstalie/memory/src/snapshot.ts#L424) 注释） | 改为 append-only；删掉 `surfaceOp: replace` |
-| [memory/README.md:84](packages/uitstalie/memory/README.md#L84) | “迁移在 detail append 之后” | 先迁移后 append（[summary.ts:331](packages/uitstalie/memory/src/summary.ts#L331)-[:360](packages/uitstalie/memory/src/summary.ts#L360)） | 按 DH-710 顺序改写 |
-| [memory/README.md:76](packages/uitstalie/memory/README.md#L76) | `onTurnEnd` 只对 completed 调用 | dafeiyu 对所有 `turn/end` 派发（[dafeiyu/src/index.ts:336](packages/uitstalie/dafeiyu/src/index.ts#L336)） | 要么改代码加过滤，要么改文档并处理非 completed |
-| [memory/README.md:90](packages/uitstalie/memory/README.md#L90) | “`Window:` manifest” | 实际是 `Archived:`（[snapshot.ts:403](packages/uitstalie/memory/src/snapshot.ts#L403)、[:409](packages/uitstalie/memory/src/snapshot.ts#L409)） | 改字样 |
-| [memory/README.md:54](packages/uitstalie/memory/README.md#L54) | “六个硬依赖，含 `ctx.fs`” | `ctx.fs` 生产未用；`dsh-llm`/`dsh-session` 才是缺声明的运行依赖 | 改依赖列表，并补 manifest |
-| [memory/README.md:138](packages/uitstalie/memory/README.md#L138) | “每次请求最多 16 KiB” | 每个摘要 pass 可追加一条新快照（[summary.ts:361](packages/uitstalie/memory/src/summary.ts#L361)） | 改为“单条 ≤16 KiB，surface 可累积多条” |
-| [memory/README.md:188](packages/uitstalie/memory/README.md#L188) | “position/template 改动是 row reload” | 两者都是 volatile；position 运行期切换不重接 | 改文档 + 修切换 |
-| [jira-agent/README.md:12](packages/jira/jira-agent/README.md#L12) | “两个能力都 `enabledByDefault: false`” | superagent 是 `homeProblem === undefined`（[index.ts:228](packages/jira/jira-agent/src/index.ts#L228)） | 改为“jira 默认关；superagent 由 home 是否配置决定” |
-| [jira-agent/README.md:90](packages/jira/jira-agent/README.md#L90)、[:95](packages/jira/jira-agent/README.md#L95) | “root agent 带 10 个工具”“每次请求 10 个 schema” | 普通 root 6 个、super agent 5 个（[superagent.ts:4484](packages/jira/jira-agent/src/superagent.ts#L4484)-[:4501](packages/jira/jira-agent/src/superagent.ts#L4501)） | 按 6/5 分流改写，或调整实现 |
-| [jira-agent/README.md:107](packages/jira/jira-agent/README.md#L107) | “runner 仍按深路径 import jira-core / 走 `ctx.jira.store()`” | 无深路径 import；`JiraServiceApi` 没有 `store()`（`types.ts` 方法表） | 删除该限制 |
-| [jira-service/README.md:55](packages/jira/jira-service/README.md#L55) | “浏览器面唯一的写是 `superagentConfirm`” | `superagentSetup` 会 `mkdir`、注册 workspace、写 profile（[remote.ts:230](packages/jira/jira-service/src/remote.ts#L230)-[:259](packages/jira/jira-service/src/remote.ts#L259)） | 补第二个写并说明权限边界 |
-| [jira-service/README.md:32](packages/jira/jira-service/README.md#L32) 的服务方法枚举 / [:42](packages/jira/jira-service/README.md#L42) 的 remote 表 | 服务枚举漏 `status/snapshot/queryIssues/tagsLint/syncState`；remote 表漏 `superagentState/superagentSetup` | `types.ts` 的 `JiraServiceApi` 与 `remote.ts` 的 `@Remote` | 按当前 API 重列 |
-| [jira/README.md:12](packages/jira/README.md#L12)、[:32](packages/jira/README.md#L32) | jira-agent 只写“three tools”；ui-jira 只写状态/看板/详情/KB | 另有 `issue_work` + 10 个 `superagent_*`；UI 还有 superagent 面板与 sidebar setup（[ui-jira/src/client/index.ts:125](packages/jira/ui-jira/src/client/index.ts#L125)-[:167](packages/jira/ui-jira/src/client/index.ts#L167)） | 同步工具数与 UI 能力 |
-| [HANDOVER.md:3](packages/jira/HANDOVER.md#L3)、[:20](packages/jira/HANDOVER.md#L20)、[:83](packages/jira/HANDOVER.md#L83)、[:284](packages/jira/HANDOVER.md#L284)、[:400](packages/jira/HANDOVER.md#L400) | 199 决策、702 测试、`src/core`/`src/cli`/`src/plugin`、`dist/plugin/index.js`、`pnpm build` 必做 | 五包 monorepo；入口为 `lib/index.js`；node 测试 774；DESIGN 已有 223 条 | 页首标“历史文档”；或移入 `archive/` |
-| [DESIGN.md:3](packages/jira/DESIGN.md#L3) | 状态栏“82 条已确认决策”、讨论稿 v3 | §8 实际编号 1–223（脚本统计 310 行，最大 223） | 更新状态行；标注被 MIGRATION 取代的布局 |
-| [DESIGN.md:177](packages/jira/DESIGN.md#L177)-[:179](packages/jira/DESIGN.md#L179) | 单包 `src/core`/`src/cli`/`src/plugin` 树 | 五包 | 加“历史布局，见 MIGRATION.md” |
-| [DESIGN.md:33](packages/jira/DESIGN.md#L33) | 核对基线 `@deepseek-ai/dsh-root@0.2.1-alpha.2` | 根 `package.json` 版本 `0.2.2-alpha.3` | 重核并更新基线 |
-| [ARCHIVE-SOURCE.md:27](packages/jira/ARCHIVE-SOURCE.md#L27) + [jira/README.md:43](packages/jira/README.md#L43) | 声明 HANDOVER“正文未改”，同时把 HANDOVER 作为“current state / open work”链接 | HANDOVER 全篇是迁移前结构 | 两者之一：加横幅，或停止在 README 里称其为当前交接 |
-| [MIGRATION.md:5](packages/jira/MIGRATION.md#L5)、[:15](packages/jira/MIGRATION.md#L15) | 目标包名 `@uitstalie/*`、计划形态 | 实际 `@deepseek-ai/dsh-*`，已落地 | 页首已注明“计划值”，建议在 §2.1 也加同一句 |
-
-#### 文档缺失
-
-- 没有 `docs/subsystems/memory.md` / `docs/subsystems/jira.md`，也没有产品级用户页；只有生成目录（`docs/config-catalog.md`、`module-graph.md`）覆盖配置与包图。`ctx.jira` / `remote.jira` 的契约目前只存在于包 README 与 `types.ts`。
-- `docs/user/guide/mcp-memory.md` 是第三方 MCP memory 服务，与 `dsh-memory` 同名不同物，容易被误读为同一能力。
-- 没有“当前态”的运维页：五包怎么 build/test/smoke、怎么在 profile 里开关 superagent、怎么设置 worker preset，散落在旧 HANDOVER 与源码里。
-- `jira-agent` 的 11 个 `superagent_*` 行配置没有包级配置表（只有 `index.ts` 的 JSDoc 与生成目录）。
+Not run: the repository-wide `pnpm test` (affected by other uncommitted changes in this working tree, and time-consuming), real GUI compositions, and documentation checks such as `verify-translation-pairing`. See §9 for details.
 
 ---
 
-## 3. 重复与可复用清单（汇总）
+## 2. Findings by dimension
 
-| # | 重复实现位置 | 已有替代 | 建议动作 | 优先级 |
+### 2.1 Dimension 1: Degree of implementation
+
+#### memory
+
+| Declared capability | Status | Evidence and explanation |
+|---|---|---|
+| Fixed prompt section | Implemented | `packages/uitstalie/memory/src/prompt.ts` + `packages/uitstalie/memory/src/index.ts#L239` |
+| `memory_write` / `memory_search` / `memory_read` | Implemented | Starting at `packages/uitstalie/memory/src/tools.ts#L109`, `packages/uitstalie/memory/src/tools.ts#L192`, and `packages/uitstalie/memory/src/tools.ts#L268` |
+| Snapshot (depth-0 message / `memory-state` section) | Implemented, **but runtime switching has a gap** | `packages/uitstalie/memory/src/snapshot.ts#L209`-`packages/uitstalie/memory/src/snapshot.ts#L232`; see 2.2 |
+| `detail`/`brief`/`forget` three-tier migration | Implemented; gated by compaction in production | `packages/uitstalie/memory/src/summary.ts#L327`-`packages/uitstalie/memory/src/summary.ts#L330`, `packages/uitstalie/memory/src/summary.ts#L349` |
+| `/memory summaries\|stats\|prune\|pause\|resume\|edit\|revert` | Implemented | `packages/uitstalie/memory/src/commands.ts#L67`-`packages/uitstalie/memory/src/commands.ts#L198` |
+| `MEMORY.history.json` sidecar | Implemented | `packages/uitstalie/memory/src/memory-file.ts#L784`, `packages/uitstalie/memory/src/memory-file.ts#L508` |
+| Version guard + one retry | Implemented | `packages/uitstalie/memory/src/memory-file.ts#L755`, `packages/uitstalie/memory/src/memory-file.ts#L858` |
+| One job per session + pending merge | Implemented | `packages/uitstalie/memory/src/summary.ts#L206`-`packages/uitstalie/memory/src/summary.ts#L290` |
+| Failure notice | **Partially implemented (incorrect trigger condition)** | `packages/uitstalie/memory/src/summary.ts#L374`-`packages/uitstalie/memory/src/summary.ts#L386`; see “Present but nonfunctional” in 2.1 |
+| Session-side search | Implemented but **has no test coverage** | The test `SessionQueryEngine` always returns empty (`packages/uitstalie/memory/tests/harness.ts#L47`-`packages/uitstalie/memory/tests/harness.ts#L55`) |
+
+“Present but nonfunctional / happy path only”:
+
+- **Failure notices for aborted/errored turns** (above). This is more than “one extra message”: every canceled turn occupies a job, runs a failure path, and may show the misleading “Memory summary failed” notice after the user merely pressed cancel.
+- **A turn containing the first snapshot can never be collapsed**: `rawTurnTarget` explicitly rejects ranges containing a memory snapshot (`packages/uitstalie/memory/src/checkpoint.ts#L185`-`packages/uitstalie/memory/src/checkpoint.ts#L191`); when no snapshot already exists, the session's first `memory_write` appends a complete snapshot (`packages/uitstalie/memory/src/tools.ts#L158`-`packages/uitstalie/memory/src/tools.ts#L171`) → that turn's range can never be replaced, and every later pass retries it and emits a debug log. The README's description of “retry” does not explain that “some ranges will never succeed.”
+- **The missing-`jobs` branch is unreachable**: `inject` already declares `jobs` (`packages/uitstalie/memory/src/index.ts#L34`), so the `ctx.get('jobs') === undefined` branch in `summary.ts` (`packages/uitstalie/memory/src/summary.ts#L236`) cannot occur in the real host; the corresponding test proves only that “the plugin does not activate without jobs,” not that branch.
+- **`/memory revert <turn> extra text` is silently accepted**: `revertOne` reads only `parsed.turn` (`packages/uitstalie/memory/src/commands.ts#L187`-`packages/uitstalie/memory/src/commands.ts#L190`); extra arguments are discarded rather than reported as errors.
+
+Conclusion: memory is **usable but has gaps**; the main flow is complete, while failure paths and one silent dead path are its weaknesses. Rating C.
+
+#### jira
+
+| Declared capability | Status | Evidence and explanation |
+|---|---|---|
+| Ten `jira_issue` verbs | Implemented | `ISSUE_PARAMETERS` in `packages/jira/jira-agent/src/toolIssue.ts`; group-level parity tests guard the verb mapping |
+| `jira_list` / `jira_kb` | Implemented | `packages/jira/jira-agent/src/toolList.ts`, `packages/jira/jira-agent/src/toolKb.ts` |
+| Executor `issue_work` | Implemented | `packages/jira/jira-agent/src/workIssue.ts`; `scope: 'all'` + worker routing (`packages/jira/jira-agent/src/contribution.ts#L174`-`packages/jira/jira-agent/src/contribution.ts#L180`) |
+| `jira:store` runtime context | Implemented | `packages/jira/jira-agent/src/contribution.ts#L151`-`packages/jira/jira-agent/src/contribution.ts#L172` |
+| Monotonic write guard | **Partially implemented** | It intercepts only `jira_issue` (`packages/jira/jira-agent/src/wiring.ts#L35`-`packages/jira/jira-agent/src/wiring.ts#L42`); `jira_kb` writes check themselves in the handler (`packages/jira/jira-agent/src/toolKb.ts#L82`), rather than relying on guard coverage |
+| `/jira` + three skills | Implemented | `packages/jira/jira-agent/src/wiring.ts#L57`, `packages/jira/jira-agent/src/wiring.ts#L89` |
+| Turn-end settle + push queue | Implemented | `packages/jira/jira-agent/src/contribution.ts#L104`-`packages/jira/jira-agent/src/contribution.ts#L124`; `packages/jira/jira-service/src/index.ts#L928` |
+| 10 superagent tools | Implemented, but **each agent receives only 6 or 5** | Ordinary root: source/scan/claim/workspace/status/dispatch (`packages/jira/jira-agent/src/superagent.ts#L4494`-`packages/jira/jira-agent/src/superagent.ts#L4501`); super agent: workspace/session/ledger/models/deliver (`packages/jira/jira-agent/src/superagent.ts#L4486`-`packages/jira/jira-agent/src/superagent.ts#L4493`) |
+| Daemon (sessionless dispatcher) | Implemented, opt-in | `packages/jira/jira-agent/src/superagent.ts#L4101`-`packages/jira/jira-agent/src/superagent.ts#L4124` |
+| dispatch / recover | Implemented, **but unreachable in the delivery composition** | See item 2 in the executive summary |
+
+Conclusion: the jira ledger itself is **complete**; superagent is **usable but has gaps**; overall B.
+
+### 2.2 Dimension 2: Whether the design matches expectations
+
+#### memory
+
+Memory has no standalone design document; **the README itself serves as the design specification** (“Understand the implementation” + “Model Experience”). Comparing the README as a statement of design intent with the implementation leads to this conclusion: **the core design intent (append-only, KV-cache-friendly, collapsing at compaction boundaries, tiered forgetting) holds in the implementation, but the documentation remains on the previous version's semantics, so “design intent” and “implementation” conflict on paper.**
+
+| Design intent (README) | Actual implementation | Gap |
+|---|---|---|
+| Replace snapshots in place while keeping the prefix unchanged (`packages/uitstalie/memory/README.md#L67`, `packages/uitstalie/memory/README.md#L88`, `packages/uitstalie/memory/README.md#L142`) | `appendSnapshot` only appends (`packages/uitstalie/memory/src/snapshot.ts#L425`); a comment explains that replacement breaks the KV cache | **Documentation error**; `packages/uitstalie/memory/README.md#L134` and `packages/uitstalie/memory/README.md#L148` in the same README already describe the new semantics |
+| Migration runs after the detail append (`packages/uitstalie/memory/README.md#L84`) | `migrateMemoryTiers` runs before `appendTurnSummary` (`packages/uitstalie/memory/src/summary.ts#L331`-`packages/uitstalie/memory/src/summary.ts#L360`), namely DH-710 | **Documentation error** |
+| `onTurnEnd` receives only completed root turns (`packages/uitstalie/memory/README.md#L76`) | The organizer dispatches every `turn/end` (dafeiyu `packages/uitstalie/dafeiyu/src/index.ts#L336`) | **Documentation error**, and the implementation does not add the missing filter |
+| Changes to `snapshotPosition` / `snapshotTemplate` trigger a row reload (`packages/uitstalie/memory/README.md#L188`) | Both are `.volatile()` (`packages/uitstalie/memory/src/config.ts#L75`-`packages/uitstalie/memory/src/config.ts#L76`); template changes take effect on the next refresh, while `position` is fixed during wiring, so “changing it has no effect and reports no error” | **Documentation error + implementation defect** |
+| Snapshots occupy at most 16 KiB per request (`packages/uitstalie/memory/README.md#L138`) | Each summary pass may append a new snapshot (`packages/uitstalie/memory/src/summary.ts#L361` → `packages/uitstalie/memory/src/snapshot.ts#L230`), deduplicating only by whole-string equality with the “previous snapshot” | **Semantic drift**: each snapshot is ≤16 KiB, but multiple snapshots accumulate on the surface |
+| `Window:` manifest (`packages/uitstalie/memory/README.md#L90`) | The implementation renders `Archived:` (`packages/uitstalie/memory/src/snapshot.ts#L403`, `packages/uitstalie/memory/src/snapshot.ts#L409`); a code comment explains the rename | **Documentation error** |
+
+Assessment: memory's design intent and implementation have no **architectural** conflict; the problem is that the documentation was not updated after DH-723/724 changed the semantics, so the README can serve neither as a specification nor as user guidance.
+
+#### jira
+
+Jira's design intent is primarily recorded in three places: `DESIGN.md` (decision log, entries 1–223), `MIGRATION.md` (target shape of the three-layer split), and the package READMEs (current behavior).
+
+Alignment results:
+
+| Design intent | Actual implementation | Gap |
+|---|---|---|
+| MIGRATION: one bundle + five packages, with four surfaces depending only on `ctx.jira` | All five packages exist; `jira-agent` imports `jira-service` only with type-only imports; `ui-jira` uses `remote.jira`; the CLI drives core directly | **Matches**; however, `jira-agent`'s runner still bypasses the service and reads jira-core directly (see README:107, which no longer matches reality) |
+| DESIGN 64/108: one package, adapter layer with zero host dependencies | Split into five packages; `jira-agent/src` has 102 `@deepseek-ai/*` imports | **Superseded by MIGRATION**; the document is not marked accordingly |
+| DESIGN 141/96: exactly one write guard covering “write action × non-writable session” | The guard examines only `jira_issue`'s `action` (`packages/jira/jira-agent/src/wiring.ts#L36`-`packages/jira/jira-agent/src/wiring.ts#L38`) | **Narrower than the design states**; `jira_kb` writes rely on the handler, and `issue_work` relies on claim |
+| DESIGN 200–223: superagent dispatch chain | Tools, daemon, dispatch, recover, and ledger are all implemented | **The implementation covers more detail than the design document**, but the delivery composition is not wired (see 2.6) |
+| DESIGN 15/148: settle before pushing, ensuring that what is pushed matches the source | `sync()` uses `flushNow({ settle: true })` (`packages/jira/jira-service/src/index.ts#L907`-`packages/jira/jira-service/src/index.ts#L921`); `settle()` regenerates and commits (`packages/jira/jira-service/src/index.ts#L928`-`packages/jira/jira-service/src/index.ts#L936`) | **Matches** |
+
+In addition, `reconfigure()` in `jira-service/src/index.ts` contains a block of **verbatim duplicate assignments** (`packages/jira/jira-service/src/index.ts#L253`-`packages/jira/jira-service/src/index.ts#L255` and `packages/jira/jira-service/src/index.ts#L257`-`packages/jira/jira-service/src/index.ts#L259`), a copy-paste remnant from implementation. It does not affect behavior but indicates that this path lacked review.
+
+### 2.3 Dimension 3: Code simplicity and reusability
+
+#### memory
+
+- **Long functions/large classes**: `MemorySummaryRunner` runs from `packages/uitstalie/memory/src/summary.ts#L184` to `packages/uitstalie/memory/src/summary.ts#L399`, about 216 lines; `runPass` alone is about 95 lines (`packages/uitstalie/memory/src/summary.ts#L293`-`packages/uitstalie/memory/src/summary.ts#L387`). `apply` is about 72 lines (`packages/uitstalie/memory/src/index.ts#L201`-`packages/uitstalie/memory/src/index.ts#L272`) and combines four responsibilities in one function: “read configuration, register capabilities, register commands, cache snapshots.”
+- **Copy-paste (definitions verified)**: three copies of `truncateToBytes` (`packages/uitstalie/memory/src/read.ts#L295`, `packages/uitstalie/memory/src/snapshot.ts#L471`, `packages/uitstalie/memory/src/summary.ts#L724`); three copies of `byteLength` (`packages/uitstalie/memory/src/read.ts#L309`, `packages/uitstalie/memory/src/snapshot.ts#L466`, `packages/uitstalie/memory/src/summary.ts#L712`); four copies of `errorMessage` (`packages/uitstalie/memory/src/checkpoint.ts#L230`, `packages/uitstalie/memory/src/memory-file.ts#L2197`, `packages/uitstalie/memory/src/snapshot.ts#L486`, `packages/uitstalie/memory/src/summary.ts#L739`). These are pure text utilities; extracting one `text.ts` would suffice and carries little risk.
+- **Implicit state**: `snapshotTexts` is a `Map` in the `apply` closure (`packages/uitstalie/memory/src/index.ts#L223`-`packages/uitstalie/memory/src/index.ts#L227`); it only grows, and `dispose` does not clear it. The same applies to `MemorySummaryRunner`'s `sessions`/`noticed` (`packages/uitstalie/memory/src/summary.ts#L185`-`packages/uitstalie/memory/src/summary.ts#L187`). They are bounded by “the number of sessions seen in the process,” so this is not leak-level, but it is a case of “state without a single owner.”
+- **Inconsistent error model**: `memory-file.ts` uses `MemoryDocumentError`, while the other modules extensively use bare `Error` (`packages/uitstalie/memory/src/config.ts#L116`, `packages/uitstalie/memory/src/summary.ts#L455`, `packages/uitstalie/memory/src/tools.ts#L155`, etc.). Upper layers cannot distinguish “corrupt document” from “invalid argument.”
+- **Handwritten mini formats**: `memory-file.ts` uses five regular expressions to parse entry suffixes and strip them in reverse order (`packages/uitstalie/memory/src/memory-file.ts#L326`-`packages/uitstalie/memory/src/memory-file.ts#L341`); `parseSummaryJson` uses the heuristic of “first `[`/`{` through last `]`/`}`” (`packages/uitstalie/memory/src/summary.ts#L658`-`packages/uitstalie/memory/src/summary.ts#L670`). A custom format for the managed block is acceptable, but bracket slicing of model output is unreliable on prose containing `}`.
+- **Pointless abstractions**: `MEMORY_ENTRY_LABELS = MEMORY_ENTRY_KINDS` (`packages/uitstalie/memory/src/commands.ts#L32`) is only an alias; `findSection`/`sameSection` and `findContainingSection` are two separate lookup mechanisms (`packages/uitstalie/memory/src/memory-file.ts#L1124`, `packages/uitstalie/memory/src/memory-file.ts#L1337`).
+
+#### jira
+
+- **Oversized single file**: `superagent.ts` has 4,350 lines. Its longest functions are `createSuperagentContribution`, `packages/jira/jira-agent/src/superagent.ts#L4048`-`packages/jira/jira-agent/src/superagent.ts#L4552` (505 lines), and `runSessionTool`, `packages/jira/jira-agent/src/superagent.ts#L2405`-`packages/jira/jira-agent/src/superagent.ts#L3057` (653 lines).
+- **The same envelope is handwritten repeatedly**: besides `toolFailure`, `{ ok: true, writable, me, ... }` is expanded repeatedly in multiple runners; `verdictOf` (`packages/jira/jira-agent/src/superagent.ts#L725`) is used only by the models tool and nowhere else.
+- **`createSuperagentContribution` mixes responsibilities**: the same function authorizes fs roots (`packages/jira/jira-agent/src/superagent.ts#L4072`-`packages/jira/jira-agent/src/superagent.ts#L4077`), injects the systemPrompt (`packages/jira/jira-agent/src/superagent.ts#L4081`-`packages/jira/jira-agent/src/superagent.ts#L4100`), subscribes to domains/events (`packages/jira/jira-agent/src/superagent.ts#L4129`-`packages/jira/jira-agent/src/superagent.ts#L4161`), sets timers (`packages/jira/jira-agent/src/superagent.ts#L4163`), and defines and renders 10 specs. It combines “registration + IO + business logic + rendering” in one.
+- **Duplicate assignments in the service layer**: the six duplicate lines in `reconfigure()` (see 2.2).
+- **Duplicate staged-form controllers in the UI**: `MemorySettingsController` at `ui-memory/src/client/settings.ts:119` and `PersonalitySettingsController` at `ui-personality/src/client/settings-form.ts:112` correspond item by item (`FIELDS`/`NUMERIC`/`EMPTY`/`UNAVAILABLE`/`draftOf`/`validNumber`/`edit`/`discard`/`save`); these are two plugins rather than one plugin internally, but the “configuration form controller” could be extracted into `ui-primitives` or a shared base class.
+- **Misplaced JSDoc**: “Publish the current projection” at `ledger-settings.ts:226` is attached above `accepted()`, while the actual `publish()` is at `packages/jira/ui-jira/src/client/ledger-settings.ts#L232` and has no comment (`packages/jira/ui-jira/src/client/ledger-settings.ts#L226`-`packages/jira/ui-jira/src/client/ledger-settings.ts#L232`).
+- **The 13 combinators in `result.ts`**: `map/mapErr/andThen/orElse/unwrapOr/collect/partition/pipe/isOk/isErr` appear only in `result.ts` and `result.test.ts`; production code uses only `ok`/`err`/`Result` (confirmed by grep across the group). This is a **public API with no consumers**, and the tests perpetuate its maintenance cost.
+
+Types and error handling (jira): the `JiraError` + `Result` model is highly consistent in core (zero `throw` in non-test source), one of the best parts of this project; the problems are confined to the envelopes in the agent adapter layer and the UI boundary.
+
+### 2.4 Dimension 4: Whether wheels were reinvented
+
+Assessment criterion: a **wrapper with a clear platform/offline rationale and correct behavior** counts as a “reasonable wrapper”; only a facility **already present in the repository with the same capability and semantics** counts as reinventing the wheel.
+
+| Duplicate implementation | Location | Existing alternative | Assessment and recommendation |
+|---|---|---|---|
+| Atomic write (tmp + rename + 3 backoffs) | `writeTextAtomic` at `packages/jira/jira-core/src/io.ts#L178`; retry constants at `packages/jira/jira-core/src/system/policy.ts#L17` | `writeFileAtomic` / `withFileLock` in `packages/util/atomic-write`, used by 10+ production packages including `boot/config-editor`, `credentials-local`, and `boot/plugin-manager` | **Reinvented wheel**. If jira's “zero-dependency/offline-copy” premise is retained, it should at least share the same retry and error semantics; that premise is weaker in the monorepo |
+| Cross-process lock (mkdir + owner + heartbeat/reaping) | `packages/jira/jira-core/src/lock.ts#L1`-`packages/jira/jira-core/src/lock.ts#L50` | `withFileLock` in `atomic-write`; lease/flock in `session-persistence-jsonl` | **Reasonable wrapper + partial duplication**: the mkdir lock has a genuine Windows antivirus rationale (decision 59), but the repository already has two lock implementations, so a third should at least share the interface and timeout semantics |
+| Restricted YAML/frontmatter parsing | `packages/jira/jira-core/src/frontmatter.ts#L1`-`packages/jira/jira-core/src/frontmatter.ts#L40` | `yaml` is already a workspace dependency used by `store-atom`, `personality`, and others; memory also uses `yaml` directly | **Justified wrapper** (strict rejection, text as truth, decision 105), but “must support offline copying and have zero runtime dependencies” (decision 65) no longer holds in the five-package monorepo; update the rationale in the documentation rather than rewriting it now |
+| Handwritten JSON Schema subset + parameter validation | `packages/jira/jira-core/src/schema.ts#L1`-`packages/jira/jira-core/src/schema.ts#L15`, `validate.ts` | `zod@4.4.3` is already a direct dependency of `jira-agent` (`packages/jira/jira-agent/package.json#L33`); `z.toJSONSchema` can produce the host dialect, and `schemastery` is also in use | **Reinvented wheel** (the clearest case). The rationale is still “the adapter layer does not import the host,” but `jira-agent` already imports the host; move parameter validation to the agent adapter layer using zod, and keep only output shapes in core |
+| home/`~` resolution | `packages/jira/jira-core/src/system/env.ts`, `superagent-setup.ts:55` | `resolveDshHome` in `@deepseek-ai/dsh-home-paths` | **Reasonable wrapper but has drifted once** (recorded in HANDOVER); reuse it or add cross-tests |
+| Regex-based tag-file reading | `packages/jira/jira-core/src/store.ts#L114`-`packages/jira/jira-core/src/store.ts#L130` | `decodeTag` in the same package's `tagstore.ts` | **Internal duplication**; merge them, because two decoders in the same file will eventually drift |
+| Session-event derivation (title/activity/cache/latest task) | `activityOf`/`cacheHitOf`/`sessionTitleOf`/`lastTaskOf` in `superagent.ts` | `session-stats`, `session-turn-outline`, Session projections | **Partial duplication** (determined by static reading): superagent needs a “cross-workspace session overview,” which existing packages do not directly provide; however, replaying `snapshotEvents()` and hardcoding event names will drift from the session event vocabulary over time |
+| UI configuration form controllers | `packages/uitstalie/ui-memory/src/client/settings.ts#L119` vs `packages/uitstalie/ui-personality/src/client/settings-form.ts#L112` | No shared base class | **Copy-paste**; extract a `StagedConfigFormController` |
+| `.superagent` path rules and home validation | `packages/jira/jira-service/src/superagent-setup.ts#L67`, `packages/jira/jira-service/src/superagent-setup.ts#L87` vs `packages/jira/jira-agent/src/superagent.ts#L324`, `packages/jira/jira-agent/src/superagent.ts#L366` | Two implementations | **Duplicated and already drifted**: the agent side uses `realpathSync`, while the service side uses lexical comparison via `resolve`; the two entry points may disagree on whether paths identify “the same directory” |
+
+The parts that are “reasonable wrappers, not duplication”: `jira-core`'s `Result`/`JiraError` model, `runGit` in `git.ts`, platform adaptation in `system/*`, the offline single-file board in `boardHtml.ts`, and `ui-jira`'s `remote.jira` read model.
+
+### 2.5 Dimension 5: Degree of decoupling
+
+#### memory
+
+| Coupling point | Evidence | Impact |
+|---|---|---|
+| Unused `fs` dependency declared | `inject` includes `fs` (`packages/uitstalie/memory/src/index.ts#L34`); `ctx.fs` is spied only in tests (`checkpoint.spec.ts:167`, etc.) and never read by production code | Valid compositions without `fs` are rejected, unnecessarily binding the capability to fs |
+| Hidden dependency on the `tool-jobs` controller | `jobs.start` may be available, but the controller must be attached by `tool-jobs` (`summary.ts:236` checks only that `jobs` exists) | Summaries are silently skipped when the composition lacks `tool-jobs`, and `inject` cannot express this dependency |
+| Direct reads of Agent internals | `agent.options`, `agent.session.requestHeader()` (`packages/uitstalie/memory/src/summary.ts#L426`-`packages/uitstalie/memory/src/summary.ts#L431`), `agent.session.surface.nodes` (`packages/uitstalie/memory/src/index.ts#L250`) | Changes to the host Agent/Session structure directly break the provider; there is no adapter layer |
+| Hardcoded storage path in prompts | Prompt text and tool descriptions specify `.dsh/memory` (`packages/uitstalie/memory/src/prompt.ts#L21`, `packages/uitstalie/memory/src/tools.ts#L115`), creating a second source of truth alongside `store-atom`'s `STORE_DIR_NAME` | Model prompts become false when the storage root or directory name changes |
+| Configuration fields duplicated between UI and host | `ui-memory` lists 7 field names (`packages/uitstalie/ui-memory/src/client/settings.ts#L35`-`packages/uitstalie/ui-memory/src/client/settings.ts#L43`), and the host separately lists 10 (`packages/uitstalie/memory/src/config.ts#L66`-`packages/uitstalie/memory/src/config.ts#L77`); sectionId/order also appear in two places (`packages/uitstalie/memory/src/index.ts#L40`, `packages/uitstalie/ui-memory/src/section.ts#L7`) | Renaming a field causes no compile error, only empty values or rejected saves |
+| Changing storage / changing provider | Storage uses `ctx.dshStore` + `dsh-fs`'s `FS_STALE_VERSION`; models use `ctx.llm` + route fallback | Changing storage requires rewriting `memory-file`'s version-conflict handling; changing provider has no impact (correct design) |
+
+#### jira
+
+- **Good boundaries**: `jira-core` truly has zero host imports (`boundaries.spec.ts` + my recheck); `jira-service` is the only writer; `ui-jira` uses only `remote.jira`; `jira-cli` does not depend on `jira-agent`.
+- **Direct agent dependencies on the host**: 9 duck-typed services (`sessionController`, `workspaceRegistry`, `llm`, `agents`, `tokenMeter`, `compaction`, `sandboxPolicy`, `permissionPresets`, `storageDomain`), plus Agent internal APIs such as `agent.ctx.effect` (`packages/jira/jira-agent/src/superagent.ts#L4507`), `session.snapshotEvents`, `agent.cancel({..})`, and `whenIdle`. Missing dependencies silently degrade behavior, with no type checking.
+- **Casts used to bypass `inject`**: `contribution.ts:152` and `superagent.ts:4081` assert `ctx` as `{ inject?: ... }` and invoke it manually rather than declaring Cordis `ctx.inject`. This works but leaves lifecycle management to the caller (see 2.6).
+- **UI bypasses Typert types**: `ui-jira/src/client/index.ts:157` and `packages/jira/ui-jira/src/client/index.ts#L174` use `as unknown as` to access `superagentSetup` / `superagentState`, while `JiraWire` in `store.ts` has neither method (`packages/jira/ui-jira/src/client/store.ts#L32`-`packages/jira/ui-jira/src/client/store.ts#L49`). Protocol changes will not produce errors here.
+- **Hardcoding**: `.superagent/ledger` (`dispatch-ledger.ts:20`), the `Super agent` title, the `workspace-write` default, `~/.dsh/sessions`, and `$DSH_HOME/attachments`. These are product choices, but they are scattered through the code rather than centralized in a configuration/constants module.
+- **Circular dependencies**: none. `jira-agent` imports `jira-service` only with type-only imports, and `jira-service` does not import `jira-agent`. However, `jira-agent/package.json` places `jira-service` in `devDependencies` (`packages/jira/jira-agent/package.json#L43`), while types from `tools.ts:25` appear in the published `lib/types`—an undeclared type dependency for consumers.
+
+### 2.6 Dimension 6: Composability
+
+#### memory
+
+- **Can be disabled independently**: the Loader row can be disabled as a whole; `/memory` mounts optionally through `ctx.inject(['commands'])` (`packages/uitstalie/memory/src/index.ts#L269`-`packages/uitstalie/memory/src/index.ts#L271`), which is the correct composition pattern.
+- **Inaccurate declarations**: of the six `inject` entries, `fs` is unused; `jobs` merely needs to “exist,” while actual usability also depends on `tool-jobs` attaching a controller. Both make supposedly “optional capabilities” effectively non-optional.
+- **Incomplete configuration exposure**: the UI edits only 7 of 10 fields (omitting `maxEntries`, `snapshotTemplate`, and `snapshotPosition`); the latter two can be changed only in profile YAML.
+- **No cross-validation of the section contract**: the host's `MEMORY_SETTINGS_SECTION/ORDER` and the UI's `section.ts` each maintain a copy, and changing one does not cause a compile failure.
+
+#### jira
+
+- **Independent gating of the two capabilities is a strength**: `jira` and `superagent` are registered separately and have separate `enabledByDefault` values; dafeiyu can toggle them by id (`packages/jira/jira-agent/src/index.ts#L205`-`packages/jira/jira-agent/src/index.ts#L249`).
+- **But the defaults and composition are inconsistent**: `jira` is explicitly enabled in the delivery patch (`packages/bundle/web-app/cordis.patch.uitstalie.yml#L9`-`packages/bundle/web-app/cordis.patch.uitstalie.yml#L13`); `superagent` has no entry and is disabled by `enabledByDefault` (home not configured → false). The `jira-worker` preset already ships with the bundle (`presets/jira-worker.patch.yml`), but no row configuration connects it to `superagent_worker_preset` → **“the preset exists, but dispatch always rejects.”**
+- **A “personal branch layer” is embedded in the public bundle**: `@deepseek-ai/dsh-web-app`'s `dsh.bundle.patch` unconditionally lists `./cordis.patch.uitstalie.yml` (`packages/bundle/web-app/package.json#L50`-`packages/bundle/web-app/package.json#L57`), so installing this public package also mounts branch plugins such as memory, jira, and persona-card; disabling them requires editing the patch. The composition boundary is a “branch layer,” not an “optional bundle.”
+- **Dependency declarations**: `jira-core` declares `peerDependencies: cordis` (`packages/jira/jira-core/package.json#L23`-`packages/jira/jira-core/package.json#L25`), but it has zero host imports, so this peer is empty; memory has the opposite problem, missing two actual runtime dependencies. Both directions of “inaccurate declaration” are present.
+- **Lifecycle**: `createSuperagentContribution`'s `dispose` is synchronous (`CapabilityContribution.dispose?(): void`, dafeiyu `packages/uitstalie/dafeiyu/src/types.ts#L98`), so `void dispatchStore?.close()` (`packages/jira/jira-agent/src/superagent.ts#L4544`) cannot be awaited; meanwhile, `poll()` has no `disposed` flag, so **an already-started pass continues after the timer is cleared** (`packages/jira/jira-agent/src/superagent.ts#L4103`-`packages/jira/jira-agent/src/superagent.ts#L4124`). Dafeiyu's `contain` only applies `catch` to the returned Promise and does not `await` it (`packages/uitstalie/dafeiyu/src/index.ts#L526`-`packages/uitstalie/dafeiyu/src/index.ts#L535`). Impact: a proposal comment may still be produced after the capability is disabled; closing the dispatch store can race storageDomain removal. This is **incomplete teardown under the contract's constraints**, not guaranteed data corruption.
+
+### 2.7 Dimension 7: Whether documentation is stale
+
+Principle: **list “missing documentation” and “incorrect documentation” separately**.
+
+#### Incorrect documentation (traceable to code)
+
+| Documentation location | Stale content | Current code | Required correction |
+|---|---|---|---|
+| `packages/uitstalie/memory/README.md#L67`, `packages/uitstalie/memory/README.md#L88`, `packages/uitstalie/memory/README.md#L142` | Snapshots “append or replace,” “replace in place, `surfaceOp: replace`” | Append only (`packages/uitstalie/memory/src/snapshot.ts#L425`, comment at `packages/uitstalie/memory/src/snapshot.ts#L420`-`packages/uitstalie/memory/src/snapshot.ts#L424`) | Change to append-only; remove `surfaceOp: replace` |
+| `packages/uitstalie/memory/README.md#L84` | “Migration runs after the detail append” | Migrate before append (`packages/uitstalie/memory/src/summary.ts#L331`-`packages/uitstalie/memory/src/summary.ts#L360`) | Rewrite in the DH-710 order |
+| `packages/uitstalie/memory/README.md#L76` | `onTurnEnd` is called only for completed turns | Dafeiyu dispatches every `turn/end` (`packages/uitstalie/dafeiyu/src/index.ts#L336`) | Either add filtering to the code, or update the documentation and handle non-completed turns |
+| `packages/uitstalie/memory/README.md#L90` | “`Window:` manifest” | Actually `Archived:` (`packages/uitstalie/memory/src/snapshot.ts#L403`, `packages/uitstalie/memory/src/snapshot.ts#L409`) | Change the label |
+| `packages/uitstalie/memory/README.md#L54` | “Six hard dependencies, including `ctx.fs`” | `ctx.fs` is unused in production; `dsh-llm`/`dsh-session` are the undeclared runtime dependencies | Correct the dependency list and complete the manifest |
+| `packages/uitstalie/memory/README.md#L138` | “At most 16 KiB per request” | Each summary pass may append a new snapshot (`packages/uitstalie/memory/src/summary.ts#L361`) | Change to “each snapshot ≤16 KiB; multiple snapshots can accumulate on the surface” |
+| `packages/uitstalie/memory/README.md#L188` | “Position/template changes trigger a row reload” | Both are volatile; switching position at runtime does not rewire | Correct the documentation + fix switching |
+| `packages/jira/jira-agent/README.md#L12` | “Both capabilities have `enabledByDefault: false`” | Superagent uses `homeProblem === undefined` (`packages/jira/jira-agent/src/index.ts#L228`) | Change to “jira is off by default; superagent depends on whether home is configured” |
+| `packages/jira/jira-agent/README.md#L90`, `packages/jira/jira-agent/README.md#L95` | “The root agent has 10 tools,” “10 schemas per request” | Ordinary root has 6, super agent has 5 (`packages/jira/jira-agent/src/superagent.ts#L4484`-`packages/jira/jira-agent/src/superagent.ts#L4501`) | Rewrite for the 6/5 split, or adjust the implementation |
+| `packages/jira/jira-agent/README.md#L107` | “The runner still imports jira-core by deep path / uses `ctx.jira.store()`” | No deep-path imports; `JiraServiceApi` has no `store()` (the method table in `types.ts`) | Remove this limitation |
+| `packages/jira/jira-service/README.md#L55` | “The only browser-surface write is `superagentConfirm`” | `superagentSetup` performs `mkdir`, registers a workspace, and writes the profile (`packages/jira/jira-service/src/remote.ts#L230`-`packages/jira/jira-service/src/remote.ts#L259`) | Add the second write and explain the permission boundary |
+| Service method enumeration at `packages/jira/jira-service/README.md#L32` / remote table at `packages/jira/jira-service/README.md#L42` | The service enumeration omits `status/snapshot/queryIssues/tagsLint/syncState`; the remote table omits `superagentState/superagentSetup` | `JiraServiceApi` in `types.ts` and `@Remote` in `remote.ts` | Relist according to the current API |
+| `packages/jira/README.md#L12`, `packages/jira/README.md#L32` | jira-agent mentions only “three tools”; ui-jira mentions only status/board/details/KB | There is also `issue_work` + 10 `superagent_*` tools; the UI also has the superagent panel and sidebar setup (`packages/jira/ui-jira/src/client/index.ts#L125`-`packages/jira/ui-jira/src/client/index.ts#L167`) | Synchronize the tool counts and UI capabilities |
+| `packages/jira/HANDOVER.md#L3`, `packages/jira/HANDOVER.md#L20`, `packages/jira/HANDOVER.md#L83`, `packages/jira/HANDOVER.md#L284`, `packages/jira/HANDOVER.md#L400` | 199 decisions, 702 tests, `src/core`/`src/cli`/`src/plugin`, `dist/plugin/index.js`, mandatory `pnpm build` | Five-package monorepo; entry is `lib/index.js`; 774 node tests; DESIGN already has 223 entries | Mark “historical document” at the top, or move it into `archive/` |
+| `packages/jira/DESIGN.md#L3` | Status line says “82 confirmed decisions,” discussion draft v3 | §8 is actually numbered 1–223 (script counted 310 lines, maximum 223) | Update the status line; mark layouts superseded by MIGRATION |
+| `packages/jira/DESIGN.md#L177`-`packages/jira/DESIGN.md#L179` | Single-package `src/core`/`src/cli`/`src/plugin` tree | Five packages | Add “historical layout, see MIGRATION.md” |
+| `packages/jira/DESIGN.md#L33` | Verification baseline `@deepseek-ai/dsh-root@0.2.1-alpha.2` | Root `package.json` version is `0.2.2-alpha.3` | Reverify and update the baseline |
+| `packages/jira/ARCHIVE-SOURCE.md#L27` + `packages/jira/README.md#L43` | States that HANDOVER's “body is unchanged,” while linking HANDOVER as “current state / open work” | All of HANDOVER describes the pre-migration structure | Do one of two things: add a banner, or stop calling it the current handover in the README |
+| `packages/jira/MIGRATION.md#L5`, `packages/jira/MIGRATION.md#L15` | Target package names `@uitstalie/*`, planned shape | Actual names are `@deepseek-ai/dsh-*`, already implemented | The page header already says “planned values”; add the same statement in §2.1 |
+
+#### Missing documentation
+
+- There is no `docs/subsystems/memory.md` / `docs/subsystems/jira.md` and no product-level user page; only generated catalogs (`docs/config-catalog.md`, `module-graph.md`) cover configuration and the package graph. The `ctx.jira` / `remote.jira` contracts currently exist only in package READMEs and `types.ts`.
+- `docs/user/guide/mcp-memory.md` describes a third-party MCP memory service, which has the same name as `dsh-memory` but is a different thing and can easily be mistaken for the same capability.
+- There is no current-state operations page: how to build/test/smoke the five packages, how to toggle superagent in a profile, and how to set the worker preset are scattered across the old HANDOVER and source code.
+- `jira-agent`'s 11 `superagent_*` row configuration fields have no package-level configuration table (only JSDoc in `index.ts` and generated catalogs).
+
+---
+
+## 3. Consolidated duplication and reuse list
+
+| # | Duplicate implementation location | Existing alternative | Recommended action | Priority |
 |---|---|---|---|---|
-| 1 | `jira-core/src/io.ts:178` 原子写 | `packages/util/atomic-write` `writeFileAtomic` | 复用；至少共享重试/错误语义 | P2 |
-| 2 | `jira-core/src/lock.ts` mkdir 锁 | `atomic-write` `withFileLock`、session lease | 保留 mkdir 理由，抽出统一接口 | P2 |
-| 3 | `jira-core/src/schema.ts` 手写 JSON Schema/校验 | `zod@4.4.3`（已在 agent）、`schemastery` | 适配层改 zod，core 只留形状 | P2 |
-| 4 | `jira-core/src/frontmatter.ts` 受限 YAML | `yaml`（memory 已用） | 保留；更新“离线零依赖”理由 | P2 |
-| 5 | `jira-core/src/store.ts:114` 正则读 tag | 同包 `tagstore.decodeTag` | 立即合并 | P2 |
-| 6 | `jira-core/src/result.ts:61-163` 组合子 | 无生产调用者 | 删除或标注内部 | P2 |
-| 7 | memory 的 `truncateToBytes`×3 / `byteLength`×3 / `errorMessage`×4 | 无 | 抽 `text.ts` | P2 |
-| 8 | `ui-memory/settings.ts:119` vs `ui-personality/settings-form.ts:112` | 无共享基类 | 抽 staged config controller | P2 |
-| 9 | `superagent-setup.ts:67,87` vs `superagent.ts:324,366` | 两份 home/path 规则 | 合并为一份（注意 realpath vs 词法） | P1 |
-| 10 | `jira-service/src/index.ts:253-259` 重复赋值 | 自身 | 删除重复块 | P2 |
-| 11 | `.superagent/ledger`、`Super agent`、`workspace-write` 等硬编码 | 无 | 收到一个常量/配置模块 | P2 |
+| 1 | Atomic write at `jira-core/src/io.ts:178` | `writeFileAtomic` in `packages/util/atomic-write` | Reuse; at least share retry/error semantics | P2 |
+| 2 | mkdir lock at `jira-core/src/lock.ts` | `withFileLock` in `atomic-write`, session lease | Retain the mkdir rationale; extract a unified interface | P2 |
+| 3 | Handwritten JSON Schema/validation at `jira-core/src/schema.ts` | `zod@4.4.3` (already in agent), `schemastery` | Use zod in the adapter layer; keep only shapes in core | P2 |
+| 4 | Restricted YAML at `jira-core/src/frontmatter.ts` | `yaml` (already used by memory) | Keep it; update the “offline, zero dependencies” rationale | P2 |
+| 5 | Regex tag reading at `jira-core/src/store.ts:114` | `tagstore.decodeTag` in the same package | Merge immediately | P2 |
+| 6 | Combinators at `jira-core/src/result.ts:61-163` | No production callers | Delete or mark internal | P2 |
+| 7 | Memory's `truncateToBytes`×3 / `byteLength`×3 / `errorMessage`×4 | None | Extract `text.ts` | P2 |
+| 8 | `ui-memory/settings.ts:119` vs `ui-personality/settings-form.ts:112` | No shared base class | Extract a staged config controller | P2 |
+| 9 | `superagent-setup.ts:67,87` vs `superagent.ts:324,366` | Two sets of home/path rules | Merge into one (mind realpath vs lexical comparison) | P1 |
+| 10 | Duplicate assignments at `jira-service/src/index.ts:253-259` | Itself | Delete the duplicate block | P2 |
+| 11 | Hardcoded `.superagent/ledger`, `Super agent`, `workspace-write`, etc. | None | Collect into one constants/configuration module | P2 |
 
 ---
 
-## 4. 设计符合度对照表（汇总）
+## 4. Consolidated design-conformance comparison
 
-| 设计意图来源 | 意图 | 实现 | 差距等级 |
+| Design-intent source | Intent | Implementation | Gap level |
 |---|---|---|---|
-| memory README | 快照只追加、KV-cache 友好 | 只 append（`snapshot.ts:425`） | **实现符合，文档错** |
-| memory README | 迁移在 append 之后 | 先迁移后 append（`summary.ts:331-360`） | **实现符合，文档错** |
-| memory README | `onTurnEnd` 只收 completed | 收所有 turn end（`dafeiyu:336`） | **实现缺陷** |
-| memory config JSDoc | 10 个 volatile 字段即改即生效 | `snapshotPosition` 切换不重接 | **实现缺陷** |
-| MIGRATION.md | 一个 bundle + 五包，四表面只依赖 `ctx.jira` | 五包、服务单写者、remote 读模型 | **符合** |
-| DESIGN 141 | 一个 guard 覆盖写动作 × 不可写会话 | 只覆盖 `jira_issue` | **实现窄于设计** |
-| DESIGN 148 | settle 在 pull 后、push 前 | `flushNow({ settle: true })` + `settle()` | **符合** |
-| DESIGN 200–223 | 真实 Session 派发 + preset 隔离 | dispatch/recover/daemon 都在 | **实现符合，交付组合未接线** |
-| jira-agent README | 10 个工具都在 root agent 上 | 6/5 分流 | **文档错** |
-| jira-service README | 唯一写是 `superagentConfirm` | 另有 `superagentSetup` | **文档错** |
+| memory README | Append-only snapshots, KV-cache-friendly | Append only (`snapshot.ts:425`) | **Implementation matches; documentation wrong** |
+| memory README | Migration after append | Migrate before append (`summary.ts:331-360`) | **Implementation matches; documentation wrong** |
+| memory README | `onTurnEnd` receives only completed turns | Receives all turn ends (`dafeiyu:336`) | **Implementation defect** |
+| memory config JSDoc | 10 volatile fields take effect immediately | Switching `snapshotPosition` does not rewire | **Implementation defect** |
+| MIGRATION.md | One bundle + five packages, four surfaces depending only on `ctx.jira` | Five packages, single-writer service, remote read model | **Matches** |
+| DESIGN 141 | One guard covers write actions × non-writable sessions | Covers only `jira_issue` | **Implementation narrower than design** |
+| DESIGN 148 | Settle after pull and before push | `flushNow({ settle: true })` + `settle()` | **Matches** |
+| DESIGN 200–223 | Real Session dispatch + preset isolation | dispatch/recover/daemon all present | **Implementation matches; delivery composition not wired** |
+| jira-agent README | All 10 tools are on the root agent | 6/5 split | **Documentation wrong** |
+| jira-service README | The only write is `superagentConfirm` | Also `superagentSetup` | **Documentation wrong** |
 
 ---
 
-## 5. 优先级建议
+## 5. Prioritized recommendations
 
-排序原则：正确性 > 安全/数据 > 可维护性 > 风格。
+Ordering principle: correctness > security/data > maintainability > style.
 
-### P0（应当马上处理）
+### P0 (address immediately)
 
-1. **memory：被取消/出错的 turn 不再启动摘要 job、不写失败 notice。** 在 `onTurnEnd` 检查 `input.event.data.reason.kind !== 'completed'` 直接返回（或在 `runPass` 里把“没有 completed turn”当作正常跳过而不是失败）。同时把 dafeiyu 与 memory 的 README 改成“所有 turn end 都会到达，由 provider 自己判断”。验收：`summary.spec.ts:236` 转绿，且新增“aborted turn 不写 notice、不产生 job”的断言。
-2. **jira：`toolFailure` 补 `me`（以及 `writable` 的语义）。** 否则 `runSessionTool` 的兜底失败会被 `ToolOutputError` 二次覆盖（`superagent.ts:1729` vs `:928`）。验收：用一个抛错的假 controller 触发 catch，断言返回值通过 output schema。
+1. **Memory: canceled/errored turns must no longer start summary jobs or write failure notices.** In `onTurnEnd`, return immediately when `input.event.data.reason.kind !== 'completed'` (or in `runPass`, treat “no completed turn” as a normal skip rather than a failure). Also change the dafeiyu and memory READMEs to say “all turn ends arrive, and each provider decides for itself.” Acceptance: `summary.spec.ts:236` passes, with new assertions that “an aborted turn writes no notice and produces no job.”
+2. **Jira: add `me` to `toolFailure` (and clarify the semantics of `writable`).** Otherwise, `runSessionTool`'s fallback failure is masked again by `ToolOutputError` (`superagent.ts:1729` vs `:928`). Acceptance: use a fake controller that throws to trigger the catch, and assert that the return value passes the output schema.
 
-### P1（本轮或下一轮）
+### P1 (this round or the next)
 
-3. **jira：把 `superagent_worker_preset` 接进交付组合**（或在未配置时让 `superagent` 能力整体不可见，而不是“有工具但必拒”）。并让 UI setup 能同时写 worker preset，或在 README/UI 明说需要手工改行。
-4. **memory：`snapshotPosition` 运行期切换要么重接 agent，要么拒绝写并报错**；不要把“切换后收不到快照”变成静默行为。
-5. **memory：修正英文 README 的 replace/顺序/`Window:`/六依赖/16 KiB 表述**，并让中英一致；补 `dsh-llm`/`dsh-session` 运行依赖、删掉未用的 `fs` inject。
-6. **jira：`jira-service` 的 `reconfigure()` 去重 + README 的“唯一写”修正**；`HANDOVER.md` 加历史横幅或移入 `archive/`。
-7. **jira：`createSuperagentContribution` 的 teardown 收口**：加 `disposed` 标志让 `poll()` 在每步前退出；`dispose` 至少记录 close 的失败（当前 `void ... .catch(log)` 可以，但无法等待）。若 dafeiyu 的 `dispose` 契约不能改，至少把“未等待 close”写进注释。
-8. **memory：快照累积的预算/去重策略**（例如只保留最后一条 snapshot，或把旧 snapshot 标记为 `superseded` 并在 compaction 边界清理），否则长会话的 context 会线性增长，和 README 的 token 承诺不符。
+3. **Jira: connect `superagent_worker_preset` into the delivery composition** (or make the entire `superagent` capability invisible when unconfigured, rather than “tools exist but always reject”). Also let UI setup write the worker preset, or state explicitly in the README/UI that manual row editing is required.
+4. **Memory: a runtime `snapshotPosition` switch must either rewire the agent or reject the write and report an error**; do not make “no snapshots after switching” silent behavior.
+5. **Memory: correct the English README's replace/order/`Window:`/six-dependencies/16 KiB statements** and make the two languages consistent; add the `dsh-llm`/`dsh-session` runtime dependencies and remove the unused `fs` inject.
+6. **Jira: deduplicate `jira-service`'s `reconfigure()` and correct the README's “only write” claim**; add a historical banner to `HANDOVER.md` or move it into `archive/`.
+7. **Jira: complete `createSuperagentContribution` teardown**: add a `disposed` flag so `poll()` exits before each step; `dispose` should at least log close failures (the current `void ... .catch(log)` is acceptable but cannot be awaited). If dafeiyu's `dispose` contract cannot change, at least document “close is not awaited” in a comment.
+8. **Memory: establish a budget/deduplication policy for snapshot accumulation** (for example, retain only the latest snapshot, or mark old snapshots `superseded` and clean them at compaction boundaries); otherwise, long-session context grows linearly, contrary to the README's token promise.
 
-### P2（可维护性/风格，按需）
+### P2 (maintainability/style, as needed)
 
-9. jira：把 `superagent.ts` 按 `claim / workspace / session / dispatch / ledger-report / source / contribution` 拆文件；先拆 653 行的 `runSessionTool`。
-10. jira：`jira-core` 的原子写/锁/schema/tag 解码复用与合并；删除 `result.ts` 的死组合子。
-11. jira：两份 home/path 规则合并（realpath vs 词法）。
-12. memory：抽 `text.ts` 消掉 3×3×4 的重复 helper；`snapshotTexts`/`sessions` 在 session dispose 时清理。
-13. UI：`MemorySection.tsx:48` / `JiraSection.tsx:53-57` 的条件 hook 与提前 return 违反 hooks 规则，提到 return 之前；`ui-memory` 改用 `useSnapshot` 注入而不是直接 `useSyncExternalStore`。
-14. 文档：DESIGN 状态行/基线版本/旧布局标注；jira/README 的工具数；MIGRATION 的计划包名。
-15. CLI/agent 参数词汇（`--tag`/`--all` vs `tags`/`include_closed`）纳入 parity 测试或统一。
+9. Jira: split `superagent.ts` into files by `claim / workspace / session / dispatch / ledger-report / source / contribution`; start with the 653-line `runSessionTool`.
+10. Jira: reuse and merge `jira-core`'s atomic write/lock/schema/tag decoding; delete the dead combinators in `result.ts`.
+11. Jira: merge the two sets of home/path rules (realpath vs lexical).
+12. Memory: extract `text.ts` to remove the 3×3×4 duplicate helpers; clear `snapshotTexts`/`sessions` on session dispose.
+13. UI: the conditional hooks and early returns at `MemorySection.tsx:48` / `JiraSection.tsx:53-57` violate the rules of hooks; move them before the returns. Change `ui-memory` to use injected `useSnapshot` rather than direct `useSyncExternalStore`.
+14. Documentation: DESIGN status line/baseline version/old-layout annotations; tool counts in jira/README; planned package names in MIGRATION.
+15. Bring CLI/agent parameter vocabulary (`--tag`/`--all` vs `tags`/`include_closed`) into parity tests or unify it.
 
 ---
 
-## 6. 未验证事项（诚实边界）
+## 6. Unverified matters (limits of this review)
 
-| 判断 | 来源 | 说明 |
+| Assessment | Basis | Explanation |
 |---|---|---|
-| memory 的 aborted-turn 缺陷 | **运行验证** | 同一测试单独重跑仍失败；根因由静态代码解释 |
-| jira node 测试全绿 | **运行验证** | `pnpm run test:jira:node` → 774 passed |
-| jira 组级 vitest 唯一失败是超时 | **运行验证（部分）** | 只看到 `60s` 超时，未判断是环境慢还是真实回归；该文件没有为真 Session 用例抬高 timeout |
-| `toolFailure` 会触发 `ToolOutputError` | **静态阅读** | 依赖宿主 `pipeline.ts` 的 schema 校验；未写复现用例 |
-| dispatch 在交付组合不可达 | **静态阅读 + 配置核对** | 未在 GUI 里实际点开 superagent 开关验证 |
-| append/prompt 分支复制、N×2 重放等 superagent 内部细节 | **静态阅读（子代理）** | 未逐条复核所有行号，报告中只保留了可交叉验证的部分 |
-| daemon/poll 的 teardown 影响 | **静态阅读** | 未构造“禁用时恰好有一轮 pass 在跑”的复现 |
-| UI hooks 违规会崩溃 | **静态阅读** | 需要 props 从缺失变为完整才会触发；装配路径通常一次性给全 |
-| 文档门禁（`verify-translation-pairing`） | **未运行** | 本机 `pnpm` 在沙箱下报 `unable to open database file`；后改 full access 只跑了测试，没有跑文档门禁 |
-| 全仓 `pnpm test` | **未运行** | 工作树有 78 项与本次无关的未提交改动，跑全仓无法归因 |
-| 工作树中的 session/persistence/sandbox 改动 | **未审查** | 明确不属于本次对象 |
+| Memory's aborted-turn defect | **Runtime verification** | Rerunning the same test alone still failed; the root cause is explained by static code reading |
+| All jira node tests pass | **Runtime verification** | `pnpm run test:jira:node` → 774 passed |
+| The only jira group-level vitest failure is a timeout | **Runtime verification (partial)** | Only the `60s` timeout was observed; it was not determined whether the environment was slow or this was a real regression; the file does not raise the timeout for real Session cases |
+| `toolFailure` triggers `ToolOutputError` | **Static reading** | Depends on schema validation in the host's `pipeline.ts`; no reproduction case was written |
+| Dispatch is unreachable in the delivery composition | **Static reading + configuration check** | The superagent toggle was not actually clicked in the GUI for verification |
+| Superagent internal details such as append/prompt branch copying and N×2 replay | **Static reading (subagent)** | Not every line number was individually rechecked; the report retains only cross-verifiable portions |
+| Impact of daemon/poll teardown | **Static reading** | No reproduction was constructed where a pass happened to be running during disable |
+| UI hook violations cause crashes | **Static reading** | Triggering requires props to change from missing to complete; assembly paths usually provide everything at once |
+| Documentation checks (`verify-translation-pairing`) | **Not run** | Local `pnpm` reported `unable to open database file` under the sandbox; after switching to full access, only tests were run, not documentation checks |
+| Repository-wide `pnpm test` | **Not run** | The working tree had 78 unrelated uncommitted changes, so a repository-wide run could not be attributed |
+| Session/persistence/sandbox changes in the working tree | **Not reviewed** | Explicitly outside this review's scope |
 
 ---
 
-## 7. 附：本次审查的证据索引（主要文件）
+## 7. Appendix: evidence index for this review (principal files)
 
-- memory：`packages/uitstalie/memory/src/{index,config,summary,snapshot,checkpoint,tools,commands,memory-file}.ts`、`tests/summary.spec.ts`、`tests/harness.ts`、`README.md`/`README.zh.md`
-- memory UI：`packages/uitstalie/ui-memory/src/client/{MemorySection.tsx,settings.ts,index.ts}`、`src/section.ts`
-- 组织者：`packages/uitstalie/dafeiyu/src/{index.ts,types.ts}`、`README.md`
-- jira：`packages/jira/{jira-agent,jira-service,jira-core,jira-cli,ui-jira}/src`、`packages/jira/tests/*.spec.ts`
-- 组合：`packages/bundle/web-app/{cordis.patch.uitstalie.yml,presets/jira-worker.patch.yml,package.json}`
-- 文档：`packages/jira/{README,DESIGN,HANDOVER,MIGRATION,ARCHIVE-SOURCE}.md`、各包 README
+- memory: `packages/uitstalie/memory/src/{index,config,summary,snapshot,checkpoint,tools,commands,memory-file}.ts`, `tests/summary.spec.ts`, `tests/harness.ts`, `README.md`/`README.zh.md`
+- memory UI: `packages/uitstalie/ui-memory/src/client/{MemorySection.tsx,settings.ts,index.ts}`, `src/section.ts`
+- Organizer: `packages/uitstalie/dafeiyu/src/{index.ts,types.ts}`, `README.md`
+- jira: `packages/jira/{jira-agent,jira-service,jira-core,jira-cli,ui-jira}/src`, `packages/jira/tests/*.spec.ts`
+- Composition: `packages/bundle/web-app/{cordis.patch.uitstalie.yml,presets/jira-worker.patch.yml,package.json}`
+- Documentation: `packages/jira/{README,DESIGN,HANDOVER,MIGRATION,ARCHIVE-SOURCE}.md`, package READMEs
 
-> 本报告只读产出，未修改任何被审查代码或配置；未创建 commit、未 push。
+> This report was produced read-only; no reviewed code or configuration was modified, and no commit was created or pushed.

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use `dsh-sandbox` to run a subprocess and everything it spawns under a per-call file-access policy. A command can run without writes (`read-only`), write only inside its workspace (`workspace-write`), write inside the user home and, on Windows, every fixed drive except the system drive, plus the workspace unless `excludePaths` forces a path read-only (`home-write`), or run unrestricted (`danger-full-access`). If the requested mode cannot be enforced, the call fails with `SANDBOX_UNAVAILABLE` instead of running unconfined. After a denied call, the model can request one strictly wider mode for human approval. This is same-world confinement: the process still shares the host kernel and filesystem; use a container, microVM, or remote executor when the whole environment must be isolated.
+Use `dsh-sandbox` to run a subprocess and its descendants under a per-call file-access policy. Modes allow no writes (`read-only`), workspace-only writes (`workspace-write`), user-home and non-system fixed-drive writes plus the workspace unless excluded (`home-write`), or unrestricted execution (`danger-full-access`). Unenforceable modes fail with `SANDBOX_UNAVAILABLE` rather than run unconfined. After a denial, the model can request one strictly wider mode for human approval. Processes still share the host kernel and filesystem; use a container, microVM, or remote executor to isolate the whole environment.
 
 ## Table of Contents
 

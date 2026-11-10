@@ -16,6 +16,7 @@ English | [中文](README.zh.md)
 - [Use this package](#use-this-package)
 - [Understand the implementation](#understand-the-implementation)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
 <a id="use-this-package"></a>
 
@@ -31,6 +32,13 @@ Mount the row once, before any consumer of `ctx.systemEnvironment`:
 A plugin then declares `inject: ['systemEnvironment']` and asks the service instead of re-deriving:
 
 ```ts
+import { createSystemEnvironment } from '@deepseek-ai/dsh-system-environment'
+
+const ctx = { systemEnvironment: createSystemEnvironment() }
+const workspaceRoot = '/workspace'
+const candidate = '/workspace/src'
+const left = candidate
+const right = '/workspace/src/index.ts'
 const under = ctx.systemEnvironment.isUnder(workspaceRoot, candidate)
 const home = ctx.systemEnvironment.dshHome()
 const programFiles = ctx.systemEnvironment.env('ProgramFiles')
@@ -57,3 +65,9 @@ const same = ctx.systemEnvironment.samePath(left, right)
 - **No filesystem work.** This is lookup and comparison, not resolution against disk: a consumer that must prove a target exists still stats it itself.
 - **The default Harness home follows the OS home.** A test that overrides only `HOME` still sees the real OS home from `dshHome()` unless it pins `DSH_HOME` or uses the `env` seam.
 - **Native packages keep their own rules.** `home-backup` and `store-atom` read this service when the branch layer mounts it, and each keeps a host-native fallback so an independently composed atom still works. Sandbox diagnostics stays in the native sandbox package: a host package cannot depend on a branch atom, so its platform rules remain a parameterized test seam there instead of a service read.
+
+<a id="dev-note"></a>
+
+### Dev Note
+
+None.

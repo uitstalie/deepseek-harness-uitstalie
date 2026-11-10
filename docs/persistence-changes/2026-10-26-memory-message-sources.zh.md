@@ -27,19 +27,19 @@ id: 2026-10-26-memory-message-sources
 baseline: false
 changes:
   - root: "event:agent/inbox/spliced"
-    previous: "2026-10-13-user-rpc-principal"
+    previous: "2026-10-25-skill-catalog-incomplete"
     after: "507c4f9f9af76c4e9b724c142bb285f6833f9783e864807eedaa444f2d87fdc2"
     decision: same-version
   - root: "event:developer/message"
-    previous: "2026-10-13-user-rpc-principal"
+    previous: "2026-10-25-skill-catalog-incomplete"
     after: "b44ccc9e12edc15d3f356781c1386fd987733ffceb0706a26928ce4d4de16807"
     decision: same-version
   - root: "event:session/title-llm-request"
-    previous: "2026-10-13-user-rpc-principal"
+    previous: "2026-10-25-skill-catalog-incomplete"
     after: "eb033515eef2beaf56a5d6f2d4d610afed1f574653350fae5c77616f414047b7"
     decision: same-version
   - root: "event:user/message"
-    previous: "2026-10-13-user-rpc-principal"
+    previous: "2026-10-25-skill-catalog-incomplete"
     after: "988d4337942842ccadf5b7527ca0bf79737ec5b7ae0a522593e2b21437442e97"
     decision: same-version
 ```

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-jira-service` 是账本的唯一写入者：一行拥有一个账本，解析它的根目录、读取本机身份、打开存储、持有唯一的 push 队列、重新生成派生文件，并在每次提交后发出 `changed`。浏览器、其他能力与 CLI 都通过 `ctx.jira` 共享这个服务，因此一个账本永远不会有两个写入者。它还发布 `remote.jira`，即浏览器面：页面需要的读取、一个由账本仓库的 `git user.name` 署名的人类确认，以及持久化 `superagent_home` 的超级工作区设置；其余任意账本写入仍走 `ctx.jira`。push 默认关闭：写入先是本地提交，直到 `push.enabled` 打开队列。
+通过 `ctx.jira` 共享一个账本：这一行解析根目录、读取本机身份、打开存储、持有 push 队列、重新生成派生文件，并在每次提交后发出 `changed`。浏览器与 CLI 使用同一个写入者。`remote.jira` 提供页面读取、由账本 Git 身份署名的人类提案确认，以及超级工作区设置；任意写入仍走 `ctx.jira`。push 默认关闭，因此写入保留在本地，直到 `push.enabled` 打开队列。
 
 ## 目录
 

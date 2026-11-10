@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-jira-service` is the ledger's single writer: one row owns one ledger, resolves its root, reads this machine's identity, opens the store, holds the one push queue, regenerates the derived files, and emits `changed` whenever it commits. The browser, other capabilities, and the CLI share that service through `ctx.jira`, so a ledger never has two writers. It also publishes `remote.jira`, the browser face: the reads a page needs, one human confirmation authored by the ledger repository's `git user.name`, and the super-workspace setup that persists `superagent_home`; every arbitrary ledger write stays on `ctx.jira`. Push is off by default: writes stay local commits until `push.enabled` turns the queue on.
+Share one ledger through `ctx.jira`: this row resolves its root, reads the machine identity, opens the store, owns the push queue, regenerates derived files, and emits `changed` after each commit. The browser and CLI use the same writer. `remote.jira` provides page reads, human proposal confirmation authored by the ledger's Git identity, and super-workspace setup; arbitrary writes remain on `ctx.jira`. Push is off by default, so writes stay local until `push.enabled` turns the queue on.
 
 ## Table of Contents
 

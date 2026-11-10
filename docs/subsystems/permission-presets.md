@@ -68,6 +68,20 @@ interface PresetOption {
 }
 ```
 
+The `permissions` projection retains the effective preset and both knob values, so consumers read one current selection rather than reconstructing it from separate services.
+
+```ts type-equiv
+/** Whole `permissions` Session projection: current durable selection only. */
+interface PermissionSelection {
+  /** The effective current value: a configured preset key, `auto`, or `custom`. */
+  currentValue: string
+  /** The effective sandbox mode after composition defaults apply. */
+  sandboxMode: string
+  /** The effective approval policy after composition defaults apply. */
+  approvalPolicy: string
+}
+```
+
 ## Switching and the `permission/preset` event
 
 `set(session, name)` resolves the preset (unknown names throw), runs Auto admission when applicable, appends a log-only `permission/preset` event unless `name` is already the effective preset, then writes each knob through its own setter — `setSandboxMode` from [dsh-sandbox-policy](../../packages/sandbox/sandbox-policy) and `setApprovalPolicy` from [dsh-user-approval](../../packages/interaction/user-approval) — only when that knob's effective value changes. The selection event precedes the knob events in the same turn, and re-selecting the effective preset appends nothing.
@@ -115,6 +129,13 @@ registerAuto(admit: () => void): () => Promise<void>
 current(session: Session): string
 
 /**
+ * Read the preset identity and both effective knobs from one projection snapshot.
+ * @param session - the Session whose permission is read.
+ * @returns the current preset and the sandbox/approval values enforcement will use.
+ */
+selection(session: Session): PermissionSelection
+
+/**
  * Resolve an available preset's knob bundle.
  * @param name - the preset name to resolve.
  * @returns the configured bundle.
@@ -133,11 +154,13 @@ optionOf(name: string): PresetOption
 
 /**
  * Record a changed preset, then update each changed knob through its own
- * setter. Selecting the effective preset again appends nothing.
+ * setter. Selecting the effective preset again appends nothing. A failed write attempts
+ * compensation to the previous effective values and throws with the compensation outcome.
  * @param session - the session the switch belongs to.
  * @param name - the preset to switch to; unknown names throw.
+ * @param reason - optional audit reason retained on the preset event.
  */
-set(session: Session, name: string): void
+set(session: Session, name: string, reason?: string): void
 ```
 
 Types: [Session](session.md)

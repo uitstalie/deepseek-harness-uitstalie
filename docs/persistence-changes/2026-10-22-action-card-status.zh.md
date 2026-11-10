@@ -27,19 +27,19 @@ id: 2026-10-22-action-card-status
 baseline: false
 changes:
   - root: "event:agent/inbox/spliced"
-    previous: "2026-10-13-user-rpc-principal"
+    previous: "2026-10-13-liveshare-share-viewer-principal"
     after: "b36fd842cd004b532ce96fd5d6f5be28e017eda043131aa3cf5e69edc436108e"
     decision: same-version
   - root: "event:developer/message"
-    previous: "2026-10-13-user-rpc-principal"
+    previous: "2026-10-13-liveshare-share-viewer-principal"
     after: "5ef58f2a1bdc576c1f12fa1f4da1920ece020b13c0f991a578cddcbeb28bc5be"
     decision: same-version
   - root: "event:session/title-llm-request"
-    previous: "2026-10-13-user-rpc-principal"
+    previous: "2026-10-13-liveshare-share-viewer-principal"
     after: "efa1a091017ce533e38b0ef3e14d11a5c102ff1793229b18dad719a4268d9adc"
     decision: same-version
   - root: "event:user/message"
-    previous: "2026-10-13-user-rpc-principal"
+    previous: "2026-10-13-liveshare-share-viewer-principal"
     after: "58b122df513aeaf7ddc5783dbb1fd844e2979bb273964e30ae351a8db6510019"
     decision: same-version
 ```

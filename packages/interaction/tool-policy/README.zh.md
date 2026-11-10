@@ -7,9 +7,9 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
-`dsh-tool-policy` 是**作用在模型工具调用上的软策略（best-effort）**，不是 OS 沙箱。它注册 `ctx.toolPolicy`，由命名 profile 同时维护工具黑名单与文件目标黑名单：被禁工具会从模型 schema 中消失，并由单调工具守卫拒绝；`dsh-tool-fs` 在读取、写入、编辑或打补丁前询问该服务。进程保留用户的完整权限，因此 shell 命令、PTC 代码、MCP 工具、其他插件，以及任何直接调用 `node:fs` 的代码都完全绕过该策略。当部署只想让模型碰不到凭据目录和少数工具、又不愿承担进程隔离的成本时选择它；当文件效果边界必须成立时，应选择 [`dsh-sandbox-local`](../../sandbox/sandbox-local/README.zh.md) 配合沙箱化文件系统与 shell。
+用命名 profile 在不做 OS 隔离的情况下拒绝指定的模型工具与文件工具目标。被禁工具会从模型 schema 中消失，并由工具守卫拒绝；`dsh-tool-fs` 在每次文件操作前检查路径。进程保留用户的完整权限：shell 命令、PTC 代码、MCP 工具、插件与直接调用 `node:fs` 的代码都会绕过该策略。若要让模型碰不到凭据目录，可选择这项软策略；若文件效果需要 OS 边界，应选择 [`dsh-sandbox-local`](../../sandbox/sandbox-local/README.zh.md) 配合沙箱化文件系统与 shell。
 
 ## 目录
 
@@ -141,11 +141,19 @@ dsh --profile headless \
 
 #### 模型看到什么
 
-每个请求都带一个由当前 profile 渲染的运行时上下文段。`guarded` 组合产生：
+每个请求都带一个由当前 profile 渲染的运行时上下文段。`guarded` 组合产生以下上下文。
 
-> Current DSH tool policy: guarded (soft policy; the process has full user permissions and is NOT OS-confined). Baseline soft policy: credential/DSH paths are denied to file tools; run_code is disabled. File-tool access is denied for: `~/.ssh` (read/write/list), … . Tools denied: run_code (…). This policy only checks model tool calls. Shell commands, scripts, PTC code, MCP tools, and direct native file access are not path-checked by it; do not use them to reach a denied path.
+##### Guarded 策略上下文
 
-被拒绝的工具调用返回 `tool "<name>" is denied by DSH tool policy "<profile>": <reason>`。被拒绝的文件目标以 `FS_POLICY_DENIED` 失败，文本为 `cannot <operation> "<path>": it is under the tool-policy denied path "<rule>" (<operations>) in profile "<profile>"; <reason>. This is a soft policy over model tool calls, not an OS sandbox.` 被允许的调用不变：策略不新增 schema 字段，也不触发审批提示。
+```markdown
+Current DSH tool policy: guarded (soft policy; the process has full user permissions and is NOT OS-confined). Baseline soft policy: credential/DSH paths are denied to file tools; run_code is disabled. File-tool access is denied for: `~/.ssh` (read/write/list), … . Tools denied: run_code (…). This policy only checks model tool calls. Shell commands, scripts, PTC code, MCP tools, and direct native file access are not path-checked by it; do not use them to reach a denied path.
+```
+
+##### 拒绝结果
+
+```markdown
+A denied tool call returns `tool "<name>" is denied by DSH tool policy "<profile>": <reason>`. A denied file target fails with code `FS_POLICY_DENIED` and the text `cannot <operation> "<path>": it is under the tool-policy denied path "<rule>" (<operations>) in profile "<profile>"; <reason>. This is a soft policy over model tool calls, not an OS sandbox.` Allowed calls are unchanged: the policy adds no schema fields and no approval prompts.
+```
 
 #### Token 影响
 
@@ -166,7 +174,7 @@ dsh --profile headless \
 - **只有 `dsh-tool-fs` 调用文件目标检查。** 其他直接经 `ctx.fs` 读写的插件不会被检查。
 
 <a id="dev-note"></a>
-### 开发者备注
+### 开发备注
 
 <details>
 <summary>维护者工作上下文——点击展开</summary>

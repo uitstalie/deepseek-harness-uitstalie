@@ -1656,7 +1656,7 @@ export interface Config {
 
 - `inject`: `agentDefaultModel` · `agents` · `sessions`
 - `refs`: [`ApprovalPolicy`](subsystems/approval.md)
-- `source`: [`packages/bundle/headless/src/index.ts:49`](../packages/bundle/headless/src/index.ts)
+- `source`: [`packages/bundle/headless/src/index.ts:50`](../packages/bundle/headless/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: the task and run options resolved from this app's injected provider service. */
@@ -1667,6 +1667,7 @@ export interface Config {
   sessionId?: string
   /** Whether stdout carries the machine-readable event stream instead of final text. */
   json?: boolean
+  // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, policy profile config replaces the preset spelling
   /** Soft-policy profile applied before the task; an explicit CLI flag takes precedence. Omission keeps the session selection. */
   policy?: string
   /**
@@ -1674,6 +1675,7 @@ export interface Config {
    * @deprecated Use {@link policy}; the spelling is removed with the CLI alias.
    */
   permissionMode?: string
+  // END uitstalie-deepseek-flash
   /** Approval behavior applied after preset selection; an explicit CLI flag takes precedence. Omission keeps current policy. */
   approvalPolicy?: ApprovalPolicy
 }
@@ -2709,7 +2711,7 @@ export interface McpManagedServerEntry {
 
 ## `@deepseek-ai/dsh-memory`
 
-- `inject`: `dafeiyu` · `dshStore` · `fs` · `sessionQuery` · `jobs` · `llm`
+- `inject`: `dafeiyu` · `dshStore` · `sessionQuery` · `jobs` · `llm`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
 - `source`: [`packages/uitstalie/memory/src/config.ts:42`](../packages/uitstalie/memory/src/config.ts)
 
@@ -3260,7 +3262,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-sandbox-local`
 
-- `source`: [`packages/sandbox/sandbox-local/src/index.ts:46`](../packages/sandbox/sandbox-local/src/index.ts)
+- `source`: [`packages/sandbox/sandbox-local/src/index.ts:44`](../packages/sandbox/sandbox-local/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config. All optional — `static Config` supplies the defaults. */
@@ -4646,7 +4648,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-tool-policy`
 
 - `inject`: `sessionProjections`
-- `source`: [`packages/interaction/tool-policy/src/types.ts:52`](../packages/interaction/tool-policy/src/types.ts)
+- `source`: [`packages/interaction/tool-policy/src/types.ts:59`](../packages/interaction/tool-policy/src/types.ts)
 
 ```ts config-catalog
 /** Plugin config: named profiles plus the deployment default. */
@@ -5577,6 +5579,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-session-telemetry` | — | [`packages/session/session-telemetry/src/index.ts`](../packages/session/session-telemetry/src/index.ts) |
 | `@deepseek-ai/dsh-session-title-llm` | — | [`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts) |
 | `@deepseek-ai/dsh-ssh-helper-runtime` | — | [`packages/ssh/ssh-helper-runtime/src/index.ts`](../packages/ssh/ssh-helper-runtime/src/index.ts) |
+| `@deepseek-ai/dsh-superagent-core` | — | [`packages/superagent/superagent-core/src/index.ts`](../packages/superagent/superagent-core/src/index.ts) |
 | `@deepseek-ai/dsh-timeout` | — | [`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts) |
 | `@deepseek-ai/dsh-tool-testkit` | — | [`packages/test-support/tool-testkit/src/index.ts`](../packages/test-support/tool-testkit/src/index.ts) |
 | `@deepseek-ai/dsh-typert-generator` | — | [`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts) |

@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 `dsh-client-ui-personality` 是 personality provider 的设置页。它列出模型或人排入 `PERSONALITY.proposals.jsonl` 的 identity 提案，显示每条的名字、正文、证据、入队时间与状态，并接受或拒绝待处理的提案。它不拥有档案数据，也不拥有提案存储：读取与决定都走 `remote.personality` 命名空间，host 侧把接受后的 identity 条目经与 `/personality accept` 命令相同的版本守卫写入；拒绝只记录状态。它也会通过共享配置表单编辑该行的 volatile 字段。
 
@@ -74,7 +74,7 @@ host 侧在 `@deepseek-ai/dsh-personality`：`src/proposals.ts` 拥有 JSONL 队
 - **只覆盖全局** — identity 条目住在全局档案里；页面从不读写工作区覆盖。
 
 
-### 开发者注记
+### 开发备注
 
 <a id="dev-note"></a>
 

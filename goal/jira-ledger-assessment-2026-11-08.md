@@ -2,7 +2,7 @@
 
 > **Fedora 实机反馈**：本评估基于 Fedora（Linux）实机反馈，Windows 复跑后可能不同；后续以 Windows 复跑为准。
 
-调查日期：2026-11-08。源码基线为当前 dev checkout 的 `7e844355`，其中报告解耦提交为 `574de923`。本文是只读调查，不是实施方案；所有写入/状态建议都需要另行验证。
+调查日期：2026-11-08。源码基线为当前 dev checkout 当时的版本，其中报告解耦已完成。本文是只读调查，不是实施方案；所有写入/状态建议都需要另行验证。
 
 ## 0. 结论先行
 
@@ -49,7 +49,7 @@
 
 - 未调用任何 Jira/superagent 写工具，未启动服务或游戏，未改源码。
 - 没有运行 `jira sync`、`generate` 或 CLI 写操作；本机 cloudstore 的 push 在 profile 中显式为 `enabled:false`。
-- 调查时运行中的部署未必已加载 `574de923a3`：实际 super workspace 尚无 `reports.jsonl`，但 `.superagent/ledger` 继续变化。因此新 journal 的结论来自当前源码、提交说明和测试设计，不声称已在运行实例中验收。
+- 调查时运行中的部署未必已加载报告 journal 修复：实际 super workspace 尚无 `reports.jsonl`，但 `.superagent/ledger` 继续变化。因此新 journal 的结论来自当前源码、提交说明和测试设计，不声称已在运行实例中验收。
 - 存储 SQLite 只确认了实际文件和 bundle 路由；没有借助提升权限绕过本机沙箱读取数据库。涉及 domain 的结论来自源码和 dispatch Markdown，而非 SQL 内容统计。
 
 ## 2. 当前实际承担什么
@@ -119,7 +119,7 @@
 5. **重复记录**：`session-e00351a8…` 行 2580/seq 2578 明确写“重复的准备确认……无新增结论”；行 2650/seq 2648 明确写“与 task-mw7s9bqc 相同的修复报告（重复投递/复述）”。旧 Stardew `task-mw52eap9-452333b9` 也有 pending 和两段 returned（`0324c9a0-….md:5,26,101`）。
 6. **状态修正无效**：`session-e00351a8…` 行 1494/seq 1492 请求将 `task-mw6j88z1-ebd8c83f` 置 failed；下一行返回 returned，随后查询仍 returned。当前源码解释见 §4.1：已终结记录的普通 resolve 直接返回旧值。
 
-这些案例解释了 `574de923a3` 的必要性：报告路由不能等待一个人读 Markdown 系统正确解析和结算。但这些历史案例不能作为“新报告 journal 已发生同样故障”的证据。
+这些案例解释报告解耦的必要性：报告路由不能等待一个人读 Markdown 系统正确解析和结算。但这些历史案例不能作为“新报告 journal 已发生同样故障”的证据。
 
 ## 3. Jira 本身的数据模型与分层
 
@@ -218,7 +218,7 @@ KB 位于 `knowledge/<domain>/KB-<n>.md`，有 runbook/pitfall/howto/concept、t
 
 ## 5. 报告解耦后的真实数据流与剩余冗余
 
-### 5.1 `574de923a3` 改了什么
+### 5.1 报告解耦改了什么
 
 提交说明给出的实际根因是：Markdown fallback 漏掉 requestId，多行 task 自带的 `##` 让 reader 丢掉 session/dispatched 字段，turn end 找不到候选而静默丢报告。
 
@@ -351,7 +351,7 @@ Windows 要改为自己 clone 的绝对路径，不能依赖 Linux 日志中的�
 | Jira 与 superagent 同 row | `packages/jira/jira-agent/src/index.ts:65-139,205-239` |
 | superagent 混入 service API | `packages/jira/jira-service/src/types.ts:289-315` |
 | SQLite route | `packages/bundle/base/cordis.patch.yml:179-200` |
-| 历史故障与修复动机 | `git show 574de923` |
+| 历史故障与修复动机 | 报告解耦提交的说明与测试 |
 
 ### 8.2 关键 Session 文件
 
@@ -369,7 +369,28 @@ Windows 要改为自己 clone 的绝对路径，不能依赖 Linux 日志中的�
 
 ### 8.3 本机数据快照
 
-- cloudstore HEAD `4ba2b07`，最近提交时间 2026-11-06 01:15:57 +08:00；当时工作树干净、main 领先 origin/main 2。
+- cloudstore HEAD 为当时的本地基线，最近提交时间 2026-11-06 01:15:57 +08:00；当时工作树干净、main 领先 origin/main 2。
 - `$DSH_HOME/dsh-jira/machine-id` 当前为 `m-596433ad`；共享 machines 文件还保留 Windows 与误建身份的记录。
 - dispatch Markdown 路径：`/home/uitstalie/桌面/dsh/superagent/.superagent/ledger/`；错挂示例在 `7515b01c-6587-4cd2-ab3f-9f129d2561c6.md:2446-2534`，同 id 多段可从该文件后续 returned 标题复核。
-- `574de923a3` 新增 journal 的源码在调查时已提交；实际 super home 下尚无 `reports.jsonl`，所以 Windows 复跑必须另做新链路的实机验证。
+- 报告解耦新增 journal 的源码在调查时已提交；实际 super home 下尚无 `reports.jsonl`，所以 Windows 复跑必须另做新链路的实机验证。
+
+## 2026-11-10 进展
+
+基线说明：本节记录基于此前基线加本地 Stage A/B/C 的后续进展；原审查及其 Fedora 证据保持不变。`docs/reviews/windows-superagent-eval-2026-11-09.md` 的「失败不可重试」描述评测时的基线，不代表当前 HEAD。
+
+### 已修
+
+- **报告 journal 已独立于 Jira 台账。** Stage A 对应阶段基线 将 journal 移入 `@deepseek-ai/dsh-superagent-core`，Jira 保留兼容 re-export；报告绑定、投递与重试不再以 issue/Markdown 台账为前置条件。证据：`packages/superagent/superagent-core/src/index.ts:1-24`。
+- **dispatch 业务域与存储已迁入 core。** Stage B 对应阶段基线 用 core 自有类型和 `DispatchProjection` 接口替代 Jira 类型/parser 依赖，Jira 注入 Markdown 投影并保留旧导入路径。证据：`packages/superagent/superagent-core/src/dispatch-types.ts`、`packages/jira/jira-agent/src/dispatch-projection.ts`。
+- **Stage C 对应阶段基线 补齐已验证的投递查询与生命周期路径。** journal 提供 `list` 与 `ack`，记录 attempt/error/recipient/时间，并防止已 delivered 报告被重复 claim；启动扫描重投已保存的 pending/delivering 报告，failed 不自动重试。abort 后续建立新绑定，缺失/归档 recipient 不错投到其他 super Session，stop 的 turn-end 不投递。证据：`packages/superagent/superagent-core/src/index.ts:241-262`、`recovery.ts:31-78`、`packages/jira/jira-agent/src/superagent.ts:3326-3348,3786-3877,4094-4097,4873-4890,5203`。
+- **Windows 工具面修复已入基线。** 对应阶段基线 修复 Jira 结果渲染、嵌套校验、dispatch resolve/列表计数及失败可见性；这些是 Windows 侧修复，未在 Fedora 上对同一实机场景复测。证据：对应阶段基线 及 `packages/jira/jira-agent/src/index.test.ts` 的 35 个真实组合测试。
+
+### 部分修
+
+- **报告可见性和恢复仍限单实例验证。** Stage C source-only 验证为 core journal/domain 26/26、Jira superagent 95/95；尚无独立的真实组合启动恢复集成测试，dispose 取消恢复但不等待其结算。证据：对应阶段基线 的提交正文及上述测试。
+- **业务结果与投递分离已落到 domain/journal 和投影接口，但控制面仍在 Jira 包。** `superagent.ts`、工具注册、recipient 路由与 UI 尚未迁入独立控制服务；本轮不是无 Jira 组合验收。
+
+### 未处理 / 未验证
+
+- **多 Host 不是 exactly-once。** journal 的 Promise 队列和 claim 仍是单实例/进程内保护，自动接管 delivering 没有跨进程原子锁；Windows 合成多进程实验的旧风险仍然成立，未宣称已解决。证据：对应阶段基线 提交正文、`packages/superagent/superagent-core/README.md:37-41`。
+- **Jira 包内控制面、旧 claim 事务、UI、旧导出/Markdown 回退移除均未完成。** Windows 的九个后续提交没有改变本轮 memory 或这些控制面边界；Stage C 也未做 Windows/Fedora 实机重启验证。

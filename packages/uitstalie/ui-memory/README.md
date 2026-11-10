@@ -17,6 +17,7 @@ English | [中文](README.zh.md)
 - [Understand the implementation](#understand-the-implementation)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
 <a id="use-this-package"></a>
 
@@ -55,3 +56,9 @@ None; this package neither assembles nor sends a provider request.
 
 - **No memory content editing** — the page edits the provider's configuration only; `MEMORY.md` entries are written by the tools and the summary job.
 - **The form follows the settings service** — when the composition omits `configForms`, the section renders the unavailable notice and offers no controls.
+
+<a id="dev-note"></a>
+
+### Dev Note
+
+None.

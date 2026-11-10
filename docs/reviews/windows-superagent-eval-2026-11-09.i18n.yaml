@@ -1,0 +1,82 @@
+# Bilingual-pair consistency record for windows-superagent-eval-2026-11-09.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/reviews/windows-superagent-eval-2026-11-09.md
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory:
+  en: b4b8db54310a745b
+  zh: 3c2bd059cb592836
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/0-executive-summary:
+  en: af3c83b85a556f4d
+  zh: b90760b68fefc7cd
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/1-version-environment-and-the-three-kinds-of-evidence:
+  en: 1600e23e66c3d800
+  zh: 9b62ff9941271ee6
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/1-version-environment-and-the-three-kinds-of-evidence/1-1-running-runtime:
+  en: 4afbb3898876e779
+  zh: fa9d1716613c74d7
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/1-version-environment-and-the-three-kinds-of-evidence/1-2-consistency-between-the-dev-checkout-and-the-runtime:
+  en: 47765c60b4d8b6aa
+  zh: 811a00e387210744
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/1-version-environment-and-the-three-kinds-of-evidence/1-3-machine-and-permissions:
+  en: c3f59c277e973a28
+  zh: 467919c35f8ee677
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/1-version-environment-and-the-three-kinds-of-evidence/1-4-three-evidence-levels-citation-rules-for-this-report:
+  en: a008fb0350ef26f2
+  zh: d94fddacf252fe37
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/2-live-data-2026-11-09-produced-by-the-runtime-itself:
+  en: 47459fa16dc9f222
+  zh: 24af6503572a9542
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix:
+  en: 8bdaffa79bb0903b
+  zh: 1d87207e27fc2911
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-1-a-report-loop:
+  en: 9a7286f49253bd77
+  zh: d34396620fc43403
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-1-a-report-loop/a-1-normal-completion-works-on-machine:
+  en: 6e50f60b04f774aa
+  zh: 7d824bad8584de84
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-1-a-report-loop/a-2-no-report-empty-output-observed-but-the-ledger-records-success-on-machine-p0:
+  en: be3e5410770c0b15
+  zh: ae335f6ec2b32b4f
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-1-a-report-loop/a-3-delivery-failure-the-mechanism-exists-but-it-remains-terminal-code-unit-tests-not-induced-on-machine:
+  en: e1a6b7625f29c946
+  zh: 206e167d377d2a4c
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-1-a-report-loop/a-4-duplicate-reports-no-duplicates-in-the-journal-duplicates-in-the-ledger-on-machine:
+  en: e6f31a6b71645479
+  zh: 29a612435f829c22
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-1-a-report-loop/a-5-whether-the-ledger-journal-domain-ui-show-the-same-state:
+  en: 8bac6f3841b3453c
+  zh: 2596e3fcc9d7bfc6
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-2-dispatch-domain-opened-and-used-authority-relationship-and-data-source-need-checking-original-conclusion-withdrawn:
+  en: bf7b851ed3fda05d
+  zh: 1acdc26ea7baa06a
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-3-b-lifecycle:
+  en: dc8ab515b4853979
+  zh: 20a3e4fbbcad025d
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-4-c-session-routing:
+  en: fec9f8443eb7290c
+  zh: 2e52699d9783c9c4
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-5-e-windows-environment:
+  en: 55d5449ed1639c5a
+  zh: 1d29074e9f3468f8
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-6-d-questions-permissions:
+  en: f50e0e689a9cd064
+  zh: 37ae4662d2ac5916
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-7-f-memory-retrieval:
+  en: ea899f583dbb3d14
+  zh: 51d951d90e2c1dd9
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/7-unverified-items-and-reasons:
+  en: 117076c6f82ef43c
+  zh: 207c549fb6f1ffb4
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/8-recommendations-correctness-first-then-convergence:
+  en: 633c6bc5f5390509
+  zh: 5de13022be0c47ba
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/9-temporary-files:
+  en: c69c3039e71d29bd
+  zh: 4971e03ed4282f4e
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/appendix-evidence-index:
+  en: 6e9d7009c0a97be1
+  zh: 8260a9b85151830a
+/windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/k3-1-re-review-revision-record:
+  en: 76a3c6267beb64b2
+  zh: 3e5c66c6cf510c8f

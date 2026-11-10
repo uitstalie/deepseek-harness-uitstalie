@@ -14,7 +14,7 @@ kind: "package-library"
 ## 目录
 
 - [修复权限](#repair-permissions)
-- [模型体验](#model-experience)
+- [Model Experience](#model-experience)
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
@@ -29,6 +29,7 @@ kind: "package-library"
 
 当 `dsh-sandbox-local` 挂载内置 Windows 支持且技能注册表可用时，`registerAclDiagnosisSkill` 会贡献此技能。注册时提取供外部 PowerShell 使用的资源，ASAR 与 SEA 部署也适用。fiber 释放时注销提供方并删除副本。
 
+<a id="model-experience"></a>
 ## 模型体验
 
 间接地通过随包诊断技能的目录条目，以及 `dsh-sandbox-local` 提供的后端不可用诊断呈现。

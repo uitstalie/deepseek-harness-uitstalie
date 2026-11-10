@@ -9,11 +9,11 @@
   en: 86a25aa60ecf3c93
   zh: c0f25f3e3be30c0c
 /deepseek-ai-dsh-client-ui-memory/summary:
-  en: ded4e710ddec80c9
-  zh: 172134a89df6d3cb
+  en: 04ba1433c3f430fc
+  zh: 7c88fb0e294ae136
 /deepseek-ai-dsh-client-ui-memory/table-of-contents:
-  en: 2fee9973f19f9401
-  zh: 57488629c9a54c40
+  en: 122f0d41696980b1
+  zh: 528864635b577290
 /deepseek-ai-dsh-client-ui-memory/use-this-package:
   en: d34a48df88b96650
   zh: fe46991bffe04205
@@ -27,5 +27,8 @@
   en: ca75c51c89c2c9b0
   zh: 2064958b0754647e
 /deepseek-ai-dsh-client-ui-memory/known-limitations-and-deferred-work:
-  en: f48c88d598a3d44b
-  zh: feeefa68f4e6790d
+  en: 043451987b940c2a
+  zh: 07b7764661ed84d5
+/deepseek-ai-dsh-client-ui-memory/known-limitations-and-deferred-work/dev-note:
+  en: 0a1253c6f7b5e8b9
+  zh: 9f56528562c7c914

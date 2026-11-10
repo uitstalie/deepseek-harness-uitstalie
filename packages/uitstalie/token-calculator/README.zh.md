@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## Summary
+## 概述
 
 `token-calculator` 离线测量 DeepSeek V4 的 token 数。它把模型的 byte-level BPE 分词器（128,000 词表、127,741 merges、1,283 added tokens）作为 gzip 资产随包携带，通过 `dafeiyu` 能力门暴露面向模型的 `count_tokens` 工具，并为人工注册 `/tokens` 命令。在把系统指令、memory 块或生成文档塞进提示词预算之前，先用它量一下。
 
@@ -15,7 +15,7 @@ kind: "package-reference"
 
 - [Use this package](#use-this-package)
 - [Understand the implementation](#understand-the-implementation)
-- [Dev Note](#dev-note)
+- [开发备注](#dev-note)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 
@@ -50,7 +50,8 @@ agent 会看到一个工具，人也可以不经过模型直接计数：
 - `src/commands.ts` 是 `/tokens [--bos] <text>`，共用同一分词器与字节上限；空输入返回用法而不是计数。
 - `src/index.ts` 注册能力和命令；工具由组织者按 agent 接线，命令在组合了命令注册表时注册。
 
-## Dev Note
+<a id="dev-note"></a>
+## 开发备注
 
 <details>
 <summary>维护者的工作上下文——点击展开</summary>

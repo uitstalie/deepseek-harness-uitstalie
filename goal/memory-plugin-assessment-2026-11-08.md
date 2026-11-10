@@ -2,7 +2,7 @@
 
 > **Fedora 实机反馈**：本评估基于 Fedora（Linux）实机反馈，Windows 复跑后可能不同；后续以 Windows 复跑为准。
 
-调查日期：2026-11-08。源码基线为当前 dev checkout 的 `34dbf54741`，调查开始前完成；报告与 jira 台账评估相邻，但不复述其 issue、dispatch 和报告路由实现。本文是只读调查，不是代码变更或已验证的重写方案；建议均需另行验收。
+调查日期：2026-11-08。源码基线为当前 dev checkout 在调查开始时的版本；报告与 jira 台账评估相邻，但不复述其 issue、dispatch 和报告路由实现。本文是只读调查，不是代码变更或已验证的重写方案；建议均需另行验收。
 
 ## 0. 结论先行
 
@@ -44,7 +44,7 @@
 
 - 未调用 memory/Jira/superagent 写工具，未启动或关闭服务/游戏，未改 runtime checkout，未修改任何被调查的存储。
 - 没有为调查启动真实模型，因此没有新增 token 账单或 Windows 实机数据；辅助摘要成本用调用次数而非臆测的 token 总量表达。
-- 运行实例可能落后于源码：例如调查时 runtime checkout 仍为 `c27876250d`。历史日志只能证明当时的可观察行为，当前问题另由源码行证明。
+- 运行实例可能落后于源码。历史日志只能证明当时的可观察行为，当前问题另由源码行证明。
 - 本轮没有对 Windows 做文件锁、junction、ACL 或真实 compaction 中断实验；相关段落明确列出待验证项。
 
 ## 2. 现状与实际使用证据
@@ -96,7 +96,7 @@
 
 ### 2.4 快照与 compaction：历史干扰已修一部分，现行成本仍存在
 
-`1416a52e8b` 的记录给出了本机实测根因：原地替换早期 snapshot 使缓存前缀从约 16,896 token 后失效；`8d9fafefa5` 又记录 aged-turn 替换在普通 turn 上破坏前缀，并把 checkpoint 移到 compaction 边界。当前 append-only 是针对真实问题的修复，不应当作纯浪费撤销。
+DH-723 的记录给出了本机实测根因：原地替换早期 snapshot 使缓存前缀从约 16,896 token 后失效；DH-724 又记录 aged-turn 替换在普通 turn 上破坏前缀，并把 checkpoint 移到 compaction 边界。当前 append-only 是针对真实问题的修复，不应当作纯浪费撤销。
 
 但日志仍给出两类具体反例：
 
@@ -302,7 +302,7 @@ superagent 的 start/append/prompt、journal、dispatch 状态、compaction 和�
 | 原子写及 Windows DACL/replace | `packages/fs/fs-local/src/fsio.ts:601-701` |
 | superagent curation 与 memory 指令 | `packages/jira/jira-agent/src/superagent.ts:2042-2057`；`super-workspace-definition.ts:37-57` |
 | UI 配置范围与跨字段缺口 | `packages/uitstalie/ui-memory/src/client/settings.ts:34-49,112-116,156-215` |
-| 历史缓存问题与修复依据 | `git show 1416a52e8b`、`git show 8d9fafefa5` |
+| 历史缓存问题与修复依据 | DH-723、DH-724 的提交记录 |
 
 ### 8.2 关键 Session 文件
 
@@ -323,3 +323,19 @@ superagent 的 start/append/prompt、journal、dispatch 状态、compaction 和�
 - dev MEMORY.md 在 2026-11-08 22:37 左右复核时为 15,544 bytes、5 个 session、49 条；super MEMORY.md 在约 21:39 的独立读取中为 9,832 bytes，且只保留一个活跃 session 的末段。后者是随父会话继续变化的运行时文件，不是固定截点快照；它证明淘汰已发生，不能用旧 session 的全部写入数推断当前文件仍保存全部正文。
 - 本报告的数字复核脚本未落盘：用 Python `subprocess` 调只读 `zstd -dc`，逐行解析 JSONL，以 `time <= 1794144661034` 固定截点，按上述事件类型计数；Windows 复跑应把同等逻辑写成临时/内存脚本，不依赖 shell 工具集。
 - 先前未跟踪的 `prompt-audit/` 提供过工具文本/token 测量和缓存背景，但仍是未跟踪材料；本报告没有修改、提交或把它当当前运行的独立证明。
+
+## 2026-11-10 进展
+
+基线说明：本节记录基于此前基线加本地 Stage A/B/C 的后续进展；原审查及其 Fedora 证据保持不变。`docs/reviews/windows-superagent-eval-2026-11-09.md` 的「失败不可重试」描述评测时的基线，不代表当前 HEAD。
+
+### 已修
+
+- **本轮没有 memory 实现修复。** 截至此前基线与 Stage A/B/C，未修改 `packages/uitstalie/memory` 或 `packages/uitstalie/ui-memory`；原审查关于检索、摘要队列、stale 重试、checkpoint 和快照成本的结论仍有效，不在本轮修复范围内。证据：基线的 `git diff-tree` 文件列表与 Stage C 的提交文件列表。
+
+### 部分修
+
+- **只有 superagent 的报告生命周期发生了改变，不能据此推断 memory 已改善。** Stage C 对应阶段基线 的 26 个 core 与 95 个 Jira source-only 测试不覆盖 memory 的搜索/读取、摘要队列或 Windows 文件锁。Stage A/B/C 均不改变 memory 的职责边界。
+
+### 未处理 / 未验证
+
+- **默认检索、连续 turn 摘要覆盖、维护命令 stale 重试、跨文件事务及 Windows 复跑仍按原审查待处理。** Windows 的九个后续提交包括 Jira 工具面、Session 未知事件和 sandbox ACL 修复，但没有 memory 实现变更；Fedora 未对这些 Windows 修复或 memory 原问题做新的实机复测。

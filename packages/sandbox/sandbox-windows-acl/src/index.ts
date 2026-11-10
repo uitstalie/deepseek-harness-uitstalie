@@ -45,6 +45,7 @@ import { Win32Error } from '@deepseek-ai/dsh-win32-process'
 
 /** The retired direct backend cannot enforce the requested mode. */
 export class AclSandboxUnavailableError extends Error {
+  /** Stable diagnostic code for the disabled backend. */
   readonly code = 'SANDBOX_UNAVAILABLE'
 
   constructor(mode: AclSandboxOptions['mode']) {

@@ -1,0 +1,55 @@
+# Bilingual-pair consistency record for 2026-11-07-memory-jira-fixes.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/reviews/2026-11-07-memory-jira-fixes.md
+/memory-jira-fix-report:
+  en: 4d88e49e650ac5c7
+  zh: 577ea69c99882012
+/memory-jira-fix-report/0-executive-summary:
+  en: ebfdf870fa9bbc4d
+  zh: ecd3d6d22a7faf66
+/memory-jira-fix-report/1-fix-details-problem-fix-evidence-tests:
+  en: 7aeb1cfa6c68c449
+  zh: 1a63cc8862724528
+/memory-jira-fix-report/1-fix-details-problem-fix-evidence-tests/m1-p0-memory-no-summary-jobs-for-cancelled-errored-turns:
+  en: 568b48494a3db102
+  zh: 411eac1de511cea5
+/memory-jira-fix-report/1-fix-details-problem-fix-evidence-tests/j1-p0-jira-failure-envelopes-must-satisfy-the-output-schema:
+  en: c9fffe2c34446a49
+  zh: aaf71cd92f79f04c
+/memory-jira-fix-report/1-fix-details-problem-fix-evidence-tests/j2-p1-jira-wire-the-worker-preset-into-the-delivery-composition:
+  en: f78c0b7009a07bf7
+  zh: 0d335ede9a60e822
+/memory-jira-fix-report/1-fix-details-problem-fix-evidence-tests/m2-p1-memory-runtime-switching-of-snapshotposition:
+  en: 5b6929da9ecc9a1c
+  zh: aa96715e1c497685
+/memory-jira-fix-report/1-fix-details-problem-fix-evidence-tests/m3-p1-memory-documentation-dependency-config-drift:
+  en: 30882cd68b0ec9cf
+  zh: 74571c6c52fd3435
+/memory-jira-fix-report/1-fix-details-problem-fix-evidence-tests/m4-p1-memory-snapshot-accumulation:
+  en: 5c73839ef436da31
+  zh: 42ef24b95ea95e93
+/memory-jira-fix-report/1-fix-details-problem-fix-evidence-tests/j3-p1-jira-duplicate-assignment-and-documentation:
+  en: 70124b64204a6a9a
+  zh: 215b9723b26efc06
+/memory-jira-fix-report/1-fix-details-problem-fix-evidence-tests/j4-p1-jira-superagent-teardown:
+  en: 582c10c1e06f70bf
+  zh: da26f001606d5090
+/memory-jira-fix-report/1-fix-details-problem-fix-evidence-tests/p2-completed:
+  en: 85389c9d5c5b9566
+  zh: ec418aa05082e929
+/memory-jira-fix-report/2-commit-map:
+  en: 506d60c97d18a1e4
+  zh: 16f5c1534970aa2c
+/memory-jira-fix-report/3-deferred-p2-items-and-reasons:
+  en: cb073709af22c8e4
+  zh: c145d1dc15eb16e8
+/memory-jira-fix-report/4-verification-evidence:
+  en: c238a2a4364188c1
+  zh: f734e630fe395387
+/memory-jira-fix-report/4-verification-evidence/two-abnormal-restarts-during-the-fix-must-be-recorded:
+  en: c03fec3a6de7765a
+  zh: 8bbfb1c5022d4e1e
+/memory-jira-fix-report/5-remaining-risks:
+  en: b440587583722c0d
+  zh: f2e8b9264abf675f

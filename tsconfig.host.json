@@ -409,6 +409,9 @@
     { "path": "./packages/storage/storage-domain" },
     { "path": "./packages/feedback/message-feedback" },
     { "path": "./packages/workspace/workspace" },
+    // BEGIN uitstalie-kimi, 2026/11/10, superagent-journal, register the Jira-independent report journal
+    { "path": "./packages/superagent/superagent-core" },
+    // END uitstalie-kimi
     { "path": "./packages/session/session-title" },
     { "path": "./packages/session/working-directory" },
     { "path": "./packages/experimental/worktree" },

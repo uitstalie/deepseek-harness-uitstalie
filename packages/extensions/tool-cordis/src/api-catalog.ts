@@ -2605,6 +2605,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the effective preset name, or `custom` when nothing matches.',
       },
       {
+        signature: 'selection(session: Session): PermissionSelection',
+        description: 'Read the preset identity and both effective knobs from one projection snapshot.',
+        parameters: [{ name: 'session', description: 'the Session whose permission is read.' }],
+        returns: 'the current preset and the sandbox/approval values enforcement will use.',
+      },
+      {
         signature: 'resolve(name: string): PresetSpec',
         description: 'Resolve an available preset\'s knob bundle.',
         parameters: [{ name: 'name', description: 'the preset name to resolve.' }],
@@ -2619,9 +2625,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['when `name` is neither a configured preset, live `auto`, nor `custom`.'],
       },
       {
-        signature: 'set(session: Session, name: string): void',
-        description: 'Record a changed preset, then update each changed knob through its own setter. Selecting the effective preset again appends nothing.',
-        parameters: [{ name: 'session', description: 'the session the switch belongs to.' }, { name: 'name', description: 'the preset to switch to; unknown names throw.' }],
+        signature: 'set(session: Session, name: string, reason?: string): void',
+        description: 'Record a changed preset, then update each changed knob through its own setter. Selecting the effective preset again appends nothing. A failed write attempts compensation to the previous effective values and throws with the compensation outcome.',
+        parameters: [{ name: 'session', description: 'the session the switch belongs to.' }, { name: 'name', description: 'the preset to switch to; unknown names throw.' }, { name: 'reason', description: 'optional audit reason retained on the preset event.' }],
       },
     ],
   },
@@ -4604,9 +4610,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['{FsError} `FS_POLICY_DENIED` with the matched rule.'],
       },
       {
-        signature: 'select(session: Session, name: string): void',
-        description: 'Select a profile for one session. The selection is durable through the reused `permission/preset` event; only a user-facing command calls this.',
-        parameters: [{ name: 'session', description: 'the session whose profile changes.' }, { name: 'name', description: 'a defined profile name.' }],
+        signature: 'select(session: Session, name: string, reason?: string): void',
+        description: 'Select a profile for one session. The selection is durable through the reused `permission/preset` event; the user command and authorized super-agent tool call this.',
+        parameters: [{ name: 'session', description: 'the session whose profile changes.' }, { name: 'name', description: 'a defined profile name.' }, { name: 'reason', description: 'optional audit reason retained on the profile event.' }],
       },
     ],
   },
@@ -8394,6 +8400,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PermissionCatalog {\n    options: PresetOption[];\n    defaultOptions: PresetOption[];\n    defaultPreset: string;\n}',
   },
   {
+    name: 'PermissionSelection',
+    declaration: 'export interface PermissionSelection {\n    currentValue: string;\n    sandboxMode: string;\n    approvalPolicy: string;\n}',
+  },
+  {
     name: 'PiAiRequestHeaderContext',
     declaration: 'export interface PiAiRequestHeaderContext extends Readonly<Pick<GenerateOptions<string>, \'provider\' | \'model\' | \'sessionId\' | \'purpose\'>> {\n    readonly baseURL: string;\n}',
   },
@@ -10403,7 +10413,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TagCreateResult',
-    declaration: 'export interface TagCreateResult {\n    readonly tag: unknown;\n    readonly committed: boolean;\n}',
+    declaration: 'export interface TagCreateResult {\n    readonly tag: unknown;\n    readonly committed: boolean;\n    readonly commitError?: JiraError;\n}',
   },
   {
     name: 'TagDef',

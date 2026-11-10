@@ -7,18 +7,18 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## Summary
+## 概述
 
 `persona-card` 持有角色扮演会话中稳定的助手侧角色：`persona/v1` 卡格式、无依赖的校验器与提示渲染器，以及 Character Card V2/V3 JSON 的安全导入器。
 
 它不是部署 persona。`@deepseek-ai/dsh-persona`（位于 `packages/preset/persona`）是给单个 agent 部署前缀/后缀的预设行；本包是角色扮演角色卡的数据格式、导入路径与第一个运行时 provider。provider 在 `active` 指定卡时注册一个稳定的 `persona` system-prompt 段。
 
-## Table of Contents
+## 目录
 
 - [Use this package](#use-this-package)
 - [Understand the implementation](#understand-the-implementation)
-- [Dev Note](#dev-note)
-- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
 
 ## Use this package
 
@@ -27,6 +27,8 @@ kind: "package-reference"
 ```ts
 import { importCharacterCard, parsePersonaCard, renderPersonaText } from '@deepseek-ai/dsh-persona-card'
 
+const candidate: unknown = { schema: 'persona/v1', name: '小鲸鱼' }
+const cardJson: unknown = { spec: 'chara_card_v2', data: { name: '小鲸鱼' } }
 const parsed = parsePersonaCard(candidate, { maxBytes: 4096 })
 if (!parsed.ok) throw new Error(parsed.error.message)
 const text = renderPersonaText(parsed.value, { userName: 'Dai' })
@@ -87,7 +89,8 @@ metadata:
 - `system_prompt` 与 `post_history_instructions` 被**隔离**进 `metadata.quarantined`，在 `warnings` 中报告，永不渲染。资产与 group-only greetings 保留在 metadata 并报告未使用。
 - 渲染器先输出固定的优先级 preamble（角色低于 system/developer 指令、工具调用与安全），再输出各段与可选正文。
 
-## Dev Note
+<a id="dev-note"></a>
+## 开发备注
 
 <details>
 <summary>维护者上下文——点击展开</summary>

@@ -36,9 +36,17 @@ kind: "package-reference"
 提供方随后用存储相对路径读写自己的区域。工作区 scope 是默认值；全局 scope 传 `{ scope: 'global' }` 且不需要会话：
 
 ```ts
+import type { Context } from '@deepseek-ai/cordis'
+import type { Session } from '@deepseek-ai/dsh-session'
+import type { DshStore } from '@deepseek-ai/dsh-store-atom'
+
+declare const ctx: Context & { dshStore: DshStore }
+declare const session: Session
+declare const signal: AbortSignal
+const text = '# Memory\n'
 const read = await ctx.dshStore.readFile(session, 'memory/sessions/MEMORY.md', { signal })
 const written = await ctx.dshStore.writeFile(session, 'memory/sessions/MEMORY.md', text, {
-  expected: read.version,
+  ...(read.version === undefined ? {} : { expected: read.version }),
   signal,
 })
 const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALITY.md', { scope: 'global' })

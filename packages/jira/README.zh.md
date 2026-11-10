@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-`jira` 是跨机器 issue 账本背后的包组：一个由 Markdown 文件组成的本地 git 仓库，DSH agent 跨会话、跨机器读写它。`jira-core` 持有领域与 git 原子，`jira-service` 是唯一写入者，持有 sync 与 `ctx.jira` 服务，`jira-agent` 通过三个工具、执行者的 `issue_work`、注入行与写守卫把账本暴露给模型；它还注册独立 gate 的 `superagent` 能力（认领、派发与工作区工具）。`jira-cli` 给人 `jira` 命令，`ui-jira` 增加浏览器段落。分支的 `web-app` 层把三行作为单一组合挂载。
+使用由 Markdown issue 组成的本地 Git 仓库跨会话、跨机器协作。`jira-core` 拥有领域与 Git 操作；`jira-service` 拥有单写入者的 `ctx.jira` 服务与同步；`jira-agent` 提供模型工具与写守卫；`jira-cli` 提供人类命令；`ui-jira` 提供浏览器段落。独立开关的 superagent 能力增加认领、派遣与工作区控制。分支的 `web-app` 层把三个服务行挂载到同一组合。
 
 ## 目录
 

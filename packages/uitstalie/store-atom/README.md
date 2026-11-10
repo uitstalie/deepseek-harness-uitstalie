@@ -34,9 +34,17 @@ Mount the row once per composition, before any consumer of `ctx.dshStore`:
 A provider then reads and writes its own area with a store-relative path. The workspace scope is the default; the global scope takes `{ scope: 'global' }` and no session:
 
 ```ts
+import type { Context } from '@deepseek-ai/cordis'
+import type { Session } from '@deepseek-ai/dsh-session'
+import type { DshStore } from '@deepseek-ai/dsh-store-atom'
+
+declare const ctx: Context & { dshStore: DshStore }
+declare const session: Session
+declare const signal: AbortSignal
+const text = '# Memory\n'
 const read = await ctx.dshStore.readFile(session, 'memory/sessions/MEMORY.md', { signal })
 const written = await ctx.dshStore.writeFile(session, 'memory/sessions/MEMORY.md', text, {
-  expected: read.version,
+  ...(read.version === undefined ? {} : { expected: read.version }),
   signal,
 })
 const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALITY.md', { scope: 'global' })
