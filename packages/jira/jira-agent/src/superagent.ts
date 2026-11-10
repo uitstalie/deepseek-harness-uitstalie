@@ -2987,18 +2987,42 @@ export const runSessionTool = async (
         ), caller, me)
       }
       const titleArg = asString(values.title)?.trim()
+      const requestId = `superagent-task-${randomUUID()}`
+      const taskId = newDispatchReportId()
+      let sessionId = `unstarted:${taskId}`
+      let started = false
+      let ledger: LedgerAttempt = {}
+      let failStart: ((error: unknown) => Promise<void>) | undefined
       try {
+        ledger = await recordTaskLedger(
+          ctx as ToolHost['ctx'], caller, workspace, taskArg.trim(), sessionId, options.at, reportTo, context.store, requestId, taskId,
+        )
+        failStart = async (error: unknown): Promise<void> => {
+          const reason = error instanceof Error ? error.message : String(error)
+          await context.reports?.settle(taskId, 'failed', options.at, reason)
+          if (ledger.ledger !== undefined) {
+            if (context.store !== undefined) {
+              await context.store.resolve(taskId, { status: 'failed', outcome: reason, updatedAt: options.at })
+              await context.store.project(taskId)
+            } else {
+              const current = await findDispatchTask(ledger.ledger.root, taskId)
+              if (current !== undefined) await resolveDispatchTask(ledger.ledger.root, current, { status: 'failed', outcome: reason, updatedAt: options.at })
+            }
+          }
+        }
         const created = await controller.create({
           workspaceId: workspace.id,
           ...(context.agentPreset === undefined || context.agentPreset.trim() === ''
             ? {}
             : { agentPreset: context.agentPreset }),
         })
-        const sessionId = String(created.sessionId)
+        sessionId = String(created.sessionId)
+        started = true
         const initialPermission = await applySessionPermission(
           ctx, controller, workspace.id, sessionId, WORKSPACE_SESSION_PERMISSION, 'explicit default for a superagent-created workspace Session',
         )
         if (initialPermission.error !== undefined) {
+          await failStart(initialPermission.error)
           return failure(invalidInput(
             `the Session was created but its default workspace-write permission could not be set; no task was sent: ${initialPermission.error}`,
             { session: sessionId },
@@ -3006,6 +3030,7 @@ export const runSessionTool = async (
         }
         const selected = await applySessionModel(controller, sessionId, values, ctx)
         if (selected.error !== undefined) {
+          await failStart(selected.error)
           return failure(invalidInput(selected.error, { session: sessionId, ...selected.errorDetails ?? {} }), caller, me)
         }
         // Name the conversation before its first task, so a later `list` tells it apart.
@@ -3014,17 +3039,17 @@ export const runSessionTool = async (
           try {
             title = (await controller.rename?.({ sessionId, title: titleArg }))?.title ?? titleArg
           } catch (error: unknown) {
+            await failStart(error)
             return failure(invalidInput(
               `the Session was created but its title could not be recorded: ${error instanceof Error ? error.message : String(error)}`,
               { session: sessionId },
             ), caller, me)
           }
         }
-        const requestId = `superagent-task-${randomUUID()}`
-        const taskId = newDispatchReportId()
         try {
           await recordDispatchReport(context, caller, workspace, taskArg.trim(), sessionId, options.at, reportTo, requestId, taskId)
         } catch (error: unknown) {
+          await failStart(error)
           return failure(invalidInput(
             `the dispatch report binding could not be recorded, so the Session was not prompted: ${error instanceof Error ? error.message : String(error)}`,
             { session: sessionId },
@@ -3038,12 +3063,9 @@ export const runSessionTool = async (
             content: [{ type: 'text', text: composeTask(taskArg.trim(), curateMemory) }],
           }, new AbortController().signal)
         } catch (error: unknown) {
-          await failDispatchReport(context, caller, taskId, options.at, error)
+          await failStart(error)
           throw error
         }
-        const ledger = await recordTaskLedger(
-          ctx as ToolHost['ctx'], caller, workspace, taskArg.trim(), sessionId, options.at, reportTo, context.store, requestId, taskId,
-        )
         if (reportTo !== undefined) {
           enqueueTaskRecord(context.tasks, sessionId, {
             superSession: reportTo,
@@ -3064,9 +3086,10 @@ export const runSessionTool = async (
           ...(selected.model === undefined ? {} : { model: selected.model }),
         }), ledger)
       } catch (error: unknown) {
+        if (!started && failStart !== undefined) await failStart(error)
         return failure(invalidInput(
           `the workspace Session could not be started: ${error instanceof Error ? error.message : String(error)}`,
-          { workspace: workspace.path },
+          { workspace: workspace.path, session: sessionId, task: taskId, started },
         ), caller, me)
       }
     }

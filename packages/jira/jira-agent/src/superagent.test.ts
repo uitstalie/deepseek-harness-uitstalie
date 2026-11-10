@@ -647,6 +647,25 @@ describe('superagent: workspace Sessions', () => {
     )
     assert.equal(routed.ok, true, JSON.stringify(routed.error))
     assert.equal(controller.prompted.at(-1)?.sessionId, 'w-newer')
+
+    const failureRoot = await scratchDirectory()
+    const failingController = new CompactController()
+    failingController.create = async () => { throw new Error('injected start failure') }
+    const failed = await runControlTool(
+      { action: 'start', workspace: 'hello', task: 'must not become pending' },
+      { ...options, caller: { writable: true, sessionId: 'super-1', cwd: failureRoot } as never },
+      me,
+      { get: (key: string) => key === 'sessionController' ? failingController : key === 'workspaceRegistry' ? registry : undefined },
+      { tasks: new Map() },
+    )
+    assert.equal(failed.ok, false)
+    assert.equal(failingController.prompted.length, 0)
+    const failedTasks = await listDispatchTasks(failureRoot)
+    assert.equal(failedTasks.length, 1, 'one failed task, never a successful pending dispatch')
+    assert.equal(failedTasks[0]?.status, 'failed')
+    assert.match(failedTasks[0]?.outcome ?? '', /injected start failure/u)
+    assert.equal(failedTasks.some(task => task.status === 'pending'), false)
+    console.log(`start failure: tasks=${String(failedTasks.length)}, pending=0, status=${failedTasks[0]?.status}, outcome=${failedTasks[0]?.outcome}`)
     assert.equal(tasks.get('w-newer')?.at(-1)?.superSession, 'super-1')
     const foreign = await runControlTool(
       { action: 'append', workspace: 'hello', text: 'no', session: 'elsewhere' },
