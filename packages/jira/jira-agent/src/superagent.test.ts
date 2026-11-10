@@ -1312,11 +1312,12 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal((await journalOf(root).forSession('child-no-ledger'))[0]?.status, 'delivered')
   })
 
-  it('sends a minimal report and warns when the completed turn has no assistant text', async () => {
+  it('marks an empty completed turn failed while retaining its no-output diagnostic', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     const warnings: unknown[][] = []
-    await seedBinding(root, { sessionId: 'child-3', requestId: 'req-3', task: 'finished silently' })
+    await seedBinding(root, { sessionId: 'child-3', requestId: 'req-3', task: 'finished silently', ledger: { root, taskId: 'ledger-empty' } })
+    await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, { id: 'ledger-empty', task: 'finished silently', dispatchedAt: AT, sessionId: 'child-3', requestId: 'req-3' })
 
     const handled = await handleTaskTurnEnd(
       recoveryHost(controller, warnings) as never,
@@ -1329,7 +1330,14 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal(handled, true)
     assert.match(controller.prompted[0]?.text ?? '', /no assistant text/u)
     assert.equal(warnings.length, 1)
-    assert.equal((await journalOf(root).forSession('child-3'))[0]?.status, 'delivered')
+    const report = (await journalOf(root).forSession('child-3'))[0]
+    assert.equal(report?.status, 'delivered', 'the diagnostic may be delivered even though the task failed')
+    assert.equal(report?.result, 'failed')
+    assert.match(report?.outcome ?? '', /^empty-output:/u)
+    const projected = await listDispatchTasks(root)
+    assert.notEqual(projected[0]?.status, 'returned')
+    assert.equal(projected[0]?.status, 'failed')
+    assert.match(projected[0]?.outcome ?? '', /^empty-output:/u)
   })
 
   it('marks the report failed and warns when delivery fails', async () => {

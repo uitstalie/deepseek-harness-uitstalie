@@ -3770,10 +3770,14 @@ export const deliverTaskReport = async (
   const taskId = record.taskId ?? record.ledger?.task.id
   const prepareReport = async (body: string): Promise<boolean> => {
     if (reports === undefined || taskId === undefined) return true
-    const result = turnKind !== undefined && turnKind !== 'completed' ? 'failed' : 'returned'
-    const outcome = result === 'returned'
-      ? lastAssistantText(agent, undefined, endEvent) ?? 'the turn ended completed without assistant text'
-      : `the turn ended ${turnKind}${turnEnd?.error?.message === undefined ? '' : `: ${turnEnd.error.message}`}`
+    const assistantText = lastAssistantText(agent, undefined, endEvent)
+    const emptyOutput = turnKind === undefined || turnKind === 'completed' ? assistantText === undefined : false
+    const result = turnKind !== undefined && turnKind !== 'completed' || emptyOutput ? 'failed' : 'returned'
+    const outcome = emptyOutput
+      ? 'empty-output: the turn completed without assistant text'
+      : result === 'returned'
+        ? assistantText as string
+        : `the turn ended ${turnKind}${turnEnd?.error?.message === undefined ? '' : `: ${turnEnd.error.message}`}`
     try {
       const bound = await reports.prepare(taskId, nowUtc(host.clock), body, outcome, result)
       if (bound !== undefined) {
@@ -4185,7 +4189,7 @@ export const handleTaskTurnEnd = async (
       report = { ...report, superSession }
     }
     const outcome = completed
-      ? text ?? 'the turn ended completed without assistant text'
+      ? text ?? 'empty-output: the turn completed without assistant text'
       : `the turn ended ${turnKind ?? 'unknown'}${reason.error?.message === undefined ? '' : `: ${reason.error.message}`}`
     const known = report.requestId === undefined
       ? tasks.get(sessionId)?.at(-1)
@@ -4210,7 +4214,7 @@ export const handleTaskTurnEnd = async (
     }
     if (delivered) {
       await settleReport(host, journal, report.id, 'delivered', at)
-      await projectReportToLedger(host, report, outcome, completed ? 'returned' : 'failed', at, store)
+      await projectReportToLedger(host, report, outcome, completed && text !== undefined ? 'returned' : 'failed', at, store)
     } else {
       host.ctx.logger.warn(
         'superagent: dispatch %s for %s finished its turn but the report was NOT delivered; marking the report delivery failed',
