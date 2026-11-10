@@ -887,7 +887,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-dafeiyu`
 
-- `source`: [`packages/uitstalie/dafeiyu/src/index.ts:66`](../packages/uitstalie/dafeiyu/src/index.ts)
+- `source`: [`packages/uitstalie/dafeiyu/src/index.ts:65`](../packages/uitstalie/dafeiyu/src/index.ts)
 
 ```ts config-catalog
 /** Resolved organizer configuration: `capabilities` is the live reference. */

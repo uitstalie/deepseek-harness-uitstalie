@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for lint-debt-20261110.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/reviews/lint-debt-20261110.md
+/lint-debt-after-the-2026-11-10-cleanup:
+  en: c68063fa3ff59e2a
+  zh: 50d7a80b0e2ad1ff
+/lint-debt-after-the-2026-11-10-cleanup/summary:
+  en: bab8e36a169fcc2a
+  zh: 11d7bbaa5c6692b5
+/lint-debt-after-the-2026-11-10-cleanup/table-of-contents:
+  en: 71b5585faa519c00
+  zh: e80dab4373fd3471
+/lint-debt-after-the-2026-11-10-cleanup/results:
+  en: 1f105e1fbe70eb3e
+  zh: 264434c081cb0b91
+/lint-debt-after-the-2026-11-10-cleanup/what-changed:
+  en: 958c9c4db889347e
+  zh: 92e62146d7ec2304
+/lint-debt-after-the-2026-11-10-cleanup/why-the-remaining-findings-stay:
+  en: 184eb0fcf4a7360c
+  zh: 22764950c042317b
+/lint-debt-after-the-2026-11-10-cleanup/known-traps:
+  en: 00ba567eac78a916
+  zh: 064507a2b1e07b8d
+/lint-debt-after-the-2026-11-10-cleanup/open-contract-work:
+  en: f658416b88680f1a
+  zh: 927969ea3c731164
+/lint-debt-after-the-2026-11-10-cleanup/reproduction:
+  en: ab3663d63a70bd9f
+  zh: 47c24a1c003c2090
+/lint-debt-after-the-2026-11-10-cleanup/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269
