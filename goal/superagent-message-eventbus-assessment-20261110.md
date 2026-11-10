@@ -1,10 +1,10 @@
 # Super agent 消息传递机制评估：现状是不是事件总线，以及要不要改
 
 > 调查日期 2026-11-10；只读调查，不是实施方案。
-> 源码基线：`55bc4c6d4f`（调查开始时 `HEAD = origin`）。调查期间他人把本地 HEAD 推进到
-> `95a068d389`（`053d96c50a` 改 `packages/uitstalie/memory/**`，`95a068d389` 改
-> `packages/jira/jira-agent/src/superagent-permission.ts`）。调查时
-> `git diff --name-only 55bc4c6d4f..HEAD` 只列出这三个文件，本文引用的其余文件在该区间
+> 源码基线：2026-11-10 调查开始时的基线（`HEAD = origin`）。调查期间他人推进了本地 HEAD：
+> `DH-909` 改 `packages/uitstalie/memory/**`，`DH-910` 改
+> `packages/jira/jira-agent/src/superagent-permission.ts`。调查时
+> 对比基线与 HEAD 只列出这三个文件，本文引用的其余文件在该区间
 > 无改动，行号仍对应当前树。本调查**未读取、未使用、未改动**这两处。
 >
 > 证据标记：
