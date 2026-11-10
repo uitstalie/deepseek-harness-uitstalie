@@ -12,6 +12,24 @@ import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import { sandboxDenialMarker } from '@deepseek-ai/dsh-sandbox'
 import { FsError } from '@deepseek-ai/dsh-fs'
 
+/** The slice of `ctx.sandboxPolicy` this package consumes. */
+interface SandboxPolicyResolver {
+  resolve(request: { session?: Session }): SandboxExecutionPolicy
+}
+
+/**
+ * Narrow the optional sandbox-policy service without trusting an untyped Context key.
+ * @param ctx - plugin context that may carry the service.
+ * @returns the resolver-shaped service, or undefined without a mounted provider.
+ */
+export const sandboxPolicyOf = (ctx: Context): SandboxPolicyResolver | undefined => {
+  const value: unknown = ctx.get('sandboxPolicy')
+  return typeof value === 'object' && value !== null
+    && 'resolve' in value && typeof value.resolve === 'function'
+    ? value as SandboxPolicyResolver
+    : undefined
+}
+
 /** The policy governing one store call. */
 export interface StorePolicy {
   /**
@@ -34,7 +52,7 @@ export interface StorePolicy {
  * @throws {FsError} `FS_SANDBOX_DENIED` when the session mode forbids writes.
  */
 export function resolveSessionStorePolicy(ctx: Context, session: Session): SandboxExecutionPolicy | undefined {
-  const policy = ctx.get('sandboxPolicy')?.resolve({ session })
+  const policy = sandboxPolicyOf(ctx)?.resolve({ session })
   if (policy?.mode === 'read-only') {
     throw new FsError(sandboxDenialMarker('read-only'), 'FS_SANDBOX_DENIED')
   }
@@ -51,7 +69,7 @@ export function resolveSessionStorePolicy(ctx: Context, session: Session): Sandb
 export function resolveStorePolicy(ctx: Context, exec: ToolExecution): StorePolicy {
   const session = exec.agent?.session
   const policy = session === undefined
-    ? ctx.get('sandboxPolicy')?.resolve({})
+    ? sandboxPolicyOf(ctx)?.resolve({})
     : resolveSessionStorePolicy(ctx, session)
   return { execution: policy }
 }
