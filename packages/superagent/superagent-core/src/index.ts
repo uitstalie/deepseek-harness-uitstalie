@@ -24,7 +24,7 @@ export * from './dispatch-store.ts'
 export * from './recovery.ts'
 
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { appendFile, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 
@@ -86,6 +86,8 @@ export interface DispatchReportRecord {
   readonly sessionId: string
   readonly superSession: string
   readonly requestId?: string
+  /** The derived identity of the message that carries this report, once a delivery attempt bound it. */
+  readonly deliveryRequestId?: string
   readonly task: string
   readonly dispatchedAt: string
   readonly status: DispatchReportStatus
@@ -110,6 +112,60 @@ export interface DispatchReportRecord {
  * @returns a unique dispatch identifier with a time-readable prefix.
  */
 export const newDispatchReportId = (): string => `task-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
+
+/** The two superagent message families whose identity must survive a retry. */
+export type DispatchDeliveryKind = 'report' | 'recover'
+
+/** Inputs that make one superagent delivery reproducible across a retry. */
+export interface DispatchDeliveryIdentity {
+  /** Which delivery family this message belongs to. */
+  readonly kind: DispatchDeliveryKind
+  /** The task whose work the message carries; a resume uses its target Session as that identity. */
+  readonly taskId: string
+  /** The Session that receives the message. */
+  readonly targetSessionId: string
+  /** The exact message payload; the machine marker added later is deliberately not part of it. */
+  readonly payload: string
+}
+
+/**
+ * Derive the request identity of one superagent delivery.
+ *
+ * The host deduplicates a retried prompt by its `requestId` (the `user/message.source.rpcId` in the
+ * recipient log), so the identity has to be a function of the message, not of the attempt. A retry
+ * therefore derives the same id and the host refuses a second append.
+ * @param input - the delivery family, task, recipient, and exact payload.
+ * @returns a stable `superagent-<kind>-<16 hex>` identity.
+ */
+export const dispatchDeliveryRequestId = (input: DispatchDeliveryIdentity): string => {
+  const digest = createHash('sha256')
+    .update([input.kind, input.taskId, input.targetSessionId, input.payload].join('\u0000'), 'utf8')
+    .digest('hex')
+    .slice(0, 16)
+  return `superagent-${input.kind}-${digest}`
+}
+
+/**
+ * The machine-readable trailer a delivered message carries: its family and request identity.
+ * @param requestId - the derived request identity.
+ * @param kind - the delivery family.
+ * @returns one HTML comment line, invisible in rendered Markdown but durable in the message text.
+ */
+export const dispatchDeliveryMarker = (requestId: string, kind: DispatchDeliveryKind): string =>
+  `<!-- superagent-delivery kind=${kind} requestId=${requestId} -->`
+
+/**
+ * Append the delivery marker to one payload.
+ * @param payload - the exact text the recipient should read.
+ * @param requestId - the derived request identity.
+ * @param kind - the delivery family.
+ * @returns the payload followed by its marker line.
+ */
+export const withDispatchDeliveryMarker = (
+  payload: string,
+  requestId: string,
+  kind: DispatchDeliveryKind,
+): string => `${payload.trimEnd()}\n\n${dispatchDeliveryMarker(requestId, kind)}`
 
 const STATUSES: readonly DispatchReportStatus[] = Object.freeze(['pending', 'delivering', 'delivered', 'failed', 'acknowledged'])
 
@@ -139,6 +195,9 @@ const parseRecord = (line: string): DispatchReportRecord | undefined => {
     sessionId: record.sessionId,
     superSession: typeof record.superSession === 'string' ? record.superSession : '',
     ...(typeof record.requestId === 'string' && record.requestId !== '' ? { requestId: record.requestId } : {}),
+    ...(typeof record.deliveryRequestId === 'string' && record.deliveryRequestId !== ''
+      ? { deliveryRequestId: record.deliveryRequestId }
+      : {}),
     task: record.task,
     dispatchedAt: record.dispatchedAt,
     status: record.status,
@@ -434,6 +493,29 @@ export class DispatchReportStore {
       const current = (await this.all()).get(id)
       if (current === undefined || current.status !== 'delivering') return undefined
       const next = Object.freeze({ ...current, reportText, outcome, result, updatedAt: at })
+      await this.append(next)
+      return next
+    })
+  }
+
+  /**
+   * Remember the derived identity of the message about to carry this report.
+   *
+   * Written before the recipient append so a crash between admission and settlement leaves the
+   * identity behind; a later attempt can then compare it with the recipient's pending inbox instead
+   * of trusting its own memory. Settled records keep their identity unchanged.
+   * @param id - report identifier.
+   * @param requestId - the derived delivery identity.
+   * @param at - binding timestamp.
+   * @returns the record carrying the identity, or undefined when the id is absent.
+   */
+  async bindDelivery(id: string, requestId: string, at: string): Promise<DispatchReportRecord | undefined> {
+    return await this.exclusive(async () => {
+      const current = (await this.all()).get(id)
+      if (current === undefined) return undefined
+      if (current.status === 'delivered' || current.status === 'failed' || current.status === 'acknowledged') return current
+      if (current.deliveryRequestId === requestId) return current
+      const next = Object.freeze({ ...current, deliveryRequestId: requestId, updatedAt: at })
       await this.append(next)
       return next
     })

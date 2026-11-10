@@ -74,7 +74,7 @@ import {
 } from './index.ts'
 import * as jiraAgent from './index.ts'
 import { type DispatchLedgerTask, listDispatchTasks, queryDispatchTasks, recordDispatch } from './dispatch-ledger.ts'
-import { DispatchReportStore, type DispatchReportRecord } from './dispatch-reports.ts'
+import { DispatchReportStore, dispatchDeliveryRequestId, withDispatchDeliveryMarker, type DispatchReportRecord } from './dispatch-reports.ts'
 import { callerOf, identityOf } from './tools.ts'
 import { type JiraHarness, concurrencySafe, createLedgerFixture, dispatchTool, mountJira, testAgent, waitFor } from './testing/host.ts'
 
@@ -531,10 +531,15 @@ class ModelSelectingController {
 /** Minimal controller with list/create/prompt for the routing and stop tests. */
 class CompactController extends ModelSelectingController {
   items: { sessionId: string; running: boolean; cwd?: string; blank?: boolean; updatedAt?: number }[] = []
-  prompted: { sessionId: string; text: string; mode?: string }[] = []
+  prompted: { sessionId: string; requestId?: string; text: string; mode?: string }[] = []
   compactCalls = 0
-  async prompt(request: { sessionId: string; mode?: string; content: readonly { text: string }[] }) {
-    this.prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '', ...(request.mode === undefined ? {} : { mode: request.mode }) })
+  async prompt(request: { sessionId: string; requestId?: string; mode?: string; content: readonly { text: string }[] }) {
+    this.prompted.push({
+      sessionId: String(request.sessionId),
+      ...(request.requestId === undefined ? {} : { requestId: request.requestId }),
+      text: request.content[0]?.text ?? '',
+      ...(request.mode === undefined ? {} : { mode: request.mode }),
+    })
     return { accepted: true }
   }
   async list() { return { items: this.items } }
@@ -1270,7 +1275,11 @@ void describe('superagent: report recovery after a plugin remount', () => {
     const retried = await runLedgerTool({ action: 'retry_report', id: saved?.id }, options, {}, ctx as never, undefined, journal)
     assert.equal(retried.ok, true, JSON.stringify(retried.error))
     assert.equal((retried.delivery as { status: string }).status, 'delivered')
-    assert.equal(controller.prompted[0]?.text, saved?.reportText)
+    assert.equal(controller.prompted[0]?.text, withDispatchDeliveryMarker(
+      saved.reportText ?? '',
+      dispatchDeliveryRequestId({ kind: 'report', taskId: saved.id, targetSessionId: 'super-1', payload: saved.reportText ?? '' }),
+      'report',
+    ))
     assert.equal((await journal.forSession('child-retry'))[0]?.status, 'delivered')
   })
 
@@ -1301,7 +1310,11 @@ void describe('superagent: report recovery after a plugin remount', () => {
     assert.equal(result.error?.code, 'WRITE_FAILED')
     assert.match(result.error?.message ?? '', /accepted by the recipient/u)
     assert.match(result.error?.message ?? '', /inspect report_status before retrying/u)
-    assert.equal(controller.prompted[0]?.text, 'saved report')
+    assert.equal(controller.prompted[0]?.text, withDispatchDeliveryMarker(
+      'saved report',
+      dispatchDeliveryRequestId({ kind: 'report', taskId: 'task-settlement', targetSessionId: 'super-1', payload: 'saved report' }),
+      'report',
+    ))
     const visible = await runLedgerTool({ action: 'report_status' }, {
       jira: {} as never,
       caller: { writable: true, sessionId: 'super-1', cwd: root },
@@ -1481,6 +1494,199 @@ void describe('superagent: report recovery after a plugin remount', () => {
     assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, unrelated.input(0) as never, new Map(), [], root), false)
     assert.deepEqual(controller.prompted, [])
     assert.equal((await journalOf(root).forSession('mixed-child'))[0]?.status, 'pending')
+  })
+})
+
+void describe('superagent: deterministic report delivery (DH-912)', () => {
+  interface MailMessage {
+    readonly source: { readonly kind: 'user'; readonly rpcId: string }
+    readonly content: readonly { readonly type: 'text'; readonly text: string }[]
+  }
+
+  /** The recovery clock: past the five-minute delivery lease of a report saved at AT. */
+  const LATER = new Date(Date.parse(AT) + 6 * 60_000).toISOString() as Timestamp
+  /** A second scan after LATER, so nothing is skipped merely because the first scan was too early. */
+  const AFTER = new Date(Date.parse(LATER) + 6 * 60_000).toISOString() as Timestamp
+
+  /** The recipient's durable inbox, shared across a simulated plugin remount. */
+  const mailboxOf = (): {
+    messages: MailMessage[]
+    agents: { get: (id: string) => unknown }
+  } => {
+    const messages: MailMessage[] = []
+    const snapshot = () => {
+      if (messages.length === 0) return []
+      const inserted = messages.map((message, index) => ({ id: `mail-${String(index)}`, ...message }))
+      return [{ type: 'agent/inbox/spliced', seq: 1, data: { target: 'next-turn', start: 0, removedCount: 0, inserted } }]
+    }
+    const agents = { get: (id: string) => id === 'super-1' ? { id, session: { snapshotEvents: snapshot } } : undefined }
+    return { messages, agents }
+  }
+
+  /** A controller whose prompt appends to the shared mailbox, as the real host does. */
+  const controllerFor = (root: string, mailbox: ReturnType<typeof mailboxOf>) => {
+    const prompted: { requestId: string; sessionId: string; text: string }[] = []
+    return {
+      prompted,
+      create: () => ({ sessionId: 'unused' }),
+      list: () => ({ items: [{ sessionId: 'super-1', running: false, cwd: root, updatedAt: 1 }] }),
+      prompt: (request: { requestId: string; sessionId: string; content: readonly { text: string }[] }) => {
+        const text = request.content[0]?.text ?? ''
+        prompted.push({ requestId: request.requestId, sessionId: request.sessionId, text })
+        mailbox.messages.push({ source: { kind: 'user', rpcId: request.requestId }, content: [{ type: 'text', text }] })
+        return { accepted: true }
+      },
+    }
+  }
+
+  /** A delivery host with the controller, the live recipient, and a fixed clock. */
+  const deliveryHost = (controller: unknown, agents: unknown, at: string) => ({
+    ctx: {
+      get: (key: string) => key === 'sessionController' ? controller : key === 'agents' ? agents : undefined,
+      logger: { warn: () => {}, info: () => {} },
+    },
+    env: {},
+    clock: () => Date.parse(at),
+    recorder: createSessionRecorder(),
+  })
+
+  /**
+   * Run one startup recovery pass by mounting a contribution over the same home, waiting for the
+   * scan to do its work, then disposing it. `until` names the observable outcome; a scan with
+   * nothing expected settles after a short grace period.
+   */
+  const runRecovery = async (
+    root: string,
+    controller: unknown,
+    agents: unknown,
+    at: string,
+    until?: () => Promise<boolean | undefined>,
+  ): Promise<void> => {
+    const contribution = createSuperagentContribution({
+      ctx: {
+        get: (key: string) => key === 'sessionController' ? controller : key === 'agents' ? agents : undefined,
+        on: () => () => {},
+        logger: { warn: () => {}, info: () => {}, debug: () => {}, error: () => {} },
+      },
+      env: {},
+      clock: () => Date.parse(at),
+      recorder: createSessionRecorder(),
+    } as never, undefined, 2, undefined, undefined, root)
+    try {
+      if (until === undefined) await new Promise<void>((resolve) => { setTimeout(resolve, 600) })
+      else await waitFor(until, 5_000)
+    } finally {
+      await Promise.resolve(contribution.dispose?.())
+    }
+  }
+
+  /** Seed one report saved before delivery and still `delivering`, as a crash would leave it. */
+  const savedReport = async (root: string, id: string, text: string): Promise<DispatchReportStore> => {
+    const journal = new DispatchReportStore(root)
+    await journal.record({
+      id,
+      workspace: { id: 'w1', title: 'workspace', path: root },
+      sessionId: `child-${id}`,
+      superSession: 'super-1',
+      requestId: `req-${id}`,
+      task: 'finish the task',
+      dispatchedAt: AT,
+    })
+    await journal.claim(id, AT)
+    await journal.prepare(id, AT, text, 'work done', 'returned')
+    return journal
+  }
+
+  void it('recovers one lease-expired report without appending it twice', async () => {
+    const root = await scratchDirectory()
+    const mailbox = mailboxOf()
+    const journal = await savedReport(root, 'task-lease', 'the saved outcome')
+    const first = controllerFor(root, mailbox)
+    const delivered = await deliverTaskReport(
+      deliveryHost(first, mailbox.agents, AT) as never,
+      { superSession: 'super-1', workspace: root, taskId: 'task-lease', reportText: 'the saved outcome' },
+      { id: 'child-task-lease' },
+      new AbortController().signal,
+      undefined,
+      undefined,
+      journal,
+    )
+    assert.equal(delivered, true)
+    assert.equal(first.prompted.length, 1)
+    // The message was admitted but its settlement never landed: the journal still says delivering.
+    assert.equal((await journal.all()).get('task-lease')?.status, 'delivering')
+
+    const second = controllerFor(root, mailbox)
+    await runRecovery(root, second, mailbox.agents, LATER, async () =>
+      (await journal.all()).get('task-lease')?.status === 'delivered' ? true : undefined)
+
+    assert.deepEqual(second.prompted, [], 'the recipient inbox already carries the derived request id')
+    assert.equal(mailbox.messages.length, 1)
+    const queued = mailbox.messages.at(0)
+    assert.equal(queued?.source.rpcId, dispatchDeliveryRequestId({
+      kind: 'report',
+      taskId: 'task-lease',
+      targetSessionId: 'super-1',
+      payload: 'the saved outcome',
+    }))
+    const record = (await journal.all()).get('task-lease')
+    assert.equal(record?.status, 'delivered')
+    assert.equal(record.deliveryRequestId, queued.source.rpcId)
+  })
+
+  void it('keeps one report through two consecutive recovery scans', async () => {
+    const root = await scratchDirectory()
+    const mailbox = mailboxOf()
+    const journal = await savedReport(root, 'task-twice', 'the single outcome')
+    const first = controllerFor(root, mailbox)
+    await runRecovery(root, first, mailbox.agents, LATER, async () =>
+      (await journal.all()).get('task-twice')?.status === 'delivered' ? true : undefined)
+    assert.equal(first.prompted.length, 1)
+
+    const second = controllerFor(root, mailbox)
+    await runRecovery(root, second, mailbox.agents, AFTER)
+
+    assert.deepEqual(second.prompted, [])
+    assert.equal(mailbox.messages.length, 1)
+    const records = (await journal.all()).get('task-twice')
+    assert.equal(records?.status, 'delivered')
+    assert.equal((await journal.list(['delivered'])).length, 1)
+  })
+
+  void it('derives a distinct request id for each different report', async () => {
+    const root = await scratchDirectory()
+    const mailbox = mailboxOf()
+    const journal = await savedReport(root, 'task-one', 'first report')
+    await savedReport(root, 'task-two', 'second report')
+    const firstId = dispatchDeliveryRequestId({ kind: 'report', taskId: 'task-one', targetSessionId: 'super-1', payload: 'first report' })
+    const secondId = dispatchDeliveryRequestId({ kind: 'report', taskId: 'task-two', targetSessionId: 'super-1', payload: 'second report' })
+    assert.notEqual(firstId, secondId)
+
+    const controller = controllerFor(root, mailbox)
+    await runRecovery(root, controller, mailbox.agents, LATER, async () => {
+      const rows = await journal.all()
+      return rows.get('task-one')?.status === 'delivered' && rows.get('task-two')?.status === 'delivered'
+        ? true
+        : undefined
+    })
+
+    assert.deepEqual(controller.prompted.map(row => row.requestId), [firstId, secondId])
+    assert.deepEqual(mailbox.messages.map(message => message.source.rpcId), [firstId, secondId])
+    assert.equal(mailbox.messages.length, 2)
+  })
+
+  void it('does not redeliver an already delivered report on a later scan', async () => {
+    const root = await scratchDirectory()
+    const mailbox = mailboxOf()
+    const journal = await savedReport(root, 'task-done', 'already delivered')
+    await journal.settle('task-done', 'delivered', AT)
+
+    const controller = controllerFor(root, mailbox)
+    await runRecovery(root, controller, mailbox.agents, LATER)
+
+    assert.deepEqual(controller.prompted, [])
+    assert.equal(mailbox.messages.length, 0)
+    assert.equal((await journal.all()).get('task-done')?.status, 'delivered')
   })
 })
 
@@ -2430,12 +2636,20 @@ void describe('superagent: context, compaction and memory curation', () => {
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(cancelled, 1)
     assert.equal(idleCalls, 1)
-    assert.equal(controller.prompted[0]?.text, 'skip the wait and continue')
+    const resumeId = dispatchDeliveryRequestId({
+      kind: 'recover',
+      taskId: 'w-session#1',
+      targetSessionId: 'w-session',
+      payload: 'skip the wait and continue',
+    })
+    assert.equal(controller.prompted.length, 1)
+    assert.equal(controller.prompted.at(0)?.text, withDispatchDeliveryMarker('skip the wait and continue', resumeId, 'recover'))
+    assert.equal(controller.prompted.at(0)?.requestId, resumeId)
     const bound = await new DispatchReportStore(root).list()
     assert.equal(bound.length, 1)
     assert.equal(bound[0]?.status, 'pending')
     assert.equal(bound[0]?.superSession, 'super-1')
-    assert.equal(bound[0]?.requestId?.startsWith('superagent-recover-'), true)
+    assert.equal(bound.at(0)?.requestId, resumeId)
     const abort = result.abort as { resumed?: boolean; scene?: { status?: { elapsedMs?: number }; activity?: unknown[] } }
     assert.equal(abort.resumed, true)
     assert.ok((abort.scene?.status?.elapsedMs ?? 0) >= 6 * 60_000)

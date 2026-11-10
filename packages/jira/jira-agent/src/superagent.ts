@@ -26,7 +26,7 @@ import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
 import { dispatchBody, dispatchRecordOf } from './dispatch.ts'
 import { createDispatchStore, type DispatchStore } from './dispatch-store.ts'
-import { DispatchReportStore, newDispatchReportId, recoverDispatchReports, type DispatchReportRecord, type DispatchReportWorkspace } from './dispatch-reports.ts'
+import { DispatchReportStore, dispatchDeliveryRequestId, newDispatchReportId, recoverDispatchReports, withDispatchDeliveryMarker, type DispatchDeliveryKind, type DispatchReportRecord, type DispatchReportWorkspace } from './dispatch-reports.ts'
 import { type RunOptions, type ToolValue, actorFor, asString, asStringList, failure, nowUtc, okValue } from './envelope.ts'
 import { callerCwd, isExecutorSession, isSubagent, type Caller } from './caller.ts'
 import { ensureSuperWorkspaceDefinition } from './super-workspace-definition.ts'
@@ -3387,7 +3387,17 @@ export const runSessionTool = async (
           { session: sessionArg, scene: Object.freeze({ ...scene, aborted: true }) },
         ), caller, me)
       }
-      const requestId = `superagent-recover-${randomUUID()}`
+      const resumeText = composeTask(textArg.trim(), curateMemory)
+      // A resume has no task id yet, so its task identity is the running turn it continues: a retry
+      // of this abort derives the same id, while a later abort of a later turn does not collide.
+      const resumeTurn = lastEventOf(eventsOf(agentsOf(ctx)?.get(sessionArg.trim())), 'turn/start')
+      const resumeTaskId = `${sessionArg.trim()}#${String(resumeTurn?.seq ?? 'current')}`
+      const requestId = dispatchDeliveryRequestId({
+        kind: 'recover',
+        taskId: resumeTaskId,
+        targetSessionId: sessionArg.trim(),
+        payload: resumeText,
+      })
       const taskId = newDispatchReportId()
       const knownBefore = lastTaskRecord(context.tasks, sessionArg.trim())
       const reportWorkspace: DispatchReportWorkspace = {
@@ -3400,12 +3410,14 @@ export const runSessionTool = async (
       )
       let admitted: { readonly accepted: boolean }
       try {
-        admitted = await controller.prompt({
-          requestId,
-          sessionId: sessionArg.trim(),
-          mode: 'queue',
-          content: [{ type: 'text', text: composeTask(textArg.trim(), curateMemory) }],
-        }, new AbortController().signal)
+        admitted = {
+          accepted: await deliverSuperagentMessage(ctx as ToolHost['ctx'], undefined, controller, {
+            taskId: resumeTaskId,
+            targetSessionId: sessionArg.trim(),
+            kind: 'recover',
+            payload: resumeText,
+          }, options.at, new AbortController().signal),
+        }
       } catch (error) {
         await failDispatchReport(context, caller, taskId, options.at, error)
         throw error
@@ -3809,6 +3821,153 @@ const lastAssistantText = (agent: unknown, turn?: number, endEvent?: unknown): s
 }
 
 /**
+ * One superagent message whose delivery identity must survive a retry.
+ */
+interface DeliveryMessage {
+  /** The report (or resume) identity carried into the derived request id. */
+  readonly taskId: string
+  /** The Session the message is appended to. */
+  readonly targetSessionId: string
+  /** The delivery family, spelled in the derived prefix and in the body marker. */
+  readonly kind: DispatchDeliveryKind
+  /** The exact payload without the machine marker. */
+  readonly payload: string
+}
+
+/** One pending inbox message as far as the dedupe check reads it. */
+interface PendingInboxMessage {
+  readonly source?: { readonly kind?: string; readonly rpcId?: unknown }
+}
+
+/** The slice of the host session-query service a cold-recipient inbox check needs. */
+interface SessionQueryLike {
+  observeSession?: (id: string, options?: { projectionMode: 'none' }) => Promise<
+    { readonly header: unknown; readonly events: readonly SessionEventLike[] } & Disposable
+  >
+}
+
+/**
+ * Fold one Session log into the messages still waiting in its inbox.
+ *
+ * The inbox is a projection of `agent/inbox/spliced` events, not a separate store, so this repeats
+ * the same fold the agent loop performs; a malformed splice is skipped rather than failing a
+ * delivery.
+ * @param events - the recipient Session log.
+ * @returns the pending messages, next-turn first.
+ */
+const pendingInboxMessages = (events: readonly SessionEventLike[]): readonly PendingInboxMessage[] => {
+  const state: Record<'next-turn' | 'next-step', readonly PendingInboxMessage[]> = { 'next-turn': [], 'next-step': [] }
+  for (const event of events) {
+    if (event.type !== 'agent/inbox/spliced') continue
+    const data = event.data as {
+      target?: unknown
+      start?: unknown
+      removedCount?: unknown
+      inserted?: unknown
+    } | undefined
+    if (data?.target !== 'next-turn' && data?.target !== 'next-step') continue
+    const list = state[data.target]
+    if (typeof data.start !== 'number' || !Number.isSafeInteger(data.start) || data.start < 0 || data.start > list.length) continue
+    const removed = typeof data.removedCount === 'number' && Number.isSafeInteger(data.removedCount) && data.removedCount >= 0
+      ? data.removedCount
+      : 0
+    if (data.start + removed > list.length) continue
+    const inserted = Array.isArray(data.inserted)
+      ? data.inserted.filter((message): message is PendingInboxMessage => typeof message === 'object' && message !== null)
+      : []
+    state[data.target] = [...list.slice(0, data.start), ...inserted, ...list.slice(data.start + removed)]
+  }
+  return [...state['next-turn'], ...state['next-step']]
+}
+
+/** Whether one Session log already holds a pending message carrying this request identity. */
+const inboxCarries = (events: readonly SessionEventLike[], requestId: string): boolean =>
+  pendingInboxMessages(events).some((message) => {
+    const source = message.source
+    if (source?.kind !== 'user' && source?.kind !== 'retry') return false
+    return source.rpcId === requestId
+  })
+
+/**
+ * Whether the recipient's pending inbox already carries one request identity.
+ *
+ * The live Agent is read first; a cold recipient is read from its persisted log through the host's
+ * session query. A deployment that exposes neither cannot prove the message absent, so the caller
+ * falls back to the host's own `requestId` dedupe.
+ * @param ctx - the plugin context.
+ * @param sessionId - the receiving Session.
+ * @param requestId - the derived delivery identity.
+ * @returns whether a pending inbox message already carries it.
+ */
+const recipientInboxCarries = async (ctx: unknown, sessionId: string, requestId: string): Promise<boolean> => {
+  const live = agentsOf(ctx)?.get(sessionId) as { session?: LiveSessionLike } | undefined
+  if (live?.session?.snapshotEvents !== undefined) return inboxCarries(eventsOf(live), requestId)
+  const query = (ctx as { sessionQuery?: SessionQueryLike }).sessionQuery
+  if (query?.observeSession === undefined) return false
+  try {
+    using observation = await query.observeSession(sessionId, { projectionMode: 'none' })
+    return inboxCarries(observation.events, requestId)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Append one superagent message to its recipient at most once for one derived identity.
+ *
+ * Two signals decide whether the append is redundant. The journal is authoritative for a report
+ * that already settled: a delivered record is never re-sent. The recipient's pending inbox covers
+ * the crash window the journal cannot see — the prompt was admitted but its settlement was lost —
+ * and there the delivery counts as accepted so the caller can settle it.
+ * @param ctx - the plugin context.
+ * @param reports - the report journal, when this delivery belongs to one.
+ * @param controller - the host Session controller.
+ * @param message - the task, recipient, family, and payload.
+ * @param at - the delivery instant recorded on the journal binding.
+ * @param signal - the caller's cancellation signal.
+ * @returns whether the recipient accepted (or already held) the message.
+ */
+const deliverSuperagentMessage = async (
+  ctx: ToolHost['ctx'],
+  reports: DispatchReportStore | undefined,
+  controller: SessionControllerLike,
+  message: DeliveryMessage,
+  at: Timestamp | undefined,
+  signal: AbortSignal,
+): Promise<boolean> => {
+  const requestId = dispatchDeliveryRequestId(message)
+  /** Persist the identity before the append; a journal-less deployment has nothing to bind. */
+  const bind = async (): Promise<void> => {
+    if (reports === undefined || at === undefined) return
+    await reports.bindDelivery(message.taskId, requestId, at).catch(() => undefined)
+  }
+  if (reports !== undefined) {
+    const current = await reports.all().then(records => records.get(message.taskId)).catch(() => undefined)
+    if (current?.status === 'delivered' || current?.status === 'acknowledged') {
+      ctx.logger.info('superagent: report %s was already delivered; skipping the duplicate append', message.taskId)
+      return true
+    }
+  }
+  if (await recipientInboxCarries(ctx, message.targetSessionId, requestId)) {
+    ctx.logger.info(
+      'superagent: delivery %s is already queued for %s; settling without a second append',
+      requestId,
+      message.targetSessionId,
+    )
+    await bind()
+    return true
+  }
+  await bind()
+  const admitted = await controller.prompt({
+    requestId,
+    sessionId: message.targetSessionId,
+    mode: 'queue',
+    content: [{ type: 'text', text: withDispatchDeliveryMarker(message.payload, requestId, message.kind) }],
+  }, signal)
+  return admitted.accepted
+}
+
+/**
  * Deliver one workspace Session's turn report back to the super agent that started or addressed it.
  *
  * The report is an ordinary queued message in the super Session: it starts a new turn there without
@@ -3863,6 +4022,12 @@ export const deliverTaskReport = async (
   }
   const controller = sessionControllerOf(host.ctx)
   const sessionId = String((agent as { id?: unknown }).id)
+  // A replay must carry the exact text the first attempt saved: the derived identity is a function
+  // of that text, and a body rebuilt from the live Session could mint a second id for one report.
+  const journaledReport = reports === undefined || taskId === undefined
+    ? undefined
+    : await reports.all().then(records => records.get(taskId)?.reportText).catch(() => undefined)
+  const savedReport = record.reportText ?? journaledReport
   const recipientReady = async (): Promise<boolean> => {
     try {
       if (await recipientAvailable(host.ctx, record.superSession)) return true
@@ -3877,16 +4042,15 @@ export const deliverTaskReport = async (
     host.ctx.logger.warn('superagent: no session controller is available to deliver task %s', taskId ?? sessionId)
     return false
   }
-  if (record.reportText !== undefined) {
+  if (savedReport !== undefined) {
     if (!(await recipientReady())) return false
     try {
-      await controller.prompt({
-        requestId: `superagent-report-${randomUUID()}`,
-        sessionId: record.superSession,
-        mode: 'queue',
-        content: [{ type: 'text', text: record.reportText }],
-      }, signal)
-      return true
+      return await deliverSuperagentMessage(host.ctx, reports, controller, {
+        taskId: taskId ?? sessionId,
+        targetSessionId: record.superSession,
+        kind: 'report',
+        payload: savedReport,
+      }, reports === undefined ? undefined : nowUtc(host.clock), signal)
     } catch (error: unknown) {
       host.ctx.logger.warn(
         'superagent: the saved task report for %s could not be delivered: %s',
@@ -3916,13 +4080,12 @@ export const deliverTaskReport = async (
     if (!(await prepareReport(body))) return false
     if (!(await recipientReady())) return false
     try {
-      await controller.prompt({
-        requestId: `superagent-report-${randomUUID()}`,
-        sessionId: record.superSession,
-        mode: 'queue',
-        content: [{ type: 'text', text: body }],
-      }, signal)
-      return true
+      return await deliverSuperagentMessage(host.ctx, reports, controller, {
+        taskId: taskId ?? sessionId,
+        targetSessionId: record.superSession,
+        kind: 'report',
+        payload: body,
+      }, reports === undefined ? undefined : nowUtc(host.clock), signal)
     } catch (error: unknown) {
       host.ctx.logger.warn(
         'superagent: the failure report for %s could not be delivered: %s',
@@ -3956,13 +4119,12 @@ export const deliverTaskReport = async (
   if (!(await prepareReport(body))) return false
   if (!(await recipientReady())) return false
   try {
-    await controller.prompt({
-      requestId: `superagent-report-${randomUUID()}`,
-      sessionId: record.superSession,
-      mode: 'queue',
-      content: [{ type: 'text', text: body }],
-    }, signal)
-    return true
+    return await deliverSuperagentMessage(host.ctx, reports, controller, {
+      taskId: taskId ?? sessionId,
+      targetSessionId: record.superSession,
+      kind: 'report',
+      payload: body,
+    }, reports === undefined ? undefined : nowUtc(host.clock), signal)
   } catch (error: unknown) {
     host.ctx.logger.warn(
       'superagent: the task report for %s could not be delivered: %s',
@@ -4960,13 +5122,12 @@ export const createSuperagentContribution = (
       deliver: async (report) => {
         const controller = sessionControllerOf(host.ctx)
         if (controller === undefined || report.reportText === undefined) return false
-        const admitted = await controller.prompt({
-          requestId: `superagent-recovery-${randomUUID()}`,
-          sessionId: report.superSession,
-          mode: 'queue',
-          content: [{ type: 'text', text: report.reportText }],
-        }, new AbortController().signal)
-        return admitted.accepted
+        return await deliverSuperagentMessage(host.ctx, reportStore, controller, {
+          taskId: report.id,
+          targetSessionId: report.superSession,
+          kind: 'report',
+          payload: report.reportText,
+        }, nowUtc(host.clock), new AbortController().signal)
       },
       log: (level, message) => { if (level === 'info') host.ctx.logger.info(message); else host.ctx.logger.warn(message) },
     }).then(() => { if (recoveryAbort?.signal.aborted) host.ctx.logger.info('superagent: startup report recovery was cancelled') }).catch((error: unknown) => { host.ctx.logger.warn('superagent: startup report recovery failed: %s', String(error)) })
