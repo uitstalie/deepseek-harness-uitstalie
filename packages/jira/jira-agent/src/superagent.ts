@@ -3203,10 +3203,52 @@ export const runSessionTool = async (
       }
       const live = agentsOf(ctx)?.get(sessionArg.trim())
       if (live === undefined) {
-        return failure(invalidInput(
-          'that Session has no live Agent right now, so there is no running turn to inspect',
-          { session: sessionArg },
-        ), caller, me)
+        const query = (ctx as { sessionQuery?: { observeSession?: (id: string, options?: { projectionMode: 'none' }) => Promise<{ header: unknown; events: readonly SessionEventLike[] } & Disposable> } }).sessionQuery
+        if (query?.observeSession === undefined) {
+          return failure(invalidInput(
+            'that Session has no live Agent and this deployment has no persisted Session reader',
+            { session: sessionArg },
+          ), caller, me)
+        }
+        try {
+          using observation = await query.observeSession(sessionArg.trim(), { projectionMode: 'none' })
+          const events = observation.events
+          const lastEvent = events.at(-1)
+          const lastEnd = lastEventOf(events, 'turn/end')
+          const lastTurnReason = (lastEnd?.data as {
+            reason?: { kind?: string; error?: { message?: string; code?: string; status?: number } }
+          } | undefined)?.reason
+          const recent = recentActivityOf({ session: { snapshotEvents: () => events } }, 12)
+          const lastError = recent.findLast(event => event.error !== undefined)?.error
+          return Object.freeze({
+            ...verdict,
+            session: Object.freeze({ id: sessionArg.trim(), cold: true }),
+            title: (() => {
+              for (let index = events.length - 1; index >= 0; index -= 1) {
+                const event = events[index]
+                if (event?.type !== 'session/title') continue
+                const title = (event.data as { title?: unknown } | undefined)?.title
+                if (typeof title === 'string' && title.trim() !== '') return title
+              }
+              return undefined
+            })(),
+            status: Object.freeze({
+              running: false,
+              cold: true,
+              lastActivityAt: lastEvent?.time,
+            }),
+            activity: recent,
+            ...(lastError === undefined ? {} : { lastTurnError: Object.freeze({ message: lastError }) }),
+            ...(lastTurnReason?.kind === undefined || lastTurnReason.kind === 'completed'
+              ? {}
+              : { lastTurnReason: Object.freeze({ kind: lastTurnReason.kind }) }),
+          })
+        } catch (error: unknown) {
+          return failure(invalidInput(
+            `the persisted Session could not be inspected: ${error instanceof Error ? error.message : String(error)}`,
+            { session: sessionArg, cold: true },
+          ), caller, me)
+        }
       }
       const status = activityOf(live, Date.now()) ?? { running: false }
       const events = eventsOf(live)
@@ -5144,7 +5186,13 @@ export const createSuperagentContribution = (
         ]
         return renderText(compactParts.join(''))
       }
-      const one = typed.session as { id?: string; archived?: boolean; forkedFrom?: string; sessionTitle?: string } | undefined
+      const one = typed.session as {
+        id?: string
+        archived?: boolean
+        forkedFrom?: string
+        sessionTitle?: string
+        cold?: boolean
+      } | undefined
       if (one?.id === undefined) {
         const registered = typed.workspace as { path?: string; title?: string } | undefined
         return renderText(registered?.path === undefined
@@ -5199,10 +5247,14 @@ export const createSuperagentContribution = (
         text?: string
       }[] | undefined
       if (activity !== undefined) {
+        const coldError = (typed as { lastTurnError?: { message?: string; kind?: string } }).lastTurnError
         const headParts = [
-          `session ${one.id}${status?.running === true ? ` running ${durationText(status.elapsedMs ?? 0)}` : ' idle'}`,
+          `session ${one.id}${one.cold === true ? ' cold (persisted log; not live)' : status?.running === true ? ` running ${durationText(status.elapsedMs ?? 0)}` : ' idle'}`,
+          one.cold === true && typeof (typed as { title?: unknown }).title === 'string' ? `, title ${String((typed as { title?: string }).title)}` : '',
+          one.cold === true && typeof (status as { lastActivityAt?: unknown } | undefined)?.lastActivityAt === 'number' ? `, last activity ${new Date((status as { lastActivityAt: number }).lastActivityAt).toISOString()}` : '',
           status?.inFlightTool === undefined ? '' : `, tool ${status.inFlightTool} in flight`,
           status?.lastError === undefined ? '' : `, last error ${status.lastError}`,
+          coldError?.message === undefined ? '' : `, last error ${coldError.message}`,
         ]
         const trail = activity.map(row => `${String(row.type)}${row.tool === undefined ? '' : ` ${row.tool}`}${row.error === undefined ? '' : ` [${row.error}]`}`).join('\n')
         return renderText(`${headParts.join('')}\n${trail}`)
