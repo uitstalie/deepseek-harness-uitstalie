@@ -9,8 +9,8 @@
   en: bab8e36a169fcc2a
   zh: 11d7bbaa5c6692b5
 /lint-debt-after-the-2026-11-10-cleanup/table-of-contents:
-  en: 71b5585faa519c00
-  zh: e80dab4373fd3471
+  en: e8a52dc3470f7db6
+  zh: 780537bc03113ebe
 /lint-debt-after-the-2026-11-10-cleanup/results:
   en: 1f105e1fbe70eb3e
   zh: 264434c081cb0b91
@@ -19,7 +19,13 @@
   zh: 92e62146d7ec2304
 /lint-debt-after-the-2026-11-10-cleanup/why-the-remaining-findings-stay:
   en: 184eb0fcf4a7360c
-  zh: 22764950c042317b
+  zh: 9d5ea892fa02f9bb
+/lint-debt-after-the-2026-11-10-cleanup/retained-source-findings:
+  en: 5cd881858b88df79
+  zh: 2db503d4e2e2327f
+/lint-debt-after-the-2026-11-10-cleanup/narrow-disables:
+  en: 77dca548201e659f
+  zh: d1a611ede44128ae
 /lint-debt-after-the-2026-11-10-cleanup/known-traps:
   en: 00ba567eac78a916
   zh: 064507a2b1e07b8d
