@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for audit-fix-coverage-20261110.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/reviews/audit-fix-coverage-20261110.md
+/audit-fix-coverage-after-the-super-agent-changes:
+  en: 7dd5aedac7b5c299
+  zh: ab1f2ab26b8463dd
+/audit-fix-coverage-after-the-super-agent-changes/summary:
+  en: 88467b5ead5cd58d
+  zh: 757a4f3bf9383f70
+/audit-fix-coverage-after-the-super-agent-changes/table-of-contents:
+  en: 07c2f094090a6a8e
+  zh: 866c635748ec5b1f
+/audit-fix-coverage-after-the-super-agent-changes/evidence-and-commands:
+  en: 6f4237f315c69c6d
+  zh: a7a2140f9fb66334
+/audit-fix-coverage-after-the-super-agent-changes/windows-evaluation-p0-and-p1-findings:
+  en: 4298c4829965d8cb
+  zh: a7d9bae495b8d6d8
+/audit-fix-coverage-after-the-super-agent-changes/windows-evaluation-p2-findings:
+  en: f3fad030c7f727a1
+  zh: 4cba979bd497fac0
+/audit-fix-coverage-after-the-super-agent-changes/independent-re-review-corrections:
+  en: 6e12a38682084a8f
+  zh: d628077e8fb7a49b
+/audit-fix-coverage-after-the-super-agent-changes/jira-audit-and-its-five-repair-groups:
+  en: 1a2538a072550da1
+  zh: 80058abdf09ca295
+/audit-fix-coverage-after-the-super-agent-changes/section-8-acceptance-recommendations:
+  en: 81b9c6a8b1e17658
+  zh: d1d60b2810f7350d
+/audit-fix-coverage-after-the-super-agent-changes/fixed-looking-items-with-weaker-evidence:
+  en: 52734fb7ea75d9f5
+  zh: b3e4f1ace1f90c18
+/audit-fix-coverage-after-the-super-agent-changes/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269
