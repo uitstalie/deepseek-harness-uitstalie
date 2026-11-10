@@ -23,8 +23,8 @@ const task = (overrides: Partial<DispatchLedgerTask> = {}): DispatchLedgerTask =
   ...overrides,
 })
 
-describe('dispatch ledger: free-text fields', () => {
-  it('keeps structured fields readable after a task with its own Markdown headings', () => {
+void describe('dispatch ledger: free-text fields', () => {
+  void it('keeps structured fields readable after a task with its own Markdown headings', () => {
     const rendered = renderTaskSection(task({
       task: [
         'Investigate the failure.',
@@ -48,7 +48,7 @@ describe('dispatch ledger: free-text fields', () => {
     assert.match(parsed?.task ?? '', /this line is task text/u)
   })
 
-  it('keeps a multi-line outcome attached to its field', () => {
+  void it('keeps a multi-line outcome attached to its field', () => {
     const rendered = renderTaskSection(task({
       status: 'returned',
       outcome: 'first line\nsecond line\n## not a section',
@@ -57,7 +57,7 @@ describe('dispatch ledger: free-text fields', () => {
     assert.equal(parsed?.outcome, 'first line\nsecond line\n## not a section')
   })
 
-  it('reads the structured fields of an older record written before continuation indenting', () => {
+  void it('reads the structured fields of an older record written before continuation indenting', () => {
     const legacy = [
       '# Dispatch ledger — workspace',
       '',

@@ -156,12 +156,12 @@ const issueOfPure = (overrides: Partial<IssueFacts> = {}): IssueFacts => ({
   ...overrides,
 })
 
-describe('issue_work: the scope check', () => {
-  it('accepts the issue dispatched to this session and left in progress', () => {
+void describe('issue_work: the scope check', () => {
+  void it('accepts the issue dispatched to this session and left in progress', () => {
     assert.deepEqual(workAccess(issueOfPure(), callerOf(), 'worker-1'), { allowed: true })
   })
 
-  it('refuses every other shape, and says which one', () => {
+  void it('refuses every other shape, and says which one', () => {
     const cases: readonly (readonly [string, unknown])[] = [
       ['a read-only deployment', workAccess(issueOfPure(), callerOf({ reason: 'dsh-read-only' }), 'worker-1')],
       ['a session that was never dispatched', workAccess(issueOfPure(), callerOf(), undefined)],
@@ -176,14 +176,14 @@ describe('issue_work: the scope check', () => {
     }
   })
 
-  it('binds by the dispatch record, not by the assignee', () => {
+  void it('binds by the dispatch record, not by the assignee', () => {
     const verdict = workAccess(issueOfPure({ assignee: 'human:daiqc' as Identity }), callerOf(), 'worker-1')
     assert.deepEqual(verdict, { allowed: true })
   })
 })
 
-describe('issue_work: through the real composition', () => {
-  it('lets the dispatched executor report progress on the claimed issue', async () => {
+void describe('issue_work: through the real composition', () => {
+  void it('lets the dispatched executor report progress on the claimed issue', async () => {
     const { harness, main, worker } = await wire(await fixture())
     try {
       await claim(harness, main)
@@ -198,7 +198,7 @@ describe('issue_work: through the real composition', () => {
     }
   })
 
-  it('hands the issue back for review, and then closes the write window', async () => {
+  void it('hands the issue back for review, and then closes the write window', async () => {
     const { harness, main, worker } = await wire(await fixture())
     try {
       await claim(harness, main)
@@ -223,7 +223,7 @@ describe('issue_work: through the real composition', () => {
     }
   })
 
-  it('records what a blocked report waits for, and leaves the status alone', async () => {
+  void it('records what a blocked report waits for, and leaves the status alone', async () => {
     const { harness, main, worker } = await wire(await fixture())
     try {
       await claim(harness, main)
@@ -244,7 +244,7 @@ describe('issue_work: through the real composition', () => {
     }
   })
 
-  it('refuses an issue dispatched to a different session', async () => {
+  void it('refuses an issue dispatched to a different session', async () => {
     const { harness, main } = await wire(await fixture())
     try {
       await claim(harness, main)
@@ -263,7 +263,7 @@ describe('issue_work: through the real composition', () => {
     }
   })
 
-  it('refuses a root session that was not the dispatched executor', async () => {
+  void it('refuses a root session that was not the dispatched executor', async () => {
     const { harness, main } = await wire(await fixture())
     try {
       await claim(harness, main)
@@ -276,7 +276,7 @@ describe('issue_work: through the real composition', () => {
     }
   })
 
-  it('refuses an issue nobody dispatched', async () => {
+  void it('refuses an issue nobody dispatched', async () => {
     const { harness, worker } = await wire(await fixture())
     try {
       const refused = await call(harness, worker, WORK_TOOL_NAME, { action: 'progress', key: 'DH-12', body: 'uninvited' })
@@ -287,7 +287,7 @@ describe('issue_work: through the real composition', () => {
     }
   })
 
-  it('keeps `jira_issue` refused for a delegated child', async () => {
+  void it('keeps `jira_issue` refused for a delegated child', async () => {
     const { harness, main, worker } = await wire(await fixture())
     try {
       await claim(harness, main)
@@ -300,7 +300,7 @@ describe('issue_work: through the real composition', () => {
     }
   })
 
-  it('keeps `jira_issue` refused for an executor Session that joined the worker preset', async () => {
+  void it('keeps `jira_issue` refused for an executor Session that joined the worker preset', async () => {
     const { harness, main } = await wire(await fixture())
     try {
       await claim(harness, main)

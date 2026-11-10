@@ -200,8 +200,8 @@ after(async () => {
   if (emptyGitConfig !== '') rmSync(emptyGitConfig, { force: true })
 })
 
-describe('agent: the capability and its surfaces (contract §3)', () => {
-  it('registers the jira capability with the organizer and wires the tools onto a root agent', async () => {
+void describe('agent: the capability and its surfaces (contract §3)', () => {
+  void it('registers the jira capability with the organizer and wires the tools onto a root agent', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       const status = harness.ctx.dafeiyu.status().find(entry => entry.id === 'jira')
@@ -217,7 +217,7 @@ describe('agent: the capability and its surfaces (contract §3)', () => {
     }
   })
 
-  it('contributes the awareness line as a runtime context, refreshed from the ledger', async () => {
+  void it('contributes the awareness line as a runtime context, refreshed from the ledger', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       const section = await waitFor(async () => {
@@ -231,7 +231,7 @@ describe('agent: the capability and its surfaces (contract §3)', () => {
     }
   })
 
-  it('injects nothing for an empty ledger — a session pays nothing for a ledger it does not have', async () => {
+  void it('injects nothing for an empty ledger — a session pays nothing for a ledger it does not have', async () => {
     const empty = await mkdtemp(join(tmpdir(), 'dsh-jira-agent-empty-'))
     throwaway.push(empty)
     await writeTextAtomic(storePaths.config(empty), CONFIG_FIXTURE)
@@ -246,7 +246,7 @@ describe('agent: the capability and its surfaces (contract §3)', () => {
     }
   })
 
-  it('registers /jira and the three bundled skills', async () => {
+  void it('registers /jira and the three bundled skills', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       const commands = harness.ctx.commands.list(agent).map(command => command.name)
@@ -263,7 +263,7 @@ describe('agent: the capability and its surfaces (contract §3)', () => {
     }
   })
 
-  it('does nothing when the organizer gate is closed', async () => {
+  void it('does nothing when the organizer gate is closed', async () => {
     const { harness } = await mountWired(root, { enabled: false })
     try {
       const status = harness.ctx.dafeiyu.status().find(entry => entry.id === 'jira')
@@ -273,7 +273,7 @@ describe('agent: the capability and its surfaces (contract §3)', () => {
     }
   })
 
-  it('undoes every registration when the plugin fiber is disposed', async () => {
+  void it('undoes every registration when the plugin fiber is disposed', async () => {
     const { harness, agent, fiber } = await mountWired(root)
     try {
       assert.equal(harness.ctx.dafeiyu.status().length, 2, 'jira and superagent come from this row')
@@ -301,8 +301,8 @@ describe('agent: the capability and its surfaces (contract §3)', () => {
   })
 })
 
-describe('agent: the write guard (decision 96)', () => {
-  it('denies a write from a read-only session before the handler runs', async () => {
+void describe('agent: the write guard (decision 96)', () => {
+  void it('denies a write from a read-only session before the handler runs', async () => {
     process.env.DSH_READ_ONLY_SESSION = '1'
     try {
       const { harness, agent } = await mountWired(root, { env: { DSH_READ_ONLY_SESSION: '1' } })
@@ -318,7 +318,7 @@ describe('agent: the write guard (decision 96)', () => {
     }
   })
 
-  it('lets reads through in a read-only session', async () => {
+  void it('lets reads through in a read-only session', async () => {
     process.env.DSH_READ_ONLY_SESSION = '1'
     try {
       const { harness, agent } = await mountWired(root, { env: { DSH_READ_ONLY_SESSION: '1' } })
@@ -336,8 +336,8 @@ describe('agent: the write guard (decision 96)', () => {
   })
 })
 
-describe('agent: what the tools declare', () => {
-  it('registers the resident tools, the first carrying all ten verbs', async () => {
+void describe('agent: what the tools declare', () => {
+  void it('registers the resident tools, the first carrying all ten verbs', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       const definition = harness.ctx.tools.get(TOOL_NAME, agent)
@@ -353,7 +353,7 @@ describe('agent: what the tools declare', () => {
     }
   })
 
-  it('declares an output schema whose required fields every value carries', async () => {
+  void it('declares an output schema whose required fields every value carries', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       for (const name of [TOOL_NAME, LIST_TOOL_NAME, KB_TOOL_NAME]) {
@@ -376,7 +376,7 @@ describe('agent: what the tools declare', () => {
     }
   })
 
-  it('declares a read budget for the read tool, and only reads as concurrency-safe', async () => {
+  void it('declares a read budget for the read tool, and only reads as concurrency-safe', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       const list = harness.ctx.tools.get(LIST_TOOL_NAME, agent)
@@ -395,8 +395,8 @@ describe('agent: what the tools declare', () => {
   })
 })
 
-describe('agent: reading, writing and the envelope', () => {
-  it('returns the issue, the comments and the session\'s identity', async () => {
+void describe('agent: reading, writing and the envelope', () => {
+  void it('returns the issue, the comments and the session\'s identity', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       const value = await call(harness, agent, { action: 'get', key: 'DH-12' })
@@ -411,7 +411,7 @@ describe('agent: reading, writing and the envelope', () => {
     }
   })
 
-  it('creates, updates, comments, claims, links and closes with the store rules intact', async () => {
+  void it('creates, updates, comments, claims, links and closes with the store rules intact', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {
@@ -456,7 +456,7 @@ describe('agent: reading, writing and the envelope', () => {
     }
   })
 
-  it('reports project_created only when this call registered the project (DH-306)', async () => {
+  void it('reports project_created only when this call registered the project (DH-306)', async () => {
     // The inferred path is where the old directory probe was wrong in both directions:
     // `ensureWorkspaceProject` writes `projects/<key>/` before the probe runs, so a brand-new
     // project looked pre-existing and the receipt said nothing. The registration result is the
@@ -479,7 +479,7 @@ describe('agent: reading, writing and the envelope', () => {
     }
   })
 
-  it('reports project_created for an explicit new key, not for an existing one (DH-306)', async () => {
+  void it('reports project_created for an explicit new key, not for an existing one (DH-306)', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {
@@ -497,7 +497,7 @@ describe('agent: reading, writing and the envelope', () => {
     }
   })
 
-  it('refuses a stale write, an unknown data field and a bad action by name', async () => {
+  void it('refuses a stale write, an unknown data field and a bad action by name', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {
@@ -519,7 +519,7 @@ describe('agent: reading, writing and the envelope', () => {
     }
   })
 
-  it('never throws, whatever it is handed', async () => {
+  void it('never throws, whatever it is handed', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       // `undefined` never reaches a tool: the registry refuses non-JSON arguments before dispatch,
@@ -534,7 +534,7 @@ describe('agent: reading, writing and the envelope', () => {
     }
   })
 
-  it('refuses a subagent\'s write at the guard, and lets it read', async () => {
+  void it('refuses a subagent\'s write at the guard, and lets it read', async () => {
     const { harness } = await mountWired(root)
     const child = testAgent(harness.ctx, 'child-1', { origin: 'subagent', delegationDepth: 1 })
     try {
@@ -552,8 +552,8 @@ describe('agent: reading, writing and the envelope', () => {
   })
 })
 
-describe('agent: jira_list and jira_kb', () => {
-  it('lists every issue with counts that agree with each other', async () => {
+void describe('agent: jira_list and jira_kb', () => {
+  void it('lists every issue with counts that agree with each other', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       const value = await call(harness, agent, { include_closed: true }, LIST_TOOL_NAME)
@@ -572,7 +572,7 @@ describe('agent: jira_list and jira_kb', () => {
     }
   })
 
-  it('hides closed issues unless asked, and filters by status', async () => {
+  void it('hides closed issues unless asked, and filters by status', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {
@@ -591,7 +591,7 @@ describe('agent: jira_list and jira_kb', () => {
     }
   })
 
-  it('starts empty, creates a knowledge entry, then reads and searches it', async () => {
+  void it('starts empty, creates a knowledge entry, then reads and searches it', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {
@@ -637,8 +637,8 @@ describe('agent: jira_list and jira_kb', () => {
   })
 })
 
-describe('agent: the turn-end settle (contract §3)', () => {
-  it('regenerates and commits, so what gets pushed agrees with its sources', async () => {
+void describe('agent: the turn-end settle (contract §3)', () => {
+  void it('regenerates and commits, so what gets pushed agrees with its sources', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {
@@ -653,7 +653,7 @@ describe('agent: the turn-end settle (contract §3)', () => {
     }
   })
 
-  it('writes nothing when the session may not write', async () => {
+  void it('writes nothing when the session may not write', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir, { env: { DSH_READ_ONLY_SESSION: '1' } })
     try {
@@ -664,7 +664,7 @@ describe('agent: the turn-end settle (contract §3)', () => {
     }
   })
 
-  it('leaves nothing uncommitted, so a checkout of the commit passes the gate', async () => {
+  void it('leaves nothing uncommitted, so a checkout of the commit passes the gate', async () => {
     const dir = await storeWithoutGenerated()
     const issueFile = join(dir, 'projects', 'DH', 'issues', 'DH-12.md')
     const text = await readFile(issueFile, 'utf8')
@@ -683,7 +683,7 @@ describe('agent: the turn-end settle (contract §3)', () => {
     }
   })
 
-  it('records what a writable session touched, and a read-only one does not even scan', async () => {
+  void it('records what a writable session touched, and a read-only one does not even scan', async () => {
     const scanFixture = async (): Promise<string> => {
       const dir = await storeWithoutGenerated()
       assert.equal((await initializeRepository(dir)).ok, true)
@@ -718,8 +718,8 @@ describe('agent: the turn-end settle (contract §3)', () => {
   })
 })
 
-describe('agent: the wire and the render path (decisions 41/159)', () => {
-  it('never hands the model a camelCase key, all the way down', async () => {
+void describe('agent: the wire and the render path (decisions 41/159)', () => {
+  void it('never hands the model a camelCase key, all the way down', async () => {
     const walk = (value: unknown, path: string): void => {
       if (Array.isArray(value)) {
         value.forEach((entry, index) => { walk(entry, `${path}[${String(index)}]`) })
@@ -742,7 +742,7 @@ describe('agent: the wire and the render path (decisions 41/159)', () => {
     }
   })
 
-  it('renders every result, which is the path a live call actually takes', async () => {
+  void it('renders every result, which is the path a live call actually takes', async () => {
     const { harness, agent } = await mountWired(root)
     try {
       const render = async (args: unknown, name: string): Promise<string> => {
@@ -759,7 +759,7 @@ describe('agent: the wire and the render path (decisions 41/159)', () => {
     }
   })
 
-  it('keeps create and tag commit failures visible', async () => {
+  void it('keeps create and tag commit failures visible', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {
@@ -792,7 +792,7 @@ describe('agent: the wire and the render path (decisions 41/159)', () => {
     }
   })
 
-  it('shows comments returned by issue get', async () => {
+  void it('shows comments returned by issue get', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {
@@ -806,8 +806,8 @@ describe('agent: the wire and the render path (decisions 41/159)', () => {
   })
 })
 
-describe('agent: a partial read says so, and says which file (decision 80)', () => {
-  it('names the unreadable file and warns that the answer is partial', async () => {
+void describe('agent: a partial read says so, and says which file (decision 80)', () => {
+  void it('names the unreadable file and warns that the answer is partial', async () => {
     const dir = await storeWithoutGenerated()
     await writeTextAtomic(join(dir, 'projects', 'DH', 'issues', 'DH-13.md'), '# not an issue at all\n')
     const { harness, agent } = await mountWired(dir)
@@ -828,8 +828,8 @@ describe('agent: a partial read says so, and says which file (decision 80)', () 
   })
 })
 
-describe('agent: a pure tool session can build the tag vocabulary (decision 192)', () => {
-  it('creates a tag through the tool, then tags an issue with it', async () => {
+void describe('agent: a pure tool session can build the tag vocabulary (decision 192)', () => {
+  void it('creates a tag through the tool, then tags an issue with it', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-agent-tag-'))
     throwaway.push(dir)
     await initializeRepository(dir)
@@ -859,8 +859,8 @@ describe('agent: a pure tool session can build the tag vocabulary (decision 192)
   })
 })
 
-describe('agent: knowledge mirror failures are visible (decision 198)', () => {
-  it('shows the issue whose kb_refs could not be updated', async () => {
+void describe('agent: knowledge mirror failures are visible (decision 198)', () => {
+  void it('shows the issue whose kb_refs could not be updated', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {
@@ -877,8 +877,8 @@ describe('agent: knowledge mirror failures are visible (decision 198)', () => {
   })
 })
 
-describe('agent: batch close shows partial writes (decision 196)', () => {
-  it('shows the closed keys and the failed key after validation', async () => {
+void describe('agent: batch close shows partial writes (decision 196)', () => {
+  void it('shows the closed keys and the failed key after validation', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {
@@ -916,8 +916,8 @@ describe('agent: batch close shows partial writes (decision 196)', () => {
   })
 })
 
-describe('agent: close writes the transition and its comment in one transaction (decision 193)', () => {
-  it('closes with a comment as ONE commit, where it used to take two', async () => {
+void describe('agent: close writes the transition and its comment in one transaction (decision 193)', () => {
+  void it('closes with a comment as ONE commit, where it used to take two', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-agent-close-'))
     throwaway.push(dir)
     await writeTextAtomic(storePaths.config(dir), CONFIG_FIXTURE)
@@ -942,8 +942,8 @@ describe('agent: close writes the transition and its comment in one transaction 
   })
 })
 
-describe('agent: the machine identity is the service\'s (decision 166)', () => {
-  it('uses the resolved machine id everywhere, not an invented one', async () => {
+void describe('agent: the machine identity is the service\'s (decision 166)', () => {
+  void it('uses the resolved machine id everywhere, not an invented one', async () => {
     const dir = await storeWithoutGenerated()
     const { harness, agent } = await mountWired(dir)
     try {

@@ -64,8 +64,8 @@ const issue = (over: Omit<Partial<Issue>, 'key'> & Readonly<{ key: string }>): I
   } as Issue)
 }
 
-describe('generate: the source tree hash (decision 79)', () => {
-  it('does not depend on the order the entries arrive in', () => {
+void describe('generate: the source tree hash (decision 79)', () => {
+  void it('does not depend on the order the entries arrive in', () => {
     const entries = [
       { path: 'tags/demo.md', sha256: 'b' },
       { path: 'config.md', sha256: 'a' },
@@ -73,7 +73,7 @@ describe('generate: the source tree hash (decision 79)', () => {
     assert.equal(hashSourceTree(entries), hashSourceTree([...entries].reverse()))
   })
 
-  it('changes when one input changes, and only then', () => {
+  void it('changes when one input changes, and only then', () => {
     const before = hashSourceTree([{ path: 'config.md', sha256: 'a' }])
     assert.equal(hashSourceTree([{ path: 'config.md', sha256: 'a' }]), before)
     assert.notEqual(hashSourceTree([{ path: 'config.md', sha256: 'b' }]), before)
@@ -81,20 +81,20 @@ describe('generate: the source tree hash (decision 79)', () => {
   })
 })
 
-describe('generate: the head (decisions 39/79)', () => {
-  it('round-trips through readGeneratedHead, which the freshness check uses', () => {
+void describe('generate: the head (decisions 39/79)', () => {
+  void it('round-trips through readGeneratedHead, which the freshness check uses', () => {
     const text = renderTagsIndexFile([], META)
     assert.deepEqual(readGeneratedHead(text), META)
   })
 
-  it('refuses a file it did not generate', () => {
+  void it('refuses a file it did not generate', () => {
     assert.equal(readGeneratedHead('# hand written\n'), undefined)
     assert.equal(readGeneratedHead('<!-- something else -->\n'), undefined)
   })
 })
 
-describe('generate: BOARD.md (decision 87)', () => {
-  it('sections open statuses in vocabulary order and skips empty ones', () => {
+void describe('generate: BOARD.md (decision 87)', () => {
+  void it('sections open statuses in vocabulary order and skips empty ones', () => {
     const board = renderBoardFile(
       [issue({ key: 'DH-2', status: 'in_progress' }), issue({ key: 'DH-1', status: 'todo' })],
       vocab,
@@ -109,7 +109,7 @@ describe('generate: BOARD.md (decision 87)', () => {
     assert.match(board, /^\| key \| summary \| priority \| assignee \| updated \|$/m, 'column names are field names')
   })
 
-  it('sorts a section by priority, S1 first', () => {
+  void it('sorts a section by priority, S1 first', () => {
     const board = renderBoardFile(
       [issue({ key: 'DH-9', priority: 'S3' }), issue({ key: 'DH-8', priority: 'S1' })],
       vocab,
@@ -118,17 +118,17 @@ describe('generate: BOARD.md (decision 87)', () => {
     assert.ok(board.indexOf('DH-8') < board.indexOf('DH-9'))
   })
 
-  it('marks a conflicted row', () => {
+  void it('marks a conflicted row', () => {
     const board = renderBoardFile([issue({ key: 'DH-3', conflicted: true })], vocab, META)
     assert.match(board, /\| ⚠️ DH-3 \|/u)
   })
 
-  it('escapes a pipe so a summary cannot break the row', () => {
+  void it('escapes a pipe so a summary cannot break the row', () => {
     const board = renderBoardFile([issue({ key: 'DH-4', summary: 'a | b' })], vocab, META)
     assert.match(board, /a \\\| b/u)
   })
 
-  it('moves a blocked issue out of its status section and into the last one', () => {
+  void it('moves a blocked issue out of its status section and into the last one', () => {
     const blocker = issue({ key: 'DH-5', status: 'in_progress' })
     const blocked = issue({ key: 'DH-6', links: [{ type: 'is_blocked_by', target: 'DH-5' as never }] })
     const board = renderBoardFile([blocker, blocked], vocab, META)
@@ -140,7 +140,7 @@ describe('generate: BOARD.md (decision 87)', () => {
     assert.ok(board.indexOf('## 被阻塞') > board.indexOf('## in_progress'), 'blocked goes last')
   })
 
-  it('treats an unfindable blocker as blocking, not as ready', () => {
+  void it('treats an unfindable blocker as blocking, not as ready', () => {
     const board = renderBoardFile(
       [issue({ key: 'DH-7', links: [{ type: 'is_blocked_by', target: 'DH-404' as never }] })],
       vocab,
@@ -149,7 +149,7 @@ describe('generate: BOARD.md (decision 87)', () => {
     assert.match(board, /## 被阻塞（1）/)
   })
 
-  it('puts a deprecated status in its own section and counts the closed ones', () => {
+  void it('puts a deprecated status in its own section and counts the closed ones', () => {
     const board = renderBoardFile(
       [issue({ key: 'DH-10', status: 'legacy' }), issue({ key: 'DH-11', status: 'closed' })],
       vocab,
@@ -160,8 +160,8 @@ describe('generate: BOARD.md (decision 87)', () => {
   })
 })
 
-describe('generate: index.md, log.md, tags/index.md (decision 87)', () => {
-  it('lists projects and knowledge domains, and no individual issue', () => {
+void describe('generate: index.md, log.md, tags/index.md (decision 87)', () => {
+  void it('lists projects and knowledge domains, and no individual issue', () => {
     const index = renderIndexFile(
       [{ key: 'DH', name: 'deepseek-harness', open: 3 }],
       [{ name: 'os', entries: 2 }],
@@ -173,13 +173,13 @@ describe('generate: index.md, log.md, tags/index.md (decision 87)', () => {
     assert.doesNotMatch(index, /DH-\d/u)
   })
 
-  it('renders keyed commits, and says so when there are none', () => {
+  void it('renders keyed commits, and says so when there are none', () => {
     const log = renderLogFile([{ hash: 'abc1234', date: '2026-10-15', subject: 'DH-12: create' }], META)
     assert.match(log, /`abc1234` 2026-10-15 — DH-12: create/)
     assert.match(renderLogFile([], META), /（还没有）/)
   })
 
-  it('renders tags alphabetically with their use count', () => {
+  void it('renders tags alphabetically with their use count', () => {
     const tags: readonly Tag[] = Object.freeze([
       Object.freeze({ name: 'zeta', description: 'last', aliases: Object.freeze([]) }),
       Object.freeze({ name: 'alpha', description: 'first', aliases: Object.freeze([]) }),
@@ -192,8 +192,8 @@ describe('generate: index.md, log.md, tags/index.md (decision 87)', () => {
   })
 })
 
-describe('generate: determinism (the freshness assertion depends on it)', () => {
-  it('produces byte-identical output for identical input', () => {
+void describe('generate: determinism (the freshness assertion depends on it)', () => {
+  void it('produces byte-identical output for identical input', () => {
     const input = {
       meta: META,
       vocab,

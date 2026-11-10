@@ -21,8 +21,8 @@ const claim = (files: readonly CountersFile[], machineId: string, project: strin
   return { key: result.key, newBlock: result.claimedNewBlock, files: [...others, result.counters] }
 }
 
-describe('counters: the file', () => {
-  it('starts empty and renders sorted, stable JSON', () => {
+void describe('counters: the file', () => {
+  void it('starts empty and renders sorted, stable JSON', () => {
     const file = emptyCounters('a1b2')
     assert.equal(file.schema, 'counters/v1')
     const text = renderCounters(file)
@@ -31,7 +31,7 @@ describe('counters: the file', () => {
     assert.deepEqual(JSON.parse(text), { schema: 'counters/v1', machine_id: 'a1b2', projects: {} })
   })
 
-  it('round-trips, with projects sorted for a readable diff', () => {
+  void it('round-trips, with projects sorted for a readable diff', () => {
     const claimed = unwrap(claimKey([emptyCounters('a1b2')], 'a1b2', 'DH'))
     const claimed2 = unwrap(claimKey([claimed.counters], 'a1b2', 'DEMO'))
     const text = renderCounters(claimed2.counters)
@@ -41,7 +41,7 @@ describe('counters: the file', () => {
     assert.deepEqual(back, claimed2.counters)
   })
 
-  it('refuses a file that belongs to another machine or is malformed', () => {
+  void it('refuses a file that belongs to another machine or is malformed', () => {
     const broken = [
       ['not json', 'not valid JSON'],
       ['{"schema":"counters/v0","machine_id":"a1b2","projects":{}}', 'schema must be'],
@@ -57,8 +57,8 @@ describe('counters: the file', () => {
   })
 })
 
-describe('counters: claiming keys', () => {
-  it('hands out consecutive keys from the claimed block', () => {
+void describe('counters: claiming keys', () => {
+  void it('hands out consecutive keys from the claimed block', () => {
     let files: readonly CountersFile[] = [emptyCounters('a1b2')]
     const first = claim(files, 'a1b2', 'DH')
     assert.equal(first.key, 'DH-1')
@@ -72,7 +72,7 @@ describe('counters: claiming keys', () => {
     assert.equal(highestClaim(files, 'DH'), BLOCK_SIZE)
   })
 
-  it('keeps projects in separate number spaces', () => {
+  void it('keeps projects in separate number spaces', () => {
     const dh = claim([emptyCounters('a1b2')], 'a1b2', 'DH')
     const demo = claim(dh.files, 'a1b2', 'DEMO')
     assert.equal(demo.key, 'DEMO-1')
@@ -80,7 +80,7 @@ describe('counters: claiming keys', () => {
     assert.equal(dhAgain.key, 'DH-2')
   })
 
-  it('never hands a second machine a key inside the first machine\'s block', () => {
+  void it('never hands a second machine a key inside the first machine\'s block', () => {
     // This is the whole point: two machines that never talk must not mint the same key.
     const a = claim([emptyCounters('aaaa')], 'aaaa', 'DH')
     assert.equal(a.key, 'DH-1')
@@ -92,7 +92,7 @@ describe('counters: claiming keys', () => {
     assert.equal(c.key, `DH-${2 * BLOCK_SIZE + 1}`)
   })
 
-  it('claims a fresh block once the current one is exhausted', () => {
+  void it('claims a fresh block once the current one is exhausted', () => {
     let files: readonly CountersFile[] = [emptyCounters('a1b2')]
     let last = ''
     for (let index = 0; index < BLOCK_SIZE + 1; index += 1) {
@@ -105,8 +105,8 @@ describe('counters: claiming keys', () => {
   })
 })
 
-describe('counters: the number space is finite (decision 158)', () => {
-  it('refuses the key past the cap, and names the project, the limit and the number', () => {
+void describe('counters: the number space is finite (decision 158)', () => {
+  void it('refuses the key past the cap, and names the project, the limit and the number', () => {
     // Reached through `seed` — the highest number already on disk — which is exactly how a real store
     // arrives here (`highestExistingKey`). The cap exists so that a corrupt counters file cannot mint
     // `DEMO-999999999`, and so `KEY_EXHAUSTED` (decision 52) is a code that can actually happen.
@@ -120,7 +120,7 @@ describe('counters: the number space is finite (decision 158)', () => {
     }
   })
 
-  it('still hands out the last key of the space', () => {
+  void it('still hands out the last key of the space', () => {
     const last = unwrap(claimKey([emptyCounters('a1b2')], 'a1b2', 'DEMO', MAX_KEY_NUMBER - 1))
     assert.equal(last.key, `DEMO-${String(MAX_KEY_NUMBER)}`)
   })

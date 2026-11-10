@@ -52,8 +52,8 @@ after(async () => {
   for (const directory of tempdirs) await removeTree(directory)
 })
 
-describe('project: one repository, one identity', () => {
-  it('reduces every spelling of the same remote to the same string', () => {
+void describe('project: one repository, one identity', () => {
+  void it('reduces every spelling of the same remote to the same string', () => {
     const expected = 'github.com/uitstalie/dsh-jira'
     for (const spelling of [
       'git@github.com:uitstalie/dsh-jira.git',
@@ -67,13 +67,13 @@ describe('project: one repository, one identity', () => {
     }
   })
 
-  it('keeps the host and the whole path, and only those', () => {
+  void it('keeps the host and the whole path, and only those', () => {
     assert.equal(normalizeRemote('https://example.invalid:8443/a/b/c.git'), 'example.invalid/a/b/c')
     assert.equal(normalizeRemote('git@example.invalid:a/b.git'), 'example.invalid/a/b')
     assert.equal(normalizeRemote(''), '')
   })
 
-  it('prefers upstream, then origin, then whatever is left (decision 77)', () => {
+  void it('prefers upstream, then origin, then whatever is left (decision 77)', () => {
     assert.equal(remoteIdentity(['git@github.com:them/upstream.git', 'git@github.com:them/origin.git']), 'github.com/them/upstream')
     assert.equal(remoteIdentity(['git@github.com:them/origin.git', 'git@github.com:me/fork.git']), 'github.com/them/origin')
     // No upstream, no origin: the choice is arbitrary but must be deterministic, so it is sorted.
@@ -81,7 +81,7 @@ describe('project: one repository, one identity', () => {
     assert.equal(remoteIdentity([]), undefined)
   })
 
-  it('normalizes a path for comparison, lowercased on Windows (decision 92)', () => {
+  void it('normalizes a path for comparison, lowercased on Windows (decision 92)', () => {
     assert.equal(normalizePath('D:/Work/Repo', 'win32'), 'd:\\work\\repo')
     assert.equal(normalizePath('D:\\Work\\Repo', 'win32'), 'd:\\work\\repo', 'the same directory, however it is spelled')
     // The host's own rule, checked as a property so the suite is honest on Linux and Windows alike.
@@ -91,22 +91,22 @@ describe('project: one repository, one identity', () => {
   })
 })
 
-describe('project: the file', () => {
-  it('never stores the key, because the directory is the key (decisions 77/107)', () => {
+void describe('project: the file', () => {
+  void it('never stores the key, because the directory is the key (decisions 77/107)', () => {
     const text = encodeProjectFile({ key: 'DH', name: 'ledger', remotes: ['github.com/o/r'], paths: ['d:\\x'], agentWritePolicy: 'shared' })
     assert.match(text, /^schema: project\/v1$/m)
     assert.equal(/^key:/m.test(text), false)
     assert.match(text, /^remotes: \[github\.com\/o\/r\]$/m)
   })
 
-  it('reads a hand-edited file tolerantly', () => {
+  void it('reads a hand-edited file tolerantly', () => {
     const decoded = unwrap(readProjectFile('---\nschema: project/v1\nfuture: 1\nremotes: [github.com/o/r]\n---\n', 'DH'))
     assert.deepEqual(decoded.remotes, ['github.com/o/r'])
     assert.deepEqual(decoded.paths, [])
   })
 })
 
-describe('project: binding a checkout', () => {
+void describe('project: binding a checkout', () => {
   /**
    * Host-absolute, so this suite means the same thing on Linux and on Windows.
    *
@@ -119,7 +119,7 @@ describe('project: binding a checkout', () => {
   const dhAgain = resolve('work', '.', 'dh')
   const other = resolve('work', 'other')
 
-  it('binds, is idempotent, and records the normalized remote', async () => {
+  void it('binds, is idempotent, and records the normalized remote', async () => {
     const first = unwrap(await bindProject(store, ACTOR, {
       key: 'DH',
       path: dh,
@@ -138,7 +138,7 @@ describe('project: binding a checkout', () => {
     assert.match(text, /^name: the ledger$/m)
   })
 
-  it('lists what it has, marking the checkout you are standing in', async () => {
+  void it('lists what it has, marking the checkout you are standing in', async () => {
     const projects = unwrap(await listProjects(store))
     assert.deepEqual(projects.map(project => project.key), ['DH'])
     assert.equal(remoteIdentity(projects[0]?.remotes ?? []), 'github.com/uitstalie/dsh-jira')
@@ -146,13 +146,13 @@ describe('project: binding a checkout', () => {
     assert.match(renderProjects(projects, resolve('work', 'elsewhere')), /^ {2}DH {2}the ledger$/m)
   })
 
-  it('refuses a key that is not a project key', async () => {
+  void it('refuses a key that is not a project key', async () => {
     const bad = await bindProject(store, ACTOR, { key: 'nope', path: '.' })
     assert.equal(bad.ok, false)
     if (!bad.ok) assert.match(bad.error.message, /is not a project key/)
   })
 
-  it('moves a checkout between projects without touching issue data (decision 92)', async () => {
+  void it('moves a checkout between projects without touching issue data (decision 92)', async () => {
     unwrap(await bindProject(store, ACTOR, { key: 'OTHER', path: other }))
     const rebound = unwrap(await rebindProject(store, ACTOR, { from: 'DH', to: 'OTHER', path: dh }))
     assert.equal(rebound.moved, true)
@@ -168,8 +168,8 @@ describe('project: binding a checkout', () => {
   })
 })
 
-describe('project: the first write registers the workspace (decision 133, §4.10)', () => {
-  it('grants a new project from the repository name, with its remote and this path', async () => {
+void describe('project: the first write registers the workspace (decision 133, §4.10)', () => {
+  void it('grants a new project from the repository name, with its remote and this path', async () => {
     const checkout = await mkdtemp(join(tmpdir(), 'dsh-jira-ws-reg-'))
     tempdirs.push(checkout)
     await runGit(checkout, ['init', '--initial-branch=main'])
@@ -192,7 +192,7 @@ describe('project: the first write registers the workspace (decision 133, §4.10
     assert.equal(second.registered, false)
   })
 
-  it('marks a checkout with no remote as owner-machine, owned by this machine', async () => {
+  void it('marks a checkout with no remote as owner-machine, owned by this machine', async () => {
     const plain = await mkdtemp(join(tmpdir(), 'dsh-jira-ws-own-'))
     tempdirs.push(plain)
     await runGit(plain, ['init', '--initial-branch=main'])
@@ -201,7 +201,7 @@ describe('project: the first write registers the workspace (decision 133, §4.10
     assert.equal(registered.project.ownerMachine, 'm-test')
   })
 
-  it('appends digits when two repositories derive the same key', async () => {
+  void it('appends digits when two repositories derive the same key', async () => {
     const first = await mkdtemp(join(tmpdir(), 'dsh-jira-ws-bn2-'))
     tempdirs.push(first)
     await runGit(first, ['init', '--initial-branch=main'])
@@ -211,8 +211,8 @@ describe('project: the first write registers the workspace (decision 133, §4.10
   })
 })
 
-describe('project: who may write it (§4.11, decision 133)', () => {
-  it('lets anyone write a shared project, and blocks other machines only for agents', async () => {
+void describe('project: who may write it (§4.11, decision 133)', () => {
+  void it('lets anyone write a shared project, and blocks other machines only for agents', async () => {
     assert.equal((await assertProjectWritable(store, 'DH', 'agent:x|dsh|m-other|s')).ok, true, 'DH has a remote')
 
     const local = await mkdtemp(join(tmpdir(), 'dsh-jira-ws-policy-'))
@@ -232,8 +232,8 @@ describe('project: who may write it (§4.11, decision 133)', () => {
     }
   })
 })
-describe('project: KB is the knowledge key space, so a new project cannot claim it (decision 194)', () => {
-  it('refuses to register a new project named KB, and leaves an existing one alone', async () => {
+void describe('project: KB is the knowledge key space, so a new project cannot claim it (decision 194)', () => {
+  void it('refuses to register a new project named KB, and leaves an existing one alone', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-reserved-'))
     try {
       await writeTextAtomic(storePaths.config(dir), readFileSync(new URL('../fixtures/config.md', import.meta.url), 'utf8'))

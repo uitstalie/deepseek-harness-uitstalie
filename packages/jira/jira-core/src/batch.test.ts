@@ -60,8 +60,8 @@ after(async () => {
   if (dir !== '') await rm(dir, { recursive: true, force: true })
 })
 
-describe('batch: all-or-nothing (decision 196)', () => {
-  it('refuses the whole call when one key cannot be closed, and writes nothing', async () => {
+void describe('batch: all-or-nothing (decision 196)', () => {
+  void it('refuses the whole call when one key cannot be closed, and writes nothing', async () => {
     // DH-1 is still `todo`, and decision 189 removed `todo → closed`: one refusal means nothing lands —
     // including DH-2/DH-3, which would have been closable.
     const result = await closeMany(store, ['DH-2', 'DH-1'] as IssueKey[], ACTOR, { resolution: 'fixed' })
@@ -77,7 +77,7 @@ describe('batch: all-or-nothing (decision 196)', () => {
     if (read.ok) assert.match(read.value, /status: in_progress/u)
   })
 
-  it('closes every key when all of them pass', async () => {
+  void it('closes every key when all of them pass', async () => {
     const closed = unwrap(await closeMany(store, ['DH-2', 'DH-3'] as IssueKey[], ACTOR, {
       resolution: 'fixed',
       comment: 'batch closed',

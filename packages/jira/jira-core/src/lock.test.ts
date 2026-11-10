@@ -41,8 +41,8 @@ after(async () => {
   if (root !== '') await removeTree(root)
 })
 
-describe('lock: acquiring and releasing', () => {
-  it('creates the lock directory with a readable owner file', async () => {
+void describe('lock: acquiring and releasing', () => {
+  void it('creates the lock directory with a readable owner file', async () => {
     const path = issueLockPath(root, 'DH-1')
     const handle = await acquireLock(path, owner(1234))
     assert.equal(handle.ok, true)
@@ -53,7 +53,7 @@ describe('lock: acquiring and releasing', () => {
     assert.equal(await readOwner(path), undefined)
   })
 
-  it('fails with LOCK_TIMEOUT when somebody else holds it', async () => {
+  void it('fails with LOCK_TIMEOUT when somebody else holds it', async () => {
     const path = issueLockPath(root, 'DH-2')
     const held = await acquireLock(path, owner(1))
     assert.equal(held.ok, true)
@@ -68,7 +68,7 @@ describe('lock: acquiring and releasing', () => {
     if (held.ok) await releaseLock(held.value)
   })
 
-  it('reclaims a lock whose owner file is gone, and one that is stale', async () => {
+  void it('reclaims a lock whose owner file is gone, and one that is stale', async () => {
     const orphan = issueLockPath(root, 'DH-3')
     await acquireLock(orphan, owner(1))
     await rm(join(orphan, 'owner.json'), { force: true })
@@ -95,7 +95,7 @@ describe('lock: acquiring and releasing', () => {
     if (taken.ok) await releaseLock(taken.value)
   })
 
-  it('knows what stale means', () => {
+  void it('knows what stale means', () => {
     const now = Date.parse('2026-10-15T12:00:00Z')
     assert.equal(isStale(undefined, now, 60_000), true)
     assert.equal(isStale(owner(1, '2026-10-15T11:59:30Z'), now, 60_000), false)
@@ -103,7 +103,7 @@ describe('lock: acquiring and releasing', () => {
     assert.equal(isStale(owner(1, 'not-a-time'), now, 60_000), true)
   })
 
-  it('releases even when the body fails, and twice is not an error', async () => {
+  void it('releases even when the body fails, and twice is not an error', async () => {
     const path = issueLockPath(root, 'DH-5')
     const failed = await withLock(path, owner(1), {}, async () => ({ ok: false as const, error: { code: 'INVALID_INPUT' as const, message: 'nope' } }))
     assert.equal(failed.ok, false)
@@ -118,8 +118,8 @@ describe('lock: acquiring and releasing', () => {
   })
 })
 
-describe('lock: concurrent read-modify-write loses nothing', () => {
-  it('serialises four writers onto one counter file', async () => {
+void describe('lock: concurrent read-modify-write loses nothing', () => {
+  void it('serialises four writers onto one counter file', async () => {
     const path = issueLockPath(root, 'DH-6')
     const counter = join(root, 'counter.txt')
     await writeFile(counter, '0', 'utf8')
@@ -138,7 +138,7 @@ describe('lock: concurrent read-modify-write loses nothing', () => {
     assert.equal(await readFile(counter, 'utf8'), '4')
   })
 
-  it('lets different locks run at the same time', async () => {
+  void it('lets different locks run at the same time', async () => {
     const first = issueLockPath(root, 'DH-7')
     const second = issueLockPath(root, 'DH-8')
     const a = await acquireLock(first, owner(1))
@@ -149,8 +149,8 @@ describe('lock: concurrent read-modify-write loses nothing', () => {
   })
 })
 
-describe('lock: reclaiming a stale lock is safe, and a live lock says so (decision 160)', () => {
-  it('never deletes the lock while another reclaimer holds the marker', async () => {
+void describe('lock: reclaiming a stale lock is safe, and a live lock says so (decision 160)', () => {
+  void it('never deletes the lock while another reclaimer holds the marker', async () => {
     // Two writers that both notice a stale lock used to both `rm -rf` the path; the second one could
     // delete a lock that had *already changed hands*, putting two writers inside the critical section.
     // The reclaim marker is what serialises them, so holding it must stop the deletion.
@@ -178,7 +178,7 @@ describe('lock: reclaiming a stale lock is safe, and a live lock says so (decisi
     await rm(`${path}.reclaim`, { recursive: true, force: true })
   })
 
-  it('keeps a lock alive with a heartbeat, so a slow critical section is not reclaimed', async () => {
+  void it('keeps a lock alive with a heartbeat, so a slow critical section is not reclaimed', async () => {
     // The root cause behind the lost update: the critical section runs several git subprocesses, and on
     // a slow filesystem it takes longer than the staleness window. A live lock must say so.
     const path = issueLockPath(root, 'DH-6')
@@ -200,7 +200,7 @@ describe('lock: reclaiming a stale lock is safe, and a live lock says so (decisi
   })
 })
 
-describe('lock: the owner and the options have one source (decision 181)', () => {
+void describe('lock: the owner and the options have one source (decision 181)', () => {
   const source = (host: string, machineId = 'm-1') => Object.freeze({
     host,
     machineId,
@@ -208,7 +208,7 @@ describe('lock: the owner and the options have one source (decision 181)', () =>
     env: fakeTime(),
   })
 
-  it('builds the owner from the store-shaped source, and only from it', () => {
+  void it('builds the owner from the store-shaped source, and only from it', () => {
     const at = '2026-10-19T00:00:00Z' as Timestamp
     assert.deepEqual(lockOwnerOf(source('box-a'), at), {
       pid: process.pid,
@@ -223,7 +223,7 @@ describe('lock: the owner and the options have one source (decision 181)', () =>
     )
   })
 
-  it('assembles the options once, carrying the injected clock by identity', () => {
+  void it('assembles the options once, carrying the injected clock by identity', () => {
     const from = source('box')
     const options = lockOptionsOf(from)
     assert.equal(options.timeoutMs, 123)
@@ -231,13 +231,13 @@ describe('lock: the owner and the options have one source (decision 181)', () =>
     assert.equal(options.env, from.env, 'the injected clock travels unchanged')
   })
 
-  it('the network lock lives beside the store lock, named once', () => {
+  void it('the network lock lives beside the store lock, named once', () => {
     assert.equal(networkLockPath('R'), join('R', '.jira', 'network.lock'))
   })
 })
 
-describe('lock: the exact boundary of "stale" (decision 170)', () => {
-  it('a lock that is exactly staleMs old is still alive — the comparison is strict', () => {
+void describe('lock: the exact boundary of "stale" (decision 170)', () => {
+  void it('a lock that is exactly staleMs old is still alive — the comparison is strict', () => {
     // `>` vs `>=`: at exactly the threshold the holder keeps its lock. Without this case, flipping the
     // operator would keep every test green.
     const at = '2026-10-15T08:30:00.000Z'
@@ -248,7 +248,7 @@ describe('lock: the exact boundary of "stale" (decision 170)', () => {
     assert.equal(isStale(undefined, held, 60_000), true, 'no owner is stale by definition')
   })
 
-  it('gives up at exactly the acquire timeout, without sleeping first', async () => {
+  void it('gives up at exactly the acquire timeout, without sleeping first', async () => {
     const path = issueLockPath(root, 'DH-Y')
     const held = await acquireLock(path, owner(1))
     assert.equal(held.ok, true)

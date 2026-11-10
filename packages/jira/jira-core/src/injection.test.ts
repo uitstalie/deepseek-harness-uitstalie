@@ -45,8 +45,8 @@ after(async () => {
   if (root !== '') await removeTree(root)
 })
 
-describe('injection: the line', () => {
-  it('is the fixed English format, with the read-only suffix only when there is one', () => {
+void describe('injection: the line', () => {
+  void it('is the fixed English format, with the read-only suffix only when there is one', () => {
     assert.equal(
       injectionLine({ projects: 3, knowledge: 148, openIssues: 12, readOnlyProjects: 0 }),
       '[store] 3 projects · 148 knowledge · 12 open issues',
@@ -57,7 +57,7 @@ describe('injection: the line', () => {
     )
   })
 
-  it('names the ledger and the workspace when it knows them (decision 131)', () => {
+  void it('names the ledger and the workspace when it knows them (decision 131)', () => {
     assert.equal(
       injectionLine(
         { projects: 3, knowledge: 148, openIssues: 12, readOnlyProjects: 1 },
@@ -72,7 +72,7 @@ describe('injection: the line', () => {
     )
   })
 
-  it('keeps two checkouts apart, because they must be told different things', async () => {
+  void it('keeps two checkouts apart, because they must be told different things', async () => {
     const read = async (cwd: string | undefined) => ({
       counts: { projects: 1, knowledge: 0, openIssues: 0, readOnlyProjects: 0 },
       ...(cwd === undefined ? {} : { binding: `workspace → ${cwd}` }),
@@ -84,14 +84,14 @@ describe('injection: the line', () => {
     assert.equal(injection.text({ scope: { cwd: '/b' } }), '[store] workspace → /b · 1 projects · 0 knowledge · 0 open issues')
   })
 
-  it('says nothing at all for an empty store (decision 78)', () => {
+  void it('says nothing at all for an empty store (decision 78)', () => {
     assert.equal(injectionLine({ projects: 0, knowledge: 0, openIssues: 0, readOnlyProjects: 0 }), '')
     assert.equal(injectionLine({ projects: 0, knowledge: 0, openIssues: 0, readOnlyProjects: 1 }), '', 'a read-only count alone is not a store')
   })
 })
 
-describe('injection: counting a real store (§6.4 rules)', () => {
-  it('counts project.md files, KB files and non-closed issues', async () => {
+void describe('injection: counting a real store (§6.4 rules)', () => {
+  void it('counts project.md files, KB files and non-closed issues', async () => {
     const empty = unwrap(await countStore(store))
     assert.deepEqual(empty, { projects: 0, knowledge: 0, openIssues: 0, readOnlyProjects: 0 })
     assert.equal(injectionLine(empty), '', 'a scaffolded store has nothing to say yet')
@@ -116,7 +116,7 @@ describe('injection: counting a real store (§6.4 rules)', () => {
     assert.equal(injectionLine(counts), '[store] 2 projects · 1 knowledge · 1 open issues | read-only: 1')
   })
 
-  it('counts a project that has issues but no identity file, and not a bare directory', async () => {
+  void it('counts a project that has issues but no identity file, and not a bare directory', async () => {
     // `jira new` creates issues without ever binding a checkout, so a store can have projects with
     // no `project.md` at all. Reporting "0 projects" there would contradict what the reader sees.
     const created = unwrap(await createInStore(store, 'UNBND', ACTOR, { issueType: 'task', summary: 'no project.md' }))
@@ -130,8 +130,8 @@ describe('injection: counting a real store (§6.4 rules)', () => {
   })
 })
 
-describe('injection: the five-second cache (decision 78)', () => {
-  it('reuses the scan inside the TTL and scans again after it', async () => {
+void describe('injection: the five-second cache (decision 78)', () => {
+  void it('reuses the scan inside the TTL and scans again after it', async () => {
     let clock = 1_000
     let reads = 0
     const injection = createStoreInjection({
@@ -157,13 +157,13 @@ describe('injection: the five-second cache (decision 78)', () => {
     assert.equal(injection.scans(), 2)
   })
 
-  it('starts empty, so the very first assembly injects nothing rather than a guess', () => {
+  void it('starts empty, so the very first assembly injects nothing rather than a guess', () => {
     const counts = { projects: 9, knowledge: 9, openIssues: 9, readOnlyProjects: 0 }
     const injection = createStoreInjection({ read: async () => ({ counts }), now: () => 0 })
     assert.equal(injection.text(), '', 'not measured yet, so nothing is claimed')
   })
 
-  it('injects nothing when the store cannot be read', async () => {
+  void it('injects nothing when the store cannot be read', async () => {
     const injection = createStoreInjection({
       read: async () => { throw new Error('no store') },
       now: () => 0,
@@ -172,7 +172,7 @@ describe('injection: the five-second cache (decision 78)', () => {
     assert.equal(injection.text(), '')
   })
 
-  it('has the registration name the design fixes', () => {
+  void it('has the registration name the design fixes', () => {
     const counts = { projects: 1, knowledge: 0, openIssues: 0, readOnlyProjects: 0 }
     const injection = createStoreInjection({ read: async () => ({ counts }), now: () => 0 })
     assert.equal(injection.name, STORE_CONTEXT_NAME)

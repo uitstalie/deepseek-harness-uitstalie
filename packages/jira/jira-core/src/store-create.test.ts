@@ -69,14 +69,14 @@ after(async () => {
   if (root !== '') await rm(root, { recursive: true, force: true })
 })
 
-describe('key allocation: a store seeded before the counters existed', () => {
-  it('sees the highest key already on disk', async () => {
+void describe('key allocation: a store seeded before the counters existed', () => {
+  void it('sees the highest key already on disk', async () => {
     const store = createStore({ root, machineId: 'a1b2c3d4' })
     assert.equal(await highestExistingKey(store, 'DEMO'), 7)
     assert.equal(await highestExistingKey(store, 'NOPE'), 0, 'a project with no files starts at zero')
   })
 
-  it('starts the first block after the existing files, not at one', async () => {
+  void it('starts the first block after the existing files, not at one', async () => {
     const store = createStore({ root, machineId: 'a1b2c3d4' })
     const key = unwrap(await allocateKey(store, 'DEMO', AT))
     assert.equal(key, 'DEMO-8', 'DEMO-1..DEMO-7 are already taken')
@@ -84,12 +84,12 @@ describe('key allocation: a store seeded before the counters existed', () => {
     assert.equal(next, 'DEMO-9')
   })
 
-  it('keeps other projects in their own space', async () => {
+  void it('keeps other projects in their own space', async () => {
     const store = createStore({ root, machineId: 'a1b2c3d4' })
     assert.equal(unwrap(await allocateKey(store, 'DH', AT)), 'DH-1', 'DH has no files yet')
   })
 
-  it('records the claim so a second machine starts after the block', async () => {
+  void it('records the claim so a second machine starts after the block', async () => {
     const other = createStore({ root, machineId: 'bbbb9999' })
     const key = unwrap(await allocateKey(other, 'DEMO', AT))
     assert.equal(key, 'DEMO-108', 'a1b2 claimed DEMO-8..DEMO-107, so the next block starts at 108')
@@ -98,7 +98,7 @@ describe('key allocation: a store seeded before the counters existed', () => {
     assert.equal(unwrap(await allocateKey(mine, 'DEMO', AT)), 'DEMO-10', 'still inside the first machine\'s block')
   })
 
-  it('writes one counters file per machine, with a project bucket in each', async () => {
+  void it('writes one counters file per machine, with a project bucket in each', async () => {
     const mine = JSON.parse(await readFile(storePaths.counters(root, 'a1b2c3d4'), 'utf8'))
     assert.equal(mine.machine_id, 'a1b2c3d4')
     assert.deepEqual(Object.keys(mine.projects).sort(), ['DEMO', 'DH'])
@@ -108,8 +108,8 @@ describe('key allocation: a store seeded before the counters existed', () => {
   })
 })
 
-describe('key allocation: the numbers land in real files, committed as they go', () => {
-  it('creates the issue and commits it, so the audit trail starts with the attributes', async () => {
+void describe('key allocation: the numbers land in real files, committed as they go', () => {
+  void it('creates the issue and commits it, so the audit trail starts with the attributes', async () => {
     const store = createStore({ root, machineId: 'a1b2c3d4' })
     const created = await store_create(store)
     assert.equal(created.key, 'DEMO-11')
@@ -139,8 +139,8 @@ const store_create = async (store: ReturnType<typeof createStore>) => {
   return result.value
 }
 
-describe('store: an exhausted project says so instead of minting a number (decision 158)', () => {
-  it('reports KEY_EXHAUSTED when the last key of the space is already on disk', async () => {
+void describe('store: an exhausted project says so instead of minting a number (decision 158)', () => {
+  void it('reports KEY_EXHAUSTED when the last key of the space is already on disk', async () => {
     // The end-to-end wiring of the cap: `allocateKey` seeds from the files on disk, so a store whose
     // highest key is already the last one must refuse — not hand out `DEMO-10000`.
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-exhausted-'))
@@ -165,8 +165,8 @@ describe('store: an exhausted project says so instead of minting a number (decis
   })
 })
 
-describe('store: a project key is a path segment, so it is validated (decision 162)', () => {
-  it('refuses a traversal in the project and writes nothing outside the store', async () => {
+void describe('store: a project key is a path segment, so it is validated (decision 162)', () => {
+  void it('refuses a traversal in the project and writes nothing outside the store', async () => {
     // `/jira new --project ../../tmp/x` used to reach `join(root, 'projects', project, 'issues')`.
     // The tool surface had a regex; the command surface and the CLI did not — so the check now lives in
     // the core, where no surface can forget it.
@@ -199,8 +199,8 @@ describe('store: a project key is a path segment, so it is validated (decision 1
   })
 })
 
-describe('store: a key is allocated against what is on disk, so a seed does not collide (decision 176)', () => {
-  it('skips past an existing key that the counter did not know about', async () => {
+void describe('store: a key is allocated against what is on disk, so a seed does not collide (decision 176)', () => {
+  void it('skips past an existing key that the counter did not know about', async () => {
     // The audit's worry: the counter is written first, so a key already on disk collides and the number
     // is burned. `claimKey` is given `highestExistingKey`, so the allocation must jump past it.
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-seed-'))
@@ -223,8 +223,8 @@ describe('store: a key is allocated against what is on disk, so a seed does not 
   })
 })
 
-describe('store: a refused create does not burn a number (decision 190)', () => {
-  it('validates before allocating: the counter file is untouched and the next key has no gap', async () => {
+void describe('store: a refused create does not burn a number (decision 190)', () => {
+  void it('validates before allocating: the counter file is untouched and the next key has no gap', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-noburn-'))
     try {
       await mkdir(join(dir, 'projects', 'DH', 'issues'), { recursive: true })

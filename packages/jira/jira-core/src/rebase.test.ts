@@ -77,8 +77,8 @@ after(async () => {
   for (const directory of work) await removeTree(directory)
 })
 
-describe('rebase: two machines, one issue', () => {
-  it('says there is nothing to do without a divergence', async () => {
+void describe('rebase: two machines, one issue', () => {
+  void it('says there is nothing to do without a divergence', async () => {
     const outcome = unwrap(await pullRebase(storeB, ACTOR))
     assert.equal(outcome.pulled, false)
     assert.equal(outcome.stopped, false)
@@ -86,7 +86,7 @@ describe('rebase: two machines, one issue', () => {
     assert.match(renderRebase(outcome), /nothing to pull/)
   })
 
-  it('marks an issue both sides touched, keeping both changes', async () => {
+  void it('marks an issue both sides touched, keeping both changes', async () => {
     // A changes the note, B changes the summary: different lines, so git merges cleanly — and that is
     // exactly the case that must still be marked, because the merge is not a decision.
     unwrap(await transact(storeA, key, ACTOR, (issue, ctx) => applyUpdate(issue, { note: 'changed on A' }, ctx), 'update'))
@@ -110,7 +110,7 @@ describe('rebase: two machines, one issue', () => {
     assert.match(renderRebase(outcome), /marked conflicted: DH-1/)
   })
 
-  it('leaves an issue only one side touched alone', async () => {
+  void it('leaves an issue only one side touched alone', async () => {
     const other = unwrap(await createInStore(storeA, 'DH', ACTOR, { issueType: 'task', summary: 'only A touches this' }))
     await runGit(a, ['push', 'origin', 'main'])
     const outcome = unwrap(await pullRebase(storeB, ACTOR))
@@ -121,8 +121,8 @@ describe('rebase: two machines, one issue', () => {
   })
 })
 
-describe('rebase: reading the ranges', () => {
-  it('collects the keys a range of commits mentions', async () => {
+void describe('rebase: reading the ranges', () => {
+  void it('collects the keys a range of commits mentions', async () => {
     await writeFile(join(a, 'touched.txt'), 'x\n', 'utf8')
     await runGit(a, ['add', 'touched.txt'])
     await runGit(a, ['commit', '-m', 'DH-1: one'])
@@ -131,11 +131,11 @@ describe('rebase: reading the ranges', () => {
     assert.deepEqual([...keys].sort(), ['DH-1', 'DH-2'])
   })
 
-  it('has a bounded network step (decision 84)', () => {
+  void it('has a bounded network step (decision 84)', () => {
     assert.equal(REBASE_TIMEOUT_MS, 15_000)
   })
 
-  it('reports a stopped rebase instead of forcing it', async () => {
+  void it('reports a stopped rebase instead of forcing it', async () => {
     // Two machines edit the same line; git cannot merge, and the design forbids forcing (red line 1).
     unwrap(await transact(storeA, key, ACTOR, (issue, ctx) => applyUpdate(issue, { summary: 'A wins' }, ctx), 'update'))
     unwrap(await transact(storeB, key, ACTOR, (issue, ctx) => applyUpdate(issue, { summary: 'B wins' }, ctx), 'update'))
@@ -153,8 +153,8 @@ describe('rebase: reading the ranges', () => {
   })
 })
 
-describe('rebase: the invocation carries an identity when the machine has none (decisions 146/148)', () => {
-  it('gives `pull --rebase` the same per-invocation fallback a commit gets', async () => {
+void describe('rebase: the invocation carries an identity when the machine has none (decisions 146/148)', () => {
+  void it('gives `pull --rebase` the same per-invocation fallback a commit gets', async () => {
     // Found by the plugin's own CI on 2026-10-17, once decision 148 made the rebase load-bearing for
     // every write: a rebase **replays** commits and replaying creates one, so it needs a committer
     // identity. On a runner or container where git cannot guess one, `pull --rebase` stopped with
@@ -188,8 +188,8 @@ describe('rebase: the invocation carries an identity when the machine has none (
   })
 })
 
-describe('rebase: a refused pull is retried once (decision 171)', () => {
-  it('re-runs the pull when another process fetched under it, and succeeds on the second try', async () => {
+void describe('rebase: a refused pull is retried once (decision 171)', () => {
+  void it('re-runs the pull when another process fetched under it, and succeeds on the second try', async () => {
     // The exact stderr git printed while a live plugin and a CLI sync collided on one clone; the settle
     // path turns "pull stopped" into "do not push", so retrying here is what keeps the store current.
     let pulls = 0

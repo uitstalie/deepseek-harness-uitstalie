@@ -221,24 +221,24 @@ const comment = (author: Identity, body: string): Comment => ({
   body,
 })
 
-describe('superagent: what can be taken', () => {
-  it('takes a todo issue with no blocker and no claim', () => {
+void describe('superagent: what can be taken', () => {
+  void it('takes a todo issue with no blocker and no claim', () => {
     assert.deepEqual(claimability(issue(), false, AT), { ready: true })
   })
 
-  it('refuses a blocked, started or held issue, and names which', () => {
+  void it('refuses a blocked, started or held issue, and names which', () => {
     assert.match(String(claimability(issue(), true, AT).reason), /is_blocked_by/u)
     assert.match(String(claimability(issue({ status: 'in_progress' }), false, AT).reason), /in_progress/u)
     const held = issue({ assignee: MAIN, leaseExpiresAt: '2026-10-15T14:00:00Z' as Timestamp })
     assert.match(String(claimability(held, false, AT).reason), /claimed by/u)
   })
 
-  it('lets an expired lease be taken again', () => {
+  void it('lets an expired lease be taken again', () => {
     const expired = issue({ assignee: MAIN, leaseExpiresAt: '2026-10-15T11:00:00Z' as Timestamp })
     assert.deepEqual(claimability(expired, false, AT), { ready: true })
   })
 
-  it('treats an open or missing blocker as blocking, and a closed one as clear', () => {
+  void it('treats an open or missing blocker as blocking, and a closed one as clear', () => {
     const closedBlocker = issue({ key: 'DH-13' as Issue['key'], status: 'closed' })
     const linked = issue({ links: [{ type: 'is_blocked_by', target: 'DH-13' as Issue['key'] }] })
     const byKey = new Map<string, Issue>([['DH-13', closedBlocker]])
@@ -249,8 +249,8 @@ describe('superagent: what can be taken', () => {
   })
 })
 
-describe('superagent: is the proposal still fresh', () => {
-  it('accepts only a session proposal a person confirmed with a human comment', () => {
+void describe('superagent: is the proposal still fresh', () => {
+  void it('accepts only a session proposal a person confirmed with a human comment', () => {
     const proposal = comment(MAIN, `${PROPOSAL_MARKER} because`)
     const approval = comment('human:daiqc' as Identity, `${CLAIM_APPROVED_MARKER} go`)
     assert.match(String(openProposal([], MAIN).reason), /propose first/u)
@@ -262,7 +262,7 @@ describe('superagent: is the proposal still fresh', () => {
     assert.deepEqual(openProposal([proposal, approval], MAIN), { ready: true })
   })
 
-  it('spends the confirmation once a later comment follows it', () => {
+  void it('spends the confirmation once a later comment follows it', () => {
     const spent = [
       comment(MAIN, `${PROPOSAL_MARKER} because`),
       comment('human:daiqc' as Identity, `${CLAIM_APPROVED_MARKER} go`),
@@ -357,8 +357,8 @@ const scratchDirectory = async (): Promise<string> => {
   return dir
 }
 
-describe('superagent: the workspace roster', () => {
-  it('says so plainly when the deployment has no workspace registry', async () => {
+void describe('superagent: the workspace roster', () => {
+  void it('says so plainly when the deployment has no workspace registry', async () => {
     const { harness, main } = await mount()
     try {
       const refused = await call(harness, main, CONTROL_TOOL_NAME, { action: 'roster' })
@@ -373,7 +373,7 @@ describe('superagent: the workspace roster', () => {
     }
   })
 
-  it('registers a directory that does not exist, and lists it', async () => {
+  void it('registers a directory that does not exist, and lists it', async () => {
     const { harness, main } = await mount()
     try {
       const registry = await provideRegistry(harness)
@@ -422,8 +422,8 @@ describe('superagent: the workspace roster', () => {
   })
 })
 
-describe('superagent: workspace management', () => {
-  it('removes a registration through the live registry, renames, and lists orphans', async () => {
+void describe('superagent: workspace management', () => {
+  void it('removes a registration through the live registry, renames, and lists orphans', async () => {
     const { harness, main } = await mount()
     try {
       const registry = await provideRegistry(harness)
@@ -468,7 +468,7 @@ describe('superagent: workspace management', () => {
     }
   })
 
-  it('refuses the super workspace and the workspace this Session runs in', async () => {
+  void it('refuses the super workspace and the workspace this Session runs in', async () => {
     const { harness } = await mount()
     try {
       const registry = await provideRegistry(harness)
@@ -542,8 +542,8 @@ class CompactController extends ModelSelectingController {
   async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } }
 }
 
-describe('superagent: workspace Sessions', () => {
-  it('runs a workspace Session and routes its report back (DH-719)', async () => {
+void describe('superagent: workspace Sessions', () => {
+  void it('runs a workspace Session and routes its report back (DH-719)', async () => {
     const workspacePath = join(tmpdir(), 'task-workspace')
     class TaskController extends ModelSelectingController {
       created: { workspaceId?: string; agentPreset?: string }[] = []
@@ -749,7 +749,7 @@ describe('superagent: workspace Sessions', () => {
   })
 })
 
-describe('superagent: workspace Session permissions', () => {
+void describe('superagent: workspace Session permissions', () => {
   function fixture() {
     const cwd = join(tmpdir(), 'permission-workspace')
     const registry = {
@@ -772,7 +772,7 @@ describe('superagent: workspace Session permissions', () => {
     return { controller, target, services, ctx, options }
   }
 
-  it('lists, reads and switches the registered OS presets with durable audit events', async () => {
+  void it('lists, reads and switches the registered OS presets with durable audit events', async () => {
     const f = fixture()
     let current = 'workspace-write'
     const calls: { preset: string; reason?: string }[] = []
@@ -816,7 +816,7 @@ describe('superagent: workspace Session permissions', () => {
     assert.equal(noReason.ok, true, 'an already-effective preset needs no new widening audit')
   })
 
-  it('refuses unknown presets, missing or foreign Sessions, and widening without an audit reason', async () => {
+  void it('refuses unknown presets, missing or foreign Sessions, and widening without an audit reason', async () => {
     const f = fixture()
     let writes = 0
     f.services['sandboxPolicy'] = {}
@@ -841,7 +841,7 @@ describe('superagent: workspace Session permissions', () => {
     assert.equal((await runPermissionTool({ action: 'get', workspace: 'w1', session: 'target-permission' }, { ...f.options, caller: { writable: false } }, {}, f.ctx)).ok, false)
   })
 
-  it('maps soft to guarded only in the unconfined tool-policy composition', async () => {
+  void it('maps soft to guarded only in the unconfined tool-policy composition', async () => {
     const f = fixture()
     let profile = 'unrestricted'
     const calls: { name: string; reason?: string }[] = []
@@ -876,7 +876,7 @@ describe('superagent: workspace Session permissions', () => {
     assert.deepEqual((await runPermissionTool({ action: 'list' }, f.options, {}, f.ctx)).presets, [])
   })
 
-  it('does not send a new task when its explicit default permission cannot be established', async () => {
+  void it('does not send a new task when its explicit default permission cannot be established', async () => {
     const f = fixture()
     const prompts: unknown[] = []
     f.controller.prompt = async () => { prompts.push(true); return { accepted: true } }
@@ -889,7 +889,7 @@ describe('superagent: workspace Session permissions', () => {
     assert.equal(prompts.length, 0)
   })
 
-  it('reports a committed preset only when its effective knobs match', async () => {
+  void it('reports a committed preset only when its effective knobs match', async () => {
     const f = fixture()
     f.services['sandboxPolicy'] = {}
     f.services['permissionPresets'] = {
@@ -905,7 +905,7 @@ describe('superagent: workspace Session permissions', () => {
     assert.match(JSON.stringify(result.error), /not fully committed/u)
   })
 
-  it('reports target resolution and service failures without a false success', async () => {
+  void it('reports target resolution and service failures without a false success', async () => {
     const f = fixture()
     f.controller.resolveAgent = async () => ({ error: 'unavailable' }) as never
     assert.equal((await runPermissionTool({ action: 'get', workspace: 'w1', session: 'target-permission' }, f.options, {}, f.ctx)).ok, false)
@@ -917,8 +917,8 @@ describe('superagent: workspace Session permissions', () => {
   })
 })
 
-describe('superagent: the dispatch ledger', () => {
-  it('records a pending dispatch automatically, then resolves and lists it', async () => {
+void describe('superagent: the dispatch ledger', () => {
+  void it('records a pending dispatch automatically, then resolves and lists it', async () => {
     const root = await scratchDirectory()
     const { harness } = await mount()
     try {
@@ -987,8 +987,8 @@ describe('superagent: the dispatch ledger', () => {
   })
 })
 
-describe('superagent: dispatch argument and result corrections', () => {
-  it('lists all action requirements together before doing any Session work', async () => {
+void describe('superagent: dispatch argument and result corrections', () => {
+  void it('lists all action requirements together before doing any Session work', async () => {
     const { harness } = await mount()
     try {
       const result = await runControlTool({ action: 'append' }, {
@@ -1012,7 +1012,7 @@ describe('superagent: dispatch argument and result corrections', () => {
     }
   })
 
-  it('preflights every combined-action rule before any registry or Session write', async () => {
+  void it('preflights every combined-action rule before any registry or Session write', async () => {
     const options = {
       jira: {} as never,
       caller: { writable: true, sessionId: 'super-1', cwd: 'D:\\super' } as never,
@@ -1059,7 +1059,7 @@ describe('superagent: dispatch argument and result corrections', () => {
     }
   })
 
-  it('finds and corrects a Markdown task older than the 100-row display window', async () => {
+  void it('finds and corrects a Markdown task older than the 100-row display window', async () => {
     const root = await scratchDirectory()
     const workspace = { id: 'w1', title: 'workspace', path: root }
     for (let index = 0; index < 101; index += 1) {
@@ -1090,7 +1090,7 @@ describe('superagent: dispatch argument and result corrections', () => {
   })
 })
 
-describe('superagent: report recovery after a plugin remount', () => {
+void describe('superagent: report recovery after a plugin remount', () => {
   interface RecoveryPrompt {
     readonly sessionId: string
     readonly text: string
@@ -1210,7 +1210,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     })
   }
 
-  it('recovers a pending report binding when the in-memory map is empty', async () => {
+  void it('recovers a pending report binding when the in-memory map is empty', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     await seedBinding(root, {
@@ -1243,7 +1243,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.deepEqual(warnings, [])
   })
 
-  it('lists a failed delivery and retries the exact saved report without another child turn', async () => {
+  void it('lists a failed delivery and retries the exact saved report without another child turn', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     controller.prompt = async () => { throw new Error('queue is closed') }
@@ -1274,7 +1274,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal((await journal.forSession('child-retry'))[0]?.status, 'delivered')
   })
 
-  it('reports an accepted retry whose journal settlement failed without claiming a clean delivery', async () => {
+  void it('reports an accepted retry whose journal settlement failed without claiming a clean delivery', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     const journal = journalOf(root)
@@ -1316,7 +1316,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.match(refused.error?.message ?? '', /delivering, not failed/u)
   })
 
-  it('delivers the report even when the dispatch has no ledger entry at all', async () => {
+  void it('delivers the report even when the dispatch has no ledger entry at all', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     await seedBinding(root, { sessionId: 'child-no-ledger', requestId: 'req-noledger', task: 'no ledger for this one' })
@@ -1335,7 +1335,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal((await journalOf(root).forSession('child-no-ledger'))[0]?.status, 'delivered')
   })
 
-  it('marks an empty completed turn failed while retaining its no-output diagnostic', async () => {
+  void it('marks an empty completed turn failed while retaining its no-output diagnostic', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     const warnings: unknown[][] = []
@@ -1363,7 +1363,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.match(projected[0]?.outcome ?? '', /^empty-output:/u)
   })
 
-  it('marks the report failed and warns when delivery fails', async () => {
+  void it('marks the report failed and warns when delivery fails', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     controller.prompt = async () => { throw new Error('queue is closed') }
@@ -1384,7 +1384,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal((await journalOf(root).forSession('child-4'))[0]?.status, 'failed')
   })
 
-  it('never posts the same report twice', async () => {
+  void it('never posts the same report twice', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     await seedBinding(root, { sessionId: 'child-dup', requestId: 'req-dup', task: 'one report only' })
@@ -1398,7 +1398,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal((await journalOf(root).forSession('child-dup'))[0]?.status, 'delivered')
   })
 
-  it('falls back to FIFO for records written before prompt identities existed', async () => {
+  void it('falls back to FIFO for records written before prompt identities existed', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     await seedBinding(root, { sessionId: 'legacy-child', task: 'older task', dispatchedAt: '2026-10-15T11:00:00Z' })
@@ -1418,7 +1418,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.deepEqual(bindings.map(binding => binding.status), ['delivered', 'delivered'])
   })
 
-  it('routes two queued dispatches to the task each turn actually ran', async () => {
+  void it('routes two queued dispatches to the task each turn actually ran', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     await seedBinding(root, {
@@ -1450,7 +1450,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.deepEqual(bindings.map(binding => binding.status), ['delivered', 'delivered'])
   })
 
-  it('sends no task report for a turn with no bound dispatch', async () => {
+  void it('sends no task report for a turn with no bound dispatch', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     const ordinary = turnSession('ordinary-child', [{ requestId: 'req-human', text: 'just chatting' }])
@@ -1472,7 +1472,7 @@ describe('superagent: report recovery after a plugin remount', () => {
     assert.equal(rows.find(row => row.id === recorded.task.id)?.status, 'pending')
   })
 
-  it('never steals another prompt on the same Session', async () => {
+  void it('never steals another prompt on the same Session', async () => {
     const root = await scratchDirectory()
     const controller = recoveryController(root)
     await seedBinding(root, { sessionId: 'mixed-child', requestId: 'req-queued', task: 'still queued' })
@@ -1484,7 +1484,7 @@ describe('superagent: report recovery after a plugin remount', () => {
   })
 })
 
-describe('superagent: dispatch report binding', () => {
+void describe('superagent: dispatch report binding', () => {
   const workspacePath = join(tmpdir(), 'report-binding-workspace')
 
   class BindingRegistry {
@@ -1505,7 +1505,7 @@ describe('superagent: dispatch report binding', () => {
     recorder: createSessionRecorder(),
   })
 
-  it('records the binding before the child prompt and reports an immediate turn end exactly once', async () => {
+  void it('records the binding before the child prompt and reports an immediate turn end exactly once', async () => {
     const root = await scratchDirectory()
     const childPrompts: string[] = []
     const parentReports: string[] = []
@@ -1564,7 +1564,7 @@ describe('superagent: dispatch report binding', () => {
     assert.equal((await new DispatchReportStore(root).forSession('child-immediate'))[0]?.status, 'delivered')
   })
 
-  it('refuses to dispatch when the report binding cannot be recorded', async () => {
+  void it('refuses to dispatch when the report binding cannot be recorded', async () => {
     const root = await scratchDirectory()
     // A file where the journal directory belongs makes the journal unwritable.
     await writeFile(join(root, '.superagent'), 'not a directory')
@@ -1591,8 +1591,8 @@ describe('superagent: dispatch report binding', () => {
   })
 })
 
-describe('superagent: model selection and discovery', () => {
-  it('selects a model for start and for a later follow-up, and reports the accepted route', async () => {
+void describe('superagent: model selection and discovery', () => {
+  void it('selects a model for start and for a later follow-up, and reports the accepted route', async () => {
     const workspacePath = join(tmpdir(), 'model-workspace')
     class Controller extends ModelSelectingController {
       prompted: string[] = []
@@ -1634,7 +1634,7 @@ describe('superagent: model selection and discovery', () => {
     assert.deepEqual(followed.model, { provider: 'p2', model: 'm2', fallback: false })
   })
 
-  it('refuses a model on a host without selectModel, and rejects provider-only fields', async () => {
+  void it('refuses a model on a host without selectModel, and rejects provider-only fields', async () => {
     const workspacePath = join(tmpdir(), 'model-refusal')
     class NoSelect {
       async create() { return { sessionId: 'x' } }
@@ -1659,7 +1659,7 @@ describe('superagent: model selection and discovery', () => {
     assert.match(JSON.stringify(providerOnly.error), /model is required when provider/u)
   })
 
-  it('lists providers, models and reasoning efforts from the same LLM registry', async () => {
+  void it('lists providers, models and reasoning efforts from the same LLM registry', async () => {
     const llm = {
       listProviders: () => [{ id: 'p', name: 'Provider' }],
       async listModels() { return [{ id: 'm', name: 'Model', reasoning: { efforts: [{ id: 'high', name: 'High' }] } }] },
@@ -1679,7 +1679,7 @@ describe('superagent: model selection and discovery', () => {
     assert.match(JSON.stringify(missing.error), /not registered/u)
   })
 
-  it('renders effort id, name and default — never [object Object]', async () => {
+  void it('renders effort id, name and default — never [object Object]', async () => {
     const llm = {
       listProviders: () => [{ id: 'p', name: 'Provider' }],
       async listModels() {
@@ -1712,7 +1712,7 @@ describe('superagent: model selection and discovery', () => {
     ])
   })
 
-  it('requires an explicit effort for a model that advertises them, and validates the value', async () => {
+  void it('requires an explicit effort for a model that advertises them, and validates the value', async () => {
     const workspacePath = join(tmpdir(), 'effort-workspace')
     class Controller extends ModelSelectingController {
       async create() { return { sessionId: 'effort-child' } }
@@ -1787,7 +1787,7 @@ describe('superagent: model selection and discovery', () => {
     assert.deepEqual(controller.selections[1]?.reasoningEffort, 'medium')
   })
 
-  it('restores titles from the live Session log and marks only truly untitled rows', async () => {
+  void it('restores titles from the live Session log and marks only truly untitled rows', async () => {
     const workspacePath = join(tmpdir(), 'title-list-workspace')
     const options = {
       jira: {} as never,
@@ -1822,7 +1822,7 @@ describe('superagent: model selection and discovery', () => {
     assert.match(rendered, /untitled\s+\(untitled\)/u)
   })
 
-  it('lists each Session with title, model, effort, last task and last turn error', async () => {
+  void it('lists each Session with title, model, effort, last task and last turn error', async () => {
     const workspacePath = join(tmpdir(), 'list-workspace')
     const options = {
       jira: {} as never,
@@ -1868,7 +1868,7 @@ describe('superagent: model selection and discovery', () => {
     })
   })
 
-  it('stop cuts a running turn off: nothing is admitted, the queue is cleared', async () => {
+  void it('stop cuts a running turn off: nothing is admitted, the queue is cleared', async () => {
     const workspacePath = join(tmpdir(), 'stop-workspace')
     const options = {
       jira: {} as never,
@@ -1955,7 +1955,7 @@ describe('superagent: model selection and discovery', () => {
     assert.match(JSON.stringify(deaf.error), /no hard cancel channel/u)
   })
 
-  it('refuses a missing or archived recipient rather than rerouting to the latest super Session', async () => {
+  void it('refuses a missing or archived recipient rather than rerouting to the latest super Session', async () => {
     const workspacePath = join(tmpdir(), 'recipient-workspace')
     const controller = new CompactController()
     controller.items = [{ sessionId: 'other-super', running: false, cwd: workspacePath }]
@@ -1975,7 +1975,7 @@ describe('superagent: model selection and discovery', () => {
     assert.equal(controller.prompted.length, 0)
   })
 
-  it('reports a failed turn back to the initiator with reason, code and status', async () => {
+  void it('reports a failed turn back to the initiator with reason, code and status', async () => {
     const workspacePath = join(tmpdir(), 'report-workspace')
     const controller = new CompactController()
     controller.items = [{ sessionId: 'super-1', running: false, cwd: workspacePath }]
@@ -2028,8 +2028,8 @@ describe('superagent: model selection and discovery', () => {
   })
 })
 
-describe('superagent: file delivery', () => {
-  it('grants the registered workspaces to a super-agent session only', async () => {
+void describe('superagent: file delivery', () => {
+  void it('grants the registered workspaces to a super-agent session only', async () => {
     const dir = await scratchDirectory()
     const home = join(dir, 'super-home')
     const live = join(dir, 'live-workspace')
@@ -2045,7 +2045,7 @@ describe('superagent: file delivery', () => {
     assert.equal(superAgentFsRoots(ctx, { header: { cwd: home } }, undefined), undefined)
   })
 
-  it('delivers a file into a registered workspace and refuses escapes and missing dirs', async () => {
+  void it('delivers a file into a registered workspace and refuses escapes and missing dirs', async () => {
     const dir = await scratchDirectory()
     const ws = join(dir, 'ws')
     await mkdir(ws)
@@ -2081,7 +2081,7 @@ describe('superagent: file delivery', () => {
     assert.equal(replaced.ok, true, JSON.stringify(replaced.error))
   })
 
-  it('registers the fs-roots provider with the sandbox policy and removes it on dispose', async () => {
+  void it('registers the fs-roots provider with the sandbox policy and removes it on dispose', async () => {
     const dir = await scratchDirectory()
     const home = join(dir, 'super-home')
     const live = join(dir, 'live')
@@ -2113,7 +2113,7 @@ describe('superagent: file delivery', () => {
   })
 })
 
-describe('superagent: context, compaction and memory curation', () => {
+void describe('superagent: context, compaction and memory curation', () => {
   const workspacePath = join(tmpdir(), 'compact-workspace')
 
   const compactController = (): CompactController => {
@@ -2135,7 +2135,7 @@ describe('superagent: context, compaction and memory curation', () => {
   }
   const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
 
-  it('reports context usage and the compaction suggestion in list', async () => {
+  void it('reports context usage and the compaction suggestion in list', async () => {
     const controller = compactController()
     const ctx = {
       get: (key: string) => key === 'sessionController' ? controller
@@ -2151,7 +2151,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal(listed.compactThresholdPercent, 30)
   })
 
-  it('compacts before admitting an append and reports both sides', async () => {
+  void it('compacts before admitting an append and reports both sides', async () => {
     const controller = compactController()
     const registry = new CompactRegistry()
     let calls = 0
@@ -2173,7 +2173,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal(tasks.get('w-session')?.at(-1)?.usageBefore?.percent, 35)
   })
 
-  it('delivers a memory-curation instruction when asked', async () => {
+  void it('delivers a memory-curation instruction when asked', async () => {
     const controller = compactController()
     const registry = new CompactRegistry()
     const ctx = {
@@ -2186,7 +2186,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal(controller.prompted[0]?.text, MEMORY_CURATION_INSTRUCTION + 'next step')
   })
 
-  it('refuses to compact a busy Session and sends nothing', async () => {
+  void it('refuses to compact a busy Session and sends nothing', async () => {
     const controller = compactController()
     const registry = new CompactRegistry()
     const compaction = {
@@ -2205,7 +2205,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.match(JSON.stringify(result.error), /not idle/u)
   })
 
-  it('compacts a Session through the compact action', async () => {
+  void it('compacts a Session through the compact action', async () => {
     const controller = compactController()
     let calls = 0
     const compaction = { compactNow: async () => { controller.compactCalls += 1; return { shadowedTokenCount: 800 } } }
@@ -2221,7 +2221,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal((result.compaction as { after?: { percent?: number } }).after?.percent, 5)
   })
 
-  it('steers an interrupt into a running Session and reports where it landed', async () => {
+  void it('steers an interrupt into a running Session and reports where it landed', async () => {
     const controller = compactController()
     controller.items = [{ sessionId: 'w-run', running: true, cwd: workspacePath, blank: false, updatedAt: 100 }]
     const registry = new CompactRegistry()
@@ -2248,7 +2248,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal(delivery.insertedAtSeq, 42)
   })
 
-  it('queues by default and falls back when interrupt meets an idle Session', async () => {
+  void it('queues by default and falls back when interrupt meets an idle Session', async () => {
     const controller = compactController()
     const registry = new CompactRegistry()
     const ctx = {
@@ -2269,7 +2269,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal(delivery.fallback, true)
   })
 
-  it('rejects interrupt on start and compact + interrupt on a running Session', async () => {
+  void it('rejects interrupt on start and compact + interrupt on a running Session', async () => {
     const controller = compactController()
     controller.items = [{ sessionId: 'w-run', running: true, cwd: workspacePath, blank: false, updatedAt: 100 }]
     const registry = new CompactRegistry()
@@ -2288,7 +2288,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal(controller.compactCalls, 0)
   })
 
-  it('reports live status and a long-running flag in list', async () => {
+  void it('reports live status and a long-running flag in list', async () => {
     const now = Date.now()
     const events = [
       { type: 'turn/start', seq: 1, time: now - 12 * 60_000, data: { turn: 1 } },
@@ -2319,7 +2319,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal(listed.longRunningMinutes, 10)
   })
 
-  it('inspects a running Session and refuses an idle abort', async () => {
+  void it('inspects a running Session and refuses an idle abort', async () => {
     const now = Date.now()
     const events = [
       { type: 'turn/start', seq: 1, time: now - 5 * 60_000, data: { turn: 1 } },
@@ -2403,7 +2403,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.match(JSON.stringify(refused.error), /idle/u)
   })
 
-  it('aborts a running Session, reports the scene and continues it', async () => {
+  void it('aborts a running Session, reports the scene and continues it', async () => {
     const root = await scratchDirectory()
     const now = Date.now()
     const events = [
@@ -2442,7 +2442,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal(abort.scene?.activity?.length, 3)
   })
 
-  it('summarizes long-running Sessions for the super agent context', () => {
+  void it('summarizes long-running Sessions for the super agent context', () => {
     const now = Date.now()
     const events = [
       { type: 'turn/start', seq: 1, time: now - 70 * 60_000, data: { turn: 1 } },
@@ -2457,7 +2457,7 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal(longRunningSummary({ get: () => ({ get: () => undefined, list: () => [] }) }, undefined, 10 * 60_000, now), '')
   })
 
-  it('carries the context marker into the turn report', async () => {
+  void it('carries the context marker into the turn report', async () => {
     let report = ''
     const controller = {
       async prompt(request: { content: readonly { text: string }[] }) {
@@ -2494,8 +2494,8 @@ describe('superagent: context, compaction and memory curation', () => {
   })
 })
 
-describe('superagent: the super workspace', () => {
-  it('registers the super home once, and a session there is the dispatcher', async () => {
+void describe('superagent: the super workspace', () => {
+  void it('registers the super home once, and a session there is the dispatcher', async () => {
     const dir = await scratchDirectory()
     const home = join(dir, 'super-agent')
     const harness = await mountJira(await fixture(), { superagent: true })
@@ -2557,7 +2557,7 @@ describe('superagent: the super workspace', () => {
     }
   })
 
-  it('refuses a super home under the harness home, relative paths and filesystem roots', () => {
+  void it('refuses a super home under the harness home, relative paths and filesystem roots', () => {
     const dshHome = join(tmpdir(), 'dsh-home')
     assert.match(superagentHomeProblem('', dshHome) ?? '', /absolute/u)
     assert.match(superagentHomeProblem('superagent', dshHome) ?? '', /absolute/u)
@@ -2566,7 +2566,7 @@ describe('superagent: the super workspace', () => {
     assert.equal(superagentHomeProblem(join(tmpdir(), 'superagent'), dshHome), undefined)
   })
 
-  it('seeds a standing definition file once and preserves later edits', async () => {
+  void it('seeds a standing definition file once and preserves later edits', async () => {
     const dir = await scratchDirectory()
     const home = join(dir, 'super-agent')
     const harness = await mountJira(await fixture(), { superagent: true })
@@ -2584,7 +2584,7 @@ describe('superagent: the super workspace', () => {
     }
   })
 
-  it('pins the super workspace first and leaves the other rows in order', async () => {
+  void it('pins the super workspace first and leaves the other rows in order', async () => {
     const dir = await scratchDirectory()
     const registry = new FakeWorkspaceRegistry()
     await registry.create(join(dir, 'project-a'), 'project-a')
@@ -2598,7 +2598,7 @@ describe('superagent: the super workspace', () => {
     assert.equal(registry.rows[0]?.id, registered.id)
   })
 
-  it('pins the super agent to the configured permission preset and leaves others alone', async () => {
+  void it('pins the super agent to the configured permission preset and leaves others alone', async () => {
     const dir = await scratchDirectory()
     const home = join(dir, 'super-agent')
     const agentCtx = new Context()
@@ -2621,8 +2621,8 @@ describe('superagent: the super workspace', () => {
   })
 })
 
-describe('superagent: the dispatcher\'s surface', () => {
-  it('gives a child the ledger reads plus issue_work, and a root the three jira tools', async () => {
+void describe('superagent: the dispatcher\'s surface', () => {
+  void it('gives a child the ledger reads plus issue_work, and a root the three jira tools', async () => {
     const { harness, main, worker } = await mount()
     try {
       const contribution = createJiraContribution({
@@ -2644,7 +2644,7 @@ describe('superagent: the dispatcher\'s surface', () => {
     }
   })
 
-  it('gives an executor Session the reads plus issue_work, and no dispatcher verbs', async () => {
+  void it('gives an executor Session the reads plus issue_work, and no dispatcher verbs', async () => {
     const { harness } = await mount()
     try {
       const host = {
@@ -2671,7 +2671,7 @@ describe('superagent: the dispatcher\'s surface', () => {
     }
   })
 
-  it('runs the loop into a named workspace: ensure, claim with its path, deliver', async () => {
+  void it('runs the loop into a named workspace: ensure, claim with its path, deliver', async () => {
     const { harness, main } = await mount()
     try {
       await provideRegistry(harness)
@@ -2763,8 +2763,8 @@ const provideController = async (harness: JiraHarness): Promise<FakeSessionContr
   return controller
 }
 
-describe('superagent: dispatching into a real Session', () => {
-  it('refuses to dispatch while the deployment configures no worker preset', async () => {
+void describe('superagent: dispatching into a real Session', () => {
+  void it('refuses to dispatch while the deployment configures no worker preset', async () => {
     const { harness, main } = await mount()
     try {
       const refused = await call(harness, main, DISPATCH_TOOL_NAME, { key: 'DH-12' })
@@ -2775,7 +2775,7 @@ describe('superagent: dispatching into a real Session', () => {
     }
   })
 
-  it('refuses when the deployment has no session controller', async () => {
+  void it('refuses when the deployment has no session controller', async () => {
     const { harness, main } = await mount({}, 'jira-worker')
     try {
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
@@ -2789,7 +2789,7 @@ describe('superagent: dispatching into a real Session', () => {
     }
   })
 
-  it('refuses an issue that is not in progress, and one somebody else claimed', async () => {
+  void it('refuses an issue that is not in progress, and one somebody else claimed', async () => {
     const { harness, main } = await mount({}, 'jira-worker')
     try {
       await provideController(harness)
@@ -2810,7 +2810,7 @@ describe('superagent: dispatching into a real Session', () => {
     }
   })
 
-  it('refuses to claim past the configured slots', async () => {
+  void it('refuses to claim past the configured slots', async () => {
     const { harness, main } = await mount({}, 'jira-worker', 1)
     try {
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready' })
@@ -2830,7 +2830,7 @@ describe('superagent: dispatching into a real Session', () => {
     }
   })
 
-  it('refuses a second dispatch while the recorded executor still runs', async () => {
+  void it('refuses a second dispatch while the recorded executor still runs', async () => {
     const { harness, main } = await mount({}, 'jira-worker')
     try {
       const controller = await provideController(harness)
@@ -2849,7 +2849,7 @@ describe('superagent: dispatching into a real Session', () => {
     }
   })
 
-  it('dispatches again once the executor is gone, and keeps both records', async () => {
+  void it('dispatches again once the executor is gone, and keeps both records', async () => {
     const { harness, main } = await mount({}, 'jira-worker')
     try {
       const controller = await provideController(harness)
@@ -2872,7 +2872,7 @@ describe('superagent: dispatching into a real Session', () => {
     }
   })
 
-  it('recovers the executors a restart lost, and names what it left alone', async () => {
+  void it('recovers the executors a restart lost, and names what it left alone', async () => {
     const { harness, main } = await mount({}, 'jira-worker')
     try {
       const controller = await provideController(harness)
@@ -2895,7 +2895,7 @@ describe('superagent: dispatching into a real Session', () => {
     }
   })
 
-  it('leaves a running executor alone during recovery', async () => {
+  void it('leaves a running executor alone during recovery', async () => {
     const { harness, main } = await mount({}, 'jira-worker')
     try {
       const controller = await provideController(harness)
@@ -2916,7 +2916,7 @@ describe('superagent: dispatching into a real Session', () => {
     }
   })
 
-  it('revives a lost executor from the turn-end pass, instead of proposing', async () => {
+  void it('revives a lost executor from the turn-end pass, instead of proposing', async () => {
     const { harness, main } = await mount({}, 'jira-worker')
     try {
       const controller = await provideController(harness)
@@ -2933,7 +2933,7 @@ describe('superagent: dispatching into a real Session', () => {
     }
   })
 
-  it('starts the executor Session with the configured preset and hands it the issue', async () => {
+  void it('starts the executor Session with the configured preset and hands it the issue', async () => {
     const { harness, main } = await mount({}, 'jira-worker')
     try {
       const controller = await provideController(harness)
@@ -2954,7 +2954,7 @@ describe('superagent: dispatching into a real Session', () => {
   })
 })
 
-describe('superagent: the GitHub source', () => {
+void describe('superagent: the GitHub source', () => {
   /** The projected options one direct runner call needs. */
   const runOptions = (harness: JiraHarness, agent: AgentHandle) => ({
     jira: harness.ctx.jira,
@@ -2962,7 +2962,7 @@ describe('superagent: the GitHub source', () => {
     at: '2026-10-15T12:00:00Z' as Timestamp,
   })
 
-  it('refuses to poll while no repository is configured', async () => {
+  void it('refuses to poll while no repository is configured', async () => {
     const { harness, main } = await mount()
     try {
       const refused = await call(harness, main, SOURCE_TOOL_NAME, { action: 'poll' })
@@ -2973,7 +2973,7 @@ describe('superagent: the GitHub source', () => {
     }
   })
 
-  it('imports unseen issues once, and skips the ones the ledger already has', async () => {
+  void it('imports unseen issues once, and skips the ones the ledger already has', async () => {
     const { harness, main } = await mount()
     try {
       const options = runOptions(harness, main)
@@ -2999,7 +2999,7 @@ describe('superagent: the GitHub source', () => {
     }
   })
 
-  it('reports a failed GitHub read instead of throwing', async () => {
+  void it('reports a failed GitHub read instead of throwing', async () => {
     const { harness, main } = await mount()
     try {
       const options = runOptions(harness, main)
@@ -3014,8 +3014,8 @@ describe('superagent: the GitHub source', () => {
   })
 })
 
-describe('superagent: the loop through the real composition', () => {
-  it('scans the ledger and names the ready issue', async () => {
+void describe('superagent: the loop through the real composition', () => {
+  void it('scans the ledger and names the ready issue', async () => {
     const { harness, main } = await mount()
     try {
       const scanned = await call(harness, main, SCAN_TOOL_NAME, {})
@@ -3030,7 +3030,7 @@ describe('superagent: the loop through the real composition', () => {
     }
   })
 
-  it('refuses to claim without a proposal', async () => {
+  void it('refuses to claim without a proposal', async () => {
     const { harness, main } = await mount()
     try {
       const refused = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
@@ -3041,7 +3041,7 @@ describe('superagent: the loop through the real composition', () => {
     }
   })
 
-  it('proposes without changing the state, then claims it', async () => {
+  void it('proposes without changing the state, then claims it', async () => {
     const { harness, main } = await mount()
     try {
       const proposed = await call(harness, main, CLAIM_TOOL_NAME, {
@@ -3067,7 +3067,7 @@ describe('superagent: the loop through the real composition', () => {
     }
   })
 
-  it('proposes once from the turn-end pass, then stays quiet', async () => {
+  void it('proposes once from the turn-end pass, then stays quiet', async () => {
     const { harness, main } = await mount()
     try {
       await runSuperagentPass(harness.host, main)
@@ -3083,7 +3083,7 @@ describe('superagent: the loop through the real composition', () => {
     }
   })
 
-  it('reports readiness, proposals and what needs a person', async () => {
+  void it('reports readiness, proposals and what needs a person', async () => {
     const { harness, main } = await mount()
     try {
       const initial = await call(harness, main, STATUS_TOOL_NAME, {})
@@ -3103,7 +3103,7 @@ describe('superagent: the loop through the real composition', () => {
     }
   })
 
-  it('refuses a second claim: the first one spent the proposal', async () => {
+  void it('refuses a second claim: the first one spent the proposal', async () => {
     const { harness, main } = await mount()
     try {
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'take it' })
@@ -3117,7 +3117,7 @@ describe('superagent: the loop through the real composition', () => {
     }
   })
 
-  it('refuses to propose a blocked issue, and says what blocks it', async () => {
+  void it('refuses to propose a blocked issue, and says what blocks it', async () => {
     const { harness, main } = await mount()
     try {
       const created = await call(harness, main, TOOL_NAME, {
@@ -3141,7 +3141,7 @@ describe('superagent: the loop through the real composition', () => {
     }
   })
 
-  it('runs the whole loop: proposal, confirmation, claim, dispatch, delivery', async () => {
+  void it('runs the whole loop: proposal, confirmation, claim, dispatch, delivery', async () => {
     const { harness, main } = await mount()
     try {
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })
@@ -3170,7 +3170,7 @@ describe('superagent: the loop through the real composition', () => {
   })
 })
 
-describe('superagent daemon: the session-less dispatcher', () => {
+void describe('superagent daemon: the session-less dispatcher', () => {
   /** The identity the daemon writes under. */
   const DAEMON = `agent:daemon|dsh|a1b2c3d4|${DAEMON_SESSION_ID}`
 
@@ -3182,12 +3182,12 @@ describe('superagent daemon: the session-less dispatcher', () => {
     return read.value.comments ?? []
   }
 
-  it('derives a machine-scoped identity and refuses an empty machine id', () => {
+  void it('derives a machine-scoped identity and refuses an empty machine id', () => {
     assert.equal(String(daemonIdentityOf('a1b2c3d4')), DAEMON)
     assert.equal(daemonIdentityOf(''), undefined)
   })
 
-  it('is inert without a worker preset, a checkout or a session controller', async () => {
+  void it('is inert without a worker preset, a checkout or a session controller', async () => {
     const { harness } = await mount()
     try {
       await runDaemonPass(harness.host, { maxWorkers: 2, cwd: '/tmp/work', propose: true })
@@ -3201,7 +3201,7 @@ describe('superagent daemon: the session-less dispatcher', () => {
     }
   })
 
-  it('proposes as the daemon identity without any session', async () => {
+  void it('proposes as the daemon identity without any session', async () => {
     const { harness } = await mount({}, 'jira-worker')
     try {
       const controller = await provideController(harness)
@@ -3224,7 +3224,7 @@ describe('superagent daemon: the session-less dispatcher', () => {
     }
   })
 
-  it('claims a confirmed own proposal and dispatches it into the configured checkout', async () => {
+  void it('claims a confirmed own proposal and dispatches it into the configured checkout', async () => {
     const { harness } = await mount({}, 'jira-worker')
     try {
       const controller = await provideController(harness)
@@ -3248,7 +3248,7 @@ describe('superagent daemon: the session-less dispatcher', () => {
     }
   })
 
-  it('recovers a daemon executor whose Session is gone, and stays quiet while it holds work', async () => {
+  void it('recovers a daemon executor whose Session is gone, and stays quiet while it holds work', async () => {
     const { harness } = await mount({}, 'jira-worker')
     try {
       const controller = await provideController(harness)
@@ -3275,8 +3275,8 @@ describe('superagent daemon: the session-less dispatcher', () => {
   })
 })
 
-describe('superagent: the session action failure envelope', () => {
-  it('carries every field the output schema requires', () => {
+void describe('superagent: the session action failure envelope', () => {
+  void it('carries every field the output schema requires', () => {
     const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
     const failed = sessionActionFailure('the action threw', me, { session: 'w-1' })
     assert.equal(failed.ok, false)
@@ -3292,8 +3292,8 @@ describe('superagent: the session action failure envelope', () => {
 })
 
 
-describe('superagent: teardown', () => {
-  it('waits for startup recovery during dispose and preserves the original recipient', async () => {
+void describe('superagent: teardown', () => {
+  void it('waits for startup recovery during dispose and preserves the original recipient', async () => {
     const root = await scratchDirectory()
     const store = new DispatchReportStore(root)
     await store.record({
@@ -3333,7 +3333,7 @@ describe('superagent: teardown', () => {
     assert.equal((await store.all()).get('task-dispose-recovery')?.superSession, 'original-super')
   })
 
-  it('admits no turn-end work after dispose and tolerates a repeated dispose', async () => {
+  void it('admits no turn-end work after dispose and tolerates a repeated dispose', async () => {
     const contribution = createSuperagentContribution({
       ctx: {
         get: () => undefined,

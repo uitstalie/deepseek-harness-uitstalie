@@ -42,8 +42,8 @@ after(async () => {
   if (root !== '') await rm(root, { recursive: true, force: true })
 })
 
-describe('provision: a new machine', () => {
-  it('clones the shared repository when given a remote', async () => {
+void describe('provision: a new machine', () => {
+  void it('clones the shared repository when given a remote', async () => {
     const target = join(root, 'cloned-store')
     const result = unwrap(await provisionStore({ root: target, remote: origin }))
     assert.equal(result.action, 'cloned')
@@ -52,7 +52,7 @@ describe('provision: a new machine', () => {
     assert.equal(await currentRemote(target), origin, 'the clone knows where it came from')
   })
 
-  it('scaffolds a local-only store when there is no remote', async () => {
+  void it('scaffolds a local-only store when there is no remote', async () => {
     const target = join(root, 'local-store')
     const result = unwrap(await provisionStore({ root: target }))
     assert.equal(result.action, 'scaffolded')
@@ -60,7 +60,7 @@ describe('provision: a new machine', () => {
     assert.match(await readFile(join(target, 'config.md'), 'utf8'), /issue_types:/)
   })
 
-  it('joins an existing local store to the shared repository', async () => {
+  void it('joins an existing local store to the shared repository', async () => {
     const target = join(root, 'joining-store')
     unwrap(await provisionStore({ root: target }))
     assert.equal(await currentRemote(target), undefined)
@@ -70,7 +70,7 @@ describe('provision: a new machine', () => {
     assert.equal(await currentRemote(target), origin)
   })
 
-  it('is idempotent: running it again changes nothing', async () => {
+  void it('is idempotent: running it again changes nothing', async () => {
     const target = join(root, 'idempotent-store')
     unwrap(await provisionStore({ root: target, remote: origin }))
     const again = unwrap(await provisionStore({ root: target, remote: origin }))
@@ -79,8 +79,8 @@ describe('provision: a new machine', () => {
   })
 })
 
-describe('provision: catching up', () => {
-  it('fast-forwards a clone that is behind', async () => {
+void describe('provision: catching up', () => {
+  void it('fast-forwards a clone that is behind', async () => {
     const target = join(root, 'behind-store')
     unwrap(await provisionStore({ root: target, remote: origin }))
 
@@ -96,7 +96,7 @@ describe('provision: catching up', () => {
     assert.equal(again.pulled, 'up-to-date')
   })
 
-  it('refuses rather than forcing when the local clone has diverged', async () => {
+  void it('refuses rather than forcing when the local clone has diverged', async () => {
     const target = join(root, 'diverged-store')
     unwrap(await provisionStore({ root: target, remote: origin }))
     await runGit(target, ['config', '--local', 'user.name', 'tester'])

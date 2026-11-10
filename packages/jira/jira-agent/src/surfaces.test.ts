@@ -40,8 +40,8 @@ import { concurrencySafe, createLedgerFixture, dispatchTool, mountJira, testAgen
 const actionEnum = (parameters: Readonly<Record<string, { enum?: readonly string[] }>>): readonly string[] =>
   parameters.action?.enum ?? []
 
-describe('surfaces: the model-visible declarations', () => {
-  it('keeps the ten issue verbs and their read/write split', () => {
+void describe('surfaces: the model-visible declarations', () => {
+  void it('keeps the ten issue verbs and their read/write split', () => {
     assert.deepEqual(actionEnum(ISSUE_PARAMETERS), [
       'get', 'create', 'update', 'switch_state', 'comment', 'assignee', 'link', 'tag_create', 'close', 'batch_close',
     ])
@@ -49,12 +49,12 @@ describe('surfaces: the model-visible declarations', () => {
     assert.deepEqual([...READ_ACTIONS], ['get'])
   })
 
-  it('keeps the knowledge verbs, and the list tool without one', () => {
+  void it('keeps the knowledge verbs, and the list tool without one', () => {
     assert.deepEqual(actionEnum(KB_PARAMETERS), ['get', 'create', 'update', 'search'])
     assert.equal(Object.hasOwn(LIST_PARAMETERS, 'action'), false)
   })
 
-  it('keeps the model-facing descriptions that name the refusal behavior', () => {
+  void it('keeps the model-facing descriptions that name the refusal behavior', () => {
     assert.match(ISSUE_DESCRIPTION, /Read or change one issue in the local dsh-jira ledger/u)
     assert.match(ISSUE_DESCRIPTION, /read-only and delegated sessions get `ok: false`/u)
     assert.match(ISSUE_DESCRIPTION, /`tag_create` registers one/u)
@@ -64,14 +64,14 @@ describe('surfaces: the model-visible declarations', () => {
     assert.match(KB_DESCRIPTION, /file:line so a claim can be traced/u)
   })
 
-  it('declares the output envelope both tools share', () => {
+  void it('declares the output envelope both tools share', () => {
     for (const schema of [KB_OUTPUT_SCHEMA, LIST_OUTPUT_SCHEMA]) {
       assert.deepEqual(schema.required, ['ok', 'writable', 'me'])
       assert.equal(schema.additionalProperties, true)
     }
   })
 
-  it('declares a read budget for the read tool, and only reads as concurrency-safe', async () => {
+  void it('declares a read budget for the read tool, and only reads as concurrency-safe', async () => {
     const ledger = await createLedgerFixture()
     const harness = await mountJira(ledger)
     try {
@@ -103,8 +103,8 @@ describe('surfaces: the model-visible declarations', () => {
   })
 })
 
-describe('surfaces: the monotonic write guard (decision 96)', () => {
-  it('denies every write verb from a read-only session, and lets the read through', async () => {
+void describe('surfaces: the monotonic write guard (decision 96)', () => {
+  void it('denies every write verb from a read-only session, and lets the read through', async () => {
     const ledger = await createLedgerFixture()
     const harness = await mountJira(ledger, { env: { DSH_READ_ONLY_SESSION: '1' } })
     // The plugin reads the process environment for the guard; the host facts are pinned to the
@@ -139,7 +139,7 @@ describe('surfaces: the monotonic write guard (decision 96)', () => {
     }
   })
 
-  it('does not police tools that are not ours', async () => {
+  void it('does not police tools that are not ours', async () => {
     const ledger = await createLedgerFixture()
     const harness = await mountJira(ledger, { env: { DSH_READ_ONLY_SESSION: '1' } })
     process.env.DSH_READ_ONLY_SESSION = '1'

@@ -67,8 +67,8 @@ const until = async (predicate: () => boolean, timeoutMs = 2_000): Promise<void>
   while (!predicate() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5))
 }
 
-describe('push: debouncing', () => {
-  it('collapses a burst of writes into one push', async () => {
+void describe('push: debouncing', () => {
+  void it('collapses a burst of writes into one push', async () => {
     const clock = fakeTimer()
     const git = fakeGit({ remotes: 'origin' })
     const queue = createPushQueue({ root: '/store', run: git.run, timer: clock.timer })
@@ -85,7 +85,7 @@ describe('push: debouncing', () => {
     assert.equal(queue.isPending(), false)
   })
 
-  it('flushing cancels the pending timer and pushes once', async () => {
+  void it('flushing cancels the pending timer and pushes once', async () => {
     const clock = fakeTimer()
     const git = fakeGit({ remotes: 'origin' })
     const queue = createPushQueue({ root: '/store', run: git.run, timer: clock.timer })
@@ -98,8 +98,8 @@ describe('push: debouncing', () => {
   })
 })
 
-describe('push: nothing to do is not a failure', () => {
-  it('stays quiet when the store has no remote', async () => {
+void describe('push: nothing to do is not a failure', () => {
+  void it('stays quiet when the store has no remote', async () => {
     const git = fakeGit({ remotes: '' })
     const queue = createPushQueue({ root: '/store', run: git.run, timer: fakeTimer().timer })
     const outcome = await queue.flushNow()
@@ -108,7 +108,7 @@ describe('push: nothing to do is not a failure', () => {
     assert.equal(git.pushes(), 0)
   })
 
-  it('stays quiet when pushing is turned off', async () => {
+  void it('stays quiet when pushing is turned off', async () => {
     const git = fakeGit({ remotes: 'origin' })
     const queue = createPushQueue({ root: '/store', run: git.run, timer: fakeTimer().timer, enabled: false })
     const outcome = await queue.flushNow()
@@ -117,8 +117,8 @@ describe('push: nothing to do is not a failure', () => {
   })
 })
 
-describe('push: the settle step runs after the pull and before the push (decision 148)', () => {
-  it('refreshes the derived files between the rebase and the push', async () => {
+void describe('push: the settle step runs after the pull and before the push (decision 148)', () => {
+  void it('refreshes the derived files between the rebase and the push', async () => {
     // The order is the design: a rebase imports commits and `log.md` lists commits, so refreshing
     // before it would render the logs against a history that is about to change — and pushing
     // without refreshing is what turned the store's `generate --check` gate red mid-session.
@@ -146,7 +146,7 @@ describe('push: the settle step runs after the pull and before the push (decisio
     assert.deepEqual(order, ['pull', 'settle', 'push'])
   })
 
-  it('does not push a state it could not settle', async () => {
+  void it('does not push a state it could not settle', async () => {
     const git = fakeGit({ remotes: 'origin' })
     const queue = createPushQueue({
       root: '/store',
@@ -161,7 +161,7 @@ describe('push: the settle step runs after the pull and before the push (decisio
     assert.equal(queue.failures(), 1, 'and the failure is counted, so the retry is honest')
   })
 
-  it('settles on the debounced path, and elsewhere only when the caller asks', async () => {
+  void it('settles on the debounced path, and elsewhere only when the caller asks', async () => {
     // Whether the store may be written is a property of the **caller** (decisions 89/93): one queue
     // serves a main agent that may write and a read-only or delegated session that may not. The
     // debounce is only ever armed by a write that already succeeded, so it always settles; an
@@ -193,7 +193,7 @@ describe('push: the settle step runs after the pull and before the push (decisio
     assert.equal(git.pushes(), 4, 'the three explicit flushes plus the debounced one')
   })
 
-  it('does not settle when there is nothing to push to', async () => {
+  void it('does not settle when there is nothing to push to', async () => {
     // A local-only store has no gate to satisfy, and the session end still regenerates for the human
     // reading the working tree. Doing it here as well would commit on every debounce of a store that
     // never pushes anywhere.
@@ -215,8 +215,8 @@ describe('push: the settle step runs after the pull and before the push (decisio
   })
 })
 
-describe('push: dispose stops the queue for good (decision 166)', () => {
-  it('disarms the pending timer, and neither fire nor flush pushes afterwards', async () => {
+void describe('push: dispose stops the queue for good (decision 166)', () => {
+  void it('disarms the pending timer, and neither fire nor flush pushes afterwards', async () => {
     // A live config reload re-runs the plugin's `apply`; without dispose every reload would leave
     // another debounce timer holding a stale closure, and they would all push at session end.
     const clock = fakeTimer()
@@ -247,8 +247,8 @@ describe('push: dispose stops the queue for good (decision 166)', () => {
   })
 })
 
-describe('push: a failed push is reported, counted, and retried next time', () => {
-  it('counts the failure and keeps going', async () => {
+void describe('push: a failed push is reported, counted, and retried next time', () => {
+  void it('counts the failure and keeps going', async () => {
     const clock = fakeTimer()
     const git = fakeGit({ remotes: 'origin', pushFails: true })
     const outcomes: string[] = []
@@ -267,7 +267,7 @@ describe('push: a failed push is reported, counted, and retried next time', () =
     assert.equal(git.pushes(), 2, 'every flush really tried')
   })
 
-  it('a later success clears the count', async () => {
+  void it('a later success clears the count', async () => {
     let failing = true
     const run: GitRunner = async (_root, args) => {
       if (args[0] === 'remote') return { code: 0, stdout: 'origin', stderr: '' }
@@ -283,7 +283,7 @@ describe('push: a failed push is reported, counted, and retried next time', () =
   })
 })
 
-describe('push: a failed flush retries with backoff, then gives up (decision 191)', () => {
+void describe('push: a failed flush retries with backoff, then gives up (decision 191)', () => {
   const makeTimer = (): { timer: PushTimer; fire: () => Promise<void>; delays: number[] } => {
     const pending: (() => void)[] = []
     const delays: number[] = []
@@ -305,7 +305,7 @@ describe('push: a failed flush retries with backoff, then gives up (decision 191
     }
   }
 
-  it('re-arms after a rejected push, up to the cap, and succeeds on the retry', async () => {
+  void it('re-arms after a rejected push, up to the cap, and succeeds on the retry', async () => {
     const { timer, fire, delays } = makeTimer()
     let attempts = 0
     const queue = createPushQueue({
@@ -329,7 +329,7 @@ describe('push: a failed flush retries with backoff, then gives up (decision 191
     assert.equal(queue.failures(), 0, 'the success reset the failure count')
   })
 
-  it('stops after the cap instead of retrying forever', async () => {
+  void it('stops after the cap instead of retrying forever', async () => {
     const { timer, fire, delays } = makeTimer()
     let attempts = 0
     createPushQueue({
@@ -347,7 +347,7 @@ describe('push: a failed flush retries with backoff, then gives up (decision 191
     assert.equal(delays.length, 1 + MAX_PUSH_RETRIES)
   })
 
-  it('does not retry a stopped rebase — a human has to look', async () => {
+  void it('does not retry a stopped rebase — a human has to look', async () => {
     const { timer, fire, delays } = makeTimer()
     createPushQueue({
       root: '/store',
@@ -361,8 +361,8 @@ describe('push: a failed flush retries with backoff, then gives up (decision 191
   })
 })
 
-describe('push: close owns the work it admits (DH-303)', () => {
-  it('a close during a pending pull prevents settle and push, and resolves only after the pull', async () => {
+void describe('push: close owns the work it admits (DH-303)', () => {
+  void it('a close during a pending pull prevents settle and push, and resolves only after the pull', async () => {
     const { timer } = fakeTimer()
     const git = fakeGit({ remotes: 'origin' })
     let releasePull: () => void = () => {}
@@ -399,7 +399,7 @@ describe('push: close owns the work it admits (DH-303)', () => {
     assert.equal(closed, true)
   })
 
-  it('a close during the settle prevents the push', async () => {
+  void it('a close during the settle prevents the push', async () => {
     const { timer } = fakeTimer()
     const git = fakeGit({ remotes: 'origin' })
     let releaseSettle: () => void = () => {}
@@ -426,7 +426,7 @@ describe('push: close owns the work it admits (DH-303)', () => {
     await closedPromise
   })
 
-  it('refuses new flashes and schedules after close without touching git', async () => {
+  void it('refuses new flashes and schedules after close without touching git', async () => {
     const { timer, pending } = fakeTimer()
     const git = fakeGit({ remotes: 'origin' })
     const queue = createPushQueue({ root: '/store', timer, run: git.run })

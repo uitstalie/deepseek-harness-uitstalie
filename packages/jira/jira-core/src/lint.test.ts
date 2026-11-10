@@ -74,8 +74,8 @@ const input = (over: Partial<LintInput> = {}): LintInput => Object.freeze({
 
 const codes = (result: ReturnType<typeof lintStore>): readonly string[] => result.findings.map(finding => finding.code)
 
-describe('lint: a legal store is silent', () => {
-  it('reports nothing for issues and knowledge that hang together', () => {
+void describe('lint: a legal store is silent', () => {
+  void it('reports nothing for issues and knowledge that hang together', () => {
     const report = lintStore(input({ issues: Object.freeze([issue({ key: 'DH-1', tags: ['windows'] })]) }))
     assert.equal(report.ok, true)
     assert.deepEqual(report.findings, [])
@@ -84,19 +84,19 @@ describe('lint: a legal store is silent', () => {
   })
 })
 
-describe('lint: vocabulary membership', () => {
-  it('catches a status, type or priority the vocabulary does not declare', () => {
+void describe('lint: vocabulary membership', () => {
+  void it('catches a status, type or priority the vocabulary does not declare', () => {
     assert.deepEqual(codes(lintStore(input({ issues: Object.freeze([issue({ key: 'DH-1', status: 'done' })]) }))), ['status-unknown'])
     assert.deepEqual(codes(lintStore(input({ issues: Object.freeze([issue({ key: 'DH-1', issueType: 'chore' })]) }))), ['issue-type-unknown'])
     assert.deepEqual(codes(lintStore(input({ issues: Object.freeze([issue({ key: 'DH-1', priority: 'P1' })]) }))), ['priority-unknown'])
   })
 
-  it('catches an unregistered tag and a kb_type outside kb_types', () => {
+  void it('catches an unregistered tag and a kb_type outside kb_types', () => {
     assert.deepEqual(codes(lintStore(input({ issues: Object.freeze([issue({ key: 'DH-1', tags: ['nope'] })]) }))), ['tag-unregistered'])
     assert.deepEqual(codes(lintStore(input({ knowledge: Object.freeze([entry({ key: 'KB-1', kbType: 'note' })]) }))), ['kb-type-unknown'])
   })
 
-  it('names the file a finding is in, using the one path rule (decision 182)', () => {
+  void it('names the file a finding is in, using the one path rule (decision 182)', () => {
     const report = lintStore(input({ issues: Object.freeze([issue({ key: 'DH-1', status: 'done' })]) }))
     assert.equal(report.findings[0]?.path, issueRelPath('DH', 'DH-1' as never))
     const kb = lintStore(input({ knowledge: Object.freeze([entry({ key: 'KB-1', kbType: 'note' })]) }))
@@ -104,8 +104,8 @@ describe('lint: vocabulary membership', () => {
   })
 })
 
-describe('lint: dangling references (decision 94)', () => {
-  it('catches an issue link pointing at a key that does not exist', () => {
+void describe('lint: dangling references (decision 94)', () => {
+  void it('catches an issue link pointing at a key that does not exist', () => {
     const report = lintStore(input({
       issues: Object.freeze([issue({ key: 'DH-1', links: [{ type: 'is_blocked_by', target: 'DH-404' }] })]),
     }))
@@ -113,7 +113,7 @@ describe('lint: dangling references (decision 94)', () => {
     assert.match(renderLintReport(report), /DH-404, which does not exist/)
   })
 
-  it('catches a kb_ref and a knowledge→issue reference that point nowhere', () => {
+  void it('catches a kb_ref and a knowledge→issue reference that point nowhere', () => {
     assert.deepEqual(
       codes(lintStore(input({ issues: Object.freeze([issue({ key: 'DH-1', kbRefs: ['KB-404'] })]) }))),
       ['kb-ref-dangling'],
@@ -124,7 +124,7 @@ describe('lint: dangling references (decision 94)', () => {
     )
   })
 
-  it('counts every reference it examined, so silence is not the same as not looking', () => {
+  void it('counts every reference it examined, so silence is not the same as not looking', () => {
     const report = lintStore(input({
       issues: Object.freeze([issue({ key: 'DH-1', links: [{ type: 'is_blocked_by', target: 'DH-1' }], kbRefs: ['KB-1'] })]),
     }))
@@ -132,15 +132,15 @@ describe('lint: dangling references (decision 94)', () => {
     assert.equal(report.ok, true)
   })
 
-  it('reports a file it could not read as an error, not as silence', () => {
+  void it('reports a file it could not read as an error, not as silence', () => {
     const report = lintStore(input({ broken: Object.freeze([{ path: 'knowledge/odd/KB-9.md', reason: 'frontmatter does not parse' }]) }))
     assert.equal(report.ok, false)
     assert.deepEqual(codes(report), ['file-unreadable'])
   })
 })
 
-describe('lint: policy is not structure (§11.6)', () => {
-  it('says nothing about a blocked issue that is already claimed', () => {
+void describe('lint: policy is not structure (§11.6)', () => {
+  void it('says nothing about a blocked issue that is already claimed', () => {
     // Both facts are individually legal; whether that combination is *sensible* is a human
     // judgement, and the design keeps it out of CI on purpose.
     const report = lintStore(input({
@@ -153,7 +153,7 @@ describe('lint: policy is not structure (§11.6)', () => {
     assert.deepEqual(report.findings, [])
   })
 
-  it('says nothing about a closed issue with no resolution either', () => {
+  void it('says nothing about a closed issue with no resolution either', () => {
     // The write path requires one (decision 25); a file that predates the rule is a different
     // question, and lint is not where it becomes fatal.
     assert.deepEqual(lintStore(input({ issues: Object.freeze([issue({ key: 'DH-1', status: 'closed' })]) })).findings, [])

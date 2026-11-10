@@ -46,8 +46,8 @@ after(async () => {
   if (root !== '') await removeTree(root)
 })
 
-describe('machines: the registry', () => {
-  it('starts empty, says what this machine is, and points at the label (decisions 91/150)', async () => {
+void describe('machines: the registry', () => {
+  void it('starts empty, says what this machine is, and points at the label (decisions 91/150)', async () => {
     const records = unwrap(await listMachines(store))
     assert.deepEqual(records, [])
     assert.match(renderMachines(records, 'm-test'), /本机：m-test/)
@@ -56,7 +56,7 @@ describe('machines: the registry', () => {
     assert.match(String(machinesHint(records, 'm-test')), /jira machines label --name/u)
   })
 
-  it('labels this machine, and the file records the lineage fields', async () => {
+  void it('labels this machine, and the file records the lineage fields', async () => {
     const labelled = unwrap(await labelMachine(store, ACTOR, 'm-test', { label: 'workstation', os: 'win32' }))
     assert.equal(labelled.label, 'workstation')
     assert.equal(labelled.firstSeen, '2026-10-15T12:00:00Z')
@@ -73,21 +73,21 @@ describe('machines: the registry', () => {
     assert.match(renderMachines(listed, 'm-test'), /^\* m-test  workstation/m)
   })
 
-  it('keeps first_seen across relabelling, because it is history', async () => {
+  void it('keeps first_seen across relabelling, because it is history', async () => {
     const again = unwrap(await labelMachine(store, { by: 'human:tester' as never, at: '2026-10-30T09:00:00Z' as never }, 'm-test', { label: 'desk-pc' }))
     assert.equal(again.label, 'desk-pc')
     assert.equal(again.firstSeen, '2026-10-15T12:00:00Z', 'the first sighting does not move')
     assert.equal(unwrap(await listMachines(store))[0]?.label, 'desk-pc')
   })
 
-  it('refuses an empty label and a bad machine id', async () => {
+  void it('refuses an empty label and a bad machine id', async () => {
     assert.equal((await labelMachine(store, ACTOR, 'm-test', { label: '  ' })).ok, false)
     const bad = await labelMachine(store, ACTOR, 'NOT AN ID', { label: 'x' })
     assert.equal(bad.ok, false)
     if (!bad.ok) assert.match(bad.error.message, /is not a machine id/)
   })
 
-  it('the lock owner names the store host, never a hardcoded surface (decision 181)', async () => {
+  void it('the lock owner names the store host, never a hardcoded surface (decision 181)', async () => {
     // The owner record exists only while the lock is held, so watch for it while the label write
     // runs its commit — the same polling-with-a-deadline pattern the push tests use.
     const hosted = createStore({ root, machineId: 'm-test', host: 'box-under-test' })
@@ -104,7 +104,7 @@ describe('machines: the registry', () => {
     assert.equal(seen?.machine_id, 'm-test')
   })
 
-  it('reports a malformed entry instead of dropping it', async () => {
+  void it('reports a malformed entry instead of dropping it', async () => {
     const { writeFile } = await import('node:fs/promises')
     await writeFile(join(root, 'machines', 'm-broken.md'), '---\nlabel:\n  - [a]\n---\n', 'utf8')
     const records = unwrap(await listMachines(store))
@@ -115,15 +115,15 @@ describe('machines: the registry', () => {
   })
 })
 
-describe('machines: the display rule (decision 91)', () => {
-  it('prefers a label, and falls back to the first six characters of the id', () => {
+void describe('machines: the display rule (decision 91)', () => {
+  void it('prefers a label, and falls back to the first six characters of the id', () => {
     const records = [{ machineId: 'm-357504ff', label: 'workstation', warnings: [] }]
     assert.equal(machineDisplayName('m-357504ff', records), 'workstation')
     assert.equal(machineDisplayName('m-abcdef12', records), 'm-abcd')
     assert.equal(machineDisplayName('m-abcdef12'), 'm-abcd')
   })
 
-  it('uses that rule when listing, and stops hinting once the machine has a label', () => {
+  void it('uses that rule when listing, and stops hinting once the machine has a label', () => {
     const unlabelled = [{ machineId: 'm-abcdef12', warnings: [] }]
     const listing = renderMachines(unlabelled, 'm-abcdef12')
     assert.match(listing, /m-abcdef12 {2}m-abcd/u, 'the short id, not a placeholder')
@@ -136,14 +136,14 @@ describe('machines: the display rule (decision 91)', () => {
   })
 })
 
-describe('perf: decision 85s two numbers', () => {
-  it('counts the library and the store, ignoring derived directories', async () => {
+void describe('perf: decision 85s two numbers', () => {
+  void it('counts the library and the store, ignoring derived directories', async () => {
     const files = await countPerfFiles(store)
     assert.equal(files.knowledge, 0, 'nothing written yet')
     assert.ok(files.store >= 4, `a scaffolded store has files: ${String(files.store)}`)
   })
 
-  it('measures a real search, and reports 0 for an empty library rather than noise', async () => {
+  void it('measures a real search, and reports 0 for an empty library rather than noise', async () => {
     assert.equal(unwrap(await measureKbSearch(store, 'anything')), 0)
 
     unwrap(await createKnowledge(store, ACTOR, ORIGIN, {
@@ -159,12 +159,12 @@ describe('perf: decision 85s two numbers', () => {
     assert.equal((await countPerfFiles(store)).knowledge, 1)
   })
 
-  it('picks the busiest title as the probe query, falling back to a harmless word', () => {
+  void it('picks the busiest title as the probe query, falling back to a harmless word', () => {
     assert.equal(perfQuery(['  ', 'mkdir']), 'mkdir')
     assert.equal(perfQuery([]), 'the')
   })
 
-  it('decides with the thresholds the design fixed, not with taste', () => {
+  void it('decides with the thresholds the design fixed, not with taste', () => {
     const under = perfReport({ knowledge: 1, store: 10 }, 5, 'mkdir', PERF_SAMPLES)
     assert.equal(under.verdict, 'scan is fine')
     assert.deepEqual(under.overBudget, { search: false, files: false })

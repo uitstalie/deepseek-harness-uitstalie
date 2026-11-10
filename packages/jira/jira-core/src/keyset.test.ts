@@ -52,8 +52,8 @@ const issue = (over: Readonly<{
   body: '',
 })
 
-describe('keyset: the inventory', () => {
-  it('groups by project and sorts by key, so two inventories line up', () => {
+void describe('keyset: the inventory', () => {
+  void it('groups by project and sorts by key, so two inventories line up', () => {
     const inventory = keyInventory([
       issue({ key: 'OTHER-2' }),
       issue({ key: 'DH-2' }),
@@ -67,12 +67,12 @@ describe('keyset: the inventory', () => {
     assert.match(renderKeyInventory(inventory, 'the other store'), /the other store：4 个 key/)
   })
 
-  it('says so when there is nothing', () => {
+  void it('says so when there is nothing', () => {
     assert.match(renderKeyInventory(keyInventory([])), /（没有 issue）/)
   })
 })
 
-describe('keyset: the comparison', () => {
+void describe('keyset: the comparison', () => {
   const left = keyInventory([
     issue({ key: 'DH-1', summary: 'the same issue' }),
     issue({ key: 'DH-2', summary: 'only on the left' }),
@@ -84,7 +84,7 @@ describe('keyset: the comparison', () => {
     issue({ key: 'DH-9', summary: 'a different thing entirely' }),
   ])
 
-  it('splits collisions by whether the summary agrees', () => {
+  void it('splits collisions by whether the summary agrees', () => {
     const comparison = compareKeyInventories(left, right)
     assert.deepEqual(comparison.onlyLeft.map(row => row.key), ['DH-2'])
     assert.deepEqual(comparison.onlyRight.map(row => row.key), ['DH-3'])
@@ -94,7 +94,7 @@ describe('keyset: the comparison', () => {
     ])
   })
 
-  it('renders the real clashes first, because those need a human', () => {
+  void it('renders the real clashes first, because those need a human', () => {
     const text = renderKeyComparison(compareKeyInventories(left, right), 'here', 'there')
     assert.match(text, /同 key 但 summary 不同（1）—— 这些是真冲突：/)
     assert.match(text, /DH-9\n {4}here：a real clash here\n {4}there：a different thing entirely/)
@@ -104,7 +104,7 @@ describe('keyset: the comparison', () => {
     assert.match(text, /映射表写到 _merge\/<UTC>-from-<machine_id>\.md/u)
   })
 
-  it('is symmetric in what it counts', () => {
+  void it('is symmetric in what it counts', () => {
     const forward = compareKeyInventories(left, right)
     const backward = compareKeyInventories(right, left)
     assert.equal(forward.collisions.length, backward.collisions.length)
@@ -112,7 +112,7 @@ describe('keyset: the comparison', () => {
   })
 })
 
-describe('boardHtml: the sections mirror the Markdown board', () => {
+void describe('boardHtml: the sections mirror the Markdown board', () => {
   const issues = [
     issue({ key: 'DH-1', status: 'todo' }),
     issue({ key: 'DH-2', status: 'in_progress' }),
@@ -120,7 +120,7 @@ describe('boardHtml: the sections mirror the Markdown board', () => {
     issue({ key: 'DH-4', status: 'closed' }),
   ]
 
-  it('lifts the blocked out of their status and keeps closed last', () => {
+  void it('lifts the blocked out of their status and keeps closed last', () => {
     const sections = boardSections(issues, vocab)
     // One section per open status (decision 87), so an unused status shows up empty on purpose.
     const openCount = vocab.statuses.filter(status => !vocab.closed.includes(status.name)).length
@@ -133,21 +133,21 @@ describe('boardHtml: the sections mirror the Markdown board', () => {
     assert.deepEqual(sections[sections.length - 1]?.issues.map(entry => entry.key), ['DH-4'])
   })
 
-  it('keeps every issue exactly once', () => {
+  void it('keeps every issue exactly once', () => {
     const sections = boardSections(issues, vocab)
     const keys = sections.flatMap(section => section.issues.map(entry => entry.key))
     assert.deepEqual([...keys].sort(), ['DH-1', 'DH-2', 'DH-3', 'DH-4'])
   })
 })
 
-describe('boardHtml: a file that opens anywhere', () => {
+void describe('boardHtml: a file that opens anywhere', () => {
   const html = renderBoardHtml(
     [issue({ key: 'DH-1', tags: ['windows'], assignee: 'human:me' }), issue({ key: 'DH-2', status: 'closed' })],
     vocab,
     { title: 'DH board', generatedAt: '2026-10-16T00:00:00Z' },
   )
 
-  it('is a complete document with no scripts and no network', () => {
+  void it('is a complete document with no scripts and no network', () => {
     assert.match(html, /^<!doctype html>/)
     assert.match(html, /<meta charset="utf-8">/)
     assert.equal(html.includes('<script'), false)
@@ -156,7 +156,7 @@ describe('boardHtml: a file that opens anywhere', () => {
     assert.match(html, /生成于 2026-10-16T00:00:00Z/)
   })
 
-  it('shows the fields a human scans for, per section with a count', () => {
+  void it('shows the fields a human scans for, per section with a count', () => {
     assert.match(html, /<h2>todo <span class="count">1<\/span><\/h2>/)
     assert.match(html, /<h2>已关闭 <span class="count">1<\/span><\/h2>/)
     assert.match(html, /<td class="key"><a href="#DH-1">DH-1<\/a><\/td>/)
@@ -164,7 +164,7 @@ describe('boardHtml: a file that opens anywhere', () => {
     assert.match(html, /human:me/)
   })
 
-  it('escapes everything that came from the store', () => {
+  void it('escapes everything that came from the store', () => {
     const nasty = renderBoardHtml([issue({ key: 'DH-1', summary: '<script>alert("x")</script> & more' })], vocab)
     assert.equal(nasty.includes('<script>alert'), false, 'a summary must never become markup')
     assert.match(nasty, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt; &amp; more/)

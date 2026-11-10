@@ -57,8 +57,8 @@ const rows = [
   row('KB-1', { project: 'KB', links: [{ type: 'is_blocked_by', target: 'DH-1' as IssueKey }] }),
 ]
 
-describe('inspect: queryIssues narrows one filter at a time (decision 170)', () => {
-  it('filters by project, tag, assignee and link', () => {
+void describe('inspect: queryIssues narrows one filter at a time (decision 170)', () => {
+  void it('filters by project, tag, assignee and link', () => {
     assert.deepEqual(queryIssues(rows, {}, vocab).map(entry => entry.key), ['DH-1', 'KB-1'], 'closed is hidden by default')
     assert.deepEqual(queryIssues(rows, { includeClosed: true }, vocab).map(entry => entry.key), ['DH-1', 'DH-2', 'KB-1'])
     assert.deepEqual(queryIssues(rows, { project: 'kb', includeClosed: true }, vocab).map(entry => entry.key), ['KB-1'], 'the project is upper-cased')
@@ -69,19 +69,19 @@ describe('inspect: queryIssues narrows one filter at a time (decision 170)', () 
     assert.deepEqual(queryIssues(rows, { status: CLOSED, includeClosed: true }, vocab).map(entry => entry.key), ['DH-2'])
   })
 
-  it('does not hide by a closed set it does not have', () => {
+  void it('does not hide by a closed set it does not have', () => {
     // No vocabulary means no closed set: hiding by it would hide everything (the "no config.md" store).
     assert.deepEqual(queryIssues(rows, {}, undefined).map(entry => entry.key), ['DH-1', 'DH-2', 'KB-1'])
   })
 
-  it('applies several filters together', () => {
+  void it('applies several filters together', () => {
     assert.deepEqual(queryIssues(rows, { project: 'DH', tag: 'a', tags: ['a', 'b'] }, vocab).map(entry => entry.key), ['DH-1'])
     assert.deepEqual(queryIssues(rows, { project: 'KB', tag: 'a' }, vocab).map(entry => entry.key), [])
   })
 })
 
-describe('inspect: a broken file is reported structured (DPMJ-211)', () => {
-  it('carries path and reason as fields, not a "<path>: <reason>" string to be split back apart', async () => {
+void describe('inspect: a broken file is reported structured (DPMJ-211)', () => {
+  void it('carries path and reason as fields, not a "<path>: <reason>" string to be split back apart', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-broken-'))
     try {
       await mkdir(join(dir, 'projects', 'DH', 'issues'), { recursive: true })
@@ -103,7 +103,7 @@ describe('inspect: a broken file is reported structured (DPMJ-211)', () => {
   })
 })
 
-describe('inspect: blockersOf counts only open blockers (decision 170)', () => {
+void describe('inspect: blockersOf counts only open blockers (decision 170)', () => {
   let dir = ''
   let store: ReturnType<typeof createStore> | undefined
 
@@ -131,7 +131,7 @@ describe('inspect: blockersOf counts only open blockers (decision 170)', () => {
     if (dir !== '') await rm(dir, { recursive: true, force: true })
   })
 
-  it('lists the open ones, ignores closed and missing targets, and answers [] for an unknown key', async () => {
+  void it('lists the open ones, ignores closed and missing targets, and answers [] for an unknown key', async () => {
     assert.ok(store !== undefined)
     const one = await blockersOf(store, 'DH-1' as IssueKey)
     assert.equal(one.ok, true)

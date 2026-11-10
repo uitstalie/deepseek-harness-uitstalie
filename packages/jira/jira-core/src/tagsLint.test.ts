@@ -36,11 +36,11 @@ const issue = (key: string, tags: readonly string[]): Issue => Object.freeze({
   body: '',
 })
 
-describe('tagsLint: the three sections', () => {
+void describe('tagsLint: the three sections', () => {
   const tags = [tag('windows', 'Windows 平台'), tag('win', 'Windows 的简写'), tag('unused', '没人用'), tag('nodesc')]
   const issues = [issue('DH-1', ['windows']), issue('DH-2', ['windows'])]
 
-  it('lists tags used at most once, including never', () => {
+  void it('lists tags used at most once, including never', () => {
     const report = lintTags(tags, issues)
     // Sorted by count, then by name: nodesc and unused both have zero uses.
     assert.deepEqual(report.barelyUsed.map(entry => entry.name), ['nodesc', 'unused', 'win'])
@@ -48,11 +48,11 @@ describe('tagsLint: the three sections', () => {
     assert.equal(report.barelyUsed.some(entry => entry.name === 'windows'), false)
   })
 
-  it('lists tags with no description', () => {
+  void it('lists tags with no description', () => {
     assert.deepEqual(lintTags(tags, issues).missingDescription, ['nodesc'])
   })
 
-  it('uses the lint threshold (0.7), stricter than the suggestion threshold (0.5)', () => {
+  void it('uses the lint threshold (0.7), stricter than the suggestion threshold (0.5)', () => {
     // windows ~ window is 0.91, so it belongs in the report.
     const near = lintTags([tag('windows', 'x'), tag('window', 'y', ['windows'])], [])
     assert.deepEqual(near.similar.map(pair => [pair.left, pair.right, pair.shared]), [['window', 'windows', true]])
@@ -63,14 +63,14 @@ describe('tagsLint: the three sections', () => {
     assert.deepEqual(far.similar, [])
   })
 
-  it('keeps unrelated names out of the similar section', () => {
+  void it('keeps unrelated names out of the similar section', () => {
     const report = lintTags([tag('windows'), tag('database'), tag('sandbox')], [])
     assert.deepEqual(report.similar, [])
   })
 })
 
-describe('tagsLint: the report always shows all three sections', () => {
-  it('says (none) rather than hiding an empty section', () => {
+void describe('tagsLint: the report always shows all three sections', () => {
+  void it('says (none) rather than hiding an empty section', () => {
     const text = renderTagsLint(lintTags([], []))
     assert.match(text, /只用过一次（0）：\n {2}（无）/)
     assert.match(text, /缺少 description（0）：\n {2}（无）/)
@@ -78,7 +78,7 @@ describe('tagsLint: the report always shows all three sections', () => {
     assert.match(text, /只报告，绝不改写/)
   })
 
-  it('shows counts and the similarity score', () => {
+  void it('shows counts and the similarity score', () => {
     const text = renderTagsLint(lintTags([tag('windows'), tag('window')], [issue('DH-1', ['windows'])]))
     assert.match(text, /window ~ windows\s+（0\.9\d*）/)
     assert.match(text, /已检查：2 个标签 \/ 1 条 issue/)

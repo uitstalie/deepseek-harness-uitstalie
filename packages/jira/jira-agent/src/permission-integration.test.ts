@@ -84,8 +84,8 @@ async function fixture(soft: boolean) {
 }
 
 // The soft fixture temporarily supplies its private home to the built-in credential-path policy.
-describe('superagent permission integration', { concurrency: false }, () => {
-  it('changes subsequent real filesystem calls through OS presets', async () => {
+void describe('superagent permission integration', { concurrency: false }, () => {
+  void it('changes subsequent real filesystem calls through OS presets', async () => {
     const f = await fixture(false)
     try {
       const initial = await applySessionPermission(f.permissionCtx, f.controller, 'w1', f.target.id, 'workspace-write', 'integration setup')
@@ -119,7 +119,7 @@ describe('superagent permission integration', { concurrency: false }, () => {
     }
   })
 
-  it('applies soft through the guarded tool policy on subsequent real file reads', async () => {
+  void it('applies soft through the guarded tool policy on subsequent real file reads', async () => {
     const f = await fixture(true)
     try {
       const deniedPath = join(homedir(), '.ssh', 'probe.txt')

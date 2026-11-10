@@ -38,15 +38,15 @@ const unwrap = <T>(result: { ok: true; value: T } | { ok: false; error: unknown 
   return result.value
 }
 
-describe('codec: encode then decode is lossless', () => {
-  it('round-trips every field, including the optional ones', () => {
+void describe('codec: encode then decode is lossless', () => {
+  void it('round-trips every field, including the optional ones', () => {
     const text = unwrap(encodeIssue(sample))
     const decoded = unwrap(decodeIssue(text, DH12))
     assert.deepEqual(decoded.warnings, [])
     assert.deepEqual(decoded.issue, sample)
   })
 
-  it('round-trips an issue without the optional fields', () => {
+  void it('round-trips an issue without the optional fields', () => {
     const { note, ...withoutNote } = sample
     assert.equal(note, 'watch the lock file')
     const minimal: Issue = Object.freeze({ ...withoutNote })
@@ -57,7 +57,7 @@ describe('codec: encode then decode is lossless', () => {
     assert.equal('resolution' in decoded.issue, false)
   })
 
-  it('writes the disk spelling, not the code spelling (decision 41)', () => {
+  void it('writes the disk spelling, not the code spelling (decision 41)', () => {
     const text = unwrap(encodeIssue(sample))
     assert.match(text, /^issue_type: task$/m)
     assert.match(text, /^created_at: 2026-10-15T08:30:00Z$/m)
@@ -67,7 +67,7 @@ describe('codec: encode then decode is lossless', () => {
     assert.equal(/issueType|createdAt|kbRefs/.test(text), false)
   })
 
-  it('starts with the fence and keeps LF endings', () => {
+  void it('starts with the fence and keeps LF endings', () => {
     const text = unwrap(encodeIssue(sample))
     assert.equal(text.startsWith('---\n'), true)
     assert.equal(text.includes('\r'), false)
@@ -75,7 +75,7 @@ describe('codec: encode then decode is lossless', () => {
   })
 })
 
-describe('codec: reads are tolerant, and say what they tolerated', () => {
+void describe('codec: reads are tolerant, and say what they tolerated', () => {
   const text = (fields: readonly string[]): string => `---\n${fields.join('\n')}\n---\n\nbody\n`
 
   const base = [
@@ -91,17 +91,17 @@ describe('codec: reads are tolerant, and say what they tolerated', () => {
     'reporter: human:daiqc',
   ]
 
-  it('reports unknown keys instead of failing', () => {
+  void it('reports unknown keys instead of failing', () => {
     const decoded = unwrap(decodeIssue(text([...base, 'weird_extra: 1']), DH12))
     assert.equal(decoded.warnings.length, 1)
     assert.match(decoded.warnings[0] ?? '', /unknown frontmatter key "weird_extra"/)
   })
 
-  it('defaults a missing revision to 1 (decision 44)', () => {
+  void it('defaults a missing revision to 1 (decision 44)', () => {
     assert.equal(unwrap(decodeIssue(text(base), DH12)).issue.revision, 1)
   })
 
-  it('writes links as one-level flow maps, exactly as decision 70 specifies', () => {
+  void it('writes links as one-level flow maps, exactly as decision 70 specifies', () => {
     const text = unwrap(encodeIssue(sample))
     assert.match(text, /^links: \[\{ type: is_blocked_by, target: DH-5 \}\]$/m)
     assert.deepEqual(unwrap(decodeIssue(text, DH12)).issue.links, [
@@ -109,22 +109,22 @@ describe('codec: reads are tolerant, and say what they tolerated', () => {
     ])
   })
 
-  it('rejects a stored `key`: the file name is the identity (C3)', () => {
+  void it('rejects a stored `key`: the file name is the identity (C3)', () => {
     const result = decodeIssue(text([...base, 'key: DH-99']), DH12)
     assert.equal(result.ok, false)
     if (!result.ok) assert.match(result.error.message, /must not carry `key`/)
   })
 
-  it('never writes a `key` field', () => {
+  void it('never writes a `key` field', () => {
     assert.equal(/^key:/m.test(unwrap(encodeIssue(sample))), false)
   })
 
-  it('warns on an unexpected schema version but still reads the record', () => {
+  void it('warns on an unexpected schema version but still reads the record', () => {
     const decoded = unwrap(decodeIssue(text(base.map(l => l.replace('issue/v1', 'issue/v2'))), DH12))
     assert.match(decoded.warnings.join('\n'), /unexpected schema "issue\/v2"/)
   })
 
-  it('fails loudly when a required field is missing', () => {
+  void it('fails loudly when a required field is missing', () => {
     const withoutSummary = base.filter(line => !line.startsWith('summary:'))
     const result = decodeIssue(text(withoutSummary), DH12)
     assert.equal(result.ok, false)
@@ -134,14 +134,14 @@ describe('codec: reads are tolerant, and say what they tolerated', () => {
     }
   })
 
-  it('fails loudly on a wrong document type', () => {
+  void it('fails loudly on a wrong document type', () => {
     const result = decodeIssue(text(base.map(l => l.replace('type: issue', 'type: Issue'))), DH12)
     assert.equal(result.ok, false)
     if (!result.ok) assert.match(result.error.message, /`type` must be "issue"/)
   })
 })
 
-describe('codec: link shapes outside the vocabulary stay loud', () => {
+void describe('codec: link shapes outside the vocabulary stay loud', () => {
   const text = (fields: readonly string[]): string => `---\n${fields.join('\n')}\n---\n\nbody\n`
   const base = [
     'schema: issue/v1',
@@ -156,19 +156,19 @@ describe('codec: link shapes outside the vocabulary stay loud', () => {
     'reporter: human:daiqc',
   ]
 
-  it('rejects an unknown link type', () => {
+  void it('rejects an unknown link type', () => {
     const result = decodeIssue(text([...base, 'links: [{ type: blocks, target: DH-1 }]']), DH12)
     assert.equal(result.ok, false)
     if (!result.ok) assert.match(result.error.message, /unknown link type "blocks"/)
   })
 
-  it('rejects a link target that is not an issue key', () => {
+  void it('rejects a link target that is not an issue key', () => {
     const result = decodeIssue(text([...base, 'links: [{ type: parent, target: nope }]']), DH12)
     assert.equal(result.ok, false)
     if (!result.ok) assert.match(result.error.message, /is not an issue key/)
   })
 
-  it('rejects a nested collection inside links, rather than guessing (decision 105)', () => {
+  void it('rejects a nested collection inside links, rather than guessing (decision 105)', () => {
     const result = decodeIssue(text([...base, 'links: [{ type: parent, target: [DH-1] }]']), DH12)
     assert.equal(result.ok, false)
     if (!result.ok) assert.match(result.error.message, /unsupported/)

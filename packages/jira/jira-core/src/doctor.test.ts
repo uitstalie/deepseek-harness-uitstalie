@@ -61,8 +61,8 @@ const snapshot = (overrides: Partial<Snapshot> = {}): Snapshot => Object.freeze(
 
 const codes = (result: ReturnType<typeof checkStore>): readonly string[] => result.problems.map(problem => problem.code)
 
-describe('doctor: a healthy store', () => {
-  it('says nothing and counts what it saw', () => {
+void describe('doctor: a healthy store', () => {
+  void it('says nothing and counts what it saw', () => {
     const report = checkStore(snapshot())
     assert.equal(report.ok, true)
     assert.deepEqual(report.problems, [])
@@ -72,8 +72,8 @@ describe('doctor: a healthy store', () => {
   })
 })
 
-describe('doctor: errors are things that break a write', () => {
-  it('an unreadable vocabulary stops everything', () => {
+void describe('doctor: errors are things that break a write', () => {
+  void it('an unreadable vocabulary stops everything', () => {
     // `exactOptionalPropertyTypes` means the key is absent, not present-and-undefined.
     const bare = { ...snapshot() } as Record<string, unknown>
     delete bare.configText
@@ -87,14 +87,14 @@ describe('doctor: errors are things that break a write', () => {
     assert.match(renderDoctorReport(broken), /unknown status "nowhere"/)
   })
 
-  it('catches a key that does not match its file name', () => {
+  void it('catches a key that does not match its file name', () => {
     const report = checkStore(snapshot({
       issues: Object.freeze([Object.freeze({ path: 'projects/DH/issues/DH-2.md', project: 'DH', key: 'DH-1', text: issue('DH-1') })]),
     }))
     assert.deepEqual(codes(report), ['key-mismatch'])
   })
 
-  it('catches a duplicate key and a project that disagrees with the key', () => {
+  void it('catches a duplicate key and a project that disagrees with the key', () => {
     const twice = checkStore(snapshot({
       issues: Object.freeze([
         Object.freeze({ path: 'projects/DH/issues/DH-1.md', project: 'DH', key: 'DH-1', text: issue('DH-1') }),
@@ -109,7 +109,7 @@ describe('doctor: errors are things that break a write', () => {
     assert.ok(codes(wrongProject).includes('project-mismatch'))
   })
 
-  it('catches two machines that claimed the same block', () => {
+  void it('catches two machines that claimed the same block', () => {
     const counters = (machine: string) => Object.freeze({
       machineId: machine,
       path: `counters/${machine}.json`,
@@ -125,7 +125,7 @@ describe('doctor: errors are things that break a write', () => {
     assert.match(renderDoctorReport(report), /overlaps/)
   })
 
-  it('accepts adjacent blocks from two machines, and refuses overlapping ones from one', () => {
+  void it('accepts adjacent blocks from two machines, and refuses overlapping ones from one', () => {
     const ok = checkStore(snapshot({
       counters: Object.freeze([
         Object.freeze({ machineId: 'aaaa', path: 'counters/aaaa.json', raw: JSON.stringify({ schema: 'counters/v1', machine_id: 'aaaa', projects: { DH: { next: 2, blocks: [[1, 100]] } } }) }),
@@ -142,7 +142,7 @@ describe('doctor: errors are things that break a write', () => {
     assert.ok(codes(overlap).includes('counters-block-overlap'))
   })
 
-  it('refuses a counters file that does not parse', () => {
+  void it('refuses a counters file that does not parse', () => {
     const report = checkStore(snapshot({
       counters: Object.freeze([Object.freeze({ machineId: 'aaaa', path: 'counters/aaaa.json', raw: '{ not json' })]),
     }))
@@ -150,8 +150,8 @@ describe('doctor: errors are things that break a write', () => {
   })
 })
 
-describe('doctor: warnings are things that mislead a reader', () => {
-  it('flags a conflicted issue, a leftover lock, and a comment file with no issue', () => {
+void describe('doctor: warnings are things that mislead a reader', () => {
+  void it('flags a conflicted issue, a leftover lock, and a comment file with no issue', () => {
     const report = checkStore(snapshot({
       issues: Object.freeze([Object.freeze({
         path: 'projects/DH/issues/DH-1.md',
@@ -173,7 +173,7 @@ describe('doctor: warnings are things that mislead a reader', () => {
     assert.equal(report.summary.conflicted, 1)
   })
 
-  it('flags a missing repository, missing attributes, dirt and unpushed work', () => {
+  void it('flags a missing repository, missing attributes, dirt and unpushed work', () => {
     assert.deepEqual(codes(checkStore(snapshot({ git: { repository: false } }))), ['git-missing'])
     assert.deepEqual(
       [...codes(checkStore(snapshot({ git: { repository: true, clean: false, attributes: false, ahead: 2 } })))].sort(),
@@ -181,7 +181,7 @@ describe('doctor: warnings are things that mislead a reader', () => {
     )
   })
 
-  it('catches a duplicate comment id inside one file', () => {
+  void it('catches a duplicate comment id inside one file', () => {
     const text = '<!-- c-a1b2-1 | author=human:me | created_at=2026-10-15T12:00:00Z | revision=1 -->\na\n'
     const report = checkStore(snapshot({
       commentFiles: Object.freeze([Object.freeze({ path: 'projects/DH/comments/DH-1.md', key: 'DH-1', text: text + text })]),
@@ -189,7 +189,7 @@ describe('doctor: warnings are things that mislead a reader', () => {
     assert.deepEqual(codes(report), ['comment-id-duplicate'])
   })
 
-  it('accepts the same comment id in two different issues', () => {
+  void it('accepts the same comment id in two different issues', () => {
     // Numbering is per issue file (decision 68), so this is the normal case, not a clash.
     const text = '<!-- c-a1b2-1 | author=human:me | created_at=2026-10-15T12:00:00Z | revision=1 -->\na\n'
     const report = checkStore(snapshot({
@@ -207,8 +207,8 @@ describe('doctor: warnings are things that mislead a reader', () => {
   })
 })
 
-describe('doctor: an expired claim is reported (decision 61)', () => {
-  it('warns that the issue can be reclaimed, and names the holder', () => {
+void describe('doctor: an expired claim is reported (decision 61)', () => {
+  void it('warns that the issue can be reclaimed, and names the holder', () => {
     const expired = snapshot({
       issues: Object.freeze([{
         path: 'projects/DH/issues/DH-1.md',
@@ -241,7 +241,7 @@ describe('doctor: an expired claim is reported (decision 61)', () => {
     assert.equal(checkStore(expired).problems.some(p => p.code === 'lease-expired'), false, 'pure without a clock')
   })
 
-  it('says nothing about a closed issue whose claim is history (DPMJ-401)', () => {
+  void it('says nothing about a closed issue whose claim is history (DPMJ-401)', () => {
     // A closed issue keeps the claim it was worked under; "it can be reclaimed" is meaningless
     // there, and reporting it made the warning list grow with the ledger instead of with the work.
     const closedClaim = snapshot({
@@ -272,8 +272,8 @@ describe('doctor: an expired claim is reported (decision 61)', () => {
   })
 })
 
-describe('doctor: the summary reports what is on disk (DPMJ-401)', () => {
-  it('counts the registered tags instead of printing a hard-coded zero', () => {
+void describe('doctor: the summary reports what is on disk (DPMJ-401)', () => {
+  void it('counts the registered tags instead of printing a hard-coded zero', () => {
     assert.equal(checkStore(snapshot({ tags: 3 })).summary.tags, 3)
     assert.equal(checkStore(snapshot()).summary.tags, 0, 'a snapshot without tags is honest about knowing none')
     assert.match(renderDoctorReport(checkStore(snapshot({ tags: 3 }))), /3/)
@@ -287,8 +287,8 @@ const generatedText = (sourceTree: string): string =>
   + `     source_tree: ${sourceTree}\n`
   + '-->\n\ncontent\n'
 
-describe('doctor: generated files are checked against their own head (decisions 39/79/120)', () => {
-  it('flags a file that was never generated, one without a head, and a stale one', () => {
+void describe('doctor: generated files are checked against their own head (decisions 39/79/120)', () => {
+  void it('flags a file that was never generated, one without a head, and a stale one', () => {
     const report = checkStore(snapshot({
       sourceTree: 'tree-1',
       generated: Object.freeze([
@@ -303,7 +303,7 @@ describe('doctor: generated files are checked against their own head (decisions 
     assert.match(renderDoctorReport(report), /jira sync/, 'the fix is the command that regenerates and pushes (decision 179)')
   })
 
-  it('stays quiet when the head carries the current tree hash', () => {
+  void it('stays quiet when the head carries the current tree hash', () => {
     const report = checkStore(snapshot({
       sourceTree: 'tree-1',
       generated: Object.freeze([
@@ -315,7 +315,7 @@ describe('doctor: generated files are checked against their own head (decisions 
     assert.equal(report.summary.generatedStale, 0)
   })
 
-  it('never calls log.md stale from its head — its input is the commit history, not the tree', () => {
+  void it('never calls log.md stale from its head — its input is the commit history, not the tree', () => {
     // The one exception (doctor.ts): `log.md`'s hash cannot prove freshness, so a mismatched head
     // is *not* reported; `jira generate --check` is the real test. Missing/unmarked still count.
     const report = checkStore(snapshot({
@@ -329,7 +329,7 @@ describe('doctor: generated files are checked against their own head (decisions 
     assert.equal(report.problems[0]?.path, 'BOARD.md')
   })
 
-  it('skips the check entirely without a source tree to compare against', () => {
+  void it('skips the check entirely without a source tree to compare against', () => {
     const report = checkStore(snapshot({
       generated: Object.freeze([Object.freeze({ path: 'BOARD.md', text: generatedText('tree-0') })]),
     }))
@@ -338,15 +338,15 @@ describe('doctor: generated files are checked against their own head (decisions 
   })
 })
 
-describe('doctor: the remaining error codes', () => {
-  it('rejects a key that is not a project key at all', () => {
+void describe('doctor: the remaining error codes', () => {
+  void it('rejects a key that is not a project key at all', () => {
     const report = checkStore(snapshot({
       issues: Object.freeze([Object.freeze({ path: 'projects/DH/issues/dh-1.md', project: 'DH', key: 'dh-1', text: issue('DH-1') })]),
     }))
     assert.deepEqual(codes(report), ['key-shape'])
   })
 
-  it('catches a counter whose next fell behind its own first block', () => {
+  void it('catches a counter whose next fell behind its own first block', () => {
     const report = checkStore(snapshot({
       counters: Object.freeze([Object.freeze({
         machineId: 'aaaa',
@@ -358,7 +358,7 @@ describe('doctor: the remaining error codes', () => {
     assert.equal(report.ok, false, 'a broken counter breaks writes')
   })
 
-  it('rejects a comment file that does not parse', () => {
+  void it('rejects a comment file that does not parse', () => {
     const report = checkStore(snapshot({
       commentFiles: Object.freeze([Object.freeze({
         path: 'projects/DH/comments/DH-1.md',

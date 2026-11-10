@@ -50,8 +50,8 @@ const entry = (over: Readonly<{ key: string; issues?: readonly string[]; machine
 
 const codes = (findings: readonly { code: string }[]): readonly string[] => findings.map(finding => finding.code)
 
-describe('consistency: a reference has two faces', () => {
-  it('is silent when both sides agree', () => {
+void describe('consistency: a reference has two faces', () => {
+  void it('is silent when both sides agree', () => {
     const findings = checkConsistency({
       issues: [issue({ key: 'DH-1', kbRefs: ['KB-1'], reporter: 'agent:x|dsh|m-known|s' })],
       knowledge: [entry({ key: 'KB-1', issues: ['DH-1'] })],
@@ -60,7 +60,7 @@ describe('consistency: a reference has two faces', () => {
     assert.deepEqual(findings, [])
   })
 
-  it('names the missing side, in the direction it is missing', () => {
+  void it('names the missing side, in the direction it is missing', () => {
     const fromIssue = checkConsistency({
       issues: [issue({ key: 'DH-1', kbRefs: ['KB-1'], reporter: 'agent:x|dsh|m-known|s' })],
       knowledge: [entry({ key: 'KB-1', issues: [] })],
@@ -78,7 +78,7 @@ describe('consistency: a reference has two faces', () => {
     assert.match(fromEntry[0]?.message ?? '', /KB-1 came from DH-1/)
   })
 
-  it('stays quiet about a dangling reference, which is lint\'s job', () => {
+  void it('stays quiet about a dangling reference, which is lint\'s job', () => {
     const findings = checkConsistency({
       issues: [issue({ key: 'DH-1', kbRefs: ['KB-404'], reporter: 'agent:x|dsh|m-known|s' })],
       knowledge: [],
@@ -88,8 +88,8 @@ describe('consistency: a reference has two faces', () => {
   })
 })
 
-describe('consistency: machines the store mentions', () => {
-  it('asks for a registry entry for every machine it can name', () => {
+void describe('consistency: machines the store mentions', () => {
+  void it('asks for a registry entry for every machine it can name', () => {
     const findings = checkConsistency({
       issues: [
         issue({ key: 'DH-1', reporter: 'agent:x|dsh|m-a|s' }),
@@ -102,7 +102,7 @@ describe('consistency: machines the store mentions', () => {
     assert.deepEqual(findings.map(finding => finding.message.slice(0, 4)), ['m-b ', 'm-c ', 'm-d '])
   })
 
-  it('ignores a human identity, which carries no machine', () => {
+  void it('ignores a human identity, which carries no machine', () => {
     const findings = checkConsistency({
       issues: [issue({ key: 'DH-1', reporter: 'human:daiqc' })],
       knowledge: [],
@@ -112,8 +112,8 @@ describe('consistency: machines the store mentions', () => {
   })
 })
 
-describe('consistency: rendering', () => {
-  it('prints nothing for a clean store, and one line per finding otherwise', () => {
+void describe('consistency: rendering', () => {
+  void it('prints nothing for a clean store, and one line per finding otherwise', () => {
     assert.equal(renderConsistency([]), '')
     const text = renderConsistency([{ severity: 'warning', code: 'x', message: 'y' }])
     assert.equal(text, '! x: y\n')

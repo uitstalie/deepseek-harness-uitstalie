@@ -50,8 +50,8 @@ after(async () => {
   for (const dir of scratch.splice(0)) await removeTree(dir)
 })
 
-describe('/jira: creating and reading back', () => {
-  it('creates an issue and reports its key', async () => {
+void describe('/jira: creating and reading back', () => {
+  void it('creates an issue and reports its key', async () => {
     const created = await run('new --project DH --summary "first from the command"')
     assert.equal(created.kind, 'success', created.text)
     assert.match(created.text, /^DH-1 已创建/)
@@ -61,7 +61,7 @@ describe('/jira: creating and reading back', () => {
     assert.match(second.text, /DH-2 已创建/)
   })
 
-  it('lists open issues and hides closed ones unless --all', async () => {
+  void it('lists open issues and hides closed ones unless --all', async () => {
     const open = await run('list')
     assert.match(open.text, /DH-1/)
     const board = await run('board')
@@ -83,7 +83,7 @@ describe('/jira: creating and reading back', () => {
     assert.equal(filtered.text.includes('DH-1'), false)
   })
 
-  it('says what the store holds', async () => {
+  void it('says what the store holds', async () => {
     const status = await run('status')
     assert.equal(status.kind, 'success', status.text)
     assert.match(status.text, /词表：\d+ 个状态，\d+ 条迁移/)
@@ -91,8 +91,8 @@ describe('/jira: creating and reading back', () => {
   })
 })
 
-describe('/jira: health, sync and mistakes', () => {
-  it('reports health and pushes nothing without a remote', async () => {
+void describe('/jira: health, sync and mistakes', () => {
+  void it('reports health and pushes nothing without a remote', async () => {
     const doctor = await run('doctor')
     assert.equal(doctor.kind, 'success', doctor.text)
     assert.match(doctor.text, /结果：/)
@@ -103,7 +103,7 @@ describe('/jira: health, sync and mistakes', () => {
     assert.match(sync.text, /推送：/)
   })
 
-  it('names an unknown subcommand, a missing flag and bad usage', async () => {
+  void it('names an unknown subcommand, a missing flag and bad usage', async () => {
     const unknown = await run('frobnicate')
     assert.equal(unknown.kind, 'error')
     assert.match(unknown.text, /未知子命令 "frobnicate"/)
@@ -120,7 +120,7 @@ describe('/jira: health, sync and mistakes', () => {
     assert.match(help.text, /jira —— 本地 issue 账本/)
   })
 
-  it('answers a store that cannot be read instead of throwing', async () => {
+  void it('answers a store that cannot be read instead of throwing', async () => {
     const broken = await mountJira(join(root, 'missing-ledger'))
     try {
       const result = await runJiraCommand('status', Object.freeze({
@@ -174,8 +174,8 @@ const syncWithQueue = async (dir: string): Promise<{ kind: string; text: string 
   }
 }
 
-describe('/jira: sync classifies every failed step as an error (DH-306)', () => {
-  it('fails when pull --rebase stops on a real conflict', async () => {
+void describe('/jira: sync classifies every failed step as an error (DH-306)', () => {
+  void it('fails when pull --rebase stops on a real conflict', async () => {
     const { dir, bare, branch } = await ledgerWithRemote()
     const other = await mkdtemp(join(tmpdir(), 'dsh-jira-other-'))
     scratch.push(other)
@@ -197,7 +197,7 @@ describe('/jira: sync classifies every failed step as an error (DH-306)', () => 
     assert.match(result.text, /pull --rebase stopped/u)
   })
 
-  it('fails when settling cannot commit', async () => {
+  void it('fails when settling cannot commit', async () => {
     const { dir } = await ledgerWithRemote()
     // `git add -A` refuses to run while another process owns the index; the settle step reports
     // that as a failure instead of pretending the derived files were refreshed.
@@ -207,7 +207,7 @@ describe('/jira: sync classifies every failed step as an error (DH-306)', () => 
     assert.match(result.text, /git add -A/u)
   })
 
-  it('fails when the push is rejected', async () => {
+  void it('fails when the push is rejected', async () => {
     const { dir } = await ledgerWithRemote()
     // Fetch still works (so the pull succeeds); only the push URL is gone.
     await runGit(dir, ['remote', 'set-url', '--push', 'origin', join(dir, 'missing.git')])
@@ -217,8 +217,8 @@ describe('/jira: sync classifies every failed step as an error (DH-306)', () => 
   })
 })
 
-describe('/jira: the read-only pair decision 83 names', () => {
-  it('shows one issue in full, and refuses something that is not a key', async () => {
+void describe('/jira: the read-only pair decision 83 names', () => {
+  void it('shows one issue in full, and refuses something that is not a key', async () => {
     const shown = await run('show DH-1')
     assert.equal(shown.kind, 'success', shown.text)
     assert.match(shown.text, /DH-1/u)
@@ -229,13 +229,13 @@ describe('/jira: the read-only pair decision 83 names', () => {
     assert.match(bad.text, /show 需要一个 issue key/u)
   })
 
-  it('refuses a project key that is a path traversal (decision 162)', async () => {
+  void it('refuses a project key that is a path traversal (decision 162)', async () => {
     const bad = await run('new --project ../../tmp/escaped --summary nope')
     assert.equal(bad.kind, 'error')
     assert.match(bad.text, /不合法/u)
   })
 
-  it('lints the tag registry, and neither command writes a byte (decision 38)', async () => {
+  void it('lints the tag registry, and neither command writes a byte (decision 38)', async () => {
     // Both halves matter: a write that *commits* leaves `git status` empty, so the tree alone is not
     // evidence — the tip has to be unchanged too (or a mutating read passes this test).
     const head = await runGit(root, ['rev-parse', 'HEAD'])
@@ -255,8 +255,8 @@ describe('/jira: the read-only pair decision 83 names', () => {
   })
 })
 
-describe('/jira: status reports what the caller may do (decision 177)', () => {
-  it('says "writable" when the caller can write, and the reason when it cannot', async () => {
+void describe('/jira: status reports what the caller may do (decision 177)', () => {
+  void it('says "writable" when the caller can write, and the reason when it cannot', async () => {
     const yes = await runJiraCommand('status', Object.freeze({ ...options, writable: () => '本会话可以写' }))
     assert.match(yes.text, /可写：本会话可以写/u)
     const no = await runJiraCommand('status', Object.freeze({ ...options, writable: () => '不能写（read-only）' }))
@@ -267,8 +267,8 @@ describe('/jira: status reports what the caller may do (decision 177)', () => {
   })
 })
 
-describe('/jira: status names the last failed push (decision 191)', () => {
-  it('shows the failure when there is one, and says nothing when the push went out', async () => {
+void describe('/jira: status names the last failed push (decision 191)', () => {
+  void it('shows the failure when there is one, and says nothing when the push went out', async () => {
     const failed = await runJiraCommand('status', Object.freeze({
       ...options,
       pushStatus: async () => '上次推送失败（2026-10-19T13:14:00Z）：rejected: non-fast-forward',

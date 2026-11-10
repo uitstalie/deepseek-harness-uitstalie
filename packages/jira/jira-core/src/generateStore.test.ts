@@ -66,8 +66,8 @@ after(async () => {
   if (root !== '') await rm(root, { recursive: true, force: true })
 })
 
-describe('generate: writing the four files', () => {
-  it('writes all of them with a head, and then reports them fresh', async () => {
+void describe('generate: writing the four files', () => {
+  void it('writes all of them with a head, and then reports them fresh', async () => {
     const { written } = await generate()
     assert.deepEqual([...written.written].sort(), [...ALL_GENERATED].sort())
 
@@ -83,13 +83,13 @@ describe('generate: writing the four files', () => {
     assert.deepEqual(unwrap(await checkGenerated(store)), [], 'nothing is stale right after generating')
   })
 
-  it('keeps a keyed commit in log.md and leaves the unkeyed one out', async () => {
+  void it('keeps a keyed commit in log.md and leaves the unkeyed one out', async () => {
     const log = await readGenerated('log.md')
     assert.match(log ?? '', /DH-1: create \(rev 1\)/)
     assert.equal((log ?? '').includes('unkeyed work'), false)
   })
 
-  it('regenerating unchanged inputs changes nothing at all', async () => {
+  void it('regenerating unchanged inputs changes nothing at all', async () => {
     const before = Object.fromEntries(await Promise.all(ALL_GENERATED.map(async path => [path, await readGenerated(path)])))
     const { plan, written } = await generate('2026-11-01T09:00:00Z')
     assert.equal(plan.stale, false)
@@ -101,8 +101,8 @@ describe('generate: writing the four files', () => {
   })
 })
 
-describe('generate: staleness is a real input change', () => {
-  it('marks BOARD.md stale when an issue changes, and fresh again after regenerating', async () => {
+void describe('generate: staleness is a real input change', () => {
+  void it('marks BOARD.md stale when an issue changes, and fresh again after regenerating', async () => {
     unwrap(await transact(store, 'DH-1' as never, { by: 'human:tester' as never, at: '2026-10-15T13:00:00Z' as never },
       (issue, ctx) => applyUpdate(issue, { summary: 'renamed by the test' }, ctx)))
 
@@ -120,7 +120,7 @@ describe('generate: staleness is a real input change', () => {
     assert.deepEqual(unwrap(await checkGenerated(store)), [])
   })
 
-  it('reports a missing file rather than pretending it is current', async () => {
+  void it('reports a missing file rather than pretending it is current', async () => {
     const path = join(root, 'BOARD.md')
     const backup = await readFile(path, 'utf8')
     await rm(path)
@@ -130,7 +130,7 @@ describe('generate: staleness is a real input change', () => {
     assert.deepEqual(unwrap(await checkGenerated(store)), [])
   })
 
-  it('notices a hand-edited file (its head no longer matches the inputs)', async () => {
+  void it('notices a hand-edited file (its head no longer matches the inputs)', async () => {
     const path = join(root, 'index.md')
     const backup = await readFile(path, 'utf8')
     await writeFile(path, `${backup}\nhand-written line\n`, 'utf8')
@@ -140,7 +140,7 @@ describe('generate: staleness is a real input change', () => {
     assert.deepEqual(unwrap(await checkGenerated(store)), [])
   })
 
-  it('is not disturbed by writes that are not generated inputs', async () => {
+  void it('is not disturbed by writes that are not generated inputs', async () => {
     const before = unwrap(await currentSourceTree(store))
     // A comment file, a counter and the README are all outside the input allow-list, so they must
     // not move the tree hash. `log.md` is the exception that proves the rule: its input is the
@@ -153,8 +153,8 @@ describe('generate: staleness is a real input change', () => {
   })
 })
 
-describe('generate: the commit log', () => {
-  it('lists keyed commits only, newest first, and skips the unkeyed ones', async () => {
+void describe('generate: the commit log', () => {
+  void it('lists keyed commits only, newest first, and skips the unkeyed ones', async () => {
     // `readCommitRows` is a plain list, not a `Result`: no commits is a normal answer, not an error.
     const rows = await readCommitRows(root)
     assert.ok(rows.length >= 2)
@@ -165,13 +165,13 @@ describe('generate: the commit log', () => {
     for (const row of rows) assert.match(row.hash, /^[0-9a-f]{7,}$/u)
   })
 
-  it('says nothing rather than failing outside a repository', async () => {
+  void it('says nothing rather than failing outside a repository', async () => {
     const bare = await mkdtemp(join(tmpdir(), 'dsh-jira-nogit-'))
     assert.deepEqual(await readCommitRows(bare), [])
     await rm(bare, { recursive: true, force: true })
   })
 
-  it('refuses to generate without a vocabulary, instead of writing empty files', async () => {
+  void it('refuses to generate without a vocabulary, instead of writing empty files', async () => {
     const bare = await mkdtemp(join(tmpdir(), 'dsh-jira-novocab-'))
     const bareStore = createStore({ root: bare, machineId: 'gen-machine' })
     const plan = await planGenerated(bareStore, '2026-10-15T12:00:00Z')
@@ -181,14 +181,14 @@ describe('generate: the commit log', () => {
     await rm(bare, { recursive: true, force: true })
   })
 
-  it('keeps the store path helper in step with the generated paths', () => {
+  void it('keeps the store path helper in step with the generated paths', () => {
     // A guard against somebody renaming a generated file in one place only.
     assert.equal(storePaths.config(root).endsWith('config.md'), true)
   })
 })
 
-describe('generate: a domain counts its entries, never its own output', () => {
-  it('is a fixed point the first time a domain gets an index and a log', async () => {
+void describe('generate: a domain counts its entries, never its own output', () => {
+  void it('is a fixed point the first time a domain gets an index and a log', async () => {
     // This write creates the domain directory; the generated `index.md`/`log.md` do not exist yet.
     // The first generation used to count them as knowledge — the root index reported **3** entries
     // for a domain holding 1 — and because that number only appeared *after* the write, no single
@@ -210,8 +210,8 @@ describe('generate: a domain counts its entries, never its own output', () => {
   })
 })
 
-describe('generateStore: a commit that did not land is not a success (decision 148)', () => {
-  it('reports the failure instead of returning the file list', async () => {
+void describe('generateStore: a commit that did not land is not a success (decision 148)', () => {
+  void it('reports the failure instead of returning the file list', async () => {
     // A store with a valid vocabulary but an unusable repository: a **file** named `.git` makes
     // `git init` refuse on every platform, so this exercises the swallow itself rather than an OS quirk.
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-nogit-'))
@@ -242,8 +242,8 @@ config body
   })
 })
 
-describe('generateStore: the log window counts keyed commits only (decision 168)', () => {
-  it('does not let an unkeyed commit push the oldest keyed line out of log.md', async () => {
+void describe('generateStore: the log window counts keyed commits only (decision 168)', () => {
+  void it('does not let an unkeyed commit push the oldest keyed line out of log.md', async () => {
     // The settle commit (`chore: 重生成派生工件 [no-issue]`) is unkeyed but touches `projects/*/log.md`,
     // so a window over *all* commits shifts every time it lands — and the log it just wrote is stale
     // before the push finishes. The store's own CI went red on exactly that.

@@ -19,8 +19,8 @@ const unwrap = <T>(result: { ok: true; value: T } | { ok: false; error: unknown 
   return result.value
 }
 
-describe('config: a root is trimmed before it becomes a path (decision 169)', () => {
-  it('drops the spaces a person leaves around a --root value', () => {
+void describe('config: a root is trimmed before it becomes a path (decision 169)', () => {
+  void it('drops the spaces a person leaves around a --root value', () => {
     const clean = resolveStoreRoot({ configured: '  /srv/jira  ', env: {} , platform: 'linux' })
     assert.equal(clean.ok, true)
     if (clean.ok) assert.equal(clean.value, '/srv/jira')
@@ -29,8 +29,8 @@ describe('config: a root is trimmed before it becomes a path (decision 169)', ()
   })
 })
 
-describe('config: the precedence (decisions 57/153)', () => {
-  it('takes the configured root first, then JIRA_ROOT, then the home default', () => {
+void describe('config: the precedence (decisions 57/153)', () => {
+  void it('takes the configured root first, then JIRA_ROOT, then the home default', () => {
     assert.equal(unwrap(resolveStoreRoot({ configured: '/a/store', env: { JIRA_ROOT: '/b/store' }, platform: 'linux' })), '/a/store')
     assert.equal(unwrap(resolveStoreRoot({ env: { JIRA_ROOT: '/b/store' }, platform: 'linux' })), '/b/store')
 
@@ -39,7 +39,7 @@ describe('config: the precedence (decisions 57/153)', () => {
     assert.match(home.replaceAll('\\', '/'), /\/\.dsh\/jira$/u)
   })
 
-  it('lets DSH_HOME place the default store, and JIRA_ROOT still beats it', () => {
+  void it('lets DSH_HOME place the default store, and JIRA_ROOT still beats it', () => {
     // DSH_HOME is the host's own home; the store default hangs under it (decisions 57/123/153).
     assert.equal(unwrap(resolveStoreRoot({ env: { DSH_HOME: '/x/dsh', HOME: '/home/y' }, platform: 'linux' })), '/x/dsh/jira')
     assert.equal(
@@ -49,15 +49,15 @@ describe('config: the precedence (decisions 57/153)', () => {
     )
   })
 
-  it('says so, rather than guessing, when nothing is configured', () => {
+  void it('says so, rather than guessing, when nothing is configured', () => {
     const failed = resolveStoreRoot({ env: {}, platform: 'linux' })
     assert.equal(failed.ok, false)
     if (!failed.ok) assert.match(failed.error.message, /cannot resolve the store root/u)
   })
 })
 
-describe('config: the path may not be longer than the platform allows (decision 60)', () => {
-  it('refuses a root past the limit, naming the length and the platform', () => {
+void describe('config: the path may not be longer than the platform allows (decision 60)', () => {
+  void it('refuses a root past the limit, naming the length and the platform', () => {
     // A root that fits is not enough: the store appends `projects/<P>/comments/<KEY>.md` to it, so
     // the failure would surface as a puzzling ENOENT inside a write, not as a path problem.
     const limit = longPathLimitOf('win32')
@@ -73,7 +73,7 @@ describe('config: the path may not be longer than the platform allows (decision 
     assert.equal(unwrap(resolveStoreRoot({ configured: tooLong, env: {}, platform: 'linux' })), tooLong)
   })
 
-  it('accepts a root that merely approaches the limit, because that one still works', () => {
+  void it('accepts a root that merely approaches the limit, because that one still works', () => {
     const near = `C:\\${'d'.repeat(PATH_LENGTH_WARN)}`
     assert.equal(near.length > PATH_LENGTH_WARN, true)
     assert.equal(near.length < longPathLimitOf('win32'), true)

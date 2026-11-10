@@ -37,7 +37,7 @@ const entry = (over: Readonly<{
 const keys = (result: ReturnType<typeof searchKnowledge>): readonly string[] =>
   result.hits.map(hit => hit.key)
 
-describe('kbsearch: ranking (decision 54)', () => {
+void describe('kbsearch: ranking (decision 54)', () => {
   const library = [
     entry({ key: 'KB-1', title: 'unrelated', body: 'mkdir appears here twice: mkdir and mkdir.' }),
     entry({ key: 'KB-2', title: 'mkdir in the title', body: 'nothing else.' }),
@@ -45,11 +45,11 @@ describe('kbsearch: ranking (decision 54)', () => {
     entry({ key: 'KB-4', title: 'no match', body: 'nothing to see.' }),
   ]
 
-  it('puts a title hit first, then the busiest entry', () => {
+  void it('puts a title hit first, then the busiest entry', () => {
     assert.deepEqual(keys(searchKnowledge(library, 'mkdir')), ['KB-2', 'KB-1', 'KB-3'])
   })
 
-  it('breaks ties by capture time, newest first, and finally by key', () => {
+  void it('breaks ties by capture time, newest first, and finally by key', () => {
     const same = [
       entry({ key: 'KB-9', title: 'a', body: 'needle', capturedAt: '2026-10-15T09:00:00Z' }),
       entry({ key: 'KB-8', title: 'a', body: 'needle', capturedAt: '2026-10-15T10:00:00Z' }),
@@ -58,14 +58,14 @@ describe('kbsearch: ranking (decision 54)', () => {
     assert.deepEqual(keys(searchKnowledge(same, 'needle')), ['KB-7', 'KB-8', 'KB-9'])
   })
 
-  it('is case-insensitive and says nothing for a blank query', () => {
+  void it('is case-insensitive and says nothing for a blank query', () => {
     assert.deepEqual(keys(searchKnowledge(library, 'MKDIR')), ['KB-2', 'KB-1', 'KB-3'])
     const blank = searchKnowledge(library, '   ')
     assert.deepEqual(blank.hits, [])
     assert.equal(blank.matched, 0)
   })
 
-  it('counts what matched even when top_k hides most of it', () => {
+  void it('counts what matched even when top_k hides most of it', () => {
     const many = Array.from({ length: 12 }, (_, index) => entry({
       key: `KB-${String(index + 1)}`,
       title: 'hit',
@@ -78,7 +78,7 @@ describe('kbsearch: ranking (decision 54)', () => {
     assert.match(renderKbSearch(result), /2 more match/)
   })
 
-  it('speaks Chinese only when the CLI asks for it (decision 55)', () => {
+  void it('speaks Chinese only when the CLI asks for it (decision 55)', () => {
     // The English default is the model surface (`jira_kb search`'s rendering), so it must not move.
     const many = Array.from({ length: 12 }, (_, index) => entry({
       key: `KB-${String(index + 1)}`,
@@ -92,8 +92,8 @@ describe('kbsearch: ranking (decision 54)', () => {
   })
 })
 
-describe('kbsearch: a hit is a citation, not the body', () => {
-  it('carries file:line pointing at the first body match, counted from the top of the file', () => {
+void describe('kbsearch: a hit is a citation, not the body', () => {
+  void it('carries file:line pointing at the first body match, counted from the top of the file', () => {
     // Decision 179: the body starts on line 12 here, so a match on the body's 3rd line is line 14.
     const withLines = entry({
       key: 'KB-5',
@@ -108,7 +108,7 @@ describe('kbsearch: a hit is a citation, not the body', () => {
     assert.match(renderKbSearch(searchKnowledge([withLines], 'mkdir')), /knowledge\/windows\/KB-5\.md:14/)
   })
 
-  it('cites the line a reader would actually find, frontmatter included (decision 179)', () => {
+  void it('cites the line a reader would actually find, frontmatter included (decision 179)', () => {
     const text = [
       '---',
       'schema: kb/v1',
@@ -134,13 +134,13 @@ describe('kbsearch: a hit is a citation, not the body', () => {
     assert.equal(text.split('\n')[13], 'mkdir is atomic here', 'the citation must open the line it names')
   })
 
-  it('points at line 1 when only the title matched', () => {
+  void it('points at line 1 when only the title matched', () => {
     const [hit] = searchKnowledge([entry({ key: 'KB-6', title: 'mkdir', body: 'unrelated body' })], 'mkdir').hits
     assert.equal(hit?.line, 1)
     assert.equal(hit?.titleMatch, true)
   })
 
-  it('never returns the body, and caps the snippet', () => {
+  void it('never returns the body, and caps the snippet', () => {
     const long = 'x'.repeat(400) + 'mkdir' + 'y'.repeat(400)
     const result = searchKnowledge([entry({ key: 'KB-7', title: 'long', body: long })], 'mkdir')
     const hit = result.hits[0]
@@ -151,14 +151,14 @@ describe('kbsearch: a hit is a citation, not the body', () => {
     assert.match(hit.snippet, /…/, 'a cut snippet says so')
   })
 
-  it('flattens whitespace so a snippet is one readable line', () => {
+  void it('flattens whitespace so a snippet is one readable line', () => {
     const snippet = snippetAround('a\n\n   b\tc\n', 1, 1)
     assert.equal(snippet, 'a b c')
   })
 })
 
-describe('kbsearch: renderKbEntry is the one-entry view (DPMJ-211)', () => {
-  it('prints identity, lineage, cross-references and the body — one renderer, not inline lines', () => {
+void describe('kbsearch: renderKbEntry is the one-entry view (DPMJ-211)', () => {
+  void it('prints identity, lineage, cross-references and the body — one renderer, not inline lines', () => {
     const one = entry({ key: 'KB-5', domain: 'locking', title: 'locks', body: 'use mkdir\n' })
     const linked = Object.freeze({ ...one, issues: Object.freeze(['DH-1' as never]) })
     const text = renderKbEntry(linked)
@@ -170,8 +170,8 @@ describe('kbsearch: renderKbEntry is the one-entry view (DPMJ-211)', () => {
   })
 })
 
-describe('kbsearch: top_k', () => {
-  it('defaults to 10 and caps at 50 (decision 54)', () => {
+void describe('kbsearch: top_k', () => {
+  void it('defaults to 10 and caps at 50 (decision 54)', () => {
     assert.equal(TOP_K_DEFAULT, 10)
     assert.equal(TOP_K_MAX, 50)
     assert.equal(clampTopK(undefined), 10)

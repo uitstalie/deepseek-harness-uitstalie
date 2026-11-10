@@ -22,51 +22,51 @@ const unwrap = <T>(result: { ok: true; value: T } | { ok: false; error: unknown 
   return result.value
 }
 
-describe('args: values', () => {
-  it('accepts both --flag value and --flag=value', () => {
+void describe('args: values', () => {
+  void it('accepts both --flag value and --flag=value', () => {
     assert.equal(stringFlag(unwrap(parseArgs(['--root', '/a'], spec)).flags, 'root'), '/a')
     assert.equal(stringFlag(unwrap(parseArgs(['--root=/a'], spec)).flags, 'root'), '/a')
   })
 
-  it('treats a boolean as flag, --flag=true, or --flag=false', () => {
+  void it('treats a boolean as flag, --flag=true, or --flag=false', () => {
     assert.equal(booleanFlag(unwrap(parseArgs(['--json'], spec)).flags, 'json'), true)
     assert.equal(booleanFlag(unwrap(parseArgs(['--json=false'], spec)).flags, 'json'), false)
     assert.equal(booleanFlag(unwrap(parseArgs([], spec)).flags, 'json'), false)
   })
 
-  it('parses numbers, and refuses a non-number', () => {
+  void it('parses numbers, and refuses a non-number', () => {
     assert.equal(unwrap(parseArgs(['--count', '3'], spec)).flags.count, 3)
     const bad = parseArgs(['--count', 'many'], spec)
     assert.equal(bad.ok, false)
     if (!bad.ok) assert.match(bad.error.message, /需要一个数字/)
   })
 
-  it('splits a comma list, dropping blanks', () => {
+  void it('splits a comma list, dropping blanks', () => {
     const args = unwrap(parseArgs(['--root', 'a,b , ,c'], spec))
     assert.deepEqual(listFlag(args.flags, 'root'), ['a', 'b', 'c'])
   })
 })
 
-describe('args: splitting what a person typed', () => {
-  it('keeps a quoted value in one piece', () => {
+void describe('args: splitting what a person typed', () => {
+  void it('keeps a quoted value in one piece', () => {
     assert.deepEqual(unwrap(splitTokens('new --project DH --summary "first from the command"')),
       ['new', '--project', 'DH', '--summary', 'first from the command'])
     assert.deepEqual(unwrap(splitTokens("--note 'single quoted'")), ['--note', 'single quoted'])
   })
 
-  it('collapses stray whitespace and handles an empty line', () => {
+  void it('collapses stray whitespace and handles an empty line', () => {
     assert.deepEqual(unwrap(splitTokens('   list    --all  ')), ['list', '--all'])
     assert.deepEqual(unwrap(splitTokens('')), [])
   })
 
-  it('refuses an unclosed quote instead of swallowing the rest of the line (decision 169)', () => {
+  void it('refuses an unclosed quote instead of swallowing the rest of the line (decision 169)', () => {
     const broken = splitTokens('new --summary "never closed')
     assert.equal(broken.ok, false)
     if (!broken.ok) assert.match(broken.error.message, /引号未闭合/u)
   })
 })
-describe('args: mistakes are named', () => {
-  it('names an unknown flag and lists the known ones', () => {
+void describe('args: mistakes are named', () => {
+  void it('names an unknown flag and lists the known ones', () => {
     const result = parseArgs(['--porject', 'DH'], spec)
     assert.equal(result.ok, false)
     if (!result.ok) {
@@ -75,7 +75,7 @@ describe('args: mistakes are named', () => {
     }
   })
 
-  it('refuses a value-taking flag with no value', () => {
+  void it('refuses a value-taking flag with no value', () => {
     for (const argv of [['--root'], ['--root', '--json']]) {
       const result = parseArgs(argv, spec)
       assert.equal(result.ok, false, `expected a refusal for ${argv.join(' ')}`)
@@ -83,7 +83,7 @@ describe('args: mistakes are named', () => {
     }
   })
 
-  it('counts positionals', () => {
+  void it('counts positionals', () => {
     const args = unwrap(parseArgs(['DH-12'], spec, 1))
     assert.deepEqual(args.positionals, ['DH-12'])
     const tooMany = parseArgs(['DH-12', 'extra'], spec, 1)
@@ -91,27 +91,27 @@ describe('args: mistakes are named', () => {
     if (!tooMany.ok) assert.match(tooMany.error.message, /最多接受 1 个位置参数/)
   })
 
-  it('keeps positionals in order around flags', () => {
+  void it('keeps positionals in order around flags', () => {
     const args = unwrap(parseArgs(['DH-12', '--json'], spec, 1))
     assert.deepEqual(args.positionals, ['DH-12'])
     assert.equal(booleanFlag(args.flags, 'json'), true)
   })
 })
 
-describe('args: the boundaries that used to pass silently (decision 169)', () => {
-  it('refuses an empty inline value instead of reading it as zero', () => {
+void describe('args: the boundaries that used to pass silently (decision 169)', () => {
+  void it('refuses an empty inline value instead of reading it as zero', () => {
     const empty = parseArgs(['--count='], spec)
     assert.equal(empty.ok, false)
     if (!empty.ok) assert.match(empty.error.message, /--count 需要一个值/u)
   })
 
-  it('refuses a flag given twice instead of taking the last one', () => {
+  void it('refuses a flag given twice instead of taking the last one', () => {
     const twice = parseArgs(['--root', 'a', '--root', 'b'], spec)
     assert.equal(twice.ok, false)
     if (!twice.ok) assert.match(twice.error.message, /--root 给了不止一次/u)
   })
 
-  it('names a single-dash token as an unknown flag, not as a positional', () => {
+  void it('names a single-dash token as an unknown flag, not as a positional', () => {
     const short = parseArgs(['-h'], spec)
     assert.equal(short.ok, false)
     if (!short.ok) assert.match(short.error.message, /未知的 flag -h/u)

@@ -40,8 +40,8 @@ import {
 } from './store.ts'
 import { type Vocab, parseVocab } from './vocab.ts'
 
-describe('store: the split keeps one implementation (decision 185)', () => {
-  it('re-exports the very same functions commit.ts and counters.ts define', () => {
+void describe('store: the split keeps one implementation (decision 185)', () => {
+  void it('re-exports the very same functions commit.ts and counters.ts define', () => {
     // If somebody re-defined one of these inside store.ts, the re-export would point at the new
     // copy and this identity check would fail.
     assert.equal(commitStoreWrite, commitFromCommit)
@@ -105,16 +105,16 @@ after(async () => {
   for (const dir of emptyRoots) await rm(dir, { recursive: true, force: true })
 })
 
-describe('store: reading', () => {
-  it('loads the vocabulary and the tag registry', async () => {
+void describe('store: reading', () => {
+  void it('loads the vocabulary and the tag registry', async () => {
     assert.deepEqual(unwrap(await loadTags(store)), [{ name: 'demo', description: 'demo tag', aliases: ['demo-tag'] }])
   })
 
-  it('has no comments until one is written', async () => {
+  void it('has no comments until one is written', async () => {
     assert.deepEqual(unwrap(await readComments(store, KEY)), [])
   })
 
-  it('says so when the store has no vocabulary', async () => {
+  void it('says so when the store has no vocabulary', async () => {
     const emptyRoot = await mkdtemp(join(tmpdir(), 'dsh-jira-empty-'))
     emptyRoots.push(emptyRoot)
     const empty = createStore({ root: emptyRoot, machineId: MACHINE })
@@ -123,7 +123,7 @@ describe('store: reading', () => {
     if (!result.ok) assert.match(result.error.message, /no readable config.md/)
   })
 
-  it('honours the lock options the store was built with — including the injected clock (decision 181)', async () => {
+  void it('honours the lock options the store was built with — including the injected clock (decision 181)', async () => {
     // Hold DH-1's lock, then give the store a 37 ms budget on a fake clock. If `transact` dropped
     // `env` (the realistic drift of an inline options copy), the fake clock would never move and
     // the exact `current` assertion below would fail.
@@ -146,8 +146,8 @@ describe('store: reading', () => {
   })
 })
 
-describe('store: a successful transaction lands on disk', () => {
-  it('writes the new issue and reports that it did', async () => {
+void describe('store: a successful transaction lands on disk', () => {
+  void it('writes the new issue and reports that it did', async () => {
     const before = unwrap(await readIssueText(store, KEY))
     const result = unwrap(await transact(store, KEY, LATER, (issue, ctx) =>
       applyUpdate(issue, { summary: 'second' }, ctx)))
@@ -164,11 +164,11 @@ describe('store: a successful transaction lands on disk', () => {
     assert.equal(after.includes('\r'), false)
   })
 
-  it('releases the lock on the way out', async () => {
+  void it('releases the lock on the way out', async () => {
     assert.equal(await readOwner(issueLockPath(root, KEY)), undefined)
   })
 
-  it('a comment-only change does not rewrite the issue file', async () => {
+  void it('a comment-only change does not rewrite the issue file', async () => {
     const before = unwrap(await readIssueText(store, KEY))
     const result = unwrap(await transact(store, KEY, LATER, (issue, ctx) => applyComment(issue, 'a remark', ctx)))
     assert.equal(result.issueWritten, false)
@@ -181,8 +181,8 @@ describe('store: a successful transaction lands on disk', () => {
   })
 })
 
-describe('store: a refused transaction writes nothing at all', () => {
-  it('leaves the file byte-identical when the rules say no', async () => {
+void describe('store: a refused transaction writes nothing at all', () => {
+  void it('leaves the file byte-identical when the rules say no', async () => {
     const before = unwrap(await readIssueText(store, KEY))
     const result = await transact(store, KEY, LATER, (issue, ctx) => applyTransition(issue, 'in_review', {}, ctx))
     assert.equal(result.ok, false)
@@ -192,8 +192,8 @@ describe('store: a refused transaction writes nothing at all', () => {
   })
 })
 
-describe('store: closing and reopening, end to end on disk', () => {
-  it('records the conclusion, then clears it and appends the reason', async () => {
+void describe('store: closing and reopening, end to end on disk', () => {
+  void it('records the conclusion, then clears it and appends the reason', async () => {
     // 2026-10-19 ruling: closing must go through in_progress (no direct todo→closed edge).
     unwrap(await transact(store, KEY, LATER, (issue, ctx) => applyTransition(issue, 'in_progress', {}, ctx)))
     const closed = unwrap(await transact(store, KEY, LATER, (issue, ctx) =>
@@ -223,8 +223,8 @@ describe('store: closing and reopening, end to end on disk', () => {
   })
 })
 
-describe('store: two writers on one issue do not lose an update', () => {
-  it('serialises them and advances the revision twice', async () => {
+void describe('store: two writers on one issue do not lose an update', () => {
+  void it('serialises them and advances the revision twice', async () => {
     const before = unwrap(await readIssueText(store, KEY))
     const revision = Number(/^revision: (\d+)$/m.exec(before)?.[1] ?? '0')
 
@@ -240,7 +240,7 @@ describe('store: two writers on one issue do not lose an update', () => {
   })
 })
 
-describe('store: the write half of decisions 49/46, 44 and 48', () => {
+void describe('store: the write half of decisions 49/46, 44 and 48', () => {
   const path = (): string => storePaths.issue(root, DH, KEY)
   const restore = async (): Promise<void> => {
     const encoded = encodeIssue(buildIssue())
@@ -249,7 +249,7 @@ describe('store: the write half of decisions 49/46, 44 and 48', () => {
   }
   const write = async (text: string): Promise<void> => { await writeTextAtomic(path(), text) }
 
-  it('refuses to write a file carrying an unknown frontmatter key (49)', async () => {
+  void it('refuses to write a file carrying an unknown frontmatter key (49)', async () => {
     await restore()
     const text = unwrap(await readIssueText(store, KEY))
     await write(text.replace('---\n', '---\nfuture_field: 1\n'))
@@ -262,7 +262,7 @@ describe('store: the write half of decisions 49/46, 44 and 48', () => {
     assert.match(unwrap(await readIssueText(store, KEY)), /future_field: 1/, 'and the file is untouched')
   })
 
-  it('refuses to write a file from a version this build does not write (46)', async () => {
+  void it('refuses to write a file from a version this build does not write (46)', async () => {
     await restore()
     await write(unwrap(await readIssueText(store, KEY)).replace('schema: issue/v1', 'schema: issue/v2'))
     const result = await transact(store, KEY, LATER, (issue, ctx) => applyUpdate(issue, { summary: 'x' }, ctx), 'update')
@@ -270,7 +270,7 @@ describe('store: the write half of decisions 49/46, 44 and 48', () => {
     if (!result.ok) assert.match(result.error.message, /the file is issue\/v2/)
   })
 
-  it('refuses a stale compare-and-swap with the typed error, and accepts the current one (44/52)', async () => {
+  void it('refuses a stale compare-and-swap with the typed error, and accepts the current one (44/52)', async () => {
     await restore()
     const stale = await transact(store, KEY, LATER, (issue, ctx) => applyUpdate(issue, { summary: 'x' }, ctx), 'update', { expectedRevision: 99 })
     assert.equal(stale.ok, false)
@@ -282,7 +282,7 @@ describe('store: the write half of decisions 49/46, 44 and 48', () => {
     assert.equal(fresh.ok, true, JSON.stringify(fresh))
   })
 
-  it('refuses an acting identity that would make the audit tuple ambiguous (48/69)', async () => {
+  void it('refuses an acting identity that would make the audit tuple ambiguous (48/69)', async () => {
     await restore()
     for (const bad of ['human:a|b', 'agent:only|two', 'agent:a|b|c|', 'nonsense']) {
       const result = await transact(store, KEY, { by: bad as Identity, at: LATER.at }, (issue, ctx) => applyUpdate(issue, { summary: 'x' }, ctx), 'update')
@@ -294,7 +294,7 @@ describe('store: the write half of decisions 49/46, 44 and 48', () => {
   })
 })
 
-describe("store: §4.13 rule 1 adopts the human's uncommitted work", () => {
+void describe("store: §4.13 rule 1 adopts the human's uncommitted work", () => {
   /**
    * Its own store, with a **known** git identity set locally.
    *
@@ -327,7 +327,7 @@ describe("store: §4.13 rule 1 adopts the human's uncommitted work", () => {
     if (own !== '') await rm(own, { recursive: true, force: true })
   })
 
-  it('leaves another transaction\'s in-flight write alone (decision 165)', async () => {
+  void it('leaves another transaction\'s in-flight write alone (decision 165)', async () => {
     // Another agent holds DH-2's lock and has written the file; its commit has not landed yet. The
     // adoption used to sweep that up under "the human's uncommitted work" — which both mislabelled it
     // and made the other transaction's own commit find nothing to stage.
@@ -355,7 +355,7 @@ describe("store: §4.13 rule 1 adopts the human's uncommitted work", () => {
     if (held.ok) await releaseLock(held.value)
   })
 
-  it('commits the hand edit first, keeps the human as author, then writes its own change', async () => {
+  void it('commits the hand edit first, keeps the human as author, then writes its own change', async () => {
     const path = storePaths.issue(own, DH, KEY)
     const human = await readFile(path, 'utf8')
     await writeFile(path, human.replace(/^summary: .*$/mu, 'summary: 人手改的，还没提交'), 'utf8')
@@ -372,8 +372,8 @@ describe("store: §4.13 rule 1 adopts the human's uncommitted work", () => {
     assert.match(await readFile(path, 'utf8'), /人手改的，还没提交/u, "the human's text survived")
   })
 })
-describe('store: the commit hook runs inside the lock (decision 165)', () => {
-  it('commits whatever the hook prepared, together with the write', async () => {
+void describe('store: the commit hook runs inside the lock (decision 165)', () => {
+  void it('commits whatever the hook prepared, together with the write', async () => {
     // This is how `regenerateAndCommit` closes its plan→write race: it re-checks its tree snapshot
     // inside the lock and re-renders there. The hook is the seam, so it gets its own test.
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-hook-'))
@@ -394,7 +394,7 @@ describe('store: the commit hook runs inside the lock (decision 165)', () => {
     }
   })
 
-  it('reports a hook failure instead of committing half of it', async () => {
+  void it('reports a hook failure instead of committing half of it', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-hookfail-'))
     try {
       await initializeRepository(dir)

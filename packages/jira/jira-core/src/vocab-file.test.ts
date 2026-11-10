@@ -22,13 +22,13 @@ if (!parsed.ok) {
 }
 const { frontmatter, body } = parsed.value
 
-describe('the store vocabulary parses', () => {
-  it('reads the document envelope', () => {
+void describe('the store vocabulary parses', () => {
+  void it('reads the document envelope', () => {
     assert.equal(frontmatter.type, 'config')
     assert.equal(frontmatter.schema, 'config/v1')
   })
 
-  it('reads a block array of flow maps (statuses carry their order)', () => {
+  void it('reads a block array of flow maps (statuses carry their order)', () => {
     assert.deepEqual(frontmatter.statuses, [
       { name: 'todo', order: 10 },
       { name: 'in_progress', order: 20 },
@@ -38,7 +38,7 @@ describe('the store vocabulary parses', () => {
     ])
   })
 
-  it('reads a block array of scalar arrays (the transition table)', () => {
+  void it('reads a block array of scalar arrays (the transition table)', () => {
     const transitions = frontmatter.transitions as readonly (readonly string[])[]
     assert.equal(transitions.length, 10)
     assert.deepEqual(transitions[0], ['todo', 'in_progress'])
@@ -48,7 +48,7 @@ describe('the store vocabulary parses', () => {
     assert.equal(transitions.some(([from, to]) => from === 'todo' && to === 'closed'), false)
   })
 
-  it('ignores the per-entry comments that explain those transitions', () => {
+  void it('ignores the per-entry comments that explain those transitions', () => {
     const transitions = frontmatter.transitions as readonly (readonly string[])[]
     for (const pair of transitions) {
       assert.equal(pair.length, 2)
@@ -56,7 +56,7 @@ describe('the store vocabulary parses', () => {
     }
   })
 
-  it('reads the plain lists', () => {
+  void it('reads the plain lists', () => {
     assert.deepEqual(frontmatter.issue_types, ['task', 'bug'])
     assert.deepEqual(frontmatter.kb_types, ['runbook', 'pitfall', 'howto', 'concept'])
     assert.deepEqual(frontmatter.priorities, ['S1', 'S2', 'S3', 'S4', 'S5'])
@@ -64,12 +64,12 @@ describe('the store vocabulary parses', () => {
     assert.deepEqual(frontmatter.resolutions, ['fixed', 'invalid', 'limitation', 'abandoned'])
   })
 
-  it('keeps the explanatory prose as the body', () => {
+  void it('keeps the explanatory prose as the body', () => {
     assert.match(body, /^# 词表（config\.md）/)
   })
 })
 
-describe('the shapes that grew the subset round-trip', () => {
+void describe('the shapes that grew the subset round-trip', () => {
   const samples: readonly Frontmatter[] = [
     { statuses: [{ name: 'todo', order: 10 }, { name: 'closed', order: 90 }] },
     { transitions: [['todo', 'closed'], ['closed', 'todo']] },
@@ -77,7 +77,7 @@ describe('the shapes that grew the subset round-trip', () => {
   ]
 
   for (const [index, sample] of samples.entries()) {
-    it(`round-trips sample ${index}`, () => {
+    void it(`round-trips sample ${index}`, () => {
       const rendered = renderFrontmatter(sample, 'body\n')
       const reparsed = parseFrontmatter(rendered)
       assert.equal(reparsed.ok, true)
@@ -88,7 +88,7 @@ describe('the shapes that grew the subset round-trip', () => {
     })
   }
 
-  it('still refuses deeper nesting, mixing, and maps inside arrays of arrays', () => {
+  void it('still refuses deeper nesting, mixing, and maps inside arrays of arrays', () => {
     const rejects = [
       '---\nnoval: [[[a]]]\n---\n',
       '---\nmix: [a, {k: 1}]\n---\n',

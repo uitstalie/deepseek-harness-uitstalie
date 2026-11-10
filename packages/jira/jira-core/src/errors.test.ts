@@ -19,17 +19,17 @@ const codesFromDesign = (): readonly string[] => {
   return [...new Set(found)]
 }
 
-describe('error codes', () => {
-  it('has exactly twelve codes, all unique', () => {
+void describe('error codes', () => {
+  void it('has exactly twelve codes, all unique', () => {
     assert.equal(ERROR_CODES.length, 12)
     assert.equal(new Set(ERROR_CODES).size, 12)
   })
 
-  it('matches DESIGN.md exactly (decision 52: one definition, guarded by a test)', () => {
+  void it('matches DESIGN.md exactly (decision 52: one definition, guarded by a test)', () => {
     assert.deepEqual([...codesFromDesign()].sort(), [...ERROR_CODES].sort())
   })
 
-  it('freezes the error value and keeps the optional context out when absent', () => {
+  void it('freezes the error value and keeps the optional context out when absent', () => {
     const plain = jiraError('NOT_FOUND', 'nope')
     assert.equal(Object.isFrozen(plain), true)
     assert.deepEqual(Object.keys(plain), ['code', 'message'])
@@ -38,7 +38,7 @@ describe('error codes', () => {
     assert.deepEqual(Object.keys(withContext), ['code', 'message', 'context'])
   })
 
-  it('builds the codes this slice can produce', () => {
+  void it('builds the codes this slice can produce', () => {
     assert.deepEqual(invalidInput('bad', { line: 3 }), {
       code: 'INVALID_INPUT',
       message: 'bad',
@@ -51,13 +51,13 @@ describe('error codes', () => {
     assert.equal(readOnlySession('subagent').context?.reason, 'subagent')
   })
 
-  it('keeps the frozen wire code for I/O failures, whatever the helper is called (C4)', () => {
+  void it('keeps the frozen wire code for I/O failures, whatever the helper is called (C4)', () => {
     const read = ioFailed('cannot read the issue file', { path: 'x' })
     assert.equal(read.code, 'WRITE_FAILED')
     assert.equal(read.message, 'cannot read the issue file')
   })
 
-  it('renders the model-facing form (decision 55: English)', () => {
+  void it('renders the model-facing form (decision 55: English)', () => {
     assert.equal(formatError(jiraError('NOT_FOUND', 'issue DH-1 not found')), 'NOT_FOUND: issue DH-1 not found')
     assert.equal(formatError(staleRevision(1, 2)), 'STALE_REVISION: revision mismatch: expected 1, found 2 ({"expected":1,"actual":2})')
   })

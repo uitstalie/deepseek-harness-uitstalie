@@ -32,8 +32,8 @@ const vocab = (() => {
   return parsed.ok ? parsed.value : (undefined as never)
 })()
 
-describe('validate: summary', () => {
-  it('accepts a trimmed single line and refuses the three ways it can be wrong', () => {
+void describe('validate: summary', () => {
+  void it('accepts a trimmed single line and refuses the three ways it can be wrong', () => {
     assert.equal(validateSummary('  hello  ').ok, true)
     const empty = validateSummary('   ')
     assert.equal(empty.ok, false)
@@ -45,8 +45,8 @@ describe('validate: summary', () => {
   })
 })
 
-describe('validate: identity', () => {
-  it('needs four non-empty components for an agent, and no separator for a human', () => {
+void describe('validate: identity', () => {
+  void it('needs four non-empty components for an agent, and no separator for a human', () => {
     assert.equal(validateIdentity('agent:deepseek|dsh|m-1|s-1', 'by').ok, true)
     assert.equal(validateIdentity('human:daiqc', 'by').ok, true)
     for (const bad of ['agent:deepseek|dsh|m-1', 'agent:a|b|c|', 'human:a|b', 'nobody:x']) {
@@ -57,8 +57,8 @@ describe('validate: identity', () => {
   })
 })
 
-describe('validate: key, type, priority, status', () => {
-  it('refuses what is not a key, and lists what is allowed', () => {
+void describe('validate: key, type, priority, status', () => {
+  void it('refuses what is not a key, and lists what is allowed', () => {
     assert.equal(validateKey('DH-12').ok, true)
     assert.equal(validateKey('dh-12').ok, false)
     assert.equal(validateKey('DH-').ok, false)
@@ -80,8 +80,8 @@ describe('validate: key, type, priority, status', () => {
   })
 })
 
-describe('validate: tags', () => {
-  it('lower-cases, de-duplicates, and refuses an unregistered or malformed tag', () => {
+void describe('validate: tags', () => {
+  void it('lower-cases, de-duplicates, and refuses an unregistered or malformed tag', () => {
     const known = [{ name: 'demo' }, { name: 'demo-two' }]
     const ok = validateTags(known, ['DEMO', ' demo ', 'demo-two'])
     assert.equal(ok.ok, true)
@@ -93,8 +93,8 @@ describe('validate: tags', () => {
   })
 })
 
-describe('validate: resolutions', () => {
-  it('requires one for a closed status and forbids one outside it', () => {
+void describe('validate: resolutions', () => {
+  void it('requires one for a closed status and forbids one outside it', () => {
     // The closed set is its own list in the vocabulary, not a flag on a status.
     const closed = vocab.closed[0] ?? ''
     const open = vocab.statuses.map(entry => entry.name).find(name => !vocab.closed.includes(name)) ?? ''
@@ -110,7 +110,7 @@ describe('validate: resolutions', () => {
     assert.equal(validateResolution(vocab, closed, 'not-a-resolution').ok, false, 'and it has to be a known one')
   })
 
-  it('pairs "limitation" with a note, and bounds the note', () => {
+  void it('pairs "limitation" with a note, and bounds the note', () => {
     const missing = validateResolutionNote('limitation', undefined)
     assert.equal(missing.ok, false)
     if (!missing.ok) assert.equal(missing.error.code, 'INVALID_INPUT')

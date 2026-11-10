@@ -17,15 +17,15 @@ import { HANDLERS } from './commands/index.ts'
 const HANDLED_IN_PREFLIGHT: readonly string[] = ['help']
 const SHARED_FILES: readonly string[] = ['index.ts']
 
-describe('cli/commands: the table and the registry agree (decision 187)', () => {
-  it('every command in the table has a handler', () => {
+void describe('cli/commands: the table and the registry agree (decision 187)', () => {
+  void it('every command in the table has a handler', () => {
     const missing = COMMAND_NAMES
       .filter(name => !HANDLED_IN_PREFLIGHT.includes(name))
       .filter(name => HANDLERS[name] === undefined)
     assert.deepEqual(missing, [], 'a table entry without a handler is a runtime "未处理的命令"')
   })
 
-  it('every handler file is one command, named after it', () => {
+  void it('every handler file is one command, named after it', () => {
     const files = readdirSync('src/commands')
       .filter(name => name.endsWith('.ts'))
       .filter(name => !name.endsWith('.test.ts') && !SHARED_FILES.includes(name))

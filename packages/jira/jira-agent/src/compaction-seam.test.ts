@@ -69,8 +69,8 @@ const seed = async (agent: Awaited<ReturnType<AgentLoop['createAgent']>>['agent'
   await agent.whenIdle()
 }
 
-describe('superagent: compaction seam scope', () => {
-  it('uses the resolved Agent context when the plugin root cannot see compaction', async () => {
+void describe('superagent: compaction seam scope', () => {
+  void it('uses the resolved Agent context when the plugin root cannot see compaction', async () => {
     const { root, agent } = await mount(true)
     assert.notEqual(agent.ctx.get('compaction'), undefined, 'the agent setup mounted the backend')
     // The product root cannot see the preset-isolate service. Model that exact view: the plugin
@@ -97,7 +97,7 @@ describe('superagent: compaction seam scope', () => {
     )
   })
 
-  it('returns a structured no-seam result when neither root nor agent exposes compaction', async () => {
+  void it('returns a structured no-seam result when neither root nor agent exposes compaction', async () => {
     const { root, agent } = await mount(false)
     await seed(agent)
     const outcome = await compactWorkspaceSession(root, {

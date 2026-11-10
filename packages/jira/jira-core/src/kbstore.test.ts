@@ -43,8 +43,8 @@ after(async () => {
   if (root !== '') await removeTree(root)
 })
 
-describe('kbstore: creating', () => {
-  it('allocates a KB key and writes the file where the domain says', async () => {
+void describe('kbstore: creating', () => {
+  void it('allocates a KB key and writes the file where the domain says', async () => {
     const created = unwrap(await createKnowledge(store, ACTOR, ORIGIN, {
       domain: 'locking',
       kbType: 'pitfall',
@@ -64,7 +64,7 @@ describe('kbstore: creating', () => {
     assert.equal(text.includes('\r'), false)
   })
 
-  it('numbers the next entry in the same space', async () => {
+  void it('numbers the next entry in the same space', async () => {
     const second = unwrap(await createKnowledge(store, LATER, ORIGIN, {
       domain: 'knowledge',
       kbType: 'concept',
@@ -73,7 +73,7 @@ describe('kbstore: creating', () => {
     assert.equal(second.entry.key, 'KB-2')
   })
 
-  it('refuses a bad entry and writes nothing', async () => {
+  void it('refuses a bad entry and writes nothing', async () => {
     const cases = [
       [{ domain: 'Bad', kbType: 'concept', title: 'x' }, /must be lower-kebab/],
       [{ domain: 'locking', kbType: 'note', title: 'x' }, /is not one of: runbook/],
@@ -88,7 +88,7 @@ describe('kbstore: creating', () => {
     }
   })
 
-  it('does not burn a KB number on a refused draft (decision 190)', async () => {
+  void it('does not burn a KB number on a refused draft (decision 190)', async () => {
     // KB-1 and KB-2 exist from the tests above; a refusal must leave the counter untouched.
     const refused = await createKnowledge(store, LATER, ORIGIN, { domain: 'locking', kbType: 'note', title: 'x' })
     assert.equal(refused.ok, false)
@@ -108,8 +108,8 @@ describe('kbstore: creating', () => {
   })
 })
 
-describe('kbstore: reading', () => {
-  it('finds an entry by key without being told its domain', async () => {
+void describe('kbstore: reading', () => {
+  void it('finds an entry by key without being told its domain', async () => {
     const found = unwrap(await findKnowledge(store, 'KB-1' as never))
     assert.equal(found.entry.domain, 'locking')
     assert.equal(found.path, 'knowledge/locking/KB-1.md')
@@ -117,13 +117,13 @@ describe('kbstore: reading', () => {
     assert.equal(found.entry.source.machineId, 'm-test')
   })
 
-  it('reports a missing key as NOT_FOUND', async () => {
+  void it('reports a missing key as NOT_FOUND', async () => {
     const missing = await findKnowledge(store, 'KB-99' as never)
     assert.equal(missing.ok, false)
     if (!missing.ok) assert.equal(missing.error.code, 'NOT_FOUND')
   })
 
-  it('never mistakes the generated index.md for an entry', async () => {
+  void it('never mistakes the generated index.md for an entry', async () => {
     // The same trap `tags/index.md` sprang once (decision 120): a generated file living inside a
     // directory that is otherwise a registry.
     await writeFile(join(root, 'knowledge', 'locking', 'index.md'), '# Domain index\n', 'utf8')
@@ -142,7 +142,7 @@ describe('kbstore: reading', () => {
     )
   })
 
-  it('reports an entry in an illegal domain as broken, and one whose frontmatter does not decode', async () => {
+  void it('reports an entry in an illegal domain as broken, and one whose frontmatter does not decode', async () => {
     await mkdir(join(root, 'knowledge', 'BadDomain'), { recursive: true })
     await writeFile(join(root, 'knowledge', 'BadDomain', 'KB-9.md'), '---\ntitle: x\n---\n', 'utf8')
     const listing = unwrap(await listKnowledge(store))
@@ -155,8 +155,8 @@ describe('kbstore: reading', () => {
   })
 })
 
-describe('kbstore: updating', () => {
-  it('rewrites the entry, keeping the source it was captured with', async () => {
+void describe('kbstore: updating', () => {
+  void it('rewrites the entry, keeping the source it was captured with', async () => {
     const updated = unwrap(await updateKnowledge(store, 'KB-1' as never, LATER, ORIGIN, {
       title: 'Windows 上的锁要用 mkdir（已修）',
       tags: ['windows', 'locking'],
@@ -168,7 +168,7 @@ describe('kbstore: updating', () => {
     assert.equal(updated.committed, true)
   })
 
-  it('refuses an update that breaks the vocabulary, leaving the file alone', async () => {
+  void it('refuses an update that breaks the vocabulary, leaving the file alone', async () => {
     const before = await readFile(join(root, 'knowledge', 'locking', 'KB-1.md'), 'utf8')
     const bad = await updateKnowledge(store, 'KB-1' as never, LATER, ORIGIN, { kbType: 'nope' })
     assert.equal(bad.ok, false)
@@ -176,8 +176,8 @@ describe('kbstore: updating', () => {
   })
 })
 
-describe('kbstore: searching', () => {
-  it('finds by text and returns citations rather than bodies', async () => {
+void describe('kbstore: searching', () => {
+  void it('finds by text and returns citations rather than bodies', async () => {
     const result = unwrap(await searchKnowledgeIn(store, 'mkdir'))
     assert.ok(result.hits.length >= 1)
     const hit = result.hits[0]
@@ -187,15 +187,15 @@ describe('kbstore: searching', () => {
     assert.equal(hit === undefined ? true : Object.hasOwn(hit, 'body'), false)
   })
 
-  it('says nothing for a query nothing matches', async () => {
+  void it('says nothing for a query nothing matches', async () => {
     const result = unwrap(await searchKnowledgeIn(store, 'zzzz-not-here'))
     assert.deepEqual(result.hits, [])
     assert.equal(result.matched, 0)
   })
 })
 
-describe('kbstore: the source quadruple comes from the caller', () => {
-  it('derives the machine from the identity tuple (decision 48)', () => {
+void describe('kbstore: the source quadruple comes from the caller', () => {
+  void it('derives the machine from the identity tuple (decision 48)', () => {
     assert.equal(originFromIdentity('agent:deepseek|dsh|m-abc|s-1' as never, 'fallback').machineId, 'm-abc')
     assert.equal(originFromIdentity(undefined, 'fallback').machineId, 'fallback')
     assert.equal(originFromIdentity('human:daiqc' as never, 'fallback').machineId, 'fallback', 'a human identity carries no machine')
@@ -204,14 +204,14 @@ describe('kbstore: the source quadruple comes from the caller', () => {
     assert.equal(originFromIdentity(undefined, 'm-abc', 'dsh', 'win32').os, 'win32')
   })
 
-  it('records the git identity in the store, not in the entry', async () => {
+  void it('records the git identity in the store, not in the entry', async () => {
     // A sanity check on the store side: the KB file is tracked and the tree is clean after commit.
     const status = await runGit(root, ['status', '--porcelain'])
     assert.equal(status.code, 0)
     assert.equal(status.stdout.includes('knowledge/'), false, `uncommitted knowledge: ${status.stdout}`)
   })
 
-  it('keeps the counters file in the KB space', async () => {
+  void it('keeps the counters file in the KB space', async () => {
     const counters = JSON.parse(await readFile(storePaths.counters(root, 'm-test'), 'utf8')) as {
       projects: Record<string, { next: number }>
     }
@@ -220,8 +220,8 @@ describe('kbstore: the source quadruple comes from the caller', () => {
   })
 })
 
-describe('kbstore: the two key spaces do not get confused (decision 194)', () => {
-  it('refuses an `issues` citation that is really a knowledge entry', async () => {
+void describe('kbstore: the two key spaces do not get confused (decision 194)', () => {
+  void it('refuses an `issues` citation that is really a knowledge entry', async () => {
     // The exact shape that turned the ledger's CI red three times: KB-14 cites `[KB-12]`, and KB-12 is
     // another knowledge entry — `lint` only said so after the write had landed.
     const cited = unwrap(await createKnowledge(store, ACTOR, ORIGIN, {
@@ -239,7 +239,7 @@ describe('kbstore: the two key spaces do not get confused (decision 194)', () =>
     }
   })
 
-  it('still accepts a citation to an issue that has not arrived yet', async () => {
+  void it('still accepts a citation to an issue that has not arrived yet', async () => {
     // Two machines merge a reference before the issue exists; refusing that would break the workflow the
     // dangling check exists to *report*, not to forbid.
     const written = await createKnowledge(store, ACTOR, ORIGIN, {
@@ -250,8 +250,8 @@ describe('kbstore: the two key spaces do not get confused (decision 194)', () =>
   })
 })
 
-describe('kbstore: a citation leaves the issue pointing back (decision 198)', () => {
-  it('mirrors the knowledge key into the cited issue\'s kb_refs', async () => {
+void describe('kbstore: a citation leaves the issue pointing back (decision 198)', () => {
+  void it('mirrors the knowledge key into the cited issue\'s kb_refs', async () => {
     const issue = unwrap(await createInStore(store, 'DH', LATER, { issueType: 'task', summary: 'mirrored' }))
     const created = unwrap(await createKnowledge(store, LATER, ORIGIN, {
       domain: 'locking', kbType: 'pitfall', title: 'leaves a trail', body: 'x\n',
@@ -267,7 +267,7 @@ describe('kbstore: a citation leaves the issue pointing back (decision 198)', ()
     assert.deepEqual(again.mirror?.updated, [], 'already mirrored — no second write')
   })
 
-  it('reports a citation it could not mirror instead of hiding it', async () => {
+  void it('reports a citation it could not mirror instead of hiding it', async () => {
     const created = unwrap(await createKnowledge(store, LATER, ORIGIN, {
       domain: 'locking', kbType: 'pitfall', title: 'dangling', body: 'y\n', issues: ['DH-999' as never],
     }))

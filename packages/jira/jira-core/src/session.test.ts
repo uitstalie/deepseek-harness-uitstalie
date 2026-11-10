@@ -60,8 +60,8 @@ after(async () => {
   for (const directory of work) await removeTree(directory)
 })
 
-describe('session: the record is always inside sessions/ (decision 167)', () => {
-  it('sanitises the id into one path segment', () => {
+void describe('session: the record is always inside sessions/ (decision 167)', () => {
+  void it('sanitises the id into one path segment', () => {
     assert.match(sessionPath('s-1'), /^sessions\/s-1\.md$/u)
     // The id comes from the host, but a hostile one must not write outside `sessions/`.
     // The property is "one segment under sessions/", not a particular spelling: dots inside a file name
@@ -75,7 +75,7 @@ describe('session: the record is always inside sessions/ (decision 167)', () => 
   })
 })
 
-describe('session: the record is written once (decision 10)', () => {
+void describe('session: the record is written once (decision 10)', () => {
   const record = {
     id: SESSION,
     tool: 'dsh',
@@ -85,7 +85,7 @@ describe('session: the record is written once (decision 10)', () => {
     toolEvidence: 'DSH_HOME=1',
   } as const
 
-  it('writes sessions/<id>.md, and leaves it alone the second time', async () => {
+  void it('writes sessions/<id>.md, and leaves it alone the second time', async () => {
     const first = unwrap(await ensureSessionRecord(store, ACTOR, record))
     assert.equal(first.written, true, 'the first write lands')
 
@@ -104,11 +104,11 @@ describe('session: the record is written once (decision 10)', () => {
     assert.equal(await readFile(path, 'utf8'), text)
   })
 
-  it('says nothing about a session that never wrote', async () => {
+  void it('says nothing about a session that never wrote', async () => {
     assert.equal(unwrap(await readSession(store, 'never-wrote')), undefined)
   })
 
-  it('round-trips, and flags keys it does not know', () => {
+  void it('round-trips, and flags keys it does not know', () => {
     const decoded = unwrap(decodeSession(`${encodeSession({ id: 'x', tool: 'dsh', machineId: 'm', startedAt: AT })}\nunknown_key: 1\n`, 'x'))
     assert.equal(decoded.record.tool, 'dsh')
     assert.deepEqual(decoded.unknownKeys, [])
@@ -128,17 +128,17 @@ body
     assert.deepEqual(withUnknown.unknownKeys, ['nope'])
   })
 
-  it('lists what is on disk, newest first', async () => {
+  void it('lists what is on disk, newest first', async () => {
     unwrap(await ensureSessionRecord(store, ACTOR, { id: 'sess-older', tool: 'dsh', machineId: 'cccccccc', startedAt: '2026-10-01T00:00:00Z' as Timestamp }))
     const listed = unwrap(await listSessions(store))
     assert.deepEqual(listed.map(session => session.id), [SESSION, 'sess-older'])
   })
 })
 
-describe('session: the close-out scan (decisions 31/100)', () => {
+void describe('session: the close-out scan (decisions 31/100)', () => {
   let key = ''
 
-  it('records the commits that mention an issue, once', async () => {
+  void it('records the commits that mention an issue, once', async () => {
     const created = unwrap(await createInStore(store, 'DH', ACTOR, { issueType: 'task', summary: 'scanned work' }))
     key = String(created.key)
     const from = (await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim()
@@ -167,7 +167,7 @@ describe('session: the close-out scan (decisions 31/100)', () => {
     assert.equal(unwrap(await readComments(store, key as never)).length, 1, 'no duplicate comment')
   })
 
-  it('reports a new commit even after an earlier scan', async () => {
+  void it('reports a new commit even after an earlier scan', async () => {
     const head = (await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim()
     await runGit(root, ['commit', '--allow-empty', '-m', `${key}: more work`])
     const scanned = unwrap(await sessionScan(store, ACTOR, { sessionId: SESSION, from: head }))
@@ -176,8 +176,8 @@ describe('session: the close-out scan (decisions 31/100)', () => {
   })
 })
 
-describe('session: the watermark', () => {
-  it('lives outside the store, and survives being corrupt', async () => {
+void describe('session: the watermark', () => {
+  void it('lives outside the store, and survives being corrupt', async () => {
     const stateDir = await mkdtemp(join(tmpdir(), 'dsh-jira-state-'))
     work.push(stateDir)
     const path = scanWatermarkPath(stateDir, 'sess/with:odd chars')
@@ -193,7 +193,7 @@ describe('session: the watermark', () => {
     assert.deepEqual(await readWatermark(path), { scans: 0 }, 'a corrupt watermark is not fatal')
   })
 
-  it('writes through the io boundary: a failed write is a Result, not an exception (decision 180)', async () => {
+  void it('writes through the io boundary: a failed write is a Result, not an exception (decision 180)', async () => {
     // Before decision 180 this was a raw `mkdir` + `writeFile` that **threw** past the caller;
     // it also bypassed the BOM/CR refusal. The blocked parent makes the write fail on cue.
     const stateDir = await mkdtemp(join(tmpdir(), 'dsh-jira-wm-'))

@@ -33,19 +33,19 @@ const issue = (overrides: Partial<Issue> = {}): Issue => Object.freeze({
   ...overrides,
 })
 
-describe('render: the lease, said out loud (decision 61)', () => {
-  it('says nothing when nobody holds the issue', () => {
+void describe('render: the lease, said out loud (decision 61)', () => {
+  void it('says nothing when nobody holds the issue', () => {
     assert.equal(leaseNote(issue()), undefined)
     assert.equal(leaseNote(issue({ leaseExpiresAt: AT })), undefined, 'a lease without a holder is not a claim')
   })
 
-  it('names the holder and the expiry while the lease is live', () => {
+  void it('names the holder and the expiry while the lease is live', () => {
     const leased = issue({ assignee: 'agent:one|dsh|m-a|s-1' as Identity, claimedAt: AT, leaseExpiresAt: '2026-10-15T14:00:00Z' as Timestamp })
     assert.equal(leaseNote(leased, '2026-10-15T13:00:00Z' as Timestamp), 'lease until 2026-10-15T14:00:00Z')
     assert.match(renderIssueHuman(leased, [], '2026-10-15T13:00:00Z' as Timestamp), /assignee: agent:one\|dsh\|m-a\|s-1 \(lease until 2026-10-15T14:00:00Z\)/)
   })
 
-  it('says an expired claim is reclaimable — the sentence the design asks for', () => {
+  void it('says an expired claim is reclaimable — the sentence the design asks for', () => {
     const lapsed = issue({ assignee: 'agent:one|dsh|m-a|s-1' as Identity, claimedAt: AT, leaseExpiresAt: '2026-10-15T14:00:00Z' as Timestamp })
     assert.equal(
       leaseNote(lapsed, '2026-10-15T14:00:01Z' as Timestamp),
@@ -56,15 +56,15 @@ describe('render: the lease, said out loud (decision 61)', () => {
     assert.match(renderIssueHuman(lapsed, [], '2026-10-15T15:00:00Z' as Timestamp), /reclaimable/)
   })
 
-  it('still shows the expiry when no clock was supplied', () => {
+  void it('still shows the expiry when no clock was supplied', () => {
     const leased = issue({ assignee: 'agent:one|dsh|m-a|s-1' as Identity, leaseExpiresAt: '2026-10-15T14:00:00Z' as Timestamp })
     assert.equal(leaseNote(leased), 'lease until 2026-10-15T14:00:00Z')
     assert.match(renderIssueHuman(leased), /lease until 2026-10-15T14:00:00Z/)
   })
 })
 
-describe('render: the CLI gets the same facts in Chinese (decision 55)', () => {
-  it('translates the labels and leaves every piece of data alone', () => {
+void describe('render: the CLI gets the same facts in Chinese (decision 55)', () => {
+  void it('translates the labels and leaves every piece of data alone', () => {
     const leased = issue({ assignee: 'agent:one|dsh|m-a|s-1' as Identity, leaseExpiresAt: '2026-10-15T14:00:00Z' as Timestamp })
     const text = renderIssueHuman(leased, [], '2026-10-15T13:00:00Z' as Timestamp, 'zh')
     assert.match(text, /^DH-1 {2}\[todo\] {2}S3 {2}a leased issue$/m, 'the header is data')
@@ -73,7 +73,7 @@ describe('render: the CLI gets the same facts in Chinese (decision 55)', () => {
     assert.match(text, /报告者：human:daiqc/)
   })
 
-  it('says an expired claim is reclaimable in Chinese too', () => {
+  void it('says an expired claim is reclaimable in Chinese too', () => {
     const lapsed = issue({ assignee: 'agent:one|dsh|m-a|s-1' as Identity, leaseExpiresAt: '2026-10-15T14:00:00Z' as Timestamp })
     assert.equal(
       leaseNote(lapsed, '2026-10-15T15:00:00Z' as Timestamp, 'zh'),
@@ -82,14 +82,14 @@ describe('render: the CLI gets the same facts in Chinese (decision 55)', () => {
     assert.match(renderIssueHuman(lapsed, [], '2026-10-15T15:00:00Z' as Timestamp, 'zh'), /可接管/)
   })
 
-  it('defaults to English, because the plugin renders the same issue for a model', () => {
+  void it('defaults to English, because the plugin renders the same issue for a model', () => {
     assert.match(renderIssueHuman(issue(), [], undefined, 'en'), /project: DH {3}type: task/)
     assert.match(renderIssueHuman(issue()), /project: DH {3}type: task/)
   })
 })
 
-describe('render: the JSON wire is snake_case (decisions 41/159)', () => {
-  it('renames keys all the way down and leaves values alone', () => {
+void describe('render: the JSON wire is snake_case (decisions 41/159)', () => {
+  void it('renames keys all the way down and leaves values alone', () => {
     assert.deepEqual(toWire({ issueType: 'task', kbRefs: ['KB-1'], nested: [{ createdAt: 'x' }] }), {
       issue_type: 'task',
       kb_refs: ['KB-1'],
@@ -101,7 +101,7 @@ describe('render: the JSON wire is snake_case (decisions 41/159)', () => {
     assert.equal(toWire(null), null)
   })
 
-  it('renders an issue with snake_case keys, and the comments too', () => {
+  void it('renders an issue with snake_case keys, and the comments too', () => {
     const text = renderIssueJson(issue(), [{ id: 'c-a1b2-1', author: 'human:x' as Identity, revision: 1, createdAt: '2026-10-15T12:00:00Z' as Timestamp, body: 'hi' }])
     const parsed = JSON.parse(text) as Record<string, unknown>
     assert.equal(Object.hasOwn(parsed, 'issue_type'), true)
@@ -112,8 +112,8 @@ describe('render: the JSON wire is snake_case (decisions 41/159)', () => {
   })
 })
 
-describe('render: fromWire undoes toWire (decision 159)', () => {
-  it('round-trips every shape the tools return, key for key', () => {
+void describe('render: fromWire undoes toWire (decision 159)', () => {
+  void it('round-trips every shape the tools return, key for key', () => {
     // The host hands a tool's **wire** value back to `output.render`, and the renderers read
     // entity-shaped keys — `issue.kbRefs`, not `issue.kb_refs`. That mismatch crashed a live
     // `get` on 2026-10-17, so the round-trip is asserted on the four real shapes, not on toys.
@@ -130,14 +130,14 @@ describe('render: fromWire undoes toWire (decision 159)', () => {
     for (const shape of shapes) assert.deepEqual(fromWire(toWire(shape)), shape)
   })
 
-  it('leaves keys without an underscore alone, and passes scalars through', () => {
+  void it('leaves keys without an underscore alone, and passes scalars through', () => {
     assert.deepEqual(fromWire({ summary: 'a', ok: true }), { summary: 'a', ok: true })
     assert.equal(fromWire(42), 42)
     assert.equal(fromWire(null), null)
     assert.deepEqual(fromWire(['a_b', 1]), ['a_b', 1], 'array items are values, not keys')
   })
 
-  it('does not invent fields a payload never had', () => {
+  void it('does not invent fields a payload never had', () => {
     // A partial payload stays partial — reading `kbRefs` off a value that never had it is exactly
     // the undefined-dereference that crashed the live render, so the absence itself is asserted.
     const back = fromWire(toWire({ key: 'DH-1', issueType: 'task' })) as Record<string, unknown>
@@ -145,8 +145,8 @@ describe('render: fromWire undoes toWire (decision 159)', () => {
     assert.equal(Object.hasOwn(back, 'kbRefs'), false)
   })
 })
-describe('render: the model-facing budget says when it cut (decision 84)', () => {
-  it('passes short text through, and a long one is cut with a note, not mid-sentence silence', () => {
+void describe('render: the model-facing budget says when it cut (decision 84)', () => {
+  void it('passes short text through, and a long one is cut with a note, not mid-sentence silence', () => {
     assert.equal(clampText('short'), 'short')
     assert.equal(clampText('x'.repeat(MODEL_TEXT_BUDGET)), 'x'.repeat(MODEL_TEXT_BUDGET), 'exactly at the budget is not truncated')
     const long = clampText('y'.repeat(MODEL_TEXT_BUDGET + 10))
@@ -154,8 +154,8 @@ describe('render: the model-facing budget says when it cut (decision 84)', () =>
     assert.match(long, /… \(truncated: 8202 characters total\)/u, 'the reader is told the answer is partial')
   })
 })
-describe('render: the human surface shows local time (decision 195)', () => {
-  it('keeps UTC and adds the local clock with its offset', () => {
+void describe('render: the human surface shows local time (decision 195)', () => {
+  void it('keeps UTC and adds the local clock with its offset', () => {
     const rendered = withLocalTime('2026-10-19T11:37:43Z', new Date('2026-10-19T11:37:43Z'))
     assert.match(rendered, /^2026-10-19T11:37:43Z（本地 \d{4}-\d{2}-\d{2} \d{2}:\d{2} [+-]\d{2}:\d{2}）$/u)
     // The stored value is untouched — this is presentation only (decision 47).

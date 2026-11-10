@@ -18,15 +18,15 @@ import { storePaths } from './store.ts'
 
 const KEY = 'DH-12' as IssueKey
 
-describe('path rules: one source, every surface agrees (decision 182)', () => {
-  it('the relative rules are literal and posix (they double as git pathspecs)', () => {
+void describe('path rules: one source, every surface agrees (decision 182)', () => {
+  void it('the relative rules are literal and posix (they double as git pathspecs)', () => {
     assert.equal(issueRelPath('DH', KEY), 'projects/DH/issues/DH-12.md')
     assert.equal(commentRelPath('DH', KEY), 'projects/DH/comments/DH-12.md')
     assert.equal(projectRelPath('DH'), 'projects/DH/project.md')
     assert.equal(/\\/u.test(issueRelPath('DH', KEY)), false, 'no backslash may ever appear')
   })
 
-  it('the absolute forms are the relative rule plus a root — from io and from storePaths alike', () => {
+  void it('the absolute forms are the relative rule plus a root — from io and from storePaths alike', () => {
     const store = fileStore(join('the-root'))
     const absoluteIssue = join('the-root', 'projects', 'DH', 'issues', 'DH-12.md')
     const absoluteComments = join('the-root', 'projects', 'DH', 'comments', 'DH-12.md')
@@ -39,14 +39,14 @@ describe('path rules: one source, every surface agrees (decision 182)', () => {
     assert.equal(projectPath(store, 'DH'), absoluteProject)
   })
 
-  it('absolute and relative agree with each other after splitting on posix separators', () => {
+  void it('absolute and relative agree with each other after splitting on posix separators', () => {
     const store = fileStore(join('the-root'))
     assert.equal(issuePath(store, 'DH', KEY), join('the-root', ...issueRelPath('DH', KEY).split('/')))
     assert.equal(commentsPath(store, 'DH', KEY), join('the-root', ...commentRelPath('DH', KEY).split('/')))
     assert.equal(projectPath(store, 'DH'), join('the-root', ...projectRelPath('DH').split('/')))
   })
 
-  it('projectPath has exactly one meaning now: the absolute one (decision 182)', () => {
+  void it('projectPath has exactly one meaning now: the absolute one (decision 182)', () => {
     // The old store-relative `projectPath` in project.ts was renamed `projectRelPath`; if the
     // ambiguous name ever grows a second meaning again, this import-shape check breaks.
     assert.equal(typeof projectRelPath, 'function', 'the relative form keeps its new name')

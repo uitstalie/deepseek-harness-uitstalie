@@ -45,8 +45,8 @@ after(async () => {
   for (const directory of work) await rm(directory, { recursive: true, force: true })
 })
 
-describe('tagstore: registering a tag (decision 26)', () => {
-  it('writes tags/<name>.md in the shape the reader already expects', async () => {
+void describe('tagstore: registering a tag (decision 26)', () => {
+  void it('writes tags/<name>.md in the shape the reader already expects', async () => {
     const created = unwrap(await createTag(store, ACTOR, {
       name: 'windows',
       description: 'work that only happens on Windows',
@@ -72,13 +72,13 @@ describe('tagstore: registering a tag (decision 26)', () => {
     assert.deepEqual(report.missingDescription, [])
   })
 
-  it('normalises the name it is given, and keeps the aliases folded', async () => {
+  void it('normalises the name it is given, and keeps the aliases folded', async () => {
     const created = unwrap(await createTag(store, ACTOR, { name: '  Windows-CI ', description: 'the CI runners', aliases: ['CI ', ''] }))
     assert.equal(created.tag.name, 'windows-ci')
     assert.deepEqual(created.tag.aliases, ['ci'])
   })
 
-  it('refuses a duplicate, quoting the description already there', async () => {
+  void it('refuses a duplicate, quoting the description already there', async () => {
     const again = await createTag(store, ACTOR, { name: 'windows', description: 'something else' })
     assert.equal(again.ok, false)
     if (!again.ok) {
@@ -87,14 +87,14 @@ describe('tagstore: registering a tag (decision 26)', () => {
     }
   })
 
-  it('refuses a missing description, because that is the whole point of the registry', async () => {
+  void it('refuses a missing description, because that is the whole point of the registry', async () => {
     const blank = await createTag(store, ACTOR, { name: 'undocumented', description: '   ' })
     assert.equal(blank.ok, false)
     if (!blank.ok) assert.match(blank.error.message, /needs a description/)
     assert.equal(unwrap(await readTag(store, 'undocumented')), undefined, 'and nothing was written')
   })
 
-  it('refuses a name that is not a tag (decision 76)', async () => {
+  void it('refuses a name that is not a tag (decision 76)', async () => {
     // `Windows` and `UPPER` are legal after lowercasing; these shapes cannot be rescued.
     for (const bad of ['has space', '-leading', '', 'a_b', 'x'.repeat(33)]) {
       const refused = await createTag(store, ACTOR, { name: bad, description: 'x' })
@@ -103,7 +103,7 @@ describe('tagstore: registering a tag (decision 26)', () => {
     }
   })
 
-  it('round-trips through its own codec, and flags an unknown key', () => {
+  void it('round-trips through its own codec, and flags an unknown key', () => {
     const text = encodeTag({ name: 'demo', description: 'a demo tag', createdBy: 'human:daiqc', createdAt: AT })
     const decoded = unwrap(decodeTag(text, 'demo'))
     assert.equal(decoded.record.description, 'a demo tag')

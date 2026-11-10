@@ -49,15 +49,15 @@ after(async () => {
   for (const dir of tempDirs) await removeTree(dir)
 })
 
-describe('cli: usage and mistakes', () => {
-  it('prints the usage with no arguments', async () => {
+void describe('cli: usage and mistakes', () => {
+  void it('prints the usage with no arguments', async () => {
     const result = await run([])
     assert.equal(result.code, 0)
     // Decision 55: the help is the human surface, so it speaks Chinese.
     assert.match(result.out.join('\n'), /jira — 跨机器 issue 账本/)
   })
 
-  it('names an unknown command and an unknown flag', async () => {
+  void it('names an unknown command and an unknown flag', async () => {
     const command = await run(['frobnicate'])
     assert.equal(command.code, 2)
     assert.match(command.err.join('\n'), /未知命令 "frobnicate"/)
@@ -67,15 +67,15 @@ describe('cli: usage and mistakes', () => {
     assert.match(flag.err.join('\n'), /未知的 flag --porject/)
   })
 
-  it('refuses to guess the store root', async () => {
+  void it('refuses to guess the store root', async () => {
     const result = await run(['list'])
     assert.equal(result.code, 2)
     assert.match(result.err.join('\n'), /无法确定账本根目录/)
   })
 })
 
-describe('cli: the walk a person takes', () => {
-  it('initialises a store, and says what it created', async () => {
+void describe('cli: the walk a person takes', () => {
+  void it('initialises a store, and says what it created', async () => {
     const result = await run(['init', '--root', root])
     assert.equal(result.code, 0)
     assert.match(result.out.join('\n'), /动作：scaffolded/)
@@ -89,7 +89,7 @@ describe('cli: the walk a person takes', () => {
     assert.match(value.machine, /^[a-z0-9-]+$/)
   })
 
-  it('creates an issue and prints its key', async () => {
+  void it('creates an issue and prints its key', async () => {
     const result = await run(['new', '--root', root, '--project', 'DH', '--summary', 'first one', '--priority', 'S1'])
     assert.equal(result.code, 0, result.err.join('\n'))
     assert.match(result.out.join('\n'), /^DH-1 已创建/)
@@ -99,7 +99,7 @@ describe('cli: the walk a person takes', () => {
     assert.match(second.out.join('\n'), /DH-2 已创建/)
   })
 
-  it('lists open issues and, with --all, the closed ones too', async () => {
+  void it('lists open issues and, with --all, the closed ones too', async () => {
     const open = await run(['list', '--root', root])
     assert.match(open.out.join('\n'), /DH-1\s+todo\s+S1\s+first one/)
 
@@ -115,14 +115,14 @@ describe('cli: the walk a person takes', () => {
     assert.equal(filtered.out.join('\n').includes('DH-2'), true)
   })
 
-  it('renders the board in the vocabulary\'s column order', async () => {
+  void it('renders the board in the vocabulary\'s column order', async () => {
     const result = await run(['board', '--root', root])
     const lines = result.out.join('\n').split('\n')
     assert.match(lines[0] ?? '', /^todo（1）$/)
     assert.ok(lines.findIndex(line => line.startsWith('closed（')) > lines.findIndex(line => line.startsWith('todo（')))
   })
 
-  it('reads one issue back, as text and as JSON', async () => {
+  void it('reads one issue back, as text and as JSON', async () => {
     const text = await run(['get', '--root', root, 'DH-1'])
     assert.equal(text.code, 0)
     assert.match(text.out.join('\n'), /DH-1/)
@@ -137,7 +137,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal(issue.revision, 1)
   })
 
-  it('comments, and then refuses an illegal transition with the legal ones named', async () => {
+  void it('comments, and then refuses an illegal transition with the legal ones named', async () => {
     const comment = await run(['comment', '--root', root, 'DH-1', '--body', 'a note from the CLI'])
     assert.equal(comment.code, 0, comment.err.join('\n'))
     assert.match(comment.out.join('\n'), /已在 DH-1 上追加评论/)
@@ -151,7 +151,7 @@ describe('cli: the walk a person takes', () => {
     assert.match(noResolution.err.join('\n'), /RESOLUTION_REQUIRED/)
   })
 
-  it('refuses a project key that is a path traversal, and creates nothing (decision 162)', async () => {
+  void it('refuses a project key that is a path traversal, and creates nothing (decision 162)', async () => {
     // No `new` with a *valid* key here on purpose: this store is shared by the whole walk, and one more
     // issue would change the counts the later tests assert.
     const traversal = await run(['new', '--root', root, '--project', '../../tmp/escaped', '--summary', 'nope'])
@@ -162,7 +162,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal(existsSync(join(root, 'projects', '..', '..', 'tmp', 'escaped')), false, 'nothing escaped the store')
   })
 
-  it('says the machine has no label once, and never in --json (decisions 91/150)', async () => {
+  void it('says the machine has no label once, and never in --json (decisions 91/150)', async () => {
     const first = await run(['machines', 'list', '--root', root])
     assert.equal(first.code, 0, first.err.join('\n'))
     assert.match(first.out.join('\n'), /本机：cli-machine/)
@@ -178,7 +178,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal(json.out.join('\n').includes('提示'), false)
   })
 
-  it('reports a store that is not found and a key that is not a key', async () => {
+  void it('reports a store that is not found and a key that is not a key', async () => {
     const missing = await run(['get', '--root', root, 'DH-99'])
     assert.equal(missing.code, 1)
     assert.match(missing.err.join('\n'), /NOT_FOUND/)
@@ -188,7 +188,7 @@ describe('cli: the walk a person takes', () => {
     assert.match(bad.err.join('\n'), /不是 issue key/)
   })
 
-  it('generates the fixed files and every bundle, then says they are up to date', async () => {
+  void it('generates the fixed files and every bundle, then says they are up to date', async () => {
     const fresh = await run(['generate', '--root', root])
     assert.equal(fresh.code, 0, fresh.err.join('\n'))
     assert.match(fresh.out.join('\n'), /已生成 6 个文件，0 个已是最新/)
@@ -208,7 +208,7 @@ describe('cli: the walk a person takes', () => {
     assert.match(check.out.join('\n'), /派生文件已是最新/)
   })
 
-  it('fails generate --check once an input moved, and names the file', async () => {
+  void it('fails generate --check once an input moved, and names the file', async () => {
     const stalePaths = async (): Promise<readonly string[]> => {
       const check = await run(['generate', '--root', root, '--check', '--json'])
       const value = JSON.parse(check.out[0] ?? '{}') as { stale: readonly { path: string; reason: string }[] }
@@ -231,7 +231,7 @@ describe('cli: the walk a person takes', () => {
     assert.deepEqual(await stalePaths(), [], 'clean again')
   })
 
-  it('reports generated files in the doctor, and not the freshness it cannot prove', async () => {
+  void it('reports generated files in the doctor, and not the freshness it cannot prove', async () => {
     const doctor = await run(['doctor', '--root', root, '--json'])
     const report = JSON.parse(doctor.out[0] ?? '{}') as { problems: readonly { code: string }[]; summary: { generated_stale: number } }
     assert.equal(report.summary.generated_stale, 0)
@@ -243,7 +243,7 @@ describe('cli: the walk a person takes', () => {
     await run(['generate', '--root', root])
   })
 
-  it('warns a human before a manual push when the derived files are stale (decision 179)', async () => {
+  void it('warns a human before a manual push when the derived files are stale (decision 179)', async () => {
     // Decision 148's settle step lives in the plugin queue and `jira sync`; a manual `git push`
     // skips both, so the only defence is a warning a human will actually read.
     assert.equal((await run(['generate', '--root', root])).code, 0)
@@ -256,7 +256,7 @@ describe('cli: the walk a person takes', () => {
     const fresh = await run(['doctor', '--root', root])
     assert.equal(/派生文件已过期/u.test(fresh.out.join('\n')), false, 'no warning once the files are fresh')
   })
-  it('updates an issue, including the kb_refs side of the cross reference', async () => {
+  void it('updates an issue, including the kb_refs side of the cross reference', async () => {
     const updated = await run(['update', '--root', root, 'DH-1', '--summary', 'renamed by the CLI', '--kb-refs', 'KB-1,KB-2'])
     assert.equal(updated.code, 0, updated.err.join('\n'))
     assert.match(updated.out.join('\n'), /DH-1 已更新（版本 \d+）/)
@@ -269,13 +269,13 @@ describe('cli: the walk a person takes', () => {
     assert.deepEqual(read.kb_refs, ['KB-1', 'KB-2'])
   })
 
-  it('refuses a kb_ref that is not a knowledge key', async () => {
+  void it('refuses a kb_ref that is not a knowledge key', async () => {
     const bad = await run(['update', '--root', root, 'DH-1', '--kb-refs', 'DH-2'])
     assert.equal(bad.code, 1)
     assert.match(bad.err.join('\n'), /is not a knowledge key/)
   })
 
-  it('walks the knowledge base from the command line', async () => {
+  void it('walks the knowledge base from the command line', async () => {
     const created = await run([
       'kb', 'create', '--root', root, '--domain', 'cli', '--type', 'howto',
       '--title', '用 CLI 写知识条目', '--tags', 'cli', '--body', '一行正文，含关键词 mkdir。\n',
@@ -311,7 +311,7 @@ describe('cli: the walk a person takes', () => {
     assert.match(changed.out.join('\n'), /KB-1 已更新/)
   })
 
-  it('names the mistakes a knowledge command can make', async () => {
+  void it('names the mistakes a knowledge command can make', async () => {
     const noQuery = await run(['kb', 'search', '--root', root])
     assert.equal(noQuery.code, 2)
     assert.match(noQuery.err.join('\n'), /kb search 需要检索词/)
@@ -332,7 +332,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal(missing.code, 1)
     assert.match(missing.err.join('\n'), /knowledge entry KB-99 not found/)
   })
-  it('lists the keys, and compares two stores without merging anything', async () => {
+  void it('lists the keys, and compares two stores without merging anything', async () => {
     const other = await tempDir('dsh-jira-cli-keys-')
     assert.equal((await run(['init', '--root', other])).code, 0)
 
@@ -354,7 +354,7 @@ describe('cli: the walk a person takes', () => {
     assert.match(comparison.out.join('\n'), /映射表写到 _merge\/<UTC>-from-<machine_id>\.md/u)
   })
 
-  it('emits a self-contained HTML board, and writes it where it is told', async () => {
+  void it('emits a self-contained HTML board, and writes it where it is told', async () => {
     const own = await tempDir('dsh-jira-cli-html-')
     assert.equal((await run(['init', '--root', own])).code, 0)
     // A summary carrying markup: the board must escape it, not render it.
@@ -373,7 +373,7 @@ describe('cli: the walk a person takes', () => {
     assert.match(written.out.join('\n'), /board-out\.html 已写出/)
     assert.match(await readFile(target, 'utf8'), /^<!doctype html>/)
   })
-  it('links two issues and takes the link away again', async () => {
+  void it('links two issues and takes the link away again', async () => {
     // Its own store: these tests create issues, and the shared store's counts are asserted above.
     const own = await tempDir('dsh-jira-cli-link-')
     assert.equal((await run(['init', '--root', own])).code, 0)
@@ -400,7 +400,7 @@ describe('cli: the walk a person takes', () => {
     assert.deepEqual((JSON.parse(after.out[0] ?? '{}') as { links: unknown[] }).links, [])
   })
 
-  it('claims and releases an issue, and names the mistakes it can make', async () => {
+  void it('claims and releases an issue, and names the mistakes it can make', async () => {
     const own = await tempDir('dsh-jira-cli-assignee-')
     assert.equal((await run(['init', '--root', own])).code, 0)
     const created = await run(['new', '--root', own, '--project', 'DH', '--summary', 'claimable'])
@@ -430,7 +430,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal((await run(['link', '--root', own, key, '--target', 'DH-1'])).code, 2, 'link needs --type')
     assert.equal((await run(['link', '--root', own, key, '--type', 'is_blocked_by', '--target', 'nope'])).code, 2)
   })
-  it('refuses a write whose expected revision is stale, with the typed code (decision 44)', async () => {
+  void it('refuses a write whose expected revision is stale, with the typed code (decision 44)', async () => {
     const own = await tempDir('dsh-jira-cli-cas-')
     assert.equal((await run(['init', '--root', own])).code, 0)
     const created = await run(['new', '--root', own, '--project', 'DH', '--summary', 'first'])
@@ -448,7 +448,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal(fresh.code, 0, fresh.err.join('\n'))
     assert.match((await run(['get', '--root', own, key, '--json'])).out.join('\n'), /"summary": "renamed"/)
   })
-  it('refuses a commit message that names no issue, and explains the fix', async () => {
+  void it('refuses a commit message that names no issue, and explains the fix', async () => {
     const file = join(root, 'COMMIT_EDITMSG')
     await writeFile(file, 'fix something\n', 'utf8')
     const refused = await run(['verify-commit-msg', '--root', root, file])
@@ -474,13 +474,13 @@ describe('cli: the walk a person takes', () => {
     assert.match(unknown.err.join('\n'), /do not exist: DH-404/)
   })
 
-  it('accepts a knowledge key, because the ledger includes the library', async () => {
+  void it('accepts a knowledge key, because the ledger includes the library', async () => {
     const file = join(root, 'KBMSG')
     await writeFile(file, 'KB-1: kb create\n', 'utf8')
     assert.equal((await run(['verify-commit-msg', '--root', root, file])).code, 0)
   })
 
-  it('accepts the three arguments git passes to prepare-commit-msg', async () => {
+  void it('accepts the three arguments git passes to prepare-commit-msg', async () => {
     // git calls `prepare-commit-msg <file> <source> <sha>`. A strict positional limit made
     // `git commit -C HEAD` abort with "expected at most 3 argument(s), got 4" — a broken commit, not
     // a broken message. This test is the regression for that.
@@ -497,7 +497,7 @@ describe('cli: the walk a person takes', () => {
     await writeFile(message, 'chore: bump [no-issue]\n', 'utf8')
     assert.equal((await run(['verify-commit-msg', '--root', root, message, 'commit'])).code, 0)
   })
-  it('installs, reports and removes the commit-msg hooks', async () => {
+  void it('installs, reports and removes the commit-msg hooks', async () => {
     const installed = await run(['hooks', 'install', '--root', root])
     assert.equal(installed.code, 0, installed.err.join('\n'))
     assert.match(installed.out.join('\n'), /已安装 commit-msg, prepare-commit-msg/)
@@ -512,7 +512,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal((await run(['hooks', 'frobnicate', '--root', root])).code, 2)
   })
 
-  it('prepares a commit message from the branch name', async () => {
+  void it('prepares a commit message from the branch name', async () => {
     const file = join(root, 'PREPARE')
     await writeFile(file, 'fix the wake lock\n', 'utf8')
     // The store's own repository is on whatever branch this checkout uses; branch `main` carries no
@@ -521,7 +521,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal(await readFile(file, 'utf8'), 'fix the wake lock\n')
   })
 
-  it('lints the tag registry in three sections, and never rewrites it', async () => {
+  void it('lints the tag registry in three sections, and never rewrites it', async () => {
     const headBefore = (await runGit(root, ['rev-parse', 'HEAD'])).stdout
     const statusBefore = (await runGit(root, ['status', '--porcelain'])).stdout
     const report = await run(['tags', 'lint', '--root', root])
@@ -542,7 +542,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal(parsed.counts.tags, 0, '注册表是空的——`cli` 只是被用过（出现在「只用过一次」段），从未注册')
   })
 
-  it('lists, binds and rebinds projects', async () => {
+  void it('lists, binds and rebinds projects', async () => {
     const bound = await run(['project', 'bind', '--root', root, '--key', 'DH', '--path', 'D:/Work/DH', '--remote', 'git@github.com:o/r.git', '--name', 'ledger'])
     assert.equal(bound.code, 0, bound.err.join('\n'))
     assert.match(bound.out.join('\n'), /DH 已绑定到/)
@@ -560,7 +560,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal((await run(['project', 'bind', '--root', root])).code, 2, 'bind needs --key')
     assert.equal((await run(['project', 'frobnicate', '--root', root])).code, 2)
   })
-  it('syncs without a remote, and says why nothing was pushed', async () => {
+  void it('syncs without a remote, and says why nothing was pushed', async () => {
     const result = await run(['sync', '--root', root, '--json'])
     const value = JSON.parse(result.out[0] ?? '{}') as { pushed: boolean; remote: boolean; detail: string }
     assert.equal(value.pushed, false)
@@ -569,7 +569,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal(result.code, 0, 'no remote is not a failure')
   })
 
-  it('fails the command when a sync cannot push (DH-306)', async () => {
+  void it('fails the command when a sync cannot push (DH-306)', async () => {
     // Its own store: adding a remote to the shared one would change the walk's later answers.
     const own = await tempDir('dsh-jira-cli-syncfail-')
     assert.equal((await run(['init', '--root', own])).code, 0)
@@ -579,7 +579,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal(failed.code, 1, failed.out.join('\n'))
   })
 
-  it('checks the store it just built', async () => {
+  void it('checks the store it just built', async () => {
     const result = await run(['doctor', '--root', root, '--json'])
     const report = JSON.parse(result.out[0] ?? '{}') as { ok: boolean; problems: { code: string }[]; summary: { issues: number } }
     assert.equal(report.summary.issues, 2)
@@ -587,7 +587,7 @@ describe('cli: the walk a person takes', () => {
     assert.equal(result.code, 0, JSON.stringify(report.problems))
   })
 
-  it('prints the doctor report for a human too', async () => {
+  void it('prints the doctor report for a human too', async () => {
     const result = await run(['doctor', '--root', root])
     assert.match(result.out.join('\n'), /账本：1 个项目，2 条 issue/)
     assert.match(result.out.join('\n'), /结果：正常/)

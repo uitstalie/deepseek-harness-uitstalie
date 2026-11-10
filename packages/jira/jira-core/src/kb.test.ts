@@ -38,8 +38,8 @@ const entry = (over: Partial<KnowledgeEntry> = {}): KnowledgeEntry => Object.fre
 
 const text = (over: Partial<KnowledgeEntry> = {}): string => unwrap(encodeKnowledge(entry(over), { kbTypes: KB_TYPES }))
 
-describe('kb: the key and the domain', () => {
-  it('accepts a knowledge key and refuses the neighbours', () => {
+void describe('kb: the key and the domain', () => {
+  void it('accepts a knowledge key and refuses the neighbours', () => {
     assert.equal(asKnowledgeKey('KB-7'), 'KB-7')
     assert.equal(asKnowledgeKey('DH-12'), undefined, 'the same shape but another key space is not a knowledge key')
     assert.equal(asKnowledgeKey('kb-7'), undefined)
@@ -47,14 +47,14 @@ describe('kb: the key and the domain', () => {
     assert.equal(asKnowledgeKey(' KB-7 '), 'KB-7', 'surrounding space is tolerated')
   })
 
-  it('uses the tag rule for domain directory names (decision 76)', () => {
+  void it('uses the tag rule for domain directory names (decision 76)', () => {
     assert.equal(isDomainName('windows'), true)
     assert.equal(isDomainName('wake-lock'), true)
     assert.equal(isDomainName('Windows'), false)
     assert.equal(isDomainName('未知域'), false)
   })
 
-  it('keeps the key and the domain independent (decision 75)', () => {
+  void it('keeps the key and the domain independent (decision 75)', () => {
     // The key is a global `KB-<n>` number; the domain is the directory. `KB-7` may live under
     // `windows`, and it still round-trips.
     const decoded = unwrap(decodeKnowledge(text({ domain: 'windows' }), 'KB-7', 'windows'))
@@ -62,13 +62,13 @@ describe('kb: the key and the domain', () => {
     assert.equal(decoded.entry.key, 'KB-7')
   })
 
-  it('puts the file where the key says (decision 107: the file name is the key)', () => {
+  void it('puts the file where the key says (decision 107: the file name is the key)', () => {
     assert.equal(knowledgePath('windows', 'KB-7' as never), 'knowledge/windows/KB-7.md')
   })
 })
 
-describe('kb: writing is strict (decision 49)', () => {
-  it('round-trips a complete entry', () => {
+void describe('kb: writing is strict (decision 49)', () => {
+  void it('round-trips a complete entry', () => {
     const decoded = unwrap(decodeKnowledge(text(), 'KB-7', 'locking'))
     assert.deepEqual(decoded.warnings, [])
     // Nine frontmatter keys, two fences and the blank separator put the body on line 13 (decision 179).
@@ -78,19 +78,19 @@ describe('kb: writing is strict (decision 49)', () => {
     assert.equal(text().includes('key:'), false, 'the key lives in the file name only')
   })
 
-  it('refuses a type outside the store vocabulary', () => {
+  void it('refuses a type outside the store vocabulary', () => {
     const bad = encodeKnowledge(entry({ kbType: 'note' }), { kbTypes: KB_TYPES })
     assert.equal(bad.ok, false)
     if (!bad.ok) assert.match(bad.error.message, /type "note" is not one of: runbook, pitfall, howto, concept/)
   })
 
-  it('refuses a title it cannot render or a domain that breaks the rule', () => {
+  void it('refuses a title it cannot render or a domain that breaks the rule', () => {
     assert.match((encodeKnowledge(entry({ title: '  ' }), { kbTypes: KB_TYPES }) as { error: { message: string } }).error.message, /title must not be empty/)
     assert.match((encodeKnowledge(entry({ title: 'two\nlines' }), { kbTypes: KB_TYPES }) as { error: { message: string } }).error.message, /single line/)
     assert.match((encodeKnowledge(entry({ domain: 'Bad' }), { kbTypes: KB_TYPES }) as { error: { message: string } }).error.message, /must be lower-kebab/)
   })
 
-  it('insists on the whole source quadruple, and on a hash for a file source', () => {
+  void it('insists on the whole source quadruple, and on a hash for a file source', () => {
     for (const field of ['machineId', 'os', 'tool', 'capturedAt'] as const) {
       const broken = entry({
         source: sourceOf({
@@ -143,15 +143,15 @@ describe('kb: writing is strict (decision 49)', () => {
     assert.equal(urlSource.ok, true, 'a URL needs no hash')
   })
 
-  it('refuses a tag that is not lower-kebab', () => {
+  void it('refuses a tag that is not lower-kebab', () => {
     const bad = encodeKnowledge(entry({ tags: Object.freeze(['Not A Tag']) }), { kbTypes: KB_TYPES })
     assert.equal(bad.ok, false)
     if (!bad.ok) assert.match(bad.error.message, /must be lower-kebab/)
   })
 })
 
-describe('kb: reading is tolerant (decision 49)', () => {
-  it('warns about a missing source field instead of failing the read', () => {
+void describe('kb: reading is tolerant (decision 49)', () => {
+  void it('warns about a missing source field instead of failing the read', () => {
     const broken = text().replace(/^machine_id:.*$/m, '')
     const decoded = unwrap(decodeKnowledge(broken, 'KB-7', 'locking'))
     assert.deepEqual(decoded.warnings, ['missing required field "machine_id"'])
@@ -159,7 +159,7 @@ describe('kb: reading is tolerant (decision 49)', () => {
     assert.equal(decoded.entry.title, 'Windows 上的锁必须用 mkdir', 'the rest still reads')
   })
 
-  it('warns about an unknown key, a wrong schema and a bad cross reference', () => {
+  void it('warns about an unknown key, a wrong schema and a bad cross reference', () => {
     const noisy = text().replace('schema: kb/v1', 'schema: kb/v0')
       .replace('issues: [DH-12]', 'issues: [DH-12, nope]')
       .replace('tags:', 'future_field: 1\ntags:')
@@ -172,7 +172,7 @@ describe('kb: reading is tolerant (decision 49)', () => {
     assert.deepEqual(decoded.entry.issues, ['DH-12'])
   })
 
-  it('refuses a file whose frontmatter is outside the restricted subset', () => {
+  void it('refuses a file whose frontmatter is outside the restricted subset', () => {
     // Decision 112 allows one level of nesting (a block array of inline arrays, a flow map), and
     // still refuses a map inside a map.
     const nested = decodeKnowledge('---\ntitle: x\nmeta:\n  nested:\n    deep: 1\n---\n', 'KB-1', 'locking')
@@ -182,15 +182,15 @@ describe('kb: reading is tolerant (decision 49)', () => {
     assert.equal(oneLevel.ok, true, 'one level of nesting is legal (decision 112)')
   })
 
-  it('refuses a key that is not a knowledge key', () => {
+  void it('refuses a key that is not a knowledge key', () => {
     const decoded = decodeKnowledge(text(), 'nope', 'locking')
     assert.equal(decoded.ok, false)
     if (!decoded.ok) assert.match(decoded.error.message, /is not a knowledge key/)
   })
 })
 
-describe('kb: the source identity', () => {
-  it('pulls the machine out of the identity tuple (decision 48)', () => {
+void describe('kb: the source identity', () => {
+  void it('pulls the machine out of the identity tuple (decision 48)', () => {
     assert.equal(machineIdOf('agent:deepseek|dsh|m-357504ff|session-1'), 'm-357504ff')
     assert.equal(machineIdOf('human:daiqc'), undefined, 'a human identity has no machine')
     assert.equal(machineIdOf('agent:x|dsh||s-1'), undefined, 'an empty machine slot is not a machine')

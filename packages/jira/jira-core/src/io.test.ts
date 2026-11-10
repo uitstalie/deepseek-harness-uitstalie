@@ -47,15 +47,15 @@ after(async () => {
   if (root !== '') await removeTree(root)
 })
 
-describe('io: paths are derived, never stored', () => {
-  it('derives the project from the key and keeps the key as the file name', () => {
+void describe('io: paths are derived, never stored', () => {
+  void it('derives the project from the key and keeps the key as the file name', () => {
     assert.equal(projectOfKey(DH1), 'DH')
     assert.match(issuePath(store, 'DH', DH1), /projects[\\/]DH[\\/]issues[\\/]DH-1\.md$/)
   })
 })
 
-describe('io: reading', () => {
-  it('reports a missing file as a file-level failure, not a domain one', async () => {
+void describe('io: reading', () => {
+  void it('reports a missing file as a file-level failure, not a domain one', async () => {
     const missing = await readText(join(root, 'nope.md'))
     assert.equal(missing.ok, false)
     if (!missing.ok) {
@@ -64,7 +64,7 @@ describe('io: reading', () => {
     }
   })
 
-  it('translates a missing file into NOT_FOUND carrying the issue key', async () => {
+  void it('translates a missing file into NOT_FOUND carrying the issue key', async () => {
     const result = await readIssue(store, DH1)
     assert.equal(result.ok, false)
     if (!result.ok) {
@@ -75,7 +75,7 @@ describe('io: reading', () => {
     }
   })
 
-  it('round-trips what the writer wrote', async () => {
+  void it('round-trips what the writer wrote', async () => {
     const written = await writeIssue(store, FILE, DH1)
     assert.equal(written.ok, true)
     const read = await readIssue(store, DH1)
@@ -88,8 +88,8 @@ describe('io: reading', () => {
   })
 })
 
-describe('io: writing enforces the store rules instead of normalizing them', () => {
-  it('refuses CR, so a Windows editor cannot quietly rewrite every line', async () => {
+void describe('io: writing enforces the store rules instead of normalizing them', () => {
+  void it('refuses CR, so a Windows editor cannot quietly rewrite every line', async () => {
     const result = await writeTextAtomic(join(root, 'cr.md'), 'a\r\nb\n')
     assert.equal(result.ok, false)
     if (!result.ok) {
@@ -98,13 +98,13 @@ describe('io: writing enforces the store rules instead of normalizing them', () 
     }
   })
 
-  it('refuses a BOM', async () => {
+  void it('refuses a BOM', async () => {
     const result = await writeTextAtomic(join(root, 'bom.md'), '\uFEFFx\n')
     assert.equal(result.ok, false)
     if (!result.ok) assert.match(result.error.message, /BOM/)
   })
 
-  it('creates missing directories, writes LF, and leaves no temporary file behind', async () => {
+  void it('creates missing directories, writes LF, and leaves no temporary file behind', async () => {
     const path = join(root, 'deep', 'er', 'file.md')
     const result = await writeTextAtomic(path, 'one\ntwo\n')
     assert.equal(result.ok, true)
@@ -116,8 +116,8 @@ describe('io: writing enforces the store rules instead of normalizing them', () 
   })
 })
 
-describe('io: hashing the tree refuses to hash a partial one (decision 169)', () => {
-  it('reports a tree it cannot walk instead of returning what it could read', async () => {
+void describe('io: hashing the tree refuses to hash a partial one (decision 169)', () => {
+  void it('reports a tree it cannot walk instead of returning what it could read', async () => {
     // A path that is a *file* cannot be read as a directory: the old version swallowed the readdir
     // failure and returned an empty list, so `source_tree` was a hash of nothing — which makes every
     // derived file look fresh.
@@ -137,8 +137,8 @@ describe('io: hashing the tree refuses to hash a partial one (decision 169)', ()
   })
 })
 
-describe('io: the atomic write retries, then reports (decision 170)', () => {
-  it('tries writeAttempts times and leaves no temporary behind', async () => {
+void describe('io: the atomic write retries, then reports (decision 170)', () => {
+  void it('tries writeAttempts times and leaves no temporary behind', async () => {
     // A rename onto an existing **directory** always fails, which is the one portable way to make the
     // loop exhaust: the Windows EPERM/EBUSY path had no test at all before this.
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-retry-'))
@@ -159,8 +159,8 @@ describe('io: the atomic write retries, then reports (decision 170)', () => {
   })
 })
 
-describe('io: the directory primitives every other module shares (decision 180)', () => {
-  it('exists reports a fact, never a failure', async () => {
+void describe('io: the directory primitives every other module shares (decision 180)', () => {
+  void it('exists reports a fact, never a failure', async () => {
     const path = join(root, 'exists.md')
     assert.equal(await exists(path), false)
     assert.equal((await writeTextAtomic(path, 'x\n')).ok, true)
@@ -168,7 +168,7 @@ describe('io: the directory primitives every other module shares (decision 180)'
     assert.equal(await exists(join(root, 'absent-parent', 'x.md')), false, 'a missing parent is still just "absent"')
   })
 
-  it('listDir names a directory, and a missing one answers `missing`', async () => {
+  void it('listDir names a directory, and a missing one answers `missing`', async () => {
     const dir = join(root, 'listing')
     assert.equal((await mkdirp(dir)).ok, true)
     const empty = await listDir(dir)
@@ -190,7 +190,7 @@ describe('io: the directory primitives every other module shares (decision 180)'
     if (!notADir.ok) assert.equal(notADir.error.kind, 'unreadable', 'a file is not a directory')
   })
 
-  it('listDirEntries carries the kind flags as frozen data, not Dirents', async () => {
+  void it('listDirEntries carries the kind flags as frozen data, not Dirents', async () => {
     const dir = join(root, 'entries')
     assert.equal((await mkdirp(join(dir, 'sub'))).ok, true)
     assert.equal((await writeTextAtomic(join(dir, 'file.md'), 'x\n')).ok, true)
@@ -206,7 +206,7 @@ describe('io: the directory primitives every other module shares (decision 180)'
     assert.ok(Object.isFrozen(sub), 'a frozen data point, not a Dirent')
   })
 
-  it('mkdirp is recursive and idempotent, and reports a path blocked by a file', async () => {
+  void it('mkdirp is recursive and idempotent, and reports a path blocked by a file', async () => {
     const nested = join(root, 'mkdirp', 'a', 'b', 'c')
     assert.equal((await mkdirp(nested)).ok, true)
     assert.equal((await mkdirp(nested)).ok, true, 'mkdir -p again is success')

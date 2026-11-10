@@ -46,34 +46,34 @@ const base = [
   '  - [todo, closed]',
 ]
 
-describe('vocab: reading the store vocabulary', () => {
-  it('orders the statuses', () => {
+void describe('vocab: reading the store vocabulary', () => {
+  void it('orders the statuses', () => {
     assert.deepEqual(
       vocab.statuses.map(status => `${status.name}(${status.order})`),
       ['todo(10)', 'in_progress(20)', 'in_review(30)', 'closed(90)', 'cancelled(95)'],
     )
   })
 
-  it('keeps the plain lists', () => {
+  void it('keeps the plain lists', () => {
     assert.deepEqual(vocab.issueTypes, ['task', 'bug'])
     assert.deepEqual(vocab.priorities, ['S1', 'S2', 'S3', 'S4', 'S5'])
     assert.deepEqual(vocab.closed, ['closed', 'cancelled'])
     assert.deepEqual(vocab.resolutions, ['fixed', 'invalid', 'limitation', 'abandoned'])
   })
 
-  it('keeps the default priority inside the declared priorities', () => {
+  void it('keeps the default priority inside the declared priorities', () => {
     assert.ok(vocab.priorities.includes(DEFAULT_PRIORITY), 'the default must be a real priority')
   })
 })
 
-describe('vocab: the queries the write path uses', () => {
-  it('knows which statuses are closed', () => {
+void describe('vocab: the queries the write path uses', () => {
+  void it('knows which statuses are closed', () => {
     assert.equal(isClosedStatus(vocab, 'closed'), true)
     assert.equal(isClosedStatus(vocab, 'cancelled'), true)
     assert.equal(isClosedStatus(vocab, 'in_progress'), false)
   })
 
-  it('knows which transitions are legal, and lists the targets of one status', () => {
+  void it('knows which transitions are legal, and lists the targets of one status', () => {
     assert.deepEqual(legalTargets(vocab, 'todo'), ['in_progress', 'cancelled'])
     assert.deepEqual(legalTargets(vocab, 'in_review'), ['in_progress', 'closed', 'cancelled'])
     assert.equal(isLegalTransition(vocab, 'todo', 'in_progress'), true)
@@ -83,7 +83,7 @@ describe('vocab: the queries the write path uses', () => {
     assert.equal(isLegalTransition(vocab, 'closed', 'in_progress'), true, 'reopening is a declared edge')
   })
 
-  it('orders statuses for the board, and sends unknown ones last', () => {
+  void it('orders statuses for the board, and sends unknown ones last', () => {
     assert.equal(statusOrder(vocab, 'in_review'), 30)
     assert.equal(statusOrder(vocab, 'nope') > 1000, true)
     assert.equal(isKnownStatus(vocab, 'in_review'), true)
@@ -91,7 +91,7 @@ describe('vocab: the queries the write path uses', () => {
   })
 })
 
-describe('vocab: a bad data edit is caught, not absorbed', () => {
+void describe('vocab: a bad data edit is caught, not absorbed', () => {
   const bad: readonly (readonly [string, readonly string[], string])[] = [
     ['a transition to an unknown status', base.map(line => line.replace('[todo, closed]', '[todo, nope]')), 'unknown status "nope"'],
     ['a transition from an unknown status', base.map(line => line.replace('[todo, closed]', '[nope, closed]')), 'unknown status "nope"'],
@@ -103,7 +103,7 @@ describe('vocab: a bad data edit is caught, not absorbed', () => {
   ]
 
   for (const [name, lines, needle] of bad) {
-    it(`rejects ${name}`, () => {
+    void it(`rejects ${name}`, () => {
       const result = parseVocab(configWith(lines))
       assert.equal(result.ok, false, `expected a rejection for: ${name}`)
       if (!result.ok) {
@@ -121,7 +121,7 @@ describe('vocab: a bad data edit is caught, not absorbed', () => {
     })
   }
 
-  it('rejects the wrong document envelope', () => {
+  void it('rejects the wrong document envelope', () => {
     const wrongType = parseVocab(text.replace('type: config', 'type: config2'))
     assert.equal(wrongType.ok, false)
     const wrongSchema = parseVocab(text.replace('schema: config/v1', 'schema: config/v2'))

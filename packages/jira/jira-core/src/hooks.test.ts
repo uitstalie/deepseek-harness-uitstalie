@@ -59,8 +59,8 @@ const commit = async (message: string): Promise<{ code: number; stderr: string }
   return { code: result.code, stderr: result.stderr }
 }
 
-describe('hooks: the shim', () => {
-  it('carries the marker, the kind and an overridable CLI path', () => {
+void describe('hooks: the shim', () => {
+  void it('carries the marker, the kind and an overridable CLI path', () => {
     const shim = hookShim('commit-msg', '/somewhere/dist/cli/index.js', 'C:/Git/bin/sh.exe')
     assert.match(shim, /dsh-jira hook shim/)
     assert.match(shim, /kind: commit-msg/)
@@ -69,7 +69,7 @@ describe('hooks: the shim', () => {
     assert.match(shim, /const shell = "C:\/Git\/bin\/sh\.exe"/)
   })
 
-  it('chains to a preserved hook, and runs it first', () => {
+  void it('chains to a preserved hook, and runs it first', () => {
     const shim = hookShim('commit-msg', '/cli.js', 'C:/Git/bin/sh.exe')
     assert.match(shim, new RegExp(backupNameOf('commit-msg').replace('.', '\\.')))
     const backupAt = shim.indexOf('existsSync(backup)')
@@ -77,14 +77,14 @@ describe('hooks: the shim', () => {
     assert.ok(backupAt !== -1 && backupAt < verifyAt, 'the previous hook may rewrite the message we validate')
   })
 
-  it('uses CommonJS, because git runs the hook file with no extension', () => {
+  void it('uses CommonJS, because git runs the hook file with no extension', () => {
     assert.match(hookShim('commit-msg', '/cli.js'), /require\('node:child_process'\)/)
     assert.equal(/^import /m.test(hookShim('commit-msg', '/cli.js')), false)
   })
 })
 
-describe('hooks: installing', () => {
-  it('installs both hooks and then reports them installed', async () => {
+void describe('hooks: installing', () => {
+  void it('installs both hooks and then reports them installed', async () => {
     const report = unwrap(await installHooks(root, stub))
     assert.deepEqual([...report.installed], ['commit-msg', 'prepare-commit-msg'])
     assert.equal(report.directory.replaceAll('\\', '/').endsWith('/.git/hooks'), true)
@@ -96,7 +96,7 @@ describe('hooks: installing', () => {
     assert.match(renderHookStatus(states), /✓ commit-msg/)
   })
 
-  it('preserves an existing hook instead of overwriting it', async () => {
+  void it('preserves an existing hook instead of overwriting it', async () => {
     const target = join(hooksDirectory(root), 'commit-msg')
     await writeFile(target, '#!/bin/sh\necho original\n', 'utf8')
     const report = unwrap(await installHooks(root, stub))
@@ -110,7 +110,7 @@ describe('hooks: installing', () => {
     assert.equal((await hookStatus(root))[0]?.backup, true)
   })
 
-  it('restores the original on uninstall', async () => {
+  void it('restores the original on uninstall', async () => {
     unwrap(await installHooks(root, stub))
     const restored = unwrap(await uninstallHooks(root))
     assert.ok(restored.includes('commit-msg'))
@@ -119,8 +119,8 @@ describe('hooks: installing', () => {
   })
 })
 
-describe('hooks: chaining a preserved hook (the bug this test exists for)', () => {
-  it('runs a shell-script backup instead of blocking every commit', async () => {
+void describe('hooks: chaining a preserved hook (the bug this test exists for)', () => {
+  void it('runs a shell-script backup instead of blocking every commit', async () => {
     // A preserved hook is usually `#!/bin/sh`. Handing that file straight to node fails with EFTYPE
     // on Windows, and the first version of the shim turned that failure into "every commit in this
     // repository is refused" — which is exactly the kind of bug a chain must not introduce.
@@ -138,7 +138,7 @@ describe('hooks: chaining a preserved hook (the bug this test exists for)', () =
     }
   })
 
-  it('still obeys a preserved hook that refuses', async () => {
+  void it('still obeys a preserved hook that refuses', async () => {
     unwrap(await installHooks(root, stub))
     await writeFile(join(hooksDirectory(root), backupNameOf('commit-msg')), '#!/bin/sh\nexit 3\n', 'utf8')
     process.env.JIRA_CLI = stub
@@ -153,8 +153,8 @@ describe('hooks: chaining a preserved hook (the bug this test exists for)', () =
     }
   })
 })
-describe('hooks: a real git commit obeys the hook', () => {
-  it('refuses a message with no key, and accepts one with a key', async () => {
+void describe('hooks: a real git commit obeys the hook', () => {
+  void it('refuses a message with no key, and accepts one with a key', async () => {
     unwrap(await installHooks(root, stub))
     process.env.JIRA_CLI = stub
     try {
@@ -177,7 +177,7 @@ describe('hooks: a real git commit obeys the hook', () => {
     }
   })
 
-  it('leaves the repository clean when a commit is refused', async () => {
+  void it('leaves the repository clean when a commit is refused', async () => {
     unwrap(await installHooks(root, stub))
     process.env.JIRA_CLI = stub
     try {

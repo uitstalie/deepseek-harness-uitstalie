@@ -55,8 +55,8 @@ const issue = (over: Readonly<{
 const keysOf = (result: ReturnType<typeof buildIssueList>): readonly string[] =>
   result.items.map(item => item.key)
 
-describe('list: the order the contract promises', () => {
-  it('sorts by project, then status order, then priority, then most recently updated', () => {
+void describe('list: the order the contract promises', () => {
+  void it('sorts by project, then status order, then priority, then most recently updated', () => {
     const result = buildIssueList([
       issue({ key: 'ZZ-1', priority: 'S1' }),                                    // project last
       issue({ key: 'DH-1', status: 'in_review' }),                               // later status
@@ -70,7 +70,7 @@ describe('list: the order the contract promises', () => {
     assert.deepEqual(keysOf(result), ['DH-4', 'DH-3', 'DH-2', 'DH-1', 'ZZ-1'])
   })
 
-  it('puts blocked work in its own group at the very end', () => {
+  void it('puts blocked work in its own group at the very end', () => {
     const result = buildIssueList([
       issue({ key: 'DH-1' }),
       issue({ key: 'DH-2', blockedBy: 'DH-1' }),   // blocked by an open issue
@@ -86,7 +86,7 @@ describe('list: the order the contract promises', () => {
     assert.equal(result.counts.blocked, 2)
   })
 
-  it('releases an issue once its blocker is closed', () => {
+  void it('releases an issue once its blocker is closed', () => {
     const result = buildIssueList([
       issue({ key: 'DH-1', status: 'closed' }),
       issue({ key: 'DH-2', blockedBy: 'DH-1' }),
@@ -96,7 +96,7 @@ describe('list: the order the contract promises', () => {
     assert.equal(result.groups.some(group => group.kind === 'blocked'), false)
   })
 
-  it('groups by project and status, and every item appears in exactly one group', () => {
+  void it('groups by project and status, and every item appears in exactly one group', () => {
     const result = buildIssueList([
       issue({ key: 'DH-1' }),
       issue({ key: 'DH-2' }),
@@ -111,13 +111,13 @@ describe('list: the order the contract promises', () => {
   })
 })
 
-describe('list: the limit and the counts', () => {
+void describe('list: the limit and the counts', () => {
   const many = Array.from({ length: 25 }, (_, index) => issue({
     key: `DH-${String(index + 1)}`,
     updatedAt: `2026-10-15T${String(index % 24).padStart(2, '0')}:00:00Z`,
   }))
 
-  it('defaults to 20, caps at 100, and refuses nonsense', () => {
+  void it('defaults to 20, caps at 100, and refuses nonsense', () => {
     assert.equal(DEFAULT_LIST_LIMIT, 20)
     assert.equal(MAX_LIST_LIMIT, 100)
     assert.equal(clampLimit(undefined), 20)
@@ -128,7 +128,7 @@ describe('list: the limit and the counts', () => {
     assert.equal(clampLimit(7.9), 7)
   })
 
-  it('returns at most the limit and still counts everything that matched', () => {
+  void it('returns at most the limit and still counts everything that matched', () => {
     const result = buildIssueList(many, vocab)
     assert.equal(result.items.length, 20)
     assert.equal(result.truncated, true)
@@ -142,7 +142,7 @@ describe('list: the limit and the counts', () => {
     assert.equal(all.counts.remaining, 0)
   })
 
-  it('counts by status over everything that matched, not just what it returned', () => {
+  void it('counts by status over everything that matched, not just what it returned', () => {
     const result = buildIssueList([
       issue({ key: 'DH-1' }),
       issue({ key: 'DH-2', status: 'in_progress' }),
@@ -153,7 +153,7 @@ describe('list: the limit and the counts', () => {
   })
 })
 
-describe('list: the filters', () => {
+void describe('list: the filters', () => {
   const issues = [
     issue({ key: 'DH-1', tags: ['windows', 'build'], assignee: 'human:daiqc' }),
     issue({ key: 'DH-2', tags: ['windows'] }),
@@ -163,7 +163,7 @@ describe('list: the filters', () => {
     issue({ key: 'DH-4', blockedBy: 'DH-1' }),
   ]
 
-  it('narrows by project, status, tag and assignee', () => {
+  void it('narrows by project, status, tag and assignee', () => {
     assert.deepEqual(keysOf(buildIssueList(issues, vocab, { project: 'KB' })), ['KB-1'])
     assert.deepEqual(keysOf(buildIssueList(issues, vocab, { status: 'closed', includeClosed: true })), ['DH-3'])
     assert.deepEqual(keysOf(buildIssueList(issues, vocab, { tag: 'build' })), ['DH-1'])
@@ -171,13 +171,13 @@ describe('list: the filters', () => {
     assert.deepEqual(keysOf(buildIssueList(issues, vocab, { assignee: 'human:nobody' })), [])
   })
 
-  it('requires every listed tag, because that is what narrowing means', () => {
+  void it('requires every listed tag, because that is what narrowing means', () => {
     assert.deepEqual(keysOf(buildIssueList(issues, vocab, { tags: ['windows'] })), ['DH-1', 'DH-2', 'KB-1'])
     assert.deepEqual(keysOf(buildIssueList(issues, vocab, { tags: ['windows', 'build'] })), ['DH-1'])
     assert.deepEqual(keysOf(buildIssueList(issues, vocab, { tags: ['windows', 'nope'] })), [])
   })
 
-  it('filters by link type and target, and hides closed by default', () => {
+  void it('filters by link type and target, and hides closed by default', () => {
     assert.deepEqual(
       keysOf(buildIssueList(issues, vocab, { link: { type: 'is_blocked_by', target: 'DH-1' } })),
       ['DH-4'],
@@ -187,7 +187,7 @@ describe('list: the filters', () => {
     assert.equal(keysOf(buildIssueList(issues, vocab, { includeClosed: true })).includes('DH-3'), true)
   })
 
-  it('says nothing rather than failing when nothing matches', () => {
+  void it('says nothing rather than failing when nothing matches', () => {
     const result = buildIssueList(issues, vocab, { project: 'NOPE' })
     assert.deepEqual(result.items, [])
     assert.deepEqual(result.groups, [])
@@ -196,15 +196,15 @@ describe('list: the filters', () => {
   })
 })
 
-describe('list: the trial-feedback ergonomics (decision 195)', () => {
-  it('shows a short identity, and keeps the full one for `get`', async () => {
+void describe('list: the trial-feedback ergonomics (decision 195)', () => {
+  void it('shows a short identity, and keeps the full one for `get`', async () => {
     // P2-4: a full identity on every row crowds out the summary.
     assert.equal(shortIdentity('agent:unknown|dsh|m-357504ff|session-a9beb0bc'), 'agent:357504ff/a9beb0bc')
     assert.equal(shortIdentity('human:daiqc'), 'human:daiqc', 'a human identity has nothing to shorten')
     assert.equal(shortIdentity('agent:broken'), 'agent:broken', 'a malformed identity is printed as given')
   })
 
-  it('says "0 matched" so an empty answer is distinguishable from a broken one', () => {
+  void it('says "0 matched" so an empty answer is distinguishable from a broken one', () => {
     // P3-1: the JSON already had `matched: 0`; the human/model text said only `no issues match`.
     const empty = renderIssueListForModel({
       items: [],

@@ -27,14 +27,14 @@ const definitionsOf = (harness: JiraHarness): readonly ToolDefinition[] => {
   return contribution.tools(testAgent(harness.ctx, 'schema-agent'))
 }
 
-describe('schema: validateArgs checks nested arguments', () => {
+void describe('schema: validateArgs checks nested arguments', () => {
   const issuesOf = (error: JiraError): readonly string[] => {
     const issues = error.context?.issues
     assert.ok(Array.isArray(issues))
     return issues as readonly string[]
   }
 
-  it('lists nested array item errors with their complete paths', () => {
+  void it('lists nested array item errors with their complete paths', () => {
     const parameters: Readonly<Record<string, FieldSpec>> = {
       tags: { type: 'array', items: { type: 'string' } },
       kb_refs: { type: 'array', items: { type: 'string' } },
@@ -58,7 +58,7 @@ describe('schema: validateArgs checks nested arguments', () => {
     ])
   })
 
-  it('lists unknown, missing, type and enum errors inside nested objects together', () => {
+  void it('lists unknown, missing, type and enum errors inside nested objects together', () => {
     const result = validateArgs(ISSUE_PARAMETERS, {
       action: 'link',
       link: { type: 'sideways', target: 12, extra: true },
@@ -75,7 +75,7 @@ describe('schema: validateArgs checks nested arguments', () => {
     ])
   })
 
-  it('allows an explicitly nullable oneOf without treating null as missing elsewhere', () => {
+  void it('allows an explicitly nullable oneOf without treating null as missing elsewhere', () => {
     const valid = validateArgs(ISSUE_PARAMETERS, { action: 'update', key: 'DH-1', data: { note: null } })
     assert.equal(valid.ok, true)
     if (!valid.ok) assert.fail('the nullable note must accept null')
@@ -88,8 +88,8 @@ describe('schema: validateArgs checks nested arguments', () => {
   })
 })
 
-describe('schema: what we register belongs to the host subset', () => {
-  it('registers both tools with schemas the host accepts, object-rooted', async () => {
+void describe('schema: what we register belongs to the host subset', () => {
+  void it('registers both tools with schemas the host accepts, object-rooted', async () => {
     const ledger = await createLedgerFixture()
     const harness = await mountJira(ledger)
     try {
@@ -107,7 +107,7 @@ describe('schema: what we register belongs to the host subset', () => {
     }
   })
 
-  it('accepts the values the runners actually produce', async () => {
+  void it('accepts the values the runners actually produce', async () => {
     const ledger = await createLedgerFixture()
     const harness = await mountJira(ledger)
     try {
@@ -133,12 +133,12 @@ describe('schema: what we register belongs to the host subset', () => {
     }
   })
 
-  it('rejects the shape that broke the plugin: a boolean property carrying `required`', () => {
+  void it('rejects the shape that broke the plugin: a boolean property carrying `required`', () => {
     const broken = { type: 'object', properties: { ok: { type: 'boolean', required: true } } }
     assert.throws(() => { assertSupportedJsonSchema(broken) }, /required/u)
   })
 
-  it('builds `required` as an array of names that exist in properties', () => {
+  void it('builds `required` as an array of names that exist in properties', () => {
     const spec: Readonly<Record<string, FieldSpec>> = Object.freeze({
       action: { type: 'string', required: true, enum: ['get'] },
       key: { type: 'string' },
@@ -149,7 +149,7 @@ describe('schema: what we register belongs to the host subset', () => {
     assert.doesNotThrow(() => { assertSupportedJsonSchema(schema) })
   })
 
-  it('emits nested object properties, required names and closed objects for jira_issue', () => {
+  void it('emits nested object properties, required names and closed objects for jira_issue', () => {
     type Shape = {
       type?: string
       additionalProperties?: boolean
@@ -171,7 +171,7 @@ describe('schema: what we register belongs to the host subset', () => {
     assert.deepEqual((schema.properties.keys as { items?: { type?: string } }).items, { type: 'string' })
   })
 
-  it('keeps a spec with no required field free of the keyword entirely', () => {
+  void it('keeps a spec with no required field free of the keyword entirely', () => {
     const schema = objectSchema({ note: { type: 'string' } })
     assert.equal(Object.hasOwn(schema, 'required'), false, 'an empty list is not the same as no list')
     assert.doesNotThrow(() => { assertSupportedJsonSchema(schema) })

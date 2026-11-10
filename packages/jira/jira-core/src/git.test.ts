@@ -39,8 +39,8 @@ after(async () => {
   if (root !== '') await removeTree(root)
 })
 
-describe('git: the repository starts with its attributes', () => {
-  it('initialises once, and reports that it did', async () => {
+void describe('git: the repository starts with its attributes', () => {
+  void it('initialises once, and reports that it did', async () => {
     assert.equal(await isRepository(root), false)
     const created = await initializeRepository(root)
     assert.equal(created.ok, true)
@@ -52,7 +52,7 @@ describe('git: the repository starts with its attributes', () => {
     if (again.ok) assert.equal(again.value, false, 'a second call is a no-op')
   })
 
-  it('writes .gitattributes exactly as decision 5 requires, and .gitignore with it', async () => {
+  void it('writes .gitattributes exactly as decision 5 requires, and .gitignore with it', async () => {
     assert.equal(await readFile(join(root, '.gitattributes'), 'utf8'), GITATTRIBUTES)
     const ignore = await readFile(join(root, '.gitignore'), 'utf8')
     assert.match(ignore, /^\.jira\/$/m)
@@ -69,7 +69,7 @@ describe('git: the repository starts with its attributes', () => {
     }
   })
 
-  it('fills in the settings decision 81 owns, without overwriting what is set', async () => {
+  void it('fills in the settings decision 81 owns, without overwriting what is set', async () => {
     // The backfill only runs on a real initialisation (`initializeRepository` returns early on an
     // existing repository), so the two halves take a repository each. Both drive the state they
     // need through the runner seam, because `git init` itself writes `core.fileMode` on a
@@ -104,7 +104,7 @@ describe('git: the repository starts with its attributes', () => {
     }
   })
 
-  it('migrates an old .gitignore forward, and only that (decision 175)', async () => {
+  void it('migrates an old .gitignore forward, and only that (decision 175)', async () => {
     // A store created before a pattern existed never learns it — that is how `.jira/network.lock/`
     // ended up committable in a live store. The second initialise is where the migration runs.
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-git-migrate-'))
@@ -140,7 +140,7 @@ describe('git: the repository starts with its attributes', () => {
     }
   })
 
-  it('does not create a .gitignore for a repository that has none', async () => {
+  void it('does not create a .gitignore for a repository that has none', async () => {
     // Migration appends to an existing file; creating one is initializeRepository's job, and it
     // only does that on a real init — a foreign repository is left exactly as it was found.
     const dir = await mkdtemp(join(tmpdir(), 'dsh-jira-git-foreign-'))
@@ -155,15 +155,15 @@ describe('git: the repository starts with its attributes', () => {
     }
   })
 
-  it('can read the name a commit would be attributed to', async () => {
+  void it('can read the name a commit would be attributed to', async () => {
     await runGit(root, ['config', '--local', 'user.name', 'daiqc'])
     await runGit(root, ['config', '--local', 'user.email', 'daiqc@example.invalid'])
     assert.equal(await gitUserName(root), 'daiqc')
   })
 })
 
-describe('git: commits', () => {
-  it('commits exactly the paths it is given, and no-op changes make no commit', async () => {
+void describe('git: commits', () => {
+  void it('commits exactly the paths it is given, and no-op changes make no commit', async () => {
     // The store commits the skeleton together with its first write; here we do the same,
     // so `.gitattributes` is in history before any data file (decision 5).
     const skeleton = await stageAndCommit(root, ['.gitattributes', '.gitignore'], 'chore: store skeleton [no-issue]')
@@ -195,7 +195,7 @@ describe('git: commits', () => {
     assert.equal(other.stdout, '', 'the working tree is clean afterwards')
   })
 
-  it('keeps the commit when a path in the list is an empty directory', async () => {
+  void it('keeps the commit when a path in the list is an empty directory', async () => {
     // `git add` tolerates an empty directory, `git commit -- <dir>` refuses it; committing
     // the list git itself staged is what keeps the commit from being silently lost.
     await mkdir(join(root, 'empty-dir'), { recursive: true })
@@ -206,7 +206,7 @@ describe('git: commits', () => {
     if (result.ok) assert.equal(result.value, true)
     assert.equal((await runGit(root, ['log', '-1', '--pretty=%s'])).stdout, 'DH-1: update (rev 3)')
   })
-  it('says what git said when the commit cannot happen, and keeps the file it wrote', async () => {
+  void it('says what git said when the commit cannot happen, and keeps the file it wrote', async () => {
     // The write already happened when the commit fails, and the file must still be there
     // afterwards — otherwise the ledger would lose data silently (the header's promise).
     const broken = await mkdtemp(join(tmpdir(), 'dsh-jira-nogit-'))
@@ -221,11 +221,11 @@ describe('git: commits', () => {
     }
   })
 
-  it('reports a store with no remote instead of pretending to push', async () => {
+  void it('reports a store with no remote instead of pretending to push', async () => {
     assert.equal(await hasRemote(root), false)
   })
 
-  it('gives a commit an identity when the machine has none (decision 146)', async () => {
+  void it('gives a commit an identity when the machine has none (decision 146)', async () => {
     // A CI runner has no `user.name`/`user.email`, and `git commit` then fails with "Author
     // identity unknown" — while the file write succeeded, so the ledger looks healthy and
     // **nothing is versioned**. The plugin's own CI caught it (2026-10-16).
@@ -243,7 +243,7 @@ describe('git: commits', () => {
     assert.deepEqual(commit.slice(0, 4), ['-c', 'user.name=dsh-jira', '-c', 'user.email=jira@local'])
   })
 
-  it('leaves the machine alone when it already has an identity', async () => {
+  void it('leaves the machine alone when it already has an identity', async () => {
     // A developer's own name has to land on their commits, and `user.name` is what `human:<name>`
     // reads (§4.9) — so the fallback must never be written into the repository's config.
     const seen: string[][] = []
@@ -258,7 +258,7 @@ describe('git: commits', () => {
     assert.equal(commit?.[0], 'commit', 'no -c once the identity is configured')
   })
 
-  it('names the human only when the machine has both halves (decision 147)', async () => {
+  void it('names the human only when the machine has both halves (decision 147)', async () => {
     const both: GitRunner = async (_dir, args) => ({
       code: 0,
       stdout: args[2] === 'user.name' ? 'Ada\n' : 'ada@example.invalid\n',
@@ -274,7 +274,7 @@ describe('git: commits', () => {
     assert.equal(await humanAuthorOf('/store', noEmail), undefined)
   })
 
-  it('takes everything uncommitted and passes the author through (decision 147)', async () => {
+  void it('takes everything uncommitted and passes the author through (decision 147)', async () => {
     const seen: string[][] = []
     const fake: GitRunner = async (_dir, args) => {
       seen.push([...args])
@@ -292,7 +292,7 @@ describe('git: commits', () => {
     assert.ok(commit.includes('a.md') && commit.includes('projects/DH/issues/DH-1.md'))
   })
 
-  it('has nothing to adopt when the tree is already clean (decision 147)', async () => {
+  void it('has nothing to adopt when the tree is already clean (decision 147)', async () => {
     const fake: GitRunner = async () => ({ code: 0, stdout: '', stderr: '' })
     const result = await stageAllAndCommit('/store', 'chore: 收编 [no-issue]', fake)
     assert.equal(result.ok, true, JSON.stringify(result))

@@ -50,12 +50,12 @@ const CASES: readonly (readonly [string, readonly string[]])[] = Object.freeze([
   ['unknownTagsAction', ['未知的 tags 动作', '（可选 lint）']],
 ])
 
-describe('messages: one home per sentence (decision 184)', () => {
-  it('covers every export, so a message added tomorrow is guarded too', () => {
+void describe('messages: one home per sentence (decision 184)', () => {
+  void it('covers every export, so a message added tomorrow is guarded too', () => {
     assert.deepEqual(Object.keys(core.messages).sort(), CASES.map(([name]) => name).sort())
   })
 
-  it('no surface carries a second literal copy of any message', () => {
+  void it('no surface carries a second literal copy of any message', () => {
     const leaks: string[] = []
     for (const [name, fragments] of CASES) {
       for (const [path, source] of SURFACES) {
@@ -67,7 +67,7 @@ describe('messages: one home per sentence (decision 184)', () => {
     assert.deepEqual(leaks, [], 'a sentence spelled out twice is how the two surfaces drift')
   })
 
-  it('both surfaces import the module rather than spelling the sentences out', () => {
+  void it('both surfaces import the module rather than spelling the sentences out', () => {
     for (const [path, source] of SURFACES) {
       assert.match(source, /from '@deepseek-ai\/dsh-jira-core'/u, `${path} does not import the core root`)
     }

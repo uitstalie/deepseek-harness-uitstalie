@@ -20,8 +20,8 @@ const root = packageRootFrom(import.meta.url)
 /** The same rules the host's registry enforces, so a skill cannot be registered-and-thrown. */
 const SKILL_NAME = /^[a-z][a-z0-9-]*$/u
 
-describe('skills: the package ships three usable skills', () => {
-  it('registers all three, with content the registry would accept', async () => {
+void describe('skills: the package ships three usable skills', () => {
+  void it('registers all three, with content the registry would accept', async () => {
     const registered: SkillDefinition[] = []
     const result = await registerSkills(
       { skills: { register: (definition) => { registered.push(definition); return () => undefined } } },
@@ -40,7 +40,7 @@ describe('skills: the package ships three usable skills', () => {
     }
   })
 
-  it('reads a body straight from the package, and reports a missing one', async () => {
+  void it('reads a body straight from the package, and reports a missing one', async () => {
     const body = await readSkillBody('jira-work', root)
     assert.equal(body.ok, true)
     if (body.ok) assert.match(body.value, /jira_issue/)
@@ -50,19 +50,19 @@ describe('skills: the package ships three usable skills', () => {
     if (!missing.ok) assert.match(missing.error.message, /cannot read the no-such-skill skill/)
   })
 
-  it('skips what it cannot read rather than failing to load', async () => {
+  void it('skips what it cannot read rather than failing to load', async () => {
     const result = await registerSkills({ skills: { register: () => () => undefined } }, '/nonexistent')
     assert.deepEqual(result.registered, [])
     assert.deepEqual(result.skipped, SKILL_CATALOGUE.map(entry => entry.name))
   })
 
-  it('does nothing when the host has no skill registry', async () => {
+  void it('does nothing when the host has no skill registry', async () => {
     const result = await registerSkills({}, root)
     assert.deepEqual(result.registered, [])
     assert.deepEqual(result.skipped, [])
   })
 
-  it('describes each skill in the catalogue it registers', async () => {
+  void it('describes each skill in the catalogue it registers', async () => {
     for (const entry of SKILL_CATALOGUE) {
       const body = await readSkillBody(entry.name, root)
       assert.equal(body.ok, true, entry.name)
@@ -70,7 +70,7 @@ describe('skills: the package ships three usable skills', () => {
     }
   })
 
-  it('resolves the package root through a non-ASCII path', async () => {
+  void it('resolves the package root through a non-ASCII path', async () => {
     // A package under a non-ASCII directory arrives as a percent-encoded module URL.
     // `URL.pathname` keeps that encoding, so the root resolved to a path that does not exist
     // and all three skills were skipped without a word — found on the Fedora side, where the

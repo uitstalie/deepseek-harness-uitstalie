@@ -39,13 +39,13 @@ const binding = (overrides: Partial<Parameters<DispatchReportStore['record']>[0]
   ...overrides,
 })
 
-describe('dispatch reports: journal', () => {
+void describe('dispatch reports: journal', () => {
   const journalRows = async (root: string): Promise<Record<string, unknown>[]> => {
     const text = await readFile(join(root, DISPATCH_REPORT_DIR, DISPATCH_REPORT_FILE), 'utf8')
     return text.trim().split(/\r?\n/u).map(line => JSON.parse(line) as Record<string, unknown>)
   }
 
-  it('records a pending binding keyed by child Session and prompt identity', async () => {
+  void it('records a pending binding keyed by child Session and prompt identity', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     const recorded = await store.record(binding({ id: 'task-1' }))
@@ -61,14 +61,14 @@ describe('dispatch reports: journal', () => {
     assert.match(text, /"id":"task-1"/u)
   })
 
-  it('mints distinct readable task ids', () => {
+  void it('mints distinct readable task ids', () => {
     const first = newDispatchReportId()
     const second = newDispatchReportId()
     assert.match(first, /^task-[0-9a-z]+-[0-9a-f]{8}$/u)
     assert.notEqual(first, second)
   })
 
-  it('claims once and settles delivered; a second claim sees no work', async () => {
+  void it('claims once and settles delivered; a second claim sees no work', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-claim' }))
@@ -85,7 +85,7 @@ describe('dispatch reports: journal', () => {
     assert.equal((await store.forSession('child-1'))[0]?.deliveredAt, AT)
   })
 
-  it('lets exactly one of two independent Node processes claim the same task', async () => {
+  void it('lets exactly one of two independent Node processes claim the same task', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-cross-process' }))
@@ -120,7 +120,7 @@ describe('dispatch reports: journal', () => {
     console.log(`cross-process claim: ${results.map(result => result.status).join(', ')}; attempts=1`)
   })
 
-  it('reclaims an expired claim lease after its owner disappears', async () => {
+  void it('reclaims an expired claim lease after its owner disappears', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-expired' }))
@@ -131,7 +131,7 @@ describe('dispatch reports: journal', () => {
     assert.equal(claimed?.record.attempts, 1)
   })
 
-  it('prepares a report only while its claim is delivering', async () => {
+  void it('prepares a report only while its claim is delivering', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-prepare' }))
@@ -162,7 +162,7 @@ describe('dispatch reports: journal', () => {
     assert.equal((await journalRows(root)).length, 4, 'prepare after delivery does not append JSONL')
   })
 
-  it('lists failures oldest first and retries only failed reports with saved text', async () => {
+  void it('lists failures oldest first and retries only failed reports with saved text', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-retry', dispatchedAt: AT }))
@@ -208,7 +208,7 @@ describe('dispatch reports: journal', () => {
     assert.equal(reloaded.get('task-no-text')?.status, 'failed')
   })
 
-  it('retries a stale delivering claim after the lease and reports the retry', async () => {
+  void it('retries a stale delivering claim after the lease and reports the retry', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-stale' }))
@@ -221,7 +221,7 @@ describe('dispatch reports: journal', () => {
     assert.equal(retried?.record.attempts, 2)
   })
 
-  it('keeps a failed report settled when a later turn arrives', async () => {
+  void it('keeps a failed report settled when a later turn arrives', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-failed' }))
@@ -234,7 +234,7 @@ describe('dispatch reports: journal', () => {
     assert.equal(await store.claim('task-failed', LATER), undefined)
   })
 
-  it('reads the latest line per id and tolerates a torn final line', async () => {
+  void it('reads the latest line per id and tolerates a torn final line', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-latest' }))
@@ -247,7 +247,7 @@ describe('dispatch reports: journal', () => {
     assert.equal((await store.all()).size, 1)
   })
 
-  it('fails pending reports when their Session is archived or stopped', async () => {
+  void it('fails pending reports when their Session is archived or stopped', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-pending', sessionId: 'child-stop' }))
@@ -265,7 +265,7 @@ describe('dispatch reports: journal', () => {
     assert.equal((await store.forSession('child-other'))[0]?.status, 'pending')
   })
 
-  it('lists every state and acknowledges delivery without creating another delivery', async () => {
+  void it('lists every state and acknowledges delivery without creating another delivery', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-ack' }))
@@ -282,7 +282,7 @@ describe('dispatch reports: journal', () => {
     assert.equal(await store.retry('task-ack', LATER), undefined)
   })
 
-  it('recovers saved pending reports once without reopening delivered or failed work', async () => {
+  void it('recovers saved pending reports once without reopening delivered or failed work', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-recover' }))
@@ -316,7 +316,7 @@ describe('dispatch reports: journal', () => {
     assert.equal(again.attempted, 0)
   })
 
-  it('preserves a failed saved report with its failure reason on the next initialization', async () => {
+  void it('preserves a failed saved report with its failure reason on the next initialization', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-failed-write' }))
@@ -339,7 +339,7 @@ describe('dispatch reports: journal', () => {
     console.log('failed-write recovery: failed retained with injected delivery write failure, duplicate deliveries=0')
   })
 
-  it('takes over a fresh delivering claim during startup recovery and preserves acknowledged work', async () => {
+  void it('takes over a fresh delivering claim during startup recovery and preserves acknowledged work', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-fresh' }))
@@ -363,7 +363,7 @@ describe('dispatch reports: journal', () => {
     assert.equal(summary.attempted, 1)
   })
 
-  it('stops recovery before admitting another report when cancelled', async () => {
+  void it('stops recovery before admitting another report when cancelled', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-cancelled' }))
@@ -376,7 +376,7 @@ describe('dispatch reports: journal', () => {
     assert.equal((await store.list(['delivering'])).length, 1)
   })
 
-  it('keeps an unavailable recovery recipient visible as failed instead of rerouting it', async () => {
+  void it('keeps an unavailable recovery recipient visible as failed instead of rerouting it', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)
     await store.record(binding({ id: 'task-unavailable', superSession: 'original-super' }))
@@ -394,7 +394,7 @@ describe('dispatch reports: journal', () => {
     assert.match(record?.error ?? '', /original recipient/u)
   })
 
-  it('keeps one journal per super workspace root', async () => {
+  void it('keeps one journal per super workspace root', async () => {
     const firstRoot = await scratch()
     const secondRoot = await scratch()
     await new DispatchReportStore(firstRoot).record(binding({ id: 'task-a' }))
