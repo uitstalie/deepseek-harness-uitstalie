@@ -2043,6 +2043,7 @@ describe('superagent: file delivery', () => {
     await registry.create(live)
     const fakeCtx = {
       get: (key: string) => key === 'sandboxPolicy' ? policy : key === 'workspaceRegistry' ? registry : undefined,
+      logger: { warn() {}, debug() {}, info() {}, error() {} },
     }
     const contribution = createSuperagentContribution(
       { ctx: fakeCtx as never, env: {}, clock: () => Date.parse(AT), recorder: createSessionRecorder() },
@@ -2051,7 +2052,7 @@ describe('superagent: file delivery', () => {
     assert.equal(providers.length, 1)
     assert.deepEqual(providers[0]?.({ header: { cwd: home } }), [realpathSync.native(live)])
     assert.equal(providers[0]?.({ header: { cwd: dir } }), undefined)
-    contribution.dispose?.()
+    await contribution.dispose?.()
     assert.equal(disposed, true)
   })
 })
@@ -3183,6 +3184,46 @@ describe('superagent: the session action failure envelope', () => {
 
 
 describe('superagent: teardown', () => {
+  it('waits for startup recovery during dispose and preserves the original recipient', async () => {
+    const root = await scratchDirectory()
+    const store = new DispatchReportStore(root)
+    await store.record({
+      id: 'task-dispose-recovery',
+      workspace: { id: 'w1', title: 'workspace', path: root },
+      sessionId: 'child-recovery',
+      superSession: 'original-super',
+      requestId: 'req-recovery',
+      task: 'saved work',
+      dispatchedAt: AT,
+    })
+    await store.claim('task-dispose-recovery', AT)
+    await store.prepare('task-dispose-recovery', AT, 'saved failed report', 'work done', 'returned')
+    await store.settle('task-dispose-recovery', 'failed', AT, 'injected delivery write failure')
+    let prompted = 0
+    const controller = {
+      async list() { return { items: [{ sessionId: 'original-super', running: false, cwd: root }] } },
+      async prompt() {
+        prompted += 1
+        return { accepted: true }
+      },
+    }
+    const contribution = createSuperagentContribution({
+      ctx: {
+        get: (key: string) => key === 'sessionController' ? controller : undefined,
+        on: () => () => {},
+        logger: { warn() {}, debug() {}, info() {}, error() {} },
+      },
+      env: {},
+      clock: () => Date.parse(AT),
+      recorder: createSessionRecorder(),
+    } as never, undefined, 2, undefined, undefined, root)
+    await contribution.dispose?.()
+    assert.equal(prompted, 0, 'a failed saved report is inspected but not silently reopened')
+    assert.equal((await store.all()).get('task-dispose-recovery')?.status, 'failed')
+    assert.equal((await store.all()).get('task-dispose-recovery')?.error, 'injected delivery write failure')
+    assert.equal((await store.all()).get('task-dispose-recovery')?.superSession, 'original-super')
+  })
+
   it('admits no turn-end work after dispose and tolerates a repeated dispose', async () => {
     const contribution = createSuperagentContribution({
       ctx: {
@@ -3194,8 +3235,8 @@ describe('superagent: teardown', () => {
       clock: () => 0,
       recorder: { recordOnce: async () => undefined },
     } as never)
-    contribution.dispose?.()
-    contribution.dispose?.()
+    await contribution.dispose?.()
+    await contribution.dispose?.()
     await assert.doesNotReject(async () => { await contribution.onTurnEnd?.({} as never) })
   })
 })

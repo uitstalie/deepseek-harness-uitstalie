@@ -316,6 +316,29 @@ describe('dispatch reports: journal', () => {
     assert.equal(again.attempted, 0)
   })
 
+  it('preserves a failed saved report with its failure reason on the next initialization', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    await store.record(binding({ id: 'task-failed-write' }))
+    await store.claim('task-failed-write', AT)
+    await store.prepare('task-failed-write', AT, 'saved failed report', 'work done', 'returned')
+    await store.settle('task-failed-write', 'failed', AT, 'injected delivery write failure')
+    const sent: string[] = []
+    const summary = await recoverDispatchReports(new DispatchReportStore(root), {
+      at: LATER,
+      canDeliver: () => true,
+      deliver: (report) => { sent.push(report.id); return true },
+      log: () => {},
+    })
+    assert.deepEqual(sent, [], 'failed work is not silently reopened')
+    assert.equal(summary.attempted, 0)
+    assert.equal(summary.failed, 0)
+    assert.deepEqual(summary.skipped.map(row => ({ id: row.id, reason: row.reason })), [{ id: 'task-failed-write', reason: 'failed' }])
+    assert.equal((await store.all()).get('task-failed-write')?.status, 'failed')
+    assert.equal((await store.all()).get('task-failed-write')?.error, 'injected delivery write failure')
+    console.log('failed-write recovery: failed retained with injected delivery write failure, duplicate deliveries=0')
+  })
+
   it('takes over a fresh delivering claim during startup recovery and preserves acknowledged work', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)

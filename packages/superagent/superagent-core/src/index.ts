@@ -178,6 +178,17 @@ interface ClaimLease {
 
 const CLAIM_LEASE_MS = DELIVERY_LEASE_MS
 
+/** Release only the caller's own lease; an expired successor's lease is not ours to delete. */
+const releaseClaimLease = async (path: string, owner: string): Promise<void> => {
+  try {
+    const current = JSON.parse(await readFile(path, 'utf8')) as { owner?: unknown }
+    if (current.owner !== owner) return
+    await rm(path, { force: true })
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return
+  }
+}
+
 /**
  * The superagent report journal for one super workspace.
  *
@@ -221,7 +232,7 @@ export class DispatchReportStore {
         await mkdir(dirname(path), { recursive: true })
         handle = await open(path, 'wx', 0o600)
         await handle.writeFile(JSON.stringify({ id, owner, expiresAt: now + CLAIM_LEASE_MS }), 'utf8')
-        return { id, owner, expiresAt: now + CLAIM_LEASE_MS, release: () => rm(path, { force: true }) }
+        return { id, owner, expiresAt: now + CLAIM_LEASE_MS, release: () => releaseClaimLease(path, owner) }
       } catch (error: unknown) {
         await handle?.close().catch(() => {})
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
@@ -238,7 +249,7 @@ export class DispatchReportStore {
         try {
           // Only expired owners are replaceable. The rename makes the new owner visible atomically.
           await rename(replacement, path)
-          return { id, owner: nextOwner, expiresAt: now + CLAIM_LEASE_MS, release: () => rm(path, { force: true }) }
+          return { id, owner: nextOwner, expiresAt: now + CLAIM_LEASE_MS, release: () => releaseClaimLease(path, nextOwner) }
         } catch (error: unknown) {
           await rm(replacement, { force: true })
           if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue

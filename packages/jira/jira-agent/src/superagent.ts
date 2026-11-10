@@ -85,6 +85,9 @@ export const STATUS_TOOL_NAME = 'superagent_status'
 /** How often the live-agent timer runs one pass; the session-less pass shares it (DH-714). */
 export const SUPERAGENT_POLL_MS = 5 * 60_000
 
+/** Bound shutdown recovery without allowing an unavailable recipient to hang disposal forever. */
+const RECOVERY_DISPOSE_TIMEOUT_MS = 30_000
+
 /** The synthetic session id the session-less dispatcher writes under. */
 export const DAEMON_SESSION_ID = 'superagent-daemon'
 
@@ -5286,10 +5289,23 @@ export const createSuperagentContribution = (
       if (isSuperAgentSession(input.agent, superHome)) return
       await runSuperagentPass(host, input.agent, input.signal, workerPreset, maxWorkers)
     },
-    dispose: () => {
+    dispose: async () => {
       disposed = true
       recoveryAbort?.abort()
-      void recoveryDone?.catch(() => {})
+      if (recoveryDone !== undefined) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        try {
+          await Promise.race([
+            recoveryDone,
+            new Promise<void>((resolve) => {
+              timer = setTimeout(resolve, RECOVERY_DISPOSE_TIMEOUT_MS)
+              timer.unref?.()
+            }),
+          ])
+        } finally {
+          if (timer !== undefined) clearTimeout(timer)
+        }
+      }
       monitorDispose?.()
       monitorDispose = undefined
       fsRootsDispose?.()
@@ -5298,10 +5314,9 @@ export const createSuperagentContribution = (
       orphanDispose = undefined
       domainChangeDispose?.()
       domainChangeDispose = undefined
-      // The capability contract's dispose() is synchronous, so this close is deliberately not
-      // awaited: the identity, timers and listeners above stop immediately, while the durable
-      // store finishes its own close on its own task. Its failure is logged, never thrown.
-      void dispatchStore?.close().catch((error: unknown) => {
+      // Startup recovery is bounded, so disposal can await its settlement without hanging forever.
+      // The domain close follows it; any close failure is logged rather than masking disposal.
+      await dispatchStore?.close().catch((error: unknown) => {
         host.ctx.logger.warn('superagent: closing the dispatch store failed: %s', String(error))
       })
       if (timer !== undefined) clearInterval(timer)
