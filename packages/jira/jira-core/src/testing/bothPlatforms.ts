@@ -27,9 +27,10 @@ export const bothPlatforms = (
   name: string,
   body: (system: System, platform: PlatformName) => Promise<void> | void,
 ): void => {
-  describe(name, () => {
+  // node:test registers suites and cases synchronously; their completion is the runner's.
+  void describe(name, () => {
     for (const platform of ['win32', 'linux'] as const) {
-      it(`${platform} rules`, async () => {
+      void it(`${platform} rules`, async () => {
         await body(systemFor(platform), platform)
       })
     }

@@ -54,7 +54,7 @@ export const checkConsistency = (input: ConsistencyInput): readonly ConsistencyF
 
   for (const issue of input.issues) {
     for (const reference of issue.kbRefs) {
-      const entry = byKey.get(String(reference))
+      const entry = byKey.get(reference)
       if (entry === undefined) continue // dangling: `jira lint` reports that, with a citation.
       if (!entry.issues.some(key => String(key) === String(issue.key))) {
         findings.push(Object.freeze({
@@ -70,7 +70,7 @@ export const checkConsistency = (input: ConsistencyInput): readonly ConsistencyF
     for (const reference of entry.issues) {
       const issue = issueByKey.get(String(reference))
       if (issue === undefined) continue // dangling: reported by lint.
-      if (!issue.kbRefs.some(key => String(key) === String(entry.key))) {
+      if (!issue.kbRefs.some(key => key === entry.key)) {
         findings.push(Object.freeze({
           severity: 'warning',
           code: 'kb-issue-one-sided',

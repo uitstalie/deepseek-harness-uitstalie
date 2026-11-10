@@ -179,7 +179,7 @@ async function editOne(ctx: Context, session: Session, settings: MemorySettings,
   })
   return {
     kind: 'success',
-    text: `Updated the summary for turn ${String(result.turn)} (version ${String(result.version ?? '?')}, ${result.tier}) in ${result.path}.`,
+    text: `Updated the summary for turn ${result.turn} (version ${result.version ?? '?'}, ${result.tier}) in ${result.path}.`,
   }
 }
 

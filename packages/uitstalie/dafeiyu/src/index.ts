@@ -583,12 +583,13 @@ export class Dafeiyu extends Service {
       const enabled = this.gateFor(registration.provider)
       if (enabled === registration.enabled) continue
       registration.enabled = enabled
+      // The queue owns and logs failures; the gate swap must not wait for the lifecycle step.
       if (enabled) {
-        this.enqueue(registration, async () => { await this.rebuild(registration) })
+        void this.enqueue(registration, async () => { await this.rebuild(registration) })
       } else {
         // Stop admission synchronously, then wait for the admitted hook before releasing it.
         this.stopRegistration(registration)
-        this.enqueue(registration, async () => { await this.tearDown(registration) })
+        void this.enqueue(registration, async () => { await this.tearDown(registration) })
       }
     }
   }

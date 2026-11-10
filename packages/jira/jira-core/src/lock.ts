@@ -110,8 +110,8 @@ export const readOwner = async (path: string): Promise<LockOwner | undefined> =>
     if (typeof parsed.pid !== 'number' || typeof parsed.at !== 'string') return undefined
     return Object.freeze({
       pid: parsed.pid,
-      host: String(parsed.host ?? 'unknown'),
-      machine_id: String(parsed.machine_id ?? 'unknown'),
+      host: parsed.host ?? 'unknown',
+      machine_id: parsed.machine_id ?? 'unknown',
       at: parsed.at,
     })
   } catch {

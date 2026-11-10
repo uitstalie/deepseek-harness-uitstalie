@@ -113,7 +113,7 @@ const renderTag = (payload: { readonly tag: TagRecord; readonly committed: boole
 /** A knowledge write, including issue citations the mirror could not update. */
 const renderMirrorFailures = (value: Pick<ToolValue, 'mirror'>): readonly string[] => {
   const mirror = value.mirror
-  return (mirror?.failed ?? []).map(failure => `mirror.failed: ${String(failure.key)}: ${formatError(failure.error)}`)
+  return (mirror?.failed ?? []).map(failure => `mirror.failed: ${failure.key}: ${formatError(failure.error)}`)
 }
 
 /** The caller facts for one execution, shared by the tools and the write guard. */

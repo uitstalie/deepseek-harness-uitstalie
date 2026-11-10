@@ -109,8 +109,8 @@ export const lintStore = (input: LintInput): LintReport => {
     }
     for (const reference of issue.kbRefs) {
       references += 1
-      if (!knowledgeKeys.has(String(reference))) {
-        add('error', 'kb-ref-dangling', `${String(issue.key)} references ${String(reference)}, which does not exist`, path)
+      if (!knowledgeKeys.has(reference)) {
+        add('error', 'kb-ref-dangling', `${issue.key} references ${reference}, which does not exist`, path)
       }
     }
   }

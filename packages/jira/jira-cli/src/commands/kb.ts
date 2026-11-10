@@ -30,7 +30,7 @@ const noteMirror = (
 ): void => {
   if (mirror === undefined) return
   if (mirror.updated.length > 0) ctx.io.err(`已回填 kb_refs：${mirror.updated.join('、')}`)
-  for (const failure of mirror.failed) ctx.io.err(`未能回填 ${String(failure.key)}：${failure.error.message}`)
+  for (const failure of mirror.failed) ctx.io.err(`未能回填 ${failure.key}：${failure.error.message}`)
 }
 
 const searchAction = async (ctx: CommandContext): Promise<number> => {

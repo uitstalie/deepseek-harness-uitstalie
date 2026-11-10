@@ -824,7 +824,7 @@ export const runModelsTool = async (
     })
   } catch (error: unknown) {
     return failure(invalidInput(
-      `the LLM registry refused ${providerId}/${String(modelId ?? '')}: ${error instanceof Error ? error.message : String(error)}`,
+      `the LLM registry refused ${providerId}/${modelId ?? ''}: ${error instanceof Error ? error.message : String(error)}`,
       { provider: providerId, ...(modelId === undefined ? {} : { model: modelId }) },
     ), caller, me)
   }
@@ -1582,7 +1582,7 @@ const workspaceRowOf = async (workspace: WorkspaceLike): Promise<Readonly<Record
     status = 'unknown'
   }
   return Object.freeze({
-    id: String(workspace.id),
+    id: workspace.id,
     path: workspace.path,
     title: workspace.title,
     status,
@@ -1658,7 +1658,7 @@ export const runWorkspaceTool = async (
   const selector = asString(validated.value.workspace)
   const workspace = selector === undefined ? undefined : findWorkspace(registry, selector)
   if (workspace === undefined) {
-    return failure(invalidInput(`"${String(selector ?? '')}" is not a registered workspace; run superagent_control roster first`), caller, me)
+    return failure(invalidInput(`"${selector ?? ''}" is not a registered workspace; run superagent_control roster first`), caller, me)
   }
   // The workspace that hosts this Session is the dispatcher's own home: unregistering or even
   // renaming it would make the running role disappear. The title check is a second guard for a
@@ -1674,7 +1674,7 @@ export const runWorkspaceTool = async (
     const confirm = asString(validated.value.confirm)
     if (confirm === undefined || ![workspace.id, workspace.title, workspace.path].includes(confirm.trim())) {
       return failure(invalidInput(
-        `remove needs \`confirm\` to repeat the workspace id, title, or path exactly; got ${String(confirm ?? 'nothing')}`,
+        `remove needs \`confirm\` to repeat the workspace id, title, or path exactly; got ${confirm ?? 'nothing'}`,
         { workspace: workspace.path, accepted: [workspace.id, workspace.title, workspace.path] },
       ), caller, me)
     }
@@ -1729,7 +1729,7 @@ export const runWorkspaceTool = async (
     }
   }
 
-  return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
+  return failure(invalidInput(`unknown action "${action}"`), caller, me)
 }
 
 /**
@@ -1862,7 +1862,7 @@ export const runDeliverTool = async (
   }
   const workspace = workspaceArg === undefined ? undefined : findWorkspace(registry, workspaceArg)
   if (workspace === undefined) {
-    return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_control roster first`), caller, me)
+    return failure(invalidInput(`"${workspaceArg ?? ''}" is not a registered workspace; run superagent_control roster first`), caller, me)
   }
   const workspaceRoot = physicalDirectory(workspace.path)
   if (workspaceRoot === undefined) {
@@ -2797,7 +2797,7 @@ export const runSessionTool = async (
     return await runSessionAction(controller, validated.value)
   } catch (error: unknown) {
     return sessionActionFailure(
-      `the Session action "${String(action ?? '')}" failed before it could answer: ${error instanceof Error ? error.message : String(error)}`,
+      `the Session action "${action ?? ''}" failed before it could answer: ${error instanceof Error ? error.message : String(error)}`,
       me,
       { workspace: workspace?.path, session: sessionArg },
     )
@@ -2816,7 +2816,7 @@ export const runSessionTool = async (
   ): Promise<ToolValue> {
     if (action === 'append') {
       if (workspace === undefined) {
-        return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_control roster first`), caller, me)
+        return failure(invalidInput(`"${workspaceArg ?? ''}" is not a registered workspace; run superagent_control roster first`), caller, me)
       }
       if (textArg === undefined || textArg.trim() === '') {
         return failure(invalidInput('append needs `text`: the follow-up instruction'), caller, me)
@@ -2969,7 +2969,7 @@ export const runSessionTool = async (
 
     if (action === 'start') {
       if (workspace === undefined) {
-        return failure(invalidInput(`"${String(workspaceArg ?? '')}" is not a registered workspace; run superagent_control roster first`), caller, me)
+        return failure(invalidInput(`"${workspaceArg ?? ''}" is not a registered workspace; run superagent_control roster first`), caller, me)
       }
       if (taskArg === undefined || taskArg.trim() === '') {
         return failure(invalidInput('start needs `task`: a self-contained brief for the workspace agent'), caller, me)
@@ -3526,7 +3526,7 @@ export const runSessionTool = async (
       const confirm = asString(values.confirm)
       if (confirm === undefined || confirm.trim() !== sessionArg.trim()) {
         return failure(invalidInput(
-          `delete needs \`confirm\` to repeat the Session id exactly; got ${String(confirm ?? 'nothing')}`,
+          `delete needs \`confirm\` to repeat the Session id exactly; got ${confirm ?? 'nothing'}`,
           { session: sessionArg, accepted: sessionArg },
         ), caller, me)
       }
@@ -3578,7 +3578,7 @@ export const runSessionTool = async (
       }
     }
 
-    return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
+    return failure(invalidInput(`unknown action "${action}"`), caller, me)
   }
 }
 
@@ -3709,7 +3709,7 @@ export const runLedgerTool = async (
           workspacePath: workspace.path,
           task: task.trim(),
           dispatchedAt: options.at,
-          ...(issue === undefined ? {} : { issue: String(issue) }),
+          ...(issue === undefined ? {} : { issue }),
         })
         const durable = await store.record(pending, caller.sessionId)
         if (durable !== undefined) return Object.freeze({ ...verdict, task: durable.task, file: durable.file })
@@ -3721,7 +3721,7 @@ export const runLedgerTool = async (
       }, {
         task: task.trim(),
         dispatchedAt: options.at,
-        ...(issue === undefined ? {} : { issue: String(issue) }),
+        ...(issue === undefined ? {} : { issue }),
       })
       return Object.freeze({ ...verdict, task: recorded.task, file: recorded.file })
     } catch (error: unknown) {
@@ -3774,7 +3774,7 @@ export const runLedgerTool = async (
     }
   }
 
-  return failure(invalidInput(`unknown action "${String(action)}"`), caller, me)
+  return failure(invalidInput(`unknown action "${action}"`), caller, me)
 }
 
 /**
@@ -4627,7 +4627,7 @@ export const runDispatchTool = async (
       continue
     }
     const dispatch = started.dispatch as { session?: string } | undefined
-    recovered.push(Object.freeze({ key, previous: previous.session, session: String(dispatch?.session ?? '') }))
+    recovered.push(Object.freeze({ key, previous: previous.session, session: dispatch?.session ?? '' }))
   }
   return Object.freeze({
     ok: true,
@@ -4772,7 +4772,7 @@ const dispatcher = (host: ToolHost, workerPreset: string | undefined, maxWorkers
     const dispatch = typed.dispatch as { key?: string; session?: string; cwd?: string } | undefined
     return renderText(dispatch?.session === undefined
       ? 'ok'
-      : `${String(dispatch.key)}  session ${String(dispatch.session)}  ${String(dispatch.cwd ?? '')}`.trim())
+      : `${dispatch.key}  session ${dispatch.session}  ${dispatch.cwd ?? ''}`.trim())
   },
   run: (args, call) => runDispatchTool(args, runOptionsOf(host, call), call.me, host.ctx, workerPreset, maxWorkers),
 })
@@ -5091,7 +5091,7 @@ export const createSuperagentContribution = (
       const task = typed.task as { id?: string; status?: string; workspaceTitle?: string } | undefined
       return renderText(task?.id === undefined
         ? 'ok'
-        : `${String(task.id)}  ${String(task.status)}  ${String(task.workspaceTitle)}`)
+        : `${task.id}  ${task.status}  ${task.workspaceTitle}`)
     },
     run: (args, call) => runLedgerTool(args, runOptionsOf(host, call), call.me, host.ctx, dispatchStore, reportStore),
   }
@@ -5197,7 +5197,7 @@ export const createSuperagentContribution = (
         const registered = typed.workspace as { path?: string; title?: string } | undefined
         return renderText(registered?.path === undefined
           ? 'ok'
-          : `${String(registered.title)}  ${String(registered.path)}`)
+          : `${registered.title}  ${registered.path}`)
       }
       const status = typed.status as {
         running?: boolean
