@@ -92,9 +92,12 @@ interface PermissionOption {
 type TargetResolution = Readonly<{ target: PermissionTarget } | { error: string }>
 
 /** Read a named optional host service without requiring it in every composition. */
-function serviceOf<T>(ctx: unknown, name: string): T | undefined {
+function serviceOf(ctx: unknown, name: 'permissionPresets'): PermissionPresetsLike | undefined
+function serviceOf(ctx: unknown, name: 'toolPolicy'): ToolPolicyLike | undefined
+function serviceOf(ctx: unknown, name: string): unknown
+function serviceOf(ctx: unknown, name: string): unknown {
   const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
-  return typeof get === 'function' ? get.call(ctx, name) as T | undefined : undefined
+  return typeof get === 'function' ? get.call(ctx, name) : undefined
 }
 
 /**
@@ -143,7 +146,7 @@ export async function resolvePermissionTarget(
  * @returns the supported preset options in service declaration order.
  */
 export function permissionOptions(ctx: unknown): readonly PermissionOption[] {
-  const presets = serviceOf(ctx, 'sandboxPolicy') === undefined ? undefined : serviceOf<PermissionPresetsLike>(ctx, 'permissionPresets')
+  const presets = serviceOf(ctx, 'sandboxPolicy') === undefined ? undefined : serviceOf(ctx, 'permissionPresets')
   const options: PermissionOption[] = (presets?.names ?? []).map((preset) => {
     const spec = presets?.resolve(preset)
     return {
@@ -152,7 +155,7 @@ export function permissionOptions(ctx: unknown): readonly PermissionOption[] {
       ...spec === undefined ? {} : { sandbox: spec.sandbox, approval: spec.approval },
     }
   })
-  const toolPolicy = serviceOf<ToolPolicyLike>(ctx, 'toolPolicy')
+  const toolPolicy = serviceOf(ctx, 'toolPolicy')
   if (serviceOf(ctx, 'sandboxPolicy') === undefined && toolPolicy?.has(SOFT_TOOL_PROFILE) === true) {
     options.push({
       preset: SOFT_PERMISSION_PRESET,
@@ -171,7 +174,7 @@ function sandboxState(presets: PermissionPresetsLike, session: SessionLike): Per
 
 /** The current permission of a resolved target. */
 function currentPermission(ctx: unknown, target: PermissionTarget): Readonly<Record<string, unknown>> {
-  const presets = serviceOf<PermissionPresetsLike>(ctx, 'permissionPresets')
+  const presets = serviceOf(ctx, 'permissionPresets')
   if (presets !== undefined && serviceOf(ctx, 'sandboxPolicy') !== undefined) {
     const current = sandboxState(presets, target.session)
     return {
@@ -183,7 +186,7 @@ function currentPermission(ctx: unknown, target: PermissionTarget): Readonly<Rec
       ...(current.approvalPolicy === undefined ? {} : { approval: current.approvalPolicy }),
     }
   }
-  const toolPolicy = serviceOf<ToolPolicyLike>(ctx, 'toolPolicy')
+  const toolPolicy = serviceOf(ctx, 'toolPolicy')
   if (toolPolicy !== undefined) {
     const profile = toolPolicy.profileForSession(target.session)
     return {
@@ -240,7 +243,7 @@ export async function applySessionPermission(
     if (serviceOf(ctx, 'sandboxPolicy') !== undefined) {
       return { error: 'soft requires the unconfined soft-policy composition; it cannot disable this Session\'s active OS sandbox' }
     }
-    const toolPolicy = serviceOf<ToolPolicyLike>(ctx, 'toolPolicy')
+    const toolPolicy = serviceOf(ctx, 'toolPolicy')
     if (toolPolicy?.has(SOFT_TOOL_PROFILE) !== true) return { error: 'soft is unavailable: the guarded tool-policy profile is not mounted' }
     if (reason === undefined || reason.trim() === '') return { error: 'switching to soft needs `reason`: it has full process file access and no OS sandbox' }
     toolPolicy.select(target.session, SOFT_TOOL_PROFILE, reason)
@@ -249,7 +252,7 @@ export async function applySessionPermission(
     }
     return { permission: currentPermission(ctx, target) }
   }
-  const presets = serviceOf(ctx, 'sandboxPolicy') === undefined ? undefined : serviceOf<PermissionPresetsLike>(ctx, 'permissionPresets')
+  const presets = serviceOf(ctx, 'sandboxPolicy') === undefined ? undefined : serviceOf(ctx, 'permissionPresets')
   if (presets === undefined) return { error: `permission preset "${preset}" needs the active sandboxPolicy and permissionPresets services; a soft-policy composition cannot enable OS sandboxing per Session` }
   const before = sandboxState(presets, target.session)
   const spec = presets.resolve(preset)
