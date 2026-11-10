@@ -70,7 +70,7 @@ export const parsePersonaCard = (input: unknown, options: ParsePersonaOptions = 
       return fail('invalid-card', '"greetings" must be an array of strings', 'greetings')
     }
     if (greetings.length > 16) return fail('invalid-card', '"greetings" may contain at most 16 entries', 'greetings')
-    card.greetings = Object.freeze([...greetings])
+    card.greetings = Object.freeze(greetings.filter((item): item is string => isString(item)))
   }
   if (input['state_schema'] !== undefined) {
     if (!isRecord(input['state_schema'])) return fail('invalid-card', '"state_schema" must be an object', 'state_schema')
@@ -83,7 +83,8 @@ export const parsePersonaCard = (input: unknown, options: ParsePersonaOptions = 
     if (!Array.isArray(lorebook) || lorebook.some(item => !isRecord(item))) {
       return fail('invalid-card', '"lorebook" must be an array of objects', 'lorebook')
     }
-    card.lorebook = Object.freeze(lorebook.map(item => Object.freeze({ ...item })))
+    const entries = lorebook.filter((item): item is Readonly<Record<string, unknown>> => isRecord(item))
+    card.lorebook = Object.freeze(entries.map(item => Object.freeze({ ...item })))
   }
   if (input['metadata'] !== undefined) {
     if (!isRecord(input['metadata'])) return fail('invalid-card', '"metadata" must be an object', 'metadata')
@@ -108,7 +109,7 @@ const validateStateSchema = (value: Readonly<Record<string, unknown>>, path: str
     }
   }
   const type = value['type']
-  if (type !== undefined && !['object', 'array', 'string', 'number', 'boolean', 'null'].includes(String(type))) {
+  if (type !== undefined && (typeof type !== 'string' || !['object', 'array', 'string', 'number', 'boolean', 'null'].includes(type))) {
     return fail('invalid-card', 'state_schema.type must be a JSON type', `${path}.type`)
   }
   if (value['properties'] !== undefined) {
