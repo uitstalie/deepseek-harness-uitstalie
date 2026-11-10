@@ -87,6 +87,12 @@
       "path": "../../sandbox/sandbox-policy"
     },
     {
+      "path": "../../session/session-persistence-jsonl"
+    },
+    {
+      "path": "../../session-query/session-query-sqlite"
+    },
+    {
       "path": "../../session/working-directory"
     },
     {

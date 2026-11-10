@@ -2341,56 +2341,58 @@ describe('superagent: context, compaction and memory curation', () => {
     assert.equal((inspected.activity as unknown[]).length, 3)
     assert.equal((inspected.status as { lastError?: string }).lastError, 'exit 1')
 
-    const coldRoot = await scratchDirectory()
-    const coldCtx = new Context()
-    coldCtx.reflect.provide('sessionController', controller)
-    await coldCtx.plugin(SessionStore)
-    const persistence = await coldCtx.plugin(JsonlSessionPersistence, { root: coldRoot, compression: 'none' })
-    const query = await coldCtx.plugin(SqliteSessionQueryEngine, { path: join(coldRoot, 'query.sqlite') })
-    try {
-      const writer = await coldCtx.sessionPersistence.create({
-        version: SESSION_FORMAT_VERSION,
-        id: SessionId('cold-session'),
-        createdAt: now - 20_000,
-        isSeeded: false,
-      })
-      await writer.append([
-        { type: 'user/message', seq: SessionSeq(0), time: now - 9_000, data: { id: MessageId('user-cold'), role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'Persist this task' }] }, surfaceOp: 'append' },
-        { type: 'turn/start', seq: SessionSeq(1), time: now - 8_000, data: { turn: 1 } },
-        { type: 'step/start', seq: SessionSeq(2), time: now - 7_500, data: { turn: 1, step: 1 } },
-        { type: 'assistant/message', seq: SessionSeq(3), time: now - 7_400, data: { turn: 1, step: 1, stream: [], message: { id: MessageId('assistant-c1'), role: 'assistant', source: { kind: 'model', provider: 'mock', model: 'mock' }, content: [{ type: 'tool-call', id: ToolCallId('c1'), name: 'bash', arguments: '{}' }] } }, surfaceOp: 'append' },
-        { type: 'tool/call', seq: SessionSeq(4), time: now - 7_250, data: { turn: 1, step: 1, callId: ToolCallId('c1'), name: 'bash', arguments: '{}' } },
-        { type: 'tool/result', seq: SessionSeq(5), time: now - 7_000, data: { turn: 1, step: 1, message: { id: MessageId('result-c1'), role: 'tool', source: { kind: 'tool', callId: ToolCallId('c1') }, toolCallId: ToolCallId('c1'), content: [], isError: true }, error: { name: 'BashError', code: 'EXIT', reason: 'persisted failure' } }, surfaceOp: 'append' },
-        { type: 'step/end', seq: SessionSeq(6), time: now - 6_500, data: { turn: 1, step: 1 } },
-        { type: 'turn/end', seq: SessionSeq(7), time: now - 6_000, data: { turn: 1, reason: { kind: 'error', error: { message: 'persisted failure', code: 'EXIT' } } } },
-        { type: 'session/title', seq: SessionSeq(8), time: now - 5_000, data: { title: 'Cold persisted task', messageSeqs: [SessionSeq(0)], source: { kind: 'fallback' } } },
-      ])
-      await writer.flush()
-      await writer.close()
-      const cold = await runControlTool({ action: 'inspect', session: 'cold-session' }, options, me, coldCtx, { tasks: new Map() })
-      assert.equal(cold.ok, true, JSON.stringify(cold.error))
-      assert.equal((cold as { title?: string }).title, 'Cold persisted task')
-      assert.equal((cold.session as { cold?: boolean }).cold, true)
-      assert.equal((cold.status as { cold?: boolean }).cold, true)
-      assert.equal((cold.status as { lastActivityAt?: number }).lastActivityAt, now - 5_000)
-      assert.equal((cold.activity as { type: string }[]).length, 9)
-      assert.equal((cold as { lastTurnError?: { message?: string } }).lastTurnError?.message, 'persisted failure')
-      const contribution = createSuperagentContribution({
-        ctx: coldCtx, env: {}, clock: () => now, recorder: createSessionRecorder(),
-      } as never)
-      const definition = contribution.tools?.({ id: 'super-1', cwd: coldRoot } as never).find(tool => tool.name === CONTROL_TOOL_NAME)
-      assert.ok(definition !== undefined)
-      const rendered = definition.output.render({ action: 'inspect', session: 'cold-session' }, cold as unknown as JsonValue).map(block => block.type === 'text' ? block.text : '').join('\n')
-      assert.match(rendered, /cold \(persisted log; not live\)/u)
-      assert.match(rendered, /title Cold persisted task/u)
-      assert.match(rendered, /last activity .*Z/u)
-      assert.match(rendered, /last error persisted failure/u)
-      assert.match(rendered, /session\/title/u)
-    } finally {
-      await query.dispose()
-      await persistence.dispose()
-      await coldCtx.fiber.dispose()
-    }
+    await it('inspects a cold Session from its persisted log', async () => {
+      const coldRoot = await scratchDirectory()
+      const coldCtx = new Context()
+      coldCtx.reflect.provide('sessionController', controller)
+      await coldCtx.plugin(SessionStore)
+      const persistence = await coldCtx.plugin(JsonlSessionPersistence, { root: coldRoot, compression: 'none' })
+      const query = await coldCtx.plugin(SqliteSessionQueryEngine, { path: join(coldRoot, 'query.sqlite') })
+      try {
+        const writer = await coldCtx.sessionPersistence.create({
+          version: SESSION_FORMAT_VERSION,
+          id: SessionId('cold-session'),
+          createdAt: now - 20_000,
+          isSeeded: false,
+        })
+        await writer.append([
+          { type: 'user/message', seq: SessionSeq(0), time: now - 9_000, data: { id: MessageId('user-cold'), role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'Persist this task' }] }, surfaceOp: 'append' },
+          { type: 'turn/start', seq: SessionSeq(1), time: now - 8_000, data: { turn: 1 } },
+          { type: 'step/start', seq: SessionSeq(2), time: now - 7_500, data: { turn: 1, step: 1 } },
+          { type: 'assistant/message', seq: SessionSeq(3), time: now - 7_400, data: { turn: 1, step: 1, stream: [], message: { id: MessageId('assistant-c1'), role: 'assistant', source: { kind: 'model', provider: 'mock', model: 'mock' }, content: [{ type: 'tool-call', id: ToolCallId('c1'), name: 'bash', arguments: '{}' }] } }, surfaceOp: 'append' },
+          { type: 'tool/call', seq: SessionSeq(4), time: now - 7_250, data: { turn: 1, step: 1, callId: ToolCallId('c1'), name: 'bash', arguments: '{}' } },
+          { type: 'tool/result', seq: SessionSeq(5), time: now - 7_000, data: { turn: 1, step: 1, message: { id: MessageId('result-c1'), role: 'tool', source: { kind: 'tool', callId: ToolCallId('c1') }, toolCallId: ToolCallId('c1'), content: [], isError: true }, error: { name: 'BashError', code: 'EXIT', reason: 'persisted failure' } }, surfaceOp: 'append' },
+          { type: 'step/end', seq: SessionSeq(6), time: now - 6_500, data: { turn: 1, step: 1 } },
+          { type: 'turn/end', seq: SessionSeq(7), time: now - 6_000, data: { turn: 1, reason: { kind: 'error', error: { message: 'persisted failure', code: 'EXIT' } } } },
+          { type: 'session/title', seq: SessionSeq(8), time: now - 5_000, data: { title: 'Cold persisted task', messageSeqs: [SessionSeq(0)], source: { kind: 'fallback' } } },
+        ])
+        await writer.flush()
+        await writer.close()
+        const cold = await runControlTool({ action: 'inspect', session: 'cold-session' }, options, me, coldCtx, { tasks: new Map() })
+        assert.equal(cold.ok, true, JSON.stringify(cold.error))
+        assert.equal((cold as { title?: string }).title, 'Cold persisted task')
+        assert.equal((cold.session as { cold?: boolean }).cold, true)
+        assert.equal((cold.status as { cold?: boolean }).cold, true)
+        assert.equal((cold.status as { lastActivityAt?: number }).lastActivityAt, now - 5_000)
+        assert.equal((cold.activity as { type: string }[]).length, 9)
+        assert.equal((cold as { lastTurnError?: { message?: string } }).lastTurnError?.message, 'persisted failure')
+        const contribution = createSuperagentContribution({
+          ctx: coldCtx, env: {}, clock: () => now, recorder: createSessionRecorder(),
+        } as never)
+        const definition = contribution.tools?.({ id: 'super-1', cwd: coldRoot } as never).find(tool => tool.name === CONTROL_TOOL_NAME)
+        assert.ok(definition !== undefined)
+        const rendered = definition.output.render({ action: 'inspect', session: 'cold-session' }, cold as unknown as JsonValue).map(block => block.type === 'text' ? block.text : '').join('\n')
+        assert.match(rendered, /cold \(persisted log; not live\)/u)
+        assert.match(rendered, /title Cold persisted task/u)
+        assert.match(rendered, /last activity .*Z/u)
+        assert.match(rendered, /last error persisted failure/u)
+        assert.match(rendered, /session\/title/u)
+      } finally {
+        await query.dispose()
+        await persistence.dispose()
+        await coldCtx.fiber.dispose()
+      }
+    })
 
     const idleAgent = { session: { header: { cwd: workspacePath }, snapshotEvents: () => [] } }
     const idleCtx = {
