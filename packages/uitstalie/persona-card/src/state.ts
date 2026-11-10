@@ -309,6 +309,7 @@ export function personaStateTool(ctx: Context, target: PersonaStateTarget): Tool
         description: 'For `revert`: the revision number to restore.',
       },
     },
+    // oxlint-disable-next-line typescript/require-await -- execute() must return Promise; removing async breaks the tool contract.
     async execute(args, exec) {
       const agent = exec.agent
       if (agent === undefined) throw new Error('persona_state requires an owning agent session')

@@ -55,6 +55,7 @@ export function countTokensTool(): ToolDefinition {
         text: `${String(value.tokens)} tokens (${String(value.characters)} characters, ${String(value.bytes)} bytes).`,
       }],
     },
+    // oxlint-disable-next-line typescript/require-await -- execute() must return Promise; removing async breaks the tool contract.
     async execute(args) {
       const bytes = Buffer.byteLength(args.text, 'utf8')
       if (bytes > TOKEN_TEXT_MAX_BYTES) {
