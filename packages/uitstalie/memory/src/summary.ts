@@ -20,6 +20,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-compaction'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import type { JobHooks, JobId, JobKind, JobOutcome } from '@deepseek-ai/dsh-jobs'
@@ -144,14 +145,15 @@ interface SummaryTarget {
  * Compaction rewrites history, so it is the only point where a memory surface replace is free:
  * the provider's prefix cache is rebuilt for the new history anyway. Between compactions the
  * surface must stay append-only.
+ * @param ctx - plugin context carrying the Session query service.
  * @param session - session whose durable events are scanned.
+ * @param signal - cancellation for the query read.
  * @returns the newest `compaction/end` seq, or undefined without one.
  */
-const lastCompactionSeq = (session: Session): number | undefined => {
+const lastCompactionSeq = async (ctx: Context, session: Session, signal: AbortSignal): Promise<number | undefined> => {
+  using observation = await ctx.sessionQuery.observeSession(session.id, { projectionMode: 'none', signal })
   let last: number | undefined
-  // Compaction event types are declared by the compaction package's module augmentation;
-  // memory only reads the durable log, so a local shape is enough here.
-  for (const event of session.snapshotEvents() as readonly { type: string; seq: number }[]) {
+  for (const event of observation.events) {
     if (event.type === 'compaction/end') last = event.seq
   }
   return last
@@ -325,7 +327,7 @@ export class MemorySummaryRunner {
       // still does not block the summary, which is written below.
       // Surface tier folding is allowed only at a compaction boundary: between compactions the
       // surface must stay append-only (a replaced early range breaks the provider prefix cache).
-      const compactionSeq = lastCompactionSeq(input.session)
+      const compactionSeq = await lastCompactionSeq(this.ctx, input.session, signal)
       const checkpointSeq = lastCheckpointSeq(current.document, String(input.session.id))
       const allowSurfaceReplace = compactionSeq !== undefined
         && (checkpointSeq === undefined || compactionSeq > checkpointSeq)
