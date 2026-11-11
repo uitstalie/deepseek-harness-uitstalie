@@ -3796,4 +3796,55 @@ void describe('superagent: the workspace roster context', () => {
       await harness.dispose()
     }
   })
+
+  void it('survives a rebuilt contribution overlapping the previous dispose', async () => {
+    const dir = await scratchDirectory()
+    const home = join(dir, 'super-agent')
+    await mkdir(home, { recursive: true })
+    const harness = await mountJira(await fixture(), { superagent: false })
+    let off = (): void => {}
+    try {
+      const registry = await provideRegistry(harness)
+      await registry.create(home, 'Super agent')
+      const host = {
+        ctx: harness.ctx,
+        env: {},
+        clock: () => Date.parse(AT),
+        recorder: createSessionRecorder(),
+      }
+      const agent = testAgent(harness.ctx, 'super-overlap', { cwd: home })
+      let changes = 0
+      off = harness.ctx.on('system-prompt/change', () => { changes += 1 })
+      const assemble = async () => harness.ctx.systemPrompt.assemble({ agent, scope: agent })
+      const contextNames = async (): Promise<string[]> => (await assemble()).contexts
+        .map(context => context.name)
+        .filter(name => name === 'superagent:workspaces' || name === 'superagent:running')
+        .sort()
+
+      // The first contribution registers both contexts.
+      const first = createSuperagentContribution(host, undefined, 2, undefined, undefined, home)
+      await waitFor(() => (changes >= 2 ? true : undefined))
+      assert.deepEqual(await contextNames(), ['superagent:running', 'superagent:workspaces'])
+
+      // The rebuild starts a second create() while the first dispose has not run at all — the
+      // overlap the running host produced when its reload did not await dispose().
+      const second = createSuperagentContribution(host, undefined, 2, undefined, undefined, home)
+      // The retry path releases the old registration (one change) and registers both again (two).
+      await waitFor(() => (changes >= 5 ? true : undefined))
+      assert.deepEqual(await contextNames(), ['superagent:running', 'superagent:workspaces'])
+      assert.match(renderContextSnapshot(await assemble()), /\[superagent workspaces\] 1 registered/u)
+      assert.match(renderContextSnapshot(await assemble()), /w-1 · Super agent · /u)
+
+      // The first contribution's late dispose must not carry the newer registrations with it.
+      await first.dispose?.()
+      assert.deepEqual(await contextNames(), ['superagent:running', 'superagent:workspaces'])
+      assert.match(renderContextSnapshot(await assemble()), /\[superagent workspaces\] 1 registered/u)
+
+      await second.dispose?.()
+      assert.deepEqual(await contextNames(), [])
+    } finally {
+      off()
+      await harness.dispose()
+    }
+  })
 })

@@ -3239,7 +3239,7 @@ export const runSessionTool = async (
       }
       const live = agentsOf(ctx)?.get(sessionArg.trim())
       if (live === undefined) {
-        const query = (ctx as { sessionQuery?: { observeSession?: (id: string, options?: { projectionMode: 'none' }) => Promise<{ header: unknown; events: readonly SessionEventLike[] } & Disposable> } }).sessionQuery
+        const query = sessionQueryOf(ctx)
         if (query?.observeSession === undefined) {
           return failure(invalidInput(
             'that Session has no live Agent and this deployment has no persisted Session reader',
@@ -3879,6 +3879,20 @@ interface SessionQueryLike {
 }
 
 /**
+ * Read the host's persisted Session reader through the service lookup.
+ *
+ * The service is optional and injected as a dependency of whatever fiber provides it; reading
+ * `ctx.sessionQuery` as a property throws "cannot get property ... without inject" on a context
+ * that did not declare it, which is the deployment shape every caller here has.
+ * @param ctx - the plugin context, duck-typed.
+ * @returns the service when this deployment composes it.
+ */
+const sessionQueryOf = (ctx: unknown): SessionQueryLike | undefined => {
+  const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
+  return typeof get === 'function' ? get.call(ctx, 'sessionQuery') as SessionQueryLike | undefined : undefined
+}
+
+/**
  * Fold one Session log into the messages still waiting in its inbox.
  *
  * The inbox is a projection of `agent/inbox/spliced` events, not a separate store, so this repeats
@@ -3934,7 +3948,7 @@ const inboxCarries = (events: readonly SessionEventLike[], requestId: string): b
 const recipientInboxCarries = async (ctx: unknown, sessionId: string, requestId: string): Promise<boolean> => {
   const live = agentsOf(ctx)?.get(sessionId) as { session?: LiveSessionLike } | undefined
   if (live?.session?.snapshotEvents !== undefined) return inboxCarries(eventsOf(live), requestId)
-  const query = (ctx as { sessionQuery?: SessionQueryLike }).sessionQuery
+  const query = sessionQueryOf(ctx)
   if (query?.observeSession === undefined) return false
   try {
     using observation = await query.observeSession(sessionId, { projectionMode: 'none' })
@@ -4976,6 +4990,64 @@ const dispatcher = (host: ToolHost, workerPreset: string | undefined, maxWorkers
 })
 
 
+/** One runtime-context registration as the superagent contribution writes it. */
+type PromptContextEntry = {
+  name: string
+  order: number
+  text: (context: { agent?: unknown }) => string
+}
+
+/** The slice of the host prompt registry a superagent context registration needs. */
+interface PromptContextHost {
+  context(entry: PromptContextEntry): () => void
+}
+
+/**
+ * Per-prompt-service record of context disposers, keyed by name: the last writer owns a name.
+ *
+ * Stored on the service itself rather than in a module-level `WeakMap` because an injected
+ * service is a scoped proxy whose object identity differs on every access, so a `WeakMap` lookup
+ * from the next contribution would miss. The symbol keeps the bookkeeping invisible.
+ */
+const promptContextDisposers = Symbol('superagent.promptContextDisposers')
+
+/** One prompt service's disposers; declared separately so the symbol property stays typed. */
+interface PromptContextRegistry {
+  [promptContextDisposers]?: Map<string, () => void>
+}
+
+/**
+ * Register one runtime context, taking its name away from an older registration.
+ *
+ * `systemPrompt.context` rejects a duplicate name. A capability rebuild can overlap the previous
+ * contribution's asynchronous dispose; the organizer now waits for that dispose, and this release
+ * is the provider-side backstop for a host that does not. The replaced disposer is idempotent, so
+ * the older contribution's delayed `dispose()` cannot delete the newer registration.
+ * @param systemPrompt - the host prompt registry.
+ * @param entry - the context to register.
+ * @returns a disposer that releases only this registration.
+ */
+const registerPromptContext = (systemPrompt: PromptContextHost & PromptContextRegistry, entry: PromptContextEntry): () => void => {
+  const byName = systemPrompt[promptContextDisposers] ?? new Map<string, () => void>()
+  systemPrompt[promptContextDisposers] = byName
+  const register = (): (() => void) => systemPrompt.context(entry)
+  let dispose: () => void
+  try {
+    dispose = register()
+  } catch (error: unknown) {
+    const previous = byName.get(entry.name)
+    if (previous === undefined) throw error
+    // Last writer wins: free the older registration, then retry once.
+    previous()
+    dispose = register()
+  }
+  byName.set(entry.name, dispose)
+  return () => {
+    if (byName.get(entry.name) === dispose) byName.delete(entry.name)
+    dispose()
+  }
+}
+
 /** The daemon row configuration; both the switch and a checkout are required for it to run. */
 export interface SuperagentDaemonConfig {
   /** Whether a session-less pass may run at all. */
@@ -5056,22 +5128,16 @@ export const createSuperagentContribution = (
   const inject = (host.ctx as { inject?: (names: readonly string[], callback: (scope: unknown) => void) => unknown }).inject
   if (superHome !== undefined && typeof inject === 'function') {
     inject.call(host.ctx, ['systemPrompt'], (scope) => {
-      const systemPrompt = (scope as {
-        systemPrompt?: { context?: (entry: {
-          name: string
-          order: number
-          text: (context: { agent?: unknown }) => string
-        }) => () => void }
-      }).systemPrompt
-      if (systemPrompt?.context === undefined) return
-      rosterDispose = systemPrompt.context({
+      const systemPrompt = (scope as { systemPrompt?: PromptContextHost & PromptContextRegistry }).systemPrompt
+      if (systemPrompt?.context === undefined || disposed) return
+      rosterDispose = registerPromptContext(systemPrompt, {
         name: 'superagent:workspaces',
         order: 704,
         text: (context: { agent?: unknown }) => isSuperAgentSession(context.agent, superHome)
           ? workspaceRosterLines(host.ctx, superHome)
           : '',
       })
-      monitorDispose = systemPrompt.context({
+      monitorDispose = registerPromptContext(systemPrompt, {
         name: 'superagent:running',
         order: 705,
         text: (context: { agent?: unknown }) => isSuperAgentSession(context.agent, superHome)
@@ -5573,6 +5639,13 @@ export const createSuperagentContribution = (
     },
     dispose: async () => {
       disposed = true
+      // Release the prompt contexts before any await: a rebuild that starts the next create() must
+      // never see them as still registered, and must never lose the successor's registration to a
+      // late release. Everything else can wait for startup recovery below.
+      rosterDispose?.()
+      rosterDispose = undefined
+      monitorDispose?.()
+      monitorDispose = undefined
       recoveryAbort?.abort()
       if (recoveryDone !== undefined) {
         let timer: ReturnType<typeof setTimeout> | undefined
@@ -5588,10 +5661,6 @@ export const createSuperagentContribution = (
           if (timer !== undefined) clearTimeout(timer)
         }
       }
-      monitorDispose?.()
-      monitorDispose = undefined
-      rosterDispose?.()
-      rosterDispose = undefined
       fsRootsDispose?.()
       fsRootsDispose = undefined
       orphanDispose?.()
