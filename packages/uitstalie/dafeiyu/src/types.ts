@@ -94,8 +94,12 @@ export interface CapabilityContribution {
    * @returns a promise the organizer awaits before dispatching this session's next turn.
    */
   onTurnEnd?(input: TurnEndInput): Promise<void> | void
-  /** Release provider resources once; failures are logged and do not block other capabilities. */
-  dispose?(): void
+  /**
+   * Release provider resources once; failures are logged and do not block other capabilities.
+   * A returned promise is awaited before the organizer creates the next contribution for this
+   * capability, so an asynchronous release cannot overlap its successor's registrations.
+   */
+  dispose?(): void | Promise<void>
 }
 
 /** One finished turn handed to a capability hook. */

@@ -224,6 +224,59 @@ test('a profile config reload disposes and recreates every capability and re-wir
   expect(ctx.dafeiyu.status()).toContainEqual(expect.objectContaining({ id: 'memory', state: 'active' }))
 })
 
+test('a reload waits for an asynchronous contribution dispose before creating again', async () => {
+  const order: string[] = []
+  const release = Promise.withResolvers<undefined>()
+  let creates = 0
+  const ctx = new Context()
+  contexts.push(ctx)
+  await mountAgentLoopTestDependencies(ctx)
+  await ctx.plugin(Dafeiyu, {})
+  const harness = await mountAgentLoopTestHarness(ctx)
+  ctx.dafeiyu.register({
+    id: 'async-dispose',
+    contractVersion: 1,
+    config: {},
+    create: () => {
+      creates += 1
+      const generation = creates
+      order.push(`create:${String(generation)}`)
+      return {
+        promptSections: () => [{ name: 'async-dispose:probe', order: 2400, text: `probe ${String(generation)}` }],
+        dispose: async () => {
+          order.push(`dispose:${String(generation)}:start`)
+          await release.promise
+          order.push(`dispose:${String(generation)}:end`)
+        },
+      }
+    },
+  })
+  try {
+    await settle()
+    expect(order).toEqual(['create:1'])
+
+    ctx.emit('app-boot/config-reload')
+    await settle()
+    // The first contribution has not released its prompt registration yet. Creating the next one
+    // now would collide on the name and leave the capability with no registration at all.
+    expect(order).toEqual(['create:1', 'dispose:1:start'])
+
+    release.resolve(undefined)
+    await until(() => creates === 2 && ctx.dafeiyu.status()[0]?.state === 'active')
+    expect(order).toEqual(['create:1', 'dispose:1:start', 'dispose:1:end', 'create:2'])
+
+    const root = await harness.create(SessionId('async-dispose-root'))
+    const assembly = await ctx.systemPrompt.assemble(assembleContextFor(root))
+    expect(assembly.sections
+      .filter(section => section.name === 'async-dispose:probe')
+      .map(section => section.text)).toEqual(['probe 2'])
+  } finally {
+    // A regression leaves the dispose pending; release it so teardown reports the assertion
+    // failure instead of hanging in the afterEach hook.
+    release.resolve(undefined)
+  }
+})
+
 test('a reload during a running turn keeps the step\'s tools and re-wires once it goes idle', async () => {
   let created = 0
   const ctx = new Context()

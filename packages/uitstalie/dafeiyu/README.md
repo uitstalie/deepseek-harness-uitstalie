@@ -37,7 +37,7 @@ Configure the organizer's gate in the same profile patch that mounts it:
 
 An id absent from `capabilities` follows the provider's own default: `enabledByDefault` from a v2 descriptor, and `true` for every v1 provider. The gate is the organizer's runtime switch, not a way to unload a package: turning off a provider's Loader row removes the provider entirely and makes `status()` report that id as `missing`; closing the organizer gate keeps the provider loaded but disposes its contribution and stops wiring new agents.
 
-`capabilities` is a volatile configuration reference: a settings write to `capabilities.<id>.enabled` swaps the snapshot and the Loader emits `loader/volatile-update`, so the organizer tears the capability down or calls `create()` again without remounting any plugin row. A completed profile reload emits `app-boot/config-reload`; the organizer then disposes every contribution, calls `create()` again for each open gate, and re-wires the agents it had already wired, with no per-capability diff — the reload may have changed any provider's configuration.
+`capabilities` is a volatile configuration reference: a settings write to `capabilities.<id>.enabled` swaps the snapshot and the Loader emits `loader/volatile-update`, so the organizer tears the capability down or calls `create()` again without remounting any plugin row. A completed profile reload emits `app-boot/config-reload`; the organizer then disposes every contribution, waits for an asynchronous `dispose()` to settle before calling `create()` again for each open gate, and re-wires the agents it had already wired, with no per-capability diff — the reload may have changed any provider's configuration.
 
 A v2 provider registers its contribution together with the metadata the capability list renders:
 
@@ -94,7 +94,7 @@ On `agent/created`, the organizer awaits every registration that is still settli
 
 On `session/event` of `turn/end` — for every ending, including aborted, errored, blocked, max-token, interrupted and fork-closing turns — the organizer resolves the live agent with `ctx.agents.get(session.id)`, applies the same scope filter, and calls each `onTurnEnd` serially within the session; different sessions dispatch in parallel. A provider that only summarizes successful work checks `input.event.data.reason.kind` itself. Every hook failure is caught, summarized, and recorded as `failed`, and later capabilities still run.
 
-Disposal aborts every registration, waits for its admitted turn hooks and settling `create()` calls, then disposes each contribution, runs the retained agent-level disposers, and clears the registry. `register()`'s disposer follows the same path for one registration. A reload aborts and drains the old generation before calling `create()` again, then re-wires the agents that were already wired.
+Disposal aborts every registration, waits for its admitted turn hooks and settling `create()` calls, then awaits each contribution's `dispose()`, runs the retained agent-level disposers, and clears the registry. `register()`'s disposer follows the same path for one registration. A reload aborts and drains the old generation, awaits the old contribution's disposal before calling `create()` again, then re-wires the agents that were already wired.
 
 The Remote face mounts beside the service in the same row as `remote.dafeiyu`, publishes exactly one method (`status`), and never writes: the gate is the organizer's own profile configuration, written through the settings namespace of the `dafeiyu` row, not through this face.
 
@@ -121,7 +121,7 @@ No effect of its own. The provider that contributes a stable prompt section or t
 - **A settling registration reports `disabled`** — the four-state status contract has no pending value, so a registration whose `create()` promise has not settled reports `enabled: true` with `state: 'disabled'` until it becomes `active` or `failed`.
 - **Missing ids cannot know a provider default** — a configured id with no provider is reported with the gate value from configuration and `state: 'missing'`; there is no descriptor to ask for `enabledByDefault`.
 - **Shared names fail the later capability** — two capabilities that register the same tool or prompt-section name are not arbitrated; the later registration throws, that capability becomes `failed`, and the earlier one stays.
-- **Disposal is synchronous by contract** — `CapabilityContribution.dispose` returns `void`; a provider that returns a promise has its rejection logged, but no caller waits for it.
+- **Asynchronous disposal delays the next create** — `CapabilityContribution.dispose` may return a promise and the organizer awaits it before creating the replacement, so a release that never settles delays a reload; providers should bound their own cleanup.
 
 ### Dev Note
 

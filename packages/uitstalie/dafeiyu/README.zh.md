@@ -39,7 +39,7 @@ kind: "package-reference"
 
 没有出现在 `capabilities` 里的 id 跟随 provider 自己的默认值：v2 描述符的 `enabledByDefault`，v1 provider 一律视为 `true`。这个门是组织者的运行态开关，而不是卸载包的方式：关掉 provider 的 Loader 行会让 provider 完全不存在，`status()` 把该 id 报为 `missing`；关掉组织者门则保留 provider，但销毁它的贡献，并且不再给新 agent 接线。
 
-`capabilities` 是 volatile 配置引用：对 `capabilities.<id>.enabled` 的设置写入会替换快照并触发 Loader 的 `loader/volatile-update`，组织者因此销毁该能力或重新调用 `create()`，不重挂任何插件行。一次配置重载完成后会发出 `app-boot/config-reload`；组织者随后销毁全部贡献，对每个开门的能力重新调用 `create()`，并把此前已接线的 agent 重新接线，不做按能力 diff——重载可能改变任意 provider 的配置。
+`capabilities` 是 volatile 配置引用：对 `capabilities.<id>.enabled` 的设置写入会替换快照并触发 Loader 的 `loader/volatile-update`，组织者因此销毁该能力或重新调用 `create()`，不重挂任何插件行。一次配置重载完成后会发出 `app-boot/config-reload`；组织者随后销毁全部贡献，等待异步 `dispose()` settle 后，才对每个开门的能力重新调用 `create()`，并把此前已接线的 agent 重新接线，不做按能力 diff——重载可能改变任意 provider 的配置。
 
 v2 provider 把贡献与能力列表要渲染的元数据一起注册：
 
@@ -98,7 +98,7 @@ const statuses = await ctx.remote.dafeiyu.status()
 
 收到 `session/event` 的 `turn/end` 时——包括 aborted、errored、blocked、max-token、interrupted 与 fork 收尾——组织者用 `ctx.agents.get(session.id)` 取得 live agent，套用同样的 scope 过滤，并在同一 session 内串行调用各 `onTurnEnd`；不同 session 并行分发。只摘要成功工作的 provider 自己检查 `input.event.data.reason.kind`。每个钩子失败都会被捕获、摘要并记为 `failed`，后续能力照常执行。
 
-卸载时先 abort 每条注册、等待它已接纳的 turn 钩子与尚未 settle 的 `create()`，再 dispose 各贡献、执行保留的 agent 级 disposer，最后清空注册表。单个 `register()` 的 disposer 对一条注册走同一路径。reload 会先 abort 并排空旧代次再重新 `create()`，随后给原本已接线的 agent 重新接线。
+卸载时先 abort 每条注册、等待它已接纳的 turn 钩子与尚未 settle 的 `create()`，再等待各贡献的 `dispose()`、执行保留的 agent 级 disposer，最后清空注册表。单个 `register()` 的 disposer 对一条注册走同一路径。reload 会先 abort 并排空旧代次、等待旧贡献完成销毁，再重新 `create()`，随后给原本已接线的 agent 重新接线。
 
 Remote 面与服务同行走在 `remote.dafeiyu` 命名空间下，只发布一个方法（`status`）且从不写入：门是组织者自己的 profile 配置，经 `dafeiyu` 行的设置命名空间写入，而不是经过这个面。
 
@@ -129,7 +129,7 @@ Remote 面与服务同行走在 `remote.dafeiyu` 命名空间下，只发布一�
 - **settle 中的注册报 `disabled`** — 四态状态契约没有 pending 值，`create()` 的 promise 尚未 settle 时注册报 `enabled: true` 与 `state: 'disabled'`，直到变为 `active` 或 `failed`。
 - **`missing` 的 id 不知道 provider 默认值** — 配置里出现但没有 provider 的 id 按配置里的门值报出并标为 `state: 'missing'`；没有描述符可以询问 `enabledByDefault`。
 - **同名冲突落到后注册的能力** — 两个能力注册同一个工具名或 prompt 段名时组织者不做仲裁；后注册的抛错并变为 `failed`，先注册的保留。
-- **dispose 按契约是同步的** — `CapabilityContribution.dispose` 返回 `void`；provider 若返回 promise，其拒绝只会被记录，没有调用方等待它。
+- **异步 dispose 会推迟下一次 create** — `CapabilityContribution.dispose` 可以返回 promise，组织者会等它完成后再创建替代贡献；永不 settle 的销毁会拖住 reload，provider 应自行给清理设界。
 
 <a id="dev-note"></a>
 

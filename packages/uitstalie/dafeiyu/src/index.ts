@@ -265,8 +265,9 @@ export class Dafeiyu extends Service {
     try {
       const contribution = await registration.provider.create(runtime)
       if (!this.isCurrent(registration, generation) || controller.signal.aborted) {
-        // A newer activation owns the state; this one only cleans up what it created.
-        this.disposeContribution(registration, contribution)
+        // A newer activation owns the state; this one only cleans up what it created. The release
+        // is awaited so the superseded contribution never overlaps the newer one's cleanup.
+        await this.disposeContribution(registration, contribution)
         return
       }
       registration.contribution = contribution
@@ -441,15 +442,36 @@ export class Dafeiyu extends Service {
       ...[...this.turnChains.values()],
     ])
     await Promise.allSettled(registrations.map(registration => this.waitForAdmitted(registration)))
-    for (const registration of registrations) this.disposeContribution(registration, registration.contribution)
+    await Promise.allSettled(registrations.map(registration => this.disposeContribution(registration, registration.contribution)))
     for (const registration of registrations) this.disposeRegistrations(registration)
     this.turnChains.clear()
   }
 
-  /** Call a provider's contribution disposer once, containing both throws and rejections. */
-  private disposeContribution(registration: Registration, contribution: CapabilityContribution | undefined): void {
+  /**
+   * Call a provider's contribution disposer once and wait for an asynchronous release.
+   *
+   * A provider that frees shared registrations asynchronously (a prompt context, an event
+   * subscription) must finish before the organizer creates the next contribution: otherwise the
+   * new `create()` races the old cleanup and can either collide on a name or be deleted by the
+   * late release.
+   * @param registration - the capability owning the contribution.
+   * @param contribution - the contribution to release, or undefined when none is published.
+   * @returns after the disposer settles; failures are logged and contained.
+   */
+  private async disposeContribution(
+    registration: Registration,
+    contribution: CapabilityContribution | undefined,
+  ): Promise<void> {
     if (contribution?.dispose === undefined) return
-    this.contain(`capability "${registration.provider.id}" dispose()`, () => contribution.dispose?.())
+    try {
+      await contribution.dispose()
+    } catch (error: unknown) {
+      this.ctx.logger.warn(
+        'dafeiyu: capability "%s" dispose() failed: %s',
+        registration.provider.id,
+        errorSummary(error),
+      )
+    }
   }
 
   /** Revoke the tools and prompt sections this registration added to agents. */
@@ -609,7 +631,7 @@ export class Dafeiyu extends Service {
   /** Release one registration after its admitted work exits; admission already stopped. */
   private async tearDown(registration: Registration): Promise<void> {
     await this.waitForAdmitted(registration)
-    this.disposeContribution(registration, registration.contribution)
+    await this.disposeContribution(registration, registration.contribution)
     registration.contribution = undefined
     this.disposeRegistrations(registration)
   }
@@ -620,7 +642,7 @@ export class Dafeiyu extends Service {
     registration.controller.abort()
     registration.settleReady()
     await this.waitForAdmitted(registration)
-    this.disposeContribution(registration, registration.contribution)
+    await this.disposeContribution(registration, registration.contribution)
     registration.contribution = undefined
     const enabled = this.gateFor(registration.provider)
     registration.enabled = enabled
