@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-12-superagent-notice-source.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-12-superagent-notice-source.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-12-superagent-notice-source:
+  en: 89fc354fbfb4c56f
+  zh: d7524f263aa3b8ee
+/2026-11-12-superagent-notice-source/summary:
+  en: 032040d26b648d42
+  zh: 4376e063b61700f6
+/2026-11-12-superagent-notice-source/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-12-superagent-notice-source/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-12-superagent-notice-source/compatibility:
+  en: bedd66f529bee0c3
+  zh: 543689cfafcfe928
+/2026-11-12-superagent-notice-source/verification:
+  en: 64b6db520125c784
+  zh: 7ed4c7d9cc8345bf
+/2026-11-12-superagent-notice-source/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

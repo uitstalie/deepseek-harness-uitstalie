@@ -2792,7 +2792,7 @@ void describe('superagent: the super workspace', () => {
     assert.equal(superagentHomeProblem(join(tmpdir(), 'superagent'), dshHome), undefined)
   })
 
-  void it('seeds a standing definition file once and preserves later edits', async () => {
+  void it('seeds a managed definition file and preserves an existing file outside the block', async () => {
     const dir = await scratchDirectory()
     const home = join(dir, 'super-agent')
     const harness = await mountJira(await fixture(), { superagent: true })
@@ -2800,11 +2800,19 @@ void describe('superagent: the super workspace', () => {
       const registry = await provideRegistry(harness)
       await ensureSuperWorkspace(registry, home, join(dir, 'home'))
       const definition = await readFile(join(home, 'AGENTS.md'), 'utf8')
+      assert.match(definition, /^# Super agent workspace\n/u)
+      assert.match(definition, /<!-- superagent:managed begin v=1 -->/u)
       assert.match(definition, /single conversation/u)
-      assert.match(definition, /superagent_ledger/u)
+      assert.match(definition, /Registry discipline/u)
+
+      // A pre-marker file keeps every hand-written byte; the managed block is appended after it.
       await writeFile(join(home, 'AGENTS.md'), '# my edit\n', 'utf8')
       await ensureSuperWorkspace(registry, home, join(dir, 'home'))
-      assert.equal(await readFile(join(home, 'AGENTS.md'), 'utf8'), '# my edit\n', 'an existing definition is not overwritten')
+      const appended = await readFile(join(home, 'AGENTS.md'), 'utf8')
+      assert.equal(appended.startsWith('# my edit\n'), true, 'the hand-written text is preserved')
+      assert.match(appended, /<!-- superagent:managed begin v=1 -->/u)
+      await ensureSuperWorkspace(registry, home, join(dir, 'home'))
+      assert.equal(await readFile(join(home, 'AGENTS.md'), 'utf8'), appended, 'an unchanged block is not rewritten')
     } finally {
       await harness.dispose()
     }
@@ -3656,16 +3664,32 @@ const registryContext = (registry: FakeWorkspaceRegistry): unknown => ({
  * snapshot may survive.
  * @returns the mounted composition, its registry, the shared scratch directory and the super agent.
  */
-const mountRosterLoop = async (): Promise<{
+const mountRosterLoop = async (
+  prepareHome?: (home: string) => Promise<void>,
+): Promise<{
   harness: JiraHarness
   registry: FakeWorkspaceRegistry
   dir: string
   home: string
   agent: Agent
+  notices: (agent: Agent) => readonly string[]
 }> => {
   const dir = await scratchDirectory()
   const home = join(dir, 'super-agent')
+  await mkdir(home, { recursive: true })
+  if (prepareHome !== undefined) await prepareHome(home)
   const harness = await mountJira(await fixture(), { enabled: false, superagent: true })
+  const definitionNotices = new Map<string, string[]>()
+  harness.ctx.on('session/event', (subject, event) => {
+    if (event.type !== 'user/message') return
+    // Widened on purpose: the notice source is declared beside its writer, not in this test.
+    const kind: string = event.data.source.kind
+    if (kind !== 'jira-agent') return
+    const id = String(subject.id)
+    const rows = definitionNotices.get(id) ?? []
+    rows.push(event.data.content.flatMap(block => block.type === 'text' ? [block.text] : []).join(''))
+    definitionNotices.set(id, rows)
+  })
   const registry = await provideRegistry(harness)
   await harness.ctx.plugin(LlmRuntime)
   await harness.ctx.plugin(SessionStore)
@@ -3680,7 +3704,14 @@ const mountRosterLoop = async (): Promise<{
     { provider: 'roster', model: 'roster' },
     { cwd: home },
   )
-  return { harness, registry, dir, home, agent }
+  return {
+    harness,
+    registry,
+    dir,
+    home,
+    agent,
+    notices: (subject: Agent) => definitionNotices.get(String(subject.id)) ?? [],
+  }
 }
 
 void describe('superagent: the workspace roster context', () => {
@@ -3792,6 +3823,37 @@ void describe('superagent: the workspace roster context', () => {
       const superAgent = testAgent(harness.ctx, 'super-again', { cwd: home })
       const superAssembly = await harness.ctx.systemPrompt.assemble({ agent: superAgent, scope: superAgent })
       assert.equal(renderContextSnapshot(superAssembly).includes('[superagent workspaces]'), true)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  void it('adopts an existing AGENTS.md and shows the append notice in the session', async () => {
+    const { harness, home, agent, notices } = await mountRosterLoop(async (root) => {
+      await writeFile(join(root, 'AGENTS.md'), '# Hand-written\n\nkeep this rule\n', 'utf8')
+    })
+    try {
+      await waitFor(() => (notices(agent).length > 0 ? true : undefined))
+      const text = await readFile(join(home, 'AGENTS.md'), 'utf8')
+      assert.equal(text.startsWith('# Hand-written\n'), true, 'the hand-written file is preserved')
+      assert.match(text, /<!-- superagent:managed begin v=1 -->/u)
+      assert.match(notices(agent)[0] ?? '', /managed section was appended/u)
+
+      // A notice appended before the first system prompt must not break the first real request.
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: 'first prompt' }],
+        source: { kind: 'user' },
+      }))
+      await agent.whenIdle()
+
+      const second = await harness.ctx.agentLoop.create(
+        SessionId('super-definition-2'),
+        { provider: 'roster', model: 'roster' },
+        { cwd: home },
+      )
+      await settle()
+      assert.equal(notices(agent).length, 1, 'the append is reported once')
+      assert.deepEqual(notices(second), [], 'an unchanged file needs no notice')
     } finally {
       await harness.dispose()
     }
