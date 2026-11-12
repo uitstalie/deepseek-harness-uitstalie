@@ -589,7 +589,7 @@ export const runControlTool = async (
   if (values.delivery !== undefined && !['append', 'prompt'].includes(action)) {
     issues.push('delivery is only accepted by append or prompt')
   }
-  if (!options.caller.writable && controlWrites(action)) issues.push('this action needs a writable session')
+  const readOnlyRefusal = !options.caller.writable && controlWrites(action)
   if (issues.length > 0) {
     return failure(invalidInput(`${action} has ${String(issues.length)} argument problem(s)`, {
       action, issues: Object.freeze(issues),
@@ -597,6 +597,11 @@ export const runControlTool = async (
       ...(values.session === undefined ? {} : { session: values.session }),
       ...(values.task === undefined ? {} : { task: values.task }),
     }), options.caller, me)
+  }
+  // A well-formed write from a read-only Session is a permission refusal, not a malformed request.
+  // The argument problems above stay INVALID_INPUT so a caller can fix both in one round trip.
+  if (readOnlyRefusal) {
+    return failure(readOnlySession(options.caller.reason ?? `${action} needs a writable session`), options.caller, me)
   }
   if (WORKSPACE_CONTROL_ACTIONS.includes(action)) {
     const workspaceAction = action === 'remove_workspace' ? 'remove' : action === 'rename_workspace' ? 'rename' : action
@@ -1214,6 +1219,8 @@ export const SUPERAGENT_OUTPUT_SCHEMA = Object.freeze({
     ledger: { type: 'object', additionalProperties: true },
     ledgerError: { type: 'string' },
     entries: { type: 'array' },
+    source: { type: 'string', enum: ['domain', 'markdown'] },
+    degradeReason: { type: 'string' },
     task: { type: 'object', additionalProperties: true },
     file: { type: 'string' },
     memory: { type: 'object', additionalProperties: true },
@@ -2807,7 +2814,7 @@ export const runSessionTool = async (
     return failure(invalidInput('this deployment has no session controller, so a workspace Session cannot be run'), caller, me)
   }
   if (!caller.writable && !['list', 'inspect'].includes(String(validated.value.action))) {
-    return failure(invalidInput('running a workspace Session needs a session that may write'), caller, me)
+    return failure(readOnlySession(caller.reason ?? 'running a workspace Session needs a session that may write'), caller, me)
   }
   const verdict = Object.freeze({
     ok: true,
@@ -2880,7 +2887,7 @@ export const runSessionTool = async (
   ): Promise<ToolValue> {
     if (action === 'append') {
       if (workspace === undefined) {
-        return failure(invalidInput(`"${workspaceArg ?? ''}" is not a registered workspace; run superagent_control roster first`), caller, me)
+        return failure(notFound(workspaceArg ?? '', 'workspace'), caller, me)
       }
       if (textArg === undefined || textArg.trim() === '') {
         return failure(invalidInput('append needs `text`: the follow-up instruction'), caller, me)
@@ -3033,7 +3040,7 @@ export const runSessionTool = async (
 
     if (action === 'start') {
       if (workspace === undefined) {
-        return failure(invalidInput(`"${workspaceArg ?? ''}" is not a registered workspace; run superagent_control roster first`), caller, me)
+        return failure(notFound(workspaceArg ?? '', 'workspace'), caller, me)
       }
       if (taskArg === undefined || taskArg.trim() === '') {
         return failure(invalidInput('start needs `task`: a self-contained brief for the workspace agent'), caller, me)
@@ -3568,7 +3575,7 @@ export const runSessionTool = async (
           longRunningMinutes,
         })
       } catch (error: unknown) {
-        return failure(invalidInput(`the Session list could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
+        return failure(ioFailed(`the Session list could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
       }
     }
 
@@ -3701,8 +3708,18 @@ export const runLedgerTool = async (
         ...(typeof validated.value.limit === 'number' ? { limit: validated.value.limit } : {}),
       }
       const durable = await store?.query(query)
+      const source = durable === undefined ? 'markdown' : 'domain'
       const listed = durable ?? queryDispatchTasks(await listAllDispatchTasks(root), query)
-      return Object.freeze({ ...verdict, ...listed })
+      return Object.freeze({
+        ...verdict,
+        ...listed,
+        source,
+        ...(source === 'domain' ? {} : {
+          degradeReason: store === undefined
+            ? 'the dispatch domain is not composed; reading the Markdown projection'
+            : 'the dispatch domain is unavailable; reading the Markdown projection',
+        }),
+      })
     } catch (error: unknown) {
       return failure(ioFailed(`the dispatch ledger could not be read: ${error instanceof Error ? error.message : String(error)}`), caller, me)
     }
@@ -5412,6 +5429,11 @@ export const createSuperagentContribution = (
     // The ledger appends to a file, so the conservative default applies.
     isConcurrencySafe: () => false,
     render: (typed) => {
+      const source = typeof typed.source === 'string' ? typed.source : undefined
+      const degradeReason = typeof typed.degradeReason === 'string' ? typed.degradeReason : undefined
+      const provenance = source === undefined
+        ? ''
+        : `\nsource: ${source}${degradeReason === undefined ? '' : ` — ${degradeReason}`}`
       if (Array.isArray(typed.entries)) {
         const rows = typed.entries as { id: string; status: string; workspaceTitle: string; task: string }[]
         const counts = typed.counts as { remaining?: number } | undefined
@@ -5422,7 +5444,7 @@ export const createSuperagentContribution = (
           ? 'the dispatch ledger has no matching task'
           : rows.map(row => 'reportText' in row
             ? `${row.id}  report ${row.status}  ${row.workspaceTitle}  ${row.task}${'error' in row && typeof row.error === 'string' ? `\n  ${row.error}` : ''}`
-            : `${row.id}  ${row.status}  ${row.workspaceTitle}  ${row.task}`).join('\n')) + suffix)
+            : `${row.id}  ${row.status}  ${row.workspaceTitle}  ${row.task}`).join('\n')) + suffix + provenance)
       }
       const task = typed.task as { id?: string; status?: string; workspaceTitle?: string } | undefined
       return renderText(task?.id === undefined

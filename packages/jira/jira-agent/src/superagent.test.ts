@@ -30,6 +30,9 @@ import LlmRuntime, {
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import Storage from '@deepseek-ai/dsh-storage'
+import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
+import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
 import { renderContextSections, renderContextSnapshot } from '@deepseek-ai/dsh-system-prompt'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SqliteSessionQueryEngine from '@deepseek-ai/dsh-session-query-sqlite'
@@ -87,6 +90,7 @@ import {
 import * as jiraAgent from './index.ts'
 import { type DispatchLedgerTask, listDispatchTasks, queryDispatchTasks, recordDispatch } from './dispatch-ledger.ts'
 import { DispatchReportStore, dispatchDeliveryRequestId, withDispatchDeliveryMarker, type DispatchReportRecord } from './dispatch-reports.ts'
+import { createDispatchStore, pendingTask } from './dispatch-store.ts'
 import { callerOf, identityOf } from './tools.ts'
 import { type JiraHarness, concurrencySafe, createLedgerFixture, dispatchTool, mountJira, testAgent, waitFor } from './testing/host.ts'
 
@@ -969,6 +973,24 @@ void describe('superagent: the dispatch ledger', () => {
 
       const listing = await runLedgerTool({ action: 'list', workspace: 'rimworld' }, options, me, ctx as never)
       assert.equal(listing.ok, true, JSON.stringify(listing.error))
+      assert.equal(listing.source, 'markdown')
+      assert.match(String(listing.degradeReason), /domain is not composed/u)
+      const definitionHome = join(root, 'definition-home')
+      const contribution = createSuperagentContribution({
+        ctx: { ...ctx, logger: { warn() {}, info() {}, debug() {}, error() {} } },
+        env: {}, clock: () => Date.parse(AT), recorder: createSessionRecorder(),
+      } as never, undefined, undefined, undefined, undefined, definitionHome)
+      try {
+        const definition = contribution.tools?.({ id: 'super-1', session: { header: { cwd: definitionHome } } } as never)
+          .find(tool => tool.name === LEDGER_TOOL_NAME)
+        assert.ok(definition !== undefined)
+        const rendered = definition.output.render({ action: 'list' }, listing as unknown as JsonValue)
+          .map(block => block.type === 'text' ? block.text : '').join('\n')
+        assert.match(rendered, /source: markdown/u)
+        assert.match(rendered, /domain is not composed/u)
+      } finally {
+        await contribution.dispose?.()
+      }
       const rows = listing.entries as { id: string; status: string; task: string }[]
       assert.equal(rows.length, 1)
       assert.equal(rows[0]?.status, 'pending')
@@ -1064,15 +1086,65 @@ void describe('superagent: dispatch argument and result corrections', () => {
     const listed = await runControlTool({ action: 'list' }, readOnly, me, ctx, { tasks: new Map() })
     assert.equal(listed.ok, true, JSON.stringify(listed.error))
     assert.deepEqual(listed.sessions, [], 'read-only Sessions may still list workspace Sessions')
-    for (const action of ['ensure', 'start', 'append', 'prompt', 'stop', 'abort', 'fork', 'archive', 'compact', 'delete']) {
-      const refused = await runControlTool({ action }, readOnly, me, ctx, { tasks: new Map() })
-      assert.equal(refused.error?.code, 'INVALID_INPUT')
-      assert.match(JSON.stringify(refused.error?.context?.issues), /needs a writable session/u)
+    // Well-formed writes are a permission refusal, not a malformed request: the code is typed and
+    // the message still names the missing write permission.
+    const writes: readonly Record<string, unknown>[] = [
+      { action: 'ensure', path: 'D:\\new' },
+      { action: 'start', workspace: 'w1', task: 'do it' },
+      { action: 'append', workspace: 'w1', session: 'one', text: 'go' },
+      { action: 'prompt', session: 'one', text: 'go' },
+      { action: 'stop', session: 'one' },
+      { action: 'abort', session: 'one', text: 'go' },
+      { action: 'fork', session: 'one' },
+      { action: 'archive', session: 'one' },
+      { action: 'compact', session: 'one' },
+      { action: 'delete', session: 'one', confirm: 'one' },
+    ]
+    for (const args of writes) {
+      const refused = await runControlTool(args, readOnly, me, ctx, { tasks: new Map() })
+      assert.equal(refused.error?.code, 'READ_ONLY_SESSION', JSON.stringify(args))
+      assert.match(refused.error.message, /writable session/u)
     }
     for (const action of ['remove', 'rename']) {
       const refused = await runControlTool({ action }, options, me, ctx, { tasks: new Map() })
       assert.equal(refused.ok, false)
       assert.match(JSON.stringify(refused.error), /must be one of/u)
+    }
+  })
+
+  void it('refuses a read-only Session write with READ_ONLY_SESSION', async () => {
+    const refused = await runControlTool({ action: 'ensure', path: 'D:\\new' }, {
+      jira: {} as never,
+      caller: { writable: false, sessionId: 'super-1', cwd: 'D:\\super' },
+      at: AT,
+    }, { session: 'super-1' }, { get: () => undefined }, { tasks: new Map() })
+    assert.equal(refused.ok, false)
+    assert.equal(refused.error?.code, 'READ_ONLY_SESSION')
+    assert.match(refused.error.message, /writable session/u)
+  })
+
+  void it('reports an unregistered workspace as NOT_FOUND', async () => {
+    const controller = {
+      create: () => assert.fail('must not create a Session'),
+      prompt: () => assert.fail('must not prompt'),
+      list: () => Promise.resolve({ items: [] }),
+    }
+    const registry = { list: () => [], create: () => Promise.reject(new Error('unused')) }
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? registry : undefined,
+    }
+    const options = {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: 'D:\\super' } as never,
+      at: AT as never,
+    }
+    for (const args of [
+      { action: 'start', workspace: 'missing', task: 'do it' },
+      { action: 'append', workspace: 'missing', session: 'one', text: 'go' },
+    ]) {
+      const refused = await runControlTool(args, options, { session: 'super-1' }, ctx, { tasks: new Map() })
+      assert.equal(refused.error?.code, 'NOT_FOUND', JSON.stringify(args))
+      assert.match(refused.error.message, /workspace missing not found/u)
     }
   })
 
@@ -1407,6 +1479,68 @@ void describe('superagent: report recovery after a plugin remount', () => {
     assert.ok(warnings.length >= 1)
     assert.match(String(warnings[0]?.[0] ?? ''), /could not be delivered/u)
     assert.equal((await journalOf(root).forSession('child-4'))[0]?.status, 'failed')
+  })
+
+  void it('keeps the domain business result when report delivery fails', async () => {
+    const root = await scratchDirectory()
+    const storageCtx = new Context()
+    await storageCtx.plugin(Storage)
+    const backend = new JsonStorageBackend(join(root, 'storage'))
+    storageCtx.storage.backend.register('json', backend)
+    storageCtx.provide('storageDomain', new DomainFacility(storageCtx, { backend: 'json' }))
+    const store = createDispatchStore(storageCtx, root)
+    assert.ok(store !== undefined)
+    try {
+      await store.record(pendingTask({
+        id: 'ledger-delivery-failure',
+        workspaceId: 'w1',
+        workspaceTitle: 'workspace',
+        workspacePath: root,
+        task: 'business result survives',
+        dispatchedAt: AT,
+        sessionId: 'child-business',
+        requestId: 'req-business',
+      }), 'super-1')
+      await seedBinding(root, {
+        sessionId: 'child-business',
+        requestId: 'req-business',
+        task: 'business result survives',
+        ledger: { root, taskId: 'ledger-delivery-failure' },
+      })
+      const controller = recoveryController(root)
+      controller.prompt = () => { throw new Error('queue is closed') }
+      const warnings: unknown[][] = []
+
+      const handled = await handleTaskTurnEnd(
+        recoveryHost(controller, warnings) as never,
+        completed('child-business', 'the business result') as never,
+        new Map(),
+        [],
+        root,
+        store,
+      )
+
+      assert.equal(handled, true)
+      assert.equal((await journalOf(root).forSession('child-business'))[0]?.status, 'failed', 'delivery failed')
+      const domain = await store.find('ledger-delivery-failure')
+      assert.equal(domain?.task.status, 'returned', 'the business result is not overwritten by the delivery failure')
+      assert.equal(domain.task.outcome, 'the business result')
+      assert.notEqual(domain.task.status, 'failed')
+      // The human projection is the post-delivery surface: a failed delivery must not rewrite it
+      // with a delivery state, so it still shows the pending dispatch.
+      const projected = (await listDispatchTasks(root)).find(row => row.id === 'ledger-delivery-failure')
+      assert.equal(projected?.status, 'pending')
+      const domainListing = await runLedgerTool({ action: 'list' }, {
+        jira: {} as never,
+        caller: { writable: true, sessionId: 'super-1', cwd: root },
+        at: AT,
+      }, { session: 'super-1' }, {} as never, store)
+      assert.equal(domainListing.source, 'domain', 'the ledger reads the authoritative domain when composed')
+    } finally {
+      await store.close()
+      await backend.close()
+      await storageCtx.fiber.dispose()
+    }
   })
 
   void it('never posts the same report twice', async () => {

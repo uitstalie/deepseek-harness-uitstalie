@@ -48,6 +48,10 @@ export type ToolValue = Readonly<{
   defaultPreset?: unknown
   /** `superagent_ledger`: the rows or the changed task, and the optional memory-write suggestion. */
   entries?: unknown
+  /** `superagent_ledger action: 'list'`: which storage answered the query (`domain` or `markdown`). */
+  source?: unknown
+  /** `superagent_ledger action: 'list'`: why the Markdown fallback answered instead of the domain. */
+  degradeReason?: unknown
   task?: unknown
   file?: unknown
   memory?: unknown
