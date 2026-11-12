@@ -481,6 +481,16 @@ export class JiraService extends Service implements JiraServiceApi {
           return finish(applyComment(issue, mutation.body, ctx))
         case 'assignee':
           return finish(applyAssignee(issue, mutation.value === 'none' ? null : (ctx.by), ctx))
+        case 'claim': {
+          // Claim = assignee + start in one transaction: one lock, one file write, one commit.
+          // Either half failing leaves the issue exactly as it was.
+          const assigned = applyAssignee(issue, ctx.by, ctx)
+          if (!assigned.ok) return assigned
+          const started = applyTransition(assigned.value.issue, 'in_progress', {}, ctx)
+          return started.ok
+            ? ok(combineChanges(acked.value, combineChanges(assigned.value, started.value)))
+            : started
+        }
         case 'link':
           return finish(applyLink(issue, { type: mutation.type, target: mutation.target, op: mutation.op }, ctx))
       }
@@ -488,7 +498,7 @@ export class JiraService extends Service implements JiraServiceApi {
     const allowed = await assertProjectWritable(opened.store.value, coreStore.projectOf(key), String(actor.by))
     if (!allowed.ok) return allowed
     let writeOptions: TransactOptions = {}
-    if (mutation.action === 'assignee' && mutation.value === 'self') {
+    if (mutation.action === 'claim' || (mutation.action === 'assignee' && mutation.value === 'self')) {
       const blockers = await blockersOf(opened.store.value, key)
       if (!blockers.ok) return blockers
       writeOptions = { blockers: blockers.value, override: options.override === true }

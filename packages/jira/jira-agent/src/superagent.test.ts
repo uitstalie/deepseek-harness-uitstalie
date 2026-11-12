@@ -9,6 +9,7 @@
  */
 
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, stat, utimes, writeFile } from 'node:fs/promises'
 import { existsSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -17,7 +18,7 @@ import { after, describe, it } from 'node:test'
 
 import { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { type Comment, type Identity, type Issue, type Timestamp, removeTree } from '@deepseek-ai/dsh-jira-core'
+import { type Comment, type Identity, type Issue, type Timestamp, removeTree, storePaths } from '@deepseek-ai/dsh-jira-core'
 import SessionStore, { SessionSeq, SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import LlmRuntime, {
   LlmAdapter,
@@ -165,6 +166,10 @@ const call = async (
   return value
 }
 
+/** The error object of a tool envelope, for tests that read `code` and `message`. */
+const errorOf = (envelope: Record<string, unknown>): { code?: string; message?: string } =>
+  envelope.error as { code?: string; message?: string }
+
 /** The issue an envelope returned. */
 const issueOf = (envelope: Record<string, unknown>): Record<string, unknown> => {
   const issue = envelope.issue
@@ -188,6 +193,10 @@ const bodiesOf = (envelope: Record<string, unknown>): string[] => {
 
 const AT = '2026-10-15T12:00:00Z' as Timestamp
 const MAIN = 'agent:deepseek-flash|dsh|a1b2c3d4|main-1' as Identity
+
+/** How many commits the fixture store has; a claim must add exactly one. */
+const commitCount = (root: string): number =>
+  Number(spawnSync('git', ['-C', root, 'rev-list', '--count', 'HEAD'], { encoding: 'utf8' }).stdout.trim())
 
 /** A person's confirmation: the human-authored credential a claim consumes. */
 const approve = async (harness: JiraHarness, key = 'DH-12'): Promise<void> => {
@@ -3083,6 +3092,98 @@ void describe('superagent: the dispatcher\'s surface', () => {
       })
       assert.equal(delivered.ok, true, JSON.stringify(delivered.error))
       assert.equal(issueOf(delivered).status, 'in_review')
+    } finally {
+      await harness.dispose()
+    }
+  })
+  void it('claims assignee and in_progress in one commit', async () => {
+    const { harness, main } = await mount()
+    try {
+      const root = harness.ctx.jira.root
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })
+      await approve(harness)
+      const before = commitCount(root)
+
+      const claimed = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+
+      assert.equal(claimed.ok, true, JSON.stringify(claimed.error))
+      assert.equal(commitCount(root), before + 1, 'one write transaction, one commit')
+      const returned = issueOf(claimed)
+      assert.equal(returned.status, 'in_progress')
+      assert.match(String(returned.assignee), /^agent:.*\|main-1$/u)
+      assert.ok(typeof returned.lease_expires_at === 'string' && returned.lease_expires_at !== '')
+
+      const text = await readFile(storePaths.issue(root, 'DH', 'DH-12' as never), 'utf8')
+      assert.match(text, /^assignee: agent:/mu)
+      assert.match(text, /^status: in_progress$/mu)
+      assert.match(text, /^lease_expires_at: /mu)
+      const subject = spawnSync('git', ['-C', root, 'log', '-1', '--format=%s'], { encoding: 'utf8' }).stdout.trim()
+      assert.match(subject, /^DH-12: claim \(rev \d+\)$/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  void it('leaves the issue byte-identical when the in-transaction transition fails', async () => {
+    const { harness, main } = await mount()
+    try {
+      const root = harness.ctx.jira.root
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })
+      await approve(harness)
+      const issuePath = storePaths.issue(root, 'DH', 'DH-12' as never)
+      const commentsPath = storePaths.comments(root, 'DH', 'DH-12' as never)
+      const issueBefore = await readFile(issuePath, 'utf8')
+      const commentsBefore = await readFile(commentsPath, 'utf8')
+
+      // The assignee step would succeed; the transition step must fail inside the same
+      // transaction. Removing the edge after the proposal makes that deterministic, and the
+      // config edit is committed so the only commit the claim could add is its own.
+      const configPath = storePaths.config(root)
+      const config = await readFile(configPath, 'utf8')
+      await writeFile(configPath, config.replace(/^  - \[todo, in_progress\]\n/mu, ''), 'utf8')
+      const configCommit = spawnSync('git', [
+        '-C', root, '-c', 'user.name=test', '-c', 'user.email=test@local', 'commit', '-am', 'test: drop the claim edge',
+      ], { encoding: 'utf8' })
+      assert.equal(configCommit.status, 0, configCommit.stderr)
+      const before = commitCount(root)
+
+      const failed = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+
+      assert.equal(failed.ok, false)
+      assert.equal(errorOf(failed).code, 'INVALID_TRANSITION')
+      assert.equal(commitCount(root), before, 'a refused transaction commits nothing')
+      assert.equal(await readFile(issuePath, 'utf8'), issueBefore, 'assignee, status and lease are untouched')
+      assert.equal(await readFile(commentsPath, 'utf8'), commentsBefore, 'no trace comment')
+      const restored = await harness.ctx.jira.readIssue('DH-12' as Issue['key'])
+      assert.equal(restored.ok, true)
+      assert.equal(restored.value.issue.status, 'todo')
+      assert.equal(restored.value.issue.assignee, undefined)
+      assert.equal(restored.value.issue.claimedAt, undefined)
+      assert.equal(restored.value.issue.leaseExpiresAt, undefined)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  void it('refuses a second claim without rewriting the claimed issue', async () => {
+    const { harness, main } = await mount()
+    try {
+      const root = harness.ctx.jira.root
+      await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })
+      await approve(harness)
+      const first = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+      assert.equal(first.ok, true, JSON.stringify(first.error))
+      const issuePath = storePaths.issue(root, 'DH', 'DH-12' as never)
+      const claimedBytes = await readFile(issuePath, 'utf8')
+      const before = commitCount(root)
+
+      const again = await call(harness, main, CLAIM_TOOL_NAME, { action: 'claim', key: 'DH-12' })
+
+      assert.equal(again.ok, false)
+      assert.equal(errorOf(again).code, 'INVALID_INPUT')
+      assert.match(String(errorOf(again).message), /cannot be taken: its status is 'in_progress'/u)
+      assert.equal(await readFile(issuePath, 'utf8'), claimedBytes, 'the claimed issue is not rewritten')
+      assert.equal(commitCount(root), before)
     } finally {
       await harness.dispose()
     }

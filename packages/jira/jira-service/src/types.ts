@@ -189,6 +189,7 @@ export type IssueMutation =
   | Readonly<{ action: 'close'; to?: string; resolution?: string; resolutionNote?: string; comment?: string }>
   | Readonly<{ action: 'comment'; body: string }>
   | Readonly<{ action: 'assignee'; value: 'self' | 'none' }>
+  | Readonly<{ action: 'claim' }>
   | Readonly<{ action: 'link'; type: LinkType; target: IssueKey; op: 'add' | 'remove' }>
 
 /** Compare-and-set and conflict acknowledgement for one mutation. */

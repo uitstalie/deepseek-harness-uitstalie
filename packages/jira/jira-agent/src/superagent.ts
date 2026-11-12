@@ -1434,12 +1434,10 @@ export const runClaimTool = async (
       { key, held, maxWorkers },
     ), caller, me)
   }
-  const assigned = await jira.mutateIssue(issueKey, { action: 'assignee', value: 'self' }, actor, {})
+  const assigned = await jira.mutateIssue(issueKey, { action: 'claim' }, actor, {})
   if (!assigned.ok) return failure(assigned.error, caller, me)
-  const started = await jira.mutateIssue(issueKey, { action: 'switch_state', to: 'in_progress' }, actor, {})
-  if (!started.ok) return failure(started.error, caller, me)
   return Object.freeze({
-    ...okValue(caller, me, started.value.transaction.change.issue, started.value.comments, [], 'write'),
+    ...okValue(caller, me, assigned.value.transaction.change.issue, assigned.value.comments, [], 'write'),
     dispatch: Object.freeze({
       key,
       ...(cwd === undefined ? {} : { cwd }),
