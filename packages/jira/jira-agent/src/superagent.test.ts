@@ -9,7 +9,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, utimes, writeFile } from 'node:fs/promises'
 import { existsSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, parse } from 'node:path'
@@ -3804,6 +3804,51 @@ void describe('superagent: the workspace roster context', () => {
       assert.equal(snapshots[0], first, 'the earlier snapshot stays untouched')
       assert.match(snapshots[1] ?? '', /\[superagent workspaces\] 2 registered/u)
       assert.match(snapshots[1] ?? '', /analyze/u)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  void it('injects workspace conventions and appends only when a workspace edits them', async () => {
+    const { harness, registry, dir, agent } = await mountRosterLoop()
+    const file = join(dir, 'analyze', 'AGENTS.md')
+    const conventions = (body: string): string =>
+      `# Analyze\n<!-- superagent:conventions begin -->\n${body}\n<!-- superagent:conventions end -->\n`
+    try {
+      await mkdir(join(dir, 'analyze'), { recursive: true })
+      await writeFile(file, conventions('Deliver reports as XLSX.'), 'utf8')
+      await registry.create(join(dir, 'analyze'), 'analyze')
+      const snapshots = recordContextSnapshots(harness.ctx, agent)
+
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: 'first' }],
+        source: { kind: 'user' },
+      }))
+      await agent.whenIdle()
+      assert.equal(snapshots.length, 1, 'the first turn keeps one snapshot')
+      assert.match(snapshots[0] ?? '', /\[superagent workspace conventions\]/u)
+      assert.match(snapshots[0] ?? '', /Deliver reports as XLSX\./u)
+
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: 'second' }],
+        source: { kind: 'user' },
+      }))
+      await agent.whenIdle()
+      assert.equal(snapshots.length, 1, 'unchanged conventions append nothing')
+      const firstSnapshot = snapshots[0]
+
+      await writeFile(file, conventions('Deliver the report as CSV; cite the query.'), 'utf8')
+      const later = new Date(Date.now() + 5_000)
+      await utimes(file, later, later)
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: 'third' }],
+        source: { kind: 'user' },
+      }))
+      await agent.whenIdle()
+      assert.equal(snapshots.length, 2, 'one workspace edit appends exactly one snapshot')
+      assert.equal(snapshots[0], firstSnapshot, 'the earlier snapshot stays untouched')
+      assert.match(snapshots[1] ?? '', /Deliver the report as CSV/u)
+      assert.equal((snapshots[1] ?? '').includes('Deliver reports as XLSX.'), false)
     } finally {
       await harness.dispose()
     }

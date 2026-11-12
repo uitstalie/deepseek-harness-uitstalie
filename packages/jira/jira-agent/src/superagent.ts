@@ -36,6 +36,7 @@ import {
   syncSuperWorkspaceDefinition,
   takeSuperWorkspaceDefinitionNotice,
 } from './super-workspace-definition.ts'
+import { workspaceConventionsText } from './workspace-conventions.ts'
 import {
   findDispatchTask,
   isDispatchLedgerStatus,
@@ -137,6 +138,21 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + 'only then write. A registration or rename the person already made in the UI wins; never '
     + '"confirm" or "repair" it with a tool call. A write is not harmless because it is idempotent — '
     + 'it can move store order and timestamps — so treat every call like a new registration.\n'
+    + '- A workspace brief has exactly two sources: what the person explicitly asked for, and the '
+    + 'destination workspace\'s own conventions (its `AGENTS.md` `superagent:conventions` section, '
+    + 'shown in your runtime context). Never invent a standard, scope, policy, evidence rule or '
+    + 'stage classification inside a brief, and never present a guess as a rule. When a standard '
+    + 'you need is missing, ask the person before dispatching — do not ship a first attempt and '
+    + 'repair it after a correction.\n'
+    + '- One brief carries one objective and its acceptance check. Do not mix competing standards in '
+    + 'one dispatch; cite each convention you rely on by workspace id and file ("→ analyze/AGENTS.md'
+    + '#superagent:conventions") so a correction names the source, not memory. When a correction '
+    + 'changes a standard, ask the person (or the owning workspace\'s Session) to update that '
+    + 'source; a memory line is not the fix.\n'
+    + '- Policies and organization judgment belong to the person: this workspace\'s `AGENTS.md` '
+    + 'outside the managed block holds them, and only the person may change them. Never write '
+    + 'acceptance criteria, skill red lines or stage rules into skills, tool descriptions or '
+    + 'another workspace\'s files.\n'
     + '- Route deliberately, never by guess. List the workspace\'s Sessions and reuse one whose title '
     + 'and purpose match; `append` requires an explicit `session` (an id or "latest") and refuses when '
     + 'the target is ambiguous. If the person says "the other session", name the candidate you '
@@ -5161,6 +5177,8 @@ export const createSuperagentContribution = (
   // The registered workspaces are injected too, one order before the volatile monitor, so the part
   // that only changes when the registry changes sits at the front of the snapshot.
   let rosterDispose: (() => void) | undefined
+  // Workspace-owned conventions come next: they change only when a workspace edits its own file.
+  let conventionsDispose: (() => void) | undefined
   const inject = (host.ctx as { inject?: (names: readonly string[], callback: (scope: unknown) => void) => unknown }).inject
   if (superHome !== undefined && typeof inject === 'function') {
     inject.call(host.ctx, ['systemPrompt'], (scope) => {
@@ -5175,9 +5193,16 @@ export const createSuperagentContribution = (
           ? workspaceRosterLines(host.ctx, superHome)
           : '',
       })
+      conventionsDispose = registerPromptContext(systemPrompt, {
+        name: 'superagent:conventions',
+        order: 705,
+        text: (context: { agent?: unknown }) => isSuperAgentSession(context.agent, superHome)
+          ? workspaceConventionsText(workspaceRegistryOf(host.ctx), superHome)
+          : '',
+      })
       monitorDispose = registerPromptContext(systemPrompt, {
         name: 'superagent:running',
-        order: 705,
+        order: 706,
         text: (context: { agent?: unknown }) => isSuperAgentSession(context.agent, superHome)
           ? longRunningSummary(host.ctx, superHome, longRunningMinutes * 60_000)
           : '',
@@ -5693,6 +5718,8 @@ export const createSuperagentContribution = (
       // late release. Everything else can wait for startup recovery below.
       rosterDispose?.()
       rosterDispose = undefined
+      conventionsDispose?.()
+      conventionsDispose = undefined
       monitorDispose?.()
       monitorDispose = undefined
       recoveryAbort?.abort()
