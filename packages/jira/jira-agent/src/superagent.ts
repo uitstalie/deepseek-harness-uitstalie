@@ -41,7 +41,6 @@ import {
   findDispatchTask,
   isDispatchLedgerStatus,
   listAllDispatchTasks,
-  listDispatchTasks,
   pendingTask,
   queryDispatchTasks,
   recordDispatch,
@@ -1145,6 +1144,8 @@ export interface TaskSessionRecord {
   readonly workspace: string
   /** The report binding id, named in the report headline. */
   readonly taskId?: string
+  /** Every dispatch binding a merged report covers, in turn-admission order (more than one only). */
+  readonly reportTaskIds?: readonly string[]
   /** The structured dispatch entry this turn will resolve, when the ledger recorded one. */
   readonly ledger?: Readonly<{ root: string; task: DispatchLedgerTask }>
   /**
@@ -4088,8 +4089,12 @@ export const deliverTaskReport = async (
 ): Promise<boolean> => {
   const turnKind = turnEnd?.kind ?? turnEnd?.reason?.kind
   const taskId = record.taskId ?? record.ledger?.task.id
+  const reportTaskIds = record.reportTaskIds ?? (taskId === undefined ? [] : [taskId])
+  const taskLabel = reportTaskIds.length > 1
+    ? `tasks ${reportTaskIds.join(', ')}`
+    : taskId === undefined ? '' : `task ${taskId}`
   const prepareReport = async (body: string): Promise<boolean> => {
-    if (reports === undefined || taskId === undefined) return true
+    if (reports === undefined || reportTaskIds.length === 0) return true
     const assistantText = lastAssistantText(agent, undefined, endEvent)
     const emptyOutput = turnKind === undefined || turnKind === 'completed' ? assistantText === undefined : false
     const result = turnKind !== undefined && turnKind !== 'completed' || emptyOutput ? 'failed' : 'returned'
@@ -4099,13 +4104,14 @@ export const deliverTaskReport = async (
         ? assistantText as string
         : `the turn ended ${turnKind}${turnEnd?.error?.message === undefined ? '' : `: ${turnEnd.error.message}`}`
     try {
-      const bound = await reports.prepare(taskId, nowUtc(host.clock), body, outcome, result)
-      if (bound !== undefined) {
+      for (const id of reportTaskIds) {
+        const bound = await reports.prepare(id, nowUtc(host.clock), body, outcome, result)
+        if (bound === undefined) return false
         await projectReportToLedger(host, bound, outcome, result, nowUtc(host.clock), store, false)
-        return true
       }
+      return true
     } catch (error: unknown) {
-      host.ctx.logger.warn('superagent: the report for %s could not be saved for retry: %s', taskId, String(error))
+      host.ctx.logger.warn('superagent: the report for %s could not be saved for retry: %s', reportTaskIds.join(', '), String(error))
     }
     return false
   }
@@ -4194,12 +4200,12 @@ export const deliverTaskReport = async (
   }
   const body = text === undefined
     ? `[task-report] ${sessionId} in ${record.workspace} finished its turn`
-      + (taskId === undefined ? '' : ` (task ${taskId})`)
+      + (taskLabel === '' ? '' : ` (${taskLabel})`)
       + `${contextMarker(record.usageBefore, usageAfter)}, but produced no assistant text.`
       + '\n\nInspect the Session (`superagent_control inspect`) and record the outcome with '
       + 'superagent_ledger resolve; do not assume the task succeeded.'
     : `[task-report] ${sessionId} in ${record.workspace} finished its turn`
-      + (taskId === undefined ? '' : ` (task ${taskId})`)
+      + (taskLabel === '' ? '' : ` (${taskLabel})`)
       + `${contextMarker(record.usageBefore, usageAfter)}.`
       + `\n\n${text}\n\n`
       + 'Record the durable conclusion with memory_write (kind decision/open/files, tags including '
@@ -4222,24 +4228,6 @@ export const deliverTaskReport = async (
     )
     return false
   }
-}
-
-/**
- * Find the oldest pending dispatch whose ledger `session` field names this workspace Session.
- *
- * This is the compatibility/FIFO view for records written before prompt identities were stored.
- * The in-memory task map is intentionally not the source of truth: a live plugin reload while a
- * long workspace turn runs replaces the map, but the ledger survives.
- * @param root - the super workspace root that owns `.superagent/ledger`.
- * @param sessionId - the workspace Session whose turn just ended.
- * @returns the oldest pending task, or undefined when none is bound to this Session.
- */
-export const pendingDispatchForSession = async (
-  root: string,
-  sessionId: string,
-): Promise<DispatchLedgerTask | undefined> => {
-  const rows = await listDispatchTasks(root, { status: 'pending', limit: 100 })
-  return rows.filter(row => row.sessionId === sessionId).at(-1)
 }
 
 /** The prompt identities one turn claimed, read from its own `user/message` events. */
@@ -4472,57 +4460,70 @@ export const handleTaskTurnEnd = async (
   const completed = turnKind === undefined || turnKind === 'completed'
   const text = completed ? lastAssistantText(input.agent, turn, input.event) : undefined
   const at = nowUtc(host.clock)
-  let handled = false
+  const outcome = completed
+    ? text ?? 'empty-output: the turn completed without assistant text'
+    : `the turn ended ${turnKind ?? 'unknown'}${reason.error?.message === undefined ? '' : `: ${reason.error.message}`}`
+  const outcomeStatus = completed && text !== undefined ? 'returned' : 'failed'
+  // One turn can carry several dispatch requestIds (a start plus steered appends). The final
+  // assistant text answers the turn as a whole, so the turn is reported once per recipient
+  // Session instead of once per binding; every binding is still settled and projected below.
+  const groups = new Map<string, DispatchReportRecord[]>()
   for (const binding of targets) {
-    let claimed
-    try {
-      claimed = await journal.claim(binding.id, at)
-    } catch (error: unknown) {
-      host.ctx.logger.warn(
-        'superagent: dispatch %s for %s could not be claimed for its report: %s',
-        binding.id,
-        sessionId,
-        error instanceof Error ? error.message : String(error),
-      )
-      continue
-    }
-    // Lost the claim to a concurrent/replayed hook or already settled: never deliver twice.
-    if (claimed === undefined) continue
-    if (claimed.retried) {
-      host.ctx.logger.warn(
-        'superagent: dispatch %s for %s had an unsettled delivery claim; retrying the report',
-        binding.id,
-        sessionId,
-      )
-    }
-    handled = true
-    let report = claimed.record
-    if (report.superSession.trim() === '') {
-      const superSession = undefined
-      if (superSession === undefined) {
-        const message = 'turn ended; no visible super Session was available to receive the report'
+    const key = binding.superSession.trim()
+    const group = groups.get(key) ?? []
+    group.push(binding)
+    groups.set(key, group)
+  }
+  let handled = false
+  for (const [superSession, group] of groups) {
+    const claimedRecords: DispatchReportRecord[] = []
+    for (const binding of group) {
+      let claimed
+      try {
+        claimed = await journal.claim(binding.id, at)
+      } catch (error: unknown) {
         host.ctx.logger.warn(
-          'superagent: dispatch %s for %s is bound, but no super Session is visible to receive the report',
-          report.id,
-          sessionId,
+          'superagent: dispatch %s for %s could not be claimed for its report: %s',
+          binding.id, sessionId, error instanceof Error ? error.message : String(error),
         )
-        await settleReport(host, journal, report.id, 'failed', at, message)
         continue
       }
-      report = { ...report, superSession }
+      // Lost the claim to a concurrent/replayed hook or already settled: never deliver twice.
+      if (claimed === undefined) continue
+      if (claimed.retried) {
+        host.ctx.logger.warn(
+          'superagent: dispatch %s for %s had an unsettled delivery claim; retrying the report',
+          binding.id, sessionId,
+        )
+      }
+      claimedRecords.push(claimed.record)
     }
-    const outcome = completed
-      ? text ?? 'empty-output: the turn completed without assistant text'
-      : `the turn ended ${turnKind ?? 'unknown'}${reason.error?.message === undefined ? '' : `: ${reason.error.message}`}`
-    const known = report.requestId === undefined
+    if (claimedRecords.length === 0) continue
+    handled = true
+    if (superSession === '') {
+      const message = 'turn ended; no visible super Session was available to receive the report'
+      for (const report of claimedRecords) {
+        host.ctx.logger.warn(
+          'superagent: dispatch %s for %s is bound, but no super Session is visible to receive the report',
+          report.id, sessionId,
+        )
+        await settleReport(host, journal, report.id, 'failed', at, message)
+      }
+      continue
+    }
+    const primary = claimedRecords[0]
+    if (primary === undefined) continue
+    const reportTaskIds = claimedRecords.map(report => report.id)
+    const known = primary.requestId === undefined
       ? tasks.get(sessionId)?.at(-1)
-      : tasks.get(sessionId)?.find(candidate => candidate.requestId === report.requestId)
+      : tasks.get(sessionId)?.find(candidate => candidate.requestId === primary.requestId)
     const taskRecord: TaskSessionRecord = {
-      superSession: report.superSession,
-      workspace: report.workspace.path === '' ? report.workspace.title : report.workspace.path,
-      taskId: report.id,
-      ...(report.requestId === undefined ? {} : { requestId: report.requestId }),
+      superSession: primary.superSession,
+      workspace: primary.workspace.path === '' ? primary.workspace.title : primary.workspace.path,
+      taskId: primary.id,
+      ...(primary.requestId === undefined ? {} : { requestId: primary.requestId }),
       ...(known?.usageBefore === undefined ? {} : { usageBefore: known.usageBefore }),
+      ...(reportTaskIds.length > 1 ? { reportTaskIds: Object.freeze(reportTaskIds) } : {}),
     }
     let delivered = false
     try {
@@ -4530,21 +4531,22 @@ export const handleTaskTurnEnd = async (
     } catch (error: unknown) {
       host.ctx.logger.warn(
         'superagent: the task report for %s from %s could not be delivered: %s',
-        report.superSession,
-        sessionId,
-        error instanceof Error ? error.message : String(error),
+        primary.superSession, sessionId, error instanceof Error ? error.message : String(error),
       )
     }
     if (delivered) {
-      await settleReport(host, journal, report.id, 'delivered', at)
-      await projectReportToLedger(host, report, outcome, completed && text !== undefined ? 'returned' : 'failed', at, store)
+      for (const report of claimedRecords) {
+        await settleReport(host, journal, report.id, 'delivered', at)
+        await projectReportToLedger(host, report, outcome, outcomeStatus, at, store)
+      }
     } else {
-      host.ctx.logger.warn(
-        'superagent: dispatch %s for %s finished its turn but the report was NOT delivered; marking the report delivery failed',
-        report.id,
-        sessionId,
-      )
-      await settleReport(host, journal, report.id, 'failed', at, 'the report could not be delivered to the super Session')
+      for (const report of claimedRecords) {
+        host.ctx.logger.warn(
+          'superagent: dispatch %s for %s finished its turn but the report was NOT delivered; marking the report delivery failed',
+          report.id, sessionId,
+        )
+        await settleReport(host, journal, report.id, 'failed', at, 'the report could not be delivered to the super Session')
+      }
     }
   }
   return handled

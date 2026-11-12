@@ -1307,6 +1307,7 @@ void describe('superagent: report recovery after a plugin remount', () => {
    * journal, not the jira ledger, is what binds a child turn to its dispatch.
    */
   const seedBinding = async (root: string, input: {
+    readonly id?: string
     readonly sessionId: string
     readonly requestId?: string
     readonly task?: string
@@ -1315,6 +1316,7 @@ void describe('superagent: report recovery after a plugin remount', () => {
     readonly ledger?: { readonly root: string; readonly taskId: string }
   }): Promise<void> => {
     await journalOf(root).record({
+      ...(input.id === undefined ? {} : { id: input.id }),
       workspace: { id: 'w1', title: 'workspace', path: root },
       sessionId: input.sessionId,
       superSession: input.superSession ?? 'super-1',
@@ -1567,6 +1569,129 @@ void describe('superagent: report recovery after a plugin remount', () => {
       await backend.close()
       await storageCtx.fiber.dispose()
     }
+  })
+
+  void it('delivers one report for a turn that carries several dispatch requestIds', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    const reportIds = ['task-r0', 'task-r1', 'task-r2', 'task-r3'] as const
+    const events: { type: string; seq: number; data: unknown }[] = [{ type: 'turn/start', seq: 1, data: { turn: 1 } }]
+    let seq = 1
+    for (const [index, id] of reportIds.entries()) {
+      const requestId = `req-${String(index)}`
+      await seedBinding(root, {
+        id,
+        sessionId: 'child-multi',
+        requestId,
+        task: `task ${String(index)}`,
+        ledger: { root, taskId: id },
+      })
+      await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+        id, task: `task ${String(index)}`, dispatchedAt: AT, sessionId: 'child-multi', requestId,
+      })
+      events.push({ type: 'user/message', seq: ++seq, data: { source: { kind: 'user', rpcId: requestId } } })
+      events.push({
+        type: 'assistant/message',
+        seq: ++seq,
+        data: { message: { content: [{ type: 'text', text: `A${String(index)}` }] } },
+      })
+    }
+    const end = { type: 'turn/end', seq: ++seq, data: { turn: 1, reason: { kind: 'completed' } } }
+    events.push(end)
+    const agent = { id: 'child-multi', session: { snapshotEvents: () => events } }
+    const input = { agent, session: agent.session, turn: 1, event: end, signal: new AbortController().signal }
+
+    const handled = await handleTaskTurnEnd(
+      recoveryHost(controller) as never, input as never, new Map(), [], root,
+    )
+
+    assert.equal(handled, true)
+    assert.equal(controller.prompted.length, 1, 'one turn produces one report, not one per binding')
+    assert.match(controller.prompted[0]?.text ?? '', /\(tasks task-r0, task-r1, task-r2, task-r3\)/u)
+    assert.match(controller.prompted[0]?.text ?? '', /A3/u)
+    const journal = journalOf(root)
+    const records = await journal.forSession('child-multi')
+    for (const id of reportIds) {
+      assert.equal(records.find(record => record.id === id)?.status, 'delivered', id)
+    }
+    const rows = await listDispatchTasks(root)
+    for (const id of reportIds) {
+      const row = rows.find(candidate => candidate.id === id)
+      assert.ok(row !== undefined, id)
+      assert.equal(row.status, 'returned', id)
+      assert.equal(row.outcome, 'A3', id)
+    }
+
+    const replay = await handleTaskTurnEnd(
+      recoveryHost(controller) as never, input as never, new Map(), [], root,
+    )
+    assert.equal(replay, true)
+    assert.equal(controller.prompted.length, 1, 'a replayed turn end sends nothing more')
+  })
+
+  void it('keeps the single-binding report body unchanged', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    await seedBinding(root, {
+      id: 'task-single',
+      sessionId: 'child-single',
+      requestId: 'req-single',
+      task: 'single task',
+      ledger: { root, taskId: 'task-single' },
+    })
+    await recordDispatch(root, { id: 'w1', title: 'workspace', path: root }, {
+      id: 'task-single', task: 'single task', dispatchedAt: AT, sessionId: 'child-single', requestId: 'req-single',
+    })
+    const events = [
+      { type: 'turn/start', seq: 1, data: { turn: 1 } },
+      { type: 'user/message', seq: 2, data: { source: { kind: 'user', rpcId: 'req-single' } } },
+      { type: 'assistant/message', seq: 3, data: { message: { content: [{ type: 'text', text: 'Only answer' }] } } },
+    ]
+    const end = { type: 'turn/end', seq: 4, data: { turn: 1, reason: { kind: 'completed' } } }
+    const agent = { id: 'child-single', session: { snapshotEvents: () => [...events, end] } }
+
+    await handleTaskTurnEnd(
+      recoveryHost(controller) as never,
+      { agent, session: agent.session, turn: 1, event: end, signal: new AbortController().signal } as never,
+      new Map(), [], root,
+    )
+
+    const delivered = controller.prompted[0]?.text ?? ''
+    const body = delivered.split('\n\n<!-- superagent-delivery')[0] ?? ''
+    assert.equal(body, `[task-report] child-single in ${root} finished its turn (task task-single).\n\nOnly answer\n\nRecord the durable conclusion with memory_write (kind decision/open/files, tags including superagent, the workspace and the task id); use superagent_ledger resolve for any outcome, artifact or decision the automatic record could not know.`)
+    assert.doesNotMatch(body, /\(tasks /u)
+  })
+
+  void it('reports once per recipient when one turn spans two super Sessions', async () => {
+    const root = await scratchDirectory()
+    const controller = recoveryController(root)
+    controller.list = () => Promise.resolve({
+      items: [
+        { sessionId: 'super-a', running: false, cwd: root, updatedAt: 1 },
+        { sessionId: 'super-b', running: false, cwd: root, updatedAt: 1 },
+      ],
+    })
+    await seedBinding(root, { sessionId: 'child-cross', requestId: 'req-a', task: 'a', superSession: 'super-a' })
+    await seedBinding(root, { sessionId: 'child-cross', requestId: 'req-b', task: 'b', superSession: 'super-b' })
+    const events = [
+      { type: 'turn/start', seq: 1, data: { turn: 1 } },
+      { type: 'user/message', seq: 2, data: { source: { kind: 'user', rpcId: 'req-a' } } },
+      { type: 'user/message', seq: 3, data: { source: { kind: 'user', rpcId: 'req-b' } } },
+      { type: 'assistant/message', seq: 4, data: { message: { content: [{ type: 'text', text: 'shared answer' }] } } },
+    ]
+    const end = { type: 'turn/end', seq: 5, data: { turn: 1, reason: { kind: 'completed' } } }
+    const agent = { id: 'child-cross', session: { snapshotEvents: () => [...events, end] } }
+
+    await handleTaskTurnEnd(
+      recoveryHost(controller) as never,
+      { agent, session: agent.session, turn: 1, event: end, signal: new AbortController().signal } as never,
+      new Map(), [], root,
+    )
+
+    assert.equal(controller.prompted.length, 2, 'one report per recipient Session')
+    assert.deepEqual(controller.prompted.map(row => row.sessionId).sort(), ['super-a', 'super-b'])
+    assert.match(controller.prompted[0]?.text ?? '', /\(task .*\)/u)
+    assert.match(controller.prompted[1]?.text ?? '', /\(task .*\)/u)
   })
 
   void it('never posts the same report twice', async () => {
