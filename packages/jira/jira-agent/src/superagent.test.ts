@@ -1148,6 +1148,23 @@ void describe('superagent: dispatch argument and result corrections', () => {
     }
   })
 
+  void it('reports an unreadable Session list as WRITE_FAILED', async () => {
+    const controller = {
+      create: () => assert.fail('must not create a Session'),
+      prompt: () => assert.fail('must not prompt'),
+      list: () => Promise.reject(new Error('the Session directory is unreadable')),
+    }
+    const listed = await runControlTool({ action: 'list' }, {
+      jira: {} as never,
+      caller: { writable: true, sessionId: 'super-1', cwd: 'D:\\super' },
+      at: AT,
+    }, { session: 'super-1' }, {
+      get: (key: string) => key === 'sessionController' ? controller : undefined,
+    }, { tasks: new Map() })
+    assert.equal(listed.error?.code, 'WRITE_FAILED')
+    assert.match(listed.error.message, /Session list could not be read/u)
+  })
+
   void it('finds and corrects a Markdown task older than the 100-row display window', async () => {
     const root = await scratchDirectory()
     const workspace = { id: 'w1', title: 'workspace', path: root }
