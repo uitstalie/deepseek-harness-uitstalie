@@ -28,7 +28,7 @@ export const KB_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze(
   },
   key: { type: 'string', description: 'get/update: the knowledge key, e.g. KB-7.' },
   query: { type: 'string', description: 'search: the text to look for.' },
-  top_k: { type: 'number', description: `search: how many hits; default ${String(TOP_K_DEFAULT)}, maximum ${String(TOP_K_MAX)}.` },
+  top_k: { type: 'number', description: `How many hits to return; default ${String(TOP_K_DEFAULT)}, maximum ${String(TOP_K_MAX)}.` },
   data: {
     type: 'object',
     description: `create: { ${KB_CREATE_FIELDS.join(', ')} } · update: { ${KB_UPDATE_FIELDS.join(', ')} } `

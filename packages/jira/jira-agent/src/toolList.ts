@@ -21,7 +21,7 @@ export const LIST_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freez
   tags: { type: 'array', description: 'Every listed tag must be present (narrowing, not widening).' },
   assignee: { type: 'string', description: '"me" for this session, or an exact identity such as "human:daiqc".' },
   link: { type: 'object', description: 'Only issues linked to another: { type, target }.' },
-  limit: { type: 'number', description: `How many to return; default ${String(DEFAULT_LIST_LIMIT)}, maximum ${String(MAX_LIST_LIMIT)}.` },
+  limit: { type: 'number', description: `How many issues to return; default ${String(DEFAULT_LIST_LIMIT)}, maximum ${String(MAX_LIST_LIMIT)}.` },
   include_closed: { type: 'boolean', description: 'Also list issues in a closed status. Default false.' },
 })
 

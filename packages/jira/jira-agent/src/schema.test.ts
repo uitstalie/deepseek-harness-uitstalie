@@ -10,7 +10,18 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { objectSchema, validateArgs, type FieldSpec, type JiraError } from '@deepseek-ai/dsh-jira-core'
+import {
+  DEFAULT_LIST_LIMIT,
+  MAX_LIST_LIMIT,
+  TOP_K_DEFAULT,
+  TOP_K_MAX,
+  clampLimit,
+  clampTopK,
+  objectSchema,
+  validateArgs,
+  type FieldSpec,
+  type JiraError,
+} from '@deepseek-ai/dsh-jira-core'
 import {
   assertSupportedJsonSchema,
   validateJsonSchemaValue,
@@ -175,5 +186,62 @@ void describe('schema: what we register belongs to the host subset', () => {
     const schema = objectSchema({ note: { type: 'string' } })
     assert.equal(Object.hasOwn(schema, 'required'), false, 'an empty list is not the same as no list')
     assert.doesNotThrow(() => { assertSupportedJsonSchema(schema) })
+  })
+})
+
+void describe('schema: the count and CAS parameter vocabulary', () => {
+  type Property = { type?: string; description?: string }
+
+  /** The advertised properties of one registered tool. */
+  const propertiesOf = (definition: ToolDefinition): Record<string, Property> =>
+    ((definition.parameters as { properties?: Record<string, Property> }).properties) ?? {}
+
+  /** Read the default and maximum a description advertises; the description is the surface under test. */
+  const advertised = (description: string | undefined): { readonly default: number; readonly maximum: number } => {
+    const match = /default (\d+), maximum (\d+)/u.exec(String(description))
+    assert.ok(match !== null, `missing default/maximum in: ${String(description)}`)
+    return { default: Number(match[1]), maximum: Number(match[2]) }
+  }
+
+  void it('pins expected_revision, limit and top_k names, defaults and descriptions', async () => {
+    const ledger = await createLedgerFixture()
+    const harness = await mountJira(ledger)
+    try {
+      const definitions = definitionsOf(harness)
+      assert.equal(definitions.length, 3, 'three tools carry every count/CAS parameter')
+      const properties = (name: string): Record<string, Property> => {
+        const definition = definitions.find(entry => entry.name === name)
+        assert.ok(definition !== undefined, `${name} must be registered`)
+        return propertiesOf(definition)
+      }
+
+      const { expected_revision: expectedRevision = {} } = properties(TOOL_NAME)
+      assert.equal(expectedRevision.type, 'number')
+      assert.equal(expectedRevision.description, 'Refuse unless the issue is at this revision.')
+      assert.doesNotMatch(expectedRevision.description, /default/u, 'a CAS precondition has no default')
+
+      const { limit: listLimit = {} } = properties(LIST_TOOL_NAME)
+      assert.equal(listLimit.type, 'number')
+      assert.match(String(listLimit.description), /^How many issues to return; default \d+, maximum \d+\.$/u)
+      const listAdvertised = advertised(listLimit.description)
+      assert.equal(listAdvertised.default, DEFAULT_LIST_LIMIT)
+      assert.equal(listAdvertised.maximum, MAX_LIST_LIMIT)
+      assert.equal(clampLimit(undefined), listAdvertised.default)
+      assert.equal(clampLimit(listAdvertised.maximum + 1), listAdvertised.maximum)
+
+      const kb = properties(KB_TOOL_NAME)
+      const { top_k: topK = {} } = kb
+      assert.equal(topK.type, 'number')
+      assert.match(String(topK.description), /^How many hits to return; default \d+, maximum \d+\.$/u)
+      assert.equal(Object.hasOwn(kb, 'limit'), false, 'jira_kb has one count parameter, top_k')
+      const kbAdvertised = advertised(topK.description)
+      assert.equal(kbAdvertised.default, TOP_K_DEFAULT)
+      assert.equal(kbAdvertised.maximum, TOP_K_MAX)
+      assert.equal(clampTopK(undefined), kbAdvertised.default)
+      assert.equal(clampTopK(kbAdvertised.maximum + 1), kbAdvertised.maximum)
+    } finally {
+      await removeTree(ledger)
+      await harness.dispose()
+    }
   })
 })
