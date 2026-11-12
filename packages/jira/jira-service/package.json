@@ -34,6 +34,7 @@
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
     "lib/typert.remote-client.d.ts",
+    "lib/typert.remote-client.d.ts.map",
     "lib/types/**/*.d.ts",
     "lib/types/**/*.js"
   ],

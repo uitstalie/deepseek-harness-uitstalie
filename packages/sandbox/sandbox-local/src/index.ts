@@ -33,12 +33,30 @@ import {
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
-import { HOME_WRITE_ENABLED, SandboxProvider, SandboxUnavailableError, SandboxUnsupportedPolicyError, canonicalPath, homeWriteReadOnlyRoots, homeWriteWritableRoots } from '@deepseek-ai/dsh-sandbox'
+import { HOME_WRITE_ENABLED, SandboxPreparationError, SandboxProvider, SandboxUnavailableError, canonicalPath, homeWriteReadOnlyRoots, homeWriteWritableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import { AclWriteGrant, assertTempRootOutsideWorkspace, registerAclDiagnosisSkill, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
+import { AclWriteGrant, isTempRootInsideWorkspace, registerAclDiagnosisSkill, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.ts'
+
+/**
+ * Classify one failed Windows ACL preparation step; the platform failure, or an
+ * `AggregateError` of it and its cleanup failures, becomes the `cause`.
+ * @param step - the preparation step, as the message names it.
+ * @param error - the step's own failure, typically a `Win32Error` or Node errno error.
+ * @param cleanupFailures - rollback failures that followed it.
+ * @returns the coded preparation failure.
+ */
+function aclPreparationFailure(step: string, error: unknown, cleanupFailures: readonly unknown[] = []): SandboxPreparationError {
+  const failed = cleanupFailures.length === 0 ? `${step} failed` : `${step} failed and its cleanup also failed`
+  return new SandboxPreparationError(
+    `sandbox-local: windows-acl ${failed}: ${String(error)}. The command did not run; `
+    + 'check that the current user can change permissions on the workspace and temp directories, or run with danger-full-access.',
+    'SANDBOX_PREPARATION_FAILED',
+    { cause: cleanupFailures.length === 0 ? error : new AggregateError([error, ...cleanupFailures], `sandbox-local windows-acl ${failed}`) },
+  )
+}
 
 /** Plugin config. All optional — `static Config` supplies the defaults. */
 export interface Config {
@@ -368,23 +386,23 @@ export class LocalSandboxProvider extends SandboxProvider {
    * `--temp-write-sid` and grants nothing itself. Agentless workspace-write
    * calls pass the ambient temp ROOT and no SID flags: the runner creates and
    * removes a random private child directory for that one invocation.
+   * Additional directory grants apply only to harness filesystem operations
+   * on Windows; process confinement keeps the workspace and private temp grants.
    * @param policy - the resolved per-call policy.
    * @returns the runner invocation.
    */
   private windowsAclRunnerArgv(policy: SandboxPolicy): string[] {
-    if (policy.mode === 'workspace-write' && (policy.additionalWritableRoots?.length ?? 0) > 0) {
-      throw new SandboxUnsupportedPolicyError('Windows ACL confinement does not support additional writable directories; remove the extra grants or use a supported host')
-    }
     if (policy.mode === 'home-write') {
       // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
       // Refuse at the grant entry, BEFORE any ACL write: SetNamedSecurityInfoW
       // relabels the whole existing home/drive subtree Low and never rolls back.
       if (!HOME_WRITE_ENABLED) {
-        throw new SandboxUnsupportedPolicyError(
+        throw new SandboxPreparationError(
           'Windows ACL home-write confinement is disabled in this build: it relabels the whole existing home/drive '
           + 'subtree Low integrity and never restores it, so shortcuts and applications under the home behave as '
           + 'Internet-sourced files. Use workspace-write instead; restore an already-relabelled tree with '
           + 'icacls "<root>" /setintegritylevel (OI)(CI)M',
+          'SANDBOX_PREPARATION_FAILED',
         )
       }
       // END uitstalie-deepseek-flash
@@ -393,8 +411,9 @@ export class LocalSandboxProvider extends SandboxProvider {
       // drives. Fail closed instead of narrowing the grant behind the mode's
       // back (the escalation path used to synthesize exactly such a policy).
       if ((policy.homeWriteRoots?.length ?? 0) === 0) {
-        throw new SandboxUnsupportedPolicyError(
+        throw new SandboxPreparationError(
           'Windows ACL home-write confinement requires resolved homeWriteRoots; refusing to run with a workspace-only grant under a home-write policy',
+          'SANDBOX_PREPARATION_FAILED',
         )
       }
       const roots = homeWriteWritableRoots(policy)
@@ -508,7 +527,10 @@ export class LocalSandboxProvider extends SandboxProvider {
    * SID to enter it. A fresh provider always chooses a new path; crash
    * residue therefore cannot collide with or authorize a resumed session.
    * Fail-closed: a half-materialized temp grant is revoked and its directory
-   * removed before the error propagates.
+   * removed before the error propagates. A temp root inside the workspace
+   * throws `SandboxPreparationError` `SANDBOX_INVALID_TEMP_ROOT` before any ACL
+   * change; any other failure throws `SANDBOX_PREPARATION_FAILED` with the
+   * platform error as `cause`.
    * @param sessionId - the policy's calling-session identity.
    * @param workspaceRoot - the resolved policy root.
    * @returns the pair's private temp directory and write capability.
@@ -519,10 +541,30 @@ export class LocalSandboxProvider extends SandboxProvider {
     tempParent: string = tmpdir(),
     allowTempInsideWorkspace = false,
   ): AclTempCapability {
-    if (!allowTempInsideWorkspace) assertTempRootOutsideWorkspace(workspaceRoot, tempParent)
+    if (!allowTempInsideWorkspace) {
+      let tempInsideWorkspace: boolean
+      try {
+        tempInsideWorkspace = isTempRootInsideWorkspace(workspaceRoot, tempParent)
+      } catch (error) {
+        throw aclPreparationFailure('workspace and temp directory resolution', error)
+      }
+      if (tempInsideWorkspace) {
+        throw new SandboxPreparationError(
+          `sandbox-local: windows-acl temp root must be outside the workspace: workspace=${workspaceRoot}; temp=${tempParent}. `
+          + 'A private temp directory there would inherit the workspace grant, so the command did not run. '
+          + 'Set TEMP and TMP to a directory outside the workspace, or open a workspace that does not contain the temp directory.',
+          'SANDBOX_INVALID_TEMP_ROOT',
+        )
+      }
+    }
     const writeSid = workspaceWriteSid(workspaceRoot)
     if (!this.workspaceGrants.has(workspaceRoot)) {
-      const grant = AclWriteGrant.create(writeSid)
+      let grant: AclWriteGrant
+      try {
+        grant = AclWriteGrant.create(writeSid)
+      } catch (error) {
+        throw aclPreparationFailure('workspace grant', error)
+      }
       try {
         grant.add(workspaceRoot, true)
       } catch (error) {
@@ -532,19 +574,21 @@ export class LocalSandboxProvider extends SandboxProvider {
         try {
           grant.dispose()
         } catch (cleanupError) {
-          throw new AggregateError([error, cleanupError], 'sandbox-local windows-acl workspace grant failed and its cleanup also failed')
+          throw aclPreparationFailure('workspace grant', error, [cleanupError])
         }
         if (error instanceof Error && error.name === 'Win32Error'
           && 'api' in error && error.api === 'SetNamedSecurityInfoW'
           && 'win32Code' in error && error.win32Code === 5) {
-          throw new Error(
-            `The sandbox cannot grant write access to this workspace at ${workspaceRoot}: the signed-in user needs permission to change its Windows file permissions. `
+          throw new SandboxPreparationError(
+            `sandbox-local: windows-acl workspace grant failed: the sandbox cannot grant write access to this workspace at ${workspaceRoot}, `
+            + 'because the signed-in user needs permission to change its Windows file permissions. The command did not run. '
             + 'Run the diagnose-windows-sandbox-acl skill once for this path: it inspects the folder and every parent, repairs only what it proves, and prints the command that restores the previous permissions. '
             + `Original failure: ${error.message}`,
+            'SANDBOX_PREPARATION_FAILED',
             { cause: error },
           )
         }
-        throw error
+        throw aclPreparationFailure('workspace grant', error)
       }
       this.workspaceGrants.set(workspaceRoot, grant)
     }
@@ -556,8 +600,13 @@ export class LocalSandboxProvider extends SandboxProvider {
     const key = JSON.stringify([String(sessionId), workspaceRoot, tempParent, allowTempInsideWorkspace])
     const existing = this.tempCapabilities.get(key)
     if (existing !== undefined) return existing
-    mkdirSync(tempParent, { recursive: true })
-    const tempDir = mkdtempSync(join(tempParent, 'dsh-'))
+    let tempDir: string
+    try {
+      mkdirSync(tempParent, { recursive: true })
+      tempDir = mkdtempSync(join(tempParent, 'dsh-'))
+    } catch (error) {
+      throw aclPreparationFailure('private temp directory creation', error)
+    }
     const tempSid = tempWriteSid(tempDir)
     let grant: AclWriteGrant | undefined
     try {
@@ -577,10 +626,7 @@ export class LocalSandboxProvider extends SandboxProvider {
       } catch (cleanupError) {
         cleanupFailures.push(cleanupError)
       }
-      if (cleanupFailures.length > 0) {
-        throw new AggregateError([error, ...cleanupFailures], 'sandbox-local windows-acl temp grant materialization failed and its cleanup also failed')
-      }
-      throw error
+      throw aclPreparationFailure('temp grant materialization', error, cleanupFailures)
     }
     const capability = { dir: tempDir, writeSid: tempSid, grant }
     this.tempCapabilities.set(key, capability)

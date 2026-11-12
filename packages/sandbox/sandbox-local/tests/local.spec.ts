@@ -466,7 +466,7 @@ describe('windows ACL home-write policy', () => {
       workspaceRoot: ws,
       homeWriteRoots: [home],
       excludePaths: [secret],
-    })).rejects.toThrow(/home-write is disabled/)
+    })).rejects.toThrow(/home-write (?:confinement )?is disabled/)
   })
 
   it('refuses a home-write policy before the missing-roots check', async () => {
@@ -480,7 +480,7 @@ describe('windows ACL home-write policy', () => {
     await expect(sandbox.confine(['true'], {
       mode: 'home-write',
       workspaceRoot: ws,
-    })).rejects.toThrow(/home-write is disabled/)
+    })).rejects.toThrow(/home-write (?:confinement )?is disabled/)
   })
 })
 
@@ -561,16 +561,21 @@ describe('the default seatbelt probe (sandbox-exec contract)', () => {
 })
 
 describe('the windows-acl probe (runner invocation contract)', () => {
-  it('refuses unsupported extra grants before a Windows runner or ACL mutation', async () => {
+  it.each([RO, WW])('ignores extra directory grants in $mode runner arguments', async (policy) => {
     const { ctx, sandbox } = await setup({}, {
       chain: ['windows-acl'],
       probeWindowsAcl: () => true,
       windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'],
     })
+    const extra = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-extra-acl-')))
+    tempDirs.push(extra)
+    const file = join(extra, 'file.txt')
+    writeFileSync(file, 'file')
     try {
-      await expect(sandbox.confine(['true'], { ...WW, additionalWritableRoots: ['/extra'] }))
-        .rejects.toThrow('Windows ACL confinement does not support additional writable directories')
-      await expect(sandbox.confine(['true'], { ...RO, additionalWritableRoots: ['/extra'] })).resolves.toBeDefined()
+      const original = await sandbox.confine(['true'], policy)
+      await expect(sandbox.confine(['true'], {
+        ...policy, additionalWritableRoots: [extra, join(extra, 'missing'), file],
+      })).resolves.toEqual(original)
     } finally {
       await ctx.fiber.dispose()
     }
@@ -651,7 +656,8 @@ describe('the windows-acl probe (runner invocation contract)', () => {
       expect(result.error).toBeUndefined()
       expect(result.signal).toBeNull()
       expect(result.status, result.stderr).toBe(127)
-      expect(result.stderr).toBe('windows-acl-run: missing --workspace\n')
+      // The source runner loads and refuses before argument validation while the backend is disabled (DH-902).
+      expect(result.stderr).toMatch(/^windows-acl-run: Windows ACL sandboxing is disabled/)
     }
   }, 10_000)
 

@@ -196,12 +196,15 @@ describe('PermissionPresetService', () => {
       currentValue: 'danger-full-access', sandboxMode: 'danger-full-access', approvalPolicy: 'never',
     })
 
-    const append = session.append.bind(session)
+    // The merged Session.append is overloaded (batch + single event); the guard only
+    // inspects single-event writes and delegates everything else to the original.
+    const append = session.append.bind(session) as unknown as (type: unknown, data?: unknown, ...opts: unknown[]) => unknown
     const failApproval = true
-    session.append = (type, data, ...opts) => {
+    session.append = ((type: string | readonly unknown[], data?: unknown, ...opts: unknown[]) => {
+      if (typeof type !== 'string') return append(type)
       if (type === 'approval/policy' && failApproval && (data as { policy?: string }).policy === 'ask') throw new Error('approval write failed')
       return append(type, data, ...opts)
-    }
+    }) as unknown as Session['append']
     expect(() => { ctx.permissionPresets.set(session, 'workspace-write', 'restore confinement') })
       .toThrow(/previous permission was restored through compensating events/)
     expect(ctx.permissionPresets.selection(session)).toEqual({
@@ -212,11 +215,12 @@ describe('PermissionPresetService', () => {
       'permission/preset', 'sandbox/mode', 'permission/preset', 'sandbox/mode',
     ])
 
-    session.append = (type, data, ...opts) => {
+    session.append = ((type: string | readonly unknown[], data?: unknown, ...opts: unknown[]) => {
+      if (typeof type !== 'string') return append(type)
       if (type === 'approval/policy') throw new Error('approval write failed')
       if (type === 'sandbox/mode' && (data as { mode?: string }).mode === 'danger-full-access') throw new Error('sandbox restoration failed')
       return append(type, data, ...opts)
-    }
+    }) as unknown as Session['append']
     expect(() => { ctx.permissionPresets.set(session, 'workspace-write', 'retry') })
       .toThrow(/compensation failed/)
     expect(session.snapshotEvents().at(-1)?.type).toBe('permission/preset')

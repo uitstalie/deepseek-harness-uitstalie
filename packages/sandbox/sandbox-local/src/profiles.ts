@@ -6,7 +6,7 @@
 
 import { grantArgs as landlockGrantArgs } from '@deepseek-ai/node-addon-system/landlock-run'
 import { existsSync } from 'node:fs'
-import { SandboxUnsupportedPolicyError, homeWriteReadOnlyRoots, homeWriteWritableRoots, workspaceWritableRoots, writableRoots } from '@deepseek-ai/dsh-sandbox'
+import { SandboxPreparationError, homeWriteReadOnlyRoots, homeWriteWritableRoots, workspaceWritableRoots, writableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 
 /**
@@ -46,8 +46,9 @@ export function landlockProfileArgs(policy: SandboxPolicy): string[] {
   }
   if (policy.mode === 'home-write') {
     if (homeWriteReadOnlyRoots(policy).length > 0) {
-      throw new SandboxUnsupportedPolicyError(
+      throw new SandboxPreparationError(
         'Landlock cannot express excludePaths inside a writable root: its allow-list has no deny rules. Use bubblewrap or remove the exclusions.',
+        'SANDBOX_PREPARATION_FAILED',
       )
     }
     readWrite.push(...homeWriteWritableRoots(policy))

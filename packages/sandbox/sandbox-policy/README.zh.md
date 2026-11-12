@@ -45,14 +45,14 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `mode` | `read-only` | 会话起始的部署默认模式，加载时验证 |
-| `workspaceRoot` | `process.cwd()` | 无 agent 调用或没有 cwd 的会话所用的绝对回退根目录；相对值在加载时拒绝。普通 agent 调用使用会话的不可变 cwd |
-| `additionalWritableRoots` | `[]` | 在 `workspace-write` 下额外允许写入的显式物理绝对目录；其他受限模式不授予这些目录的写权限 |
+| `workspaceRoot` | `process.cwd()` | 无 agent 调用或没有 cwd 的会话所用的绝对回退根目录；相对值在加载时拒绝。普通 agent 调用使用会话的不可变 cwd；cwd 为相对路径或含 NUL 字节时调用以 `SANDBOX_INVALID_ROOT` 失败 |
+| `additionalWritableRoots` | `[]` | 在 `workspace-write` 下额外允许写入的物理绝对目录；Windows 文件工具执行这些授权，Windows 子进程忽略它们，`read-only` 不授予访问权限 |
 | `homeWriteRoots` | 用户主目录加非系统固定盘（Windows）/ 用户主目录（Linux、macOS） | `home-write` 授予的根目录；替换平台默认值，会话工作区始终额外加入。`homeWriteRoot`（单值）与 `nonCriticalRoots` 是兼容别名 |
 | `excludePaths` | `[]` | 在任意 `home-write` 根目录内强制只读的目录，连主目录本身也可排除。`~` 在强制执行的主机上展开；条目必须已存在，且只接受结尾的 `/*` 或 `/**`。`homeWriteReadOnlyRoots` 是兼容别名。建议的加固清单（`~/.ssh`、`~/.gnupg`、`~/.aws`、`~/.config/gh`、`~/.kube`、`~/.docker`，Windows 另加 `C:\Windows`）只是文档，从不是默认值 |
 | `homeWriteTempRoots` | `[]` | `home-write` 下额外可写的临时目录；Windows 的私有临时目录位于 `~/.dsh/tmp` |
 | `homeWriteAllowSymlinkedRoots` | `false` | 允许配置的 home-write 根目录使用符号链接拼写；解析后的目标必须留在可写区域内 |
 
-对于关联的 Git worktree，调用方可通过 `additionalWritableRoots` 授予共享 Git 目录的写权限。调用方必须显式选择该目录；策略不会读取 Git 文件或授权父检出目录。这些授权是组合中所有会话共享的部署配置，而非保存的 Session 权限。授权整个 Git 目录也允许修改钩子和配置，后续主机 Git 调用可能在沙箱之外执行它们；仅对可信任务使用此授权。使用物理绝对目录路径。执行限制的主机拒绝不存在的路径、文件和符号链接根目录，包括两次调用之间被替换为符号链接的目录。远端授权在远端主机上验证。
+对于关联的 Git worktree，调用方可通过 `additionalWritableRoots` 授予共享 Git 目录的写权限。调用方必须显式选择该目录；策略不会读取 Git 文件或授权父检出目录。这些授权是组合中所有会话共享的部署配置，而非保存的 Session 权限。授权整个 Git 目录也允许修改钩子和配置，后续主机 Git 调用可能在沙箱之外执行它们；仅对可信任务使用此授权。使用物理绝对目录路径。执行限制的主机在每次调用时拒绝不存在的路径、非目录和符号链接目录，包括两次调用之间被替换为符号链接的目录。远端授权在远端主机上验证。
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-sandbox-policy)是每个受支持字段及其 JSDoc 的穷尽式真源。
 
@@ -61,6 +61,12 @@ kind: "package-reference"
 `sandbox_home_readonly` 工具列出当前排除项，并为 `add` 或 `remove` 请求审批。两个动作都经过组合的审批应答方；移除会显示为保护弱化，并给出因此变为可写的具体路径。获批的修改经 `configEditor` 持久化到该行的 `excludePaths`，审计记录（操作者、时间、动作、变更前后、理由）追加在 profile patch 旁的 `sandbox-home-readonly-audit.jsonl`；`rollback` 恢复上一次经审计的清单。该工具不能修改模式、`homeWriteRoots`、临时例外或符号链接策略。
 
 `excludePaths` 默认为空：主目录完全可写，包括 `~/.ssh` 与 `~/.dsh`。对不可信工作，请显式配置建议的加固清单。
+
+### 注册会话的可写目录
+
+插件通过自己的所属上下文调用 `ctx.sandboxPolicy.registerWritableRoot(session, directory)`，为该活跃 Session 的 `workspace-write` 权限添加一个物理绝对目录。该方法返回原始 Cordis effect 清理函数；插件卸载或显式清理只移除该次注册。重复注册与配置授权彼此独立。将会话专用插件挂载在 Agent 的上下文下，使其 effect 也随 Agent 结束。注册时验证路径写法；操作使用该授权前，目录必须已存在于执行主机上。路径检查与配置根目录相同。
+
+注册与清理影响后续策略解析及下一次模型请求中记录的上下文。其他 Session（包括子 agent 的 Session）与无 agent 调用不会获得此授权。授权不随 Session 历史保存或继承；恢复或派生的 Session 需要自行注册。已经解析策略的操作与持久进程保留原权限，包括注册已被移除的目录。启动新进程才能使用当前授权。`read-only` 仍然只读。在 Windows 上，`write` 与 `edit` 执行额外目录授权，受沙箱限制的进程则忽略这些授权，保留工作区与私有临时目录访问权限；参见 [sandbox-local](../sandbox-local/README.zh.md#known-limitations-and-deferred-work)。
 
 ### 切换会话模式
 
@@ -138,7 +144,7 @@ Current DSH file policy: workspace-write. Any available operation enforced by th
 ##### 带额外目录的工作区写入
 
 ```markdown
-Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: "<workspace root>". Additional writable directories: ["/repo/.git"]. Some platform temporary areas may also be writable.
+Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: "<workspace root>". Additional writable directories: ["/repo/.git"]. On Windows, these additional grants apply to file tools only, not sandboxed processes. Some platform temporary areas may also be writable.
 ```
 
 ##### 完全访问
@@ -162,7 +168,7 @@ Current DSH file policy: danger-full-access. The DSH file sandbox does not restr
 
 这些限制界定了本包提供的策略范围。它们是当前的包级约束，并非通用沙箱对比，也不是待办事项清单。
 
-- **部署级额外授权**——额外目录来自配置，而非逐会话权限设置。后端支持情况见 [sandbox-local](../sandbox-local/README.zh.md)。
+- **运行时授权不持久化**——配置目录由各会话共享；effect 注册属于一个存活 Session，恢复或派生后必须重新注册。后端支持情况见 [sandbox-local](../sandbox-local/README.zh.md)。
 - **仅限文件操作模式**——`SandboxMode` 管控文件操作；网络和进程策略不在其词汇中，因此这里没有限制它们的旋钮。
 - **有意概述临时区域**——强制执行后端会授予不同的平台临时区域，这些区域在策略解析后才会选定，因此无法在当前上下文中如实枚举。
 

@@ -56,7 +56,7 @@ The mode names the file effects a command may perform; enforcement completeness 
 | Mode | Effect |
 |---|---|
 | `read-only` | Denies writes except required sinks such as `/dev/null` |
-| `workspace-write` | Allows writes under the workspace root, explicitly configured additional roots, and a backend-defined temp area |
+| `workspace-write` | Allows writes under the workspace root, additional roots where supported, and a backend-defined temp area |
 | `home-write` | Allows writes under the user home, every non-system fixed drive on Windows, the session workspace, and configured temp exceptions. `excludePaths` (default empty) forces matching existing directories read-only even inside a granted root; entries expand `~` and accept only a trailing `/*` or `/**`. C: outside the user home stays read-only unless a task names a configured root |
 | `danger-full-access` | Bypasses confinement; the consumer spawns its original argv |
 
@@ -64,7 +64,7 @@ Enforcement is reported per call: `full` means the backend governs every promise
 
 ### Denied calls and escalation
 
-When a confined call is denied, the operation reports a denial marker naming the mode — `[sandbox: file access denied under <mode> mode]` — and, when the composition advertises escalation, an escalation hint. The model may retry the exact call once with `sandbox_permissions` (the narrowest wider mode that suffices) plus a `justification`; the approval service obtains consent for the operation. The request retains its audit reason and supplies English, Chinese, and Japanese presentation copy from `src/locales.ts`, with the model's justification unchanged. Missing translations follow the locale service's fallback chain, ultimately English; requesters own their translated presentation text. A wider mode requires approval and applies to that one call only. Repeating the call's effective mode succeeds without approval; narrower targets remain invalid.
+When a confined call is denied, the operation reports a denial marker naming the mode — `[sandbox: file access denied under <mode> mode]` — and, when the composition advertises escalation, an escalation hint. The model may retry the exact call once with `sandbox_permissions` (the narrowest wider mode that suffices) plus a `justification`; the approval service obtains consent for the operation. The request retains its audit reason and supplies English, Chinese, and Japanese presentation copy from `src/locales.ts`, with the model's justification unchanged. Missing translations follow the locale service's fallback chain, ultimately English; requesters own their translated presentation text. A wider mode requires approval and applies to that one call only. Repeating the call's effective mode succeeds without approval; narrower targets remain invalid. An escalation that yields no grant throws `SandboxEscalationError` before anything runs: `SANDBOX_ESCALATION_INVALID_ARGUMENT` for unpaired fields, a blank justification, or a target that is not strictly wider; `SANDBOX_ESCALATION_UNAVAILABLE` when the composition has no sandboxing executor, approval service, calling Agent, or approval channel; `SANDBOX_ESCALATION_REJECTED` when the user declines; and `SANDBOX_ESCALATION_CANCELLED` when the approval request ends without a decision. If the call itself was cancelled, the call's cancellation propagates instead.
 
 <!-- BEGIN uitstalie-k3, 2026/10/12, task26, 追溯补标记：原 task12 增补“短语之外还需路径证据”的判定段落 -->
 A denial is inferred from the confined process's own stderr, and a matching phrase is not by itself enough: `classifyDenial` also requires the line to name an absolute path the call's writable roots do not cover. Those phrases are ordinary filesystem messages that unrelated tools print, and no confined mode can refuse a path it granted, so without that evidence an unrelated failure — a key the tool may not use, an in-workspace file's own permissions — would reach the model as a sandbox denial plus an invitation to escalate. Under `read-only` no path can contradict a phrase, so the phrase alone decides there.
@@ -72,7 +72,7 @@ A denial is inferred from the confined process's own stderr, and a matching phra
 
 ### Fail-closed behavior
 
-When no backend can enforce the requested mode, the call fails with `SANDBOX_UNAVAILABLE` rather than running unconfined; the error text names the missing platform runner. A backend that fails after starting also reports a structured runner-failure signature, so a broken sandbox is distinguishable from a command failure.
+When no backend can enforce the requested mode, the call fails with `SANDBOX_UNAVAILABLE` rather than running unconfined; the error text names the missing platform runner. A backend that fails after starting also reports a structured runner-failure signature, so a broken sandbox is distinguishable from a command failure. A provider that cannot prepare host state for an enforceable mode, such as a Windows ACL grant or private temp directory, rejects with `SandboxPreparationError`: `SANDBOX_PREPARATION_FAILED` carries the platform error as `cause`, and `SANDBOX_INVALID_TEMP_ROOT` reports a host temp root inside the workspace.
 
 -----
 
@@ -106,7 +106,7 @@ The ladder is a closed table — `read-only` may escalate to `workspace-write`, 
 
 ### Writable roots
 
-`workspaceWritableRoots` derives the workspace and explicit extra directories for bwrap and Landlock. `writableRoots` adds the host temporary areas for Seatbelt and the in-process filesystem fence. Both deduplicate roots and reject extra paths that are missing, are not directories, or resolve through symlinks. See the [mode definitions](../../../docs/subsystems/sandbox.md).
+`workspaceWritableRoots` derives the workspace and explicit extra directories for bwrap and Landlock. `writableRoots` adds the host temporary areas for Seatbelt and the in-process filesystem fence. Both deduplicate roots and reject extra paths that are missing, are not directories, or resolve through symlinks. Path comparison accepts Windows casing and separator differences. Each execution checks the paths again. Windows subprocesses ignore additional roots; file tools still enforce them. See the [mode definitions](../../../docs/subsystems/sandbox.md).
 
 </details>
 

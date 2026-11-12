@@ -4150,7 +4150,8 @@ void describe('superagent: the workspace roster context', () => {
 
       t.diagnostic(`one turn renders the roster twice (pre-step and request step) → ${String(snapshots.length)} runtime-context snapshot`)
       assert.equal(snapshots.length, 1, 'the second identical projection must not append a snapshot')
-      assert.match(snapshots[0] ?? '', /^Current runtime context\./u)
+      // The loop frames runtime context as a system reminder (agent-loop `runtime-context.project`).
+      assert.match(snapshots[0] ?? '', /^<system-reminder>\nThe following information describes your current session:/u)
       assert.match(snapshots[0] ?? '', /\[superagent workspaces\] 1 registered/u)
       assert.match(snapshots[0] ?? '', /Super agent/u)
     } finally {

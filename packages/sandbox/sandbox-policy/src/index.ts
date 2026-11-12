@@ -2,8 +2,9 @@
  * The sandbox POLICY home (`ctx.sandboxPolicy`): the single owner of the
  * deployment's sandbox fallbacks plus per-session resolution: the file-effect
  * {@link SandboxMode}, the `workspace-write` root, the explicit extra writable
- * directories, and the override kit (the `sandbox/mode` event, its fold, and
- * its write path; the fold is the `sandboxMode` session-projection unit
+ * directories from configuration and live Session registrations, and the override
+ * kit (the `sandbox/mode` event, its fold, and its write path; the fold is the
+ * `sandboxMode` session-projection unit
  * registered here, while the event and write path come from
  * `./session-mode.ts`).
  * Before each agent request, the owner also contributes the resolved policy to
@@ -29,7 +30,7 @@ import { homeWriteTool } from './home-write-tool.ts'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent'
 // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
-import { HOME_WRITE_ENABLED, assertSandboxModeEnabled, homeWriteRoots, normalizeSandboxMode } from '@deepseek-ai/dsh-sandbox'
+import { HOME_WRITE_ENABLED, SandboxInvalidRootError, assertSandboxModeEnabled, homeWriteRoots, normalizeSandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
@@ -38,10 +39,9 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 export { SANDBOX_MODES, setSandboxMode } from './session-mode.ts'
 export { HOME_WRITE_TOOL_NAME, homeWriteTool } from './home-write-tool.ts'
 
-/** Preserve execution-world spelling; enforcing providers resolve filesystem identity on their host. */
-function resolveWorkspaceRoot(path: string): string {
-  if (!isAbsolute(path) || path.includes('\0')) throw new Error('sandbox-policy: workspace root must be an absolute execution-world path without NUL bytes')
-  return path
+/** Whether a path is usable as an execution-world grant: absolute and free of NUL bytes. */
+function isExecutionWorldPath(path: string): boolean {
+  return isAbsolute(path) && !path.includes('\0')
 }
 
 /**
@@ -55,7 +55,7 @@ function resolveAdditionalWritableRoots(roots: readonly string[] | undefined): r
   if (roots === undefined || roots.length === 0) return undefined
   for (const root of roots) {
     if (!isAbsolute(root) || root.includes('\0')) {
-      throw new Error('sandbox-policy: additionalWritableRoots entries must be absolute execution-world paths')
+      throw new Error('sandbox-policy: writable directories must be absolute execution-world paths without NUL bytes')
     }
   }
   return Object.freeze([...new Set(roots)])
@@ -92,7 +92,7 @@ function renderPolicyContext(policy: SandboxExecutionPolicy): string {
       const additional = policy.additionalWritableRoots
       const extra = additional === undefined
         ? ''
-        : ` Additional writable directories: ${JSON.stringify(additional)}.`
+        : ` Additional writable directories: ${JSON.stringify(additional)}. On Windows, these additional grants apply to file tools only, not sandboxed processes.`
       return `Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: ${JSON.stringify(policy.workspaceRoot)}.${extra} Some platform temporary areas may also be writable.`
     }
     case 'home-write': {
@@ -143,7 +143,7 @@ export interface Config {
    * (default: none). Entries are execution-world paths: this service validates
    * absoluteness and detaches the list, while the enforcing host rejects
    * missing, non-directory, or symlinked paths. They grant nothing under
-   * `read-only`.
+   * `read-only`. Windows process confinement ignores them; harness file tools honor them.
    */
   additionalWritableRoots?: string[]
   /**
@@ -211,8 +211,8 @@ const sandboxModeStateSchema = zod.union([
 
 /**
  * The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment
- * default mode, fallback workspace root, and current request-time policy
- * section. Tool layers call {@link resolve} for each execution so a session's
+ * default mode, fallback workspace root, session-scoped directory grants, and
+ * request-time policy section. Tool layers call {@link resolve} for each execution so a session's
  * mode log and immutable cwd travel together to every enforcing capability.
  */
 export class SandboxPolicyService extends Service {
@@ -254,6 +254,8 @@ export class SandboxPolicyService extends Service {
   readonly excludePaths: readonly string[] | undefined
   /** Whether configured roots may use a symlink spelling. */
   readonly homeWriteAllowSymlinkedRoots: boolean
+  /** Independently owned grants for each live Session; never restored from its log. */
+  private readonly writableRootRegistrations = new WeakMap<Session, Map<symbol, string>>()
   private sandboxModeProjectionHandle!: ProjectionHandle<SandboxMode | null>
   /** Session-scoped fs-only grants contributed by capabilities. */
   private readonly fsRootProviders = new Set<FsWritableRootsProvider>()
@@ -265,7 +267,12 @@ export class SandboxPolicyService extends Service {
     this.defaultMode = normalizeSandboxMode(config.mode ?? 'read-only')
     // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: fail the deployment default at load
     assertSandboxModeEnabled(this.defaultMode)
-    this.workspaceRoot = resolveWorkspaceRoot(config.workspaceRoot ?? process.cwd())
+    // Execution-world spelling is preserved; enforcing providers resolve filesystem identity on their host.
+    const workspaceRoot = config.workspaceRoot ?? process.cwd()
+    if (!isExecutionWorldPath(workspaceRoot)) {
+      throw new Error('sandbox-policy: workspace root must be an absolute execution-world path without NUL bytes')
+    }
+    this.workspaceRoot = workspaceRoot
     this.additionalWritableRoots = resolveAdditionalWritableRoots(config.additionalWritableRoots)
     const allowSymlinked = config.homeWriteAllowSymlinkedRoots === true
     this.homeWriteAllowSymlinkedRoots = allowSymlinked
@@ -331,11 +338,15 @@ export class SandboxPolicyService extends Service {
    * mode outranks the session's last `sandbox/mode` event, which outranks the
    * deployment default. A session cwd is its workspace-write boundary; the
    * configured root is the fallback for agentless calls and sessions without a
-   * cwd. Capability-registered fs-only grants are resolved here too, so the
+   * cwd. Configured extra roots, this Session's active registrations, and
+   * capability-registered fs-only grants are snapshotted together, so the
    * in-process filesystem fence can receive directories that process
-   * confinement deliberately does not.
+   * confinement deliberately does not; existing operations and processes keep
+   * their policy.
    * @param request - optional session and approved mode override.
    * @returns the fully resolved per-call mode and absolute workspace root.
+   * @throws `SandboxInvalidRootError` (`SANDBOX_INVALID_ROOT`) when the session's recorded cwd is
+   *   relative or contains a NUL byte.
    */
   resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy {
     const { session } = request
@@ -343,11 +354,15 @@ export class SandboxPolicyService extends Service {
     // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: refuse session/approved overrides before any backend sees the mode
     assertSandboxModeEnabled(mode)
     const fsRoots = mode === 'workspace-write' ? this.fsRootsOf(session) : undefined
+    const registrations = session === undefined ? undefined : this.writableRootRegistrations.get(session)
+    const additionalWritableRoots = registrations === undefined
+      ? this.additionalWritableRoots
+      : resolveAdditionalWritableRoots([...(this.additionalWritableRoots ?? []), ...registrations.values()])
     return {
       mode,
-      workspaceRoot: resolveWorkspaceRoot(session?.header.cwd ?? this.workspaceRoot),
-      ...mode === 'workspace-write' && this.additionalWritableRoots !== undefined
-        ? { additionalWritableRoots: this.additionalWritableRoots }
+      workspaceRoot: this.sessionWorkspaceRoot(session),
+      ...mode === 'workspace-write' && additionalWritableRoots !== undefined
+        ? { additionalWritableRoots }
         : {},
       ...fsRoots === undefined ? {} : { fsAdditionalWritableRoots: fsRoots },
       ...mode === 'home-write'
@@ -359,6 +374,47 @@ export class SandboxPolicyService extends Service {
         : {},
       ...session === undefined ? {} : { sessionId: session.id },
     }
+  }
+
+  /** The session's recorded cwd, or the configured root, as the workspace-write boundary. */
+  private sessionWorkspaceRoot(session: Session | undefined): string {
+    const cwd = session?.header.cwd
+    if (cwd === undefined) return this.workspaceRoot
+    if (!isExecutionWorldPath(cwd)) {
+      throw new SandboxInvalidRootError(cwd, 'the Session working directory must be an absolute execution-world path without NUL bytes', 'sandbox workspace root')
+    }
+    return cwd
+  }
+
+  /**
+   * Permit writes under one directory in this Session's future workspace-write
+   * operations. The calling context owns the effect; disposal removes only this
+   * registration. Other grants to the directory remain effective. Existing
+   * operations and persistent processes retain their resolved permissions.
+   * Grants are runtime-only and must be registered again after resume or fork.
+   * On Windows, only harness file tools honor extra grants; process permissions stay unchanged.
+   * @param session - exact live Session receiving the grant; other Sessions and agentless calls are unaffected.
+   * @param directory - absolute execution-world path; execution rejects missing, non-directory, or symlinked paths.
+   * @returns the exact Cordis effect disposer for this registration.
+   * @throws when the directory is relative or contains a NUL byte.
+   */
+  registerWritableRoot(session: Session, directory: string): () => void {
+    resolveAdditionalWritableRoots([directory])
+    const dispose = this.ctx.effect(() => {
+      let registrations = this.writableRootRegistrations.get(session)
+      if (registrations === undefined) {
+        registrations = new Map()
+        this.writableRootRegistrations.set(session, registrations)
+      }
+      const key = Symbol()
+      registrations.set(key, directory)
+      return () => {
+        registrations.delete(key)
+        if (registrations.size === 0) this.writableRootRegistrations.delete(session)
+      }
+    }, 'sandboxPolicy.registerWritableRoot()')
+    // oxlint-disable-next-line typescript/no-misused-promises -- synchronous cleanup preserves the exact Cordis effect disposer
+    return dispose
   }
 
   /**

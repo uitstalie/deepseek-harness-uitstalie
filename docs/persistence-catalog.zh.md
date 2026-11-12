@@ -167,7 +167,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }[T]
 ```
 
-来源：[`packages/core/session/src/types.ts:439`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:452`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:475`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:506`](../packages/core/session/src/types.ts)
+来源：[`packages/core/session/src/types.ts:439`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:452`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:475`](../packages/core/session/src/types.ts) · [`packages/core/session/src/types.ts:511`](../packages/core/session/src/types.ts)
 
 ## 事件
 
@@ -1360,7 +1360,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/session/working-directory/src/index.ts:36`](../packages/session/working-directory/src/index.ts)
+来源：[`packages/session/working-directory/src/index.ts:55`](../packages/session/working-directory/src/index.ts)
 
 ### `workspace/*`
 
@@ -4843,7 +4843,7 @@ SHA-256: `530da6c0267813bb4511af72883cc518834e624e3b3220a7062955fd57a788a6`
 
 SHA-256: `1edf8cc2457bc1b08d0da6487ecb32b4d20d5852b2e7f54528a352e144c38d0c`
 
-来源：[`packages/sandbox/sandbox/src/index.ts:59`](../packages/sandbox/sandbox/src/index.ts)
+来源：[`packages/sandbox/sandbox/src/index.ts:67`](../packages/sandbox/sandbox/src/index.ts)
 
 以下类型之一：
 
@@ -5494,7 +5494,7 @@ SHA-256: `43e311235aa537df1bacdd92d144df8a952337a76e9ac892cdf670f1a797bad8`
 
 SHA-256: `3cfc3a56502da1f8c6153c2c56657bab4b749056968634dd0991d325ec1c919f`
 
-来源：[`packages/core/tools/src/contracts.ts:376`](../packages/core/tools/src/contracts.ts)
+来源：[`packages/core/tools/src/contracts.ts:395`](../packages/core/tools/src/contracts.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -6511,7 +6511,7 @@ SHA-256: `a08857d98a82b16b6ed9b7fb1bffc19081c46d79867d5b33c0aaf05624e51057`
 
 SHA-256: `da60ed58a8fa23d7aa4920ab5c1f4e3d28109cb0797ef9e5c8b125721b847582`
 
-来源：[`packages/session/working-directory/src/index.ts:36`](../packages/session/working-directory/src/index.ts)
+来源：[`packages/session/working-directory/src/index.ts:55`](../packages/session/working-directory/src/index.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -8287,7 +8287,7 @@ SHA-256: `9edc162949abf93bd5ff049191b345454ba104f583937ce5580fb50f067d2b94`
 
 SHA-256: `2235d957bf4b7c6cf959231d480f0ba1f3a6d72d82981493fb6c7c963021d3d5`
 
-来源：[`packages/session/working-directory/src/index.ts:29`](../packages/session/working-directory/src/index.ts)
+来源：[`packages/session/working-directory/src/index.ts:48`](../packages/session/working-directory/src/index.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|

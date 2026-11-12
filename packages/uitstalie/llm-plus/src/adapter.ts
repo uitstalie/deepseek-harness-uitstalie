@@ -18,6 +18,7 @@ import {
   LlmAdapter,
   LlmError,
   ReasoningEffortId,
+  type BuiltinLlmFailureCode,
   type GenerateOptions,
   type LlmModelInfo,
   type LlmProviderInfo,
@@ -52,7 +53,7 @@ const MAX_ERROR_BODY_CHARS = 4096
  * 把 HTTP 状态码映射为 harness 的稳定错误码。
  * 这个分类决定上层（llm-retry）是否重试：429/5xx 可恢复，4xx 多数是配置错。
  */
-function classifyHttpStatus(status: number): string {
+function classifyHttpStatus(status: number): BuiltinLlmFailureCode {
   if (status === 401 || status === 403) return 'AUTH'
   if (status === 429) return 'RATE_LIMIT'
   if (status === 400 || status === 404 || status === 422) return 'INVALID_REQUEST'
