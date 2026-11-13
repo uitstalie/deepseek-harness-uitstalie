@@ -40,7 +40,7 @@
     "@deepseek-ai/dsh-storage-domain": "workspace:*"
   },
   "dependencies": {
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
