@@ -23,6 +23,7 @@ import {
   readGlobalPersonality,
   renderPersonalityDocument,
   upsertGlobalPersonalityEntry,
+  writeGlobalPersonality,
 } from '../src/global-store.ts'
 import type { PersonalityEntry, PersonalityEntryKind } from '../src/global-store.ts'
 import {
@@ -326,10 +327,86 @@ test('reports absent and non-file legacy sources', async () => {
 })
 
 test('seeds the two configuration files once and never overwrites them', async () => {
-  const first = await seedGlobalPersonalityFiles(ctx)
+  const first = await seedGlobalPersonalityFiles(ctx, new AbortController().signal)
   expect(first.created).toEqual(['personality/OUTPUT_STYLE.yaml', 'personality/WRITING_RULES.yaml'])
   expect(await readFile(join(dirname(profilePath()), 'OUTPUT_STYLE.yaml'), 'utf8')).toBe(DEFAULT_OUTPUT_STYLE_TEXT)
   expect(await readFile(join(dirname(profilePath()), 'WRITING_RULES.yaml'), 'utf8')).toBe(EMPTY_WRITING_RULES_TEXT)
   const second = await seedGlobalPersonalityFiles(ctx)
   expect(second.created).toEqual([])
+})
+
+test('propagates an abort signal through read and upsert', async () => {
+  const signal = new AbortController().signal
+  expect(await readGlobalPersonality(ctx, signal)).toEqual({ path: profilePath() })
+  const result = await upsertGlobalPersonalityEntry(ctx, {
+    kind: 'preference',
+    name: 'scope',
+    text: '只做点名对象。',
+  }, signal)
+  expect(result.revision).toBe(1)
+})
+
+test('returns a write result without a store version', async () => {
+  vi.spyOn(ctx.dshStore, 'writeFile').mockResolvedValueOnce({ path: 'unused', version: undefined } as never)
+  const written = await writeGlobalPersonality(ctx, createPersonalityDocument(), undefined, new AbortController().signal)
+  expect(written.version).toBeUndefined()
+})
+
+test('continues after a create-if-absent race on the legacy destination', async () => {
+  const original = ctx.fs.moveFile.bind(ctx.fs)
+  vi.spyOn(ctx.fs, 'moveFile')
+    .mockRejectedValueOnce(new FsError('destination appeared', 'FS_NOT_OBSERVED'))
+    .mockImplementation(original as never)
+  await writeProfile('old profile')
+  const result = await migrateLegacyPersonality(ctx, new AbortController().signal)
+  expect(result.status).toBe('moved')
+  if (result.status !== 'moved') throw new Error('expected a move')
+  expect(basename(result.legacyPath)).toMatch(/-1\.md$/u)
+})
+
+test('ignores non-matching and non-file entries while finding an identical legacy copy', async () => {
+  await mkdir(legacyDirectory(), { recursive: true })
+  await mkdir(join(legacyDirectory(), 'a-directory'), { recursive: true })
+  await writeFile(join(legacyDirectory(), 'notes.txt'), 'not a legacy profile', 'utf8')
+  await writeFile(join(legacyDirectory(), 'PERSONALITY.20260101T000000Z.md'), 'old profile', 'utf8')
+  await writeProfile('old profile')
+  expect((await migrateLegacyPersonality(ctx, new AbortController().signal)).status).toBe('already-migrated')
+})
+
+test('reads a profile whose store version is absent', async () => {
+  await seedDocument([entry('style', 'language', '用中文回答。')])
+  vi.spyOn(ctx.dshStore, 'readFile').mockResolvedValueOnce({
+    path: profilePath(),
+    text: renderPersonalityDocument(createPersonalityDocument([])),
+  } as never)
+  expect((await readGlobalPersonality(ctx)).version).toBeUndefined()
+})
+
+test('upserts when the store returns no version', async () => {
+  vi.spyOn(ctx.dshStore, 'writeFile').mockResolvedValueOnce({ path: 'unused', version: undefined } as never)
+  const result = await upsertGlobalPersonalityEntry(ctx, {
+    kind: 'style',
+    name: 'language',
+    text: '用中文回答。',
+  })
+  expect(result.version).toBeUndefined()
+})
+
+test('seeds a missing file without a signal', async () => {
+  await rm(join(dirname(profilePath()), 'OUTPUT_STYLE.yaml'), { force: true })
+  const result = await seedGlobalPersonalityFiles(ctx)
+  expect(result.created).toEqual(['personality/OUTPUT_STYLE.yaml', 'personality/WRITING_RULES.yaml'])
+})
+
+test('skips an unreadable legacy candidate when a later copy matches', async () => {
+  await mkdir(legacyDirectory(), { recursive: true })
+  await writeFile(join(legacyDirectory(), 'PERSONALITY.000.bad.md'), 'unreadable', 'utf8')
+  await writeFile(join(legacyDirectory(), 'PERSONALITY.20260101T000000Z.md'), 'old profile', 'utf8')
+  const original = ctx.fs.readText.bind(ctx.fs)
+  vi.spyOn(ctx.fs, 'readText').mockImplementation(async (target, signal) => {
+    if (target.displayPath.endsWith('PERSONALITY.000.bad.md')) throw new FsError('unreadable', 'FS_IO_ERROR')
+    return await original(target, signal)
+  })
+  await writeProfile('old profile')
+  expect((await migrateLegacyPersonality(ctx)).status).toBe('already-migrated')
 })

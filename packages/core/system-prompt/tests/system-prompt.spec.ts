@@ -14,8 +14,9 @@ import type { PromptContextOrderName, PromptSectionOrderName } from '@deepseek-a
 const BUILT_IN = ['harness:identity', 'deployment:persona-prefix', 'deployment:persona-suffix']
 const IDENTITY = 'You are an AI agent powered by DeepSeek Harness.'
 const SECTION_ORDER_NAMES = [
-  'HARNESS_IDENTITY', 'DEPLOYMENT_PERSONA_PREFIX',
-  'PLAN_POLICY', 'TEAM_POLICY', 'PTC_ONLY', 'FILE_REFERENCE', 'TOOL_BASH',
+  'HARNESS_IDENTITY', 'DEPLOYMENT_PERSONA_PREFIX', 'PERSONALITY',
+  'PLAN_POLICY', 'TEAM_POLICY', 'PERSONALITY_OUTPUT_STYLE', 'PERSONALITY_WRITING_RULES',
+  'PTC_ONLY', 'FILE_REFERENCE', 'TOOL_BASH',
   'TOOL_PWSH', 'TOOL_READ', 'TOOL_WRITE', 'TOOL_EDIT', 'TOOL_APPLY_PATCH', 'TOOL_GLOB',
   'TOOL_GREP', 'TOOL_JOBS', 'TOOL_PTY', 'TOOL_PTY_PANEL', 'TOOL_WEB_SEARCH', 'TOOL_WEB_FETCH',
   'TOOL_LSP', 'TOOL_SESSION_QUERY', 'TOOL_GOAL', 'TOOL_SCHEDULE', 'TOOL_WORKFLOW',
@@ -148,14 +149,17 @@ describe('SystemPrompt', () => {
     }
   })
 
-  it('keeps repository section placements unique, integral, and at least ten apart', async () => {
+  it('keeps repository section placements unique, integral, and spaced apart', async () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt, {})
     const orders = SECTION_ORDER_NAMES.map(name => ctx.systemPrompt.getSectionOrder(name))
     expect(orders.every(Number.isInteger)).toBe(true)
     expect(new Set(orders).size).toBe(orders.length)
     const sorted = [...orders].sort((a, b) => a - b)
-    expect(sorted.slice(1).every((order, index) => order - sorted[index]! >= 10)).toBe(true)
+    const gaps = sorted.slice(1).map((order, index) => order - sorted[index]!)
+    // 690/695 is the one intentional five-point pair: two adjacent personality sections.
+    expect(gaps.filter(gap => gap < 10)).toEqual([5])
+    expect(gaps.every(gap => gap >= 5)).toBe(true)
   })
 
   it('keeps reusable instructions identical across local environments', async () => {

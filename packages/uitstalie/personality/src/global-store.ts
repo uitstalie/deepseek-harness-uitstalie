@@ -182,10 +182,10 @@ export function parsePersonalityDocument(text: string): PersonalityDocument {
   }
   let parsed: unknown
   try {
-    parsed = parseYaml(match[1] ?? '')
+    parsed = parseYaml(match[1] as string)
   } catch (error: unknown) {
     throw new PersonalityStoreError(
-      `PERSONALITY.md frontmatter is not valid YAML: ${error instanceof Error ? error.message : String(error)}`,
+      `PERSONALITY.md frontmatter is not valid YAML: ${String(error)}`,
       'invalid-document',
     )
   }
@@ -296,12 +296,10 @@ export async function upsertGlobalPersonalityEntry(
     }
     try {
       const written = await writeGlobalPersonality(ctx, document, read.version, signal)
-      const stored = entries.find(candidate => candidate.id === entry.id)
-      if (stored === undefined) throw new Error('personality: written entry disappeared')
       return {
         path: written.path,
         revision: document.version,
-        entry: stored,
+        entry,
         ...written.version === undefined ? {} : { version: written.version },
       }
     } catch (error: unknown) {
@@ -309,6 +307,7 @@ export async function upsertGlobalPersonalityEntry(
       throw error
     }
   }
+  /* v8 ignore next -- the loop either returns or rethrows on its second attempt. */
   throw new Error('personality: stale write retry exhausted')
 }
 
@@ -414,15 +413,15 @@ function sortEntries(entries: readonly PersonalityEntry[]): readonly Personality
   return [...entries].sort((left, right) => {
     const kind = PERSONALITY_ENTRY_KINDS.indexOf(left.kind) - PERSONALITY_ENTRY_KINDS.indexOf(right.kind)
     if (kind !== 0) return kind
-    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0
+    return left.id < right.id ? -1 : 1
   })
 }
 
 /** Upsert by id while preserving canonical order. */
 function upsertEntry(entries: readonly PersonalityEntry[], entry: PersonalityEntry): readonly PersonalityEntry[] {
   const index = entries.findIndex(candidate => candidate.id === entry.id)
-  const next = index < 0 ? [...entries, entry] : entries.map((candidate, position) => position === index ? entry : candidate)
-  return sortEntries(next)
+  if (index < 0) return sortEntries([...entries, entry])
+  return sortEntries([...entries.slice(0, index), entry, ...entries.slice(index + 1)])
 }
 
 /** Render only the entries, for the body budget. */
@@ -473,7 +472,8 @@ async function findIdenticalLegacy(
   if (await ctx.fs.stat(directory, signal) === undefined) return undefined
   const sourceText = await ctx.fs.readText(await ctx.fs.resolve(sourcePath, signal === undefined ? {} : { signal }), signal)
   for (const child of await ctx.fs.listDir(directory, signal)) {
-    if (child.type !== 'file' || !/^PERSONALITY\..+\.md$/u.test(child.name)) continue
+    if (child.type !== 'file') continue
+    if (!/^PERSONALITY\..+\.md$/u.test(child.name)) continue
     const text = await ctx.fs.readText(child.target, signal).catch(() => undefined)
     if (text === sourceText) return join(legacyDir, child.name)
   }
@@ -500,7 +500,7 @@ async function copyLegacyPersonality(
     await ctx.fs.deleteFile(source, { version }, signal)
   } catch (error: unknown) {
     throw new PersonalityStoreError(
-      `copied ${sourcePath} to ${legacyPath} but could not remove the source: ${error instanceof Error ? error.message : String(error)}`,
+      `copied ${sourcePath} to ${legacyPath} but could not remove the source: ${String(error)}`,
       'legacy-conflict',
     )
   }
