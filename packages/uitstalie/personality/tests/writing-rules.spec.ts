@@ -195,7 +195,7 @@ test('reads without a store version and writes with a signal and no returned ver
   vi.spyOn(ctx.dshStore, 'readFile').mockResolvedValueOnce({
     path: writingRulesPath(),
     text: EMPTY_WRITING_RULES_TEXT,
-  } as never)
+  })
   expect((await readWritingRules(ctx)).version).toBeUndefined()
 
   vi.spyOn(ctx.dshStore, 'writeFile').mockResolvedValueOnce({ path: 'unused', version: undefined } as never)

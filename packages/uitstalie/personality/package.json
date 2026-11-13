@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-personality",
-  "description": "Personality capability provider: the global PERSONALITY.md profile with a workspace overlay, a stable system-prompt section, file-watch refresh, the personality_learn auto-learning tool, and the /personality drift-review command",
+  "description": "Personality capability provider: the global PERSONALITY.md profile, output-style and writing-rules configuration, three stable system-prompt sections, and the read-only personality_analyze plus root-only personality_apply tools",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,61 +11,38 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./typert": {
-      "types": "./lib/typert.host.d.ts",
-      "default": "./lib/typert.host.js"
-    },
-    "./remote": {
-      "types": "./lib/typert.remote-client.d.ts",
-      "default": "./lib/typert.remote-client.js"
-    },
-    "./types": {
-      "types": "./lib/types/types.d.ts",
-      "default": "./lib/types/types.js"
-    },
     "./src/*": "./src/*",
-    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "files": [
-    "locale/*.json",
     "lib/index.js",
-    "lib/typert.host.js",
-    "lib/typert.host.d.ts",
-    "lib/typert.remote-client.js",
-    "lib/typert.remote-client.d.ts",
-    "lib/typert.remote-client.d.ts.map",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:~",
-    "@deepseek-ai/dsh-commands": "workspace:*"
+    "@deepseek-ai/cordis": "workspace:~"
   },
   "dependencies": {
     "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-home-paths": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-store-atom": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
-    "@deepseek-ai/schemastery": "workspace:~",
-    "diff": "^9.0.0",
-    "yaml": "^2.4.2",
-    "@deepseek-ai/dsh-session": "workspace:*",
-    "@deepseek-ai/dsh-typert-protocol": "workspace:*"
+    "yaml": "^2.4.2"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-agent": "workspace:*",
     "@deepseek-ai/dsh-agent-loop-testkit": "workspace:*",
-    "@deepseek-ai/dsh-commands": "workspace:*",
     "@deepseek-ai/dsh-dafeiyu": "workspace:*",
     "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-fs-local": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
-    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-session-query": "workspace:*",
     "@deepseek-ai/dsh-store-atom": "workspace:*",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*"
   }
 }

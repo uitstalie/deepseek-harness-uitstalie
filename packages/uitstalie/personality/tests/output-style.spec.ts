@@ -124,6 +124,6 @@ test('reads a file whose store version is absent', async () => {
   vi.spyOn(ctx.dshStore, 'readFile').mockResolvedValueOnce({
     path: outputStylePath(),
     text: DEFAULT_OUTPUT_STYLE_TEXT,
-  } as never)
+  })
   expect((await readOutputStyle(ctx)).version).toBeUndefined()
 })

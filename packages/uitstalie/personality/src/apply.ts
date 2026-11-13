@@ -63,7 +63,9 @@ export async function applyPersonalityCandidates(
   input: ApplyInput,
   signal: AbortSignal,
 ): Promise<ApplyResult> {
-  if (input.confirm !== true) throw new ApplyError('confirm must be the literal true; the user must explicitly ask to apply', 'invalid-request')
+  // Tool arguments arrive as untyped JSON; widen before the confirmation gate.
+  const confirm: unknown = input.confirm
+  if (confirm !== true) throw new ApplyError('confirm must be the literal true; the user must explicitly ask to apply', 'invalid-request')
   if (input.candidates.length < 1 || input.candidates.length > 20) {
     throw new ApplyError('candidates must contain 1 to 20 entries', 'invalid-request')
   }

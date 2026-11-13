@@ -10,6 +10,7 @@
 
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-store-atom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { DEFAULT_OUTPUT_STYLE, OUTPUT_STYLE_FILE_NAME, OUTPUT_STYLE_STORE_PATH } from './defaults.ts'
 import { globalPersonalityPath } from './global-store.ts'

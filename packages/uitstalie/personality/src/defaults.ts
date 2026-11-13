@@ -8,6 +8,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-store-atom'
 
 /** File name of the output-style configuration. */
 export const OUTPUT_STYLE_FILE_NAME = 'OUTPUT_STYLE.yaml'

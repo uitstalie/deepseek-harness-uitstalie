@@ -14,7 +14,6 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { analyzePersonality, renderAnalyzeResult } from './analyze.ts'
 import type { AnalyzeInput } from './analyze.ts'
 import { applyPersonalityCandidates, renderApplyResult } from './apply.ts'
-import type { ApplyCandidate } from './apply.ts'
 import { globalPersonalityPath, PERSONALITY_ENTRY_KINDS } from './global-store.ts'
 
 /** Build the all-agent read-only analysis tool. */
@@ -157,7 +156,7 @@ export function personalityApplyTool(ctx: Context, refresh: (agent: Agent) => Pr
       const agent = requireAgent(exec.agent, 'personality_apply')
       try {
         const result = await applyPersonalityCandidates(ctx, {
-          candidates: args.candidates as readonly ApplyCandidate[],
+          candidates: args.candidates,
           confirm: args.confirm as true,
         }, exec.signal)
         if (result.applied.length > 0) await refresh(agent)

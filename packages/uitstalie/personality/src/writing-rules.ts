@@ -11,6 +11,7 @@
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-store-atom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { WRITING_RULES_FILE_NAME, WRITING_RULES_STORE_PATH } from './defaults.ts'
 import { globalPersonalityPath } from './global-store.ts'

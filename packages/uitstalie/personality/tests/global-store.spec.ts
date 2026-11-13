@@ -221,7 +221,7 @@ test('retries one stale write after a re-read', async () => {
   const original = ctx.dshStore.writeFile.bind(ctx.dshStore)
   const write = vi.spyOn(ctx.dshStore, 'writeFile')
     .mockRejectedValueOnce(new FsError('stale', 'FS_STALE_VERSION'))
-    .mockImplementation(original as never)
+    .mockImplementation(original)
   const result = await upsertGlobalPersonalityEntry(ctx, {
     kind: 'style',
     name: 'language',
@@ -357,7 +357,7 @@ test('continues after a create-if-absent race on the legacy destination', async 
   const original = ctx.fs.moveFile.bind(ctx.fs)
   vi.spyOn(ctx.fs, 'moveFile')
     .mockRejectedValueOnce(new FsError('destination appeared', 'FS_NOT_OBSERVED'))
-    .mockImplementation(original as never)
+    .mockImplementation(original)
   await writeProfile('old profile')
   const result = await migrateLegacyPersonality(ctx, new AbortController().signal)
   expect(result.status).toBe('moved')
@@ -379,7 +379,7 @@ test('reads a profile whose store version is absent', async () => {
   vi.spyOn(ctx.dshStore, 'readFile').mockResolvedValueOnce({
     path: profilePath(),
     text: renderPersonalityDocument(createPersonalityDocument([])),
-  } as never)
+  })
   expect((await readGlobalPersonality(ctx)).version).toBeUndefined()
 })
 

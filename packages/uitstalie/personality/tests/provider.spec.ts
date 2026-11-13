@@ -70,7 +70,7 @@ async function seedGlobal(entries: readonly PersonalityEntry[]): Promise<void> {
 }
 
 /** Mount the real services, organizer, session query, and rewritten provider. */
-async function mount(): Promise<Mounted> {
+async function mount(beforePersonality?: (ctx: Context) => void): Promise<Mounted> {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
@@ -79,6 +79,7 @@ async function mount(): Promise<Mounted> {
   await ctx.plugin(Dafeiyu)
   // @ts-expect-error -- the package default export is an abstract service class; Cordis instantiates it.
   await ctx.plugin(SessionQuery, {})
+  beforePersonality?.(ctx)
   const personalityFiber = await ctx.plugin(Personality, {} as never)
   const harness = await mountAgentLoopTestHarness(ctx)
   return { ctx, harness, personalityFiber }
@@ -168,6 +169,17 @@ test('an empty profile contributes an empty profile section', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
   expect(await promptText(mounted.ctx, root)).toBe('')
+})
+
+test('keeps the capability when seeding the configuration files fails', async () => {
+  const write = vi.fn(async () => { throw new Error('read-only store') })
+  const mounted = await mount((ctx) => {
+    vi.spyOn(ctx.dshStore, 'writeFile').mockImplementation(write)
+  })
+  await until(() => write.mock.calls.length > 0)
+  await settle()
+  expect(mounted.ctx.dafeiyu.status().some(status => status.id === 'personality')).toBe(true)
+  await expect(stat(join(project, 'home', 'personality', 'OUTPUT_STYLE.yaml'))).rejects.toThrow()
 })
 
 test('child agents inherit analyze and the profile section but not apply', async () => {

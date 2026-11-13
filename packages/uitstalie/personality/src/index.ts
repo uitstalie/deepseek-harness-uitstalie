@@ -42,9 +42,6 @@ import {
 } from './profile-prompt.ts'
 import { OUTPUT_STYLE_ORDER_NAME, OUTPUT_STYLE_SECTION_NAME } from './output-style.ts'
 import { WRITING_RULES_ORDER_NAME, WRITING_RULES_SECTION_NAME } from './writing-rules.ts'
-import { Config } from './config.ts'
-
-export { Config }
 
 /** Plugin name registered with Cordis. */
 export const name = 'personality'
@@ -75,13 +72,13 @@ interface PromptBundle {
 }
 
 /** Register the global personality capability. */
-export function apply(ctx: Context, config: Config): void {
+export function apply(ctx: Context): void {
   const registration = ctx.dafeiyu.register({
     id: PERSONALITY_CAPABILITY_ID,
     contractVersion: PERSONALITY_CONTRACT_VERSION,
     label: PERSONALITY_CAPABILITY_LABEL,
     description: PERSONALITY_CAPABILITY_DESCRIPTION,
-    config,
+    config: {},
     create: runtime => createContribution(ctx, runtime),
   })
   ctx.effect(() => registration, 'personality.register()')

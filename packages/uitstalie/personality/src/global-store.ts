@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsTarget, FsVersion } from '@deepseek-ai/dsh-fs'
+import type {} from '@deepseek-ai/dsh-store-atom'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 
