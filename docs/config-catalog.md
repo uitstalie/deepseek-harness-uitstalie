@@ -2798,7 +2798,7 @@ export interface McpManagedServerEntry {
 
 - `inject`: `dafeiyu` · `dshStore` · `sessionQuery` · `jobs` · `llm`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/uitstalie/memory/src/config.ts:59`](../packages/uitstalie/memory/src/config.ts)
+- `source`: [`packages/uitstalie/memory/src/config.ts:61`](../packages/uitstalie/memory/src/config.ts)
 
 ```ts config-catalog
 /** Configuration as the Loader passes it; every field is a live reference. */
@@ -2846,6 +2846,14 @@ export interface Config {
    * explicit `supersedes` tag on the new entry takes precedence.
    */
   supersessionMinSharedTags: Volatile<number>
+  /**
+   * Completed turns coalesced into one summary model call.
+   *
+   * Defaults to 1 (one call per completed turn, the previous behavior). A
+   * larger value batches turns and writes their per-turn entries in one
+   * version-guarded append; tier migration still follows its own window.
+   */
+  summarizeEveryTurns: Volatile<number>
   /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced. */
   snapshotTemplate: Volatile<string>
   /** Where the snapshot reaches the model. */

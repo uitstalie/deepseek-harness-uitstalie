@@ -49,6 +49,8 @@ export interface MemoryConfigInput {
   filesTtlDays?: number | undefined
   /** Shared tags required for implicit supersession; explicit `supersedes` bypasses it. */
   supersessionMinSharedTags?: number | undefined
+  /** Completed turns coalesced into one summary model call; 1 preserves per-turn calls. */
+  summarizeEveryTurns?: number | undefined
   /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced and absent means the text alone. */
   snapshotTemplate?: string | undefined
   /** Where the snapshot reaches the model: a depth-0 message or a system-prompt section. */
@@ -100,6 +102,14 @@ export interface Config {
    * explicit `supersedes` tag on the new entry takes precedence.
    */
   supersessionMinSharedTags: Volatile<number>
+  /**
+   * Completed turns coalesced into one summary model call.
+   *
+   * Defaults to 1 (one call per completed turn, the previous behavior). A
+   * larger value batches turns and writes their per-turn entries in one
+   * version-guarded append; tier migration still follows its own window.
+   */
+  summarizeEveryTurns: Volatile<number>
   /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced. */
   snapshotTemplate: Volatile<string>
   /** Where the snapshot reaches the model. */
@@ -120,6 +130,7 @@ export const Config = z.object({
   filesTtlDays: z.number().step(1).min(0).default(DEFAULT_MEMORY_FILES_TTL_DAYS).volatile(),
   supersessionMinSharedTags: z.number().step(1).min(1)
     .default(DEFAULT_MEMORY_SUPERSESSION_MIN_SHARED_TAGS).volatile(),
+  summarizeEveryTurns: z.number().step(1).min(1).default(1).volatile(),
   snapshotTemplate: z.string().default('').volatile(),
   snapshotPosition: z.string().default('depth-0').volatile(),
 })
@@ -142,6 +153,8 @@ export interface MemorySettings {
   readonly filesTtlDays: number
   /** Shared tags required for implicit supersession. */
   readonly supersessionMinSharedTags: number
+  /** Completed turns coalesced into one summary model call; 1 preserves per-turn calls. */
+  readonly summarizeEveryTurns: number
   /** Template wrapped around the snapshot text; empty means the text alone. */
   readonly snapshotTemplate: string
   /** Where the snapshot reaches the model. */
@@ -179,6 +192,10 @@ export function resolveConfig(config: MemoryConfigInput): MemorySettings {
       'memory: summarizationProvider and summarizationModel must both be set or both be empty (empty follows the routed model)',
     )
   }
+  const summarizeEveryTurns = config.summarizeEveryTurns ?? 1
+  if (!Number.isSafeInteger(summarizeEveryTurns) || summarizeEveryTurns < 1) {
+    throw new Error('memory: summarizeEveryTurns must be a positive integer')
+  }
   const snapshotPosition = config.snapshotPosition ?? 'depth-0'
   if (!(['depth-0', 'prompt'] as const).includes(snapshotPosition)) {
     throw new Error(`memory: snapshotPosition must be "depth-0" or "prompt"; got ${JSON.stringify(snapshotPosition)}`)
@@ -192,6 +209,7 @@ export function resolveConfig(config: MemoryConfigInput): MemorySettings {
     openTtlDays: config.openTtlDays ?? DEFAULT_MEMORY_OPEN_TTL_DAYS,
     filesTtlDays: config.filesTtlDays ?? DEFAULT_MEMORY_FILES_TTL_DAYS,
     supersessionMinSharedTags: config.supersessionMinSharedTags ?? DEFAULT_MEMORY_SUPERSESSION_MIN_SHARED_TAGS,
+    summarizeEveryTurns,
     snapshotTemplate: config.snapshotTemplate ?? '',
     snapshotPosition,
   }

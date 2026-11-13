@@ -35,6 +35,7 @@ Mount the provider in the same web profile patch layer that mounts the organizer
     openTtlDays: 3
     filesTtlDays: 14
     supersessionMinSharedTags: 2
+    summarizeEveryTurns: 1
 ```
 
 Every field has a default, so an empty `config` is valid:
@@ -52,6 +53,7 @@ Every field has a default, so an empty `config` is valid:
 | `openTtlDays` | `3` | Days after which an `open` entry is archived automatically; `0` disables the rule. |
 | `filesTtlDays` | `14` | Days after which a `files` entry is archived automatically; `0` disables the rule. |
 | `supersessionMinSharedTags` | `2` | Shared tags required before an implicit same-session supersession; an explicit `supersedes` tag on a new entry takes precedence. |
+| `summarizeEveryTurns` | `1` | Completed turns coalesced into one summary model call. `1` keeps one call per turn; `N > 1` batches N turns, writes per-turn entries and frontmatter records in one version-guarded append, and flushes a partial batch on session disposal. |
 | `snapshotTemplate` | `""` | Template wrapped around the snapshot text; `{{snapshot}}` is replaced. |
 | `snapshotPosition` | `depth-0` | `depth-0` sends the snapshot as a user message; `prompt` renders it as the `memory-state` section. |
 
@@ -60,6 +62,8 @@ Entries are deduplicated by normalized text on every write, and each session ret
 When the managed body would exceed `maxBytes`, the write evicts individual entries instead of failing: `open` entries leave first, then `files`, then `decision`, then `preference`, oldest first within one kind, and the just-written turn is never evicted. Each eviction is archived too. `/memory stats` shows the eviction count and the latest record. `/memory prune [keep]` applies the same dedupe and cap on demand, and `prune --kind/--tag/--before-turn` (or `forget`) deletes matching entries explicitly. The `memory_resolve` tool is the explicit channel for finished `open` work; TTL is the fallback.
 
 The window thresholds must strictly increase from `detail` to `brief` to `forget`, and the summary provider and model must both be set or both be empty; a load that violates either rule fails instead of silently degrading. The provider is a hard composition dependency on five services: `ctx.dafeiyu` (the organizer), `ctx.dshStore` (the `.dsh` store), `ctx.sessionQuery` (session history for search, summarization, and turn reads), `ctx.jobs` (the background job registry, with an attached controller serving the agent), and `ctx.llm` (the summary model call). A composition that omits one of them leaves this row inactive. It also imports `@deepseek-ai/dsh-session` and `@deepseek-ai/dsh-llm` for the message and session types it builds, and `@deepseek-ai/dsh-fs` for the store's error type.
+
+The summary job batches completed turns when `summarizeEveryTurns > 1`: each turn still gets its own frontmatter record and entries carrying that turn, while one model call covers the batch and one version-guarded append writes it. A partial batch flushes when the session is disposed; a model, JSON, or repository failure keeps the batch pending for the next completed turn instead of dropping it, and cancellation writes nothing. Tier migration keeps its own window and runs after each batch, so `detail`/`brief`/`forget` timing does not change with the call interval.
 
 The organized contribution is `scope: 'root'`, so root agents receive the prompt section and the five tools while subagents receive neither. The organizer, not this package, decides which agents are wired and which completed turns reach `onTurnEnd`.
 

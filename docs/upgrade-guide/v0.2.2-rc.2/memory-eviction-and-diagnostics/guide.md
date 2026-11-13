@@ -35,6 +35,10 @@ A new `memory_resolve` tool archives finished `open` work explicitly; it needs `
 
 Every automatic removal writes a full-text record to `MEMORY.archive.md` with `session`, `turn`, `tags`, `archivedAt`, `originalAt`, `reason`, and the original text, and adds a bounded audit record to the `MEMORY.md` frontmatter. `memory_search` searches the archive and marks those hits `archived: <reason>`. Archive writes are deduplicated by `(session, turn, kind, normalized text)`, so a retried or stale write cannot duplicate a record. If the archive cannot be written, TTL/resolve/supersede/dedup removals are skipped and the new entry still commits; capacity eviction proceeds to keep the write inside `maxBytes`.
 
+## Summary call interval
+
+`summarizeEveryTurns` controls how many completed turns share one summary model call. The default `1` preserves the previous behavior exactly: one model call per completed turn. A value above `1` batches that many turns into one strict `{ turns: [...] }` model reply and writes their per-turn entries and frontmatter records in one version-guarded append. A partial batch flushes when the session is disposed. Model, JSON, or repository failures keep the whole batch pending for the next completed turn; cancellation writes nothing. Tier migration still follows `detail`/`brief`/`forget` and runs after each batch, so the call interval does not change tier timing.
+
 ## Migration
 
 1. No memory-file migration is required. `evictions` is an optional frontmatter field; files written by the previous provider parse unchanged, and a file without it renders as before.

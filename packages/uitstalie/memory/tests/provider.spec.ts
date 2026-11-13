@@ -19,6 +19,7 @@ import {
   MEMORY_STORE_PATH,
   parseMemoryDocument,
   renderMemoryDocument,
+  Config as MemoryConfig,
   MEMORY_CAPABILITY_DESCRIPTION, MEMORY_CAPABILITY_LABEL, MEMORY_PROMPT_ORDER, MEMORY_PROMPT_TEXT, resolveConfig,
 } from '../src/index.ts'
 import type { MemoryDocument } from '../src/index.ts'
@@ -473,6 +474,10 @@ test('configuration rejects a non-increasing window and a half summary pair', ()
   expect(() => resolveConfig({ summarizationProvider: 'deepseek' }))
     .toThrow(/both be set or both be empty/)
   expect(() => resolveConfig({ snapshotPosition: 'sideways' as never })).toThrow(/snapshotPosition/)
+  expect(() => new MemoryConfig({ summarizeEveryTurns: 0 })).toThrow()
+  expect(() => new MemoryConfig({ summarizeEveryTurns: 1.5 })).toThrow()
+  expect(() => resolveConfig({ summarizeEveryTurns: 0 })).toThrow(/positive integer/)
+  expect(() => resolveConfig({ summarizeEveryTurns: 1.5 })).toThrow(/positive integer/)
   expect(resolveConfig({})).toEqual({
     window: { detail: 6, brief: 16, forget: 21, sessions: 10 },
     summarizationProvider: '',
@@ -482,6 +487,7 @@ test('configuration rejects a non-increasing window and a half summary pair', ()
     openTtlDays: 3,
     filesTtlDays: 14,
     supersessionMinSharedTags: 2,
+    summarizeEveryTurns: 1,
     snapshotTemplate: '',
     snapshotPosition: 'depth-0',
   })

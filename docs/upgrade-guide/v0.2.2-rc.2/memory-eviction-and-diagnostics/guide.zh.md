@@ -35,6 +35,10 @@ v1→v2 Session 迁移现在会把终帧 `finish` 之后仅含 usage 的分片�
 
 每次自动移除都会把完整正文写入 `MEMORY.archive.md`，带 `session`、`turn`、`tags`、`archivedAt`、`originalAt`、`reason`，并在 `MEMORY.md` frontmatter 追加有界审计记录。`memory_search` 会搜索归档并标注 `archived: <原因>`。归档按 `(session, turn, kind, 归一化文本)` 去重，因此重试或 stale 写入不会重复记录。归档写失败时，TTL/resolve/supersede/去重移除会跳过，但新条目仍然提交；容量淘汰继续执行以保证写入不超过 `maxBytes`。
 
+## 摘要调用间隔
+
+`summarizeEveryTurns` 控制多少个完成的 turn 共用一次摘要模型调用。默认 `1` 与之前完全一致：每个完成 turn 一次模型调用。大于 `1` 时，N 个 turn 合并成一次严格的 `{ turns: [...] }` 模型回复，并用一次带版本守卫的写入提交每个 turn 的条目与 frontmatter。会话销毁时 flush 未满的批。模型、JSON 或仓库失败会保留整个 pending 批，由下一个完成 turn 重试；取消不写任何内容。tier 迁移仍按 `detail`/`brief`/`forget` 运行，并在每批之后执行，因此调用间隔不改变 tier 节奏。
+
 ## 迁移
 
 1. 不需要迁移 memory 文件。`evictions` 是可选 frontmatter 字段；旧提供者写出的文件解析行为不变，没有该字段的文件渲染行为也不变。

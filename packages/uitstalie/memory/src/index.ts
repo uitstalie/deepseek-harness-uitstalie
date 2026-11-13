@@ -258,6 +258,7 @@ export function apply(ctx: Context, config: Config): void {
     get openTtlDays() { return effective.openTtlDays },
     get filesTtlDays() { return effective.filesTtlDays },
     get supersessionMinSharedTags() { return effective.supersessionMinSharedTags },
+    get summarizeEveryTurns() { return effective.summarizeEveryTurns },
     get snapshotTemplate() { return effective.snapshotTemplate },
     get snapshotPosition() { return effective.snapshotPosition },
   })
@@ -284,6 +285,13 @@ export function apply(ctx: Context, config: Config): void {
     config: effective,
     create: (runtime: CapabilityRuntime): CapabilityContribution => {
       const summaries = new MemorySummaryRunner(ctx, settings, runtime.signal, onSnapshotText)
+      // A session can close without another completed turn; flush its partial summary batch
+      // while the registration signal is still live, then stop observing.
+      const stopFlushOnDispose = ctx.on('session/disposed', (session) => {
+        summaries.flush(String(session.id))
+      })
+      if (runtime.signal.aborted) stopFlushOnDispose()
+      else runtime.signal.addEventListener('abort', stopFlushOnDispose, { once: true })
       return {
         scope: 'root',
         // The state section is always wired, even while `snapshotPosition` is `depth-0`: an empty
@@ -367,6 +375,7 @@ function readSettings(config: Config): MemorySettings {
     openTtlDays: current(config.openTtlDays),
     filesTtlDays: current(config.filesTtlDays),
     supersessionMinSharedTags: current(config.supersessionMinSharedTags),
+    summarizeEveryTurns: current(config.summarizeEveryTurns),
     snapshotTemplate: current(config.snapshotTemplate),
     snapshotPosition: current(config.snapshotPosition),
   })

@@ -333,6 +333,18 @@ export interface MemoryTurnSummaryOptions {
   readonly now?: Date
 }
 
+/** Result of one multi-turn summary append. */
+export interface MemoryTurnSummariesResult {
+  /** Store-relative path that was written. */
+  readonly path: string
+  /** Version of the written file, when the store reported one. */
+  readonly version?: string
+  /** Turns whose detail entries were appended, in batch order. */
+  readonly turns: readonly { readonly turn: number; readonly entries: number }[]
+  /** Entries this write evicted or archived. */
+  readonly evictions: readonly MemoryEvictionRecord[]
+}
+
 /** Result of one turn-summary append. */
 export interface MemoryTurnSummaryResult {
   /** Store-relative path that was written. */
@@ -1357,6 +1369,103 @@ export async function appendMemoryEntry(
     return {
       path: written.path,
       kind,
+      evictions,
+      ...written.version === undefined ? {} : { version: written.version },
+    }
+  }
+  try {
+    return await append()
+  } catch (error: unknown) {
+    if (!isStaleVersion(error)) throw error
+    return await append()
+  }
+}
+
+/**
+ * Append several completed turns' detail summaries in one version-guarded write.
+ *
+ * The batch is composed in turn order: each turn gets its own frontmatter
+ * `turns` record and its entries carry that turn marker, while consecutive
+ * turns may share one detail section. Cleanup, retention, archive, and the
+ * write happen once, so a failure before the write leaves every turn pending
+ * and no partial batch in the file.
+ * @param ctx - context carrying `dshStore`.
+ * @param session - session the summaries belong to.
+ * @param summaries - validated entry groups for the batch turns.
+ * @param signal - cancellation for the reads and write.
+ * @param options - window thresholds, body budget, and cleanup settings.
+ * @returns the written path, version, per-turn counts, and removals.
+ * @throws MemoryDocumentError when the batch is empty, has duplicate turns, or has no entries.
+ * @throws FsError when the guarded write fails twice or the store refuses the write.
+ */
+export async function appendTurnSummaries(
+  ctx: Context,
+  session: Session,
+  summaries: readonly MemoryTurnSummaryInput[],
+  signal?: AbortSignal,
+  options: MemoryTurnSummaryOptions = {},
+): Promise<MemoryTurnSummariesResult> {
+  if (summaries.length === 0) {
+    throw new MemoryDocumentError('a turn summary batch needs at least one turn', 'empty-summary')
+  }
+  const seen = new Set<number>()
+  const prepared = summaries.map((summary) => {
+    if (seen.has(summary.turn)) {
+      throw new MemoryDocumentError(`a turn summary batch repeats turn ${String(summary.turn)}`, 'invalid-document')
+    }
+    seen.add(summary.turn)
+    if (summary.entries.length === 0) {
+      throw new MemoryDocumentError('a turn summary needs at least one entry', 'empty-summary')
+    }
+    return {
+      summary,
+      entries: summary.entries.map(entry => ({
+        kind: assertMemoryEntryKind(entry.kind),
+        text: entry.text,
+        ...entry.tags === undefined ? {} : { tags: normalizeEntryTags(entry.tags) },
+      })),
+    }
+  })
+  const window = options.window ?? DEFAULT_MEMORY_WINDOW
+  const maxBytes = options.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES
+  const maxEntries = options.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES
+  const turns = new Set(summaries.map(summary => summary.turn))
+  const protect = (candidate: MemoryEntry, section: MemorySection): boolean =>
+    section.sessionId === String(session.id) && candidate.turn !== undefined && turns.has(candidate.turn)
+  const append = async (): Promise<MemoryTurnSummariesResult> => {
+    const current = await readMemoryDocument(ctx, session, signal)
+    const document = current.document ?? createMemoryDocument(window)
+    let composed = document
+    for (const { summary, entries } of prepared) {
+      composed = appendTurnToDocument(composed, session, summary, entries)
+    }
+    const cleaned = await cleanupForAppend(ctx, document, composed, options, signal)
+    let retained = retainDocument(cleaned.document, session.id, window, maxBytes, maxEntries, protect)
+    assertBodyBudget(retained.document, maxBytes)
+    const cleanupArchived = await archiveContained(ctx, session, cleaned.records, signal)
+    let evictions = retained.evictions
+    if (!cleanupArchived) {
+      retained = retainDocument(composed, session.id, window, maxBytes, maxEntries, protect)
+      await archiveContained(ctx, session, retained.archive, signal)
+      evictions = retained.evictions
+    } else {
+      await archiveContained(ctx, session, retained.archive, signal)
+      evictions = [...retained.evictions, ...cleaned.records.map(archiveEvictionRecord)]
+    }
+    const next = appendEvictionRecords(
+      retained.document,
+      cleanupArchived ? cleaned.records.map(archiveEvictionRecord) : [],
+    )
+    assertBodyBudget(next, maxBytes)
+    const written = await ctx.dshStore.writeFile(
+      session,
+      MEMORY_STORE_PATH,
+      renderMemoryDocument(next),
+      writeOptions(signal, current.version),
+    )
+    return {
+      path: written.path,
+      turns: prepared.map(item => ({ turn: item.summary.turn, entries: item.entries.length })),
       evictions,
       ...written.version === undefined ? {} : { version: written.version },
     }

@@ -35,12 +35,14 @@ import type { MemoryEntry } from '../src/index.ts'
 import {
   appendAssistantText,
   appendUserText,
+  callTool,
   createRoot,
   memoryFilePath,
   memoryNotices,
   memorySnapshots,
   mountMemory,
   settle,
+  textOf,
   waitForValue,
 } from './harness.ts'
 import type { MemoryMountOptions, MemoryTestHarness } from './harness.ts'
@@ -173,6 +175,16 @@ async function waitForMemoryFile(): Promise<string> {
 /** The JSON reply that carries the given entries. */
 function jsonReply(entries: readonly MemoryEntry[]): string {
   return JSON.stringify({ entries })
+}
+
+/** The JSON reply for a batch of turns, one decision entry per turn unless overridden. */
+function batchReply(turns: readonly number[]): string {
+  return JSON.stringify({
+    turns: turns.map(turn => ({
+      turn,
+      entries: [{ kind: 'decision', text: `batch summary ${String(turn)}` }],
+    })),
+  })
 }
 
 test('a completed turn runs one memory job that appends a detail section and refreshes the snapshot', async () => {
@@ -365,6 +377,125 @@ test('a model failure appends one notice, leaves MEMORY.md unchanged, and never 
   expect(adapter.requests).toHaveLength(2)
   expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(1)
   expect(await readFile(memoryFilePath(project), 'utf8')).toBe(before)
+})
+
+test('summarizeEveryTurns=3 makes one model call for three turns and records each turn', async () => {
+  const mounted = await mount({ config: { summarizeEveryTurns: 3 } })
+  const adapter = new SummaryAdapter(call => batchReply(call === 1 ? [1, 2, 3] : [4]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+
+  completeTurn(root, 1)
+  root.session.append('turn/start', { turn: 2 })
+  completeTurn(root, 2)
+  root.session.append('turn/start', { turn: 3 })
+  await settle()
+  await settle()
+  expect(adapter.requests).toHaveLength(0)
+  expect(mounted.ctx.jobs.list(root.id)).toHaveLength(0)
+
+  completeTurn(root, 3)
+  const jobs = await waitForSettledJobs(root, 1)
+  expect(jobs[0]?.status).toBe('completed')
+  expect(adapter.requests).toHaveLength(1)
+  const prompt = adapter.requests[0]?.messages.at(-1)?.content
+  const promptText = prompt?.[0]?.type === 'text' ? prompt[0].text : ''
+  expect(promptText).toContain('=== turn 1')
+  expect(promptText).toContain('=== turn 2')
+  expect(promptText).toContain('=== turn 3')
+
+  const document = parseMemoryDocument(await waitForMemoryFile())
+  expect(document.sessions[0]?.turns.map(turn => turn.turn)).toEqual([1, 2, 3])
+  expect(document.sessions[0]?.turns.map(turn => turn.seq[1] - turn.seq[0])).toEqual([3, 3, 3])
+  const entries = document.sections.flatMap(section => section.entries)
+  expect(entries.map(entry => [entry.turn, entry.text])).toEqual([
+    [1, 'batch summary 1'],
+    [2, 'batch summary 2'],
+    [3, 'batch summary 3'],
+  ])
+
+  const read = await callTool(mounted.ctx, root, 'memory_read', { turn: 2 })
+  expect(read.isError, textOf(read)).toBe(false)
+  expect(textOf(read)).toContain('request 2')
+  expect(textOf(read)).toContain('answer 2')
+})
+
+test('session disposal flushes a partial batch with one model call', async () => {
+  const mounted = await mount({ config: { summarizeEveryTurns: 3 } })
+  const adapter = new SummaryAdapter(() => batchReply([1, 2]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+
+  completeTurn(root, 1)
+  root.session.append('turn/start', { turn: 2 })
+  completeTurn(root, 2)
+  await settle()
+  expect(adapter.requests).toHaveLength(0)
+
+  mounted.ctx.emit('session/disposed', root.session)
+  const jobs = await waitForSettledJobs(root, 1)
+  expect(jobs[0]?.status).toBe('completed')
+  expect(adapter.requests).toHaveLength(1)
+  const document = parseMemoryDocument(await waitForMemoryFile())
+  expect(document.sessions[0]?.turns.map(turn => turn.turn)).toEqual([1, 2])
+  expect(document.sections.flatMap(section => section.entries).map(entry => entry.turn)).toEqual([1, 2])
+  expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(0)
+})
+
+test('a failed batch stays pending and is retried by the next completed turn', async () => {
+  const mounted = await mount({ config: { summarizeEveryTurns: 3 } })
+  const adapter = new SummaryAdapter(call => call === 1
+    ? new Error('first batch failed')
+    : batchReply([1, 2, 3]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+
+  completeTurn(root, 1)
+  root.session.append('turn/start', { turn: 2 })
+  completeTurn(root, 2)
+  root.session.append('turn/start', { turn: 3 })
+  completeTurn(root, 3)
+  const failed = await waitForSettledJobs(root, 1)
+  expect(failed[0]?.status).toBe('failed')
+  expect(adapter.requests).toHaveLength(1)
+  await expect(stat(memoryFilePath(project))).rejects.toThrow()
+
+  root.session.append('turn/start', { turn: 4 })
+  completeTurn(root, 4)
+  const retried = await waitForSettledJobs(root, 2)
+  expect(retried[1]?.status).toBe('completed')
+  expect(adapter.requests).toHaveLength(2)
+  const document = parseMemoryDocument(await waitForMemoryFile())
+  expect(document.sessions[0]?.turns.map(turn => turn.turn)).toEqual([1, 2, 3])
+  const retryPrompt = adapter.requests[1]?.messages.at(-1)?.content
+  const retryText = retryPrompt?.[0]?.type === 'text' ? retryPrompt[0].text : ''
+  expect(retryText).toContain('=== turn 1')
+  expect(retryText).toContain('=== turn 2')
+  expect(retryText).toContain('=== turn 3')
+})
+
+test('a cancelled batch writes nothing and leaves all turns pending', async () => {
+  const mounted = await mount({ config: { summarizeEveryTurns: 3 } })
+  const gate = deferred()
+  const adapter = new SummaryAdapter(() => batchReply([1, 2, 3]), gate.promise)
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+
+  completeTurn(root, 1)
+  root.session.append('turn/start', { turn: 2 })
+  completeTurn(root, 2)
+  root.session.append('turn/start', { turn: 3 })
+  completeTurn(root, 3)
+  await waitForValue(() => adapter.requests.length === 1 ? true : undefined)
+  const [job] = mounted.ctx.jobs.list(root.id)
+  expect(job).toBeDefined()
+  if (job === undefined) throw new Error('expected a running memory batch job')
+  expect(mounted.ctx.jobs.kill(job.id, root.id)).toBe('requested')
+  gate.resolve()
+  const jobs = await waitForSettledJobs(root, 1)
+  expect(jobs[0]?.status).toBe('killed')
+  await expect(stat(memoryFilePath(project))).rejects.toThrow()
+  expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(0)
 })
 
 test('a transient upstream failure retries once, keeps the old memory, and names the rate limit', async () => {

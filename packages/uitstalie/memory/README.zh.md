@@ -37,6 +37,7 @@ kind: "package-reference"
     openTtlDays: 3
     filesTtlDays: 14
     supersessionMinSharedTags: 2
+    summarizeEveryTurns: 1
 ```
 
 每个字段都有默认值，因此空的 `config` 也合法：
@@ -54,6 +55,7 @@ kind: "package-reference"
 | `openTtlDays` | `3` | `open` 条目自动归档前的天数；`0` 关闭该规则。 |
 | `filesTtlDays` | `14` | `files` 条目自动归档前的天数；`0` 关闭该规则。 |
 | `supersessionMinSharedTags` | `2` | 隐式同会话覆盖所需的最少共享 tags；新条目显式带 `supersedes` 时优先。 |
+| `summarizeEveryTurns` | `1` | 合并成一次摘要模型调用的完成 turn 数。`1` 保持每 turn 一次调用；`N > 1` 批处理 N 个 turn，用一次带版本守卫的写入记录每个 turn 的条目与 frontmatter，并在会话销毁时 flush 未满的批。 |
 | `snapshotTemplate` | `""` | 包在 snapshot 文本外的模板；`{{snapshot}}` 会被替换。 |
 | `snapshotPosition` | `depth-0` | `depth-0` 把 snapshot 作为 user 消息发送；`prompt` 改渲染为 `memory-state` 段。 |
 
@@ -62,6 +64,8 @@ kind: "package-reference"
 托管正文将超过 `maxBytes` 时，写入改为逐条淘汰而不是失败：先 `open`，再 `files`，再 `decision`，最后 `preference`，同一 kind 内最旧优先，且本次刚写入的 turn 永不被淘汰；容量淘汰也会归档。`/memory stats` 显示淘汰计数与最近一条记录。`/memory prune [keep]` 按需执行同样的去重与截断；`prune --kind/--tag/--before-turn`（或 `forget`）按条件显式删除。`memory_resolve` 工具是完成的 `open` 工作的显式收敛通道，TTL 只是兜底。
 
 窗口阈值必须从 `detail` 到 `brief` 再到 `forget` 严格递增；摘要 provider 与 model 必须同时设置或同时为空；违反任一条的加载直接失败，而不是静默降级。提供者对五个服务是硬组合依赖：`ctx.dafeiyu`（组织者）、`ctx.dshStore`（`.dsh` 存储）、`ctx.sessionQuery`（搜索、摘要与 turn 读取用的会话历史）、`ctx.jobs`（后台 job 注册表，且需有服务该 agent 的 controller），以及 `ctx.llm`（摘要模型调用）。组合里缺少任一个时本行保持 inactive。它还直接 import `@deepseek-ai/dsh-session` 与 `@deepseek-ai/dsh-llm`（消息与会话类型）以及 `@deepseek-ai/dsh-fs`（存储错误类型）。
+
+当 `summarizeEveryTurns > 1` 时，摘要 job 批处理完成的 turn：每个 turn 仍有独立的 frontmatter 记录和带 turn 标记的条目，但一次模型调用覆盖整批，一次带版本守卫的写入提交。会话销毁时 flush 未满的批；模型、JSON 或仓库失败会保留 pending，由下一个完成 turn 重试；取消不写任何内容。tier 迁移仍按自己的窗口运行，`detail`/`brief`/`forget` 的节奏不随调用间隔改变。
 
 组织者接线的贡献是 `scope: 'root'`：root agent 得到提示词段与五个工具，子 agent 两者都没有。哪些 agent 被接线由组织者决定；每一次 turn 结束都会进入 `onTurnEnd`，本包只对 `completed` 的 turn 启动摘要。
 

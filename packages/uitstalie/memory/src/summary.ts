@@ -2,14 +2,16 @@
  * The memory summary job: one completed turn becomes one detail section of
  * MEMORY.md.
  *
- * The organizer hands every completed root turn to `MemorySummaryRunner`. The
- * runner keeps one summary job per session: a turn that completes while a job
- * runs leaves one pending input, and the job settles into exactly one follow-up
- * pass. Each pass reads only the turn's conversation surface (user text,
- * assistant text, and tool names with status), asks the routed or configured
- * model for strict JSON entries, appends them through the version-guarded
- * repository, migrates aged sections through the same model target, and
- * refreshes the durable snapshot.
+ * The organizer hands every completed root turn to `MemorySummaryRunner`. With
+ * `summarizeEveryTurns = 1` the runner keeps the previous per-turn behavior:
+ * a turn that completes while a job runs leaves one pending input, and the job
+ * settles into exactly one follow-up pass. A larger value accumulates turns
+ * and sends one strict `{ turns: [...] }` request per batch, then writes every
+ * turn's entries and frontmatter record in one version-guarded append; a
+ * partial batch flushes when the session is disposed. Each pass reads only the
+ * selected turns' conversation surface, asks the routed or configured model
+ * for strict JSON, appends through the repository, migrates aged sections
+ * through the same target, and refreshes the durable snapshot.
  *
  * Failures are contained. A model or repository failure before the detail append
  * leaves the previous MEMORY.md in place and appends one notice message per
@@ -35,13 +37,14 @@ import {
   MEMORY_BRIEF_MAX_CHARS,
   MEMORY_BRIEF_MAX_ENTRIES,
   MEMORY_ENTRY_KINDS,
+  appendTurnSummaries,
   appendTurnSummary,
   migrateMemoryTiers,
   readMemoryDocument,
   summaryPaused,
   MemoryDocumentError,
 } from './memory-file.ts'
-import type { MemoryDocument, MemoryEntry } from './memory-file.ts'
+import type { MemoryDocument, MemoryEntry, MemoryTurnSummaryInput } from './memory-file.ts'
 import { appendMemoryNotice, refreshMemorySnapshot } from './snapshot.ts'
 import { byteLength, errorMessage, truncateToBytes } from './text.ts'
 import type { SnapshotTextSink } from './tools.ts'
@@ -196,6 +199,25 @@ const SUMMARY_INSTRUCTION = [
   '',
 ].join('\n')
 
+/** The batch summarization instruction used when summarizeEveryTurns > 1. */
+const BATCH_SUMMARY_INSTRUCTION = [
+  'You summarize several completed turns of an AI coding assistant session into durable memory entries.',
+  '',
+  'Return STRICT JSON only, without prose or a code fence, in this form:',
+  '{"turns":[{"turn":1,"entries":[{"kind":"decision","text":"..."}]}]}',
+  '',
+  'Include exactly the listed turn numbers, each with one to four entries. Do not merge turns and do not invent a turn. Each text is one concise line. The allowed kinds are:',
+  '- decision: a durable decision and its reason',
+  '- files: a file or path changed, created, or worth revisiting',
+  '- open: unfinished work or an open question',
+  '- preference: a user preference that should persist across sessions',
+  '',
+  'Record only durable conclusions. If a turn recorded nothing durable, return one decision entry for that turn saying so.',
+  '',
+  'Turns:',
+  '',
+].join('\n')
+
 /** The compression instruction delivered with one section's detail entries. */
 const BRIEF_INSTRUCTION = [
   'You compress the stored detail summary of one turn range into a brief memory checkpoint.',
@@ -213,8 +235,14 @@ const BRIEF_INSTRUCTION = [
 interface SessionSummaryState {
   /** Whether a job pass currently owns the session. */
   running: boolean
-  /** Latest completed turn that arrived while the pass was running. */
+  /** Latest completed turn that arrived while a pass was running (summarizeEveryTurns = 1). */
   pending: TurnEndInput | undefined
+  /** Completed turns accumulated toward the next batch (summarizeEveryTurns > 1). */
+  batch: TurnEndInput[]
+  /** Batch currently owned by the running job. */
+  inFlight: TurnEndInput[]
+  /** A session-end flush asked for the partial batch to start now. */
+  flushRequested: boolean
 }
 
 /** One completed turn's extracted conversation surface and seq range. */
@@ -223,6 +251,14 @@ interface TurnConversation {
   readonly text: string
   /** Inclusive seq range of the turn's events. */
   readonly seq: readonly [number, number]
+}
+
+/** One turn in a batch with its extracted transcript. */
+interface BatchTurn {
+  /** Completed-turn input from the organizer. */
+  readonly input: TurnEndInput
+  /** Extracted, bounded transcript and seq range. */
+  readonly conversation: TurnConversation
 }
 
 /** Provider/model target of one summarization call. */
@@ -296,6 +332,11 @@ export class MemorySummaryRunner {
     private readonly onSnapshotText?: SnapshotTextSink,
   ) {}
 
+  /** Effective batch size, clamped to the schema's positive integer. */
+  private every(): number {
+    return Math.max(1, Math.floor(this.settings.summarizeEveryTurns))
+  }
+
   /**
    * Start a summary pass, or record this turn as the single pending pass.
    * @param input - the completed turn dispatched by the organizer.
@@ -303,17 +344,44 @@ export class MemorySummaryRunner {
   onTurnEnd(input: TurnEndInput): void {
     if (this.disposed || this.runtimeSignal.aborted) return
     const state = this.stateFor(input.session.id)
-    if (state.running) {
-      state.pending = input
+    if (this.every() === 1) {
+      if (state.running) {
+        state.pending = input
+        return
+      }
+      this.start(input)
       return
     }
-    this.start(input)
+    state.batch.push(input)
+    if (!state.running && state.batch.length >= this.every()) this.startNextBatch(state)
   }
 
-  /** Stop starting passes and drop per-session state; a live job settles on its signal. */
+  /**
+   * Flush a session's partial batch, or every session's when no id is given.
+   *
+   * Called on session disposal, where a partial batch would otherwise stay
+   * unsummarized forever. A running pass records the request and flushes when
+   * it settles; a failed flush keeps the turns in the batch for the next
+   * trigger.
+   * @param sessionId - session to flush; omitted flushes every retained session.
+   */
+  flush(sessionId?: SessionId | string): void {
+    if (this.disposed || this.runtimeSignal.aborted) return
+    for (const [id, state] of this.sessions) {
+      if (sessionId !== undefined && String(sessionId) !== String(id)) continue
+      if (state.batch.length === 0) continue
+      if (state.running) {
+        state.flushRequested = true
+        continue
+      }
+      this.startNextBatch(state, true)
+    }
+  }
+
+  /** Stop starting passes and flush partial batches as a last attempt; a live job settles on its signal. */
   dispose(): void {
+    this.flush()
     this.disposed = true
-    this.sessions.clear()
     this.noticed.clear()
   }
 
@@ -321,7 +389,7 @@ export class MemorySummaryRunner {
   private stateFor(sessionId: SessionId): SessionSummaryState {
     let state = this.sessions.get(sessionId)
     if (state === undefined) {
-      state = { running: false, pending: undefined }
+      state = { running: false, pending: undefined, batch: [], inFlight: [], flushRequested: false }
       this.sessions.set(sessionId, state)
     }
     return state
@@ -374,6 +442,95 @@ export class MemorySummaryRunner {
         this.ctx.logger.debug('memory: summary job wait ended early: %s', errorMessage(error))
       },
     )
+  }
+
+  /** Start the next batch (up to N turns) from the session's accumulated queue. */
+  private startNextBatch(state: SessionSummaryState, flush = false): void {
+    if (this.disposed || this.runtimeSignal.aborted) return
+    const count = flush ? state.batch.length : Math.min(state.batch.length, this.every())
+    if (count === 0) return
+    this.startBatch(state.batch.splice(0, count))
+  }
+
+  /** Start one job that summarizes a whole batch with a single model call. */
+  private startBatch(batch: readonly TurnEndInput[]): void {
+    if (batch.length === 0) return
+    const sessionId = batch[0]?.session.id
+    if (sessionId === undefined) return
+    const state = this.stateFor(sessionId)
+    const jobs = this.ctx.get('jobs')
+    if (jobs === undefined) {
+      state.batch = [...batch, ...state.batch]
+      this.ctx.logger.debug('memory: background jobs are not available; keeping %d pending turn(s)', batch.length)
+      return
+    }
+    state.running = true
+    state.inFlight = [...batch]
+    state.flushRequested = false
+    const controller = new AbortController()
+    const signal = AbortSignal.any([
+      this.runtimeSignal,
+      ...batch.map(input => input.signal),
+      controller.signal,
+    ])
+    let jobId: JobId
+    try {
+      jobId = jobs.start({
+        kind: MEMORY_SUMMARY_JOB_KIND,
+        owner: sessionId,
+        label: MEMORY_SUMMARY_JOB_LABEL,
+        run: (): JobHooks => {
+          const work = this.runBatchPass(batch, signal)
+          void work.then(
+            (outcome) => { this.afterBatch(sessionId, batch, outcome) },
+            () => { this.afterBatch(sessionId, batch, { status: 'failed' }) },
+          )
+          return startJobHooks(work, controller)
+        },
+      })
+    } catch (error: unknown) {
+      state.running = false
+      state.inFlight = []
+      state.batch = [...batch, ...state.batch]
+      this.ctx.logger.debug('memory: summary batch job not started: %s', errorMessage(error))
+      return
+    }
+    void jobs.wait(jobId, MEMORY_SUMMARY_WAIT_TIMEOUT_MS, sessionId).then(
+      (settled) => {
+        if (settled.status === 'running' || settled.status === 'stopping') return
+        try {
+          jobs.remove(jobId, sessionId)
+        } catch (error: unknown) {
+          this.ctx.logger.debug('memory: could not remove the settled summary job: %s', errorMessage(error))
+        }
+      },
+      (error: unknown) => {
+        this.ctx.logger.debug('memory: summary job wait ended early: %s', errorMessage(error))
+      },
+    )
+  }
+
+  /** Release a settled batch and start the next full batch or a requested flush. */
+  private afterBatch(
+    sessionId: SessionId,
+    batch: readonly TurnEndInput[],
+    outcome: JobOutcome,
+  ): void {
+    const state = this.stateFor(sessionId)
+    state.running = false
+    state.inFlight = []
+    if (this.disposed || this.runtimeSignal.aborted) return
+    if (outcome.status !== 'completed') {
+      // Keep the failed batch ahead of turns that arrived meanwhile. The next
+      // completed turn (or a later flush) retries it; this avoids a hot loop.
+      state.batch = [...batch, ...state.batch]
+      return
+    }
+    if (state.flushRequested && state.batch.length > 0) {
+      this.startNextBatch(state, true)
+      return
+    }
+    if (state.batch.length >= this.every()) this.startNextBatch(state)
   }
 
   /** Release the session and start the one pending pass, if any. */
@@ -500,6 +657,127 @@ export class MemorySummaryRunner {
       )
       this.ctx.logger.debug('memory: summary failure detail: %o', error)
       this.appendFailureNotice(input.session, failure)
+      return { status: 'failed', detail: `[${failure.code}] ${errorMessage(error)}`.slice(0, 240) }
+    }
+  }
+
+  /** Summarize a whole batch with one model call, containing every failure to an outcome and a notice. */
+  private async runBatchPass(batch: readonly TurnEndInput[], signal: AbortSignal): Promise<JobOutcome> {
+    const startedAt = Date.now()
+    let inputBytes = 0
+    let target = 'none'
+    let attempts = 0
+    const first = batch[0]
+    if (first === undefined) return { status: 'completed' }
+    const session = first.session
+    const turnLabel = batch.map(input => String(input.turn)).join(',')
+    try {
+      const current = await readMemoryDocument(this.ctx, session, signal)
+      if (summaryPaused(current.document)) {
+        this.ctx.logger.debug('memory: summary paused; skipping turns %s', turnLabel)
+        return { status: 'completed' }
+      }
+      const turns: BatchTurn[] = []
+      for (const input of batch) {
+        const conversation = await readTurnConversation(this.ctx, session, input.turn, signal)
+        if (conversation.text.length === 0) {
+          this.ctx.logger.debug('memory: turn %d has no conversation surface; omitted from the batch', input.turn)
+          continue
+        }
+        turns.push({ input, conversation })
+        inputBytes += byteLength(conversation.text)
+      }
+      if (turns.length === 0) return { status: 'completed' }
+      const resolved = resolveSummaryTarget(this.settings, first.agent)
+      if (resolved === undefined) {
+        throw new Error(
+          'no provider/model available for memory summarization: set summarizationProvider and summarizationModel,'
+          + ' route one request, or set both AgentOptions fields',
+        )
+      }
+      target = `${resolved.provider}/${resolved.model}`
+      const raw = await streamBatchSummaryWithRetry(
+        this.ctx,
+        resolved,
+        turns,
+        session.id,
+        signal,
+        () => { attempts += 1 },
+      )
+      const summaries = parseBatchSummaryEntries(raw, turns.map(turn => ({
+        turn: turn.input.turn,
+        seq: turn.conversation.seq,
+      })))
+      signal.throwIfAborted()
+      const latestTurn = Math.max(...turns.map(turn => turn.input.turn))
+      const compactionSeq = await lastCompactionSeq(this.ctx, session, signal)
+      const checkpointSeq = lastCheckpointSeq(current.document, String(session.id))
+      const allowSurfaceReplace = compactionSeq !== undefined
+        && (checkpointSeq === undefined || compactionSeq > checkpointSeq)
+      try {
+        await migrateMemoryTiers(
+          this.ctx,
+          session,
+          latestTurn,
+          (range, detail, migrationSignal) => compressBriefEntries(
+            this.ctx,
+            resolved,
+            range,
+            detail,
+            session.id,
+            migrationSignal,
+          ),
+          signal,
+          {
+            window: this.settings.window,
+            maxBytes: this.settings.maxBytes,
+            maxEntries: this.settings.maxEntries,
+            allowSurfaceReplace,
+          },
+        )
+      } catch (error: unknown) {
+        if (signal.aborted) return { status: 'killed' }
+        this.ctx.logger.warn('memory: tier migration failed before turns %s: %s', turnLabel, errorMessage(error))
+      }
+      await appendTurnSummaries(this.ctx, session, summaries, signal, {
+        window: this.settings.window,
+        maxBytes: this.settings.maxBytes,
+        maxEntries: this.settings.maxEntries,
+        openTtlDays: this.settings.openTtlDays,
+        filesTtlDays: this.settings.filesTtlDays,
+        supersessionMinSharedTags: this.settings.supersessionMinSharedTags,
+      })
+      await refreshMemorySnapshot(this.ctx, first.agent, signal, {
+        template: this.settings.snapshotTemplate,
+        position: this.settings.snapshotPosition,
+        ...this.onSnapshotText === undefined ? {} : { onText: this.onSnapshotText },
+      })
+      this.noticed.delete(session.id)
+      this.ctx.logger.debug(
+        'memory: summarized turns %s (%d input bytes, model %s, %d ms, %d attempt(s), batch %d)',
+        turnLabel,
+        inputBytes,
+        target,
+        Date.now() - startedAt,
+        attempts,
+        turns.length,
+      )
+      return { status: 'completed' }
+    } catch (error: unknown) {
+      if (signal.aborted) return { status: 'killed' }
+      const failure = classifySummaryFailure(error, attempts)
+      this.ctx.logger.warn(
+        'memory: summary batch failed for turns %s (%d input bytes, model %s, %d ms, code %s, %d attempt(s)): %s',
+        turnLabel,
+        inputBytes,
+        target,
+        Date.now() - startedAt,
+        failure.code,
+        failure.attempts,
+        errorMessage(error),
+      )
+      this.ctx.logger.debug('memory: summary batch failure detail: %o', error)
+      this.appendFailureNotice(session, failure)
       return { status: 'failed', detail: `[${failure.code}] ${errorMessage(error)}`.slice(0, 240) }
     }
   }
@@ -694,6 +972,56 @@ async function streamSummaryWithRetry(
   }
 }
 
+/** Render the bounded transcript for a batch, naming each turn's seq range. */
+function renderBatchTranscript(turns: readonly BatchTurn[]): string {
+  const lines: string[] = []
+  for (const turn of turns) {
+    const [start, end] = turn.conversation.seq
+    lines.push(`=== turn ${String(turn.input.turn)} (seq ${String(start)}–${String(end)}) ===`)
+    lines.push(turn.conversation.text)
+  }
+  return boundConversation(lines)
+}
+
+/** Run one one-shot batch summary call and return the assembled text. */
+async function streamBatchSummary(
+  ctx: Context,
+  target: SummaryTarget,
+  turns: readonly BatchTurn[],
+  sessionId: SessionId,
+  signal: AbortSignal,
+): Promise<string> {
+  return streamInstruction(
+    ctx,
+    target,
+    `${BATCH_SUMMARY_INSTRUCTION}
+${renderBatchTranscript(turns)}`,
+    sessionId,
+    signal,
+  )
+}
+
+/** Run one batch summary call with one bounded retry for transient upstream failures. */
+async function streamBatchSummaryWithRetry(
+  ctx: Context,
+  target: SummaryTarget,
+  turns: readonly BatchTurn[],
+  sessionId: SessionId,
+  signal: AbortSignal,
+  onAttempt: () => void,
+): Promise<string> {
+  for (let attempt = 1; ; attempt += 1) {
+    onAttempt()
+    try {
+      return await streamBatchSummary(ctx, target, turns, sessionId, signal)
+    } catch (error: unknown) {
+      if (signal.aborted || attempt >= MEMORY_SUMMARY_MAX_ATTEMPTS || !isRetryableSummaryFailure(error)) throw error
+      await new Promise<void>((resolve) => { setTimeout(resolve, MEMORY_SUMMARY_RETRY_DELAY_MS) })
+      signal.throwIfAborted()
+    }
+  }
+}
+
 /** Compress one detail section with the same model target as the summary job. */
 async function compressBriefEntries(
   ctx: Context,
@@ -781,6 +1109,58 @@ export function parseSummaryEntries(text: string): readonly MemoryEntry[] {
   }
   if (entries.length > 0) return entries
   return [{ kind: 'decision', text: fallbackEntryText(text) }]
+}
+
+/**
+ * Parse a batch reply into one entry group per requested turn.
+ *
+ * This path is strict: every requested turn must appear exactly once with one
+ * to four valid entries. Unlike the single-turn fallback, a malformed batch is
+ * an error so the whole batch stays pending and is retried rather than being
+ * recorded under the wrong turn.
+ * @param text - raw model output.
+ * @param turns - requested turns and their seq ranges, in batch order.
+ * @returns one validated entry group per requested turn.
+ * @throws Error when the reply is not a complete `{ turns: [...] }` document for this batch.
+ */
+export function parseBatchSummaryEntries(
+  text: string,
+  turns: readonly { readonly turn: number; readonly seq: readonly [number, number] }[],
+): readonly MemoryTurnSummaryInput[] {
+  const parsed = parseSummaryJson(text)
+  const values = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)['turns']
+    : undefined
+  if (!Array.isArray(values)) throw new Error('memory: batch summary returned no turns array')
+  const expected = new Set(turns.map(turn => turn.turn))
+  const byTurn = new Map<number, readonly MemoryEntry[]>()
+  for (const value of values) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new Error('memory: batch summary turn is not an object')
+    }
+    const record = value as Record<string, unknown>
+    const turn = record['turn']
+    if (typeof turn !== 'number' || !Number.isInteger(turn) || !expected.has(turn)) {
+      throw new Error(`memory: batch summary returned an unexpected turn ${String(turn)}`)
+    }
+    if (byTurn.has(turn)) throw new Error(`memory: batch summary repeats turn ${String(turn)}`)
+    const candidates = record['entries']
+    if (!Array.isArray(candidates)) throw new Error(`memory: batch summary turn ${String(turn)} has no entries array`)
+    const entries: MemoryEntry[] = []
+    for (const candidate of candidates) {
+      const entry = parseSummaryEntry(candidate)
+      if (entry === undefined) continue
+      entries.push(entry)
+      if (entries.length === 4) break
+    }
+    if (entries.length === 0) throw new Error(`memory: batch summary turn ${String(turn)} has no valid entries`)
+    byTurn.set(turn, entries)
+  }
+  return turns.map((turn) => {
+    const entries = byTurn.get(turn.turn)
+    if (entries === undefined) throw new Error(`memory: batch summary omitted turn ${String(turn.turn)}`)
+    return { turn: turn.turn, seq: turn.seq, entries }
+  })
 }
 
 /**
