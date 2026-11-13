@@ -57,7 +57,11 @@ describe('homeWriteRoots', () => {
     expect(homeWriteRoots({ platform: 'win32', home: 'C:\\Users\\dev', systemDrive: 'C:', configured: ['C:\\Windows'] })).toEqual([])
   })
 
-  it('lets a configured override replace the platform default and expand ~', () => {
+  // The case drives win32 path semantics against POSIX scratch paths, and
+  // `path.win32.resolve('/tmp/...')` mangles the fixture into `C:\...`, so the
+  // existence filter drops it on Linux. The win32 host lane covers this case; the
+  // adjacent win32 cases use literal drive paths and stay portable.
+  it.skipIf(process.platform !== 'win32')('lets a configured override replace the platform default and expand ~', () => {
     const home = scratchDir('dsh-home-home-')
     const data = join(home, 'data')
     mkdirSync(data)

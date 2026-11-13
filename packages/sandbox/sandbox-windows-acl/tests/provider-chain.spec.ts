@@ -4,7 +4,9 @@
  * platform and runner argv prefix. Platform-independent assertions: they run
  * in every CI lane (Windows included, where sandbox-local's own POSIX-only
  * suites are excluded) — the end-to-end runner behavior lives in
- * runner.spec.ts on win32 hosts.
+ * runner.spec.ts on win32 hosts. The suite is skipped here because this branch
+ * keeps the Windows ACL backend out of the production chain and the provider
+ * refuses every confining win32 call instead of building runner argv.
  */
 
 import { tmpdir } from 'node:os'
@@ -25,7 +27,11 @@ async function setup(internals: LocalSandboxProvider['internals']) {
 }
 
 describe('windows-acl win32 chain (LocalSandboxProvider)', () => {
-  it('agentless workspace-write: runner argv prefix, temp root, mode flag, partial enforcement, ACL denial dialect', async () => {
+  // Local branch decision: the Windows ACL backend stays disabled in the production
+  // chain (docs/subsystems/sandbox.md#windows-acl-backend-disabled-in-production), so
+  // LocalSandboxProvider refuses these calls with SandboxUnavailableError before any
+  // runner argv exists. Both cases are skipped until that backend is re-enabled.
+  it.skip('agentless workspace-write: runner argv prefix, temp root, mode flag, partial enforcement, ACL denial dialect', async () => {
     const probeWindowsAcl = vi.fn(() => true)
     const sandbox = await setup({
       platform: 'win32',
@@ -51,7 +57,7 @@ describe('windows-acl win32 chain (LocalSandboxProvider)', () => {
     expect(probeWindowsAcl).not.toHaveBeenCalled()
   })
 
-  it('read-only: same runner and contract, read-only mode flag', async () => {
+  it.skip('read-only: same runner and contract, read-only mode flag', async () => {
     const sandbox = await setup({ platform: 'win32', windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'] })
     const confined = await sandbox.confine(['true'], RO)
     expect(confined.argv.slice(-4)).toEqual(['--mode', 'read-only', '--', 'true'])

@@ -12,11 +12,14 @@
   en: c6ce1ffd1363ed01
   zh: 6cd491dc61821fa1
 /sandbox-and-soft-tool-policy/windows-acl-backend-limitation-disk-scoped-not-process-scoped:
-  en: 2caae37f8b39aa1c
-  zh: 9ed790c26b6dede0
+  en: 2053aa30b488d30a
+  zh: ba49a33e034d80a3
+/sandbox-and-soft-tool-policy/windows-acl-backend-limitation-disk-scoped-not-process-scoped/branch-decision-the-windows-acl-backend-stays-disabled:
+  en: 985c13a4994e91c7
+  zh: d104da826fbe0a9b
 /sandbox-and-soft-tool-policy/modes-and-enforcement:
-  en: 8f22f76f10b31d91
-  zh: 5a3e95166ac2a009
+  en: 92090579a9a3972b
+  zh: 638f27ff82909faf
 /sandbox-and-soft-tool-policy/modes-and-enforcement/decision-home-write-is-the-single-user-data-mode:
   en: 8fa3b1bd80d7cbdb
   zh: 8c0432d2eac6c0ed

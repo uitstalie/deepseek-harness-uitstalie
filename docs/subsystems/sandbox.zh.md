@@ -57,9 +57,21 @@ icacls "<root>" /setintegritylevel "(OI)(CI)M"
 
 **对之后每一项沙箱改动的约束。** 沙箱改动**不得**对 home 根、盘根或任何其他宽目录写完整性标签或 DACL 项。隔离**必须**跟着进程走——受限令牌、Job 对象、AppContainer、独立用户或远程执行——并且**必须**可撤销、作用域最小：离开会话、切换模式或崩溃都不能留下磁盘状态。若将来恢复基于 ACL 的后端，必须先用测试证明这两个性质（退出与崩溃都能清理、不做整棵子树重标），才能再次提供该后端。
 
+<a id="windows-acl-backend-disabled-in-production"></a>
+
+<!-- uitstalie-deepseek-flash, 2026/11/13, DH-906 follow-up, record the branch decision to keep the Windows ACL backend disabled -->
+
+### 分支决策：Windows ACL 后端保持禁用
+
+本分支有意让 Windows ACL 受限令牌后端留在生产链之外，这一点与仍随上游发布该后端的情况不同。`sandbox-local` 的 Windows runner 列表为空，直接构造 `AclSandbox` 会在任何授权或派生进程之前被拒绝，`home-write` 在每个有效模式边界都被拒绝，因此 Windows 上每一次受限调用都以 `SandboxUnavailableError` fail-closed，而不是无隔离地运行。
+
+本分支原样保留上游后续的沙箱改造：`SandboxPreparationError` 及其 `SANDBOX_PREPARATION_FAILED`、`SANDBOX_INVALID_TEMP_ROOT`，临时根位于工作区内的检查，按目录的写身份组合，以及「Windows 额外目录授权只作用于 Harness 的 `write` 与 `edit` 工具」这条规则。`home-write` 实现与其 `excludePaths` 仍留在代码中，由唯一的 `HOME_WRITE_ENABLED` 开关控制；受隔离的 Windows 子进程仍可通过配置的独立 `runnerCommand` 运行。
+
+重新启用该后端之前必须先证明三件事：会话退出与崩溃后都能清除它写入的 ACL 状态；授权过程绝不重标已存在的子树；以及受限子进程的逃逸写入被拒绝的测试。在这些条件满足之前，本分支不得把 Windows 条目加回生产 runner 链。
+
 ## 模式与强制执行
 
-`SandboxMode` 仅管控文件系统效果。`read-only` 要求后端拒绝写入——POSIX runner 还会授予其 shell 所需的 `/dev/null` 接收器，而 Windows ACL runner 不授予任何显式可写根目录，并因环境 ACL 缺口报告部分强制执行；`workspace-write` 允许在工作区根目录、受支持的额外目录及后端承诺的临时区域下写入；`home-write` 允许在用户主目录、Windows 上除系统盘之外的每个固定盘、会话工作区及配置的临时例外下写入，`excludePaths` 在任意被授权根目录内挖出只读洞；`danger-full-access` 绕过隔离。Windows 子进程忽略额外目录授权；Harness 文件工具独立执行这些授权。网络与进程可见性不在此处的定义范围内。
+`SandboxMode` 仅管控文件系统效果。`read-only` 要求后端拒绝写入——POSIX runner 还会授予其 shell 所需的 `/dev/null` 接收器，而 Windows ACL runner 不授予任何显式可写根目录，并因环境 ACL 缺口报告部分强制执行（本分支不让该 runner 进入生产链，见[分支决策](#windows-acl-backend-disabled-in-production)）；`workspace-write` 允许在工作区根目录、受支持的额外目录及后端承诺的临时区域下写入；`home-write` 允许在用户主目录、Windows 上除系统盘之外的每个固定盘、会话工作区及配置的临时例外下写入，`excludePaths` 在任意被授权根目录内挖出只读洞；`danger-full-access` 绕过隔离。Windows 子进程忽略额外目录授权；Harness 文件工具独立执行这些授权。网络与进程可见性不在此处的定义范围内。
 
 ```ts type-equiv
 /**

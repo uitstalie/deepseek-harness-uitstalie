@@ -57,9 +57,21 @@ The label also follows the executable into the process. A Medium-integrity proce
 
 **Constraint for every later sandbox change.** A sandbox change MUST NOT write integrity labels or DACL entries to a home root, a drive root, or any other broad directory. Isolation MUST follow the process — a restricted token, a Job object, an AppContainer, a separate user, or remote execution — and it MUST be revocable and least-scope: leaving the session, switching modes, or crashing must leave no disk state behind. Restoring an ACL-based backend requires both properties to be proven by tests (cleanup on exit and on crash, and no whole-subtree relabel) before it can be offered again.
 
+<a id="windows-acl-backend-disabled-in-production"></a>
+
+<!-- uitstalie-deepseek-flash, 2026/11/13, DH-906 follow-up, record the branch decision to keep the Windows ACL backend disabled -->
+
+### Branch decision: the Windows ACL backend stays disabled
+
+This branch deliberately keeps the Windows ACL restricted-token backend out of the production chain, diverging from upstream, which still ships it. `sandbox-local` publishes an empty Windows runner list, a direct `AclSandbox` construction is refused before it grants or spawns anything, and `home-write` is refused at every effective-mode boundary, so every confining Windows call fails closed with `SandboxUnavailableError` instead of running unconfined.
+
+The branch carries upstream's later sandbox work unchanged: `SandboxPreparationError` with `SANDBOX_PREPARATION_FAILED` and `SANDBOX_INVALID_TEMP_ROOT`, the temp-root-inside-workspace check, the per-directory write identities, and the rule that Windows extra directory grants reach only the harness `write` and `edit` tools. The `home-write` implementation and its `excludePaths` stay in the tree behind the single `HOME_WRITE_ENABLED` switch, and a configured isolated `runnerCommand` remains the supported way to run confined Windows subprocesses.
+
+Re-enabling the backend needs all three properties proven first: a cleanup path that removes its ACL state on session exit and after a crash, a grant that never relabels an existing subtree, and a test in which the confined child's escape write is denied. Until then this branch must not add a Windows entry back to the production runner chain.
+
 ## Modes and enforcement
 
-`SandboxMode` governs filesystem effects only. `read-only` asks the backend to deny writes — the POSIX runners additionally grant the `/dev/null` sink their shells require, while the Windows ACL runner grants no explicit writable root and reports partial enforcement for its ambient ACL gaps; `workspace-write` permits writes under the workspace root, extra directories where supported, and the backend's promised temp area; `home-write` permits writes under the user's home and — on Windows — every fixed drive except the system drive, plus the session workspace and configured temp exceptions, with `excludePaths` carving read-only holes out of any granted root; `danger-full-access` bypasses confinement. Windows subprocesses ignore extra directory grants; the harness file tools enforce them independently. Network and process visibility are outside this vocabulary.
+`SandboxMode` governs filesystem effects only. `read-only` asks the backend to deny writes — the POSIX runners additionally grant the `/dev/null` sink their shells require, while the Windows ACL runner grants no explicit writable root and reports partial enforcement for its ambient ACL gaps (this branch keeps that runner out of the production chain; see [the branch decision](#windows-acl-backend-disabled-in-production)); `workspace-write` permits writes under the workspace root, extra directories where supported, and the backend's promised temp area; `home-write` permits writes under the user's home and — on Windows — every fixed drive except the system drive, plus the session workspace and configured temp exceptions, with `excludePaths` carving read-only holes out of any granted root; `danger-full-access` bypasses confinement. Windows subprocesses ignore extra directory grants; the harness file tools enforce them independently. Network and process visibility are outside this vocabulary.
 
 ```ts type-equiv
 /**
