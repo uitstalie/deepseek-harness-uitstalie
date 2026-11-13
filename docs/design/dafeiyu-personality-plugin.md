@@ -395,7 +395,7 @@ Result contract:
 
 ### 7.1 Form
 
-**Tool `write_like_human` + global `WRITING_RULES.yaml` + prompt section 695.** It is not a skill, does not depend on the skill catalog, and no longer has a separate blacklist file.
+**Tool `write_like_human` + global `WRITING_RULES.yaml` + prompt section 695.** It is not a skill, does not depend on the skill catalog, and no longer has a separate blacklist file. It is implemented in `src/writing-tool.ts` and registered only for a root agent through the organizer's `tools(agent)` filter; section 695 is still injected for every agent.
 
 ### 7.2 Tool interface
 
@@ -576,8 +576,8 @@ No new skill directory is needed, and `skill-filesystem`/`tool-skill` need no ch
 - Decide the new `PERSONALITY.md` format and the legacy backup path before writing tools; otherwise `personality_apply` will write old-format compatibility code.
 - Old data backup must complete before the first new write; when the backup fails, new writes are forbidden.
 - The workspace old-file warning is process-wide once (once per workspace path); do not spam the log on every request.
-- Tool visibility: `personality_analyze` is visible to every agent; `personality_apply` is root-only, enforced through the dafeiyu `tools(agent)` filter rather than a prompt. `write_like_human` visibility remains a separate decision.
-- `write_like_human` modifies global rules; it is recommended to expose it only to root/super agent; if all agents need read access, the section is injected for all agents, but the tool is given only to authorized roles.
+- Tool visibility: `personality_analyze` is visible to every agent; `personality_apply` and `write_like_human` are root-only, enforced through the dafeiyu `tools(agent)` filter rather than a prompt. Section 695 stays all-agent, so child agents read the rules but cannot change them.
+- `write_like_human` modifies global rules; it is exposed only to the root agent. The rules section is injected for all agents, so read access does not depend on the tool.
 
 ### 11.3 Data and paths
 
@@ -587,7 +587,7 @@ No new skill directory is needed, and `skill-filesystem`/`tool-skill` need no ch
 
 ## 12. Not done in this rewrite
 
-- The `write_like_human` tool and the new output-style/writing-rules UI pages are not part of this rewrite.
+- The new output-style/writing-rules UI pages are not part of this rewrite.
 - Do not build workspace override/overlay/scope; do not write workspace personality.
 - Do not build turn-end automatic learning, regexes, background scanning, or automatic writes.
 - Do not migrate old data; do not delete old data; do not keep old API compatibility aliases.
@@ -601,4 +601,4 @@ No new skill directory is needed, and `skill-filesystem`/`tool-skill` need no ch
 
 1. Should old data be **deleted** after backup? This design only backs up and does not delete; if the user wants deletion, a separate explicit cleanup command is required.
 2. Does the Loader reject unknown config keys? If yes, keep `workspaceOverlay` as an ignored deprecated key for one release and annotate it in the config catalog; otherwise delete the field.
-3. Should the `write_like_human` tool be given only to root/super agent? The section is injected for all agents; write permission is recommended to be narrowed.
+3. Resolved: the `write_like_human` tool is given only to the root agent, through `tools(agent)`; child agents receive section 695 as read-only context.

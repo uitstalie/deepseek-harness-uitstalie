@@ -144,7 +144,7 @@ function appendUser(agent: Agent, text: string, turn = 1): void {
   }), { surfaceOp: 'append' })
 }
 
-test('registers the all-agent analyze tool, root apply, and three prompt sections', async () => {
+test('registers the all-agent analyze tool, root apply and writing tools, and three prompt sections', async () => {
   const entries = [entry('style', 'language', '用中文回答；代码保持英文原文。')]
   await seedGlobal(entries)
   const mounted = await mount()
@@ -161,6 +161,7 @@ test('registers the all-agent analyze tool, root apply, and three prompt section
   expect(await promptText(mounted.ctx, root)).toBe(renderPersonalitySection(entries))
   expect(mounted.ctx.tools.get('personality_analyze', root)).toBeDefined()
   expect(mounted.ctx.tools.get('personality_apply', root)).toBeDefined()
+  expect(mounted.ctx.tools.get('write_like_human', root)).toBeDefined()
   const names = (await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))).sections.map(section => section.name)
   expect(names).toEqual(expect.arrayContaining(['personality', 'personality:output-style', 'personality:writing-rules']))
 })
@@ -195,7 +196,38 @@ test('child agents inherit analyze and the profile section but not apply', async
 
   expect(await promptText(mounted.ctx, child.agent)).toBe(renderPersonalitySection(entries))
   expect(mounted.ctx.tools.get('personality_apply', child.agent)).toBeUndefined()
+  expect(mounted.ctx.tools.get('write_like_human', child.agent)).toBeUndefined()
   await child.dispose()
+})
+
+test('write_like_human writes the global file and refreshes the injected section', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+
+  const added = await call(mounted.ctx, root, 'write_like_human', {
+    action: 'add',
+    id: 'no-em-dash',
+    text: 'Prefer no em dash.',
+  })
+  expect(text(added)).toContain('no-em-dash')
+  expect(text(added)).toContain('1 rule(s)')
+  const stored = await readFile(join(project, 'home', 'personality', 'WRITING_RULES.yaml'), 'utf8')
+  expect(stored).toContain('no-em-dash')
+
+  const assembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))
+  const section = assembly.sections.find(candidate => candidate.name === 'personality:writing-rules')
+  expect(section?.text).toBe('- Prefer no em dash.')
+
+  const preview = await call(mounted.ctx, root, 'write_like_human', { action: 'preview' })
+  expect(text(preview)).toContain('Injected text:')
+
+  const duplicate = await call(mounted.ctx, root, 'write_like_human', {
+    action: 'add',
+    id: 'no-em-dash',
+    text: 'Again.',
+  })
+  expect(text(duplicate)).toContain('write_like_human failed')
+  expect(text(duplicate)).toContain('already exists')
 })
 
 test('accepts the legacy config shape without adding settings metadata', async () => {

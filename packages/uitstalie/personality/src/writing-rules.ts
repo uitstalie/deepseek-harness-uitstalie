@@ -2,9 +2,9 @@
  * The global writing-rules data and section text.
  *
  * The file is user-owned YAML at `$DSH_HOME/personality/WRITING_RULES.yaml`.
- * The model-facing CRUD tool is registered later; this module owns validation,
- * the 32-rule / 4 KiB bounds, the canonical preview, and the version-guarded
- * read/write pair. It is not registered on an agent here.
+ * This module owns validation, the 32-rule / 4 KiB bounds, the canonical
+ * preview, and the version-guarded read/write pair; `writing-tool.ts` is the
+ * root-only model-facing CRUD tool built on it.
  * @module @deepseek-ai/dsh-personality/writing-rules
  */
 

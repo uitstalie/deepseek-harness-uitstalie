@@ -395,7 +395,7 @@ Result contract:
 
 ### 7.1 形态
 
-**工具 `write_like_human` + 全局 `WRITING_RULES.yaml` + prompt section 695。** 不是 skill，不依赖 skill catalog，不再有独立黑名单文件。
+**工具 `write_like_human` + 全局 `WRITING_RULES.yaml` + prompt section 695。** 不是 skill，不依赖 skill catalog，不再有独立黑名单文件。它实现在 `src/writing-tool.ts`，通过组织者的 `tools(agent)` 过滤只注册给 root agent；section 695 仍对所有 agent 注入。
 
 ### 7.2 工具接口
 
@@ -576,8 +576,8 @@ super agent 派发
 - 先决定 `PERSONALITY.md` 新格式和 legacy 备份路径，再写工具；否则 `personality_apply` 会写出旧格式兼容代码。
 - 旧数据备份必须在第一次新写入前完成；备份失败时禁止新写入。
 - 工作区旧文件警告是进程内一次性的（每个 workspace path 一次）；不要每次请求都刷日志。
-- 工具可见性：`personality_analyze` 对所有 agent 可见；`personality_apply` 仅 root，通过 dafeiyu `tools(agent)` 过滤，不靠提示。`write_like_human` 的可见性仍是单独决定。
-- `write_like_human` 修改全局规则，建议只对 root/super agent 开放；如果需要所有 agent 可读，section 对所有 agent 注入，但工具只给授权角色。
+- 工具可见性：`personality_analyze` 对所有 agent 可见；`personality_apply` 与 `write_like_human` 仅 root，通过 dafeiyu `tools(agent)` 过滤，不靠提示。section 695 仍对所有 agent 注入，所以子 agent 能读规则、不能改。
+- `write_like_human` 修改全局规则，只对 root agent 开放。规则 section 对所有 agent 注入，读权限不依赖该工具。
 
 ### 11.3 数据与路径
 
@@ -587,7 +587,7 @@ super agent 派发
 
 ## 12. 本次重写不做
 
-- `write_like_human` 工具与新的 output-style/writing-rules UI 页面不在本次重写范围内。
+- 新的 output-style/writing-rules UI 页面不在本次重写范围内。
 - 不做工作区 override/overlay/scope；不写工作区 personality。
 - 不做 turn-end 自动学习、正则、后台扫描、自动写入。
 - 不迁移旧数据；不删除旧数据；不保留旧 API 兼容别名。
@@ -601,4 +601,4 @@ super agent 派发
 
 1. 旧数据是否要在备份后**删除**？本设计只备份、不删除；如果用户要删，需单独的显式清理命令。
 2. Loader 对未知 config key 是否报错？若报错，`workspaceOverlay` 保留一版 ignored deprecated key，并在 config catalog 里注明；否则删字段。
-3. `write_like_human` 工具是否只给 root/super agent？section 对所有 agent 注入；写权限建议收窄。
+3. 已定：`write_like_human` 工具只给 root agent，通过 `tools(agent)` 过滤；子 agent 只拿到 section 695 作为只读上下文。

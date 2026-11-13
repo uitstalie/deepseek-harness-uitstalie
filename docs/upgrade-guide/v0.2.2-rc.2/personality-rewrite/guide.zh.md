@@ -17,7 +17,7 @@ description: "personality 能力重写：工作区覆盖、自动学习、propos
 - 包导出 `./remote`、`./types`、`./typert`、`./locale/*.json`；`ui-personality` 设置页及其整包；
 - `Config` schema 及 `workspaceOverlay`、`maxBytes`、`autoLearn`、`historyLimit` 键。Loader 不拒绝未知键，所以旧行仍能加载，这些值被忽略。
 
-新的模型面：每个 agent 都有只读的 `personality_analyze`，只有 root agent 有 `personality_apply`，且必须传字面量 `confirm: true`。三个提示词段取代原来的一个：档案 100、输出风格 690、写作规则 695。
+新的模型面：每个 agent 都有只读的 `personality_analyze`；只有 root agent 有 `personality_apply`（必须传字面量 `confirm: true`）和维护全局规则的 `write_like_human`。三个提示词段取代原来的一个：档案 100、输出风格 690、写作规则 695。
 
 ## 迁移
 
@@ -38,7 +38,7 @@ description: "personality 能力重写：工作区覆盖、自动学习、propos
    ```
 
    id 是 `<kind>.<lower-kebab-name>`；`identity` 条目只能手改。单条最多 400 字符，文档最多 32 KiB。
-5. 在磁盘上编辑 `OUTPUT_STYLE.yaml` 与 `WRITING_RULES.yaml`。本版本不注册规则工具，因此没有 `write_like_human`。
+5. 在磁盘上编辑 `OUTPUT_STYLE.yaml`。root agent 通过 `write_like_human` 维护 `WRITING_RULES.yaml`；子 agent 只读注入的规则，要改需回主会话。人仍可直接编辑该文件。
 6. 替换已移除的调用：`personality_learn` 与 `personality_propose` 改为先 `personality_analyze`、再由用户明确确认的 `personality_apply`；proposal 审阅和 `/personality` 没有替代；identity 变更改为手改文件。
 
-7. 确认迁移：能力状态列出 `personality`；装配后的提示词包含 order 100/690/695 的 `personality`、`personality:output-style`、`personality:writing-rules`；`personality_analyze` 不改 `PERSONALITY.md`，只有 `confirm: true` 的 `personality_apply` 会写入；工作区 `.dsh/memory/PERSONALITY.md` 只记一次警告且不被读写；设置页不再显示 personality 段，旧的 `legacy/` 文件仍存在。
+7. 确认迁移：能力状态列出 `personality`；装配后的提示词包含 order 100/690/695 的 `personality`、`personality:output-style`、`personality:writing-rules`；`personality_analyze` 不改 `PERSONALITY.md`，只有 `confirm: true` 的 `personality_apply` 会写入；root agent 能看到 `write_like_human`，子 agent 看不到；工作区 `.dsh/memory/PERSONALITY.md` 只记一次警告且不被读写；设置页不再显示 personality 段，旧的 `legacy/` 文件仍存在。

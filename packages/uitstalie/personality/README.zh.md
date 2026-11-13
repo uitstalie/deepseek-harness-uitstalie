@@ -1,5 +1,5 @@
 ---
-description: "personality 能力提供者：全局 PERSONALITY.md 档案、OUTPUT_STYLE.yaml 与 WRITING_RULES.yaml、三个稳定系统提示词段，以及只读的 personality_analyze 和仅 root 可用的 personality_apply 工具。"
+description: "personality 能力提供者：全局 PERSONALITY.md 档案、OUTPUT_STYLE.yaml 与 WRITING_RULES.yaml、三个稳定系统提示词段，以及只读的 personality_analyze 和仅 root 可用的 personality_apply、write_like_human 工具。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-personality` 让每个 agent 在 harness home 下拥有一份稳定、由用户拥有的档案。它读取三个全局文件——`PERSONALITY.md`、`OUTPUT_STYLE.yaml`、`WRITING_RULES.yaml`——并贡献三个提示词段：order 100 的档案、690 的输出风格默认值、695 的已启用写作规则。`personality_analyze` 扫描会话记录，返回带证据的候选且不写文件；root agent 还会拿到 `personality_apply`，它只在 `confirm: true` 后写档案。没有工作区覆盖、没有 turn-end 自动学习、没有历史文件，也没有设置页。
+`dsh-personality` 让每个 agent 在 harness home 下拥有一份稳定、由用户拥有的档案。它读取三个全局文件——`PERSONALITY.md`、`OUTPUT_STYLE.yaml`、`WRITING_RULES.yaml`——并贡献三个提示词段：order 100 的档案、690 的输出风格默认值、695 的已启用写作规则。`personality_analyze` 扫描会话记录，返回带证据的候选且不写文件；root agent 还会拿到 `personality_apply`（只在 `confirm: true` 后写档案）和 `write_like_human`（维护全局写作规则）。没有工作区覆盖、没有 turn-end 自动学习、没有历史文件，也没有设置页。
 
 ## 目录
 
@@ -30,7 +30,7 @@ kind: "package-reference"
   name: '@deepseek-ai/dsh-personality'
 ```
 
-提供者不接受配置：所有上限与路径都由设计固定。它是硬组合依赖，需要 `ctx.dafeiyu`（组织者）、`ctx.dshStore`（全局 scope）、`ctx.fs`（旧档案备份移动）与 `ctx.sessionQuery`（分析）。组织后的贡献是 `scope: 'all'`，因此子 agent 继承三个提示词段和 `personality_analyze`；只有 root agent 会拿到 `personality_apply`。
+提供者不接受配置：所有上限与路径都由设计固定。它是硬组合依赖，需要 `ctx.dafeiyu`（组织者）、`ctx.dshStore`（全局 scope）、`ctx.fs`（旧档案备份移动）与 `ctx.sessionQuery`（分析）。组织后的贡献是 `scope: 'all'`，因此子 agent 继承三个提示词段和 `personality_analyze`；只有 root agent 会拿到 `personality_apply` 和 `write_like_human`。子 agent 只读第 695 段，不能改规则；规则改动影响所有 agent，所以应在主会话里做。
 
 所有数据都在 `<DSH_HOME>/personality/` 下，`$DSH_HOME` 默认是 `~/.dsh`：
 
@@ -47,16 +47,17 @@ kind: "package-reference"
 
 ## 理解实现
 
-`src/index.ts` 是函数插件：导出 `name`、`inject`、能力 id 与标签，以及 `apply`。它只注册一个 `contractVersion: 2`、`id: 'personality'` 的能力，并通过组织者的 `tools(agent)` 过滤接线三个提示词段和两个工具。没有 `Config` 导出，也没有设置元数据。
+`src/index.ts` 是函数插件：导出 `name`、`inject`、能力 id 与标签，以及 `apply`。它只注册一个 `contractVersion: 2`、`id: 'personality'` 的能力，并通过组织者的 `tools(agent)` 过滤接线三个提示词段和三个工具。没有 `Config` 导出，也没有设置元数据。
 
 - `src/global-store.ts` 负责 `PERSONALITY.md`：YAML frontmatter 带 `version`、`updatedAt` 和 `entries` 序列，正文为空。条目 id 是 `<kind>.<lower-kebab-name>`，接受 `understanding`、`preference`、`style`、`identity`。单条最多 400 字符，序列化文档最多 32 KiB。读取走 store atom 的 `global` scope；写入使用 `expected: version`，遇到 `FS_STALE_VERSION` 重试一次，第二次冲突就拒绝覆盖。identity 条目只允许人手写，工具路径拒绝它。
 - 同一个模块负责旧档案备份：优先用 `ctx.fs.moveFile` 移动；后端不能移动时退化为读取 → create-if-absent → 比对哈希 → 删除。命名冲突或残留文件内容不同时，下次启动只报告，不覆盖任一文件。迁移失败时能力保持不可用并阻止写入。
 - `src/output-style.ts` 读取 `OUTPUT_STYLE.yaml`，拒绝未知枚举并渲染该段。`src/writing-rules.ts` 读取 `WRITING_RULES.yaml`，强制 32 条规则和 4096 字节已启用文本上限，为 CRUD 调用方修改文档，并按 `order` 再按 id 渲染已启用规则。两个读取器都把缺失文件视为空，把损坏文件降级为警告。
 - `src/analyze.ts` 通过 `ctx.sessionQuery` 读取会话记录：当前会话、指定会话，或最近 1–20 个会话。它把重复证据聚成带稳定哈希 id 的候选，每条至少有精确摘录和 seq、出现次数，以及 `high` 或 `medium` 置信度。它不写任何文件。
 - `src/apply.ts` 校验 `confirm: true`、1–20 个候选和每个候选的证据，拒绝 `identity`，并通过带版本守卫的存储 upsert 每个被接受的条目。单个候选写失败只记为该候选被拒，不会中止整批。
+- `src/writing-tool.ts` 是仅 root 可用的 `write_like_human` 工具：校验 action，经 `writing-rules.ts` 修改文档，通过 store 的版本守卫写入并在 stale 时重试一次；失败返回可读的 `ok: false` 结果而不是抛栈。stale 冲突后会基于新读取的文档重新应用修改。
 - `src/defaults.ts` 保存首次激活的 seed 文本。`src/profile-prompt.ts` 渲染档案段。
 
-提示词文本按 agent 缓存在 `WeakMap` 里。`onAgentCreated` 为该 agent 读取三个文件；`personality_apply` 成功写入后刷新调用方。没有文件 watcher，所以在工具之外改文件只会到达之后新建的 agent，不会影响运行中的 agent。
+提示词文本按 agent 缓存在 `WeakMap` 里。`onAgentCreated` 为该 agent 读取三个文件；`personality_apply` 与 `write_like_human` 成功写入后都会刷新调用方。没有文件 watcher，所以在工具之外改文件只会到达之后新建的 agent，不会影响运行中的 agent。
 
 <a id="model-experience"></a>
 
@@ -140,13 +141,26 @@ root agent 额外拿到这个工具。它接收 1–20 个候选，每个带 `ki
 
 <a id="known-limitations-and-deferred-work"></a>
 
+### `write_like_human` 工具
+
+#### 模型看到什么
+
+root agent 额外拿到这个工具。必填的 `action` 是 `list`、`add`、`update`、`remove`、`enable`、`disable` 或 `preview`；`id` 用于 update、remove、enable、disable 选择规则，`text`（1–240 字符）在 add/update 时必填，`order` 与 `enabled` 可选。未给 id 时，`add` 从文本推导 lower-kebab id，冲突时追加 `-2`、`-3`。结果包含 `ok`、当前规则的 id/text/enabled/order、文件路径和 store 版本；`preview` 还会返回注入文本；失败时 `ok: false` 并给出可读的 `error`。工具描述说明改动是全局的、影响所有 agent，且只有 root agent 可以调用。
+
+#### Token 影响
+
+schema 是固定成本，加上结果中每条规则一行。32 条上限、单条 240 字符和 4096 字节已启用文本上限把文件和第 695 段都限制住。
+
+#### KV Cache 影响
+
+在规则文件不变时前缀稳定。成功写入会立即刷新调用的 root agent，并从该点起使第 695 段失效；`list` 与 `preview` 不改变提示词。
+
 ## 已知限制与延期工作
 
 - **只有一份全局档案，没有工作区 scope** —— 工作区特有偏好无法覆盖全局文件；当前轮的指令是唯一的工作区级调整。这是本次重写接受的代价。
 - **外部编辑只到达新 agent** —— 没有 watcher。手改三个文件中的任何一个，只对之后创建的 agent 或被 `personality_apply` 刷新的 agent 可见，不影响运行中的对话。
 - **没有历史，也没有 revert** —— 运行时从不读取、写入或复用 `PERSONALITY.history.jsonl`。旧文件作为历史证据留在原处，但没有 diff 或 revert 命令。
 - **分析是启发式且有上限的** —— 一次性任务可能看起来像偏好，所以弱证据报告为 `medium`，用户必须在应用前确认。`recent` 扫描最多读取 20 个会话。
-- **`write_like_human` 工具未注册** —— `WRITING_RULES.yaml` 需要手动编辑。设计仍把该工具的可见性留作待定决策，所以本轮只交付规则文件及其提示词段。
 - **旧 UI 已移除** —— 没有 proposal 队列或设置页。输出风格与写作规则页面是另外的工作，因此两个文件都在磁盘上编辑。
 - **损坏文件会清空对应段** —— 解析失败或手改后超出上限的正文会记为警告，在修好文件前不贡献提示词文本。
 
@@ -159,7 +173,7 @@ root agent 额外拿到这个工具。它接收 1–20 个候选，每个带 `ki
 
 本开发备注是非权威工作上下文：记录尚未决定的问题和方向。已发布行为与已接受的理由在上文各节、[设计记录](../../../docs/design/dafeiyu-personality-plugin.zh.md)和[升级指南](../../../docs/upgrade-guide/v0.2.2-rc.2/personality-rewrite/guide.zh.md)中。
 
-- **是否注册 `write_like_human`** —— `src/writing-rules.ts` 已有 CRUD 函数和上限；接成工具还需设计里仍列作待定的可见性决策。
+- **子 agent 是否应有只读规则工具** —— 目前它们只读第 695 段；给子 agent 一个 `list`/`preview` 工具能省一次回主会话，但不属于已拍板的 root-only 写边界。
 - **是否重新加 watcher** —— watcher 会让生命周期和提示词缓存失效约定变复杂；当前设计接受只在新建 agent 时刷新。
 - **旧档案迁移的回退路径是否每个后端都需要** —— 优先走移动路径，只有后端不能移动文件时才走复制路径。
 

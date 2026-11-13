@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-personality",
-  "description": "Personality capability provider: the global PERSONALITY.md profile, output-style and writing-rules configuration, three stable system-prompt sections, and the read-only personality_analyze plus root-only personality_apply tools",
+  "description": "Personality capability provider: the global PERSONALITY.md profile, output-style and writing-rules configuration, three stable system-prompt sections, and the read-only personality_analyze plus root-only personality_apply and write_like_human tools",
   "version": "0.0.0",
   "private": true,
   "type": "module",

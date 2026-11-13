@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/personality/README.md
 /:
-  en: 488f4f526b9bf4fe
-  zh: 39210d531f017a87
+  en: 79c3d0a0f23d7882
+  zh: 6a36e9530a5bb60f
 /deepseek-ai-dsh-personality:
   en: ad977fbc16ef41cc
   zh: 7bef7af091f1a40e
 /deepseek-ai-dsh-personality/summary:
-  en: 58f8b433dedd941f
-  zh: 6f519000caf1d8ba
+  en: d98108015fd41b77
+  zh: c753b2e25885e7a3
 /deepseek-ai-dsh-personality/table-of-contents:
   en: cbfb676bb9a7a2de
   zh: 528864635b577290
 /deepseek-ai-dsh-personality/use-this-package:
-  en: 9897eda186173043
-  zh: b04f352e141efdf0
+  en: e737ea372a3674cb
+  zh: 55e872f398918f49
 /deepseek-ai-dsh-personality/understand-the-implementation:
-  en: 2e0581cff1a52d5c
-  zh: 7506ea76083ed5eb
+  en: 7032723c3802db48
+  zh: 72871966abee9378
 /deepseek-ai-dsh-personality/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -68,9 +68,21 @@
 /deepseek-ai-dsh-personality/model-experience/the-personality-apply-tool/kv-cache-effect:
   en: 1e472e8151b9f3ec
   zh: 6d6c8a653a0326e8
+/deepseek-ai-dsh-personality/model-experience/the-write-like-human-tool:
+  en: 3a8a03c26004b19b
+  zh: 4a4e302d9900ab4b
+/deepseek-ai-dsh-personality/model-experience/the-write-like-human-tool/what-the-model-sees:
+  en: 19c70eb2b702994f
+  zh: 6654a6e95ae5201e
+/deepseek-ai-dsh-personality/model-experience/the-write-like-human-tool/token-effect:
+  en: c0a4a29e95f34cb5
+  zh: 843112f7bcd4e325
+/deepseek-ai-dsh-personality/model-experience/the-write-like-human-tool/kv-cache-effect:
+  en: 416023a8f9b21240
+  zh: 1860f89188a29cf2
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work:
-  en: dea1c961216986b4
-  zh: a4bcb6c3fb131c79
+  en: b6fa789738b5b1f7
+  zh: 4b73c5b0e42fd4a2
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work/dev-note:
-  en: 8078c2c4c8ab6950
-  zh: 325f56dd699b7767
+  en: 17f57f63eec424f3
+  zh: 8ac292b5662f9550

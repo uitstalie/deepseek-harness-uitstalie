@@ -17,7 +17,7 @@ English | [中文](guide.zh.md)
 - package exports `./remote`, `./types`, `./typert`, and `./locale/*.json`; the `ui-personality` settings page and package;
 - the `Config` schema and its `workspaceOverlay`, `maxBytes`, `autoLearn`, and `historyLimit` keys. The Loader does not reject unknown keys, so old rows still load and the values are ignored.
 
-New model surface: read-only `personality_analyze` on every agent, and root-only `personality_apply` with the required literal `confirm: true`. Three prompt sections replace the old one: profile at 100, output style at 690, writing rules at 695.
+New model surface: read-only `personality_analyze` on every agent, and root-only `personality_apply` with the required literal `confirm: true` plus root-only `write_like_human` for the global rules. Three prompt sections replace the old one: profile at 100, output style at 690, writing rules at 695.
 
 ## Migration
 
@@ -38,7 +38,7 @@ New model surface: read-only `personality_analyze` on every agent, and root-only
    ```
 
    Ids are `<kind>.<lower-kebab-name>`; `identity` entries are manual-only. Each entry is at most 400 characters and the document at most 32 KiB.
-5. Edit `OUTPUT_STYLE.yaml` and `WRITING_RULES.yaml` on disk. This release registers no rules tool, so `write_like_human` is unavailable.
+5. Edit `OUTPUT_STYLE.yaml` on disk. Root agents maintain `WRITING_RULES.yaml` through `write_like_human`; child agents only read the injected rules and must return to the main conversation for a change. A person can still edit the file directly.
 6. Replace removed calls: `personality_learn` and `personality_propose` become `personality_analyze` followed by an explicit `personality_apply`; proposal review and `/personality` have no replacement; identity changes are manual file edits.
 
-7. Confirm the migration: the capability status lists `personality`; the assembled prompt contains `personality`, `personality:output-style`, and `personality:writing-rules` at orders 100, 690, and 695; `personality_analyze` leaves `PERSONALITY.md` unchanged and only `personality_apply` with `confirm: true` writes; a workspace `.dsh/memory/PERSONALITY.md` logs one warning and is not read or written; the settings page shows no personality section, and the old `legacy/` file still exists.
+7. Confirm the migration: the capability status lists `personality`; the assembled prompt contains `personality`, `personality:output-style`, and `personality:writing-rules` at orders 100, 690, and 695; `personality_analyze` leaves `PERSONALITY.md` unchanged and only `personality_apply` with `confirm: true` writes; a root agent sees `write_like_human` and a child agent does not; a workspace `.dsh/memory/PERSONALITY.md` logs one warning and is not read or written; the settings page shows no personality section, and the old `legacy/` file still exists.
