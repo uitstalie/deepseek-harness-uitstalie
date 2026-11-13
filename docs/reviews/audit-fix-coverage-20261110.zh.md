@@ -4,7 +4,7 @@
 
 ## 概述
 
-本次复核以当前工作源码核对 2026-11-09 Windows 评测、其独立复审与 Jira 审计，不从提交说明或文件搬迁推断修复。四个原始 P0 中，三项已修、一项部分修。六个 P1 中，四项已修、一项部分修、一项无法验证；五个 P2 中，两项已修、两项部分修、一项无法验证。P 表合计 **9 已修 / 4 部分修 / 0 未修 / 2 无法验证**（P1-6、P2-5）。J 表为 **18 已修 / 3 部分修（J-15、J-19、J-20）/ 0 未修**，J-16 单列不计入。
+本次复核以当前工作源码核对 2026-11-09 Windows 评测、其独立复审与 Jira 审计，不从提交说明或文件搬迁推断修复。四个原始 P0 中，三项已修、一项部分修。六个 P1 中，四项已修、两项部分修、0 无法验证；五个 P2 中，两项已修、两项部分修、一项无法验证。P 表合计 **9 已修 / 5 部分修 / 0 未修 / 1 无法验证**（P2-5）。J 表为 **18 已修 / 3 部分修（J-15、J-19、J-20）/ 0 未修**，J-16 单列不计入。
 
 ## 目录
 
@@ -60,16 +60,16 @@ sandbox 命令为 `pnpm exec vitest run --config .dsh/vitest-sandbox-local.confi
 | P1-3 | `inspect` 只对 live Session 工作，不提供有用的冷 Session 结果。 | 已修 | `packages/jira/jira-agent/src/superagent.ts` 在没有 live Agent 时使用 `sessionQuery.observeSession`，返回持久标题、最近活动时间、近期事件摘要和最近错误，并标记冷会话。`inspects a running Session and refuses an idle abort` 写入并关闭真实 JSONL fixture，再通过 query service 读取。 | 冷读是只读操作，不创建 live Agent；没有 `sessionQuery` 的部署明确报告读取器不可用。 |
 | P1-4 | sandbox `home-write` 在工作区留下 Low 标签与删除拒绝 ACE。 | 已修 | ACL 后端已禁用、已被替代方案超越：`packages/sandbox/sandbox-local/src/index.ts:159-165` 让生产 Windows 链为空；`packages/sandbox/sandbox-windows-acl/src/index.ts:46-54` 拒绝旧直接后端。两个 `disabled built-in Windows ACL backend` 测试通过，且不创建 grant 或临时目录。 | 这不是部分修，也不声称存在替代 Windows 隔离；部署边界见[范围：仅单 Host](#scope-single-host-only)。 |
 | P1-5 | returned 后的投影无法重放，因为 artifacts/decisions 补充被短路。 | 已修 | `packages/superagent/superagent-core/src/dispatch-store.ts:313-356` 比较完整结果并独立于投影更新 domain；`:143-155` 比较所有投影字段，`:221-234` 对变化结果进行协调。`round-trips records, arrays and statuses through the storage domain and Markdown projection`、`allows a human to correct a failed task to returned and projects the result`、`records a domain result when its Markdown task projection is missing` 通过。 | Markdown reader 仍只有固定 100 条窗口且只读直接文件（`packages/jira/jira-agent/src/dispatch-ledger.ts:337-353`）。递归清理、live 字段逐项核对与多 Host 恢复仍未验证。 |
-| P1-6 | 默认 memory 检索不可用；将其降为 P2 会掩盖检索失败。 | 无法验证 | `packages/uitstalie/memory/src/tools.ts:241-262` 仍直接调用组合中的 `sessionQuery.searchSessions`，没有本地检索 fallback。本次没有运行当前默认组合的 memory 检索。 | 源码保留依赖且无 fallback；实际可用性取决于当前部署的检索配置。严重度纠正属于原评审，不是本次已证明的运行时修复。 |
+| P1-6 | 默认 memory 检索不可用；将其降为 P2 会掩盖检索失败。 | 部分修 | `packages/uitstalie/memory/src/tools.ts:241-258` 仍直接调用 `sessionQuery.searchSessions`，但已把 `SESSION_QUERY_SEARCH_DISABLED` 转成带指引的错误；`packages/bundle/base/cordis.patch.yml:157-161` 与 `packages/bundle/web-app/cordis.patch.yml:27-30` 默认 `openAt: never`。`refuses search in never mode` 证明默认引擎拒绝；`memory_search explains a disabled session-query index...` 证明错误提示。 | 默认组合**不可用**，改成 `openAt: first-search`/`startup` 后条件可用；本轮未改检索架构，也未加 MEMORY.md-only fallback。 |
 
 <a id="windows-evaluation-p2-findings"></a>
 ## Windows 评测 P2
 
 | 编号 | 原结论 | 当前状态 | 证据（当前 file:line 或实跑测试） | 剩余风险 |
 |---|---|---|---|---|
-| P2-1 | `superagent_ledger` 隐藏结果来自 domain 还是降级 Markdown 及原因。 | 未修 | `packages/jira/jira-agent/src/superagent.ts:3550-3563` 用同一 envelope 返回 domain 或 Markdown 查询；`packages/superagent/superagent-core/src/dispatch-store.ts:187-196` 仅打开一次 domain。 | 工具结果与投影都不标来源或降级原因；服务晚到后不会重新评估。 |
-| P2-2 | 权限变更与投递失败可能静默失败或留下 orphaned pending 报告。 | 部分修 | `packages/jira/jira-agent/src/superagent-permission.ts:179-223` 核对生效 knob 并拒绝不完整变更；`packages/jira/jira-agent/src/superagent.ts:3133-3145` 将未接受的 follow-up 置失败，`:3580-3622` 暴露已保存报告重试。`reports a committed preset only when its effective knobs match` 与 `lists a failed delivery and retries the exact saved report without another child turn` 通过。 | 新绑定先于 prompt 记录，拒绝准入会置 failed，但两操作之间的崩溃未验证；未检查 UI。 |
-| P2-3 | 陈旧 monitor、无标题 Session、默认路由和错误模型/effort 让继续工作成本高且含糊。 | 部分修 | `packages/jira/jira-agent/src/superagent.ts:2622-2648` 返回投递接受、实际模式与插入 seq；`:3369-3410` 暴露标题、模型、最近任务、cwd、blank 与 usage。`restores titles from the live Session log and marks only truly untitled rows` 验证标题恢复与 `(untitled)` 回退；路由与 preflight 测试也通过。 | `start` 仍先创建再设置标题/模型与绑定；monitor 仍按请求刷新，不是订阅；未观察 Host UI。 |
+| P2-1 | `superagent_ledger` 隐藏结果来自 domain 还是降级 Markdown 及原因。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3708-3730` 返回 `source: domain|markdown` 与 `degradeReason`；`:5441-5444` 在模型可见文本显示来源。`records a pending dispatch automatically, then resolves and lists it` 覆盖 Markdown 来源与渲染；J-14 用例覆盖 domain 来源。 | 服务晚到后仍不会自动重评估，但当前查询会明确标出来源/降级原因。 |
+| P2-2 | 权限变更与投递失败可能静默失败或留下 orphaned pending 报告。 | 部分修 | `packages/jira/jira-agent/src/superagent-permission.ts:226-267` 核对生效 knob 并拒绝不完整变更；`packages/jira/jira-agent/src/superagent.ts:2987` 先绑定、`:3003`/`:3238` 将拒绝准入置 failed，`:3739-3781` 暴露已保存报告重试。`reports a committed preset only when its effective knobs match` 与 `lists a failed delivery and retries the exact saved report without another child turn` 通过。 | 新绑定先于 prompt 记录，拒绝准入会置 failed，但两操作之间的崩溃未验证；未检查 UI。 |
+| P2-3 | 陈旧 monitor、无标题 Session、默认路由和错误模型/effort 让继续工作成本高且含糊。 | 部分修 | `packages/jira/jira-agent/src/superagent.ts:3528-3575` 扫描标题、模型、最近任务、cwd、blank、usage 与 longRunning；`restores titles from the live Session log and marks only truly untitled rows` 验证标题恢复与 `(untitled)` 回退；路由与 preflight 测试也通过。 | `start` 仍先创建（`:3091`）再设置标题/模型与绑定（`:3048-3146`）；monitor 仍按请求刷新，不是订阅；未观察 Host UI。 |
 | P2-4 | 权限、not-found 与 I/O 都变成 INVALID_INPUT，嵌套错误也不正确。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3576-3587` 使用只读/not-found 结果；`:3562-3572` 与 `:3704-3705` 使用 I/O 失败结果；`packages/jira/jira-core/src/errors.ts:80-111` 定义这些 code。206 项运行通过覆盖这些分支的 schema 与输出 envelope 测试，包括 `carries every field the output schema requires`。 | 输入校验仍有意使用 INVALID_INPUT；这不证明所有无关工具的 error 都已重分类。 |
 | P2-5 | 旧 memory 文档断言及其证据映射需要纠正。 | 无法验证 | 原报告撤回了那条具体 memory 漂移断言；本次没有独立比较当前文档与实现。 | 本次没有确立当前漂移结论；默认检索问题另见 P1-6。 |
 
