@@ -3068,14 +3068,22 @@ export const runSessionTool = async (
       const requestId = `superagent-task-${randomUUID()}`
       const taskId = newDispatchReportId()
       let sessionId = `unstarted:${taskId}`
-      let started = false
+      let createdSession = false
+      let configured = false
+      let admitted = false
+      let cleanup: Readonly<{ archived: boolean; reason?: string }> | undefined
       let ledger: LedgerAttempt = {}
-      let failStart: ((error: unknown) => Promise<void>) | undefined
+      let failStart: ((
+        error: unknown,
+        stage: 'created' | 'configured' | 'admitted' | 'prompted',
+        message: string,
+        details?: Readonly<Record<string, unknown>>,
+      ) => Promise<ToolValue>) | undefined
       try {
         ledger = await recordTaskLedger(
           ctx as ToolHost['ctx'], caller, workspace, taskArg.trim(), sessionId, options.at, reportTo, context.store, requestId, taskId,
         )
-        failStart = async (error: unknown): Promise<void> => {
+        failStart = async (error, stage, message, details = {}) => {
           const reason = error instanceof Error ? error.message : String(error)
           await context.reports?.settle(taskId, 'failed', options.at, reason)
           if (ledger.ledger !== undefined) {
@@ -3087,6 +3095,35 @@ export const runSessionTool = async (
               if (current !== undefined) await resolveDispatchTask(ledger.ledger.root, current, { status: 'failed', outcome: reason, updatedAt: options.at })
             }
           }
+          // A Session that received no prompt is never useful work: archive it (not delete) when the
+          // deployment exposes the registry archive. Once a prompt was admitted the Session is
+          // deliberately kept, even if a later bookkeeping step fails.
+          if (createdSession && !admitted) {
+            if (registry?.archiveSession === undefined) {
+              cleanup = Object.freeze({ archived: false, reason: 'workspace archive API is unavailable' })
+            } else {
+              try {
+                await registry.archiveSession(sessionId, { stopActivity: true })
+                cleanup = Object.freeze({ archived: true })
+              } catch (archiveError: unknown) {
+                cleanup = Object.freeze({
+                  archived: false,
+                  reason: `archive failed: ${archiveError instanceof Error ? archiveError.message : String(archiveError)}`,
+                })
+              }
+            }
+          } else if (createdSession) {
+            cleanup = Object.freeze({ archived: false, reason: 'prompt was admitted; the Session is kept' })
+          }
+          return failure(invalidInput(message, {
+            session: sessionId,
+            stage,
+            created: createdSession,
+            configured,
+            admitted,
+            cleanup,
+            ...details,
+          }), caller, me)
         }
         const created = await controller.create({
           workspaceId: workspace.id,
@@ -3095,21 +3132,25 @@ export const runSessionTool = async (
             : { agentPreset: context.agentPreset }),
         })
         sessionId = String(created.sessionId)
-        started = true
-        const initialPermission = await applySessionPermission(
-          ctx, controller, workspace.id, sessionId, WORKSPACE_SESSION_PERMISSION, 'explicit default for a superagent-created workspace Session',
-        )
+        createdSession = true
+        let initialPermission
+        try {
+          initialPermission = await applySessionPermission(
+            ctx, controller, workspace.id, sessionId, WORKSPACE_SESSION_PERMISSION, 'explicit default for a superagent-created workspace Session',
+          )
+        } catch (error: unknown) {
+          return failStart(error, 'created',
+            `the Session was created but its default workspace-write permission could not be set; no task was sent: ${error instanceof Error ? error.message : String(error)}`,
+            { reason: error instanceof Error ? error.message : String(error) })
+        }
         if (initialPermission.error !== undefined) {
-          await failStart(initialPermission.error)
-          return failure(invalidInput(
+          return failStart(initialPermission.error, 'created',
             `the Session was created but its default workspace-write permission could not be set; no task was sent: ${initialPermission.error}`,
-            { session: sessionId },
-          ), caller, me)
+            { reason: initialPermission.error })
         }
         const selected = await applySessionModel(controller, sessionId, values, ctx)
         if (selected.error !== undefined) {
-          await failStart(selected.error)
-          return failure(invalidInput(selected.error, { session: sessionId, ...selected.errorDetails ?? {} }), caller, me)
+          return failStart(selected.error, 'created', selected.error, selected.errorDetails)
         }
         // Name the conversation before its first task, so a later `list` tells it apart.
         let title: string | undefined
@@ -3117,40 +3158,50 @@ export const runSessionTool = async (
           try {
             title = (await controller.rename?.({ sessionId, title: titleArg }))?.title ?? titleArg
           } catch (error: unknown) {
-            await failStart(error)
-            return failure(invalidInput(
+            return failStart(error, 'created',
               `the Session was created but its title could not be recorded: ${error instanceof Error ? error.message : String(error)}`,
-              { session: sessionId },
-            ), caller, me)
+              { reason: error instanceof Error ? error.message : String(error) })
           }
         }
+        configured = true
         try {
           await recordDispatchReport(context, caller, workspace, taskArg.trim(), sessionId, options.at, reportTo, requestId, taskId)
         } catch (error: unknown) {
-          await failStart(error)
-          return failure(invalidInput(
+          return failStart(error, 'configured',
             `the dispatch report binding could not be recorded, so the Session was not prompted: ${error instanceof Error ? error.message : String(error)}`,
-            { session: sessionId },
-          ), caller, me)
+            { reason: error instanceof Error ? error.message : String(error) })
         }
+        let accepted: boolean
         try {
-          await controller.prompt({
+          accepted = (await controller.prompt({
             requestId,
             sessionId,
             mode: 'queue',
             content: [{ type: 'text', text: composeTask(taskArg.trim(), curateMemory) }],
-          }, new AbortController().signal)
+          }, new AbortController().signal)).accepted === true
         } catch (error: unknown) {
-          await failStart(error)
-          throw error
+          return failStart(error, 'configured',
+            `the Session was created but its first prompt was not admitted: ${error instanceof Error ? error.message : String(error)}`,
+            { reason: error instanceof Error ? error.message : String(error) })
         }
-        if (reportTo !== undefined) {
-          enqueueTaskRecord(context.tasks, sessionId, {
-            superSession: reportTo,
-            workspace: workspace.path,
-            requestId,
-            ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
-          })
+        if (!accepted) {
+          return failStart(new Error('the Session did not accept its first prompt'), 'configured',
+            'the Session was created but did not accept its first prompt; no task was admitted')
+        }
+        admitted = true
+        try {
+          if (reportTo !== undefined) {
+            enqueueTaskRecord(context.tasks, sessionId, {
+              superSession: reportTo,
+              workspace: workspace.path,
+              requestId,
+              ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+            })
+          }
+        } catch (error: unknown) {
+          return failStart(error, 'admitted',
+            `the prompt was admitted but its report routing could not be recorded: ${error instanceof Error ? error.message : String(error)}`,
+            { reason: error instanceof Error ? error.message : String(error) })
         }
         return withLedger(Object.freeze({
           ...verdict,
@@ -3160,14 +3211,19 @@ export const runSessionTool = async (
             workspaceTitle: workspace.title,
             ...(title === undefined ? {} : { sessionTitle: title }),
           }),
+          start: Object.freeze({ stage: 'prompted', created: true, configured: true, admitted: true, prompted: true }),
           permission: initialPermission.permission,
           ...(selected.model === undefined ? {} : { model: selected.model }),
         }), ledger)
       } catch (error: unknown) {
-        if (!started && failStart !== undefined) await failStart(error)
+        if (failStart !== undefined) {
+          const reason = error instanceof Error ? error.message : String(error)
+          return failStart(error, admitted ? 'admitted' : configured ? 'configured' : 'created',
+            `the workspace Session could not be started: ${reason}`, { reason })
+        }
         return failure(invalidInput(
           `the workspace Session could not be started: ${error instanceof Error ? error.message : String(error)}`,
-          { workspace: workspace.path, session: sessionId, task: taskId, started },
+          { workspace: workspace.path, session: sessionId, task: taskId, created: false, configured, admitted },
         ), caller, me)
       }
     }

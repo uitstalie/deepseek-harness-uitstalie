@@ -779,6 +779,135 @@ void describe('superagent: workspace Sessions', () => {
   })
 })
 
+void describe('superagent: start stage cleanup', () => {
+  interface StartCase {
+    readonly permissionFails?: boolean
+    readonly bindingFails?: boolean
+    readonly prompt?: 'ok' | 'reject' | 'throw'
+    readonly tasksSetThrows?: boolean
+  }
+
+  const runStart = async (behavior: StartCase) => {
+    const root = await scratchDirectory()
+    let preset = behavior.permissionFails ? 'read-only' : 'workspace-write'
+    const controller = {
+      created: [] as unknown[],
+      prompted: [] as unknown[],
+      items: [] as { sessionId: string; running: boolean; cwd: string; updatedAt: number }[],
+      async create(request: unknown) {
+        this.created.push(request)
+        this.items.push({ sessionId: 'start-session', running: false, cwd: root, updatedAt: 1 })
+        return { sessionId: 'start-session' }
+      },
+      async prompt(request: { content: readonly { text: string }[] }) {
+        this.prompted.push(request)
+        if (behavior.prompt === 'throw') throw new Error('prompt rejected')
+        if (behavior.prompt === 'reject') return { accepted: false }
+        return { accepted: true }
+      },
+      async list() { return { items: this.items } },
+      async resolveAgent(sessionId: string) { return { agent: { id: sessionId, session: {} } } },
+    }
+    const registry = {
+      rows: [{ id: 'w1', path: root, title: 'work', sessionIds: [], status: async () => 'ok' }],
+      archived: [] as string[],
+      list() { return this.rows },
+      async archiveSession(sessionId: string) { this.archived.push(sessionId) },
+      async create(path: string, title?: string) { return { id: 'w2', path, title: title ?? path, sessionIds: [], status: async () => 'ok' } },
+    }
+    const reports = {
+      records: [] as unknown[],
+      async record(input: unknown) {
+        if (behavior.bindingFails === true) throw new Error('binding rejected')
+        this.records.push(input)
+        return input
+      },
+      async settle() {},
+      async all() { return new Map() },
+    }
+    const tasks = behavior.tasksSetThrows === true
+      ? { get: () => undefined, set: () => { throw new Error('routing rejected') } }
+      : new Map()
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'workspaceRegistry' ? registry
+          : key === 'sandboxPolicy' ? {}
+            : key === 'permissionPresets' ? {
+              names: ['workspace-write'],
+              resolve: () => ({ sandbox: 'workspace-write', approval: 'ask' }),
+              current: () => preset,
+              selection: () => ({ currentValue: preset, sandboxMode: preset, approvalPolicy: 'ask' }),
+              set: (_session: unknown, next: string) => { if (behavior.permissionFails !== true) preset = next },
+            }
+              : undefined,
+    }
+    const result = await runControlTool(
+      { action: 'start', workspace: 'work', task: 'go' },
+      { jira: {} as never, caller: { writable: true, sessionId: 'super-1', cwd: root } as never, at: AT as never },
+      { session: 'super-1', identity: MAIN },
+      ctx,
+      { tasks: tasks as never, reports: reports as never },
+    )
+    return { result, registry, controller }
+  }
+
+  const contextOf = (result: Record<string, unknown>): Record<string, unknown> =>
+    (result.error as { context?: Record<string, unknown> } | undefined)?.context ?? {}
+
+  void it('archives the Session and reports the created stage when permission setup fails', async () => {
+    const { result, registry } = await runStart({ permissionFails: true })
+    const context = contextOf(result)
+    assert.equal(result.ok, false)
+    assert.equal(context.stage, 'created')
+    assert.equal(context.created, true)
+    assert.equal(context.configured, false)
+    assert.equal(context.admitted, false)
+    assert.deepEqual(context.cleanup, { archived: true })
+    assert.deepEqual(registry.archived, ['start-session'])
+    assert.match(String((result.error as { message?: string }).message), /permission/u)
+  })
+
+  void it('archives the Session and reports the configured stage when binding fails', async () => {
+    const { result, registry } = await runStart({ bindingFails: true })
+    const context = contextOf(result)
+    assert.equal(result.ok, false)
+    assert.equal(context.stage, 'configured')
+    assert.equal(context.created, true)
+    assert.equal(context.configured, true)
+    assert.equal(context.admitted, false)
+    assert.deepEqual(context.cleanup, { archived: true })
+    assert.deepEqual(registry.archived, ['start-session'])
+    assert.match(String((result.error as { message?: string }).message), /binding/u)
+  })
+
+  void it('archives the Session and reports the configured stage when prompt admission fails', async () => {
+    const { result, registry } = await runStart({ prompt: 'throw' })
+    const context = contextOf(result)
+    assert.equal(result.ok, false)
+    assert.equal(context.stage, 'configured')
+    assert.equal(context.created, true)
+    assert.equal(context.configured, true)
+    assert.equal(context.admitted, false)
+    assert.deepEqual(context.cleanup, { archived: true })
+    assert.deepEqual(registry.archived, ['start-session'])
+    assert.match(String((result.error as { message?: string }).message), /prompt/u)
+  })
+
+  void it('keeps the Session when it fails after the prompt was admitted', async () => {
+    const { result, registry, controller } = await runStart({ tasksSetThrows: true })
+    const context = contextOf(result)
+    assert.equal(result.ok, false)
+    assert.equal(context.stage, 'admitted')
+    assert.equal(context.created, true)
+    assert.equal(context.configured, true)
+    assert.equal(context.admitted, true)
+    assert.deepEqual(context.cleanup, { archived: false, reason: 'prompt was admitted; the Session is kept' })
+    assert.deepEqual(registry.archived, [])
+    assert.equal(controller.prompted.length, 1)
+    assert.match(String((result.error as { message?: string }).message), /routing/u)
+  })
+})
+
 void describe('superagent: workspace Session permissions', () => {
   function fixture() {
     const cwd = join(tmpdir(), 'permission-workspace')
