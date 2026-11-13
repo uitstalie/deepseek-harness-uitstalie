@@ -4,7 +4,7 @@
 
 ## 概述
 
-本次复核以当前工作源码核对 2026-11-09 Windows 评测、其独立复审与 Jira 审计，不从提交说明或文件搬迁推断修复。四个原始 P0 中，三项已修、一项部分修。六个 P1 中，四项已修、两项部分修、0 无法验证；五个 P2 中，两项已修、两项部分修、一项无法验证。P 表合计 **9 已修 / 5 部分修 / 0 未修 / 1 无法验证**（P2-5）。J 表为 **18 已修 / 3 部分修（J-15、J-19、J-20）/ 0 未修**，J-16 单列不计入。
+本次复核以当前工作源码核对 2026-11-09 Windows 评测、其独立复审与 Jira 审计，不从提交说明或文件搬迁推断修复。四个原始 P0 中，三项已修、一项部分修。六个 P1 中，六项已修、0 部分修、0 无法验证；五个 P2 中，两项已修、两项部分修、一项无法验证。P 表合计 **11 已修 / 3 部分修 / 0 未修 / 1 无法验证**（P2-5）。J 表为 **18 已修 / 3 部分修（J-15、J-19、J-20）/ 0 未修**，J-16 单列不计入。
 
 ## 目录
 
@@ -56,11 +56,11 @@ sandbox 命令为 `pnpm exec vitest run --config .dsh/vitest-sandbox-local.confi
 | P0-3 | 投递失败是不可见终态，没有重试或启动恢复。 | 部分修 | `packages/superagent/superagent-core/src/index.ts:548` 列出失败/未结算报告并仅重试已保存文本；`packages/superagent/superagent-core/src/recovery.ts:12-80` 恢复已保存的 pending/delivering 报告并处置 24h stale pending；`packages/jira/jira-agent/src/superagent.ts:5313` 启动恢复调用。`preserves a failed saved report with its failure reason on the next initialization` 保留 failed 与注入原因且零重复投递；`waits for startup recovery during dispose and preserves the original recipient` 通过。 | 真实 Host 重启仍未验证。failed 不会被静默重开；超过 24h 且无文本的 pending 现由启动恢复 settle failed 并 warn，迟到 turn-end 不再可投递。未在测试 harness 之外注入生产失败，也未测恢复超时。 |
 | P0-4 | abort 后继续没有新报告绑定，未接受的恢复仍可能显示 resumed。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3274-3343` 等待 idle、记录新 request 绑定、拒绝未接受恢复并返回投递结果；`packages/superagent/superagent-core/src/dispatch-store.ts:405-416` 将旧记录保留为 orphaned。`aborts a running Session, reports the scene and continues it` 在 206 项运行中通过。 | 这是源码与定向测试证据，不是真实长 turn 崩溃/归档竞态。P0-1 与结算窗口仍可让迟到结算造成重复投递。 |
 | P1-1 | dispatch domain 没有打开，所有工作都使用 Markdown。 | 已修 | 原结论已被复审撤回；当前 `packages/superagent/superagent-core/src/dispatch-store.ts:173-194` 打开组合中的 domain，`:297-306` 写入权威表。`round-trips records, arrays and statuses through the storage domain and Markdown projection` 与 `falls back to the Markdown path when no storage domain is composed` 通过。 | 这证明当前源码机制，不是新的 live Windows Host 检查。domain 可用性只在构造时采样，fallback 仍受支持。 |
-| P1-2 | `start` 非原子，可能留下没有预定工作的新 Session。 | 部分修 | `packages/jira/jira-agent/src/superagent.ts:3048-3146` 先创建 Session，再处理权限、模型、标题、绑定与 prompt；`:3048-3146` 报错但不删除已建 Session。`lists all action requirements together before doing any Session work` 与 `preflights every combined-action rule before any registry or Session write` 通过。 | 参数和组合 preflight 会在创建前拒绝，但后续创建/设置失败仍留下 Session；没有清理或事务式 start。 |
+| P1-2 | `start` 非原子，可能留下没有预定工作的新 Session。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3048-3146` 返回 `start.stage`（created/configured/admitted/prompted）；prompt 未准入时归档新 Session 并报告 cleanup，准入后失败保留。四条 `superagent: start stage cleanup` 测试分别覆盖权限、绑定、prompt 失败归档与准入后保留。 | 归档是 best-effort（host 无 archive API 时只报告原因），不是事务回滚；已准入的 Session 永不被清理。 |
 | P1-3 | `inspect` 只对 live Session 工作，不提供有用的冷 Session 结果。 | 已修 | `packages/jira/jira-agent/src/superagent.ts` 在没有 live Agent 时使用 `sessionQuery.observeSession`，返回持久标题、最近活动时间、近期事件摘要和最近错误，并标记冷会话。`inspects a running Session and refuses an idle abort` 写入并关闭真实 JSONL fixture，再通过 query service 读取。 | 冷读是只读操作，不创建 live Agent；没有 `sessionQuery` 的部署明确报告读取器不可用。 |
 | P1-4 | sandbox `home-write` 在工作区留下 Low 标签与删除拒绝 ACE。 | 已修 | ACL 后端已禁用、已被替代方案超越：`packages/sandbox/sandbox-local/src/index.ts:183/200` 让生产 Windows 链为空；`packages/sandbox/sandbox-windows-acl/src/index.ts:204-217` 拒绝旧直接后端。两个 `disabled built-in Windows ACL backend` 测试通过，且不创建 grant 或临时目录。 | 这不是部分修，也不声称存在替代 Windows 隔离；部署边界见[范围：仅单 Host](#scope-single-host-only)。 |
 | P1-5 | returned 后的投影无法重放，因为 artifacts/decisions 补充被短路。 | 已修 | `packages/superagent/superagent-core/src/dispatch-store.ts:313-356` 比较完整结果并独立于投影更新 domain；`:143-155` 比较所有投影字段，`:221-234` 对变化结果进行协调。`round-trips records, arrays and statuses through the storage domain and Markdown projection`、`allows a human to correct a failed task to returned and projects the result`、`records a domain result when its Markdown task projection is missing` 通过。 | Markdown reader 仍只有固定 100 条窗口且只读直接文件（`packages/jira/jira-agent/src/dispatch-ledger.ts:337-353`）。递归清理、live 字段逐项核对与多 Host 恢复仍未验证。 |
-| P1-6 | 默认 memory 检索不可用；将其降为 P2 会掩盖检索失败。 | 部分修 | `packages/uitstalie/memory/src/tools.ts:241-258` 仍直接调用 `sessionQuery.searchSessions`，但已把 `SESSION_QUERY_SEARCH_DISABLED` 转成带指引的错误；`packages/bundle/base/cordis.patch.yml:157-161` 与 `packages/bundle/web-app/cordis.patch.yml:27-30` 默认 `openAt: never`。`refuses search in never mode` 证明默认引擎拒绝；`memory_search explains a disabled session-query index...` 证明错误提示。 | 默认组合**不可用**，改成 `openAt: first-search`/`startup` 后条件可用；本轮未改检索架构，也未加 MEMORY.md-only fallback。 |
+| P1-6 | 默认 memory 检索不可用；将其降为 P2 会掩盖检索失败。 | 已修 | `packages/bundle/base/cordis.patch.yml:157-161` 与 `packages/bundle/web-app/cordis.patch.yml:27-30` 默认改为 `openAt: first-search`；`packages/uitstalie/memory/src/tools.ts:241-258` 的 `never` 指引保留。默认组合首搜实测建索引、二次命中；`refuses search in never mode` 证明 opt-out 仍拒绝，`memory_search explains a disabled...` 证明指引。 | 本机实测默认 `:memory:`：首搜约 7ms、第二次约 2ms、1 条命中；无磁盘文件（索引在内存）。durable `path` 示例：首搜 17ms、二搜 1ms、4096 B 文件。生产若需跨进程复用应配置 durable `path`。 |
 
 <a id="windows-evaluation-p2-findings"></a>
 ## Windows 评测 P2
@@ -68,10 +68,10 @@ sandbox 命令为 `pnpm exec vitest run --config .dsh/vitest-sandbox-local.confi
 | 编号 | 原结论 | 当前状态 | 证据（当前 file:line 或实跑测试） | 剩余风险 |
 |---|---|---|---|---|
 | P2-1 | `superagent_ledger` 隐藏结果来自 domain 还是降级 Markdown 及原因。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3708-3730` 返回 `source: domain|markdown` 与 `degradeReason`；`:5441-5444` 在模型可见文本显示来源。`records a pending dispatch automatically, then resolves and lists it` 覆盖 Markdown 来源与渲染；J-14 用例覆盖 domain 来源。 | 服务晚到后仍不会自动重评估，但当前查询会明确标出来源/降级原因。 |
-| P2-2 | 权限变更与投递失败可能静默失败或留下 orphaned pending 报告。 | 部分修 | `packages/jira/jira-agent/src/superagent-permission.ts:226-267` 核对生效 knob 并拒绝不完整变更；`packages/jira/jira-agent/src/superagent.ts:2987` 先绑定、`:3003`/`:3238` 将拒绝准入置 failed，`:3739-3781` 暴露已保存报告重试。`reports a committed preset only when its effective knobs match` 与 `lists a failed delivery and retries the exact saved report without another child turn` 通过。 | 新绑定先于 prompt 记录，拒绝准入会置 failed，但两操作之间的崩溃未验证；未检查 UI。 |
-| P2-3 | 陈旧 monitor、无标题 Session、默认路由和错误模型/effort 让继续工作成本高且含糊。 | 部分修 | `packages/jira/jira-agent/src/superagent.ts:3528-3575` 扫描标题、模型、最近任务、cwd、blank、usage 与 longRunning；`restores titles from the live Session log and marks only truly untitled rows` 验证标题恢复与 `(untitled)` 回退；路由与 preflight 测试也通过。 | `start` 仍先创建（`:3091`）再设置标题/模型与绑定（`:3048-3146`）；monitor 仍按请求刷新，不是订阅；未观察 Host UI。 |
+| P2-2 | 权限变更与投递失败可能静默失败或留下 orphaned pending 报告。 | 部分修（deferred：下一次大改） | `packages/jira/jira-agent/src/superagent-permission.ts:226-267` 核对生效 knob 并拒绝不完整变更；`packages/jira/jira-agent/src/superagent.ts:2987` 先绑定、`:3003`/`:3238` 将拒绝准入置 failed，`:3739-3781` 暴露已保存报告重试。`reports a committed preset only when its effective knobs match` 与 `lists a failed delivery and retries the exact saved report without another child turn` 通过。 | **下一次大改**：绑定→prompt 之间的崩溃窗口未验证；触发条件是要求崩溃后可恢复的准入；大改时把绑定与准入做成可恢复事务（WAL/两阶段）。当前拒绝准入已置 failed，不会静默 orphan。 |
+| P2-3 | 陈旧 monitor、无标题 Session、默认路由和错误模型/effort 让继续工作成本高且含糊。 | 部分修（deferred：下一次大改） | `packages/jira/jira-agent/src/superagent.ts:3528-3575` 扫描标题、模型、最近任务、cwd、blank、usage 与 longRunning；`restores titles from the live Session log and marks only truly untitled rows` 验证标题恢复与 `(untitled)` 回退；路由与 preflight 测试也通过。 | **下一次大改**：monitor 仍按请求刷新，不是事件订阅；触发条件是要求实时/UI 生命周期；大改时改为订阅并在 Host UI 观测。start 的 create 顺序另见 P1-2。 |
 | P2-4 | 权限、not-found 与 I/O 都变成 INVALID_INPUT，嵌套错误也不正确。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:603/2824/2897/3050/3585` 使用只读/not-found 结果；`:3562-3572` 与 `:3704-3705` 使用 I/O 失败结果；`packages/jira/jira-core/src/errors.ts:80-111` 定义这些 code。206 项运行通过覆盖这些分支的 schema 与输出 envelope 测试，包括 `carries every field the output schema requires`。 | 输入校验仍有意使用 INVALID_INPUT；这不证明所有无关工具的 error 都已重分类。 |
-| P2-5 | 旧 memory 文档断言及其证据映射需要纠正。 | 无法验证 | 原报告撤回了那条具体 memory 漂移断言；本次没有独立比较当前文档与实现。 | 本次没有确立当前漂移结论；默认检索问题另见 P1-6。 |
+| P2-5 | 旧 memory 文档断言及其证据映射需要纠正。 | 无法验证 | 原报告撤回了那条具体 memory 漂移断言；本次没有独立比较当前文档与实现。 | 本次没有确立当前漂移结论；默认检索问题已由 P1-6 修复（first-search）。 |
 
 <a id="independent-re-review-corrections"></a>
 ## 独立复审的纠正
@@ -79,13 +79,13 @@ sandbox 命令为 `pnpm exec vitest run --config .dsh/vitest-sandbox-local.confi
 | 编号 | 原纠正或部分接受结论 | 当前状态 | 证据（当前 file:line 或实跑测试） | 剩余风险 |
 |---|---|---|---|---|
 | K-1 | 撤回错误的 domain 未开启结论；WAL 已有当日写入。 | 已修 | P1-1 引用的当前 domain 机制与测试确认纠正后的源码路径。 | 不构成新的 live Windows Host 测量。 |
-| K-2 | 收窄 ACL 表述：有限探针无 EPERM 不能解释同日构建拒绝。 | 无法验证 | 当前源码在 `packages/sandbox/sandbox-local/src/index.ts:183/200` 禁用 Windows 链；两个 ACL-disabled 测试通过。 | 本次未调查 live ACL 写入者、进程 token、时间戳或构建失败。 |
+| K-2 | 收窄 ACL 表述：有限探针无 EPERM 不能解释同日构建拒绝。 | 无法验证（deferred：下一次大改） | 当前源码在 `packages/sandbox/sandbox-local/src/index.ts:183/200` 禁用 Windows 链；两个 ACL-disabled 测试通过。 | **下一次大改**：live ACL 写入者/时间未定位；触发条件是重新启用 ACL 或再次复现 EPERM；大改时做 token/路径/时间取证。当前后端已禁用、fail-closed 保留，不影响现有默认组合。 |
 | K-3 | 保留跨进程领取缺陷，但区分合成实验与真实双 Host 投递。 | 已修 | P0-1 现有 owner 校验的每任务文件锁，真实双进程测试恰好一个成功、一个拒绝。 | 不声称分布式 exactly-once；双 Host 端到端验证属范围外，不是欠账。 |
 | K-4 | 空输出证据有效，但 delivered 诊断文本不能证明业务成功。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3771-3785` 现以 `empty-output` 记录失败；空 turn 定向测试通过。 | 诊断投递与业务结果保持分离。 |
 | K-5 | 失败/重试与启动恢复曾被夸大；需要真实 remount/restart 证据。 | 部分修 | P0-3 的已保存文本重试、有界 dispose 与失败注入测试现已存在并通过。 | 真实 Host 重启仍未验证；failed 保留原因而非静默重开，24h stale pending 现 settle failed。 |
 | K-6 | abort 继续需要新绑定，拒绝恢复不得声称成功。 | 已修 | P0-4 的 abort 代码与定向测试确立新绑定和未接受 prompt 的失败。 | live abort/archive 竞态与迟到投递结算仍未验证。 |
 | K-7 | 可见生命周期纠正需要真实状态变化，而非只有名称。 | 已修 | `packages/superagent/superagent-core/src/dispatch-store.ts:327-356` 持久化变化，`:143-155` 比较投影字段；`allows a human to correct a failed task to returned and projects the result` 通过。 | 未测试跨进程协调与 live UI 状态。 |
-| K-8 | start/stop 与恢复建议需要原子性或明确可见的部分行为。 | 部分修 | preflight 测试通过，但 `packages/jira/jira-agent/src/superagent.ts:3048-3146` 的创建后设置仍非事务；`:5313` 现有有界恢复等待。 | 已创建但未工作的 Session 与真实重启时序仍未验证。 |
+| K-8 | start/stop 与恢复建议需要原子性或明确可见的部分行为。 | 已修 | `packages/jira/jira-agent/src/superagent.ts:3048-3146` 的 `start.stage` 与未准入归档给出明确可见的失败行为；`:5313` 保持有界恢复等待。`superagent: start stage cleanup` 四条测试通过。 | 归档 best-effort，已准入的 Session 保留；真实重启时序仍未验证（K-5）。 |
 | K-9 | source-only、ACL、memory 与严重度的证据边界必须明确。 | 已修 | 本报告记录实际执行的 206 项与 2 项命令，未运行的 live 场景均标未验证。 | 这是文档纠正，不是新的产品行为。 |
 
 <a id="jira-audit-and-its-five-repair-groups"></a>
