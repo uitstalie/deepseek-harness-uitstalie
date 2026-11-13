@@ -99,6 +99,8 @@ class TestHandle implements SessionHandle {
     TestPersistence.reads.set(this.id, (TestPersistence.reads.get(this.id) ?? 0) + 1)
     TestPersistence.readSignals.push(options?.signal)
     if (TestPersistence.failure !== undefined) throw TestPersistence.failure
+    const assigned = TestPersistence.failures.get(this.id)
+    if (assigned !== undefined) throw assigned
     const entry = TestPersistence.entries.get(this.id)
     if (entry === undefined) throw new SessionPersistenceNotFoundError(this.id)
     await TestPersistence.readEffect?.(entry, options?.signal)
@@ -145,6 +147,7 @@ class TestPersistence extends SessionPersistence {
   static listEffect: ((signal?: AbortSignal) => void | Promise<void>) | undefined
   static listOverride: (() => SessionPersistenceSnapshot[]) | undefined
   static failure: unknown
+  static failures = new Map<SessionIdType, unknown>()
 
   static reset(entries: readonly { meta: SessionHeader; events: SessionEvent[] }[] = []): void {
     this.entries = new Map()
@@ -159,6 +162,7 @@ class TestPersistence extends SessionPersistence {
     this.listEffect = undefined
     this.listOverride = undefined
     this.failure = undefined
+    this.failures = new Map()
   }
 
   static set(entry: { meta: SessionHeader; events: SessionEvent[] }): void {
@@ -840,6 +844,30 @@ describe('search contains unreadable stored sessions', () => {
     const repaired = await ctx.sessionQuery.searchSessions({ query: 'needle' })
     expect(repaired.warnings).toBeUndefined()
     expect(repaired.items.map(hit => hit.header.id).sort()).toEqual(['bad-session', 'good-session'])
+  })
+})
+
+describe('search contains typed observation failures', () => {
+  it('keeps a typed SessionQueryError code in the warning and searches the other session', async () => {
+    const bad = header('typed-bad')
+    const good = header('typed-good')
+    TestPersistence.reset([
+      { meta: bad, events: messageEvents('bad needle') },
+      { meta: good, events: messageEvents('good needle') },
+    ])
+    TestPersistence.failures.set(bad.id, new SessionQueryError('broken stored log', 'SESSION_QUERY_SOURCE_CONFLICT'))
+    const ctx = await liveContext()
+    const persistence = await ctx.plugin(TestPersistence)
+
+    const page = await ctx.sessionQuery.searchSessions({ query: 'needle' })
+    expect(page.items.map(hit => hit.header.id)).toEqual([good.id])
+    expect(page.warnings).toMatchObject([{
+      sessionId: bad.id,
+      code: 'SESSION_QUERY_SOURCE_CONFLICT',
+    }])
+    expect(page.warnings?.[0]?.message).toContain('broken stored log')
+
+    await persistence.dispose()
   })
 })
 

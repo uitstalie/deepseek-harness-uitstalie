@@ -409,6 +409,21 @@ test('a retry that succeeds writes the summary and appends no notice', async () 
   expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(0)
 })
 
+test('an empty-output failure is retried once before the summary is written', async () => {
+  const mounted = await mount()
+  const adapter = new SummaryAdapter(call => call === 1
+    ? ''
+    : jsonReply([{ kind: 'decision', text: 'second attempt summary' }]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+
+  completeTurn(root, 1)
+  await waitForSettledJobs(root, 1)
+  expect(adapter.requests).toHaveLength(2)
+  expect(await waitForMemoryFile()).toContain('- [decision] second attempt summary')
+  expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(0)
+})
+
 test('a deterministic upstream rejection is not retried and names the rejection', async () => {
   const mounted = await mount()
   const adapter = new SummaryAdapter(() => new LlmError('bad credential', 'AUTH'))

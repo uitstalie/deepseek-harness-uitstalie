@@ -231,6 +231,27 @@ test('memory_write evicts older entries when full and names an evicted decision'
   expect(text).toContain('evictions:')
 })
 
+test('memory_write reports plural evictions when several entries leave', async () => {
+  const ctx = new Context()
+  contexts.push(ctx)
+  const mounted = await mountMemory(ctx, project, { config: { maxBytes: 300 } })
+  const root = await createRoot(mounted)
+  const seed = { maxBytes: 4096, maxEntries: 40 }
+  await appendMemoryEntry(mounted.ctx, root.session, {
+    kind: 'open', text: `first ${'o'.repeat(100)}`, turn: 1, seq: [1, 2],
+  }, undefined, seed)
+  await appendMemoryEntry(mounted.ctx, root.session, {
+    kind: 'files', text: `second ${'f'.repeat(100)}`, turn: 2, seq: [3, 4],
+  }, undefined, seed)
+  await appendMemoryEntry(mounted.ctx, root.session, {
+    kind: 'decision', text: `third ${'d'.repeat(100)}`, turn: 3, seq: [5, 6],
+  }, undefined, seed)
+
+  const result = await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'new fact' })
+  expect(result.isError, textOf(result)).toBe(false)
+  expect(textOf(result)).toMatch(/Evicted [2-9] older entries/)
+})
+
 test('memory_forget removes matching entries and refreshes the snapshot', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
