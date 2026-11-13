@@ -316,6 +316,35 @@ void describe('dispatch reports: journal', () => {
     assert.equal(again.attempted, 0)
   })
 
+  void it('settles a stale pending report without text as failed and warns', async () => {
+    const root = await scratch()
+    const store = new DispatchReportStore(root)
+    const stale = '2026-11-06T23:00:00.000Z' // 25 hours before AT
+    await store.record(binding({ id: 'task-stale', dispatchedAt: stale }))
+    await store.record(binding({ id: 'task-fresh' }))
+    await store.record(binding({ id: 'task-saved' }))
+    await store.claim('task-saved', AT)
+    await store.prepare('task-saved', AT, 'saved report', 'work done', 'returned')
+    const sent: string[] = []
+    const logs: string[] = []
+    const summary = await recoverDispatchReports(store, {
+      at: LATER,
+      canDeliver: () => true,
+      deliver: (report) => { sent.push(report.id); return true },
+      log: (level, message) => logs.push(`${level}:${message}`),
+    })
+
+    assert.deepEqual(sent, ['task-saved'], 'a saved report still delivers normally')
+    assert.equal((await store.all()).get('task-stale')?.status, 'failed')
+    assert.match((await store.all()).get('task-stale')?.error ?? '', /late turn-end report cannot be delivered/u)
+    assert.equal((await store.all()).get('task-fresh')?.status, 'pending', 'a fresh binding is not expired')
+    assert.deepEqual(summary.skipped.map(row => row.id), ['task-fresh'])
+    assert.equal(summary.delivered, 1)
+    assert.equal(summary.failed, 1)
+    assert.equal(logs.some(message => message.includes('warn:superagent: report task-stale expired pending without report text')), true)
+    assert.equal(logs.some(message => message.includes('late turn-end report cannot be delivered')), true)
+  })
+
   void it('preserves a failed saved report with its failure reason on the next initialization', async () => {
     const root = await scratch()
     const store = new DispatchReportStore(root)

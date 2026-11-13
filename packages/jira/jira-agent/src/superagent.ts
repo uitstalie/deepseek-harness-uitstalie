@@ -987,7 +987,15 @@ const recordTaskLedger = async (
   }
 }
 
-/** One report journal per super workspace root; a store serializes the writes it receives. */
+/**
+ * One report journal per super workspace root; a store serializes the writes it receives.
+ *
+ * Deliberately process-level and not closed by `dispose`: the journal is a file, holds no OS handle,
+ * and the claim/lease plus the deterministic delivery request id already prevent duplicate
+ * delivery across a remount. A turn-end already in flight cannot be cancelled by dispose, so
+ * removing this map would not make teardown quiescent; retain it until a real teardown redesign
+ * (see audit J-20). Revisit if a long-lived Host accumulates roots or dispose must drain turn-end.
+ */
 const reportJournals = new Map<string, DispatchReportStore>()
 
 /**

@@ -8,10 +8,15 @@ export interface ReportRecoverySummary {
   readonly skipped: readonly { readonly id: string; readonly reason: string }[]
 }
 
+/** A pending report with no saved text is expired after this long; a late turn end cannot deliver it. */
+export const STALE_PENDING_REPORT_MS = 24 * 60 * 60 * 1000
+
 /** Inputs needed to recover a saved report without consulting the task result. */
 export interface ReportRecoveryOptions {
   /** Current recovery instant, also used for lease expiry. */
   readonly at: string
+  /** Age after which a pending report without saved text is settled as failed; defaults to one day. */
+  readonly stalePendingAfterMs?: number
   /** Check that the recipient is still the intended, available Session. */
   readonly canDeliver: (report: DispatchReportRecord) => boolean | Promise<boolean>
   /** Deliver the exact saved report; false means it remains visible as failed. */
@@ -26,7 +31,9 @@ export interface ReportRecoveryOptions {
 
 /**
  * Re-deliver recoverable reports once after startup. Delivered and failed records are never
- * automatically reopened. A pending record without a saved report cannot be delivered yet.
+ * automatically reopened. A pending record without a saved report cannot be delivered yet; once it
+ * is older than {@link STALE_PENDING_REPORT_MS} it is settled as failed, because a late turn-end
+ * report cannot be delivered after the fact.
  * @param store - durable journal to read and settle.
  * @param options - recipient checks, delivery, logging, timing, and cancellation.
  * @returns delivery counts and the reasons reports were skipped.
@@ -43,6 +50,16 @@ export async function recoverDispatchReports(store: DispatchReportStore, options
       continue
     }
     if (record.reportText === undefined) {
+      const dispatchedAt = Date.parse(record.dispatchedAt)
+      const recoveredAt = Date.parse(options.at)
+      const staleAfter = options.stalePendingAfterMs ?? STALE_PENDING_REPORT_MS
+      if (Number.isFinite(dispatchedAt) && Number.isFinite(recoveredAt) && recoveredAt - dispatchedAt > staleAfter) {
+        const message = 'the dispatched turn never saved a report; a late turn-end report cannot be delivered'
+        options.log('warn', `superagent: report ${record.id} expired pending without report text: ${message}`)
+        await store.settle(record.id, 'failed', options.at, message)
+        failed += 1
+        continue
+      }
       skipped.push({ id: record.id, reason: 'the report has not been saved yet' })
       continue
     }
