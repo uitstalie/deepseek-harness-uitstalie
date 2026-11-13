@@ -180,3 +180,12 @@
 - 不删旧 `PERSONALITY.md` 用户数据；按设计只移动/备份。
 - 不把旧的 `--permission-mode` 删除和 personality 删除放同一个 commit。
 - 不做顺手重构、不做功能改动；本轮只提案。
+## 9. 执行结果
+
+- 批 1：`e69c9696e5`，13 files，+474/−1,226；删除 6 个旧 memory/jira 审查与修复流水，保留 `docs/inputs`；pairing 1303 对、md-wrap 2,658 files、md-links 2,621 files 通过。
+- 批 2：`78a787e3a0`，14 files，+101/−81；`--permission-mode` 删除；build 10/10、typecheck 5/5、headless 135/135；release note 已加。
+- 批 3b：`abf8f50f2e`，8 files，+40/−39；原生 `openAt` 恢复 `never`，分支 patch 覆盖 `first-search`；build 10/10、typecheck 5/5；真实 memory 工具首搜 46 ms、二搜 6 ms 命中；原生标记 **102 → 99**。
+- 批 3a：旧 personality 删除**推迟到新实现之后**，本轮不做。
+- 剩余 99 项按 `goal/native-change-inventory.md` 的 2026-11-13 用户裁定，全部保留；Windows ACL 与 agent-instructions 导出缝明确不得作为瘦身目标。
+
+**结论：瘦身到此为止，后续只在新增侵入时逐项审批。**

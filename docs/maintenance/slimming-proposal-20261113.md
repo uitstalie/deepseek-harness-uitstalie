@@ -180,3 +180,12 @@ Native intrusion is not counted in "files deleted": proposals 1–4 remove about
 - Do not delete the old `PERSONALITY.md` user data; per the design it is only moved/backed up.
 - Do not put the old `--permission-mode` deletion and the personality deletion in the same commit.
 - No drive-by refactoring and no feature changes; this round only proposes.
+## 9. Execution result
+
+- Batch 1: `e69c9696e5`, 13 files, +474/−1,226; deleted 6 old memory/jira review and fix documents, kept `docs/inputs`; pairing 1,303 pairs, md-wrap 2,658 files, and md-links 2,621 files passed.
+- Batch 2: `78a787e3a0`, 14 files, +101/−81; removed `--permission-mode`; build 10/10, typecheck 5/5, headless 135/135; release note added.
+- Batch 3b: `abf8f50f2e`, 8 files, +40/−39; restored native `openAt: never`, branch patch overrides with `first-search`; build 10/10, typecheck 5/5; a real memory-tool search hit in 46 ms first and 6 ms second; native markers **102 → 99**.
+- Batch 3a: old personality deletion is **deferred until after the new implementation**; not done in this round.
+- The remaining 99 items are retained in full under the 2026-11-13 user decision in `goal/native-change-inventory.md`; Windows ACL and the agent-instructions export seam are explicitly not slimming targets.
+
+**Conclusion: slimming stops here; future work only approves each new intrusion one by one.**

@@ -19,6 +19,17 @@
 | 分支新增的原生侧文件 | 4 | 路径或文件名自身可辨识（`*.uitstalie.yml`、`opencode.json`、`scripts/test-jira-node.ts`） |
 | **合计** | **763** | = 611 + 99 + 43 + 6 + 4（其余类别仍是 2026-10-28 基线） |
 
+## 2026-11-13 用户裁定：剩余侵入是设计，不是瘦身目标
+
+判定日期：2026-11-13。判定人：用户。
+
+| 分类 | 数量 | 判据 |
+|---|---:|---|
+| 必须保留 | 97 | 删除会改变 Windows ACL/沙箱、文件或 shell 行为，破坏分支构建/运行，或移除 `agent-instructions` 的状态机导出缝 |
+| 可选收窄 | 2 | 只影响分支在 `packages/README` 的登记可发现性；行为为零，保留登记，不再当侵入清理 |
+| 待清理 | 0 | 当前没有“无行为价值、可直接删除”的原生标记文件 |
+
+**Windows ACL 与 `packages/context/agent-instructions/src/index.ts` 的导出缝属必须保留，不得作为瘦身目标。** 剩余 99 项是 2026-11-13 接受的原生基线；后续只在新增侵入时逐项审批，不再开“继续减少侵入”的任务。
 ## 原生改动（带标记）
 
 99 个文件。每处都给出键，rebase 冲突时按键回查 Jira；2026-11-13 用 `git grep -l -e "uitstalie-" -e "dsh-uitstalie"` 复核（`DH-*`）或冻结的 mission 档案（`taskNN`，见 [mission/FROZEN.md](mission/FROZEN.md)）。
