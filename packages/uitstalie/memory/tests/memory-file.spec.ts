@@ -715,6 +715,55 @@ test('same-turn entries without a strong identifier are both kept', async () => 
   expect(parsed.sections.flatMap(section => section.entries)).toHaveLength(3)
 })
 
+test('explicit supersedes tags match even when only one tag overlaps', async () => {
+  await appendMemoryEntry(ctx, session, {
+    kind: 'open', text: 'old phase note', tags: ['phase3'], turn: 1, seq: [1, 2],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'open', text: 'new phase note', tags: ['phase3'], supersedes: ['phase3'], turn: 2, seq: [3, 4],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  expect(written.evictions).toMatchObject([{ reason: 'superseded' }])
+  expect(parseMemoryDocument(await readFile(memoryFile(), 'utf8')).sections
+    .flatMap(section => section.entries).map(entry => entry.text)).toEqual(['new phase note'])
+})
+
+test('same-turn files entries with the same lone path are duplicates; different paths are not', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{
+      id: 'session-a', cwd: project, updatedAt: new Date().toISOString(),
+      turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }],
+    }],
+    sections: [{
+      sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail',
+      entries: [
+        { kind: 'files', text: 'packages/uitstalie/memory/src/a.ts changed', turn: 1 },
+        { kind: 'files', text: 'packages/uitstalie/memory/src/a.ts also changed', turn: 1 },
+        { kind: 'files', text: 'packages/uitstalie/memory/src/b.ts changed', turn: 1 },
+      ],
+    }],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  expect(written.evictions).toMatchObject([{ reason: 'duplicate' }])
+  const texts = parseMemoryDocument(await readFile(memoryFile(), 'utf8')).sections
+    .flatMap(section => section.entries).map(entry => entry.text)
+  expect(texts).toHaveLength(3)
+  expect(texts.filter(text => text.includes('src/a.ts'))).toHaveLength(1)
+  expect(texts).toContain('packages/uitstalie/memory/src/b.ts changed')
+})
+
+test('resolve supports a tag filter and an explicit all filter', async () => {
+  await appendMemoryEntry(ctx, session, { kind: 'open', text: 'tagged done', tags: ['done'], turn: 1, seq: [1, 2] })
+  await appendMemoryEntry(ctx, session, { kind: 'open', text: 'untagged done', turn: 2, seq: [3, 4] })
+  const byTag = await resolveMemoryEntriesInStore(ctx, session, { sessionId: 'session-a', tag: 'done' })
+  expect(byTag).toMatchObject({ removed: 1, remaining: 1 })
+  const all = await resolveMemoryEntriesInStore(ctx, session, { sessionId: 'session-a', all: true })
+  expect(all).toMatchObject({ removed: 1, remaining: 0 })
+})
+
 test('cleanup is idempotent for a fixed clock', () => {
   const document: MemoryDocument = {
     ...createMemoryDocument(),
@@ -928,6 +977,44 @@ test('the archive reader tolerates a missing or malformed file and preserves a f
   expect(text).toContain('frame after')
   expect(text).toContain('recoverable fact')
   expect(await readMemoryArchive(ctx, session)).toHaveLength(1)
+})
+
+test('the archive parser skips malformed metadata and accepts records without optional fields', async () => {
+  const valid = JSON.stringify({
+    sessionId: 'session-a', kind: 'open', archivedAt: '2026-01-01T00:00:00.000Z',
+    reason: 'ttl', detail: 'ttl',
+  })
+  const text = [
+    'ignored prose',
+    '- [open] <!-- memory-archive: not-json --> x',
+    '- [open] <!-- memory-archive: null --> x',
+    '- [bogus] <!-- memory-archive: {"sessionId":"s","archivedAt":"a","reason":"ttl","detail":"d"} --> x',
+    '- [open] <!-- memory-archive: {"sessionId":1,"archivedAt":"a","reason":"ttl","detail":"d"} --> x',
+    '- [open] <!-- memory-archive: {"sessionId":"s","archivedAt":"a","reason":"ttl","detail":"d","turn":-1} --> x',
+    '- [open] <!-- memory-archive: {"sessionId":"s","archivedAt":"a","reason":"ttl","detail":"d","originalAt":1} --> x',
+    '- [open] <!-- memory-archive: {"sessionId":"s","archivedAt":"a","reason":"ttl","detail":"d","tags":"x"} --> x',
+    `- [open] <!-- memory-archive: ${valid} --> kept without optionals`,
+  ].join('\n')
+  const path = join(project, '.dsh', 'memory', 'sessions', 'MEMORY.archive.md')
+  await mkdir(join(project, '.dsh', 'memory', 'sessions'), { recursive: true })
+  await writeFile(path, text)
+  const records = await readMemoryArchive(ctx, session)
+  expect(records).toHaveLength(1)
+  expect(records[0]).toMatchObject({ sessionId: 'session-a', text: 'kept without optionals', reason: 'ttl' })
+})
+
+test('an archive without markers gains the managed frame and keeps the hand-written prefix', async () => {
+  const path = join(project, '.dsh', 'memory', 'sessions', 'MEMORY.archive.md')
+  await mkdir(join(project, '.dsh', 'memory', 'sessions'), { recursive: true })
+  await writeFile(path, 'hand-written note\n')
+  await appendMemoryArchive(ctx, session, [{
+    sessionId: 'session-a', kind: 'decision', text: 'framed record',
+    archivedAt: '2026-01-02T00:00:00.000Z', reason: 'resolved', detail: 'resolved',
+  }])
+  const text = await readFile(path, 'utf8')
+  expect(text).toContain('hand-written note')
+  expect(text).toContain(MEMORY_ARCHIVE_BEGIN)
+  expect(text).toContain('framed record')
 })
 
 test('an archive append retries one stale version and ignores an empty batch', async () => {
