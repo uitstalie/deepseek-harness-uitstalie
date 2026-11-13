@@ -154,7 +154,8 @@ test('the branch layer wires the capability providers onto a production agent', 
 
   const agent: Agent = await ctx.agentLoop.create(SessionId('composition-root'), {}, { cwd: project })
   expect(ctx.tools.get('memory_write', agent)).toBeDefined()
-  expect(ctx.tools.get('personality_learn', agent)).toBeDefined()
+  expect(ctx.tools.get('personality_analyze', agent)).toBeDefined()
+  expect(ctx.tools.get('personality_apply', agent)).toBeDefined()
   expect(ctx.tools.get('tool-dsh-store', agent)).toBeDefined()
   const assembly = await ctx.systemPrompt.assemble(assembleContextFor(agent))
   expect(assembly.sections.map(section => section.name)).toEqual(expect.arrayContaining(['memory', 'personality']))

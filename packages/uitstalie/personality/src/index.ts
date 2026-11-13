@@ -1,598 +1,193 @@
 /**
- * personality: the personality capability provider. It registers one capability
- * with the dafeiyu organizer, which wires a stable system-prompt section and the
- * `personality_learn` tool onto every agent and forwards completed turns back
- * here. It also registers the `/personality` drift-review command when a
- * command registry is composed.
+ * personality: the global personality capability.
  *
- * The provider owns PERSONALITY.md: the global profile under the harness home,
- * the optional workspace overlay, the prompt text, the learning tool, and the
- * version history the command reviews. It never subscribes to session events:
- * the organizer decides which agents receive the contribution and filters the
- * turns the provider sees. The prompt text is cached per agent because
- * `systemPrompt.section` evaluates its text synchronously; the global file is
- * preloaded when the capability activates, one global watcher refreshes that
- * cache while agents live, and each agent's merged view is read again when that
- * agent is created.
+ * The provider registers one dafeiyu capability. It exposes three stable
+ * prompt sections (profile, output style, enabled writing rules) and two
+ * model tools: read-only `personality_analyze` and root-only
+ * `personality_apply`. The old workspace overlay, turn-end learning, proposal
+ * queue, drift-review command, and file watcher are not wired here.
  *
- * `/personality` (drift review, and the revert it can perform) stays outside the capability gate
- * (DH-309 boundary): it is an explicit human management action on the global profile, not a model
- * capability, and its Remote is the separate user-data surface. Toggling the capability removes the
- * prompt section, the learning tool and auto-learning; it does not hide the human surface.
+ * The profile is user-owned data under `$DSH_HOME/personality/`. Activation
+ * first moves the pre-rewrite `PERSONALITY.md` to `legacy/`, then seeds the two
+ * configuration files when absent. Prompt text is cached per agent; there is no
+ * watcher, so a file edited outside the tools reaches a new agent, not a live
+ * one. `personality_apply` refreshes the calling agent after a write.
  * @module @deepseek-ai/dsh-personality
  */
 
-import type { Context, Volatile } from '@deepseek-ai/cordis'
-import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { Session } from '@deepseek-ai/dsh-session'
+import type { Context } from '@deepseek-ai/cordis'
 import type { CapabilityContribution, CapabilityRuntime } from '@deepseek-ai/dsh-dafeiyu'
-import type {} from '@deepseek-ai/dsh-fs'
-import type {} from '@deepseek-ai/dsh-store-atom'
-// Type-only: the Loader's loader/volatile-update event declaration.
-import type {} from '@deepseek-ai/cordis-plugin-loader'
-import { registerPersonalityCommands } from './commands.ts'
-import { resolveConfig } from './config.ts'
-import type { Config, PersonalitySettings } from './config.ts'
+import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
+import { personalityAnalyzeTool, personalityApplyTool } from './agent-tools.ts'
+import { seedGlobalPersonalityFiles } from './defaults.ts'
 import {
-  PersonalityDocumentError,
+  migrateLegacyPersonality,
   readGlobalPersonality,
-  readPersonality,
-  writePersonalityEntry,
-} from './personality-file.ts'
-import type { PersonalityEntry, PersonalityEntryKind } from './personality-file.ts'
-import { personalityPromptSection, renderPersonalityPrompt } from './prompt.ts'
-import PersonalityRemote, { createPersonalityProposalOperations } from './remote.ts'
-import { autoEntryName, checkAutoLearnBudget, personalityTools, usageFor } from './tools.ts'
-import type { AutoLearnUsage } from './tools.ts'
+} from './global-store.ts'
+import type { PersonalityDocument, PersonalityEntry } from './global-store.ts'
+import { DEFAULT_OUTPUT_STYLE } from './defaults.ts'
+import { readOutputStyle, renderOutputStyleSection } from './output-style.ts'
+import type { OutputStyleConfig } from './output-style.ts'
+import {
+  readWritingRules,
+  previewWritingRules,
+  EMPTY_WRITING_RULES,
+} from './writing-rules.ts'
+import type { WritingRulesDocument } from './writing-rules.ts'
+import {
+  PROFILE_ORDER_NAME,
+  PROFILE_SECTION_NAME,
+  renderPersonalitySection,
+} from './profile-prompt.ts'
+import { OUTPUT_STYLE_ORDER_NAME, OUTPUT_STYLE_SECTION_NAME } from './output-style.ts'
+import { WRITING_RULES_ORDER_NAME, WRITING_RULES_SECTION_NAME } from './writing-rules.ts'
+import { Config } from './config.ts'
 
+export { Config }
+
+/** Plugin name registered with Cordis. */
 export const name = 'personality'
-/** The organizer, the workspace store, and filesystem access for the global profile. */
-export const inject = ['dafeiyu', 'dshStore', 'fs']
+
+/** The organizer, global store, filesystem, session reader, and prompt service. */
+export const inject = ['dafeiyu', 'dshStore', 'fs', 'sessionQuery', 'systemPrompt']
 
 /** Stable capability id this provider registers with the organizer. */
 export const PERSONALITY_CAPABILITY_ID = 'personality'
 
-/** Contract version the provider implements: contribution plus capability-list metadata. */
+/** Contract version the provider implements. */
 export const PERSONALITY_CONTRACT_VERSION = 2
 
 /** Display name in the organizer's capability list. */
 export const PERSONALITY_CAPABILITY_LABEL = 'Personality'
 
 /** One-sentence capability-list description. */
-export const PERSONALITY_CAPABILITY_DESCRIPTION = 'User-authored working preferences and learned habits applied to every session'
+export const PERSONALITY_CAPABILITY_DESCRIPTION = 'User-owned profile, output style, and writing rules with explicit analysis and confirmed apply'
 
-export { Config } from './config.ts'
-export { DEFAULT_AUTO_LEARN_BUDGET, resolveConfig } from './config.ts'
-export type { AutoLearnBudget, AutoLearnConfig, PersonalitySettings } from './config.ts'
-export {
-  appendHistory,
-  createPersonalityDocument,
-  DEFAULT_PERSONALITY_MAX_BYTES,
-  mergePersonalityEntries,
-  parsePersonalityBlock,
-  parsePersonalityDocument,
-  parsePersonalityEntryId,
-  PERSONALITY_BLOCK_BEGIN,
-  PERSONALITY_BLOCK_END,
-  PERSONALITY_ENTRY_KINDS,
-  PERSONALITY_FILE_NAME,
-  PERSONALITY_HISTORY_FILE_NAME,
-  PERSONALITY_HISTORY_STORE_PATH,
-  PERSONALITY_INITIAL_VERSION,
-  PERSONALITY_KIND_REGISTRY,
-  PERSONALITY_STORE_PATH,
-  PERSONALITY_WORKSPACE_ENTRY_KINDS,
-  PersonalityDocumentError,
-  personalityGlobalTarget,
-  personalityKindDefinition,
-  readGlobalPersonality,
-  readGlobalPersonalityHistory,
-  readPersonality,
-  renderPersonalityBlock,
-  renderPersonalityDocument,
-  revertGlobalPersonality,
-  writePersonalityEntry,
-} from './personality-file.ts'
-export type {
-  PersonalityDocument,
-  PersonalityDocumentErrorCode,
-  PersonalityEntry,
-  PersonalityEntryChange,
-  PersonalityEntryInput,
-  PersonalityEntryKind,
-  PersonalityFileRead,
-  PersonalityFileTarget,
-  PersonalityFrame,
-  PersonalityHistoryRead,
-  PersonalityHistoryRecord,
-  PersonalityHistorySource,
-  PersonalityKindDefinition,
-  PersonalityRead,
-  PersonalityRevertOutcome,
-  PersonalityWriteOptions,
-  PersonalityWriteResult,
-} from './personality-file.ts'
-export {
-  decideProposal,
-  PERSONALITY_PENDING_PROPOSAL_LIMIT,
-  PERSONALITY_PROPOSAL_KINDS,
-  PERSONALITY_PROPOSALS_FILE_NAME,
-  proposeIdentity,
-  PersonalityProposalError,
-  readProposals,
-} from './proposals.ts'
-export type {
-  PersonalityProposal,
-  PersonalityProposalErrorCode,
-  PersonalityProposalInput,
-  PersonalityProposalRead,
-  PersonalityProposalStatus,
-} from './proposals.ts'
-export {
-  diffPersonalityHistory,
-  PERSONALITY_COMMAND_NAME,
-  PERSONALITY_COMMAND_USAGE,
-  personalityCommand,
-  registerPersonalityCommands,
-  revertPersonality,
-  showPersonality,
-} from './commands.ts'
-export {
-  PERSONALITY_PROMPT_ORDER,
-  PERSONALITY_PROMPT_PREAMBLE,
-  PERSONALITY_PROMPT_SECTION_NAME,
-  personalityPromptSection,
-  renderPersonalityPrompt,
-} from './prompt.ts'
-export { personalityTools } from './tools.ts'
-export type { AutoLearnUsage, PersonalityLearnValue, PersonalityToolOptions } from './tools.ts'
+/** One cached rendering of the three prompt sections for one agent. */
+interface PromptBundle {
+  /** Section 100 text. */
+  readonly profile: string
+  /** Section 690 text. */
+  readonly outputStyle: string
+  /** Section 695 text. */
+  readonly writingRules: string
+}
 
-/**
- * Register the personality capability with the organizer.
- *
- * Configuration is resolved once per plugin load, so a bad path or budget fails
- * the load rather than silently degrading. The organizer owns per-agent wiring
- * and turn filtering; the contribution declares what it provides and keeps the
- * per-agent prompt cache the synchronous section reads. The `/personality`
- * command registers through an optional child context, so a composition that
- * has no command registry still gets the prompt section and the tool.
- * @param ctx - plugin context carrying the organizer and services.
- * @param config - raw provider configuration from the Loader row.
- * @throws Error when the resolved settings are invalid or the capability id is
- *   already registered.
- */
+/** Register the global personality capability. */
 export function apply(ctx: Context, config: Config): void {
-  let effective = readSettings(config)
-  // Every consumer reads these getters, so a volatile settings write applies to the next tool call,
-  // learning decision or history write without rebuilding the registration or keeping a stale
-  // closure. Paths stay derived from `resolveDshHome()` at each resolution.
-  const settings: PersonalitySettings = Object.freeze({
-    get globalPath() { return effective.globalPath },
-    get globalHistoryPath() { return effective.globalHistoryPath },
-    get proposalsPath() { return effective.proposalsPath },
-    get workspaceOverlay() { return effective.workspaceOverlay },
-    get workspaceStorePath() { return effective.workspaceStorePath },
-    get workspaceHistoryStorePath() { return effective.workspaceHistoryStorePath },
-    get maxBytes() { return effective.maxBytes },
-    get autoLearn() { return effective.autoLearn },
-    get historyLimit() { return effective.historyLimit },
-  })
-  ctx.on('loader/volatile-update', () => {
-    try {
-      effective = readSettings(config)
-    } catch (error) {
-      // The schema accepted the write; a positive-integer rule can still refuse it. Keep the last
-      // valid settings and report the refusal instead of applying a half-valid profile.
-      ctx.logger.warn('personality: keeping previous settings after an invalid update: %o', error)
-    }
-  })
   const registration = ctx.dafeiyu.register({
     id: PERSONALITY_CAPABILITY_ID,
     contractVersion: PERSONALITY_CONTRACT_VERSION,
     label: PERSONALITY_CAPABILITY_LABEL,
     description: PERSONALITY_CAPABILITY_DESCRIPTION,
-    config: effective,
-    settings: { sectionId: 'personality', order: 210 },
-    create: runtime => createContribution(ctx, settings, runtime),
+    config,
+    create: runtime => createContribution(ctx, runtime),
   })
   ctx.effect(() => registration, 'personality.register()')
-  // The settings page reads and decides through this face; it exists even when
-  // the capability's model surface is disabled, because the queue is user data.
-  ctx.provide('personalityProposals', createPersonalityProposalOperations(ctx, settings))
-  void ctx.plugin(PersonalityRemote)
-  // The command child activates only when a command registry is composed.
-  ctx.inject(['commands'], (commandCtx) => {
-    registerPersonalityCommands(commandCtx, settings)
-  })
 }
 
-/**
- * Read one live row value.
- *
- * A Loader-validated row hands this plugin `Volatile` references; a caller that mounts it directly
- * (a test) may hand plain values, so both forms are accepted.
- * @param value - the configured value, a live reference, or undefined.
- * @returns the current plain value.
- */
-function current<T>(value: Volatile<T> | T | undefined): T | undefined {
-  if (value === undefined) return undefined
-  if (typeof value === 'object' && value !== null && typeof (value as { get?: unknown }).get === 'function') {
-    return (value as Volatile<T>).get() as T
-  }
-  return value as T
-}
-
-/**
- * Resolve the row's live references into settings.
- * @param config - the Loader row configuration.
- * @returns the settings for the values in effect right now.
- */
-function readSettings(config: Config): PersonalitySettings {
-  return resolveConfig({
-    workspaceOverlay: current(config.workspaceOverlay),
-    maxBytes: current(config.maxBytes),
-    autoLearn: current(config.autoLearn),
-    historyLimit: current(config.historyLimit),
-  })
-}
-
-/**
- * Build the capability contribution, preload the global profile, and watch it.
- *
- * The preload is what makes a profile visible to the first assembly: the
- * organizer waits for `create()` before wiring agents. The per-agent read then
- * merges the workspace overlay and picks up external file changes; it starts
- * when the organizer wires the agent. One global watcher keeps the cached text
- * current while agents live; a backend that cannot watch degrades to the
- * per-agent read and logs the reason at debug.
- * @param ctx - plugin context carrying `fs` and `dshStore`.
- * @param settings - resolved provider settings.
- * @param runtime - the organizer's context and cancellation for this registration.
- * @returns the contribution wired onto every agent.
- */
+/** Build the contribution; activation migrates and seeds before any agent exists. */
 async function createContribution(
   ctx: Context,
-  settings: PersonalitySettings,
   runtime: CapabilityRuntime,
 ): Promise<CapabilityContribution> {
-  // Owned by this registration: a WeakMap lets a disposed agent's text be
-  // collected without a per-agent disposal hook, which the contribution lacks.
-  const promptTexts = new WeakMap<Agent, string>()
-  // Live agents are refreshed after a watched file change; each agent's own
-  // effect removes it again when that agent's context is disposed.
-  const liveAgents = new Set<Agent>()
-  const autoLearnUsage = new Map<string, AutoLearnUsage>()
-  const overlayControllers = new Set<AbortController>()
-  const preloaded = await readPreloadedEntries(ctx, settings, runtime.signal)
-  let fallbackText = renderPersonalityPrompt(preloaded)
-  const watchController = new AbortController()
-  let stopWatch: (() => Promise<void>) | undefined
-  let disposed = false
-  let refreshQueue = Promise.resolve()
-
-  const refresh = async (agent: Agent | undefined): Promise<void> => {
-    if (agent === undefined) return
-    try {
-      const read = await readPersonality(ctx, agent.session, settings, runtime.signal)
-      promptTexts.set(agent, renderPersonalityPrompt(read.entries))
-    } catch (error: unknown) {
-      if (runtime.signal.aborted || disposed) return
-      ctx.logger.warn(
-        'personality: keeping the previous prompt text for session %s: %s',
-        agent.id,
-        errorMessage(error),
-      )
-    }
+  try {
+    await migrateLegacyPersonality(ctx, runtime.signal)
+  } catch (error: unknown) {
+    ctx.logger.warn('personality: legacy migration failed; personality stays unavailable: %s', String(error))
+    throw error
+  }
+  try {
+    await seedGlobalPersonalityFiles(ctx, runtime.signal)
+  } catch (error: unknown) {
+    ctx.logger.warn('personality: could not seed configuration files: %s', String(error))
   }
 
-  const reload = async (): Promise<void> => {
-    let entries: readonly PersonalityEntry[]
-    try {
-      const read = await readGlobalPersonality(ctx, settings, watchController.signal)
-      entries = read.document?.entries ?? []
-    } catch (error: unknown) {
-      if (watchController.signal.aborted || disposed) return
-      ctx.logger.warn(
-        'personality: keeping the cached profile after a failed refresh: %s',
-        errorMessage(error),
-      )
-      return
-    }
-    fallbackText = renderPersonalityPrompt(entries)
-    await Promise.all([...liveAgents].map(async agent => refresh(agent)))
-  }
+  const fallback = await loadBundle(ctx, runtime.signal, false)
+  const promptTexts = new WeakMap<Agent, PromptBundle>()
 
-  const scheduleReload = (): void => {
-    if (disposed) return
-    refreshQueue = refreshQueue
-      .then(async () => { if (!disposed) await reload() })
-      .catch((error: unknown) => {
-        ctx.logger.warn('personality: profile refresh failed: %s', errorMessage(error))
-      })
+  const refresh = async (agent: Agent): Promise<void> => {
+    promptTexts.set(agent, await loadBundle(ctx, runtime.signal, isRootAgent(agent)))
   }
-
-  const startWatch = async (): Promise<void> => {
-    try {
-      const target = await ctx.fs.resolve(settings.globalPath, { signal: watchController.signal })
-      const close = await ctx.fs.watch(target, (error) => {
-        if (error !== undefined) {
-          if (!disposed) {
-            ctx.logger.warn(
-              'personality: filesystem watch failed for %s: %s',
-              settings.globalPath,
-              error.message,
-            )
-          }
-          return
-        }
-        scheduleReload()
-      }, watchController.signal)
-      if (disposed) {
-        await close()
-        return
-      }
-      stopWatch = close
-    } catch (error: unknown) {
-      if (watchController.signal.aborted || disposed) return
-      ctx.logger.debug(
-        'personality: filesystem watch is unavailable for %s; the profile is re-read when an agent is created: %s',
-        settings.globalPath,
-        errorMessage(error),
-      )
-    }
-  }
-  // Watch setup must not delay or fail activation; a watcher that finishes
-  // initializing after disposal is closed by the branch above.
-  if (!runtime.signal.aborted) void startWatch()
-
-  /**
-   * Watch one agent's workspace overlay and refresh that agent's cached text.
-   *
-   * The overlay file may not exist yet, so the watcher prefers the file, then
-   * its directory, then the store root; a store that cannot be watched keeps the
-   * creation-time read (the overlay is still re-read for a new agent). One
-   * invalidation serializes behind the same per-agent refresh the global watcher
-   * uses, so many overlay writes cheaply coalesce into the latest text.
-   */
-  const startOverlayWatch = async (agent: Agent): Promise<void> => {
-    const controller = new AbortController()
-    overlayControllers.add(controller)
-    let close: (() => Promise<void>) | undefined
-    agent.ctx.effect(() => async () => {
-      controller.abort()
-      overlayControllers.delete(controller)
-      if (close !== undefined) {
-        await close().catch((error: unknown) => {
-          ctx.logger.warn('personality: could not close the overlay watcher: %s', errorMessage(error))
-        })
-      }
-    }, 'personality: close the overlay watcher')
-    try {
-      const root = await ctx.dshStore.rootFor('workspace', agent.session, controller.signal)
-      for (const candidate of [settings.workspaceStorePath, 'memory', '.']) {
-        let target
-        try {
-          target = await ctx.fs.resolve(join(root, candidate), { signal: controller.signal })
-        } catch {
-          continue
-        }
-        if (await ctx.fs.stat(target, controller.signal) === undefined) continue
-        close = await ctx.fs.watch(target, (error) => {
-          if (error !== undefined) {
-            if (!disposed && !controller.signal.aborted) {
-              ctx.logger.warn('personality: overlay watch failed for session %s: %s', agent.id, error.message)
-            }
-            return
-          }
-          void refresh(agent)
-        }, controller.signal)
-        return
-      }
-    } catch (error: unknown) {
-      if (!disposed && !controller.signal.aborted && !runtime.signal.aborted) {
-        ctx.logger.debug(
-          'personality: overlay watch is unavailable for session %s; the overlay is re-read when an agent is created: %s',
-          agent.id,
-          errorMessage(error),
-        )
-      }
-    }
-  }
+  const analyzeTool = personalityAnalyzeTool(ctx)
+  const applyTool = personalityApplyTool(ctx, refresh)
 
   return {
     scope: 'all',
-    promptSections: agent => [personalityPromptSection(() => promptTexts.get(agent) ?? fallbackText)],
-    tools: () => personalityTools(ctx, settings, {
-      autoLearnUsage,
-      refresh,
-    }),
+    promptSections: agent => sectionsFor(ctx, agent, promptTexts, fallback),
+    tools: agent => isRootAgent(agent) ? [analyzeTool, applyTool] : [analyzeTool],
     onAgentCreated: (agent) => {
-      liveAgents.add(agent)
-      agent.ctx.effect(() => () => { liveAgents.delete(agent) }, 'personality: forget a disposed agent')
-      void refresh(agent)
-      if (!runtime.signal.aborted) void startOverlayWatch(agent)
-    },
-    onTurnEnd: async (input) => {
-      if (runtime.signal.aborted || input.signal.aborted) return
-      const agents = ctx.get('agents')
-      const header = input.agent.session.header
-      if (agents !== undefined
-        && (header.origin === 'subagent' || header.parentSession !== undefined || (header.delegationDepth ?? 0) > 0)) return
-      const correction = detectCorrection(input.session, input.turn, input.event.seq)
-      if (correction === undefined) return
-      await learnCorrection(ctx, settings, autoLearnUsage, input.session, input.agent, correction, input.signal, refresh)
-    },
-    dispose: () => {
-      disposed = true
-      watchController.abort()
-      for (const controller of overlayControllers) controller.abort()
-      overlayControllers.clear()
-      autoLearnUsage.clear()
-      liveAgents.clear()
-      const close = stopWatch
-      stopWatch = undefined
-      if (close !== undefined) {
-        void close().catch((error: unknown) => {
-          ctx.logger.warn('personality: could not close the profile watcher: %s', errorMessage(error))
-        })
-      }
+      /* v8 ignore next 3 -- loadBundle contains every file read failure; refresh has no other throw. */
+      void refresh(agent).catch((error: unknown) => {
+        ctx.logger.warn('personality: could not load the prompt bundle for agent %s: %s', agent.id, String(error))
+      })
     },
   }
 }
 
-/**
- * Read the global profile once for the fallback prompt text.
- *
- * A corrupt or unreadable profile is contained to a logged warning: the
- * capability stays active with an empty section until a later agent read
- * succeeds.
- * @param ctx - plugin context carrying `fs`.
- * @param settings - resolved provider settings.
- * @param signal - cancellation for this registration.
- * @returns the global entries, or an empty list when the file is absent or invalid.
- */
-async function readPreloadedEntries(
+/** Build the three prompt sections with the agent cache and the activation fallback. */
+function sectionsFor(
   ctx: Context,
-  settings: PersonalitySettings,
-  signal: AbortSignal,
-): Promise<readonly PersonalityEntry[]> {
-  try {
-    return (await readGlobalPersonality(ctx, settings, signal)).document?.entries ?? []
-  } catch (error: unknown) {
-    if (signal.aborted) return []
-    if (error instanceof PersonalityDocumentError) {
-      ctx.logger.warn('personality: ignoring the global PERSONALITY.md: %s', error.message)
-      return []
-    }
-    ctx.logger.warn(
-      'personality: could not read the global PERSONALITY.md: %s',
-      errorMessage(error),
-    )
-    return []
-  }
-}
-
-/** One explicit user correction detected on a completed turn. */
-interface CorrectionSignal {
-  /** Kind the correction maps onto. */
-  readonly kind: PersonalityEntryKind
-  /** The user's sentence, trimmed. */
-  readonly text: string
-  /** Event seq of the correcting message, for diagnostics. */
-  readonly seq: number
-}
-
-/**
- * Explicit-correction rules applied to one user message.
- *
- * Order matters: a durable style sentence ("from now on answer in Chinese") also
- * matches the broader durable-preference rule, so the style rule runs first. The
- * patterns are deliberately narrow — an ordinary instruction is not a correction
- * and must not become a personality entry.
- */
-const CORRECTION_RULES: readonly { readonly kind: PersonalityEntryKind; readonly pattern: RegExp }[] = [
-  {
-    kind: 'understanding',
-    pattern: /^(?:其实[，,\s]?|不是这个意思|不是这样|我说的是|我的意思是|我指的是|i meant\b|not what i meant|actually[,\s])/iu,
-  },
-  {
-    kind: 'style',
-    pattern: new RegExp(
-      '^(?:以后|下次|from now on\\b|going forward\\b).*'
-      + '(?:回复|回答|说话|写|语气|格式|风格|语言|中文|英文|reply|respond|write|format|tone|style|language|english|chinese)',
-      'iu',
-    ),
-  },
-  {
-    kind: 'preference',
-    pattern: /^(?:以后|下次|from now on\b|going forward\b)/iu,
-  },
-]
-
-/**
- * Find the last explicit correction in one completed turn.
- *
- * The turn's user messages are read from the live log once per completed turn
- * (the organizer already filtered the turn); the last match wins so a later
- * correction supersedes an earlier one.
- * @param session - session whose log is read.
- * @param turn - the completed turn number.
- * @param endSeq - the `turn/end` event seq, the inclusive upper bound.
- * @returns the correction and its evidence seq, or undefined when the turn has none.
- */
-function detectCorrection(session: Session, turn: number, endSeq: number): CorrectionSignal | undefined {
-  // oxlint-disable-next-line typescript/no-deprecated -- reads the just-finished turn from the live log
-  const events = session.snapshotEvents()
-  let startSeq: number | undefined
-  for (const event of events) {
-    if (event.type === 'turn/start' && event.data.turn === turn) startSeq = event.seq
-  }
-  if (startSeq === undefined) return undefined
-  let found: CorrectionSignal | undefined
-  for (const event of events) {
-    if (event.seq <= startSeq || event.seq > endSeq) continue
-    if (event.type !== 'user/message' || event.data.source.kind !== 'user') continue
-    const text = event.data.content
-      .flatMap(block => block.type === 'text' ? [block.text] : [])
-      .join('\n')
-      .trim()
-    if (text.length < 4 || text.length > 400) continue
-    const rule = CORRECTION_RULES.find(candidate => candidate.pattern.test(text))
-    if (rule !== undefined) found = { kind: rule.kind, text, seq: event.seq }
-  }
-  return found
-}
-
-/**
- * Store one turn-end correction under the same per-session budget the tool uses.
- *
- * A refusal is a debug log, not a failure: the turn is already complete and the
- * budget exists precisely so automatic writes cannot flood the profile.
- * @param ctx - plugin context for the write and the logs.
- * @param settings - resolved provider settings.
- * @param usageMap - per-session auto-learning usage shared with the tool.
- * @param session - session the correction came from.
- * @param agent - agent whose cached prompt is refreshed after the write.
- * @param correction - the detected correction.
- * @param signal - cancellation for the write.
- * @param refresh - prompt-cache refresh for the agent.
- */
-async function learnCorrection(
-  ctx: Context,
-  settings: PersonalitySettings,
-  usageMap: Map<string, AutoLearnUsage>,
-  session: Session,
   agent: Agent,
-  correction: CorrectionSignal,
-  signal: AbortSignal,
-  refresh: (agent: Agent | undefined) => Promise<void>,
-): Promise<void> {
-  const bytes = Buffer.byteLength(correction.text, 'utf8')
-  const usage = usageFor(usageMap, session.id)
-  const refusal = checkAutoLearnBudget(settings.autoLearn, usage, bytes)
-  if (refusal !== undefined) {
-    ctx.logger.debug('personality: automatic learning skipped for session %s: %s', session.id, refusal)
-    return
+  promptTexts: WeakMap<Agent, PromptBundle>,
+  fallback: PromptBundle,
+): readonly PromptSection[] {
+  const bundle = (): PromptBundle => promptTexts.get(agent) ?? fallback
+  return [
+    {
+      name: PROFILE_SECTION_NAME,
+      order: ctx.systemPrompt.getSectionOrder(PROFILE_ORDER_NAME),
+      text: () => bundle().profile,
+    },
+    {
+      name: OUTPUT_STYLE_SECTION_NAME,
+      order: ctx.systemPrompt.getSectionOrder(OUTPUT_STYLE_ORDER_NAME),
+      text: () => bundle().outputStyle,
+    },
+    {
+      name: WRITING_RULES_SECTION_NAME,
+      order: ctx.systemPrompt.getSectionOrder(WRITING_RULES_ORDER_NAME),
+      text: () => bundle().writingRules,
+    },
+  ]
+}
+
+/** Read all three files into section text, degrading each independently. */
+async function loadBundle(ctx: Context, signal: AbortSignal, dispatch: boolean): Promise<PromptBundle> {
+  let personality: PersonalityDocument | undefined
+  let style: OutputStyleConfig = DEFAULT_OUTPUT_STYLE
+  let rules: WritingRulesDocument = EMPTY_WRITING_RULES
+  try {
+    personality = (await readGlobalPersonality(ctx, signal)).document
+  } catch (error: unknown) {
+    ctx.logger.warn('personality: ignoring the global profile: %s', String(error))
   }
   try {
-    // A turn-end write can be the first store write of the session, so the root may not exist.
-    await ctx.dshStore.prepare('workspace', session, signal)
-    await writePersonalityEntry(ctx, session, {
-      kind: correction.kind,
-      name: autoEntryName(correction.kind, correction.text),
-      text: correction.text,
-    }, { settings, source: 'auto' }, signal)
-    usage.entries += 1
-    usage.bytes += bytes
-    await refresh(agent)
+    style = (await readOutputStyle(ctx, signal)).config
   } catch (error: unknown) {
-    if (signal.aborted) return
-    ctx.logger.warn('personality: automatic learning failed for session %s: %s', session.id, errorMessage(error))
+    ctx.logger.warn('personality: ignoring OUTPUT_STYLE.yaml: %s', String(error))
+  }
+  try {
+    rules = (await readWritingRules(ctx, signal)).document
+  } catch (error: unknown) {
+    ctx.logger.warn('personality: ignoring WRITING_RULES.yaml: %s', String(error))
+  }
+  const entries: readonly PersonalityEntry[] = personality?.entries ?? []
+  return {
+    profile: renderPersonalitySection(entries),
+    outputStyle: renderOutputStyleSection(style, {
+      styleEntries: entries.filter(entry => entry.kind === 'style'),
+      dispatch,
+    }),
+    writingRules: previewWritingRules(rules),
   }
 }
 
-/** Flatten any thrown value into a one-line message for logs. */
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+/** Whether this agent is a root conversation, not a delegated child. */
+function isRootAgent(agent: Agent): boolean {
+  const header = agent.session.header
+  return header.origin !== 'subagent'
+    && header.parentSession === undefined
+    && (header.delegationDepth ?? 0) === 0
 }

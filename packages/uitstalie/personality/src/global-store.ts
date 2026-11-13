@@ -107,6 +107,7 @@ export class PersonalityStoreError extends Error {
 /** Result of inspecting and moving the old profile. */
 export type LegacyMigration =
   | { readonly status: 'absent' }
+  | { readonly status: 'current' }
   | { readonly status: 'moved'; readonly legacyPath: string }
   | { readonly status: 'already-migrated'; readonly legacyPath: string }
 
@@ -327,6 +328,13 @@ export async function migrateLegacyPersonality(ctx: Context, signal?: AbortSigna
   if (info === undefined) return { status: 'absent' }
   if (info.type !== 'file') {
     throw new PersonalityStoreError(`personality legacy source ${sourcePath} is not a regular file`, 'legacy-conflict')
+  }
+  const sourceText = await ctx.fs.readText(source, signal)
+  try {
+    parsePersonalityDocument(sourceText)
+    return { status: 'current' }
+  } catch {
+    // Not a new-format document: treat it as the pre-rewrite profile and move it.
   }
   const already = await findIdenticalLegacy(ctx, legacyDir, sourcePath, signal)
   if (already !== undefined) {

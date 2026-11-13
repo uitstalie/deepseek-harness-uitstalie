@@ -310,6 +310,7 @@ test('reports a copy verification mismatch and a retained source after copy', as
   vi.spyOn(ctx.fs, 'moveFile').mockRejectedValue(new FsError('move unsupported', 'FS_IO_ERROR'))
   const readText = vi.spyOn(ctx.fs, 'readText')
     .mockResolvedValueOnce('old profile')
+    .mockResolvedValueOnce('old profile')
     .mockResolvedValueOnce('different')
   await writeProfile('old profile')
   await expect(migrateLegacyPersonality(ctx)).rejects.toMatchObject({ code: 'legacy-conflict' })

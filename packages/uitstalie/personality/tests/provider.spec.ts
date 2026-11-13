@@ -1,22 +1,20 @@
 /**
- * Provider tests: the real plugin mounted over a real AgentLoop, organizer, and
- * store. They assert the all-agent contribution, the stable prompt section, the
- * auto-learning tool with its refusals and budget, the workspace overlay write,
- * and the deferred surfaces.
+ * Provider tests for the rewritten capability: all-agent analyze, root-only
+ * confirmed apply, three stable prompt sections, child inheritance, legacy
+ * config acceptance, unload, and the absence of any turn-end write.
  */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-// Type-only: the Loader's `loader/volatile-update` event declaration.
-import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type { Fiber } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import SessionQuery from '@deepseek-ai/dsh-session-query'
 import { createDshStore } from '@deepseek-ai/dsh-store-atom'
 import {
   mountAgentLoopTestDependencies,
@@ -25,18 +23,14 @@ import {
 import type { AgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
 import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
 import * as Personality from '../src/index.ts'
-import type { Config, PersonalityConfigInput } from '../src/config.ts'
-import { resolveConfig } from '../src/config.ts'
-import { PERSONALITY_PROPOSALS_FILE_NAME } from '../src/proposals.ts'
 import {
-  PERSONALITY_FILE_NAME,
-  PERSONALITY_HISTORY_FILE_NAME,
-  PERSONALITY_STORE_PATH,
+  createPersonalityDocument,
+  globalPersonalityPath,
   parsePersonalityDocument,
   renderPersonalityDocument,
-} from '../src/personality-file.ts'
-import type { PersonalityDocument, PersonalityEntry } from '../src/personality-file.ts'
-import { PERSONALITY_PROMPT_ORDER, PERSONALITY_PROMPT_SECTION_NAME, renderPersonalityPrompt } from '../src/prompt.ts'
+} from '../src/global-store.ts'
+import type { PersonalityEntry } from '../src/global-store.ts'
+import { renderPersonalitySection, PROFILE_SECTION_NAME } from '../src/profile-prompt.ts'
 
 const signal = new AbortController().signal
 
@@ -46,8 +40,6 @@ let callCounter = 0
 
 beforeEach(async () => {
   project = await mkdtemp(join(tmpdir(), 'dsh-personality-provider-'))
-  // A `.git` marker makes the fixture look like a checkout, so project-root
-  // discovery resolves to the fixture rather than to the temp directory above it.
   await mkdir(join(project, '.git'), { recursive: true })
   vi.stubEnv('DSH_HOME', join(project, 'home'))
   contexts = []
@@ -64,76 +56,40 @@ interface Mounted {
   readonly ctx: Context
   readonly harness: AgentLoopTestHarness
   readonly personalityFiber: Fiber
-  /** Provider configuration the Loader resolved for this mount, when the provider activated. */
-  readonly config: Config | undefined
-}
-
-/** Configuration that keeps the global profile inside the fixture. */
-function settingsConfig(overrides: PersonalityConfigInput = {}): PersonalityConfigInput {
-  return {
-    ...overrides.workspaceOverlay === undefined ? {} : { workspaceOverlay: overrides.workspaceOverlay },
-    ...overrides.maxBytes === undefined ? {} : { maxBytes: overrides.maxBytes },
-    ...overrides.autoLearn === undefined ? {} : { autoLearn: overrides.autoLearn },
-    ...overrides.historyLimit === undefined ? {} : { historyLimit: overrides.historyLimit },
-  }
-}
-
-/** Absolute path of the fixture global profile. */
-function globalFile(): string {
-  return join(project, 'home', 'personality', PERSONALITY_FILE_NAME)
-}
-
-/** Absolute path of the fixture workspace overlay. */
-function workspaceFile(): string {
-  return join(project, '.dsh', 'memory', PERSONALITY_FILE_NAME)
 }
 
 /** One entry fixture. */
 function entry(kind: PersonalityEntry['kind'], name: string, text: string): PersonalityEntry {
-  return { id: `${kind}.${name}`, kind, name, text }
+  return { id: `${kind}.${name}`, kind, text }
 }
 
-/** Render and write the global profile before the provider activates. */
+/** Write a new-format profile before activation. */
 async function seedGlobal(entries: readonly PersonalityEntry[]): Promise<void> {
-  const document: PersonalityDocument = {
-    version: 1,
-    updatedAt: '2026-10-21T00:00:00.000Z',
-    entries,
-    frame: { before: '\n', after: '\n' },
-  }
   await mkdir(join(project, 'home', 'personality'), { recursive: true })
-  await writeFile(globalFile(), renderPersonalityDocument(document), 'utf8')
+  await writeFile(globalPersonalityPath(), renderPersonalityDocument(createPersonalityDocument(entries)), 'utf8')
 }
 
-/** Mount the real services and the personality provider, then the agent loop harness. */
-async function mount(config: PersonalityConfigInput = settingsConfig()): Promise<Mounted> {
+/** Mount the real services, organizer, session query, and rewritten provider. */
+async function mount(): Promise<Mounted> {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(LocalFileSystem, { cwd: project })
   ctx.provide('dshStore', createDshStore(ctx, false))
   await ctx.plugin(Dafeiyu)
-  let captured: Config | undefined
-  const capturing = {
-    name: Personality.name,
-    inject: Personality.inject,
-    apply(pluginCtx: Context, rowConfig: Config) {
-      captured = rowConfig
-      Personality.apply(pluginCtx, rowConfig)
-    },
-  }
-  const personalityFiber = await ctx.plugin(capturing as never, config as never)
-  await settle()
+  // @ts-expect-error -- the package default export is an abstract service class; Cordis instantiates it.
+  await ctx.plugin(SessionQuery, {})
+  const personalityFiber = await ctx.plugin(Personality, {} as never)
   const harness = await mountAgentLoopTestHarness(ctx)
-  return { ctx, harness, personalityFiber, config: captured }
+  return { ctx, harness, personalityFiber }
 }
 
-/** Let activation and dispatch continuations run. */
+/** Let activation continuations run. */
 async function settle(): Promise<void> {
   await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
 }
 
-/** Poll until a test-owned condition becomes true. */
+/** Poll until a condition becomes true. */
 async function until(condition: () => boolean): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     if (condition()) return
@@ -142,7 +98,7 @@ async function until(condition: () => boolean): Promise<void> {
   throw new Error('condition was not met')
 }
 
-/** Invoke one registered tool through the real tool runtime. */
+/** Invoke one tool through the real runtime. */
 async function call(ctx: Context, agent: Agent, name: string, args: Record<string, unknown>) {
   const batch = await ctx.tools.execute({
     signal,
@@ -164,42 +120,30 @@ function text(result: { content: { type: string; text?: string }[] }): string {
   return result.content.filter(block => block.type === 'text').map(block => block.text).join('')
 }
 
-/** Create one root agent, wait for its wiring, and return it. */
+/** Create one root agent and wait for its new analyze tool. */
 async function createRoot(mounted: Mounted, sessionId = 'personality-root'): Promise<Agent> {
   const root = await mounted.harness.create(SessionId(sessionId), {}, { cwd: project })
-  await until(() => mounted.ctx.tools.get('personality_learn', root) !== undefined)
+  await until(() => mounted.ctx.tools.get('personality_analyze', root) !== undefined)
+  await settle()
   return root
 }
 
-/** Resolve the current personality section text for one agent. */
+/** Resolve the profile section text for one agent. */
 async function promptText(ctx: Context, agent: Agent): Promise<string> {
   const assembly = await ctx.systemPrompt.assemble(assembleContextFor(agent))
-  return assembly.sections.find(section => section.name === PERSONALITY_PROMPT_SECTION_NAME)?.text ?? ''
+  return assembly.sections.find(section => section.name === PROFILE_SECTION_NAME)?.text ?? ''
 }
 
-/** Append one completed turn carrying a user message. */
-function completeTurn(agent: Agent, turn: number, text: string): void {
+/** Append one user message to a session. */
+function appendUser(agent: Agent, text: string, turn = 1): void {
   agent.session.append('turn/start', { turn })
   agent.session.append('user/message', createUserMessage({
     content: [{ type: 'text', text }],
     source: { kind: 'user' },
   }), { surfaceOp: 'append' })
-  agent.session.append('turn/end', { turn, reason: { kind: 'completed' } })
 }
 
-/** Poll until a personality file exists and parses, returning its entries. */
-async function awaitEntries(path: string): Promise<readonly PersonalityEntry[]> {
-  for (let attempt = 0; attempt < 500; attempt += 1) {
-    try {
-      return parsePersonalityDocument(await readFile(path, 'utf8')).entries
-    } catch {
-      await new Promise<void>((resolve) => { setTimeout(resolve, 1) })
-    }
-  }
-  throw new Error(`personality file ${path} never appeared`)
-}
-
-test('registers an active all-agent capability with the stable prompt section', async () => {
+test('registers the all-agent analyze tool, root apply, and three prompt sections', async () => {
   const entries = [entry('style', 'language', '用中文回答；代码保持英文原文。')]
   await seedGlobal(entries)
   const mounted = await mount()
@@ -212,231 +156,307 @@ test('registers an active all-agent capability with the stable prompt section', 
     state: 'active',
     label: Personality.PERSONALITY_CAPABILITY_LABEL,
     description: Personality.PERSONALITY_CAPABILITY_DESCRIPTION,
-    settings: { sectionId: 'personality', order: 210 },
   }])
-  expect(await promptText(mounted.ctx, root)).toBe(renderPersonalityPrompt(entries))
-  expect(PERSONALITY_PROMPT_ORDER).toBe(100)
-  expect(PERSONALITY_PROMPT_SECTION_NAME).toBe('personality')
+  expect(await promptText(mounted.ctx, root)).toBe(renderPersonalitySection(entries))
+  expect(mounted.ctx.tools.get('personality_analyze', root)).toBeDefined()
+  expect(mounted.ctx.tools.get('personality_apply', root)).toBeDefined()
+  const names = (await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))).sections.map(section => section.name)
+  expect(names).toEqual(expect.arrayContaining(['personality', 'personality:output-style', 'personality:writing-rules']))
 })
 
-test('an empty profile contributes an empty section text', async () => {
+test('an empty profile contributes an empty profile section', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
-  await settle()
-
   expect(await promptText(mounted.ctx, root)).toBe('')
 })
 
-test('child agents inherit the prompt section and the learn tool', async () => {
+test('child agents inherit analyze and the profile section but not apply', async () => {
   const entries = [entry('identity', 'role', '独立开发者。')]
   await seedGlobal(entries)
   const mounted = await mount()
   const root = await createRoot(mounted)
-  const child = await mounted.ctx.agents.create({ sessionId: SessionId('personality-child'), meta: { parentSession: root.id, origin: 'subagent', delegationDepth: 1 } })
-  await until(() => mounted.ctx.tools.get('personality_learn', child.agent) !== undefined)
+  const child = await mounted.ctx.agents.create({
+    sessionId: SessionId('personality-child'),
+    meta: { parentSession: root.id, origin: 'subagent', delegationDepth: 1 },
+  })
+  await until(() => mounted.ctx.tools.get('personality_analyze', child.agent) !== undefined)
 
-  expect(await promptText(mounted.ctx, child.agent)).toBe(renderPersonalityPrompt(entries))
-  expect(mounted.ctx.tools.get('personality_learn', child.agent)).toBeDefined()
+  expect(await promptText(mounted.ctx, child.agent)).toBe(renderPersonalitySection(entries))
+  expect(mounted.ctx.tools.get('personality_apply', child.agent)).toBeUndefined()
   await child.dispose()
 })
 
-test('personality_learn writes a style entry to the overlay and refreshes the prompt', async () => {
+test('accepts the legacy config shape without adding settings metadata', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
+  expect(mounted.ctx.dafeiyu.status()[0]?.settings).toBeUndefined()
+  expect(mounted.ctx.tools.get('personality_analyze', root)).toBeDefined()
+})
 
-  const result = await call(mounted.ctx, root, 'personality_learn', {
+test('personality_analyze reads the current session and returns evidence candidates', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  appendUser(root, '以后回复请用中文。')
+
+  const result = await call(mounted.ctx, root, 'personality_analyze', { scope: { kind: 'current' } })
+  expect(result.isError, text(result)).toBe(false)
+  expect(text(result)).toContain('style.reply-style')
+  expect(text(result)).toContain('personality-root#')
+  expect(text(result)).toContain('以后回复请用中文。')
+  expect(await readFile(globalPersonalityPath(), 'utf8').catch(() => '')).toBe('')
+})
+
+test('personality_apply writes only after confirm:true and refreshes the caller section', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  const candidate = {
     kind: 'style',
-    content: '先给结论，再给步骤。',
-    evidence: 'seq 7',
-  })
-
-  expect(result.isError, text(result)).toBe(false)
-  expect(text(result)).toContain('Recorded an auto-learned style entry')
-  const stored = parsePersonalityDocument(await readFile(workspaceFile(), 'utf8'))
-  expect(stored.entries).toHaveLength(1)
-  expect(stored.entries[0]?.kind).toBe('style')
-  expect(stored.entries[0]?.text).toBe('先给结论，再给步骤。')
-  const history = await readFile(join(project, '.dsh', 'memory', PERSONALITY_HISTORY_FILE_NAME), 'utf8')
-  expect(history).toContain('"source":"auto"')
-  expect(history).toContain('"session":"personality-root"')
-
-  expect(await promptText(mounted.ctx, root)).toContain('先给结论，再给步骤。')
-  expect(PERSONALITY_STORE_PATH).toBe('memory/PERSONALITY.md')
-})
-
-test('a volatile settings update reaches the next write without a remount', async () => {
-  const mounted = await mount({ maxBytes: 4096 })
-  const root = await createRoot(mounted)
-  if (mounted.config === undefined) throw new Error('the provider did not resolve its configuration')
-
-  // Shrink the body budget through the live reference the settings page writes, then emit the
-  // Loader's commit event: the next tool call must see 8, not the apply-time 4096.
-  // This harness mounts the plugin with plain values, so the write is a field replacement.
-  Object.assign(mounted.config, { maxBytes: 8 })
-  mounted.ctx.emit('loader/volatile-update', [['maxBytes']])
-  const result = await call(mounted.ctx, root, 'personality_learn', {
-    kind: 'style',
-    content: 'this entry is longer than eight bytes',
-    evidence: 'seq 1',
-  })
-  expect(text(result)).toMatch(/over the 8-byte limit/u)
-})
-
-test('personality_learn refuses identity entries without writing and without failing the call', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-
-  const result = await call(mounted.ctx, root, 'personality_learn', {
-    kind: 'identity',
-    content: '用户是独立开发者。',
-    evidence: 'seq 3',
-  })
-
-  expect(result.isError, text(result)).toBe(false)
-  expect(text(result)).toContain('personality_propose')
-  await expect(stat(workspaceFile())).rejects.toThrow()
-  await expect(stat(globalFile())).rejects.toThrow()
-})
-
-test('personality_learn refuses an unknown kind with the valid list', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-
-  const result = await call(mounted.ctx, root, 'personality_learn', {
-    kind: 'bogus',
-    content: 'something',
-    evidence: 'seq 1',
-  })
-
-  expect(result.isError, text(result)).toBe(false)
-  expect(text(result)).toContain('valid kinds: understanding, style, preference, identity')
-})
-
-test('personality_learn requires evidence naming a positive session event seq', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-
-  const result = await call(mounted.ctx, root, 'personality_learn', {
-    kind: 'preference',
-    content: '提交信息用 conventional commits。',
-    evidence: 'turn 3',
-  })
-
-  expect(result.isError, text(result)).toBe(false)
-  expect(text(result)).toContain('positive session event seq')
-  expect(await readFile(workspaceFile(), 'utf8').catch(() => '')).toBe('')
-})
-
-test('the auto-learn budget refuses an entry past the per-session limit', async () => {
-  const mounted = await mount(settingsConfig({ autoLearn: { entries: 1, bytes: 512 } }))
-  const root = await createRoot(mounted)
-
-  const first = await call(mounted.ctx, root, 'personality_learn', {
-    kind: 'understanding',
-    content: '用户常用短句表达。',
-    evidence: 'seq 1',
-  })
-  const second = await call(mounted.ctx, root, 'personality_learn', {
-    kind: 'preference',
-    content: '先读现有实现再改代码。',
-    evidence: 'seq 2',
-  })
-
-  expect(first.isError, text(first)).toBe(false)
-  expect(text(first)).toContain('Recorded an auto-learned understanding entry')
-  expect(second.isError, text(second)).toBe(false)
-  expect(text(second)).toContain('auto-learn budget is exhausted')
-  expect(text(second)).toContain('0 of 1 entries')
-  expect(parsePersonalityDocument(await readFile(globalFile(), 'utf8')).entries).toHaveLength(1)
-})
-
-test('personality_propose queues an identity proposal without writing the profile', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-
-  const result = await call(mounted.ctx, root, 'personality_propose', {
-    kind: 'identity',
-    name: 'role',
-    text: '用户是独立开发者。',
-    evidence: 'seq 3',
-  })
-
-  expect(result.isError, text(result)).toBe(false)
-  expect(text(result)).toContain('Queued identity proposal')
-  await expect(stat(globalFile())).rejects.toThrow()
-  const queue = await readFile(join(project, 'home', 'personality', PERSONALITY_PROPOSALS_FILE_NAME), 'utf8')
-  expect(queue).toContain('"kind":"identity"')
-  expect(queue).toContain('"status":"pending"')
-})
-
-test('an explicit correction on a completed turn writes one automatic entry', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-  completeTurn(root, 1, '以后用中文回答我')
-
-  const entries = await awaitEntries(workspaceFile())
-  expect(entries).toHaveLength(1)
-  expect(entries[0]).toMatchObject({ kind: 'style', text: '以后用中文回答我' })
-  expect(entries[0]?.id).toMatch(/^style\.auto-/u)
-  for (let attempt = 0; attempt < 500; attempt += 1) {
-    if ((await promptText(mounted.ctx, root)).includes('以后用中文回答我')) break
-    await new Promise<void>((resolve) => { setTimeout(resolve, 1) })
+    name: 'language',
+    text: '用中文回答。',
+    evidence: [{ sessionId: 'personality-root', seq: 1, quote: '用中文回答。' }],
   }
-  expect(await promptText(mounted.ctx, root)).toContain('以后用中文回答我')
-  const history = await readFile(join(project, '.dsh', 'memory', PERSONALITY_HISTORY_FILE_NAME), 'utf8')
-  expect(history).toContain('"source":"auto"')
+
+  const result = await call(mounted.ctx, root, 'personality_apply', { candidates: [candidate], confirm: true })
+  expect(result.isError, text(result)).toBe(false)
+  expect(text(result)).toContain('Applied 1 personality entry')
+  const stored = parsePersonalityDocument(await readFile(globalPersonalityPath(), 'utf8'))
+  expect(stored.entries).toEqual([{ id: 'style.language', kind: 'style', text: '用中文回答。' }])
+  expect(await promptText(mounted.ctx, root)).toContain('用中文回答。')
 })
 
-test('an ordinary instruction is not learned on turn end', async () => {
+test('personality_apply rejects confirm:false without writing', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
-  completeTurn(root, 1, '跑一下测试')
-  await settle()
-  await settle()
-  await expect(stat(workspaceFile())).rejects.toThrow()
+  const result = await call(mounted.ctx, root, 'personality_apply', {
+    candidates: [{
+      kind: 'style',
+      name: 'language',
+      text: '用中文回答。',
+      evidence: [{ sessionId: 'personality-root', seq: 1, quote: '用中文回答。' }],
+    }],
+    confirm: false,
+  })
+  expect(result.isError).toBe(false)
+  expect(text(result)).toContain('confirm must be the literal true')
+  await expect(stat(globalPersonalityPath())).rejects.toThrow()
 })
 
-test('turn-end learning shares the per-session auto-learn budget', async () => {
-  const mounted = await mount(settingsConfig({ autoLearn: { entries: 1, bytes: 512 } }))
-  const root = await createRoot(mounted)
-  completeTurn(root, 1, '以后用中文回答我')
-  await awaitEntries(workspaceFile())
-  completeTurn(root, 2, '其实不是这个意思')
-  await settle()
-  await settle()
-  expect(parsePersonalityDocument(await readFile(workspaceFile(), 'utf8')).entries).toHaveLength(1)
-})
-
-test('unloading the provider removes the capability, the tool, and the section', async () => {
+test('unloading the provider removes the capability, tools, and sections', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
-  expect(mounted.ctx.tools.get('personality_learn', root)).toBeDefined()
+  expect(mounted.ctx.tools.get('personality_analyze', root)).toBeDefined()
 
   await mounted.personalityFiber.dispose()
 
   expect(mounted.ctx.dafeiyu.status()).toEqual([])
-  expect(mounted.ctx.tools.get('personality_learn', root)).toBeUndefined()
+  expect(mounted.ctx.tools.get('personality_analyze', root)).toBeUndefined()
   expect(await promptText(mounted.ctx, root)).toBe('')
 })
 
-test('a completed turn is dispatched but leaves PERSONALITY.md absent', async () => {
+test('a completed turn leaves PERSONALITY.md absent and records no turn-end write', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
   root.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-  await until(() => mounted.ctx.dafeiyu.status()[0]?.lastTurnAt !== undefined)
+  await settle()
 
-  expect(mounted.ctx.dafeiyu.status()[0]?.lastTurnAt).toEqual(expect.any(Number))
-  await expect(stat(workspaceFile())).rejects.toThrow()
+  expect(mounted.ctx.dafeiyu.status()[0]?.lastTurnAt).toBeUndefined()
+  await expect(stat(globalPersonalityPath())).rejects.toThrow()
 })
 
-test('resolveConfig defaults the global path under DSH_HOME and keeps both budgets', () => {
-  vi.stubEnv('DSH_HOME', join(project, 'home'))
-  const settings = resolveConfig({})
+test('personality_analyze can scan a named session in the same workspace', async () => {
+  const mounted = await mount()
+  await createRoot(mounted)
+  const other = await createRoot(mounted, 'personality-other')
+  appendUser(other, '以后回复请用英文。')
+  const result = await call(mounted.ctx, other, 'personality_analyze', {
+    scope: { kind: 'session', sessionId: 'personality-other' },
+  })
+  expect(result.isError, text(result)).toBe(false)
+  expect(text(result)).toContain('personality-other#')
+  expect(text(result)).toContain('以后回复请用英文。')
+})
 
-  expect(settings.globalPath).toBe(join(project, 'home', 'personality', PERSONALITY_FILE_NAME))
-  expect(settings.globalHistoryPath).toBe(join(project, 'home', 'personality', PERSONALITY_HISTORY_FILE_NAME))
-  expect(settings.workspaceOverlay).toBe(true)
-  expect(settings.maxBytes).toBe(2048)
-  expect(settings.autoLearn).toEqual({ entries: 3, bytes: 512 })
-  expect(settings.workspaceStorePath).toBe(PERSONALITY_STORE_PATH)
+test('personality_analyze rejects identity as a candidate kind', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  const result = await call(mounted.ctx, root, 'personality_analyze', {
+    scope: { kind: 'current' },
+    kinds: ['identity'],
+  })
+  expect(result.isError).toBe(true)
+  expect(text(result)).toContain('identity is manual-only')
+})
+
+test('personality_apply rejects identity and missing evidence per candidate', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  const result = await call(mounted.ctx, root, 'personality_apply', {
+    confirm: true,
+    candidates: [
+      { kind: 'identity', name: 'role', text: '开发者。', evidence: [{ sessionId: 'personality-root', seq: 1, quote: '开发者。' }] },
+      { kind: 'style', name: 'language', text: '用中文回答。', evidence: [] },
+    ],
+  })
+  expect(result.isError).toBe(false)
+  expect(text(result)).toContain('rejected role:')
+  expect(text(result)).toContain('rejected language:')
+  await expect(stat(globalPersonalityPath())).rejects.toThrow()
+})
+
+test('personality_analyze scans the current session by its own id', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  appendUser(root, '不是这个意思，我是说保留原文。')
+  const result = await call(mounted.ctx, root, 'personality_analyze', {
+    scope: { kind: 'session', sessionId: 'personality-root' },
+  })
+  expect(result.isError, text(result)).toBe(false)
+  expect(text(result)).toContain('understanding.explicit-correction')
+})
+
+test('personality_analyze scans the recent workspace sessions', async () => {
+  const mounted = await mount()
+  const first = await createRoot(mounted)
+  const second = await createRoot(mounted, 'personality-recent-2')
+  appendUser(first, '以后回复请用中文。')
+  appendUser(second, '以后回复请用英文。')
+  const result = await call(mounted.ctx, second, 'personality_analyze', {
+    scope: { kind: 'recent', limit: 2 },
+  })
+  expect(result.isError, text(result)).toBe(false)
+  expect(text(result)).toContain('Scanned 2 session(s)')
+})
+
+test('personality_analyze warns for an unreadable or out-of-workspace session', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  const otherDir = join(project, 'other')
+  await mkdir(join(otherDir, '.git'), { recursive: true })
+  const other = await mounted.harness.create(SessionId('outside-workspace'), {}, { cwd: otherDir })
+  await until(() => mounted.ctx.tools.get('personality_analyze', other) !== undefined)
+  const result = await call(mounted.ctx, root, 'personality_analyze', {
+    scope: { kind: 'session', sessionId: 'outside-workspace' },
+  })
+  expect(result.isError, text(result)).toBe(false)
+  expect(text(result)).toContain('not readable in this workspace')
+})
+
+test('personality_analyze rejects invalid candidate bounds', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  const zero = await call(mounted.ctx, root, 'personality_analyze', {
+    scope: { kind: 'recent', limit: 0 },
+  })
+  expect(zero.isError).toBe(true)
+  const many = await call(mounted.ctx, root, 'personality_analyze', {
+    scope: { kind: 'current' },
+    maxCandidates: 21,
+  })
+  expect(many.isError).toBe(true)
+})
+
+test('personality_apply rejects an empty candidate list', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  const result = await call(mounted.ctx, root, 'personality_apply', { candidates: [], confirm: true })
+  expect(result.isError).toBe(false)
+  expect(text(result)).toContain('candidates must contain 1 to 20 entries')
+})
+
+test('personality_analyze reads a named session from a root caller', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  const other = await createRoot(mounted, 'personality-other-root')
+  appendUser(other, '以后回复请用英文。')
+  const result = await call(mounted.ctx, root, 'personality_analyze', {
+    scope: { kind: 'session', sessionId: 'personality-other-root' },
+  })
+  expect(result.isError, text(result)).toBe(false)
+  expect(text(result)).toContain('personality-other-root#')
+})
+
+test('personality_analyze handles a caller without cwd and a recent scan', async () => {
+  const mounted = await mount()
+  const noCwd = await mounted.harness.create(SessionId('personality-no-cwd'), {}, {})
+  await until(() => mounted.ctx.tools.get('personality_analyze', noCwd) !== undefined)
+  const named = await call(mounted.ctx, noCwd, 'personality_analyze', {
+    scope: { kind: 'session', sessionId: 'personality-root' },
+  })
+  expect(named.isError, text(named)).toBe(false)
+  expect(text(named)).toContain('no cwd')
+
+  const recent = await call(mounted.ctx, noCwd, 'personality_analyze', {
+    scope: { kind: 'recent', limit: 2 },
+  })
+  expect(recent.isError, text(recent)).toBe(false)
+  expect(text(recent)).toContain('only the current session')
+})
+
+test('personality_analyze reports an unreadable authorized session', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  vi.spyOn(mounted.ctx.sessionQuery, 'observeSession').mockRejectedValueOnce(new Error('unreadable log'))
+  const result = await call(mounted.ctx, root, 'personality_analyze', { scope: { kind: 'current' } })
+  expect(result.isError, text(result)).toBe(false)
+  expect(text(result)).toContain('unreadable log')
+})
+
+test('personality_analyze aggregates repeated evidence and truncates candidates', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  appendUser(root, '以后回复请用中文。', 1)
+  appendUser(root, '以后回复请用中文。', 2)
+  appendUser(root, '以后回复请用中文。', 3)
+  appendUser(root, '以后回复请用中文。', 4)
+  appendUser(root, '以后回复请用英文。', 5)
+  const repeated = await call(mounted.ctx, root, 'personality_analyze', { scope: { kind: 'current' } })
+  expect(text(repeated)).toContain('[high, 4x]')
+
+  const truncated = await call(mounted.ctx, root, 'personality_analyze', {
+    scope: { kind: 'current' },
+    maxCandidates: 1,
+  })
+  expect(text(truncated)).toContain('(truncated)')
+})
+
+test('personality_analyze handles a user message without a turn and a non-user event', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  root.session.append('user/message', createUserMessage({
+    content: [{ type: 'text', text: '以后回复请用中文。' }],
+    source: { kind: 'user' },
+  }), { surfaceOp: 'append' })
+  const noTurn = await call(mounted.ctx, root, 'personality_analyze', { scope: { kind: 'current' } })
+  expect(text(noTurn)).toContain('reply-style')
+  expect(text(noTurn)).not.toContain('(turn ')
+
+  root.session.append('turn/start', { turn: 7 })
+  root.session.append('turn/end', { turn: 7, reason: { kind: 'completed' } })
+  const ended = await call(mounted.ctx, root, 'personality_analyze', { scope: { kind: 'current' } })
+  expect(ended.isError).toBe(false)
+})
+
+test('personality_analyze ignores non-user, ordinary, and overlong messages', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  root.session.append('user/message', createUserMessage({
+    content: [{ type: 'text', text: 'ordinary instruction' }],
+    source: { kind: 'user' },
+  }), { surfaceOp: 'append' })
+  const ordinary = await call(mounted.ctx, root, 'personality_analyze', { scope: { kind: 'current' } })
+  expect(text(ordinary)).toContain('0 candidate(s)')
+
+  root.session.append('user/message', createUserMessage({
+    content: [{ type: 'text', text: `以后${'x'.repeat(400)}` }],
+    source: { kind: 'user' },
+  }), { surfaceOp: 'append' })
+  const overlong = await call(mounted.ctx, root, 'personality_analyze', { scope: { kind: 'current' } })
+  expect(text(overlong)).toContain('0 candidate(s)')
+})
+
+test('activation fails when the legacy source is not a file', async () => {
+  await mkdir(globalPersonalityPath(), { recursive: true })
+  const mounted = await mount()
+  await until(() => mounted.ctx.dafeiyu.status()[0]?.state === 'failed')
+  expect(mounted.ctx.dafeiyu.status()[0]?.failure).toMatch(/not a regular file/u)
 })
