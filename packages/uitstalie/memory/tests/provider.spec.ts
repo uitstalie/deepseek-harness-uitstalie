@@ -3,7 +3,7 @@
  * store. They assert the root-only contribution, the fixed prompt section, the
  * three tool schemas, the working append path, and the completed-turn dispatch.
  */
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -213,6 +213,21 @@ test('memory_search returns managed-block matches inside this workspace', async 
   expect(textOf(result)).toContain('the store path stays relative')
   expect(searchRequests).toHaveLength(1)
   expect(searchRequests[0]?.sessionFilters).toEqual([{ kind: 'cwd', values: [project] }])
+})
+
+test('memory_search explains a disabled session-query index instead of a raw search error', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  vi.spyOn(mounted.ctx.sessionQuery, 'searchSessions').mockRejectedValue(Object.assign(
+    new Error('session search is disabled: this deployment configures the session-query index with openAt "never"'),
+    { code: 'SESSION_QUERY_SEARCH_DISABLED' },
+  ))
+
+  const result = await callTool(mounted.ctx, root, 'memory_search', { query: 'anything' })
+
+  expect(result.isError).toBe(true)
+  expect(textOf(result)).toContain('memory_search: session full-text search is disabled')
+  expect(textOf(result)).toContain('use memory_read for a known session/turn')
 })
 
 test('unloading the provider removes the capability and its tools', async () => {

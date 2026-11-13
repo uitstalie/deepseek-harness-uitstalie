@@ -243,11 +243,23 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
       const query = args.query.trim()
       if (query.length === 0) throw new Error('memory_search: query must not be empty')
       const limit = clampSearchLimit(args.limit)
-      const page = await ctx.sessionQuery.searchSessions({
-        query,
-        sessionFilters: workspaceFilters(session, args.sessionId),
-        limit,
-      }, { signal: exec.signal })
+      let page
+      try {
+        page = await ctx.sessionQuery.searchSessions({
+          query,
+          sessionFilters: workspaceFilters(session, args.sessionId),
+          limit,
+        }, { signal: exec.signal })
+      } catch (error: unknown) {
+        if (error instanceof Error && (error as { code?: unknown }).code === 'SESSION_QUERY_SEARCH_DISABLED') {
+          throw new Error(
+            'memory_search: session full-text search is disabled (session-query openAt is "never"); '
+            + 'enable that index or use memory_read for a known session/turn',
+            { cause: error },
+          )
+        }
+        throw error
+      }
       const sessionItems = page.items.map(sessionSearchItem)
       const memoryItems = await searchMemoryEntries(ctx, session, query, exec.signal)
       const items = [...sessionItems, ...memoryItems].slice(0, limit)

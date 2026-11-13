@@ -191,6 +191,7 @@ detail checkpoint 用该 turn 已存的 detail 条目替换原始 turn；brief c
 - **`tags` 内联存储** — 带标签的条目渲染为 `- [kind] 正文 <!-- tags: a, b -->`，手改时删掉后缀也就删掉了标签。标签出现之前写入的文件照常解析；标签只是元数据，`memory_search` 不匹配标签文本。
 - **会话命中不带 turn 号** — `memory_search` 返回搜索后端给出的事件 seq；把该 seq 传给 `memory_read`，它会选中包含该事件的 turn 并打印 turn 与 seq 区间。
 - **标题是展示元数据** — 每次搜索与 snapshot 刷新都会为要展示的会话折叠最新标题（一次语料观察，单会话失败互不影响）；没有标题事件的会话渲染它的 id，`memory_search` 也不匹配标签文本。
+- **会话全文检索是 opt-in** — 交付的 base 与 web bundle 给 `session-query-sqlite` 配置 `openAt: never`，所以 `memory_search` 无法搜索会话历史，会以带指引的错误失败；把 `openAt` 改为 `first-search` 或 `startup` 才能启用。`memory_read` 仍可读已知 session/turn。
 - **搜索与读取都只覆盖本工作区** — `memory_search` 的会话半边按 `cwd` 完全相等过滤，`memory_read` 拒绝 header `cwd` 与调用者不一致的目标，记忆半边读本工作区自己的文件，因此都到不了其他工作区的历史。
 - **手改托管区块会明确报错** — 解析器拒绝格式错误的标题或条目行而不是猜测；`memory_search` 记录解析失败并保留会话半边，写入则把错误报给调用方。
 - **多进程写入只重试一次** — 两个进程写同一工作区会竞争；失败方重读并重试一次，随后带旧文件原样失败。没有跨进程锁。
