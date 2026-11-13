@@ -23,6 +23,7 @@ import type { SessionResultFilter, SessionSearchHit } from '@deepseek-ai/dsh-ses
 import type { MemorySettings } from './config.ts'
 import {
   appendMemoryEntry,
+  forgetMemoryEntries,
   MEMORY_ENTRY_KINDS,
   MEMORY_KIND_REGISTRY,
   MemoryDocumentError,
@@ -31,6 +32,7 @@ import {
 } from './memory-file.ts'
 import type { MemoryEntryKind, MemorySection } from './memory-file.ts'
 import { readMemoryWindow } from './read.ts'
+import { truncateToBytes } from './text.ts'
 import { appendMemoryUpdate, lastSnapshotText, refreshMemorySnapshot } from './snapshot.ts'
 
 /** Maximum `content` of one `memory_write` entry, in UTF-8 bytes. */
@@ -88,7 +90,7 @@ export interface MemorySearchValue {
  * @param ctx - context carrying `dshStore` and `sessionQuery`.
  * @param settings - resolved provider settings.
  * @param onSnapshotText - optional sink for the rendered snapshot (the prompt-position cache).
- * @returns the three tools, in registration order.
+ * @returns the four tools, in registration order.
  */
 export function memoryTools(
   ctx: Context,
@@ -97,6 +99,7 @@ export function memoryTools(
 ): readonly ToolDefinition[] {
   return [
     defineMemoryWriteTool(ctx, settings, onSnapshotText),
+    defineMemoryForgetTool(ctx, settings, onSnapshotText),
     defineMemorySearchTool(ctx),
     defineMemoryReadTool(ctx),
   ]
@@ -139,12 +142,23 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapsho
           path: { type: 'string', required: true },
           version: { type: 'string' },
           kind: { type: 'string', required: true },
+          evicted: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                kind: { type: 'string', required: true },
+                text: { type: 'string', required: true },
+                turn: { type: 'integer' },
+              },
+            },
+          },
         },
       },
       render: (_args, value) => [{
         type: 'text',
-        text: `Recorded a ${value.kind} memory entry in ${value.path}`
-          + `${value.version === undefined ? '' : ` (version ${value.version})`}.`,
+        text: renderMemoryWrite(value),
       }],
     },
     async execute(args, exec) {
@@ -183,6 +197,111 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapsho
         path: written.path,
         kind: written.kind,
         ...written.version === undefined ? {} : { version: written.version },
+        ...written.evictions.length === 0 ? {} : {
+          evicted: written.evictions.map(eviction => ({
+            kind: eviction.kind,
+            text: eviction.text,
+            ...eviction.turn === undefined ? {} : { turn: eviction.turn },
+          })),
+        },
+      }
+    },
+  })
+}
+
+/** Build `memory_forget`: remove matching entries and record each removal. */
+function defineMemoryForgetTool(
+  ctx: Context,
+  settings: MemorySettings,
+  onSnapshotText?: SnapshotTextSink,
+): ToolDefinition {
+  return defineTool({
+    name: 'memory_forget',
+    description:
+      'Remove memory entries selected by kind, tag, or turn age and record each removal in MEMORY.md. '
+      + 'Use it to clean up a workspace whose memory body reached its budget; at least one filter is required. '
+      + 'Entries without a turn are not matched by beforeTurn.',
+    parameters: {
+      kind: {
+        type: 'string',
+        enum: [...MEMORY_ENTRY_KINDS],
+        description: `Only remove entries of this kind: ${MEMORY_ENTRY_KINDS.join(', ')}.`,
+      },
+      tag: {
+        type: 'string',
+        description: 'Only remove entries carrying this label.',
+      },
+      beforeTurn: {
+        type: 'integer',
+        description: 'Only remove entries older than this turn (an entry turn strictly less than this value).',
+      },
+      sessionId: {
+        type: 'string',
+        description: 'Session to forget in; defaults to the current session.',
+      },
+      allSessions: {
+        type: 'boolean',
+        description: 'Forget matching entries in every session of this workspace instead of one session.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          path: { type: 'string', required: true },
+          version: { type: 'string' },
+          removed: { type: 'integer', required: true },
+          remaining: { type: 'integer', required: true },
+          sessions: { type: 'array', required: true, items: { type: 'string' } },
+          kinds: {
+            type: 'object',
+            required: true,
+            additionalProperties: false,
+            properties: {
+              decision: { type: 'integer', required: true },
+              files: { type: 'integer', required: true },
+              open: { type: 'integer', required: true },
+              preference: { type: 'integer', required: true },
+            },
+          },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: renderMemoryForget(value) }],
+    },
+    async execute(args, exec) {
+      const session = requireSession(exec.agent?.session, 'memory_forget')
+      const filter = {
+        ...args.kind === undefined ? {} : { kind: args.kind },
+        ...args.tag === undefined ? {} : { tag: args.tag },
+        ...args.beforeTurn === undefined ? {} : { beforeTurn: args.beforeTurn },
+        ...args.sessionId === undefined ? {} : { sessionId: args.sessionId },
+        ...args.allSessions === true ? { allSessions: true } : {},
+      }
+      const result = await forgetMemoryEntries(ctx, session, filter, exec.signal, {
+        window: settings.window,
+        maxBytes: settings.maxBytes,
+        maxEntries: settings.maxEntries,
+      })
+      if (result.removed > 0) {
+        await refreshMemorySnapshot(ctx, exec.agent, exec.signal, {
+          template: settings.snapshotTemplate,
+          position: settings.snapshotPosition,
+          ...onSnapshotText === undefined ? {} : { onText: onSnapshotText },
+        })
+      }
+      return {
+        path: result.path,
+        ...result.version === undefined ? {} : { version: result.version },
+        removed: result.removed,
+        remaining: result.remaining,
+        sessions: [...result.sessions],
+        kinds: {
+          decision: result.kinds.decision,
+          files: result.kinds.files,
+          open: result.kinds.open,
+          preference: result.kinds.preference,
+        },
       }
     },
   })
@@ -475,6 +594,76 @@ function boundSearchValue(value: MemorySearchValue, maxBytes: number): MemorySea
     current = { ...value, items, truncated: true }
   }
   return current
+}
+
+/** One evicted entry projected into the `memory_write` result. */
+interface MemoryWriteEviction {
+  /** Kind of the removed entry. */
+  readonly kind: string
+  /** Bounded text copy of the removed entry. */
+  readonly text: string
+  /** Turn the removed entry summarized, when it carried one. */
+  readonly turn?: number
+}
+
+/** `memory_write` result value. */
+interface MemoryWriteValue {
+  /** Store-relative path that was written. */
+  readonly path: string
+  /** Version of the written file, when the store reported one. */
+  readonly version?: string
+  /** Kind of the appended entry. */
+  readonly kind: string
+  /** Entries the write evicted to fit the body budget. */
+  readonly evicted?: readonly MemoryWriteEviction[]
+}
+
+/** Render one `memory_write` value, naming every eviction it caused. */
+function renderMemoryWrite(value: MemoryWriteValue): string {
+  const lines = [
+    `Recorded a ${value.kind} memory entry in ${value.path}`
+      + `${value.version === undefined ? '' : ` (version ${value.version})`}.`,
+  ]
+  const evicted = value.evicted ?? []
+  if (evicted.length > 0) {
+    lines.push(`Evicted ${String(evicted.length)} older entr${evicted.length === 1 ? 'y' : 'ies'} to stay within the memory body budget:`)
+    for (const eviction of evicted) {
+      const turn = eviction.turn === undefined ? '' : ` (turn ${String(eviction.turn)})`
+      lines.push(`- [${eviction.kind}]${turn} ${truncateToBytes(eviction.text, 160)}`)
+    }
+    if (evicted.some(eviction => eviction.kind === 'decision')) {
+      lines.push('A decision entry was evicted; the removal is recorded in the MEMORY.md frontmatter.')
+    }
+  }
+  return lines.join('\n')
+}
+
+/** `memory_forget` result value. */
+interface MemoryForgetValue {
+  /** Store-relative path that was written or left untouched. */
+  readonly path: string
+  /** Entries removed by the filter. */
+  readonly removed: number
+  /** Entries remaining in the target sessions. */
+  readonly remaining: number
+  /** Sessions the filter covered. */
+  readonly sessions: readonly string[]
+  /** Removed entries per kind. */
+  readonly kinds: Readonly<Record<string, number>>
+}
+
+/** Render one `memory_forget` value. */
+function renderMemoryForget(value: MemoryForgetValue): string {
+  const sessions = value.sessions.join(', ')
+  if (value.removed === 0) {
+    return `No memory entries matched the forget filter; ${String(value.remaining)} remain in ${sessions}.`
+  }
+  const counts = Object.entries(value.kinds)
+    .filter(([, count]) => count > 0)
+    .map(([kind, count]) => `${kind} ${String(count)}`)
+    .join(', ')
+  return `Forgot ${String(value.removed)} memory entr${value.removed === 1 ? 'y' : 'ies'} from ${sessions}`
+    + ` (${counts}); ${String(value.remaining)} remain. Removals are recorded in ${value.path}.`
 }
 
 /** Render one `memory_search` value as the model-visible text. */

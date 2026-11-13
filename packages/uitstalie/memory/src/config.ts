@@ -28,7 +28,13 @@ export interface MemoryConfigInput {
   summarizationProvider?: string | undefined
   /** Model for the later summary job; empty follows the routed model. */
   summarizationModel?: string | undefined
-  /** Maximum managed-block body size in UTF-8 bytes. */
+  /**
+   * Maximum managed-block body size in UTF-8 bytes.
+   *
+   * The default is 16384 because the rendered snapshot has the same 16 KiB budget: the persisted body
+   * and the model-facing snapshot stay one prompt-sized block. Raise it for longer retention, lower it
+   * to bound prompt cost; writes evict entries instead of failing when the body reaches it.
+   */
   maxBytes?: number | undefined
   /** Maximum entries retained per session; older sections leave the managed block. */
   maxEntries?: number | undefined
@@ -52,7 +58,13 @@ export interface Config {
   summarizationProvider: Volatile<string>
   /** Model for the summary job; empty follows the routed model. */
   summarizationModel: Volatile<string>
-  /** Managed-block body budget in UTF-8 bytes. */
+  /**
+   * Managed-block body budget in UTF-8 bytes.
+   *
+   * Defaults to 16384, matching the snapshot's 16 KiB budget so the persisted body and its rendered
+   * snapshot stay one prompt-sized block. A write that would exceed it evicts the least durable
+   * entries (`open`, then `files`, then `decision`, `preference`) and records each removal.
+   */
   maxBytes: Volatile<number>
   /** Maximum entries retained per session. */
   maxEntries: Volatile<number>
@@ -126,7 +138,7 @@ export function resolveConfig(config: MemoryConfigInput): MemorySettings {
     )
   }
   const snapshotPosition = config.snapshotPosition ?? 'depth-0'
-  if (snapshotPosition !== 'depth-0' && snapshotPosition !== 'prompt') {
+  if (!(['depth-0', 'prompt'] as const).includes(snapshotPosition)) {
     throw new Error(`memory: snapshotPosition must be "depth-0" or "prompt"; got ${JSON.stringify(snapshotPosition)}`)
   }
   return {

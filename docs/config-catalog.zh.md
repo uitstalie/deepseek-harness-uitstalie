@@ -2800,7 +2800,7 @@ export interface McpManagedServerEntry {
 
 - `inject`: `dafeiyu` · `dshStore` · `sessionQuery` · `jobs` · `llm`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/uitstalie/memory/src/config.ts:42`](../packages/uitstalie/memory/src/config.ts)
+- `source`: [`packages/uitstalie/memory/src/config.ts:48`](../packages/uitstalie/memory/src/config.ts)
 
 ```ts config-catalog
 /** Configuration as the Loader passes it; every field is a live reference. */
@@ -2817,7 +2817,13 @@ export interface Config {
   summarizationProvider: Volatile<string>
   /** Model for the summary job; empty follows the routed model. */
   summarizationModel: Volatile<string>
-  /** Managed-block body budget in UTF-8 bytes. */
+  /**
+   * Managed-block body budget in UTF-8 bytes.
+   *
+   * Defaults to 16384, matching the snapshot's 16 KiB budget so the persisted body and its rendered
+   * snapshot stay one prompt-sized block. A write that would exceed it evicts the least durable
+   * entries (`open`, then `files`, then `decision`, `preference`) and records each removal.
+   */
   maxBytes: Volatile<number>
   /** Maximum entries retained per session. */
   maxEntries: Volatile<number>
@@ -3606,7 +3612,7 @@ export interface Config {
 
 - `inject`: `sessions`
 - `refs`: [`SessionQueryConfig`](../packages/session-query/session-query/src/index.ts)
-- `source`: [`packages/session-query/session-query-sqlite/src/index.ts:92`](../packages/session-query/session-query-sqlite/src/index.ts)
+- `source`: [`packages/session-query/session-query-sqlite/src/index.ts:93`](../packages/session-query/session-query-sqlite/src/index.ts)
 
 ```ts config-catalog
 /** Combined session-query configuration backed by SQLite full-text search. */

@@ -20,6 +20,7 @@ import {
   createMemoryDocument,
   DEFAULT_MEMORY_MAX_BYTES,
   editMemorySummary,
+  forgetMemoryEntries,
   MEMORY_BLOCK_BEGIN,
   MEMORY_BLOCK_END,
   MEMORY_STORE_PATH,
@@ -390,13 +391,314 @@ test('the body budget drops the oldest retained session before failing', async (
   expect(parsed.sections.map(section => section.sessionId)).toEqual(['session-b'])
 })
 
-test('a current session over the budget on its own still fails loudly', async () => {
+test('an incoming entry larger than the budget still fails loudly and keeps the file', async () => {
   const seed = seedText('Hand-written note.')
   await store.writeFile(session, MEMORY_STORE_PATH, seed)
   await expect(appendMemoryEntry(ctx, session, {
     kind: 'decision', text: 'z'.repeat(200), turn: 1, seq: [1, 2],
-  }, undefined, { window: ONE_SESSION, maxBytes: 50 })).rejects.toThrow(/after dropping older sessions/u)
+  }, undefined, { window: ONE_SESSION, maxBytes: 50 })).rejects.toThrow(/incoming write alone does not fit/u)
   expect(await readFile(memoryFile(), 'utf8')).toBe(seed)
+})
+
+/** UTF-8 bytes of the managed body, between the two markers. */
+function bodyBytes(text: string): number {
+  const start = text.indexOf(MEMORY_BLOCK_BEGIN) + MEMORY_BLOCK_BEGIN.length
+  const end = text.indexOf(MEMORY_BLOCK_END, start)
+  return Buffer.byteLength(text.slice(start, end), 'utf8')
+}
+
+test('an over-budget append evicts open then files and records each removal', async () => {
+  const window: MemoryWindow = { ...ONE_SESSION, sessions: 10 }
+  const options = { window, maxBytes: 4096, maxEntries: 10 }
+  await appendMemoryEntry(ctx, session, {
+    kind: 'open', text: `open ${'o'.repeat(150)}`, turn: 1, seq: [1, 2],
+  }, undefined, options)
+  await appendMemoryEntry(ctx, session, {
+    kind: 'files', text: `files ${'f'.repeat(150)}`, turn: 2, seq: [3, 4],
+  }, undefined, options)
+  await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'durable decision', turn: 3, seq: [5, 6],
+  }, undefined, options)
+
+  const before = await readFile(memoryFile(), 'utf8')
+  // Forcing one compaction-sized eviction frees the two low-priority entries, not the decision.
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new durable fact', turn: 4, seq: [7, 8],
+  }, undefined, { ...options, maxBytes: bodyBytes(before) - 200 })
+
+  expect(written.evictions.map(eviction => eviction.kind)).toEqual(['open', 'files'])
+  expect(written.evictions.every(eviction => eviction.reason === 'byte-budget')).toBe(true)
+  expect(written.evictions[0]?.text).toContain('open o')
+  expect(written.evictions[0]?.detail).toContain('managed-body budget')
+
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  const texts = parsed.sections.flatMap(section => section.entries).map(entry => entry.text)
+  expect(texts).toContain('durable decision')
+  expect(texts).toContain('new durable fact')
+  expect(texts.some(text => text.startsWith('open '))).toBe(false)
+  expect(texts.some(text => text.startsWith('files '))).toBe(false)
+  expect(parsed.evictions).toHaveLength(2)
+  expect(parsed.evictions?.map(eviction => eviction.kind)).toEqual(['open', 'files'])
+  expect(parsed.evictions?.[0]?.at).toSatisfy((value: string) => !Number.isNaN(Date.parse(value)))
+  expect(parsed.sessions[0]?.turns.map(turn => turn.turn)).toEqual([3, 4])
+})
+
+test('repeated writes keep succeeding when the body stays at its budget', async () => {
+  const window: MemoryWindow = { ...ONE_SESSION, sessions: 10 }
+  const options = { window, maxBytes: 320, maxEntries: 40 }
+  let evicted = 0
+  for (let turn = 1; turn <= 8; turn += 1) {
+    const written = await appendMemoryEntry(ctx, session, {
+      kind: 'open',
+      text: `turn ${String(turn)} ${'x'.repeat(60)}`,
+      turn,
+      seq: [turn, turn + 1],
+    }, undefined, options)
+    evicted += written.evictions.length
+  }
+  const text = await readFile(memoryFile(), 'utf8')
+  expect(bodyBytes(text)).toBeLessThanOrEqual(320)
+  expect(text).toContain(`turn 8 ${'x'.repeat(60)}`)
+  expect(evicted).toBeGreaterThan(0)
+  const parsed = parseMemoryDocument(text)
+  expect(parsed.evictions?.length).toBeGreaterThan(0)
+  const entryTurns = new Set(parsed.sections.flatMap(section => section.entries
+    .flatMap(entry => entry.turn === undefined ? [] : [entry.turn])))
+  expect(parsed.sessions[0]?.turns.every(turn => entryTurns.has(turn.turn))).toBe(true)
+})
+
+test('budget eviction from a multi-entry section keeps the section and its turn record', async () => {
+  const window: MemoryWindow = { ...ONE_SESSION, sessions: 10 }
+  const options = { window, maxBytes: 4096, maxEntries: 40 }
+  await appendMemoryEntry(ctx, session, { kind: 'open', text: `drop ${'d'.repeat(120)}`, turn: 1, seq: [1, 2] }, undefined, options)
+  await appendMemoryEntry(ctx, session, { kind: 'files', text: `keep ${'k'.repeat(120)}`, turn: 1, seq: [1, 2] }, undefined, options)
+
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
+  }, undefined, { ...options, maxBytes: 300 })
+  expect(written.evictions).toHaveLength(1)
+  expect(written.evictions[0]?.kind).toBe('open')
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.kind)).toEqual(['files', 'decision'])
+  expect(parsed.sessions[0]?.turns.map(turn => turn.turn)).toEqual([1, 2])
+})
+
+test('eviction handles a legacy section without a session record and keeps the other legacy section', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [],
+    sections: [
+      { sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail', entries: [{ kind: 'open', text: 'legacy one' }] },
+      { sessionId: 'session-a', startTurn: 2, endTurn: 2, tier: 'detail', entries: [{ kind: 'files', text: 'legacy two' }] },
+    ],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 3, seq: [5, 6],
+  }, undefined, { window: { ...ONE_SESSION, sessions: 10 }, maxBytes: 160 })
+  expect(written.evictions).toHaveLength(1)
+  expect(written.evictions[0]?.text).toBe('legacy one')
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toEqual(['legacy two', 'new fact'])
+})
+
+test('forget matches a legacy entry without a turn and keeps another legacy section', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [],
+    sections: [
+      { sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail', entries: [{ kind: 'open', text: 'legacy open' }] },
+      { sessionId: 'session-a', startTurn: 2, endTurn: 2, tier: 'detail', entries: [{ kind: 'files', text: 'legacy files' }] },
+    ],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+  const result = await forgetMemoryEntries(ctx, session, { kind: 'open' })
+  expect(result.removed).toBe(1)
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toEqual(['legacy files'])
+})
+
+test('eviction records survive a parse and render round trip', () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    evictions: [{
+      at: '2026-11-13T00:00:00.000Z',
+      sessionId: 'session-a',
+      kind: 'open',
+      turn: 2,
+      text: 'an old open question',
+      reason: 'byte-budget',
+      detail: 'over the 16384-byte managed-body budget while writing session session-a',
+    }, {
+      at: '2026-11-13T00:01:00.000Z',
+      sessionId: 'session-b',
+      kind: 'files',
+      text: 'a legacy pointer without a turn',
+      reason: 'manual-forget',
+      detail: 'manual forget (kind=files)',
+    }],
+  }
+  const text = renderMemoryDocument(document)
+  expect(text).toContain('evictions:')
+  expect(parseMemoryDocument(text)).toEqual(document)
+})
+
+test('a malformed eviction record is rejected with its subject', () => {
+  const text = renderMemoryDocument(createMemoryDocument()).replace(
+    'sessions: []',
+    'sessions: []\nevictions:\n  - { at: "x", sessionId: "s", kind: open, text: "t", reason: bogus, detail: "d" }',
+  )
+  expect(() => parseMemoryDocument(text)).toThrow(/evictions\[0\]\.reason must be/)
+  const notArray = renderMemoryDocument(createMemoryDocument()).replace('sessions: []', 'sessions: []\nevictions: nope')
+  expect(() => parseMemoryDocument(notArray)).toThrow(/evictions must be an array/)
+})
+
+test('forget removes only the entries matching every filter and records the reason', async () => {
+  const window: MemoryWindow = { ...ONE_SESSION, sessions: 10 }
+  const options = { window, maxBytes: 4096, maxEntries: 40 }
+  const other = otherSession('session-b')
+  await appendMemoryEntry(ctx, session, { kind: 'open', text: 'old open', tags: ['old'], turn: 1, seq: [1, 2] }, undefined, options)
+  await appendMemoryEntry(ctx, session, { kind: 'open', text: 'kept open', tags: ['keep'], turn: 2, seq: [3, 4] }, undefined, options)
+  await appendMemoryEntry(ctx, session, { kind: 'files', text: 'old file', tags: ['old'], turn: 3, seq: [5, 6] }, undefined, options)
+  await appendMemoryEntry(ctx, session, { kind: 'decision', text: 'durable decision', turn: 4, seq: [7, 8] }, undefined, options)
+  await appendMemoryEntry(ctx, other, { kind: 'open', text: 'other old', tags: ['old'], turn: 1, seq: [1, 2] }, undefined, options)
+
+  const result = await forgetMemoryEntries(ctx, session, { kind: 'open', tag: 'old', beforeTurn: 5 })
+  expect(result).toMatchObject({ removed: 1, remaining: 3, sessions: ['session-a'] })
+  expect(result.kinds).toEqual({ decision: 0, files: 0, open: 1, preference: 0 })
+  expect(result.evictions[0]).toMatchObject({ kind: 'open', reason: 'manual-forget' })
+  expect(result.evictions[0]?.detail).toContain('kind=open')
+  let parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  let texts = parsed.sections.flatMap(section => section.entries).map(entry => entry.text)
+  expect(texts).toEqual(['kept open', 'old file', 'durable decision', 'other old'])
+
+  const all = await forgetMemoryEntries(ctx, session, { tag: 'old', allSessions: true })
+  expect(all.removed).toBe(2)
+  expect([...all.sessions].sort()).toEqual(['session-a', 'session-b'])
+  parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  texts = parsed.sections.flatMap(section => section.entries).map(entry => entry.text)
+  expect(texts).toEqual(['kept open', 'durable decision'])
+  expect(parsed.sessions.map(record => record.id)).toEqual(['session-a'])
+})
+
+test('forget tolerates a store read or write that reports no version', async () => {
+  await appendMemoryEntry(ctx, session, { kind: 'decision', text: 'only fact', turn: 1, seq: [1, 2] })
+  const text = await readFile(memoryFile(), 'utf8')
+  vi.spyOn(store, 'readFile').mockResolvedValueOnce({ path: MEMORY_STORE_PATH, text })
+  const noMatch = await forgetMemoryEntries(ctx, session, { kind: 'open' })
+  expect(noMatch.removed).toBe(0)
+  expect(noMatch.version).toBeUndefined()
+
+  vi.spyOn(store, 'writeFile').mockResolvedValueOnce({ path: MEMORY_STORE_PATH })
+  const removed = await forgetMemoryEntries(ctx, session, { kind: 'decision' })
+  expect(removed.removed).toBe(1)
+  expect(removed.version).toBeUndefined()
+})
+
+test('eviction ranks a section without a session record by an empty timestamp', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{ id: 'session-a', cwd: project, updatedAt: '2026-06-01T00:00:00.000Z', turns: [] }],
+    sections: [
+      { sessionId: 'ghost', startTurn: 1, endTurn: 1, tier: 'detail', entries: [{ kind: 'open', text: `ghost ${'g'.repeat(80)}` }] },
+      { sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail', entries: [{ kind: 'open', text: `current ${'c'.repeat(80)}` }] },
+    ],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
+  }, undefined, { window: { ...ONE_SESSION, sessions: 10 }, maxBytes: 300 })
+  expect(written.evictions[0]?.sessionId).toBe('ghost')
+})
+
+test('forget on a missing file is refused', async () => {
+  await expect(forgetMemoryEntries(ctx, session, { kind: 'open' })).rejects.toThrow(/does not exist yet/u)
+})
+
+test('forget keeps a partially matched section and removes it once empty', async () => {
+  await appendMemoryEntry(ctx, session, { kind: 'open', text: 'drop me', turn: 1, seq: [1, 2] })
+  await appendMemoryEntry(ctx, session, { kind: 'files', text: 'keep me', turn: 1, seq: [1, 2] })
+
+  const partial = await forgetMemoryEntries(ctx, session, { kind: 'open' })
+  expect(partial.removed).toBe(1)
+  let parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toEqual(['keep me'])
+  expect(parsed.sessions[0]?.turns.map(turn => turn.turn)).toEqual([1])
+
+  const full = await forgetMemoryEntries(ctx, session, { kind: 'files' })
+  expect(full.removed).toBe(1)
+  parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections).toEqual([])
+  expect(parsed.sessions).toEqual([])
+})
+
+test('a legacy entry without a turn can be forgotten and evicted with a bounded record', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{
+      id: 'session-a', cwd: project, updatedAt: '2026-01-01T00:00:00.000Z',
+      turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }],
+    }],
+    sections: [{
+      sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail',
+      entries: [{ kind: 'open', text: `legacy ${'x'.repeat(250)}` }],
+    }],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+
+  // Force the budget path: the new turn is protected, so the legacy entry is evicted.
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
+  }, undefined, { window: ONE_SESSION, maxBytes: 300 })
+  expect(written.evictions).toHaveLength(1)
+  expect(written.evictions[0]?.turn).toBeUndefined()
+  expect(written.evictions[0]?.text).toHaveLength(200)
+  expect(written.evictions[0]?.text.endsWith('…')).toBe(true)
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toEqual(['new fact'])
+})
+
+test('eviction prefers the older session and the automatic entry over a manual edit', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [
+      { id: 'session-a', cwd: project, updatedAt: '2026-01-01T00:00:00.000Z', turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }] },
+      { id: 'session-b', cwd: project, updatedAt: '2026-06-01T00:00:00.000Z', turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }] },
+    ],
+    sections: [
+      { sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail', entries: [{ kind: 'open', text: `older session ${'o'.repeat(100)}` }] },
+      { sessionId: 'session-b', startTurn: 1, endTurn: 1, tier: 'detail', entries: [
+        { kind: 'open', text: `manual same turn ${'m'.repeat(100)}`, turn: 1, source: 'manual', version: 1 },
+        { kind: 'open', text: `auto same turn ${'a'.repeat(100)}`, turn: 1 },
+      ] },
+    ],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+  const other = otherSession('session-b')
+  const written = await appendMemoryEntry(ctx, other, {
+    kind: 'decision', text: 'newest fact', turn: 2, seq: [3, 4],
+  }, undefined, { window: { ...ONE_SESSION, sessions: 10 }, maxBytes: 320 })
+  expect(written.evictions.map(eviction => eviction.text.slice(0, 13))).toEqual(['older session', 'auto same tur'])
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text.slice(0, 16)))
+    .toEqual(['manual same turn', 'newest fact'])
+})
+
+test('a forget with no match leaves the file and version untouched', async () => {
+  await appendMemoryEntry(ctx, session, { kind: 'decision', text: 'only fact', turn: 1, seq: [1, 2] })
+  const before = await readFile(memoryFile(), 'utf8')
+  const result = await forgetMemoryEntries(ctx, session, { kind: 'open' })
+  expect(result).toMatchObject({ removed: 0, remaining: 1 })
+  expect(await readFile(memoryFile(), 'utf8')).toBe(before)
+})
+
+test('an empty or contradictory forget filter is refused', async () => {
+  await appendMemoryEntry(ctx, session, { kind: 'decision', text: 'only fact', turn: 1, seq: [1, 2] })
+  await expect(forgetMemoryEntries(ctx, session, {})).rejects.toThrow(/kind, tag, or beforeTurn/u)
+  await expect(forgetMemoryEntries(ctx, session, { kind: 'open', allSessions: true, sessionId: 'session-b' }))
+    .rejects.toThrow(/allSessions with sessionId/u)
+  await expect(forgetMemoryEntries(ctx, session, { tag: '  ' })).rejects.toThrow(/must not be empty/u)
+  await expect(forgetMemoryEntries(ctx, session, { beforeTurn: -1 })).rejects.toThrow(/non-negative integer/u)
 })
 
 test('the default body budget admits more than the former 4 KiB before refusing', async () => {

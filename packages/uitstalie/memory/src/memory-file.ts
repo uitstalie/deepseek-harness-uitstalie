@@ -45,11 +45,25 @@ export const MEMORY_BLOCK_END = '<!-- memory:end -->'
 /** Document format version this module reads and writes. */
 export const MEMORY_DOCUMENT_VERSION = 1
 
-/** Default body budget in UTF-8 bytes. */
+/**
+ * Default body budget in UTF-8 bytes.
+ *
+ * The provider renders the complete managed body into the durable snapshot, whose own fixed budget is
+ * {@link MEMORY_SNAPSHOT_MAX_BYTES} (also 16 KiB). Keeping the persisted body at or below the snapshot
+ * budget makes the file and its model-facing rendering one prompt-sized block instead of letting the
+ * file outgrow what the model can see. Raise it when a workspace needs more retained detail and accepts
+ * a larger snapshot; lower it to bound prompt cost.
+ */
 export const DEFAULT_MEMORY_MAX_BYTES = 16 * 1024
 
 /** Default per-session entry cap kept in the managed block. */
 export const DEFAULT_MEMORY_MAX_ENTRIES = 40
+
+/** Maximum eviction records retained in the frontmatter, newest last. */
+export const MEMORY_EVICTION_RECORD_LIMIT = 50
+
+/** Maximum characters of one evicted entry text kept in its record. */
+export const MEMORY_EVICTION_TEXT_MAX_CHARS = 200
 
 /** Maximum entries one brief checkpoint may carry. */
 export const MEMORY_BRIEF_MAX_ENTRIES = 2
@@ -65,6 +79,40 @@ export type MemoryEntryKind = typeof MEMORY_ENTRY_KINDS[number]
 
 /** Summary tiers a body section can carry. */
 export type MemoryTier = 'detail' | 'brief'
+
+/** Why one entry left the managed block. */
+export type MemoryEvictionReason = 'byte-budget' | 'manual-forget'
+
+/**
+ * One entry the provider removed from the managed block, recorded in the frontmatter.
+ *
+ * The record is the durable answer to "where did that fact go?": it names the entry, its kind and turn,
+ * when it left, and why. The body no longer carries the text, so this is the only in-file trace.
+ */
+export interface MemoryEvictionRecord {
+  /** ISO-8601 time of the removal. */
+  readonly at: string
+  /** Session the entry belonged to. */
+  readonly sessionId: string
+  /** Kind of the removed entry. */
+  readonly kind: MemoryEntryKind
+  /** Turn the entry summarized, when it carried one. */
+  readonly turn?: number
+  /** Bounded copy of the removed entry text. */
+  readonly text: string
+  /** Whether the budget or an explicit forget removed it. */
+  readonly reason: MemoryEvictionReason
+  /** Human-readable account of the pressure or filter that removed it. */
+  readonly detail: string
+}
+
+/** Least durable kind first: an open question or file pointer leaves before a decision. */
+const MEMORY_KIND_EVICTION_ORDER: Readonly<Record<MemoryEntryKind, number>> = {
+  open: 0,
+  files: 1,
+  decision: 2,
+  preference: 3,
+}
 
 /** Outcome codes a MEMORY.md read or write can report. */
 export type MemoryDocumentErrorCode = 'invalid-document' | 'unknown-kind' | 'budget-exceeded' | 'empty-summary'
@@ -190,6 +238,8 @@ export interface MemoryDocument {
   readonly frame: MemoryFrame
   /** Whether the automatic summary job is paused for this workspace; absent or false runs it. */
   readonly summaryPaused?: boolean
+  /** Recent entries the provider removed, oldest first; absent on documents that never evicted. */
+  readonly evictions?: readonly MemoryEvictionRecord[]
 }
 
 /** One entry a caller appends, with the turn it belongs to. */
@@ -238,6 +288,8 @@ export interface MemoryTurnSummaryResult {
   readonly turn: number
   /** Number of entries appended. */
   readonly entries: number
+  /** Entries this write evicted to stay inside the body budget. */
+  readonly evictions: readonly MemoryEvictionRecord[]
 }
 
 /**
@@ -288,6 +340,8 @@ export interface MemoryTierMigrationResult {
   readonly forgotten: number
   /** Number of earlier-skipped surface replacements this pass completed. */
   readonly retried: number
+  /** Entries this pass evicted to stay inside the body budget. */
+  readonly evictions: readonly MemoryEvictionRecord[]
 }
 
 /** Options of one append. */
@@ -308,6 +362,8 @@ export interface MemoryAppendResult {
   readonly version?: string
   /** Kind of the appended entry. */
   readonly kind: MemoryEntryKind
+  /** Entries this write evicted to stay inside the body budget. */
+  readonly evictions: readonly MemoryEvictionRecord[]
 }
 
 /** Result of one read. */
@@ -712,6 +768,179 @@ export async function pruneMemorySession(
   }
 }
 
+/** Filter for one explicit forget pass; at least one of kind, tag, or beforeTurn is required. */
+export interface MemoryForgetFilter {
+  /** Session to forget in; defaults to the calling session. */
+  readonly sessionId?: string
+  /** Forget from every session in the file instead of one. */
+  readonly allSessions?: boolean
+  /** Keep only entries of another kind when matching. */
+  readonly kind?: MemoryEntryKind
+  /** Keep only entries carrying this label when matching. */
+  readonly tag?: string
+  /** Keep only entries older than this turn when matching; entries without a turn are not matched. */
+  readonly beforeTurn?: number
+}
+
+/** Result of one explicit forget pass. */
+export interface MemoryForgetResult {
+  /** Store-relative path that was written or left untouched. */
+  readonly path: string
+  /** Version of the written file, when the store reported one. */
+  readonly version?: string
+  /** Entries removed by the filter. */
+  readonly removed: number
+  /** Entries remaining in the target sessions. */
+  readonly remaining: number
+  /** Sessions the filter covered. */
+  readonly sessions: readonly string[]
+  /** Removed entries per kind. */
+  readonly kinds: Readonly<Record<MemoryEntryKind, number>>
+  /** Records this pass wrote into the frontmatter. */
+  readonly evictions: readonly MemoryEvictionRecord[]
+}
+
+/**
+ * Remove entries selected by kind, tag, or turn age and record each removal.
+ *
+ * The filter is conjunctive: an entry must match every supplied condition. A filter without any
+ * condition is refused, because an accidental empty filter would otherwise erase the workspace's
+ * memory. The write keeps the version guard and one stale retry, and entries are dropped from the
+ * managed block and the frontmatter turn index together.
+ * @param ctx - context carrying `dshStore`.
+ * @param session - session whose project owns the file; its id is the default target.
+ * @param filter - session scope and matching conditions.
+ * @param signal - cancellation for the reads and write.
+ * @param options - window thresholds for a missing document and the body budget.
+ * @returns what was removed and what remains.
+ * @throws MemoryDocumentError when the filter is empty, invalid, or MEMORY.md is missing.
+ * @throws FsError when the guarded write fails twice or the store refuses the write.
+ */
+export async function forgetMemoryEntries(
+  ctx: Context,
+  session: Session,
+  filter: MemoryForgetFilter,
+  signal?: AbortSignal,
+  options: MemoryAppendOptions = {},
+): Promise<MemoryForgetResult> {
+  const kind = filter.kind === undefined ? undefined : assertMemoryEntryKind(filter.kind)
+  const tag = filter.tag?.trim()
+  if (tag !== undefined && tag.length === 0) {
+    throw new MemoryDocumentError('a forget tag must not be empty', 'invalid-document')
+  }
+  if (filter.beforeTurn !== undefined
+    && (!Number.isSafeInteger(filter.beforeTurn) || filter.beforeTurn < 0)) {
+    throw new MemoryDocumentError('forget beforeTurn must be a non-negative integer', 'invalid-document')
+  }
+  if (kind === undefined && tag === undefined && filter.beforeTurn === undefined) {
+    throw new MemoryDocumentError(
+      'forget needs at least one of kind, tag, or beforeTurn',
+      'invalid-document',
+    )
+  }
+  if (filter.allSessions === true && filter.sessionId !== undefined) {
+    throw new MemoryDocumentError('forget cannot combine allSessions with sessionId', 'invalid-document')
+  }
+  const current = await readMemoryDocument(ctx, session, signal)
+  if (current.document === undefined) {
+    throw new MemoryDocumentError('MEMORY.md does not exist yet; there is nothing to forget', 'invalid-document')
+  }
+  const targetIds = filter.allSessions === true
+    ? new Set(current.document.sessions.map(record => record.id))
+    : new Set([filter.sessionId ?? String(session.id)])
+  const kinds: Record<MemoryEntryKind, number> = { decision: 0, files: 0, open: 0, preference: 0 }
+  const removed: MemoryEvictionRecord[] = []
+  const removedTurns = new Set<number>()
+  const sections: MemorySection[] = []
+  for (const section of current.document.sections) {
+    if (!targetIds.has(section.sessionId)) {
+      sections.push(section)
+      continue
+    }
+    const kept: MemoryEntry[] = []
+    for (const entry of section.entries) {
+      if (!matchesForget(entry, kind, tag, filter.beforeTurn)) {
+        kept.push(entry)
+        continue
+      }
+      removed.push(evictionRecord(entry, section, 'manual-forget', describeForget(filter, kind, tag)))
+      kinds[entry.kind] += 1
+      if (entry.turn !== undefined) removedTurns.add(entry.turn)
+    }
+    if (kept.length === 0) continue
+    sections.push(kept.length === section.entries.length
+      ? section
+      : Object.freeze({ ...section, entries: Object.freeze(kept) }))
+  }
+  if (removed.length === 0) {
+    return {
+      path: current.path,
+      ...current.version === undefined ? {} : { version: current.version },
+      removed: 0,
+      remaining: countSessionEntries(current.document, targetIds),
+      sessions: [...targetIds],
+      kinds,
+      evictions: [],
+    }
+  }
+  const remainingTurns = new Set(sections
+    .filter(section => targetIds.has(section.sessionId))
+    .flatMap(section => section.entries.flatMap(entry => entry.turn === undefined ? [] : [entry.turn])))
+  const sessions = current.document.sessions
+    .filter(record => sections.some(section => section.sessionId === record.id))
+    .map((record) => {
+      const turns = record.turns.filter(turn => !removedTurns.has(turn.turn) || remainingTurns.has(turn.turn))
+      return turns.length === record.turns.length ? record : Object.freeze({ ...record, turns: Object.freeze(turns) })
+    })
+  const evictions = [...(current.document.evictions ?? []), ...removed].slice(-MEMORY_EVICTION_RECORD_LIMIT)
+  const next = Object.freeze({ ...current.document, sections: Object.freeze(sections), sessions, evictions })
+  const written = await writeNextMemoryDocument(ctx, session, next, current.version, signal, options)
+  return {
+    path: written.path,
+    ...written.version === undefined ? {} : { version: written.version },
+    removed: removed.length,
+    remaining: countSessionEntries(next, targetIds),
+    sessions: [...targetIds],
+    kinds,
+    evictions: removed,
+  }
+}
+
+/** Whether one entry matches a forget filter; every supplied condition must hold. */
+function matchesForget(
+  entry: MemoryEntry,
+  kind: MemoryEntryKind | undefined,
+  tag: string | undefined,
+  beforeTurn: number | undefined,
+): boolean {
+  if (kind !== undefined && entry.kind !== kind) return false
+  if (tag !== undefined && !(entry.tags ?? []).includes(tag)) return false
+  if (beforeTurn !== undefined && (entry.turn === undefined || entry.turn >= beforeTurn)) return false
+  return true
+}
+
+/** Render the filter into the durable eviction record. */
+function describeForget(
+  filter: MemoryForgetFilter,
+  kind: MemoryEntryKind | undefined,
+  tag: string | undefined,
+): string {
+  const parts = [
+    kind === undefined ? undefined : `kind=${kind}`,
+    tag === undefined ? undefined : `tag=${JSON.stringify(tag)}`,
+    filter.beforeTurn === undefined ? undefined : `beforeTurn=${String(filter.beforeTurn)}`,
+    filter.allSessions === true ? 'allSessions' : undefined,
+  ].filter((part): part is string => part !== undefined)
+  return `manual forget (${parts.join(', ')})`
+}
+
+/** Count entries in the target sessions. */
+function countSessionEntries(document: MemoryDocument, sessionIds: ReadonlySet<string>): number {
+  return document.sections
+    .filter(section => sessionIds.has(section.sessionId))
+    .reduce((total, section) => total + section.entries.length, 0)
+}
+
 /** Result of one `/memory prune`. */
 export interface MemoryPruneResult {
   /** Store-relative path that was written or left untouched. */
@@ -870,13 +1099,15 @@ export async function appendMemoryEntry(
   const append = async (): Promise<MemoryAppendResult> => {
     const current = await readMemoryDocument(ctx, session, signal)
     const document = current.document ?? createMemoryDocument(window)
-    const next = retainDocument(
+    const retained = retainDocument(
       appendToDocument(document, session, entry, kind),
       session.id,
       window,
       maxBytes,
       maxEntries,
+      (candidate, section) => section.sessionId === String(session.id) && candidate.turn === entry.turn,
     )
+    const next = retained.document
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -887,6 +1118,7 @@ export async function appendMemoryEntry(
     return {
       path: written.path,
       kind,
+      evictions: retained.evictions,
       ...written.version === undefined ? {} : { version: written.version },
     }
   }
@@ -940,13 +1172,15 @@ export async function appendTurnSummary(
   const append = async (): Promise<MemoryTurnSummaryResult> => {
     const current = await readMemoryDocument(ctx, session, signal)
     const document = current.document ?? createMemoryDocument(window)
-    const next = retainDocument(
+    const retained = retainDocument(
       appendTurnToDocument(document, session, summary, entries),
       session.id,
       window,
       maxBytes,
       maxEntries,
+      (candidate, section) => section.sessionId === String(session.id) && candidate.turn === summary.turn,
     )
+    const next = retained.document
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -958,6 +1192,7 @@ export async function appendTurnSummary(
       path: written.path,
       turn: summary.turn,
       entries: entries.length,
+      evictions: retained.evictions,
       ...written.version === undefined ? {} : { version: written.version },
     }
   }
@@ -1030,13 +1265,15 @@ export async function migrateMemoryTiers(
     // Once a checkpoint left the surface, the metadata write must finish even if the
     // provider was disabled meanwhile: skipping it here is exactly the half-committed
     // state (checkpoint published, MEMORY.md unchanged) this pass avoids.
-    const next = retainDocument(
+    const retained = retainDocument(
       applyMigrations(current.document, session, plan, briefs, checkpoints),
       session.id,
       window,
       maxBytes,
       options.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES,
+      (_candidate, section) => section.sessionId === String(session.id) && section.tier === 'brief',
     )
+    const next = retained.document
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -1050,6 +1287,7 @@ export async function migrateMemoryTiers(
       briefed: briefs.length,
       forgotten: plan.toForget.length,
       retried,
+      evictions: retained.evictions,
       ...written.version === undefined ? {} : { version: written.version },
     }
   }
@@ -1451,7 +1689,7 @@ function splitManagedBlock(content: string): { body: string; frame: MemoryFrame 
 }
 
 /** Parse the YAML frontmatter into the machine-state fields. */
-function parseFrontmatter(source: string): Pick<MemoryDocument, 'version' | 'window' | 'sessions' | 'summaryPaused'> {
+function parseFrontmatter(source: string): Pick<MemoryDocument, 'version' | 'window' | 'sessions' | 'summaryPaused' | 'evictions'> {
   const data = parseFrontmatterYaml(source)
   const record = asRecord(data, 'frontmatter')
   const version = requireInteger(record, 'version', 'frontmatter', 0)
@@ -1470,6 +1708,10 @@ function parseFrontmatter(source: string): Pick<MemoryDocument, 'version' | 'win
   if (summaryPaused !== undefined && typeof summaryPaused !== 'boolean') {
     throw new MemoryDocumentError('frontmatter.summaryPaused must be a boolean', 'invalid-document')
   }
+  const evictions = record['evictions']
+  if (evictions !== undefined && !Array.isArray(evictions)) {
+    throw new MemoryDocumentError('frontmatter.evictions must be an array', 'invalid-document')
+  }
   return {
     version,
     window: {
@@ -1480,6 +1722,28 @@ function parseFrontmatter(source: string): Pick<MemoryDocument, 'version' | 'win
     },
     sessions: sessions.map((session, index) => parseSessionRecord(session, index)),
     ...summaryPaused === true ? { summaryPaused: true } : {},
+    ...evictions === undefined ? {} : {
+      evictions: evictions.map((value, index) => parseEvictionRecord(value, `frontmatter.evictions[${String(index)}]`)),
+    },
+  }
+}
+
+/** Parse one frontmatter eviction record. */
+function parseEvictionRecord(value: unknown, subject: string): MemoryEvictionRecord {
+  const record = asRecord(value, subject)
+  const reason = record['reason']
+  if (reason !== 'byte-budget' && reason !== 'manual-forget') {
+    throw new MemoryDocumentError(`${subject}.reason must be "byte-budget" or "manual-forget"`, 'invalid-document')
+  }
+  const turn = optionalInteger(record, 'turn', subject)
+  return {
+    at: requireString(record, 'at', subject),
+    sessionId: requireString(record, 'sessionId', subject),
+    kind: assertMemoryEntryKind(requireString(record, 'kind', subject)),
+    ...turn === undefined ? {} : { turn },
+    text: requireString(record, 'text', subject),
+    reason,
+    detail: requireString(record, 'detail', subject),
   }
 }
 
@@ -1700,6 +1964,21 @@ function renderFrontmatter(document: MemoryDocument): string {
     `window: { detail: ${String(window.detail)}, brief: ${String(window.brief)}, forget: ${String(window.forget)}, sessions: ${String(window.sessions)} }`,
   ]
   if (document.summaryPaused === true) lines.push('summaryPaused: true')
+  if (document.evictions !== undefined && document.evictions.length > 0) {
+    lines.push('evictions:')
+    for (const eviction of document.evictions) {
+      const fields = [
+        `at: ${JSON.stringify(eviction.at)}`,
+        `sessionId: ${JSON.stringify(eviction.sessionId)}`,
+        `kind: ${eviction.kind}`,
+        ...eviction.turn === undefined ? [] : [`turn: ${String(eviction.turn)}`],
+        `text: ${JSON.stringify(eviction.text)}`,
+        `reason: ${eviction.reason}`,
+        `detail: ${JSON.stringify(eviction.detail)}`,
+      ]
+      lines.push(`  - { ${fields.join(', ')} }`)
+    }
+  }
   if (document.sessions.length === 0) {
     lines.push('sessions: []')
     return `${lines.join('\n')}\n`
@@ -1881,14 +2160,18 @@ function recordTurn(
  * `window.sessions` is the number of sessions whose summaries stay in MEMORY.md, so the limit is
  * applied to **the file that is written**, together with the sections and the frontmatter index
  * that describe those sessions — not only to the snapshot a reader slices. The session that just
- * wrote is always retained. When the body is still over the byte budget, the oldest retained
- * sessions are dropped first; a single session over the budget on its own stays an error, because
- * silently discarding what the model just wrote would lose it without saying so.
+ * wrote is always retained. A body still over the byte budget loses individual entries in eviction
+ * order — `open`, then `files`, then `decision`, then `preference`, oldest first inside one kind —
+ * so the newest write is never the entry that makes room for itself. Each removal is recorded in the
+ * frontmatter (`at`, entry, kind, turn, reason, detail) and a session left with no entries loses its
+ * record too.
  * @param document - the document after this append or migration.
- * @param currentSessionId - the session the write belongs to; it is never dropped.
+ * @param currentSessionId - the session the write belongs to; its record is kept while it has sections.
  * @param window - the configured retention window, recorded into the document.
  * @param maxBytes - the managed-body budget.
- * @returns the trimmed document, with the configured window recorded.
+ * @param maxEntries - per-session entry cap applied before budget eviction.
+ * @param protect - entries this write must keep; the just-appended turn passes one.
+ * @returns the trimmed document and the records this call added.
  */
 function retainDocument(
   document: MemoryDocument,
@@ -1896,22 +2179,152 @@ function retainDocument(
   window: MemoryWindow,
   maxBytes: number,
   maxEntries: number = DEFAULT_MEMORY_MAX_ENTRIES,
-): MemoryDocument {
+  protect?: (entry: MemoryEntry, section: MemorySection) => boolean,
+): MemoryRetention {
   let retained = retainSessions({ ...document, window }, currentSessionId, window.sessions)
   for (const record of retained.sessions) {
     retained = pruneSessionEntries(retained, record.id, maxEntries).document
   }
-  let result = retained
-  while (Buffer.byteLength(renderManagedBody(result.sections), 'utf8') > maxBytes) {
-    const oldest = [...result.sessions]
-      .filter(record => record.id !== currentSessionId)
-      .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))[0]
-    if (oldest === undefined) break
-    result = withoutSessions(result, new Set(result.sessions
-      .filter(record => record.id !== oldest.id)
-      .map(record => record.id)))
+  const added: MemoryEvictionRecord[] = []
+  while (Buffer.byteLength(renderManagedBody(retained.sections), 'utf8') > maxBytes) {
+    const candidate = selectEvictionCandidate(retained, protect)
+    if (candidate === undefined) break
+    added.push(evictionRecord(candidate.entry, candidate.section, 'byte-budget',
+      `over the ${String(maxBytes)}-byte managed-body budget while writing session ${currentSessionId}`))
+    retained = dropEmptySessions(removeSectionEntry(retained, candidate.section, candidate.entry))
   }
-  return result
+  if (added.length === 0) return { document: retained, evictions: added }
+  const evictions = [...(retained.evictions ?? []), ...added].slice(-MEMORY_EVICTION_RECORD_LIMIT)
+  return { document: { ...retained, evictions }, evictions: added }
+}
+
+/** Result of applying retention to one composed document. */
+interface MemoryRetention {
+  /** Trimmed document, with the new eviction records attached. */
+  readonly document: MemoryDocument
+  /** Records added by this call only, newest last. */
+  readonly evictions: readonly MemoryEvictionRecord[]
+}
+
+/** One entry and its section chosen for budget eviction. */
+interface EvictionCandidate {
+  /** Section holding the entry. */
+  readonly section: MemorySection
+  /** Entry to remove. */
+  readonly entry: MemoryEntry
+}
+
+/**
+ * Choose the next entry the budget evicts.
+ *
+ * Kind order protects durable conclusions: an `open` item or a file pointer leaves before a
+ * decision, and a preference leaves last. Inside one kind the oldest session (by `updatedAt`) and
+ * the oldest turn leave first; an entry without a turn is treated as older than any turned entry in
+ * its section. Manual edits are still eligible, after the automatic entries of the same kind/turn.
+ * @param document - current retained document.
+ * @param protect - entries this write must keep.
+ * @returns the least durable entry, or undefined when every remaining entry is protected.
+ */
+function selectEvictionCandidate(
+  document: MemoryDocument,
+  protect: ((entry: MemoryEntry, section: MemorySection) => boolean) | undefined,
+): EvictionCandidate | undefined {
+  const updatedAt = new Map(document.sessions.map(record => [record.id, record.updatedAt]))
+  const candidates: RankedEvictionCandidate[] = []
+  for (const section of document.sections) {
+    for (const entry of section.entries) {
+      if (protect?.(entry, section) === true) continue
+      candidates.push({
+        section,
+        entry,
+        kindRank: MEMORY_KIND_EVICTION_ORDER[entry.kind],
+        manualRank: entry.source === 'manual' ? 1 : 0,
+        sessionUpdatedAt: updatedAt.get(section.sessionId) ?? '',
+        turnRank: entry.turn ?? section.startTurn,
+      })
+    }
+  }
+  candidates.sort(compareEvictionCandidates)
+  const chosen = candidates[0]
+  return chosen === undefined ? undefined : { section: chosen.section, entry: chosen.entry }
+}
+
+/** One candidate with the fields its eviction order compares. */
+interface RankedEvictionCandidate extends EvictionCandidate {
+  /** Kind order, least durable first. */
+  readonly kindRank: number
+  /** Automatic entries leave before manual edits of the same kind and turn. */
+  readonly manualRank: number
+  /** Session recency; the older session leaves first. */
+  readonly sessionUpdatedAt: string
+  /** Turn recency inside one session; a missing turn ranks as the section's first turn. */
+  readonly turnRank: number
+}
+
+/** Compare two eviction candidates by durability, then age, then file order. */
+function compareEvictionCandidates(left: RankedEvictionCandidate, right: RankedEvictionCandidate): number {
+  return left.kindRank - right.kindRank
+    || left.manualRank - right.manualRank
+    || left.sessionUpdatedAt.localeCompare(right.sessionUpdatedAt)
+    || left.turnRank - right.turnRank
+}
+
+/** Build one durable eviction record, bounding the retained text. */
+function evictionRecord(
+  entry: MemoryEntry,
+  section: MemorySection,
+  reason: MemoryEvictionReason,
+  detail: string,
+): MemoryEvictionRecord {
+  return {
+    at: new Date().toISOString(),
+    sessionId: section.sessionId,
+    kind: entry.kind,
+    ...entry.turn === undefined ? {} : { turn: entry.turn },
+    text: entry.text.length <= MEMORY_EVICTION_TEXT_MAX_CHARS
+      ? entry.text
+      : `${entry.text.slice(0, MEMORY_EVICTION_TEXT_MAX_CHARS - 1)}…`,
+    reason,
+    detail,
+  }
+}
+
+/** Remove one entry and, when that empties its section, the section and its turn records. */
+function removeSectionEntry(
+  document: MemoryDocument,
+  section: MemorySection,
+  entry: MemoryEntry,
+): MemoryDocument {
+  const entries = section.entries.filter(candidate => candidate !== entry)
+  const sections = entries.length === 0
+    ? document.sections.filter(candidate => candidate !== section)
+    : document.sections.map(candidate => candidate === section
+      ? Object.freeze({ ...candidate, entries: Object.freeze(entries) })
+      : candidate)
+  return {
+    ...document,
+    sections,
+    sessions: entries.length === 0
+      ? document.sessions.map((record) => {
+        if (record.id !== section.sessionId) return record
+        const covered = new Set(sections
+          .filter(candidate => candidate.sessionId === section.sessionId)
+          .flatMap(candidate => candidate.entries.flatMap(item => item.turn === undefined ? [] : [item.turn])))
+        const turns = record.turns.filter(turn =>
+          turn.turn < section.startTurn || turn.turn > section.endTurn || covered.has(turn.turn))
+        return turns.length === record.turns.length ? record : Object.freeze({ ...record, turns: Object.freeze(turns) })
+      })
+      : document.sessions,
+  }
+}
+
+/** Drop session records that no longer describe any section. */
+function dropEmptySessions(document: MemoryDocument): MemoryDocument {
+  const withSections = new Set(document.sections.map(section => section.sessionId))
+  const sessions = document.sessions.filter(record => withSections.has(record.id))
+  return sessions.length === document.sessions.length
+    ? document
+    : { ...document, sessions }
 }
 
 /** Duplicate entries and over-cap sections removed from one session. */
@@ -2123,8 +2536,8 @@ function assertBodyBudget(document: MemoryDocument, maxBytes: number): void {
   const bytes = Buffer.byteLength(renderManagedBody(document.sections), 'utf8')
   if (bytes <= maxBytes) return
   throw new MemoryDocumentError(
-    `memory body is ${String(bytes)} bytes, over the ${String(maxBytes)}-byte limit after dropping older sessions; `
-    + 'forget or trim older entries in this session before writing more',
+    `memory body is ${String(bytes)} bytes, over the ${String(maxBytes)}-byte limit after evicting every unprotected `
+    + 'entry; the incoming write alone does not fit, so raise maxBytes or run /memory prune with a kind/tag filter',
     'budget-exceeded',
   )
 }

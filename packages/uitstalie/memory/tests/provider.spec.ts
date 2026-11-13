@@ -13,8 +13,14 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
+  appendMemoryEntry,
+  createMemoryDocument,
+  MEMORY_STORE_PATH,
+  parseMemoryDocument,
+  renderMemoryDocument,
   MEMORY_CAPABILITY_DESCRIPTION, MEMORY_CAPABILITY_LABEL, MEMORY_PROMPT_ORDER, MEMORY_PROMPT_TEXT, resolveConfig,
 } from '../src/index.ts'
+import type { MemoryDocument } from '../src/index.ts'
 import {
   callTool,
   createRoot,
@@ -70,7 +76,7 @@ test('registers an active root-scoped capability with the fixed prompt section',
   expect(MEMORY_PROMPT_ORDER).toBe(2350)
 })
 
-test('root agents get the three tools; child agents get none', async () => {
+test('root agents get the four tools; child agents get none', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
   const child = await mounted.ctx.agents.create({
@@ -79,7 +85,7 @@ test('root agents get the three tools; child agents get none', async () => {
   })
 
   const names = mounted.ctx.tools.schemas(root).map(schema => schema.name)
-  expect(names).toEqual(expect.arrayContaining(['memory_write', 'memory_search', 'memory_read']))
+  expect(names).toEqual(expect.arrayContaining(['memory_write', 'memory_forget', 'memory_search', 'memory_read']))
   expect(mounted.ctx.tools.schemas(child.agent)).toEqual([])
   expect(mounted.ctx.tools.get('memory_write', child.agent)).toBeUndefined()
   const childAssembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(child.agent))
@@ -196,6 +202,115 @@ test('memory_write rejects content over the 8 KiB cap', async () => {
 
   expect(result.isError).toBe(true)
   expect(textOf(result)).toContain('the limit is 8192')
+})
+
+test('memory_write evicts older entries when full and names an evicted decision', async () => {
+  const ctx = new Context()
+  contexts.push(ctx)
+  const mounted = await mountMemory(ctx, project, { config: { maxBytes: 300 } })
+  const root = await createRoot(mounted)
+  const seed = { maxBytes: 4096, maxEntries: 40 }
+  await appendMemoryEntry(mounted.ctx, root.session, {
+    kind: 'open', text: `old open ${'o'.repeat(80)}`, turn: 1, seq: [1, 2],
+  }, undefined, seed)
+  await appendMemoryEntry(mounted.ctx, root.session, {
+    kind: 'decision', text: `old decision ${'d'.repeat(80)}`, turn: 2, seq: [3, 4],
+  }, undefined, seed)
+
+  const result = await callTool(mounted.ctx, root, 'memory_write', {
+    kind: 'decision',
+    content: 'new decision after eviction',
+  })
+
+  expect(result.isError, textOf(result)).toBe(false)
+  expect(textOf(result)).toContain('Recorded a decision memory entry')
+  expect(textOf(result)).toContain('Evicted')
+  expect(textOf(result)).toContain('A decision entry was evicted')
+  const text = await readFile(memoryFilePath(project), 'utf8')
+  expect(text).toContain('new decision after eviction')
+  expect(text).toContain('evictions:')
+})
+
+test('memory_forget removes matching entries and refreshes the snapshot', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  for (const [kind, content, tags, turn] of [
+    ['open', 'stale open', ['stale'], 1],
+    ['files', 'stale file', ['stale'], 2],
+    ['decision', 'kept decision', [], 3],
+  ] as const) {
+    const result = await callTool(mounted.ctx, root, 'memory_write', { kind, content, tags })
+    expect(result.isError, textOf(result)).toBe(false)
+    root.session.append('turn/start', { turn: turn + 1 })
+  }
+
+  const result = await callTool(mounted.ctx, root, 'memory_forget', { tag: 'stale' })
+  expect(result.isError, textOf(result)).toBe(false)
+  expect(textOf(result)).toContain('Forgot 2 memory entries')
+  expect(textOf(result)).toContain('open 1')
+  expect(textOf(result)).toContain('files 1')
+  const text = await readFile(memoryFilePath(project), 'utf8')
+  const parsed = parseMemoryDocument(text)
+  const texts = parsed.sections.flatMap(section => section.entries).map(entry => entry.text)
+  expect(texts).toEqual(['kept decision'])
+  expect(text).toContain('manual-forget')
+})
+
+test('memory_forget refuses a call without any filter', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'one fact' })
+  const result = await callTool(mounted.ctx, root, 'memory_forget', {})
+  expect(result.isError).toBe(true)
+  expect(textOf(result)).toContain('kind, tag, or beforeTurn')
+})
+
+test('memory_write reports a single eviction and omits a turn for a legacy entry', async () => {
+  const ctx = new Context()
+  contexts.push(ctx)
+  const mounted = await mountMemory(ctx, project, { config: { maxBytes: 190 } })
+  const root = await createRoot(mounted)
+  const legacy: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{ id: 'memory-root', cwd: project, updatedAt: '2026-01-01T00:00:00.000Z', turns: [] }],
+    sections: [{
+      sessionId: 'memory-root', startTurn: 1, endTurn: 1, tier: 'detail',
+      entries: [{ kind: 'open', text: `legacy ${'x'.repeat(120)}` }],
+    }],
+  }
+  await mounted.ctx.dshStore.writeFile(root.session, MEMORY_STORE_PATH, renderMemoryDocument(legacy))
+
+  const result = await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'new fact' })
+  expect(result.isError, textOf(result)).toBe(false)
+  expect(textOf(result)).toContain('Evicted 1 older entry')
+  expect(textOf(result)).not.toContain('(turn ')
+})
+
+test('memory_forget supports beforeTurn, sessionId, allSessions, and a no-match result', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  const other = await createRoot(mounted, 'memory-other')
+  await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'current fact' })
+  await callTool(mounted.ctx, other, 'memory_write', { kind: 'decision', content: 'other fact' })
+
+  const before = await callTool(mounted.ctx, root, 'memory_forget', { beforeTurn: 2 })
+  expect(before.isError, textOf(before)).toBe(false)
+  expect(textOf(before)).toContain('Forgot 1 memory entry')
+
+  const bySession = await callTool(mounted.ctx, root, 'memory_forget', { kind: 'decision', sessionId: 'memory-other' })
+  expect(bySession.isError, textOf(bySession)).toBe(false)
+  expect(textOf(bySession)).toContain('Forgot 1 memory entry')
+
+  const noMatch = await callTool(mounted.ctx, root, 'memory_forget', { kind: 'preference' })
+  expect(noMatch.isError, textOf(noMatch)).toBe(false)
+  expect(textOf(noMatch)).toContain('No memory entries matched')
+
+  await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'current again' })
+  await callTool(mounted.ctx, other, 'memory_write', { kind: 'decision', content: 'other again' })
+  const all = await callTool(mounted.ctx, root, 'memory_forget', { kind: 'decision', allSessions: true })
+  expect(all.isError, textOf(all)).toBe(false)
+  expect(textOf(all)).toContain('Forgot 2 memory entries')
+  expect(textOf(all)).toContain('decision 2')
 })
 
 test('memory_search returns managed-block matches inside this workspace', async () => {
