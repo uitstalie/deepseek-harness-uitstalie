@@ -246,7 +246,16 @@ function transformChunk(
   const turn = coordinate(data['turn'])
   const step = coordinate(data['step'])
   const chunk = record(data['chunk'])
+  // A released adapter could emit the usage-only frame after the terminal finish. Usage is metadata
+  // for the attempt that just ended, not a new attempt: keeping it in the group lets the message's
+  // sourceEventSeqs cover the complete ordered run the writer recorded.
+  const trailingUsage = chunk['type'] === 'usage'
+    && state.pending !== undefined
+    && state.pending.group.terminal
+    && state.pending.group.turn === turn
+    && state.pending.group.step === step
   if (state.pending !== undefined
+    && !trailingUsage
     && (state.pending.group.terminal
       || state.pending.group.turn !== turn
       || state.pending.group.step !== step)) {

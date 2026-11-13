@@ -19,7 +19,7 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
-import type { SessionResultFilter, SessionSearchHit } from '@deepseek-ai/dsh-session-query'
+import type { SessionResultFilter, SessionSearchHit, SessionSearchWarning } from '@deepseek-ai/dsh-session-query'
 import type { MemorySettings } from './config.ts'
 import {
   appendMemoryEntry,
@@ -83,6 +83,8 @@ export interface MemorySearchValue {
   readonly items: MemorySearchItem[]
   /** Whether results were dropped to stay inside the budget. */
   readonly truncated?: boolean
+  /** Sessions the search backend skipped, when any source could not be observed. */
+  warnings?: SessionSearchWarning[]
 }
 
 /**
@@ -353,6 +355,18 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
             },
           },
           truncated: { type: 'boolean' },
+          warnings: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                sessionId: { type: 'string', required: true },
+                code: { type: 'string', required: true },
+                message: { type: 'string', required: true },
+              },
+            },
+          },
         },
       },
       render: (_args, value) => [{ type: 'text', text: renderMemorySearch(value) }],
@@ -390,6 +404,13 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
           return title === undefined ? item : { ...item, title }
         }),
         ...page.nextCursor === undefined ? {} : { truncated: true },
+        ...page.warnings === undefined ? {} : {
+          warnings: page.warnings.map(warning => ({
+            sessionId: warning.sessionId,
+            code: warning.code,
+            message: warning.message,
+          })),
+        },
       }, MEMORY_SEARCH_MAX_BYTES)
     },
   })
@@ -668,11 +689,15 @@ function renderMemoryForget(value: MemoryForgetValue): string {
 
 /** Render one `memory_search` value as the model-visible text. */
 function renderMemorySearch(value: MemorySearchValue): string {
-  if (value.items.length === 0) return `No memory matches for ${JSON.stringify(value.query)} in this workspace.`
-  const lines = value.items.map(item => item.source === 'memory'
-    ? `- [memory] ${searchLabel(item)} · turn ${String(item.turn ?? 0)} · ${item.snippet}`
-    : `- [session] ${searchLabel(item)}#${String(item.seq ?? 0)} · ${formatTime(item.time)} · ${item.snippet}`)
+  const lines = value.items.length === 0
+    ? [`No memory matches for ${JSON.stringify(value.query)} in this workspace.`]
+    : value.items.map(item => item.source === 'memory'
+      ? `- [memory] ${searchLabel(item)} · turn ${String(item.turn ?? 0)} · ${item.snippet}`
+      : `- [session] ${searchLabel(item)}#${String(item.seq ?? 0)} · ${formatTime(item.time)} · ${item.snippet}`)
   if (value.truncated === true) lines.push('(results truncated; narrow the query or lower `limit`)')
+  for (const warning of value.warnings ?? []) {
+    lines.push(`Warning: ${warning.message} [${warning.code}]`)
+  }
   return lines.join('\n')
 }
 

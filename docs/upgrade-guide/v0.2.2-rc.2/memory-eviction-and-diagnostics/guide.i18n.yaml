@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.2/memory-eviction-and-diagnostics/guide.md
+/:
+  en: 68f28e7799a06226
+  zh: d8ed77c5ea7d3c58
+/memory-eviction-explicit-forget-and-search-containment:
+  en: 1a3a1d2271314f17
+  zh: 7a5f702a2ee5b886
+/memory-eviction-explicit-forget-and-search-containment/change:
+  en: 10c71da94fbd1185
+  zh: 568484a4e9fc21bb
+/memory-eviction-explicit-forget-and-search-containment/migration:
+  en: 0b9e525ed5540c0b
+  zh: 4e7291dd67e38c61
+/memory-eviction-explicit-forget-and-search-containment/rollback:
+  en: 171fde15bd4675f1
+  zh: 2921c8e74204b903

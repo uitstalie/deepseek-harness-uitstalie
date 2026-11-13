@@ -36,6 +36,7 @@ import type {
   SessionSearchCursor as SessionSearchCursorValue,
   SessionSearchPage,
   SessionSearchRequest,
+  SessionSearchWarning,
 } from '@deepseek-ai/dsh-session-query'
 import {
   type JournalMode,
@@ -152,6 +153,15 @@ interface Observation {
   persistenceBinding: PersistenceBinding
   persisted: Map<SessionId, ObservedPersistedSession>
   live: Map<SessionId, ObservedSession>
+  warnings: SessionSearchWarning[]
+}
+
+/** Binding plus the sources this reconciliation skipped. */
+interface Reconciliation {
+  /** Persistence generation the index was reconciled against. */
+  readonly binding: PersistenceBinding
+  /** Sessions whose stored log could not be observed. */
+  readonly warnings: readonly SessionSearchWarning[]
 }
 
 interface IndexedPersistedRow {
@@ -274,7 +284,8 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const signal = exec?.signal
     return this._serialized(signal, async () => {
       await this._ensureReady(signal)
-      const persistenceBinding = await this._reconcile(signal)
+      const reconciliation = await this._reconcile(signal)
+      const persistenceBinding = reconciliation.binding
       assertNotAborted(signal)
       const generation = String(this._globalGeneration)
       const fingerprint = requestFingerprint(normalized)
@@ -289,7 +300,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
         fingerprint,
         generation,
         offset: cursorOffset,
-      }), offset)
+      }), offset, reconciliation.warnings)
     })
   }
 
@@ -302,7 +313,8 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const signal = exec?.signal
     return this._serialized(signal, async () => {
       await this._ensureReady(signal)
-      const persistenceBinding = await this._reconcile(signal)
+      const reconciliation = await this._reconcile(signal)
+      const persistenceBinding = reconciliation.binding
       assertNotAborted(signal)
       const target = this._targetObservation(normalized.sessionId, persistenceBinding)
       const fingerprint = requestFingerprint(normalized)
@@ -319,7 +331,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
           fingerprint,
           generation: target.generation,
           offset: cursorOffset,
-        }), offset),
+        }), offset, reconciliation.warnings),
       }
     })
   }
@@ -404,7 +416,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     }
   }
 
-  private async _reconcile(signal: AbortSignal | undefined): Promise<PersistenceBinding> {
+  private async _reconcile(signal: AbortSignal | undefined): Promise<Reconciliation> {
     assertNotAborted(signal)
     const db = this._requireDb()
     const persistedRows = db.prepare(
@@ -489,7 +501,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     if (pointerChanged) this._persistenceEpoch += 1
     this._localGeneration = nextLocalGeneration
     this._lastPersistenceIdentity = observation.persistenceBinding.identity
-    return observation.persistenceBinding
+    return { binding: observation.persistenceBinding, warnings: observation.warnings }
   }
 
   private async _observeStable(
@@ -502,6 +514,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
       const persistence = persistenceBinding.service
       const initiallyLive = new Set(this.ctx.sessions.list().map(session => session.id))
       let persisted = new Map<SessionId, ObservedPersistedSession>()
+      const warnings: SessionSearchWarning[] = []
       if (persistence !== undefined) {
         try {
           const canReuseIndexed = this._lastPersistenceIdentity === undefined
@@ -519,10 +532,24 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
             // live-preferred.
             if (initiallyLive.has(entry.header.id) || this.ctx.sessions.get(entry.header.id) !== undefined) continue
             assertNotAborted(signal)
-            const loaded = await readColdSessionLog(persistence, entry.header.id, signal)
-            assertNotAborted(signal)
-            assertSessionHeadersCompatible(entry.header, loaded.header)
-            entry.loaded = observeSession(loaded.header, loaded.inheritedEventCount, loaded.events)
+            try {
+              const loaded = await readColdSessionLog(persistence, entry.header.id, signal)
+              assertNotAborted(signal)
+              assertSessionHeadersCompatible(entry.header, loaded.header)
+              entry.loaded = observeSession(loaded.header, loaded.inheritedEventCount, loaded.events)
+            } catch (error: unknown) {
+              // One damaged stored log must not make the workspace unsearchable. Keep any index
+              // entry the session already has, skip this source, and report it beside the results.
+              if (isAbort(error) || signal?.aborted) throw error
+              const code = error instanceof SessionQueryError ? error.code : 'SESSION_QUERY_SESSION_SKIPPED'
+              const message = errorMessage(error)
+              warnings.push({
+                sessionId: entry.header.id,
+                code,
+                message: `session ${entry.header.id} was skipped: ${message}`,
+              })
+              this.ctx.logger.warn('session-search: skipping session %s: %s', entry.header.id, message)
+            }
           }
           assertNotAborted(signal)
           const afterSnapshots = await persistence.list(listOptions)
@@ -553,7 +580,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
         live.set(session.id, observed)
       }
       if (!sameSessionIds(initiallyLive, live)) continue
-      return { persistenceBinding, persisted, live }
+      return { persistenceBinding, persisted, live, warnings }
     }
     throw new SessionQueryError(
       'session-search persistence observation did not stabilize after one retry',
@@ -964,11 +991,13 @@ function page<Row, Item>(
   convert: (row: Row) => Item,
   nextCursor: (offset: number) => SessionSearchCursorValue,
   offset: number,
+  warnings: readonly SessionSearchWarning[] = [],
 ): SessionSearchPage<Item> {
   const hasMore = rows.length > limit
   return {
     items: rows.slice(0, limit).map(convert),
     ...hasMore ? { nextCursor: nextCursor(offset + limit) } : {},
+    ...warnings.length === 0 ? {} : { warnings },
   }
 }
 

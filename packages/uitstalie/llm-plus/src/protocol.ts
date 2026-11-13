@@ -185,6 +185,8 @@ export abstract class BaseTranslator implements StreamTranslator {
   private readonly lazyBlocks: Partial<Record<'text' | 'reasoning', number>> = {}
   /** 是否已收尾（terminate 幂等的依据）。 */
   private finished = false
+  /** finish 已决定但推迟到 end() 发出，给尾部 usage 帧留出位置。 */
+  private deferredFinish: StreamChunk | undefined
 
   abstract push(event: SseEvent): StreamChunk[]
 
@@ -290,6 +292,20 @@ export abstract class BaseTranslator implements StreamTranslator {
     return [...this.closeAll(), this.finishChunk(rawReason)]
   }
 
+  /**
+   * 关闭 block 但把 finish 推迟到 end()：某些 OpenAI 兼容网关在 finish 帧之后
+   * 才单独发 usage 帧，立即发 finish 会构成「finish 之后仍有 chunk」的违约，
+   * 也会让 v1→v2 的 attempt 分组把尾部 usage 当成新 attempt。
+   * @param rawReason - provider 的原始 stop 原因。
+   * @returns 本帧应发出的 block-end 序列。
+   */
+  protected deferTerminate(rawReason?: string | null): StreamChunk[] {
+    if (this.finished) return []
+    this.finished = true
+    this.deferredFinish = this.finishChunk(rawReason)
+    return this.closeAll()
+  }
+
   /** finish chunk：携带 replay envelope（有元数据时）。 */
   private finishChunk(rawReason: string | undefined | null): StreamChunk {
     const base = mapFinishReason(rawReason)
@@ -309,9 +325,11 @@ export abstract class BaseTranslator implements StreamTranslator {
     return { kind: 'llm-plus', version: 1, protocol: this.protocol, response: {}, blocks }
   }
 
-  /** 断流收尾：provider 没发 finish 帧时，terminate 补一个 stop。 */
+  /** 断流收尾：provider 没发 finish 帧时补一个 stop；推迟的 finish 在这里发出。 */
   end(): StreamChunk[] {
-    return this.terminate()
+    const finish = this.deferredFinish
+    this.deferredFinish = undefined
+    return finish === undefined ? this.terminate() : [finish]
   }
 }
 

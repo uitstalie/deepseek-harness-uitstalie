@@ -229,12 +229,30 @@ export interface SessionEventSearchDocument extends SessionEventRecord {
   text: string
 }
 
+/**
+ * One source a search could not observe, reported beside the results it did produce.
+ *
+ * A damaged or unreadable Session log must not make the rest of the workspace
+ * unsearchable: the provider skips that source, keeps the index entry it already
+ * had, and names the session and reason here.
+ */
+export interface SessionSearchWarning {
+  /** Session whose source could not be observed. */
+  readonly sessionId: string
+  /** Stable code of the observation failure. */
+  readonly code: string
+  /** One-line diagnostic naming the session and the failure. */
+  readonly message: string
+}
+
 /** One cursor-paginated result page. */
 export interface SessionSearchPage<T> {
   /** Results for this page in contract-defined order. */
   items: readonly T[]
   /** Opaque continuation cursor, absent on the final page. */
   nextCursor?: SessionSearchCursor
+  /** Sources skipped while producing this page, when any failed. */
+  warnings?: readonly SessionSearchWarning[]
 }
 
 /** Event-search results bound to the indexed target-session observation. */

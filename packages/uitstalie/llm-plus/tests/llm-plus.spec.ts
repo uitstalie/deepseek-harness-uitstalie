@@ -173,6 +173,35 @@ test('openai-completions: request shape and full chunk sequence', async () => {
   expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'tool-calls' } })
 })
 
+const OPENAI_TRAILING_USAGE_SSE = [
+  'data: {"choices":[{"delta":{"content":"你好"},"finish_reason":null}]}',
+  '',
+  'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+  '',
+  'data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}}',
+  '',
+  'data: [DONE]',
+  '',
+].join('\n')
+
+test('openai-completions: a usage-only frame after finish still lands before finish', async () => {
+  const ctx = await mount()
+  sseByUrl = [['http://test.local/v1/chat/completions', OPENAI_TRAILING_USAGE_SSE]]
+
+  const chunks = await collect(ctx, {
+    provider: 'ds-plus',
+    model: 'deepseek-v4-flash',
+    messages: [userMessage('hi')],
+  })
+
+  const types = chunks.map(chunk => chunk.type)
+  expect(types).toEqual(['block-start', 'text-delta', 'block-end', 'usage', 'finish'])
+  expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'stop' } })
+  expect(chunks.find(chunk => chunk.type === 'usage')).toMatchObject({
+    usage: { inputTokens: 7, outputTokens: 3 },
+  })
+})
+
 const ANTHROPIC_SSE = [
   'event: message_start',
   'data: {"message":{"usage":{"input_tokens":12,"output_tokens":1,"cache_read_input_tokens":3}}}',

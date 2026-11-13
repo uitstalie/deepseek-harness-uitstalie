@@ -890,6 +890,44 @@ describe('sessionFormatV1ToV2', () => {
     },
   )
 
+  it('keeps a usage-only chunk that follows the terminal finish in the same attempt', () => {
+    const usage = { inputTokens: 3, outputTokens: 2 } as const
+    const migrated = migrateV1ToV2({
+      header: {
+        version: 1, id: 'v1-trailing-usage', createdAt: 1, isSeeded: false, delegationDepth: 0,
+      },
+      inheritedEventCount: 0,
+      events: [
+        event('turn/start', 0, 1, { turn: 1 }),
+        event('step/start', 1, 2, { turn: 1, step: 1 }),
+        event('assistant/chunk', 2, 3, {
+          turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'hello' },
+        }),
+        event('assistant/chunk', 3, 4, {
+          turn: 1, step: 1, chunk: { type: 'finish', reason: { kind: 'stop' } },
+        }),
+        event('assistant/chunk', 4, 5, {
+          turn: 1, step: 1, chunk: { type: 'usage', usage },
+        }),
+        {
+          ...event('assistant/message', 5, 6, {
+            turn: 1, step: 1, message, usage,
+          }),
+          sourceEventSeqs: [2, 3, 4],
+          surfaceOp: 'append',
+        },
+        event('step/end', 6, 7, { turn: 1, step: 1 }),
+        event('turn/end', 7, 8, { turn: 1, reason: { kind: 'completed' } }),
+      ],
+    })
+    expect(migrated.events.filter(candidate => candidate.type === 'assistant/attempt')).toHaveLength(0)
+    const assistant = migrated.events.find(candidate => candidate.type === 'assistant/message')
+    expect(assistant).toMatchObject({ type: 'assistant/message', surfaceOp: 'append' })
+    const stream = (assistant?.data as { stream?: readonly { type: string; chunk?: { type: string } }[] }).stream
+    expect(stream?.some(record => record.type === 'chunk' && record.chunk?.type === 'usage')).toBe(true)
+    expect(stream?.some(record => record.type === 'chunk' && record.chunk?.type === 'finish')).toBe(true)
+  })
+
   it('refuses missing, partial, or reordered source-event references for a present v1 attempt', () => {
     const build = (sourceEventSeqs: readonly number[] | undefined): SessionFormatArtifact => ({
       header: {

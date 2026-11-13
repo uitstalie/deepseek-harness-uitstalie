@@ -330,6 +330,26 @@ test('memory_search returns managed-block matches inside this workspace', async 
   expect(searchRequests[0]?.sessionFilters).toEqual([{ kind: 'cwd', values: [project] }])
 })
 
+test('memory_search reports a skipped session as a warning and keeps the managed-block results', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'the store path stays relative' })
+  vi.spyOn(mounted.ctx.sessionQuery, 'searchSessions').mockResolvedValueOnce({
+    items: [],
+    warnings: [{
+      sessionId: 'session-broken',
+      code: 'SESSION_QUERY_SESSION_SKIPPED',
+      message: 'session session-broken was skipped: chunk references are not one complete ordered attempt',
+    }],
+  })
+
+  const result = await callTool(mounted.ctx, root, 'memory_search', { query: 'store path' })
+  expect(result.isError, textOf(result)).toBe(false)
+  expect(textOf(result)).toContain('[memory]')
+  expect(textOf(result)).toContain('Warning: session session-broken was skipped')
+  expect(textOf(result)).toContain('[SESSION_QUERY_SESSION_SKIPPED]')
+})
+
 test('memory_search explains a disabled session-query index instead of a raw search error', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)

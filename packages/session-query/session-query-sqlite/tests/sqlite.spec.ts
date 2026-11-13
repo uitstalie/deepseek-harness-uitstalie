@@ -3,7 +3,7 @@ import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context, type Fiber } from '@deepseek-ai/cordis'
 import { DatabaseSync } from 'node:sqlite'
-import { chmod, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import SessionStore, { SessionLogOffset, SessionSeq, SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
@@ -23,6 +23,7 @@ import type {
   SessionPersistenceSnapshot,
 } from '@deepseek-ai/dsh-session-persistence'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { generationLogPath } from '@deepseek-ai/dsh-session-persistence-jsonl/src/format.ts'
 import SqliteSessionQueryEngine, {
   SESSION_QUERY_SQLITE_SCHEMA_VERSION,
 } from '@deepseek-ai/dsh-session-query-sqlite'
@@ -765,6 +766,80 @@ describe('SQLite session search', () => {
       query: 'needle',
       sessionFilters: [{ kind: 'id', values: ids }],
     })).rejects.toThrow(expectCode('SESSION_QUERY_INVALID_FILTER'))
+  })
+})
+
+/** Write one released-v1 artifact with a completed Assistant turn for the search containment test. */
+async function writeV1Artifact(
+  root: string,
+  id: string,
+  sourceEventSeqs: readonly number[],
+): Promise<void> {
+  const text = 'needle in the stored transcript'
+  const usage = { inputTokens: 3, outputTokens: 2 }
+  const message = {
+    id: 'assistant-1',
+    role: 'assistant',
+    content: [{ type: 'text', text }],
+    source: { kind: 'model', provider: 'mock', model: 'mock' },
+  }
+  const header = {
+    type: 'session', version: 1, id, createdAt: 1, delegationDepth: 0,
+  }
+  const rows = [
+    { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
+    { type: 'step/start', seq: 1, time: 2, data: { turn: 1, step: 1 } },
+    {
+      type: 'assistant/chunk', seq: 2, time: 3,
+      data: { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text } },
+    },
+    {
+      type: 'assistant/chunk', seq: 3, time: 4,
+      data: { turn: 1, step: 1, chunk: { type: 'finish', reason: { kind: 'stop' } } },
+    },
+    {
+      type: 'assistant/chunk', seq: 4, time: 5,
+      data: { turn: 1, step: 1, chunk: { type: 'usage', usage } },
+    },
+    {
+      type: 'assistant/message', seq: 5, time: 6,
+      data: { turn: 1, step: 1, message, usage },
+      sourceEventSeqs,
+      surfaceOp: 'append',
+    },
+    { type: 'step/end', seq: 6, time: 7, data: { turn: 1, step: 1 } },
+    { type: 'turn/end', seq: 7, time: 8, data: { turn: 1, reason: { kind: 'completed' } } },
+  ]
+  const path = generationLogPath(root, undefined, SessionId(id), 1, 'none')
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, `${[header, ...rows].map(row => JSON.stringify(row)).join('\n')}\n`)
+}
+
+describe('search contains unreadable stored sessions', () => {
+  it('skips a session whose chunk references are incomplete, searches the others, and recovers after repair', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-sqlite-bad-log-'))
+    temporaryDirectories.push(root)
+    await writeV1Artifact(root, 'bad-session', [2])
+    await writeV1Artifact(root, 'good-session', [2, 3, 4])
+
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
+    await ctx.plugin(SqliteSessionQueryEngine, { path: ':memory:' })
+
+    const page = await ctx.sessionQuery.searchSessions({ query: 'needle' })
+    expect(page.items.map(hit => hit.header.id)).toEqual(['good-session'])
+    expect(page.warnings).toHaveLength(1)
+    expect(page.warnings?.[0]?.sessionId).toBe('bad-session')
+    expect(page.warnings?.[0]?.message).toContain('chunk references')
+    expect(page.warnings?.[0]?.code).toBe('SESSION_QUERY_SESSION_SKIPPED')
+
+    // The same artifact with the complete ordered reference set becomes searchable without a restart.
+    await writeV1Artifact(root, 'bad-session', [2, 3, 4])
+    const repaired = await ctx.sessionQuery.searchSessions({ query: 'needle' })
+    expect(repaired.warnings).toBeUndefined()
+    expect(repaired.items.map(hit => hit.header.id).sort()).toEqual(['bad-session', 'good-session'])
   })
 })
 

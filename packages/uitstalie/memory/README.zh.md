@@ -125,7 +125,7 @@ root agent 每次请求的固定成本：约 120 词的一段话。该段不随�
 
 #### 模型看到什么
 
-root agent 上有四个工具。`memory_write` 需要必填的 `kind`（`decision`、`files`、`open`、`preference` 之一）、必填的单行 `content`（最多 8 KiB）与可选的 `tags`，返回一行确认，写明存储路径与版本；正文预算触发淘汰时会逐条点名，并明确标出被淘汰的 decision。`memory_forget` 接受可选 `kind`、`tag`、`beforeTurn`、`sessionId` 与 `allSessions`，前三个至少给一个，删除匹配条目、记录每次移除并刷新 snapshot。`memory_search` 需要必填的 `query`，可选 `sessionId` 与可选 `limit`（1–10，默认 10），在 8 KiB 预算内返回 `[session]` 与 `[memory]` 摘要行；每行带该会话的最新标题（括号内附会话 id），日志没有标题时只显示会话 id。`memory_read` 接受可选 `sessionId`（默认当前会话）、`turn` 或 `seq`，以及可选 `before`/`after`（0–10）；先返回一行 header，写明会话、turn 区间与 seq 区间，随后是该 turn 的 user 与 assistant 文本（每条 2 KiB），每次工具调用与结果各一行 `- tool <name> · <status> · seq <n>`；完整文本上限 16 KiB，截断时由一行说明如何收窄请求。
+root agent 上有四个工具。`memory_write` 需要必填的 `kind`（`decision`、`files`、`open`、`preference` 之一）、必填的单行 `content`（最多 8 KiB）与可选的 `tags`，返回一行确认，写明存储路径与版本；正文预算触发淘汰时会逐条点名，并明确标出被淘汰的 decision。`memory_forget` 接受可选 `kind`、`tag`、`beforeTurn`、`sessionId` 与 `allSessions`，前三个至少给一个，删除匹配条目、记录每次移除并刷新 snapshot。`memory_search` 需要必填的 `query`，可选 `sessionId` 与可选 `limit`（1–10，默认 10），在 8 KiB 预算内返回 `[session]` 与 `[memory]` 摘要行；每行带该会话的最新标题（括号内附会话 id），日志没有标题时只显示会话 id。会话后端跳过无法观测的存储会话时，结果末尾会附带一行 `Warning:`，点名该会话与失败原因，同时保留其余结果。`memory_read` 接受可选 `sessionId`（默认当前会话）、`turn` 或 `seq`，以及可选 `before`/`after`（0–10）；先返回一行 header，写明会话、turn 区间与 seq 区间，随后是该 turn 的 user 与 assistant 文本（每条 2 KiB），每次工具调用与结果各一行 `- tool <name> · <status> · seq <n>`；完整文本上限 16 KiB，截断时由一行说明如何收窄请求。
 
 #### Token 影响
 

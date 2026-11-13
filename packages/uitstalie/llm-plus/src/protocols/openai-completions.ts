@@ -153,7 +153,8 @@ class OpenAiCompletionsTranslator extends BaseTranslator {
         out.push(...this.pushToolCall(call))
       }
     }
-    if (choice?.finish_reason) out.push(...this.terminate(choice.finish_reason))
+    // 关闭 block 但把 finish 留到 end()：网关可能在 finish 帧后单独发 usage 帧。
+    if (choice?.finish_reason) out.push(...this.deferTerminate(choice.finish_reason))
     return out
   }
 
