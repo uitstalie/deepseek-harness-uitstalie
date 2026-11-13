@@ -20,7 +20,7 @@ import {
 } from '../src/startup.ts'
 import { internals as startupInternals } from '../src/startup-internals.ts'
 
-// uitstalie-deepseek-flash, 2026/11/06, DH-905, this suite covers --policy and its deprecated --permission-mode alias
+// uitstalie-deepseek-flash, 2026/11/06, DH-905, this suite covers --policy
 
 /** What one boot of the fixture tree observed. */
 interface Observed {
@@ -177,15 +177,9 @@ describe('headless command-line provider', () => {
     expect(task).toMatchObject({ policy: 'guarded', additionalWritableRoots: [directory], task: 'do it' })
   })
 
-  it('keeps the retired --permission-mode flag as a warning alias', async () => {
-    const { task, observed } = await bootStartup(['--permission-mode', 'workspace-write', 'do it'])
-    expect(task).toMatchObject({ policy: 'workspace-write', permissionMode: 'workspace-write', task: 'do it' })
-    expect(observed.err).toContain('--permission-mode is deprecated; use --policy')
-  })
 
   it.each([
     ['--policy', ' '],
-    ['--permission-mode', ' '],
     ['--add-dir', 'relative'],
     ['--add-dir', ''],
     ['--add-dir', `${join(tmpdir(), 'grant')}\0invalid`],
@@ -196,7 +190,7 @@ describe('headless command-line provider', () => {
     expect(JSON.parse(observed.out)).toMatchObject({ type: 'error' })
   })
 
-  it.each(['--add-dir', '--policy', '--permission-mode', '--approval-policy'])('does not treat an operand of %s as the JSON flag', async (option) => {
+  it.each(['--add-dir', '--policy', '--approval-policy'])('does not treat an operand of %s as the JSON flag', async (option) => {
     const { observed } = await bootStartup([option, '--json', 'do it'])
     expect(observed.out).not.toContain('"type":"error"')
   })
@@ -284,7 +278,6 @@ describe('headless command-line provider', () => {
     expect(observed.out).toContain('the answer goes to stdout and diagnostics to stderr')
     expect(observed.out).toContain('--session-id')
     expect(observed.out).toContain('--policy')
-    expect(observed.out).toContain('--permission-mode')
     expect(task).toBeUndefined()
     expect(observed.runnerConfig).toBeUndefined()
     expect(observed.exits).toEqual([0])

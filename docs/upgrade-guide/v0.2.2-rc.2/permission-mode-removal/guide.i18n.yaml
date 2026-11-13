@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.2/permission-mode-removal/guide.md
+/:
+  en: 70e5300d4725215e
+  zh: 9188450081015de9
+/remove-the-deprecated-permission-mode-flag:
+  en: c8e3c35585d858d8
+  zh: 725f19e541c71e6d
+/remove-the-deprecated-permission-mode-flag/change:
+  en: 7a78672ffafc693d
+  zh: b4fb6b621fdd0fdf
+/remove-the-deprecated-permission-mode-flag/migration:
+  en: b6e2d9a6c84b363c
+  zh: f58888a113609c26
+/remove-the-deprecated-permission-mode-flag/verification:
+  en: c570a1169ba19bc4
+  zh: 0e6bf99db07d2564

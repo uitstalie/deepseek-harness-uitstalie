@@ -57,11 +57,6 @@ export interface Config {
   // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, policy profile config replaces the preset spelling
   /** Soft-policy profile applied before the task; an explicit CLI flag takes precedence. Omission keeps the session selection. */
   policy?: string
-  /**
-   * Legacy config spelling of {@link policy}; a profile overlay may still set it.
-   * @deprecated Use {@link policy}; the spelling is removed with the CLI alias.
-   */
-  permissionMode?: string
   // END uitstalie-deepseek-flash
   /** Approval behavior applied after preset selection; an explicit CLI flag takes precedence. Omission keeps current policy. */
   approvalPolicy?: ApprovalPolicy
@@ -73,7 +68,6 @@ export const Config: z<Config> = z.object({
   json: z.boolean(),
   // uitstalie-deepseek-flash, 2026/11/06, DH-905, policy profile config replaces the preset spelling
   policy: z.string(),
-  permissionMode: z.string(),
   approvalPolicy: z.union([...APPROVAL_POLICIES]),
 })
 
@@ -347,10 +341,8 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
   }
 
   const startup = ctx.get('headlessStartup')
-  // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, accept either spelling and apply it to the mounted policy seam
-  // oxlint-disable-next-line typescript/no-deprecated -- the retired spelling stays readable for one release
-  const legacyPolicy = startup?.permissionMode ?? config.permissionMode
-  const policy = startup?.policy ?? config.policy ?? legacyPolicy
+  // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, apply the mounted policy seam
+  const policy = startup?.policy ?? config.policy
   // END uitstalie-deepseek-flash
   const approvalPolicy = startup?.approvalPolicy ?? config.approvalPolicy
   const approval = ctx.get('approval')

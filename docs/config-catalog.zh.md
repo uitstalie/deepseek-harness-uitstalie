@@ -1762,11 +1762,6 @@ export interface Config {
   // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, policy profile config replaces the preset spelling
   /** Soft-policy profile applied before the task; an explicit CLI flag takes precedence. Omission keeps the session selection. */
   policy?: string
-  /**
-   * Legacy config spelling of {@link policy}; a profile overlay may still set it.
-   * @deprecated Use {@link policy}; the spelling is removed with the CLI alias.
-   */
-  permissionMode?: string
   // END uitstalie-deepseek-flash
   /** Approval behavior applied after preset selection; an explicit CLI flag takes precedence. Omission keeps current policy. */
   approvalPolicy?: ApprovalPolicy

@@ -46,7 +46,7 @@ The task and run options use these settings:
 | `task` | stdin | The task text; stdin supplies it when omitted or `-` |
 | `sessionId` | `session-<uuid>` | Exact Session identity to adopt; an unknown id fails |
 | `json` | `false` | Project the run as newline-delimited events on stdout |
-| `permissionMode` | session policy | Apply a configured permission preset before submitting the task, including on resume |
+| `policy` | session policy | Apply a configured policy profile before submitting the task, including on resume |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-headless) is the exhaustive source for every accepted field and its JSDoc.
 
@@ -84,12 +84,12 @@ Use one prepared Git worktree per implementation task. Start the process with th
 
 ```sh
 git_dir=$(git rev-parse --path-format=absolute --git-common-dir)
-dsh headless --permission-mode workspace-write --add-dir "$git_dir" --json - < task.txt > run.jsonl
+dsh headless --policy workspace-write --add-dir "$git_dir" --json - < task.txt > run.jsonl
 ```
 
 `--add-dir` accepts repeatable physical absolute directory paths in the execution environment. The shared Git directory permits staging, committing, and repository hooks without granting the parent checkout's source files. It grants all metadata in that directory, including shared refs, hooks, and configuration. Later host Git commands can execute modified hooks or configuration outside the sandbox; use this grant for trusted tasks and review metadata changes before host Git operations. Additional grants apply to this invocation and must be supplied again when resuming. The shipped profile passes them to `sandbox-policy`; the runner checks the original parsed CLI grants directly. An overlay that replaces the policy row must include `ctx.headlessStartup.additionalWritableRoots`, or the runner rejects the request before model work. The [local sandbox provider](../../sandbox/sandbox-local/README.md) defines platform support.
 
-Read the opening `session.sessionId`, review the diff, and send revision instructions with `--session-id` from the same worktree. Repeat the directory grants. `--permission-mode` selects an existing permission preset through the permission service and overrides runner configuration and the session's saved selection before the task runs; omission preserves normal defaults and saved policy. These options do not edit saved profiles or user settings. `--approval-policy ask|never` applies after preset selection; `never` rejects calls that need human approval. Repeat explicit policy options when resuming an unattended task.
+Read the opening `session.sessionId`, review the diff, and send revision instructions with `--session-id` from the same worktree. Repeat the directory grants. `--policy` selects an existing permission-preset profile through the permission service and overrides runner configuration and the session's saved selection before the task runs; omission preserves normal defaults and saved policy. These options do not edit saved profiles or user settings. `--approval-policy ask|never` applies after preset selection; `never` rejects calls that need human approval. Repeat explicit policy options when resuming an unattended task.
 
 Ask the worker to report its working directory, base and resulting commit, changed files, exact gate commands, exit codes, log paths, and blocked or unrun checks. Review that evidence and trust completed gate reports. Run a check again only when a revision or new finding invalidates its evidence. Bound investigation in the task, and keep publication with the supervisor. A gate blocked by host IPC, external caches, or nested sandboxing remains unrun until the supervisor authorizes and runs it in a suitable environment.
 
@@ -97,7 +97,7 @@ A supervisor that interrupts a process must await its exit before resuming its S
 
 ### Experimental Auto review
 
-For model-reviewed full-access execution, explicitly enable [Auto review for headless supervision](../../experimental/auto-review/README.md#headless-supervision), select `--permission-mode auto --approval-policy never`, and use native tools. Auto reviews supported calls before execution and has no file sandbox. Its JSON denials let a supervisor inspect the failure and send scoped revision instructions through `--session-id`. Headless has no live approval-response channel.
+For model-reviewed full-access execution, explicitly enable [Auto review for headless supervision](../../experimental/auto-review/README.md#headless-supervision), select `--policy auto --approval-policy never`, and use native tools. Auto reviews supported calls before execution and has no file sandbox. Its JSON denials let a supervisor inspect the failure and send scoped revision instructions through `--session-id`. Headless has no live approval-response channel.
 
 ### Machine-readable output
 

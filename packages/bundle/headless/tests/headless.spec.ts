@@ -50,8 +50,8 @@ interface BenchOptions {
   readStdin?: () => Promise<string>
   sessionId?: string
   json?: boolean
-  permissionMode?: string
-  startupPermissionMode?: string
+  policy?: string
+  startupPolicy?: string
   approvalPolicy?: ApprovalPolicy
   startupApprovalPolicy?: ApprovalPolicy
   additionalWritableRoots?: string[]
@@ -137,11 +137,11 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
 }> {
   const ctx = new Context()
   if (options.additionalWritableRoots !== undefined
-    || options.startupPermissionMode !== undefined || options.startupApprovalPolicy !== undefined) {
+    || options.startupPolicy !== undefined || options.startupApprovalPolicy !== undefined) {
     ctx.provide('headlessStartup', {
       task: options.task, sessionId: options.sessionId, json: options.json ?? false,
       additionalWritableRoots: options.additionalWritableRoots,
-      permissionMode: options.startupPermissionMode,
+      policy: options.startupPolicy,
       approvalPolicy: options.startupApprovalPolicy,
     })
   }
@@ -245,7 +245,7 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
         ...options.useStdin === true ? {} : { task: options.task ?? 'do the thing' },
         ...options.sessionId === undefined ? {} : { sessionId: options.sessionId },
         ...options.json === undefined ? {} : { json: options.json },
-        ...options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode },
+        ...options.policy === undefined ? {} : { policy: options.policy },
         ...options.approvalPolicy === undefined ? {} : { approvalPolicy: options.approvalPolicy },
       })
       return { code: await exited, out, err, order }
@@ -267,17 +267,17 @@ describe('headless runner', () => {
     } finally { await test.ctx.fiber.dispose() }
   })
   it('rejects an explicit preset when its service is absent before submitting work', async () => {
-    const test = await bench({ afterPrompt() { throw new Error('must not run') } }, { permissionMode: 'workspace-write', json: true })
+    const test = await bench({ afterPrompt() { throw new Error('must not run') } }, { policy: 'workspace-write', json: true })
     try {
       const result = await test.run()
       expect(result.code).toBe(1)
-      expect(result.err).toContain('requires the permissionPresets service')
+      expect(result.err).toContain('requires the toolPolicy or permissionPresets service')
     } finally { await test.ctx.fiber.dispose() }
   })
 
   it('rejects an unknown preset before creating an Agent', async () => {
     const test = await bench({ afterPrompt() { throw new Error('must not run') } }, {
-      permissionMode: 'missing', useStdin: true, readStdin() { throw new Error('must not read stdin') },
+      policy: 'missing', useStdin: true, readStdin() { throw new Error('must not read stdin') },
     })
     test.ctx.provide('permissionPresets', { resolve() { throw new Error('unknown preset') } } as never)
     try {
@@ -293,8 +293,8 @@ describe('headless runner', () => {
       expect(selected).toBe('workspace-write')
       appendTurn(session, 1, message, 'done', true)
     } }, overridden
-      ? { permissionMode: 'danger-full-access', startupPermissionMode: 'workspace-write' }
-      : { permissionMode: 'workspace-write' })
+      ? { policy: 'danger-full-access', startupPolicy: 'workspace-write' }
+      : { policy: 'workspace-write' })
     test.ctx.provide('permissionPresets', { resolve() {}, set(_session: Session, name: string) { selected = name } } as never)
     try { expect(await test.run()).toMatchObject({ code: 0 }) }
     finally { await test.ctx.fiber.dispose() }
@@ -338,7 +338,7 @@ describe('headless runner', () => {
       ...resume ? {
         sessionId: 'session-exact',
         observe: async () => ({ header: { cwd: process.cwd() }, events: [], [Symbol.dispose]() {} }),
-      } : { permissionMode: 'auto' },
+      } : { policy: 'auto' },
     })
     await test.ctx.plugin(ApprovalService, { policy: 'ask' })
     if (resume) test.ctx.sessions.create(brandString<SessionId>('session-exact'), { meta: { cwd: process.cwd() } })

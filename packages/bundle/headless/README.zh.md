@@ -46,7 +46,7 @@ agent 会完成该任务，把提供方的每个非空推理（reasoning）增�
 | `task` | stdin | 任务文本；省略或传 `-` 时由 stdin 提供 |
 | `sessionId` | `session-<uuid>` | 要沿用的精确 Session 标识；未知 id 会失败 |
 | `json` | `false` | 把本次运行投影为 stdout 上的按行 JSON 事件 |
-| `permissionMode` | 会话策略 | 提交任务前应用已配置的权限预设，恢复会话时同样生效 |
+| `policy` | 会话策略 | 提交任务前应用已配置的策略 profile，恢复会话时同样生效 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-headless)是所有受支持字段及其 JSDoc 的完整真源。
 
@@ -84,12 +84,12 @@ DeepSeek Search 与 Fetch API [跟随会话的 DeepSeek 凭据](../../web/web-de
 
 ```sh
 git_dir=$(git rev-parse --path-format=absolute --git-common-dir)
-dsh headless --permission-mode workspace-write --add-dir "$git_dir" --json - < task.txt > run.jsonl
+dsh headless --policy workspace-write --add-dir "$git_dir" --json - < task.txt > run.jsonl
 ```
 
 `--add-dir` 接受可重复的执行环境物理绝对目录路径。共享 Git 目录允许暂存、提交和执行仓库钩子，而不授予父检出目录源文件的写权限。它授权该目录中的所有元数据，包括共享引用、钩子和配置。后续主机 Git 命令可能在沙箱之外执行修改后的钩子或配置；仅对可信任务使用此授权，并在运行主机 Git 操作前审查元数据变更。额外授权仅适用于本次调用，恢复会话时必须再次提供。随附配置档将其传给 `sandbox-policy`；runner 直接检查原始解析出的 CLI 授权。替换策略行的 overlay 必须包含 `ctx.headlessStartup.additionalWritableRoots`，否则 runner 会在模型工作前拒绝请求。[本地沙箱提供方](../../sandbox/sandbox-local/README.zh.md)定义各平台的支持情况。
 
-读取开头的 `session.sessionId`，审查 diff，然后在同一 worktree 中用 `--session-id` 发送修改指令，并再次提供目录授权。`--permission-mode` 通过权限服务选择已有权限预设，并在任务运行前覆盖 runner 配置和会话保存的选择；省略时保留正常默认值和已保存策略。两个选项都不会修改已保存的配置档或用户设置。`--approval-policy ask|never` 在选择权限预设后生效；`never` 拒绝需要人工审批的调用。恢复无人值守任务时应重复显式策略选项。
+读取开头的 `session.sessionId`，审查 diff，然后在同一 worktree 中用 `--session-id` 发送修改指令，并再次提供目录授权。`--policy` 通过权限服务选择已有权限预设 profile，并在任务运行前覆盖 runner 配置和会话保存的选择；省略时保留正常默认值和已保存策略。两个选项都不会修改已保存的配置档或用户设置。`--approval-policy ask|never` 在选择权限预设后生效；`never` 拒绝需要人工审批的调用。恢复无人值守任务时应重复显式策略选项。
 
 要求 worker 报告工作目录、基线与结果提交、修改文件、精确的检查命令、退出码、日志路径，以及受阻或未运行的检查。审查这些证据并信任已完成检查的报告。仅当修改或新发现使证据失效时再次运行检查。在任务中限制调查范围，并由监督者负责发布。因主机 IPC、外部缓存或嵌套沙箱而受阻的检查，在监督者授权并于合适环境中执行前仍属于未运行。
 
@@ -97,7 +97,7 @@ dsh headless --permission-mode workspace-write --add-dir "$git_dir" --json - < t
 
 ### Experimental Auto review
 
-如需由模型审查后以完全访问权限执行，请显式启用[无界面监督流程的 Auto review](../../experimental/auto-review/README.zh.md#headless-supervision)，选择 `--permission-mode auto --approval-policy never` 并使用原生工具。Auto 在支持的调用执行前进行审查，不提供文件沙箱。其 JSON 拒绝结果让监督者检查失败并通过 `--session-id` 发送限定范围的修订指令。Headless 没有实时审批响应通道。
+如需由模型审查后以完全访问权限执行，请显式启用[无界面监督流程的 Auto review](../../experimental/auto-review/README.zh.md#headless-supervision)，选择 `--policy auto --approval-policy never` 并使用原生工具。Auto 在支持的调用执行前进行审查，不提供文件沙箱。其 JSON 拒绝结果让监督者检查失败并通过 `--session-id` 发送限定范围的修订指令。Headless 没有实时审批响应通道。
 
 ### 机器可读输出
 

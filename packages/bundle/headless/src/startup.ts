@@ -34,11 +34,6 @@ export interface HeadlessStartupValues {
   // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, --policy replaces the permission-preset flag
   /** Soft-policy profile (or legacy permission preset) to apply before the task; absent preserves the session selection. */
   policy?: string
-  /**
-   * @deprecated The `--permission-mode` alias for {@link policy}. Kept for one
-   * release because cordis overlays and scripts still pass it.
-   */
-  permissionMode?: string
   // END uitstalie-deepseek-flash
   /** Approval behavior applied after the permission preset; absent keeps the current policy. */
   approvalPolicy?: ApprovalPolicy
@@ -64,9 +59,8 @@ function headlessCommand(): Command {
     .helpOption('-h, --help', 'show this help')
     .option('--json', 'write newline-delimited run events to stdout instead of the final message')
     .option('--session-id <id>', 'adopt the persisted Session with this id; an unknown id is an error')
-    // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, --policy flag and its deprecated alias
+    // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, --policy flag
     .option('--policy <profile>', 'select a tool-policy profile (or a legacy permission preset) for this task, including on resume')
-    .option('--permission-mode <preset>', 'deprecated alias for --policy')
     // END uitstalie-deepseek-flash
     .addOption(new Option('--approval-policy <policy>', 'set approval behavior after selecting the policy')
       .choices([...APPROVAL_POLICIES]))
@@ -80,8 +74,6 @@ Examples:
   dsh --profile headless --json "run the tests"   emit machine-readable run events
   dsh --profile headless --session-id session-… "continue"   resume an existing Session
   dsh --profile headless --policy guarded "run the tests"    select the soft-policy profile
-  dsh --profile headless --permission-mode workspace-write --add-dir /repo/.git "commit the fix"
-                                                        deprecated preset flag for an os-sandbox grant
 `)
 }
 
@@ -98,7 +90,7 @@ function jsonRequested(argv: readonly string[]): boolean {
     if (argument === '--') return false
     if (argument === '--json') return true
     // uitstalie-deepseek-flash, 2026/11/06, DH-905, skip the new flag's operand too
-    if (argument === '--session-id' || argument === '--policy' || argument === '--permission-mode'
+    if (argument === '--session-id' || argument === '--policy'
       || argument === '--approval-policy' || argument === '--add-dir') index += 1
   }
   return false
@@ -144,7 +136,6 @@ export function apply(ctx: Context): void {
       sessionId?: string
       // uitstalie-deepseek-flash, 2026/11/06, DH-905, new flag spelling
       policy?: string
-      permissionMode?: string
       approvalPolicy?: ApprovalPolicy
       addDir?: string[]
     }>()
@@ -154,15 +145,10 @@ export function apply(ctx: Context): void {
     if (sessionId !== undefined && sessionId.trim() === '') {
       program.error('error: --session-id requires a non-empty session id')
     }
-    // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, --policy selection with a deprecated alias and stderr notice
-    const legacyPermissionMode = options.permissionMode?.trim()
-    const policy = options.policy?.trim() ?? legacyPermissionMode
+    // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, --policy selection
+    const policy = options.policy?.trim()
     if (policy === '') {
       program.error('error: --policy requires a non-empty profile name')
-    }
-    if (legacyPermissionMode !== undefined) {
-      // stderr, not stdout: --json callers keep the event stream parseable.
-      internals.stderr.write('dsh: --permission-mode is deprecated; use --policy.\n')
     }
     // END uitstalie-deepseek-flash
     if (options.addDir?.some(path => !isAbsolute(path) || path.includes('\0')) === true) {
@@ -172,10 +158,8 @@ export function apply(ctx: Context): void {
       task,
       sessionId,
       json: options.json === true,
-      // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, publish both spellings for one release
+      // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-905, publish the policy selection
       ...policy === undefined ? {} : { policy },
-      // oxlint-disable-next-line typescript/no-deprecated -- the retired spelling stays published for one release
-      ...legacyPermissionMode === undefined ? {} : { permissionMode: legacyPermissionMode },
       // END uitstalie-deepseek-flash
       ...options.approvalPolicy === undefined ? {} : { approvalPolicy: options.approvalPolicy },
       ...options.addDir === undefined ? {} : { additionalWritableRoots: [...new Set(options.addDir)] },

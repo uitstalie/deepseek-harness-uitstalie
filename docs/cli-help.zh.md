@@ -121,7 +121,6 @@ Options:
   --policy <profile>          select a tool-policy profile (or a legacy
                               permission preset) for this task, including on
                               resume
-  --permission-mode <preset>  deprecated alias for --policy
   --approval-policy <policy>  set approval behavior after selecting the policy
                               (choices: "ask", "never")
   --add-dir <path>            allow an additional physical absolute directory
@@ -134,8 +133,6 @@ Examples:
   dsh --profile headless --json "run the tests"   emit machine-readable run events
   dsh --profile headless --session-id session-… "continue"   resume an existing Session
   dsh --profile headless --policy guarded "run the tests"    select the soft-policy profile
-  dsh --profile headless --permission-mode workspace-write --add-dir /repo/.git "commit the fix"
-                                                        deprecated preset flag for an os-sandbox grant
 
 ```
 
