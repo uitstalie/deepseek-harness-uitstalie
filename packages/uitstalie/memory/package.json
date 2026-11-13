@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-memory",
-  "description": "Memory capability provider: the workspace MEMORY.md file, the completed-turn detail summary job, a durable memory snapshot message, a fixed system prompt section for the forgetting window, and the memory_search/memory_read/memory_write tools",
+  "description": "Memory capability provider: the workspace MEMORY.md file, the completed-turn detail summary job, a durable memory snapshot message, a fixed system prompt section for the forgetting window, and the memory_write/memory_forget/memory_search/memory_read tools",
   "version": "0.0.0",
   "private": true,
   "type": "module",

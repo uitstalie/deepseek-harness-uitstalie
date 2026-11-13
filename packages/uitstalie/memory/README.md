@@ -1,5 +1,5 @@
 ---
-description: "Memory capability provider: the workspace MEMORY.md file, completed-turn detail and brief summaries, surface checkpoints that replace raw turns with detail, brief, and forgotten summaries, a durable memory snapshot message, a fixed system-prompt section for the forgetting window, and the memory_search/memory_read/memory_write tools."
+description: "Memory capability provider: the workspace MEMORY.md file, completed-turn detail and brief summaries, surface checkpoints that replace raw turns with detail, brief, and forgotten summaries, a durable memory snapshot message, a fixed system-prompt section for the forgetting window, and the memory_write/memory_forget/memory_search/memory_read tools."
 kind: "package-reference"
 ---
 

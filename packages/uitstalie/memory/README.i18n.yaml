@@ -3,7 +3,7 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/memory/README.md
 /:
-  en: 119d68e2abf28e47
+  en: c93b481916d4b85b
   zh: 1e0c463b0c54a80d
 /deepseek-ai-dsh-memory:
   en: 451d0d0b45211d36
