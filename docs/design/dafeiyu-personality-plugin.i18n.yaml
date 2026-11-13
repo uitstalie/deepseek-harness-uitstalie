@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/dafeiyu-personality-plugin.md
 /dafeiyu-personality-plugin-design-2026-11-13:
-  en: 6e8e4e445c2fa462
-  zh: 5201e60a9c970a38
+  en: 01be8d06f7ad7a8b
+  zh: 7af5a7edfd3fb262
 /dafeiyu-personality-plugin-design-2026-11-13/conclusion:
   en: 50d3aee80fd905b1
   zh: c05ae73ea7ec2878

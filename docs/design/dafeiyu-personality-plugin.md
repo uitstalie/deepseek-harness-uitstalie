@@ -4,7 +4,7 @@ English | [中文](dafeiyu-personality-plugin.zh.md)
 
 Status: design draft; not implemented; no package has been changed.
 
-The input material was provided with the task and is not committed with this design; this design adopts only its directional corrections, expression habits, and A–E root causes, and does not write business-fact corrections into personality. The key constraints are inlined in section 2.1, so implementation on another machine does not depend on the input files.
+The raw input material is retained under `docs/inputs/` for traceability; this design adopts only its directional corrections, expression habits, and A–E root causes, and does not write business-fact corrections into personality. The key constraints are inlined in section 2.1, so implementation on another machine does not depend on the input files.
 
 ## Conclusion
 

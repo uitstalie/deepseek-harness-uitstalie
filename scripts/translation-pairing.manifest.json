@@ -8,6 +8,8 @@
     "docs/cordis-api/inherited.md",
     "docs/i18n/style-samples.md",
     "docs/i18n/terminology.md",
-    "docs/i18n/translation-prompt.md"
+    "docs/i18n/translation-prompt.md",
+    "docs/inputs/correction-patterns-20261113.md",
+    "docs/inputs/windows-superagent-eval-handoff-2026-11-09.md"
   ]
 }
