@@ -2,7 +2,7 @@
 
 English | [中文](dafeiyu-personality-plugin.zh.md)
 
-Status: design draft; not implemented; no existing package changed; no user data migrated.
+Status: accepted design; implementation starts with Phase 0; no implementation code or user-data migration in this round.
 
 ## 0. 7 decisions and corresponding changes
 
@@ -12,9 +12,9 @@ Status: design draft; not implemented; no existing package changed; no user data
 | 2. Cancel turn-end automatic learning | Remove the regex and `onTurnEnd` learning; replace them with a tool that scans session records and produces candidates and evidence | Remove automatic learning, the `autoLearn` budget, and the automatic write path of `personality_learn` |
 | 3. Users can invoke analysis explicitly | The `personality_analyze` tool analyzes the current, specified, or most recent N sessions and returns only candidates without changing files; it runs only when the user asks | Remove the implicit path of "learning in the background only at turn end" |
 | 4. Drop the old personality directly | Remove the old code; move the old `PERSONALITY.md` to a read-only legacy backup, then never parse or migrate it; the new implementation starts empty | Remove the approach of "adding scope/compatibility layers/old-data migration on top of the old implementation" |
-| 5. Merge dispatch rules into the super agent system prompt/rules | Write them directly into the existing `SUPERAGENT_SECTION` (702), at the same layer as the existing rules | Remove the separate `703` section, the separate data file, and the second brief injection mechanism |
-| 6. Turn write-like-human into a tool with customizable prompt rules | The new `write_like_human` tool manages a global rules file and injects the rules into the prompt; the tool handles CRUD/enable/disable/preview | Remove the skill-only approach, the separate blacklist file, and the skill catalog dependency |
-| 7. Rename `output-summary` to `output-style` | The config object, file names, section name, and test fixtures all use `output-style`/`outputStyle` | Remove the old names `output-summary` and `persona` |
+| 5. Merge dispatch rules into the super agent system prompt/rules | Write them directly into the existing `SUPERAGENT_SECTION` (702), at the same layer as the existing rules | Add no separate `703` section, no separate data file, and no second brief injection mechanism; none exists in HEAD |
+| 6. Turn write-like-human into a tool with customizable prompt rules | The new `write_like_human` tool manages a global rules file and injects the rules into the prompt; the tool handles CRUD/enable/disable/preview | No skill-only implementation or blacklist file exists in HEAD; write-like-human is added as a tool, not renamed from a skill |
+| 7. Use `output-style` for the config | The config object, file names, section name, and test fixtures all use `output-style`/`outputStyle`; `persona` remains the deployment persona prefix and persona-card concept, not this config | `output-summary` is not a current name; do not introduce it, and do not rename the separate `persona` concepts |
 
 ## 1. Conclusion
 
@@ -33,7 +33,7 @@ The four modules keep their division of responsibilities, but all their forms ch
 
 ### 2.1 Code layer
 
-The old implementation is treated as "undesigned, unmaintained, unreviewed" and removed directly; no compatibility layer is added on top of the old code. Removal scope:
+The current implementation is a maintained capability, not an unmaintained draft: it registers contract v2, keeps the global profile plus a workspace overlay, and ships version-guarded history, identity proposals, a settings page, and 50 tests (`packages/uitstalie/personality`, `packages/uitstalie/ui-personality`). This design replaces it deliberately; the old tests are not acceptance for the new implementation. Removal scope:
 
 - The old provider, `personality_learn`, `personality_propose`, proposal queue, `/personality` command, old prompt section, overlay watcher, and old version/history logic in `packages/uitstalie/personality`.
 - The old proposal page and old settings fields in `packages/uitstalie/ui-personality`.
@@ -48,9 +48,9 @@ The old data files keep one read-only backup; after that they are never parsed o
 
 | Old file | Handling |
 |---|---|
-| `<DSH_HOME>/personality/PERSONALITY.md` | On the first startup of the new implementation, **move** the old `PERSONALITY.md` to `<DSH_HOME>/personality/legacy/PERSONALITY.<UTC>.md` (the same data, not deleted); after a successful move, the new implementation starts from an empty `PERSONALITY.md`. If the move fails, **do not overwrite the old file and do not start a new write**, and report an error. |
-| `<DSH_HOME>/personality/PERSONALITY.history.jsonl` | Do not parse, read, or delete; leave it in place as historical evidence. |
-| `<DSH_HOME>/personality/PERSONALITY.proposals.jsonl` | Do not parse, read, or delete; leave it in place as historical evidence. |
+| `<DSH_HOME>/personality/PERSONALITY.md` | On the first startup of the new implementation, **move** the old file with `ctx.fs.moveFile` to `<DSH_HOME>/personality/legacy/PERSONALITY.<YYYYMMDDTHHMMSSZ>.md` (UTC, no colons; add `-1`, `-2` on collision), guarded by the observed source version. If the backend cannot move, use read → write legacy with `createIfAbsent` → re-read and compare hash → remove old; a failure at any step keeps the old file, creates no new `PERSONALITY.md`, and blocks writes with an error. If a crash leaves both files, compare hashes on the next startup: identical means finish the removal, different means keep both and report. |
+| `<DSH_HOME>/personality/PERSONALITY.history.jsonl` | Do not parse, read, delete, or rename; leave it in place as historical evidence. The new implementation does not create a history file and never reuses this name. |
+| `<DSH_HOME>/personality/PERSONALITY.proposals.jsonl` | Do not parse, read, or delete; leave it in place as historical evidence. There is no importer for queued or accepted identity entries in this rewrite. |
 | `<workspace>/.dsh/memory/PERSONALITY.md` | Do not read, write, or delete; give a one-time warning when first found in each workspace, stating that "only global personality is supported and the workspace file is ignored". |
 
 **Why not delete the old data directly:** the old file may be the user's only personality record, and deletion is irreversible. This design authorizes only "back up + ignore", not deletion. If the user explicitly asks to delete the data, open a separate explicit cleanup operation; this round does not do it.
@@ -65,7 +65,7 @@ Direct consumers of the old implementation:
 | `packages/uitstalie/ui-personality` | The old proposal/settings pages are removed; new output-style/writing-rules pages are separate work |
 | `packages/bundle/web-app/cordis.patch.uitstalie.yml` | The old mounting lines are removed or replaced; personality lines added manually to old profiles need migration to new lines |
 | Old `personality_learn` / `personality_propose` callers | The tools disappear; the new tools are `personality_analyze` / `personality_apply`, with no automatic writes |
-| Consumers that import `@deepseek-ai/dsh-personality` externally | The old exported API is removed; this is a breaking change and needs release notes/an upgrade guide |
+| Consumers that import `@deepseek-ai/dsh-personality` from another workspace package | The old exported API is removed; this is a breaking change and needs release notes/an upgrade guide |
 | External scripts that read `<workspace>/.dsh/memory/PERSONALITY.md` | The new implementation no longer reads it; scripts receive no hint and can rely only on the one-time warning or documentation |
 
 Not migrating old data, not keeping the old API compatible, and not reading old workspace files are explicit costs of this design.
@@ -79,9 +79,11 @@ Not migrating old data, not keeping the old API compatible, and not reading old 
 | `<DSH_HOME>/personality/PERSONALITY.md` | user-input entries: understanding / preference / style; identity is manual-only | `personality_apply` (confirmation required) or a person |
 | `<DSH_HOME>/personality/OUTPUT_STYLE.yaml` | output-style's tone/length/conclusion/lists/dispatch voice | A person; tools read only |
 | `<DSH_HOME>/personality/WRITING_RULES.yaml` | write-like-human's rule set | The `write_like_human` tool (when the user asks) or a person |
-| `<DSH_HOME>/personality/legacy/PERSONALITY.<UTC>.md` | Read-only backup of the old file | Written once by the new implementation, then never written again |
+| `<DSH_HOME>/personality/legacy/PERSONALITY.<YYYYMMDDTHHMMSSZ>.md` | Read-only backup of the old file | Written once by the new implementation, then never written again |
 
 No workspace personality file exists; all tools write only the global paths above.
+
+On first activation the implementation creates `OUTPUT_STYLE.yaml` with the defaults in 3.3 and an empty `WRITING_RULES.yaml`; it does not create or seed `PERSONALITY.md`.
 
 ### 3.2 PERSONALITY.md data structure
 
@@ -117,9 +119,10 @@ interface PersonalityDocument {
 }
 ```
 
-- `understanding` describes only "how to read user input"; `preference` describes "how to do things"; `style` describes "concrete reply rules"; `identity` is manual-edit-only, and the tool refuses to write it.
+- `understanding` describes only "how to read user input"; `preference` describes "how to do things"; `style` describes "concrete reply rules"; `identity` is manual-edit-only, the tool refuses to write it, and this rewrite provides no importer for legacy identity entries.
 - All entries are global; there is no same-name workspace override and no overlay merge.
-- Writes use a version guard; a failure does not overwrite the old file. History files are created anew by the new implementation (for example `PERSONALITY.history.jsonl`), and old history is not merged.
+- Writes use a version guard; a failure does not overwrite the old file. History and revert are removed from the runtime; the old `PERSONALITY.history.jsonl` is left untouched, and the new implementation never creates, reads, or reuses that name.
+- The document body is capped at 32 KiB UTF-8; a write that would exceed it is rejected without overwriting.
 
 ### 3.3 OUTPUT_STYLE.yaml data structure
 
@@ -187,8 +190,8 @@ interface WritingRulesDocument {
 | Order | Name | Type | Scope | Notes |
 |---:|---|---|---|---|
 | -1000 | `harness:identity` | section | all | Platform identity |
-| 0 | `deployment:persona-prefix` | section | all | Deployment persona prefix (an existing platform section, not the old output-style name) |
-| 100 | `personality` | section | all | understanding / preference / style entries |
+| 0 | `deployment:persona-prefix` | section | all | Deployment persona prefix (an existing platform section, not the output-style config) |
+| 100 | `personality` | section | all | understanding / preference / style / identity entries |
 | 500 | `PLAN_POLICY` | section | all | Plan policy |
 | 600 | `TEAM_POLICY` | section | all | Team policy |
 | 690 | `personality:output-style` | section | all | output-style default expression |
@@ -199,7 +202,7 @@ interface WritingRulesDocument {
 | 706 | `superagent:running` | runtime context | super agent | Long-task status, rebuilt per request |
 | 1000+ | Tool sections | section | all | Tool descriptions |
 
-**There is no 703.** Brief rules are not a separate section, and there is no longer a `dispatch-brief.md` data file.
+**There is no 703 and no `dispatch-brief.md` in HEAD.** Do not add a separate section or data file. The three new names are `PERSONALITY` (100), `PERSONALITY_OUTPUT_STYLE` (690), and `PERSONALITY_WRITING_RULES` (695); all three are added to `SECTION_ORDERS` and resolved through `getSectionOrder`.
 
 ### 4.2 Cache impact
 
@@ -219,12 +222,14 @@ Rule files must not contain timestamps, seqs, current task names, or other volat
 
 Reuse `understanding` / `preference` / `style` from `PERSONALITY.md`; `identity` is manual-only. There is no workspace copy.
 
+The A–E and expression-habit tables are analysis targets, not seed data; `PERSONALITY.md` starts empty.
+
 - `understanding`: interpretation of sentence patterns, word choice, modal particles, role prefixes, and ellipsis/rhetorical questions.
 - `preference`: A–E work preferences (scope, authorization, abstraction, simplification, consistency, reconciliation).
 - `style`: concrete reply-style rules; output-style manages defaults, and `style` entries override specific scenarios.
 - One entry can belong to only one class; mixed content is split into two entries or rejected.
 
-A–E fixed entries:
+A–E analysis candidates:
 
 | Root cause | Entry id | Rule |
 |---|---|---|
@@ -234,7 +239,7 @@ A–E fixed entries:
 | D Default conservatism | `preference.consistency-first` | When an inconsistency is found, the goal is to remove it, not preserve the status quo |
 | E Missed reconciliation | `preference.inventory-sources` | For multi-source tasks, first list the reviewed/changed/unchanged objects |
 
-Expression-habit fixed entries:
+Expression-habit candidates:
 
 | Habit | Entry id | Interpretation |
 |---|---|---|
@@ -323,7 +328,7 @@ interface ApplyResult {
 
 ### 5.4 Acceptance (3 items)
 
-1. **Analysis scope**: `sessionsScanned` is correct for the three fixtures `current`/`session`/`recent`; every candidate has at least one `EvidenceRef`, and `quote` comes from a real excerpt in that session; `PERSONALITY.md` is unchanged before and after `personality_apply`.
+1. **Analysis scope**: `sessionsScanned` is correct for the three fixtures `current`/`session`/`recent`; every candidate has at least one `EvidenceRef`, and `quote` comes from a real excerpt in that session; `PERSONALITY.md` is unchanged before and after `personality_analyze`.
 2. **Confirmation gate**: when `confirm` is missing or false, reject and do not write; `identity` candidates are rejected; applying the same `id` twice keeps only one entry and updates its text.
 3. **Single global copy**: construct `workspace/.dsh/memory/PERSONALITY.md`; `personality_analyze`/`apply` do not read or write it and return one warning only; every write path matches `<DSH_HOME>/personality/PERSONALITY.md`.
 
@@ -337,11 +342,11 @@ interface ApplyResult {
 
 ### 6.1 Form
 
-**Modify the text of the existing `SUPERAGENT_SECTION` (order 702) directly**, writing the brief template and Windows failure constraints into the same section. There is no separate section, no `dispatch-brief.md`, and no new injection mechanism.
+**Modify the text of the existing `SUPERAGENT_SECTION` (order 702) directly**, writing the brief template into the same section. There is no separate section, no `dispatch-brief.md`, and no new injection mechanism.
 
 ### 6.2 Rule content
 
-Append the fixed template and failure constraints after the existing rule that "a brief has only two sources and must not invent standards":
+Append the fixed template after the existing rule that "a brief has only two sources and must not invent standards":
 
 ```text
 Brief slots (fill every slot; no slot has a default):
@@ -454,7 +459,7 @@ writing rules cannot override the first two layers; when they conflict with outp
 
 ### 8.1 Form
 
-**Global `OUTPUT_STYLE.yaml` + section 690.** The name is uniformly `output-style`; there is no `output-summary`, the config object name is `outputStyle`, and the field name no longer uses `persona`.
+**Global `OUTPUT_STYLE.yaml` + section 690.** The name is uniformly `output-style`; there is no `output-summary`; `persona` is the deployment persona prefix and persona-card concept, not this config field.
 
 ### 8.2 Configuration and injection
 
@@ -488,7 +493,7 @@ Fixed status constraints (not disabled by configuration):
 
 ### 8.3 Acceptance (3 items)
 
-1. **Naming**: code, configuration, sections, and fixtures contain no old names `output-summary`/`persona`; all `outputStyle` fields parse, and unknown enums are rejected.
+1. **Naming**: code, configuration, sections, and fixtures use `output-style`/`outputStyle`; `output-summary` must not appear; `persona` is allowed only for the existing deployment persona prefix and persona-card concepts. All `outputStyle` fields parse, and unknown enums are rejected.
 2. **Order/scope**: section order 690, present for all agents; before `SUPERAGENT_SECTION` (702); `style` entries are at 100, and concrete rules take priority.
 3. **Hard boundary/status**: the section matches "never overrides safety, approval, sandbox, tool permission, or workspace rules"; given a "report pending" fixture, the fixed status constraints forbid "completed/reported".
 
@@ -532,7 +537,7 @@ super agent 派发
 | 2 | Build the new global `PERSONALITY.md` data layer + `personality_analyze` / `personality_apply` + section 100 | user-input is the foundation of the new design; the other modules depend on the global data model | 1 |
 | 3 | `output-style` configuration + section 690 | Depends on global configuration and section order; independent of tools | 2 |
 | 4 | `write_like_human` tool + `WRITING_RULES.yaml` + section 695 | Needs section order and the global write path; CRUD can be tested independently | 2 |
-| 5 | Merge the brief template and Windows constraints into `SUPERAGENT_SECTION` | Changes only the 702 text; depends on the existing superagent rules and runtime context | None (can run in parallel with 2–4, but test conflicts last) |
+| 5 | Merge the brief template into `SUPERAGENT_SECTION` | Changes only the 702 text; depends on the existing superagent rules and runtime context | None (can run in parallel with 2–4, but test conflicts last) |
 | 6 | Integration tests: injection order, caching, global paths, old-data backup/warnings | Per-module tests cannot prove priority and global constraints | 1–5 |
 
 Do 1 first because "drop the old implementation directly" is the highest constraint; if the old code remains, other modules will be polluted by old tools/old sections.
@@ -558,7 +563,7 @@ No new skill directory is needed, and `skill-filesystem`/`tool-skill` need no ch
 - Decide the new `PERSONALITY.md` format and the legacy backup path before writing tools; otherwise `personality_apply` will write old-format compatibility code.
 - Old data backup must complete before the first new write; when the backup fails, new writes are forbidden.
 - The workspace old-file warning is process-wide once (once per workspace path); do not spam the log on every request.
-- Which agents the new tools register to: personality remains a capability; should `personality_analyze`/`personality_apply` be visible to all agents or only root? This design recommends all agents, but only root may call `personality_apply`, to prevent child agents from writing the global personality; enforce this with `scope` or tool visibility at implementation time, not with a prompt.
+- Tool visibility: `personality_analyze` is visible to every agent; `personality_apply` is root-only, enforced through the dafeiyu `tools(agent)` filter rather than a prompt. `write_like_human` visibility remains a separate decision.
 - `write_like_human` modifies global rules; it is recommended to expose it only to root/super agent; if all agents need read access, the section is injected for all agents, but the tool is given only to authorized roles.
 
 ### 11.3 Data and paths
@@ -582,6 +587,5 @@ No new skill directory is needed, and `skill-filesystem`/`tool-skill` need no ch
 ## 13. Decisions pending
 
 1. Should old data be **deleted** after backup? This design only backs up and does not delete; if the user wants deletion, a separate explicit cleanup command is required.
-2. Should `personality_analyze`/`personality_apply` be visible only to root, or to all agents? This design recommends that only root may write, while read-only analysis may be given to all agents.
+2. Does the Loader reject unknown config keys? If yes, keep `workspaceOverlay` as an ignored deprecated key for one release and annotate it in the config catalog; otherwise delete the field.
 3. Should the `write_like_human` tool be given only to root/super agent? The section is injected for all agents; write permission is recommended to be narrowed.
-4. Should the old `PERSONALITY.history.jsonl`/`proposals` be moved to the legacy directory? This design leaves them in place and does not parse them, to avoid accidental deletion.

@@ -3,11 +3,11 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/dafeiyu-personality-plugin.md
 /dafeiyu-personality-plugin-design-2026-11-13:
-  en: 540872f45a837253
-  zh: 57f13d1dafe07079
+  en: 3849ee3e0064428f
+  zh: eccd8e7b419dc74c
 /dafeiyu-personality-plugin-design-2026-11-13/0-7-decisions-and-corresponding-changes:
-  en: 238a3e00c0dbf2cb
-  zh: 97ecb16a9b6a7235
+  en: 69d70d8bd9bcc678
+  zh: eac1b708a84c90b0
 /dafeiyu-personality-plugin-design-2026-11-13/1-conclusion:
   en: 2e20b53c2bd0c86b
   zh: 5dd3b1fe351e7501
@@ -15,23 +15,23 @@
   en: ed4ebfbb62f339f0
   zh: a87634b7a6b7757e
 /dafeiyu-personality-plugin-design-2026-11-13/2-old-implementation-exit/2-1-code-layer:
-  en: 1c447e83edd06831
-  zh: b1c444696109a85c
+  en: 4bb566ba652a969d
+  zh: 94685cf3c123ad4a
 /dafeiyu-personality-plugin-design-2026-11-13/2-old-implementation-exit/2-2-data-layer:
-  en: 7b208b93a512c247
-  zh: 94614e0d4fe9c4ca
+  en: 6e9b9353e68d8b80
+  zh: 6c5796c51975eb09
 /dafeiyu-personality-plugin-design-2026-11-13/2-old-implementation-exit/2-3-compatibility-impact:
-  en: a0885590b29567f8
-  zh: 494e1e22ebebc87f
+  en: 177e944cf3a72999
+  zh: 8d0624caf87e2756
 /dafeiyu-personality-plugin-design-2026-11-13/3-global-data-and-files:
   en: c874cb611fc49953
   zh: f2ca437e5c2bfa57
 /dafeiyu-personality-plugin-design-2026-11-13/3-global-data-and-files/3-1-directory:
-  en: e9aee69f330b7191
-  zh: 52911beb1114d673
+  en: ceda854b0f9291de
+  zh: 3794dd3a9d4b15cb
 /dafeiyu-personality-plugin-design-2026-11-13/3-global-data-and-files/3-2-personality-md-data-structure:
-  en: fd966a1a1bcdbfac
-  zh: 696bc241bb5f6d1a
+  en: 97aee4439a872d4b
+  zh: 1d128be3d5895c34
 /dafeiyu-personality-plugin-design-2026-11-13/3-global-data-and-files/3-3-output-style-yaml-data-structure:
   en: 162aa6c727444f0d
   zh: f0772d065e65b07f
@@ -42,8 +42,8 @@
   en: d762ac601f6bae6a
   zh: f1f98f071ff883c6
 /dafeiyu-personality-plugin-design-2026-11-13/4-injection-order-and-caching/4-1-order-table:
-  en: 1d65304394dbabe1
-  zh: 516e20f9ac502f89
+  en: 56f96fa9bd692595
+  zh: b7d1f72a67fb2a71
 /dafeiyu-personality-plugin-design-2026-11-13/4-injection-order-and-caching/4-2-cache-impact:
   en: 56634adf5bea115c
   zh: f3859d1d73a98aee
@@ -51,8 +51,8 @@
   en: 4021c0b9bcc3ce24
   zh: 6510a9488279974a
 /dafeiyu-personality-plugin-design-2026-11-13/5-user-input-tool-based-collection-and-confirmation/5-1-data-and-classification:
-  en: 13fdb11b72ac3251
-  zh: e83b9f77bdabd0af
+  en: c20c10070225bc98
+  zh: 54322ff534e3c04f
 /dafeiyu-personality-plugin-design-2026-11-13/5-user-input-tool-based-collection-and-confirmation/5-2-personality-analyze:
   en: fd4ff48589f98777
   zh: f91513a4fb594509
@@ -60,8 +60,8 @@
   en: cffcb96c5abf228c
   zh: 41ac7c1e8f01651f
 /dafeiyu-personality-plugin-design-2026-11-13/5-user-input-tool-based-collection-and-confirmation/5-4-acceptance-3-items:
-  en: 641bb5fad798bfdc
-  zh: 425e1dcaab1433af
+  en: 7eb32935fb356f55
+  zh: b1d1d818e5ac86a4
 /dafeiyu-personality-plugin-design-2026-11-13/5-user-input-tool-based-collection-and-confirmation/5-5-risks:
   en: b3006d4726f93f53
   zh: 70afc152ee023528
@@ -69,11 +69,11 @@
   en: d7426c05a7e310b4
   zh: 3669b48b3c2fee4d
 /dafeiyu-personality-plugin-design-2026-11-13/6-super-agent-dispatch-merged-into-existing-rules/6-1-form:
-  en: be8408446a8dc265
-  zh: 7350fd07f23c9c4d
+  en: 26c0425808c49444
+  zh: 5724398610593c0c
 /dafeiyu-personality-plugin-design-2026-11-13/6-super-agent-dispatch-merged-into-existing-rules/6-2-rule-content:
-  en: 17dc18c4f22cde59
-  zh: 0d219a7545444f2e
+  en: 437c01022e61dbf1
+  zh: ebbcee1abdd06a41
 /dafeiyu-personality-plugin-design-2026-11-13/6-super-agent-dispatch-merged-into-existing-rules/6-3-acceptance-3-items:
   en: 1c4115af9fab58f7
   zh: 3d8d9282ac82881b
@@ -105,14 +105,14 @@
   en: 725538415f3cee36
   zh: af34c3d0e2cd8d6f
 /dafeiyu-personality-plugin-design-2026-11-13/8-output-style-global-configuration/8-1-form:
-  en: f56f1f2163694f06
-  zh: 983e7cebbfd529fc
+  en: cc14a80a2415d339
+  zh: 96c87aa3875167bf
 /dafeiyu-personality-plugin-design-2026-11-13/8-output-style-global-configuration/8-2-configuration-and-injection:
   en: 0a8ac71569624639
   zh: 82425e7fae4a21ab
 /dafeiyu-personality-plugin-design-2026-11-13/8-output-style-global-configuration/8-3-acceptance-3-items:
-  en: 5fb255793be91d68
-  zh: debf6efef4d645f4
+  en: 81341fc6bbc13354
+  zh: d1bcc3005c095a37
 /dafeiyu-personality-plugin-design-2026-11-13/8-output-style-global-configuration/8-4-risks:
   en: 3f303476d636ed24
   zh: e1b59fc9c2e2bf97
@@ -120,8 +120,8 @@
   en: 3ad1650d921e4ffa
   zh: 5f2b242a0cab7c65
 /dafeiyu-personality-plugin-design-2026-11-13/10-implementation-order:
-  en: 78b0355fd5e82c3f
-  zh: 97fa408e830d9f24
+  en: d717e80e4e925c53
+  zh: 4c73ffe014e43d11
 /dafeiyu-personality-plugin-design-2026-11-13/11-prerequisites-for-implementing-on-another-machine:
   en: 72da9f86165a6bb0
   zh: 3f3212cf22ad2a1d
@@ -129,8 +129,8 @@
   en: b9c596098611f097
   zh: 5f5a0ae8ffd2c6bc
 /dafeiyu-personality-plugin-design-2026-11-13/11-prerequisites-for-implementing-on-another-machine/11-2-implementation-order-prerequisites:
-  en: 7a5a60b5977cacf8
-  zh: 1967adee2af292e0
+  en: 178c15e5592bfdd6
+  zh: d7c804a296337582
 /dafeiyu-personality-plugin-design-2026-11-13/11-prerequisites-for-implementing-on-another-machine/11-3-data-and-paths:
   en: ea31e0c1b704cf2a
   zh: c84d17a36ddfa79c
@@ -138,5 +138,5 @@
   en: 1f236adaeb1e2ae3
   zh: c5d501d3f3fccaa2
 /dafeiyu-personality-plugin-design-2026-11-13/13-decisions-pending:
-  en: 83c39c5928215af8
-  zh: 8823d3d71e0fdc9f
+  en: b3ceaeeda64f8122
+  zh: eb1b911a89d09a9e
