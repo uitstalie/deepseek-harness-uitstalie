@@ -111,8 +111,6 @@ make web|dev-web|desktop|dev-desktop|build  # the same commands; ARGS='--no-open
 
 If a required `gh`, `pnpm`, build, test, or generator command fails because the sandbox blocks credentials, network, IPC, watching, or nested `sandbox-exec`, retry unchanged with the narrowest host escalation. Require sandbox evidence; never bypass test failures or the product sandbox.
 
-- **Windows ACL sandboxing is disk-scoped.** Never relabel a home or drive root; see [the limitation](docs/subsystems/sandbox.md#windows-acl-backend-limitation-disk-scoped-not-process-scoped). <!-- uitstalie-deepseek-flash, 2026/11/06, DH-906, sandbox constraint checklist -->
-
 ### Run relevant checks locally
 
 Before pushing, follow [dsh-pre-push-checks](.agents/skills/dsh-pre-push-checks/SKILL.md); report only commands run. After `gh stack sync`, validate immediately; do not merge before checks pass.
