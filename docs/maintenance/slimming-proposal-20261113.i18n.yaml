@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for slimming-proposal-20261113.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/maintenance/slimming-proposal-20261113.md
+/branch-artifact-slimming-proposal-2026-11-13:
+  en: ec17423f3c3d91fb
+  zh: 757541f9048f24dd
+/branch-artifact-slimming-proposal-2026-11-13/0-scope-and-conventions:
+  en: 6d838f25efb1d226
+  zh: 905ea28a90a3710c
+/branch-artifact-slimming-proposal-2026-11-13/1-documents-expired-delete:
+  en: afef867d91d5d53a
+  zh: d3e2ba078b5a3e78
+/branch-artifact-slimming-proposal-2026-11-13/2-documents-errors-edit:
+  en: 062bdf12b467fb85
+  zh: 58f3a18da62cfbd5
+/branch-artifact-slimming-proposal-2026-11-13/3-code-deprecated-obsolete:
+  en: 6e23e6f5e83e1f58
+  zh: fbf25f89bd44ab1f
+/branch-artifact-slimming-proposal-2026-11-13/3-code-deprecated-obsolete/a-no-references-at-all:
+  en: a7be57ff2a7e25a1
+  zh: f50f2d0b35d04496
+/branch-artifact-slimming-proposal-2026-11-13/3-code-deprecated-obsolete/b-referenced-but-superseded:
+  en: c1488f0db3edceb0
+  zh: 86a63fa691f15fa8
+/branch-artifact-slimming-proposal-2026-11-13/3-code-deprecated-obsolete/c-experimental-not-wired:
+  en: c603015596dd7371
+  zh: e07220500ca96289
+/branch-artifact-slimming-proposal-2026-11-13/4-native-intrusion-inventory:
+  en: a022efaa3bbdfa42
+  zh: fe566db29bfb2b69
+/branch-artifact-slimming-proposal-2026-11-13/5-intrusion-reduction-proposals-ordered-by-footprint:
+  en: cea521d533aaf9ee
+  zh: aa6bf0f7484cba7e
+/branch-artifact-slimming-proposal-2026-11-13/6-phased-execution-plan-not-executed-this-round:
+  en: 31383e119be0873a
+  zh: f8dca8aa6f53013c
+/branch-artifact-slimming-proposal-2026-11-13/6-phased-execution-plan-not-executed-this-round/batch-1-document-cleanup-low-risk-do-first:
+  en: df693340627195b0
+  zh: 84498bc4091be507
+/branch-artifact-slimming-proposal-2026-11-13/6-phased-execution-plan-not-executed-this-round/batch-2-deprecated-cli-flag-small-code-change-needs-a-separate-decision:
+  en: 0b34bfaaa3cb5b84
+  zh: d5e9d67b10630f0c
+/branch-artifact-slimming-proposal-2026-11-13/6-phased-execution-plan-not-executed-this-round/batch-3-old-personality-native-intrusion-high-risk-blocked-on-the-new-design:
+  en: 4e858783e29aa10b
+  zh: c672bb4ce7f341c7
+/branch-artifact-slimming-proposal-2026-11-13/7-expected-deletion-volume:
+  en: 5515f7ca76fc7384
+  zh: 3ec4c0f2a129784d
+/branch-artifact-slimming-proposal-2026-11-13/8-explicitly-not-deleted-changed:
+  en: 94795d7c19f28636
+  zh: f45dede0d0e10893

@@ -14,7 +14,7 @@ Date: 2026-11-09. Subject: the **running** super agent on a physical Windows 10 
 1. **The “normal report loop” on Windows really worked this time, with on-machine evidence rather than inference.** At the snapshot written to disk on 2026-11-09, the journal contained 13 task ids in total: **10 `delivered` and 3 still `pending` (including this evaluation session itself)**, with exactly one entry for each delivered task; the super Session received 10 `[task-report]` messages, corresponding one-to-one with the 10 delivered tasks, and the delay between the child Session's turn/end and delivery was 1–2 seconds (§3.1). This **differs** from the Fedora report's historical conclusion that “there was no automatic return after completion”: the happy path of the current runtime at the 2026-11-09 permission-fix baseline, including the report journal, works.
 2. **But the P0s have not been closed; only some of them have changed.** The four P0s have different evidence levels (confirmed by re-review): duplicate cross-process claims of the same report (**synthetic multiprocess store experiment on Windows**, 26 claims for 6 items that should have been claimed; not a live reproduction with two real Hosts; raw stdout in §3.1 and `.tmp-eval/journal-race-stdout.txt`); a turn with empty output was automatically recorded as `returned` (**reproduced on-machine**); delivery failure is a terminal state with no retry and no startup recovery (**code + unit tests**; no failure was induced on-machine); continuing after `abort` creates no new binding (**code + unit tests**; not triggered on-machine).
 3. **First, I correct one of my own erroneous conclusions: the dispatch domain has not been disabled.** I initially read only the main database (mtime 09:31:48, `-wal` 0 B) and concluded “75 rows, 0 rows today” because I **missed the WAL**. After copying `superagent.sqlite` + `-wal` + `-shm` to a temporary directory and querying again: **90 rows, 15 rows today**, including this evaluation task and the re-review task; `task-mw8m5yg4` became `failed@02:12:52` in the domain at the same moment as the manual resolve. The domain is therefore actually used by dispatch/resolve (the correction in re-review §4.1 is valid); what needs checking is its **authority relationship and source observability** relative to the Markdown projection, not whether it is “unopened.” The original P1-1 is withdrawn and replaced by a P2 observability item.
-4. **The current sandbox side effects are real, but their attribution cannot be established.** The roots of the `deepseek-harness-uitstalie-dev`, `superAgent`, and `system_img` workspaces still carry `Everyone:(CI)(DENY)(S,DC)` and `Low Mandatory Level:(OI)(CI)(NW)`; `D:\dqc\analyze` is Medium. The handoff file records a successful cleanup on 11-07, so “it was cleaned up then” and “it has appeared again now” can both be true; ACEs have no timestamps, so the writer and time remain undetermined. **This evaluation's ACL root-directory probe did not reproduce the historical rename EPERM**; however, Web/esbuild encountered `Access is denied` while deleting a temporary file on the same day, and the normal build did not pass (§3.5). Supplementary diagnosis located the esbuild deletion failure in the No-Write-Up restriction imposed on a Low process by a Medium file (§3.8), which does not change the conclusion that the writer and time of the persistent workspace labels remain undetermined.
+4. **The current sandbox side effects are real, but their attribution cannot be established.** The roots of the `deepseek-harness-uitstalie-dev`, `superAgent`, and `system_img` workspaces still carry `Everyone:(CI)(DENY)(S,DC)` and `Low Mandatory Level:(OI)(CI)(NW)`; `<analyze-workspace>` is Medium. The handoff file records a successful cleanup on 11-07, so “it was cleaned up then” and “it has appeared again now” can both be true; ACEs have no timestamps, so the writer and time remain undetermined. **This evaluation's ACL root-directory probe did not reproduce the historical rename EPERM**; however, Web/esbuild encountered `Access is denied` while deleting a temporary file on the same day, and the normal build did not pass (§3.5). Supplementary diagnosis located the esbuild deletion failure in the No-Write-Up restriction imposed on a Low process by a Medium file (§3.8), which does not change the conclusion that the writer and time of the persistent workspace labels remain undetermined.
 5. **Overall rating: C+ (“usable, but integrity and recoverability are not established”).** Under the existing scale, P0s remain open, so the system should not be judged converged; nor can we retain the old conclusion that “reports simply do not come back on Windows”—that conclusion is no longer valid.
 
 **The three most critical items**: cross-process claims are not atomic (§4 P0-1); empty output/no report is automatically written as `returned` (P0-2); delivery failure has no retry and no startup scan (P0-3). The fourth P0 is abort binding (P0-4).
@@ -27,18 +27,18 @@ Date: 2026-11-09. Subject: the **running** super agent on a physical Windows 10 
 
 | Item | Measured value | Evidence |
 |---|---|---|
-| runtime checkout | `D:\dqc\deepseek-harness-uitstalie` | Process command line |
+| runtime checkout | `<runtime-checkout>` | Process command line |
 | runtime HEAD | `2026-11-09 权限修复基线` (`cli-desktop`, **0** worktree changes) | `git -C … rev-parse HEAD`, empty `git status --porcelain` |
 | Launch method | `node --import tsx/esm apps/cli/src/bin.ts web`, PID 5084, started at **2026-11-09 09:45:03** | `Get-CimInstance Win32_Process -Filter "ProcessId=5084"` |
 | Interpreter / version | Node **v24.13.0**; root package `@deepseek-ai/dsh-root@0.2.2-rc.1` | `node --version`, `package.json` |
 | Listener | `127.0.0.1:3080` (HTTP 401, startup token required) | `netstat -ano`, `Invoke-WebRequest` |
-| profile / home | `DSH_PROFILE=web`, `DSH_HOME=C:\Users\TS\.dsh`, super home `D:\dqc\superAgent` | Process env, `~/.dsh/profiles/web/cordis.patch.yml` |
+| profile / home | `DSH_PROFILE=web`, `DSH_HOME=<DSH_HOME>`, super home `<super-workspace>` | Process env, `~/.dsh/profiles/web/cordis.patch.yml` |
 
 Key fact: the runtime uses **tsx to execute the TypeScript source directly**, without bundled artifacts. The “code loaded by the runtime” is therefore **the clean runtime worktree**, not build artifacts from `apps/web/dist`.
 
 ### 1.2 Consistency between the dev checkout and the runtime
 
-- dev: `D:\dqc\deepseek-harness-uitstalie-dev`, branch `cli-desktop`, on the same baseline as the runtime.
+- dev: `<dev-checkout>`, branch `cli-desktop`, on the same baseline as the runtime.
 - However, the dev worktree has **79 status entries (73 modified tracked files)**, including `agent.ts`, `session/src/*`, `jira-agent/src/api-catalog.ts`, and others. The runtime worktree is clean, so: **the runtime did not load dev's uncommitted changes**. On this machine, any assumption that “dev has been fixed but the runtime may not have loaded it” is reversed: the running instance **definitely did not** load those uncommitted fixes in dev.
 - The code baseline measured in this evaluation is the runtime checkout, not the `deepseek-harness-uitstalie-dev` worktree.
 
@@ -46,7 +46,7 @@ Key fact: the runtime uses **tsx to execute the TypeScript source directly**, wi
 
 - Windows 10 Pro 22H2, build **19045.6466**, x64.
 - User `TS-20240229UGAL\TS`, **not an administrator** (`IsInRole(Administrator)=False`), process integrity **Medium**.
-- Evaluation Session cwd: `D:\dqc\deepseek-harness-uitstalie-dev`; super Session `session-ecc925ac…` cwd: `D:\dqc\superAgent`.
+- Evaluation Session cwd: `<dev-checkout>`; super Session `session-ecc925ac…` cwd: `<super-workspace>`.
 - During the evaluation, a user action changed the Session file policy from `workspace-write` to `danger-full-access`; this does not affect the read-only conclusions below. The memory tools and ACL probes were exercised under both policies.
 
 ### 1.4 Three evidence levels (citation rules for this report)
@@ -61,10 +61,10 @@ Key fact: the runtime uses **tsx to execute the TypeScript source directly**, wi
 
 ## 2. Live data (2026-11-09, produced by the runtime itself)
 
-- Report journal: `D:\dqc\superAgent\.superagent\reports.jsonl`, which continued to grow during the evaluation (still being written at 10:12:12).
-- Dispatch ledger: `D:\dqc\superAgent\.superagent\ledger\*.md` (`ledger-544e144b…md`, 537 KB).
-- Dispatch domain: `C:\Users\TS\.dsh\storages\superagent.sqlite` (**90 rows, 15 rows today**; must be read together with `-wal`; see §3.2).
-- Super Session log: `C:\Users\TS\.dsh\sessions\--D-dqc-superAgent--\session-ecc925ac-d736-45f2-b1f6-8e84a8abe0ec\session.v4.jsonl.zstd`.
+- Report journal: `<super-workspace>\.superagent\reports.jsonl`, which continued to grow during the evaluation (still being written at 10:12:12).
+- Dispatch ledger: `<super-workspace>\.superagent\ledger\*.md` (`ledger-544e144b…md`, 537 KB).
+- Dispatch domain: `<DSH_HOME>\storages\superagent.sqlite` (**90 rows, 15 rows today**; must be read together with `-wal`; see §3.2).
+- Super Session log: `<DSH_HOME>\sessions\--D-dqc-superAgent--\session-ecc925ac-d736-45f2-b1f6-8e84a8abe0ec\session.v4.jsonl.zstd`.
 - Child Session log: `…\--D-dqc-deepseek-harness-uitstalie-dev--\session-6e0cddc9-d2d7-487f-b93c-b97dbdc31c56\…`.
 - This evaluation task was itself dispatched: `task-mw8mct4b-de1cbbd1`, whose child Session is `session-5599a833…` (this Session). The journal had already written `pending@2026-11-09T02:05:23Z` before the prompt.
 
@@ -160,7 +160,7 @@ The four surfaces **did not show the same state**. The domain absence was not sp
 
 > **Revision (2026-11-09, after k3.1 re-review)**: the first version of this section asserted “domain unopened, Markdown throughout, 0 entries today,” which was **wrong**. Cause: only the main database was opened read-only with `node:sqlite`, without applying the WAL, so the query read an old 09:31 snapshot. The recheck results and corrections follow.
 
-- **Recheck method**: copy `C:\Users\TS\.dsh\storages\superagent.sqlite` **together with `-wal` (267,832 B) and `-shm`** to `.tmp-eval/dbcopy/`, open the copy read-write (SQLite automatically recovers the WAL), then query `u_superagent_dispatch_dispatches`.
+- **Recheck method**: copy `<DSH_HOME>\storages\superagent.sqlite` **together with `-wal` (267,832 B) and `-shm`** to `.tmp-eval/dbcopy/`, open the copy read-write (SQLite automatically recovers the WAL), then query `u_superagent_dispatch_dispatches`.
 - **Result**: `rows 90`, statuses `{"returned":63,"pending":23,"failed":4}`, **15 rows** today (2026-11-09); `task-mw8lnutt` was created at 01:45:59 and returned at 01:50:57; `task-mw8m5yg4` became **failed at 02:12:52** (the same moment as the manual resolve); this evaluation task `task-mw8mct4b` and the re-review task `task-mw8n3mda` are also in the domain.
 - **Conclusion**: the current runtime's `DispatchStore` is open, and dispatch/resolve really writes to SQLite. The original report's chain of reasoning—“domain unopened / `store.list` returned undefined / tasks present only in Markdown”—does not hold: tasks returned by `superagent_ledger list` also exist in the domain, so the data source cannot be inferred from that result (re-review §4.1). P1-1 is withdrawn.
 - **Weak conclusion that remains (P2)**: `superagent_ledger` does not expose “whether this entry comes from the domain or Markdown, whether it is degraded, and why,” so a person can only guess from the result; the single sampling of `storageDomain` during `DispatchStore` construction (`dispatch-store.ts:169-171`) still poses the static lifecycle risk that “a late-arriving service causes permanent degradation,” but **this was not the root cause on-machine** (the domain opened normally this time).
@@ -182,7 +182,7 @@ The four surfaces **did not show the same state**. The domain absence was not sp
 - **An unregistered workspace is rejected**: `"…" is not a registered workspace` (`2665-2666`).
 - **`list` provides enough information** (on-machine): it returns title/model/effort/context%/cache%/lastTask/running/idle (super log seq 667: `session-6e0cddc9… memory 与 jira 插件实现审查 running 2m context 61% deepseek-official/deepseek-flash cache 100% (consider compact)`).
 - **Untitled/duplicate names**: all Sessions created today had titles (`Windows super agent 评测`, `反馈记录分析 2026-11-06～2026-11-09`); no untitled Session appeared; historical untitled behavior was not reproduced in this round.
-- **Recursive ledger filenames (historical residue, visible on-machine)**: `ledger/` contains `D__dqc_superAgent_.superagent_ledger_544e144b….md` and `…_D__dqc_superAgent_.superagent_ledger_544e144b….md` (two- and three-level nesting), dated 2026-11-05; the corresponding domain records have this slug as `workspace.id`, and `path` contains backticks (`` `D:\dqc\…` ``). The current `append` rejects unregistered workspaces, but `DispatchStore.migrate()` still reads these historical rows into the domain (`dispatch-store.ts:205-211`), and `ledgerFileOf` continues to generate filenames from ids (`dispatch-ledger.ts:116-117`).
+- **Recursive ledger filenames (historical residue, visible on-machine)**: `ledger/` contains `D__dqc_superAgent_.superagent_ledger_544e144b….md` and `…_D__dqc_superAgent_.superagent_ledger_544e144b….md` (two- and three-level nesting), dated 2026-11-05; the corresponding domain records have this slug as `workspace.id`, and `path` contains backticks (`` `<dev-checkout>…` ``). The current `append` rejects unregistered workspaces, but `DispatchStore.migrate()` still reads these historical rows into the domain (`dispatch-store.ts:205-211`), and `ledgerFileOf` continues to generate filenames from ids (`dispatch-ledger.ts:116-117`).
 
 ### 3.5 E. Windows environment
 
@@ -190,14 +190,14 @@ The four surfaces **did not show the same state**. The domain absence was not sp
 
 | Workspace | `Everyone:(CI)(DENY)(S,DC)` | Integrity label |
 |---|---|---|
-| `D:\dqc\deepseek-harness-uitstalie-dev` | Present | **Low** `(OI)(CI)(NW)` |
-| `D:\dqc\superAgent` | Present | **Low** |
-| `D:\dqc\system_img` | Present | **Low** |
-| `D:\dqc\analyze` (not opened today) | Absent | **Medium** |
+| `<dev-checkout>` | Present | **Low** `(OI)(CI)(NW)` |
+| `<super-workspace>` | Present | **Low** |
+| `<system-img-workspace>` | Present | **Low** |
+| `<analyze-workspace>` (not opened today) | Absent | **Medium** |
 
 - **The current residue is real, but its attribution is undetermined**: ACEs have no timestamps, so it is impossible to distinguish “not fully cleaned on 11-07,” “rewritten later by an old process,” and “reapplied when the workspace was opened this time.” The ledger underlying the handoff file does record the live cleanup on 11-07 (`ledger-544e144b….md:4023-4069`: DENY cleared on 15 paths, 9 directories changed Low→Medium, 7 workspaces verified; `:4075-4083`: code no longer writes Low/DENY, and the old backend is fail-closed and disabled by default). **“Cleanup succeeded then” and “it has appeared again now” can both be true**, so this does not show that the handoff was fabricated. `analyze` being Medium is also insufficient by itself to prove that “not opened” is the only reason.
 - **This evaluation's ACL root-directory probe did not reproduce the historical rename EPERM** (limited scope): a Medium process (non-administrator) performed `write/rename/unlink/mkdir/rename dir/rm -r` on the workspace root, all successfully (`.tmp-eval/acl-probe.mjs`), covering only this set of tokens/paths/operations. This shows only that **the probe reported no error**; it does not imply “there is currently no EPERM” or “DENY is ineffective for every deletion path.” Directory/file distinctions, parent-directory DELETE_CHILD, target DELETE, inheritance flags, and restricted tokens require separate verification.
-- **Supplementary diagnosis located the same-day build permission failure**: ledger `:6294-6312` records a `pnpm run build` at 02:22 with **9/10 gates**, failing in the Web build: `[vite:esbuild-transpile] remove C:\Users\TS\AppData\Local\Temp\esbuild-...: Access is denied.` Three retries, a changed TEMP, and a minimal `esbuild.transform` reproduction outside Vite all failed. Supplementary diagnosis read the actual residual file's ACL and the current token, confirming that a Low-integrity process is subject to the Medium file's No-Write-Up restriction; see §3.8 for the root cause and platform recommendation.
+- **Supplementary diagnosis located the same-day build permission failure**: ledger `:6294-6312` records a `pnpm run build` at 02:22 with **9/10 gates**, failing in the Web build: `[vite:esbuild-transpile] remove <temp>\esbuild-...: Access is denied.` Three retries, a changed TEMP, and a minimal `esbuild.transform` reproduction outside Vite all failed. Supplementary diagnosis read the actual residual file's ACL and the current token, confirming that a Low-integrity process is subject to the Medium file's No-Write-Up restriction; see §3.8 for the root cause and platform recommendation.
 - **Normal-permission build**: this evaluation did not rerun the full-repository `pnpm run build` (read-only constraint + 79 uncommitted changes in the dev tree + it would touch `node_modules`). The ledger on the same machine shows that `tsc -b tsconfig.host.json` and `pnpm run typecheck` passed and build reached 9/10 (blocked at Web/esbuild), but this remains **cited evidence**; the only operations this evaluation ran independently were `pnpm install --frozen-lockfile` (successful) and `node:test` (all green). `vitest run` on those two `.test.ts` files returned `No test files found` (exit 1), which **does not count as passing**.
 - **junction / path aliases, file locking, concurrent memory writes**: **not verified** (reasons in §7). A separate synthetic experiment covered the multiprocess journal (P0-1).
 
@@ -270,9 +270,9 @@ Unit test results for this round (Windows, measured runtime baseline): `dispatch
 | `append` explicit session / unregistered workspace | `superagent.ts:2664-2724` |
 | Domain fallback for ledger list | `superagent.ts:3375-3376`; `dispatch-store.ts:234-236` |
 | Single domain sampling | `dispatch-store.ts:170-171`; `storage-domain/src/index.ts:223-234` |
-| Recursive filenames | `dispatch-ledger.ts:116-117`; `D:\dqc\superAgent\.superagent\ledger\D__dqc_…` |
+| Recursive filenames | `dispatch-ledger.ts:116-117`; `<super-workspace>\.superagent\ledger\D__dqc_…` |
 | Effort requirement | `superagent.ts:536,1925` |
-| Live evidence on this machine | `D:\dqc\superAgent\.superagent\reports.jsonl`; `…\ledger\544e144b….md:5347,5462,6050,6100,6102`; `~\.dsh\storages\superagent.sqlite`; super Session `session-ecc925ac…` |
+| Live evidence on this machine | `<super-workspace>\.superagent\reports.jsonl`; `…\ledger\544e144b….md:5347,5462,6050,6100,6102`; `~\.dsh\storages\superagent.sqlite`; super Session `session-ecc925ac…` |
 | Evaluation scripts | `.tmp-eval/{journal-summary,domain-dump,decode-session,session-log,journal-race,claim-child,acl-probe}.mjs`; race stdout transcript `.tmp-eval/journal-race-stdout.txt` |
 
 ---

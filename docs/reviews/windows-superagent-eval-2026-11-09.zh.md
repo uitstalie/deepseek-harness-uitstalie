@@ -14,7 +14,7 @@
 1. **Windows 上的“正常报告闭环”这次真的成立了，且是实机证据，不是推断。** 2026-11-09 落盘截点 journal 累计 13 个 task id：**10 个 `delivered`、3 个仍 `pending`（含本评测会话自己）**， 且每个 delivered 恰好一条；super 会话收到 10 条 `[task-report]`，与 10 个 delivered 一一对应， 子会话 turn/end 与投递时间差 1–2 秒（§3.1）。这与 Fedora 报告“完成后没有自动回传”的历史结论**不同**： 当前 runtime 在 2026-11-09 权限修复基线上、含报告 journal 的 happy path 已工作。
 2. **但 P0 没有关闭，只是换了几条。** 4 个 P0 的证据等级不同（复审已核）： 跨进程重复领取同一报告（**Windows 合成多进程 store 实验**，26 次领取 / 6 个应领；非真实双 Host 线上复现，原始 stdout 见 §3.1 与 `.tmp-eval/journal-race-stdout.txt`）； 空输出 turn 被自动记成 `returned`（**实机复现**）； 投递失败是不可重试的终态且无启动恢复（**代码+单测**，实机未制造失败）； `abort` 后继续不产生新绑定（**代码+单测**，实机未触发）。
 3. **先纠正我自己的一处错误结论：dispatch domain 并没有停用。** 我最初只读主库（mtime 09:31:48、`-wal` 0 B）得出 “75 行、当日 0 行”，是**漏读 WAL**。把 `superagent.sqlite` + `-wal` + `-shm` 复制到临时目录后重查： **90 行、当日 15 行**，包含本评测任务与复审任务；`task-mw8m5yg4` 在 domain 的 `failed@02:12:52` 与人工 resolve 同一时刻。 所以 domain 已被 dispatch/resolve 实际使用（复审 §4.1 的更正成立）；需要核对的是它与 Markdown 投影的**权威关系与来源可观测性**， 而不是“未打开”。原 P1-1 撤销，改为 P2 可观测性项。
-4. **沙箱副作用当前状态属实，但归因不能坐实。** `deepseek-harness-uitstalie-dev`、`superAgent`、`system_img` 三个 工作区根仍带 `Everyone:(CI)(DENY)(S,DC)` 与 `Low Mandatory Level:(OI)(CI)(NW)`；`D:\dqc\analyze` 是 Medium。 交接文件记录了 11-07 的成功清理，所以“当时清理过”与“现在又出现”可以并存；ACE 无时间戳，写入者与时间未定。 **本次 ACL 根目录探针未复现历史 rename EPERM**；但同日 Web/esbuild 删除临时文件出现 `Access is denied`， 普通构建未通过（§3.5）。补充诊断已定位 esbuild 删除失败为 Low 进程受 Medium 文件的 No-Write-Up 限制（§3.8）， 这不改变工作区持久标签写入者与时间未定的结论。
+4. **沙箱副作用当前状态属实，但归因不能坐实。** `deepseek-harness-uitstalie-dev`、`superAgent`、`system_img` 三个 工作区根仍带 `Everyone:(CI)(DENY)(S,DC)` 与 `Low Mandatory Level:(OI)(CI)(NW)`；`<analyze-workspace>` 是 Medium。 交接文件记录了 11-07 的成功清理，所以“当时清理过”与“现在又出现”可以并存；ACE 无时间戳，写入者与时间未定。 **本次 ACL 根目录探针未复现历史 rename EPERM**；但同日 Web/esbuild 删除临时文件出现 `Access is denied`， 普通构建未通过（§3.5）。补充诊断已定位 esbuild 删除失败为 Low 进程受 Medium 文件的 No-Write-Up 限制（§3.8）， 这不改变工作区持久标签写入者与时间未定的结论。
 5. **总体评级：C+（“可用但完整性与可恢复性未成立”）。** 按既有尺度，P0 未关闭，不建议判定为已收敛； 但也不能沿用“Windows 上报告根本回不来”的旧结论——那条已经不成立。
 
 **最关键 3 条**：跨进程 claim 无原子性（§4 P0-1）；空输出/无报告被自动写成 `returned`（P0-2）； 投递失败无重试、无启动扫描（P0-3）。第 4 条 P0 是 abort 绑定（P0-4）。
@@ -27,18 +27,18 @@
 
 | 项 | 实测值 | 证据 |
 |---|---|---|
-| runtime checkout | `D:\dqc\deepseek-harness-uitstalie` | 进程命令行 |
+| runtime checkout | `<runtime-checkout>` | 进程命令行 |
 | runtime HEAD | `2026-11-09 权限修复基线`（`cli-desktop`，工作树 **0** 个改动） | `git -C … rev-parse HEAD`、`git status --porcelain` 空 |
 | 启动方式 | `node --import tsx/esm apps/cli/src/bin.ts web`，PID 5084，启动于 **2026-11-09 09:45:03** | `Get-CimInstance Win32_Process -Filter "ProcessId=5084"` |
 | 解释器 / 版本 | Node **v24.13.0**；根 package `@deepseek-ai/dsh-root@0.2.2-rc.1` | `node --version`、`package.json` |
 | 监听 | `127.0.0.1:3080`（HTTP 401，需启动 token） | `netstat -ano`、`Invoke-WebRequest` |
-| profile / home | `DSH_PROFILE=web`，`DSH_HOME=C:\Users\TS\.dsh`，super home `D:\dqc\superAgent` | 进程 env、`~/.dsh/profiles/web/cordis.patch.yml` |
+| profile / home | `DSH_PROFILE=web`，`DSH_HOME=<DSH_HOME>`，super home `<super-workspace>` | 进程 env、`~/.dsh/profiles/web/cordis.patch.yml` |
 
 关键事实：runtime 用 **tsx 直接跑 TypeScript 源码**，不经过打包产物。因此“runtime 加载的代码”就是 **干净的 runtime 工作树**，不是 `apps/web/dist` 的构建产物。
 
 ### 1.2 dev checkout 与 runtime 的一致性
 
-- dev：`D:\dqc\deepseek-harness-uitstalie-dev`，分支 `cli-desktop`，与 runtime 使用同一基线。
+- dev：`<dev-checkout>`，分支 `cli-desktop`，与 runtime 使用同一基线。
 - 但 dev 工作树有 **79 个 status 条目（73 个已跟踪文件修改）**，包括 `agent.ts`、`session/src/*`、 `jira-agent/src/api-catalog.ts` 等。runtime 工作树是干净的，所以： **runtime 没有加载 dev 的未提交改动**。任何“dev 已修但 runtime 未必加载”的判断，在这台机器上是反向的： dev 上那些未提交修复**确实没有**被运行实例加载。
 - 本次评测测量的代码基线是 runtime checkout，不是 `deepseek-harness-uitstalie-dev` 工作树。
 
@@ -46,7 +46,7 @@
 
 - Windows 10 Pro 22H2，build **19045.6466**，x64。
 - 用户 `TS-20240229UGAL\TS`，**非管理员**（`IsInRole(Administrator)=False`），进程完整性 **Medium**。
-- 评测会话 cwd：`D:\dqc\deepseek-harness-uitstalie-dev`；super 会话 `session-ecc925ac…` 的 cwd：`D:\dqc\superAgent`。
+- 评测会话 cwd：`<dev-checkout>`；super 会话 `session-ecc925ac…` 的 cwd：`<super-workspace>`。
 - 评测中途会话文件策略由 `workspace-write` 改为 `danger-full-access`（用户操作），不影响下述只读结论； memory 工具与 ACL 探测在两种策略下都做过。
 
 ### 1.4 三种事实分级（本文引用规则）
@@ -61,10 +61,10 @@
 
 ## 2. 现场数据（2026-11-09，runtime 自身产生）
 
-- 报告 journal：`D:\dqc\superAgent\.superagent\reports.jsonl`，评测期间持续增长（10:12:12 仍在写）。
-- dispatch 台账：`D:\dqc\superAgent\.superagent\ledger\*.md`（`ledger-544e144b…md`，537 KB）。
-- dispatch domain：`C:\Users\TS\.dsh\storages\superagent.sqlite`（**90 行、当日 15 行**；必须连 `-wal` 一起读，见 §3.2）。
-- super 会话日志：`C:\Users\TS\.dsh\sessions\--D-dqc-superAgent--\session-ecc925ac-d736-45f2-b1f6-8e84a8abe0ec\session.v4.jsonl.zstd`。
+- 报告 journal：`<super-workspace>\.superagent\reports.jsonl`，评测期间持续增长（10:12:12 仍在写）。
+- dispatch 台账：`<super-workspace>\.superagent\ledger\*.md`（`ledger-544e144b…md`，537 KB）。
+- dispatch domain：`<DSH_HOME>\storages\superagent.sqlite`（**90 行、当日 15 行**；必须连 `-wal` 一起读，见 §3.2）。
+- super 会话日志：`<DSH_HOME>\sessions\--D-dqc-superAgent--\session-ecc925ac-d736-45f2-b1f6-8e84a8abe0ec\session.v4.jsonl.zstd`。
 - 子会话日志：`…\--D-dqc-deepseek-harness-uitstalie-dev--\session-6e0cddc9-d2d7-487f-b93c-b97dbdc31c56\…`。
 - 本评测任务自身也是被派遣的：`task-mw8mct4b-de1cbbd1`，子会话就是 `session-5599a833…`（本会话）， journal 在 prompt 之前已写入 `pending@2026-11-09T02:05:23Z`。
 
@@ -160,7 +160,7 @@ super 会话收到的对应 `[task-report]`（`kind:"user"`，`rpcId:"superagent
 
 > **修订（2026-11-09，k3.1 复审后）**：本节初版断言“domain 未打开、全程 Markdown、今日 0 条”，**错误**。 错因：只用 `node:sqlite` 只读打开主库、未应用 WAL，读到的是 09:31 的旧快照。以下为重查结果与更正。
 
-- **重查方法**：把 `C:\Users\TS\.dsh\storages\superagent.sqlite` **连同 `-wal`（267,832 B）与 `-shm`** 复制到 `.tmp-eval/dbcopy/`，以读写方式打开副本（SQLite 自动恢复 WAL），再查 `u_superagent_dispatch_dispatches`。
+- **重查方法**：把 `<DSH_HOME>\storages\superagent.sqlite` **连同 `-wal`（267,832 B）与 `-shm`** 复制到 `.tmp-eval/dbcopy/`，以读写方式打开副本（SQLite 自动恢复 WAL），再查 `u_superagent_dispatch_dispatches`。
 - **结果**：`rows 90`，状态 `{"returned":63,"pending":23,"failed":4}`，当日（2026-11-09）**15 行**； `task-mw8lnutt` 在 01:45:59 创建、01:50:57 returned；`task-mw8m5yg4` 在 **02:12:52 failed**（与人工 resolve 同刻）； 本评测任务 `task-mw8mct4b` 与复审任务 `task-mw8n3mda` 也都在 domain 里。
 - **结论**：当前 runtime 的 `DispatchStore` 已打开，dispatch/resolve 确实写入 SQLite。原报告“domain 未打开／ `store.list` 返回 undefined／Markdown 独有任务”的推理链不成立：`superagent_ledger list` 返回的任务在 domain 中同样存在， 不能据此反推数据源（复审 §4.1）。P1-1 撤销。
 - **仍需保留的弱结论（P2）**：`superagent_ledger` 不暴露“这条来自 domain 还是 Markdown、是否降级及原因”， 人只能从结果猜；`DispatchStore` 构造时单次采样 `storageDomain`（`dispatch-store.ts:169-171`）仍是“晚到服务即永久降级”的 静态生命周期风险，但**不是本次实机根因**（本次已正常打开）。
@@ -182,7 +182,7 @@ super 会话收到的对应 `[task-report]`（`kind:"user"`，`rpcId:"superagent
 - **未注册 workspace 会拒绝**：`"…" is not a registered workspace`（`2665-2666`）。
 - **`list` 的信息足够用**（实机）：返回 title/model/effort/context%/cache%/lastTask/running/idle （super 日志 seq 667：`session-6e0cddc9… memory 与 jira 插件实现审查 running 2m context 61% deepseek-official/deepseek-flash cache 100% (consider compact)`）。
 - **untitled/重名**：今天新建的会话都有标题（`Windows super agent 评测`、`反馈记录分析 2026-11-06～2026-11-09`）， 未出现 untitled；历史 untitled 行为未在本轮复现。
-- **递归台账文件名（历史遗留，实机可见）**： `ledger/` 下存在 `D__dqc_superAgent_.superagent_ledger_544e144b….md`、 `…_D__dqc_superAgent_.superagent_ledger_544e144b….md`（两层、三层嵌套），时间 2026-11-05； domain 里对应记录的 `workspace.id` 被写成这个 slug、`path` 带反引号（`` `D:\dqc\…` ``）。 当前 `append` 已拒绝未注册 workspace，但 `DispatchStore.migrate()` 仍会把这些历史行读进 domain （`dispatch-store.ts:205-211`），`ledgerFileOf` 继续按 id 生成文件名（`dispatch-ledger.ts:116-117`）。
+- **递归台账文件名（历史遗留，实机可见）**： `ledger/` 下存在 `D__dqc_superAgent_.superagent_ledger_544e144b….md`、 `…_D__dqc_superAgent_.superagent_ledger_544e144b….md`（两层、三层嵌套），时间 2026-11-05； domain 里对应记录的 `workspace.id` 被写成这个 slug、`path` 带反引号（`` `<dev-checkout>…` ``）。 当前 `append` 已拒绝未注册 workspace，但 `DispatchStore.migrate()` 仍会把这些历史行读进 domain （`dispatch-store.ts:205-211`），`ledgerFileOf` 继续按 id 生成文件名（`dispatch-ledger.ts:116-117`）。
 
 ### 3.5 E. Windows 环境
 
@@ -190,14 +190,14 @@ super 会话收到的对应 `[task-report]`（`kind:"user"`，`rpcId:"superagent
 
 | 工作区 | `Everyone:(CI)(DENY)(S,DC)` | 完整性标签 |
 |---|---|---|
-| `D:\dqc\deepseek-harness-uitstalie-dev` | 有 | **Low** `(OI)(CI)(NW)` |
-| `D:\dqc\superAgent` | 有 | **Low** |
-| `D:\dqc\system_img` | 有 | **Low** |
-| `D:\dqc\analyze`（今天未打开） | 无 | **Medium** |
+| `<dev-checkout>` | 有 | **Low** `(OI)(CI)(NW)` |
+| `<super-workspace>` | 有 | **Low** |
+| `<system-img-workspace>` | 有 | **Low** |
+| `<analyze-workspace>`（今天未打开） | 无 | **Medium** |
 
 - **当前残留属实，归因未定**：ACE 无时间戳，无法区分“11-07 未清净”“后续旧进程重写”还是“本次打开工作区时重新施加”。 交接文件所依据的台账确实记录了 11-07 的现场清理（`ledger-544e144b….md:4023-4069`：清 15 个路径 DENY、9 个目录 Low→Medium， 7 个工作区验证；`:4075-4083`：代码不再写 Low/DENY、旧后端默认禁用 fail-closed）。**“当时清理成功”与“现在又出现” 可以同时成立**，不能据此说 handoff 造假。`analyze` 为 Medium 也不足以单独证明“未打开”是唯一原因。
 - **本次 ACL 根目录探针未复现历史 rename EPERM**（限定口径）：Medium 进程（非管理员）对工作区根做 `write/rename/unlink/mkdir/rename dir/rm -r` 全部 OK（`.tmp-eval/acl-probe.mjs`），且只覆盖这一组 token/路径/操作。 这只能说明**该探针未报错**，不能推出“当前没有 EPERM”或“DENY 对所有删除路径都不生效”；目录/文件、父目录 DELETE_CHILD、目标 DELETE、继承标志与 restricted token 需分别验证。
-- **同日构建权限故障已由补充诊断定位**：台账 `:6294-6312` 记录 02:22 的 `pnpm run build` **9/10 gates**， 失败在 Web build：`[vite:esbuild-transpile] remove C:\Users\TS\AppData\Local\Temp\esbuild-...: Access is denied.`， 三次重试、改 TEMP、脱离 Vite 的 `esbuild.transform` 最小复现均失败。补充诊断读取真实残留文件的 ACL 与当前 token， 确认 Low 完整性进程受 Medium 文件的 No-Write-Up 限制；根因与平台建议见 §3.8。
+- **同日构建权限故障已由补充诊断定位**：台账 `:6294-6312` 记录 02:22 的 `pnpm run build` **9/10 gates**， 失败在 Web build：`[vite:esbuild-transpile] remove <temp>\esbuild-...: Access is denied.`， 三次重试、改 TEMP、脱离 Vite 的 `esbuild.transform` 最小复现均失败。补充诊断读取真实残留文件的 ACL 与当前 token， 确认 Low 完整性进程受 Medium 文件的 No-Write-Up 限制；根因与平台建议见 §3.8。
 - **普通权限构建**：本评测没有重跑全仓 `pnpm run build`（只读约束 + dev 树 79 个未提交改动 + 会动 `node_modules`）。 同机台账显示 `tsc -b tsconfig.host.json` 与 `pnpm run typecheck` 已通过、build 9/10（卡在 Web/esbuild）， 但这仍是**引用证据**；本评测独立跑的只有 `pnpm install --frozen-lockfile`（成功）与 `node:test`（全绿）。 `vitest run` 该两个 `.test.ts` 返回 `No test files found`（exit 1），**不计为通过**。
 - **junction / 路径别名、文件锁、并发写 memory**：**未验证**（原因见 §7）。多进程 journal 已单独做合成实验（P0-1）。
 
@@ -270,9 +270,9 @@ Error: session search is disabled: this deployment configures the session-query 
 | `append` 显式 session / 未注册 workspace | `superagent.ts:2664-2724` |
 | ledger list 的 domain 回退 | `superagent.ts:3375-3376`；`dispatch-store.ts:234-236` |
 | domain 单次采样 | `dispatch-store.ts:170-171`；`storage-domain/src/index.ts:223-234` |
-| 递归文件名 | `dispatch-ledger.ts:116-117`；`D:\dqc\superAgent\.superagent\ledger\D__dqc_…` |
+| 递归文件名 | `dispatch-ledger.ts:116-117`；`<super-workspace>\.superagent\ledger\D__dqc_…` |
 | effort 强制 | `superagent.ts:536,1925` |
-| 本机 live 证据 | `D:\dqc\superAgent\.superagent\reports.jsonl`；`…\ledger\544e144b….md:5347,5462,6050,6100,6102`；`~\.dsh\storages\superagent.sqlite`；super 会话 `session-ecc925ac…` |
+| 本机 live 证据 | `<super-workspace>\.superagent\reports.jsonl`；`…\ledger\544e144b….md:5347,5462,6050,6100,6102`；`~\.dsh\storages\superagent.sqlite`；super 会话 `session-ecc925ac…` |
 | 评测脚本 | `.tmp-eval/{journal-summary,domain-dump,decode-session,session-log,journal-race,claim-child,acl-probe}.mjs`；竞态 stdout 转录 `.tmp-eval/journal-race-stdout.txt` |
 
 ---

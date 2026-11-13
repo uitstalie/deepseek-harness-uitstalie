@@ -5,7 +5,7 @@
 ## 口径
 
 - 基线：`upstream/master`（2026-10-28 取点）；盘点时 HEAD 为 DH-313 的修复提交（命令与结果见该 issue 评论）。
-- 命令：`git diff --name-status upstream/master...HEAD`，共 **737** 个文件（无删除）。
+- 命令：`git diff --name-status upstream/master...HEAD`，基线共 **737** 个文件（无删除）；2026-11-13 复核为 **102 个原生标记文件**，下表合计随之改为 **766**。
 - 「原生改动」= 不在 `packages/uitstalie/`、`packages/jira/`、`goal/` 下的文件。原生文件里，带 `uitstalie-` 标记的由 `git grep -n uitstalie-` 枚举；不带标记的只有四类：**生成物**、**无法内联注释的 JSON**、**分支新增文件**（路径或文件名本身可辨识，不需标记）、以及**本次审计补标记的源码/配置**。
 
 ## 总数
@@ -13,15 +13,15 @@
 | 类别 | 文件数 | 说明 |
 |---|---:|---|
 | 分支自有（`packages/uitstalie/`、`packages/jira/`、`goal/`） | 611 | 新包、新插件、新文档，rebase 永不冲突 |
-| 原生改动，带标记 | 73 | `git grep -n uitstalie-` 可枚举 |
+| 原生改动，带标记 | 102 | 2026-11-13 的 `git grep -l -e "uitstalie-" -e "dsh-uitstalie"`（源/配置；另 10 个原生文档） |
 | 生成物 | 43 | 文档/目录/配对记录/lockfile，按命令重生成，不手工加标记 |
 | 无法内联注释的 JSON | 6 | 逐处登记在本文件与 Jira |
 | 分支新增的原生侧文件 | 4 | 路径或文件名自身可辨识（`*.uitstalie.yml`、`opencode.json`、`scripts/test-jira-node.ts`） |
-| **合计** | **737** | = 611 + 73 + 43 + 6 + 4 |
+| **合计** | **766** | = 611 + 102 + 43 + 6 + 4（其余类别仍是 2026-10-28 基线） |
 
 ## 原生改动（带标记）
 
-73 个文件。每处都给出键，rebase 冲突时按键回查 Jira（`DH-*`）或冻结的 mission 档案（`taskNN`，见 [mission/FROZEN.md](mission/FROZEN.md)）。
+102 个文件。每处都给出键，rebase 冲突时按键回查 Jira；2026-11-13 用 `git grep -l -e "uitstalie-" -e "dsh-uitstalie"` 复核（`DH-*`）或冻结的 mission 档案（`taskNN`，见 [mission/FROZEN.md](mission/FROZEN.md)）。
 
 | 文件 | 标记键 | 变更原因（首个标记） |
 |---|---|---|
