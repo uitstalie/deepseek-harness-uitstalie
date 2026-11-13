@@ -13,6 +13,11 @@ import type { Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { DEFAULT_MEMORY_MAX_BYTES, DEFAULT_MEMORY_MAX_ENTRIES, DEFAULT_MEMORY_WINDOW } from './memory-file.ts'
 import type { MemoryWindow } from './memory-file.ts'
+import {
+  DEFAULT_MEMORY_FILES_TTL_DAYS,
+  DEFAULT_MEMORY_OPEN_TTL_DAYS,
+  DEFAULT_MEMORY_SUPERSESSION_MIN_SHARED_TAGS,
+} from './cleanup.ts'
 
 /** Plain configuration values, as `resolveConfig` accepts them (a default or a test). */
 export interface MemoryConfigInput {
@@ -38,6 +43,12 @@ export interface MemoryConfigInput {
   maxBytes?: number | undefined
   /** Maximum entries retained per session; older sections leave the managed block. */
   maxEntries?: number | undefined
+  /** Days after which an `open` entry is archived; 0 disables the rule. */
+  openTtlDays?: number | undefined
+  /** Days after which a `files` entry is archived; 0 disables the rule. */
+  filesTtlDays?: number | undefined
+  /** Shared tags required for implicit supersession; explicit `supersedes` bypasses it. */
+  supersessionMinSharedTags?: number | undefined
   /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced and absent means the text alone. */
   snapshotTemplate?: string | undefined
   /** Where the snapshot reaches the model: a depth-0 message or a system-prompt section. */
@@ -68,6 +79,27 @@ export interface Config {
   maxBytes: Volatile<number>
   /** Maximum entries retained per session. */
   maxEntries: Volatile<number>
+  /**
+   * Days after which an `open` entry is archived and removed from injection.
+   *
+   * Defaults to 3. `0` disables the rule; `decision` and `preference` never
+   * expire. Archived entries stay searchable in `MEMORY.archive.md`.
+   */
+  openTtlDays: Volatile<number>
+  /**
+   * Days after which a `files` entry is archived and removed from injection.
+   *
+   * Defaults to 14. `0` disables the rule; `decision` and `preference` never
+   * expire. Archived entries stay searchable in `MEMORY.archive.md`.
+   */
+  filesTtlDays: Volatile<number>
+  /**
+   * Shared tags required before an automatically observed supersession.
+   *
+   * Defaults to 2; the same session and kind are always required, and an
+   * explicit `supersedes` tag on the new entry takes precedence.
+   */
+  supersessionMinSharedTags: Volatile<number>
   /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced. */
   snapshotTemplate: Volatile<string>
   /** Where the snapshot reaches the model. */
@@ -84,6 +116,10 @@ export const Config = z.object({
   summarizationModel: z.string().default('').volatile(),
   maxBytes: z.number().step(1).min(1).default(DEFAULT_MEMORY_MAX_BYTES).volatile(),
   maxEntries: z.number().step(1).min(1).default(DEFAULT_MEMORY_MAX_ENTRIES).volatile(),
+  openTtlDays: z.number().step(1).min(0).default(DEFAULT_MEMORY_OPEN_TTL_DAYS).volatile(),
+  filesTtlDays: z.number().step(1).min(0).default(DEFAULT_MEMORY_FILES_TTL_DAYS).volatile(),
+  supersessionMinSharedTags: z.number().step(1).min(1)
+    .default(DEFAULT_MEMORY_SUPERSESSION_MIN_SHARED_TAGS).volatile(),
   snapshotTemplate: z.string().default('').volatile(),
   snapshotPosition: z.string().default('depth-0').volatile(),
 })
@@ -100,6 +136,12 @@ export interface MemorySettings {
   readonly maxBytes: number
   /** Maximum entries retained per session. */
   readonly maxEntries: number
+  /** Days after which an `open` entry is archived; 0 disables TTL. */
+  readonly openTtlDays: number
+  /** Days after which a `files` entry is archived; 0 disables TTL. */
+  readonly filesTtlDays: number
+  /** Shared tags required for implicit supersession. */
+  readonly supersessionMinSharedTags: number
   /** Template wrapped around the snapshot text; empty means the text alone. */
   readonly snapshotTemplate: string
   /** Where the snapshot reaches the model. */
@@ -147,6 +189,9 @@ export function resolveConfig(config: MemoryConfigInput): MemorySettings {
     summarizationModel,
     maxBytes: config.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES,
     maxEntries: config.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES,
+    openTtlDays: config.openTtlDays ?? DEFAULT_MEMORY_OPEN_TTL_DAYS,
+    filesTtlDays: config.filesTtlDays ?? DEFAULT_MEMORY_FILES_TTL_DAYS,
+    supersessionMinSharedTags: config.supersessionMinSharedTags ?? DEFAULT_MEMORY_SUPERSESSION_MIN_SHARED_TAGS,
     snapshotTemplate: config.snapshotTemplate ?? '',
     snapshotPosition,
   }

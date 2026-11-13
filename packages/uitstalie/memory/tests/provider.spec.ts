@@ -15,6 +15,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import {
   appendMemoryEntry,
   createMemoryDocument,
+  MEMORY_ARCHIVE_STORE_PATH,
   MEMORY_STORE_PATH,
   parseMemoryDocument,
   renderMemoryDocument,
@@ -76,7 +77,7 @@ test('registers an active root-scoped capability with the fixed prompt section',
   expect(MEMORY_PROMPT_ORDER).toBe(2350)
 })
 
-test('root agents get the four tools; child agents get none', async () => {
+test('root agents get the five tools; child agents get none', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
   const child = await mounted.ctx.agents.create({
@@ -85,7 +86,7 @@ test('root agents get the four tools; child agents get none', async () => {
   })
 
   const names = mounted.ctx.tools.schemas(root).map(schema => schema.name)
-  expect(names).toEqual(expect.arrayContaining(['memory_write', 'memory_forget', 'memory_search', 'memory_read']))
+  expect(names).toEqual(expect.arrayContaining(['memory_write', 'memory_resolve', 'memory_forget', 'memory_search', 'memory_read']))
   expect(mounted.ctx.tools.schemas(child.agent)).toEqual([])
   expect(mounted.ctx.tools.get('memory_write', child.agent)).toBeUndefined()
   const childAssembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(child.agent))
@@ -334,6 +335,65 @@ test('memory_forget supports beforeTurn, sessionId, allSessions, and a no-match 
   expect(textOf(all)).toContain('decision 2')
 })
 
+test('memory_resolve archives finished open entries and search finds the archived copy', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  await callTool(mounted.ctx, root, 'memory_write', {
+    kind: 'open', content: 'finished report waiting for handoff', tags: ['report'],
+  })
+  root.session.append('turn/start', { turn: 2 })
+  await callTool(mounted.ctx, root, 'memory_write', {
+    kind: 'open', content: 'still open work', tags: ['keep'],
+  })
+
+  const resolved = await callTool(mounted.ctx, root, 'memory_resolve', { tag: 'report' })
+  expect(resolved.isError, textOf(resolved)).toBe(false)
+  expect(textOf(resolved)).toContain('Resolved 1 memory entry')
+  const active = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
+  expect(active.sections.flatMap(section => section.entries).map(entry => entry.text)).toEqual(['still open work'])
+  const archive = await readFile(join(project, '.dsh', MEMORY_ARCHIVE_STORE_PATH), 'utf8')
+  expect(archive).toContain('finished report waiting for handoff')
+  expect(archive).toContain('"reason":"resolved"')
+
+  const search = await callTool(mounted.ctx, root, 'memory_search', { query: 'finished report' })
+  expect(search.isError, textOf(search)).toBe(false)
+  expect(textOf(search)).toContain('archived: resolved')
+  expect(textOf(search)).toContain('finished report waiting for handoff')
+})
+
+test('an expired open entry is archived automatically and stays searchable', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  const old: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{
+      id: String(root.id), cwd: project, updatedAt: '2026-01-01T00:00:00.000Z',
+      turns: [{ turn: 99, seq: [1, 2], tier: 'detail' }],
+    }],
+    sections: [{
+      sessionId: String(root.id), startTurn: 99, endTurn: 99, tier: 'detail',
+      entries: [
+        { kind: 'open', text: 'expired plan from the old session', turn: 99 },
+        { kind: 'decision', text: 'durable old decision', turn: 99 },
+      ],
+    }],
+  }
+  await mounted.ctx.dshStore.writeFile(root.session, MEMORY_STORE_PATH, renderMemoryDocument(old))
+  const written = await callTool(mounted.ctx, root, 'memory_write', {
+    kind: 'decision', content: 'new fact after cleanup',
+  })
+  expect(written.isError, textOf(written)).toBe(false)
+  const active = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
+  expect(active.sections.flatMap(section => section.entries).map(entry => entry.text))
+    .toContain('durable old decision')
+  expect(active.sections.flatMap(section => section.entries).map(entry => entry.text))
+    .not.toContain('expired plan from the old session')
+
+  const search = await callTool(mounted.ctx, root, 'memory_search', { query: 'expired plan' })
+  expect(textOf(search)).toContain('archived: ttl')
+  expect(textOf(search)).toContain('expired plan from the old session')
+})
+
 test('memory_search returns managed-block matches inside this workspace', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
@@ -419,6 +479,9 @@ test('configuration rejects a non-increasing window and a half summary pair', ()
     summarizationModel: '',
     maxBytes: 16384,
     maxEntries: 40,
+    openTtlDays: 3,
+    filesTtlDays: 14,
+    supersessionMinSharedTags: 2,
     snapshotTemplate: '',
     snapshotPosition: 'depth-0',
   })

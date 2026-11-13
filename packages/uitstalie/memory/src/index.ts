@@ -64,6 +64,9 @@ export {
   DEFAULT_MEMORY_WINDOW,
   editMemorySummary,
   forgetMemoryEntries,
+  MEMORY_ARCHIVE_BEGIN,
+  MEMORY_ARCHIVE_END,
+  MEMORY_ARCHIVE_STORE_PATH,
   MEMORY_EVICTION_RECORD_LIMIT,
   MEMORY_EVICTION_TEXT_MAX_CHARS,
   MEMORY_BLOCK_BEGIN,
@@ -78,6 +81,12 @@ export {
   MEMORY_STORE_PATH,
   MemoryDocumentError,
   memoryKindDefinition,
+  memoryArchiveRecord,
+  archiveEvictionRecord,
+  appendEvictionRecords,
+  removeMemoryEntry,
+  pruneEmptyMemorySessions,
+  resolveMemoryEntriesInStore,
   migrateMemoryTiers,
   parseMemoryDocument,
   pruneMemorySession,
@@ -93,6 +102,7 @@ export {
 export type {
   MemoryAppendOptions,
   MemoryAppendResult,
+  MemoryArchiveRecord,
   MemoryDocument,
   MemoryDocumentErrorCode,
   MemoryDocumentRead,
@@ -123,6 +133,29 @@ export type {
   MemorySummaryTarget,
   SessionPrune,
 } from './memory-file.ts'
+export {
+  DEFAULT_MEMORY_FILES_TTL_DAYS,
+  DEFAULT_MEMORY_OPEN_TTL_DAYS,
+  DEFAULT_MEMORY_SUPERSESSION_MIN_SHARED_TAGS,
+  cleanupMemoryDocument,
+  resolveMemoryEntries,
+} from './cleanup.ts'
+export type {
+  MemoryCleanupCounts,
+  MemoryCleanupNewerEntry,
+  MemoryCleanupOptions,
+  MemoryCleanupResult,
+  MemoryResolveFilter,
+  MemoryResolveResult,
+} from './cleanup.ts'
+export {
+  MEMORY_ARCHIVE_TITLE,
+  appendMemoryArchive,
+  readMemoryArchive,
+} from './archive.ts'
+export type { MemoryResolveStoreResult } from './memory-file.ts'
+export { collectMemoryEntryTimes } from './entry-times.ts'
+
 export {
   isMemoryCheckpointSource,
   replaceSurfaceRange,
@@ -222,6 +255,9 @@ export function apply(ctx: Context, config: Config): void {
     get summarizationModel() { return effective.summarizationModel },
     get maxBytes() { return effective.maxBytes },
     get maxEntries() { return effective.maxEntries },
+    get openTtlDays() { return effective.openTtlDays },
+    get filesTtlDays() { return effective.filesTtlDays },
+    get supersessionMinSharedTags() { return effective.supersessionMinSharedTags },
     get snapshotTemplate() { return effective.snapshotTemplate },
     get snapshotPosition() { return effective.snapshotPosition },
   })
@@ -328,6 +364,9 @@ function readSettings(config: Config): MemorySettings {
     summarizationModel: current(config.summarizationModel),
     maxBytes: current(config.maxBytes),
     maxEntries: current(config.maxEntries),
+    openTtlDays: current(config.openTtlDays),
+    filesTtlDays: current(config.filesTtlDays),
+    supersessionMinSharedTags: current(config.supersessionMinSharedTags),
     snapshotTemplate: current(config.snapshotTemplate),
     snapshotPosition: current(config.snapshotPosition),
   })

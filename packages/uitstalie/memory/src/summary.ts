@@ -462,7 +462,14 @@ export class MemorySummaryRunner {
         turn: input.turn,
         seq: conversation.seq,
         entries,
-      }, signal, { window: this.settings.window, maxBytes: this.settings.maxBytes, maxEntries: this.settings.maxEntries })
+      }, signal, {
+        window: this.settings.window,
+        maxBytes: this.settings.maxBytes,
+        maxEntries: this.settings.maxEntries,
+        openTtlDays: this.settings.openTtlDays,
+        filesTtlDays: this.settings.filesTtlDays,
+        supersessionMinSharedTags: this.settings.supersessionMinSharedTags,
+      })
       await refreshMemorySnapshot(this.ctx, input.agent, signal, {
         template: this.settings.snapshotTemplate,
         position: this.settings.snapshotPosition,

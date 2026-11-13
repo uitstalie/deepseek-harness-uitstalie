@@ -27,6 +27,14 @@ Memory summary failed [UPSTREAM_RATE_LIMIT] (attempt 2/2); previous memory still
 
 v1→v2 Session 迁移现在会把终帧 `finish` 之后仅含 usage 的分片留在同一个 Assistant attempt 中。若已发布适配器先发 `finish` 再发 `usage`，日志的完整有序 attempt 会与消息的 chunk 引用不一致；现在该日志可以迁移，不再让读取失败。新的 `llm-plus` OpenAI 兼容流也把终帧 finish 推迟到流末尾，避免尾部 usage 帧再次制造该模式。
 
+## 自动清理
+
+活跃记忆现在会在容量淘汰之前自动清理，顺序固定：TTL → supersession → 同 turn 去重 → 容量淘汰。`open` 默认 3 天 TTL，`files` 默认 14 天（`openTtlDays`、`filesTtlDays`）；`0` 关闭规则，`decision`/`preference` 永不自动过期。TTL 优先使用 session 日志里的 turn 起始时间，取不到时回退到 session `updatedAt`。
+
+新增 `memory_resolve` 工具显式归档已完成的 `open` 工作，需要 `turn`、`tag` 或显式 `all: true`。`memory_write` 新增 `supersedes` 参数：一组 tags，表示本次写入替换同会话、同 kind 的旧条目。没有 `supersedes` 时，supersession 要求同会话、同短命 kind、旧 turn 更小、至少 `supersessionMinSharedTags`（默认 2）个共享 tags，且 Jaccard ≥ 0.5。同 turn 去重刻意保守：只删除共享提交哈希的条目，或两条命名同一唯一文件路径的 `files` 条目；保留更长文本。
+
+每次自动移除都会把完整正文写入 `MEMORY.archive.md`，带 `session`、`turn`、`tags`、`archivedAt`、`originalAt`、`reason`，并在 `MEMORY.md` frontmatter 追加有界审计记录。`memory_search` 会搜索归档并标注 `archived: <原因>`。归档按 `(session, turn, kind, 归一化文本)` 去重，因此重试或 stale 写入不会重复记录。归档写失败时，TTL/resolve/supersede/去重移除会跳过，但新条目仍然提交；容量淘汰继续执行以保证写入不超过 `maxBytes`。
+
 ## 迁移
 
 1. 不需要迁移 memory 文件。`evictions` 是可选 frontmatter 字段；旧提供者写出的文件解析行为不变，没有该字段的文件渲染行为也不变。

@@ -1,10 +1,11 @@
 /**
- * The three model-facing memory tools.
+ * The five model-facing memory tools.
  *
  * `memory_write` appends one summary entry to this workspace's MEMORY.md through
  * the store's version-guarded write and refreshes the durable memory snapshot
- * after the write commits. `memory_search` searches this workspace's session
- * history and managed memory notes. `memory_read` renders one turn of a
+ * after the write commits. `memory_resolve` archives finished open work,
+ * `memory_search` searches this workspace's session history, managed memory
+ * notes, and archive. `memory_read` renders one turn of a
  * workspace-authorized session as a bounded conversation surface; its turn
  * resolution, authorization, and rendering live in `read.ts`.
  *
@@ -29,8 +30,10 @@ import {
   MemoryDocumentError,
   normalizeEntryTags,
   readMemoryDocument,
+  resolveMemoryEntriesInStore,
 } from './memory-file.ts'
 import type { MemoryEntryKind, MemorySection } from './memory-file.ts'
+import { readMemoryArchive } from './archive.ts'
 import { readMemoryWindow } from './read.ts'
 import { truncateToBytes } from './text.ts'
 import { appendMemoryUpdate, lastSnapshotText, refreshMemorySnapshot } from './snapshot.ts'
@@ -73,6 +76,10 @@ export interface MemorySearchItem {
   readonly time?: number
   /** Bounded plain-text excerpt. */
   readonly snippet: string
+  /** Whether the excerpt came from the searchable archive rather than the active block. */
+  readonly archived?: boolean
+  /** Rule that archived the entry, when `archived` is true. */
+  readonly reason?: string
 }
 
 /** Canonical output value of `memory_search`. */
@@ -101,6 +108,7 @@ export function memoryTools(
 ): readonly ToolDefinition[] {
   return [
     defineMemoryWriteTool(ctx, settings, onSnapshotText),
+    defineMemoryResolveTool(ctx, settings, onSnapshotText),
     defineMemoryForgetTool(ctx, settings, onSnapshotText),
     defineMemorySearchTool(ctx),
     defineMemoryReadTool(ctx),
@@ -134,6 +142,12 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapsho
         type: 'array',
         items: { type: 'string' },
         description: 'Optional labels recorded beside the entry, in write order; up to 8 labels of 64 characters.',
+      },
+      supersedes: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Tags naming older entries of the same kind in this session that this write replaces; '
+          + 'matching entries are archived automatically when their tags intersect this list.',
       },
     },
     output: {
@@ -174,9 +188,17 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapsho
         kind: args.kind,
         text: content,
         tags: normalizeEntryTags(args.tags ?? []),
+        ...args.supersedes === undefined ? {} : { supersedes: normalizeEntryTags(args.supersedes) },
         turn: facts.turn,
         seq: facts.seq,
-      }, exec.signal, { window: settings.window, maxBytes: settings.maxBytes, maxEntries: settings.maxEntries })
+      }, exec.signal, {
+        window: settings.window,
+        maxBytes: settings.maxBytes,
+        maxEntries: settings.maxEntries,
+        openTtlDays: settings.openTtlDays,
+        filesTtlDays: settings.filesTtlDays,
+        supersessionMinSharedTags: settings.supersessionMinSharedTags,
+      })
       // A surface read failure must not fail the committed write; treat it as "no snapshot"
       // and let the refresh below report (and swallow) the failure.
       const hasSnapshot = await lastSnapshotText(ctx, String(session.id))
@@ -206,6 +228,90 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapsho
             ...eviction.turn === undefined ? {} : { turn: eviction.turn },
           })),
         },
+      }
+    },
+  })
+}
+
+/** Build `memory_resolve`: explicitly archive open work that is done. */
+function defineMemoryResolveTool(
+  ctx: Context,
+  settings: MemorySettings,
+  onSnapshotText?: SnapshotTextSink,
+): ToolDefinition {
+  return defineTool({
+    name: 'memory_resolve',
+    description:
+      'Mark finished work as resolved by archiving matching entries and removing them from the active memory block. '
+      + 'Defaults to `open`; use it when a task, report, or phase completes so TTL does not have to clean it later. '
+      + 'A call needs `turn`, `tag`, or an explicit `all: true`.',
+    parameters: {
+      sessionId: {
+        type: 'string',
+        description: 'Session whose entries are resolved; defaults to the current session.',
+      },
+      kind: {
+        type: 'string',
+        enum: [...MEMORY_ENTRY_KINDS],
+        description: 'Kind to resolve; defaults to open.',
+      },
+      turn: {
+        type: 'integer',
+        description: 'Only resolve entries attributed to this turn.',
+      },
+      tag: {
+        type: 'string',
+        description: 'Only resolve entries carrying this label.',
+      },
+      all: {
+        type: 'boolean',
+        description: 'Resolve every matching entry when neither turn nor tag is supplied; required for a bare call.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          path: { type: 'string', required: true },
+          version: { type: 'string' },
+          removed: { type: 'integer', required: true },
+          remaining: { type: 'integer', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.removed === 0
+          ? `No memory entries matched the resolve filter; ${String(value.remaining)} remain.`
+          : `Resolved ${String(value.removed)} memory entr${value.removed === 1 ? 'y' : 'ies'}; ${String(value.remaining)} remain in the active block. The removed text is searchable in the archive.`,
+      }],
+    },
+    async execute(args, exec) {
+      const session = requireSession(exec.agent?.session, 'memory_resolve')
+      const filter = {
+        sessionId: args.sessionId ?? String(session.id),
+        kind: args.kind ?? 'open',
+        ...args.turn === undefined ? {} : { turn: args.turn },
+        ...args.tag === undefined ? {} : { tag: args.tag },
+        ...args.all === true ? { all: true } : {},
+      }
+      const result = await resolveMemoryEntriesInStore(ctx, session, filter, exec.signal, {
+        window: settings.window,
+        maxBytes: settings.maxBytes,
+        maxEntries: settings.maxEntries,
+      })
+      if (result.removed > 0) {
+        await refreshMemorySnapshot(ctx, exec.agent, exec.signal, {
+          template: settings.snapshotTemplate,
+          position: settings.snapshotPosition,
+          ...onSnapshotText === undefined ? {} : { onText: onSnapshotText },
+        })
+      }
+      return {
+        path: result.path,
+        ...result.version === undefined ? {} : { version: result.version },
+        removed: result.removed,
+        remaining: result.remaining,
       }
     },
   })
@@ -351,6 +457,8 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
                 turn: { type: 'integer' },
                 time: { type: 'integer' },
                 snippet: { type: 'string', required: true },
+                archived: { type: 'boolean' },
+                reason: { type: 'string' },
               },
             },
           },
@@ -573,11 +681,10 @@ async function searchMemoryEntries(
   query: string,
   signal: AbortSignal,
 ): Promise<readonly MemorySearchItem[]> {
-  const sections = await readMemorySectionsSafely(ctx, session, signal)
-  if (sections === undefined) return []
   const needle = query.toLowerCase()
   const items: MemorySearchItem[] = []
-  for (const section of sections) {
+  const sections = await readMemorySectionsSafely(ctx, session, signal)
+  for (const section of sections ?? []) {
     for (const entry of section.entries) {
       if (!entry.text.toLowerCase().includes(needle)) continue
       items.push({
@@ -588,7 +695,33 @@ async function searchMemoryEntries(
       })
     }
   }
+  const archived = await readArchiveSafely(ctx, session, signal)
+  for (const record of archived) {
+    if (!record.text.toLowerCase().includes(needle)) continue
+    items.push({
+      source: 'memory',
+      sessionId: record.sessionId,
+      ...record.turn === undefined ? {} : { turn: record.turn },
+      snippet: `[${record.kind}] ${record.text} (archived: ${record.reason})`,
+      archived: true,
+      reason: record.reason,
+    })
+  }
   return items
+}
+
+/** Read archive records, containing a store failure to a logged skip. */
+async function readArchiveSafely(
+  ctx: Context,
+  session: Session,
+  signal: AbortSignal,
+): Promise<readonly import('./memory-file.ts').MemoryArchiveRecord[]> {
+  try {
+    return await readMemoryArchive(ctx, session, signal)
+  } catch (error: unknown) {
+    ctx.logger.warn('memory: skipping the archive half of search: %s', error instanceof Error ? error.message : String(error))
+    return []
+  }
 }
 
 /** Read the managed-block sections, containing a corrupt file to a logged skip. */
@@ -692,7 +825,7 @@ function renderMemorySearch(value: MemorySearchValue): string {
   const lines = value.items.length === 0
     ? [`No memory matches for ${JSON.stringify(value.query)} in this workspace.`]
     : value.items.map(item => item.source === 'memory'
-      ? `- [memory] ${searchLabel(item)} · turn ${String(item.turn ?? 0)} · ${item.snippet}`
+      ? `- [memory] ${searchLabel(item)} · turn ${String(item.turn ?? 0)}${item.archived === true ? ` · archived: ${item.reason ?? 'unknown'}` : ''} · ${item.snippet}`
       : `- [session] ${searchLabel(item)}#${String(item.seq ?? 0)} · ${formatTime(item.time)} · ${item.snippet}`)
   if (value.truncated === true) lines.push('(results truncated; narrow the query or lower `limit`)')
   for (const warning of value.warnings ?? []) {

@@ -11,6 +11,9 @@
 /memory-eviction-explicit-forget-and-search-containment/change:
   en: 10c71da94fbd1185
   zh: 568484a4e9fc21bb
+/memory-eviction-explicit-forget-and-search-containment/automatic-cleanup:
+  en: 5f7e77520f8ec138
+  zh: 6a0df8e0774c01ac
 /memory-eviction-explicit-forget-and-search-containment/migration:
   en: 0b9e525ed5540c0b
   zh: 4e7291dd67e38c61

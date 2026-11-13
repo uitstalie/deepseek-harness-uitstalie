@@ -22,7 +22,11 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { parse as parseYaml } from 'yaml'
 import type { StoreWriteOptions } from '@deepseek-ai/dsh-store-atom'
+import { appendMemoryArchive } from './archive.ts'
 import { replaceSurfaceRange } from './checkpoint.ts'
+import { cleanupMemoryDocument, resolveMemoryEntries } from './cleanup.ts'
+import type { MemoryCleanupNewerEntry, MemoryResolveFilter } from './cleanup.ts'
+import { collectMemoryEntryTimes } from './entry-times.ts'
 import { errorMessage } from './text.ts'
 import { planTierMigrations } from './window.ts'
 import type { SurfaceRetry, TierMigrationPlan, TurnRange } from './window.ts'
@@ -32,6 +36,15 @@ export const MEMORY_STORE_PATH = 'memory/sessions/MEMORY.md'
 
 /** Store-relative path of the summary edit history beside MEMORY.md. */
 export const MEMORY_HISTORY_STORE_PATH = 'memory/sessions/MEMORY.history.json'
+
+/** Store-relative path of the append-only archive for entries removed from the active block. */
+export const MEMORY_ARCHIVE_STORE_PATH = 'memory/sessions/MEMORY.archive.md'
+
+/** Marker opening the provider-owned archive block. */
+export const MEMORY_ARCHIVE_BEGIN = '<!-- memory-archive:begin -->'
+
+/** Marker closing the provider-owned archive block. */
+export const MEMORY_ARCHIVE_END = '<!-- memory-archive:end -->'
 
 /** Maximum summary-history records kept; the oldest records fall off the front. */
 export const MEMORY_HISTORY_LIMIT = 100
@@ -81,7 +94,13 @@ export type MemoryEntryKind = typeof MEMORY_ENTRY_KINDS[number]
 export type MemoryTier = 'detail' | 'brief'
 
 /** Why one entry left the managed block. */
-export type MemoryEvictionReason = 'byte-budget' | 'manual-forget'
+export type MemoryEvictionReason =
+  | 'byte-budget'
+  | 'manual-forget'
+  | 'ttl'
+  | 'resolved'
+  | 'superseded'
+  | 'duplicate'
 
 /**
  * One entry the provider removed from the managed block, recorded in the frontmatter.
@@ -96,6 +115,8 @@ export interface MemoryEvictionRecord {
   readonly sessionId: string
   /** Kind of the removed entry. */
   readonly kind: MemoryEntryKind
+  /** Labels the removed entry carried, when any. */
+  readonly tags?: readonly string[]
   /** Turn the entry summarized, when it carried one. */
   readonly turn?: number
   /** Bounded copy of the removed entry text. */
@@ -103,6 +124,30 @@ export interface MemoryEvictionRecord {
   /** Whether the budget or an explicit forget removed it. */
   readonly reason: MemoryEvictionReason
   /** Human-readable account of the pressure or filter that removed it. */
+  readonly detail: string
+  /** Entry time inferred from the turn log or session update, when known. */
+  readonly originalAt?: string
+}
+
+/** One archived entry; the searchable copy behind every automatic removal. */
+export interface MemoryArchiveRecord {
+  /** Session the entry belonged to. */
+  readonly sessionId: string
+  /** Kind of the removed entry. */
+  readonly kind: MemoryEntryKind
+  /** Full entry text, never truncated: this is the recoverable copy. */
+  readonly text: string
+  /** Turn the entry summarized, when it carried one. */
+  readonly turn?: number
+  /** Labels the entry carried, in write order. */
+  readonly tags?: readonly string[]
+  /** ISO-8601 time the archive record was written. */
+  readonly archivedAt: string
+  /** Entry time inferred from the turn log or session update, when known. */
+  readonly originalAt?: string
+  /** Rule that removed the entry. */
+  readonly reason: MemoryEvictionReason
+  /** Human-readable account naming the rule and its input. */
   readonly detail: string
 }
 
@@ -256,6 +301,8 @@ export interface MemoryEntryInput {
   readonly seq: readonly [number, number]
   /** Section tier to join; defaults to `detail`. */
   readonly tier?: MemoryTier
+  /** Tags that explicitly supersede older entries of the same kind in this session. */
+  readonly supersedes?: readonly string[]
 }
 
 /** One turn's detail summary to append as a single managed-block section. */
@@ -276,6 +323,14 @@ export interface MemoryTurnSummaryOptions {
   readonly maxBytes?: number
   /** Maximum entries retained per session; older sections leave the block. */
   readonly maxEntries?: number
+  /** TTL of `open` entries in days; 0 disables the rule. */
+  readonly openTtlDays?: number
+  /** TTL of `files` entries in days; 0 disables the rule. */
+  readonly filesTtlDays?: number
+  /** Shared tags required for implicit supersession. */
+  readonly supersessionMinSharedTags?: number
+  /** Clock for cleanup tests; defaults to now. */
+  readonly now?: Date
 }
 
 /** Result of one turn-summary append. */
@@ -352,6 +407,14 @@ export interface MemoryAppendOptions {
   readonly maxBytes?: number
   /** Maximum entries retained per session; older sections leave the block. */
   readonly maxEntries?: number
+  /** TTL of `open` entries in days; 0 disables the rule. */
+  readonly openTtlDays?: number
+  /** TTL of `files` entries in days; 0 disables the rule. */
+  readonly filesTtlDays?: number
+  /** Shared tags required for implicit supersession. */
+  readonly supersessionMinSharedTags?: number
+  /** Clock for cleanup tests; defaults to now. */
+  readonly now?: Date
 }
 
 /** Result of one append. */
@@ -959,6 +1022,77 @@ export interface MemoryPruneResult {
   readonly keep: number
 }
 
+/** Result of one explicit resolve call. */
+export interface MemoryResolveStoreResult {
+  /** Store-relative path that was written or left untouched. */
+  readonly path: string
+  /** Version of the written file, when the store reported one. */
+  readonly version?: string
+  /** Number of entries resolved and archived. */
+  readonly removed: number
+  /** Entries remaining in the target session after the resolve. */
+  readonly remaining: number
+  /** Archive records written by this resolve. */
+  readonly records: readonly MemoryArchiveRecord[]
+}
+
+/**
+ * Resolve entries explicitly: archive them, remove them from the active block,
+ * and write MEMORY.md under the version guard.
+ * @param ctx - context carrying `dshStore`.
+ * @param session - session whose project owns the files; the default target.
+ * @param filter - session, kind, and the turn/tag/all narrowing condition.
+ * @param signal - cancellation for the reads and write.
+ * @param options - window thresholds and the body budget.
+ * @returns what was archived and what remains.
+ * @throws MemoryDocumentError when the filter is under-specified or MEMORY.md is missing.
+ * @throws FsError when the guarded write fails twice or the store refuses the write.
+ */
+export async function resolveMemoryEntriesInStore(
+  ctx: Context,
+  session: Session,
+  filter: MemoryResolveFilter,
+  signal?: AbortSignal,
+  options: MemoryAppendOptions = {},
+): Promise<MemoryResolveStoreResult> {
+  const current = await readMemoryDocument(ctx, session, signal)
+  if (current.document === undefined) {
+    throw new MemoryDocumentError('MEMORY.md does not exist yet; there is nothing to resolve', 'invalid-document')
+  }
+  const resolved = resolveMemoryEntries(current.document, filter)
+  const sessionId = filter.sessionId
+  const remaining = resolved.document.sections
+    .filter(section => section.sessionId === sessionId)
+    .reduce((total, section) => total + section.entries.length, 0)
+  if (resolved.removed === 0) {
+    return {
+      path: current.path,
+      ...current.version === undefined ? {} : { version: current.version },
+      removed: 0,
+      remaining,
+      records: [],
+    }
+  }
+  if (!await archiveContained(ctx, session, resolved.records, signal)) {
+    throw new MemoryDocumentError(
+      'MEMORY.archive.md could not be written; the resolve was skipped and no active entry was removed',
+      'invalid-document',
+    )
+  }
+  const next = appendEvictionRecords(
+    resolved.document,
+    resolved.records.map(archiveEvictionRecord),
+  )
+  const written = await writeNextMemoryDocument(ctx, session, next, current.version, signal, options)
+  return {
+    path: written.path,
+    ...written.version === undefined ? {} : { version: written.version },
+    removed: resolved.removed,
+    remaining,
+    records: resolved.records,
+  }
+}
+
 /** Locate the entry for one turn, naming the turns this session does have. */
 function locateSummaryEntry(
   document: MemoryDocument,
@@ -1070,18 +1204,104 @@ function normalizeSummaryText(text: string): string {
 }
 
 /**
+ * Write archive records without failing the active write.
+ * @returns whether every record was archived.
+ */
+async function archiveContained(
+  ctx: Context,
+  session: Session,
+  records: readonly MemoryArchiveRecord[],
+  signal: AbortSignal | undefined,
+): Promise<boolean> {
+  if (records.length === 0) return true
+  try {
+    const written = await appendMemoryArchive(ctx, session, records, signal)
+    ctx.logger.debug(
+      'memory: archived %d entr%s to %s: %s',
+      written.added,
+      written.added === 1 ? 'y' : 'ies',
+      written.path,
+      records.map(record => `${record.sessionId}/${record.turn === undefined ? '?' : String(record.turn)}/${record.kind}:${record.text.slice(0, 60)}`).join(' | '),
+    )
+    return true
+  } catch (error: unknown) {
+    ctx.logger.warn(
+      'memory: could not archive %d removed entry/entries; keeping the active file write: %s',
+      records.length,
+      errorMessage(error),
+    )
+    ctx.logger.debug(
+      'memory: unarchived entries: %s',
+      records.map(record => `${record.sessionId}/${record.turn === undefined ? '?' : String(record.turn)}/${record.kind}:${record.text.slice(0, 60)}`).join(' | '),
+    )
+    return false
+  }
+}
+
+/**
+ * Run the automatic cleanup rules over a composed append.
+ * @param ctx - context carrying the session query for entry ages.
+ * @param document - document after the new entries were composed.
+ * @param options - TTL and supersession settings.
+ * @param signal - cancellation for the best-effort log reads.
+ * @param newer - the just-appended entry, when it may supersede older siblings.
+ * @returns the cleaned document and archive records.
+ */
+async function cleanupForAppend(
+  ctx: Context,
+  previous: MemoryDocument,
+  document: MemoryDocument,
+  options: MemoryAppendOptions,
+  signal: AbortSignal | undefined,
+  newer?: MemoryCleanupNewerEntry,
+): Promise<{ readonly document: MemoryDocument; readonly records: readonly MemoryArchiveRecord[] }> {
+  const openTtlDays = options.openTtlDays ?? 3
+  const filesTtlDays = options.filesTtlDays ?? 14
+  if (openTtlDays <= 0 && filesTtlDays <= 0 && newer === undefined) {
+    return { document, records: [] }
+  }
+  let entryTimes: ReadonlyMap<MemoryEntry, number> | undefined
+  if (openTtlDays > 0 || filesTtlDays > 0) {
+    const times = new Map(await collectMemoryEntryTimes(ctx, document, signal))
+    // The append updates the session's frontmatter timestamp, so an entry with no
+    // turn-log time must fall back to the timestamp from before this write.
+    for (const section of previous.sections) {
+      const fallback = Date.parse(previous.sessions.find(record => record.id === section.sessionId)?.updatedAt ?? '')
+      if (Number.isNaN(fallback)) continue
+      for (const entry of section.entries) {
+        if (!times.has(entry)) times.set(entry, fallback)
+      }
+    }
+    entryTimes = times
+  }
+  const cleaned = cleanupMemoryDocument(document, {
+    ...options.now === undefined ? {} : { now: options.now },
+    openTtlDays,
+    filesTtlDays,
+    ...options.supersessionMinSharedTags === undefined ? {} : {
+      supersessionMinSharedTags: options.supersessionMinSharedTags,
+    },
+    ...entryTimes === undefined ? {} : { entryTimes },
+    ...newer === undefined ? {} : { newerEntry: newer },
+  })
+  return { document: cleaned.document, records: cleaned.records }
+}
+
+/**
  * Append one entry to the managed block of the workspace MEMORY.md.
  *
  * The entry joins the last section of its session when that section covers the
  * same turn and tier; otherwise a new section and frontmatter turn record are
- * created. The write is version-guarded against the text that was read, and one
+ * created. Automatic cleanup runs before retention: TTL, explicit supersession,
+ * and same-turn deduplication archive entries without failing the write. The
+ * write is version-guarded against the text that was read, and one
  * `FS_STALE_VERSION` conflict is retried after a re-read.
  * @param ctx - context carrying `dshStore`.
  * @param session - session the entry belongs to; its project owns the file.
  * @param entry - the entry and the turn it summarizes.
  * @param signal - cancellation for the store read and write.
- * @param options - window thresholds for a new document and the body budget.
- * @returns the written path, the new version, and the entry kind.
+ * @param options - window thresholds, body budget, and cleanup settings.
+ * @returns the written path, the new version, the entry kind, and every removal.
  * @throws MemoryDocumentError `budget-exceeded` when the body would exceed the budget.
  * @throws FsError when the guarded write fails twice or the store refuses the write.
  */
@@ -1096,18 +1316,37 @@ export async function appendMemoryEntry(
   const window = options.window ?? DEFAULT_MEMORY_WINDOW
   const maxBytes = options.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES
   const maxEntries = options.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES
+  const protect = (candidate: MemoryEntry, section: MemorySection): boolean =>
+    section.sessionId === String(session.id) && candidate.turn === entry.turn
   const append = async (): Promise<MemoryAppendResult> => {
     const current = await readMemoryDocument(ctx, session, signal)
     const document = current.document ?? createMemoryDocument(window)
-    const retained = retainDocument(
-      appendToDocument(document, session, entry, kind),
-      session.id,
-      window,
-      maxBytes,
-      maxEntries,
-      (candidate, section) => section.sessionId === String(session.id) && candidate.turn === entry.turn,
+    const composed = appendToDocument(document, session, entry, kind)
+    const newer: MemoryCleanupNewerEntry = {
+      sessionId: String(session.id),
+      turn: entry.turn,
+      kind,
+      ...entry.tags === undefined ? {} : { tags: normalizeEntryTags(entry.tags) },
+      ...entry.supersedes === undefined ? {} : { supersedes: normalizeEntryTags(entry.supersedes) },
+    }
+    const cleaned = await cleanupForAppend(ctx, document, composed, options, signal, newer)
+    let retained = retainDocument(cleaned.document, session.id, window, maxBytes, maxEntries, protect)
+    assertBodyBudget(retained.document, maxBytes)
+    const cleanupArchived = await archiveContained(ctx, session, cleaned.records, signal)
+    let evictions = retained.evictions
+    if (!cleanupArchived) {
+      // Keep the entries that could not be archived; retention still guarantees the budget.
+      retained = retainDocument(composed, session.id, window, maxBytes, maxEntries, protect)
+      await archiveContained(ctx, session, retained.archive, signal)
+      evictions = retained.evictions
+    } else {
+      await archiveContained(ctx, session, retained.archive, signal)
+      evictions = [...retained.evictions, ...cleaned.records.map(archiveEvictionRecord)]
+    }
+    const next = appendEvictionRecords(
+      retained.document,
+      cleanupArchived ? cleaned.records.map(archiveEvictionRecord) : [],
     )
-    const next = retained.document
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -1118,7 +1357,7 @@ export async function appendMemoryEntry(
     return {
       path: written.path,
       kind,
-      evictions: retained.evictions,
+      evictions,
       ...written.version === undefined ? {} : { version: written.version },
     }
   }
@@ -1169,18 +1408,29 @@ export async function appendTurnSummary(
   const window = options.window ?? DEFAULT_MEMORY_WINDOW
   const maxBytes = options.maxBytes ?? DEFAULT_MEMORY_MAX_BYTES
   const maxEntries = options.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES
+  const protect = (candidate: MemoryEntry, section: MemorySection): boolean =>
+    section.sessionId === String(session.id) && candidate.turn === summary.turn
   const append = async (): Promise<MemoryTurnSummaryResult> => {
     const current = await readMemoryDocument(ctx, session, signal)
     const document = current.document ?? createMemoryDocument(window)
-    const retained = retainDocument(
-      appendTurnToDocument(document, session, summary, entries),
-      session.id,
-      window,
-      maxBytes,
-      maxEntries,
-      (candidate, section) => section.sessionId === String(session.id) && candidate.turn === summary.turn,
+    const composed = appendTurnToDocument(document, session, summary, entries)
+    const cleaned = await cleanupForAppend(ctx, document, composed, options, signal)
+    let retained = retainDocument(cleaned.document, session.id, window, maxBytes, maxEntries, protect)
+    assertBodyBudget(retained.document, maxBytes)
+    const cleanupArchived = await archiveContained(ctx, session, cleaned.records, signal)
+    let evictions = retained.evictions
+    if (!cleanupArchived) {
+      retained = retainDocument(composed, session.id, window, maxBytes, maxEntries, protect)
+      await archiveContained(ctx, session, retained.archive, signal)
+      evictions = retained.evictions
+    } else {
+      await archiveContained(ctx, session, retained.archive, signal)
+      evictions = [...retained.evictions, ...cleaned.records.map(archiveEvictionRecord)]
+    }
+    const next = appendEvictionRecords(
+      retained.document,
+      cleanupArchived ? cleaned.records.map(archiveEvictionRecord) : [],
     )
-    const next = retained.document
     assertBodyBudget(next, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
@@ -1192,7 +1442,7 @@ export async function appendTurnSummary(
       path: written.path,
       turn: summary.turn,
       entries: entries.length,
-      evictions: retained.evictions,
+      evictions,
       ...written.version === undefined ? {} : { version: written.version },
     }
   }
@@ -1275,6 +1525,7 @@ export async function migrateMemoryTiers(
     )
     const next = retained.document
     assertBodyBudget(next, maxBytes)
+    await archiveContained(ctx, session, retained.archive, undefined)
     const written = await ctx.dshStore.writeFile(
       session,
       MEMORY_STORE_PATH,
@@ -1732,19 +1983,49 @@ function parseFrontmatter(source: string): Pick<MemoryDocument, 'version' | 'win
 function parseEvictionRecord(value: unknown, subject: string): MemoryEvictionRecord {
   const record = asRecord(value, subject)
   const reason = record['reason']
-  if (reason !== 'byte-budget' && reason !== 'manual-forget') {
-    throw new MemoryDocumentError(`${subject}.reason must be "byte-budget" or "manual-forget"`, 'invalid-document')
+  if (!isEvictionReason(reason)) {
+    throw new MemoryDocumentError(
+      `${subject}.reason must be one of ${EVICTION_REASONS.join(', ')}`,
+      'invalid-document',
+    )
   }
   const turn = optionalInteger(record, 'turn', subject)
+  const tags = parseEvictionTags(record['tags'], subject)
+  const originalAt = record['originalAt']
+  if (originalAt !== undefined && typeof originalAt !== 'string') {
+    throw new MemoryDocumentError(`${subject}.originalAt must be a string`, 'invalid-document')
+  }
   return {
     at: requireString(record, 'at', subject),
     sessionId: requireString(record, 'sessionId', subject),
     kind: assertMemoryEntryKind(requireString(record, 'kind', subject)),
+    ...tags === undefined ? {} : { tags },
     ...turn === undefined ? {} : { turn },
     text: requireString(record, 'text', subject),
     reason,
     detail: requireString(record, 'detail', subject),
+    ...originalAt === undefined ? {} : { originalAt },
   }
+}
+
+/** All eviction reasons the frontmatter and archive understand. */
+const EVICTION_REASONS: readonly MemoryEvictionReason[] = [
+  'byte-budget', 'manual-forget', 'ttl', 'resolved', 'superseded', 'duplicate',
+]
+
+/** Narrow one persisted eviction reason. */
+function isEvictionReason(value: unknown): value is MemoryEvictionReason {
+  return typeof value === 'string' && (EVICTION_REASONS as readonly string[]).includes(value)
+}
+
+/** Parse the optional labels of one eviction record. */
+function parseEvictionTags(value: unknown, subject: string): readonly string[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.some(tag => typeof tag !== 'string')) {
+    throw new MemoryDocumentError(`${subject}.tags must be an array of strings`, 'invalid-document')
+  }
+  const tags = normalizeEntryTags(value)
+  return tags.length === 0 ? undefined : tags
 }
 
 /** Parse one YAML block, reporting the parser message on failure. */
@@ -1971,10 +2252,12 @@ function renderFrontmatter(document: MemoryDocument): string {
         `at: ${JSON.stringify(eviction.at)}`,
         `sessionId: ${JSON.stringify(eviction.sessionId)}`,
         `kind: ${eviction.kind}`,
+        ...eviction.tags === undefined ? [] : [`tags: [${eviction.tags.map(tag => JSON.stringify(tag)).join(', ')}]`],
         ...eviction.turn === undefined ? [] : [`turn: ${String(eviction.turn)}`],
         `text: ${JSON.stringify(eviction.text)}`,
         `reason: ${eviction.reason}`,
         `detail: ${JSON.stringify(eviction.detail)}`,
+        ...eviction.originalAt === undefined ? [] : [`originalAt: ${JSON.stringify(eviction.originalAt)}`],
       ]
       lines.push(`  - { ${fields.join(', ')} }`)
     }
@@ -2186,16 +2469,18 @@ function retainDocument(
     retained = pruneSessionEntries(retained, record.id, maxEntries).document
   }
   const added: MemoryEvictionRecord[] = []
+  const archive: MemoryArchiveRecord[] = []
   while (Buffer.byteLength(renderManagedBody(retained.sections), 'utf8') > maxBytes) {
     const candidate = selectEvictionCandidate(retained, protect)
     if (candidate === undefined) break
-    added.push(evictionRecord(candidate.entry, candidate.section, 'byte-budget',
-      `over the ${String(maxBytes)}-byte managed-body budget while writing session ${currentSessionId}`))
+    const detail = `over the ${String(maxBytes)}-byte managed-body budget while writing session ${currentSessionId}`
+    added.push(evictionRecord(candidate.entry, candidate.section, 'byte-budget', detail))
+    archive.push(memoryArchiveRecord(candidate.entry, candidate.section, 'byte-budget', detail, new Date().toISOString()))
     retained = dropEmptySessions(removeSectionEntry(retained, candidate.section, candidate.entry))
   }
-  if (added.length === 0) return { document: retained, evictions: added }
+  if (added.length === 0) return { document: retained, evictions: added, archive }
   const evictions = [...(retained.evictions ?? []), ...added].slice(-MEMORY_EVICTION_RECORD_LIMIT)
-  return { document: { ...retained, evictions }, evictions: added }
+  return { document: { ...retained, evictions }, evictions: added, archive }
 }
 
 /** Result of applying retention to one composed document. */
@@ -2204,6 +2489,8 @@ interface MemoryRetention {
   readonly document: MemoryDocument
   /** Records added by this call only, newest last. */
   readonly evictions: readonly MemoryEvictionRecord[]
+  /** Full-text archive records for the same removals. */
+  readonly archive: readonly MemoryArchiveRecord[]
 }
 
 /** One entry and its section chosen for budget eviction. */
@@ -2269,23 +2556,90 @@ function compareEvictionCandidates(left: RankedEvictionCandidate, right: RankedE
     || left.turnRank - right.turnRank
 }
 
-/** Build one durable eviction record, bounding the retained text. */
+/**
+ * Build the full archive record for one removed entry.
+ * @param entry - entry leaving the active block.
+ * @param section - section that held it.
+ * @param reason - rule that removed it.
+ * @param detail - readable account of the rule input.
+ * @param archivedAt - archive time.
+ * @param originalAt - entry time inferred from the turn log, when known.
+ * @returns the full-text archive record.
+ */
+export function memoryArchiveRecord(
+  entry: MemoryEntry,
+  section: MemorySection,
+  reason: MemoryEvictionReason,
+  detail: string,
+  archivedAt: string,
+  originalAt?: string,
+): MemoryArchiveRecord {
+  return {
+    sessionId: section.sessionId,
+    kind: entry.kind,
+    text: entry.text,
+    ...entry.turn === undefined ? {} : { turn: entry.turn },
+    ...entry.tags === undefined || entry.tags.length === 0 ? {} : { tags: entry.tags },
+    archivedAt,
+    ...originalAt === undefined ? {} : { originalAt },
+    reason,
+    detail,
+  }
+}
+
+/**
+ * Convert one archive record into the bounded frontmatter audit record.
+ * @param record - archive record to summarize.
+ * @returns the frontmatter eviction record.
+ */
+export function archiveEvictionRecord(record: MemoryArchiveRecord): MemoryEvictionRecord {
+  return {
+    at: record.archivedAt,
+    sessionId: record.sessionId,
+    kind: record.kind,
+    ...record.tags === undefined ? {} : { tags: record.tags },
+    ...record.turn === undefined ? {} : { turn: record.turn },
+    text: record.text.length <= MEMORY_EVICTION_TEXT_MAX_CHARS
+      ? record.text
+      : `${record.text.slice(0, MEMORY_EVICTION_TEXT_MAX_CHARS - 1)}…`,
+    reason: record.reason,
+    detail: record.detail,
+    ...record.originalAt === undefined ? {} : { originalAt: record.originalAt },
+  }
+}
+
+/** Attach cleanup/audit records to the frontmatter, newest last and bounded. */
+export function appendEvictionRecords(
+  document: MemoryDocument,
+  records: readonly MemoryEvictionRecord[],
+): MemoryDocument {
+  if (records.length === 0) return document
+  return {
+    ...document,
+    evictions: [...(document.evictions ?? []), ...records].slice(-MEMORY_EVICTION_RECORD_LIMIT),
+  }
+}
+
+/** Build one durable eviction record, bounding the retained text. *//** Build one durable eviction record, bounding the retained text. */
 function evictionRecord(
   entry: MemoryEntry,
   section: MemorySection,
   reason: MemoryEvictionReason,
   detail: string,
+  originalAt?: string,
 ): MemoryEvictionRecord {
   return {
     at: new Date().toISOString(),
     sessionId: section.sessionId,
     kind: entry.kind,
+    ...entry.tags === undefined || entry.tags.length === 0 ? {} : { tags: entry.tags },
     ...entry.turn === undefined ? {} : { turn: entry.turn },
     text: entry.text.length <= MEMORY_EVICTION_TEXT_MAX_CHARS
       ? entry.text
       : `${entry.text.slice(0, MEMORY_EVICTION_TEXT_MAX_CHARS - 1)}…`,
     reason,
     detail,
+    ...originalAt === undefined ? {} : { originalAt },
   }
 }
 
@@ -2316,6 +2670,30 @@ function removeSectionEntry(
       })
       : document.sessions,
   }
+}
+
+/**
+ * Remove one active entry, dropping an emptied section and its turn records.
+ * @param document - document to change.
+ * @param section - section holding the entry.
+ * @param entry - entry to remove.
+ * @returns the changed document.
+ */
+export function removeMemoryEntry(
+  document: MemoryDocument,
+  section: MemorySection,
+  entry: MemoryEntry,
+): MemoryDocument {
+  return removeSectionEntry(document, section, entry)
+}
+
+/**
+ * Drop session records that no longer describe any section.
+ * @param document - document to compact.
+ * @returns the document with empty session records removed.
+ */
+export function pruneEmptyMemorySessions(document: MemoryDocument): MemoryDocument {
+  return dropEmptySessions(document)
 }
 
 /** Drop session records that no longer describe any section. */

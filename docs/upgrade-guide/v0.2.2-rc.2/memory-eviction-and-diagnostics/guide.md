@@ -27,6 +27,14 @@ Transient upstream failures (rate limit, timeout, server/transport stream errors
 
 The v1-to-v2 Session migration now keeps a usage-only chunk that follows the terminal `finish` in the same Assistant attempt. A released adapter that emitted `finish` before `usage` produced a log whose complete ordered attempt no longer matched the message's chunk references; that log now migrates instead of failing the read. New `llm-plus` OpenAI-compatible streams also defer the terminal finish to the end of the stream so a trailing usage frame cannot recreate the pattern.
 
+## Automatic cleanup
+
+Active memory now cleans itself before capacity eviction, in this fixed order: TTL, supersession, same-turn deduplication, then capacity eviction. `open` entries default to a 3-day TTL and `files` entries to 14 days (`openTtlDays`, `filesTtlDays`); `0` disables a rule, and `decision`/`preference` never expire automatically. TTL uses the turn-start time from the session log when available and otherwise the session `updatedAt`.
+
+A new `memory_resolve` tool archives finished `open` work explicitly; it needs `turn`, `tag`, or an explicit `all: true`. `memory_write` now accepts `supersedes`, a list of tags naming older entries of the same kind in the same session that the write replaces. Without `supersedes`, supersession requires the same session, the same short-lived kind, an older turn, at least `supersessionMinSharedTags` (default 2) shared tags, and Jaccard ≥ 0.5. Same-turn deduplication is deliberately narrow: it only removes entries sharing a commit hash, or two `files` entries naming the same single path; the longer text is kept.
+
+Every automatic removal writes a full-text record to `MEMORY.archive.md` with `session`, `turn`, `tags`, `archivedAt`, `originalAt`, `reason`, and the original text, and adds a bounded audit record to the `MEMORY.md` frontmatter. `memory_search` searches the archive and marks those hits `archived: <reason>`. Archive writes are deduplicated by `(session, turn, kind, normalized text)`, so a retried or stale write cannot duplicate a record. If the archive cannot be written, TTL/resolve/supersede/dedup removals are skipped and the new entry still commits; capacity eviction proceeds to keep the write inside `maxBytes`.
+
 ## Migration
 
 1. No memory-file migration is required. `evictions` is an optional frontmatter field; files written by the previous provider parse unchanged, and a file without it renders as before.

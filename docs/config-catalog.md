@@ -2798,7 +2798,7 @@ export interface McpManagedServerEntry {
 
 - `inject`: `dafeiyu` · `dshStore` · `sessionQuery` · `jobs` · `llm`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/uitstalie/memory/src/config.ts:48`](../packages/uitstalie/memory/src/config.ts)
+- `source`: [`packages/uitstalie/memory/src/config.ts:59`](../packages/uitstalie/memory/src/config.ts)
 
 ```ts config-catalog
 /** Configuration as the Loader passes it; every field is a live reference. */
@@ -2825,6 +2825,27 @@ export interface Config {
   maxBytes: Volatile<number>
   /** Maximum entries retained per session. */
   maxEntries: Volatile<number>
+  /**
+   * Days after which an `open` entry is archived and removed from injection.
+   *
+   * Defaults to 3. `0` disables the rule; `decision` and `preference` never
+   * expire. Archived entries stay searchable in `MEMORY.archive.md`.
+   */
+  openTtlDays: Volatile<number>
+  /**
+   * Days after which a `files` entry is archived and removed from injection.
+   *
+   * Defaults to 14. `0` disables the rule; `decision` and `preference` never
+   * expire. Archived entries stay searchable in `MEMORY.archive.md`.
+   */
+  filesTtlDays: Volatile<number>
+  /**
+   * Shared tags required before an automatically observed supersession.
+   *
+   * Defaults to 2; the same session and kind are always required, and an
+   * explicit `supersedes` tag on the new entry takes precedence.
+   */
+  supersessionMinSharedTags: Volatile<number>
   /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced. */
   snapshotTemplate: Volatile<string>
   /** Where the snapshot reaches the model. */

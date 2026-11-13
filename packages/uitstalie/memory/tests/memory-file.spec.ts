@@ -4,7 +4,7 @@
  * store, the version guard, and the body budget.
  */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -21,6 +21,10 @@ import {
   DEFAULT_MEMORY_MAX_BYTES,
   editMemorySummary,
   forgetMemoryEntries,
+  MEMORY_ARCHIVE_BEGIN,
+  MEMORY_ARCHIVE_END,
+  MEMORY_ARCHIVE_STORE_PATH,
+  resolveMemoryEntriesInStore,
   MEMORY_BLOCK_BEGIN,
   MEMORY_BLOCK_END,
   MEMORY_STORE_PATH,
@@ -35,6 +39,8 @@ import {
   summarizeMemoryEntries,
   summaryPaused,
 } from '../src/memory-file.ts'
+import { cleanupMemoryDocument } from '../src/cleanup.ts'
+import { appendMemoryArchive, readMemoryArchive } from '../src/archive.ts'
 import type { MemoryDocument, MemoryWindow } from '../src/memory-file.ts'
 
 let project: string
@@ -543,6 +549,192 @@ test('eviction records survive a parse and render round trip', () => {
   expect(parseMemoryDocument(text)).toEqual(document)
 })
 
+test('TTL archives expired open/files entries and never an unexpired decision', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{
+      id: 'session-a', cwd: project, updatedAt: '2026-01-01T00:00:00.000Z',
+      turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }],
+    }],
+    sections: [{
+      sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail',
+      entries: [
+        { kind: 'open', text: 'old open question', turn: 1 },
+        { kind: 'files', text: 'old file pointer', turn: 1 },
+        { kind: 'decision', text: 'durable decision', turn: 1 },
+      ],
+    }],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
+  }, undefined, {
+    window: { ...ONE_SESSION, sessions: 10 },
+    maxBytes: 4096,
+    openTtlDays: 3,
+    filesTtlDays: 14,
+    now: new Date('2026-01-20T00:00:00.000Z'),
+  })
+  expect(written.evictions.map(eviction => eviction.reason)).toEqual(['ttl', 'ttl'])
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text))
+    .toEqual(['durable decision', 'new fact'])
+  const archived = await readFile(join(project, '.dsh', MEMORY_ARCHIVE_STORE_PATH), 'utf8')
+  expect(archived).toContain('old open question')
+  expect(archived).toContain('old file pointer')
+  expect(archived).toContain('ttl: open older than 3 day(s)')
+  expect(archived).not.toContain('durable decision')
+})
+
+test('a zero TTL keeps open and files entries active', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{
+      id: 'session-a', cwd: project, updatedAt: '2026-01-01T00:00:00.000Z',
+      turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }],
+    }],
+    sections: [{
+      sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail',
+      entries: [{ kind: 'open', text: 'old but configured', turn: 1 }],
+    }],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
+  }, undefined, { window: { ...ONE_SESSION, sessions: 10 }, openTtlDays: 0, filesTtlDays: 0 })
+  expect(written.evictions).toEqual([])
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text))
+    .toEqual(['old but configured', 'new fact'])
+})
+
+test('explicit resolve archives matching open entries and refuses a bare call', async () => {
+  await appendMemoryEntry(ctx, session, { kind: 'open', text: 'finished report', turn: 1, seq: [1, 2] })
+  await appendMemoryEntry(ctx, session, { kind: 'open', text: 'still open', turn: 2, seq: [3, 4] })
+  const resolved = await resolveMemoryEntriesInStore(ctx, session, { sessionId: 'session-a', turn: 1 })
+  expect(resolved).toMatchObject({ removed: 1, remaining: 1 })
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toEqual(['still open'])
+  const archived = await readFile(join(project, '.dsh', MEMORY_ARCHIVE_STORE_PATH), 'utf8')
+  expect(archived).toContain('finished report')
+  expect(archived).toContain('"reason":"resolved"')
+  await expect(resolveMemoryEntriesInStore(ctx, session, { sessionId: 'session-a' }))
+    .rejects.toThrow(/turn, tag, or all/u)
+  await expect(resolveMemoryEntriesInStore(ctx, session, { sessionId: 'session-a', tag: '  ' }))
+    .rejects.toThrow(/must not be empty/u)
+})
+
+test('supersession archives an older same-kind entry with overlapping tags', async () => {
+  await appendMemoryEntry(ctx, session, {
+    kind: 'open', text: 'Phase 3 in progress', tags: ['phase3', 'personality'], turn: 1, seq: [1, 2],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'open', text: 'Phase 3 complete', tags: ['phase3', 'personality'], turn: 2, seq: [3, 4],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  expect(written.evictions).toMatchObject([{ reason: 'superseded' }])
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toEqual(['Phase 3 complete'])
+  const archived = await readFile(join(project, '.dsh', MEMORY_ARCHIVE_STORE_PATH), 'utf8')
+  expect(archived).toContain('Phase 3 in progress')
+  expect(archived).toContain('superseded')
+})
+
+test('supersession does not fire across sessions, kinds, one tag, or an older new turn', async () => {
+  const other = otherSession('session-b')
+  await appendMemoryEntry(ctx, other, {
+    kind: 'open', text: 'other session open', tags: ['phase3', 'personality'], turn: 2, seq: [1, 2],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  await appendMemoryEntry(ctx, session, {
+    kind: 'open', text: 'different kind open', tags: ['phase3', 'personality'], turn: 3, seq: [5, 6],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  await appendMemoryEntry(ctx, session, {
+    kind: 'files', text: 'file pointer', tags: ['phase3', 'personality'], turn: 4, seq: [7, 8],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  const oneTag = await appendMemoryEntry(ctx, session, {
+    kind: 'open', text: 'one shared tag', tags: ['phase3'], turn: 5, seq: [9, 10],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  expect(oneTag.evictions).toEqual([])
+  const older = await appendMemoryEntry(ctx, session, {
+    kind: 'open', text: 'newer numbered entry', tags: ['phase3', 'personality'], turn: 1, seq: [11, 12],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  expect(older.evictions).toEqual([])
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toContain('different kind open')
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toContain('file pointer')
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toContain('one shared tag')
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toContain('newer numbered entry')
+})
+
+test('same-turn deduplication archives an obvious commit-hash duplicate', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{
+      id: 'session-a', cwd: project, updatedAt: new Date().toISOString(),
+      turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }],
+    }],
+    sections: [{
+      sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail',
+      entries: [
+        { kind: 'open', text: 'fix abc1234 in the parser', turn: 1 },
+        { kind: 'open', text: '修复 abc1234 解析器问题，并补充回归测试覆盖中英文重复条目的归档行为', turn: 1 },
+      ],
+    }],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  expect(written.evictions).toMatchObject([{ reason: 'duplicate' }])
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  const texts = parsed.sections.flatMap(section => section.entries).map(entry => entry.text)
+  expect(texts).toContain('修复 abc1234 解析器问题，并补充回归测试覆盖中英文重复条目的归档行为')
+  expect(texts).not.toContain('fix abc1234 in the parser')
+})
+
+test('same-turn entries without a strong identifier are both kept', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{
+      id: 'session-a', cwd: project, updatedAt: new Date().toISOString(),
+      turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }],
+    }],
+    sections: [{
+      sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail',
+      entries: [
+        { kind: 'open', text: 'one unrelated fact', turn: 1 },
+        { kind: 'open', text: 'another unrelated fact', turn: 1 },
+      ],
+    }],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0 })
+  expect(written.evictions).toEqual([])
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries)).toHaveLength(3)
+})
+
+test('cleanup is idempotent for a fixed clock', () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{
+      id: 'session-a', cwd: project, updatedAt: '2026-01-01T00:00:00.000Z',
+      turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }],
+    }],
+    sections: [{
+      sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail',
+      entries: [{ kind: 'open', text: 'expired', turn: 1 }, { kind: 'decision', text: 'kept', turn: 1 }],
+    }],
+  }
+  const options = { now: new Date('2026-02-01T00:00:00.000Z'), openTtlDays: 3, filesTtlDays: 14 }
+  const first = cleanupMemoryDocument(document, options)
+  const second = cleanupMemoryDocument(first.document, options)
+  expect(first.records).toHaveLength(1)
+  expect(second.records).toEqual([])
+  expect(second.document).toEqual(first.document)
+})
+
 test('a malformed eviction record is rejected with its subject', () => {
   const text = renderMemoryDocument(createMemoryDocument()).replace(
     'sessions: []',
@@ -607,7 +799,7 @@ test('eviction ranks a section without a session record by an empty timestamp', 
   await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
   const written = await appendMemoryEntry(ctx, session, {
     kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
-  }, undefined, { window: { ...ONE_SESSION, sessions: 10 }, maxBytes: 300 })
+  }, undefined, { window: { ...ONE_SESSION, sessions: 10 }, maxBytes: 300, openTtlDays: 0, filesTtlDays: 0 })
   expect(written.evictions[0]?.sessionId).toBe('ghost')
 })
 
@@ -677,7 +869,7 @@ test('eviction prefers the older session and the automatic entry over a manual e
   const other = otherSession('session-b')
   const written = await appendMemoryEntry(ctx, other, {
     kind: 'decision', text: 'newest fact', turn: 2, seq: [3, 4],
-  }, undefined, { window: { ...ONE_SESSION, sessions: 10 }, maxBytes: 320 })
+  }, undefined, { window: { ...ONE_SESSION, sessions: 10 }, maxBytes: 320, openTtlDays: 0, filesTtlDays: 0 })
   expect(written.evictions.map(eviction => eviction.text.slice(0, 13))).toEqual(['older session', 'auto same tur'])
   const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
   expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text.slice(0, 16)))
@@ -699,6 +891,80 @@ test('an empty or contradictory forget filter is refused', async () => {
     .rejects.toThrow(/allSessions with sessionId/u)
   await expect(forgetMemoryEntries(ctx, session, { tag: '  ' })).rejects.toThrow(/must not be empty/u)
   await expect(forgetMemoryEntries(ctx, session, { beforeTurn: -1 })).rejects.toThrow(/non-negative integer/u)
+})
+
+test('capacity eviction archives the removed entry, and archive writes are idempotent', async () => {
+  const window: MemoryWindow = { ...ONE_SESSION, sessions: 10 }
+  await appendMemoryEntry(ctx, session, {
+    kind: 'open', text: `capacity ${'c'.repeat(120)}`, turn: 1, seq: [1, 2],
+  }, undefined, { window, openTtlDays: 0, filesTtlDays: 0 })
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
+  }, undefined, { window, maxBytes: 200, openTtlDays: 0, filesTtlDays: 0 })
+  expect(written.evictions).toMatchObject([{ reason: 'byte-budget' }])
+  const archive = await readMemoryArchive(ctx, session)
+  expect(archive.map(record => record.reason)).toContain('byte-budget')
+  expect(archive.map(record => record.text)).toContain(`capacity ${'c'.repeat(120)}`)
+
+  const before = await readFile(join(project, '.dsh', MEMORY_ARCHIVE_STORE_PATH), 'utf8')
+  await appendMemoryArchive(ctx, session, archive)
+  expect(await readFile(join(project, '.dsh', MEMORY_ARCHIVE_STORE_PATH), 'utf8')).toBe(before)
+})
+
+test('the archive reader tolerates a missing or malformed file and preserves a frame', async () => {
+  expect(await readMemoryArchive(ctx, session)).toEqual([])
+  const archivePath = join(project, '.dsh', MEMORY_ARCHIVE_STORE_PATH)
+  await mkdir(join(project, '.dsh', 'memory', 'sessions'), { recursive: true })
+  await writeFile(archivePath, `frame before\n${MEMORY_ARCHIVE_BEGIN}\n- [open] <!-- memory-archive: not-json --> ignored\n${MEMORY_ARCHIVE_END}\nframe after\n`)
+  const records = [{
+    sessionId: 'session-a', kind: 'open' as const, text: 'recoverable fact', turn: 1,
+    tags: ['a'], archivedAt: '2026-01-02T00:00:00.000Z',
+    originalAt: '2026-01-01T00:00:00.000Z', reason: 'ttl' as const, detail: 'ttl: open',
+  }]
+  const appended = await appendMemoryArchive(ctx, session, records)
+  expect(appended.added).toBe(1)
+  const text = await readFile(archivePath, 'utf8')
+  expect(text).toContain('frame before')
+  expect(text).toContain('frame after')
+  expect(text).toContain('recoverable fact')
+  expect(await readMemoryArchive(ctx, session)).toHaveLength(1)
+})
+
+test('an archive append retries one stale version and ignores an empty batch', async () => {
+  expect(await appendMemoryArchive(ctx, session, [])).toEqual({ path: MEMORY_ARCHIVE_STORE_PATH, added: 0 })
+  const record = {
+    sessionId: 'session-a', kind: 'decision' as const, text: 'retried archive',
+    archivedAt: '2026-01-02T00:00:00.000Z', reason: 'resolved' as const, detail: 'resolved',
+  }
+  const writes = vi.spyOn(ctx.dshStore, 'writeFile')
+  writes.mockRejectedValueOnce(new FsError('stale', 'FS_STALE_VERSION'))
+  const result = await appendMemoryArchive(ctx, session, [record])
+  expect(result).toMatchObject({ path: MEMORY_ARCHIVE_STORE_PATH, added: 1 })
+  expect(await readFile(join(project, '.dsh', MEMORY_ARCHIVE_STORE_PATH), 'utf8')).toContain('retried archive')
+})
+
+test('an archive write failure rolls back TTL cleanup but still commits the new entry', async () => {
+  const document: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{
+      id: 'session-a', cwd: project, updatedAt: '2026-01-01T00:00:00.000Z',
+      turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }],
+    }],
+    sections: [{
+      sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail',
+      entries: [{ kind: 'open', text: 'expired but unarchivable', turn: 1 }],
+    }],
+  }
+  await store.writeFile(session, MEMORY_STORE_PATH, renderMemoryDocument(document))
+  const writes = vi.spyOn(ctx.dshStore, 'writeFile')
+  writes.mockRejectedValueOnce(new FsError('archive unavailable', 'FS_IO_ERROR'))
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'new fact', turn: 2, seq: [3, 4],
+  }, undefined, { window: { ...ONE_SESSION, sessions: 10 }, openTtlDays: 3, filesTtlDays: 14 })
+  expect(written.evictions).toEqual([])
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text))
+    .toEqual(['expired but unarchivable', 'new fact'])
 })
 
 test('the default body budget admits more than the former 4 KiB before refusing', async () => {

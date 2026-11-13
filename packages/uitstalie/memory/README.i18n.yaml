@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/memory/README.md
 /:
-  en: c93b481916d4b85b
-  zh: 1e0c463b0c54a80d
+  en: 2173eec562c32411
+  zh: c61314aa136fc7d2
 /deepseek-ai-dsh-memory:
   en: 451d0d0b45211d36
   zh: 98cef595909ea324
 /deepseek-ai-dsh-memory/summary:
-  en: 0affd0667aae30be
-  zh: caff26f434558b82
+  en: 10c1602eb6d13979
+  zh: 9f28ec405eb789dd
 /deepseek-ai-dsh-memory/table-of-contents:
   en: cbfb676bb9a7a2de
   zh: 528864635b577290
 /deepseek-ai-dsh-memory/use-this-package:
-  en: be57264f49244802
-  zh: a4301b615be29064
+  en: af21c9235c4f0138
+  zh: 30f47c069787a818
 /deepseek-ai-dsh-memory/understand-the-implementation:
-  en: 9ace879c79391858
-  zh: 8cf71f5b9766950e
+  en: c2e2ffbf785bbbdd
+  zh: 745185896eb606d8
 /deepseek-ai-dsh-memory/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -42,8 +42,8 @@
   en: b160ca92da193ddb
   zh: ac8fae468916718e
 /deepseek-ai-dsh-memory/model-experience/memory-tools/what-the-model-sees:
-  en: 350d998343540bb0
-  zh: 41bf6ebc622e850b
+  en: e14b38103640df93
+  zh: da6c667514bc7094
 /deepseek-ai-dsh-memory/model-experience/memory-tools/token-effect:
   en: 6730f1181dce8ce9
   zh: 8a720cef780d67d8
@@ -87,8 +87,8 @@
   en: 3fd317b042a59673
   zh: 9cc5318f0fd02c79
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work:
-  en: b2f98790759c7559
-  zh: baedab7294fbd74d
+  en: 2c9e7a4e6209dd0c
+  zh: 1896f1436409e074
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work/dev-note:
   en: 164f2d3e79e7c776
   zh: 22b11728c82dbcf0
