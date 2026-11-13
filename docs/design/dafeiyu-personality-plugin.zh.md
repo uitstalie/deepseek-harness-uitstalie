@@ -2,703 +2,586 @@
 
 [English](dafeiyu-personality-plugin.md) | 中文
 
-状态：设计稿，未实现，未改动任何包。
+状态：设计稿；未实现；未改动任何现有包；未迁移任何用户数据。
 
-输入材料保留在 `docs/inputs/` 供追溯；本设计只采用其中的方向性纠正、表达习惯与 A–E 根因，不把业务事实纠正写进 personality。关键约束已内联到第 2.1 节，另一台机器实现时不依赖输入文件。
+## 0. 7 条裁决与对应改动
 
-## 结论
-
-四个模块不都做成同一个插件。**user-input 复用现有 `dsh-personality` 能力；super-agent-dispatch 是 super agent preset 里的一个 section + 文案模板；write-like-human 是一个独立 skill + 词表数据文件；output-summary 是 personality 配置行里的一组 persona 维度 + 一个稳定的系统提示词 section。** 这样每个模块只拥有一种事实，不另造并行存储，也不会把“怎么说”和“怎么做”混进同一个条目。
-
-**先解决三个现有冲突，再谈实现：**
-
-1. 现有 `preference.*` 在 `workspaceOverlay: true` 时写到工作区 overlay，但 A–E 是跨工作区的用户偏好。需要给 `personality_learn` 增加可选 `scope`，否则只能二选一：关掉 overlay，或给每个工作区重复写同一组偏好。
-2. 现有 turn-end 自动学习只匹配很窄的句式（“不是这个意思”“以后……”），13 次纠正里大多数（“你管那些干啥”“谁说只改三处”“先列出来”）不会命中。主路径必须改成模型在纠正发生时显式调用 `personality_learn`，正则只做兜底。
-3. 现有 skill 解析器只把顶层 `name`、`description`、`whenToUse` 和 `metadata` 对象暴露给注册表；顶层 `version`、`kind` 不会进入 skill 元数据。write-like-human 的 `version`/`kind` 必须先放在 `metadata` 下，或者在实现阶段扩展解析器；本设计采用前者，并把后者列为缺口。
-
-## 1. 现有实现与必须对齐的事实
-
-| 事实 | 当前证据 | 对本设计的影响 |
+| 裁决 | 本设计的落地 | 已删除的旧方案 |
 |---|---|---|
-| personality 是 dafeiyu 能力，`scope: 'all'` | `packages/uitstalie/personality/src/index.ts` | 新 section 默认对所有 agent 生效；super agent 专属内容不能走它，必须走 super agent preset |
-| 一个固定 section，order `100` | `packages/uitstalie/personality/src/prompt.ts` | 用户输入理解放在所有工具说明之前；修改会从 100 起使前缀缓存失效 |
-| 四种 kind：`understanding/style/preference/identity` | `packages/uitstalie/personality/src/personality-file.ts` | 复用，不新增 kind；A–E 放 `preference`，表达习惯放 `understanding` |
-| overlay 只允许 `style/preference` | `packages/uitstalie/personality/src/personality-file.ts` | `preference` 的写入位置受 overlay 开关影响，这是跨工作区偏好的缺口 |
-| `personality_learn` 非 identity 可自动写；identity 只能提议 | `packages/uitstalie/personality/src/tools.ts` | 身份类继续人工确认；本设计不碰这条红线 |
-| 自动学习在 turn-end 用窄正则 | `packages/uitstalie/personality/src/index.ts` | 只能当兜底；主路径要由模型在纠正现场学习 |
-| 自动条目名是 `auto-<8hex>` 精确哈希 | `packages/uitstalie/personality/src/tools.ts` | 原文相同会覆盖，同一件事换个说法会重复；需要可选稳定名 |
-| superagent section 是静态 section `702` | `packages/jira/jira-agent/src/superagent.ts` | brief 规则属于这里；新模板只能补充，不能覆盖“不许发明标准” |
-| superagent 运行时上下文是 `704-706` | `packages/jira/jira-agent/src/superagent.ts` | 数据易变的内容才放 runtime context；模板是静态的，应放 section |
-| dafeiyu contribution 只有 `promptSections`/`tools`/`onTurnEnd` | `packages/uitstalie/dafeiyu/src/types.ts` | 没有“只给 super agent 的 runtime context”这种能力；super agent 专属段落必须在它的 preset 里注册 |
-| system prompt 的固定顺序 | `packages/core/system-prompt/src/index.ts` | 见第 4 节顺序表；persona 放在 `690`，superagent 之后不再加运行时规则 |
-| skill 目录只接受 `name`/`description` 等固定字段 | `packages/skill/skill-filesystem/src/index.ts` | `version`/`kind` 放 `metadata`，不要假设顶层字段生效 |
-| skill catalog 是 durable user message | `packages/skill/tool-skill/src/index.ts` | skill 不常驻 system prompt；加载才把正文放进历史，缓存影响小 |
+| 1. personality 只放全局 `.dsh`，禁止工作区 override | 读取、写入、备份、提示都只认 `<DSH_HOME>/personality/`；工作区 `.dsh/memory/PERSONALITY.md` 一律不读不写，发现时每个工作区只警告一次 | 删除 overlay、`scope`、workspace 写入、全局/工作区合并规则 |
+| 2. 取消 turn-end 自动学习 | 删除正则和 `onTurnEnd` 学习；改为工具扫描会话记录，产出候选与证据 | 删除自动学习、`autoLearn` 预算、`personality_learn` 的自动写入路径 |
+| 3. 用户可主动调用分析 | `personality_analyze` 工具，按当前/指定/最近 N 个会话分析，只返回候选，不改文件；用户说跑才跑 | 删除“只在 turn end 后台学习”的隐式路径 |
+| 4. 旧 personality 直接 drop | 旧代码移除；旧 `PERSONALITY.md` 移动到只读 legacy 备份后不再解析、不迁移；新实现从空开始 | 删除“在旧实现上加 scope/兼容层/旧数据迁移”的方案 |
+| 5. dispatch 规则并入 super agent 系统提示词/规则 | 直接写进现有 `SUPERAGENT_SECTION`（702），与现有规则同层 | 删除独立的 `703` section、独立数据文件、第二套 brief 注入机制 |
+| 6. write-like-human 改为可定制 prompt 规则的工具 | 新工具 `write_like_human` 管理全局规则文件，规则注入 prompt；工具负责增删改查/启停/预览 | 删除 skill-only 方案、独立黑名单文件、skill catalog 依赖 |
+| 7. `output-summary` 改名 `output-style` | 配置对象、文件名、section 名、测试 fixture 全部用 `output-style`/`outputStyle` | 删除 `output-summary`、`persona` 旧名 |
 
-## 2. 模块总览与依赖
+## 1. 结论
 
-| 模块 | 形态 | 拥有的事实 | 不拥有 |
-|---|---|---|---|
-| user-input | 现有 `dsh-personality` 插件的数据模型 + 工具扩展 | 用户怎么表达、怎么理解其省略/反问/角色前缀；A–E 工作偏好 | 回复语气、派活模板、输出改写词表 |
-| super-agent-dispatch | super agent preset 的 section `703` + `dispatch-brief.md` 数据文件 | brief 的**形式**：目标/验收/边界/证据来源四个槽位 | brief 的内容标准、验收口径、组织判断 |
-| write-like-human | skill + `references/blacklist.yaml` 数据文件 | 用户可见文本的**去 AI 化改写步骤** | 事实、代码、路径、数字、政策、阶段口径 |
-| output-summary | personality 配置行的 `persona` 数据 + section `690` | 回复的默认语气/长度/结论位置/列表倾向，以及派活时的口吻 | 安全、审批、沙箱、工具权限、具体项目规则 |
+四个模块仍保留职责划分，但形态全部改为“全局 personality 能力 + 工具 + 固定 prompt 规则”，不再有工作区人格、不再有后台自动学习、不再有独立 dispatch section，也不再把 write-like-human 做成 skill。
 
-依赖图：
+| 模块 | 形态 | 位置 |
+|---|---|---|
+| user-input | 全局 personality 数据 + `personality_analyze` / `personality_apply` 工具 | `PERSONALITY.md`，section 100 |
+| super-agent-dispatch | 现有 super agent 静态规则的一部分 | `SUPERAGENT_SECTION`，section 702 |
+| write-like-human | 工具 + 规则文件 + 注入 section | `WRITING_RULES.yaml`，section 695 |
+| output-style | 全局配置 + 注入 section | `OUTPUT_STYLE.yaml`，section 690 |
 
-```text
-PERSONALITY.md (global) ─┐
-PERSONALITY.md (overlay) ─┴─> personality section @100 ─> all agents
-                                      │
-persona config (personality row) ─────┴─> personality:persona @690 ─> all agents
+**全局只有一个根：** 所有 personality 数据都在 `<DSH_HOME>/personality/` 下；`<DSH_HOME>` 由现有 home 解析逻辑产生，不写死任何机器目录。工作区没有 personality 文件，也没有 override 读取路径。
 
-dispatch-brief.md ──> superagent:brief-template @703 ─> super agent only
-SUPERAGENT_SECTION @702 ───────────────────────────────> super agent only
+## 2. 旧实现退出
 
-write-like-human/SKILL.md ──> skill catalog ──> skill tool ─> on demand
-        └── references/blacklist.yaml
+### 2.1 代码层
+
+旧实现按“未设计、未维护、未审查”处理，直接移除，不在旧代码上加兼容层。移除范围：
+
+- `packages/uitstalie/personality` 的旧 provider、`personality_learn`、`personality_propose`、proposal 队列、`/personality` 命令、旧 prompt section、overlay watcher、旧 version/history 逻辑。
+- `packages/uitstalie/ui-personality` 的旧 proposal 页面和旧设置字段。
+- `packages/bundle/web-app/cordis.patch.uitstalie.yml` 中挂载旧 provider/UI 的行；新实现重新决定挂载点，不复用旧 config 字段。
+- 旧 package 的导出 API 不保留兼容别名；需要新设计的工具名、section 名和数据文件。
+
+**删除的是实现，不是用户数据。** 数据按 2.2 处理。
+
+### 2.2 数据层
+
+旧数据文件保留一份只读备份，之后不再解析、不迁移：
+
+| 旧文件 | 处理 |
+|---|---|
+| `<DSH_HOME>/personality/PERSONALITY.md` | 首次启动新实现时，把旧 `PERSONALITY.md` **移动**到 `<DSH_HOME>/personality/legacy/PERSONALITY.<UTC>.md`（同一份数据，不删除）；移动成功后新实现从空的 `PERSONALITY.md` 开始。若移动失败，**不覆盖旧文件、不启动新的写入**，并报错。 |
+| `<DSH_HOME>/personality/PERSONALITY.history.jsonl` | 不解析、不读取、不删除；留在原处，视为历史证据。 |
+| `<DSH_HOME>/personality/PERSONALITY.proposals.jsonl` | 不解析、不读取、不删除；留在原处，视为历史证据。 |
+| `<workspace>/.dsh/memory/PERSONALITY.md` | 不读、不写、不删；每个工作区首次发现时给一条一次性警告，说明“只支持全局 personality，工作区文件被忽略”。 |
+
+**为什么不直接删旧数据：** 旧文件可能是用户唯一的人格记录；删除不可逆。设计只授权“备份 + 忽略”，不授权删除。若用户明确要求删数据，另开一个显式清理操作，不在本轮做。
+
+### 2.3 兼容性影响
+
+旧实现的直接消费者：
+
+| 消费者 | 影响 |
+|---|---|
+| `packages/uitstalie/personality` 自身及其测试 | 删除/重写；旧测试不能作为新实现验收 |
+| `packages/uitstalie/ui-personality` | 旧 proposal/设置页移除；新的 output-style/writing-rules 页面另做 |
+| `packages/bundle/web-app/cordis.patch.uitstalie.yml` | 旧挂载行移除或替换；旧 profile 中手工添加的 personality 行需要迁移到新行 |
+| 旧 `personality_learn` / `personality_propose` 调用方 | 工具消失；新工具是 `personality_analyze` / `personality_apply`，没有自动写入 |
+| 外部 import `@deepseek-ai/dsh-personality` 的消费者 | 旧导出 API 删除；这是破坏性变更，需要发布说明/升级指南 |
+| 读 `<workspace>/.dsh/memory/PERSONALITY.md` 的外部脚本 | 新实现不再读它；脚本不会得到提示，只能靠一次性警告或文档 |
+
+旧数据不迁移、旧 API 不兼容、旧工作区文件不读，是这次设计的明确代价。
+
+## 3. 全局数据与文件
+
+### 3.1 目录
+
+| 文件 | 作用 | 谁可写 |
+|---|---|---|
+| `<DSH_HOME>/personality/PERSONALITY.md` | user-input 条目：understanding / preference / style；identity 仅人工编辑 | `personality_apply`（需确认）或人 |
+| `<DSH_HOME>/personality/OUTPUT_STYLE.yaml` | output-style 的 tone/length/结论/列表/派活口吻 | 人；工具只读 |
+| `<DSH_HOME>/personality/WRITING_RULES.yaml` | write-like-human 的规则集合 | `write_like_human` 工具（用户要求时）或人 |
+| `<DSH_HOME>/personality/legacy/PERSONALITY.<UTC>.md` | 旧文件只读备份 | 新实现一次性写入，之后不再写 |
+
+不存在工作区 personality 文件；所有工具都只写上述全局路径。
+
+### 3.2 `PERSONALITY.md` 数据结构
+
+新实现从空文件开始，不解析旧格式。新格式：
+
+```markdown
+---
+version: 1
+updatedAt: <UTC ISO-8601>
+entries:
+  - id: understanding.role-prefix
+    kind: understanding
+    text: The prefix names the executor; the rest is the task.
+  - id: preference.scope
+    kind: preference
+    text: Act only on the objects the user names and their direct implications.
+---
 ```
 
-**不新建第二个 profile 文件，也不新建数据库。** PERSONALITY.md 仍是唯一的人格条目存储；`persona` 是带 schema 的配置，不是条目；brief 模板和词表是用户拥有的普通数据文件。
+```ts
+type PersonalityEntryKind = 'understanding' | 'preference' | 'style' | 'identity'
 
-### 2.1 Windows 真实失效模式对模块 2/4 的约束
+interface PersonalityEntry {
+  readonly id: string                 // <kind>.<lower-kebab-name>, unique
+  readonly kind: PersonalityEntryKind
+  readonly text: string               // one paragraph, max 400 chars
+}
 
-输入材料的 handoff 记录的是真实运行失败，不是假设。模块 2 的模板和模块 4 的 persona 必须把这些失败当约束，否则设计会重新制造“完成但没闭环”的文本。
+interface PersonalityDocument {
+  readonly version: number            // positive integer; version-guarded write
+  readonly updatedAt: string          // UTC ISO-8601
+  readonly entries: readonly PersonalityEntry[]  // sorted by kind, then id
+}
+```
 
-| 真实失效 | 对模块 2（brief）的约束 | 对模块 4（persona）的约束 |
-|---|---|---|
-| 子 Session 已完成，super 侧 ledger 仍 pending；报告投递失败时没有可见闭环 | 验收必须要求**工作区内的证据**（文件、命令输出、测试结果），不能只写“完成后告诉我”；交付槽位必须写产物路径 | 状态只用 `完成 / 阻塞 / 失败 / 未验证`；没有工具回执时写“结果已产出，报告投递未确认”，不得写“已报告/已闭环” |
-| 同一报告以不同 task id 重复到达 | 结果必须带 `taskId` 和请求摘要；同一内容重复时标 `duplicate`，不重复计入完成 | 收到重复报告时先说“重复”，不把一份结果算两次；不把旧 taskId 当新任务 |
-| `abort` 后继续 prompt 不产生新 taskId/报告 binding | 派发前确认新 `taskId`/`requestId`；继续任务不能复用旧绑定；绑定失败不发送 | 不把 abort 前的“已完成”带到新任务；新任务的状态从 `未开始` 重新写 |
-| `start` 的 create → 设置 → 绑定 → prompt 中途失败会留下空 Session | brief 只在 `start` 返回 `stage=prompted` 后生成；失败要显式说停在哪个阶段 | 不说“已启动/已派发”，除非结果里有 `stage=prompted`；空 Session 不能被说成执行者 |
-| monitor 是请求时提示，不是状态订阅 | 模板写明“报告是异步到达；没有报告不等于完成”；不要写“我会一直盯着” | 不说“我会监控/稍后自动汇报”；需要状态时建议 `list`/`inspect`，并说明是查询不是推送 |
-| 子 Session 的 `ask_user_question` 可能取消并 abort 整轮 | 边界槽位写明：不要用交互提问；遇到需要人决定的事，停下来把**一个**问题写进最终结果/报告，不要假设实时有人回答 | 阻塞时只问一个最必要的问题；不把“等人回答”写成进行中，除非确实有 pending 交互 |
-| 默认 `memory_search` 可能因 `openAt: "never"` 失败 | 证据来源不能把 `memory_search` 写成必需步骤；优先文件、命令、`memory_read`；检索失败要写“检索不可用”，不能编造 | 不声称查过记忆；区分“文件里查到”和“检索不可用” |
-| Windows ACL/沙箱副作用可能让普通 `rename`/构建失败 | 边界槽位禁止修改 ACL、管理员权限、系统目录；遇到权限错误停止并原样报告，不自行提权 | 不把“需要管理员/改 ACL”作为默认建议；把平台限制作为阻塞项报告 |
-| 大量 untitled Session，`append` 路由退化 | 派发前用标题/id 明确目标；untitled 只写 id，不写“那个 Session” | 路由结果写 `→ reuse <title> (<id>)` 或 `→ new <title>, reason: …`，不只说“已派给某个 Session” |
+- `understanding` 只描述“怎么读用户输入”；`preference` 描述“怎么做事”；`style` 描述“回复具体规则”；`identity` 只允许人工编辑，工具拒绝写。
+- 所有条目全局；没有同名工作区覆盖，也没有 overlay 合并。
+- 写入使用 version guard；失败不覆盖旧文件。历史文件由新实现另建（如 `PERSONALITY.history.jsonl`），旧历史不合并。
 
+### 3.3 `OUTPUT_STYLE.yaml` 数据结构
 
+```yaml
+version: 1
+tone: direct          # direct | dry | warm | neutral
+length: terse         # terse | normal | detailed
+leadWithConclusion: true
+lists: comparisons    # never | comparisons | steps
+dispatchVoice: terse  # terse | coaching | neutral
+```
 
-## 3. 冲突与优先级
+```ts
+type OutputTone = 'direct' | 'dry' | 'warm' | 'neutral'
+type OutputLength = 'terse' | 'normal' | 'detailed'
+type OutputListStyle = 'never' | 'comparisons' | 'steps'
+type OutputDispatchVoice = 'terse' | 'coaching' | 'neutral'
 
-### 3.1 必须先报的冲突
+interface OutputStyleConfig {
+  readonly version: 1
+  readonly tone: OutputTone
+  readonly length: OutputLength
+  readonly leadWithConclusion: boolean
+  readonly lists: OutputListStyle
+  readonly dispatchVoice: OutputDispatchVoice
+}
+```
 
-| 编号 | 冲突 | 现状 | 本设计的处理 |
-|---|---|---|---|
-| C1 | A–E 工作偏好是全局的，但 `preference` 写入跟随 overlay | `personalityFileTarget()` 在 overlay 开启时把 `style/preference` 写到工作区 | 给 `personality_learn` 增加可选 `scope: 'global' \| 'workspace'`；默认保持 `workspace` 兼容，user-input 的 A–E 明确传 `global`；不改文件格式 |
-| C2 | 自动学习只匹配窄句式 | `CORRECTION_RULES` 只覆盖“不是这个意思/以后…”等 | 主路径改为模型调用 `personality_learn`；turn-end 正则只做兜底；不扩大成“所有用户消息都学” |
-| C3 | skill 顶层 `version/kind` 不生效 | 解析器只取 `metadata` 对象 | 本设计把两者放 `metadata`；实现阶段若要顶层字段，另开解析器改动与测试 |
-| C4 | personality contribution 不能只注入 super agent | `scope` 只有 `root/all`，没有 runtime context | brief 模板放在 super agent preset 的 section，不放进 personality provider |
-| C5 | `style.*` 与 persona 都描述回复风格 | 现有 `style` 在 100，persona 计划在 690 | `style.*` 是具体、可覆盖的规则；persona 是默认值；冲突时具体 style 赢，且在 690 文本里写明 |
-| C6 | 自动学习预算可能不够 13 次纠正 | 默认 3 条/512 B 每 session | 不擅自提高默认；先测量，必要时只把 user-input 的 A–E 学习与普通学习分桶，作为后续决策 |
-| C7 | 现有 `personality_learn` 的 evidence 只接受 seq | `parseEvidenceSeq` 要求正整数 | 保留；模型从当前 turn 的 `turn/end`/事件获得 seq；不改证据契约 |
-| C8 | write-like-human 是 on-demand skill，不能保证每次输出都执行 | skill catalog 只在需要时加载 | output-summary/persona 里加一句“面向人的文本先用 write-like-human”；它是提示，不是强制钩子；如果要求强制，另做输出钩子，不在本轮 |
-| C9 | 报告/投递/`start` 状态没有闭环保证 | handoff 记录 completed 仍 pending、重复 taskId、abort 无新 binding、空 Session | 模块 2 的 brief 要求工作区证据与 taskId；模块 4 只允许按工具回执说状态；不修改运行时投递逻辑 |
-| C10 | 子 Session 的交互提问会 abort 整轮 | handoff 记录 `ask_user_question` 取消并 abort | 模块 2 禁止 brief 要求交互提问，改为最终结果带一个阻塞问题；模块 4 只问一个必要问题 |
-| C11 | 默认检索可能不可用 | `session-query` 默认可能 `openAt: "never"`，`memory_search` 失败 | 模块 2 不把 `memory_search` 设为必需证据；模块 4 区分“查到/不可用”，不编造检索结果 |
+### 3.4 `WRITING_RULES.yaml` 数据结构
 
-### 3.2 优先级（从高到低）
+```yaml
+version: 1
+rules:
+  - id: no-em-dash
+    text: 面向人的正文不用 em dash；代码、路径、引用原文除外。
+    enabled: true
+    order: 10
+  - id: no-not-x-but-y
+    text: 避免“不是……而是……”的对偶句；直接说结论。
+    enabled: true
+    order: 20
+```
 
-1. 平台/系统/开发者指令，沙箱、审批、工具权限。
-2. 当前轮的明确用户指令（包括“这次不要列清单”这种临时覆盖）。
-3. 目标工作区的 `AGENTS.md` 约定与 superagent 硬规则（`SUPERAGENT_SECTION` 702、`superagent:conventions` 705）。
-4. KB 文档自身的格式/引用口径（例如 `doc_id《标题》`）；persona 只能管 KB 文本之外的语气，不能改 KB 引用格式。
-5. personality 的具体条目（`understanding`、`preference`、`style`）。
-6. persona 默认值（690）与 brief 模板（703）。
-7. write-like-human 的改写规则：只改表达，不改事实、数字、路径、代码和结论。
+```ts
+interface WritingRule {
+  readonly id: string                 // lower-kebab, unique
+  readonly text: string               // one rule, 1..240 chars
+  readonly enabled: boolean
+  readonly order: number              // integer; smaller first
+}
 
-persona 与模板必须带一句硬边界：“不得覆盖安全、审批、沙箱、工具权限或工作区规则；冲突时以上层规则为准。” 这句话本身是 persona section 的固定文本，不允许用户配置关闭。
+interface WritingRulesDocument {
+  readonly version: 1
+  readonly rules: readonly WritingRule[]  // max 32; total text <= 4096 bytes
+}
+```
+
+- `WRITING_RULES.yaml` 只由工具或人写；模型不能直接改文件。
+- 规则是“可执行写作约束”，不是技能正文；没有 skill catalog 依赖，也没有独立黑名单文件。
 
 ## 4. 注入顺序与缓存
 
 ### 4.1 顺序表
 
-| 顺序 | 名称 | 类型 | 范围 | 为什么在这里 |
+| 顺序 | 名称 | 类型 | 范围 | 说明 |
 |---:|---|---|---|---|
-| -1000 | `harness:identity` | section | all | 平台身份，最前 |
-| 0 | `deployment:persona-prefix` | section | all | 部署人格前缀 |
-| **100** | `personality` | section（现有） | all | 用户怎么表达、怎么理解；必须在计划/工具说明之前读到 |
+| -1000 | `harness:identity` | section | all | 平台身份 |
+| 0 | `deployment:persona-prefix` | section | all | 部署人格前缀（平台既有 section，不是 output-style 旧名） |
+| 100 | `personality` | section | all | understanding / preference / style 条目 |
 | 500 | `PLAN_POLICY` | section | all | 计划策略 |
 | 600 | `TEAM_POLICY` | section | all | 团队策略 |
-| **690** | `personality:persona` | section（新增） | all | 回复默认风格；在具体任务规则之后、superagent 之前；具体 `style.*` 在 100 已先出现，persona 只做默认 |
-| **702** | `superagent:dispatcher` | section（现有） | super agent | 派活硬规则与“不许发明标准” |
-| **703** | `superagent:brief-template` | section（新增） | super agent | brief 模板是 702 的执行形式；放在硬规则之后，冲突时 702 赢 |
+| 690 | `personality:output-style` | section | all | output-style 默认表达 |
+| 695 | `personality:writing-rules` | section | all | 已启用的 write-like-human 规则 |
+| 702 | `superagent:dispatcher` | section | super agent | 现有规则 + 并入的 brief 规则 |
 | 704 | `superagent:workspaces` | runtime context | super agent | 注册工作区，每请求重建 |
-| 705 | `superagent:conventions` | runtime context | super agent | 工作区约定，随文件变化 |
+| 705 | `superagent:conventions` | runtime context | super agent | 工作区约定，文件变化时更新 |
 | 706 | `superagent:running` | runtime context | super agent | 长任务状态，每请求重建 |
 | 1000+ | 工具 section | section | all | 工具说明 |
-| — | skill catalog | durable user message | all | 首次请求前/目录变化时追加；不是 system section |
 
-说明：
+**没有 703。** brief 规则不是独立 section，也不再有 `dispatch-brief.md` 数据文件。
 
-- **100 是复用现有位置**，不新开“用户输入 section”。把它挪到 650 可以减少缓存失效范围，但会改变现有 personality 与 plan/team 的相对顺序；本轮不改，作为后续性能选项。
-- **690 放在 600 之后**，因为 persona 是“默认表达”，不应压过计划/团队策略；它仍在 702 之前，让 superagent 的硬规则可以覆盖它。
-- **703 放在 702 之后**，因为模板是执行细节；任何模板与 702 的“只允许两个来源、不许发明标准”冲突，702 赢。703 的文本本身也重复一次“若槽位没有来源，先问人”，但这是执行提示，不改变 702 的权威。
-- **skill 没有 system order**。它通过 durable catalog 出现，加载后作为工具结果进入历史；不要为了“常驻”把 skill 正文抄进 690。
-
-### 4.2 前缀缓存影响
+### 4.2 缓存影响
 
 | 变化 | 失效范围 | 设计取舍 |
 |---|---|---|
-| `PERSONALITY.md` 条目变化 | 从 100 起，包含 500/600/690/702/703 | 自动学习有每 session 3 条预算；人格编辑低频，接受。若后续测量显示写入过频，再把 user-input 拆到 650，属于单独变更 |
-| persona 配置变化 | 从 690 起，包含 702/703 与工具说明 | 只由人保存，低频；不要把每轮状态写进 persona |
-| brief 模板变化 | 从 703 起，主要是工具说明 | 模板是部署级静态文件，变化很少 |
-| skill catalog 成员/描述变化 | 追加一条 replacement catalog，不改写 system prefix | 可接受；不因每次加载 skill 重发目录 |
-| 加载 write-like-human | 只在历史尾部追加工具结果，system prefix 不变 | 这是选 skill 而不是 section 的主要原因 |
+| `PERSONALITY.md` 条目变化 | 从 100 起 | 只在用户确认 `personality_apply` 后发生，低频；无后台自动写 |
+| `OUTPUT_STYLE.yaml` 变化 | 从 690 起 | 人编辑，低频 |
+| `WRITING_RULES.yaml` 变化 | 从 695 起 | 工具 CRUD，受体积上限约束；只有启用/顺序/文本变化才失效 |
+| `SUPERAGENT_SECTION` 变化 | 从 702 起 | 静态规则，部署级变化 |
+| runtime context | 704–706 | 每请求重建，不影响 system prefix |
 
-硬规则：persona、brief 模板、personality section 都不得包含时间戳、seq、每轮计数、当前任务名等易变值；这些只放 runtime context 或工具结果。
+规则文件不允许时间戳、seq、当前任务名等易变内容；这些只放工具结果或 runtime context。
 
-## 5. 数据流
+## 5. user-input：工具化收集与确认
 
-```text
-用户纠正
-  ├─ 模型识别到“ durable correction ”
-  │    → personality_learn(kind, name?, scope?, content, evidence=seq)
-  │       ├─ identity → 拒绝，转 personality_propose → 人工 accept
-  │       ├─ understanding → 全局 PERSONALITY.md
-  │       └─ preference/style → 按 scope 写全局或工作区
-  └─ turn/end 兜底正则（仅显式措辞）
-       → 同一写入路径，受同一预算与去重约束
+### 5.1 数据与分类
 
-PERSONALITY.md 写入
-  → version-guarded write + history
-  → watcher / agent refresh
-  → personality section @100
+复用 `PERSONALITY.md` 的 `understanding` / `preference` / `style`；`identity` 只人工编辑。没有工作区副本。
 
-persona 设置（人）
-  → personality config row
-  → section @690
+- `understanding`：句式、用词、语气词、角色前缀、省略/反问的解读。
+- `preference`：A–E 工作偏好（范围、授权、抽象、简化、一致性、对账）。
+- `style`：具体的回复风格规则；由 output-style 管理默认值，`style` 条目覆盖具体场景。
+- 一个条目只能属于一类；混合内容拆成两条或拒绝。
 
-dispatch-brief.md（人）
-  → superagent brief section @703
+A–E 固定条目：
 
-write-like-human skill（模型按需）
-  → 读取 blacklist.yaml
-  → 改写 → 执行自查
-```
-
-## 6. user-input
-
-### 6.1 形态
-
-**现有 `dsh-personality` 插件内的数据模型与工具扩展**，不新建插件。理由：personality 已经有 PERSONALITY.md、版本守卫、overlay、提案队列、自动预算与 watcher；user-input 只是给这些既有机制增加分类与 scope。新建插件会复制写入、历史和缓存逻辑。
-
-### 6.2 数据模型
-
-复用现有条目，不新增 kind：
-
-```markdown
-## understanding.role-prefix
-The user prefixes a workspace role before the instruction; the prefix names the executor, the rest is the task.
-
-## preference.scope
-Only act on the objects the user names and their direct implications; extra risk gets one line, not a new task.
-
-## preference.authorization
-Inside an explicit authorization, act without asking again; ask only when the authorization boundary changes.
-```
-
-| 内容 | kind | 默认位置 | 谁可写 |
-|---|---|---|---|
-| 句式、用词、语气词、角色前缀、省略/反问的解读 | `understanding.*` | 全局 | `personality_learn`（非 identity，自动预算内）；人可改 |
-| A–E 工作偏好 | `preference.*` | **全局**（新增 scope） | 同上；默认 workspace 兼容旧行为 |
-| 回复风格具体规则 | `style.*` | 工作区 overlay（现有） | 人；output-summary 也可通过工具写，但受 scope |
-| 用户是谁 | `identity.*` | 全局 | 只能 `personality_propose` → 人 accept |
-
-表达习惯的固定条目（`understanding.*`，只描述“怎么读”，不描述“怎么做”）：
-
-| 观察到的习惯 | 固定条目 | 条目内容 |
-|---|---|---|
-| `<角色>：<指令>` 前缀 | `understanding.role-prefix` | 前缀指定执行方，后半才是任务；不要当普通句子读 |
-| 省略主语/宾语 | `understanding.ellipsis` | 对象取最近上下文；先按最近候选做，必要时一行确认，不反问一串 |
-| 反问表肯定 | `understanding.rhetorical-question` | “不是……嘛？”通常是结论通知，不是提问；按结论行动 |
-| 中英混用/术语直呼 | `understanding.mixed-terms` | skill/MR/KB/log/app 等是通用词，不翻译、不加引号 |
-| “先……再……”/“等……之后” | `understanding.sequence` | 顺序是硬约束；前一动作完成是后一动作前置，不并行 |
-
-新增工具参数（实现时）；字段沿用现有 `PersonalityEntryKind`，不新增 kind：
-
-```ts
-type PersonalityLearnKind = Exclude<PersonalityEntryKind, 'identity'>
-type PersonalityWriteScope = 'global' | 'workspace'
-
-interface PersonalityLearnInput {
-  readonly kind: PersonalityLearnKind          // required
-  readonly content: string                     // required, one paragraph
-  readonly evidence: string                    // required, positive seq
-  readonly name?: string                       // optional, lower-kebab; omitted -> auto-<hash>
-  readonly scope?: PersonalityWriteScope       // optional, default preserves current behavior
-}
-
-interface PersonalityLearnValue {              // existing result shape, unchanged
-  readonly status: 'learned' | 'rejected'
-  readonly message: string
-  readonly entry?: string                      // <kind>.<name>
-  readonly path?: string
-  readonly revision?: number
-}
-
-type WorkPreferenceClass = 'A' | 'B' | 'C' | 'D' | 'E'
-interface PreferenceSeed {
-  readonly class: WorkPreferenceClass
-  readonly name: string                        // stable id suffix, for example "scope"
-  readonly text: string
-}
-```
-
-- `name` 用于语义去重：A–E 使用固定名（`scope`、`authorization`、`no-invented-abstractions`、`no-overinterpretation`、`consistency-first`、`inventory-sources`），重复纠正更新同一 id，不新增条目。
-- `scope` 只对 `style/preference` 有意义；`understanding` 始终全局；`identity` 不在这个工具里。
-- 不改 PERSONALITY.md 格式、frontmatter、history 或 proposal 格式。现有 `PersonalityEntry` 仍是 `{ id, kind, name, text }`，没有新字段。
-
-### 6.3 注入点
-
-复用 `personality` section，order **100**。理由：这是“如何解读用户输入”，必须在计划与工具说明之前；现有 section 已经把 `understanding` 和 `preference` 分两部分渲染，不需要新段落。
-
-**缓存**：100 的改动会使 100 之后的前缀失效；由于自动学习有预算且人格编辑低频，接受。**不要**把每轮临时纠正写进 section；临时指令靠当前轮对话。
-
-### 6.4 可学习性
-
-1. **触发**：模型在一次明确纠正后调用 `personality_learn`，`evidence` 用该纠正消息的 seq；turn-end 正则只兜底“不是这个意思/以后……”这类显式句式。
-2. **分类门**：先判断是表达还是工作偏好；一个条目只能属于一类。混合内容（“以后先列清单，而且别用代号”）拆成 `preference` + `understanding` 两条，或拒绝并要求拆分。
-3. **身份**：出现“我是……/我的角色是……”只能 `personality_propose`，人工接受；不得自动写。
-4. **去重**：
-   - 有稳定 `name` 时按 `<kind>.<name>` 覆盖；
-   - 没有 `name` 时沿用 `auto-<hash>` 精确去重；
-   - 模型在调用前先看 `personality` section/prompt 里已有的条目，优先更新同名条目；
-   - 同一 turn 只学一条；同一 session 受 `autoLearn` 预算限制。
-5. **不学**：一次性任务指令、业务事实、未实现/不可判定状态、情绪化表达、没有明确持久意图的句子。
-
-A–E 到固定条目的映射：
-
-| 根因 | 固定条目 | 条目要写成可执行规则 |
+| 根因 | 条目 id | 规则 |
 |---|---|---|
 | A 越界 | `preference.scope`、`preference.authorization` | 只做点名对象及直接推导；授权内自决，改变边界才问 |
 | B 抽象化 | `preference.no-invented-abstractions` | 不造代号/中间结构；引用用单号或 `doc_id《标题》` |
 | C 简化 | `preference.no-overinterpretation` | 不把“整理”当“解读”；只写到可证明层级 |
-| D 默认保守 | `preference.consistency-first` | 发现不一致时目标是消除不一致，不是保留现状 |
+| D 默认保守 | `preference.consistency-first` | 不一致时目标是消除不一致，不是保留现状 |
 | E 漏对账 | `preference.inventory-sources` | 多来源任务先列已审/已改/未改对象 |
 
-### 6.5 验收（3 条）
+表达习惯固定条目：
 
-1. **分类**：给定 5 个 fixture（A–E 各一），`personality_learn` 分别写成对应的 `preference.<固定名>`，不产生 `understanding`/`style` 混写；再给一个“先列清单，不要动” fixture，必须写 `preference.scope` 而不是 `style`。
-2. **表达**：给定“不是这个意思，我是说先列清单”，必须拆成 `understanding`（解读“不是这个意思”）+ `preference.scope`（先清单）；只写一条或写成 `style` 判失败。
-3. **去重/身份**：同一 `name` 连续两次纠正只保留一个条目且文本更新；`identity` 调用返回拒绝并指向 `personality_propose`，PERSONALITY.md 不变。
+| 习惯 | 条目 id | 解读 |
+|---|---|---|
+| `<角色>：<指令>` | `understanding.role-prefix` | 前缀指定执行方，后半才是任务 |
+| 省略主语/宾语 | `understanding.ellipsis` | 取最近上下文；必要时一行确认，不反问一串 |
+| 反问表肯定 | `understanding.rhetorical-question` | 通常是结论通知，不是提问 |
+| 中英混用 | `understanding.mixed-terms` | skill/MR/KB/log/app 是通用词，不翻译 |
+| 先/等之后 | `understanding.sequence` | 顺序是硬约束，前一动作完成是前置 |
 
-### 6.6 风险
+### 5.2 `personality_analyze`
 
-- 分类过细会让 prompt 膨胀；固定 6 个 A–E 条目 + 少量 understanding，超出走人工合并。
-- 模型可能把一次性指令误判为 durable；用“明确持久意图”门与 `/personality diff` 可回滚。
-- 全局 preference 与工作区 overlay 的优先级需要写清：同名 id，工作区覆盖全局；不同 id 合并。A–E 默认全局，工作区可写同名条目覆盖。
+用途：用户说“分析一下我最近的表达/偏好”或明确要求时，扫描会话记录，产出候选和证据；**只读，不写文件**。
 
-## 7. super-agent-dispatch
+```ts
+type AnalysisScope =
+  | { readonly kind: 'current' }
+  | { readonly kind: 'session'; readonly sessionId: string }
+  | { readonly kind: 'recent'; readonly limit: number }  // 1..20
+
+interface AnalyzeInput {
+  readonly scope: AnalysisScope                 // required
+  readonly kinds?: readonly PersonalityEntryKind[]  // optional; identity rejected
+  readonly maxCandidates?: number               // optional, 1..20, default 10
+}
+
+interface EvidenceRef {
+  readonly sessionId: string
+  readonly seq: number                          // positive
+  readonly quote: string                        // exact excerpt, max 400 chars
+  readonly turn?: number
+}
+
+interface PersonalityCandidate {
+  readonly candidateId: string                  // stable hash of kind+name+text
+  readonly kind: Exclude<PersonalityEntryKind, 'identity'>
+  readonly name: string                         // lower-kebab
+  readonly text: string                         // proposed entry text
+  readonly evidence: readonly EvidenceRef[]     // at least one
+  readonly occurrences: number                  // across scanned sessions
+  readonly confidence: 'high' | 'medium'
+}
+
+interface AnalyzeResult {
+  readonly candidates: readonly PersonalityCandidate[]
+  readonly sessionsScanned: number
+  readonly truncated: boolean
+  readonly warnings: readonly string[]          // legacy workspace files, unreadable sessions
+}
+```
+
+- `scope: current` 只读当前 Session；`session` 读指定 id；`recent` 读最近 N 个可读 Session。
+- 证据必须是具体片段和 seq；不能只给“用户经常这样说”的概括。
+- 不调用 `memory_search` 作为必需步骤；直接读会话记录。检索不可用时返回 `warnings`，不编造证据。
+- 不写文件、不改 prompt、不自动应用。
+
+### 5.3 `personality_apply`
+
+用途：用户看过候选后明确说“写入/应用”，或人工确认时，写入全局 `PERSONALITY.md`。
+
+```ts
+interface ApplyCandidate {
+  readonly kind: Exclude<PersonalityEntryKind, 'identity'>
+  readonly name: string
+  readonly text: string
+  readonly evidence: readonly EvidenceRef[]     // at least one
+}
+
+interface ApplyInput {
+  readonly candidates: readonly ApplyCandidate[]  // 1..20
+  readonly confirm: true                          // required literal
+}
+
+interface ApplyResult {
+  readonly applied: readonly string[]             // entry ids
+  readonly rejected: readonly { readonly name: string; readonly reason: string }[]
+  readonly path: string                           // global PERSONALITY.md
+  readonly revision: number
+}
+```
+
+- `confirm` 必须是字面 `true`；工具描述要求“只在用户明确要求应用后调用”。
+- 只写 `<DSH_HOME>/personality/PERSONALITY.md`；发现工作区旧文件只给 warning，不读取、不写。
+- `identity` 拒绝；identity 只能人手工编辑。
+- 同一 `id` 是更新，不是新增；`name` 稳定用于去重。
+- 没有自动调用路径：没有 turn-end hook，没有正则，没有预算计数器。
+
+### 5.4 验收（3 条）
+
+1. **分析范围**：`current`/`session`/`recent` 三个 fixture 的 `sessionsScanned` 正确；每个候选至少一个 `EvidenceRef`，`quote` 来自该 session 的真实片段；`personality_apply` 前后 `PERSONALITY.md` 不变。
+2. **确认门**：`confirm` 缺失或为 false 时拒绝且不写；`identity` 候选被拒绝；同一 `id` 两次 apply 只保留一条并更新文本。
+3. **全局唯一**：构造 `workspace/.dsh/memory/PERSONALITY.md`，`personality_analyze`/`apply` 不读不写它，只返回一次 warning；所有写入路径都匹配 `<DSH_HOME>/personality/PERSONALITY.md`。
+
+### 5.5 风险
+
+- 分析可能从一次性任务里提炼出“伪偏好”；证据不足时只给 `medium`，并要求人工确认。
+- 会话很多时 `recent` 的读取成本高；限制 20 个、结果截断并给 `truncated`。
+- 全局单文件没有 overlay，工作区特殊偏好只能靠当前轮指令；这是裁决 1 的明确代价。
+
+## 6. super-agent-dispatch：并入现有规则
+
+### 6.1 形态
+
+**直接修改现有 `SUPERAGENT_SECTION`（order 702）的文本**，把 brief 模板和 Windows 失败约束写进同一节。没有独立 section、没有 `dispatch-brief.md`、没有新的注入机制。
+
+### 6.2 规则内容
+
+在现有“brief 只有两个来源、不许发明标准”的规则后，追加固定模板与失败约束：
+
+```text
+Brief slots (fill every slot; no slot has a default):
+目标: <one objective; quote the person>
+验收: <what proves it; person or destination AGENTS.md#superagent:conventions only>
+边界: <in scope / out of scope / stop conditions>
+证据来源: <workspace-relative paths, commands, convention anchors>
+
+Result contract:
+- First line: status: done | blocked | failed | unverified · task_id: <only when supplied>
+- Last line: artifacts: <workspace-relative paths> · checks: <commands actually run>
+- No report or no artifact means not done.
+- Do not use interactive ask_user_question in a dispatched task; return one blocking question instead.
+- Do not require memory_search; do not modify ACLs, admin permissions, or system directories.
+```
+
+- 该模板与现有规则同层；`SUPERAGENT_SECTION` 仍是唯一来源。
+- 与 `superagent:workspaces`（704）、`superagent:conventions`（705）、`superagent:running`（706）的关系：702 是静态规则；704 提供工作区身份；705 提供目标工作区约定，702 要求引用它；706 提供长任务状态。没有新 order。
+- 冲突时 702 的“两个来源、不许发明标准”优先于模板的任何措辞；模板只是执行形式。
+
+### 6.3 验收（3 条）
+
+1. `SUPERAGENT_SECTION` 文本包含四个槽位、`status/task_id`、`artifacts/checks`、`interactive ask` 禁止、`memory_search` 非必需、ACL 禁止；普通工作区 agent 的 prompt 没有这些 super agent 规则。
+2. 没有新增 `703` section；section 顺序仍是 702，runtime context 仍 704–706；测试断言 assembly 中没有 `superagent:brief-template`。
+3. 现有 `superagent-brief.test.ts` 的硬规则仍全部匹配；新增 fixture 写“counts only, no names”仍被“never invent a standard”覆盖。
+
+### 6.4 风险
+
+- 规则文本变长，super agent 每请求固定成本增加；这是把模板并入 702 的代价。
+- 702 已经很大；实现时只追加必要槽位和失败约束，不再复制 `superagent:conventions` 的内容。
+
+## 7. write-like-human：规则工具
 
 ### 7.1 形态
 
-**super agent preset 的 prompt section `703` + 数据文件 `$DSH_HOME/personality/dispatch-brief.md`。** 不放进 personality capability：它的 `scope` 只有 `root/all`，没有“只 super agent”；不放进 skill：brief 规则必须每次派活都在，不能靠模型记得加载。section 由 super agent 的 contribution 注册，模板由人维护。
+**工具 `write_like_human` + 全局 `WRITING_RULES.yaml` + prompt section 695。** 不是 skill，不依赖 skill catalog，不再有独立黑名单文件。
 
-### 7.2 数据模型
-
-`dispatch-brief.md` 是普通 Markdown，四个固定二级标题；加载器只做结构校验，不解析语义：
-
-```markdown
-## 目标
-<one objective; quote the person's words>
-
-## 验收
-<what proves it; only from the person or the destination conventions>
-
-## 边界
-<in scope / out of scope / stop conditions>
-
-## 证据来源
-<files, commands, workspace AGENTS.md#superagent:conventions, or person quote>
-```
-
-- 四个标题必须恰好各一次；缺一个或重复，加载器回退内置模板并记 warning。
-- 模板本身不写任何具体标准、阶段、政策；只写槽位与填法。
-- 谁可写：人（文件所有者）；模型只读。模型需要新标准时，去问人更新其原话或目标工作区约定，不能改模板。
-- 存储位置：`$DSH_HOME/personality/dispatch-brief.md`；不存在时用内置默认，不创建空文件。
-
-加载器接口：
+### 7.2 工具接口
 
 ```ts
-type DispatchBriefSlotKey = 'goal' | 'acceptance' | 'boundaries' | 'evidence'
+type WritingRuleAction = 'list' | 'add' | 'update' | 'remove' | 'enable' | 'disable' | 'preview'
 
-interface DispatchBriefSlot {
-  readonly key: DispatchBriefSlotKey
-  readonly heading: string          // exact heading text in the file
-  readonly required: true
-  readonly sourceRequired: true     // every filled value names a person/convention source
+interface WriteLikeHumanInput {
+  readonly action: WritingRuleAction                 // required
+  readonly id?: string                               // required for update/remove/enable/disable
+  readonly text?: string                             // required for add/update; 1..240 chars
+  readonly order?: number                            // optional for add/update
+  readonly enabled?: boolean                         // optional for add/update
 }
 
-interface DispatchBriefTemplate {
-  readonly version: 1
-  readonly slots: readonly [
-    DispatchBriefSlot, DispatchBriefSlot, DispatchBriefSlot, DispatchBriefSlot,
-  ]                              // exactly four, in this order
+interface WritingRuleView {
+  readonly id: string
+  readonly text: string
+  readonly enabled: boolean
+  readonly order: number
 }
 
-interface DispatchBriefLoadResult {
-  readonly template: DispatchBriefTemplate
-  readonly fallback: boolean       // true when the file is absent or malformed
-  readonly warning?: string        // present only for a malformed existing file
-}
-
-type BriefValueSource = 'person' | 'conventions' | 'missing'
-interface BriefSlotCheck {
-  readonly key: DispatchBriefSlotKey
-  readonly source: BriefValueSource
-  readonly reference?: string      // path, command, quote, or workspace convention anchor
+interface WriteLikeHumanResult {
+  readonly action: WritingRuleAction
+  readonly rules: readonly WritingRuleView[]         // current list, sorted by order then id
+  readonly promptSection?: string                    // preview only; enabled rules joined
+  readonly path: string                              // global WRITING_RULES.yaml
+  readonly revision: number
 }
 ```
 
-`BriefSlotCheck` 是设计给测试/未来的轻量校验用的数据结构，不代表本轮新增工具；模板 section 仍以文字自查为主。
+- `add` 自动生成 lower-kebab id（或接受显式 id），拒绝重复；`update` 保留 id；`remove` 删除；`enable/disable` 切换。
+- `preview` 只返回注入文本，不写文件。
+- 所有写操作只写 `<DSH_HOME>/personality/WRITING_RULES.yaml`；没有工作区路径。
+- 工具只在用户要求时修改；没有自动生成规则。
 
-### 7.3 注入点
+### 7.3 注入
 
-`superagent:brief-template`，order **703**，只在 super agent 的 preset 中注册。
+`personality:writing-rules`，order **695**，所有 agent。
 
-理由：702 是硬规则，703 是它的执行形式；703 在 702 之后，便于模型先读“不许发明标准”，再读“四个槽位怎么填”。703 不进入 runtime context，因为它不随 turn 变化。
+文本只包含启用规则，按 `order` 升序、同 order 按 id；空集合时 section 为空（assembly 丢弃）。每条一行，不渲染 id/时间戳。
 
-**缓存**：模板只在文件变化时重读，从 703 起失效；可接受。
+体积上限：
 
-### 7.4 模板如何约束“不许在 brief 里发明标准”
+- 最多 32 条规则；每条 1–240 字符；启用规则正文合计 ≤ 4096 UTF-8 bytes。
+- 超过上限：工具拒绝写入并给出当前字节数/条数；不静默截断。
+- 注入文本超过 4096 bytes 时拒绝保存，保证 section 有界。
 
-模板只给**槽位**，不给默认值；每个槽位都要求来源：
+### 7.4 优先级
 
-- 目标：只能是用户原话/明确任务；
-- 验收：只能来自用户或目标工作区 `AGENTS.md#superagent:conventions`；
-- 边界：只写用户说过的 in/out of scope 与停止条件；
-- 证据来源：必须是路径、命令或约定引用；没有来源就写“待确认”，不能补一个猜测。
+从高到低：
 
-固定首尾行（不占四个槽位，防止 Windows 失败模式重新出现）：
+1. 平台/系统/审批/沙箱。
+2. 当前轮用户明确指令（“这次不用那条规则”）。
+3. superagent 硬规则与工作区约定（702/705）。
+4. writing rules（695）——具体输出规则。
+5. `PERSONALITY.md` 的 `style` 条目（100）——具体场景规则。
+6. output-style 默认值（690）。
 
-```text
-结果首行: status: done | blocked | failed | unverified · task_id: <only when supplied>
-结果末行: artifacts: <workspace-relative paths> · checks: <commands actually run>
-没有报告或没有产物时，不得写 done。
-遇到需要人决定的事: 不调用交互提问，只把一个问题写进结果。
-不把 memory_search 当必需步骤；不修改 ACL、管理员权限或系统目录。
-```
-
-
-section 文本在四个槽位之后加一个**派发前自查**（不是工具校验）：
-
-1. 四个槽位都有来源，且没有“默认/通常/一般来说”这种自造标准；
-2. 一个 brief 只有一个目标与一个验收；
-3. 需要的新标准是否已问过人；
-4. 目标工作区约定是否已引用 `workspace-id/AGENTS.md#superagent:conventions`。
-
-若任一不满足，先问人，不派发。702 的“missing standard → ask”仍然优先于模板。
+writing rules 不能覆盖前两层；与 output-style 冲突时具体 writing rule 赢；与 `style` 条目同级时，id 更具体的规则在前，section 文本明确“更具体规则优先”。
 
 ### 7.5 验收（3 条）
 
-1. **结构与失败约束**：给定模板 fixture，渲染出的 section 恰好包含四个标题各一次；删除“证据来源”后加载器回退内置模板并 warning；fixed 首尾行包含 `status`、`task_id`、`没有报告或没有产物时不得写 done` 与“不调用交互提问”。
-2. **范围**：super agent 的 assembly 有 `superagent:brief-template`，普通工作区 agent 没有；order 是 703；section 文本包含“两个来源”和“缺来源先问人”。
-3. **反发明**：fixture brief 写了“counts only, no names”，而用户原话/约定没有这个限制；静态 prompt 的规则文本必须能匹配到“never invent a standard”，并且在模板自查项里要求“无来源不填”；测试断言 prompt 同时包含 702 的硬规则和 703 的自查项。
+1. **CRUD**：`add` → `list` → `update` → `disable` → `remove` 后文件只保留预期规则；`disable` 的规则不出现在 `preview`/section；`remove` 后 section 不含该条。
+2. **上限/注入**：32 条/4096 bytes 边界内可写，超出拒绝且文件不变；section order 695，按 order/id 排序，空集合不产生文本。
+3. **冲突**：fixture 同时有 output-style “terse” 与 writing rule “详细解释”，section 文本规定 writing rule 优先；fixture 同时有 superagent 硬规则与 writing rule，硬规则优先。工具不修改 702。
 
 ### 7.6 风险
 
-- 模板文件可被人改坏；加载器回退内置模板，不能静默使用半个模板。
-- 703 的文本与 702 有重复；保持“702 是规则、703 是执行清单”的分工，避免两处各写一套标准。
-- 真正的强制需要工具层校验；本轮只做提示与结构校验，不新增 brief 解析器。
+- 规则是人写的，可能互相矛盾；工具只能排序，不能判断语义冲突；冲突由 section 的优先级和人工 review 处理。
+- 4096 bytes 上限会限制规则数量；超过时应合并规则，不是提高上限。
+- 所有 agent 都注入，规则太泛会污染工具型输出；规则文本明确“仅用户可见正文”，代码/JSON 不改。
 
-## 8. write-like-human
+## 8. output-style：全局配置
 
 ### 8.1 形态
 
-**skill + 数据文件。** skill 是按需加载的改写流程；词表/句式黑名单放 `references/blacklist.yaml`，不堆在正文。理由：输出改写是任务级技能，不是每轮都该占 system prompt；词表需要人维护且可独立增长，正文只保留流程与自查。
+**全局 `OUTPUT_STYLE.yaml` + section 690。** 名称统一为 `output-style`；没有 `output-summary`，配置对象名是 `outputStyle`，字段名不再用 `persona`。
 
-建议位置：`$DSH_HOME/skills/write-like-human/SKILL.md` 与同目录 `references/blacklist.yaml`；由 `skill-filesystem` 发现，`tool-skill` 提供 catalog/loader。
+### 8.2 配置与注入
 
-### 8.2 frontmatter
-
-当前解析器只保证 `name`、`description`、`whenToUse`、`metadata` 可用，因此：
-
-```yaml
----
-name: write-like-human
-description: Rewrite user-facing prose so it reads like a person wrote it, without changing facts, code, numbers, or quoted text; load before sending a report, summary, or explanation.
-metadata:
-  version: 1
-  kind: output-transform
-  triggers:
-    - user-facing report
-    - summary
-    - explanation
-    - handoff note
----
-```
-
-- `version`/`kind` 放 `metadata` 是当前契约的兼容写法；若实现阶段要让它们成为顶层字段，必须单独改 `skill-filesystem` 解析器与测试，不能假设已生效。
-- `description` 是触发面：只写“何时用”，不要写“让文字更自然”这种不可测目标。
-
-### 8.3 触发条件
-
-- 要发给用户的报告、总结、说明、交接便签；
-- 人在对话里说“说人话/别像 AI/简化表达”；
-- 不触发：代码、JSON/YAML、路径、命令、日志原文、commit message、工具结果；这些保持原样。
-
-### 8.4 词表存放
-
-`references/blacklist.yaml`：
-
-```yaml
-version: 1
-banned_terms:
-  - 赋能
-  - 闭环
-  - 抓手
-  - 深度融合
-  - 全面提升
-banned_patterns:
-  - label: not-x-but-y
-    regex: '不是.{0,24}而是'
-  - label: rule-of-three
-    regex: '首先.{0,80}其次.{0,80}最后'
-  - label: summary-filler
-    regex: '总的来说|值得注意的是|不难看出|让我们'
-  - label: em-dash
-    regex: '—'
-checks:
-  - facts-unchanged
-  - banned-scan-zero
-  - max-sentence-chars
-  - no-three-part-parallel
-max_sentence_chars: 80
-```
-
-- skill 正文只写“读取该文件并执行 checks”，不复制词表；词表更新不需要改 skill。
-- 词表由人维护；模型可以读，不得在任务中改词表（要改先问人）。
-- `em-dash` 针对用户可见中文/英文正文；代码块、路径、引用原文不检查。
-
-数据结构：
+数据见 3.3。section `personality:output-style`，order **690**，所有 agent。
 
 ```ts
-interface WriteLikeHumanMetadata {
-  readonly version: 1
-  readonly kind: 'output-transform'
-  readonly triggers: readonly string[]     // at least one trigger
-}
-
-type RewriteCheckName =
-  | 'facts-unchanged'
-  | 'banned-scan-zero'
-  | 'max-sentence-chars'
-  | 'no-three-part-parallel'
-
-interface BlacklistPattern {
-  readonly label: string
-  readonly regex: string
-}
-
-interface BlacklistV1 {
-  readonly version: 1
-  readonly banned_terms: readonly string[]
-  readonly banned_patterns: readonly BlacklistPattern[]
-  readonly checks: readonly RewriteCheckName[]  // all required checks
-  readonly max_sentence_chars: number           // positive integer
-}
-
-interface RewriteCheckResult {
-  readonly check: RewriteCheckName
-  readonly ok: boolean
-  readonly hits: readonly string[]
+interface OutputStyleRenderInput {
+  readonly config: OutputStyleConfig
+  readonly styleEntries: readonly PersonalityEntry[]  // from PERSONALITY.md at 100
+  readonly dispatch: boolean                          // true for super agent
 }
 ```
 
-### 8.5 改写与自查
+- 字段固定顺序：`tone` → `length` → `leadWithConclusion` → `lists` → `dispatchVoice`。
+- 具体 `style` 条目（100）优先于 output-style 默认值；section 文本明确这一点。
+- `dispatchVoice` 写成条件句，只有 super agent 实际执行。
 
-步骤：
-
-1. 标出不可改内容：代码块、行内代码、数字、路径、命令、专有名词、结论。
-2. 按 `banned_terms` / `banned_patterns` 替换或重写；优先删句，不要用同义套话替换。
-3. 合并短句、去掉“不是……而是……”的对偶句、去掉三段式排比、去掉“总的来说”式收尾。
-4. 自查（可执行）：
-   - `facts-unchanged`：抽取数字/路径/行内代码，改写前后集合相等；
-   - `banned-scan-zero`：对正文扫词表，命中数为 0；
-   - `no-three-part-parallel`：正则/句法检查无三连排比；
-   - `max-sentence-chars`：单句不超过配置值（默认 80 中文字符）；
-   - 不新增原文没有的结论或承诺；业务口径由调用方的规则决定，skill 不裁定。
-5. 任何一项失败，回到第 2 步；不要用“更自然”作为通过标准。
-
-### 8.6 验收（3 条）
-
-1. **可发现**：catalog 列出 `write-like-human`，`skill` 加载返回 frontmatter + 正文；`metadata.version=1`、`metadata.kind=output-transform`；正文不包含政策/阶段红线。
-2. **词表生效**：给一段含 `不是…而是…`、`—`、`总的来说`、三段式排比的 fixture，改写后 `banned-scan-zero` 为 0，`facts-unchanged` 为 true；原始代码块/路径逐字不变。
-3. **负触发**：给只有代码/JSON 的输入，skill 的触发条件判定为不适用；不改写标识符、数字和命令。
-
-### 8.7 风险
-
-- 过度改写会损伤技术精确性；用“不可改内容”清单与 facts 检查约束。
-- 中文词表容易误伤引用原文；只扫正文，引用块/代码块排除。
-- skill 是按需加载，不能保证每次输出都调用；persona 里加一句指针，但真正的强制需要输出钩子，本轮不做。
-
-## 9. output-summary
-
-### 9.1 形态
-
-**personality 配置行的 `persona` 数据 + section `690`。** 不新建 store：persona 是少量、强类型、用户拥有的配置，适合放进现有 personality row 的 volatile config，与 PERSONALITY.md 的条目分开。section 由 personality provider 注册，所有 agent 都读；派活口吻作为条件句写在 section 里，只有 super agent 实际执行。
-
-### 9.2 数据模型
-
-```yaml
-persona:
-  tone: direct          # direct | dry | warm | neutral
-  length: terse         # terse | normal | detailed
-  leadWithConclusion: true
-  lists: comparisons    # never | comparisons | steps
-  dispatchVoice: terse  # terse | coaching | neutral
-```
-
-数据结构：
-
-```ts
-type PersonaTone = 'direct' | 'dry' | 'warm' | 'neutral'
-type PersonaLength = 'terse' | 'normal' | 'detailed'
-type PersonaListStyle = 'never' | 'comparisons' | 'steps'
-type PersonaDispatchVoice = 'terse' | 'coaching' | 'neutral'
-
-interface PersonaConfig {                 // raw config; all optional before resolution
-  readonly tone?: PersonaTone
-  readonly length?: PersonaLength
-  readonly leadWithConclusion?: boolean
-  readonly lists?: PersonaListStyle
-  readonly dispatchVoice?: PersonaDispatchVoice
-}
-
-interface ResolvedPersonaConfig {         // what the section renders; all required
-  readonly tone: PersonaTone
-  readonly length: PersonaLength
-  readonly leadWithConclusion: boolean
-  readonly lists: PersonaListStyle
-  readonly dispatchVoice: PersonaDispatchVoice
-}
-
-interface PersonaRenderInput {
-  readonly config: ResolvedPersonaConfig
-  readonly styleEntries: readonly PersonalityEntry[]  // specific rules already rendered at 100
-  readonly dispatch: boolean                          // true for the super agent
-}
-```
-
-| 字段 | 作用 | 谁可写 |
-|---|---|---|
-| `tone` | 回复的默认语气 | 人（设置页/配置） |
-| `length` | 默认长度 | 人 |
-| `leadWithConclusion` | 是否先给结论 | 人 |
-| `lists` | 何时用列表 | 人 |
-| `dispatchVoice` | 派活口吻（条件句） | 人 |
-
-- 模型不能写 Persona 配置；只能写 `style.*` 具体条目（经 `personality_learn`，受 scope/预算）。
-- 学习到的“回复要短”如果是一次性，不写；如果是 durable，写 `style.*`，不写 persona 配置。
-- 配置缺省时 section 文本为空或只有硬边界句；不要让空配置产生空 section 垃圾。
-
-### 9.3 注入点
-
-`personality:persona`，order **690**，所有 agent。
-
-理由：persona 是默认表达，放在计划/团队策略之后，不抢具体规则；放在 superagent 702 之前，让 702 的硬规则和 705 的约定可以压过它。具体 `style.*` 在 100 已经先出现，690 只给默认值，文本明确“具体 style 条目优先”。
-
-**缓存**：persona 只在人保存时变化，从 690 起失效；不要每轮写。空文本的 section 应被 assembly 丢弃，不产生额外 token。
-
-硬边界固定文本：
+固定硬边界：
 
 ```text
-Persona defaults never override safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.
+Output style never overrides safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.
 ```
 
-### 9.4 可配置维度与渲染
+固定状态约束（不随配置关闭）：
 
-section 文本只渲染**非默认/显式**的维度，避免固定噪音；默认值也写一行，保证模型知道基线。顺序固定：tone → length → conclusion → lists → dispatchVoice。`dispatchVoice` 写成条件句：
+- 只按工具回执说 `done / blocked / failed / unverified`；没有回执写“报告投递未确认”。
+- 不说“我会监控/稍后自动汇报”；monitor 是查询，不是订阅。
+- 未拿到 `start.stage=prompted` 不写“已启动/已派发”。
+- 重复报告标 `duplicate`；路由写 `→ reuse <title> (<id>)` 或 `→ new <title>, reason: …`。
+- 需要人决定时只问一个必要问题；不把 `ask_user_question` 取消整轮包装成“等待中”。
+
+### 8.3 验收（3 条）
+
+1. **命名**：代码、配置、section、fixture 中没有 `output-summary`/`persona` 旧名；`outputStyle` 字段全部可解析，未知 enum 拒绝。
+2. **顺序/范围**：section order 690，所有 agent 都有；在 `SUPERAGENT_SECTION`（702）之前；`style` 条目在 100，具体规则优先。
+3. **硬边界/状态**：section 匹配“never overrides safety, approval, sandbox, tool permission, or workspace rules”；给“报告 pending”fixture，固定状态约束禁止“已完成/已报告”。
+
+### 8.4 风险
+
+- 全局默认风格不能按工作区变化；这是裁决 1 的代价，工作区差异只能靠具体 `style` 条目或当前轮指令。
+- `dispatchVoice` 对所有 agent 可见但只有 super agent 执行，产生少量无关 token；若测量证明浪费，再拆，但本轮不新增目标判定。
+
+## 9. 数据流
 
 ```text
-When dispatching (super agent only): terse.
+用户要求分析
+  → personality_analyze(scope=current|session|recent)
+      → 读取会话记录，产出 candidates + evidence
+      → 不写文件
+
+用户确认
+  → personality_apply(candidates, confirm=true)
+      → 只写 <DSH_HOME>/personality/PERSONALITY.md
+      → section 100 下次 assembly 生效
+
+用户维护写作规则
+  → write_like_human(add/update/remove/enable/disable)
+      → 只写 <DSH_HOME>/personality/WRITING_RULES.yaml
+      → section 695 下次 assembly 生效
+
+用户编辑输出风格
+  → OUTPUT_STYLE.yaml
+      → section 690 下次 assembly 生效
+
+super agent 派发
+  → SUPERAGENT_SECTION 702（含 brief 模板）
+  → runtime context 704–706（工作区/约定/长任务）
 ```
 
-固定状态约束（不随 persona 配置关闭）：
+## 10. 实施顺序
 
-- 只按工具回执说状态：`完成 / 阻塞 / 失败 / 未验证`；没有回执写“报告投递未确认”，不得写“已报告/已闭环”。
-- 不声称“我会监控/稍后自动汇报”；monitor 是请求时查询，不是订阅。
-- 未拿到 `start.stage=prompted` 时，不写“已启动/已派发”。
-- 重复报告先标 `duplicate`，不把一份结果算两次；任务 id 不同但内容相同的报告，不能合并成“已完成两次”。
-- 路由结果写 `→ reuse <title> (<id>)` 或 `→ new <title>, reason: …`，不写“某个 Session”。
-- 需要人决定时只问一个最必要的问题；不把 `ask_user_question` 取消整轮包装成“等待中”。
+| 顺序 | 工作 | 为什么 | 前置 |
+|---:|---|---|---|
+| 1 | 移除旧 personality 实现；实现 legacy 备份/工作区警告 | 防止旧工具和旧数据继续产生行为；先定义边界 | 无 |
+| 2 | 新建全局 `PERSONALITY.md` 数据层 + `personality_analyze` / `personality_apply` + section 100 | user-input 是新设计的基础，其他模块依赖全局数据模型 | 1 |
+| 3 | `output-style` 配置 + section 690 | 依赖全局配置和 section 顺序；独立于工具 | 2 |
+| 4 | `write_like_human` 工具 + `WRITING_RULES.yaml` + section 695 | 需要 section 顺序与全局写入路径；可独立测 CRUD | 2 |
+| 5 | 把 brief 模板和 Windows 约束并入 `SUPERAGENT_SECTION` | 只改 702 文本，依赖现有 superagent 规则和 runtime context | 无（可与 2–4 并行，但最后测冲突） |
+| 6 | 集成测试：注入顺序、缓存、全局路径、旧数据备份/警告 | 单模块测试不能证明优先级和全局约束 | 1–5 |
 
-### 9.5 验收（3 条）
+先做 1，因为“旧实现直接 drop”是最高约束；如果旧代码还在，其他模块会被旧工具/旧 section 污染。
 
-1. **确定性**：同一配置两次 assembly 的 section 文本逐字相同；未知 enum 在配置解析时被拒绝；改 `leadWithConclusion` 只改变对应行，不改变其他行顺序。
-2. **范围/顺序**：所有 agent 的 assembly 都有 `personality:persona`，order 690，且在 `superagent:dispatcher`（702）之前；workspace agent 也有回复 persona，但 `dispatchVoice` 行明确是条件句。
-3. **硬边界与状态**：section 文本必须匹配“never override safety, approval, sandbox, tool permission, or workspace rules”；给一个 persona 说“always agree”的 fixture，硬边界句仍存在且不被配置覆盖；再给“报告仍 pending”的 fixture，固定状态约束必须禁止“已完成/已报告”。
+## 11. 在另一台电脑上实现的前置条件
 
-### 9.6 风险
-
-- persona 与 `style.*` 重复；用“具体 style 赢”的文本和测试固定，不新增第二个 style 来源。
-- persona 配置是新的 schema/UI 面，必须与 `ui-personality` 表单一起改；本轮只设计。
-- 派活口吻对所有 agent 可见，会有少量无关 token；若测量证明浪费，再拆出 super agent-only section，不先引入复杂的目标判定。
-
-## 10. 在另一台电脑上实现的前置条件
-
-### 10.1 代码与包
-
-在另一台机器上 checkout `origin/cli-desktop` 后，按下面的包路径定位实现点；不要依赖本机目录或行号：
+### 11.1 包与改点
 
 | 需要改/复用 | 包路径 | 说明 |
 |---|---|---|
-| personality provider、工具、文件、section 100 | `packages/uitstalie/personality` | `personality_learn` 的 `scope`/`name`、分类门、`persona` 配置、`personality:persona` section |
-| 组织者接口 | `packages/uitstalie/dafeiyu` | 现有 `CapabilityContribution` 只支持 `scope: root/all` 与 `promptSections`；不要假设它能只给 super agent |
-| prompt section/order | `packages/core/system-prompt` | 复用 `PromptSection`；690/703 是新增的稳定 order，不改现有固定顺序 |
-| super agent 的 section 与 preset | `packages/jira/jira-agent` | 在现有 `SUPERAGENT_SECTION` 旁注册 `superagent:brief-template`（703），只在 super agent 的 contribution 中；不改 702 文本 |
-| skill 注册表与目录 | `packages/skill/skill`、`packages/skill/skill-filesystem`、`packages/skill/tool-skill` | 已有 `$DSH_HOME/skills` 根与 catalog/tool；不需要新增 skill 根 |
-| persona 设置 UI | `packages/uitstalie/ui-personality` | 若 persona 要可视化编辑，扩展现有字段表；不做 UI 时至少让配置可手写 |
-| 数据与文件服务 | `packages/uitstalie/store-atom`、`packages/fs/fs` | PERSONALITY.md 的 version-guarded 写、`$DSH_HOME` 解析、文件监听 |
+| 旧 personality 实现 | `packages/uitstalie/personality` | 删除旧 provider/tools/commands/proposals/overlay；新实现放同一包或新包，按裁决 4 不复用旧 API |
+| 旧 UI | `packages/uitstalie/ui-personality` | 旧 proposal 页/设置字段移除；新 output-style/writing-rules 页面另做 |
+| 组织者 | `packages/uitstalie/dafeiyu` | 新 personality 仍可注册为 capability；工具和 section 走现有 contribution |
+| prompt 顺序 | `packages/core/system-prompt` | 100/690/695/702 沿用/新增固定 order；不改固定表以外的机制 |
+| super agent 规则 | `packages/jira/jira-agent` | 只改 `SUPERAGENT_SECTION` 文本；不新增 section、不加 `703` |
+| 全局文件服务 | `packages/uitstalie/store-atom`、`packages/fs/fs` | 全局 `$DSH_HOME` 读写、version guard、文件监听 |
+| web 挂载 | `packages/bundle/web-app/cordis.patch.uitstalie.yml` | 替换旧 personality/UI 行；新工具和页面需要新行 |
 
-**需要改 superagent prompt 注册表吗？** 需要。`superagent:brief-template` 必须在 `packages/jira/jira-agent/src/superagent.ts` 的 super agent contribution 中注册，order 703；不能靠 personality provider 的 `scope: all` 伪装成“只给 super agent”。如果不想改 jira-agent，替代方案是做一个只挂在 super agent preset 的小 section provider，但那会增加一个插件行，不作为首选。
+不需要新 skill 目录，不需要 `skill-filesystem`/`tool-skill` 的改动；write-like-human 是普通工具。
 
-### 10.2 目录与数据文件
+### 11.2 实现顺序的前置
 
-- `PERSONALITY.md`：沿用现有全局 `<DSH_HOME>/personality/PERSONALITY.md` 和工作区 `<workspace>/.dsh/memory/PERSONALITY.md`；不改 frontmatter、块标记、history/proposal 文件名。
-- `dispatch-brief.md`：`<DSH_HOME>/personality/dispatch-brief.md`，不存在时用内置模板；加载器不得把它当成 PERSONALITY.md 的一部分。
-- `write-like-human` skill：`<DSH_HOME>/skills/write-like-human/SKILL.md`，词表在同目录 `references/blacklist.yaml`。`skill-filesystem` 已经把 `<DSH_HOME>/skills` 作为用户根；不需要改根目录约定。
-- 如果产品选择把 skill 随包发布，而不是放用户目录，则应把 skill 作为 bundle 资源安装到同一 `<DSH_HOME>/skills` 约定，或注册 runtime skill；不要在代码里硬编码仓库路径。
-- persona 数据：放在 personality 配置行，不额外创建 `persona.yaml`；避免第二份存储。
+- 先决定 `PERSONALITY.md` 新格式和 legacy 备份路径，再写工具；否则 `personality_apply` 会写出旧格式兼容代码。
+- 旧数据备份必须在第一次新写入前完成；备份失败时禁止新写入。
+- 工作区旧文件警告是进程内一次性的（每个 workspace path 一次）；不要每次请求都刷日志。
+- 新工具注册到哪些 agent：personality 仍是 capability；`personality_analyze`/`personality_apply` 对所有 agent 可见，还是只 root？本设计建议所有 agent，但 root 才允许 `personality_apply`，避免子 agent 写全局人格；实现时用 `scope` 或工具可见性做限制，不能靠提示。
+- `write_like_human` 修改全局规则，建议只对 root/super agent 开放；如果需要所有 agent 可读，section 对所有 agent 注入，但工具只给授权角色。
 
-### 10.3 实现顺序与验证前置
+### 11.3 数据与路径
 
-- 先让 `pnpm install`/workspace 链接完成，再改 personality config/schema 与 `personality_learn`；这两个改动会决定测试 fixture 的形态。
-- `personality` 现有测试、`superagent-brief.test.ts`、skill 安装/发现测试是各自模块的前置回归；新增 section 需要同时测普通 agent 与 super agent 的 assembly。
-- 不需要真实 LLM 即可测：section 文本、配置解析、scope 目标、模板 loader 回退、skill catalog/loader、blacklist 检查和 facts diff 都可以用固定输入。
-- 需要真实 runtime 才能测的项目：报告是否投递、`start` 阶段、monitor 行为、`ask_user_question` 取消；这些在本设计中只作为约束，不在本轮声称已验证。
-
-### 10.4 可移植性检查
-
-实现前用仓库已有的 `verify-md-links`、`verify-md-wrap` 检查文档；数据文件只写 `<DSH_HOME>/...` 或仓库相对路径，不写本机盘符、用户目录、session id、进程号或临时目录。
-
-## 11. 实施顺序
-
-| 顺序 | 工作 | 为什么排这里 | 前置 |
-|---:|---|---|---|
-| 0 | 定稿 `scope`/`name` 扩展、`persona` schema、brief 模板格式 | 这三项是数据契约；先定可避免四个模块各写一套 | 本设计评审通过 |
-| 1 | **user-input**：`personality_learn` 可选 `scope`/`name`、A–E 固定名、分类门、模型主路径 | 所有学习都经过它；它决定后续模块写什么、写哪里 | 0 |
-| 2 | **write-like-human**：skill + blacklist + 自查脚本 | 与 personality 数据解耦，风险最低，可并行验证 | 0；skill-filesystem/tool-skill 已存在 |
-| 3 | **output-summary**：persona 配置 + section 690 + `ui-personality` 字段 | 依赖 user-input 的优先级/scope 决策；影响所有 agent，先做测试 | 1、0 |
-| 4 | **super-agent-dispatch**：模板 loader + section 703 + super agent preset 接入 | 依赖 702 硬规则与 persona 口吻；耦合最高，最后做 | 3；super agent preset |
-| 5 | 集成：四模块同时挂载，测缓存/优先级/回归 | 单模块测试不能证明冲突顺序 | 1–4 |
-
-如果只能先做一个：**先做 user-input**。它直接处理 13 次纠正里的根因，且不依赖新 UI；其余三个模块都能从它得到稳定的分类与 scope。
+- 所有路径用 `<DSH_HOME>/personality/...`；不要写本机盘符、用户目录、session id、进程号或临时目录。
+- 不给工作区创建 personality 文件；旧工作区文件只警告。
+- 旧全局文件/历史/proposal 不迁移；备份后不解析。
 
 ## 12. 本轮不做
 
-- 不写代码，不改 `packages/**`，不提交。
-- 不自动写 `identity.*`；identity 仍只走 `personality_propose` + 人工 accept。
-- 不建跨 workspace 的共享存储、数据库或第二份 PERSONALITY.md；scope 只决定写全局文件还是工作区 overlay。
-- 不自动改写所有输出；write-like-human 仍是按需 skill，强制输出钩子另议。
-- 不自动修改 persona 配置、brief 模板、blacklist；这三者只由人写。
-- 不修改 superagent 的硬规则、审批、沙箱、工具权限或 KB 口径。
-- 不提高 `autoLearn` 默认预算；先用分类与固定名减少重复，再测量是否需要分桶。
-- 不做多用户/多租户人格隔离。
+- 不写实现，不改 `packages/**`，不提交实现代码。
+- 不做工作区 override/overlay/scope；不写工作区 personality。
+- 不做 turn-end 自动学习、正则、后台扫描、自动写入。
+- 不迁移旧数据；不删除旧数据；不保留旧 API 兼容别名。
+- 不做独立 dispatch section/数据文件/`703`。
+- 不做 skill-only write-like-human；不新增 skill 目录。
+- 不改 `SUPERAGENT_SECTION` 之外的 superagent runtime context 机制。
+- 不删除 `PERSONALITY.history.jsonl` / `PERSONALITY.proposals.jsonl`；只留在原处。
+- 不做多用户/多 workspace 人格隔离。
 
 ## 13. 待拍板
 
-1. `personality_learn` 的 `scope` 默认值：保持 workspace（兼容）还是改为 global（更符合 A–E）？本设计建议保持 workspace 默认，仅 user-input 自动路径显式 global。
-2. persona 是否真的需要对所有 agent 可见，还是只给 super agent？本设计选 all + 条件句，理由是不引入目标判定；若 token 测量不划算，再拆。
-3. brief 模板是否需要在 `start` 工具层做结构校验，还是只要 prompt + loader 校验？本设计只做后者，工具层强制另开变更。
-4. write-like-human 的词表是否允许模型提议修改？本设计禁止模型直接写，只能向人提议。
+1. 旧数据是否要在备份后**删除**？本设计只备份、不删除；如果用户要删，需单独的显式清理命令。
+2. `personality_analyze`/`personality_apply` 是否只对 root 可见，还是所有 agent 可见？本设计建议 root 才可写，读分析可给所有 agent。
+3. `write_like_human` 工具是否只给 root/super agent？section 对所有 agent 注入；写权限建议收窄。
+4. 旧 `PERSONALITY.history.jsonl`/`proposals` 是否要移到 legacy 目录？本设计留在原处、不解析，避免误删。
