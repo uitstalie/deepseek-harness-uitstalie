@@ -167,11 +167,11 @@ detail checkpoint 用该 turn 已存的 detail 条目替换原始 turn；brief c
 
 #### 模型看到什么
 
-一个 provider 会话里第一次摘要失败后，surface 会多出一条 `user/message`，来源是 `{ kind: 'memory', form: 'notice', summary }`，文本是 `Memory summary failed; the previous memory is still in effect.`。同一会话后续失败只记日志。notice 不取代任何东西：它不是 snapshot，也永远不会替换 snapshot 节点。
+摘要 pass 失败后，surface 会多出一条 `user/message`，来源是 `{ kind: 'memory', form: 'notice', summary }`，文本包含稳定的失败码、尝试次数与简短原因，例如 `Memory summary failed [UPSTREAM_RATE_LIMIT] (attempt 2/2); previous memory still in effect: provider rate-limited`。瞬时模型调用失败会在放弃前重试一次；预算、文件或授权失败在第一次尝试后直接报告。同一会话重复同一失败码只记日志；失败码变化（或一次成功 pass 之后再次失败）会追加新 notice。notice 不取代任何东西：它不是 snapshot，也永远不会替换 snapshot 节点。
 
 #### Token 影响
 
-每个会话最多一条约 60 字符的 notice，不会更多。后续摘要成功或再次失败都不会追加第二条。
+每个失败码每会话最多一条不超过 120 字符的 notice。摘要成功后清除记录，之后的失败可以再次通知。
 
 #### KV 缓存影响
 

@@ -7,11 +7,12 @@
  */
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { FsError } from '@deepseek-ai/dsh-fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { createToolResultMessage, LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm'
+import { createToolResultMessage, LlmAdapter, LlmError, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import {
@@ -22,10 +23,13 @@ import {
   MEMORY_SUMMARY_JOB_KIND,
   MEMORY_SUMMARY_JOB_LABEL,
   MEMORY_SNAPSHOT_MAX_BYTES,
+  MEMORY_SUMMARY_MAX_ATTEMPTS,
+  classifySummaryFailure,
   parseBriefEntries,
   parseMemoryDocument,
   parseSummaryEntries,
   setMemorySummaryPaused,
+  MemoryDocumentError,
 } from '../src/index.ts'
 import type { MemoryEntry } from '../src/index.ts'
 import {
@@ -346,7 +350,13 @@ test('a model failure appends one notice, leaves MEMORY.md unchanged, and never 
   const notices = await memoryNotices(mounted.ctx, root.id)
   expect(notices).toHaveLength(1)
   expect(notices[0]?.source).toMatchObject({ kind: 'memory', form: 'notice' })
-  expect(notices[0]?.content).toEqual([{ type: 'text', text: MEMORY_SUMMARY_FAILURE_NOTICE }])
+  const notice = notices[0]?.content.map(block => block.type === 'text' ? block.text : '').join('') ?? ''
+  expect(notice).toContain(MEMORY_SUMMARY_FAILURE_NOTICE)
+  expect(notice).toContain('[UPSTREAM_FAILED]')
+  expect(notice).toContain('(UNKNOWN)')
+  expect(notice).toContain('(attempt 1/2)')
+  expect(notice).toContain('previous memory still in effect')
+  expect(notice.length).toBeLessThanOrEqual(120)
 
   root.session.append('turn/start', { turn: 2 })
   completeTurn(root, 2)
@@ -355,6 +365,97 @@ test('a model failure appends one notice, leaves MEMORY.md unchanged, and never 
   expect(adapter.requests).toHaveLength(2)
   expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(1)
   expect(await readFile(memoryFilePath(project), 'utf8')).toBe(before)
+})
+
+test('a transient upstream failure retries once, keeps the old memory, and names the rate limit', async () => {
+  const mounted = await mount()
+  const adapter = new SummaryAdapter(() => new LlmError('provider said slow down', 'RATE_LIMIT', { status: 429 }))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+  await appendMemoryEntry(mounted.ctx, root.session, {
+    kind: 'decision', text: 'the previous memory survives retries', turn: 1, seq: [0, 0],
+  })
+  const before = await readFile(memoryFilePath(project), 'utf8')
+
+  completeTurn(root, 1)
+  const jobs = await waitForSettledJobs(root, 1)
+  expect(jobs[0]?.status).toBe('failed')
+  expect(adapter.requests).toHaveLength(MEMORY_SUMMARY_MAX_ATTEMPTS)
+  expect(await readFile(memoryFilePath(project), 'utf8')).toBe(before)
+
+  const notices = await waitForValue(async () => {
+    const found = await memoryNotices(mounted.ctx, root.id)
+    return found.length === 1 ? found : undefined
+  })
+  const text = notices[0]?.content.map(block => block.type === 'text' ? block.text : '').join('') ?? ''
+  expect(text).toContain('[UPSTREAM_RATE_LIMIT]')
+  expect(text).toContain('(attempt 2/2)')
+  expect(text).toContain('rate-limited')
+  expect(text.length).toBeLessThanOrEqual(120)
+})
+
+test('a retry that succeeds writes the summary and appends no notice', async () => {
+  const mounted = await mount()
+  const adapter = new SummaryAdapter(call => call === 1
+    ? new LlmError('temporary timeout', 'TIMEOUT')
+    : jsonReply([{ kind: 'decision', text: 'retried summary' }]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+
+  completeTurn(root, 1)
+  await waitForSettledJobs(root, 1)
+  expect(adapter.requests).toHaveLength(2)
+  expect(await waitForMemoryFile()).toContain('- [decision] retried summary')
+  expect(await memoryNotices(mounted.ctx, root.id)).toHaveLength(0)
+})
+
+test('a deterministic upstream rejection is not retried and names the rejection', async () => {
+  const mounted = await mount()
+  const adapter = new SummaryAdapter(() => new LlmError('bad credential', 'AUTH'))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+  completeTurn(root, 1)
+  await waitForSettledJobs(root, 1)
+  expect(adapter.requests).toHaveLength(1)
+  const notices = await memoryNotices(mounted.ctx, root.id)
+  const text = notices[0]?.content.map(block => block.type === 'text' ? block.text : '').join('') ?? ''
+  expect(text).toContain('[UPSTREAM_FAILED]')
+  expect(text).toContain('request rejected (AUTH)')
+})
+
+test('a budget failure during the append names the budget instead of the model', async () => {
+  const mounted = await mount({ config: { maxBytes: 60 } })
+  const adapter = new SummaryAdapter(() => jsonReply([{ kind: 'decision', text: 'too large for this budget' }]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+  completeTurn(root, 1)
+  await waitForSettledJobs(root, 1)
+  const notices = await memoryNotices(mounted.ctx, root.id)
+  const text = notices[0]?.content.map(block => block.type === 'text' ? block.text : '').join('') ?? ''
+  expect(text).toContain('[BUDGET_EXCEEDED]')
+  expect(text).toContain('body over the byte budget')
+})
+
+test('classifySummaryFailure maps each owned failure to a stable code', () => {
+  expect(classifySummaryFailure(new MemoryDocumentError('over', 'budget-exceeded'), 2)).toMatchObject({
+    code: 'BUDGET_EXCEEDED', attempts: 2,
+  })
+  expect(classifySummaryFailure(new MemoryDocumentError('bad file', 'invalid-document'), 1).code).toBe('FILE_IO')
+  expect(classifySummaryFailure(new FsError('disk', 'FS_IO_ERROR'), 1).code).toBe('FILE_IO')
+  for (const code of ['RATE_LIMIT', 'QUOTA', 'ACCOUNT_QUOTA'] as const) {
+    expect(classifySummaryFailure(new LlmError('limited', code), 1).code).toBe('UPSTREAM_RATE_LIMIT')
+  }
+  expect(classifySummaryFailure(new LlmError('timeout', 'TIMEOUT'), 1).code).toBe('UPSTREAM_TIMEOUT')
+  for (const code of ['AUTH', 'INVALID_CREDENTIAL', 'NO_ADAPTER', 'UNKNOWN_MODEL', 'MISSING_CREDENTIAL'] as const) {
+    expect(classifySummaryFailure(new LlmError('rejected', code), 1).code).toBe('UPSTREAM_FAILED')
+  }
+  expect(classifySummaryFailure(new LlmError('server', 'SERVER'), 1)).toMatchObject({
+    code: 'UPSTREAM_FAILED', detail: 'provider stream failed (SERVER)',
+  })
+  expect(classifySummaryFailure(new Error('no provider/model available for memory summarization'), 1).code).toBe('NO_TARGET')
+  expect(classifySummaryFailure(new Error('memory: summarization produced no text'), 1).code).toBe('EMPTY_OUTPUT')
+  expect(classifySummaryFailure(new Error('memory: summarization hit the output token cap'), 1).code).toBe('UPSTREAM_FAILED')
+  expect(classifySummaryFailure(new Error('boom'), 1).code).toBe('UNKNOWN')
 })
 
 test('the configured summary pair wins over the routed target', async () => {

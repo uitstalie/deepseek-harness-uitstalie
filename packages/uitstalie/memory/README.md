@@ -159,11 +159,11 @@ The replacement is positional: the prefix before the raw turn stays byte-identic
 
 #### What the model sees
 
-After the first failed summary in a provider session, the surface carries one additional `user/message` whose source is `{ kind: 'memory', form: 'notice', summary }` and whose text is `Memory summary failed; the previous memory is still in effect.` Later failures for the same session only log. The notice supersedes nothing: it is not a snapshot, and it never replaces the snapshot node.
+After a summary pass fails, the surface carries one additional `user/message` whose source is `{ kind: 'memory', form: 'notice', summary }` and whose text names a stable failure code, the attempt count, and a short cause, for example `Memory summary failed [UPSTREAM_RATE_LIMIT] (attempt 2/2); previous memory still in effect: provider rate-limited`. The pass retries a transient model call once before giving up; a budget, file, or authorization failure is reported after its first attempt. A repeat of the same code for the same session only logs, while a different code (or the first failure after a successful pass) appends a new notice. The notice supersedes nothing: it is not a snapshot, and it never replaces the snapshot node.
 
 #### Token effect
 
-At most one notice of about 60 characters per session, ever. A successful summary or another failure adds no second notice.
+At most one notice of at most 120 characters per failure code per session. A successful summary clears the recorded code, so a later failure can notify again.
 
 #### KV Cache effect
 

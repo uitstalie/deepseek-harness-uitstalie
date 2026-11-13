@@ -21,6 +21,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-compaction'
+import { FsError } from '@deepseek-ai/dsh-fs'
+import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import type { JobHooks, JobId, JobKind, JobOutcome } from '@deepseek-ai/dsh-jobs'
@@ -37,6 +39,7 @@ import {
   migrateMemoryTiers,
   readMemoryDocument,
   summaryPaused,
+  MemoryDocumentError,
 } from './memory-file.ts'
 import type { MemoryDocument, MemoryEntry } from './memory-file.ts'
 import { appendMemoryNotice, refreshMemorySnapshot } from './snapshot.ts'
@@ -66,8 +69,99 @@ export const MEMORY_SUMMARY_INPUT_MAX_BYTES = 24 * 1024
 /** Character cap applied to one model-written entry. */
 export const MEMORY_SUMMARY_ENTRY_MAX_CHARS = 300
 
-/** Notice appended once per session after the first failed summary. */
-export const MEMORY_SUMMARY_FAILURE_NOTICE = 'Memory summary failed; the previous memory is still in effect.'
+/** Opening phrase of every summary-failure notice; the code and cause follow it. */
+export const MEMORY_SUMMARY_FAILURE_NOTICE = 'Memory summary failed'
+
+/** Stable machine code for one failed summary pass. */
+export type MemorySummaryFailureCode =
+  | 'BUDGET_EXCEEDED'
+  | 'FILE_IO'
+  | 'NO_TARGET'
+  | 'EMPTY_OUTPUT'
+  | 'UPSTREAM_RATE_LIMIT'
+  | 'UPSTREAM_TIMEOUT'
+  | 'UPSTREAM_FAILED'
+  | 'UNKNOWN'
+
+/** Classified failure of one summary pass. */
+export interface MemorySummaryFailure {
+  /** Stable code the notice and logs carry. */
+  readonly code: MemorySummaryFailureCode
+  /** One short cause phrase, bounded by the notice's character budget. */
+  readonly detail: string
+  /** Summary model calls this pass attempted. */
+  readonly attempts: number
+}
+
+/** Attempts one pass makes before it gives up and leaves the previous memory in effect. */
+export const MEMORY_SUMMARY_MAX_ATTEMPTS = 2
+
+/** Delay before the one bounded retry, in milliseconds. */
+const MEMORY_SUMMARY_RETRY_DELAY_MS = 100
+
+/** Model-visible notice text for one classified failure, inside the 120-character notice bound. */
+export function memorySummaryFailureNotice(failure: MemorySummaryFailure): string {
+  return `${MEMORY_SUMMARY_FAILURE_NOTICE} [${failure.code}] (attempt ${String(failure.attempts)}/${String(MEMORY_SUMMARY_MAX_ATTEMPTS)}); `
+    + `previous memory still in effect: ${failure.detail}`
+}
+
+/** Classify one pass failure into the notice code and a short cause phrase. */
+export function classifySummaryFailure(error: unknown, attempts: number): MemorySummaryFailure {
+  if (error instanceof MemoryDocumentError) {
+    return error.code === 'budget-exceeded'
+      ? { code: 'BUDGET_EXCEEDED', detail: 'body over the byte budget', attempts }
+      : { code: 'FILE_IO', detail: 'MEMORY.md could not be written', attempts }
+  }
+  if (error instanceof FsError) {
+    return { code: 'FILE_IO', detail: `filesystem error ${error.code}`, attempts }
+  }
+  if (error instanceof LlmError) {
+    switch (error.code) {
+      case 'RATE_LIMIT':
+      case 'QUOTA':
+      case 'ACCOUNT_QUOTA':
+        return { code: 'UPSTREAM_RATE_LIMIT', detail: 'provider rate-limited', attempts }
+      case 'TIMEOUT':
+        return { code: 'UPSTREAM_TIMEOUT', detail: 'provider request timed out', attempts }
+      case 'NO_ADAPTER':
+      case 'UNKNOWN_MODEL':
+      case 'MISSING_CREDENTIAL':
+      case 'AUTH':
+      case 'INVALID_CREDENTIAL':
+        return { code: 'UPSTREAM_FAILED', detail: `request rejected (${error.code})`, attempts }
+      default:
+        return { code: 'UPSTREAM_FAILED', detail: `provider stream failed (${error.code})`, attempts }
+    }
+  }
+  const message = errorMessage(error)
+  if (message.includes('no provider/model available')) {
+    return { code: 'NO_TARGET', detail: 'no summary model route is available', attempts }
+  }
+  if (message.includes('produced no text')) {
+    return { code: 'EMPTY_OUTPUT', detail: 'the model returned no text', attempts }
+  }
+  if (message.includes('hit the output token cap')) {
+    return { code: 'UPSTREAM_FAILED', detail: 'the model hit its output token cap', attempts }
+  }
+  return { code: 'UNKNOWN', detail: 'see the debug log', attempts }
+}
+
+/** Upstream codes that may clear on one immediate retry. */
+const RETRYABLE_SUMMARY_CODES: ReadonlySet<string> = new Set([
+  'RATE_LIMIT',
+  'TIMEOUT',
+  'SERVER',
+  'TRANSPORT',
+  'STREAM_CLOSED',
+  'MALFORMED_RESPONSE',
+  'EMPTY_RESPONSE',
+])
+
+/** Whether one summary call failure is safe and useful to retry once. */
+function isRetryableSummaryFailure(error: unknown): boolean {
+  if (error instanceof LlmError) return RETRYABLE_SUMMARY_CODES.has(error.code)
+  return error instanceof Error && error.message.includes('produced no text')
+}
 
 /**
  * Wait bound used to claim the job's settlement.
@@ -186,7 +280,7 @@ const lastCheckpointSeq = (document: MemoryDocument | undefined, sessionId: stri
  */
 export class MemorySummaryRunner {
   private readonly sessions = new Map<SessionId, SessionSummaryState>()
-  private readonly noticed = new Set<SessionId>()
+  private readonly noticed = new Map<SessionId, MemorySummaryFailureCode>()
   private disposed = false
 
   /**
@@ -297,6 +391,7 @@ export class MemorySummaryRunner {
     const startedAt = Date.now()
     let inputBytes = 0
     let target = 'none'
+    let attempts = 0
     try {
       // A paused workspace keeps its file untouched; the turn stays unsummarized so resuming continues
       // from the current window instead of backfilling turns the user paused through.
@@ -319,7 +414,14 @@ export class MemorySummaryRunner {
         )
       }
       target = `${resolved.provider}/${resolved.model}`
-      const raw = await streamSummary(this.ctx, resolved, conversation.text, input.session.id, signal)
+      const raw = await streamSummaryWithRetry(
+        this.ctx,
+        resolved,
+        conversation.text,
+        input.session.id,
+        signal,
+        () => { attempts += 1 },
+      )
       const entries = parseSummaryEntries(raw)
       signal.throwIfAborted()
       // Tier migration runs before the append (DH-710): a body at its byte budget would otherwise
@@ -366,35 +468,46 @@ export class MemorySummaryRunner {
         position: this.settings.snapshotPosition,
         ...this.onSnapshotText === undefined ? {} : { onText: this.onSnapshotText },
       })
+      this.noticed.delete(input.session.id)
       this.ctx.logger.debug(
-        'memory: summarized turn %d (%d input bytes, model %s, %d ms)',
+        'memory: summarized turn %d (%d input bytes, model %s, %d ms, %d attempt(s))',
         input.turn,
         inputBytes,
         target,
         Date.now() - startedAt,
+        attempts,
       )
       return { status: 'completed' }
     } catch (error: unknown) {
       if (signal.aborted) return { status: 'killed' }
+      const failure = classifySummaryFailure(error, attempts)
       this.ctx.logger.warn(
-        'memory: summary job failed for turn %d (%d input bytes, model %s, %d ms): %s',
+        'memory: summary job failed for turn %d (%d input bytes, model %s, %d ms, code %s, %d attempt(s)): %s',
         input.turn,
         inputBytes,
         target,
         Date.now() - startedAt,
+        failure.code,
+        failure.attempts,
         errorMessage(error),
       )
-      this.appendFailureNotice(input.session)
-      return { status: 'failed', detail: errorMessage(error).slice(0, 240) }
+      this.ctx.logger.debug('memory: summary failure detail: %o', error)
+      this.appendFailureNotice(input.session, failure)
+      return { status: 'failed', detail: `[${failure.code}] ${errorMessage(error)}`.slice(0, 240) }
     }
   }
 
-  /** Append the session's one failure notice, never throwing into the job outcome. */
-  private appendFailureNotice(session: Session): void {
-    if (this.noticed.has(session.id)) return
-    this.noticed.add(session.id)
+  /**
+   * Append one notice when the failure code changes, never throwing into the job outcome.
+   *
+   * A repeat of the same failure is already visible on the surface and only logs; a different
+   * failure (or the first one after a success) is worth a fresh line.
+   */
+  private appendFailureNotice(session: Session, failure: MemorySummaryFailure): void {
+    if (this.noticed.get(session.id) === failure.code) return
+    this.noticed.set(session.id, failure.code)
     try {
-      appendMemoryNotice(session, MEMORY_SUMMARY_FAILURE_NOTICE)
+      appendMemoryNotice(session, memorySummaryFailureNotice(failure))
     } catch (error: unknown) {
       this.ctx.logger.warn('memory: could not append the summary failure notice: %s', errorMessage(error))
     }
@@ -540,6 +653,40 @@ async function streamSummary(
   return streamInstruction(ctx, target, `${SUMMARY_INSTRUCTION}\n${conversation}`, sessionId, signal)
 }
 
+/**
+ * Run one summary call with one bounded retry for transient upstream failures.
+ *
+ * The retry repeats only the model call: no repository write has happened yet, so a repeated
+ * attempt cannot duplicate a summary. Authorization, budget, and malformed-target failures are
+ * deterministic and surface after one attempt.
+ * @param ctx - context carrying the LLM service.
+ * @param target - provider/model to call.
+ * @param conversation - bounded transcript.
+ * @param sessionId - session attribution for the request.
+ * @param signal - cancellation for both the call and the retry delay.
+ * @param onAttempt - called immediately before each model call.
+ * @returns the assembled model text.
+ */
+async function streamSummaryWithRetry(
+  ctx: Context,
+  target: SummaryTarget,
+  conversation: string,
+  sessionId: SessionId,
+  signal: AbortSignal,
+  onAttempt: () => void,
+): Promise<string> {
+  for (let attempt = 1; ; attempt += 1) {
+    onAttempt()
+    try {
+      return await streamSummary(ctx, target, conversation, sessionId, signal)
+    } catch (error: unknown) {
+      if (signal.aborted || attempt >= MEMORY_SUMMARY_MAX_ATTEMPTS || !isRetryableSummaryFailure(error)) throw error
+      await new Promise<void>((resolve) => { setTimeout(resolve, MEMORY_SUMMARY_RETRY_DELAY_MS) })
+      signal.throwIfAborted()
+    }
+  }
+}
+
 /** Compress one detail section with the same model target as the summary job. */
 async function compressBriefEntries(
   ctx: Context,
@@ -589,7 +736,7 @@ async function streamInstruction(
 function finishError(finish: FinishReason): Error | undefined {
   switch (finish.kind) {
     case 'error':
-      return new Error(`memory: summarization failed: ${finish.failure.message}`)
+      return LlmError.fromFailure(finish.failure)
     case 'aborted':
       return new Error('memory: summarization was aborted')
     case 'max-tokens':

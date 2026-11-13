@@ -148,10 +148,17 @@ export {
   syncMemorySnapshot,
 } from './snapshot.ts'
 export type { MemoryNoticeSource, MemorySnapshotSource } from './snapshot.ts'
+export type {
+  MemorySummaryFailure,
+  MemorySummaryFailureCode,
+} from './summary.ts'
 export {
   MEMORY_SUMMARY_ENTRY_MAX_CHARS,
   MEMORY_SUMMARY_FAILURE_NOTICE,
   MEMORY_SUMMARY_INPUT_MAX_BYTES,
+  MEMORY_SUMMARY_MAX_ATTEMPTS,
+  memorySummaryFailureNotice,
+  classifySummaryFailure,
   MEMORY_SUMMARY_JOB_KIND,
   MEMORY_SUMMARY_JOB_LABEL,
   MEMORY_SUMMARY_TEXT_MAX_BYTES,
