@@ -498,7 +498,6 @@ flowchart TD
     pkg_client_ui_dafeiyu["client-ui-dafeiyu"]
     pkg_client_ui_memory["client-ui-memory"]
     pkg_client_ui_models_dev["client-ui-models-dev"]
-    pkg_client_ui_personality["client-ui-personality"]
     pkg_client_ui_tool_dsh_store["client-ui-tool-dsh-store"]
     pkg_dafeiyu["dafeiyu"]
     pkg_home_backup["home-backup"]
@@ -841,7 +840,6 @@ flowchart TD
   pkg_session_title_llm --> pkg_timeout
   pkg_memory --> pkg_commands
   pkg_persona_card --> pkg_commands
-  pkg_personality --> pkg_commands
   pkg_token_calculator --> pkg_commands
   pkg_agent_loop --> pkg_agent
   pkg_agent_loop --> pkg_llm
@@ -1780,10 +1778,10 @@ flowchart TD
 | [`client-ui-dafeiyu`](../packages/uitstalie/ui-dafeiyu) | `uitstalie` | — |
 | [`client-ui-memory`](../packages/uitstalie/ui-memory) | `uitstalie` | — |
 | [`client-ui-models-dev`](../packages/uitstalie/ui-models-dev) | `uitstalie` | — |
-| [`client-ui-personality`](../packages/uitstalie/ui-personality) | `uitstalie` | — |
 | [`client-ui-tool-dsh-store`](../packages/uitstalie/ui-tool-dsh-store) | `uitstalie` | — |
 | [`dafeiyu`](../packages/uitstalie/dafeiyu) | `uitstalie` | — |
 | [`home-backup`](../packages/uitstalie/home-backup) | `uitstalie` | — |
+| [`personality`](../packages/uitstalie/personality) | `uitstalie` | — |
 | [`store-atom`](../packages/uitstalie/store-atom) | `uitstalie` | — |
 | [`system-environment`](../packages/uitstalie/system-environment) | `uitstalie` | — |
 | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | `uitstalie` | — |
@@ -1897,7 +1895,6 @@ flowchart TD
 | [`session-title-llm`](../packages/session/session-title-llm) | `session` | [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-title`](../packages/session/session-title), [`timeout`](../packages/util/timeout) |
 | [`memory`](../packages/uitstalie/memory) | `uitstalie` | [`commands`](../packages/interaction/commands) |
 | [`persona-card`](../packages/uitstalie/persona-card) | `uitstalie` | [`commands`](../packages/interaction/commands) |
-| [`personality`](../packages/uitstalie/personality) | `uitstalie` | [`commands`](../packages/interaction/commands) |
 | [`token-calculator`](../packages/uitstalie/token-calculator) | `uitstalie` | [`commands`](../packages/interaction/commands) |
 | [`agent-loop`](../packages/core/agent-loop) | `core` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-projection`](../packages/session/session-projection), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools) |
 | [`agent-tool-presentation`](../packages/core/agent-tool-presentation) | `core` | [`tools`](../packages/core/tools) |

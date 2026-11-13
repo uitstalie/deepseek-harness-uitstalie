@@ -38,6 +38,26 @@ void describe('superagent: brief-writing rules', () => {
     for (const example of COUNTEREXAMPLES) assert.match(text, example.rule, example.correction)
   })
 
+  void it('makes every dispatched brief fill the four slots and the result contract', () => {
+    const text = String(SUPERAGENT_SECTION.text)
+    assert.match(text, /Brief slots \(fill every slot; no slot has a default\)/u)
+    for (const slot of ['目标:', '验收:', '边界:', '证据来源:']) assert.ok(text.includes(slot), slot)
+    assert.match(text, /status: done \| blocked \| failed \| unverified/u)
+    assert.match(text, /task_id: <only when supplied>/u)
+    assert.match(text, /artifacts: <workspace-relative paths> · checks: <commands actually run>/u)
+    assert.match(text, /No report or no artifact means not done/u)
+    assert.match(text, /Do not use interactive ask_user_question/u)
+    assert.match(text, /Do not require memory_search/u)
+    assert.match(text, /do not modify ACLs, admin permissions, or system directories/u)
+    assert.doesNotMatch(text, /Windows/u)
+  })
+
+  void it('adds no second section for the template', () => {
+    assert.equal(SUPERAGENT_SECTION.name, 'superagent:dispatcher')
+    assert.equal(SUPERAGENT_SECTION.order, 702)
+    assert.doesNotMatch(String(SUPERAGENT_SECTION.text), /brief-template/u)
+  })
+
   void it('states composition, one objective, citation and person-owned policy', () => {
     const text = String(SUPERAGENT_SECTION.text)
     assert.match(text, /A workspace brief has exactly two sources/u)

@@ -536,7 +536,6 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-client-ui-dafeiyu` | no | The capability list's browser surface: a settings section that lists every dafeiyu provider with its state, its enable switch, and a link to the provider's own settings page |
 | `@deepseek-ai/dsh-client-ui-memory` | no | The memory capability's browser settings section: edits the volatile window, budget and summary-model fields of the memory row |
 | `@deepseek-ai/dsh-client-ui-models-dev` | no | models.dev catalog settings section: browse fetched providers, pick some, customize, and materialize them as llm-plus routes |
-| `@deepseek-ai/dsh-client-ui-personality` | no | The identity proposal queue's browser surface: a settings section that lists queued identity proposals with their evidence, and accepts or rejects them through remote.personality. |
 | `@deepseek-ai/dsh-client-ui-tool-dsh-store` | no | Web sidebar rules button: per-workspace read-only view of the .dsh rules the instruction loader injects |
 | `@deepseek-ai/dsh-dafeiyu` | yes | Host-side capability organizer: registry, enable gate, per-agent wiring, turn-end dispatch, failure isolation, and the read-only capability status list for capability providers |
 | `@deepseek-ai/dsh-home-backup` | yes | Scheduled snapshots of the harness home: sessions, storages, and profile configuration copied outside $DSH_HOME with a retention window |
@@ -544,7 +543,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-memory` | yes | Memory capability provider: the workspace MEMORY.md file, the completed-turn detail summary job, a durable memory snapshot message, a fixed system prompt section for the forgetting window, and the memory_search/memory_read/memory_write tools |
 | `@deepseek-ai/dsh-models-dev` | yes | models.dev catalog service: startup fetch with disk-cache TTL fallback, harness-shaped model defaults, and a user-facing write location for extra request params |
 | `@deepseek-ai/dsh-persona-card` | yes | Assistant persona cards: the persona/v1 format, a pure validator and renderer, and a safe Character Card V2/V3 JSON importer |
-| `@deepseek-ai/dsh-personality` | yes | Personality capability provider: the global PERSONALITY.md profile with a workspace overlay, a stable system-prompt section, file-watch refresh, the personality_learn auto-learning tool, and the /personality drift-review command |
+| `@deepseek-ai/dsh-personality` | no | Personality capability provider: the global PERSONALITY.md profile, output-style and writing-rules configuration, three stable system-prompt sections, and the read-only personality_analyze plus root-only personality_apply tools |
 | `@deepseek-ai/dsh-store-atom` | yes | The .dsh store atom: the dshStore base interface with project-root discovery, path confinement, namespace authoring checks, and version-guarded reads and writes |
 | `@deepseek-ai/dsh-system-environment` | yes | The host environment atom: one provider for platform facts, path spelling and comparison rules, environment lookup, and the user and Harness home directories |
 | `@deepseek-ai/dsh-token-calculator` | no | DeepSeek V4 token calculator: an offline byte-level BPE tokenizer and the count_tokens tool for budgeting prompts |

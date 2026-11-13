@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.2/personality-rewrite/guide.md
+/:
+  en: c1d327746903ee3f
+  zh: 796f9ffc924e0849
+/rewrite-the-personality-capability-around-global-files:
+  en: a3284517f29992ab
+  zh: ffcf9d8f584f0d49
+/rewrite-the-personality-capability-around-global-files/change:
+  en: 4913f22bfa1dc265
+  zh: 5c42c4ef4eaf281d
+/rewrite-the-personality-capability-around-global-files/migration:
+  en: 027cb83f4602ce0a
+  zh: 5291794494300760

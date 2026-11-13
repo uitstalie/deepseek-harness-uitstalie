@@ -33,7 +33,7 @@ Each row names the package's contribution and the `ctx` key or surface it attach
 | [`llm-plus`](llm-plus/README.md) | Self-owned multi-protocol LLM adapter with OAuth flows and live-configured routes | registers on `ctx.llm` |
 | [`memory`](memory/README.md) | Memory capability provider: fixed prompt section, snapshot, turn-summary job, the `memory_*` tools, and the `/memory` maintenance command | registers on `ctx.dafeiyu` |
 | [`models-dev`](models-dev/README.md) | models.dev catalog service: startup fetch, disk-cache fallback, route defaults, and extra request params | `ctx.modelsDev` |
-| [`personality`](personality/README.md) | Personality capability provider: global profile with workspace overlay, `personality_learn`, and `/personality` review | registers on `ctx.dafeiyu` |
+| [`personality`](personality/README.md) | Personality capability provider: the global `PERSONALITY.md`, `OUTPUT_STYLE.yaml` and `WRITING_RULES.yaml`, three prompt sections, and the analyze/apply tools | registers on `ctx.dafeiyu` |
 | [`persona-card`](persona-card/README.md) | Role-play character card format: pure `persona/v1` validator/renderer, safe Character Card V2/V3 JSON importer, and a per-session provider with `/persona` selection, a card-directory watcher, persona state, and a depth-0 `/director` note (not the deployment persona preset) | registers on `ctx.dafeiyu` |
 | [`store-atom`](store-atom/README.md) | `.dsh` store atom: the `dshStore` base interface with project-root discovery, path confinement, namespace authoring checks, workspace rules discovery, and version-guarded reads and writes | `ctx.dshStore` |
 | [`system-environment`](system-environment/README.md) | Host environment atom: platform facts, path spelling and comparison, environment lookup, and the user and Harness home directories | `ctx.systemEnvironment` |
@@ -51,7 +51,7 @@ Each row names the package's contribution and the `ctx` key or surface it attach
 
 - [Memory capability design](../../goal/memory.md) — the forgetting window, `.dsh/memory` storage, summary tiers, and tools behind `dsh-memory`.
 - [Role-play persona card design](../../goal/persona.md) — the assistant-side card format, safe CCv2/V3 import and the boundary against deployment personas.
-- [Personality profile design](../../goal/personality.md) — the global profile, workspace overlay, learning signals, and drift review behind `dsh-personality`.
+- [Personality rewrite design](../../docs/design/dafeiyu-personality-plugin.md) — the global profile, output style, writing rules, and the analyze/apply tools behind `dsh-personality`.
 - [Capability organizer design](../../goal/dafeiyu.md) — the registry, enable gate, and wiring contract `dafeiyu` defines for its providers.
 - [Rules and instruction sources](../../goal/rules.md) — how `.dsh/rules` reaches the model through the instruction seam.
 - [.dsh directory plugin design](../../goal/dsh-dir-plugin.md) — the store interface, namespace checks, and model tool behind `dsh-tool-dsh-store`.

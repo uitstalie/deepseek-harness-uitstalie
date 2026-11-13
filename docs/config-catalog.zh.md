@@ -3049,38 +3049,6 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-persona-card -->
 
-<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-personality -->
-<a id="deepseek-aidsh-personality"></a>
-
-## `@deepseek-ai/dsh-personality`
-
-- `inject`: `dafeiyu` · `dshStore` · `fs`
-- `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/uitstalie/personality/src/config.ts:59`](../packages/uitstalie/personality/src/config.ts)
-
-```ts config-catalog
-/** Configuration as the Loader passes it; every field is a live reference. */
-export interface Config {
-  /** Read the workspace PERSONALITY.md overlay. */
-  workspaceOverlay: Volatile<boolean>
-  /** Managed-block budget in UTF-8 bytes. */
-  maxBytes: Volatile<number>
-  /** Per-session automatic-learning budget. */
-  autoLearn: Volatile<AutoLearnConfig>
-  /** History records kept per file. */
-  historyLimit: Volatile<number>
-}
-
-/** Raw auto-learning budget as the Loader passes it; every field carries a schema default. */
-export interface AutoLearnConfig {
-  /** Automatic writes allowed per session. */
-  entries?: number | undefined
-  /** Automatic-write bytes allowed per session. */
-  bytes?: number | undefined
-}
-```
-<!-- END GENERATED config-catalog:@deepseek-ai/dsh-personality -->
-
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-plan-mode -->
 <a id="deepseek-aidsh-plan-mode"></a>
 
@@ -4355,7 +4323,7 @@ export type SystemPlatform = 'win32' | 'posix'
 
 ## `@deepseek-ai/dsh-system-prompt`
 
-- `source`: [`packages/core/system-prompt/src/index.ts:265`](../packages/core/system-prompt/src/index.ts)
+- `source`: [`packages/core/system-prompt/src/index.ts:268`](../packages/core/system-prompt/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: the deployment-authored fragment of the system prompt (see {@link Config.personaPrefix} for its contract). */
@@ -5575,7 +5543,6 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-models-dev` | — | [`packages/uitstalie/ui-models-dev/src/index.ts`](../packages/uitstalie/ui-models-dev/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-open-in-app` | — | [`packages/client/ui-open-in-app/src/index.ts`](../packages/client/ui-open-in-app/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-permission-presets` | — | [`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts) |
-| `@deepseek-ai/dsh-client-ui-personality` | — | [`packages/uitstalie/ui-personality/src/index.ts`](../packages/uitstalie/ui-personality/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plan` | — | [`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plugin-market` | — | [`packages/client/ui-plugin-market/src/index.ts`](../packages/client/ui-plugin-market/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-plugin-recommendations` | — | [`packages/experimental/client-ui-plugin-recommendations/src/index.ts`](../packages/experimental/client-ui-plugin-recommendations/src/index.ts) |
@@ -5637,6 +5604,7 @@ export interface Config {
 | `@deepseek-ai/dsh-mcp-resources` | `tools` | [`packages/mcp/mcp-resources/src/index.ts`](../packages/mcp/mcp-resources/src/index.ts) |
 | `@deepseek-ai/dsh-message-quotes` | — | [`packages/session/message-quotes/src/index.ts`](../packages/session/message-quotes/src/index.ts) |
 | `@deepseek-ai/dsh-otel` | — | [`packages/telemetry/otel/src/index.ts`](../packages/telemetry/otel/src/index.ts) |
+| `@deepseek-ai/dsh-personality` | `dafeiyu` · `dshStore` · `fs` · `sessionQuery` · `systemPrompt` | [`packages/uitstalie/personality/src/index.ts`](../packages/uitstalie/personality/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-recommendations` | `pluginManager` · `agents` · `skills` · `actionCards` | [`packages/experimental/plugin-recommendations/src/index.ts`](../packages/experimental/plugin-recommendations/src/index.ts) |
 | `@deepseek-ai/dsh-sandbox-ssh` | `ssh` | [`packages/ssh/sandbox-ssh/src/index.ts`](../packages/ssh/sandbox-ssh/src/index.ts) |
 | `@deepseek-ai/dsh-session` | — | [`packages/core/session/src/index.ts`](../packages/core/session/src/index.ts) |

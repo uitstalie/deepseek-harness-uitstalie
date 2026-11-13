@@ -2,7 +2,7 @@
 
 English | [中文](dafeiyu-personality-plugin.zh.md)
 
-Status: accepted design; implementation starts with Phase 0; no implementation code or user-data migration in this round.
+Status: implemented (Phase 4–6, 2026-11-13). The removal list in 2.1.1 records what the rewrite deleted; the legacy-data rules in 2.2 still apply, and §12 lists what stays out of scope.
 
 ## 0. 7 decisions and corresponding changes
 
@@ -39,6 +39,19 @@ The current implementation is a maintained capability, not an unmaintained draft
 - The old proposal page and old settings fields in `packages/uitstalie/ui-personality`.
 - The lines that mount the old provider/UI in `packages/bundle/web-app/cordis.patch.uitstalie.yml`; the new implementation decides mounting points again and does not reuse old config fields.
 - The old package's exported API keeps no compatibility aliases; new tool names, section names, and data files require a new design.
+
+### 2.1.1 Removed in the implementation
+
+| Removed surface | Detail |
+|---|---|
+| Old source modules | `commands.ts`, `proposals.ts`, `remote.ts`, `types.ts`, `tools.ts`, `prompt.ts`, `personality-file.ts`, and `config.ts` |
+| Old tests | `tests/commands.spec.ts` and `tests/personality-file.spec.ts` |
+| Old UI package | `packages/uitstalie/ui-personality` (27 tracked files, including its README and locale files) |
+| Package exports | `./remote`, `./types`, `./typert`, and `./locale/*.json` |
+| Config | `Config` removed; `workspaceOverlay`, `maxBytes`, `autoLearn`, and `historyLimit` are no longer read. A profile row that still carries them loads because the Loader does not reject unknown keys, and the values are ignored. |
+| Dependencies | the `@deepseek-ai/dsh-commands` peer, `@deepseek-ai/schemastery`, `diff`, and `@deepseek-ai/dsh-typert-protocol` |
+| Mounting and project refs | the `ui-personality` row in `cordis.patch.uitstalie.yml`, its `tsconfig.host.json` / `tsconfig.client.json` / `tsconfig.base.json` references, and the generated slot-catalog entry |
+| Model surface | `personality_learn`, `personality_propose`, the `/personality` command, the proposal Remote, and the turn-end learning hook |
 
 **What is deleted is the implementation, not the user data.** Data is handled per 2.2.
 
@@ -572,9 +585,9 @@ No new skill directory is needed, and `skill-filesystem`/`tool-skill` need no ch
 - Do not create personality files for workspaces; old workspace files only warn.
 - Old global files/history/proposals are not migrated; after backup they are not parsed.
 
-## 12. Not done this round
+## 12. Not done in this rewrite
 
-- Do not write the implementation, change `packages/**`, or commit implementation code.
+- The `write_like_human` tool and the new output-style/writing-rules UI pages are not part of this rewrite.
 - Do not build workspace override/overlay/scope; do not write workspace personality.
 - Do not build turn-end automatic learning, regexes, background scanning, or automatic writes.
 - Do not migrate old data; do not delete old data; do not keep old API compatibility aliases.

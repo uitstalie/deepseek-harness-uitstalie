@@ -3,65 +3,74 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/personality/README.md
 /:
-  en: 9ed5d758acdf4087
-  zh: 65f6dfeaf5279066
+  en: 488f4f526b9bf4fe
+  zh: 39210d531f017a87
 /deepseek-ai-dsh-personality:
   en: ad977fbc16ef41cc
   zh: 7bef7af091f1a40e
 /deepseek-ai-dsh-personality/summary:
-  en: 31815bfc9fcdada6
-  zh: d00479f0372b6377
+  en: 58f8b433dedd941f
+  zh: 6f519000caf1d8ba
 /deepseek-ai-dsh-personality/table-of-contents:
   en: cbfb676bb9a7a2de
   zh: 528864635b577290
 /deepseek-ai-dsh-personality/use-this-package:
-  en: ea631adb36282e26
-  zh: e74cc7294f01cb5b
-/deepseek-ai-dsh-personality/use-this-package/drift-review-commands:
-  en: fd5dc110c40e4615
-  zh: c4eae29b67af9671
-/deepseek-ai-dsh-personality/use-this-package/watch-refresh:
-  en: d7fb1597c528ab55
-  zh: c77053b37bd170af
-/deepseek-ai-dsh-personality/use-this-package/automatic-learning-on-turn-end:
-  en: f3c1935e5a48ac5a
-  zh: 5d926d43238c039d
+  en: 9897eda186173043
+  zh: b04f352e141efdf0
 /deepseek-ai-dsh-personality/understand-the-implementation:
-  en: 291f3d18fecad948
-  zh: a23387d8246af6b5
+  en: 2e0581cff1a52d5c
+  zh: 7506ea76083ed5eb
 /deepseek-ai-dsh-personality/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
-/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-section:
-  en: 8ed0d3c34fca2514
-  zh: 2b8d25676e9f52f1
-/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-section/what-the-model-sees:
-  en: 7687be3c96b1608a
-  zh: 49cf944210500045
-/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-section/what-the-model-sees/the-fixed-preamble-and-entry-layout:
-  en: a4bbb753dbe0cbc7
-  zh: 10ca2bb81dc31879
-/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-section/token-effect:
-  en: 6f077262b2cf8b38
-  zh: c17622107a8aec9e
-/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-section/kv-cache-effect:
-  en: c4560e4106f7b750
-  zh: ea9f87353224a66f
-/deepseek-ai-dsh-personality/model-experience/the-personality-learn-tool:
-  en: b54e314004929ca4
-  zh: cfd19b1c87b8f63c
-/deepseek-ai-dsh-personality/model-experience/the-personality-learn-tool/what-the-model-sees:
-  en: 01632bf90cabbc69
-  zh: a744bbef0b1bc3ce
-/deepseek-ai-dsh-personality/model-experience/the-personality-learn-tool/token-effect:
-  en: 6c41d17be6f4f165
-  zh: aa2696d4efa44d3b
-/deepseek-ai-dsh-personality/model-experience/the-personality-learn-tool/kv-cache-effect:
-  en: c2810b6f8b91e6f9
-  zh: 7db9115063ee93f2
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-sections:
+  en: 93e0ea385cecfc90
+  zh: 4389ad569fe430bd
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-sections/what-the-model-sees:
+  en: e0f99def37cbffe2
+  zh: d0432c79d53c0180
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-sections/what-the-model-sees/profile-section-order-100:
+  en: e91c68aecdd4cb3d
+  zh: 9f0b97ccfea6cc25
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-sections/what-the-model-sees/output-style-section-order-690:
+  en: f034aa0a5796f369
+  zh: dee376bbf62b7120
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-sections/what-the-model-sees/writing-rules-section-order-695:
+  en: 1e5078101db146b1
+  zh: 6e5b755f6fb59495
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-sections/token-effect:
+  en: 8976ac94e6f90d6c
+  zh: d6beffe04a5ffa36
+/deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-sections/kv-cache-effect:
+  en: 7d5b764f6e88a744
+  zh: 69a42edebd2a819c
+/deepseek-ai-dsh-personality/model-experience/the-personality-analyze-tool:
+  en: d8621a7b7e558f9a
+  zh: b588c8bbcba15e6d
+/deepseek-ai-dsh-personality/model-experience/the-personality-analyze-tool/what-the-model-sees:
+  en: f4da0f19b610f880
+  zh: b628ef52818aa7ff
+/deepseek-ai-dsh-personality/model-experience/the-personality-analyze-tool/token-effect:
+  en: 222c2b8af12fb4de
+  zh: d8a2a41edb5928e2
+/deepseek-ai-dsh-personality/model-experience/the-personality-analyze-tool/kv-cache-effect:
+  en: 7490afb3a4d1ab30
+  zh: 17af15fe1fe1bdd1
+/deepseek-ai-dsh-personality/model-experience/the-personality-apply-tool:
+  en: e6eb825dd0534e7c
+  zh: 83a82e6cde6c113f
+/deepseek-ai-dsh-personality/model-experience/the-personality-apply-tool/what-the-model-sees:
+  en: 1bfa6f57ee9806f3
+  zh: d653eeca5e5fd509
+/deepseek-ai-dsh-personality/model-experience/the-personality-apply-tool/token-effect:
+  en: a139cce893ce44f1
+  zh: baac19174ad33ee0
+/deepseek-ai-dsh-personality/model-experience/the-personality-apply-tool/kv-cache-effect:
+  en: 1e472e8151b9f3ec
+  zh: 6d6c8a653a0326e8
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work:
-  en: afcee27775b65a82
-  zh: ce1bf3a8b2069f3e
+  en: dea1c961216986b4
+  zh: a4bcb6c3fb131c79
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work/dev-note:
-  en: a4a55bbbef7c1347
-  zh: 5b332322161bb08d
+  en: 8078c2c4c8ab6950
+  zh: 325f56dd699b7767

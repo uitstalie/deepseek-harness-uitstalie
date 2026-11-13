@@ -1,5 +1,5 @@
 ---
-description: "Personality capability provider: a global PERSONALITY.md profile with a workspace overlay, one stable system-prompt section for how the user communicates and how to reply, file-watch refresh, the personality_learn auto-learning tool, and the /personality drift-review command."
+description: "Personality capability provider: the global PERSONALITY.md profile, OUTPUT_STYLE.yaml and WRITING_RULES.yaml, three stable prompt sections, and the read-only personality_analyze plus root-only personality_apply tools."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-personality` gives an agent a stable, user-owned profile. The global `PERSONALITY.md` under the harness home holds who the user is, how they word requests, and how they prefer replies; a workspace overlay may replace style and preference entries for one project. One system-prompt section presents the profile in two parts, and the `personality_learn` tool records explicit user corrections within a per-session budget. Identity entries stay manual. Every write is version-guarded and appends history for `/personality diff` and `revert`, the `show` view reports the merged profile, and a file watcher refreshes the cached prompt text.
+`dsh-personality` gives every agent a stable, user-owned profile under the harness home. It reads three global files — `PERSONALITY.md`, `OUTPUT_STYLE.yaml`, and `WRITING_RULES.yaml` — and contributes three prompt sections: the profile at order 100, output-style defaults at 690, and enabled writing rules at 695. `personality_analyze` scans session records and returns evidence-backed candidates without writing; root agents also get `personality_apply`, which writes the profile only after `confirm: true`. There is no workspace overlay, no turn-end learning, no history file, and no settings page.
 
 ## Table of Contents
 
@@ -26,124 +26,131 @@ Mount the provider in the same web profile patch layer that mounts the organizer
 ```yaml
 - id: personality
   name: '@deepseek-ai/dsh-personality'
-  config:
-    workspaceOverlay: true
-    maxBytes: 2048
-    autoLearn:
-      entries: 3
-      bytes: 512
 ```
 
-Every field has a default, so an empty `config` is valid:
+The provider takes no configuration: every cap and path is fixed by the design. It is a hard composition dependency on `ctx.dafeiyu` (the organizer), `ctx.dshStore` (the global scope), `ctx.fs` (the legacy backup move), and `ctx.sessionQuery` (analysis). The organized contribution is `scope: 'all'`, so child agents inherit the three prompt sections and `personality_analyze`; only a root agent receives `personality_apply`.
 
-| Field | Default | Meaning |
+All data lives under `<DSH_HOME>/personality/`, where `$DSH_HOME` defaults to `~/.dsh`:
+
+| Path | Purpose | Who writes it |
 |---|---|---|
-| `workspaceOverlay` | `true` | Read and write style and preference entries in `.dsh/memory/PERSONALITY.md`. |
-| `maxBytes` | `2048` | Managed-block body budget in UTF-8 bytes, enforced on reads and writes. |
-| `autoLearn.entries` | `3` | Automatic writes allowed per session. |
-| `autoLearn.bytes` | `512` | Automatic-write bytes allowed per session. |
-| `historyLimit` | `500` | History records kept per file; the oldest are dropped when a write would exceed it. |
+| `PERSONALITY.md` | understanding / preference / style / identity entries | `personality_apply` after confirmation, or a person |
+| `OUTPUT_STYLE.yaml` | tone, length, conclusion, lists, dispatch voice | A person; the provider only reads it |
+| `WRITING_RULES.yaml` | enabled writing constraints | A person; the provider only reads it |
+| `legacy/PERSONALITY.<YYYYMMDDTHHMMSSZ>.md` | read-only backup of the pre-rewrite profile | The first activation, once |
 
-The global profile is not configurable: it lives at `<DSH_HOME>/personality/PERSONALITY.md` (with `$DSH_HOME` defaulting to `~/.dsh`), the store atom's `global` scope. The provider is a hard composition dependency on `ctx.dafeiyu` (the organizer), `ctx.dshStore` (both scopes), and `ctx.fs` (watching the global file). A composition that omits one of them leaves this row inactive. The organized contribution is `scope: 'all'`, so child agents inherit the prompt section and the tool; the organizer still decides which agents are wired and which completed turns reach `onTurnEnd`.
-
-### Drift-review commands
-
-One `/personality` command registers through an optional `ctx.inject(['commands'])` child, so a composition without a command registry still receives the prompt section and the tool. The command grammar splits a slash line into one name plus verbatim input, so the subcommands ride that one registration:
-
-| Subcommand | Behavior |
-|---|---|
-| `/personality show` | Render the merged global and overlay entries (`id`, kind, one line of text) and both document versions. A missing file is an empty profile, not an error. |
-| `/personality diff` | Render a line diff of the two latest records in the global `PERSONALITY.history.jsonl`, labelled with each version and `source: user` or `source: auto`. A history with fewer than two records is reported, not failed. |
-| `/personality revert <version>` | Replace the global managed block with that record's stored block through the version-guarded write, then append a new `source: user` history record. An invalid argument, an unknown version, and reverting to the current version are reported without a write. |
-| `/personality proposals` | List the queue in `PERSONALITY.proposals.jsonl`, pending proposals first, each with its id, status, evidence, and one text line. |
-| `/personality accept <id>` | Write the queued identity entry through the version-guarded profile write (with `confirmIdentity`), then record the accepted status. A failed profile write leaves the proposal pending. |
-| `/personality reject <id>` | Record the rejected status without touching `PERSONALITY.md`. |
-
-History review is global-only in this version: the workspace overlay keeps its own history and this command neither diffs nor reverts it. `show` always reads the merged view.
-
-### Watch refresh
-
-One `ctx.fs.watch` registration observes the global profile. A change re-reads the file, updates the cached text every live agent's section getter reads, and refreshes the preloaded text later agents start from; the next assembly sees the new profile without restarting the agent. Each live agent also owns one overlay watcher: it observes `.dsh/memory/PERSONALITY.md` when that file exists, otherwise the `memory` directory, otherwise the store root, and refreshes only that agent's merged text. Overlay edits therefore reach a live agent instead of waiting for a new one. A backend that cannot watch degrades to the per-agent read and logs the reason at debug; disposing the capability aborts every watcher. External edits and the watcher's notification are separated by a short window (usually the filesystem's event latency, and a watcher on a directory can miss a content-only edit inside a child file), so a request assembled inside that window can still see the previous text; the file remains the source of truth for the next refresh.
-
-### Automatic learning on turn end
-
-The organizer forwards each completed turn to this provider. When the session log for that turn carries an explicit correction from the user — an understanding rule ("不是这个意思", "I meant"), a durable style rule ("以后…回复/语言/格式"), or a durable preference rule ("以后…", "from now on") — the provider writes one `source: auto` entry through the same version-guarded write the tool uses. The entry kind follows the matched rule, the text is the user's sentence (4–400 characters), and the digest name means repeating the same correction updates that entry instead of adding a duplicate. Automatic writes charge the same per-session `autoLearn` budget as `personality_learn`, and only root agents trigger learning. A refusal from the budget or a failed write is logged, never surfaced to the user, because the turn has already completed.
+On first activation the provider moves a pre-rewrite `PERSONALITY.md` into `legacy/`, then creates `OUTPUT_STYLE.yaml` with the neutral defaults and an empty `WRITING_RULES.yaml`. It never seeds or creates `PERSONALITY.md`: a missing profile reads as empty, and the first confirmed apply creates it. A workspace `.dsh/memory/PERSONALITY.md` is never read or written; finding one logs one warning per workspace.
 
 ## Understand the implementation
 
-The provider is a function plugin: `src/index.ts` exports `name`, `inject`, `Config`, and `apply`, and registers exactly one `contractVersion: 2` capability with `id: 'personality'`, `label: 'Personality'`, and a one-sentence description that the capabilities settings list renders.
+`src/index.ts` is the function plugin: it exports `name`, `inject`, the capability id and labels, and `apply`. It registers exactly one `contractVersion: 2` capability with `id: 'personality'` and wires three prompt sections plus the two tools through the organizer's `tools(agent)` filter. There is no `Config` export and no settings metadata.
 
-- `src/config.ts` holds the schemastery `Config` and an explicit `resolveConfig(config): PersonalitySettings` step. Defaults are applied there once: the global path derives from `resolveDshHome()` as `<DSH_HOME>/personality/PERSONALITY.md`, the history and proposal paths derive from it, and the two file paths of the workspace overlay are store-relative constants. No field can point the global profile elsewhere.
-- `src/personality-file.ts` is the repository. The YAML frontmatter carries `version` (the document revision, incremented on every write), `updatedAt`, and `entries`; the managed block between `<!-- personality:begin -->` and `<!-- personality:end -->` holds one `## <kind>.<name>` heading followed by one paragraph per entry. Text outside the block round-trips byte for byte. Entry ids are `<kind>.<lower-kebab-name>` with `understanding`, `style`, `preference`, and `identity` kinds; the overlay may only carry `style.*` and `preference.*`. The same module reads and validates `PERSONALITY.history.jsonl` and restores one recorded block into the global file.
-- Reads merge the global profile and the overlay by entry id, with the overlay replacing a global entry and appending any new id. The global file is read through the store atom's `global` scope, the overlay through its `workspace` scope, and a missing file is not an error.
-- `src/prompt.ts` holds the static preamble, the two part headings, and the canonical kind order. `src/index.ts` caches the rendered text per agent because a prompt section's text is evaluated synchronously: `create()` preloads the global profile and starts the watcher, and wiring an agent starts an asynchronous read of that agent's merged view. A watched change re-reads the global profile and refreshes both the preloaded fallback and every live agent's cached text; the section's getter is evaluated at each assembly, so no extra change notification is needed.
-- `src/commands.ts` holds the `/personality` command: subcommand parsing, the `show`/`diff`/`revert` renderers, and the registration helper. `revert` delegates the guarded write and its new history record to `src/personality-file.ts`; the handlers take the context and session explicitly so they run without the command runtime.
-- `src/tools.ts` builds `personality_learn`. It validates the kind, requires evidence naming a positive session event seq, and enforces `autoLearn` from an in-memory per-session usage record. `understanding`, `style`, and `preference` entries are written with `source: 'auto'`; `identity` is refused with the manual-edit guidance, and an exhausted budget is refused with the remaining entries and bytes. Refusals are canonical results, not tool errors.
+- `src/global-store.ts` owns `PERSONALITY.md`: a YAML frontmatter with `version`, `updatedAt`, and an `entries` sequence, followed by no body. Entry ids are `<kind>.<lower-kebab-name>`; `understanding`, `preference`, `style`, and `identity` are accepted. One entry is at most 400 characters and the serialized document at most 32 KiB. Reads through the store atom's `global` scope; writes use `expected: version`, retry once on `FS_STALE_VERSION`, and refuse to overwrite when the retry also conflicts. Identity entries can only be written by a person; the tool path rejects them.
+- `src/global-store.ts` also owns the legacy backup: it moves the old file with `ctx.fs.moveFile`, falls back to read → create-if-absent → hash compare → delete when the backend cannot move, and reports a collision or a differing leftover on the next startup without overwriting either file. A failed migration keeps the capability unavailable and blocks writes.
+- `src/output-style.ts` reads `OUTPUT_STYLE.yaml`, rejects unknown enums, and renders the section. `src/writing-rules.ts` reads `WRITING_RULES.yaml`, enforces 32 rules and 4096 bytes of enabled text, mutates the document for CRUD callers, and renders the enabled rules sorted by `order` then id. Both readers treat a missing file as empty and degrade a malformed file to a warning.
+- `src/analyze.ts` reads session records through `ctx.sessionQuery`: the current session, one named session, or the most recent 1–20 sessions. It groups recurring evidence into candidates with a stable hash id, at least one exact excerpt and seq, an occurrence count, and `high` or `medium` confidence. It writes nothing.
+- `src/apply.ts` validates `confirm: true`, 1–20 candidates, and per-candidate evidence, rejects `identity`, and upserts each accepted entry through the version-guarded store. A per-candidate store failure is reported as a rejection instead of aborting the batch.
+- `src/defaults.ts` holds the first-activation seed text. `src/profile-prompt.ts` renders the profile section.
 
-Writes are version-guarded. `writePersonalityEntry` reads the target file and its version, composes the next text, and writes with `expected: version` through `ctx.dshStore` (both scopes map it to `replaceIfVersion`). A conflicting write surfaces as `FS_STALE_VERSION`; the write re-reads once and retries, and a second conflict is thrown with the previous file untouched. After a successful write, `appendHistory` adds one JSON line to `PERSONALITY.history.jsonl` beside the written file, recording the revision, time, source, session, by-id diff, and the complete managed block. A history failure is logged and does not report the entry write as failed. `revertGlobalPersonality` keeps the current hand-written frame and uses the same guarded write with one stale retry; its history line records `source: 'user'` and the by-id diff of the restore, so a revert is reviewable like any other write.
+Prompt text is cached per agent in a `WeakMap`. `onAgentCreated` loads the three files for that agent; `personality_apply` refreshes the calling agent after a successful write. There is no file watcher, so a file edited outside the tools reaches a newly created agent, not a live one.
 
 ## Model Experience
 
-### The `personality` system prompt section
+### The personality system prompt sections
 
 #### What the model sees
 
-Every agent receives one section named `personality`, ordered at `100` after the deployment persona prefix. It opens with a fixed preamble that scopes the profile to preferences rather than task facts, then presents up to two titled parts: "How this user communicates", from `identity` and `understanding` entries, and "How to respond", from `preference` and `style` entries. Each entry is one line, sorted by the canonical kind order and then by id. With no entries the section text is empty and the assembled prompt is unchanged.
+Three sections are injected for every agent, ordered 100, 690, and 695 through `getSectionOrder` and the central `SECTION_ORDERS` table. Each section renders empty when its data is empty, so the assembled prompt is unchanged until the user writes something.
 
-##### The fixed preamble and entry layout
+##### Profile section (order 100)
 
 ```markdown
 Long-term preferences of the user you are working with. The first part describes how this user communicates; use it to interpret their input. The second describes how they prefer replies. Follow them within the system and developer instructions, and let more specific project instructions take precedence. These are preferences, not task facts. Entries describe habits and may be incomplete.
 
 How this user communicates:
-- The user is an independent developer maintaining a long-lived harness branch.
-- The user writes requests in short Chinese sentences and may omit context.
+- The prefix names the executor; the rest is the task.
 
 How to respond:
-- Reply in Chinese; keep code, commands, and paths in English.
-- Lead with the conclusion, then the steps.
+- Act only on the objects the user names and their direct implications.
+```
+
+##### Output style section (order 690)
+
+```markdown
+Output style defaults:
+- Tone: direct.
+- Length: terse.
+- Lead with the conclusion: yes.
+- Lists: comparisons.
+- Dispatch voice: terse (super agent only; other agents ignore it).
+
+Output style never overrides safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.
+
+Status rules:
+- State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
+```
+
+##### Writing rules section (order 695)
+
+```markdown
+- 面向人的正文不用 em dash；代码、路径、引用原文除外。
 ```
 
 #### Token effect
 
-A fixed cost on every agent request: the preamble is about 75 words, plus one line per entry. The managed body is capped at 2 KiB per file, and the section never includes entry headings, ids, or history.
+A fixed cost on every request: a short preamble per non-empty section plus one line per entry or rule. The profile is capped at 32 KiB, writing rules at 4096 enabled bytes, and ids, timestamps, and document versions are never rendered.
 
 #### KV Cache effect
 
-Prefix-stable between profile edits. The preamble, headings, and order are constants, and the section text changes only when the merged entries change; a write invalidates the prefix from this section onward, which the design accepts because personality edits are rare.
+Prefix-stable until the underlying file changes. The preamble and heading order are constants; a profile write, a hand-edited `OUTPUT_STYLE.yaml`, or a rules edit invalidates the cached prefix from that section onward. Edits are rare, so the cache cost is accepted.
 
-### The `personality_learn` tool
+### The `personality_analyze` tool
 
 #### What the model sees
 
-Two tools on every agent. `personality_learn` takes a required `kind`, a required one-paragraph `content`, and a required `evidence` string that must name a positive session event seq, for example `"seq 42"`; it answers with one line: either a confirmation naming the stored entry id, file, and revision, or a refusal explaining why nothing was written. Identity entries are refused with a pointer to `personality_propose`, unknown kinds list the valid kinds, and an exhausted per-session budget names the remaining entries and bytes. `personality_propose` takes `kind: 'identity'`, a lower-kebab `name`, one paragraph, and evidence; it queues the proposal in `PERSONALITY.proposals.jsonl` and writes nothing to the profile until the user accepts it.
+One tool on every agent. Its required `scope` is `{ kind: 'current' }`, `{ kind: 'session', sessionId }`, or `{ kind: 'recent', limit }`; optional `kinds` filters the entry classes and `maxCandidates` caps the result at 20. The result carries `candidates`, `sessionsScanned`, `truncated`, and `warnings`; every candidate names a session id, a positive event seq, and an exact excerpt. The tool description says it is read-only and must be used only when the user asks.
 
 #### Token effect
 
-A fixed schema cost on every request, plus one short result line per call. The tool never returns the profile or the history.
+The tool schema is a fixed cost; a call returns candidates and evidence, not the session records or the profile. Results are bounded by `maxCandidates` and by the 20-session scan limit.
 
 #### KV Cache effect
 
-Prefix-stable while the tool definition is unchanged. A successful write changes the prompt section's text, so it invalidates the cached prefix for the following request; the tool result itself is appended after the reusable prefix.
+Prefix-stable while the tool definition is unchanged. Analysis never writes a file, so a call never changes the prompt or invalidates the cached prefix.
+
+### The `personality_apply` tool
+
+#### What the model sees
+
+A root agent additionally gets this tool. It takes 1–20 candidates, each with `kind`, `name`, `text`, and at least one evidence reference, plus the required literal `confirm: true`. The description tells the model to call it only after the user explicitly asks to apply reviewed candidates; identity candidates are rejected, and the result lists applied entry ids, rejected names with reasons, the profile path, and the revision.
+
+#### Token effect
+
+The tool schema is a fixed cost, plus one short result line per applied or rejected candidate. The tool never returns the profile body.
+
+#### KV Cache effect
+
+Prefix-stable while the definition and profile are unchanged. A successful apply changes section 100, so the following request invalidates the prefix from that section onward; a refused call writes nothing.
 
 ## Known Limitations and Deferred Work
 
-- **Identity proposals are reviewed in two places** — `personality_learn` refuses `identity.*` and points at `personality_propose`, which queues the proposal; `/personality proposals`, `accept`, and `reject` handle it headless, and the `ui-personality` settings section handles it in the browser. Neither surface edits a proposal before acceptance.
-- **Auto-learning is budgeted, in-memory, and heuristic** — one capability registration keeps at most `autoLearn.entries` writes and `autoLearn.bytes` bytes per session; the counters reset when the capability reloads. The `personality_learn` tool and the turn-end trigger share that budget. Turn-end detection is a small rule set over the user's sentence, so it can miss a correction worded unusually and can treat a strongly worded instruction as a preference; the profile history can revert either kind.
-- **The overlay watcher is best-effort** — it prefers the overlay file, then its directory, then the store root; a directory watcher reports direct entries, so a content-only edit inside a child it did not watch waits for the next agent read. The creation-time read still sees the merged view.
-- **A watch notification lags the external edit** — between a hand edit and the watcher event, an assembly can still read the previous cached text; the file remains the source of truth for the next refresh.
-- **`maxBytes` applies per file** — the managed body of each file is budgeted and re-checked on read, but the merged global-plus-overlay text can approach twice the budget.
-- **The history rotates, so old revisions are dropped** — every write adds one JSON line with the complete managed block and keeps the newest `historyLimit` records (500 by default); the dropped revisions cannot be reverted. Revert restores one stored block, but the global history is the only history it reads.
-- **An invalid file empties the section** — a parse failure, a disallowed overlay kind, or an oversized hand-edited body is logged as a warning and contributes no prompt text until the file is fixed. A failed watch refresh keeps the previous text instead of emptying the section.
+- **One global profile, no workspace scope** — workspace-specific preferences cannot override the global file; the current turn's instructions are the only workspace-level adjustment. This is the accepted cost of the rewrite.
+- **External edits reach only new agents** — there is no watcher. A hand edit to any of the three files is visible to an agent created afterwards or refreshed by `personality_apply`, not to a live conversation.
+- **No history and no revert** — the runtime never reads, writes, or reuses `PERSONALITY.history.jsonl`. The old file stays in place as historical evidence, but there is no diff or revert command.
+- **Analysis is heuristic and bounded** — a one-off task can look like a preference, so weak evidence is reported as `medium` and the user must confirm before applying. A `recent` scan reads at most 20 sessions.
+- **The `write_like_human` tool is not registered** — `WRITING_RULES.yaml` is edited by hand. The design leaves that tool's visibility as a pending decision, so this round ships the rules file and its prompt section only.
+- **The old UI is gone** — there is no proposal queue or settings page. Output-style and writing-rules pages are separate work, so both files are edited on disk.
+- **A malformed file empties its section** — a parse failure or an oversized hand-edited body is logged as a warning and contributes no prompt text until the file is fixed.
 
 ### Dev Note
 
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-This Dev Note is non-authoritative working context: open questions and directions that are not decided. Shipped behavior and accepted rationale live in the sections above and in the package code.
+This Dev Note is non-authoritative working context: open questions and directions that are not decided. Shipped behavior and accepted rationale live in the sections above, in the [design record](../../../docs/design/dafeiyu-personality-plugin.md), and in the [upgrade guide](../../../docs/upgrade-guide/v0.2.2-rc.2/personality-rewrite/guide.md).
 
-- **Whether the overlay should be able to suppress a global entry** — the current merge only replaces by id; a deletion marker would need a durable representation and a consumer for the removal.
-- **Whether history should rotate by size or by revision** — every write carries the complete managed block, so an unbounded file grows with both entry count and edit frequency.
+- **Whether to register `write_like_human`** — the CRUD functions and caps exist in `src/writing-rules.ts`; wiring them into a tool needs the visibility decision the design still lists as pending.
+- **Whether to add a watcher back** — a watcher complicates lifecycle and the prompt cache invalidation contract; the current design accepts new-agent-only refresh.
+- **Whether the legacy migration fallback is needed on every backend** — the move path is preferred, and the copy path runs only when the backend cannot move a file.
 
 </details>

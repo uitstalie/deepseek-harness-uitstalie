@@ -2,7 +2,7 @@
 
 [English](dafeiyu-personality-plugin.md) | 中文
 
-状态：已接受的设计；从 Phase 0 开始实施；本轮不写实现代码、不迁移用户数据。
+状态：已实施（Phase 4–6，2026-11-13）。2.1.1 的删除清单记录本次重写删掉的面；2.2 的旧数据处理规则仍然有效，§12 列出不在本次范围内的内容。
 
 ## 0. 7 条裁决与对应改动
 
@@ -39,6 +39,19 @@
 - `packages/uitstalie/ui-personality` 的旧 proposal 页面和旧设置字段。
 - `packages/bundle/web-app/cordis.patch.uitstalie.yml` 中挂载旧 provider/UI 的行；新实现重新决定挂载点，不复用旧 config 字段。
 - 旧 package 的导出 API 不保留兼容别名；需要新设计的工具名、section 名和数据文件。
+
+### 2.1.1 实施时删掉的面
+
+| 删除的面 | 细节 |
+|---|---|
+| 旧源码模块 | `commands.ts`、`proposals.ts`、`remote.ts`、`types.ts`、`tools.ts`、`prompt.ts`、`personality-file.ts`、`config.ts` |
+| 旧测试 | `tests/commands.spec.ts`、`tests/personality-file.spec.ts` |
+| 旧 UI 包 | `packages/uitstalie/ui-personality`（27 个受版本控制的文件，含 README 与 locale） |
+| 包导出 | `./remote`、`./types`、`./typert`、`./locale/*.json` |
+| 配置 | `Config` 删除；`workspaceOverlay`、`maxBytes`、`autoLearn`、`historyLimit` 不再读取。仍带这些键的 profile 行可以加载，因为 Loader 不拒绝未知键，值会被忽略。 |
+| 依赖 | `@deepseek-ai/dsh-commands` peer、`@deepseek-ai/schemastery`、`diff`、`@deepseek-ai/dsh-typert-protocol` |
+| 挂载与工程引用 | `cordis.patch.uitstalie.yml` 的 `ui-personality` 行、它在 `tsconfig.host.json` / `tsconfig.client.json` / `tsconfig.base.json` 的引用，以及生成的 slot catalog 条目 |
+| 模型面 | `personality_learn`、`personality_propose`、`/personality` 命令、proposal Remote，以及 turn-end 学习钩子 |
 
 **删除的是实现，不是用户数据。** 数据按 2.2 处理。
 
@@ -572,9 +585,9 @@ super agent 派发
 - 不给工作区创建 personality 文件；旧工作区文件只警告。
 - 旧全局文件/历史/proposal 不迁移；备份后不解析。
 
-## 12. 本轮不做
+## 12. 本次重写不做
 
-- 不写实现，不改 `packages/**`，不提交实现代码。
+- `write_like_human` 工具与新的 output-style/writing-rules UI 页面不在本次重写范围内。
 - 不做工作区 override/overlay/scope；不写工作区 personality。
 - 不做 turn-end 自动学习、正则、后台扫描、自动写入。
 - 不迁移旧数据；不删除旧数据；不保留旧 API 兼容别名。

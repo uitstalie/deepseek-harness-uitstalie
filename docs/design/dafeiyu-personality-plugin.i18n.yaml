@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/dafeiyu-personality-plugin.md
 /dafeiyu-personality-plugin-design-2026-11-13:
-  en: 3849ee3e0064428f
-  zh: eccd8e7b419dc74c
+  en: f1907dc7faa1428a
+  zh: 04de5c4dbf4ae4e3
 /dafeiyu-personality-plugin-design-2026-11-13/0-7-decisions-and-corresponding-changes:
   en: 69d70d8bd9bcc678
   zh: eac1b708a84c90b0
@@ -15,8 +15,11 @@
   en: ed4ebfbb62f339f0
   zh: a87634b7a6b7757e
 /dafeiyu-personality-plugin-design-2026-11-13/2-old-implementation-exit/2-1-code-layer:
-  en: 4bb566ba652a969d
-  zh: 94685cf3c123ad4a
+  en: a3086bba45e9085f
+  zh: 556c3aa57be347c8
+/dafeiyu-personality-plugin-design-2026-11-13/2-old-implementation-exit/2-1-1-removed-in-the-implementation:
+  en: abda6116f279ff52
+  zh: 8a4491838912c514
 /dafeiyu-personality-plugin-design-2026-11-13/2-old-implementation-exit/2-2-data-layer:
   en: 6e9b9353e68d8b80
   zh: 6c5796c51975eb09
@@ -134,9 +137,9 @@
 /dafeiyu-personality-plugin-design-2026-11-13/11-prerequisites-for-implementing-on-another-machine/11-3-data-and-paths:
   en: ea31e0c1b704cf2a
   zh: c84d17a36ddfa79c
-/dafeiyu-personality-plugin-design-2026-11-13/12-not-done-this-round:
-  en: 1f236adaeb1e2ae3
-  zh: c5d501d3f3fccaa2
+/dafeiyu-personality-plugin-design-2026-11-13/12-not-done-in-this-rewrite:
+  en: f73fc67e7b0a137e
+  zh: af4902f253309b35
 /dafeiyu-personality-plugin-design-2026-11-13/13-decisions-pending:
   en: b3ceaeeda64f8122
   zh: eb1b911a89d09a9e
