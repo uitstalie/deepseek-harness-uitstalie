@@ -19,15 +19,15 @@
     personaPrefix: >-
       You are a coding agent powered by the {{model}} model.
 
-# Full-text session search is opt-in (the base row's `openAt: never`). This
-# restatement keeps the Web values on one ephemeral in-memory index; a
-# deployment enabling content search overrides `openAt` to `first-search` in a
-# later patch layer, which defers the node:sqlite import and in-memory handle
-# to the first search so startup stays quiet.
+# Full-text session search follows the base default (`first-search`). This
+# restatement keeps the Web values on one ephemeral in-memory index; the
+# node:sqlite import and in-memory handle are deferred to the first search so
+# startup stays quiet. A deployment can override `openAt` to `never` to disable
+# content search, or use a durable `path` to keep the index.
 - id: session-query-sqlite
   config:
     path: ':memory:'
-    openAt: never
+    openAt: first-search
 
 # ── web-only host rows, the transport layer, and the browser roster ─────────
 
