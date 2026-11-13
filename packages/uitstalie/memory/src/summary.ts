@@ -23,7 +23,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-compaction'
-import { FsError } from '@deepseek-ai/dsh-fs'
 import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
@@ -33,6 +32,8 @@ import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, FinishReason, GenerateOptions } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { MemorySettings } from './config.ts'
+import { classifySummaryFailure } from './failure.ts'
+import type { MemorySummaryFailure, MemorySummaryFailureCode } from './failure.ts'
 import {
   MEMORY_BRIEF_MAX_CHARS,
   MEMORY_BRIEF_MAX_ENTRIES,
@@ -42,7 +43,6 @@ import {
   migrateMemoryTiers,
   readMemoryDocument,
   summaryPaused,
-  MemoryDocumentError,
 } from './memory-file.ts'
 import type { MemoryDocument, MemoryEntry, MemoryTurnSummaryInput } from './memory-file.ts'
 import { appendMemoryNotice, refreshMemorySnapshot } from './snapshot.ts'
@@ -75,26 +75,8 @@ export const MEMORY_SUMMARY_ENTRY_MAX_CHARS = 300
 /** Opening phrase of every summary-failure notice; the code and cause follow it. */
 export const MEMORY_SUMMARY_FAILURE_NOTICE = 'Memory summary failed'
 
-/** Stable machine code for one failed summary pass. */
-export type MemorySummaryFailureCode =
-  | 'BUDGET_EXCEEDED'
-  | 'FILE_IO'
-  | 'NO_TARGET'
-  | 'EMPTY_OUTPUT'
-  | 'UPSTREAM_RATE_LIMIT'
-  | 'UPSTREAM_TIMEOUT'
-  | 'UPSTREAM_FAILED'
-  | 'UNKNOWN'
-
-/** Classified failure of one summary pass. */
-export interface MemorySummaryFailure {
-  /** Stable code the notice and logs carry. */
-  readonly code: MemorySummaryFailureCode
-  /** One short cause phrase, bounded by the notice's character budget. */
-  readonly detail: string
-  /** Summary model calls this pass attempted. */
-  readonly attempts: number
-}
+export { classifySummaryFailure } from './failure.ts'
+export type { MemorySummaryFailure, MemorySummaryFailureCode } from './failure.ts'
 
 /** Attempts one pass makes before it gives up and leaves the previous memory in effect. */
 export const MEMORY_SUMMARY_MAX_ATTEMPTS = 2
@@ -106,47 +88,6 @@ const MEMORY_SUMMARY_RETRY_DELAY_MS = 100
 export function memorySummaryFailureNotice(failure: MemorySummaryFailure): string {
   return `${MEMORY_SUMMARY_FAILURE_NOTICE} [${failure.code}] (attempt ${String(failure.attempts)}/${String(MEMORY_SUMMARY_MAX_ATTEMPTS)}); `
     + `previous memory still in effect: ${failure.detail}`
-}
-
-/** Classify one pass failure into the notice code and a short cause phrase. */
-export function classifySummaryFailure(error: unknown, attempts: number): MemorySummaryFailure {
-  if (error instanceof MemoryDocumentError) {
-    return error.code === 'budget-exceeded'
-      ? { code: 'BUDGET_EXCEEDED', detail: 'body over the byte budget', attempts }
-      : { code: 'FILE_IO', detail: 'MEMORY.md could not be written', attempts }
-  }
-  if (error instanceof FsError) {
-    return { code: 'FILE_IO', detail: `filesystem error ${error.code}`, attempts }
-  }
-  if (error instanceof LlmError) {
-    switch (error.code) {
-      case 'RATE_LIMIT':
-      case 'QUOTA':
-      case 'ACCOUNT_QUOTA':
-        return { code: 'UPSTREAM_RATE_LIMIT', detail: 'provider rate-limited', attempts }
-      case 'TIMEOUT':
-        return { code: 'UPSTREAM_TIMEOUT', detail: 'provider request timed out', attempts }
-      case 'NO_ADAPTER':
-      case 'UNKNOWN_MODEL':
-      case 'MISSING_CREDENTIAL':
-      case 'AUTH':
-      case 'INVALID_CREDENTIAL':
-        return { code: 'UPSTREAM_FAILED', detail: `request rejected (${error.code})`, attempts }
-      default:
-        return { code: 'UPSTREAM_FAILED', detail: `provider stream failed (${error.code})`, attempts }
-    }
-  }
-  const message = errorMessage(error)
-  if (message.includes('no provider/model available')) {
-    return { code: 'NO_TARGET', detail: 'no summary model route is available', attempts }
-  }
-  if (message.includes('produced no text')) {
-    return { code: 'EMPTY_OUTPUT', detail: 'the model returned no text', attempts }
-  }
-  if (message.includes('hit the output token cap')) {
-    return { code: 'UPSTREAM_FAILED', detail: 'the model hit its output token cap', attempts }
-  }
-  return { code: 'UNKNOWN', detail: 'see the debug log', attempts }
 }
 
 /** Upstream codes that may clear on one immediate retry. */

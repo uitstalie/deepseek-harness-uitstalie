@@ -25,6 +25,7 @@ import type { StoreWriteOptions } from '@deepseek-ai/dsh-store-atom'
 import { appendMemoryArchive } from './archive.ts'
 import { replaceSurfaceRange } from './checkpoint.ts'
 import { cleanupMemoryDocument, resolveMemoryEntries } from './cleanup.ts'
+import { classifySummaryFailure } from './failure.ts'
 import type { MemoryCleanupNewerEntry, MemoryResolveFilter } from './cleanup.ts'
 import { collectMemoryEntryTimes } from './entry-times.ts'
 import { errorMessage } from './text.ts'
@@ -1086,6 +1087,7 @@ export async function resolveMemoryEntriesInStore(
     }
   }
   if (!await archiveContained(ctx, session, resolved.records, signal)) {
+    ctx.logger.warn('memory: resolve skipped [FILE_IO]; the archive could not be written')
     throw new MemoryDocumentError(
       'MEMORY.archive.md could not be written; the resolve was skipped and no active entry was removed',
       'invalid-document',
@@ -1237,11 +1239,14 @@ async function archiveContained(
     )
     return true
   } catch (error: unknown) {
+    const failure = classifySummaryFailure(error, 1)
     ctx.logger.warn(
-      'memory: could not archive %d removed entry/entries; keeping the active file write: %s',
+      'memory: could not archive %d removed entry/entries [%s]: %s; keeping the active file write',
       records.length,
-      errorMessage(error),
+      failure.code,
+      failure.detail,
     )
+    ctx.logger.debug('memory: archive failure detail: %o', error)
     ctx.logger.debug(
       'memory: unarchived entries: %s',
       records.map(record => `${record.sessionId}/${record.turn === undefined ? '?' : String(record.turn)}/${record.kind}:${record.text.slice(0, 60)}`).join(' | '),
@@ -1286,17 +1291,25 @@ async function cleanupForAppend(
     }
     entryTimes = times
   }
-  const cleaned = cleanupMemoryDocument(document, {
-    ...options.now === undefined ? {} : { now: options.now },
-    openTtlDays,
-    filesTtlDays,
-    ...options.supersessionMinSharedTags === undefined ? {} : {
-      supersessionMinSharedTags: options.supersessionMinSharedTags,
-    },
-    ...entryTimes === undefined ? {} : { entryTimes },
-    ...newer === undefined ? {} : { newerEntry: newer },
-  })
-  return { document: cleaned.document, records: cleaned.records }
+  try {
+    const cleaned = cleanupMemoryDocument(document, {
+      ...options.now === undefined ? {} : { now: options.now },
+      openTtlDays,
+      filesTtlDays,
+      ...options.supersessionMinSharedTags === undefined ? {} : {
+        supersessionMinSharedTags: options.supersessionMinSharedTags,
+      },
+      ...entryTimes === undefined ? {} : { entryTimes },
+      ...newer === undefined ? {} : { newerEntry: newer },
+    })
+    return { document: cleaned.document, records: cleaned.records }
+  } catch (error: unknown) {
+    // Cleanup is auxiliary: a planner failure must not turn a valid memory write into a failure.
+    const failure = classifySummaryFailure(error, 1)
+    ctx.logger.warn('memory: automatic cleanup failed [%s]: %s; keeping active entries', failure.code, failure.detail)
+    ctx.logger.debug('memory: automatic cleanup failure detail: %o', error)
+    return { document, records: [] }
+  }
 }
 
 /**
