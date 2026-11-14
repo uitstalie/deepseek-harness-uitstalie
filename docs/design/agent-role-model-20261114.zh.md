@@ -34,6 +34,7 @@
 | Personality 工具过滤 | `personality/src/index.ts:122` | 现有行为：subagent 只获得 analyze；本轮不迁移到 minRole。 |
 | Jira worker 测试 | `jira-agent/src/contribution.ts:146-179` | `isWorker` 继续选择 worker 工具集；每个返回的工具同时带 `minRole: agent`，由 role 拦住 subagent。 |
 | Super-agent 测试 | `jira-agent/src/superagent.ts:418-424`、`:5752-5769` | Workspace `role: 'super'` + `SessionController.workspaceRoleFor`；cwd 检查仍保留在 jira 能力内部。 |
+| Compaction bridge | `jira-agent/src/superagent.ts:2198-2215`、`:2790-2805` | `agentPresets.serviceFor(agent, 'compaction')` 到达目标 Session 自己的 preset 引擎；引擎不移动、不复制。 |
 | Memory 能力 scope | `memory/src/index.ts:296` | 未来做工具级角色声明；当前行为不变。 |
 | Schedule 运行时拒绝 | `schedule/tool-schedule/src/index.ts:307` | 当前拒绝 subagent 调用；可见性不变。 |
 

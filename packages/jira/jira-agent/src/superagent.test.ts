@@ -2837,6 +2837,42 @@ void describe('superagent: context, compaction and memory curation', () => {
     assert.match(JSON.stringify(result.error), /not idle/u)
   })
 
+  void it('compacts through the target preset bridge instead of a host engine', async () => {
+    const controller = compactController()
+    let calls = 0
+    const compaction = { compactNow: async () => { controller.compactCalls += 1; return { shadowedTokenCount: 800 } } }
+    const ctx = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'agentPresets' ? { serviceFor: (_agent: unknown, name: string) => name === 'compaction' ? compaction : undefined }
+          : key === 'tokenMeter' ? { contextPressure: () => ({ pressureTokens: calls++ === 0 ? 70_000 : 10_000, contextWindow: 200_000 }) }
+            : undefined,
+    }
+    const result = await runControlTool({ action: 'compact', session: 'w-session' }, options, me, ctx, { tasks: new Map() })
+    assert.equal(result.ok, true, JSON.stringify(result.error))
+    assert.equal(controller.compactCalls, 1)
+    assert.equal((result.compaction as { before?: { percent?: number } }).before?.percent, 35)
+    assert.equal((result.compaction as { after?: { percent?: number } }).after?.percent, 5)
+  })
+
+  void it('distinguishes a missing bridge from a target preset with no engine', async () => {
+    const controller = compactController()
+    const noBridge = {
+      get: (key: string) => key === 'sessionController' ? controller : undefined,
+    }
+    const missingBridge = await runControlTool({ action: 'compact', session: 'w-session' }, options, me, noBridge, { tasks: new Map() })
+    assert.equal(missingBridge.ok, false)
+    assert.match(JSON.stringify(missingBridge.error), /no agent-presets bridge/u)
+
+    const noEngine = {
+      get: (key: string) => key === 'sessionController' ? controller
+        : key === 'agentPresets' ? { serviceFor: () => undefined }
+          : undefined,
+    }
+    const missingEngine = await runControlTool({ action: 'compact', session: 'w-session' }, options, me, noEngine, { tasks: new Map() })
+    assert.equal(missingEngine.ok, false)
+    assert.match(JSON.stringify(missingEngine.error), /no compaction engine mounted/u)
+  })
+
   void it('compacts a Session through the compact action', async () => {
     const controller = compactController()
     let calls = 0

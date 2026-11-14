@@ -34,6 +34,7 @@ The role type and reader live in `packages/core/agent/src/runtime-types.ts` and 
 | Personality tool filter | `personality/src/index.ts:122` | Existing behavior: subagent gets analyze only; not migrated to minRole in this round. |
 | Jira worker test | `jira-agent/src/contribution.ts:146-179` | `isWorker` still chooses the worker tool set; every returned tool also carries `minRole: agent`, so role gates subagents. |
 | Super-agent test | `jira-agent/src/superagent.ts:418-424`, `:5752-5769` | Workspace `role: 'super'` + `SessionController.workspaceRoleFor`; cwd checks remain inside the jira capability. |
+| Compaction bridge | `jira-agent/src/superagent.ts:2198-2215`, `:2790-2805` | `agentPresets.serviceFor(agent, 'compaction')` reaches the target Session's own preset engine; the engine is not moved or duplicated. |
 | Memory capability scope | `memory/src/index.ts:296` | Future tool-level role declaration; current behavior unchanged. |
 | Schedule runtime rejection | `schedule/tool-schedule/src/index.ts:307` | Current subagent call refusal; visibility unchanged. |
 

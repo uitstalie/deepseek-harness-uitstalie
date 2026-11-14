@@ -2187,6 +2187,11 @@ interface AgentsLike {
   list?(): readonly unknown[]
 }
 
+/** The preset registry's bridge into one Agent's isolated preset services. */
+interface AgentPresetsLike {
+  serviceFor?(agent: { ctx: unknown }, name: 'compaction'): unknown
+}
+
 /** Read the host token meter when the deployment mounts one. */
 const tokenMeterOf = (ctx: unknown): TokenMeterLike | undefined => {
   const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
@@ -2199,6 +2204,21 @@ const compactionOf = (ctx: unknown): CompactionLike | undefined => {
   const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
   const service = typeof get === 'function' ? get.call(ctx, 'compaction') as Partial<CompactionLike> | undefined : undefined
   return service !== undefined && typeof service.compactNow === 'function' ? service as CompactionLike : undefined
+}
+
+/** Read the preset registry that owns the isolated compaction engine. */
+const agentPresetsOf = (ctx: unknown): AgentPresetsLike | undefined => {
+  const get = (ctx as { get?: (key: string) => unknown } | undefined)?.get
+  const service = typeof get === 'function' ? get.call(ctx, 'agentPresets') as AgentPresetsLike | undefined : undefined
+  return service !== undefined && typeof service.serviceFor === 'function' ? service : undefined
+}
+
+/** Resolve the engine through the preset bridge; the target stays in its own preset. */
+const presetCompactionOf = (ctx: unknown, agent: unknown): CompactionLike | undefined => {
+  const presets = agentPresetsOf(ctx)
+  const candidate = presets?.serviceFor?.({ ctx: (agent as { ctx?: unknown }).ctx }, 'compaction')
+  const engine = candidate as Partial<CompactionLike> | undefined
+  return engine !== undefined && typeof engine.compactNow === 'function' ? engine as CompactionLike : undefined
 }
 
 /** Read the host agent registry when the deployment mounts one. */
@@ -2788,11 +2808,18 @@ export const compactWorkspaceSession = async (
     return { error: `the Session could not be resolved: ${error instanceof Error ? error.message : String(error)}` }
   }
   // In the product composition compaction is owned by an agent-preset isolate, so the plugin's
-  // root context cannot see it. The resolved Agent carries its own scoped context; prefer that
-  // seam, with the root fallback kept for hosts that mount compaction globally.
+  // root context cannot see it. Prefer the target Agent's own scoped seam, then the preset
+  // registry bridge, and keep the root fallback for hosts that mount compaction globally.
   const agentCtx = (agent as { ctx?: unknown }).ctx
-  const compaction = compactionOf(agentCtx) ?? compactionOf(ctx)
-  if (compaction === undefined) return { error: 'this deployment has no compaction seam' }
+  const compaction = compactionOf(agentCtx) ?? presetCompactionOf(ctx, agent) ?? compactionOf(ctx)
+  if (compaction === undefined) {
+    const presets = agentPresetsOf(ctx)
+    return {
+      error: presets === undefined
+        ? 'this host has no agent-presets bridge, so the Session compaction engine is not reachable'
+        : 'this Session preset has no compaction engine mounted',
+    }
+  }
   const meter = tokenMeterOf(agentCtx) ?? tokenMeterOf(ctx)
   const before = contextUsageOf(meter, (agent as { session?: unknown }).session)
   try {

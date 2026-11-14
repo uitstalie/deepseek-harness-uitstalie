@@ -97,6 +97,26 @@ void describe('superagent: compaction seam scope', () => {
     )
   })
 
+  void it('resolves the engine through the preset registry when root and agent views hide it', async () => {
+    const { root, agent } = await mount(true)
+    await seed(agent)
+    const controller = {
+      async create() { return { sessionId: 'unused' } },
+      async prompt() { return { accepted: true } },
+      async list() { return { items: [] } },
+      async resolveAgent() { return { agent } },
+    }
+    const pluginRoot = {
+      get: (key: string) => key === 'compaction' ? undefined
+        : key === 'agentPresets' ? { serviceFor: (_agent: unknown, name: string) => name === 'compaction' ? agent.ctx.get('compaction') : undefined }
+          : root.get(key),
+    } as unknown as Context
+    const outcome = await compactWorkspaceSession(pluginRoot, controller, String(agent.id))
+    assert.equal(outcome.error, undefined, JSON.stringify(outcome))
+    assert.equal(outcome.compacted, true)
+    assert.ok((outcome.shadowedTokens ?? 0) > 0)
+  })
+
   void it('returns a structured no-seam result when neither root nor agent exposes compaction', async () => {
     const { root, agent } = await mount(false)
     await seed(agent)
@@ -106,6 +126,6 @@ void describe('superagent: compaction seam scope', () => {
       async list() { return { items: [] } },
       async resolveAgent() { return { agent } },
     }, String(agent.id))
-    assert.deepEqual(outcome, { error: 'this deployment has no compaction seam' })
+    assert.deepEqual(outcome, { error: 'this host has no agent-presets bridge, so the Session compaction engine is not reachable' })
   })
 })
