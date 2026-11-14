@@ -150,6 +150,8 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + '边界: <in scope / out of scope / stop conditions>\n'
     + '证据来源: <workspace-relative paths, commands, convention anchors>\n'
     + '\n'
+    + '- Give the workspace only the goal, acceptance, and boundaries; do not prescribe its implementation path, commands, or step list (evidence-source anchors may name commands, but that is not an implementation sequence) — that Session knows its own tools and environment. Offer a method only when the workspace explicitly says it does not know how to start; over-detailed instructions make it follow the list instead of judging situations outside it, and wrong steps can lead it astray.\n'
+    + '\n'
     + 'Result contract:\n'
     + '- First line: status: done | blocked | failed | unverified · task_id: <only when supplied>\n'
     + '- Last line: artifacts: <workspace-relative paths> · checks: <commands actually run>\n'

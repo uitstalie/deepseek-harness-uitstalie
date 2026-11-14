@@ -379,6 +379,7 @@ Result contract:
 
 - This template is at the same layer as the existing rules; `SUPERAGENT_SECTION` remains the only source.
 - 2026-11-14 user decision: comparison, selection, and A/B acceptance must give per-dimension verdicts with numeric evidence, name which dimension improves or worsens and under what condition, and mark unmeasured dimensions "untested + why"; a single "better overall" verdict is forbidden.
+- 2026-11-14 user criticism: do not dispatch implementation paths, commands, or step lists; give only goal, acceptance, and boundaries, and offer a method only when the workspace says it cannot start.
 - Relationships with `superagent:workspaces` (704), `superagent:conventions` (705), and `superagent:running` (706): 702 is the static rule; 704 provides workspace identity; 705 provides the target workspace conventions, and 702 requires citing them; 706 provides long-task status. No new order.
 - On conflict, 702's "two sources, do not invent standards" takes priority over any wording in the template; the template is only an execution form.
 

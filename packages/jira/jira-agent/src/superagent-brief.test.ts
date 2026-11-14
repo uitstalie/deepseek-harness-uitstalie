@@ -62,6 +62,14 @@ void describe('superagent: brief-writing rules', () => {
     assert.match(text, /never an estimate presented as a measurement/u)
   })
 
+  void it('does not turn a brief into an implementation script', () => {
+    const text = String(SUPERAGENT_SECTION.text)
+    assert.match(text, /Give the workspace only the goal, acceptance, and boundaries/u)
+    assert.match(text, /do not prescribe its implementation path, commands, or step list/u)
+    assert.match(text, /Offer a method only when the workspace explicitly says it does not know how to start/u)
+    assert.match(text, /wrong steps can lead it astray/u)
+  })
+
   void it('adds no second section for the template', () => {
     assert.equal(SUPERAGENT_SECTION.name, 'superagent:dispatcher')
     assert.equal(SUPERAGENT_SECTION.order, 702)
