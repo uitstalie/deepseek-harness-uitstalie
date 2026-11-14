@@ -16,8 +16,8 @@ import type { AnalyzeInput } from './analyze.ts'
 import { applyPersonalityCandidates, renderApplyResult } from './apply.ts'
 import { globalPersonalityPath, PERSONALITY_ENTRY_KINDS } from './global-store.ts'
 
-/** The kinds the confirmed apply schema accepts; identity stays manual-only. */
-const APPLY_ENTRY_KINDS = PERSONALITY_ENTRY_KINDS.filter(kind => kind !== 'identity')
+/** Entry kinds accepted by the non-identity tool paths. */
+const NON_IDENTITY_ENTRY_KINDS = PERSONALITY_ENTRY_KINDS.filter(kind => kind !== 'identity')
 
 /** Build the all-agent read-only analysis tool. */
 export function personalityAnalyzeTool(ctx: Context): ToolDefinition {
@@ -33,16 +33,22 @@ export function personalityAnalyzeTool(ctx: Context): ToolDefinition {
         required: true,
         additionalProperties: false,
         properties: {
-          kind: { type: 'string', required: true, enum: ['current', 'session', 'recent'] },
-          sessionId: { type: 'string' },
-          limit: { type: 'integer' },
+          kind: {
+            type: 'string',
+            required: true,
+            enum: ['current', 'session', 'recent'],
+            description: 'current reads the caller session; session reads sessionId; recent scans the caller workspace up to limit sessions.',
+          },
+          sessionId: { type: 'string', description: 'Required when scope.kind is session; ignored otherwise.' },
+          limit: { type: 'integer', description: 'For scope.kind recent: maximum sessions to scan, 1-20; defaults to 20.' },
         },
       },
       kinds: {
         type: 'array',
-        items: { type: 'string', enum: [...PERSONALITY_ENTRY_KINDS] },
+        items: { type: 'string', enum: [...NON_IDENTITY_ENTRY_KINDS] },
+        description: 'Candidate kinds to collect; defaults to understanding, preference, and style. identity is manual-only and not accepted.',
       },
-      maxCandidates: { type: 'integer' },
+      maxCandidates: { type: 'integer', description: 'Maximum candidates to return, 1-20; defaults to 10.' },
     },
     output: {
       schema: {
@@ -105,16 +111,18 @@ export function personalityApplyTool(ctx: Context, refresh: (agent: Agent) => Pr
       candidates: {
         type: 'array',
         required: true,
+        description: 'Confirmed candidates to write, 1-20; each needs exact evidence and is rejected individually on failure.',
         items: {
           type: 'object',
           additionalProperties: false,
           properties: {
-            kind: { type: 'string', required: true, enum: [...APPLY_ENTRY_KINDS] },
+            kind: { type: 'string', required: true, enum: [...NON_IDENTITY_ENTRY_KINDS] },
             name: { type: 'string', required: true },
             text: { type: 'string', required: true },
             evidence: {
               type: 'array',
               required: true,
+              description: 'At least one exact session excerpt supporting the candidate.',
               items: {
                 type: 'object',
                 additionalProperties: false,
@@ -129,7 +137,7 @@ export function personalityApplyTool(ctx: Context, refresh: (agent: Agent) => Pr
           },
         },
       },
-      confirm: { type: 'boolean', required: true },
+      confirm: { type: 'boolean', required: true, description: 'Must be true; false rejects the whole call without writing.' },
     },
     output: {
       schema: {

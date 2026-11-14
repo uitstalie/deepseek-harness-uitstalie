@@ -157,7 +157,7 @@ export function renderOutputStyleSection(
     `- Length: ${config.length}.`,
     `- Lead with the conclusion: ${config.leadWithConclusion ? 'yes' : 'no'}.`,
     `- Lists: ${config.lists}.`,
-    `- Dispatch voice: ${config.dispatchVoice}${dispatch ? '' : ' (super agent only; other agents ignore it)'}.`,
+    ...dispatch ? [`- Dispatch voice: ${config.dispatchVoice}.`] : [],
   ]
   if (styleEntries.length > 0) {
     lines.push('Concrete style entries take priority over these defaults:')
@@ -165,9 +165,10 @@ export function renderOutputStyleSection(
   }
   lines.push(
     '',
+    'Hard boundary:',
     'Output style never overrides safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.',
     '',
-    'Status rules:',
+    'Status reporting discipline:',
     '- State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".',
     '- Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.',
     '- Without start.stage=prompted, do not write "started/dispatched".',

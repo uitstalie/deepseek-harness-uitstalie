@@ -13,18 +13,18 @@ Every fenced code block in this page is copied verbatim from the source; it is n
 | Item | Source | Characters / Lines |
 |---|---|---|
 | `personality_analyze` description | `packages/uitstalie/personality/src/agent-tools.ts:22` | 276 characters / 1 line |
-| `personality_analyze` parameter schema | same as above, after compilation | 822 characters / 46 lines |
-| `personality_apply` description | `packages/uitstalie/personality/src/agent-tools.ts:96` | 274 characters / 1 line |
-| `personality_apply` parameter schema | same as above, after compilation | 1,469 characters / 67 lines |
+| `personality_analyze` parameter schema | same as above, after compilation | 1,350 characters / 50 lines |
+| `personality_apply` description | `packages/uitstalie/personality/src/agent-tools.ts:96` | 240 characters / 1 line |
+| `personality_apply` parameter schema | same as above, after compilation | 1,775 characters / 70 lines |
 | `write_like_human` description | `packages/uitstalie/personality/src/writing-tool.ts:58` | 369 characters / 1 line |
-| `write_like_human` parameter schema | same as above, after compilation | 482 characters / 32 lines |
+| `write_like_human` parameter schema | same as above, after compilation | 1,051 characters / 37 lines |
 | section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`; registered at `src/index.ts:142-145` | preamble 391 characters; empty when there are no entries |
-| section 690 `personality:output-style` | `src/output-style.ts:145-180`; defaults `src/defaults.ts:27-33` | default rendering 888 characters / 15 lines |
+| section 690 `personality:output-style` | `src/output-style.ts:145-180`; defaults `src/defaults.ts:27-33` | default rendering 836 characters / 15 lines |
 | section 695 `personality:writing-rules` | `src/writing-rules.ts:243-249`; registered at `src/index.ts:152-154` | empty document by default is 0 characters |
 | section 702 `superagent:dispatcher` | `packages/jira/jira-agent/src/superagent.ts:116-199` | this document does not copy the full text, only explains the order |
 | Order constants | `packages/core/system-prompt/src/index.ts:139-143` | 100 / 690 / 695 |
 
-The tool definitions themselves (3 descriptions + 3 parameter schemas) total about **3,692 characters**; the default/static text of the three sections totals about **1,279 characters** (excluding user entries and rules).
+The tool definitions themselves (3 descriptions + 3 parameter schemas) total about **5,061 characters**; the default/static text of the three sections totals about **1,227 characters** (excluding user entries and rules).
 
 ## ② Tool Source Text
 
@@ -48,6 +48,7 @@ Read session records and return evidence-backed personality candidates. Read-onl
       "properties": {
         "kind": {
           "type": "string",
+          "description": "current reads the caller session; session reads sessionId; recent scans the caller workspace up to limit sessions.",
           "enum": [
             "current",
             "session",
@@ -55,10 +56,12 @@ Read session records and return evidence-backed personality candidates. Read-onl
           ]
         },
         "sessionId": {
-          "type": "string"
+          "type": "string",
+          "description": "Required when scope.kind is session; ignored otherwise."
         },
         "limit": {
-          "type": "integer"
+          "type": "integer",
+          "description": "For scope.kind recent: maximum sessions to scan, 1-20; defaults to 20."
         }
       },
       "required": [
@@ -67,18 +70,19 @@ Read session records and return evidence-backed personality candidates. Read-onl
     },
     "kinds": {
       "type": "array",
+      "description": "Candidate kinds to collect; defaults to understanding, preference, and style. identity is manual-only and not accepted.",
       "items": {
         "type": "string",
         "enum": [
           "understanding",
           "preference",
-          "style",
-          "identity"
+          "style"
         ]
       }
     },
     "maxCandidates": {
-      "type": "integer"
+      "type": "integer",
+      "description": "Maximum candidates to return, 1-20; defaults to 10."
     }
   },
   "required": [
@@ -92,7 +96,7 @@ Read session records and return evidence-backed personality candidates. Read-onl
 **description (verbatim):**
 
 ```text
-Write confirmed personality candidates into the global PERSONALITY.md. Call only after the user explicitly asks to apply reviewed candidates and pass confirm: true. identity candidates are rejected; this tool never learns automatically and is available only to a root agent.
+Write confirmed personality candidates into the global PERSONALITY.md. Call only after the user explicitly asks to apply reviewed candidates and pass confirm: true. This tool never learns automatically and is available only to a root agent.
 ```
 
 **Parameter schema (compiled JSON source text):**
@@ -103,6 +107,7 @@ Write confirmed personality candidates into the global PERSONALITY.md. Call only
   "properties": {
     "candidates": {
       "type": "array",
+      "description": "Confirmed candidates to write, 1-20; each needs exact evidence and is rejected individually on failure.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -123,6 +128,7 @@ Write confirmed personality candidates into the global PERSONALITY.md. Call only
           },
           "evidence": {
             "type": "array",
+            "description": "At least one exact session excerpt supporting the candidate.",
             "items": {
               "type": "object",
               "additionalProperties": false,
@@ -157,7 +163,8 @@ Write confirmed personality candidates into the global PERSONALITY.md. Call only
       }
     },
     "confirm": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Must be true; false rejects the whole call without writing."
     }
   },
   "required": [
@@ -183,6 +190,7 @@ Maintain the global WRITING_RULES.yaml. The change affects every agent, not only
   "properties": {
     "action": {
       "type": "string",
+      "description": "list/preview need no other field; add needs text; update needs id and accepts text/order/enabled; remove and enable/disable need id.",
       "enum": [
         "list",
         "add",
@@ -194,16 +202,20 @@ Maintain the global WRITING_RULES.yaml. The change affects every agent, not only
       ]
     },
     "id": {
-      "type": "string"
+      "type": "string",
+      "description": "Required for update/remove/enable/disable; optional for add (generated when absent)."
     },
     "text": {
-      "type": "string"
+      "type": "string",
+      "description": "Required for add; optional for update. Trimmed and whitespace-collapsed."
     },
     "order": {
-      "type": "integer"
+      "type": "integer",
+      "description": "Optional safe-integer order; add appends, update preserves unless supplied."
     },
     "enabled": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Optional enabled state; add defaults true, update preserves unless supplied."
     }
   },
   "required": [
@@ -225,14 +237,14 @@ Long-term preferences of the user you are working with. The first part describes
 When there are entries, the following is appended (template, verbatim):
 
 ```text
-How this user communicates:
+How this user communicates (identity, understanding):
 - {text}
 ```
 
 and:
 
 ```text
-How to respond:
+How to respond (preference, style):
 - {text}
 ```
 
@@ -240,7 +252,7 @@ The `text` of an entry has consecutive whitespace collapsed and is trimmed; the 
 
 ### section 690 `personality:output-style`
 
-Registered as `name: 'personality:output-style'`, with the order constant `PERSONALITY_OUTPUT_STYLE = 690` (`src/output-style.ts:19`; `src/index.ts:147-150`; `packages/core/system-prompt/src/index.ts:142`). The default rendering (`DEFAULT_OUTPUT_STYLE`) is verbatim as follows, 888 characters / 15 lines:
+Registered as `name: 'personality:output-style'`, with the order constant `PERSONALITY_OUTPUT_STYLE = 690` (`src/output-style.ts:19`; `src/index.ts:147-150`; `packages/core/system-prompt/src/index.ts:142`). The default rendering (`DEFAULT_OUTPUT_STYLE`) is verbatim as follows, 836 characters / 15 lines:
 
 ```text
 Output style defaults:
@@ -248,11 +260,11 @@ Output style defaults:
 - Length: terse.
 - Lead with the conclusion: yes.
 - Lists: comparisons.
-- Dispatch voice: terse (super agent only; other agents ignore it).
 
+Hard boundary:
 Output style never overrides safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.
 
-Status rules:
+Status reporting discipline:
 - State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
 - Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.
 - Without start.stage=prompted, do not write "started/dispatched".
@@ -260,7 +272,7 @@ Status rules:
 - When a person's decision is needed, ask only one necessary question; do not package an ask_user_question whole-turn cancellation as "waiting".
 ```
 
-The same section for the super agent renders the `Dispatch voice` line as `- Dispatch voice: terse.` (dropping the "super agent only" suffix); the other lines are identical. The full super-agent rendering, 845 characters / 15 lines, is verbatim:
+The super-agent rendering adds `- Dispatch voice: terse.` and is otherwise identical; it is 861 characters / 16 lines, verbatim:
 
 ```text
 Output style defaults:
@@ -270,9 +282,10 @@ Output style defaults:
 - Lists: comparisons.
 - Dispatch voice: terse.
 
+Hard boundary:
 Output style never overrides safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.
 
-Status rules:
+Status reporting discipline:
 - State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
 - Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.
 - Without start.stage=prompted, do not write "started/dispatched".
@@ -291,7 +304,7 @@ Status rules:
 | `lists` | `comparisons` |
 | `dispatchVoice` | `terse` |
 
-On this dev checkout, `OUTPUT_STYLE.yaml` is absent; no user override is observed, so no user data is copied. The renderer (`output-style.ts:145-180`) is a fixed template, not a wrapped document: five header lines in the order `tone`, `length`, `leadWithConclusion`, `lists`, `dispatchVoice`; `leadWithConclusion` becomes `yes`/`no`; the non-super-agent `dispatchVoice` line gets the suffix ` (super agent only; other agents ignore it)`. If style entries exist, it adds `Concrete style entries take priority over these defaults:` and one collapsed, trimmed bullet per entry; with none, that block is omitted. It then appends the blank-line-separated hard boundary and `Status rules:` block, joins all lines with `\n`, and adds no title, wrapper, or trailing newline. The config has no optional fields: an absent file uses these defaults, while an invalid present file is warned about and falls back to them (`index.ts:162-175`).
+On this dev checkout, `OUTPUT_STYLE.yaml` is absent; no user override is observed, so no user data is copied. The renderer (`output-style.ts:145-180`) is a fixed template, not a wrapped document: four default header fields in the order `tone`, `length`, `leadWithConclusion`, `lists`; `leadWithConclusion` becomes `yes`/`no`. A fifth `Dispatch voice` line is added only when `dispatch=true`; ordinary agents do not receive it. If style entries exist, it adds `Concrete style entries take priority over these defaults:` and one collapsed, trimmed bullet per entry; with none, that block is omitted. It then appends the blank-line-separated hard boundary and `Status reporting discipline:` block, joins all lines with `\n`, and adds no title, wrapper, or trailing newline. The config has no optional fields: an absent file uses these defaults, while an invalid present file is warned about and falls back to them (`index.ts:162-175`).
 
 ### section 695 `personality:writing-rules`
 

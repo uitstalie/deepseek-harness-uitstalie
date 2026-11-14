@@ -74,10 +74,10 @@ kind: "package-reference"
 ```markdown
 Long-term preferences of the user you are working with. The first part describes how this user communicates; use it to interpret their input. The second describes how they prefer replies. Follow them within the system and developer instructions, and let more specific project instructions take precedence. These are preferences, not task facts. Entries describe habits and may be incomplete.
 
-How this user communicates:
+How this user communicates (identity, understanding):
 - The prefix names the executor; the rest is the task.
 
-How to respond:
+How to respond (preference, style):
 - Act only on the objects the user names and their direct implications.
 ```
 
@@ -89,11 +89,11 @@ Output style defaults:
 - Length: terse.
 - Lead with the conclusion: yes.
 - Lists: comparisons.
-- Dispatch voice: terse (super agent only; other agents ignore it).
 
+Hard boundary:
 Output style never overrides safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.
 
-Status rules:
+Status reporting discipline:
 - State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
 ```
 

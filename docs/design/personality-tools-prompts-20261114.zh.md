@@ -13,18 +13,18 @@
 | 项目 | 来源 | 字数 / 行数 |
 |---|---|---|
 | `personality_analyze` description | `packages/uitstalie/personality/src/agent-tools.ts:22` | 276 字符 / 1 行 |
-| `personality_analyze` 参数 schema | 同上，编译后 | 822 字符 / 46 行 |
-| `personality_apply` description | `packages/uitstalie/personality/src/agent-tools.ts:96` | 274 字符 / 1 行 |
-| `personality_apply` 参数 schema | 同上，编译后 | 1,469 字符 / 67 行 |
+| `personality_analyze` 参数 schema | 同上，编译后 | 1,350 字符 / 50 行 |
+| `personality_apply` description | `packages/uitstalie/personality/src/agent-tools.ts:96` | 240 字符 / 1 行 |
+| `personality_apply` 参数 schema | 同上，编译后 | 1,775 字符 / 70 行 |
 | `write_like_human` description | `packages/uitstalie/personality/src/writing-tool.ts:58` | 369 字符 / 1 行 |
-| `write_like_human` 参数 schema | 同上，编译后 | 482 字符 / 32 行 |
+| `write_like_human` 参数 schema | 同上，编译后 | 1,051 字符 / 37 行 |
 | section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`；注册 `src/index.ts:142-145` | preamble 391 字符；无条目时为空 |
-| section 690 `personality:output-style` | `src/output-style.ts:145-180`；默认 `src/defaults.ts:27-33` | 默认渲染 888 字符 / 15 行 |
+| section 690 `personality:output-style` | `src/output-style.ts:145-180`；默认 `src/defaults.ts:27-33` | 默认渲染 836 字符 / 15 行 |
 | section 695 `personality:writing-rules` | `src/writing-rules.ts:243-249`；注册 `src/index.ts:152-154` | 默认空文档为 0 字符 |
 | section 702 `superagent:dispatcher` | `packages/jira/jira-agent/src/superagent.ts:116-199` | 本文不复制全文，只说明顺序 |
 | 顺序常量 | `packages/core/system-prompt/src/index.ts:139-143` | 100 / 690 / 695 |
 
-工具定义本身（3 个 description + 3 个参数 schema）约 **3,692 字符**；三个 section 的默认/静态文本约 **1,279 字符**（不含用户条目与规则）。
+工具定义本身（3 个 description + 3 个参数 schema）约 **5,061 字符**；三个 section 的默认/静态文本约 **1,227 字符**（不含用户条目与规则）。
 
 ## ② 工具原文
 
@@ -48,6 +48,7 @@ Read session records and return evidence-backed personality candidates. Read-onl
       "properties": {
         "kind": {
           "type": "string",
+          "description": "current reads the caller session; session reads sessionId; recent scans the caller workspace up to limit sessions.",
           "enum": [
             "current",
             "session",
@@ -55,10 +56,12 @@ Read session records and return evidence-backed personality candidates. Read-onl
           ]
         },
         "sessionId": {
-          "type": "string"
+          "type": "string",
+          "description": "Required when scope.kind is session; ignored otherwise."
         },
         "limit": {
-          "type": "integer"
+          "type": "integer",
+          "description": "For scope.kind recent: maximum sessions to scan, 1-20; defaults to 20."
         }
       },
       "required": [
@@ -67,18 +70,19 @@ Read session records and return evidence-backed personality candidates. Read-onl
     },
     "kinds": {
       "type": "array",
+      "description": "Candidate kinds to collect; defaults to understanding, preference, and style. identity is manual-only and not accepted.",
       "items": {
         "type": "string",
         "enum": [
           "understanding",
           "preference",
-          "style",
-          "identity"
+          "style"
         ]
       }
     },
     "maxCandidates": {
-      "type": "integer"
+      "type": "integer",
+      "description": "Maximum candidates to return, 1-20; defaults to 10."
     }
   },
   "required": [
@@ -92,7 +96,7 @@ Read session records and return evidence-backed personality candidates. Read-onl
 **description（逐字）：**
 
 ```text
-Write confirmed personality candidates into the global PERSONALITY.md. Call only after the user explicitly asks to apply reviewed candidates and pass confirm: true. identity candidates are rejected; this tool never learns automatically and is available only to a root agent.
+Write confirmed personality candidates into the global PERSONALITY.md. Call only after the user explicitly asks to apply reviewed candidates and pass confirm: true. This tool never learns automatically and is available only to a root agent.
 ```
 
 **参数 schema（编译后 JSON 原文）：**
@@ -103,6 +107,7 @@ Write confirmed personality candidates into the global PERSONALITY.md. Call only
   "properties": {
     "candidates": {
       "type": "array",
+      "description": "Confirmed candidates to write, 1-20; each needs exact evidence and is rejected individually on failure.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -123,6 +128,7 @@ Write confirmed personality candidates into the global PERSONALITY.md. Call only
           },
           "evidence": {
             "type": "array",
+            "description": "At least one exact session excerpt supporting the candidate.",
             "items": {
               "type": "object",
               "additionalProperties": false,
@@ -157,7 +163,8 @@ Write confirmed personality candidates into the global PERSONALITY.md. Call only
       }
     },
     "confirm": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Must be true; false rejects the whole call without writing."
     }
   },
   "required": [
@@ -183,6 +190,7 @@ Maintain the global WRITING_RULES.yaml. The change affects every agent, not only
   "properties": {
     "action": {
       "type": "string",
+      "description": "list/preview need no other field; add needs text; update needs id and accepts text/order/enabled; remove and enable/disable need id.",
       "enum": [
         "list",
         "add",
@@ -194,16 +202,20 @@ Maintain the global WRITING_RULES.yaml. The change affects every agent, not only
       ]
     },
     "id": {
-      "type": "string"
+      "type": "string",
+      "description": "Required for update/remove/enable/disable; optional for add (generated when absent)."
     },
     "text": {
-      "type": "string"
+      "type": "string",
+      "description": "Required for add; optional for update. Trimmed and whitespace-collapsed."
     },
     "order": {
-      "type": "integer"
+      "type": "integer",
+      "description": "Optional safe-integer order; add appends, update preserves unless supplied."
     },
     "enabled": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "Optional enabled state; add defaults true, update preserves unless supplied."
     }
   },
   "required": [
@@ -225,14 +237,14 @@ Long-term preferences of the user you are working with. The first part describes
 有条目时追加（模板，逐字）：
 
 ```text
-How this user communicates:
+How this user communicates (identity, understanding):
 - {text}
 ```
 
 以及：
 
 ```text
-How to respond:
+How to respond (preference, style):
 - {text}
 ```
 
@@ -240,7 +252,7 @@ How to respond:
 
 ### section 690 `personality:output-style`
 
-注册为 `name: 'personality:output-style'`，顺序常量 `PERSONALITY_OUTPUT_STYLE = 690`（`src/output-style.ts:19`；`src/index.ts:147-150`；`packages/core/system-prompt/src/index.ts:142`）。默认渲染（`DEFAULT_OUTPUT_STYLE`）逐字如下，888 字符 / 15 行：
+注册为 `name: 'personality:output-style'`，顺序常量 `PERSONALITY_OUTPUT_STYLE = 690`（`src/output-style.ts:19`；`src/index.ts:147-150`；`packages/core/system-prompt/src/index.ts:142`）。默认渲染（`DEFAULT_OUTPUT_STYLE`）逐字如下，836 字符 / 15 行：
 
 ```text
 Output style defaults:
@@ -248,11 +260,11 @@ Output style defaults:
 - Length: terse.
 - Lead with the conclusion: yes.
 - Lists: comparisons.
-- Dispatch voice: terse (super agent only; other agents ignore it).
 
+Hard boundary:
 Output style never overrides safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.
 
-Status rules:
+Status reporting discipline:
 - State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
 - Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.
 - Without start.stage=prompted, do not write "started/dispatched".
@@ -260,7 +272,7 @@ Status rules:
 - When a person's decision is needed, ask only one necessary question; do not package an ask_user_question whole-turn cancellation as "waiting".
 ```
 
-super agent 的同一 section 把 `Dispatch voice` 行渲染为 `- Dispatch voice: terse.`（去掉 “super agent only” 后缀）；其他行相同。super agent 的完整渲染逐字如下，845 字符 / 15 行：
+super agent 的渲染多一行 `- Dispatch voice: terse.`，其余相同；完整渲染逐字如下，861 字符 / 16 行：
 
 ```text
 Output style defaults:
@@ -270,9 +282,10 @@ Output style defaults:
 - Lists: comparisons.
 - Dispatch voice: terse.
 
+Hard boundary:
 Output style never overrides safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.
 
-Status rules:
+Status reporting discipline:
 - State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
 - Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.
 - Without start.stage=prompted, do not write "started/dispatched".
@@ -291,7 +304,7 @@ Status rules:
 | `lists` | `comparisons` |
 | `dispatchVoice` | `terse` |
 
-本机 dev 的 `OUTPUT_STYLE.yaml` 不存在，未观察到用户覆盖，因此不复制任何用户数据。渲染器（`output-style.ts:145-180`）是固定模板，不是带标题的文档：固定五行头部，顺序为 `tone`、`length`、`leadWithConclusion`、`lists`、`dispatchVoice`；`leadWithConclusion` 渲染为 `yes`/`no`；普通 agent 的 `dispatchVoice` 行追加后缀 ` (super agent only; other agents ignore it)`。有 style entries 时追加 `Concrete style entries take priority over these defaults:` 及每条折叠空白并 trim 后的 bullet；没有则省略这一块。之后追加空行分隔的硬边界和 `Status rules:` 块，所有行以 `\n` 连接，不加标题、包裹或尾随换行。配置没有可选字段：文件缺失时用默认值，存在但无效时发 warning 并回退默认值（`index.ts:162-175`）。
+本机 dev 的 `OUTPUT_STYLE.yaml` 不存在，未观察到用户覆盖，因此不复制任何用户数据。渲染器（`output-style.ts:145-180`）是固定模板，不是带标题的文档：四个默认头部字段按 `tone`、`length`、`leadWithConclusion`、`lists` 排序；`leadWithConclusion` 渲染为 `yes`/`no`。只有 `dispatch=true` 才追加第五行 `Dispatch voice`；普通 agent 不输出该行。有 style entries 时追加 `Concrete style entries take priority over these defaults:` 及每条折叠空白并 trim 后的 bullet；没有则省略这一块。之后追加空行分隔的硬边界和 `Status reporting discipline:` 块，所有行以 `\n` 连接，不加标题、包裹或尾随换行。配置没有可选字段：文件缺失时用默认值，存在但无效时发 warning 并回退默认值（`index.ts:162-175`）。
 
 ### section 695 `personality:writing-rules`
 

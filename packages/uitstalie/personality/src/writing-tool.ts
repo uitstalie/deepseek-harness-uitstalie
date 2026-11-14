@@ -66,11 +66,12 @@ export function writingRulesTool(ctx: Context, refresh: (agent: Agent) => Promis
         type: 'string',
         required: true,
         enum: ['list', 'add', 'update', 'remove', 'enable', 'disable', 'preview'],
+        description: 'list/preview need no other field; add needs text; update needs id and accepts text/order/enabled; remove and enable/disable need id.',
       },
-      id: { type: 'string' },
-      text: { type: 'string' },
-      order: { type: 'integer' },
-      enabled: { type: 'boolean' },
+      id: { type: 'string', description: 'Required for update/remove/enable/disable; optional for add (generated when absent).' },
+      text: { type: 'string', description: 'Required for add; optional for update. Trimmed and whitespace-collapsed.' },
+      order: { type: 'integer', description: 'Optional safe-integer order; add appends, update preserves unless supplied.' },
+      enabled: { type: 'boolean', description: 'Optional enabled state; add defaults true, update preserves unless supplied.' },
     },
     output: {
       schema: {

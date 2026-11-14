@@ -32,6 +32,7 @@ import {
 import type { PersonalityEntry } from '../src/global-store.ts'
 import { renderPersonalitySection, PROFILE_SECTION_NAME } from '../src/profile-prompt.ts'
 import { applyPersonalityCandidates } from '../src/apply.ts'
+import { analyzePersonality } from '../src/analyze.ts'
 
 const signal = new AbortController().signal
 
@@ -351,12 +352,17 @@ test('personality_analyze can scan a named session in the same workspace', async
 test('personality_analyze rejects identity as a candidate kind', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
-  const result = await call(mounted.ctx, root, 'personality_analyze', {
-    scope: { kind: 'current' },
-    kinds: ['identity'],
-  })
-  expect(result.isError).toBe(true)
-  expect(text(result)).toContain('identity is manual-only')
+  const analyze = mounted.ctx.tools.get('personality_analyze', root)
+  const kinds = (analyze?.parameters as {
+    properties?: { kinds?: { items?: { enum?: readonly string[] } } }
+  } | undefined)?.properties?.kinds?.items?.enum
+  expect(kinds).toEqual(['understanding', 'preference', 'style'])
+  await expect(analyzePersonality(
+    mounted.ctx,
+    root.session,
+    { scope: { kind: 'current' }, kinds: ['identity'] } as never,
+    signal,
+  )).rejects.toThrow(/identity is manual-only/u)
 })
 
 test('personality_apply rejects identity and missing evidence per candidate', async () => {

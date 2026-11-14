@@ -83,20 +83,22 @@ test('renders the section in fixed field order with the hard boundary', () => {
     styleEntries: [{ text: 'Use   one paragraph.' }],
     dispatch: false,
   })
-  const positions = ['- Tone:', '- Length:', '- Lead with the conclusion:', '- Lists:', '- Dispatch voice:']
+  const positions = ['- Tone:', '- Length:', '- Lead with the conclusion:', '- Lists:']
     .map(field => text.indexOf(field))
   expect(positions.every(position => position >= 0)).toBe(true)
   expect(positions).toEqual([...positions].sort((left, right) => left - right))
+  expect(text).not.toContain('- Dispatch voice:')
   expect(text).toContain('Concrete style entries take priority over these defaults:')
   expect(text).toContain('- Use one paragraph.')
-  expect(text).toContain('super agent only; other agents ignore it')
+  expect(text).toContain('Hard boundary:')
   expect(text).toContain('Output style never overrides safety, approval, sandbox, tool permission, or workspace rules.')
-  expect(text).toContain('Status rules:')
+  expect(text).toContain('Status reporting discipline:')
   expect(text).toContain('report delivery unconfirmed')
 })
 
 test('omits the non-dispatch qualifier for the super agent and handles no style entries', () => {
   const text = renderOutputStyleSection(DEFAULT_OUTPUT_STYLE, { dispatch: true })
+  expect(text).toContain('- Dispatch voice: terse.')
   expect(text).not.toContain('super agent only; other agents ignore it')
   expect(text).not.toContain('Concrete style entries take priority')
 })

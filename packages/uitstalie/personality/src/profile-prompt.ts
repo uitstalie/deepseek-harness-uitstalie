@@ -31,9 +31,9 @@ export function renderPersonalitySection(entries: readonly PersonalityEntry[]): 
   if (entries.length === 0) return ''
   const sorted = [...entries].sort(compareEntries)
   const blocks = [PROFILE_PREAMBLE]
-  const communication = renderPart('How this user communicates', sorted.filter(entry => COMMUNICATION_KINDS.has(entry.kind)))
+  const communication = renderPart('How this user communicates (identity, understanding)', sorted.filter(entry => COMMUNICATION_KINDS.has(entry.kind)))
   if (communication !== '') blocks.push(communication)
-  const response = renderPart('How to respond', sorted.filter(entry => RESPONSE_KINDS.has(entry.kind)))
+  const response = renderPart('How to respond (preference, style)', sorted.filter(entry => RESPONSE_KINDS.has(entry.kind)))
   if (response !== '') blocks.push(response)
   return blocks.join('\n\n')
 }
