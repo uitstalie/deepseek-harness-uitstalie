@@ -11,6 +11,7 @@
  */
 
 import type { Context, Volatile } from '@deepseek-ai/cordis'
+import { agentRoleOf } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution, CapabilityRuntime, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import type {} from '@deepseek-ai/dsh-fs'
@@ -293,12 +294,12 @@ export function apply(ctx: Context, config: Config): void {
       if (runtime.signal.aborted) stopFlushOnDispose()
       else runtime.signal.addEventListener('abort', stopFlushOnDispose, { once: true })
       return {
-        scope: 'root',
+        scope: 'all',
         // The state section is always wired, even while `snapshotPosition` is `depth-0`: an empty
         // text contributes nothing to the prompt, and a later switch to `prompt` then reaches the
         // agents that were created before the change. Deciding the section set at wiring time left
         // those agents without any snapshot after the switch.
-        promptSections: (agent: Agent) => [
+        promptSections: (agent: Agent) => agentRoleOf(agent) === 'subagent' ? [] : [
           MEMORY_PROMPT_SECTION,
           {
             name: MEMORY_STATE_SECTION_NAME,
@@ -310,6 +311,7 @@ export function apply(ctx: Context, config: Config): void {
         ],
         tools: () => memoryTools(ctx, settings, onSnapshotText),
         onAgentCreated: (agent: Agent) => {
+          if (agentRoleOf(agent) === 'subagent') return
           // A resumed session already has a surface; a fresh one is empty until
           // its first step, and a user message must not precede the system prompt.
           if (agent.session.surface.nodes.length === 0) return
@@ -325,6 +327,7 @@ export function apply(ctx: Context, config: Config): void {
           // summarize; without this filter an aborted turn starts a job that can only fail, and
           // appends a misleading "Memory summary failed" notice.
           if (input.event.data.reason.kind !== 'completed') return
+          if (agentRoleOf(input.agent) === 'subagent') return
           validateTurnEnd(input)
           summaries.onTurnEnd(input)
         },

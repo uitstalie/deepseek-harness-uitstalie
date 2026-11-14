@@ -78,7 +78,7 @@ test('registers an active root-scoped capability with the fixed prompt section',
   expect(MEMORY_PROMPT_ORDER).toBe(2350)
 })
 
-test('root agents get the five tools; child agents get none', async () => {
+test('root agents get all five tools; child agents get only memory read/search', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
   const child = await mounted.ctx.agents.create({
@@ -88,8 +88,12 @@ test('root agents get the five tools; child agents get none', async () => {
 
   const names = mounted.ctx.tools.schemas(root).map(schema => schema.name)
   expect(names).toEqual(expect.arrayContaining(['memory_write', 'memory_resolve', 'memory_forget', 'memory_search', 'memory_read']))
-  expect(mounted.ctx.tools.schemas(child.agent)).toEqual([])
+  expect(mounted.ctx.tools.schemas(child.agent).map(schema => schema.name).sort()).toEqual(['memory_read', 'memory_search'])
   expect(mounted.ctx.tools.get('memory_write', child.agent)).toBeUndefined()
+  expect(mounted.ctx.tools.get('memory_forget', child.agent)).toBeUndefined()
+  expect(mounted.ctx.tools.get('memory_resolve', child.agent)).toBeUndefined()
+  expect(mounted.ctx.tools.get('memory_search', child.agent)).toBeDefined()
+  expect(mounted.ctx.tools.get('memory_read', child.agent)).toBeDefined()
   const childAssembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(child.agent))
   expect(childAssembly.sections.map(entry => entry.name)).not.toContain('memory')
   await child.dispose()

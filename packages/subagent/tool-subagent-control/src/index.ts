@@ -10,7 +10,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, withMinRole } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { ROOT_AGENT_NAME } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -81,7 +81,8 @@ export function apply(ctx: Context, config: Config = {}): void {
       return { messageId }
     },
   })
-  ctx.tools.register(sendMessage)
+  const registeredSendMessage = withMinRole(sendMessage, 'subagent')
+  ctx.tools.register(registeredSendMessage)
   ctx.systemPrompt.context({
     name: 'subagent:identity',
     order: ctx.systemPrompt.getContextOrder('SUBAGENT_DELEGATION'),
@@ -97,7 +98,7 @@ export function apply(ctx: Context, config: Config = {}): void {
             + `Your name is ${JSON.stringify(names.self)}.\n`
             + `The root agent of your collaboration tree is ${JSON.stringify(ROOT_AGENT_NAME)}.`
         const guidance: string[] = []
-        if (ctx.tools.get(sendMessage.name, scope, toolSet) === sendMessage) {
+        if (ctx.tools.get(sendMessage.name, scope, toolSet) === registeredSendMessage) {
           guidance.push('To message other agents, use send_message({ agent: "<agent-name>", message: "..." }).')
         }
         if (ctx.tools.get(listAgents.name, scope, toolSet) === listAgents) {

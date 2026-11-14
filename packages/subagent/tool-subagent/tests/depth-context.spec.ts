@@ -31,9 +31,9 @@ describe('delegation depth context', () => {
     })
     const baseline = await ctx.systemPrompt.assemble(assembleContextFor(root))
     const assembly = await ctx.systemPrompt.assemble(assembleContextFor(agent))
-    expect(assembly.sections).toEqual(baseline.sections)
-    expect(assembly.tools).toEqual(baseline.tools)
-    expect(await depthContext(ctx, agent)).toEqual(remaining === 0 ? [
+    expect(assembly.sections.filter(section => !section.name.startsWith('tool:'))).toEqual(baseline.sections.filter(section => !section.name.startsWith('tool:')))
+    expect(assembly.tools).toEqual(depth === 0 ? baseline.tools : [])
+    expect(await depthContext(ctx, agent)).toEqual(depth === 0 && remaining === 0 ? [
       `Delegation depth for \`subagent\`: current ${depth}, maximum ${maxDepth}, remaining levels 0.`
         + ' Do not call `subagent` at this depth; carry out the work directly.',
     ] : [])
@@ -45,7 +45,7 @@ describe('delegation depth context', () => {
     } finally {
       restore()
     }
-    expect(await depthContext(ctx, agent)).toHaveLength(remaining === 0 ? 1 : 0)
+    expect(await depthContext(ctx, agent)).toHaveLength(depth === 0 && remaining === 0 ? 1 : 0)
   })
 
   it('uses the runtime depth when it is deeper than the saved header', async () => {
@@ -77,9 +77,7 @@ describe('delegation depth context', () => {
       meta: { delegationDepth: 1 },
       setup: async (agentCtx) => { await agentCtx.plugin(tool, { provider: 'mock', maxDepth: 1 }) },
     })
-    expect(await depthContext(ctx, agent)).toEqual([
-      'Delegation depth for `subagent`: current 1, maximum 1, remaining levels 0. Do not call `subagent` at this depth; carry out the work directly.',
-    ])
+    expect(await depthContext(ctx, agent)).toEqual([])
     const restore = root.ctx.tools.restrict({ deny: ['subagent'] })
     expect(await depthContext(ctx, root)).toEqual([])
     restore()
@@ -92,7 +90,7 @@ describe('delegation depth context', () => {
     await disposeSetupProvider(ctx)
     expect(await depthContext(ctx, agent)).toEqual([])
     await mountScriptedProvider(ctx, { name: 'mock' })
-    expect(await depthContext(ctx, agent)).toHaveLength(1)
+    expect(await depthContext(ctx, agent)).toHaveLength(0)
   })
 
   it('disposes its depth contribution with the tool plugin', async () => {

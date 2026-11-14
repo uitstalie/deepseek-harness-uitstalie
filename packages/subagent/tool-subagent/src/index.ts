@@ -9,7 +9,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, withMinRole } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { AgentOptions } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
@@ -204,7 +204,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     const selectionDescription = providerRouteDefaults !== undefined
       ? ' Omit `provider`, `model`, and `reasoning_effort` to use child defaults, falling back to this backend\'s route defaults.'
       : ' Omit `provider`, `model`, and `reasoning_effort` to use child defaults, falling back to compatible parent values.'
-    const definition = defineTool({
+    const definition = withMinRole(defineTool({
       name: toolName,
       description: wording.description
         + ' This tool starts an independently managed subagent and immediately returns its name. If you are still online when it finishes, the runtime automatically delivers its completion notice. The notice includes the final answer unless the child sent you a message just before finishing.'
@@ -333,7 +333,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         })
         return { kind: 'activation' as const, name: started.name }
       },
-    })
+    }), 'agent')
     const disposeTool = ctx.effect(() => {
       const unregister = ctx.tools.register(definition)
       delegationTools.add(definition)
@@ -367,8 +367,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     order: ctx.systemPrompt.getSectionOrder('TOOL_SUBAGENT'),
     text: (context) => {
       if (mounted === undefined) return ''
-      const visible = [...delegationTools]
-        .filter(tool => ctx.tools.get(tool.name, context.scope) === tool)
+      const visible = ctx.tools.definitions(context.scope)
+        .filter(tool => delegationTools.has(tool))
         .map(tool => tool.name)
         .sort()
       if (visible[0] !== toolName) return ''
@@ -381,7 +381,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     order: ctx.systemPrompt.getContextOrder('SUBAGENT_DELEGATION'),
     text: (context) => {
       if (context.agent === undefined || mounted === undefined
-        || ctx.tools.get(toolName, context.scope) !== mounted.definition) return ''
+        || ctx.tools.get(toolName, context.scope) !== mounted.definition
+        || !ctx.tools.definitions(context.scope).some(tool => tool.name === toolName)) return ''
       const maxDepth = ctx.subagents.resolveMaxDepth(config.maxDepth)
       if (maxDepth === undefined) return ''
       const depth = delegationDepthOf(context.agent)

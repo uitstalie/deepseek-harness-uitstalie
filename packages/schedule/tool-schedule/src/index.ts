@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { delegationDepthOf } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, withMinRole } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import {
   DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, MAX_TITLE_LENGTH, MIN_EVERY_INTERVAL_SECONDS, ScheduleId, ScheduleInputError,
@@ -368,7 +368,9 @@ function registerScheduleTools(ctx: Context): void {
   // Plugin configuration is fixed for the life of the Host service, so the description is read once.
   const targetDescription = targetHelp(ctx.schedule.deliveryLimits().newSessionIntervalSeconds)
 
-  ctx.tools.register(defineTool({
+  const registerGated = (tool: Parameters<typeof ctx.tools.register>[0]): (() => void) => ctx.tools.register(withMinRole(tool, 'agent'))
+
+  registerGated(defineTool({
     name: 'schedule_create',
     description: CREATE_DESCRIPTION,
     parameters: {
@@ -390,7 +392,8 @@ function registerScheduleTools(ctx: Context): void {
     presentCall: args => present('Create scheduled task', 'other', args.title),
   }))
 
-  ctx.tools.register(defineTool({
+
+  registerGated(defineTool({
     name: 'schedule_list',
     description: LIST_DESCRIPTION,
     parameters: {
@@ -415,7 +418,8 @@ function registerScheduleTools(ctx: Context): void {
     presentCall: () => present('List scheduled tasks', 'read'),
   }))
 
-  ctx.tools.register(defineTool({
+
+  registerGated(defineTool({
     name: 'schedule_view',
     description: VIEW_DESCRIPTION,
     parameters: {
@@ -431,7 +435,8 @@ function registerScheduleTools(ctx: Context): void {
     presentCall: args => present('View scheduled task', 'read', args.id),
   }))
 
-  ctx.tools.register(defineTool({
+
+  registerGated(defineTool({
     name: 'schedule_edit',
     description: EDIT_DESCRIPTION,
     parameters: {

@@ -309,3 +309,9 @@ it('tells the agent the next step for each change outcome it can act on', async 
   expect(await outcome({ changed: false, application: 'failed', error: { code: 'unsupported-platform' } }))
     .toBe('This bundle cannot run on the current Host platform; ask the user to use a supported Host.')
 })
+
+it('hides plugin_manager from a subagent', async () => {
+  const { ctx } = await fixture()
+  const child = { id: SessionId('plugin-child'), session: { header: { origin: 'subagent', delegationDepth: 1 } }, options: {} } as unknown as Agent
+  expect(ctx.tools.schemas(child).some(schema => schema.name === 'plugin_manager')).toBe(false)
+})

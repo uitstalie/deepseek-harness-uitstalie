@@ -2,7 +2,7 @@
 
 [English](agent-role-model-20261114.md) | 中文
 
-状态：**角色字段与 section 门控已实现；本轮不改变工具可见性。** 本页是后续工具配置的评审草案。
+状态：**角色字段、section 门控以及已批准的工具门槛均已实现。** 工具可见性由工具注册表统一执行一次；jira/.dsh 仍是唯一未迁移的族。
 
 ## 1. 角色分类
 
@@ -12,15 +12,15 @@
 | `agent` | 普通的 root/workspace Session；承担常规工作。 |
 | `super` | 负责调度工作的 super-agent 根；权限最大。 |
 
-角色类型与读取函数位于 `packages/core/agent/src/runtime-types.ts` 和 `packages/core/agent/src/role.ts`：`AgentRole`、`agentRoleOf`。feature 包通过 `@deepseek-ai/dsh-tools`（`withMinRole` / `toolMinRole`）声明工具门槛，不需要 import dafeiyu；organizer 只负责未来的注册面过滤。
+角色类型与读取函数位于 `packages/core/agent/src/runtime-types.ts` 和 `packages/core/agent/src/role.ts`：`AgentRole`、`agentRoleOf`。feature 包通过 `@deepseek-ai/dsh-tools`（`withMinRole` / `toolMinRole`）声明工具门槛；没有任何 feature 包为角色而 import dafeiyu。organizer 只负责未来的注册过滤。
 
 ## 2. 声明来源与默认值
 
 - 唯一来源是 `agent.options.role`（通过 Session/agent 创建选项声明；创建该 Agent 的 preset/config 必须设置它）。不存在基于 cwd、workspace 标题、preset 名称或工具存在性的推断。
-- **当前启用缺口：** 没有任何已发布的 preset 或 profile 行设置 `role: 'super'`；super Session 必须用 `agentOptions: { role: 'super' }` 创建（或由某个 preset 传入）。在接通之前，`SUPERAGENT_OUTPUT_STYLE.yaml` 仅由显式构造的 super Agent 读取。现有 profile 未被修改。
+- **当前启用缺口：** 没有任何已发布的 preset 或 profile 行设置 `role: 'super'`；super Session 必须用 `agentOptions: { role: 'super' }` 创建（或由某个传入该值的 preset 创建）。在接通之前，`SUPERAGENT_OUTPUT_STYLE.yaml` 仅由显式构造的 super Agent 读取。现有 profile 未被修改。
 - 未声明的 **root** 解析为 `agent`，而不是 `super`。这是普通 workspace Session 的安全默认值：`super` 从不被隐式授予，而 root 必须保留正常的 workspace 能力才能运作。
-- 未声明的 **child** 解析为 `subagent`，判定依据是持久血缘（`origin: 'subagent'`、`parentSession` 或 `delegationDepth > 0`）。子级血缘优先于已声明的值，因此子级无法自我提升。
-- `agent.options.role` 是实时的 agent 配置。恢复的 Session 若需要 `super`，必须以相同的声明重新创建；此阶段没有持久化的角色字段。
+- 未声明的 **child** 会解析为 `subagent`，其依据是持久血缘（`origin: 'subagent'`、`parentSession` 或 `delegationDepth > 0`）。子级血缘优先于已声明的值，因此子级无法自我提升。
+- `agent.options.role` 是运行时的 agent 配置。恢复的 Session 若需要 `super`，必须以相同的声明重新创建；此阶段没有持久化的角色字段。
 
 ## 3. 父子规则
 
@@ -31,9 +31,9 @@
 | 当前判断 | 位置 | 未来的角色替换 |
 |---|---|---|
 | 能力 `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | 非工具资源保留 scope；工具可见性应使用 `agentRoleOf`。 |
-| Personality 工具过滤 | `personality/src/index.ts:122` | 现有行为：subagent 只获得 analyze。未来：通过共享接口按工具声明 `minRole`。 |
+| Personality 工具过滤 | `personality/src/index.ts:122` | 现有行为：subagent 只获得 analyze；本轮不迁移到 minRole。 |
 | Jira worker 测试 | `jira-agent/src/contribution.ts:146-179` | 当前 `isWorker`（subagent 或 executor preset）仍控制工具；未改变。 |
-| Super-agent 测试 | `jira-agent/src/superagent.ts:418-424`、`:5752-5769` | 当前基于 cwd 的 `isSuperAgentSession`；未来使用 `roleOf === 'super'`。 |
+| Super-agent 测试 | `jira-agent/src/superagent.ts:418-424`、`:5752-5769` | 当前基于 cwd 的 `isSuperAgentSession`；未来使用 `agentRoleOf === 'super'`。 |
 | Memory 能力 scope | `memory/src/index.ts:296` | 未来做工具级角色声明；当前行为不变。 |
 | Schedule 运行时拒绝 | `schedule/tool-schedule/src/index.ts:307` | 当前拒绝 subagent 调用；可见性不变。 |
 
@@ -46,7 +46,7 @@
 
 ## 6. 工具矩阵草案
 
-“当前”指本代码树中的行为；本轮未改动此表中的任何一行。
+“当前”指本代码树中执行的可见性；标记为“新增”的行是在本轮迁移的。
 
 | 工具族 | 当前可见性（过滤位置） | 建议角色 | 理由 | subagent 会失去什么 |
 |---|---|---|---|---|
@@ -55,24 +55,24 @@
 | `jira_issue` / `jira_list` / `jira_kb` | worker/subagent 可获得；`jira/contribution.ts:179` | `agent`+ | 账本身份属于主/workspace Session | **待定**：将失去账本读/写/搜索 |
 | jira `issue_work` | worker/subagent；`jira/contribution.ts:179` | `agent`+ | worker executor 就是一个 agent root | **待定**：将失去 worker 写入 |
 | `tool-dsh-store` | 所有 agent；`tool-dsh-store/index.ts:51` | `agent`+ | 规则/技能管理 | **待定**：将失去 `.dsh` 管理 |
-| `memory_write` / `forget` / `resolve` | subagent 均无；`memory/index.ts:296`（scope root） | `agent`+ | 单一写入者 | 无（本来就不可用） |
-| `memory_search` / `read` | subagent 均无；同上 | **待定**：允许 `subagent` | 研究可能需要历史 | 若被拒绝，只剩父级摘要 |
+| `memory_write` / `forget` / `resolve` | agent+（新增）；`memory/src/tools.ts` `minRole: agent` | `agent` | 单一写入者 | 无写权限（新近隐藏） |
+| `memory_search` / `read` | subagent+（新增）；`memory/src/index.ts` scope 现为 `all`，工具携带 `minRole: subagent` | `subagent` | 研究可能需要历史 | 现在可用；无损失 |
 | `superagent_control` / `ledger` / `deliver` / `permission` | 通过 cwd + root 仅限 super；`superagent.ts:5752-5769` | `super` | 调度/账本/交付 | 无（本来就不可用） |
-| `schedule_create/edit/list/view` | 对所有人可见；运行时拒绝 subagent（`tool-schedule:307`） | `agent`+ | subagent 无法触达下一次触发 | 待定：只是隐藏 schema，调用已被拒绝 |
-| `plugin_manager` | 所有 agent；无角色检查（`plugin-manager/tools.ts:87`） | `agent`+ | 全局 profile 管理 | 待定 |
-| `subagent` / `subagent_fork` / `workflow` | 所有 agent；直接注册（`tool-subagent:338`、`tool-workflow:331`） | `agent`+ | 不支持嵌套扇出 | 待定：目前只有深度限制 |
-| `send_message` / `list_agents` / `wait_agent` | 所有 agent；直接注册（`tool-subagent-control:84`、`list-agents.ts:46`、`wait-agent.ts:91`） | `subagent`+ | 子级需要与父级通信 | 若移除，将无法回复/查询父级 |
+| `schedule_create/edit/list/view` | agent+（新增）；`minRole: agent`，保留运行时防护 | `agent` | subagent 无法触达下一次触发 | 对 subagent 隐藏；运行时拒绝仍然存在 |
+| `plugin_manager` | agent+（新增）；`minRole: agent` | `agent` | 全局 profile 管理 | 对 subagent 隐藏 |
+| `subagent` / `subagent_fork` / `workflow` | agent+（新增）；`minRole: agent` | `agent` | 不支持嵌套扇出 | 对 subagent 隐藏；深度防护仍然存在 |
+| `send_message` / `list_agents` / `wait_agent` | subagent+（新增）；`minRole: subagent` | `subagent` | 子级需要与父级通信 | 保留；无损失 |
 | `read` / `write` / `edit` / `glob` / `grep` / `pwsh` / … | 所有 agent | `subagent`+ | 基础执行 | 无；移除会破坏工作 |
 
 ## 7. 接口预留
 
-`withMinRole(tool, role)` 与 `toolMinRole(tool)` 位于 `packages/core/tools/src/role.ts`，由 `@deepseek-ai/dsh-tools` 导出；feature 包声明门槛不需要依赖 dafeiyu。本轮 organizer **不会**调用它们；没有任何工具定义携带 `minRole`，注册循环保持不变。预期的消费方签名是：
+`withMinRole(tool, role)` 与 `toolMinRole(tool)` 位于 `packages/core/tools/src/role.ts`，由 `@deepseek-ai/dsh-tools` 导出；feature 包声明门槛不需要 import dafeiyu。`ToolRegistry.register` 与 `ToolRegistry.definitions` 集中执行 `ToolDefinition.minRole`（`core/tools/src/index.ts:128` 和 `:312`）。预期的消费方签名是：
 
 ```ts
 tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(agentRoleOf(agent), minRole)
 ```
 
-这只是设计预留。此处没有迁移任何 provider。
+注册表集中执行这些声明；只有 jira 与 `.dsh` 仍未迁移。
 
 ## 8. 文件命名与默认理由
 
@@ -83,5 +83,5 @@ tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filter
 ## 9. 验证与非目标
 
 - 现有测试：personality 105/105、tool-dsh-store 19/19、jira superagent 125/125、typecheck 5/5。
-- 本轮未改变任何工具可见性。只实现了已经批准的 690 门控与写入规则配额/常驻行为。
-- 本轮不包括：702 抽取、本地化、工具配置、memory 读取策略、schedule/delegation/plugin 的可见性。
+- 工具可见性现在恰好对标记为“新增”的行发生变化：memory 读写拆分、通信保留，schedule/plugin/delegation 对 subagent 隐藏。Jira 与 `.dsh` 仍待处理。
+- 本轮不包括：702 抽取、本地化、jira/.dsh 工具门控，以及任何配额变更。

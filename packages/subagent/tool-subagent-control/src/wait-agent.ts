@@ -4,7 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MessageId, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, withMinRole } from '@deepseek-ai/dsh-tools'
 
 /** Wait failures retain a stable machine-readable reason through tool execution. */
 class AgentWaitError extends HarnessError {
@@ -87,7 +87,7 @@ export function registerWaitAgent(ctx: Context): void {
   ctx.effect(() => () => {
     lifetime.abort(new AgentWaitError('wait_agent ended because its plugin was unloaded', 'WAIT_UNAVAILABLE'))
   }, 'subagent-control.waits()')
-  ctx.tools.register(defineTool({
+  ctx.tools.register(withMinRole(defineTool({
     name: 'wait_agent',
     description: 'Wait for input at your next step, including agent messages, completion notifications, and user steering. Returns immediately if new input is pending. `timedOut: false` means new input is pending. Pending input is delivered to the model after code execution finishes.',
     parameters: {
@@ -114,5 +114,5 @@ export function registerWaitAgent(ctx: Context): void {
       }
       return await waitForInput(ctx, exec.agent, timeoutMs, exec.signal, lifetime.signal, reported, exec.rootCallId)
     },
-  }))
+  }), 'subagent'))
 }

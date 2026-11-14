@@ -2,7 +2,7 @@
 
 English | [中文](agent-role-model-20261114.zh.md)
 
-Status: **role field and section gating are implemented; tool visibility is not changed in this round.** This page is the review draft for later tool configuration.
+Status: **role field, section gating, and the approved tool gates are implemented.** Tool visibility is enforced once in the tool registry; jira/.dsh remain the only unmigrated families.
 
 ## 1. Role classification
 
@@ -31,7 +31,7 @@ The role type and reader live in `packages/core/agent/src/runtime-types.ts` and 
 | Current judgment | Location | Future role replacement |
 |---|---|---|
 | Capability `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | Keep scope for non-tool resources; tool visibility should use `agentRoleOf`. |
-| Personality tool filter | `personality/src/index.ts:122` | Existing behavior: subagent gets analyze only. Future: declare `minRole` per tool through the shared interface. |
+| Personality tool filter | `personality/src/index.ts:122` | Existing behavior: subagent gets analyze only; not migrated to minRole in this round. |
 | Jira worker test | `jira-agent/src/contribution.ts:146-179` | Current `isWorker` (subagent or executor preset) still controls tools; not changed. |
 | Super-agent test | `jira-agent/src/superagent.ts:418-424`, `:5752-5769` | Current cwd-based `isSuperAgentSession`; future `agentRoleOf === 'super'`. |
 | Memory capability scope | `memory/src/index.ts:296` | Future tool-level role declaration; current behavior unchanged. |
@@ -46,7 +46,7 @@ The role field is the shared source; each consumer migrates separately. This rou
 
 ## 6. Tool matrix draft
 
-“Current” is the behavior in this tree; no row in this table was changed by this round.
+“Current” is the visibility enforced in this tree; rows marked “new” were migrated in this round.
 
 | Tool family | Current visibility (filter location) | Suggested role | Why | What a subagent loses |
 |---|---|---|---|---|
@@ -55,24 +55,24 @@ The role field is the shared source; each consumer migrates separately. This rou
 | `jira_issue` / `jira_list` / `jira_kb` | worker/subagent gets them; `jira/contribution.ts:179` | `agent`+ | Ledger identity belongs to main/workspace Sessions | **Pending**: would lose ledger read/write/search |
 | jira `issue_work` | worker/subagent; `jira/contribution.ts:179` | `agent`+ | Worker executor is an agent root | **Pending**: would lose worker write |
 | `tool-dsh-store` | all agents; `tool-dsh-store/index.ts:51` | `agent`+ | Rules/skills management | **Pending**: would lose `.dsh` management |
-| `memory_write` / `forget` / `resolve` | none for subagent; `memory/index.ts:296` (scope root) | `agent`+ | Single writer | Nothing (already unavailable) |
-| `memory_search` / `read` | none for subagent; same | **pending**: allow `subagent` | Research may need history | If denied, only parent summaries remain |
+| `memory_write` / `forget` / `resolve` | agent+ (new); `memory/src/tools.ts` `minRole: agent` | `agent` | Single writer | No write access (newly hidden) |
+| `memory_search` / `read` | subagent+ (new); `memory/src/index.ts` scope now `all`, tools carry `minRole: subagent` | `subagent` | Research may need history | Now available; no loss |
 | `superagent_control` / `ledger` / `deliver` / `permission` | super-only via cwd + root; `superagent.ts:5752-5769` | `super` | Dispatch/ledger/delivery | Nothing (already unavailable) |
-| `schedule_create/edit/list/view` | visible to all; runtime refuses subagent (`tool-schedule:307`) | `agent`+ | Subagent cannot reach next trigger | Pending: only hidden schema, call already refused |
-| `plugin_manager` | all agents; no role check (`plugin-manager/tools.ts:87`) | `agent`+ | Global profile management | Pending |
-| `subagent` / `subagent_fork` / `workflow` | all agents; direct registration (`tool-subagent:338`, `tool-workflow:331`) | `agent`+ | No nested fan-out | Pending: current depth limits only |
-| `send_message` / `list_agents` / `wait_agent` | all agents; direct registration (`tool-subagent-control:84`, `list-agents.ts:46`, `wait-agent.ts:91`) | `subagent`+ | Child needs parent communication | If removed, cannot reply/query parent |
+| `schedule_create/edit/list/view` | agent+ (new); `minRole: agent`, runtime guard retained | `agent` | Subagent cannot reach next trigger | Hidden from subagent; runtime refusal remains |
+| `plugin_manager` | agent+ (new); `minRole: agent` | `agent` | Global profile management | Hidden from subagent |
+| `subagent` / `subagent_fork` / `workflow` | agent+ (new); `minRole: agent` | `agent` | No nested fan-out | Hidden from subagent; depth guards remain |
+| `send_message` / `list_agents` / `wait_agent` | subagent+ (new); `minRole: subagent` | `subagent` | Child needs parent communication | Retained; no loss |
 | `read` / `write` / `edit` / `glob` / `grep` / `pwsh` / … | all agents | `subagent`+ | Basic execution | Nothing; removal would break work |
 
 ## 7. Interface reservation
 
-`withMinRole(tool, role)` and `toolMinRole(tool)` live in `packages/core/tools/src/role.ts` and are exported by `@deepseek-ai/dsh-tools`; a feature package declares a gate without importing dafeiyu. The organizer does **not** call them in this round; no tool definition carries `minRole`, and the registration loop is unchanged. The intended consumer signature is:
+`withMinRole(tool, role)` and `toolMinRole(tool)` live in `packages/core/tools/src/role.ts` and are exported by `@deepseek-ai/dsh-tools`; a feature package declares a gate without importing dafeiyu. `ToolRegistry.register` and `ToolRegistry.definitions` enforce `ToolDefinition.minRole` centrally (`core/tools/src/index.ts:128` and `:312`). The intended consumer signature is:
 
 ```ts
 tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(agentRoleOf(agent), minRole)
 ```
 
-This is a design reservation only. No provider is migrated here.
+The registry enforces these declarations centrally; only jira and `.dsh` remain unmigrated.
 
 ## 8. File naming and default rationale
 
@@ -83,5 +83,5 @@ An undeclared root defaults to `agent`, not `subagent`: a root is a normal works
 ## 9. Verification and non-goals
 
 - Existing tests: personality 105/105, tool-dsh-store 19/19, jira superagent 125/125, typecheck 5/5.
-- No tool visibility changed in this round. Only the already-approved 690 gating and writing-rule quota/resident behavior are implemented.
-- Not in this round: 702 extraction, localization, tool configuration, memory read policy, schedule/delegation/plugin visibility.
+- Tool visibility now changes exactly for the rows marked “new”: memory read/write split, communication retained, and schedule/plugin/delegation hidden from subagents. Jira and `.dsh` remain pending.
+- Not in this round: 702 extraction, localization, jira/.dsh tool gating, or any quota change.

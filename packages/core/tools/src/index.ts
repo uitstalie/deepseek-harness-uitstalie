@@ -7,9 +7,12 @@ import { ToolExecutorUnavailableError } from './executor.ts'
 import type { ToolExecutor, ToolBatchInput, ToolBatchResult } from './executor.ts'
 import './events.ts'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
+import { agentRoleOf } from '@deepseek-ai/dsh-agent'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { projectToolSchema } from './schema.ts'
 import { assertSupportedJsonSchema } from './json-schema.ts'
 import { RUN_CODE_NAME, ToolActivationError } from './contracts.ts'
+import { roleAllows, toolMinRole } from './role.ts'
 import type {
   ToolDefinition, ToolRestriction, ToolExecution, ToolGuard, ToolGuardDenial,
   ResolvedToolSet, ToolActivationContext, ToolRegistrationOptions,
@@ -127,6 +130,10 @@ export class ToolsService extends Service {
    */
   register(definition: ToolDefinition, options: ToolRegistrationOptions = {}): () => void {
     const name = definition.name
+    const scopeAgent = scopeOf(this.ctx) as Partial<Agent> | undefined
+    const minimum = toolMinRole(definition)
+    if (minimum !== undefined && scopeAgent?.session !== undefined && scopeAgent.options !== undefined
+      && !roleAllows(agentRoleOf(scopeAgent as Agent), minimum)) return () => {}
     const output = (definition as Partial<ToolDefinition>).output
     if (output === undefined || typeof output !== 'object'
       || typeof output.render !== 'function'
@@ -303,7 +310,11 @@ export class ToolsService extends Service {
    * @returns definitions after scoped shadowing and restrictions, limited to the step's admission when given.
    */
   definitions(scope?: ScopeKey, toolSet?: ResolvedToolSet): readonly ToolDefinition[] {
-    return toolSet === undefined ? [...this.view(scope).visible.values()] : [...toolSet.view(scope).values()]
+    const visible = toolSet === undefined ? [...this.view(scope).visible.values()] : [...toolSet.view(scope).values()]
+    const agent = scope as Partial<Agent> | undefined
+    if (agent?.session === undefined) return visible
+    const role = agentRoleOf(agent as Agent)
+    return visible.filter(definition => roleAllows(role, toolMinRole(definition)))
   }
 
   /**

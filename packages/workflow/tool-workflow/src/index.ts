@@ -14,7 +14,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, withMinRole } from '@deepseek-ai/dsh-tools'
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -328,7 +328,7 @@ export function apply(ctx: Context, config: Config): void {
     order: ctx.systemPrompt.getSectionOrder('TOOL_WORKFLOW'),
     text: `Use the ${toolName} tool ONLY when the user explicitly asks for a workflow or for large multi-agent orchestration: you write a JavaScript script (the tool description documents the exact format) that fans work out across many subagents with phases and structured results. For one or two delegations, prefer plain subagent calls.`,
   })
-  ctx.tools.register(defineTool({
+  ctx.tools.register(withMinRole(defineTool({
     name: toolName,
     description: DESCRIPTION,
     parameters: {
@@ -483,5 +483,5 @@ export function apply(ctx: Context, config: Config): void {
     },
     presentCall: args => presentWorkflowCall(args),
     presentResult: (args, result) => presentWorkflowResult(args, result),
-  }))
+  }), 'agent'))
 }

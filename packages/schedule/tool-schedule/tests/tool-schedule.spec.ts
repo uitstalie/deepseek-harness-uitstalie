@@ -221,18 +221,13 @@ describe('Schedule model tools', () => {
     expect((await test.service.list({})).total).toBe(0)
   })
 
-  it('refuses every call from a registered delegated child whose scope mounts the tools', async () => {
+  it('hides every schedule tool from a registered delegated child', async () => {
     const test = await harness(); tests.push(test)
     const child = agentFor(test.ctx, 'delegated-child', { delegationDepth: 1 })
     await test.ctx.agents.register(child)
     await mountToolSchedule(test.ctx, child)
-    for (const [name, args] of CALLS) {
-      const result = await executeToolFixture(test.ctx, {
-        callId: ToolCallId('child-call'), signal: new AbortController().signal, name, arguments: args, agent: child,
-      })
-      expect(result.isError).toBe(false)
-      expect(result.value).toEqual({ code: 'subagent_session', message: 'A delegated subagent cannot use scheduled tasks.' })
-    }
+    expect(test.ctx.tools.schemas(child)).toEqual([])
+    for (const [name] of CALLS) expect(test.ctx.tools.get(name, child)).toBeUndefined()
     expect((await test.service.list({})).total).toBe(0)
   })
 

@@ -723,3 +723,9 @@ describe('dsh-tool-workflow', () => {
     }, 15_000)
   })
 })
+
+it('hides the workflow tool from a subagent', async () => {
+  const { ctx } = await setup()
+  const child = { id: SessionId('workflow-child'), session: { header: { origin: 'subagent', delegationDepth: 1 } }, options: {} } as unknown as Agent
+  expect(ctx.tools.schemas(child).some(schema => schema.name === 'workflow')).toBe(false)
+})

@@ -18,7 +18,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, withMinRole } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { SessionResultFilter, SessionSearchHit, SessionSearchWarning } from '@deepseek-ai/dsh-session-query'
 import type { MemorySettings } from './config.ts'
@@ -107,11 +107,11 @@ export function memoryTools(
   onSnapshotText?: SnapshotTextSink,
 ): readonly ToolDefinition[] {
   return [
-    defineMemoryWriteTool(ctx, settings, onSnapshotText),
-    defineMemoryResolveTool(ctx, settings, onSnapshotText),
-    defineMemoryForgetTool(ctx, settings, onSnapshotText),
-    defineMemorySearchTool(ctx),
-    defineMemoryReadTool(ctx),
+    withMinRole(defineMemoryWriteTool(ctx, settings, onSnapshotText), 'agent'),
+    withMinRole(defineMemoryResolveTool(ctx, settings, onSnapshotText), 'agent'),
+    withMinRole(defineMemoryForgetTool(ctx, settings, onSnapshotText), 'agent'),
+    withMinRole(defineMemorySearchTool(ctx), 'subagent'),
+    withMinRole(defineMemoryReadTool(ctx), 'subagent'),
   ]
 }
 

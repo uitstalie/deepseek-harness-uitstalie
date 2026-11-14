@@ -373,14 +373,14 @@ describe('SubagentModelSelectionConfig', () => {
     const child = await createAgent(ctx, 'child', {
       meta: { parentSession: parent.id, origin: 'subagent' },
     })
-    expect(selectable(ctx, child)).toBe(true)
+    expect(selectable(ctx, child)).toBe(false)
     const policy = await ctx.sessionProjections.register(subagentModelSelectionProjectionDefinition)
     expect(subagentModelSelectionPolicy(policy, child.session)).toEqual(ALLOWED_MODELS)
 
     const orphan = await createAgent(ctx, 'orphan', {
       meta: { parentSession: SessionId('missing-parent'), origin: 'subagent' },
     })
-    expect(selectable(ctx, orphan)).toBe(true)
+    expect(selectable(ctx, orphan)).toBe(false)
 
     const enabledSeed = Session.create(SessionId('enabled-seed'))
     enabledSeed.append('subagent/model-selection-policy', { allowedModels: ALLOWED_MODELS })
