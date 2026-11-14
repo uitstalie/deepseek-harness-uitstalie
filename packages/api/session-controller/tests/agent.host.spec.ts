@@ -258,7 +258,10 @@ describe('ApiSession creation', () => {
     const superDir = mkdtempSync(join(tmpdir(), 'dsh-role-super-'))
     const ordinaryDir = mkdtempSync(join(tmpdir(), 'dsh-role-agent-'))
     tempDirs.push(superDir, ordinaryDir)
-    ctx.provide('superagentHome', { path: superDir, role: 'super' })
+    const roles = new Map<string, { role: string }>([[superDir, { role: 'super' }]])
+    ctx.provide('workspaceRegistry', {
+      resolveByPath: async (path: string) => roles.get(path) ?? { role: 'agent' },
+    } as never)
     const registry = ctx.agents as unknown as {
       create: (request: { sessionId: SessionId; agentOptions: { role?: string }; meta: { cwd: string } }) => Promise<{
         agent: { id: SessionId; session: { header: SessionHeader }; options: { role?: string } }
@@ -274,7 +277,9 @@ describe('ApiSession creation', () => {
 
     expect((await agents.createSession({ cwd: superDir, reusable: () => true })).agent.options.role).toBe('super')
     expect((await agents.createSession({ cwd: ordinaryDir, reusable: () => true })).agent.options.role).toBeUndefined()
-    expect((await agents.createSession({ cwd: ordinaryDir, role: 'super', reusable: () => true })).agent.options.role).toBeUndefined()
+    expect((await agents.createSession({ cwd: ordinaryDir, role: 'super', reusable: () => true } as never)).agent.options.role).toBeUndefined()
+    roles.set(ordinaryDir, { role: 'not-a-role' })
+    expect((await agents.createSession({ cwd: ordinaryDir, reusable: () => true })).agent.options.role).toBeUndefined()
   })
 
   it('surfaces directory creation failure', async () => {

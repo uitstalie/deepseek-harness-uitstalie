@@ -13,7 +13,6 @@
  */
 
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
@@ -345,8 +344,11 @@ export interface WorkspaceLike {
   readonly id: string
   readonly path: string
   readonly title: string
+  readonly role?: 'agent' | 'super'
   readonly sessionIds: readonly unknown[]
   status(): Promise<string>
+  /** Change the durable workspace role; optional for a read-only registry slice. */
+  setRole?(role: 'agent' | 'super'): Promise<void>
   /** Change the display title; optional because a host may expose a read-only registry slice. */
   setTitle?(title: string): Promise<void>
 }
@@ -354,7 +356,7 @@ export interface WorkspaceLike {
 /** The registry methods the workspace tool calls. */
 export interface WorkspaceRegistryLike {
   list(): readonly WorkspaceLike[]
-  create(path: string, title?: string): Promise<WorkspaceLike>
+  create(path: string, title?: string, role?: 'agent' | 'super'): Promise<WorkspaceLike>
   /** Look one registration up by id; optional like every host-specific verb. */
   get?(id: string): WorkspaceLike | undefined
   /** Unregister one workspace without touching its directory or Session logs. */
@@ -475,7 +477,8 @@ export const ensureSuperWorkspace = async (
   await mkdir(path, { recursive: true })
   // The role is a file in the workspace, not only this capability's prompt section (DH-802).
   await ensureSuperWorkspaceDefinition(path)
-  const workspace = await registry.create(path, SUPERAGENT_WORKSPACE_TITLE)
+  const workspace = await registry.create(path, SUPERAGENT_WORKSPACE_TITLE, 'super')
+  if (workspace.role !== 'super' && workspace.setRole !== undefined) await workspace.setRole('super')
   await pinWorkspaceFirst(registry, workspace)
   return workspace
 }
@@ -5228,11 +5231,6 @@ export const createSuperagentContribution = (
   // write a proposal or start a daemon pass after its teardown began.
   let disposed = false
   const superHome = home === undefined || home.trim() === '' ? undefined : home
-  const superHomeService = host.ctx as Context & { provide?: (key: string, value: unknown) => void }
-  if (superHome !== undefined && superHomeService.provide !== undefined && host.ctx.get('superagentHome') === undefined) {
-    // Trusted Session creation reads this only to mark the super workspace's own Agent.
-    superHomeService.provide('superagentHome', Object.freeze({ path: superHome, role: 'super' as const }))
-  }
 
   /**
    * Check the managed `AGENTS.md` section for this workspace and show its pending notice.

@@ -11,7 +11,7 @@
 import { stat } from 'node:fs/promises'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
-import type { WorkspaceRecord } from './spec.ts'
+import { workspaceRoleOf, type WorkspaceRecord } from './spec.ts'
 import type { Workspace, WorkspaceId } from './types.ts'
 import { realpathNormalize } from './paths.ts'
 
@@ -91,6 +91,10 @@ export class WorkspaceEntity implements Workspace {
     return this.record.title
   }
 
+  get role(): 'agent' | 'super' {
+    return workspaceRoleOf(this.record.role)
+  }
+
   get createdAt(): string {
     return this.record.createdAt
   }
@@ -105,6 +109,10 @@ export class WorkspaceEntity implements Workspace {
 
   async setTitle(title: string): Promise<void> {
     await this.mutate(record => ({ ...record, title }))
+  }
+
+  async setRole(role: 'agent' | 'super'): Promise<void> {
+    await this.mutate(record => record.role === role ? record : ({ ...record, role }))
   }
 
   async attachSession(sessionId: SessionId): Promise<void> {

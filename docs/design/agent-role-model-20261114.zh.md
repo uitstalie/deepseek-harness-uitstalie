@@ -16,11 +16,11 @@
 
 ## 2. 声明来源与默认值
 
-- 唯一来源是 `agent.options.role`（通过 Session/agent 创建选项声明；创建该 Agent 的 preset/config 必须设置它）。任意的 cwd、workspace 标题、preset 名称或工具存在性都不能授予角色；唯一的路径例外是可信的 `superagentHome` 服务，它会把所配置的 workspace 标记为 `super`。
-- super-agent 的 contribution 提供 `superagentHome`（配置键 `superagent_home`）；`SessionController.roleFor` 读取它，并为匹配的 Session 传入 `role: 'super'`。普通 Session 与 subagent 仍为 `agent`/`subagent`；无需编辑 profile 或 preset。
+- 持久来源是 Workspace 记录的 `role` 字段（`agent` 或 `super`；缺省/未知 -> `agent`）。`SessionController.createSession` 按 canonical cwd 解析并合并进 `agentOptions`；客户端请求体不能设置它。
+- 普通 workspace 默认 `agent`；super workspace 在 Workspace store 里一次性标记为 `super`（`<DSH_HOME>/storages/workspace.json`，表 `workspaces`，字段 `role`）。没有该字段的旧记录保持 `agent`；任何非 `super` 的值也解析为 `agent`。模型其余部分读取的仍是 `agent.options.role`。
 - 未声明的 **root** 解析为 `agent`，而不是 `super`。这是普通 workspace Session 的安全默认值：`super` 从不被隐式授予，而 root 必须保留正常的 workspace 能力才能运作。
 - 未声明的 **child** 会解析为 `subagent`，其依据是持久血缘（`origin: 'subagent'`、`parentSession` 或 `delegationDepth > 0`）。子级血缘优先于已声明的值，因此子级无法自我提升。
-- `agent.options.role` 是运行时的 agent 配置。恢复的 Session 若需要 `super`，必须以相同的声明重新创建；此阶段没有持久化的角色字段。
+- `agent.options.role` 是运行时的 agent 配置。恢复 Session 时会从 Workspace 记录重新解析角色；持久角色在 Workspace 上，不在 Session header 上。
 
 ## 3. 父子规则
 
@@ -33,7 +33,7 @@
 | 能力 `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | 非工具资源保留 scope；工具可见性应使用 `agentRoleOf`。 |
 | Personality 工具过滤 | `personality/src/index.ts:122` | 现有行为：subagent 只获得 analyze；本轮不迁移到 minRole。 |
 | Jira worker 测试 | `jira-agent/src/contribution.ts:146-179` | `isWorker` 继续选择 worker 工具集；每个返回的工具同时带 `minRole: agent`，由 role 拦住 subagent。 |
-| Super-agent 测试 | `jira-agent/src/superagent.ts:418-424`、`:5752-5769` | 由 `superagentHome` 服务 + `SessionController.roleFor` 设置角色；cwd 检查仍保留在 jira 能力内部。 |
+| Super-agent 测试 | `jira-agent/src/superagent.ts:418-424`、`:5752-5769` | Workspace `role: 'super'` + `SessionController.workspaceRoleFor`；cwd 检查仍保留在 jira 能力内部。 |
 | Memory 能力 scope | `memory/src/index.ts:296` | 未来做工具级角色声明；当前行为不变。 |
 | Schedule 运行时拒绝 | `schedule/tool-schedule/src/index.ts:307` | 当前拒绝 subagent 调用；可见性不变。 |
 

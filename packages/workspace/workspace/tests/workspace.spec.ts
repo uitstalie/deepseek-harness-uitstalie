@@ -397,6 +397,30 @@ describe('WorkspaceRegistry create and lookup', () => {
     expect(await registry.resolveByPath(await makeDir('unowned'))).toBeUndefined()
   })
 
+  it('persists a workspace role and defaults absent roles to agent', async () => {
+    const superDir = await makeDir('role-super')
+    const ordinaryDir = await makeDir('role-agent')
+    const { registry, pool } = await harness()
+    const superWorkspace = await registry.create(superDir, 'Super', 'super')
+    const ordinary = await registry.create(ordinaryDir, 'Ordinary')
+    expect(superWorkspace.role).toBe('super')
+    expect(ordinary.role).toBe('agent')
+    expect(storedRecord(pool, superWorkspace.id).role).toBe('super')
+    await superWorkspace.setRole('agent')
+    expect(superWorkspace.role).toBe('agent')
+    expect(storedRecord(pool, superWorkspace.id).role).toBe('agent')
+
+    const invalidDir = await makeDir('role-invalid')
+    const invalidId = WorkspaceId('00000000-0000-4000-8000-000000000099')
+    const invalid = await harness({
+      pool: storedPool([[invalidId, { ...record(invalidDir, []), role: 'not-a-role' }]], {
+        initialized: false,
+        workspaceIds: [invalidId],
+      }),
+    })
+    expect(invalid.registry.get(invalidId)!.role).toBe('agent')
+  })
+
   it('serializes concurrent same-path creates into one entity', async () => {
     const dir = await makeDir('concurrent')
     const { registry, pool } = await harness()

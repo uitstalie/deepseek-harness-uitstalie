@@ -21,9 +21,16 @@ const sessionId = z.string().transform(value => brandString<SessionId>(value))
  * stamped at create; `sessionIds` is the ordered ownership account (array
  * order is display order); timestamps are ISO-8601 strings.
  */
+/** Workspace-level role; absent or unrecognized values resolve to agent. */
+export type WorkspaceRole = 'agent' | 'super'
+
+/** Resolve a persisted value to a workspace role without trusting it. */
+export const workspaceRoleOf = (value: unknown): WorkspaceRole => value === 'super' ? 'super' : 'agent'
+
 export const workspaceRecord = z.object({
   path: z.string(),
   title: z.string(),
+  role: z.string().optional(),
   sessionIds: z.array(sessionId),
   createdAt: z.string(),
   updatedAt: z.string(),

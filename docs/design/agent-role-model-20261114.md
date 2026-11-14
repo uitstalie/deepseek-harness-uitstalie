@@ -16,11 +16,11 @@ The role type and reader live in `packages/core/agent/src/runtime-types.ts` and 
 
 ## 2. Declaration source and default
 
-- The only source is `agent.options.role` (declared through Session/agent creation options; a preset/config that creates the Agent must set it). No arbitrary cwd, workspace title, preset name, or tool presence grants a role; the only path exception is the trusted `superagentHome` service, which marks its configured workspace as `super`.
-- The super-agent contribution provides `superagentHome` (configured `superagent_home`); `SessionController.roleFor` reads it and passes `role: 'super'` for the matching Session. Ordinary sessions and subagents remain `agent`/`subagent`; no profile or preset edit is needed.
+- The durable source is the Workspace record's `role` field (`agent` or `super`; absent/unknown -> `agent`). `SessionController.createSession` resolves it by canonical cwd and merges it into `agentOptions`; client request bodies cannot set it.
+- Ordinary workspaces default to `agent`; the super workspace is marked `super` once in the Workspace store (`<DSH_HOME>/storages/workspace.json`, table `workspaces`, field `role`). Older records without the field stay `agent`; any value other than `super` also resolves to `agent`. `agent.options.role` remains the live value the rest of the model reads.
 - An undeclared **root** resolves to `agent`, not `super`. This is the safe default for an ordinary workspace Session: `super` is never granted implicitly, while a root must retain normal workspace capability to function.
 - An undeclared **child** resolves to `subagent` from durable lineage (`origin: 'subagent'`, `parentSession`, or `delegationDepth > 0`). Child lineage wins over a declared value, so a child cannot promote itself.
-- `agent.options.role` is live agent configuration. A resumed Session must be re-created with the same declaration if it needs `super`; there is no persisted role field in this stage.
+- `agent.options.role` is live agent configuration. A resumed Session resolves the role again from its Workspace record; the durable role lives on the Workspace, not the Session header.
 
 ## 3. Parent/child rule
 
@@ -33,7 +33,7 @@ The role type and reader live in `packages/core/agent/src/runtime-types.ts` and 
 | Capability `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | Keep scope for non-tool resources; tool visibility should use `agentRoleOf`. |
 | Personality tool filter | `personality/src/index.ts:122` | Existing behavior: subagent gets analyze only; not migrated to minRole in this round. |
 | Jira worker test | `jira-agent/src/contribution.ts:146-179` | `isWorker` still chooses the worker tool set; every returned tool also carries `minRole: agent`, so role gates subagents. |
-| Super-agent test | `jira-agent/src/superagent.ts:418-424`, `:5752-5769` | `superagentHome` service + `SessionController.roleFor` set the role; cwd checks remain inside the jira capability. |
+| Super-agent test | `jira-agent/src/superagent.ts:418-424`, `:5752-5769` | Workspace `role: 'super'` + `SessionController.workspaceRoleFor`; cwd checks remain inside the jira capability. |
 | Memory capability scope | `memory/src/index.ts:296` | Future tool-level role declaration; current behavior unchanged. |
 | Schedule runtime rejection | `schedule/tool-schedule/src/index.ts:307` | Current subagent call refusal; visibility unchanged. |
 

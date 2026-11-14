@@ -251,12 +251,12 @@ export class WorkspaceRegistry extends Service {
   // (.agents/notes/archived/simplification/2026-07-31-one-route-to-add-a-workspace.md);
   // drop the parameter with its @param clause and the `create(path, title?)`
   // lines in this package's README pair.
-  async create(path: string, title?: string): Promise<Workspace> {
+  async create(path: string, title?: string, role?: 'agent' | 'super'): Promise<Workspace> {
     const canonical = await realpathNormalize(path)
     if (!(await stat(canonical)).isDirectory()) {
       throw new Error(`cannot create a workspace at '${canonical}': path is not a directory`)
     }
-    return await this.enqueueOperation(() => this.createCanonical(canonical, title))
+    return await this.enqueueOperation(() => this.createCanonical(canonical, title, false, role))
   }
 
   /**
@@ -529,7 +529,7 @@ export class WorkspaceRegistry extends Service {
     return undefined
   }
 
-  private async createCanonical(canonical: string, title?: string, firstUse = false): Promise<WorkspaceEntity> {
+  private async createCanonical(canonical: string, title?: string, firstUse = false, role?: 'agent' | 'super'): Promise<WorkspaceEntity> {
     for (const entity of this.entities.values()) {
       if (entity.path === canonical) return entity
     }
@@ -542,6 +542,7 @@ export class WorkspaceRegistry extends Service {
     const record: WorkspaceRecord = {
       path: canonical,
       title: workspaceName,
+      ...(role === undefined ? {} : { role }),
       sessionIds: [],
       createdAt: now,
       updatedAt: now,
