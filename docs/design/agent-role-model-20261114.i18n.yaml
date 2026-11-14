@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for agent-role-model-20261114.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/design/agent-role-model-20261114.md
+/agent-role-model-and-tool-matrix-draft-2026-11-14:
+  en: 87a9d30fc500b566
+  zh: 30714c50a3869fa2
+/agent-role-model-and-tool-matrix-draft-2026-11-14/1-role-classification:
+  en: dca83becdbddf62d
+  zh: 72a7cf4f5c8df708
+/agent-role-model-and-tool-matrix-draft-2026-11-14/2-declaration-source-and-default:
+  en: a414a076c29d3ee1
+  zh: 12dd13941aa43849
+/agent-role-model-and-tool-matrix-draft-2026-11-14/3-parent-child-rule:
+  en: e2e4b311c652695a
+  zh: 7ef029d8fb67168d
+/agent-role-model-and-tool-matrix-draft-2026-11-14/4-existing-implicit-judgments-and-future-replacement:
+  en: b310bccefa5755d8
+  zh: 3c0ebc350f6f94ad
+/agent-role-model-and-tool-matrix-draft-2026-11-14/5-690-gating-and-quota:
+  en: 516e6baafc265502
+  zh: 6adc3bfd6ed355e9
+/agent-role-model-and-tool-matrix-draft-2026-11-14/6-tool-matrix-draft:
+  en: b8b0ea4e9f7288f5
+  zh: 50d94a09c3ab1cfa
+/agent-role-model-and-tool-matrix-draft-2026-11-14/7-interface-reservation:
+  en: 0db6b4a898575e01
+  zh: 4c41e1891b061101
+/agent-role-model-and-tool-matrix-draft-2026-11-14/8-verification-and-non-goals:
+  en: f43b8c286ada0fce
+  zh: 0a5e2fe5a9d4b5a6

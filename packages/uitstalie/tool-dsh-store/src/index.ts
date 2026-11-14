@@ -14,7 +14,6 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { withMinRole } from '@deepseek-ai/dsh-dafeiyu'
 import type { CapabilityContribution } from '@deepseek-ai/dsh-dafeiyu'
 import { defineStoreTool } from './tool.ts'
 import StoreRulesRemote from './remote.ts'
@@ -49,7 +48,7 @@ export function apply(ctx: Context): void {
     enabledByDefault: true,
     config: Object.freeze({}),
     create: (): CapabilityContribution => ({
-      tools: () => [withMinRole(defineStoreTool(ctx, { store: ctx.dshStore }), 'agent')],
+      tools: () => [defineStoreTool(ctx, { store: ctx.dshStore })],
     }),
   })
   ctx.effect(() => registration, 'tool-dsh-store.register()')

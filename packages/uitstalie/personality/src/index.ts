@@ -45,7 +45,7 @@ import {
 } from './profile-prompt.ts'
 import { OUTPUT_STYLE_ORDER_NAME, OUTPUT_STYLE_SECTION_NAME } from './output-style.ts'
 import { WRITING_RULES_ORDER_NAME, WRITING_RULES_SECTION_NAME } from './writing-rules.ts'
-import { roleOf, withMinRole } from '@deepseek-ai/dsh-dafeiyu'
+import { roleOf } from '@deepseek-ai/dsh-dafeiyu'
 
 /** Plugin name registered with Cordis. */
 export const name = 'personality'
@@ -119,7 +119,7 @@ async function createContribution(
   return {
     scope: 'all',
     promptSections: agent => sectionsFor(ctx, agent, promptTexts, fallback),
-    tools: () => [withMinRole(analyzeTool, 'subagent'), withMinRole(applyTool, 'agent'), withMinRole(rulesTool, 'agent')],
+    tools: agent => roleOf(agent) === 'subagent' ? [analyzeTool] : [analyzeTool, applyTool, rulesTool],
     onAgentCreated: (agent) => {
       warnLegacyWorkspaceFile(ctx, agent, checkedWorkspaceFiles, runtime.signal)
       /* v8 ignore next 3 -- loadBundle contains every file read failure; refresh has no other throw. */
