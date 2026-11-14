@@ -16,7 +16,7 @@
 | `personality_analyze` 参数 schema | 同上，编译后 | 1,350 字符 / 50 行 |
 | `personality_apply` description | `packages/uitstalie/personality/src/agent-tools.ts:96` | 240 字符 / 1 行 |
 | `personality_apply` 参数 schema | 同上，编译后 | 1,775 字符 / 70 行 |
-| `write_like_human` description | `packages/uitstalie/personality/src/writing-tool.ts:58` | 369 字符 / 1 行 |
+| `write_like_human` description | `packages/uitstalie/personality/src/writing-tool.ts:58` | 525 字符 / 1 行 |
 | `write_like_human` 参数 schema | 同上，编译后 | 1,051 字符 / 37 行 |
 | section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`；注册 `src/index.ts:142-145` | preamble 391 字符；无条目时为空 |
 | section 690 `personality:output-style` | `src/output-style.ts:145-180`；默认 `src/defaults.ts:27-33` | 默认渲染 836 字符 / 15 行 |
@@ -24,7 +24,7 @@
 | section 702 `superagent:dispatcher` | `packages/jira/jira-agent/src/superagent.ts:116-199` | 本文不复制全文，只说明顺序 |
 | 顺序常量 | `packages/core/system-prompt/src/index.ts:139-143` | 100 / 690 / 695 |
 
-工具定义本身（3 个 description + 3 个参数 schema）约 **5,061 字符**；三个 section 的默认/静态文本约 **1,227 字符**（不含用户条目与规则）。
+工具定义本身（3 个 description + 3 个参数 schema）约 **5,217 字符**；三个 section 的默认/静态文本约 **1,227 字符**（不含用户条目与规则）。
 
 ## ② 工具原文
 
@@ -179,7 +179,7 @@ Write confirmed personality candidates into the global PERSONALITY.md. Call only
 **description（逐字）：**
 
 ```text
-Maintain the global WRITING_RULES.yaml. The change affects every agent, not only this conversation. Use list/preview to inspect rules, and add/update/remove/enable/disable to write them; writes are global and version-guarded. Only a root agent can call this tool. Child agents only read the injected rules; they must return to the main conversation to request a change.
+Maintain the global WRITING_RULES.yaml. The change affects every agent, not only this conversation. Use list/preview to inspect rules, and add/update/remove/enable/disable to write them; writes are global and version-guarded, with one internal retry on a stale conflict. If the retry still fails, call list for the latest state before retrying; do not blindly repeat the same call. Only a root agent can call this tool. Child agents only read the injected rules; they must return to the main conversation to request a change.
 ```
 
 **参数 schema（编译后 JSON 原文）：**

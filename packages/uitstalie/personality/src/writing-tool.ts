@@ -59,7 +59,9 @@ export function writingRulesTool(ctx: Context, refresh: (agent: Agent) => Promis
     description:
       'Maintain the global WRITING_RULES.yaml. The change affects every agent, not only this conversation. '
       + 'Use list/preview to inspect rules, and add/update/remove/enable/disable to write them; writes are '
-      + 'global and version-guarded. Only a root agent can call this tool. Child agents only read the '
+      + 'global and version-guarded, with one internal retry on a stale conflict. If the retry still '
+      + 'fails, call list for the latest state before retrying; do not blindly repeat the same call. '
+      + 'Only a root agent can call this tool. Child agents only read the '
       + 'injected rules; they must return to the main conversation to request a change.',
     parameters: {
       action: {

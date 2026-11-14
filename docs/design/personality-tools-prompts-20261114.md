@@ -16,7 +16,7 @@ Every fenced code block in this page is copied verbatim from the source; it is n
 | `personality_analyze` parameter schema | same as above, after compilation | 1,350 characters / 50 lines |
 | `personality_apply` description | `packages/uitstalie/personality/src/agent-tools.ts:96` | 240 characters / 1 line |
 | `personality_apply` parameter schema | same as above, after compilation | 1,775 characters / 70 lines |
-| `write_like_human` description | `packages/uitstalie/personality/src/writing-tool.ts:58` | 369 characters / 1 line |
+| `write_like_human` description | `packages/uitstalie/personality/src/writing-tool.ts:58` | 525 characters / 1 line |
 | `write_like_human` parameter schema | same as above, after compilation | 1,051 characters / 37 lines |
 | section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`; registered at `src/index.ts:142-145` | preamble 391 characters; empty when there are no entries |
 | section 690 `personality:output-style` | `src/output-style.ts:145-180`; defaults `src/defaults.ts:27-33` | default rendering 836 characters / 15 lines |
@@ -24,7 +24,7 @@ Every fenced code block in this page is copied verbatim from the source; it is n
 | section 702 `superagent:dispatcher` | `packages/jira/jira-agent/src/superagent.ts:116-199` | this document does not copy the full text, only explains the order |
 | Order constants | `packages/core/system-prompt/src/index.ts:139-143` | 100 / 690 / 695 |
 
-The tool definitions themselves (3 descriptions + 3 parameter schemas) total about **5,061 characters**; the default/static text of the three sections totals about **1,227 characters** (excluding user entries and rules).
+The tool definitions themselves (3 descriptions + 3 parameter schemas) total about **5,217 characters**; the default/static text of the three sections totals about **1,227 characters** (excluding user entries and rules).
 
 ## ② Tool Source Text
 
@@ -179,7 +179,7 @@ Write confirmed personality candidates into the global PERSONALITY.md. Call only
 **description (verbatim):**
 
 ```text
-Maintain the global WRITING_RULES.yaml. The change affects every agent, not only this conversation. Use list/preview to inspect rules, and add/update/remove/enable/disable to write them; writes are global and version-guarded. Only a root agent can call this tool. Child agents only read the injected rules; they must return to the main conversation to request a change.
+Maintain the global WRITING_RULES.yaml. The change affects every agent, not only this conversation. Use list/preview to inspect rules, and add/update/remove/enable/disable to write them; writes are global and version-guarded, with one internal retry on a stale conflict. If the retry still fails, call list for the latest state before retrying; do not blindly repeat the same call. Only a root agent can call this tool. Child agents only read the injected rules; they must return to the main conversation to request a change.
 ```
 
 **Parameter schema (compiled JSON source text):**
