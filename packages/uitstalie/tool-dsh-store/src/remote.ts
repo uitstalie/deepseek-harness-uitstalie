@@ -80,7 +80,9 @@ export default class StoreRulesRemote extends TypertRemoteService {
    * @param ctx - owning context carrying the filesystem and the workspace registry.
    */
   constructor(ctx: Context) {
-    super(ctx, 'dshStore')
+    // dshStore is already the base data service; give this Remote its own
+    // service key and only use dshStore as the wire namespace.
+    super(ctx, 'dshStoreRules', { namespace: 'dshStore' })
   }
 
   /** The workspace this Host resolved for one wire identity. */
