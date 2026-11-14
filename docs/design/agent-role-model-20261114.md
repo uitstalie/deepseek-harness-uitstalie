@@ -32,7 +32,7 @@ The role type and reader live in `packages/core/agent/src/runtime-types.ts` and 
 |---|---|---|
 | Capability `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | Keep scope for non-tool resources; tool visibility should use `agentRoleOf`. |
 | Personality tool filter | `personality/src/index.ts:122` | Existing behavior: subagent gets analyze only; not migrated to minRole in this round. |
-| Jira worker test | `jira-agent/src/contribution.ts:146-179` | Current `isWorker` (subagent or executor preset) still controls tools; not changed. |
+| Jira worker test | `jira-agent/src/contribution.ts:146-179` | `isWorker` still chooses the worker tool set; every returned tool also carries `minRole: agent`, so role gates subagents. |
 | Super-agent test | `jira-agent/src/superagent.ts:418-424`, `:5752-5769` | Current cwd-based `isSuperAgentSession`; future `agentRoleOf === 'super'`. |
 | Memory capability scope | `memory/src/index.ts:296` | Future tool-level role declaration; current behavior unchanged. |
 | Schedule runtime rejection | `schedule/tool-schedule/src/index.ts:307` | Current subagent call refusal; visibility unchanged. |
@@ -83,5 +83,5 @@ An undeclared root defaults to `agent`, not `subagent`: a root is a normal works
 ## 9. Verification and non-goals
 
 - Existing tests: personality 105/105, tool-dsh-store 19/19, jira superagent 125/125, typecheck 5/5.
-- Tool visibility now changes exactly for the rows marked “new”: memory read/write split, communication retained, and schedule/plugin/delegation hidden from subagents. Jira and `.dsh` remain pending.
+- Tool visibility now changes exactly for the rows marked “new”: memory read/write split, communication retained, schedule/plugin/delegation hidden, and jira/.dsh hidden from subagents. Only superagent remains pending.
 - Not in this round: 702 extraction, localization, superagent tool gating, or any quota change.

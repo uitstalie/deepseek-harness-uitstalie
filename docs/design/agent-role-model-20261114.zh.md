@@ -32,7 +32,7 @@
 |---|---|---|
 | 能力 `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | 非工具资源保留 scope；工具可见性应使用 `agentRoleOf`。 |
 | Personality 工具过滤 | `personality/src/index.ts:122` | 现有行为：subagent 只获得 analyze；本轮不迁移到 minRole。 |
-| Jira worker 测试 | `jira-agent/src/contribution.ts:146-179` | 当前 `isWorker`（subagent 或 executor preset）仍控制工具；未改变。 |
+| Jira worker 测试 | `jira-agent/src/contribution.ts:146-179` | `isWorker` 继续选择 worker 工具集；每个返回的工具同时带 `minRole: agent`，由 role 拦住 subagent。 |
 | Super-agent 测试 | `jira-agent/src/superagent.ts:418-424`、`:5752-5769` | 当前基于 cwd 的 `isSuperAgentSession`；未来使用 `agentRoleOf === 'super'`。 |
 | Memory 能力 scope | `memory/src/index.ts:296` | 未来做工具级角色声明；当前行为不变。 |
 | Schedule 运行时拒绝 | `schedule/tool-schedule/src/index.ts:307` | 当前拒绝 subagent 调用；可见性不变。 |
@@ -83,5 +83,5 @@ tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filter
 ## 9. 验证与非目标
 
 - 现有测试：personality 105/105、tool-dsh-store 19/19、jira superagent 125/125、typecheck 5/5。
-- 工具可见性现在恰好对标记为“新增”的行发生变化：memory 读写拆分、通信保留，schedule/plugin/delegation 对 subagent 隐藏。Jira 与 `.dsh` 仍待处理。
+- 工具可见性现在恰好对标记为“新增”的行发生变化：memory 读写拆分、通信保留，schedule/plugin/delegation/jira/.dsh 对 subagent 隐藏。只有 superagent 仍待处理。
 - 本轮不包括：702 抽取、本地化、superagent 工具门控，以及任何配额变更。
