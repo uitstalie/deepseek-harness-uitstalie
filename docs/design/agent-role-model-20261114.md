@@ -2,7 +2,7 @@
 
 English | [中文](agent-role-model-20261114.zh.md)
 
-Status: **role field, section gating, and the approved tool gates are implemented.** Tool visibility is enforced once in the tool registry; jira/.dsh remain the only unmigrated families.
+Status: **role field, section gating, and the approved tool gates are implemented.** Tool visibility is enforced once in the tool registry; superagent remains the only unmigrated family.
 
 ## 1. Role classification
 
@@ -52,9 +52,9 @@ The role field is the shared source; each consumer migrates separately. This rou
 |---|---|---|---|---|
 | `personality_analyze` | all agents; `personality/index.ts:122` | `subagent`+ | Read-only research | Nothing |
 | `personality_apply` / `write_like_human` | subagent excluded; `personality/index.ts:122` | `agent`+ | Global write | No write access (already) |
-| `jira_issue` / `jira_list` / `jira_kb` | worker/subagent gets them; `jira/contribution.ts:179` | `agent`+ | Ledger identity belongs to main/workspace Sessions | **Pending**: would lose ledger read/write/search |
-| jira `issue_work` | worker/subagent; `jira/contribution.ts:179` | `agent`+ | Worker executor is an agent root | **Pending**: would lose worker write |
-| `tool-dsh-store` | all agents; `tool-dsh-store/index.ts:51` | `agent`+ | Rules/skills management | **Pending**: would lose `.dsh` management |
+| `jira_issue` / `jira_list` / `jira_kb` | agent+ (new); `minRole: agent` | `agent` | Ledger identity belongs to main/workspace Sessions | Hidden from subagent |
+| jira `issue_work` | agent+ (new); `minRole: agent` | `agent` | Worker executor is an agent root | Hidden from subagent |
+| `tool-dsh-store` | agent+ (new); `minRole: agent` | `agent` | Rules/skills management | Hidden from subagent |
 | `memory_write` / `forget` / `resolve` | agent+ (new); `memory/src/tools.ts` `minRole: agent` | `agent` | Single writer | No write access (newly hidden) |
 | `memory_search` / `read` | subagent+ (new); `memory/src/index.ts` scope now `all`, tools carry `minRole: subagent` | `subagent` | Research may need history | Now available; no loss |
 | `superagent_control` / `ledger` / `deliver` / `permission` | super-only via cwd + root; `superagent.ts:5752-5769` | `super` | Dispatch/ledger/delivery | Nothing (already unavailable) |
@@ -72,7 +72,7 @@ The role field is the shared source; each consumer migrates separately. This rou
 tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(agentRoleOf(agent), minRole)
 ```
 
-The registry enforces these declarations centrally; only jira and `.dsh` remain unmigrated.
+The registry enforces these declarations centrally; only superagent remains unmigrated.
 
 ## 8. File naming and default rationale
 
@@ -84,4 +84,4 @@ An undeclared root defaults to `agent`, not `subagent`: a root is a normal works
 
 - Existing tests: personality 105/105, tool-dsh-store 19/19, jira superagent 125/125, typecheck 5/5.
 - Tool visibility now changes exactly for the rows marked “new”: memory read/write split, communication retained, and schedule/plugin/delegation hidden from subagents. Jira and `.dsh` remain pending.
-- Not in this round: 702 extraction, localization, jira/.dsh tool gating, or any quota change.
+- Not in this round: 702 extraction, localization, superagent tool gating, or any quota change.

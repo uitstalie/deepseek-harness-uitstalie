@@ -12,6 +12,7 @@
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
+import { withMinRole } from '@deepseek-ai/dsh-tools'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import { createStoreAwareness, JIRA_AWARENESS_ORDER, JIRA_AWARENESS_SECTION_NAME } from './awareness.ts'
 import { callerSessionId, isExecutorSession, isSubagent } from './caller.ts'
@@ -176,7 +177,7 @@ export const createJiraContribution = (host: ContributionHost, workerPreset?: st
     // dispatched for (their writes stay refused, decision 89, and `jira_kb` checks the same
     // verdict) plus `issue_work`, which is the only surface it may write through.
     scope: 'all',
-    tools: (agent: Agent) => (isWorker(agent) ? Object.freeze([...tools, ...workerTools]) : tools),
+    tools: (agent: Agent) => Object.freeze((isWorker(agent) ? [...tools, ...workerTools] : tools).map(tool => withMinRole(tool, 'agent'))),
     promptSections: (agent: Agent) => (isWorker(agent) ? [EXECUTOR_SECTION] : []),
     onAgentCreated: (agent: Agent) => {
       // A worker neither settles the ledger nor scans the session's commits: it writes one issue

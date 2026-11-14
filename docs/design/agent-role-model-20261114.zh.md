@@ -2,7 +2,7 @@
 
 [English](agent-role-model-20261114.md) | 中文
 
-状态：**角色字段、section 门控以及已批准的工具门槛均已实现。** 工具可见性由工具注册表统一执行一次；jira/.dsh 仍是唯一未迁移的族。
+状态：**角色字段、section 门控以及已批准的工具门槛均已实现。** 工具可见性由工具注册表统一执行一次；superagent 仍是唯一未迁移的族。
 
 ## 1. 角色分类
 
@@ -52,9 +52,9 @@
 |---|---|---|---|---|
 | `personality_analyze` | 所有 agent；`personality/index.ts:122` | `subagent`+ | 只读研究 | 无 |
 | `personality_apply` / `write_like_human` | 排除 subagent；`personality/index.ts:122` | `agent`+ | 全局写入 | 无写权限（本来就没有） |
-| `jira_issue` / `jira_list` / `jira_kb` | worker/subagent 可获得；`jira/contribution.ts:179` | `agent`+ | 账本身份属于主/workspace Session | **待定**：将失去账本读/写/搜索 |
-| jira `issue_work` | worker/subagent；`jira/contribution.ts:179` | `agent`+ | worker executor 就是一个 agent root | **待定**：将失去 worker 写入 |
-| `tool-dsh-store` | 所有 agent；`tool-dsh-store/index.ts:51` | `agent`+ | 规则/技能管理 | **待定**：将失去 `.dsh` 管理 |
+| `jira_issue` / `jira_list` / `jira_kb` | agent+（新增）；`minRole: agent` | `agent` | 账本身份属于主/workspace Session | 对 subagent 隐藏 |
+| jira `issue_work` | agent+（新增）；`minRole: agent` | `agent` | worker executor 就是一个 agent root | 对 subagent 隐藏 |
+| `tool-dsh-store` | agent+（新增）；`minRole: agent` | `agent` | 规则/技能管理 | 对 subagent 隐藏 |
 | `memory_write` / `forget` / `resolve` | agent+（新增）；`memory/src/tools.ts` `minRole: agent` | `agent` | 单一写入者 | 无写权限（新近隐藏） |
 | `memory_search` / `read` | subagent+（新增）；`memory/src/index.ts` scope 现为 `all`，工具携带 `minRole: subagent` | `subagent` | 研究可能需要历史 | 现在可用；无损失 |
 | `superagent_control` / `ledger` / `deliver` / `permission` | 通过 cwd + root 仅限 super；`superagent.ts:5752-5769` | `super` | 调度/账本/交付 | 无（本来就不可用） |
@@ -72,7 +72,7 @@
 tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(agentRoleOf(agent), minRole)
 ```
 
-注册表集中执行这些声明；只有 jira 与 `.dsh` 仍未迁移。
+注册表集中执行这些声明；只有 superagent 仍未迁移。
 
 ## 8. 文件命名与默认理由
 
@@ -84,4 +84,4 @@ tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filter
 
 - 现有测试：personality 105/105、tool-dsh-store 19/19、jira superagent 125/125、typecheck 5/5。
 - 工具可见性现在恰好对标记为“新增”的行发生变化：memory 读写拆分、通信保留，schedule/plugin/delegation 对 subagent 隐藏。Jira 与 `.dsh` 仍待处理。
-- 本轮不包括：702 抽取、本地化、jira/.dsh 工具门控，以及任何配额变更。
+- 本轮不包括：702 抽取、本地化、superagent 工具门控，以及任何配额变更。
