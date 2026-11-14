@@ -260,7 +260,38 @@ Status rules:
 - When a person's decision is needed, ask only one necessary question; do not package an ask_user_question whole-turn cancellation as "waiting".
 ```
 
-The same section for the super agent renders the `Dispatch voice` line as `- Dispatch voice: terse.` (dropping the "super agent only" suffix); the other lines are identical. The specific field values are changed by `OUTPUT_STYLE.yaml`; for the template and fixed boundaries, see `output-style.ts:145-180`.
+The same section for the super agent renders the `Dispatch voice` line as `- Dispatch voice: terse.` (dropping the "super agent only" suffix); the other lines are identical. The full super-agent rendering, 845 characters / 15 lines, is verbatim:
+
+```text
+Output style defaults:
+- Tone: direct.
+- Length: terse.
+- Lead with the conclusion: yes.
+- Lists: comparisons.
+- Dispatch voice: terse.
+
+Output style never overrides safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.
+
+Status rules:
+- State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
+- Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.
+- Without start.stage=prompted, do not write "started/dispatched".
+- Mark repeated reports as duplicate; write routing as "→ reuse <title> (<id>)" or "→ new <title>, reason: …".
+- When a person's decision is needed, ask only one necessary question; do not package an ask_user_question whole-turn cancellation as "waiting".
+```
+
+`DEFAULT_OUTPUT_STYLE` fields (all required; `defaults.ts:27-33`, parsed at `output-style.ts:95-112`):
+
+| Field | Default |
+|---|---|
+| `version` | `1` |
+| `tone` | `direct` |
+| `length` | `terse` |
+| `leadWithConclusion` | `true` |
+| `lists` | `comparisons` |
+| `dispatchVoice` | `terse` |
+
+On this dev checkout, `OUTPUT_STYLE.yaml` is absent; no user override is observed, so no user data is copied. The renderer (`output-style.ts:145-180`) is a fixed template, not a wrapped document: five header lines in the order `tone`, `length`, `leadWithConclusion`, `lists`, `dispatchVoice`; `leadWithConclusion` becomes `yes`/`no`; the non-super-agent `dispatchVoice` line gets the suffix ` (super agent only; other agents ignore it)`. If style entries exist, it adds `Concrete style entries take priority over these defaults:` and one collapsed, trimmed bullet per entry; with none, that block is omitted. It then appends the blank-line-separated hard boundary and `Status rules:` block, joins all lines with `\n`, and adds no title, wrapper, or trailing newline. The config has no optional fields: an absent file uses these defaults, while an invalid present file is warned about and falls back to them (`index.ts:162-175`).
 
 ### section 695 `personality:writing-rules`
 
@@ -271,6 +302,10 @@ Registered as `name: 'personality:writing-rules'`, with the order constant `PERS
 ```
 
 The default `WRITING_RULES.yaml` is `rules: []`, so the section text is **empty**; empty text is discarded by system-prompt assembly. Enabled rules are sorted by `order` ascending, with the same order sorted by id; `rule.text` has whitespace collapsed and is trimmed. The rule content is not copied in this document.
+
+#### Current status: not enabled
+
+No writing rules are enabled by default: `rules: []` produces an empty section, which assembly drops. The limits are **32 rules**, **240 characters per rule**, and **4 KiB total** (`writing-rules.ts:27-33`). These limits suit a small set of hard rules; they are not suitable as a long-term style library.
 
 ### Order with 702
 

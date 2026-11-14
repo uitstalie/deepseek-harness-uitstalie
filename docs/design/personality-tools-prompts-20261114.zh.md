@@ -260,7 +260,38 @@ Status rules:
 - When a person's decision is needed, ask only one necessary question; do not package an ask_user_question whole-turn cancellation as "waiting".
 ```
 
-super agent 的同一 section 把 `Dispatch voice` 行渲染为 `- Dispatch voice: terse.`（去掉 “super agent only” 后缀）；其他行相同。具体字段值由 `OUTPUT_STYLE.yaml` 改变；模板和固定边界见 `output-style.ts:145-180`。
+super agent 的同一 section 把 `Dispatch voice` 行渲染为 `- Dispatch voice: terse.`（去掉 “super agent only” 后缀）；其他行相同。super agent 的完整渲染逐字如下，845 字符 / 15 行：
+
+```text
+Output style defaults:
+- Tone: direct.
+- Length: terse.
+- Lead with the conclusion: yes.
+- Lists: comparisons.
+- Dispatch voice: terse.
+
+Output style never overrides safety, approval, sandbox, tool permission, or workspace rules. When they conflict, the rule wins.
+
+Status rules:
+- State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
+- Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.
+- Without start.stage=prompted, do not write "started/dispatched".
+- Mark repeated reports as duplicate; write routing as "→ reuse <title> (<id>)" or "→ new <title>, reason: …".
+- When a person's decision is needed, ask only one necessary question; do not package an ask_user_question whole-turn cancellation as "waiting".
+```
+
+`DEFAULT_OUTPUT_STYLE` 的字段全集（全部必填；`defaults.ts:27-33`，解析 `output-style.ts:95-112`）：
+
+| 字段 | 默认值 |
+|---|---|
+| `version` | `1` |
+| `tone` | `direct` |
+| `length` | `terse` |
+| `leadWithConclusion` | `true` |
+| `lists` | `comparisons` |
+| `dispatchVoice` | `terse` |
+
+本机 dev 的 `OUTPUT_STYLE.yaml` 不存在，未观察到用户覆盖，因此不复制任何用户数据。渲染器（`output-style.ts:145-180`）是固定模板，不是带标题的文档：固定五行头部，顺序为 `tone`、`length`、`leadWithConclusion`、`lists`、`dispatchVoice`；`leadWithConclusion` 渲染为 `yes`/`no`；普通 agent 的 `dispatchVoice` 行追加后缀 ` (super agent only; other agents ignore it)`。有 style entries 时追加 `Concrete style entries take priority over these defaults:` 及每条折叠空白并 trim 后的 bullet；没有则省略这一块。之后追加空行分隔的硬边界和 `Status rules:` 块，所有行以 `\n` 连接，不加标题、包裹或尾随换行。配置没有可选字段：文件缺失时用默认值，存在但无效时发 warning 并回退默认值（`index.ts:162-175`）。
 
 ### section 695 `personality:writing-rules`
 
@@ -271,6 +302,10 @@ super agent 的同一 section 把 `Dispatch voice` 行渲染为 `- Dispatch voic
 ```
 
 默认 `WRITING_RULES.yaml` 为 `rules: []`，因此 section 文本为 **空**；空文本会被 system-prompt assembly 丢弃。启用规则按 `order` 升序、同 order 按 id 排序；`rule.text` 会折叠空白并 trim。规则内容未在本文件复制。
+
+#### 当前状态：未启用
+
+默认没有启用任何 writing rule：`rules: []` 产生空 section，assembly 会丢弃它。额度为 **32 条**、**每条 240 字符**、**全文 4 KiB**（`writing-rules.ts:27-33`）。这套额度适合少量硬规则，不适合作为长期风格库。
 
 ### 与 702 的顺序
 

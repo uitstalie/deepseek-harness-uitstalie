@@ -99,8 +99,8 @@ export function personalityApplyTool(ctx: Context, refresh: (agent: Agent) => Pr
     name: 'personality_apply',
     description:
       'Write confirmed personality candidates into the global PERSONALITY.md. Call only after the user '
-      + 'explicitly asks to apply reviewed candidates and pass confirm: true. identity candidates are '
-      + 'rejected; this tool never learns automatically and is available only to a root agent.',
+      + 'explicitly asks to apply reviewed candidates and pass confirm: true. This tool never learns '
+      + 'automatically and is available only to a root agent.',
     parameters: {
       candidates: {
         type: 'array',
