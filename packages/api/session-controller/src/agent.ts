@@ -2,8 +2,9 @@
 
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
+import { resolve as resolvePath } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import type { Agent, AgentOptions, AgentSetup } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentOptions, AgentRole, AgentSetup } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
@@ -60,6 +61,8 @@ export interface ApiSessionCreateRequest {
   readonly cwd: string
   /** Preset the Session runs; the configured default when omitted. */
   readonly agentPreset?: string
+  /** Explicit role from a trusted Session-creation caller; absent defaults to agent. */
+  readonly role?: AgentRole
   /**
    * Placement rule the caller owns, such as Workspace membership and archive state.
    * @param sessionId - existing Session named by the request.
@@ -79,6 +82,7 @@ export interface ApiSessionCreated {
 /** Resolved preset and pre-publication Agent setup for one create or resume. */
 interface ApiSessionComposition {
   readonly agentPreset?: string
+  readonly role?: AgentRole
   readonly setup: AgentSetup
 }
 
@@ -228,7 +232,10 @@ export class ApiSessionAgentController {
    */
   async createSession(request: ApiSessionCreateRequest): Promise<ApiSessionCreated> {
     const named = request.sessionId
-    if (named === undefined) return this.created(await this.createMinted(request.cwd, await this.composeAgent(request.agentPreset)))
+    if (named === undefined) {
+      const composition = await this.composeAgent(request.agentPreset, this.roleFor(request.cwd, request.role))
+      return this.created(await this.createMinted(request.cwd, composition))
+    }
     return this.inOrder(named, async () => this.created(await this.claim(named, request)))
   }
 
@@ -258,14 +265,15 @@ export class ApiSessionAgentController {
    * @param presetId - requested preset or the configured default when omitted.
    * @returns the resolved preset identity and Agent setup callback.
    */
-  async composeAgent(presetId: string | undefined): Promise<ApiSessionComposition> {
+  async composeAgent(presetId: string | undefined, role?: AgentRole): Promise<ApiSessionComposition> {
     const presets = this.ctx.get('agentPresets')
     if (presets === undefined) {
-      return { setup: (agentCtx) => { installModelSelection(agentCtx) } }
+      return { ...role === undefined ? {} : { role }, setup: (agentCtx) => { installModelSelection(agentCtx) } }
     }
     const resolvedId = (await presets.resolve(presetId)).id
     return {
       agentPreset: resolvedId,
+      ...role === undefined ? {} : { role },
       setup: async (agentCtx) => {
         installModelSelection(agentCtx)
         await presets.mount(agentCtx, resolvedId)
@@ -305,14 +313,14 @@ export class ApiSessionAgentController {
     if (hasApiSessionSubagentOwner({ header: observation.header })) {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
-    const composition = await this.composeAgent(this.presetForObservation(observation))
+    const composition = await this.composeAgent(this.presetForObservation(observation), this.roleFor(observation.header.cwd ?? '', undefined))
     const published = this.ctx.sessions.get(sessionId)
     if (published !== undefined && hasApiSessionSubagentOwner(published)) {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
     return (await this.ctx.agents.resume({
       resumeSessionId: sessionId,
-      agentOptions: this.agentOptions(),
+      agentOptions: this.agentOptions(composition.role),
       setup: composition.setup,
     })).agent
   }
@@ -339,7 +347,7 @@ export class ApiSessionAgentController {
       if (live.session.header.cwd !== request.cwd) {
         throw new ApiSessionCwdConflict(live.id, request.cwd, live.session.header.cwd)
       }
-      const composition = await this.composeAgent(request.agentPreset)
+      const composition = await this.composeAgent(request.agentPreset, this.roleFor(request.cwd, request.role))
       return await this.reuseLive(live, request, composition) ?? this.createMinted(request.cwd, composition)
     }
     let observation: SessionObservation
@@ -347,7 +355,7 @@ export class ApiSessionAgentController {
       observation = await this.ctx.sessionQuery.observeSession(sessionId)
     } catch (error: unknown) {
       if (!(error instanceof SessionQueryError) || error.code !== 'SESSION_QUERY_SESSION_NOT_FOUND') throw error
-      return this.createAgent(sessionId, request.cwd, await this.composeAgent(request.agentPreset))
+      return this.createAgent(sessionId, request.cwd, await this.composeAgent(request.agentPreset, this.roleFor(request.cwd, request.role)))
     }
     let reusable: boolean
     {
@@ -360,13 +368,13 @@ export class ApiSessionAgentController {
       }
       reusable = request.reusable(sessionId) && !observed.events.some(event => event.type === 'turn/start')
     }
-    const composition = await this.composeAgent(request.agentPreset)
+    const composition = await this.composeAgent(request.agentPreset, this.roleFor(request.cwd, request.role))
     if (!reusable) return this.createMinted(request.cwd, composition)
     this.assertPresetApplicable(sessionId, request.agentPreset)
     try {
       return (await this.ctx.agents.resume({
         resumeSessionId: sessionId,
-        agentOptions: this.agentOptions(),
+        agentOptions: this.agentOptions(composition.role),
         setup: this.reuseSetup(composition),
       })).agent
     } catch (error: unknown) {
@@ -441,7 +449,7 @@ export class ApiSessionAgentController {
     }
     return (await this.ctx.agents.create({
       sessionId,
-      agentOptions: this.agentOptions(),
+      agentOptions: this.agentOptions(composition.role),
       meta: {
         cwd,
         ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
@@ -450,10 +458,19 @@ export class ApiSessionAgentController {
     })).agent
   }
 
-  private agentOptions(): AgentOptions {
+  /** Resolve a role from the trusted super-workspace service; an unmatched super request is ignored. */
+  private roleFor(cwd: string, requested?: AgentRole): AgentRole | undefined {
+    const home = (this.ctx.get as (key: string) => unknown)('superagentHome') as { readonly path?: string } | undefined
+    const matches = home?.path !== undefined && resolvePath(cwd) === resolvePath(home.path)
+    if (matches) return 'super'
+    return requested === 'agent' || requested === 'subagent' ? requested : undefined
+  }
+
+  private agentOptions(role?: AgentRole): AgentOptions {
     const defaults = this.ctx.agentDefaultModel
     // A Session that records no selection or request follows default changes.
     return {
+      ...role === undefined ? {} : { role },
       get provider() { return defaults.currentSelection().provider },
       get model() { return defaults.currentSelection().model },
       get reasoningEffort() { return defaults.currentSelection().reasoningEffort },

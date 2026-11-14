@@ -13,6 +13,7 @@
  */
 
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
@@ -21,6 +22,7 @@ import { existsSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
+import { withMinRole } from '@deepseek-ai/dsh-tools'
 import { clampText, asIdentity, invalidInput, ioFailed, leaseIsActive, notFound, readOnlySession, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
@@ -5226,6 +5228,11 @@ export const createSuperagentContribution = (
   // write a proposal or start a daemon pass after its teardown began.
   let disposed = false
   const superHome = home === undefined || home.trim() === '' ? undefined : home
+  const superHomeService = host.ctx as Context & { provide?: (key: string, value: unknown) => void }
+  if (superHome !== undefined && superHomeService.provide !== undefined && host.ctx.get('superagentHome') === undefined) {
+    // Trusted Session creation reads this only to mark the super workspace's own Agent.
+    superHomeService.provide('superagentHome', Object.freeze({ path: superHome, role: 'super' as const }))
+  }
 
   /**
    * Check the managed `AGENTS.md` section for this workspace and show its pending notice.
@@ -5760,7 +5767,7 @@ export const createSuperagentContribution = (
           defineJiraTool(host, models),
           defineJiraTool(host, permission),
           defineJiraTool(host, deliver),
-        ])
+        ].map(tool => withMinRole(tool, 'super')))
         : Object.freeze([
           defineJiraTool(host, source),
           defineJiraTool(host, scan),
