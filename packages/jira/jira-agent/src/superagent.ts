@@ -156,6 +156,7 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + '- No report or no artifact means not done.\n'
     + '- Do not use interactive ask_user_question in a dispatched task; return one blocking question instead.\n'
     + '- Do not require memory_search; do not modify ACLs, admin permissions, or system directories.\n'
+    + '- Make dimension-by-dimension comparison the default for a plan comparison, selection, or A/B evaluation: the acceptance check must give a separate verdict and numeric evidence for each applicable dimension (for example relevance, speed, memory, size/build cost, incremental-update cost); never flatten a multi-dimensional comparison into one phrase such as "better overall". State where the dimensions conflict — which gets better, which gets worse, and under what condition; a dimension that cannot be measured is "untested + why", never an estimate presented as a measurement.\n'
     + '\n'
     + '- One brief carries one objective and its acceptance check. Do not mix competing standards in '
     + 'one dispatch; cite each convention you rely on by workspace id and file ("→ analyze/AGENTS.md'

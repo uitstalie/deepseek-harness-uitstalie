@@ -52,6 +52,16 @@ void describe('superagent: brief-writing rules', () => {
     assert.doesNotMatch(text, /Windows/u)
   })
 
+  void it('requires dimension-by-dimension comparisons for selection and A/B briefs', () => {
+    const text = String(SUPERAGENT_SECTION.text)
+    assert.match(text, /dimension-by-dimension comparison the default/u)
+    assert.match(text, /separate verdict and numeric evidence/u)
+    assert.match(text, /never flatten a multi-dimensional comparison/u)
+    assert.match(text, /State where the dimensions conflict/u)
+    assert.match(text, /untested \+ why/u)
+    assert.match(text, /never an estimate presented as a measurement/u)
+  })
+
   void it('adds no second section for the template', () => {
     assert.equal(SUPERAGENT_SECTION.name, 'superagent:dispatcher')
     assert.equal(SUPERAGENT_SECTION.order, 702)
