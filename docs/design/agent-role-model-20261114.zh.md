@@ -12,25 +12,26 @@
 | `agent` | 普通的 root/workspace Session；承担常规工作。 |
 | `super` | 负责调度工作的 super-agent 根；权限最大。 |
 
-类型与辅助函数位于 `packages/uitstalie/dafeiyu/src/role.ts`：`AgentRole`、`roleOf`、`roleAllows`、`withMinRole`、`toolMinRole`。
+角色类型与读取函数位于 `packages/core/agent/src/runtime-types.ts` 和 `packages/core/agent/src/role.ts`：`AgentRole`、`agentRoleOf`。organizer 只在未来负责工具最小角色辅助函数（`packages/uitstalie/dafeiyu/src/role.ts`）。
 
 ## 2. 声明来源与默认值
 
-- 唯一来源是 `agent.options.role`（通过 Session/agent 创建选项声明；创建 Agent 的 preset/config 必须设置它）。不存在基于 cwd、workspace 标题、preset 名称或工具存在性的推断。
+- 唯一来源是 `agent.options.role`（通过 Session/agent 创建选项声明；创建该 Agent 的 preset/config 必须设置它）。不存在基于 cwd、workspace 标题、preset 名称或工具存在性的推断。
+- **当前启用缺口：** 没有任何已发布的 preset 或 profile 行设置 `role: 'super'`；super Session 必须用 `agentOptions: { role: 'super' }` 创建（或由某个 preset 传入）。在接通之前，`SUPERAGENT_OUTPUT_STYLE.yaml` 仅由显式构造的 super Agent 读取。现有 profile 未被修改。
 - 未声明的 **root** 解析为 `agent`，而不是 `super`。这是普通 workspace Session 的安全默认值：`super` 从不被隐式授予，而 root 必须保留正常的 workspace 能力才能运作。
-- 未声明的 **child** 解析为 `subagent`，依据持久血缘（`origin: 'subagent'`、`parentSession` 或 `delegationDepth > 0`）。子级血缘优先于已声明的值，因此子级无法自我提升。
+- 未声明的 **child** 解析为 `subagent`，判定依据是持久血缘（`origin: 'subagent'`、`parentSession` 或 `delegationDepth > 0`）。子级血缘优先于已声明的值，因此子级无法自我提升。
 - `agent.options.role` 是实时的 agent 配置。恢复的 Session 若需要 `super`，必须以相同的声明重新创建；此阶段没有持久化的角色字段。
 
 ## 3. 父子规则
 
-`roleOf` 首先检查血缘；如果该 Agent 是子级，则返回 `subagent`，无论 `agent.options.role` 为何。因此 subagent **不是**其父级的 super 能力副本，也无法选择加入 `super`。未声明的普通 root 是 `agent`；只有声明 `super` 的 root 才能获得 super 角色。
+`agentRoleOf` 首先检查血缘；如果该 Agent 是子级，则返回 `subagent`，无论 `agent.options.role` 为何。因此 subagent **不是**其父级的 super 能力副本，也无法选择加入 `super`。未声明的普通 root 是 `agent`；只有声明 `super` 的 root 才能获得 super 角色。
 
 ## 4. 现有隐式判断与未来替换
 
 | 当前判断 | 位置 | 未来的角色替换 |
 |---|---|---|
-| 能力 `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | 非工具资源保留 scope；工具可见性应使用 `roleOf`。 |
-| Personality 工具过滤 | `personality/src/index.ts:122` | 现有行为：subagent 只能使用 analyze。未来：通过共享接口按工具声明 `minRole`。 |
+| 能力 `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | 非工具资源保留 scope；工具可见性应使用 `agentRoleOf`。 |
+| Personality 工具过滤 | `personality/src/index.ts:122` | 现有行为：subagent 只获得 analyze。未来：通过共享接口按工具声明 `minRole`。 |
 | Jira worker 测试 | `jira-agent/src/contribution.ts:146-179` | 当前 `isWorker`（subagent 或 executor preset）仍控制工具；未改变。 |
 | Super-agent 测试 | `jira-agent/src/superagent.ts:418-424`、`:5752-5769` | 当前基于 cwd 的 `isSuperAgentSession`；未来使用 `roleOf === 'super'`。 |
 | Memory 能力 scope | `memory/src/index.ts:296` | 未来做工具级角色声明；当前行为不变。 |
@@ -68,12 +69,18 @@
 `withMinRole(tool, role)` 与 `toolMinRole(tool)` 作为未来的声明形态存在于 `dafeiyu/src/role.ts`。本轮 organizer **不会**调用它们；没有任何工具定义携带 `minRole`，注册循环保持不变。预期的消费方签名是：
 
 ```ts
-tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(roleOf(agent), minRole)
+tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(agentRoleOf(agent), minRole)
 ```
 
 这只是设计预留。此处没有迁移任何 provider。
 
-## 8. 验证与非目标
+## 8. 文件命名与默认理由
+
+`SUPERAGENT_OUTPUT_STYLE.yaml` 沿用现有的 `SUPERAGENT_*` 常量前缀，并与 `OUTPUT_STYLE.yaml` 并列；本包没有 agent 类型后缀的命名惯例，因此显式的 super 前缀是现有惯例中最清晰的一种。普通槽位保留其现有文件名，因此已有的 `OUTPUT_STYLE.yaml` 不受影响。
+
+未声明的 root 默认是 `agent`，而不是 `subagent`：root 是普通的 workspace Session，必须保留普通的 workspace 能力；`subagent` 是血缘派生的角色，不是 root 的安全默认值。`super` 从不隐式授予。
+
+## 9. 验证与非目标
 
 - 现有测试：personality 105/105、tool-dsh-store 19/19、jira superagent 125/125、typecheck 5/5。
 - 本轮未改变任何工具可见性。只实现了已经批准的 690 门控与写入规则配额/常驻行为。

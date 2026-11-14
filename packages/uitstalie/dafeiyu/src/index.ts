@@ -49,8 +49,8 @@ export type {
   TurnEndInput,
 } from './types.ts'
 export { default as DafeiyuRemote } from './remote.ts'
-export { roleAllows, roleOf, toolMinRole, withMinRole } from './role.ts'
-export type { AgentRole } from './role.ts'
+export { roleAllows, toolMinRole, withMinRole } from './role.ts'
+
 
 /**
  * The organizer's row schema. `capabilities` is a volatile reference: a

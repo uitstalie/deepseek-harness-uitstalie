@@ -12,7 +12,7 @@
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { roleOf } from '@deepseek-ai/dsh-dafeiyu'
+import { agentRoleOf } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -108,7 +108,7 @@ export function writingRulesTool(ctx: Context, refresh: (agent: Agent) => Promis
     },
     async execute(args, exec) {
       const agent = requireAgent(exec.agent, 'write_like_human')
-      if (roleOf(agent) === 'subagent') throw new Error('write_like_human is unavailable to subagents')
+      if (agentRoleOf(agent) === 'subagent') throw new Error('write_like_human is unavailable to subagents')
       const result = await runWritingRuleAction(ctx, args as WritingRuleInput, exec.signal)
       if (result.ok && WRITE_ACTIONS.has(result.action)) await refresh(agent)
       return result as never

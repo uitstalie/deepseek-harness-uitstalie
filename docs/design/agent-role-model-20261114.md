@@ -12,27 +12,28 @@ Status: **role field and section gating are implemented; tool visibility is not 
 | `agent` | A normal root/workspace Session; ordinary work. |
 | `super` | The super-agent root that dispatches work; most privilege. |
 
-The type and helpers live in `packages/uitstalie/dafeiyu/src/role.ts`: `AgentRole`, `roleOf`, `roleAllows`, `withMinRole`, `toolMinRole`.
+The role type and reader live in `packages/core/agent/src/runtime-types.ts` and `packages/core/agent/src/role.ts`: `AgentRole`, `agentRoleOf`. The organizer only owns the future tool-minimum helpers (`packages/uitstalie/dafeiyu/src/role.ts`).
 
 ## 2. Declaration source and default
 
 - The only source is `agent.options.role` (declared through Session/agent creation options; a preset/config that creates the Agent must set it). There is no cwd, workspace-title, preset-name, or tool-presence inference.
+- **Current activation gap:** no shipped preset or profile line sets `role: 'super'`; a super Session must be created with `agentOptions: { role: 'super' }` (or a preset that passes it). Until that is wired, `SUPERAGENT_OUTPUT_STYLE.yaml` is read only by explicitly constructed super Agents. The existing profile was not modified.
 - An undeclared **root** resolves to `agent`, not `super`. This is the safe default for an ordinary workspace Session: `super` is never granted implicitly, while a root must retain normal workspace capability to function.
 - An undeclared **child** resolves to `subagent` from durable lineage (`origin: 'subagent'`, `parentSession`, or `delegationDepth > 0`). Child lineage wins over a declared value, so a child cannot promote itself.
 - `agent.options.role` is live agent configuration. A resumed Session must be re-created with the same declaration if it needs `super`; there is no persisted role field in this stage.
 
 ## 3. Parent/child rule
 
-`roleOf` first checks lineage; if the Agent is a child, it returns `subagent` regardless of `agent.options.role`. A subagent is therefore **not** a super-capable copy of its parent, and it cannot opt into `super`. An ordinary root with no declaration is `agent`; a root declaring `super` is the only way to obtain the super role.
+`agentRoleOf` first checks lineage; if the Agent is a child, it returns `subagent` regardless of `agent.options.role`. A subagent is therefore **not** a super-capable copy of its parent, and it cannot opt into `super`. An ordinary root with no declaration is `agent`; a root declaring `super` is the only way to obtain the super role.
 
 ## 4. Existing implicit judgments and future replacement
 
 | Current judgment | Location | Future role replacement |
 |---|---|---|
-| Capability `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | Keep scope for non-tool resources; tool visibility should use `roleOf`. |
+| Capability `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | Keep scope for non-tool resources; tool visibility should use `agentRoleOf`. |
 | Personality tool filter | `personality/src/index.ts:122` | Existing behavior: subagent gets analyze only. Future: declare `minRole` per tool through the shared interface. |
 | Jira worker test | `jira-agent/src/contribution.ts:146-179` | Current `isWorker` (subagent or executor preset) still controls tools; not changed. |
-| Super-agent test | `jira-agent/src/superagent.ts:418-424`, `:5752-5769` | Current cwd-based `isSuperAgentSession`; future `roleOf === 'super'`. |
+| Super-agent test | `jira-agent/src/superagent.ts:418-424`, `:5752-5769` | Current cwd-based `isSuperAgentSession`; future `agentRoleOf === 'super'`. |
 | Memory capability scope | `memory/src/index.ts:296` | Future tool-level role declaration; current behavior unchanged. |
 | Schedule runtime rejection | `schedule/tool-schedule/src/index.ts:307` | Current subagent call refusal; visibility unchanged. |
 
@@ -68,12 +69,18 @@ The role field is the shared source; each consumer migrates separately. This rou
 `withMinRole(tool, role)` and `toolMinRole(tool)` exist in `dafeiyu/src/role.ts` as the future declaration shape. The organizer does **not** call them in this round; no tool definition carries `minRole`, and the registration loop is unchanged. The intended consumer signature is:
 
 ```ts
-tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(roleOf(agent), minRole)
+tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(agentRoleOf(agent), minRole)
 ```
 
 This is a design reservation only. No provider is migrated here.
 
-## 8. Verification and non-goals
+## 8. File naming and default rationale
+
+`SUPERAGENT_OUTPUT_STYLE.yaml` follows the existing `SUPERAGENT_*` constant prefix and sits beside `OUTPUT_STYLE.yaml`; this package has no agent-type suffix convention, so the explicit super prefix is the clearest existing convention. The ordinary slot keeps its existing filename, so an existing `OUTPUT_STYLE.yaml` is untouched.
+
+An undeclared root defaults to `agent`, not `subagent`: a root is a normal workspace Session and must retain ordinary workspace capability; `subagent` is a lineage-derived role, not a safe default for a root. `super` is never implicit.
+
+## 9. Verification and non-goals
 
 - Existing tests: personality 105/105, tool-dsh-store 19/19, jira superagent 125/125, typecheck 5/5.
 - No tool visibility changed in this round. Only the already-approved 690 gating and writing-rule quota/resident behavior are implemented.

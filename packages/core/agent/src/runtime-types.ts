@@ -24,12 +24,17 @@ declare module '@deepseek-ai/dsh-system-prompt' {
   }
 }
 
+/** Agent roles, ordered from least to most privileged for tool and prompt gating. */
+export type AgentRole = 'subagent' | 'agent' | 'super'
+
 /**
  * Merge-extensible agent options. Route fields may be live accessors until the
  * Session records a selection or request; step preparation captures their value.
  * Persona belongs to system-prompt sections.
  */
 export interface AgentOptions {
+  /** Explicit role; absent means `agent` for a root and `subagent` for a child. */
+  role?: AgentRole
   /** Provider route (must have a registered adapter at call time). */
   provider?: string
   /** Model id interpreted by the selected provider adapter. */

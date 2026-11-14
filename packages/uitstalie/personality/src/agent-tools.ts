@@ -15,7 +15,7 @@ import { analyzePersonality, renderAnalyzeResult } from './analyze.ts'
 import type { AnalyzeInput } from './analyze.ts'
 import { applyPersonalityCandidates, renderApplyResult } from './apply.ts'
 import { globalPersonalityPath, PERSONALITY_ENTRY_KINDS } from './global-store.ts'
-import { roleOf } from '@deepseek-ai/dsh-dafeiyu'
+import { agentRoleOf } from '@deepseek-ai/dsh-agent'
 
 /** Entry kinds accepted by the non-identity tool paths. */
 const NON_IDENTITY_ENTRY_KINDS = PERSONALITY_ENTRY_KINDS.filter(kind => kind !== 'identity')
@@ -166,7 +166,7 @@ export function personalityApplyTool(ctx: Context, refresh: (agent: Agent) => Pr
     },
     async execute(args, exec) {
       const agent = requireAgent(exec.agent, 'personality_apply')
-      if (roleOf(agent) === 'subagent') throw new Error('personality_apply is unavailable to subagents')
+      if (agentRoleOf(agent) === 'subagent') throw new Error('personality_apply is unavailable to subagents')
       try {
         const result = await applyPersonalityCandidates(ctx, {
           candidates: args.candidates,
