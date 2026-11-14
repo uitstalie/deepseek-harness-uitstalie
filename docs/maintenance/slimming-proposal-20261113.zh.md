@@ -10,7 +10,7 @@
 
 **原生：** 上游仓库内容，即不在上述路径、且不带 `uitstalie-` 标记的文件。原生文件本轮一律不删不改；只提减少侵入方案。
 
-本提案的依据是当前工作树（HEAD `fa34560cc2`）、`git grep`、包内测试和文档引用；不是凭印象。
+本提案的依据是当前工作树（the drafting HEAD）、`git grep`、包内测试和文档引用；不是凭印象。
 
 ## 1. 文档 · 过期（删）
 
@@ -140,7 +140,7 @@
 - `packages/bundle/headless/src/startup.ts` 删除 `--permission-mode` 选项、别名解析与 warning。
 - `packages/bundle/headless/src/index.ts` 删除 `permissionMode` legacy 读取路径。
 - `packages/bundle/headless/tests/startup.spec.ts` 删除/改写 3 个 alias 用例。
-- `packages/bundle/headless/README.*`、`docs/cli-help.*` 去掉旧旗标；历史 upgrade guide 保留（它记录的是历史）。
+- `packages/bundle/headless/README.md`、`docs/cli-help.*` 去掉旧旗标；历史 upgrade guide 保留（它记录的是历史）。
 - 需要新的 release note：这是 CLI 破坏性删除，不是“无感清理”。
 
 **影响：** headless 构建/测试、CLI help 生成、文档 pairing。**回滚：** 一个 commit。
@@ -182,9 +182,9 @@
 - 不做顺手重构、不做功能改动；本轮只提案。
 ## 9. 执行结果
 
-- 批 1：`e69c9696e5`，13 files，+474/−1,226；删除 6 个旧 memory/jira 审查与修复流水，保留 `docs/inputs`；pairing 1303 对、md-wrap 2,658 files、md-links 2,621 files 通过。
-- 批 2：`78a787e3a0`，14 files，+101/−81；`--permission-mode` 删除；build 10/10、typecheck 5/5、headless 135/135；release note 已加。
-- 批 3b：`abf8f50f2e`，8 files，+40/−39；原生 `openAt` 恢复 `never`，分支 patch 覆盖 `first-search`；build 10/10、typecheck 5/5；真实 memory 工具首搜 46 ms、二搜 6 ms 命中；原生标记 **102 → 99**。
+- 批 1：13 files，+474/−1,226；删除 6 个旧 memory/jira 审查与修复流水，保留 `docs/inputs`；pairing 1303 对、md-wrap 2,658 files、md-links 2,621 files 通过。
+- 批 2：14 files，+101/−81；`--permission-mode` 删除；build 10/10、typecheck 5/5、headless 135/135；release note 已加。
+- 批 3b：8 files，+40/−39；原生 `openAt` 恢复 `never`，分支 patch 覆盖 `first-search`；build 10/10、typecheck 5/5；真实 memory 工具首搜 46 ms、二搜 6 ms 命中；原生标记 **102 → 99**。
 - 批 3a：旧 personality 删除**推迟到新实现之后**，本轮不做。
 - 剩余 99 项按 `goal/native-change-inventory.md` 的 2026-11-13 用户裁定，全部保留；Windows ACL 与 agent-instructions 导出缝明确不得作为瘦身目标。
 

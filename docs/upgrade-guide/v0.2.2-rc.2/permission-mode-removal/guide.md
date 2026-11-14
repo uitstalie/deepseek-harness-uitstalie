@@ -17,7 +17,7 @@ The headless one-shot app no longer accepts `--permission-mode`, and the headles
 2. Replace `permissionMode:` with `policy:` in headless profile patches and Cordis overlays.
 3. Keep older upgrade guides as historical records; they describe releases where the alias still existed.
 
-## Verification
+After migrating, verify:
 
 - `dsh --profile headless --help` lists `--policy` and no longer lists `--permission-mode`.
 - `dsh --profile headless --policy guarded "run the tests"` runs with the selected policy.

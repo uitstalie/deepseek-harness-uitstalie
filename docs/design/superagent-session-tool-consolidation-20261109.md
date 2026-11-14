@@ -9,9 +9,9 @@ English | [中文](superagent-session-tool-consolidation-20261109.zh.md)
 
 This assessment is based on the current source code and tests. It did not change runtime code, commit, or push.
 
-Implementation status (2026-11-14): B is implemented in `60d56470e8`; this page keeps the assessment history and the current inventory below.
+Implementation status (2026-11-14): B is implemented in `personality-rewrite-20261113`; this page keeps the assessment history and the current inventory below.
 
-## 1. Current inventory (B implemented, commit `60d56470e8`)
+## 1. Current inventory (B implemented, tag `personality-rewrite-20261113`)
 
 The earlier four-group split was the pre-consolidation state. B is implemented: three model-facing entries, all declared in `packages/jira/jira-agent/src/superagent.ts` and registered by role through `createSuperagentContribution`, sharing `SUPERAGENT_OUTPUT_SCHEMA` and the `ToolValue` envelope.
 
@@ -141,9 +141,9 @@ B's rough workload is about 8–12 files across production, tests, prompts, and 
 
 No benchmark, token count, misuse report, PR description, or commit-message measurement for this consolidation was found in the repository. This record therefore makes no numeric benefit claim.
 
-B is implemented in `60d56470e8`; the current code keeps the three-entry surface. The recorded basis is structural, not measured: A would rewrite 22 actions and break all existing `superagent_workspace`/`superagent_session` callers, while B preserves the two internal runners and the existing envelope/action validation. The decision accepts B as the current baseline rather than leaving the design and code divergent.
+B is implemented in `personality-rewrite-20261113`; the current code keeps the three-entry surface. The recorded basis is structural, not measured: A would rewrite 22 actions and break all existing `superagent_workspace`/`superagent_session` callers, while B preserves the two internal runners and the existing envelope/action validation. The decision accepts B as the current baseline rather than leaving the design and code divergent.
 
-Rollback trigger: if a real benchmark, field report, or regression shows worse discovery/misuse, token cost, or a broken caller contract, revert `60d56470e8` and restore `superagent_workspace`/`superagent_session` with the same envelope and aggregate validation; rerun the superagent behavior and composition tests. No numeric claim is made until such evidence exists.
+Rollback trigger: if a real benchmark, field report, or regression shows worse discovery/misuse, token cost, or a broken caller contract, revert `personality-rewrite-20261113` and restore `superagent_workspace`/`superagent_session` with the same envelope and aggregate validation; rerun the superagent behavior and composition tests. No numeric claim is made until such evidence exists.
 
 ## 6. Counter-evidence: when merging is worse
 

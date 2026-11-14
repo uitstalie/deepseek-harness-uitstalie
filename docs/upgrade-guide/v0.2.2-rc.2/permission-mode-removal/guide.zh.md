@@ -17,7 +17,7 @@ headless 单次运行应用不再接受 `--permission-mode`，headless 行也不
 2. 把 headless profile patch 与 Cordis overlay 中的 `permissionMode:` 换成 `policy:`。
 3. 旧升级指南保留为历史记录；它们描述的是别名仍存在的版本。
 
-## 验证
+迁移后验证：
 
 - `dsh --profile headless --help` 列出 `--policy`，不再列出 `--permission-mode`。
 - `dsh --profile headless --policy guarded "run the tests"` 按选定策略运行。

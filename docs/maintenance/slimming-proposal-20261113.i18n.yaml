@@ -6,8 +6,8 @@
   en: ec17423f3c3d91fb
   zh: 757541f9048f24dd
 /branch-artifact-slimming-proposal-2026-11-13/0-scope-and-conventions:
-  en: 6d838f25efb1d226
-  zh: 905ea28a90a3710c
+  en: e6671d021fa42457
+  zh: 2bec839576561735
 /branch-artifact-slimming-proposal-2026-11-13/1-documents-expired-delete:
   en: afef867d91d5d53a
   zh: d3e2ba078b5a3e78
@@ -39,8 +39,8 @@
   en: df693340627195b0
   zh: 84498bc4091be507
 /branch-artifact-slimming-proposal-2026-11-13/6-phased-execution-plan-not-executed-this-round/batch-2-deprecated-cli-flag-small-code-change-needs-a-separate-decision:
-  en: 0b34bfaaa3cb5b84
-  zh: d5e9d67b10630f0c
+  en: 240b1105a01cddcf
+  zh: eeafdc9529c09d88
 /branch-artifact-slimming-proposal-2026-11-13/6-phased-execution-plan-not-executed-this-round/batch-3-old-personality-native-intrusion-high-risk-blocked-on-the-new-design:
   en: 4e858783e29aa10b
   zh: c672bb4ce7f341c7
@@ -51,5 +51,5 @@
   en: 94795d7c19f28636
   zh: f45dede0d0e10893
 /branch-artifact-slimming-proposal-2026-11-13/9-execution-result:
-  en: 168a241508c2c611
-  zh: 6c3f87c02d8b4e35
+  en: ebae0ca2b9a083e6
+  zh: b3bc955d18053742

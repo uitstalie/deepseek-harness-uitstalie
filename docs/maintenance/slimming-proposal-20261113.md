@@ -10,7 +10,7 @@ Status: inventory and proposal; on 2026-11-13 the user decided to keep `docs/inp
 
 **Native:** upstream repository content, that is, files outside the paths above that carry no `uitstalie-` marker. Native files are never deleted or changed in this round; we only propose ways to reduce intrusion.
 
-This proposal rests on the current working tree (HEAD `fa34560cc2`), `git grep`, in-package tests, and document references, not on impressions.
+This proposal rests on the current working tree (the drafting HEAD), `git grep`, in-package tests, and document references, not on impressions.
 
 ## 1. Documents · expired (delete)
 
@@ -140,7 +140,7 @@ The current `git grep -l -e "uitstalie-" -e "dsh-uitstalie"` (excluding `goal/`,
 - Delete the `--permission-mode` option, the alias parsing, and the warning from `packages/bundle/headless/src/startup.ts`.
 - Delete the legacy `permissionMode` read path from `packages/bundle/headless/src/index.ts`.
 - Delete/rewrite the 3 alias cases in `packages/bundle/headless/tests/startup.spec.ts`.
-- Drop the old flag from `packages/bundle/headless/README.*` and `docs/cli-help.*`; keep the historical upgrade guides (they record history).
+- Drop the old flag from `packages/bundle/headless/README.md` and `docs/cli-help.*`; keep the historical upgrade guides (they record history).
 - A new release note is required: this is a breaking CLI deletion, not a "silent cleanup".
 
 **Impact:** headless build/tests, CLI help generation, doc pairing. **Rollback:** one commit.
@@ -182,9 +182,9 @@ Native intrusion is not counted in "files deleted": proposals 1–4 remove about
 - No drive-by refactoring and no feature changes; this round only proposes.
 ## 9. Execution result
 
-- Batch 1: `e69c9696e5`, 13 files, +474/−1,226; deleted 6 old memory/jira review and fix documents, kept `docs/inputs`; pairing 1,303 pairs, md-wrap 2,658 files, and md-links 2,621 files passed.
-- Batch 2: `78a787e3a0`, 14 files, +101/−81; removed `--permission-mode`; build 10/10, typecheck 5/5, headless 135/135; release note added.
-- Batch 3b: `abf8f50f2e`, 8 files, +40/−39; restored native `openAt: never`, branch patch overrides with `first-search`; build 10/10, typecheck 5/5; a real memory-tool search hit in 46 ms first and 6 ms second; native markers **102 → 99**.
+- Batch 1: 13 files, +474/−1,226; deleted 6 old memory/jira review and fix documents, kept `docs/inputs`; pairing 1,303 pairs, md-wrap 2,658 files, and md-links 2,621 files passed.
+- Batch 2: 14 files, +101/−81; removed `--permission-mode`; build 10/10, typecheck 5/5, headless 135/135; release note added.
+- Batch 3b: 8 files, +40/−39; restored native `openAt: never`, branch patch overrides with `first-search`; build 10/10, typecheck 5/5; a real memory-tool search hit in 46 ms first and 6 ms second; native markers **102 → 99**.
 - Batch 3a: old personality deletion is **deferred until after the new implementation**; not done in this round.
 - The remaining 99 items are retained in full under the 2026-11-13 user decision in `goal/native-change-inventory.md`; Windows ACL and the agent-instructions export seam are explicitly not slimming targets.
 
