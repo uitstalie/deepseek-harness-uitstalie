@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for superagent-control-role-leak-20261114.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/design/superagent-control-role-leak-20261114.md
+/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14:
+  en: 133334241694694d
+  zh: 1062d45538005f0e
+/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/observed-behavior:
+  en: efa430dc4247255c
+  zh: a5d706611284935f
+/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/code-location:
+  en: 40a20010f4a39a0f
+  zh: c83a212e5cfed8bc
+/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/conflict-with-the-role-model:
+  en: fa3c778b5c8e4f76
+  zh: 67e4ce279ce6b8cb
+/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/impact:
+  en: 7c36fcb6d7999d09
+  zh: 7fdcb0648720d9b7
+/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/fix-options-and-decisions:
+  en: 59e21a3f194f810e
+  zh: e07e0c91fd8c968a
+/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/test-impact:
+  en: de3ba0e0c485b7f7
+  zh: 64c7bd21cbe0dc98
+/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/scope:
+  en: 9fb81225fb92dcae
+  zh: b51f0e31eb4d5e6d
