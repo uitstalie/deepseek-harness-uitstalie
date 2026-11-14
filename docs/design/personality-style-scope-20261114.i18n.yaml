@@ -1,0 +1,61 @@
+# Bilingual-pair consistency record for personality-style-scope-20261114.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/design/personality-style-scope-20261114.md
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14:
+  en: 6ef9993f3eddfad3
+  zh: 92288e227191b6fa
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/a-quota-for-a-long-term-style-library:
+  en: 8a1f6521221234a2
+  zh: 52f8313dd15c344b
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/a-quota-for-a-long-term-style-library/current-limits:
+  en: 36b29bc4e229f386
+  zh: bee6b3cec8e5d51a
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/a-quota-for-a-long-term-style-library/token-cost-estimate:
+  en: d19326e31787901d
+  zh: 489fcadef4aac507
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/a-quota-for-a-long-term-style-library/two-directions:
+  en: 4cd9201f8d6ec4f9
+  zh: ccb52b9983693857
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/b-agent-type-gating:
+  en: 09ef80f08810757e
+  zh: c8c62979f2b4dadf
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/b-agent-type-gating/current-behavior:
+  en: 4e4a4c38ff65357e
+  zh: a0e7c2aa1b34b9b0
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/b-agent-type-gating/decision-update-2026-11-14-two-independent-slots:
+  en: 6d7735e8f8288225
+  zh: 762437c894a1156d
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/b-agent-type-gating/subagent-tools-ban-no-read-only-variants:
+  en: c96bbb2fded31c71
+  zh: c9fc6ab3e81eefeb
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/b-agent-type-gating/proposed-shape:
+  en: 2495bbee0c60781a
+  zh: d08e2307893e9b3c
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/b-agent-type-gating/future-different-content:
+  en: 9492940c7c1d615a
+  zh: 7616473b0821223f
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/c-section-702-boundary:
+  en: 67bfb59d38c5594c
+  zh: bdc94956705ab8de
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/c-section-702-boundary/merge-versus-keep-separate:
+  en: 7da7c5a9d2fe167b
+  zh: 19ac5175c1257729
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/d-localization-of-tool-results-and-errors:
+  en: 029ffb84dde8231b
+  zh: dd25d44ae99af92d
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/d-localization-of-tool-results-and-errors/strings-that-need-localization:
+  en: 5c5def715d61a449
+  zh: a8f53d86ee2ade31
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/d-localization-of-tool-results-and-errors/where-the-language-comes-from:
+  en: bf7b7347dd92b133
+  zh: 379efbe37aa17d64
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/d-localization-of-tool-results-and-errors/model-visible-consequence:
+  en: 2d5aee3465f31af9
+  zh: 0777dfe63a012a56
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/e-impact-if-implemented:
+  en: a84ed2f7aba7aac7
+  zh: fe95a8817a51d5ca
+/personality-style-scope-and-long-term-library-evaluation-2026-11-14/non-goals-and-open-decisions:
+  en: 1d9b2e29ffbea7c6
+  zh: 930c39262780d96a
