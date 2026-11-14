@@ -9,17 +9,17 @@
   en: ad977fbc16ef41cc
   zh: 7bef7af091f1a40e
 /deepseek-ai-dsh-personality/summary:
-  en: d98108015fd41b77
-  zh: c753b2e25885e7a3
+  en: f398a6fbfd7b319e
+  zh: 7e3be3a9618fa742
 /deepseek-ai-dsh-personality/table-of-contents:
   en: cbfb676bb9a7a2de
   zh: 528864635b577290
 /deepseek-ai-dsh-personality/use-this-package:
-  en: e737ea372a3674cb
-  zh: 55e872f398918f49
+  en: c66380fdfb38d5c4
+  zh: 88cf57e13a60fa0f
 /deepseek-ai-dsh-personality/understand-the-implementation:
-  en: 7032723c3802db48
-  zh: 72871966abee9378
+  en: b278e1cc183e95fa
+  zh: a10800946f7ef565
 /deepseek-ai-dsh-personality/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -39,8 +39,8 @@
   en: 1e5078101db146b1
   zh: 6e5b755f6fb59495
 /deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-sections/token-effect:
-  en: 8976ac94e6f90d6c
-  zh: d6beffe04a5ffa36
+  en: a55ea4dbcc15ca31
+  zh: b8f905878ae5509d
 /deepseek-ai-dsh-personality/model-experience/the-personality-system-prompt-sections/kv-cache-effect:
   en: 7d5b764f6e88a744
   zh: 69a42edebd2a819c
@@ -75,14 +75,14 @@
   en: 19c70eb2b702994f
   zh: 6654a6e95ae5201e
 /deepseek-ai-dsh-personality/model-experience/the-write-like-human-tool/token-effect:
-  en: c0a4a29e95f34cb5
-  zh: 843112f7bcd4e325
+  en: 46b4a0d63c866369
+  zh: 68e72951bac32292
 /deepseek-ai-dsh-personality/model-experience/the-write-like-human-tool/kv-cache-effect:
   en: 416023a8f9b21240
   zh: 1860f89188a29cf2
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work:
-  en: b6fa789738b5b1f7
-  zh: 4b73c5b0e42fd4a2
+  en: e0f3d7c0932b8e5c
+  zh: 4fbf2cd2f1ba4a44
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work/dev-note:
   en: 17f57f63eec424f3
   zh: 8ac292b5662f9550

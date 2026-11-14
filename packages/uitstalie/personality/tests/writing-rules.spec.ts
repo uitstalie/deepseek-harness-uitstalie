@@ -20,6 +20,7 @@ import {
   renderWritingRules,
   WRITING_RULES_MAX_TEXT_BYTES,
   WRITING_RULES_MAX_TEXT_CHARS,
+  WRITING_RULES_RESIDENT_MAX,
   writingRulesPath,
   writeWritingRules,
 } from '../src/writing-rules.ts'
@@ -72,11 +73,11 @@ test('rejects malformed YAML, revision, collection, entries, ids, and duplicates
     .toThrow(/lower-kebab-case/u)
   expect(() => parseWritingRules(raw([rule('same', 'one', 10), rule('same', 'two', 20)])))
     .toThrow(/duplicate rule id/u)
-  expect(() => parseWritingRules(raw(Array.from({ length: 33 }, (_, index) => rule(`r-${String(index)}`, 'x', index)))))
-    .toThrow(/over the 32-rule limit/u)
+  expect(() => parseWritingRules(raw(Array.from({ length: 101 }, (_, index) => rule(`r-${String(index)}`, 'x', index)))))
+    .toThrow(/over the 100-rule limit/u)
   expect(() => parseWritingRules(raw([rule('long', 'x'.repeat(WRITING_RULES_MAX_TEXT_CHARS + 1), 10)])))
     .toThrow(/over the 240-character limit/u)
-  expect(() => parseWritingRules(raw(Array.from({ length: 18 }, (_, index) => rule(`r-${String(index)}`, 'x'.repeat(240), index)))))
+  expect(() => parseWritingRules(raw(Array.from({ length: 100 }, (_, index) => rule(`r-${String(index)}`, '中'.repeat(240), index)))))
     .toThrow(new RegExp(`over the ${String(WRITING_RULES_MAX_TEXT_BYTES)}-byte limit`, 'u'))
   expect(() => parseWritingRules(raw([{ id: 'order', text: 'x', enabled: true, order: 1.5 }])))
     .toThrow(/order must be a safe integer/u)
@@ -92,6 +93,15 @@ test('previews only enabled rules in order then id', () => {
   ])
   expect(previewWritingRules(document)).toBe('- A.\n- B.\n- Z.\n- Late.')
   expect(previewWritingRules(EMPTY_WRITING_RULES)).toBe('')
+})
+
+test('injects only the first 40 enabled rules and reports the remainder', () => {
+  const document = documentWith(Array.from({ length: 41 }, (_, index) =>
+    rule(`r-${String(index).padStart(3, '0')}`, `Rule ${String(index)}.`, index)))
+  const text = previewWritingRules(document)
+  expect(text).toContain('- Rule 39.')
+  expect(text).not.toContain('- Rule 40.')
+  expect(text).toContain(`1 rule(s) not injected: resident limit is ${String(WRITING_RULES_RESIDENT_MAX)}.`)
 })
 
 test('mutates rules through add, update, enable, disable, remove, list, and preview', () => {
@@ -136,11 +146,11 @@ test('generates a stable fallback id for non-Latin text and respects the rule co
   const added = mutateWritingRules(EMPTY_WRITING_RULES, { action: 'add', text: '先说结论。' })
   expect(added.document.rules[0]?.id).toMatch(/^rule-[0-9a-f]{8}$/u)
   let current = EMPTY_WRITING_RULES
-  for (let index = 0; index < 32; index += 1) {
+  for (let index = 0; index < 100; index += 1) {
     current = mutateWritingRules(current, { action: 'add', id: `rule-${String(index)}`, text: 'x' }).document
   }
   expect(() => mutateWritingRules(current, { action: 'add', id: 'overflow', text: 'x' }))
-    .toThrow(/over the 32-rule limit/u)
+    .toThrow(/over the 100-rule limit/u)
 })
 
 test('reads an empty file and a populated one, and enforces the version guard', async () => {
@@ -158,8 +168,8 @@ test('reads an empty file and a populated one, and enforces the version guard', 
 })
 
 test('rejects writes that violate the rule budget', () => {
-  const tooMany = Array.from({ length: 33 }, (_, index) => rule(`r-${String(index)}`, 'x', index))
-  expect(() => renderWritingRules(documentWith(tooMany))).toThrow(/over the 32-rule limit/u)
+  const tooMany = Array.from({ length: 101 }, (_, index) => rule(`r-${String(index)}`, 'x', index))
+  expect(() => renderWritingRules(documentWith(tooMany))).toThrow(/over the 100-rule limit/u)
   expect(() => renderWritingRules(documentWith([rule('long', 'x'.repeat(241), 10)]))).toThrow(/over the 240-character limit/u)
 })
 

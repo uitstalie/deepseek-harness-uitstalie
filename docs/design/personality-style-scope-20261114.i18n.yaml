@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/personality-style-scope-20261114.md
 /personality-style-scope-and-long-term-library-evaluation-2026-11-14:
-  en: 6ef9993f3eddfad3
-  zh: 92288e227191b6fa
+  en: 76a89124c8262305
+  zh: 32458a0942c47774
 /personality-style-scope-and-long-term-library-evaluation-2026-11-14/a-quota-for-a-long-term-style-library:
   en: 8a1f6521221234a2
   zh: 52f8313dd15c344b

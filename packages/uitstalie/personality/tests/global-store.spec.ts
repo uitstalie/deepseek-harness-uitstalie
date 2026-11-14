@@ -28,7 +28,9 @@ import {
 import type { PersonalityEntry, PersonalityEntryKind } from '../src/global-store.ts'
 import {
   DEFAULT_OUTPUT_STYLE_TEXT,
+  DEFAULT_SUPERAGENT_OUTPUT_STYLE_TEXT,
   EMPTY_WRITING_RULES_TEXT,
+  SUPERAGENT_OUTPUT_STYLE_STORE_PATH,
   seedGlobalPersonalityFiles,
 } from '../src/defaults.ts'
 
@@ -327,10 +329,11 @@ test('reports absent and non-file legacy sources', async () => {
   await expect(migrateLegacyPersonality(ctx)).rejects.toBeInstanceOf(PersonalityStoreError)
 })
 
-test('seeds the two configuration files once and never overwrites them', async () => {
+test('seeds the three configuration files once and never overwrites them', async () => {
   const first = await seedGlobalPersonalityFiles(ctx, new AbortController().signal)
-  expect(first.created).toEqual(['personality/OUTPUT_STYLE.yaml', 'personality/WRITING_RULES.yaml'])
+  expect(first.created).toEqual(['personality/OUTPUT_STYLE.yaml', SUPERAGENT_OUTPUT_STYLE_STORE_PATH, 'personality/WRITING_RULES.yaml'])
   expect(await readFile(join(dirname(profilePath()), 'OUTPUT_STYLE.yaml'), 'utf8')).toBe(DEFAULT_OUTPUT_STYLE_TEXT)
+  expect(await readFile(join(dirname(profilePath()), 'SUPERAGENT_OUTPUT_STYLE.yaml'), 'utf8')).toBe(DEFAULT_SUPERAGENT_OUTPUT_STYLE_TEXT)
   expect(await readFile(join(dirname(profilePath()), 'WRITING_RULES.yaml'), 'utf8')).toBe(EMPTY_WRITING_RULES_TEXT)
   const second = await seedGlobalPersonalityFiles(ctx)
   expect(second.created).toEqual([])
@@ -394,9 +397,15 @@ test('upserts when the store returns no version', async () => {
 })
 
 test('seeds a missing file without a signal', async () => {
-  await rm(join(dirname(profilePath()), 'OUTPUT_STYLE.yaml'), { force: true })
+  for (const name of ['OUTPUT_STYLE.yaml', 'SUPERAGENT_OUTPUT_STYLE.yaml', 'WRITING_RULES.yaml']) {
+    await rm(join(dirname(profilePath()), name), { force: true })
+  }
   const result = await seedGlobalPersonalityFiles(ctx)
-  expect(result.created).toEqual(['personality/OUTPUT_STYLE.yaml', 'personality/WRITING_RULES.yaml'])
+  expect(result.created).toEqual([
+    'personality/OUTPUT_STYLE.yaml',
+    SUPERAGENT_OUTPUT_STYLE_STORE_PATH,
+    'personality/WRITING_RULES.yaml',
+  ])
 })
 
 test('skips an unreadable legacy candidate when a later copy matches', async () => {

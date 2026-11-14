@@ -132,13 +132,13 @@ test('preview returns only the enabled rules as injected text', async () => {
 })
 
 test('rejects a write that would exceed the rule limit without changing the file', async () => {
-  const existing = Array.from({ length: 32 }, (_, index) => rule(`rule-${String(index)}`, 'Text.', index))
+  const existing = Array.from({ length: 100 }, (_, index) => rule(`rule-${String(index)}`, 'Text.', index))
   await seed(existing)
   const added = await runWritingRuleAction(ctx, { action: 'add', text: 'One more.' }, signal)
   expect(added.ok).toBe(false)
-  expect(added.error).toMatch(/over the 32-rule limit/u)
-  expect(added.rules).toHaveLength(32)
-  expect((await readWritingRules(ctx)).document.rules).toHaveLength(32)
+  expect(added.error).toMatch(/over the 100-rule limit/u)
+  expect(added.rules).toHaveLength(100)
+  expect((await readWritingRules(ctx)).document.rules).toHaveLength(100)
 })
 
 test('reports invalid YAML as a readable error instead of throwing', async () => {
@@ -226,6 +226,9 @@ test('renders success, preview, and failure reports', () => {
   expect(renderWritingRulesResult({ action: 'preview', ok: true, rules: [], path: '/rules.yaml', promptSection: '- On.' })).toContain('- On.')
   expect(renderWritingRulesResult({ action: 'add', ok: false, error: 'nope', rules: [], path: '/rules.yaml' }))
     .toBe('write_like_human failed (add): nope')
+  const many = Array.from({ length: 41 }, (_, index) => rule(`r-${String(index)}`, 'On.', index))
+  expect(renderWritingRulesResult({ action: 'list', ok: true, rules: many, path: '/rules.yaml' }))
+    .toContain('1 rule(s) not injected: resident limit is 40.')
 })
 
 test('omits the version when the store reports none after a write', async () => {

@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-store-atom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { DEFAULT_OUTPUT_STYLE, OUTPUT_STYLE_FILE_NAME, OUTPUT_STYLE_STORE_PATH } from './defaults.ts'
+import { DEFAULT_OUTPUT_STYLE, OUTPUT_STYLE_FILE_NAME, OUTPUT_STYLE_STORE_PATH, SUPERAGENT_OUTPUT_STYLE_FILE_NAME, SUPERAGENT_OUTPUT_STYLE_STORE_PATH } from './defaults.ts'
 import { globalPersonalityPath } from './global-store.ts'
 
 /** Prompt section name for the output-style defaults. */
@@ -83,9 +83,12 @@ export class OutputStyleError extends Error {
   }
 }
 
-/** Absolute path of the output-style file. */
-export function outputStylePath(): string {
-  return join(dirname(globalPersonalityPath()), OUTPUT_STYLE_FILE_NAME)
+/** Absolute path of one output-style slot. */
+export function outputStylePath(slot: 'ordinary' | 'super' = 'ordinary'): string {
+  return join(
+    dirname(globalPersonalityPath()),
+    slot === 'super' ? SUPERAGENT_OUTPUT_STYLE_FILE_NAME : OUTPUT_STYLE_FILE_NAME,
+  )
 }
 
 /** Parse one output-style YAML file. */
@@ -127,15 +130,21 @@ export function renderOutputStyle(config: OutputStyleConfig): string {
   }, { lineWidth: 0 })
 }
 
-/** Read the output-style file; absence returns the seed defaults. */
-export async function readOutputStyle(ctx: Context, signal?: AbortSignal): Promise<OutputStyleRead> {
-  const read = await ctx.dshStore.readFile(undefined, OUTPUT_STYLE_STORE_PATH, {
+/** Read one output-style slot; absence returns the seed defaults. */
+export async function readOutputStyle(
+  ctx: Context,
+  signal?: AbortSignal,
+  slot: 'ordinary' | 'super' = 'ordinary',
+): Promise<OutputStyleRead> {
+  const read = await ctx.dshStore.readFile(undefined, slot === 'super'
+    ? SUPERAGENT_OUTPUT_STYLE_STORE_PATH
+    : OUTPUT_STYLE_STORE_PATH, {
     scope: 'global',
     ...signal === undefined ? {} : { signal },
   })
-  if (read.text === undefined) return { path: outputStylePath(), config: DEFAULT_OUTPUT_STYLE }
+  if (read.text === undefined) return { path: outputStylePath(slot), config: DEFAULT_OUTPUT_STYLE }
   return {
-    path: outputStylePath(),
+    path: outputStylePath(slot),
     config: parseOutputStyle(read.text),
     ...read.version === undefined ? {} : { version: read.version },
   }

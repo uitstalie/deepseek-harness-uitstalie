@@ -2,7 +2,7 @@
 
 English | [中文](personality-style-scope-20261114.zh.md)
 
-Status: **evaluation only; no code, quota, or section was changed in this round.**
+Status: stage 1 decisions are implemented (explicit role, 690 gating, independent slots, 100/240/32 KiB with 40 resident); stages 2/3 are not started. The analysis below remains the evaluation record.
 
 This document answers three product directions: agent-type gating, a long-term style library, and the boundary between section 690 and section 702. It also records the version-conflict decision: #5 remains description-only.
 

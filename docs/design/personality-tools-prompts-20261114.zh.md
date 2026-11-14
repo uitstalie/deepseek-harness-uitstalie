@@ -20,7 +20,7 @@
 | `write_like_human` 参数 schema | 同上，编译后 | 1,051 字符 / 37 行 |
 | section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`；注册 `src/index.ts:142-145` | preamble 391 字符；无条目时为空 |
 | section 690 `personality:output-style` | `src/output-style.ts:145-180`；默认 `src/defaults.ts:27-33` | 默认渲染 836 字符 / 15 行 |
-| section 695 `personality:writing-rules` | `src/writing-rules.ts:243-249`；注册 `src/index.ts:152-154` | 默认空文档为 0 字符 |
+| section 695 `personality:writing-rules` | `src/writing-rules.ts:243-249`；注册 `src/index.ts:152-154` | 默认空文档为 0 字符；前 40 条启用规则常驻 |
 | section 702 `superagent:dispatcher` | `packages/jira/jira-agent/src/superagent.ts:116-199` | 本文不复制全文，只说明顺序 |
 | 顺序常量 | `packages/core/system-prompt/src/index.ts:139-143` | 100 / 690 / 695 |
 
@@ -252,7 +252,7 @@ How to respond (preference, style):
 
 ### section 690 `personality:output-style`
 
-注册为 `name: 'personality:output-style'`，顺序常量 `PERSONALITY_OUTPUT_STYLE = 690`（`src/output-style.ts:19`；`src/index.ts:147-150`；`packages/core/system-prompt/src/index.ts:142`）。默认渲染（`DEFAULT_OUTPUT_STYLE`）逐字如下，836 字符 / 15 行：
+注册为 `name: 'personality:output-style'`，顺序常量 `PERSONALITY_OUTPUT_STYLE = 690`（`src/output-style.ts:19`；`src/index.ts:147-150`；`packages/core/system-prompt/src/index.ts:142`）。普通槽的默认渲染（`DEFAULT_OUTPUT_STYLE`）逐字如下，836 字符 / 15 行。super 槽使用独立的 `SUPERAGENT_OUTPUT_STYLE.yaml`，默认内容相同；subagent 不收到 section 690。
 
 ```text
 Output style defaults:
@@ -318,7 +318,7 @@ Status reporting discipline:
 
 #### 当前状态：未启用
 
-默认没有启用任何 writing rule：`rules: []` 产生空 section，assembly 会丢弃它。额度为 **32 条**、**每条 240 字符**、**全文 4 KiB**（`writing-rules.ts:27-33`）。这套额度适合少量硬规则，不适合作为长期风格库。
+默认没有启用任何 writing rule：`rules: []` 产生空 section，assembly 会丢弃它。额度为 **100 条**、**每条 240 字符**、**全文 32 KiB**（`writing-rules.ts:27-33`）；只有前 **40** 条启用规则常驻，其余写入后会在段内提示 `N rule(s) not injected: resident limit is 40.`。
 
 ### 与 702 的顺序
 
@@ -398,9 +398,10 @@ WRITING_RULES.yaml holds ${String(record.rules.length)} rules, over the ${String
 | `PERSONALITY_MAX_ENTRY_CHARS` | 400 | `global-store.ts:116` |
 | `PERSONALITY_MAX_BODY_BYTES` | 32 × 1024 = 32,768 | `global-store.ts:119` |
 | `ANALYZE_DEFAULT_MAX_CANDIDATES` | 10（允许 1–20） | `analyze.ts:123`、`:188` |
-| `WRITING_RULES_MAX_RULES` | 32 | `writing-rules.ts:27` |
+| `WRITING_RULES_MAX_RULES` | 100 | `writing-rules.ts:27` |
 | `WRITING_RULES_MAX_TEXT_CHARS` | 240 | `writing-rules.ts:30` |
-| `WRITING_RULES_MAX_TEXT_BYTES` | 4,096 | `writing-rules.ts:33` |
+| `WRITING_RULES_MAX_TEXT_BYTES` | 32,768 | `writing-rules.ts:33` |
+| `WRITING_RULES_RESIDENT_MAX` | 40 | `writing-rules.ts:33` |
 
 ## ⑤ 未收录内容
 

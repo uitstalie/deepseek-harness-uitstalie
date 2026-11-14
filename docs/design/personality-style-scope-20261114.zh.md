@@ -2,7 +2,7 @@
 
 [English](personality-style-scope-20261114.md) | 中文
 
-状态：**仅评估；本轮未修改任何代码、额度或 section。**
+状态：阶段 1 决策已实施（显式角色、690 门控、独立槽、100/240/32 KiB 且 40 条常驻）；阶段 2/3 尚未开始。下面的分析仍作为评估记录。
 
 本文回答三个产品方向：按 agent 类型门控、长期风格库，以及 section 690 与 section 702 之间的边界。它还记录了版本冲突决定：#5 remains description-only。
 

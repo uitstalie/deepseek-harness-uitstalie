@@ -252,7 +252,7 @@ The `text` of an entry has consecutive whitespace collapsed and is trimmed; the 
 
 ### section 690 `personality:output-style`
 
-Registered as `name: 'personality:output-style'`, with the order constant `PERSONALITY_OUTPUT_STYLE = 690` (`src/output-style.ts:19`; `src/index.ts:147-150`; `packages/core/system-prompt/src/index.ts:142`). The default rendering (`DEFAULT_OUTPUT_STYLE`) is verbatim as follows, 836 characters / 15 lines:
+Registered as `name: 'personality:output-style'`, with the order constant `PERSONALITY_OUTPUT_STYLE = 690` (`src/output-style.ts:19`; `src/index.ts:147-150`; `packages/core/system-prompt/src/index.ts:142`). The ordinary default rendering (`DEFAULT_OUTPUT_STYLE`) is verbatim as follows, 836 characters / 15 lines. The super slot uses its own `SUPERAGENT_OUTPUT_STYLE.yaml` with the same defaults; a subagent receives no section 690.
 
 ```text
 Output style defaults:
@@ -318,7 +318,7 @@ The default `WRITING_RULES.yaml` is `rules: []`, so the section text is **empty*
 
 #### Current status: not enabled
 
-No writing rules are enabled by default: `rules: []` produces an empty section, which assembly drops. The limits are **32 rules**, **240 characters per rule**, and **4 KiB total** (`writing-rules.ts:27-33`). These limits suit a small set of hard rules; they are not suitable as a long-term style library.
+No writing rules are enabled by default: `rules: []` produces an empty section, which assembly drops. The limits are **100 rules**, **240 characters per rule**, and **32 KiB total** (`writing-rules.ts:27-33`); only the first **40** enabled rules are resident. A longer set is stored but emits a `N rule(s) not injected: resident limit is 40.` line.
 
 ### Order with 702
 
@@ -398,9 +398,10 @@ Constants table:
 | `PERSONALITY_MAX_ENTRY_CHARS` | 400 | `global-store.ts:116` |
 | `PERSONALITY_MAX_BODY_BYTES` | 32 × 1024 = 32,768 | `global-store.ts:119` |
 | `ANALYZE_DEFAULT_MAX_CANDIDATES` | 10 (allowed 1–20) | `analyze.ts:123`, `:188` |
-| `WRITING_RULES_MAX_RULES` | 32 | `writing-rules.ts:27` |
+| `WRITING_RULES_MAX_RULES` | 100 | `writing-rules.ts:27` |
 | `WRITING_RULES_MAX_TEXT_CHARS` | 240 | `writing-rules.ts:30` |
-| `WRITING_RULES_MAX_TEXT_BYTES` | 4,096 | `writing-rules.ts:33` |
+| `WRITING_RULES_MAX_TEXT_BYTES` | 32,768 | `writing-rules.ts:33` |
+| `WRITING_RULES_RESIDENT_MAX` | 40 | `writing-rules.ts:33` |
 
 ## ⑤ Content Not Included
 

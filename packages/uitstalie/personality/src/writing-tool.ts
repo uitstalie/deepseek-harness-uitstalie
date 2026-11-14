@@ -12,6 +12,7 @@
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { agentRole } from './role.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -22,6 +23,7 @@ import {
   readWritingRules,
   writeWritingRules,
   writingRulesPath,
+  WRITING_RULES_RESIDENT_MAX,
 } from './writing-rules.ts'
 import type {
   WritingRule,
@@ -106,6 +108,7 @@ export function writingRulesTool(ctx: Context, refresh: (agent: Agent) => Promis
     },
     async execute(args, exec) {
       const agent = requireAgent(exec.agent, 'write_like_human')
+      if (agentRole(agent) === 'subagent') throw new Error('write_like_human is unavailable to subagents')
       const result = await runWritingRuleAction(ctx, args as WritingRuleInput, exec.signal)
       if (result.ok && WRITE_ACTIONS.has(result.action)) await refresh(agent)
       return result as never
@@ -174,6 +177,10 @@ export function renderWritingRulesResult(result: WriteLikeHumanResult): string {
   const lines = [`write_like_human ${result.action}: ${String(result.rules.length)} rule(s) in ${result.path}`]
   for (const rule of result.rules) {
     lines.push(`- ${rule.id} [${rule.enabled ? 'on' : 'off'}, order ${String(rule.order)}] ${rule.text}`)
+  }
+  const enabled = result.rules.filter(rule => rule.enabled).length
+  if (enabled > WRITING_RULES_RESIDENT_MAX) {
+    lines.push('', `${String(enabled - WRITING_RULES_RESIDENT_MAX)} rule(s) not injected: resident limit is ${String(WRITING_RULES_RESIDENT_MAX)}.`)
   }
   if (result.action === 'preview') lines.push('', 'Injected text:', result.promptSection === undefined || result.promptSection === '' ? '(empty)' : result.promptSection)
   return lines.join('\n')

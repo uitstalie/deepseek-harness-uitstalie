@@ -1,5 +1,5 @@
 /**
- * First-activation defaults for the two global configuration files.
+ * First-activation defaults for the global configuration files.
  *
  * `OUTPUT_STYLE.yaml` starts with the design's neutral defaults;
  * `WRITING_RULES.yaml` starts empty. `PERSONALITY.md` is deliberately not
@@ -13,8 +13,14 @@ import type {} from '@deepseek-ai/dsh-store-atom'
 /** File name of the output-style configuration. */
 export const OUTPUT_STYLE_FILE_NAME = 'OUTPUT_STYLE.yaml'
 
-/** Store-relative path of the output-style configuration. */
+/** Store-relative path of the ordinary output-style configuration. */
 export const OUTPUT_STYLE_STORE_PATH = `personality/${OUTPUT_STYLE_FILE_NAME}`
+
+/** File name of the independent super-agent output-style configuration. */
+export const SUPERAGENT_OUTPUT_STYLE_FILE_NAME = 'SUPERAGENT_OUTPUT_STYLE.yaml'
+
+/** Store-relative path of the independent super-agent output-style configuration. */
+export const SUPERAGENT_OUTPUT_STYLE_STORE_PATH = `personality/${SUPERAGENT_OUTPUT_STYLE_FILE_NAME}`
 
 /** File name of the writing rules. */
 export const WRITING_RULES_FILE_NAME = 'WRITING_RULES.yaml'
@@ -41,6 +47,9 @@ lists: comparisons
 dispatchVoice: terse
 `
 
+/** The super-agent slot seeds with the same content but a separate file. */
+export const DEFAULT_SUPERAGENT_OUTPUT_STYLE_TEXT = DEFAULT_OUTPUT_STYLE_TEXT
+
 /** Canonical text of an empty writing-rules file. */
 export const EMPTY_WRITING_RULES_TEXT = `version: 1
 rules: []
@@ -53,7 +62,7 @@ export interface SeedResult {
 }
 
 /**
- * Create the two configuration files when they are absent.
+ * Create the configuration files when they are absent.
  *
  * An existing file is never overwritten. `PERSONALITY.md` is not created here:
  * a missing profile reads as empty and the first `personality_apply` creates it.
@@ -62,6 +71,7 @@ export async function seedGlobalPersonalityFiles(ctx: Context, signal?: AbortSig
   const created: string[] = []
   for (const [path, text] of [
     [OUTPUT_STYLE_STORE_PATH, DEFAULT_OUTPUT_STYLE_TEXT],
+    [SUPERAGENT_OUTPUT_STYLE_STORE_PATH, DEFAULT_SUPERAGENT_OUTPUT_STYLE_TEXT],
     [WRITING_RULES_STORE_PATH, EMPTY_WRITING_RULES_TEXT],
   ] as const) {
     const current = await ctx.dshStore.readFile(undefined, path, {

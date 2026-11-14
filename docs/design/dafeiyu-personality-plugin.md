@@ -90,13 +90,14 @@ Not migrating old data, not keeping the old API compatible, and not reading old 
 | File | Purpose | Who can write |
 |---|---|---|
 | `<DSH_HOME>/personality/PERSONALITY.md` | user-input entries: understanding / preference / style; identity is manual-only | `personality_apply` (confirmation required) or a person |
-| `<DSH_HOME>/personality/OUTPUT_STYLE.yaml` | output-style's tone/length/conclusion/lists/dispatch voice | A person; tools read only |
+| `<DSH_HOME>/personality/OUTPUT_STYLE.yaml` | ordinary-root output style: tone/length/conclusion/lists/dispatch voice | A person; tools read only |
+| `<DSH_HOME>/personality/SUPERAGENT_OUTPUT_STYLE.yaml` | super-root output style (independent slot) | A person; tools read only |
 | `<DSH_HOME>/personality/WRITING_RULES.yaml` | write-like-human's rule set | The `write_like_human` tool (when the user asks) or a person |
 | `<DSH_HOME>/personality/legacy/PERSONALITY.<YYYYMMDDTHHMMSSZ>.md` | Read-only backup of the old file | Written once by the new implementation, then never written again |
 
 No workspace personality file exists; all tools write only the global paths above.
 
-On first activation the implementation creates `OUTPUT_STYLE.yaml` with the defaults in 3.3 and an empty `WRITING_RULES.yaml`; it does not create or seed `PERSONALITY.md`.
+On first activation the implementation creates `OUTPUT_STYLE.yaml` and `SUPERAGENT_OUTPUT_STYLE.yaml` with the defaults in 3.3 and an empty `WRITING_RULES.yaml`; it does not create or seed `PERSONALITY.md`.
 
 ### 3.2 PERSONALITY.md data structure
 
@@ -189,7 +190,7 @@ interface WritingRule {
 
 interface WritingRulesDocument {
   readonly version: 1
-  readonly rules: readonly WritingRule[]  // max 32; total text <= 4096 bytes
+  readonly rules: readonly WritingRule[]  // max 100; total text <= 32 KiB
 }
 ```
 
@@ -440,9 +441,9 @@ The text contains only enabled rules, sorted by ascending `order` and then by id
 
 Size limits:
 
-- At most 32 rules; each rule 1–240 characters; the combined body of enabled rules is ≤ 4096 UTF-8 bytes.
+- At most 100 rules; each rule 1–240 characters; the combined body of enabled rules is ≤ 32 KiB UTF-8 bytes. Only the first 40 enabled rules are resident; the rest are stored with an omission notice.
 - Above the limit: the tool rejects the write and reports the current byte/entry count; it does not silently truncate.
-- When the injected text exceeds 4096 bytes, refuse to save, ensuring the section stays bounded.
+- When the injected text exceeds 32 KiB, refuse to save; the 40-rule resident cap bounds the section even when more rules are stored.
 
 ### 7.4 Priority
 
@@ -460,13 +461,13 @@ writing rules cannot override the first two layers; when they conflict with outp
 ### 7.5 Acceptance (3 items)
 
 1. **CRUD**: after `add` → `list` → `update` → `disable` → `remove`, the file keeps only the expected rules; disabled rules do not appear in `preview`/the section; after `remove` the section does not contain that rule.
-2. **Limits/injection**: writes are allowed within the 32-rule/4096-byte boundary, and beyond it are rejected without changing the file; section order is 695, sorted by order/id, and an empty set produces no text.
+2. **Limits/injection**: writes are allowed within the 100-rule/32 KiB boundary, and beyond it are rejected without changing the file; section order is 695, sorted by order/id, and an empty set produces no text.
 3. **Conflict**: a fixture has both output-style "terse" and a writing rule "explain in detail"; the section text specifies that the writing rule wins; a fixture has both a superagent hard rule and a writing rule, and the hard rule wins. The tool does not modify 702.
 
 ### 7.6 Risks
 
 - Rules are written by a person and may contradict each other; the tool can only sort them and cannot judge semantic conflicts; conflicts are handled by section priority and manual review.
-- The 4096-byte limit restricts the number of rules; when exceeded, merge rules instead of raising the limit.
+- The 32 KiB limit restricts the number of rules; only 40 are resident, so a large library needs curation rather than unlimited resident growth.
 - All agents receive the injection, and overly broad rules pollute tool-style output; rule text states clearly "user-visible prose only", and code/JSON are not changed.
 
 ## 8. output-style: global configuration

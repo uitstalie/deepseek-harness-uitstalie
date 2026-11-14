@@ -45,6 +45,7 @@ import {
 } from './profile-prompt.ts'
 import { OUTPUT_STYLE_ORDER_NAME, OUTPUT_STYLE_SECTION_NAME } from './output-style.ts'
 import { WRITING_RULES_ORDER_NAME, WRITING_RULES_SECTION_NAME } from './writing-rules.ts'
+import { agentRole } from './role.ts'
 
 /** Plugin name registered with Cordis. */
 export const name = 'personality'
@@ -104,12 +105,12 @@ async function createContribution(
     ctx.logger.warn('personality: could not seed configuration files: %s', String(error))
   }
 
-  const fallback = await loadBundle(ctx, runtime.signal, false)
+  const fallback = await loadBundle(ctx, runtime.signal, 'root')
   const promptTexts = new WeakMap<Agent, PromptBundle>()
   const checkedWorkspaceFiles = new Set<string>()
 
   const refresh = async (agent: Agent): Promise<void> => {
-    promptTexts.set(agent, await loadBundle(ctx, runtime.signal, isRootAgent(agent)))
+    promptTexts.set(agent, await loadBundle(ctx, runtime.signal, agentRole(agent)))
   }
   const analyzeTool = personalityAnalyzeTool(ctx)
   const applyTool = personalityApplyTool(ctx, refresh)
@@ -118,7 +119,7 @@ async function createContribution(
   return {
     scope: 'all',
     promptSections: agent => sectionsFor(ctx, agent, promptTexts, fallback),
-    tools: agent => isRootAgent(agent) ? [analyzeTool, applyTool, rulesTool] : [analyzeTool],
+    tools: agent => agentRole(agent) === 'subagent' ? [analyzeTool] : [analyzeTool, applyTool, rulesTool],
     onAgentCreated: (agent) => {
       warnLegacyWorkspaceFile(ctx, agent, checkedWorkspaceFiles, runtime.signal)
       /* v8 ignore next 3 -- loadBundle contains every file read failure; refresh has no other throw. */
@@ -137,17 +138,18 @@ function sectionsFor(
   fallback: PromptBundle,
 ): readonly PromptSection[] {
   const bundle = (): PromptBundle => promptTexts.get(agent) ?? fallback
+  const role = agentRole(agent)
   return [
     {
       name: PROFILE_SECTION_NAME,
       order: ctx.systemPrompt.getSectionOrder(PROFILE_ORDER_NAME),
       text: () => bundle().profile,
     },
-    {
+    ...role === 'subagent' ? [] : [{
       name: OUTPUT_STYLE_SECTION_NAME,
       order: ctx.systemPrompt.getSectionOrder(OUTPUT_STYLE_ORDER_NAME),
       text: () => bundle().outputStyle,
-    },
+    }],
     {
       name: WRITING_RULES_SECTION_NAME,
       order: ctx.systemPrompt.getSectionOrder(WRITING_RULES_ORDER_NAME),
@@ -157,7 +159,7 @@ function sectionsFor(
 }
 
 /** Read all three files into section text, degrading each independently. */
-async function loadBundle(ctx: Context, signal: AbortSignal, dispatch: boolean): Promise<PromptBundle> {
+async function loadBundle(ctx: Context, signal: AbortSignal, role: 'subagent' | 'root' | 'super'): Promise<PromptBundle> {
   let personality: PersonalityDocument | undefined
   let style: OutputStyleConfig = DEFAULT_OUTPUT_STYLE
   let rules: WritingRulesDocument = EMPTY_WRITING_RULES
@@ -167,7 +169,7 @@ async function loadBundle(ctx: Context, signal: AbortSignal, dispatch: boolean):
     ctx.logger.warn('personality: ignoring the global profile: %s', String(error))
   }
   try {
-    style = (await readOutputStyle(ctx, signal)).config
+    style = (await readOutputStyle(ctx, signal, role === 'super' ? 'super' : 'ordinary')).config
   } catch (error: unknown) {
     ctx.logger.warn('personality: ignoring OUTPUT_STYLE.yaml: %s', String(error))
   }
@@ -181,7 +183,7 @@ async function loadBundle(ctx: Context, signal: AbortSignal, dispatch: boolean):
     profile: renderPersonalitySection(entries),
     outputStyle: renderOutputStyleSection(style, {
       styleEntries: entries.filter(entry => entry.kind === 'style'),
-      dispatch,
+      dispatch: role === 'super',
     }),
     writingRules: previewWritingRules(rules),
   }
@@ -225,12 +227,4 @@ function warnLegacyWorkspaceFile(
       )
     }
   })()
-}
-
-/** Whether this agent is a root conversation, not a delegated child. */
-function isRootAgent(agent: Agent): boolean {
-  const header = agent.session.header
-  return header.origin !== 'subagent'
-    && header.parentSession === undefined
-    && (header.delegationDepth ?? 0) === 0
 }

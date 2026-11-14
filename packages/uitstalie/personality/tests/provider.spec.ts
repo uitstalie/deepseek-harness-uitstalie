@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -31,7 +31,10 @@ import {
 } from '../src/global-store.ts'
 import type { PersonalityEntry } from '../src/global-store.ts'
 import { renderPersonalitySection, PROFILE_SECTION_NAME } from '../src/profile-prompt.ts'
+import { outputStylePath, renderOutputStyle } from '../src/output-style.ts'
+import { DEFAULT_OUTPUT_STYLE } from '../src/defaults.ts'
 import { applyPersonalityCandidates } from '../src/apply.ts'
+import { agentRole } from '../src/role.ts'
 import { analyzePersonality } from '../src/analyze.ts'
 
 const signal = new AbortController().signal
@@ -137,6 +140,21 @@ async function promptText(ctx: Context, agent: Agent): Promise<string> {
   return assembly.sections.find(section => section.name === PROFILE_SECTION_NAME)?.text ?? ''
 }
 
+/** Wait until one named section contains a needle after the async refresh. */
+async function untilSection(ctx: Context, agent: Agent, name: string, needle: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if ((await sectionText(ctx, agent, name))?.includes(needle) === true) return
+    await new Promise<void>((resolve) => { setTimeout(resolve, 1) })
+  }
+  throw new Error(`section ${name} did not contain ${needle}`)
+}
+
+/** Resolve one named prompt section. */
+async function sectionText(ctx: Context, agent: Agent, name: string): Promise<string | undefined> {
+  const assembly = await ctx.systemPrompt.assemble(assembleContextFor(agent))
+  return assembly.sections.find(section => section.name === name)?.text
+}
+
 /** Append one user message to a session. */
 function appendUser(agent: Agent, text: string, turn = 1): void {
   agent.session.append('turn/start', { turn })
@@ -224,9 +242,39 @@ test('child agents inherit analyze and the profile section but not apply', async
   await until(() => mounted.ctx.tools.get('personality_analyze', child.agent) !== undefined)
 
   expect(await promptText(mounted.ctx, child.agent)).toBe(renderPersonalitySection(entries))
+  expect(await sectionText(mounted.ctx, child.agent, 'personality:output-style')).toBeUndefined()
   expect(mounted.ctx.tools.get('personality_apply', child.agent)).toBeUndefined()
   expect(mounted.ctx.tools.get('write_like_human', child.agent)).toBeUndefined()
+  const apply = mounted.ctx.tools.get('personality_apply', root)
+  const rules = mounted.ctx.tools.get('write_like_human', root)
+  await expect(apply?.execute({ candidates: [], confirm: true } as never, { agent: child.agent, signal } as never))
+    .rejects.toThrow(/unavailable to subagents/u)
+  await expect(rules?.execute({ action: 'list' } as never, { agent: child.agent, signal } as never))
+    .rejects.toThrow(/unavailable to subagents/u)
   await child.dispose()
+})
+
+test('role selects an independent output-style slot for ordinary and super roots', async () => {
+  await mkdir(dirname(outputStylePath()), { recursive: true })
+  await writeFile(outputStylePath(), renderOutputStyle({ ...DEFAULT_OUTPUT_STYLE, tone: 'warm' }), 'utf8')
+  await writeFile(outputStylePath('super'), renderOutputStyle({ ...DEFAULT_OUTPUT_STYLE, tone: 'dry' }), 'utf8')
+  const mounted = await mount()
+  const ordinary = await mounted.harness.create(SessionId('ordinary-role'), {}, { cwd: project })
+  const superAgent = await mounted.harness.create(
+    SessionId('super-role'),
+    { personalityRole: 'super' },
+    { cwd: project },
+  )
+  await until(() => mounted.ctx.tools.get('personality_analyze', ordinary) !== undefined)
+  await until(() => mounted.ctx.tools.get('personality_analyze', superAgent) !== undefined)
+  expect((superAgent as unknown as { options: { personalityRole?: string } }).options.personalityRole).toBe('super')
+  expect(agentRole(superAgent)).toBe('super')
+  await settle()
+  await untilSection(mounted.ctx, ordinary, 'personality:output-style', '- Tone: warm.')
+  await untilSection(mounted.ctx, superAgent, 'personality:output-style', '- Tone: dry.')
+
+  expect(await sectionText(mounted.ctx, ordinary, 'personality:output-style')).not.toContain('- Dispatch voice:')
+  expect(await sectionText(mounted.ctx, superAgent, 'personality:output-style')).toContain('- Dispatch voice: terse.')
 })
 
 test('write_like_human writes the global file and refreshes the injected section', async () => {

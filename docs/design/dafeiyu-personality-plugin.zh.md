@@ -90,7 +90,8 @@
 | 文件 | 作用 | 谁可写 |
 |---|---|---|
 | `<DSH_HOME>/personality/PERSONALITY.md` | user-input 条目：understanding / preference / style；identity 仅人工编辑 | `personality_apply`（需确认）或人 |
-| `<DSH_HOME>/personality/OUTPUT_STYLE.yaml` | output-style 的 tone/length/结论/列表/派活口吻 | 人；工具只读 |
+| `<DSH_HOME>/personality/OUTPUT_STYLE.yaml` | 普通 root 的输出风格：tone/length/结论/列表/派活口吻 | 人；工具只读 |
+| `<DSH_HOME>/personality/SUPERAGENT_OUTPUT_STYLE.yaml` | super root 的独立输出风格槽 | 人；工具只读 |
 | `<DSH_HOME>/personality/WRITING_RULES.yaml` | write-like-human 的规则集合 | `write_like_human` 工具（用户要求时）或人 |
 | `<DSH_HOME>/personality/legacy/PERSONALITY.<YYYYMMDDTHHMMSSZ>.md` | 旧文件只读备份 | 新实现一次性写入，之后不再写 |
 
@@ -189,7 +190,7 @@ interface WritingRule {
 
 interface WritingRulesDocument {
   readonly version: 1
-  readonly rules: readonly WritingRule[]  // max 32; total text <= 4096 bytes
+  readonly rules: readonly WritingRule[]  // max 100; total text <= 32 KiB
 }
 ```
 
@@ -440,9 +441,9 @@ interface WriteLikeHumanResult {
 
 体积上限：
 
-- 最多 32 条规则；每条 1–240 字符；启用规则正文合计 ≤ 4096 UTF-8 bytes。
+- 最多 100 条规则；每条 1–240 字符；启用规则正文合计 ≤ 32 KiB UTF-8 bytes。只有前 40 条启用规则常驻；其余保留并给出遗漏提示。
 - 超过上限：工具拒绝写入并给出当前字节数/条数；不静默截断。
-- 注入文本超过 4096 bytes 时拒绝保存，保证 section 有界。
+- 注入文本超过 32 KiB 时拒绝保存；40 条常驻上限保证 section 有界。
 
 ### 7.4 优先级
 
@@ -460,13 +461,13 @@ writing rules 不能覆盖前两层；与 output-style 冲突时具体 writing r
 ### 7.5 验收（3 条）
 
 1. **CRUD**：`add` → `list` → `update` → `disable` → `remove` 后文件只保留预期规则；`disable` 的规则不出现在 `preview`/section；`remove` 后 section 不含该条。
-2. **上限/注入**：32 条/4096 bytes 边界内可写，超出拒绝且文件不变；section order 695，按 order/id 排序，空集合不产生文本。
+2. **上限/注入**：100 条/32 KiB 边界内可写，超出拒绝且文件不变；section order 695，按 order/id 排序，空集合不产生文本。
 3. **冲突**：fixture 同时有 output-style “terse” 与 writing rule “详细解释”，section 文本规定 writing rule 优先；fixture 同时有 superagent 硬规则与 writing rule，硬规则优先。工具不修改 702。
 
 ### 7.6 风险
 
 - 规则是人写的，可能互相矛盾；工具只能排序，不能判断语义冲突；冲突由 section 的优先级和人工 review 处理。
-- 4096 bytes 上限会限制规则数量；超过时应合并规则，不是提高上限。
+- 32 KiB 上限会限制规则数量；只有 40 条常驻，因此大库需要 curation，不能无限常驻增长。
 - 所有 agent 都注入，规则太泛会污染工具型输出；规则文本明确“仅用户可见正文”，代码/JSON 不改。
 
 ## 8. output-style：全局配置

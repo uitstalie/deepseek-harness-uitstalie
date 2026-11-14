@@ -2,7 +2,7 @@
  * The global writing-rules data and section text.
  *
  * The file is user-owned YAML at `$DSH_HOME/personality/WRITING_RULES.yaml`.
- * This module owns validation, the 32-rule / 4 KiB bounds, the canonical
+ * This module owns validation, the 100-rule / 32 KiB bounds, the canonical
  * preview, and the version-guarded read/write pair; `writing-tool.ts` is the
  * root-only model-facing CRUD tool built on it.
  * @module @deepseek-ai/dsh-personality/writing-rules
@@ -24,13 +24,16 @@ export const WRITING_RULES_ORDER_NAME = 'PERSONALITY_WRITING_RULES'
 
 
 /** Maximum number of rules in one file. */
-export const WRITING_RULES_MAX_RULES = 32
+export const WRITING_RULES_MAX_RULES = 100
 
 /** Maximum characters in one rule text. */
 export const WRITING_RULES_MAX_TEXT_CHARS = 240
 
+/** Number of enabled rules injected on every request. */
+export const WRITING_RULES_RESIDENT_MAX = 40
+
 /** Maximum combined rule-text bytes in one file. */
-export const WRITING_RULES_MAX_TEXT_BYTES = 4096
+export const WRITING_RULES_MAX_TEXT_BYTES = 32 * 1024
 
 /** One writing rule. */
 export interface WritingRule {
@@ -245,7 +248,13 @@ export function previewWritingRules(document: WritingRulesDocument): string {
     .filter(rule => rule.enabled)
     .sort((left, right) => left.order - right.order || (left.id < right.id ? -1 : 1))
   if (enabled.length === 0) return ''
-  return enabled.map(rule => `- ${rule.text.replaceAll(/\s+/gu, ' ').trim()}`).join('\n')
+  const injected = enabled.slice(0, WRITING_RULES_RESIDENT_MAX)
+  const lines = injected.map(rule => `- ${rule.text.replaceAll(/\s+/gu, ' ').trim()}`)
+  const omitted = enabled.length - injected.length
+  if (omitted > 0) {
+    lines.push('', `${String(omitted)} rule(s) not injected: resident limit is ${String(WRITING_RULES_RESIDENT_MAX)}.`)
+  }
+  return lines.join('\n')
 }
 
 /** Build the seeded empty document text. */
