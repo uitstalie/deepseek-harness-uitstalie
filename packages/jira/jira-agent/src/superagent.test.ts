@@ -135,9 +135,12 @@ const mount = async (
   harness: JiraHarness
   main: AgentHandle
   worker: AgentHandle
+  superHandle: AgentHandle
 }> => {
   const harness = await mountJira(await fixture(), { superagent: true, ...options })
+  const superHome = await scratchDirectory()
   await harness.ctx.plugin(jiraAgent, {
+    superagent_home: superHome,
     ...(workerPreset === undefined ? {} : { superagent_worker_preset: workerPreset }),
     ...(maxWorkers === undefined ? {} : { superagent_max_workers: maxWorkers }),
   })
@@ -145,12 +148,14 @@ const mount = async (
   for (const tool of jiraWorkerTools(harness.host)) harness.ctx.tools.register(tool)
   const main = testAgent(harness.ctx, 'main-1')
   await harness.ctx.serial('agent/created', { agent: main, source: 'startup' })
+  const superAgent = testAgent(harness.ctx, 'super-1', { cwd: superHome })
+  await harness.ctx.serial('agent/created', { agent: superAgent, source: 'startup' })
   const worker = testAgent(harness.ctx, 'worker-1', {
     origin: 'subagent',
     delegationDepth: 1,
     parentSession: SessionId('main-1'),
   })
-  return { harness, main, worker }
+  return { harness, main, worker, superHandle: superAgent }
 }
 
 /** Dispatch one call and return its envelope. */
@@ -384,9 +389,9 @@ const scratchDirectory = async (): Promise<string> => {
 
 void describe('superagent: the workspace roster', () => {
   void it('says so plainly when the deployment has no workspace registry', async () => {
-    const { harness, main } = await mount()
+    const { harness, main, superHandle } = await mount()
     try {
-      const refused = await call(harness, main, CONTROL_TOOL_NAME, { action: 'roster' })
+      const refused = await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'roster' })
       const oldWorkspace = await dispatchTool(harness, main, 'superagent_workspace', { action: 'roster' }, 'old-workspace-refused')
       const oldSession = await dispatchTool(harness, main, 'superagent_session', { action: 'list' }, 'old-session-refused')
       assert.equal(oldWorkspace.isError, true)
@@ -399,13 +404,13 @@ void describe('superagent: the workspace roster', () => {
   })
 
   void it('registers a directory that does not exist, and lists it', async () => {
-    const { harness, main } = await mount()
+    const { harness, superHandle } = await mount()
     try {
       const registry = await provideRegistry(harness)
       const dir = await scratchDirectory()
       const target = join(dir, 'checkout')
 
-      const registered = await call(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: target, title: 'the work' })
+      const registered = await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'ensure', path: target, title: 'the work' })
       assert.equal(registered.ok, true, JSON.stringify(registered.error))
       const { CONTROL_DESCRIPTION, CONTROL_PARAMETERS } = jiraAgent
       assert.equal(CONTROL_DESCRIPTION.includes('`ensure` registers'), true)
@@ -422,19 +427,19 @@ void describe('superagent: the workspace roster', () => {
       assert.equal(workspace.path, target)
       assert.equal(workspace.status, 'ok')
 
-      const again = await call(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: target })
+      const again = await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'ensure', path: target })
       assert.equal(again.ok, true, JSON.stringify(again.error))
       assert.equal(registry.rows.length, 1, 'ensure is idempotent')
 
-      const rosterCall = await dispatchTool(harness, main, CONTROL_TOOL_NAME, { action: 'roster' }, 'control-roster-render')
+      const rosterCall = await dispatchTool(harness, superHandle, CONTROL_TOOL_NAME, { action: 'roster' }, 'control-roster-render')
       const roster = rosterCall.value as Record<string, unknown>
       const rows = roster.workspaces as Record<string, unknown>[]
       assert.equal(rows.length, 1)
       assert.equal(rows[0]?.title, 'the work')
       assert.match(JSON.stringify(rosterCall.content), /the work.*checkout.*ok.*0 session/u)
-      const ensured = await dispatchTool(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: target }, 'control-ensure-render')
+      const ensured = await dispatchTool(harness, superHandle, CONTROL_TOOL_NAME, { action: 'ensure', path: target }, 'control-ensure-render')
       assert.match(JSON.stringify(ensured.content), /the work.*checkout/u)
-      const definition = harness.ctx.tools.get(CONTROL_TOOL_NAME, main)
+      const definition = harness.ctx.tools.get(CONTROL_TOOL_NAME, superHandle)
       assert.ok(definition !== undefined)
       assert.equal(concurrencySafe(definition, { action: 'roster' }), true)
       assert.equal(concurrencySafe(definition, { action: 'list' }), true)
@@ -449,27 +454,27 @@ void describe('superagent: the workspace roster', () => {
 
 void describe('superagent: workspace management', () => {
   void it('removes a registration through the live registry, renames, and lists orphans', async () => {
-    const { harness, main } = await mount()
+    const { harness, superHandle } = await mount()
     try {
       const registry = await provideRegistry(harness)
       const dir = await scratchDirectory()
       const qec = join(dir, 'qec')
       const work = join(dir, 'work')
-      await call(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: qec, title: 'qec' })
-      await call(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: work, title: 'the work' })
+      await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'ensure', path: qec, title: 'qec' })
+      await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'ensure', path: work, title: 'the work' })
       const qecRow = registry.rows.find(row => row.title === 'qec')
       assert.ok(qecRow !== undefined)
 
-      const refused = await call(harness, main, CONTROL_TOOL_NAME, { action: 'remove_workspace', workspace: 'qec', confirm: 'wrong' })
+      const refused = await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'remove_workspace', workspace: 'qec', confirm: 'wrong' })
       assert.equal(refused.ok, false)
       assert.match(JSON.stringify(refused.error), /confirm/u)
       assert.equal(registry.rows.length, 2, 'a refused removal changes nothing')
 
-      const renamed = await call(harness, main, CONTROL_TOOL_NAME, { action: 'rename_workspace', workspace: 'the work', title: 'renamed' })
+      const renamed = await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'rename_workspace', workspace: 'the work', title: 'renamed' })
       assert.equal(renamed.ok, true, JSON.stringify(renamed.error))
       assert.equal(registry.rows.find(row => row.path === work)?.title, 'renamed')
 
-      const removed = await call(harness, main, CONTROL_TOOL_NAME, { action: 'remove_workspace', workspace: 'qec', confirm: 'qec' })
+      const removed = await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'remove_workspace', workspace: 'qec', confirm: 'qec' })
       assert.equal(removed.ok, true, JSON.stringify(removed.error))
       assert.equal(removed.removed, true)
       assert.equal(removed.directory_kept, true)
@@ -481,12 +486,12 @@ void describe('superagent: workspace management', () => {
       const orphan = registry.rows.find(row => row.path === work)
       assert.ok(orphan !== undefined)
       orphan.status = async () => 'missing-dir'
-      const orphans = await call(harness, main, CONTROL_TOOL_NAME, { action: 'orphans' })
+      const orphans = await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'orphans' })
       const rows = orphans.workspaces as Record<string, unknown>[]
       assert.deepEqual(rows.map(row => row.path), [work])
       assert.equal(rows[0]?.status, 'missing-dir')
 
-      const self = await call(harness, main, CONTROL_TOOL_NAME, { action: 'remove_workspace', workspace: 'qec', confirm: 'qec' })
+      const self = await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'remove_workspace', workspace: 'qec', confirm: 'qec' })
       assert.equal(self.ok, false, 'the removed workspace is no longer found')
     } finally {
       await harness.dispose()
@@ -2444,10 +2449,11 @@ void describe('superagent: model selection and discovery', () => {
     const rows = listed.sessions as { id: string; title?: string }[]
     assert.equal(rows.find(row => row.id === 'titled')?.title, 'Persisted title')
     assert.equal(rows.find(row => row.id === 'untitled')?.title, undefined)
+    const definitionHome = await scratchDirectory()
     const contribution = createSuperagentContribution({
       ctx, env: {}, clock: () => Date.parse(AT), recorder: createSessionRecorder(),
-    } as never)
-    const definition = contribution.tools?.({ id: 'super-1', cwd: workspacePath } as never).find(tool => tool.name === CONTROL_TOOL_NAME)
+    } as never, undefined, undefined, undefined, undefined, definitionHome)
+    const definition = contribution.tools?.({ id: 'super-1', session: { header: { cwd: definitionHome } }, options: {} } as never).find(tool => tool.name === CONTROL_TOOL_NAME)
     assert.ok(definition !== undefined)
     const rendered = definition.output.render({ action: 'list' }, listed as unknown as JsonValue).map(block => block.type === 'text' ? block.text : '').join('\n')
     assert.match(rendered, /titled\s+Persisted title/u)
@@ -3044,8 +3050,8 @@ void describe('superagent: context, compaction and memory curation', () => {
         assert.equal((cold as { lastTurnError?: { message?: string } }).lastTurnError?.message, 'persisted failure')
         const contribution = createSuperagentContribution({
           ctx: coldCtx, env: {}, clock: () => now, recorder: createSessionRecorder(),
-        })
-        const definition = contribution.tools?.({ id: 'super-1', cwd: coldRoot } as never).find(tool => tool.name === CONTROL_TOOL_NAME)
+        }, undefined, undefined, undefined, undefined, coldRoot)
+        const definition = contribution.tools?.({ id: 'super-1', session: { header: { cwd: coldRoot } }, options: {} } as never).find(tool => tool.name === CONTROL_TOOL_NAME)
         assert.ok(definition !== undefined)
         const rendered = definition.output.render({ action: 'inspect', session: 'cold-session' }, cold as unknown as JsonValue).map(block => block.type === 'text' ? block.text : '').join('\n')
         assert.match(rendered, /cold \(persisted log; not live\)/u)
@@ -3214,10 +3220,13 @@ void describe('superagent: the super workspace', () => {
       assert.equal(concurrencySafe(permission, { action: 'list' }), true)
       assert.equal(concurrencySafe(permission, { action: 'set' }), false)
 
-      // Any other checkout keeps the full dispatcher surface and no section.
+      // Any other checkout keeps the ordinary dispatcher surface and no section.
       const other = testAgent(harness.ctx, 'main-2', { cwd: dir })
       assert.equal(isSuperAgentSession(other, home), false)
-      assert.equal(contribution.tools?.(other).length, 6)
+      assert.deepEqual(
+        contribution.tools?.(other).map(tool => tool.name),
+        [SOURCE_TOOL_NAME, SCAN_TOOL_NAME, CLAIM_TOOL_NAME, STATUS_TOOL_NAME, DISPATCH_TOOL_NAME],
+      )
       assert.deepEqual(contribution.promptSections?.(other), [])
 
       // A subagent dispatched from the super agent runs in the target checkout, so it is not one.
@@ -3228,6 +3237,36 @@ void describe('superagent: the super workspace', () => {
         parentSession: SessionId('super-1'),
       })
       assert.equal(isSuperAgentSession(child, home), false)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  void it('hides every super-only workspace tool from an ordinary root', async () => {
+    const harness = await mountJira(await fixture(), { superagent: true })
+    try {
+      const host = {
+        ctx: harness.ctx,
+        env: {},
+        clock: () => Date.parse(AT),
+        recorder: createSessionRecorder(),
+      }
+      const home = join(await scratchDirectory(), 'super-agent')
+      const contribution = createSuperagentContribution(host, 'jira-worker', 2, undefined, undefined, home)
+      const ordinary = testAgent(harness.ctx, 'ordinary-role', { cwd: join(home, 'elsewhere') })
+      const ordinaryNames = (contribution.tools?.(ordinary) ?? []).map(tool => tool.name)
+      assert.deepEqual(ordinaryNames, [
+        SOURCE_TOOL_NAME, SCAN_TOOL_NAME, CLAIM_TOOL_NAME, STATUS_TOOL_NAME, DISPATCH_TOOL_NAME,
+      ])
+      for (const superOnly of [CONTROL_TOOL_NAME, LEDGER_TOOL_NAME, DELIVER_TOOL_NAME, PERMISSION_TOOL_NAME]) {
+        assert.equal(ordinaryNames.includes(superOnly), false, `${superOnly} must not reach an ordinary root`)
+      }
+
+      const superAgent = testAgent(harness.ctx, 'super-role', { cwd: home })
+      assert.deepEqual(
+        (contribution.tools?.(superAgent) ?? []).map(tool => tool.name),
+        [CONTROL_TOOL_NAME, LEDGER_TOOL_NAME, MODELS_TOOL_NAME, PERMISSION_TOOL_NAME, DELIVER_TOOL_NAME],
+      )
     } finally {
       await harness.dispose()
     }
@@ -3347,20 +3386,24 @@ void describe('superagent: the dispatcher\'s surface', () => {
 
       const dispatcher = createSuperagentContribution(host, 'jira-worker')
       assert.deepEqual(dispatcher.tools?.(executor) ?? null, [], 'an executor cannot dispatch or claim')
-      // A root that did not join the preset keeps the dispatcher's surface.
+      // A root that did not join the preset keeps the ordinary dispatcher surface, without the
+      // super-only workspace tools.
       const other = testAgent(harness.ctx, 'main-9', { agentPreset: 'standard' })
-      assert.equal(dispatcher.tools?.(other).length, 6)
+      assert.deepEqual(
+        dispatcher.tools?.(other).map(tool => tool.name),
+        [SOURCE_TOOL_NAME, SCAN_TOOL_NAME, CLAIM_TOOL_NAME, STATUS_TOOL_NAME, DISPATCH_TOOL_NAME],
+      )
     } finally {
       await harness.dispose()
     }
   })
 
   void it('runs the loop into a named workspace: ensure, claim with its path, deliver', async () => {
-    const { harness, main } = await mount()
+    const { harness, main, superHandle } = await mount()
     try {
       await provideRegistry(harness)
       const target = join(await scratchDirectory(), 'checkout')
-      const registered = await call(harness, main, CONTROL_TOOL_NAME, { action: 'ensure', path: target, title: 'checkout' })
+      const registered = await call(harness, superHandle, CONTROL_TOOL_NAME, { action: 'ensure', path: target, title: 'checkout' })
       const workspace = registered.workspace as Record<string, unknown>
 
       await call(harness, main, CLAIM_TOOL_NAME, { action: 'propose', key: 'DH-12', why: 'ready and small' })

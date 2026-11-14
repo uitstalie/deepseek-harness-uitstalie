@@ -79,9 +79,14 @@ test('the registry exposes the approved full matrix for subagent, agent, and sup
   expect(names('subagent')).toEqual(expected('subagent'))
   expect(names('agent')).toEqual(expected('agent'))
   expect(names('super')).toEqual(expected('super'))
+  // This spec snapshots the approved matrix, not any one capability's wiring: `superagent_control`
+  // is already declared `super` here, so the jira ordinary-branch fix does not change 32/36.
+  // The real contribution is covered by packages/jira/jira-agent/src/superagent.test.ts.
   expect(names('subagent')).toHaveLength(14)
   expect(names('agent')).toHaveLength(32)
   expect(names('super')).toHaveLength(36)
+  expect(names('agent')).not.toContain('superagent_control')
+  expect(names('super')).toContain('superagent_control')
   expect(names('agent').filter(name => !names('subagent').includes(name))).toEqual([
     'issue_work', 'jira_issue', 'jira_kb', 'jira_list', 'memory_forget', 'memory_resolve',
     'memory_write', 'personality_apply', 'plugin_manager', 'schedule_create', 'schedule_edit',

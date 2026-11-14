@@ -1,14 +1,14 @@
-# Superagent `control` leaks to ordinary agent Sessions (2026-11-14)
+# Superagent `control` no longer reaches ordinary agent Sessions (2026-11-14)
 
 English | [中文](superagent-control-role-leak-20261114.zh.md)
 
-Status: **open** — reproduced on a real deployment after restart; documentation only, fix not applied here.
+Status: **fixed** — reproduced on a real deployment after restart; the ordinary root branch now omits `control` entirely. Fixed in the `fix(jira): hide superagent_control from ordinary agent roots` commit on `origin/cli-desktop`.
 
 ## Observed behavior
 
-After the restart, an ordinary workspace Session running with role `agent` reported `superagent_control` in its model-facing tool list. `superagent_ledger` and `superagent_permission` were absent. This is not a report-derived guess: the list was read from the live Session's tool catalog.
+After the restart, an ordinary workspace Session running with role `agent` reported `superagent_control` in its model-facing tool list. `superagent_ledger` and `superagent_permission` were absent. This was read from the live Session's tool catalog, not inferred from a report.
 
-Reproduction:
+Reproduction before the fix:
 
 1. Open a normal (non-super) workspace Session; role must be `agent`.
 2. Read the Session's actual tool list (system prompt/tool catalog), not the declared matrix.
@@ -16,51 +16,49 @@ Reproduction:
 
 ## Code location
 
-- `packages/jira/jira-agent/src/superagent.ts:5586-5587` defines the merged tool with `name = CONTROL_TOOL_NAME`; `CONTROL_TOOL_NAME` is `superagent_control` (`:335`).
-- The Jira capability's branch is `:5781-5805`:
+- `packages/jira/jira-agent/src/superagent.ts:5587` names the merged tool with `CONTROL_TOOL_NAME`; the constant is `superagent_control` (`:335`).
+- The Jira capability's branch is `:5785-5804`:
   - executor Session → `[]` (DH-703);
-  - super Session → five tools, including `control`, each wrapped with `withMinRole(tool, 'super')` (`:5789-5795`);
-  - ordinary root → `source`, `scan`, `claim`, `control`, `status`, `dispatcher`, with **no `minRole`** (`:5796-5803`).
-- `ToolRegistry` only hides a tool when `ToolDefinition.minRole` is present (`packages/core/tools/src/role.ts`); the ordinary branch never declares it, so role filtering cannot remove `control`.
+  - super Session → five tools, including `control`, each wrapped with `withMinRole(tool, 'super')` (`:5790-5795`);
+  - ordinary root → `source`, `scan`, `claim`, `status`, `dispatcher`, with no `control` (`:5797-5803`).
+- `ToolRegistry` only hides a tool when `ToolDefinition.minRole` is present (`packages/core/tools/src/role.ts`). The ordinary branch no longer produces `control`, so there is no role-filter bypass to rely on.
 
 ## Conflict with the role model
 
-The comments at `:5781-5785` state the intended split:
+The comments at `:5781-5784` state the intended split:
 
 - DH-703: an executor Session is a root, so scope alone would hand it dispatcher verbs; it gets none.
 - DH-716: the super agent is a root too and dispatches; it keeps the workspace roster and loses ledger-bound verbs that would invite it into the claim loop.
 
-An ordinary workspace root is neither an executor nor a super agent. It should not receive the dispatcher/workspace-management surface. The approved role matrix marks `superagent_control`, `ledger`, `deliver`, and `permission` as `super`; the ordinary branch contradicts that matrix.
+An ordinary workspace root is neither an executor nor a super agent. It must not receive the dispatcher/workspace-management surface. The approved role matrix marks `superagent_control`, `ledger`, `deliver`, and `permission` as `super`; the ordinary branch now matches it.
 
 `superagent_control` is not a read-only roster tool. Its actions are:
 
 `roster`, `orphans`, `ensure`, `remove_workspace`, `rename_workspace`, `start`, `append`, `prompt`, `list`, `inspect`, `stop`, `abort`, `fork`, `archive`, `compact`, `delete`.
 
-## Impact
+## Impact before the fix
 
-An ordinary `agent` Session can:
+An ordinary `agent` Session could:
 
 - register, unregister, or rename workspaces (`ensure`, `remove_workspace`, `rename_workspace`);
 - start Sessions in other workspaces, append/prompt/stop/abort them, fork, archive, or delete them;
 - trigger `compact` on another Session, now through the preset compaction bridge;
 - inspect other Sessions' workspace/session state.
 
-This is a real permission escalation: a normal workspace agent can operate on Sessions and workspaces outside its own task. The destructive actions (`remove_workspace`, `delete`) require confirmation strings but that is not an authorization boundary. `superagent_ledger` and `superagent_permission` are hidden only because the ordinary branch does not include them, not because role gating protects `control`.
+This was a real permission escalation: a normal workspace agent could operate on Sessions and workspaces outside its own task. The destructive actions (`remove_workspace`, `delete`) require confirmation strings, but that is not an authorization boundary. `superagent_ledger` and `superagent_permission` were hidden only because the ordinary branch did not include them, not because role gating protected `control`.
 
-## Fix options and decisions
+## Fix
 
-The fix is intentionally not applied in this checkout. Options:
+Option 1 is applied: remove `control` from the ordinary root branch. Ordinary roots keep only `superagent_source`, `superagent_scan`, `superagent_claim`, `superagent_status`, and `superagent_dispatch`; the super branch remains the only producer of `superagent_control` (and the other super-only tools). The executor branch stays `[]`. No runtime-only rejection path was kept: the tool is not advertised and is not callable for an ordinary root.
 
-1. **Remove `control` from the ordinary branch (recommended).** Ordinary roots keep their own jira tools only; the super branch remains the only producer of `control`. This restores the DH-716 intent.
-2. **Split the tool.** Keep a narrow read-only roster/list tool for ordinary roots and move all lifecycle/workspace writes to a super-only tool. This requires deciding whether ordinary roots need any roster visibility.
-3. **Keep the tool visible but enforce at runtime.** This leaks the capability in the tool catalog and still advertises an action surface the role model says should not exist; only acceptable as a temporary defense, not as the matrix fix.
-
-Decision needed from the person: does an ordinary root need any part of the workspace roster, or should it get none of the `superagent_control` verbs? The DH-703/DH-716 comments imply **none**.
+The capability now declares ten tools in total: five ordinary-root tools and five super-only tools, with disjoint sets.
 
 ## Test impact
 
-`packages/core/tools/tests/role-visibility.spec.ts` currently expects the `agent` snapshot to have **32** names, including `superagent_control`; the `super` snapshot has 36. Removing `control` from the ordinary branch (option 1) changes the agent set to **31** and must update that expected count/set. Splitting the tool changes the name set differently. Do not update the snapshot without deciding the product behavior.
+`packages/core/tools/tests/role-visibility.spec.ts` snapshots the **approved matrix**, not the jira contribution wiring. It already declares `superagent_control` as `super`, so its approved counts stay **32** for `agent` and **36** for `super`; it now also asserts explicitly that the agent set excludes `superagent_control` and the super set includes it. The earlier note's claim that the 32-name agent snapshot included `superagent_control` was incorrect.
+
+The real wiring is covered in `packages/jira/jira-agent/src/superagent.test.ts`: an ordinary root gets exactly five names and no super-only tool, the super agent gets all five super tools, and the regression test is `hides every super-only workspace tool from an ordinary root`. README tool counts were corrected from nine/six to ten/five.
 
 ## Scope
 
-This note records the observed leak and the code path; it does not change the implementation, tests, snapshot, profile, or runtime. A successor must implement the chosen option, add a regression test that asserts an ordinary agent cannot see or invoke the super-only surface, and rebuild/restart.
+This note records the observed leak and the applied fix. The runtime checkout was not rebuilt or restarted.
