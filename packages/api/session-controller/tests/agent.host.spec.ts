@@ -253,6 +253,30 @@ describe('ApiSession creation', () => {
     })
   })
 
+  it('resolves the configured super workspace to role super and ignores a spoofed ordinary cwd', async () => {
+    const { ctx, agents } = await harness()
+    const superDir = mkdtempSync(join(tmpdir(), 'dsh-role-super-'))
+    const ordinaryDir = mkdtempSync(join(tmpdir(), 'dsh-role-agent-'))
+    tempDirs.push(superDir, ordinaryDir)
+    ctx.provide('superagentHome', { path: superDir, role: 'super' })
+    const registry = ctx.agents as unknown as {
+      create: (request: { sessionId: SessionId; agentOptions: { role?: string }; meta: { cwd: string } }) => Promise<{
+        agent: { id: SessionId; session: { header: SessionHeader }; options: { role?: string } }
+      }>
+    }
+    registry.create = async request => ({
+      agent: {
+        id: request.sessionId,
+        session: { header: header(request.sessionId, request.meta.cwd) },
+        options: request.agentOptions,
+      },
+    })
+
+    expect((await agents.createSession({ cwd: superDir, reusable: () => true })).agent.options.role).toBe('super')
+    expect((await agents.createSession({ cwd: ordinaryDir, reusable: () => true })).agent.options.role).toBeUndefined()
+    expect((await agents.createSession({ cwd: ordinaryDir, role: 'super', reusable: () => true })).agent.options.role).toBeUndefined()
+  })
+
   it('surfaces directory creation failure', async () => {
     const { agents } = await harness()
     const parent = mkdtempSync(join(tmpdir(), 'dsh-session-controller-file-'))
