@@ -16,6 +16,9 @@ import type { AnalyzeInput } from './analyze.ts'
 import { applyPersonalityCandidates, renderApplyResult } from './apply.ts'
 import { globalPersonalityPath, PERSONALITY_ENTRY_KINDS } from './global-store.ts'
 
+/** The kinds the confirmed apply schema accepts; identity stays manual-only. */
+const APPLY_ENTRY_KINDS = PERSONALITY_ENTRY_KINDS.filter(kind => kind !== 'identity')
+
 /** Build the all-agent read-only analysis tool. */
 export function personalityAnalyzeTool(ctx: Context): ToolDefinition {
   return defineTool({
@@ -106,7 +109,7 @@ export function personalityApplyTool(ctx: Context, refresh: (agent: Agent) => Pr
           type: 'object',
           additionalProperties: false,
           properties: {
-            kind: { type: 'string', required: true, enum: [...PERSONALITY_ENTRY_KINDS] },
+            kind: { type: 'string', required: true, enum: [...APPLY_ENTRY_KINDS] },
             name: { type: 'string', required: true },
             text: { type: 'string', required: true },
             evidence: {

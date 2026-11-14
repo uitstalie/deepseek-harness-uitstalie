@@ -9,41 +9,29 @@ English | [中文](superagent-session-tool-consolidation-20261109.zh.md)
 
 This assessment is based on the current source code and tests. It did not change runtime code, commit, or push.
 
-## 1. Current inventory
+Implementation status (2026-11-14): B is implemented in `60d56470e8`; this page keeps the assessment history and the current inventory below.
 
-All four tool groups are declared in `packages/jira/jira-agent/src/superagent.ts` and registered by role through `createSuperagentContribution`; they share `SUPERAGENT_OUTPUT_SCHEMA` and the `ToolValue` envelope. Tests call the runner directly, while `index.test.ts`, `superagent.test.ts`, and group-level composition tests cover the real registry path.
+## 1. Current inventory (B implemented, commit `60d56470e8`)
 
-### `superagent_workspace`
+The earlier four-group split was the pre-consolidation state. B is implemented: three model-facing entries, all declared in `packages/jira/jira-agent/src/superagent.ts` and registered by role through `createSuperagentContribution`, sharing `SUPERAGENT_OUTPUT_SCHEMA` and the `ToolValue` envelope.
 
-- Actions: `roster`, `orphans`, `ensure`, `remove`, `rename`.
-- Five parameters: `action`, plus optional `path/workspace/title/confirm`; `ensure` requires path, `remove` requires workspace + exact confirm, and `rename` requires workspace + title.
-- Returns: `workspaces[]` (id/path/title/status/session count), or one `workspace`; remove also carries `removed/directoryKept/sessionsKept`, and rename carries `renamed`.
-- Errors: no registry, non-writable session, unregistered target, missing fields, confirmation mismatch, inability to remove/rename the current super workspace, missing host delete/setTitle, and underlying registration failure.
-- Consumers: `runSessionTool` and deliver/ledger use it to resolve the target workspace; `superagent_workspace roster` appears in error-recovery guidance; UI setup uses host/service rather than this model tool.
+### `superagent_control`
 
-### `superagent_session`
-
-- Actions: `append`, `start`, `prompt`, `list`, `archive`, `fork`, `delete`, `compact`, `inspect`, `stop`, `abort`.
-- Thirteen parameters: `action/workspace/task/title/session/text/confirm/provider/model/reasoning_effort/atSeq/compact/curate_memory/delivery`.
-- Required fields differ by action: `start` requires workspace + task; `append` requires workspace + session + text (session may be latest); `prompt` requires session + text; `abort` requires session + text; other lifecycle actions mostly require session, and delete also requires confirm.
-- Returns: `session` (id/title/archive/fork, etc.), `sessions[]`, `model`, `delivery`, `usage/compaction`, `status/activity/stop/abort`, thresholds, `longRunning`, and more. Report delivery and business results are stored separately in journal/domain.
-- Errors: no controller, read-only, workspace and Session not belonging to each other, missing action arguments, model or effort rejection, initial permissions not established, binding not saved, compaction busy/failure, cancellation and idle-wait failure, and missing host capability. Error context often carries workspace, session, available efforts, or a concrete failure reason.
-- Consumers: task start/append/prompt all write the report binding first; turn-end derives the report from it; model selection, permission initialization, compaction, and the workspace registry are actual dependencies.
+- 16 actions: `roster`, `orphans`, `ensure`, `remove_workspace`, `rename_workspace`, `start`, `append`, `prompt`, `list`, `inspect`, `stop`, `abort`, `fork`, `archive`, `compact`, `delete`.
+- Workspace and Session lifecycle share one entry; `runWorkspaceTool` and `runSessionTool` remain the internal behavior owners.
+- Action-level required fields are still validated together; the `ToolValue` envelope, `READ_ONLY_SESSION`/`NOT_FOUND`/`WRITE_FAILED`/`INVALID_INPUT` distinctions, business result, and delivery status are preserved.
+- Reports remain separate from the lifecycle call; `superagent_ledger` owns business results and `superagent_deliver` owns file handoff.
 
 ### `superagent_ledger`
 
-- Actions: `list`, `record`, `resolve`, `report_status`, `retry_report`.
-- Ten parameters: `action/workspace/task/id/status/outcome/decisions/artifacts/issue/query/limit`.
-- Returns: list as `entries + counts{matched,returned,remaining} + truncated + limit`; record/resolve as `task/file`, with resolve also giving a memory suggestion; retry as business `task{result,outcome}` plus independent `delivery{status,attempts}`.
-- Errors: missing super root, read-only `READ_ONLY_SESSION`, not-found `NOT_FOUND`, I/O `WRITE_FAILED`, invalid status, or missing first outcome; delivery settlement failure distinguishes recipient acceptance from journal non-persistence.
-- Consumers: domain is the business-result authority, Markdown is a projection, and journal is the delivery authority. It is not a Session lifecycle tool, and consolidation must not make resolve look like a Session state transition.
+- 5 actions: `list`, `record`, `resolve`, `report_status`, `retry_report`.
+- Domain is the business-result authority, Markdown is the projection, and the journal is the delivery authority.
 
 ### `superagent_deliver`
 
-- Four parameters: required absolute `source`, required `workspace`, and optional `destination/overwrite`.
-- Returns: `delivered{path,bytes}`.
-- Errors: read-only, non-absolute source, no registry, unregistered/missing workspace, unreadable or non-regular-file source, destination escaping the physical root, unauthorized overwrite, and copy failure.
-- Consumers: host-side copying and physical-path restrictions; fs-only authorization comes from the registered workspace, but this is not a Session state operation.
+- Required absolute `source` and `workspace`; optional `destination` and `overwrite`.
+- Host-side copy with physical-path containment; this is not a Session state operation.
+
 
 ## 2. Option A: merge everything into `superagent(action, ...)`
 
@@ -143,10 +131,19 @@ All errors should continue to carry the action, workspace, session/task id, and 
 ### Recommendation
 
 1. **Do not do A now.** It mixes task results, delivery recovery, and file permissions into the lifecycle, increases erroneous-routing risk, and does not provide enough benefit to offset migration.
-2. **Do B only when measurements prove that tool discovery/misuse is a problem.** When doing B, preserve the two internal runners, existing envelope, action-level aggregate validation, and precise errors; do not create one huge business function.
+2. **Do B only when measurements prove that tool discovery/misuse is a problem.** The implementation went ahead without such a measurement; see the decision record below. When doing B, preserve the two internal runners, existing envelope, action-level aggregate validation, and precise errors; do not create one huge business function.
 3. If the goal is to reduce the super administrator's cognitive load, prioritize improving the existing `list` output, next-step guidance, and action-error aggregation rather than changing tool names first.
 
 B's rough workload is about 8–12 files across production, tests, prompts, and documentation, plus composition tests and model-visible snapshots (executed by their owners under repository rules). It requires changing host tool registration but not SessionController; whether agent presets change depends on whether they enumerate specific tool names. A has a larger migration surface and requires new unambiguous names for 22 actions, so it should not be promised at the same workload.
+
+
+### Implementation decision record (2026-11-14)
+
+No benchmark, token count, misuse report, PR description, or commit-message measurement for this consolidation was found in the repository. This record therefore makes no numeric benefit claim.
+
+B is implemented in `60d56470e8`; the current code keeps the three-entry surface. The recorded basis is structural, not measured: A would rewrite 22 actions and break all existing `superagent_workspace`/`superagent_session` callers, while B preserves the two internal runners and the existing envelope/action validation. The decision accepts B as the current baseline rather than leaving the design and code divergent.
+
+Rollback trigger: if a real benchmark, field report, or regression shows worse discovery/misuse, token cost, or a broken caller contract, revert `60d56470e8` and restore `superagent_workspace`/`superagent_session` with the same envelope and aggregate validation; rerun the superagent behavior and composition tests. No numeric claim is made until such evidence exists.
 
 ## 6. Counter-evidence: when merging is worse
 

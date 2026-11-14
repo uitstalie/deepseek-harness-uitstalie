@@ -31,6 +31,7 @@ import {
 } from '../src/global-store.ts'
 import type { PersonalityEntry } from '../src/global-store.ts'
 import { renderPersonalitySection, PROFILE_SECTION_NAME } from '../src/profile-prompt.ts'
+import { applyPersonalityCandidates } from '../src/apply.ts'
 
 const signal = new AbortController().signal
 
@@ -162,6 +163,11 @@ test('registers the all-agent analyze tool, root apply and writing tools, and th
   expect(mounted.ctx.tools.get('personality_analyze', root)).toBeDefined()
   expect(mounted.ctx.tools.get('personality_apply', root)).toBeDefined()
   expect(mounted.ctx.tools.get('write_like_human', root)).toBeDefined()
+  const apply = mounted.ctx.tools.get('personality_apply', root)
+  const applyCandidates = (apply?.parameters as {
+    properties?: { candidates?: { items?: { properties?: { kind?: { enum?: readonly string[] } } } } }
+  } | undefined)?.properties?.candidates
+  expect(applyCandidates?.items?.properties?.kind?.enum).toEqual(['understanding', 'preference', 'style'])
   const names = (await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))).sections.map(section => section.name)
   expect(names).toEqual(expect.arrayContaining(['personality', 'personality:output-style', 'personality:writing-rules']))
 })
@@ -170,6 +176,28 @@ test('an empty profile contributes an empty profile section', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
   expect(await promptText(mounted.ctx, root)).toBe('')
+})
+
+test('warns once for a pre-rewrite workspace profile and stays silent without one', async () => {
+  await mkdir(join(project, '.dsh', 'memory'), { recursive: true })
+  await writeFile(join(project, '.dsh', 'memory', 'PERSONALITY.md'), 'old profile', 'utf8')
+  const mounted = await mount()
+  const warn = vi.spyOn(mounted.ctx.logger, 'warn')
+  const legacy = (): number => warn.mock.calls.filter(([message]) => String(message).includes('workspace file')).length
+  await mounted.harness.create(SessionId('legacy-a'), {}, { cwd: project })
+  await until(() => legacy() > 0)
+  await mounted.harness.create(SessionId('legacy-b'), {}, { cwd: project })
+  await settle()
+  expect(legacy()).toBe(1)
+  expect(String(warn.mock.calls.find(([message]) => String(message).includes('workspace file'))?.[0]))
+    .toContain('only global personality')
+
+  await rm(join(project, '.dsh', 'memory', 'PERSONALITY.md'))
+  const clean = await mount()
+  const silent = vi.spyOn(clean.ctx.logger, 'warn')
+  await createRoot(clean, 'clean-root')
+  await settle()
+  expect(silent.mock.calls.filter(([message]) => String(message).includes('workspace file'))).toHaveLength(0)
 })
 
 test('keeps the capability when seeding the configuration files fails', async () => {
@@ -337,13 +365,19 @@ test('personality_apply rejects identity and missing evidence per candidate', as
   const result = await call(mounted.ctx, root, 'personality_apply', {
     confirm: true,
     candidates: [
-      { kind: 'identity', name: 'role', text: '开发者。', evidence: [{ sessionId: 'personality-root', seq: 1, quote: '开发者。' }] },
       { kind: 'style', name: 'language', text: '用中文回答。', evidence: [] },
     ],
   })
   expect(result.isError).toBe(false)
-  expect(text(result)).toContain('rejected role:')
   expect(text(result)).toContain('rejected language:')
+  const identityResult = await applyPersonalityCandidates(mounted.ctx, {
+    confirm: true,
+    candidates: [
+      { kind: 'identity', name: 'role', text: '开发者。', evidence: [{ sessionId: 'personality-root', seq: 1, quote: '开发者。' }] },
+    ],
+  } as never, signal)
+  expect(identityResult.applied).toEqual([])
+  expect(identityResult.rejected[0]?.reason).toContain('identity entries are manual-only')
   await expect(stat(globalPersonalityPath())).rejects.toThrow()
 })
 

@@ -17,6 +17,7 @@
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CapabilityContribution, CapabilityRuntime } from '@deepseek-ai/dsh-dafeiyu'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
@@ -105,6 +106,7 @@ async function createContribution(
 
   const fallback = await loadBundle(ctx, runtime.signal, false)
   const promptTexts = new WeakMap<Agent, PromptBundle>()
+  const checkedWorkspaceFiles = new Set<string>()
 
   const refresh = async (agent: Agent): Promise<void> => {
     promptTexts.set(agent, await loadBundle(ctx, runtime.signal, isRootAgent(agent)))
@@ -118,6 +120,7 @@ async function createContribution(
     promptSections: agent => sectionsFor(ctx, agent, promptTexts, fallback),
     tools: agent => isRootAgent(agent) ? [analyzeTool, applyTool, rulesTool] : [analyzeTool],
     onAgentCreated: (agent) => {
+      warnLegacyWorkspaceFile(ctx, agent, checkedWorkspaceFiles, runtime.signal)
       /* v8 ignore next 3 -- loadBundle contains every file read failure; refresh has no other throw. */
       void refresh(agent).catch((error: unknown) => {
         ctx.logger.warn('personality: could not load the prompt bundle for agent %s: %s', agent.id, String(error))
@@ -182,6 +185,46 @@ async function loadBundle(ctx: Context, signal: AbortSignal, dispatch: boolean):
     }),
     writingRules: previewWritingRules(rules),
   }
+}
+
+/**
+ * Warn once per workspace when a pre-rewrite workspace profile exists.
+ *
+ * The check is one exact path lookup: it does not read the file, walk the
+ * workspace, watch it, or touch it. A workspace is remembered before the
+ * asynchronous lookup so two agents created together cannot log twice.
+ * @param ctx - context carrying the filesystem and logger.
+ * @param agent - agent whose session cwd names the workspace.
+ * @param checked - workspaces already checked by this capability instance.
+ * @param signal - cancellation for the lookup.
+ */
+function warnLegacyWorkspaceFile(
+  ctx: Context,
+  agent: Agent,
+  checked: Set<string>,
+  signal: AbortSignal,
+): void {
+  const cwd = agent.session.header.cwd
+  if (cwd === undefined || checked.has(cwd)) return
+  checked.add(cwd)
+  const target = join(cwd, '.dsh', 'memory', 'PERSONALITY.md')
+  void (async (): Promise<void> => {
+    try {
+      const file = await ctx.fs.resolve(target, { signal })
+      if (await ctx.fs.stat(file, signal) === undefined) return
+      ctx.logger.warn(
+        'personality: only global personality is supported; ignoring workspace file %s',
+        target,
+      )
+    } catch (error: unknown) {
+      if (signal.aborted) return
+      ctx.logger.debug(
+        'personality: could not check workspace profile %s: %s',
+        target,
+        String(error),
+      )
+    }
+  })()
 }
 
 /** Whether this agent is a root conversation, not a delegated child. */
