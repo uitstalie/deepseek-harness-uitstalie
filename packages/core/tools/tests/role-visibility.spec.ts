@@ -40,6 +40,8 @@ const MATRIX: Readonly<Record<string, AgentRole>> = {
   read: 'subagent',
   write: 'subagent',
   edit: 'subagent',
+  apply_patch: 'subagent',
+  read_image: 'subagent',
   glob: 'subagent',
   grep: 'subagent',
   pwsh: 'subagent',
@@ -77,9 +79,9 @@ test('the registry exposes the approved full matrix for subagent, agent, and sup
   expect(names('subagent')).toEqual(expected('subagent'))
   expect(names('agent')).toEqual(expected('agent'))
   expect(names('super')).toEqual(expected('super'))
-  expect(names('subagent')).toHaveLength(12)
-  expect(names('agent')).toHaveLength(30)
-  expect(names('super')).toHaveLength(34)
+  expect(names('subagent')).toHaveLength(14)
+  expect(names('agent')).toHaveLength(32)
+  expect(names('super')).toHaveLength(36)
   expect(names('agent').filter(name => !names('subagent').includes(name))).toEqual([
     'issue_work', 'jira_issue', 'jira_kb', 'jira_list', 'memory_forget', 'memory_resolve',
     'memory_write', 'personality_apply', 'plugin_manager', 'schedule_create', 'schedule_edit',
@@ -93,4 +95,14 @@ test('the registry exposes the approved full matrix for subagent, agent, and sup
   expect(agentRoleOf(agent('subagent'))).toBe('subagent')
   expect(agentRoleOf(agent('agent'))).toBe('agent')
   expect(agentRoleOf(agent('super'))).toBe('super')
+
+  const plain = defineTool({
+    name: 'plain_unscoped',
+    description: 'no minRole',
+    parameters: {},
+    output: { schema: { type: 'object', additionalProperties: false }, render: () => [] },
+    execute: async () => ({}),
+  })
+  ctx.tools.register(plain)
+  expect(names('subagent')).toContain('plain_unscoped')
 })
