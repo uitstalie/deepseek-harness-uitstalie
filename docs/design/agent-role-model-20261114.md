@@ -12,7 +12,7 @@ Status: **role field and section gating are implemented; tool visibility is not 
 | `agent` | A normal root/workspace Session; ordinary work. |
 | `super` | The super-agent root that dispatches work; most privilege. |
 
-The role type and reader live in `packages/core/agent/src/runtime-types.ts` and `packages/core/agent/src/role.ts`: `AgentRole`, `agentRoleOf`. The organizer only owns the future tool-minimum helpers (`packages/uitstalie/dafeiyu/src/role.ts`).
+The role type and reader live in `packages/core/agent/src/runtime-types.ts` and `packages/core/agent/src/role.ts`: `AgentRole`, `agentRoleOf`. Feature packages declare a tool gate through `@deepseek-ai/dsh-tools` (`withMinRole` / `toolMinRole`); no feature package imports dafeiyu for role. The organizer only owns the future registration filter.
 
 ## 2. Declaration source and default
 
@@ -66,7 +66,7 @@ The role field is the shared source; each consumer migrates separately. This rou
 
 ## 7. Interface reservation
 
-`withMinRole(tool, role)` and `toolMinRole(tool)` exist in `dafeiyu/src/role.ts` as the future declaration shape. The organizer does **not** call them in this round; no tool definition carries `minRole`, and the registration loop is unchanged. The intended consumer signature is:
+`withMinRole(tool, role)` and `toolMinRole(tool)` live in `packages/core/tools/src/role.ts` and are exported by `@deepseek-ai/dsh-tools`; a feature package declares a gate without importing dafeiyu. The organizer does **not** call them in this round; no tool definition carries `minRole`, and the registration loop is unchanged. The intended consumer signature is:
 
 ```ts
 tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(agentRoleOf(agent), minRole)

@@ -2,7 +2,7 @@
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { TOOL_CONTEXT_UNAVAILABLE } from './error-codes.ts'
 import type { ToolCallId, ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm'
-import type { Agent, ModelSelection } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentRole, ModelSelection } from '@deepseek-ai/dsh-agent'
 import type { ScopeKey } from '@deepseek-ai/dsh-scope'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -25,6 +25,8 @@ export interface ToolOutputDefinition {
 
 /** A registered tool: its schema plus the execution function. */
 export interface ToolDefinition extends ToolSchema {
+  /** Minimum Agent role that may see and call this tool; absent means every role. */
+  readonly minRole?: AgentRole
   /** Mandatory canonical output declaration. */
   readonly output: ToolOutputDefinition
   /**

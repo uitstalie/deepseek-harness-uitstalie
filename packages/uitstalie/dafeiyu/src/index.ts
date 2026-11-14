@@ -49,7 +49,6 @@ export type {
   TurnEndInput,
 } from './types.ts'
 export { default as DafeiyuRemote } from './remote.ts'
-export { roleAllows, toolMinRole, withMinRole } from './role.ts'
 
 
 /**

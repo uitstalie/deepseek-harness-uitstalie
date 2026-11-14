@@ -12,7 +12,7 @@
 | `agent` | 普通的 root/workspace Session；承担常规工作。 |
 | `super` | 负责调度工作的 super-agent 根；权限最大。 |
 
-角色类型与读取函数位于 `packages/core/agent/src/runtime-types.ts` 和 `packages/core/agent/src/role.ts`：`AgentRole`、`agentRoleOf`。organizer 只在未来负责工具最小角色辅助函数（`packages/uitstalie/dafeiyu/src/role.ts`）。
+角色类型与读取函数位于 `packages/core/agent/src/runtime-types.ts` 和 `packages/core/agent/src/role.ts`：`AgentRole`、`agentRoleOf`。feature 包通过 `@deepseek-ai/dsh-tools`（`withMinRole` / `toolMinRole`）声明工具门槛，不需要 import dafeiyu；organizer 只负责未来的注册面过滤。
 
 ## 2. 声明来源与默认值
 
@@ -66,7 +66,7 @@
 
 ## 7. 接口预留
 
-`withMinRole(tool, role)` 与 `toolMinRole(tool)` 作为未来的声明形态存在于 `dafeiyu/src/role.ts`。本轮 organizer **不会**调用它们；没有任何工具定义携带 `minRole`，注册循环保持不变。预期的消费方签名是：
+`withMinRole(tool, role)` 与 `toolMinRole(tool)` 位于 `packages/core/tools/src/role.ts`，由 `@deepseek-ai/dsh-tools` 导出；feature 包声明门槛不需要依赖 dafeiyu。本轮 organizer **不会**调用它们；没有任何工具定义携带 `minRole`，注册循环保持不变。预期的消费方签名是：
 
 ```ts
 tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(agentRoleOf(agent), minRole)

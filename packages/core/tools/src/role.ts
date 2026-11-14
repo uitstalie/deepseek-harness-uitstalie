@@ -1,14 +1,15 @@
 /**
- * Tool-visibility declarations reserved for the role model.
+ * Tool-side role declarations.
  *
- * Role ownership lives in `@deepseek-ai/dsh-agent`; this module only defines
- * how a tool declares its future minimum role. The organizer does not filter
- * with these helpers yet.
- * @module @deepseek-ai/dsh-dafeiyu/role
+ * The role vocabulary belongs to `@deepseek-ai/dsh-agent`; this module owns the
+ * pure minimum-role comparison and the declaration helper, so a feature package
+ * can declare a tool gate by importing only the tool package. It does not
+ * register, filter, or execute anything.
+ * @module @deepseek-ai/dsh-tools/role
  */
 
 import type { AgentRole } from '@deepseek-ai/dsh-agent'
-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import type { ToolDefinition } from './contracts.ts'
 
 /** Rank one role for minimum-role comparisons. */
 const ROLE_RANK: Readonly<Record<AgentRole, number>> = Object.freeze({
@@ -23,7 +24,10 @@ export function roleAllows(role: AgentRole, minimum: AgentRole = 'subagent'): bo
 }
 
 /** Attach a minimum role to one tool definition without changing its schema or execute path. */
-export function withMinRole<const T extends ToolDefinition>(tool: T, minimum: AgentRole): T & { readonly minRole: AgentRole } {
+export function withMinRole<const T extends ToolDefinition>(
+  tool: T,
+  minimum: AgentRole,
+): T & { readonly minRole: AgentRole } {
   return { ...tool, minRole: minimum }
 }
 

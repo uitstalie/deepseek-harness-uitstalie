@@ -405,6 +405,7 @@ export class ToolsService extends Service {
 export default ToolsService
 
 export * from './contracts.ts'
+export { roleAllows, toolMinRole, withMinRole } from './role.ts'
 export * from './executor.ts'
 export * from './schema.ts'
 export * from './json-schema.ts'
