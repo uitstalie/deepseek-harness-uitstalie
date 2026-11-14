@@ -34,7 +34,7 @@ import { renderPersonalitySection, PROFILE_SECTION_NAME } from '../src/profile-p
 import { outputStylePath, renderOutputStyle } from '../src/output-style.ts'
 import { DEFAULT_OUTPUT_STYLE } from '../src/defaults.ts'
 import { applyPersonalityCandidates } from '../src/apply.ts'
-import { agentRole } from '../src/role.ts'
+import { roleOf } from '@deepseek-ai/dsh-dafeiyu'
 import { analyzePersonality } from '../src/analyze.ts'
 
 const signal = new AbortController().signal
@@ -262,13 +262,13 @@ test('role selects an independent output-style slot for ordinary and super roots
   const ordinary = await mounted.harness.create(SessionId('ordinary-role'), {}, { cwd: project })
   const superAgent = await mounted.harness.create(
     SessionId('super-role'),
-    { personalityRole: 'super' },
+    { role: 'super' },
     { cwd: project },
   )
   await until(() => mounted.ctx.tools.get('personality_analyze', ordinary) !== undefined)
   await until(() => mounted.ctx.tools.get('personality_analyze', superAgent) !== undefined)
-  expect((superAgent as unknown as { options: { personalityRole?: string } }).options.personalityRole).toBe('super')
-  expect(agentRole(superAgent)).toBe('super')
+  expect((superAgent as unknown as { options: { role?: string } }).options.role).toBe('super')
+  expect(roleOf(superAgent)).toBe('super')
   await settle()
   await untilSection(mounted.ctx, ordinary, 'personality:output-style', '- Tone: warm.')
   await untilSection(mounted.ctx, superAgent, 'personality:output-style', '- Tone: dry.')

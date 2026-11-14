@@ -30,7 +30,7 @@ kind: "package-reference"
   name: '@deepseek-ai/dsh-personality'
 ```
 
-提供者不接受配置：所有上限与路径都由设计固定。它是硬组合依赖，需要 `ctx.dafeiyu`（组织者）、`ctx.dshStore`（全局 scope）、`ctx.fs`（旧档案备份移动）与 `ctx.sessionQuery`（分析）。组织后的贡献是 `scope: 'all'`，因此子 agent 继承三个提示词段和 `personality_analyze`；只有 root agent 会拿到 `personality_apply` 和 `write_like_human`。子 agent 只读第 695 段，不能改规则；规则改动影响所有 agent，所以应在主会话里做。
+提供者不接受配置：所有上限与路径都由设计固定。角色由 session/agent options（`agentOptions.role`：`agent`、`super`、`subagent`）声明；未声明的 root 保持 `agent`，child lineage 始终解析为 `subagent`。它是硬组合依赖，需要 `ctx.dafeiyu`（组织者）、`ctx.dshStore`（全局 scope）、`ctx.fs`（旧档案备份移动）与 `ctx.sessionQuery`（分析）。组织后的贡献是 `scope: 'all'`，但 subagent 只得到 profile/writing-rules 段和 `personality_analyze`；它不收到 690，也没有 `personality_apply`/`write_like_human`。普通 root 从 `OUTPUT_STYLE.yaml` 取 690，super root 从 `SUPERAGENT_OUTPUT_STYLE.yaml` 取。
 
 所有数据都在 `<DSH_HOME>/personality/` 下，`$DSH_HOME` 默认是 `~/.dsh`：
 

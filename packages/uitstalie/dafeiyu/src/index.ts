@@ -35,6 +35,7 @@ import type {
   TurnEndInput,
 } from './types.ts'
 import DafeiyuRemote from './remote.ts'
+import { roleAllows, roleOf, toolMinRole } from './role.ts'
 
 export type {
   CapabilityConfig,
@@ -49,6 +50,8 @@ export type {
   TurnEndInput,
 } from './types.ts'
 export { default as DafeiyuRemote } from './remote.ts'
+export { roleAllows, roleOf, toolMinRole, withMinRole } from './role.ts'
+export type { AgentRole } from './role.ts'
 
 /**
  * The organizer's row schema. `capabilities` is a volatile reference: a
@@ -294,8 +297,12 @@ export class Dafeiyu extends Service {
   /** Wire one capability onto one agent; a provider failure rolls back this capability's additions. */
   private wire(registration: Registration, agent: Agent, contribution: CapabilityContribution): void {
     const disposers: (() => void)[] = []
+    const role = roleOf(agent)
     try {
-      for (const tool of contribution.tools?.(agent) ?? []) disposers.push(agent.ctx.tools.register(tool))
+      for (const tool of contribution.tools?.(agent) ?? []) {
+        if (!roleAllows(role, toolMinRole(tool))) continue
+        disposers.push(agent.ctx.tools.register(tool))
+      }
       for (const section of contribution.promptSections?.(agent) ?? []) {
         disposers.push(agent.ctx.systemPrompt.section(section))
       }

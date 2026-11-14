@@ -45,7 +45,7 @@ import {
 } from './profile-prompt.ts'
 import { OUTPUT_STYLE_ORDER_NAME, OUTPUT_STYLE_SECTION_NAME } from './output-style.ts'
 import { WRITING_RULES_ORDER_NAME, WRITING_RULES_SECTION_NAME } from './writing-rules.ts'
-import { agentRole } from './role.ts'
+import { roleOf, withMinRole } from '@deepseek-ai/dsh-dafeiyu'
 
 /** Plugin name registered with Cordis. */
 export const name = 'personality'
@@ -105,12 +105,12 @@ async function createContribution(
     ctx.logger.warn('personality: could not seed configuration files: %s', String(error))
   }
 
-  const fallback = await loadBundle(ctx, runtime.signal, 'root')
+  const fallback = await loadBundle(ctx, runtime.signal, 'agent')
   const promptTexts = new WeakMap<Agent, PromptBundle>()
   const checkedWorkspaceFiles = new Set<string>()
 
   const refresh = async (agent: Agent): Promise<void> => {
-    promptTexts.set(agent, await loadBundle(ctx, runtime.signal, agentRole(agent)))
+    promptTexts.set(agent, await loadBundle(ctx, runtime.signal, roleOf(agent)))
   }
   const analyzeTool = personalityAnalyzeTool(ctx)
   const applyTool = personalityApplyTool(ctx, refresh)
@@ -119,7 +119,7 @@ async function createContribution(
   return {
     scope: 'all',
     promptSections: agent => sectionsFor(ctx, agent, promptTexts, fallback),
-    tools: agent => agentRole(agent) === 'subagent' ? [analyzeTool] : [analyzeTool, applyTool, rulesTool],
+    tools: () => [withMinRole(analyzeTool, 'subagent'), withMinRole(applyTool, 'agent'), withMinRole(rulesTool, 'agent')],
     onAgentCreated: (agent) => {
       warnLegacyWorkspaceFile(ctx, agent, checkedWorkspaceFiles, runtime.signal)
       /* v8 ignore next 3 -- loadBundle contains every file read failure; refresh has no other throw. */
@@ -138,7 +138,7 @@ function sectionsFor(
   fallback: PromptBundle,
 ): readonly PromptSection[] {
   const bundle = (): PromptBundle => promptTexts.get(agent) ?? fallback
-  const role = agentRole(agent)
+  const role = roleOf(agent)
   return [
     {
       name: PROFILE_SECTION_NAME,
@@ -159,7 +159,7 @@ function sectionsFor(
 }
 
 /** Read all three files into section text, degrading each independently. */
-async function loadBundle(ctx: Context, signal: AbortSignal, role: 'subagent' | 'root' | 'super'): Promise<PromptBundle> {
+async function loadBundle(ctx: Context, signal: AbortSignal, role: 'subagent' | 'agent' | 'super'): Promise<PromptBundle> {
   let personality: PersonalityDocument | undefined
   let style: OutputStyleConfig = DEFAULT_OUTPUT_STYLE
   let rules: WritingRulesDocument = EMPTY_WRITING_RULES
