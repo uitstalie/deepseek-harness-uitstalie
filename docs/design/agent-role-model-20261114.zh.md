@@ -17,6 +17,7 @@
 ## 2. 声明来源与默认值
 
 - 持久来源是 Workspace 记录的 `role` 字段（`agent` 或 `super`；缺省/未知 -> `agent`）。`SessionController.createSession` 按 canonical cwd 解析并合并进 `agentOptions`；客户端请求体不能设置它。
+- 解析是精确的 canonical workspace 路径匹配（`workspaceRegistry.resolveByPath`）；cwd 位于 `super` 工作区子目录的 Session 不会继承该角色，会落回 `agent`。
 - 普通 workspace 默认 `agent`；super workspace 在 Workspace store 里一次性标记为 `super`（`<DSH_HOME>/storages/workspace.json`，表 `workspaces`，字段 `role`）。没有该字段的旧记录保持 `agent`；任何非 `super` 的值也解析为 `agent`。模型其余部分读取的仍是 `agent.options.role`。
 - 未声明的 **root** 解析为 `agent`，而不是 `super`。这是普通 workspace Session 的安全默认值：`super` 从不被隐式授予，而 root 必须保留正常的 workspace 能力才能运作。
 - 未声明的 **child** 会解析为 `subagent`，其依据是持久血缘（`origin: 'subagent'`、`parentSession` 或 `delegationDepth > 0`）。子级血缘优先于已声明的值，因此子级无法自我提升。

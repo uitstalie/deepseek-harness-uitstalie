@@ -456,7 +456,6 @@ export class ApiSessionAgentController {
     })).agent
   }
 
-  /** Resolve a role from the trusted super-workspace service; an unmatched super request is ignored. */
   /** Resolve the role from the durable Workspace record; absent/unknown means ordinary agent. */
   private async workspaceRoleFor(cwd: string): Promise<AgentRole | undefined> {
     const workspace = await this.ctx.get('workspaceRegistry')?.resolveByPath(cwd)

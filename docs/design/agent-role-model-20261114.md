@@ -17,6 +17,7 @@ The role type and reader live in `packages/core/agent/src/runtime-types.ts` and 
 ## 2. Declaration source and default
 
 - The durable source is the Workspace record's `role` field (`agent` or `super`; absent/unknown -> `agent`). `SessionController.createSession` resolves it by canonical cwd and merges it into `agentOptions`; client request bodies cannot set it.
+- Resolution is an exact canonical workspace-path match (`workspaceRegistry.resolveByPath`); a Session whose cwd is a subdirectory of a `super` workspace does not inherit that role and falls back to `agent`.
 - Ordinary workspaces default to `agent`; the super workspace is marked `super` once in the Workspace store (`<DSH_HOME>/storages/workspace.json`, table `workspaces`, field `role`). Older records without the field stay `agent`; any value other than `super` also resolves to `agent`. `agent.options.role` remains the live value the rest of the model reads.
 - An undeclared **root** resolves to `agent`, not `super`. This is the safe default for an ordinary workspace Session: `super` is never granted implicitly, while a root must retain normal workspace capability to function.
 - An undeclared **child** resolves to `subagent` from durable lineage (`origin: 'subagent'`, `parentSession`, or `delegationDepth > 0`). Child lineage wins over a declared value, so a child cannot promote itself.
