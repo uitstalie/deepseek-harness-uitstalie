@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for personality-tools-prompts-20261114.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/design/personality-tools-prompts-20261114.md
+/personality-tools-and-prompt-source-text-collection-2026-11-14:
+  en: 921b72360195ad1a
+  zh: c454fde19b96c3fd
+/personality-tools-and-prompt-source-text-collection-2026-11-14/index-table:
+  en: 89b0e295f7fb6c56
+  zh: c63258e7394d8c76
+/personality-tools-and-prompt-source-text-collection-2026-11-14/tool-source-text:
+  en: 13eeb653e8579d5e
+  zh: fa1fe200807387b5
+/personality-tools-and-prompt-source-text-collection-2026-11-14/tool-source-text/personality-analyze:
+  en: 0aa746b3509b5692
+  zh: ff3f3106261a269e
+/personality-tools-and-prompt-source-text-collection-2026-11-14/tool-source-text/personality-apply:
+  en: 49f1cc7be452f17a
+  zh: c361f2b7e2ac541e
+/personality-tools-and-prompt-source-text-collection-2026-11-14/tool-source-text/write-like-human:
+  en: d70c1bdce29a1642
+  zh: 6af8914a1b1b867c
+/personality-tools-and-prompt-source-text-collection-2026-11-14/injected-system-prompt-sections:
+  en: d668f1accd1ce3a2
+  zh: 85d4616a281972f0
+/personality-tools-and-prompt-source-text-collection-2026-11-14/injected-system-prompt-sections/section-100-personality:
+  en: 31eab05d59b1c20c
+  zh: e6cf96a6d04218e1
+/personality-tools-and-prompt-source-text-collection-2026-11-14/injected-system-prompt-sections/section-690-personality-output-style:
+  en: 1aa7f0cdbc1c806d
+  zh: 6c71975295926d0c
+/personality-tools-and-prompt-source-text-collection-2026-11-14/injected-system-prompt-sections/section-695-personality-writing-rules:
+  en: 1292b80856bcbbab
+  zh: 00be17fb8f5b8d6c
+/personality-tools-and-prompt-source-text-collection-2026-11-14/injected-system-prompt-sections/order-with-702:
+  en: 2cf5d1a507351f6f
+  zh: 17272147602e9e36
+/personality-tools-and-prompt-source-text-collection-2026-11-14/result-error-constraint-source-text:
+  en: 7935aa9a45f31c24
+  zh: 625abad2f8dae8f3
+/personality-tools-and-prompt-source-text-collection-2026-11-14/content-not-included:
+  en: 378f6c8b4dc6e82c
+  zh: 0cdbb48b5da8b5bf
+/personality-tools-and-prompt-source-text-collection-2026-11-14/confirmation:
+  en: e8a2f1be3f95e86d
+  zh: e6f7ce2617438960
