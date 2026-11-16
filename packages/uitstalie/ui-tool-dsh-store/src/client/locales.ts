@@ -1,6 +1,6 @@
 /**
- * 侧边栏 rules 按钮的文案字典（英文为键集基准，中文同键——注册时 locale
- * 服务强制双语平衡）。
+ * Copy dictionary for the sidebar rules button (English is the key-set baseline, Chinese uses the same
+ * keys — the locale service enforces a balanced bilingual pair at registration).
  * @module @deepseek-ai/dsh-client-ui-tool-dsh-store/locales
  */
 

@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
+import { useSyncExternalStore } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach } from 'vitest'
 import { MemorySection } from '../src/client/MemorySection.tsx'
@@ -33,13 +34,24 @@ function formOf() {
   }
 }
 
+/** The renderer-bound snapshot hook for this page. */
+function useSnapshot(selector: (state: ReturnType<MemorySettingsController['store']['getSnapshot']>) => ReturnType<MemorySettingsController['store']['getSnapshot']>) {
+  return useSyncExternalStore(
+    onChange => controllerForHook.store.subscribe(onChange),
+    () => selector(controllerForHook.store.getSnapshot()),
+  )
+}
+
+let controllerForHook: MemorySettingsController
+
 afterEach(cleanup)
 
 describe('MemorySection', () => {
   it('shows the accepted values and saves a staged change', async () => {
     const { form, mutate } = formOf()
     const controller = new MemorySettingsController(form)
-    render(<MemorySection controller={controller} t={key => en[key]} />)
+    controllerForHook = controller
+    render(<MemorySection controller={controller} useSnapshot={useSnapshot} t={key => en[key]} />)
 
     const input = screen.getByDisplayValue('10') as HTMLInputElement
     expect(input.value).toBe('10')
@@ -53,7 +65,8 @@ describe('MemorySection', () => {
   it('marks an invalid number and disables saving', () => {
     const { form } = formOf()
     const controller = new MemorySettingsController(form)
-    render(<MemorySection controller={controller} t={key => en[key]} />)
+    controllerForHook = controller
+    render(<MemorySection controller={controller} useSnapshot={useSnapshot} t={key => en[key]} />)
 
     fireEvent.change(screen.getByDisplayValue('4096'), { target: { value: '0' } })
 
@@ -64,7 +77,8 @@ describe('MemorySection', () => {
 
   it('renders the unavailable notice without the settings service', () => {
     const controller = new MemorySettingsController(undefined)
-    render(<MemorySection controller={controller} t={key => en[key]} />)
+    controllerForHook = controller
+    render(<MemorySection controller={controller} useSnapshot={useSnapshot} t={key => en[key]} />)
     expect(screen.getByText(en.unavailable)).toBeTruthy()
     controller.dispose()
   })

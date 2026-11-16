@@ -1,25 +1,25 @@
 /**
- * models.dev 目录设置页插件（浏览器半区）。
+ * The models.dev catalog settings page plugin (browser half).
  *
- * 挂载行为：
- * - `ctx.remote.$mount(...)` 把 models-dev 的 Host-for-Client Remote
- *   contribution 挂进本 fiber（包内自挂，不需要改原生 api/remotes 装配）；
- * - 注册 settings.models-dev 文案字典（双语）；
- * - `ctx.slots.inject('settings.section', …)` 等 shell 声明后注册目录页
- *   （declaration 未到时休眠，collapse 后摘除，再现时重挂）；
- * - 页面 store 经 inject face 传给组件；controller.load() 拉一次目录。
+ * Mount behavior:
+ * - `ctx.remote.$mount(...)` mounts the models-dev Host-for-Client Remote
+ *   contribution into this fiber (self-mounted in the package; no changes to the native api/remotes wiring needed);
+ * - registers the settings.models-dev copy dictionaries (bilingual);
+ * - `ctx.slots.inject('settings.section', …)` waits for the shell declaration, then registers the catalog page
+ *   (dormant until the declaration arrives, removed on collapse, re-mounted when it reappears);
+ * - the page store reaches the component through the inject face; controller.load() fetches the catalog once.
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/client
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-// Type-only：拉进 shell 的 SlotMap merge（'settings.section' 条目）
+// Type-only: pulls in the shell's SlotMap merge (the 'settings.section' entry)
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-// Type-only：拉进 locale 插件的 Context merge（ctx.locale）
+// Type-only: pulls in the locale plugin's Context merge (ctx.locale)
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-// Type-only：拉进 ctx.remote merge 与 ClientRemote 类型
+// Type-only: pulls in the ctx.remote merge and the ClientRemote type
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import modelsDevRemote from '@deepseek-ai/dsh-models-dev/remote'
 import llmPlusRemote from '@deepseek-ai/dsh-llm-plus/remote'
@@ -32,56 +32,58 @@ export type { ModelsDevKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** models.dev 目录设置页文案。 */
+    /** models.dev catalog settings page copy. */
     'settings.models-dev': ModelsDevKey
   }
 }
 
-/** 文案命名空间。 */
+/** Copy namespace. */
 const NS = 'settings.models-dev'
 
-/** 目录页轮询节奏，部署可按 Host 负载调整。 */
+/** Catalog page polling cadence; deployments can tune it to Host load. */
 export const Config = z.object({
   pollIntervalMs: z.number().step(1).min(1_000).default(60_000),
   promptPollDelayMs: z.number().step(1).min(50).default(800),
 })
 
-/** 解析后的目录页节奏。 */
+/** Resolved catalog page cadence. */
 export interface ModelsDevSectionConfig {
-  /** 目录后台刷新间隔。 */
+  /** Background catalog refresh interval. */
   readonly pollIntervalMs: number
-  /** OAuth 提交后轮询 attempt 的间隔。 */
+  /** Polling interval for an attempt after OAuth submission. */
   readonly promptPollDelayMs: number
 }
 
 /**
- * Required services（cordis fiber inject）。'remote.modelsDev' 不在此列——
- * 它由本 apply 自己的 $mount 提供，模块级声明会死锁（等一个还不存在、
- * 且只有自己能供的服务）；apply 内挂完再经 ctx.inject 等待它
- * （experimental/client-ui-agent-team 的同款两步模式）。
+ * Required services (cordis fiber inject). 'remote.modelsDev' is not listed here —
+ * it is provided by this apply's own $mount, and a module-level declaration would deadlock
+ * (waiting for a service that does not exist yet and only this fiber can provide); after mounting
+ * inside apply, it is awaited through ctx.inject (the same two-step pattern as
+ * experimental/client-ui-agent-team).
  */
 export const inject = ['slots', 'locale', 'remote', 'remote.settings', 'remote.credentials']
 
 /**
- * 挂载目录设置页；Remote 与轮询清理归注册效果所有。
- * @returns settle 后页面已可注册。
+ * Mount the catalog settings page; the Remote and polling cleanup belong to the registration effect.
+ * @returns the page is registerable once settled.
  */
 export async function apply(
   ctx: ClientContext,
   config: ModelsDevSectionConfig = { pollIntervalMs: 60_000, promptPollDelayMs: 800 },
 ): Promise<void> {
-  // 生成物由谁挂载取决于装配：Web 外壳不自动挂本包，按行装配的客户端测试运行时
-  // 已按行挂好。缺了才自己挂——重复挂载会被 Client Remote 网关按命名空间冲突拒绝
-  // （`client api: namespace "modelsDev" conflicts with an existing Remote namespace`）。
+  // Who mounts the generated contribution depends on the assembly: the Web shell does not mount this
+  // package automatically, while client test runtimes assembled per row have already mounted it. Mount it
+  // only when missing — duplicate mounts are rejected by the Client Remote gateway as a namespace conflict
+  // (`client api: namespace "modelsDev" conflicts with an existing Remote namespace`).
   const disposeModelsDev = ctx.get('remote.modelsDev') === undefined ? await ctx.remote.$mount(modelsDevRemote) : undefined
   const disposeLlmPlus = ctx.get('remote.llmPlusAuth') === undefined ? await ctx.remote.$mount(llmPlusRemote) : undefined
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-models-dev: copy dictionaries')
 
   const t = ctx.locale.bind(NS) as ModelsDevSectionInjected['t']
-  /** 页面控制器（内层 inject 作用域创建，disposer 需要它的轮询开关）。 */
+  /** Page controller (created in the inner inject scope; the disposer needs its polling switch). */
   let controller: ModelsDevStore | undefined
-  // $mount 之后 remote.* 才存在：内层 inject 等待它并把全部用到的
-  // 服务重新声明进作用域（内层作用域不继承外层的可访问集）
+  // remote.* only exists after $mount: the inner inject waits for it and re-declares every used
+  // service into its scope (the inner scope does not inherit the outer accessible set)
   ctx.inject(['slots', 'remote.modelsDev', 'remote.llmPlusAuth', 'remote.settings', 'remote.credentials'], (scoped) => {
     const wire: ModelsDevWire = {
       modelsDev: scoped.remote.modelsDev,
@@ -91,13 +93,14 @@ export async function apply(
     }
     const controllerInstance = new ModelsDevStore(wire, config)
     controller = controllerInstance
-    /** 首次打开本页才取数：装配态（如客户端测试运行时）不该为一个没人看的页面读 Host。 */
+    /** Fetch only when this page is first opened: an assembly state (such as a client test runtime) must not read
+     * the Host for a page nobody views. */
     let activated = false
     const activate = (): void => {
       if (activated) return
       activated = true
-      // 目录拉取是页面级一次性动作（失败进 error 态，页面可重试）；
-      // 之后 60s 后台轮询保持列表新鲜（缓存与 TTL 在 host 侧）
+      // The catalog fetch is a one-time page-level action (failure enters the error state; the page can retry);
+      // the 60s background polling afterwards keeps the list fresh (cache and TTL live on the host side)
       void controllerInstance.load()
       void controllerInstance.loadOAuthRoutes()
       void controllerInstance.loadMyRoutes()
@@ -113,7 +116,7 @@ export async function apply(
     scoped.slots.inject('settings.section', () => scoped.slots.register({
       name: 'settings.section',
       id: 'models-dev',
-      // 12 落在 models(10) 与 plugins(15) 之间：本页扩展的是 Models 设置区
+      // 12 sits between models(10) and plugins(15): this page extends the Models settings area
       order: 12,
       label: () => t('nav'),
       inject: injected,

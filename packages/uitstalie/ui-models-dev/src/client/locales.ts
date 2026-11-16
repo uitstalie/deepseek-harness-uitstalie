@@ -1,6 +1,6 @@
 /**
- * models.dev 设置页的文案字典（英文为键集基准，中文同键——
- * 注册时 locale 服务强制双语平衡）。
+ * Copy dictionary for the models.dev settings page (English is the key-set baseline, Chinese uses the same
+ * keys — the locale service enforces a balanced bilingual pair at registration).
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/locales
  */
@@ -123,11 +123,11 @@ export const zh: { [Key in keyof typeof en]: string } = {
 }
 
 /**
- * {param} 插值（字典文案的占位符替换；locale 的 t 只做查表，
- * 动态片段由调用方经本函数填充）。
- * @param text - 含 `{name}` 占位符的字典文案。
- * @param params - 占位符名到替换值的映射。
- * @returns 替换后的文案。
+ * {param} interpolation (placeholder substitution for dictionary copy; locale's t only does table
+ * lookup, and dynamic fragments are filled by the caller through this function).
+ * @param text - dictionary copy containing `{name}` placeholders.
+ * @param params - placeholder name to replacement value.
+ * @returns the copy after substitution.
  */
 export function fill(text: string, params: Record<string, string>): string {
   let out = text

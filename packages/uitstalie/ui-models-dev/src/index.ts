@@ -1,6 +1,6 @@
 /**
  * Host loader entry for the browser implementation exported from `./client`.
- * 本包的全部行为都在浏览器半区（settings.section 页面），Node 半区无行为。
+ * All behavior in this package lives in the browser half (the settings.section page); the Node half has no behavior.
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev
  */

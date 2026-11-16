@@ -1,7 +1,7 @@
-/* models.dev 目录设置页样式：颜色一律走 --dsw-alias-* 语义 token（裸字面色会在
- * 暗色主题下保持亮色）；半径走 --dsw-radius-*，字号走 --dsw-font-*-简写或与原生
- * section 相同的字面值。section 的家规见 ui-settings-models 的 ModelsSection：
- * 720px 宽、16/24 主标题 + 14/22 说明，内容靠面板自身的滚动列。 */
+/* models.dev catalog settings page styles: colors always use --dsw-alias-* semantic tokens (a bare literal
+ * color stays bright in dark themes); radii use --dsw-radius-*, font sizes use the --dsw-font-* shorthands or
+ * the same literal values as the native section. Section house rules follow ui-settings-models' ModelsSection:
+ * 720px wide, 16/24 title + 14/22 description, content relies on the panel's own scrolling column. */
 
 .section {
   display: flex;
@@ -26,7 +26,7 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-/* 外层不做页内滚动：设置面板的内容列（SettingsRoot 的 .options）已经在滚。 */
+/* No in-page scrolling on the outer element: the settings panel's content column (SettingsRoot's .options) already scrolls. */
 .list {
   display: flex;
   flex-direction: column;
@@ -150,7 +150,7 @@
   color: var(--dsw-alias-state-success-primary);
 }
 
-/* ---- OAuth 登录区 ---- */
+/* ---- OAuth sign-in area ---- */
 
 .oauthPanel {
   display: flex;

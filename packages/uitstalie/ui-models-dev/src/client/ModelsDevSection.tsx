@@ -1,8 +1,8 @@
 /**
- * models.dev 目录设置页（settings.section 的注册组件）。
- * 结构：筛选框 → 提供商列表（ProviderCard）→ 提交栏（选中数 + 提交 + 回执）。
- * 组件是纯展示的：一切数据经 inject face（controller/useSnapshot/t）到达，
- * 一切变更经 controller 的动作派发出去。
+ * The models.dev catalog settings page (the component registered for settings.section).
+ * Structure: filter box → provider list (ProviderCard) → submit bar (selected count + submit + receipt).
+ * The component is purely presentational: all data arrives via the inject face (controller/useSnapshot/t),
+ * and all changes are dispatched through controller actions.
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/ModelsDevSection
  */
@@ -18,24 +18,24 @@ import { ProviderCard } from './ProviderCard.tsx'
 import type { ModelsDevState, ModelsDevStore, SubmitFailure } from './store.ts'
 import styles from './ModelsDevSection.module.css'
 
-/** 本页经 slots inject 注入的依赖面。 */
+/** The dependency face injected into this page via slots inject. */
 export interface ModelsDevSectionInjected {
-  /** 页面控制器（加载/勾选/草稿/提交动作）。 */
+  /** Page controller (load/select/draft/submit actions). */
   controller: ModelsDevStore
-  /** 首次打开本页时启动取数；装配态下没人打开页面，就不读 Host。 */
+  /** Start fetching when this page is first opened; under an assembly state nobody opens the page, so the Host is not read. */
   activate: () => void
   hooks: {
-    /** 页面快照（renderer 绑为 useSnapshot）。 */
+    /** Page snapshot (the renderer binds it as useSnapshot). */
     snapshot: SnapshotStore<ModelsDevState>
   }
-  /** 本页文案（settings.models-dev 命名空间）。 */
+  /** Copy for this page (the settings.models-dev namespace). */
   t: (key: ModelsDevKey) => string
 }
 
-/** 组件 props：inject face 摊平（测试可部分给值）。 */
+/** Component props: the inject face flattened (tests may provide only some values). */
 export type ModelsDevSectionProps = Partial<InjectFace<ModelsDevSectionInjected>>
 
-/** 提交失败的文案映射（store 的结构化失败 → 字典文案）。 */
+/** Copy mapping for submit failures (the store's structured failure → dictionary copy). */
 function failureText(failure: SubmitFailure, t: (key: ModelsDevKey) => string): string {
   switch (failure.kind) {
     case 'protocol': return fill(t('protocolRequired'), { provider: failure.provider })
@@ -45,11 +45,11 @@ function failureText(failure: SubmitFailure, t: (key: ModelsDevKey) => string): 
   }
 }
 
-/** 页面根组件。 */
+/** Page root component. */
 export function ModelsDevSection(props: ModelsDevSectionProps) {
   const { controller, useSnapshot, t, activate } = props
   useEffect(() => { activate?.() }, [activate])
-  // 装配保障下三者必在；Partial 是测试直给 props 的零机关路径
+  // All three are guaranteed under the assembly; Partial is the no-magic path for tests that pass props directly
   if (controller === undefined || useSnapshot === undefined || t === undefined) return null
   const state = useSnapshot(snapshot => snapshot)
 

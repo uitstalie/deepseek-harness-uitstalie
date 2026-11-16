@@ -1,11 +1,11 @@
 /**
- * models.dev 设置页的页面 store：目录快照 + 每提供商草稿 + 提交状态。
- * Host 是唯一事实来源——目录经 modelsDev Remote 拉取，成品路由经
- * settings.mutate 写 llm-plus 命名空间（写完由 llm-plus 的热更新接线接管），
- * 一次性密钥经 credentials.set 写凭据服务（本页不持久化密钥）。
+ * Page store for the models.dev settings page: catalog snapshot + per-provider drafts + submit state.
+ * The Host is the single source of truth — the catalog is fetched through the modelsDev Remote, finished routes
+ * are written into the llm-plus namespace via settings.mutate (llm-plus's hot-update wiring takes over after the write),
+ * and one-time secrets are written to the credentials service via credentials.set (this page never persists secrets).
  *
- * 文案纪律：store 只产出结构化失败数据（SubmitFailure），文案由组件层
- * 经 locales 字典映射。
+ * Copy discipline: the store only produces structured failure data (SubmitFailure); copy is mapped by the
+ * component layer through the locales dictionary.
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/store
  */
@@ -18,71 +18,71 @@ import type { RouteConfig } from '@deepseek-ai/dsh-llm-plus'
 import { defaultDraft, draftError, materializeRoute, type ProviderDraft } from './draft.ts'
 import { draftToRoute, routeDraftError, routeToDraft, type RouteDraft } from './route-edit.ts'
 
-/** 本页用到的 wire 方法（窄化面）。 */
+/** Wire methods used by this page (narrowed surface). */
 export interface ModelsDevWire {
   modelsDev: Pick<ClientRemote['modelsDev'], 'listCatalogProviders' | 'listCatalogModels'>
   settings: Pick<ClientRemote['settings'], 'mutate' | 'describe'>
   credentials: Pick<ClientRemote['credentials'], 'set'>
-  /** llm-plus 的 OAuth Remote（登录流触发/轮询/回答/取消）。 */
+  /** llm-plus OAuth Remote (trigger/poll/answer/cancel sign-in flows). */
   llmPlusAuth: Pick<ClientRemote['llmPlusAuth'], 'listOAuthRoutes' | 'beginFlow' | 'describeAttempt' | 'submitPromptAnswer' | 'cancelAttempt'>
 }
 
-/** 提交失败的结构化形态（组件映射为字典文案）。 */
+/** Structured submit failure shape (the component maps it to dictionary copy). */
 export type SubmitFailure =
   | { readonly kind: 'protocol'; readonly provider: string }
   | { readonly kind: 'invalidJson'; readonly field: 'headers' | 'body'; readonly provider: string }
   | { readonly kind: 'conflict' }
   | { readonly kind: 'message'; readonly message: string }
 
-/** OAuth 登录区的状态（纯数据）。 */
+/** State of the OAuth sign-in area (pure data). */
 export interface OAuthSectionState {
-  /** 清单加载状态。 */
+  /** Manifest load status. */
   status: 'idle' | 'loading' | 'ready' | 'error'
-  /** 带 OAuth 能力的路由（含凭据在位状态）。 */
+  /** Routes with OAuth capability (including whether credentials are in place). */
   routes: readonly OAuthRouteInfo[]
-  /** routeId → 最新一次尝试的视图（轮询桥的结果）。 */
+  /** routeId → the latest attempt view (the polling bridge's result). */
   attempts: Record<string, AttemptView>
-  /** promptId → 文本输入框草稿（回答提交前的载体）。 */
+  /** promptId → text input draft (the carrier before the answer is submitted). */
   answerDrafts: Record<string, string>
 }
 
-/** "我的路由"管理区状态（纯数据）。 */
+/** State of the "my routes" management area (pure data). */
 export interface MyRoutesState {
-  /** 当前路由表（llm-plus 命名空间的生效值；空 = 未加载或无路由）。 */
+  /** Current route table (the effective value of the llm-plus namespace; empty = not loaded or no routes). */
   routes: Record<string, RouteConfig>
-  /** 正在编辑的路由（草稿载体）。 */
+  /** The route being edited (draft carrier). */
   editing: { routeId: string; draft: RouteDraft } | undefined
-  /** 编辑/删除失败的 host 消息。 */
+  /** Host message for an edit/delete failure. */
   failure: string | null
 }
 
-/** 页面快照（纯数据）。 */
+/** Page snapshot (pure data). */
 export interface ModelsDevState {
-  /** 目录加载状态。 */
+  /** Catalog load status. */
   status: 'idle' | 'loading' | 'ready' | 'error'
-  /** 加载失败的 host 消息。 */
+  /** Host message for a load failure. */
   error: string | null
-  /** 目录提供商（已按 id 排序）。 */
+  /** Catalog providers (sorted by id). */
   providers: readonly CatalogProviderSummary[]
-  /** 筛选串（小写匹配 id/name/npm）。 */
+  /** Filter string (lowercase match against id/name/npm). */
   filter: string
-  /** 勾选的提供商 id → 草稿。 */
+  /** Checked provider id → draft. */
   drafts: Record<string, ProviderDraft>
-  /** 模型子集数据（'loading' = 拉取中；缺席 = 未拉取）。 */
+  /** Model subset data ('loading' = fetching; absent = not fetched). */
   models: Record<string, readonly CatalogModelSummary[] | 'loading'>
-  /** 提交进行中。 */
+  /** Submit in progress. */
   submitting: boolean
-  /** 最近一次提交失败。 */
+  /** The most recent submit failure. */
   submitError: SubmitFailure | null
-  /** 最近一次提交写成的路由 id 集（成功回执）。 */
+  /** Route ids written by the most recent submit (success receipt). */
   addedRoutes: readonly string[]
-  /** OAuth 登录区。 */
+  /** OAuth sign-in area. */
   oauth: OAuthSectionState
-  /** "我的路由"管理区。 */
+  /** "My routes" management area. */
   myRoutes: MyRoutesState
 }
 
-/** 初始快照。 */
+/** Initial snapshot. */
 function initialState(): ModelsDevState {
   return {
     status: 'idle',
@@ -99,14 +99,14 @@ function initialState(): ModelsDevState {
   }
 }
 
-/** 去掉一个键的 Record 副本（no-dynamic-delete：动态键删除用重建代替）。 */
+/** Record copy with one key removed (no-dynamic-delete: dynamic key deletion is done by rebuilding). */
 function omitKeys<T>(record: Record<string, T>, keys: ReadonlySet<string>): Record<string, T> {
   return Object.fromEntries(Object.entries(record).filter(([candidate]) => !keys.has(candidate)))
 }
 
-/** 页面控制器（register 的 inject 持有；hooks 舱位把 store 绑成 useSnapshot）。 */
+/** Page controller (held by register's inject; the hooks slot binds the store as useSnapshot). */
 export class ModelsDevStore {
-  /** 页面快照源（renderer 绑为 useSnapshot）。 */
+  /** Page snapshot source (the renderer binds it as useSnapshot). */
   readonly store: SnapshotStore<ModelsDevState> = createSnapshotStore(initialState())
 
   constructor(
@@ -115,11 +115,13 @@ export class ModelsDevStore {
   ) {}
 
   /**
-   * 拉取目录提供商列表（挂载时一次 + 失败重试共用此入口；后台刷新不打断现状）。
-   * @param background - 后台刷新时不进入 loading 态，也不覆盖已有错误。
+   * Fetch the catalog provider list (shared entry point for the mount-time load and failure retries;
+   * background refresh does not interrupt the current state).
+   * @param background - background refreshes neither enter the loading state nor overwrite an existing error.
    */
   async load(background = false): Promise<void> {
-    // 后台轮询时不清空现有列表（避免闪烁）；只有首次/显式重试才进 loading 态
+    // Do not clear the existing list during background polling (avoids flicker); only the first load or an
+    // explicit retry enters the loading state
     if (!background) {
       this.store.update((draft) => {
         draft.status = 'loading'
@@ -139,8 +141,8 @@ export class ModelsDevStore {
         }
       })
     } catch (error) {
-      // RemoteResult 契约：业务失败折叠进 {ok:false}；能 reject 的只有装配
-      // 故障（方法未挂载/连接未就绪）——显式加载进 error 态，后台轮询只记日志
+      // RemoteResult contract: business failures fold into {ok:false}; only assembly faults
+      // (method not mounted/connection not ready) can reject — explicit loads enter the error state, background polling only logs
       if (!background) {
         const message = error instanceof Error ? error.message : String(error)
         console.error('ui-models-dev: catalog load rejected', error)
@@ -154,7 +156,7 @@ export class ModelsDevStore {
     }
   }
 
-  /** 轮询循环的存活开关（fiber 摘除时停）。 */
+  /** Liveness switch for the polling loop (stopped when the fiber is removed). */
   private polling = false
   /** Timers owned by this controller, including OAuth polling and catalog refresh. */
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
@@ -189,9 +191,10 @@ export class ModelsDevStore {
   }
 
   /**
-   * 目录刷新循环：60s 轮一次（目录 TTL 是小时级，摘要调用极轻；gateway 的
-   * 转发事件通道是应用独占的，models-dev/updated 推不出来，轮询是诚实的
-   * 通道）。host 侧 Remote 等到首次加载落地才答，启动竞速不在页面。
+   * Catalog refresh loop: one round every 60s (the catalog TTL is on the order of hours and summary calls are
+   * very cheap; the gateway's forwarding event channel is application-exclusive, so models-dev/updated cannot be
+   * pushed and polling is the honest channel). The host-side Remote answers only after the first load lands, so
+   * the startup race is not on the page.
    */
   startCatalogPolling(): void {
     if (this.polling) return
@@ -215,14 +218,14 @@ export class ModelsDevStore {
     return this.polling
   }
 
-  /** 停止轮询循环（页面 fiber 摘除时调用）。 */
+  /** Stop the polling loop (called when the page fiber is removed). */
   stopCatalogPolling(): void {
     this.polling = false
   }
 
   /**
-   * 更新筛选串。
-   * @param filter - 新的筛选串（小写匹配 id/name/npm）。
+   * Update the filter string.
+   * @param filter - the new filter string (lowercase match against id/name/npm).
    */
   setFilter(filter: string): void {
     this.store.update((draft) => {
@@ -231,9 +234,9 @@ export class ModelsDevStore {
   }
 
   /**
-   * 勾选/取消一个提供商；勾选时以目录默认值生成草稿。
-   * @param provider - 目录里的提供商摘要。
-   * @param checked - 勾选为 true，取消为 false。
+   * Check/uncheck a provider; checking builds a draft from the catalog defaults.
+   * @param provider - the provider summary from the catalog.
+   * @param checked - true to check, false to uncheck.
    */
   toggleProvider(provider: CatalogProviderSummary, checked: boolean): void {
     this.store.update((draft) => {
@@ -243,9 +246,9 @@ export class ModelsDevStore {
   }
 
   /**
-   * 更新一个草稿的局部字段（组件按字段名派发）。
-   * @param id - 目录 provider id。
-   * @param patch - 要覆盖的草稿字段。
+   * Update individual fields of one draft (the component dispatches by field name).
+   * @param id - catalog provider id.
+   * @param patch - draft fields to overwrite.
    */
   updateDraft(id: string, patch: Partial<ProviderDraft>): void {
     this.store.update((draft) => {
@@ -255,8 +258,8 @@ export class ModelsDevStore {
   }
 
   /**
-   * 惰性拉取一个提供商的模型列表（subset 模式与模型数展示用）。
-   * @param id - 目录 provider id。
+   * Lazily fetch one provider's model list (used by subset mode and the model count display).
+   * @param id - catalog provider id.
    */
   async ensureModels(id: string): Promise<void> {
     if (this.store.getSnapshot().models[id] !== undefined) return
@@ -265,9 +268,9 @@ export class ModelsDevStore {
     })
     const result = await this.wire.modelsDev.listCatalogModels(id)
     this.store.update((draft) => {
-      // 失败按空表处理（模型数是 advisory 展示；目录缺席不阻塞物化）
+      // Treat a failure as an empty table (the model count is advisory; a missing catalog does not block materialization)
       draft.models[id] = result.ok ? result.value : []
-      // 首次进入 subset 前的默认全选，等数据就位再铺
+      // Default select-all before first entering subset; fill once the data is in place
       const current = draft.drafts[id]
       if (current?.modelMode === 'subset' && current.modelIds.length === 0 && result.ok) {
         draft.drafts[id] = { ...current, modelIds: result.value.map(model => model.id) }
@@ -276,9 +279,9 @@ export class ModelsDevStore {
   }
 
   /**
-   * 切换模型子集模式；进入 subset 时默认全选（数据未到则待 ensureModels 铺）。
-   * @param id - 目录 provider id。
-   * @param mode - 目标子集模式。
+   * Switch the model subset mode; entering subset selects all by default (if the data has not arrived, ensureModels fills it).
+   * @param id - catalog provider id.
+   * @param mode - target subset mode.
    */
   setModelMode(id: string, mode: ProviderDraft['modelMode']): void {
     this.store.update((draft) => {
@@ -292,10 +295,10 @@ export class ModelsDevStore {
   }
 
   /**
-   * subset 模式下勾选一个模型。
-   * @param id - 目录 provider id。
-   * @param modelId - 目录里的模型 id。
-   * @param checked - 勾选为 true，取消为 false。
+   * Check one model in subset mode.
+   * @param id - catalog provider id.
+   * @param modelId - model id in the catalog.
+   * @param checked - true to check, false to uncheck.
    */
   toggleModel(id: string, modelId: string, checked: boolean): void {
     this.store.update((draft) => {
@@ -311,10 +314,10 @@ export class ModelsDevStore {
   }
 
   // -------------------------------------------------------------------------
-  // OAuth 登录区（轮询桥的消费端：running 期间 800ms 轮一次 describeAttempt）
+  // OAuth sign-in area (consumer side of the polling bridge: one describeAttempt every 800ms while running)
   // -------------------------------------------------------------------------
 
-  /** 加载带 OAuth 能力的路由清单（挂载时 + 每次尝试终结后刷新 configured）。 */
+  /** Load the route list with OAuth capability (at mount + refresh configured after each attempt ends). */
   async loadOAuthRoutes(): Promise<void> {
     this.store.update((draft) => {
       draft.oauth.status = 'loading'
@@ -334,8 +337,8 @@ export class ModelsDevStore {
   }
 
   /**
-   * 发起一次登录尝试并驱动轮询直到终态。
-   * @param routeId - 要登录的路由 id。
+   * Start one sign-in attempt and drive polling until a terminal state.
+   * @param routeId - the route id to sign in to.
    */
   async beginLogin(routeId: string): Promise<void> {
     const result = await this.wire.llmPlusAuth.beginFlow(routeId)
@@ -344,7 +347,7 @@ export class ModelsDevStore {
       return
     }
     const attemptId = result.value.attemptId
-    // 轮询桥：直到终态；终结后刷新路由清单（configured 可能翻转为 true）
+    // Polling bridge: until a terminal state; refresh the route list afterwards (configured may flip to true)
     let view: AttemptView | undefined
     do {
       if (this.lifetime.signal.aborted) return
@@ -363,9 +366,9 @@ export class ModelsDevStore {
   }
 
   /**
-   * 回答待答 prompt（文本框草稿随回答清除）。
-   * @param routeId - 该尝试所属的路由 id。
-   * @param promptId - 待答 prompt 的 id。
+   * Answer a pending prompt (the text box draft is cleared with the answer).
+   * @param routeId - the route id this attempt belongs to.
+   * @param promptId - the id of the pending prompt.
    */
   async answerPrompt(routeId: string, promptId: string): Promise<void> {
     const attemptId = this.store.getSnapshot().oauth.attempts[routeId]?.id ?? ''
@@ -379,9 +382,9 @@ export class ModelsDevStore {
   }
 
   /**
-   * 更新 prompt 回答的输入框草稿。
-   * @param promptId - 待答 prompt 的 id。
-   * @param value - 输入框的当前文本。
+   * Update the input box draft for a prompt answer.
+   * @param promptId - the id of the pending prompt.
+   * @param value - the current text in the input box.
    */
   setAnswerDraft(promptId: string, value: string): void {
     this.store.update((draft) => {
@@ -390,8 +393,8 @@ export class ModelsDevStore {
   }
 
   /**
-   * 取消一次在途尝试。
-   * @param routeId - 该尝试所属的路由 id。
+   * Cancel an in-flight attempt.
+   * @param routeId - the route id this attempt belongs to.
    */
   async cancelLogin(routeId: string): Promise<void> {
     const attemptId = this.store.getSnapshot().oauth.attempts[routeId]?.id
@@ -400,14 +403,14 @@ export class ModelsDevStore {
   }
 
   // -------------------------------------------------------------------------
-  // "我的路由"管理区（读 settings 的 llm-plus 命名空间生效值，写经 mutate 路径操作）
+  // "My routes" management area (reads the effective llm-plus namespace of settings, writes through mutate path ops)
   // -------------------------------------------------------------------------
 
-  /** 读当前路由表（挂载时 + 每次写操作后）。 */
+  /** Read the current route table (at mount + after every write). */
   async loadMyRoutes(): Promise<void> {
     const described = await this.wire.settings.describe()
     if (!described.ok) return
-    // describe 的命名空间视图：找 llm-plus 的生效值（base←user 已合并）
+    // describe's namespace view: find the effective llm-plus value (base←user already merged)
     const view = described.value.namespaces.find((ns: { ns: string }) => ns.ns === 'llm-plus')
     const value = (view as { value?: { routes?: Record<string, RouteConfig> } } | undefined)?.value
     this.store.update((draft) => {
@@ -416,8 +419,8 @@ export class ModelsDevStore {
   }
 
   /**
-   * 进入一条路由的编辑（草稿从当前配置生成）。
-   * @param routeId - 要编辑的路由 id。
+   * Enter editing for one route (the draft is built from the current configuration).
+   * @param routeId - the route id to edit.
    */
   startEditRoute(routeId: string): void {
     const route = this.store.getSnapshot().myRoutes.routes[routeId]
@@ -429,8 +432,8 @@ export class ModelsDevStore {
   }
 
   /**
-   * 更新编辑草稿的局部字段。
-   * @param patch - 要覆盖的草稿字段。
+   * Update individual fields of the edit draft.
+   * @param patch - draft fields to overwrite.
    */
   patchEditDraft(patch: Partial<RouteDraft>): void {
     this.store.update((draft) => {
@@ -439,14 +442,15 @@ export class ModelsDevStore {
     })
   }
 
-  /** 取消编辑。 */
+  /** Cancel editing. */
   cancelEditRoute(): void {
     this.store.update((draft) => {
       draft.myRoutes.editing = undefined
     })
   }
 
-  /** 保存编辑：物化草稿 + 原路由的非编辑面字段原样带回，mutate set 写回。 */
+  /** Save the edit: materialize the draft + carry non-edit-surface fields back from the original route as-is,
+   * write back through mutate set. */
   async saveEditRoute(): Promise<void> {
     const editing = this.store.getSnapshot().myRoutes.editing
     if (editing === undefined) return
@@ -458,7 +462,7 @@ export class ModelsDevStore {
       return
     }
     const original = this.store.getSnapshot().myRoutes.routes[editing.routeId]
-    // 非编辑面字段（modelsDevProvider/models/retryPolicy/requestImagePolicy）原样带回
+    // Non-edit-surface fields (modelsDevProvider/models/retryPolicy/requestImagePolicy) carried back as-is
     const next: Record<string, unknown> = {
       ...(original?.modelsDevProvider === undefined ? {} : { modelsDevProvider: original.modelsDevProvider }),
       ...(original?.models === undefined || original.models.length === 0 ? {} : { models: original.models }),
@@ -479,8 +483,8 @@ export class ModelsDevStore {
   }
 
   /**
-   * 删除一条路由（mutate unset）。
-   * @param routeId - 要删除的路由 id。
+   * Delete a route (mutate unset).
+   * @param routeId - the route id to delete.
    */
   async deleteRoute(routeId: string): Promise<void> {
     const response = await this.wire.settings.mutate('llm-plus', [{ op: 'unset', path: ['routes', routeId] }], undefined)
@@ -491,8 +495,9 @@ export class ModelsDevStore {
   }
 
   /**
-   * 物化提交：全部草稿先过本地校验（一个非法整体不写），一次 mutate 写入
-   * 全部路由，再逐个写入一次性密钥。成功清除已添加的草稿并记录回执。
+   * Materialize submit: every draft passes local validation first (one invalid draft blocks the whole write),
+   * all routes are written in one mutate, then one-time secrets are written one by one. On success, clear the
+   * added drafts and record the receipt.
    */
   async submit(): Promise<void> {
     const snapshot = this.store.getSnapshot()
@@ -510,7 +515,7 @@ export class ModelsDevStore {
         draft.submitError = failure
       })
     }
-    // 本地校验：协议必选、JSON 字段必须合法（一个非法整体不写）
+    // Local validation: protocol is required and JSON fields must be valid (one invalid field blocks the whole write)
     for (const [id, draft] of entries) {
       const error = draftError(draft)
       if (error === 'protocol') {
@@ -530,14 +535,14 @@ export class ModelsDevStore {
         value: materializeRoute(id, draft, loaded === undefined || loaded === 'loading' ? [] : loaded),
       }
     })
-    // expectedRevision 不传（本页不跟踪 llm-plus 命名空间的修订号；
-    // 冲突场景由 host 的 settings/conflict 兜住语义，v1 不做乐观锁）
+    // expectedRevision is not passed (this page does not track the llm-plus namespace revision;
+    // the host's settings/conflict covers conflict semantics, and v1 does not implement optimistic locking)
     const response = await this.wire.settings.mutate('llm-plus', ops, undefined)
     if (!response.ok) {
       fail(response.error.code === 'settings/conflict' ? { kind: 'conflict' } : { kind: 'message', message: response.error.message })
       return
     }
-    // 一次性密钥：逐个写凭据服务（密钥不经过 settings，也不在本页持久化）
+    // One-time secrets: write to the credentials service one by one (secrets never go through settings and are not persisted on this page)
     for (const [, draft] of entries) {
       const ref = draft.apiKeyRef.trim()
       const key = draft.apiKey.trim()
@@ -552,10 +557,10 @@ export class ModelsDevStore {
     this.store.update((draft) => {
       draft.submitting = false
       draft.addedRoutes = added
-      // 已提交的草稿整体清除（entries 是提交前的快照，含改过的 routeId）
+      // Clear all submitted drafts (entries is the pre-submit snapshot, including any changed routeId)
       draft.drafts = omitKeys(draft.drafts, new Set(entries.map(([id]) => id)))
     })
-    // 物化成的路由进"我的路由"管理区
+    // The materialized routes enter the "my routes" management area
     await this.loadMyRoutes()
   }
 }

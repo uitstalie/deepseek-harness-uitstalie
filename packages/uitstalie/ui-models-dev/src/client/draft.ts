@@ -1,9 +1,9 @@
 /**
- * models.dev 设置页的草稿数据形状与物化纯函数。
+ * Draft data shapes and pure materialization functions for the models.dev settings page.
  *
- * 数据/逻辑分离：本文件只放有名字的纯数据接口和纯函数——
- * ProviderDraft（用户在页面上编辑的一切）→ materializeRoutes（写成
- * llm-plus 命名空间 routes 的成品配置）。组件与 store 只读写这些数据。
+ * Data/logic separation: this file holds only named pure data interfaces and pure functions —
+ * ProviderDraft (everything the user edits on the page) → materializeRoutes (produces the
+ * finished configuration written to the llm-plus namespace routes). Components and the store only read and write this data.
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/draft
  */
@@ -13,9 +13,9 @@ import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { OAuthFlowId, ProtocolName } from '@deepseek-ai/dsh-llm-plus'
 
 /**
- * 目录 provider id → llm-plus OAuth flow 的映射（显式数据表）。
- * 只有"目录 id 与 flow id 指向同一订阅产品"的才进表——openai 不映射
- * （models.dev 的 openai 是 API 平台，openai-codex 是 ChatGPT 订阅，两家产品）。
+ * Catalog provider id → llm-plus OAuth flow mapping (an explicit data table).
+ * Only entries where the catalog id and the flow id point at the same subscription product belong here — openai is
+ * not mapped (models.dev's openai is the API platform, openai-codex is the ChatGPT subscription; two products).
  */
 export const OAUTH_BY_CATALOG_ID: Readonly<Record<string, OAuthFlowId>> = {
   anthropic: 'anthropic',
@@ -25,65 +25,65 @@ export const OAUTH_BY_CATALOG_ID: Readonly<Record<string, OAuthFlowId>> = {
   xai: 'xai',
 }
 
-/** 模型子集模式：all = 路由跟随目录（不写 models 手工表）；subset = 物化勾选子集。 */
+/** Model subset mode: all = routes follow the catalog (no manual models table); subset = materialize the checked subset. */
 export type ModelMode = 'all' | 'subset'
 
 /**
- * 一个提供商的物化草稿（页面编辑状态的完整载体）。
- * 字符串字段允许为空——空在物化时按"缺席"处理（schema 缺省值接管）。
+ * The materialized draft for one provider (the complete carrier of the page editing state).
+ * String fields may be empty — an empty value is treated as "absent" during materialization (schema defaults take over).
  */
 export interface ProviderDraft {
-  /** 路由 id（GenerateOptions.provider 的值）；默认 provider id 净化。 */
+  /** Route id (the value of GenerateOptions.provider); sanitized from the provider id by default. */
   routeId: string
-  /** 展示名；默认目录 name ?? id。 */
+  /** Display name; defaults to the catalog name ?? id. */
   displayName: string
-  /** wire 协议；'' = 未选（目录方言无法映射时由用户手选）。 */
+  /** Wire protocol; '' = not selected (the user picks it manually when the catalog dialect cannot be mapped). */
   protocol: ProtocolName | ''
-  /** baseURL；默认目录 api 字段；空 = 用协议默认端点。 */
+  /** baseURL; defaults to the catalog api field; empty = use the protocol default endpoint. */
   baseURL: string
-  /** 凭据引用名；默认目录 env[0]；空 = 免认证路由。 */
+  /** Credential reference name; defaults to the catalog env[0]; empty = an unauthenticated route. */
   apiKeyRef: string
-  /** OAuth 登录流 id；默认目录映射表（OAUTH_BY_CATALOG_ID），'' = 不走 OAuth。 */
+  /** OAuth login flow id; defaults from the catalog mapping table (OAUTH_BY_CATALOG_ID); '' = no OAuth. */
   oauth: OAuthFlowId | ''
-  /** 一次性密钥：确认时经 credentials.set 写入凭据库，本字段不持久化。 */
+  /** One-time secret: written to the credentials store via credentials.set on confirm; this field is not persisted. */
   apiKey: string
-  /** 额外请求头（JSON 对象文本；'' = 无）。 */
+  /** Extra request headers (JSON object text; '' = none). */
   headersText: string
-  /** 额外请求体顶层字段（JSON 对象文本；'' = 无）。 */
+  /** Extra top-level request body fields (JSON object text; '' = none). */
   bodyText: string
-  /** 模型子集模式。 */
+  /** Model subset mode. */
   modelMode: ModelMode
-  /** subset 模式下勾选的模型 id 集（默认全选）。 */
+  /** Model ids checked in subset mode (all selected by default). */
   modelIds: readonly string[]
 }
 
 /**
- * models.dev 的 npm 方言 → llm-plus 协议（映射不上的返回 '' 由用户手选）。
- * @param npm - 目录里该提供商的 npm 包名。
- * @returns 可识别出的 wire 协议；无法映射时为 ''。
+ * models.dev npm dialect → llm-plus protocol (returns '' when it cannot be mapped, so the user picks).
+ * @param npm - the provider's npm package name in the catalog.
+ * @returns the recognized wire protocol; '' when it cannot be mapped.
  */
 export function defaultProtocol(npm: string | undefined): ProtocolName | '' {
   if (npm === undefined) return ''
   if (npm.includes('anthropic')) return 'anthropic-messages'
   if (npm.includes('google')) return 'gemini'
-  // openai-compatible（约 80%）与 openai 都按 Chat Completions 方言
+  // openai-compatible (about 80%) and openai both follow the Chat Completions dialect
   if (npm.includes('openai')) return 'openai-completions'
   return ''
 }
 
 /**
- * 路由 id 净化：小写字母/数字/连字符，其余折叠为连字符（POSIX 标识符风格）。
- * @param raw - 候选路由 id（通常是目录 provider id）。
- * @returns 净化后的路由 id。
+ * Route id sanitization: lowercase letters/digits/hyphens, everything else collapsed to a hyphen (POSIX identifier style).
+ * @param raw - candidate route id (usually the catalog provider id).
+ * @returns the sanitized route id.
  */
 export function sanitizeRouteId(raw: string): string {
   return raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
 /**
- * 为一个提供商生成初始草稿（全部默认值就位，用户只需勾选+填密钥）。
- * @param provider - 目录里的提供商摘要。
- * @returns 该提供商的完整初始草稿。
+ * Build the initial draft for one provider (all defaults in place; the user only checks it and fills in the key).
+ * @param provider - the provider summary from the catalog.
+ * @returns the complete initial draft for that provider.
  */
 export function defaultDraft(provider: CatalogProviderSummary): ProviderDraft {
   return {
@@ -102,10 +102,10 @@ export function defaultDraft(provider: CatalogProviderSummary): ProviderDraft {
 }
 
 /**
- * 解析 JSON 对象文本字段；空文本返回 undefined，非对象抛错（由调用方归一化文案）。
- * @param text - 用户输入的 JSON 对象文本。
- * @returns 解析出的对象；空文本时为 undefined。
- * @throws {Error} 文本不是 JSON 或不是对象。
+ * Parse a JSON object text field; empty text returns undefined, a non-object throws (the caller normalizes the copy).
+ * @param text - the user-entered JSON object text.
+ * @returns the parsed object; undefined for empty text.
+ * @throws {Error} the text is not JSON or is not an object.
  */
 export function parseJsonObjectField(text: string): Record<string, JsonValue> | undefined {
   const trimmed = text.trim()
@@ -118,13 +118,13 @@ export function parseJsonObjectField(text: string): Record<string, JsonValue> | 
 }
 
 /**
- * 物化一条路由配置（写进 llm-plus 命名空间 routes.<routeId> 的值）。
- * 空字符串字段一律缺席——由 route schema 的缺省与协议默认端点接管；
- * subset 模式把勾选的目录模型物化为手工 models 表（整体覆盖目录数据）。
- * @param providerId - 目录 provider id（modelsDevProvider 字段：路由与目录的链接）。
- * @param draft - 页面上的提供商草稿。
- * @param models - 该提供商可物化的目录模型。
- * @returns 写进 llm-plus 命名空间的路由值。
+ * Materialize one route configuration (the value written into the llm-plus namespace routes.<routeId>).
+ * Empty string fields are always absent — the route schema defaults and protocol default endpoints take over;
+ * subset mode materializes the checked catalog models into a manual models table (fully overriding catalog data).
+ * @param providerId - catalog provider id (the modelsDevProvider field: the link between route and catalog).
+ * @param draft - the provider draft on the page.
+ * @param models - the catalog models materializable for this provider.
+ * @returns the route value written into the llm-plus namespace.
  */
 export function materializeRoute(
   providerId: string,
@@ -158,9 +158,9 @@ export function materializeRoute(
 }
 
 /**
- * 草稿校验：返回首个错误的定位键（由调用方映射文案）；通过返回 undefined。
- * @param draft - 待提交的提供商草稿。
- * @returns 首个错误字段的定位键；全部合法时为 undefined。
+ * Draft validation: returns the location key of the first error (the caller maps it to copy); undefined when valid.
+ * @param draft - the provider draft being submitted.
+ * @returns the location key of the first invalid field; undefined when all fields are valid.
  */
 export function draftError(draft: ProviderDraft): 'protocol' | 'headers' | 'body' | undefined {
   if (draft.protocol === '') return 'protocol'

@@ -1,7 +1,7 @@
 /**
- * OAuth 登录面板：llm-plus 的 OAuth 路由清单 + 登录尝试的驱动区
- * （通知列表、device code 展示、待答 prompt 的回答表单）。
- * 纯 props 展示组件：数据与回调全部来自 props。
+ * OAuth sign-in panel: the llm-plus OAuth route list plus the driver area for sign-in attempts
+ * (notice list, device code display, answer form for pending prompts).
+ * A pure props presentational component: all data and callbacks come from props.
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/OAuthPanel
  */
@@ -11,7 +11,7 @@ import type { AttemptPromptView, AttemptView, OAuthRouteInfo } from '@deepseek-a
 import type { ModelsDevKey } from './locales.ts'
 import styles from './ModelsDevSection.module.css'
 
-/** 组件入参（纯数据 + 回调）。 */
+/** Component inputs (pure data + callbacks). */
 export interface OAuthPanelProps {
   routes: readonly OAuthRouteInfo[]
   attempts: Record<string, AttemptView>
@@ -23,7 +23,7 @@ export interface OAuthPanelProps {
   onAnswerDraft: (promptId: string, value: string) => void
 }
 
-/** 尝试状态的中文/英文徽标文案键。 */
+/** Copy keys for the attempt status badge (Chinese/English). */
 function statusKey(status: AttemptView['status']): ModelsDevKey {
   switch (status) {
     case 'running': return 'attemptRunning'
@@ -33,7 +33,7 @@ function statusKey(status: AttemptView['status']): ModelsDevKey {
   }
 }
 
-/** 待答 prompt 的回答表单（text/secret = 输入框；select = 选项按钮组）。 */
+/** Answer form for a pending prompt (text/secret = input; select = option button group). */
 function PromptForm(props: {
   routeId: string
   prompt: AttemptPromptView
@@ -54,7 +54,7 @@ function PromptForm(props: {
                 key={option.id}
                 variant="outline"
                 onClick={() => {
-                  // select 的回答直接是 option id，不走文本草稿
+                  // A select answer is the option id directly, not a text draft
                   props.onAnswerDraft(prompt.promptId, option.id)
                   props.onAnswer(props.routeId, prompt.promptId)
                 }}
@@ -82,7 +82,7 @@ function PromptForm(props: {
   )
 }
 
-/** 一次在途尝试的进展区（通知流 + 待答 prompt）。 */
+/** Progress area for an in-flight attempt (notice stream + pending prompt). */
 function AttemptArea(props: {
   routeId: string
   attempt: AttemptView
@@ -118,7 +118,7 @@ function AttemptArea(props: {
   )
 }
 
-/** OAuth 登录面板（无 OAuth 路由时整块不渲染）。 */
+/** OAuth sign-in panel (renders nothing when there are no OAuth routes). */
 export function OAuthPanel(props: OAuthPanelProps) {
   const { routes, attempts, t } = props
   if (routes.length === 0) return null

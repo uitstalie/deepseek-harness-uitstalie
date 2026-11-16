@@ -1,13 +1,13 @@
 /**
- * 共享的小表单字段组件（DraftForm 与 MyRoutes 的编辑表单共用）。
- * 纯 props：label + value + onChange。
+ * Shared small form field components (used by both DraftForm and the MyRoutes edit form).
+ * Pure props: label + value + onChange.
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/fields
  */
 
 import styles from './ModelsDevSection.module.css'
 
-/** 一个标签 + 文本输入行。 */
+/** A label + text input row. */
 export function TextField(props: {
   label: string
   value: string
@@ -29,7 +29,7 @@ export function TextField(props: {
   )
 }
 
-/** 一个标签 + JSON 文本域行。 */
+/** A label + JSON textarea row. */
 export function JsonField(props: {
   label: string
   value: string

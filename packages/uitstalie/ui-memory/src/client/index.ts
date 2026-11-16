@@ -61,6 +61,7 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
       inject: (): MemorySectionInjected => ({
         controller,
+        hooks: { snapshot: controller.store },
         t,
       }),
     }, MemorySection))

@@ -7,17 +7,21 @@
  * @module @deepseek-ai/dsh-client-ui-memory/MemorySection
  */
 
-import { useSyncExternalStore } from 'react'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { type MemoryKey } from './locales.ts'
-import { MEMORY_SETTINGS_FIELDS, type MemorySettingsController, type MemorySettingsField } from './settings.ts'
+import { MEMORY_SETTINGS_FIELDS, type MemorySettingsController, type MemorySettingsField, type MemorySettingsState } from './settings.ts'
 import styles from './MemorySection.module.css'
 
 /** What the registration injects into the page. */
 export interface MemorySectionInjected {
   /** The page controller (edit, discard, save). */
   controller: MemorySettingsController
+  /** Page snapshot, bound by the renderer as `useSnapshot`. */
+  hooks: {
+    snapshot: SnapshotStore<MemorySettingsState>
+  }
   /** This page's copy (`settings.memory`). */
   t: (key: MemoryKey) => string
 }
@@ -43,10 +47,10 @@ const NUMERIC = new Set<MemorySettingsField>(['detail', 'brief', 'forget', 'sess
 
 /** The memory settings page. */
 export function MemorySection(props: MemorySectionProps) {
-  const { controller, t } = props
+  const { controller, useSnapshot, t } = props
   // The assembly guarantees the page face; the partial props are the test path that supplies it.
-  if (controller === undefined || t === undefined) return null
-  return <MemorySectionBody controller={controller} t={t} />
+  if (controller === undefined || useSnapshot === undefined || t === undefined) return null
+  return <MemorySectionBody controller={controller} useSnapshot={useSnapshot} t={t} />
 }
 
 /**
@@ -57,11 +61,12 @@ export function MemorySection(props: MemorySectionProps) {
  * @param props - the page controller and copy lookup.
  * @returns the settings form.
  */
-function MemorySectionBody({ controller, t }: { controller: MemorySettingsController; t: (key: MemoryKey) => string }) {
-  const state = useSyncExternalStore(
-    onChange => controller.store.subscribe(onChange),
-    () => controller.store.getSnapshot(),
-  )
+function MemorySectionBody({ controller, useSnapshot, t }: {
+  controller: MemorySettingsController
+  useSnapshot: (selector: (state: MemorySettingsState) => MemorySettingsState) => MemorySettingsState
+  t: (key: MemoryKey) => string
+}) {
+  const state = useSnapshot(snapshot => snapshot)
 
   if (!state.available) return <p className={styles.notice}>{t('unavailable')}</p>
   return (

@@ -1,6 +1,6 @@
 /**
- * "我的路由"管理区：llm-plus 命名空间里现有路由的列表 + 行内编辑/删除。
- * 纯 props 展示组件；数据与回调全部来自 props。
+ * "My routes" management area: the list of existing routes in the llm-plus namespace plus inline edit/delete.
+ * A pure props presentational component; all data and callbacks come from props.
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/MyRoutes
  */
@@ -12,16 +12,16 @@ import { type ModelsDevKey } from './locales.ts'
 import { OAUTH_FLOW_CHOICES, type RouteDraft } from './route-edit.ts'
 import styles from './ModelsDevSection.module.css'
 
-/** 协议选项（顺序即下拉顺序）。 */
+/** Protocol options (this order is the dropdown order). */
 const PROTOCOLS: readonly ProtocolName[] = ['openai-completions', 'openai-responses', 'anthropic-messages', 'gemini']
 
-/** 组件入参（纯数据 + 回调）。 */
+/** Component inputs (pure data + callbacks). */
 export interface MyRoutesProps {
-  /** 当前路由表（llm-plus 命名空间的生效值）。 */
+  /** Current route table (the effective value of the llm-plus namespace). */
   routes: Record<string, RouteConfig>
-  /** 正在编辑的路由 id 与草稿。 */
+  /** The route id being edited and its draft. */
   editing: { routeId: string; draft: RouteDraft } | undefined
-  /** 编辑/删除失败的 host 消息。 */
+  /** Host message for an edit/delete failure. */
   failure: string | null
   t: (key: ModelsDevKey) => string
   onStartEdit: (routeId: string) => void
@@ -31,7 +31,7 @@ export interface MyRoutesProps {
   onDelete: (routeId: string) => void
 }
 
-/** 单条路由的编辑表单（编辑面字段：命名/协议/端点/凭据/OAuth/extraParams/默认输出）。 */
+/** Edit form for one route (edit-surface fields: name/protocol/endpoint/credential/OAuth/extraParams/default output). */
 function RouteEditForm(props: {
   draft: RouteDraft
   t: (key: ModelsDevKey) => string
@@ -71,7 +71,7 @@ function RouteEditForm(props: {
   )
 }
 
-/** 编辑/删除失败的文案映射（store 产出定位键，字典文案归这里）。 */
+/** Copy mapping for edit/delete failures (the store produces location keys; dictionary copy lives here). */
 function failureText(failure: string, t: (key: ModelsDevKey) => string): string {
   if (failure === 'headers') return t('routeFailureHeaders')
   if (failure === 'body') return t('routeFailureBody')
@@ -79,7 +79,7 @@ function failureText(failure: string, t: (key: ModelsDevKey) => string): string 
   return failure
 }
 
-/** "我的路由"管理区（无路由时整块不渲染）。 */
+/** "My routes" management area (renders nothing when there are no routes). */
 export function MyRoutes(props: MyRoutesProps) {
   const { routes, editing, t } = props
   const ids = Object.keys(routes).sort()

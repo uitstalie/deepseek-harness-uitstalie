@@ -1,7 +1,8 @@
 /**
- * "我的路由"编辑的草稿形状与映射纯函数（数据/逻辑分离）。
- * RouteDraft 承载编辑表单的一切；draftToRoute 物化回 llm-plus 路由配置
- * （空串一律缺席——schema 缺省与协议默认端点接管）。
+ * Draft shape and pure mapping functions for editing "my routes" (data/logic separation).
+ * RouteDraft carries everything in the edit form; draftToRoute materializes it back into
+ * the llm-plus route configuration (empty strings are always absent — schema defaults and
+ * protocol default endpoints take over).
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/route-edit
  */
@@ -10,33 +11,33 @@ import type { JsonValue } from '@deepseek-ai/dsh-models-dev'
 import type { OAuthFlowId, ProtocolName, RouteConfig } from '@deepseek-ai/dsh-llm-plus'
 import { parseJsonObjectField } from './draft.ts'
 
-/** 路由编辑草稿（编辑表单的完整载体；文本字段空串 = 缺席）。 */
+/** Route edit draft (the complete carrier of the edit form; empty text field = absent). */
 export interface RouteDraft {
-  /** 展示名。 */
+  /** Display name. */
   displayName: string
-  /** wire 协议。 */
+  /** Wire protocol. */
   protocol: ProtocolName
-  /** baseURL（空 = 协议默认端点）。 */
+  /** baseURL (empty = the protocol default endpoint). */
   baseURL: string
-  /** 凭据引用名（空 = 不走 apiKeyRef）。 */
+  /** Credential reference name (empty = no apiKeyRef). */
   apiKeyRef: string
-  /** OAuth flow id（空 = 不走 OAuth）。 */
+  /** OAuth flow id (empty = no OAuth). */
   oauth: OAuthFlowId | ''
-  /** 额外请求头（JSON 对象文本）。 */
+  /** Extra request headers (JSON object text). */
   headersText: string
-  /** 额外请求体顶层字段（JSON 对象文本）。 */
+  /** Extra top-level request body fields (JSON object text). */
   bodyText: string
-  /** 默认最大输出 token（空 = 缺席）。 */
+  /** Default max output tokens (empty = absent). */
   defaultMaxTokensText: string
 }
 
-/** OAuth flow 选项（与 llm-plus 的六家一致；'' = 不走 OAuth）。 */
+/** OAuth flow options (matching the six in llm-plus; '' = no OAuth). */
 export const OAUTH_FLOW_CHOICES: readonly OAuthFlowId[] = ['anthropic', 'openai-codex', 'github-copilot', 'openrouter', 'kimi-coding', 'xai']
 
 /**
- * 路由配置 → 编辑草稿（models/modelsDevProvider 不在 v1 编辑面内，原样保留不丢）。
- * @param route - 当前生效的路由配置。
- * @returns 该路由的编辑草稿。
+ * Route configuration → edit draft (models/modelsDevProvider are outside the v1 edit surface and are kept as-is, not lost).
+ * @param route - the current effective route configuration.
+ * @returns the edit draft for that route.
  */
 export function routeToDraft(route: RouteConfig): RouteDraft {
   return {
@@ -52,9 +53,9 @@ export function routeToDraft(route: RouteConfig): RouteDraft {
 }
 
 /**
- * 草稿校验：返回首个错误的定位键；通过返回 undefined。
- * @param draft - 待保存的路由草稿。
- * @returns 首个错误字段的定位键；全部合法时为 undefined。
+ * Draft validation: returns the location key of the first error; undefined when valid.
+ * @param draft - the route draft being saved.
+ * @returns the location key of the first invalid field; undefined when all fields are valid.
  */
 export function routeDraftError(draft: RouteDraft): 'headers' | 'body' | 'maxTokens' | undefined {
   try {
@@ -75,10 +76,10 @@ export function routeDraftError(draft: RouteDraft): 'headers' | 'body' | 'maxTok
 }
 
 /**
- * 草稿物化为路由配置。不在编辑面内的字段（models/modelsDevProvider/
- * retryPolicy/requestImagePolicy）由调用方从原路由原样带回（见调用点）。
- * @param draft - 编辑表单里的路由草稿。
- * @returns 写进 llm-plus 命名空间的路由值。
+ * Materialize the draft into a route configuration. Fields outside the edit surface (models/modelsDevProvider/
+ * retryPolicy/requestImagePolicy) are carried back as-is from the original route by the caller (see the call site).
+ * @param draft - the route draft in the edit form.
+ * @returns the route value written into the llm-plus namespace.
  */
 export function draftToRoute(draft: RouteDraft): Record<string, JsonValue> {
   const route: Record<string, JsonValue> = { protocol: draft.protocol }

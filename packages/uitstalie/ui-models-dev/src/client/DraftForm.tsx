@@ -1,6 +1,6 @@
 /**
- * 单个提供商的草稿编辑表单（纯 props 展示组件：数据与回调全部来自
- * props，不碰任何外部状态——字段变更经 onPatch 派发回 store）。
+ * The draft edit form for a single provider (a pure props presentational component: all data and
+ * callbacks come from props, with no external state — field changes are dispatched back to the store via onPatch).
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/DraftForm
  */
@@ -13,14 +13,14 @@ import { fill, type ModelsDevKey } from './locales.ts'
 import { OAUTH_FLOW_CHOICES } from './route-edit.ts'
 import styles from './ModelsDevSection.module.css'
 
-/** llm-plus 的四协议选项（顺序即下拉顺序）。 */
+/** The four llm-plus protocol options (this order is the dropdown order). */
 const PROTOCOLS: readonly ProtocolName[] = ['openai-completions', 'openai-responses', 'anthropic-messages', 'gemini']
 
-/** 组件入参（纯数据 + 回调）。 */
+/** Component inputs (pure data + callbacks). */
 export interface DraftFormProps {
   provider: CatalogProviderSummary
   draft: ProviderDraft
-  /** subset 模式的模型数据（'loading' = 拉取中）。 */
+  /** Model data for subset mode ('loading' = fetching). */
   models: readonly CatalogModelSummary[] | 'loading' | undefined
   t: (key: ModelsDevKey) => string
   onPatch: (patch: Partial<ProviderDraft>) => void
@@ -28,7 +28,7 @@ export interface DraftFormProps {
   onToggleModel: (modelId: string, checked: boolean) => void
 }
 
-/** 模型子集勾选区（全部跟随目录 / 选定子集两态）。 */
+/** Model subset picker (two states: follow the whole catalog / chosen subset). */
 function ModelPicker(props: DraftFormProps) {
   const { draft, models, t } = props
   return (
@@ -70,7 +70,7 @@ function ModelPicker(props: DraftFormProps) {
   )
 }
 
-/** 草稿编辑表单：路由 id/展示名/协议/端点/凭据/extraParams/模型子集。 */
+/** Draft edit form: route id/display name/protocol/endpoint/credential/extraParams/model subset. */
 export function DraftForm(props: DraftFormProps) {
   const { provider, draft, t, onPatch } = props
   return (

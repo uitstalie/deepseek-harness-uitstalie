@@ -1,6 +1,6 @@
 /**
- * 目录中的一个提供商行：勾选框 + 摘要（显示名/方言/端点/模型数）+
- * 勾选后展开的草稿表单。
+ * One provider row in the catalog: checkbox + summary (display name/dialect/endpoint/model count) +
+ * the draft form expanded after it is checked.
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/ProviderCard
  */
@@ -12,10 +12,10 @@ import { fill, type ModelsDevKey } from './locales.ts'
 import { DraftForm } from './DraftForm.tsx'
 import styles from './ModelsDevSection.module.css'
 
-/** 组件入参（纯数据 + 回调）。 */
+/** Component inputs (pure data + callbacks). */
 export interface ProviderCardProps {
   provider: CatalogProviderSummary
-  /** 未勾选为 undefined。 */
+  /** Undefined when not checked. */
   draft: ProviderDraft | undefined
   models: readonly CatalogModelSummary[] | 'loading' | undefined
   t: (key: ModelsDevKey) => string
@@ -25,7 +25,7 @@ export interface ProviderCardProps {
   onToggleModel: (modelId: string, checked: boolean) => void
 }
 
-/** 一个提供商的目录行。 */
+/** The catalog row for one provider. */
 export function ProviderCard(props: ProviderCardProps) {
   const { provider, draft, t } = props
   return (
