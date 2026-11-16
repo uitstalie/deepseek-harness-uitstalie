@@ -1521,8 +1521,9 @@ export const runSuperagentPass = async (
       key: ready.key,
       why: 'turn-end pass: it is ready, unclaimed, and not blocked',
     }, options, call.me)
-  } catch {
-    // A background pass must never turn a completed turn into a failed one.
+  } catch (error: unknown) {
+    // A background pass must never turn a completed turn into a failed one; it must still be visible.
+    host.ctx.logger.warn('superagent: turn-end pass failed: %s', error instanceof Error ? error.message : String(error))
   }
 }
 
@@ -1621,8 +1622,9 @@ export const runDaemonPass = async (host: ToolHost, options: DaemonPassOptions =
       action: 'comment',
       body: `${PROPOSAL_MARKER} session-less pass: it is ready, unclaimed, and not blocked`,
     }, { by: identity, at: runOptions.at }, { expectedRevision: read.value.issue.revision })
-  } catch {
-    // A timer-driven pass never throws into the scheduler.
+  } catch (error: unknown) {
+    // A timer-driven pass never throws into the scheduler, but its failure stays observable.
+    host.ctx.logger.warn('superagent: timer pass failed: %s', error instanceof Error ? error.message : String(error))
   }
 }
 

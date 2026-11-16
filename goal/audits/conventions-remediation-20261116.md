@@ -57,6 +57,7 @@
 - personality 与 tool-policy 补齐 8 语言 locale，包 exports/files 同步。
 - 部署可变配置：memory 的 `summaryMaxAttempts`/`summaryRetryDelayMs`、ui-models-dev 的 `pollIntervalMs`/`promptPollDelayMs`、tool-dsh-store Remote 的 `maxRuleBytes` 进入 Config 并校验。OAuth 的 5s 设备流窗口、poll/retry 与 30s 请求超时按协议/网络不变量保留，未配置化。
 - UI 术语统一为“能力”“能力组织者”“摘要提供商”“轮次/派生产物”“优先级”；OAuth notice 使用业务身份而非索引 key；Jira 页面字重降到 500，动作 hover 包进 `(hover: hover)`。
+- 后台 turn-end/timer pass 的静默 catch 改为 `logger.warn`，失败仍不打断会话但可观察。
 
 ## 未完成 / 待决策
 
