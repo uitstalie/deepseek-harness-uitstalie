@@ -52,9 +52,8 @@ const NS = 'settings.capabilities'
 /**
  * Mount the organizer's status namespace, its copy, and the settings section.
  * @param ctx - browser plugin context carrying slots, locale, the Remote carrier and config forms.
- * @returns a disposer that unmounts the Remote contribution when this plugin provided it.
  */
-export async function apply(ctx: ClientContext): Promise<() => void> {
+export async function apply(ctx: ClientContext): Promise<void> {
   // Generated artifacts are mounted by whoever composes the row: the Web shell does not mount
   // them, while a row-based client test runtime already did.
   const mounted = ctx.get('remote.dafeiyu') === undefined ? await ctx.remote.$mount(dafeiyuRemote) : undefined
@@ -73,7 +72,10 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       label: () => t('nav'),
       locale: NS,
       inject: (): CapabilitiesSectionInjected => ({
-        controller,
+        actions: {
+          load: () => controller.load(),
+          setEnabled: (id, enabled) => controller.setEnabled(id, enabled),
+        },
         activate: () => { void controller.load() },
         hooks: { snapshot: controller.store },
         t,

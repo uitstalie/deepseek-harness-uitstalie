@@ -15,13 +15,16 @@ import type { CapabilityStatus } from '@deepseek-ai/dsh-dafeiyu/types'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SettingsSectionOwnerProps } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { fill, type CapabilityKey } from './locales.ts'
-import type { CapabilitiesState, CapabilityStore } from './store.ts'
+import type { CapabilitiesState } from './store.ts'
 import styles from './CapabilitiesSection.module.css'
 
 /** What the registration injects into the page. */
 export interface CapabilitiesSectionInjected {
-  /** The page controller (load, switch). */
-  controller: CapabilityStore
+  /** The page actions (load, switch), bound to the store. */
+  actions: {
+    readonly load: () => Promise<void>
+    readonly setEnabled: (id: string, enabled: boolean) => Promise<void>
+  }
   /** Start the first read; a mounted-but-unopened page does not touch the host. */
   activate: () => void
   hooks: {
@@ -100,10 +103,10 @@ function CapabilityRow(props: {
 
 /** The capability list settings page. */
 export function CapabilitiesSection(props: CapabilitiesSectionProps) {
-  const { controller, useSnapshot, t, activate, openSection } = props
+  const { actions, useSnapshot, t, activate, openSection } = props
   useEffect(() => { activate?.() }, [activate])
-  // The assembly guarantees controller/useSnapshot/t; partial props are the test path.
-  if (controller === undefined || useSnapshot === undefined || t === undefined) return null
+  // The assembly guarantees actions/useSnapshot/t; partial props are the test path.
+  if (actions === undefined || useSnapshot === undefined || t === undefined) return null
   const state = useSnapshot(snapshot => snapshot)
 
   return (
@@ -120,7 +123,7 @@ export function CapabilitiesSection(props: CapabilitiesSectionProps) {
         ? (
           <div className={styles.alert} role="alert">
             <span>{fill(t('failed'), { message: state.error ?? '' })}</span>
-            <button type="button" className={styles.action} onClick={() => { void controller.load() }}>
+            <button type="button" className={styles.action} onClick={() => { void actions.load() }}>
               {t('retry')}
             </button>
           </div>
@@ -140,7 +143,7 @@ export function CapabilitiesSection(props: CapabilitiesSectionProps) {
             pending={state.pending === entry.id}
             t={t}
             openSection={openSection}
-            onToggle={(enabled) => { void controller.setEnabled(entry.id, enabled) }}
+            onToggle={(enabled) => { void actions.setEnabled(entry.id, enabled) }}
           />
         ))}
       </ul>

@@ -72,6 +72,6 @@
 
 1. **OAuth 协议时序仍未配置化**：GitHub 设备流的 5s、Kimi 的 poll/retry、OAuth HTTP 30s 是按外部协议/网络不变量保留；memory、UI 轮询、rule byte limit 已进 Config。
 2. **原生标记未覆盖 146 个候选**：本次只补了角色链路实际插入块；剩余块需要按实际 hunk 判断，不能机械全刷。
-3. **UI props 仍偏宽**：四个页面的快照订阅已改由 renderer `useSnapshot` 绑定；`ui-memory` 已改为只注入 `actions.edit/save/discard`，不再传整只 controller。其余三个页面仍保留 `Partial<InjectFace<...>>` 与整只 controller 作为测试/装配路径，完全窄化需要同时改 renderer 注入面。
+3. **UI props 仍偏宽**：四个页面的快照订阅已改由 renderer `useSnapshot` 绑定；`ui-memory` 已改为只注入 `actions.edit/save/discard`，`ui-dafeiyu` 已改为只注入 `actions.load/setEnabled`，不再传整只 controller。其余两个页面（ui-models-dev、ui-jira）仍保留 `Partial<InjectFace<...>>` 与整只 controller 作为测试/装配路径，完全窄化需要同时改 renderer 注入面。
 4. **6.13 真实组合测试缺口未补**：tool-policy 仍只有手工 `ctx.plugin` 单测，缺经 Loader/tool executor 拒绝的 REAL-composition。
 5. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。
