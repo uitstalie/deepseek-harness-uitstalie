@@ -55,6 +55,8 @@
 - 修正 4 处 JSDoc/README 语义：permission-presets 的 `permissions` 投影、agent-loop 的 tool-pair repair 记录、workspace 的 BEL、ui-jira 写路径说明。
 - `Home Backup` casing、jira skill 硬换行与决策残留、`jira-board.md` 末尾换行、`web-app/package.json` 重复依赖键、`types.ts` BEL 已修。
 - personality 与 tool-policy 补齐 8 语言 locale，包 exports/files 同步。
+- 17 个 packages/uitstalie/*/package.json 的 iles 补齐 lib/types/**/*.d.ts.map 与 src；包特定的 icon/locale/typert/client/asset 保留。
+- erify-package-meta 通过（plugin locale、SVG、resource exports、publication files）。
 - 部署可变配置：memory 的 `summaryMaxAttempts`/`summaryRetryDelayMs`、ui-models-dev 的 `pollIntervalMs`/`promptPollDelayMs`、tool-dsh-store Remote 的 `maxRuleBytes` 进入 Config 并校验。OAuth 的 5s 设备流窗口、poll/retry 与 30s 请求超时按协议/网络不变量保留，未配置化。
 - UI 术语统一为“能力”“能力组织者”“摘要提供商”“轮次/派生产物”“优先级”；OAuth notice 使用业务身份而非索引 key；Jira 页面字重降到 500，动作 hover 包进 `(hover: hover)`。
 - 后台 turn-end/timer pass 的静默 catch 改为 `logger.warn`，失败仍不打断会话但可观察。
@@ -66,10 +68,5 @@
 
 1. **OAuth 协议时序仍未配置化**：GitHub 设备流的 5s、Kimi 的 poll/retry、OAuth HTTP 30s 是按外部协议/网络不变量保留；memory、UI 轮询、rule byte limit 已进 Config。
 2. **原生标记未覆盖 146 个候选**：本次只补了角色链路实际插入块；剩余块需要按实际 hunk 判断，不能机械全刷。
-3. **UI props 仍偏宽**：四个页面的快照订阅已改由 renderer `useSnapshot` 绑定，但 `Partial<InjectFace<...>>` 和整只 controller 仍作为测试/装配路径保留；完全改成窄动作 props 需要同时改 renderer 注入面。
-4. **`build:check` 的 client aggregate 已修复**：host 与 client 两个 aggregate 均 PASS。做法是把 `Context.sessions` 的两个面在类型层分开：
-   - Host `SessionStore` 的集合方法改名 `listSessions()`；client `ISessions` 继续用快照属性 `list`。
-   - Client 对象层方法改名 `createSession()` / `forkSession()`；Host store 的 `create()` / `fork()` 不变。
-   - Client `Context.sessions` 仍声明为同一个 `SessionStore`，client-only 的 `ISessions` 扩展只通过 `scripts/types/client-session`（仅 client `types` 加载，host 明确排除）合并；Host 程序不再看到 client 的 `list`/`create` 覆盖。
-   - 消费方：Host 工具/服务/测试调用 `listSessions()` 与 `create()`；client UI/test runtime 调用 `createSession()`/`forkSession()` 和快照 `list`。运行时行为未变，只改了这两个 client 方法名与 Host 集合方法名。
-5. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。
+3. **UI props 仍偏宽**：四个页面的快照订阅已改由 renderer `useSnapshot` 绑定；`ui-memory` 已改为只注入 `actions.edit/save/discard`，不再传整只 controller。其余三个页面仍保留 `Partial<InjectFace<...>>` 与整只 controller 作为测试/装配路径，完全窄化需要同时改 renderer 注入面。
+4. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。

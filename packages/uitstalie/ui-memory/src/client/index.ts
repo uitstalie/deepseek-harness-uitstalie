@@ -60,7 +60,11 @@ export function apply(ctx: ClientContext): void {
       label: () => t('nav'),
       locale: NS,
       inject: (): MemorySectionInjected => ({
-        controller,
+        actions: {
+          edit: (field, value) => { controller.edit(field, value) },
+          save: () => controller.save(),
+          discard: () => { controller.discard() },
+        },
         hooks: { snapshot: controller.store },
         t,
       }),

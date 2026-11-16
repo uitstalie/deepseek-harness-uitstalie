@@ -36,6 +36,8 @@
     "lib/typert.remote-client.d.ts",
     "lib/typert.remote-client.d.ts.map",
     "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "src",
     "lib/types/**/*.js"
   ],
   "license": "MIT",

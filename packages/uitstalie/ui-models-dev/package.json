@@ -37,6 +37,8 @@
 
     "lib/client.js",
     "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "src",
     "icon.svg",
     "locale/*.json"
   ],

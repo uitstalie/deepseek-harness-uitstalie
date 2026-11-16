@@ -51,7 +51,7 @@ describe('MemorySection', () => {
     const { form, mutate } = formOf()
     const controller = new MemorySettingsController(form)
     controllerForHook = controller
-    render(<MemorySection controller={controller} useSnapshot={useSnapshot} t={key => en[key]} />)
+    render(<MemorySection actions={{ edit: (field: Parameters<MemorySettingsController['edit']>[0], value: string) => { controller.edit(field, value) }, save: () => controller.save(), discard: () => { controller.discard() } }} useSnapshot={useSnapshot} t={key => en[key]} />)
 
     const input = screen.getByDisplayValue('10') as HTMLInputElement
     expect(input.value).toBe('10')
@@ -66,7 +66,7 @@ describe('MemorySection', () => {
     const { form } = formOf()
     const controller = new MemorySettingsController(form)
     controllerForHook = controller
-    render(<MemorySection controller={controller} useSnapshot={useSnapshot} t={key => en[key]} />)
+    render(<MemorySection actions={{ edit: (field: Parameters<MemorySettingsController['edit']>[0], value: string) => { controller.edit(field, value) }, save: () => controller.save(), discard: () => { controller.discard() } }} useSnapshot={useSnapshot} t={key => en[key]} />)
 
     fireEvent.change(screen.getByDisplayValue('4096'), { target: { value: '0' } })
 
@@ -78,7 +78,7 @@ describe('MemorySection', () => {
   it('renders the unavailable notice without the settings service', () => {
     const controller = new MemorySettingsController(undefined)
     controllerForHook = controller
-    render(<MemorySection controller={controller} useSnapshot={useSnapshot} t={key => en[key]} />)
+    render(<MemorySection actions={{ edit: (field: Parameters<MemorySettingsController['edit']>[0], value: string) => { controller.edit(field, value) }, save: () => controller.save(), discard: () => { controller.discard() } }} useSnapshot={useSnapshot} t={key => en[key]} />)
     expect(screen.getByText(en.unavailable)).toBeTruthy()
     controller.dispose()
   })

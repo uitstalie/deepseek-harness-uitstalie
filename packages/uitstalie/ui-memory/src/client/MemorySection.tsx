@@ -2,7 +2,7 @@
  * The memory settings page: the volatile `memory` row fields, staged and saved as one mutation.
  *
  * The component is presentation only: every value arrives through the inject face, every action
- * calls the controller, and every sentence comes from the `settings.memory` dictionary.
+ * calls the injected actions, and every sentence comes from the `settings.memory` dictionary.
  *
  * @module @deepseek-ai/dsh-client-ui-memory/MemorySection
  */
@@ -11,13 +11,17 @@ import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { type MemoryKey } from './locales.ts'
-import { MEMORY_SETTINGS_FIELDS, type MemorySettingsController, type MemorySettingsField, type MemorySettingsState } from './settings.ts'
+import { MEMORY_SETTINGS_FIELDS, type MemorySettingsField, type MemorySettingsState } from './settings.ts'
 import styles from './MemorySection.module.css'
 
 /** What the registration injects into the page. */
 export interface MemorySectionInjected {
-  /** The page controller (edit, discard, save). */
-  controller: MemorySettingsController
+  /** The page actions (edit, discard, save), bound to the controller. */
+  actions: {
+    readonly edit: (field: MemorySettingsField, value: string) => void
+    readonly save: () => Promise<void>
+    readonly discard: () => void
+  }
   /** Page snapshot, bound by the renderer as `useSnapshot`. */
   hooks: {
     snapshot: SnapshotStore<MemorySettingsState>
@@ -47,10 +51,10 @@ const NUMERIC = new Set<MemorySettingsField>(['detail', 'brief', 'forget', 'sess
 
 /** The memory settings page. */
 export function MemorySection(props: MemorySectionProps) {
-  const { controller, useSnapshot, t } = props
+  const { actions, useSnapshot, t } = props
   // The assembly guarantees the page face; the partial props are the test path that supplies it.
-  if (controller === undefined || useSnapshot === undefined || t === undefined) return null
-  return <MemorySectionBody controller={controller} useSnapshot={useSnapshot} t={t} />
+  if (actions === undefined || useSnapshot === undefined || t === undefined) return null
+  return <MemorySectionBody actions={actions} useSnapshot={useSnapshot} t={t} />
 }
 
 /**
@@ -58,11 +62,11 @@ export function MemorySection(props: MemorySectionProps) {
  *
  * Kept separate so the hooks run unconditionally: a conditional early return before
  * `useSyncExternalStore` changes the hook count if the props ever arrive in two stages.
- * @param props - the page controller and copy lookup.
+ * @param props - the page actions, snapshot hook, and copy lookup.
  * @returns the settings form.
  */
-function MemorySectionBody({ controller, useSnapshot, t }: {
-  controller: MemorySettingsController
+function MemorySectionBody({ actions, useSnapshot, t }: {
+  actions: MemorySectionInjected['actions']
   useSnapshot: (selector: (state: MemorySettingsState) => MemorySettingsState) => MemorySettingsState
   t: (key: MemoryKey) => string
 }) {
@@ -86,7 +90,7 @@ function MemorySectionBody({ controller, useSnapshot, t }: {
                 inputMode={NUMERIC.has(field) ? 'numeric' : undefined}
                 placeholder={t(copy.placeholderKey)}
                 aria-invalid={invalid || undefined}
-                onChange={(event) => { controller.edit(field, event.target.value) }}
+                onChange={(event) => { actions.edit(field, event.target.value) }}
               />
               {invalid ? <span className={styles.invalid} role="alert">{t('invalidField')}</span> : null}
             </label>
@@ -99,7 +103,7 @@ function MemorySectionBody({ controller, useSnapshot, t }: {
           variant="outline"
           size="sm"
           disabled={!state.dirty || state.saving || state.invalid.length > 0 || !state.writable}
-          onClick={() => { void controller.save() }}
+          onClick={() => { void actions.save() }}
         >
           {state.saving ? t('saving') : t('save')}
         </Button>
@@ -107,7 +111,7 @@ function MemorySectionBody({ controller, useSnapshot, t }: {
           variant="ghost"
           size="sm"
           disabled={!state.dirty || state.saving}
-          onClick={() => { controller.discard() }}
+          onClick={() => { actions.discard() }}
         >
           {t('discard')}
         </Button>
