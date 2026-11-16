@@ -10,7 +10,7 @@
 .title {
   margin: 0;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .intro {
@@ -33,7 +33,7 @@
 .heading {
   margin: 0;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: .06em;
   text-transform: uppercase;
   color: var(--dsw-alias-label-tertiary);
@@ -121,7 +121,7 @@
 .columnTitle {
   margin: 0;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -176,7 +176,7 @@
 .detailSummary {
   margin: 0;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .bodyText {

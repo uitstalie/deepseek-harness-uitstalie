@@ -14,8 +14,10 @@
   cursor: pointer;
 }
 
-.action:hover:not(:disabled) {
-  background: var(--dsh-color-surface-hover, rgb(127 127 127 / 12%));
+@media (hover: hover) {
+  .action:hover:not(:disabled) {
+    background: var(--dsh-color-surface-hover, rgb(127 127 127 / 12%));
+  }
 }
 
 .action:disabled {

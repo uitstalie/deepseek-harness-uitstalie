@@ -94,8 +94,8 @@ function AttemptArea(props: {
   const { attempt, t } = props
   return (
     <div className={styles.attemptArea}>
-      {attempt.notices.map((notice, index) => (
-        <div key={index} className={styles.noticeRow}>
+      {attempt.notices.map(notice => (
+        <div key={`${notice.code ?? ''}:${notice.url ?? ''}:${notice.message}`} className={styles.noticeRow}>
           <span>{notice.message}</span>
           {notice.url !== undefined && (
             <a className={styles.noticeLink} href={notice.url} target="_blank" rel="noreferrer">{notice.url}</a>

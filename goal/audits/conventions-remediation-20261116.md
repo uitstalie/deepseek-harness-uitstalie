@@ -56,10 +56,12 @@
 - `Home Backup` casing、jira skill 硬换行与决策残留、`jira-board.md` 末尾换行、`web-app/package.json` 重复依赖键、`types.ts` BEL 已修。
 - personality 与 tool-policy 补齐 8 语言 locale，包 exports/files 同步。
 - 部署可变配置：memory 的 `summaryMaxAttempts`/`summaryRetryDelayMs`、ui-models-dev 的 `pollIntervalMs`/`promptPollDelayMs`、tool-dsh-store Remote 的 `maxRuleBytes` 进入 Config 并校验。OAuth 的 5s 设备流窗口、poll/retry 与 30s 请求超时按协议/网络不变量保留，未配置化。
+- UI 术语统一为“能力”“能力组织者”“摘要提供商”“轮次/派生产物”“优先级”；OAuth notice 使用业务身份而非索引 key；Jira 页面字重降到 500，动作 hover 包进 `(hover: hover)`。
 
 ## 未完成 / 待决策
 
 1. **OAuth 协议时序仍未配置化**：GitHub 设备流的 5s、Kimi 的 poll/retry、OAuth HTTP 30s 是按外部协议/网络不变量保留；memory、UI 轮询、rule byte limit 已进 Config。
 2. **原生标记未覆盖 146 个候选**：本次只补了角色链路实际插入块；剩余块需要按实际 hunk 判断，不能机械全刷。
-3. **`build:check` 的 client aggregate 未绿**：host aggregate 已通过；client aggregate 在 `Context.sessions` 上看到 Host 的 `SessionStore` 而不是 client 的 `ISessions`，报例如 `Property 'getSnapshot' does not exist on type '() => Session[]'`、`SessionStore is not assignable to ISessions`。该冲突来自仓库既有 host/client 双编译面设计，单包 `tsc`、host aggregate 与聚焦测试通过。修复需要拆 client aggregate 的依赖图，或把 `Context.sessions` 的 host/client 声明彻底分开，属于跨包架构决策。
-4. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。
+3. **UI P1/P2 未全部完成**：`ui-memory`/`ui-dafeiyu`/`ui-models-dev`/`ui-jira` 的组件自订阅与整只 controller props（6.2）、部分 CSS alias/hover（6.4）、client 中文注释（6.8）仍是剩余项。
+4. **`build:check` 的 client aggregate 未绿**：host aggregate 已通过；client aggregate 在 `Context.sessions` 上看到 Host 的 `SessionStore` 而不是 client 的 `ISessions`，报例如 `Property 'getSnapshot' does not exist on type '() => Session[]'`、`SessionStore is not assignable to ISessions`。该冲突来自仓库既有 host/client 双编译面设计，单包 `tsc`、host aggregate 与聚焦测试通过。修复需要拆 client aggregate 的依赖图，或把 `Context.sessions` 的 host/client 声明彻底分开，属于跨包架构决策。
+5. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。

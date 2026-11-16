@@ -40,7 +40,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   fieldForget: '忘记正文的轮次年龄',
   fieldSessions: 'MEMORY.md 保留的会话数',
   fieldMaxBytes: '正文预算（字节）',
-  fieldProvider: '摘要 provider',
+  fieldProvider: '摘要提供商',
   fieldModel: '摘要模型',
   placeholderInherit: '继承',
   placeholderModel: '跟随本轮路由模型',

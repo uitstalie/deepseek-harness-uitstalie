@@ -34,8 +34,8 @@ export type CapabilityKey = keyof typeof en
 /** Chinese strings (same keys as {@link en}). */
 export const zh: { [Key in keyof typeof en]: string } = {
   nav: '能力',
-  title: '能力总代',
-  intro: '组织者注册的每个能力。开关是组织者的门；具体配置仍归各 provider 自己的设置页。',
+  title: '能力',
+  intro: '组织者注册的每个能力。开关由能力组织者控制；具体配置仍归各 provider 自己的设置页。',
   loading: '正在读取能力…',
   empty: '当前组合没有注册任何能力。',
   failed: '读取能力列表失败：{message}',

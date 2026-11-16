@@ -163,7 +163,7 @@ it('registers the capability list section and withdraws it with the fiber', asyn
   expect(entry?.component).toBe(CapabilitiesSection)
   expect(resolveSlotLabel(entry?.options.label)).toBe('能力')
   const injected = injectFaceOf(entry)
-  expect(injected.t('title')).toBe('能力总代')
+  expect(injected.t('title')).toBe('能力')
   expect(injected.hooks.snapshot.getSnapshot().status).toBe('idle')
 
   await fiber.dispose()
