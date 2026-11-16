@@ -11,6 +11,7 @@
 
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import { HarnessError } from '@deepseek-ai/dsh-error'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsTarget, FsVersion } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-store-atom'
@@ -86,22 +87,21 @@ export interface PersonalityWriteResult {
 
 /** Stable failure codes for profile parsing and writing. */
 export type PersonalityStoreErrorCode =
-  | 'invalid-document'
-  | 'unknown-kind'
-  | 'invalid-name'
-  | 'identity-manual'
-  | 'budget-exceeded'
-  | 'legacy-conflict'
+  | 'PERSONALITY_INVALID_DOCUMENT'
+  | 'PERSONALITY_UNKNOWN_KIND'
+  | 'PERSONALITY_INVALID_NAME'
+  | 'PERSONALITY_IDENTITY_MANUAL'
+  | 'PERSONALITY_BUDGET_EXCEEDED'
+  | 'PERSONALITY_LEGACY_CONFLICT'
 
 /** Typed profile failure with an actionable message. */
-export class PersonalityStoreError extends Error {
+export class PersonalityStoreError extends HarnessError {
   /**
    * @param message - reason naming the offending value or file.
    * @param code - stable failure kind.
    */
-  constructor(message: string, readonly code: PersonalityStoreErrorCode) {
-    super(message)
-    this.name = 'PersonalityStoreError'
+  constructor(message: string, override readonly code: PersonalityStoreErrorCode) {
+    super(message, code)
   }
 }
 
@@ -118,23 +118,36 @@ export const PERSONALITY_MAX_ENTRY_CHARS = 400
 /** Maximum serialized document size in UTF-8 bytes. */
 export const PERSONALITY_MAX_BODY_BYTES = 32 * 1024
 
-/** Absolute path of the global profile under the current harness home. */
+/**
+ * Absolute path of the global profile under the current harness home.
+ * @returns the filesystem path shown to users; the profile bytes are read through the store.
+ */
 export function globalPersonalityPath(): string {
   return join(resolveDshHome(), 'personality', PERSONALITY_FILE_NAME)
 }
 
-/** Build an entry id from its kind and lower-kebab name. */
+/**
+ * Build an entry id from its kind and lower-kebab name.
+ * @param kind - accepted entry kind.
+ * @param name - lower-kebab entry name, already validated by the caller.
+ * @returns the `<kind>.<name>` id stored in the document.
+ */
 export function personalityEntryId(kind: PersonalityEntryKind, name: string): string {
   return `${kind}.${name}`
 }
 
-/** Parse one entry id, rejecting an unknown kind or a malformed name. */
+/**
+ * Parse one entry id, rejecting an unknown kind or a malformed name.
+ * @param id - `<kind>.<lower-kebab-name>` id to split.
+ * @returns the validated kind and name.
+ * @throws PersonalityStoreError when the separator is missing, the kind is unknown, or the name is not lower-kebab-case.
+ */
 export function parsePersonalityEntryId(id: string): { readonly kind: PersonalityEntryKind; readonly name: string } {
   const separator = id.indexOf('.')
   if (separator < 1 || separator === id.length - 1) {
     throw new PersonalityStoreError(
       `personality entry id ${JSON.stringify(id)} must be "<kind>.<lower-kebab-name>"`,
-      'invalid-name',
+      'PERSONALITY_INVALID_NAME',
     )
   }
   const kind = id.slice(0, separator)
@@ -142,14 +155,19 @@ export function parsePersonalityEntryId(id: string): { readonly kind: Personalit
   if (!(PERSONALITY_ENTRY_KINDS as readonly string[]).includes(kind)) {
     throw new PersonalityStoreError(
       `unknown personality entry kind ${JSON.stringify(kind)}; valid kinds: ${PERSONALITY_ENTRY_KINDS.join(', ')}`,
-      'unknown-kind',
+      'PERSONALITY_UNKNOWN_KIND',
     )
   }
   assertEntryName(name)
   return { kind: kind as PersonalityEntryKind, name }
 }
 
-/** Create an empty document at revision 1. */
+/**
+ * Create an empty document at revision 1.
+ * @param entries - initial entries, sorted into canonical kind and id order; empty when omitted.
+ * @param now - timestamp recorded as `updatedAt`; defaults to the current time.
+ * @returns a first-revision document.
+ */
 export function createPersonalityDocument(
   entries: readonly PersonalityEntry[] = [],
   now: Date = new Date(),
@@ -161,7 +179,12 @@ export function createPersonalityDocument(
   }
 }
 
-/** Render one document as the canonical file text. */
+/**
+ * Render one document as the canonical file text.
+ * @param document - document to serialize, with entries re-sorted canonically.
+ * @returns the `---`-delimited YAML frontmatter and trailing newline.
+ * @throws PersonalityStoreError when the rendered body exceeds the 32 KiB budget.
+ */
 export function renderPersonalityDocument(document: PersonalityDocument): string {
   const body = stringifyYaml({
     version: document.version,
@@ -172,15 +195,20 @@ export function renderPersonalityDocument(document: PersonalityDocument): string
   return `---\n${body}---\n`
 }
 
-/** Parse one profile file, rejecting unknown shapes and invalid entries. */
+/**
+ * Parse one profile file, rejecting unknown shapes and invalid entries.
+ * @param text - complete `PERSONALITY.md` contents; a leading BOM is ignored.
+ * @returns the versioned document with entries in canonical order.
+ * @throws PersonalityStoreError on malformed frontmatter, an id/kind mismatch, duplicate ids, or a body over budget.
+ */
 export function parsePersonalityDocument(text: string): PersonalityDocument {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n)?([\s\S]*)$/u.exec(text.replace(/^\uFEFF/u, ''))
   if (match === null) {
-    throw new PersonalityStoreError('PERSONALITY.md must start with a YAML frontmatter block delimited by "---"', 'invalid-document')
+    throw new PersonalityStoreError('PERSONALITY.md must start with a YAML frontmatter block delimited by "---"', 'PERSONALITY_INVALID_DOCUMENT')
   }
   const trailing = match[2]
   if (trailing !== undefined && trailing.trim().length > 0) {
-    throw new PersonalityStoreError('PERSONALITY.md must contain only the YAML frontmatter', 'invalid-document')
+    throw new PersonalityStoreError('PERSONALITY.md must contain only the YAML frontmatter', 'PERSONALITY_INVALID_DOCUMENT')
   }
   let parsed: unknown
   try {
@@ -188,20 +216,20 @@ export function parsePersonalityDocument(text: string): PersonalityDocument {
   } catch (error: unknown) {
     throw new PersonalityStoreError(
       `PERSONALITY.md frontmatter is not valid YAML: ${String(error)}`,
-      'invalid-document',
+      'PERSONALITY_INVALID_DOCUMENT',
     )
   }
   const record = asRecord(parsed, 'PERSONALITY.md frontmatter')
   const version = record.version
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
-    throw new PersonalityStoreError('PERSONALITY.md.version must be a positive integer', 'invalid-document')
+    throw new PersonalityStoreError('PERSONALITY.md.version must be a positive integer', 'PERSONALITY_INVALID_DOCUMENT')
   }
   const updatedAt = record.updatedAt
   if (typeof updatedAt !== 'string' || Number.isNaN(Date.parse(updatedAt))) {
-    throw new PersonalityStoreError('PERSONALITY.md.updatedAt must be a UTC ISO-8601 string', 'invalid-document')
+    throw new PersonalityStoreError('PERSONALITY.md.updatedAt must be a UTC ISO-8601 string', 'PERSONALITY_INVALID_DOCUMENT')
   }
   if (!Array.isArray(record.entries)) {
-    throw new PersonalityStoreError('PERSONALITY.md.entries must be a sequence', 'invalid-document')
+    throw new PersonalityStoreError('PERSONALITY.md.entries must be a sequence', 'PERSONALITY_INVALID_DOCUMENT')
   }
   const entries: PersonalityEntry[] = []
   const seen = new Set<string>()
@@ -211,17 +239,17 @@ export function parsePersonalityDocument(text: string): PersonalityDocument {
     const kind = entry.kind
     const entryText = entry.text
     if (typeof id !== 'string' || typeof kind !== 'string' || typeof entryText !== 'string') {
-      throw new PersonalityStoreError(`PERSONALITY.md.entries[${String(index)}] needs string id, kind, and text`, 'invalid-document')
+      throw new PersonalityStoreError(`PERSONALITY.md.entries[${String(index)}] needs string id, kind, and text`, 'PERSONALITY_INVALID_DOCUMENT')
     }
     const parsedId = parsePersonalityEntryId(id)
     if (parsedId.kind !== kind) {
       throw new PersonalityStoreError(
         `PERSONALITY.md.entries[${String(index)}].kind ${JSON.stringify(kind)} does not match id ${JSON.stringify(id)}`,
-        'invalid-document',
+        'PERSONALITY_INVALID_DOCUMENT',
       )
     }
     if (seen.has(id)) {
-      throw new PersonalityStoreError(`PERSONALITY.md has duplicate entry id ${JSON.stringify(id)}`, 'invalid-document')
+      throw new PersonalityStoreError(`PERSONALITY.md has duplicate entry id ${JSON.stringify(id)}`, 'PERSONALITY_INVALID_DOCUMENT')
     }
     seen.add(id)
     entries.push({ id, kind: parsedId.kind, text: normalizeEntryText(entryText) })
@@ -231,7 +259,13 @@ export function parsePersonalityDocument(text: string): PersonalityDocument {
   return document
 }
 
-/** Read the global profile; a missing file is an empty read, not an error. */
+/**
+ * Read the global profile; a missing file is an empty read, not an error.
+ * @param ctx - plugin context carrying the global store.
+ * @param signal - cancellation for the store read.
+ * @returns the profile path and, when the file exists, its parsed document and opaque store version.
+ * @throws PersonalityStoreError when an existing file cannot be parsed.
+ */
 export async function readGlobalPersonality(ctx: Context, signal?: AbortSignal): Promise<PersonalityRead> {
   const read = await ctx.dshStore.readFile(undefined, PERSONALITY_STORE_PATH, {
     scope: 'global',
@@ -251,6 +285,13 @@ export async function readGlobalPersonality(ctx: Context, signal?: AbortSignal):
  * `expectedVersion` is the store version observed by the caller. Omitting it is
  * reserved for a first create; an existing file then fails the guard instead of
  * being silently overwritten.
+ * @param ctx - plugin context carrying the global store.
+ * @param document - document to serialize and write.
+ * @param expectedVersion - store version the write must still match; omitted only for a first create.
+ * @param signal - cancellation for the write.
+ * @returns the profile path and the new opaque store version when the backend reports one.
+ * @throws {PersonalityStoreError} when the rendered body exceeds the 32 KiB budget.
+ *   Store write errors, including a failed version guard, propagate unchanged.
  */
 export async function writeGlobalPersonality(
   ctx: Context,
@@ -275,6 +316,11 @@ export async function writeGlobalPersonality(
  *
  * Identity is refused before any I/O because the user owns that kind; the new
  * tool path has no proposal queue.
+ * @param ctx - plugin context carrying the global store.
+ * @param input - entry kind, lower-kebab name, and one-paragraph text.
+ * @param signal - cancellation for each read and write.
+ * @returns the profile path, the new document revision, the stored entry, and the opaque store version.
+ * @throws PersonalityStoreError for an identity entry, an invalid name or text, or a second stale conflict.
  */
 export async function upsertGlobalPersonalityEntry(
   ctx: Context,
@@ -320,6 +366,10 @@ export async function upsertGlobalPersonalityEntry(
  * create-if-absent destination. A backend without move support falls back to
  * read → write destination → compare → delete source; a failure at any step
  * leaves the source in place and reports the legacy path when it already exists.
+ * @param ctx - plugin context carrying the filesystem seam.
+ * @param signal - cancellation for every filesystem operation.
+ * @returns the migration status and, when moved or already migrated, the backup path.
+ * @throws PersonalityStoreError when the source is not a regular file, a copy verification fails, or no free legacy name exists.
  */
 export async function migrateLegacyPersonality(ctx: Context, signal?: AbortSignal): Promise<LegacyMigration> {
   const sourcePath = globalPersonalityPath()
@@ -328,7 +378,7 @@ export async function migrateLegacyPersonality(ctx: Context, signal?: AbortSigna
   const info = await ctx.fs.stat(source, signal)
   if (info === undefined) return { status: 'absent' }
   if (info.type !== 'file') {
-    throw new PersonalityStoreError(`personality legacy source ${sourcePath} is not a regular file`, 'legacy-conflict')
+    throw new PersonalityStoreError(`personality legacy source ${sourcePath} is not a regular file`, 'PERSONALITY_LEGACY_CONFLICT')
   }
   const sourceText = await ctx.fs.readText(source, signal)
   try {
@@ -358,7 +408,7 @@ export async function migrateLegacyPersonality(ctx: Context, signal?: AbortSigna
       if (moved.sourceDeleted) return { status: 'moved', legacyPath }
       throw new PersonalityStoreError(
         `moved ${sourcePath} to ${legacyPath} but could not remove the source: ${moved.sourceFailure.message}`,
-        'legacy-conflict',
+        'PERSONALITY_LEGACY_CONFLICT',
       )
     } catch (error: unknown) {
       if (error instanceof FsError && (error.code === 'FS_NOT_OBSERVED' || error.code === 'FS_ALREADY_EXISTS')) continue
@@ -368,7 +418,7 @@ export async function migrateLegacyPersonality(ctx: Context, signal?: AbortSigna
       throw error
     }
   }
-  throw new PersonalityStoreError(`could not find a free legacy name for ${sourcePath}`, 'legacy-conflict')
+  throw new PersonalityStoreError(`could not find a free legacy name for ${sourcePath}`, 'PERSONALITY_LEGACY_CONFLICT')
 }
 
 /** Normalize one input and reject identity before any I/O. */
@@ -376,13 +426,13 @@ function normalizeInput(input: PersonalityEntryInput): PersonalityEntryInput {
   if (input.kind === 'identity') {
     throw new PersonalityStoreError(
       'identity entries are manual-only; edit PERSONALITY.md directly because the new apply path never writes identity.*',
-      'identity-manual',
+      'PERSONALITY_IDENTITY_MANUAL',
     )
   }
   if (!(PERSONALITY_ENTRY_KINDS as readonly string[]).includes(input.kind)) {
     throw new PersonalityStoreError(
       `unknown personality entry kind ${JSON.stringify(input.kind)}; valid kinds: ${PERSONALITY_ENTRY_KINDS.join(', ')}`,
-      'unknown-kind',
+      'PERSONALITY_UNKNOWN_KIND',
     )
   }
   assertEntryName(input.name)
@@ -394,7 +444,7 @@ function assertEntryName(name: string): void {
   if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(name)) return
   throw new PersonalityStoreError(
     `personality entry name ${JSON.stringify(name)} must be lower-kebab-case`,
-    'invalid-name',
+    'PERSONALITY_INVALID_NAME',
   )
 }
 
@@ -402,16 +452,16 @@ function assertEntryName(name: string): void {
 function normalizeEntryText(text: string): string {
   const normalized = text.trim()
   if (normalized.length === 0) {
-    throw new PersonalityStoreError('personality entry text must not be empty', 'invalid-document')
+    throw new PersonalityStoreError('personality entry text must not be empty', 'PERSONALITY_INVALID_DOCUMENT')
   }
   if (/\n[ \t]*\n/u.test(normalized)) {
-    throw new PersonalityStoreError('personality entry text must be one paragraph without blank lines', 'invalid-document')
+    throw new PersonalityStoreError('personality entry text must be one paragraph without blank lines', 'PERSONALITY_INVALID_DOCUMENT')
   }
   const length = Array.from(normalized).length
   if (length > PERSONALITY_MAX_ENTRY_CHARS) {
     throw new PersonalityStoreError(
       `personality entry text is ${String(length)} characters, over the ${String(PERSONALITY_MAX_ENTRY_CHARS)}-character limit`,
-      'budget-exceeded',
+      'PERSONALITY_BUDGET_EXCEEDED',
     )
   }
   return normalized
@@ -448,14 +498,14 @@ function assertDocumentBudget(text: string): void {
   if (bytes <= PERSONALITY_MAX_BODY_BYTES) return
   throw new PersonalityStoreError(
     `personality document is ${String(bytes)} bytes, over the ${String(PERSONALITY_MAX_BODY_BYTES)}-byte limit`,
-    'budget-exceeded',
+    'PERSONALITY_BUDGET_EXCEEDED',
   )
 }
 
 /** Narrow one parsed YAML value to a mapping. */
 function asRecord(value: unknown, subject: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new PersonalityStoreError(`${subject} must be a mapping`, 'invalid-document')
+    throw new PersonalityStoreError(`${subject} must be a mapping`, 'PERSONALITY_INVALID_DOCUMENT')
   }
   return value as Record<string, unknown>
 }
@@ -503,14 +553,14 @@ async function copyLegacyPersonality(
   await ctx.fs.writeText(destination, text, { kind: 'createIfAbsent' }, signal)
   const copied = await ctx.fs.readText(destination, signal)
   if (copied !== text) {
-    throw new PersonalityStoreError(`legacy copy ${legacyPath} does not match ${sourcePath}`, 'legacy-conflict')
+    throw new PersonalityStoreError(`legacy copy ${legacyPath} does not match ${sourcePath}`, 'PERSONALITY_LEGACY_CONFLICT')
   }
   try {
     await ctx.fs.deleteFile(source, { version }, signal)
   } catch (error: unknown) {
     throw new PersonalityStoreError(
       `copied ${sourcePath} to ${legacyPath} but could not remove the source: ${String(error)}`,
-      'legacy-conflict',
+      'PERSONALITY_LEGACY_CONFLICT',
     )
   }
   return { status: 'moved', legacyPath }

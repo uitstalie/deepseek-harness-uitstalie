@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { Session, SessionId, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
-import { appendMemoryEntry, appendTurnSummary, parseMemoryDocument, summaryPaused } from '../src/index.ts'
+import { appendMemoryEntry, appendTurnSummary, parseMemoryDocument, summaryPaused } from '../src/api.ts'
 import { createRoot, memoryFilePath, mountMemory } from './harness.ts'
 import type { MemoryTestHarness } from './harness.ts'
 

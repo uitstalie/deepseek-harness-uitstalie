@@ -17,7 +17,7 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import * as FsLocalPlugin from '@deepseek-ai/dsh-fs-local'
 import * as SystemEnvironmentPlugin from '@deepseek-ai/dsh-system-environment'
 import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
-import * as StoreAtomPlugin from '../src/index.ts'
+import * as StoreAtomPlugin from '../src/api.ts'
 
 let root: string | undefined
 let context: Context | undefined

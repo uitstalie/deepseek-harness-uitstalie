@@ -25,7 +25,7 @@ import type {
   SessionSearchPage,
   SessionSearchRequest,
 } from '@deepseek-ai/dsh-session-query'
-import { createDshStore } from '@deepseek-ai/dsh-store-atom'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom/src/api.ts'
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,
@@ -33,10 +33,10 @@ import {
 import type { AgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
 import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
 import { join } from 'node:path'
-import * as Memory from '../src/index.ts'
-import { isMemorySnapshotSource } from '../src/index.ts'
+import * as Memory from '../src/api.ts'
+import { isMemorySnapshotSource } from '../src/api.ts'
 import type { Config, MemoryConfigInput } from '../src/config.ts'
-import type { MemorySnapshotSource } from '../src/index.ts'
+import type { MemorySnapshotSource } from '../src/api.ts'
 
 /** Signal for tool calls that are not cancelled. */
 export const signal = new AbortController().signal

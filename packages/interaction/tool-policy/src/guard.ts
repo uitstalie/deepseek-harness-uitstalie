@@ -17,5 +17,10 @@ import type { ToolPolicyService } from './index.ts'
  * @returns the guard disposer.
  */
 export function installToolGuard(tools: Context, service: ToolPolicyService): () => void {
-  return tools.tools.guard(exec => service.toolDenialReason(exec.name, exec))
+  return tools.tools.guard((exec) => {
+    const reason = service.toolDenialReason(exec.name, exec)
+    return reason === undefined
+      ? undefined
+      : { reason, info: { name: 'ToolPolicyError', code: 'TOOL_POLICY_DENIED' } }
+  })
 }

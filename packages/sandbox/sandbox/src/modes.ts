@@ -9,6 +9,7 @@
  * @module dsh-sandbox/modes
  */
 
+import { HarnessError } from '@deepseek-ai/dsh-error'
 import type { SandboxMode } from './index.ts'
 
 // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
@@ -26,6 +27,21 @@ import type { SandboxMode } from './index.ts'
  */
 export const HOME_WRITE_ENABLED: boolean = false
 
+/** Refusal for a mode this build keeps in the vocabulary but does not enforce. */
+export class SandboxModeDisabledError extends HarnessError {
+  /**
+   * @param mode - the disabled mode named by the request or persisted state.
+   */
+  constructor(mode: SandboxMode) {
+    super(HOME_WRITE_DISABLED_MESSAGE, 'SANDBOX_MODE_DISABLED')
+    this.name = 'SandboxModeDisabledError'
+    this.mode = mode
+  }
+
+  /** The mode the caller asked to select or enforce. */
+  readonly mode: SandboxMode
+}
+
 /** The single refusal text every disabled `home-write` entry point reports. */
 export const HOME_WRITE_DISABLED_MESSAGE = 'home-write is disabled in this build: on Windows its ACL grant relabels the whole existing home/drive '
   + 'subtree Low integrity and never rolls that back, which makes shortcuts and applications under the home '
@@ -38,7 +54,7 @@ export const HOME_WRITE_DISABLED_MESSAGE = 'home-write is disabled in this build
  * @param mode - the effective mode about to be selected or enforced.
  */
 export function assertSandboxModeEnabled(mode: SandboxMode): void {
-  if (mode === 'home-write' && !HOME_WRITE_ENABLED) throw new Error(HOME_WRITE_DISABLED_MESSAGE)
+  if (mode === 'home-write' && !HOME_WRITE_ENABLED) throw new SandboxModeDisabledError(mode)
 }
 // END uitstalie-deepseek-flash
 

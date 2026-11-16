@@ -15,14 +15,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: resolves the workspace-registry service declaration.
 import { WorkspaceId, type Workspace } from '@deepseek-ai/dsh-workspace'
-import {
-  isRulesPath,
-  normalizeStorePath,
-  queryStoreTarget,
-  resolveStoreTarget,
-  scanWorkspaceRules,
-  STORE_DIR_NAME,
-} from '@deepseek-ai/dsh-store-atom'
 import type { StoreRuleEntry, StoreRulesListing, StoreRuleText } from './types.ts'
 
 /** Per-file cap applied when the rule set is scanned and read. */
@@ -50,20 +42,26 @@ export function workspaceRootOf(workspace: Pick<Workspace, 'path'> | undefined, 
  * The `.dsh` store root of one resolved workspace.
  * @param workspace - the resolved workspace, or undefined when the id is unknown.
  * @param workspaceId - the id the caller asked for, echoed in the refusal.
+ * @param directoryName - store directory name; defaults to `.dsh`.
  * @returns the canonical `.dsh` root.
  * @throws {RemoteError} `store/unknown-workspace` when the Host has no such workspace.
  */
-export function storeRootOfWorkspace(workspace: Pick<Workspace, 'path'> | undefined, workspaceId: string): string {
-  return join(workspaceRootOf(workspace, workspaceId), STORE_DIR_NAME)
+export function storeRootOfWorkspace(
+  workspace: Pick<Workspace, 'path'> | undefined,
+  workspaceId: string,
+  directoryName = '.dsh',
+): string {
+  return join(workspaceRootOf(workspace, workspaceId), directoryName)
 }
 
 /**
  * Drop the store directory prefix from a loader display path (`rules/x.md`).
  * @param displayPath - the loader's store-prefixed display path.
+ * @param directoryName - store directory name; defaults to `.dsh`.
  * @returns the path relative to the store directory.
  */
-export function storeRelativePath(displayPath: string): string {
-  const prefix = `${STORE_DIR_NAME}/`
+export function storeRelativePath(displayPath: string, directoryName = '.dsh'): string {
+  const prefix = `${directoryName}/`
   return displayPath.startsWith(prefix) ? displayPath.slice(prefix.length) : displayPath
 }
 
@@ -74,7 +72,7 @@ export function storeRelativePath(displayPath: string): string {
  * so the sidebar cannot write a rule by accident.
  */
 export default class StoreRulesRemote extends TypertRemoteService {
-  static inject = ['fs', 'workspaceRegistry']
+  static inject = ['workspaceRegistry', 'dshStore']
 
   /**
    * @param ctx - owning context carrying the filesystem and the workspace registry.
@@ -104,16 +102,15 @@ export default class StoreRulesRemote extends TypertRemoteService {
   @Remote
   async listRules(workspaceId: string, signal: AbortSignal): Promise<StoreRulesListing> {
     const workspaceRoot = workspaceRootOf(this.workspaceOf(workspaceId), workspaceId)
-    const scan = await scanWorkspaceRules(this.ctx.fs, {
-      projectRoot: workspaceRoot,
+    const scan = await this.ctx.dshStore.scanRules(workspaceRoot, {
       maxSourceBytes: MAX_RULE_BYTES,
       signal,
     })
     const entries: StoreRuleEntry[] = scan.files.map(file => ({
-      path: storeRelativePath(file.displayPath),
+      path: storeRelativePath(file.displayPath, this.ctx.dshStore.directoryName),
       size: Buffer.byteLength(file.content, 'utf8'),
     }))
-    return { root: STORE_DIR_NAME, entries }
+    return { root: this.ctx.dshStore.directoryName, entries }
   }
 
   /**
@@ -126,20 +123,15 @@ export default class StoreRulesRemote extends TypertRemoteService {
    */
   @Remote
   async readRule(workspaceId: string, path: string, signal: AbortSignal): Promise<StoreRuleText> {
-    const storeRoot = storeRootOfWorkspace(this.workspaceOf(workspaceId), workspaceId)
-    const normalized = normalizeStorePath(path)
-    if (!isRulesPath(normalized.displayPath)) {
+    const workspaceRoot = workspaceRootOf(this.workspaceOf(workspaceId), workspaceId)
+    const normalized = this.ctx.dshStore.normalizePath(path)
+    if (!this.ctx.dshStore.isRulesPath(normalized)) {
       throw new RemoteError('store/invalid-rule-path', `"${path}" is not a path below rules/`, { path })
     }
-    const queried = await queryStoreTarget(
-      this.ctx.fs,
-      resolveStoreTarget(storeRoot, normalized),
-      normalized.displayPath,
-      { readText: true, signal },
-    )
+    const queried = await this.ctx.dshStore.queryAt(workspaceRoot, normalized, { signal })
     if (queried.kind !== 'file' || queried.text === undefined) {
       throw new RemoteError('store/not-found', `no rule at "${path}"`, { path })
     }
-    return { path: normalized.displayPath, text: queried.text }
+    return { path: normalized, text: queried.text }
   }
 }

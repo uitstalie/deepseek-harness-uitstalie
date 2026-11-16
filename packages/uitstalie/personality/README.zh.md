@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-personality` 让每个 agent 在 harness home 下拥有一份稳定、由用户拥有的档案。它读取四个全局文件——`PERSONALITY.md`、`OUTPUT_STYLE.yaml`、`SUPERAGENT_OUTPUT_STYLE.yaml`、`WRITING_RULES.yaml`——并贡献三个提示词段：order 100 的档案、690 的按角色选择输出风格、695 的已启用写作规则。subagent 不收到 690，只有 `personality_analyze`；普通 root 与 super root 使用独立的风格文件。`personality_analyze` 扫描会话记录，返回带证据的候选且不写文件；root agent 还会拿到 `personality_apply`（只在 `confirm: true` 后写档案）和 `write_like_human`（维护全局写作规则）。没有工作区覆盖、没有 turn-end 自动学习、没有历史文件，也没有设置页。
+`dsh-personality` 让每个 agent 在 harness home 下拥有一份稳定、由用户拥有的档案。它读取四个全局文件——`PERSONALITY.md`、`OUTPUT_STYLE.yaml`、`SUPERAGENT_OUTPUT_STYLE.yaml`、`WRITING_RULES.yaml`——并贡献三个提示词段：order 100 的档案、690 的按角色选择输出风格、695 的已启用写作规则。subagent 不收到 690，只有 `personality_analyze`；普通 root 与 super root 使用独立的风格文件。`personality_analyze` 扫描会话记录，返回带证据的候选且不写文件；root agent 还会拿到 `personality_apply`（只在 `confirm: true` 后写档案）和 `write_like_human`（维护全局写作规则）。没有工作区覆盖、turn-end 自动学习、历史文件或设置页。
 
 ## 目录
 
@@ -37,7 +37,8 @@ kind: "package-reference"
 | 路径 | 用途 | 谁写 |
 |---|---|---|
 | `PERSONALITY.md` | understanding / preference / style / identity 条目 | 确认后的 `personality_apply`，或人 |
-| `OUTPUT_STYLE.yaml` | 普通 root 风格：tone、length、结论、列表、dispatch voice | 人；提供者只读 |`r`n| `SUPERAGENT_OUTPUT_STYLE.yaml` | super root 的独立风格槽 | 人；提供者只读 |
+| `OUTPUT_STYLE.yaml` | 普通 root 风格：tone、length、结论、列表、dispatch voice | 人；提供者只读 |
+| `SUPERAGENT_OUTPUT_STYLE.yaml` | super root 的独立风格槽 | 人；提供者只读 |
 | `WRITING_RULES.yaml` | 已启用的写作约束 | 人；提供者只读 |
 | `legacy/PERSONALITY.<YYYYMMDDTHHMMSSZ>.md` | 重写前档案的只读备份 | 首次激活写一次 |
 

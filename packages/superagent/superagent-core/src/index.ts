@@ -185,6 +185,7 @@ const parseRecord = (line: string): DispatchReportRecord | undefined => {
   if (typeof record.id !== 'string' || record.id === '') return undefined
   if (typeof record.sessionId !== 'string' || record.sessionId === '') return undefined
   if (!isStatus(record.status)) return undefined
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- Disk JSON is untrusted at this boundary.
   if (typeof record.workspace !== 'object' || record.workspace === null) return undefined
   const workspace = record.workspace as Partial<DispatchReportWorkspace>
   if (typeof workspace.id !== 'string' || typeof workspace.title !== 'string' || typeof workspace.path !== 'string') return undefined
@@ -209,6 +210,7 @@ const parseRecord = (line: string): DispatchReportRecord | undefined => {
     ...(typeof record.reportText === 'string' ? { reportText: record.reportText } : {}),
     ...(typeof record.outcome === 'string' ? { outcome: record.outcome } : {}),
     ...(record.result === 'returned' || record.result === 'failed' ? { result: record.result } : {}),
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- Disk JSON is untrusted at this boundary.
     ...(typeof record.ledger === 'object' && record.ledger !== null
       && typeof (record.ledger).root === 'string'
       && typeof (record.ledger).taskId === 'string'

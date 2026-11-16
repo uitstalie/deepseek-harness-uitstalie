@@ -21,8 +21,8 @@ import {
   MEMORY_SNAPSHOT_TITLE,
   renderMemorySnapshot,
   syncMemorySnapshot,
-} from '../src/index.ts'
-import type { MemoryDocument } from '../src/index.ts'
+} from '../src/api.ts'
+import type { MemoryDocument } from '../src/api.ts'
 import {
   callTool,
   createRoot,

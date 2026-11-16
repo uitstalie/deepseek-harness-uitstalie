@@ -285,7 +285,7 @@ const chatTemplateKwarg: z<ChatTemplateKwargValue> = z.union([
     $var: z.union(CHAT_TEMPLATE_VARS).required(),
     omitWhenOff: z.boolean(),
   }),
-]) as unknown as z<ChatTemplateKwargValue>
+]) as z<ChatTemplateKwargValue>
 
 const compatProfile: z<PiAiCompatProfile> = z.object({
   supportsStore: z.boolean(),
@@ -329,7 +329,7 @@ const compatProfile: z<PiAiCompatProfile> = z.object({
 const reasoningEfforts = z.dict(
   z.union([z.string(), z.const(null)]),
   z.union(THINKING_LEVELS),
-) as unknown as z<PiAiReasoningEfforts>
+) as z<PiAiReasoningEfforts>
 
 /** The fields a `models` entry and a `modelOverrides` value share; only the id's home differs. */
 const modelFields = {

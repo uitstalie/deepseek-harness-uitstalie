@@ -207,7 +207,7 @@ export const queryIssues = (
     if (query.assignee !== undefined && issue.assignee !== query.assignee) return false
     if (
       query.link !== undefined
-      && !issue.links.some(link => link.type === query.link?.type && link.target === query.link?.target)
+      && !issue.links.some(link => link.type === query.link.type && link.target === query.link.target)
     ) return false
     if (query.includeClosed !== true && vocab !== undefined && vocab.closed.includes(issue.status)) return false
     return true

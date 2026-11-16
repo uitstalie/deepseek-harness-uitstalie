@@ -24,6 +24,7 @@
     "@deepseek-ai/dsh-commands": "workspace:*"
   },
   "dependencies": {
+    "@deepseek-ai/dsh-error": "workspace:*",
     "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",

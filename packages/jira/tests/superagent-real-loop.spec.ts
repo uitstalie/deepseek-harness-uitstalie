@@ -136,8 +136,16 @@ const createLedger = async (): Promise<string> => {
   return dir
 }
 
+/** The observed subset of a tool envelope (`SUPERAGENT_OUTPUT_SCHEMA`) this scenario reads. */
+interface ToolEnvelope {
+  ok?: boolean
+  error?: unknown
+  dispatch?: { readonly session: string }
+  recovered?: readonly { readonly key: string; readonly previous: string; readonly session: string }[]
+}
+
 /** Dispatch one tool call through the real registry under one Agent. */
-const call = async (agent: Agent, name: string, args: unknown): Promise<{ ok: boolean; error?: unknown }> => {
+const call = async (agent: Agent, name: string, args: unknown): Promise<ToolEnvelope & { ok: boolean }> => {
   const batch = await agent.ctx.tools.execute({
     calls: [{ type: 'tool-call', id: ToolCallId(`${name}-call`), name, arguments: JSON.stringify(args) }],
     agent,
@@ -145,7 +153,7 @@ const call = async (agent: Agent, name: string, args: unknown): Promise<{ ok: bo
   })
   const result = batch.results[0]?.result
   if (result === undefined) throw new Error(`tool "${name}" settled no result`)
-  const value = result.value as { ok?: boolean; error?: unknown } | undefined
+  const value = result.value as ToolEnvelope | undefined
   if (value === undefined) {
     // A guard refusal settles as a tool error with no value envelope: the call never reached
     // the definition, which is the outcome this test asserts for an executor write.
@@ -235,7 +243,8 @@ describe('superagent over the real Session controller', () => {
 
     const dispatched = await call(dispatcher, 'superagent_dispatch', { key: 'DH-12', cwd: workspace })
     expect(dispatched.ok).toBe(true)
-    const session = (dispatched as unknown as { dispatch: { session: string } }).dispatch.session
+    const session = dispatched.dispatch?.session
+    if (session === undefined) throw new Error('the dispatch result names no session')
 
     const executor = await waitFor(() => ctx.agents.get(SessionId(session)))
     expect(executor.session.header.agentPreset).toBe('jira-worker')
@@ -280,7 +289,8 @@ describe('superagent over the real Session controller', () => {
     expect((await call(dispatcher, 'superagent_claim', { action: 'claim', key: 'DH-13' })).ok).toBe(true)
     const dispatched13 = await call(dispatcher, 'superagent_dispatch', { key: 'DH-13', cwd: workspace })
     expect(dispatched13.ok).toBe(true)
-    const session13 = (dispatched13 as unknown as { dispatch: { session: string } }).dispatch.session
+    const session13 = dispatched13.dispatch?.session
+    if (session13 === undefined) throw new Error('the dispatch result names no session')
     const executor13 = await waitFor(() => ctx.agents.get(SessionId(session13)))
     await executor13.whenIdle()
     const inProgress = await ctx.jira.readIssue('DH-13' as never)
@@ -288,9 +298,8 @@ describe('superagent over the real Session controller', () => {
 
     const recovered = await call(dispatcher, 'superagent_dispatch', { action: 'recover' })
     expect(recovered.ok).toBe(true)
-    const revived = (recovered as unknown as {
-      recovered: readonly { key: string; previous: string; session: string }[]
-    }).recovered
+    const revived = recovered.recovered
+    if (revived === undefined) throw new Error('the recover result carries no revived rows')
     expect(revived).toHaveLength(1)
     expect(revived[0]?.key).toBe('DH-13')
     expect(revived[0]?.previous).toBe(session13)

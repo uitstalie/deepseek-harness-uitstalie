@@ -6,8 +6,8 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { createSystemEnvironment } from '../src/index.ts'
-import * as SystemEnvironmentPlugin from '../src/index.ts'
+import { createSystemEnvironment } from '../src/api.ts'
+import * as SystemEnvironmentPlugin from '../src/api.ts'
 
 const POSIX = createSystemEnvironment({ platform: 'posix', env: { HOME: '/home/tester' } })
 

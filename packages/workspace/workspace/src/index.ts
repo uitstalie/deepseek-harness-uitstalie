@@ -244,6 +244,7 @@ export class WorkspaceRegistry extends Service {
    * Different canonical paths may share a display title.
    * @param path - Existing directory to own, in a fully qualified path spelling.
    * @param title - Display title used only when a new record is created.
+   * @param role - Durable workspace role; omitted records no explicit role and resolves as `agent`.
    * @returns the existing or newly durable workspace.
    */
   // TODO: `title` lost its last production caller when the gateway's

@@ -18,7 +18,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { defineTool, withMinRole } from '@deepseek-ai/dsh-tools'
+import { defineTool, ToolArgsError, ToolContextUnavailableError } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { SessionResultFilter, SessionSearchHit, SessionSearchWarning } from '@deepseek-ai/dsh-session-query'
 import type { MemorySettings } from './config.ts'
@@ -36,6 +36,7 @@ import type { MemoryEntryKind, MemorySection } from './memory-file.ts'
 import { readMemoryArchive } from './archive.ts'
 import { readMemoryWindow } from './read.ts'
 import { truncateToBytes } from './text.ts'
+import { MemorySearchDisabledError } from './failure.ts'
 import { appendMemoryUpdate, lastSnapshotText, refreshMemorySnapshot } from './snapshot.ts'
 
 /** Maximum `content` of one `memory_write` entry, in UTF-8 bytes. */
@@ -107,11 +108,11 @@ export function memoryTools(
   onSnapshotText?: SnapshotTextSink,
 ): readonly ToolDefinition[] {
   return [
-    withMinRole(defineMemoryWriteTool(ctx, settings, onSnapshotText), 'agent'),
-    withMinRole(defineMemoryResolveTool(ctx, settings, onSnapshotText), 'agent'),
-    withMinRole(defineMemoryForgetTool(ctx, settings, onSnapshotText), 'agent'),
-    withMinRole(defineMemorySearchTool(ctx), 'subagent'),
-    withMinRole(defineMemoryReadTool(ctx), 'subagent'),
+    { ...defineMemoryWriteTool(ctx, settings, onSnapshotText), minRole: 'agent' },
+    { ...defineMemoryResolveTool(ctx, settings, onSnapshotText), minRole: 'agent' },
+    { ...defineMemoryForgetTool(ctx, settings, onSnapshotText), minRole: 'agent' },
+    { ...defineMemorySearchTool(ctx), minRole: 'subagent' },
+    { ...defineMemoryReadTool(ctx), minRole: 'subagent' },
   ]
 }
 
@@ -182,7 +183,7 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapsho
       const content = normalizeEntryContent(args.content, args.kind)
       const facts = await readTurnFacts(ctx, session, exec.signal)
       if (facts === undefined) {
-        throw new Error('memory_write requires an active turn: the session log has no turn/start event')
+        throw new ToolContextUnavailableError('memory_write requires an active turn: the session log has no turn/start event')
       }
       const written = await appendMemoryEntry(ctx, session, {
         kind: args.kind,
@@ -482,7 +483,7 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
     async execute(args, exec) {
       const session = requireSession(exec.agent?.session, 'memory_search')
       const query = args.query.trim()
-      if (query.length === 0) throw new Error('memory_search: query must not be empty')
+      if (query.length === 0) throw new ToolArgsError(['query must not be empty'])
       const limit = clampSearchLimit(args.limit)
       let page
       try {
@@ -493,10 +494,10 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
         }, { signal: exec.signal })
       } catch (error: unknown) {
         if (error instanceof Error && (error as { code?: unknown }).code === 'SESSION_QUERY_SEARCH_DISABLED') {
-          throw new Error(
+          throw new MemorySearchDisabledError(
             'memory_search: session full-text search is disabled (session-query openAt is "never"); '
             + 'enable that index or use memory_read for a known session/turn',
-            { cause: error },
+            error,
           )
         }
         throw error
@@ -603,20 +604,20 @@ function foldTurnFacts(events: readonly SessionEvent[]): TurnFacts | undefined {
 /** Validate and normalize one `memory_write` content line. */
 function normalizeEntryContent(content: string, kind: MemoryEntryKind): string {
   const text = content.trim()
-  if (text.length === 0) throw new Error(`memory_write: content for a ${kind} entry must not be empty`)
+  if (text.length === 0) throw new ToolArgsError([`content for a ${kind} entry must not be empty`])
   if (/[\r\n]/u.test(text)) {
-    throw new Error('memory_write: content must be one line; the managed block stores one entry per line')
+    throw new ToolArgsError(['content must be one line; the managed block stores one entry per line'])
   }
   const bytes = Buffer.byteLength(text, 'utf8')
   if (bytes > MEMORY_WRITE_CONTENT_MAX_BYTES) {
-    throw new Error(`memory_write: content is ${String(bytes)} bytes; the limit is ${String(MEMORY_WRITE_CONTENT_MAX_BYTES)}`)
+    throw new ToolArgsError([`content is ${String(bytes)} bytes; the limit is ${String(MEMORY_WRITE_CONTENT_MAX_BYTES)}`])
   }
   return text
 }
 
 /** Require the owning agent session every memory tool is scoped to. */
 function requireSession(session: Session | undefined, tool: string): Session {
-  if (session === undefined) throw new Error(`${tool} requires an owning agent session`)
+  if (session === undefined) throw new ToolContextUnavailableError(`${tool} requires an owning agent session`)
   return session
 }
 

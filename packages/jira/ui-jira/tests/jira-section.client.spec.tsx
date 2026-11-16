@@ -245,6 +245,7 @@ it('follows the Host change stream while open, and stops when the page goes away
   }
 
   const scripted = wire()
+  const board = vi.mocked(scripted.board)
   // The scripted namespace is mounted, so the plugin never reaches the carrier's `$mount`.
   new TestRemote(ctx, { jira: { ...scripted, watch } })
   const slots = ctx.get('slots') as SlotRegistry
@@ -255,20 +256,20 @@ it('follows the Host change stream while open, and stops when the page goes away
   // A page that was never opened holds no snapshot: the live stream alone reads nothing.
   push(1)
   await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
-  expect(scripted.board).not.toHaveBeenCalled()
+  expect(board).not.toHaveBeenCalled()
 
   injected.activate()
-  await waitFor(() => { expect(scripted.board).toHaveBeenCalledTimes(1) })
+  await waitFor(() => { expect(board).toHaveBeenCalledTimes(1) })
   push(2)
-  await waitFor(() => { expect(scripted.board).toHaveBeenCalledTimes(2) })
+  await waitFor(() => { expect(board).toHaveBeenCalledTimes(2) })
   ctx.emit('connection/reset')
-  await waitFor(() => { expect(scripted.board).toHaveBeenCalledTimes(3) })
+  await waitFor(() => { expect(board).toHaveBeenCalledTimes(3) })
 
   // The subscription belongs to the plugin fiber; after disposal a late notice reads nothing.
   await fiber.dispose()
   push(3)
   await new Promise<void>((resolve) => { setTimeout(resolve, 0) })
-  expect(scripted.board).toHaveBeenCalledTimes(3)
+  expect(board).toHaveBeenCalledTimes(3)
 })
 
 it('renders the ledger status and the board the host answered', async () => {

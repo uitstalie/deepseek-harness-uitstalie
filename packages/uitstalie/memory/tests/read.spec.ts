@@ -19,7 +19,7 @@ import {
   MEMORY_READ_NARROW_HINT,
   MEMORY_READ_TEXT_MAX_BYTES,
   MEMORY_READ_WINDOW_MAX_EVENTS,
-} from '../src/index.ts'
+} from '../src/api.ts'
 import {
   appendAssistantText,
   appendUserText,

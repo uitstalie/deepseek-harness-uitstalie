@@ -29,7 +29,7 @@ The package adopts the session row's action list (`sidebar.workspaces.session.ro
 
 | Config field | Default | Effect |
 |---|---|---|
-| `sessionRowAction` | `true` | Inserts the overlay's marker into the row's action list, between the native `archive` (`order` 100) and `pin` (`order` 200) items. |
+| `sessionRowAction` | `false` | Inserts the overlay's marker into the row's action list, between the native `archive` (`order` 100) and `pin` (`order` 200) items. |
 | `takeoverArchive` | `false` | Registers the same cell the native `archive` item occupies at `priority: -1`, so the overlay's component renders while the native registration stays live for an instant rollback. |
 | `accent` | `var(--dsw-alias-state-business-primary)` | The color both contributions paint with. It travels into component CSS as the `--dsh-common-view-accent` custom property set inline on the element, never as a literal color in a stylesheet. |
 | `unitGap` | `4px` | Gap between the layout units' children. |

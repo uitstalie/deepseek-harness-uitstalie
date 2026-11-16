@@ -12,7 +12,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { mountAgentLoopTestDependencies, mountAgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
-import * as TokenCalculator from '../src/index.ts'
+import * as TokenCalculator from '../src/api.ts'
 import { countTokens } from '../src/tokenizer.ts'
 
 let contexts: Context[]

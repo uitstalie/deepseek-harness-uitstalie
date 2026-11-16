@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { CompactionId } from '@deepseek-ai/dsh-compaction'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,8 +31,8 @@ import {
   parseSummaryEntries,
   setMemorySummaryPaused,
   MemoryDocumentError,
-} from '../src/index.ts'
-import type { MemoryEntry } from '../src/index.ts'
+} from '../src/api.ts'
+import type { MemoryEntry } from '../src/api.ts'
 import {
   appendAssistantText,
   appendUserText,
@@ -583,10 +584,10 @@ test('a budget failure during the append names the budget instead of the model',
 })
 
 test('classifySummaryFailure maps each owned failure to a stable code', () => {
-  expect(classifySummaryFailure(new MemoryDocumentError('over', 'budget-exceeded'), 2)).toMatchObject({
+  expect(classifySummaryFailure(new MemoryDocumentError('over', 'BUDGET_EXCEEDED'), 2)).toMatchObject({
     code: 'BUDGET_EXCEEDED', attempts: 2,
   })
-  expect(classifySummaryFailure(new MemoryDocumentError('bad file', 'invalid-document'), 1).code).toBe('FILE_IO')
+  expect(classifySummaryFailure(new MemoryDocumentError('bad file', 'INVALID_DOCUMENT'), 1).code).toBe('FILE_IO')
   expect(classifySummaryFailure(new FsError('disk', 'FS_IO_ERROR'), 1).code).toBe('FILE_IO')
   for (const code of ['RATE_LIMIT', 'QUOTA', 'ACCOUNT_QUOTA'] as const) {
     expect(classifySummaryFailure(new LlmError('limited', code), 1).code).toBe('UPSTREAM_RATE_LIMIT')
@@ -750,8 +751,8 @@ test('a later completed turn compresses an old detail section into a brief check
   })
 
   root.session.append('turn/start', { turn: 17 })
-  ;(root.session as unknown as { append(type: string, data: unknown): void }).append('compaction/end', {
-    compactionId: 'compaction-test',
+  root.session.append('compaction/end', {
+    compactionId: CompactionId('compaction-test'),
     turn: 17,
   })
   completeTurn(root, 17)

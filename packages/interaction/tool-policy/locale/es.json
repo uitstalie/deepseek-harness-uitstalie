@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Política de herramientas flexible",
+    "description": "Aplica políticas nombradas de mejor esfuerzo a las llamadas de herramientas del modelo y a las rutas de herramientas de archivos. No es un sandbox del sistema operativo."
+  }
+}

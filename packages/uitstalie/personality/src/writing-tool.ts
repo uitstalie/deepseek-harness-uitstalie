@@ -12,7 +12,6 @@
  */
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { agentRoleOf } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -54,7 +53,12 @@ export interface WriteLikeHumanResult {
   readonly version?: string
 }
 
-/** Build the root-only writing-rules tool. */
+/**
+ * Build the root-only writing-rules tool.
+ * @param ctx - plugin context carrying the global store.
+ * @param refresh - reloads the calling agent's prompt after a successful write action.
+ * @returns the `write_like_human` tool definition; action failures return canonical `ok: false` results.
+ */
 export function writingRulesTool(ctx: Context, refresh: (agent: Agent) => Promise<void>): ToolDefinition {
   return defineTool({
     name: 'write_like_human',
@@ -108,7 +112,7 @@ export function writingRulesTool(ctx: Context, refresh: (agent: Agent) => Promis
     },
     async execute(args, exec) {
       const agent = requireAgent(exec.agent, 'write_like_human')
-      if (agentRoleOf(agent) === 'subagent') throw new Error('write_like_human is unavailable to subagents')
+      if ((agent.role ?? 'agent') === 'subagent') throw new Error('write_like_human is unavailable to subagents')
       const result = await runWritingRuleAction(ctx, args as WritingRuleInput, exec.signal)
       if (result.ok && WRITE_ACTIONS.has(result.action)) await refresh(agent)
       return result as never
@@ -171,7 +175,11 @@ export async function runWritingRuleAction(
   }
 }
 
-/** Render one result as the model-facing report. */
+/**
+ * Render one result as the model-facing report.
+ * @param result - action result to report.
+ * @returns the failure line, or the action summary with one line per rule, an omission note, and preview text when applicable.
+ */
 export function renderWritingRulesResult(result: WriteLikeHumanResult): string {
   if (!result.ok) return `write_like_human failed (${result.action}): ${String(result.error)}`
   const lines = [`write_like_human ${result.action}: ${String(result.rules.length)} rule(s) in ${result.path}`]

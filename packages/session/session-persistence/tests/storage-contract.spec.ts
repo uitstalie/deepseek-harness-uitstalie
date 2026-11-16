@@ -24,7 +24,7 @@ import {
   validateStoredEvents,
 } from '../src/index.ts'
 import type { SessionLocation } from '../src/index.ts'
-import { meta } from './contract.ts'
+import { meta, type ForeignStoredEvent } from './contract.ts'
 
 const LOCATION: SessionLocation = { kind: 'jsonl', path: '/store/session.jsonl' }
 
@@ -120,21 +120,21 @@ describe('validateStoredEvents', () => {
 
   it('retains an unmarked unknown event as opaque', () => {
     const m = meta('unknown-type')
-    const events = [
+    const events: ForeignStoredEvent[] = [
       { type: 'mystery/event', seq: 0, time: 1, data: { future: true } },
-    ] as unknown as SessionEvent[]
-    expect(validateStoredEvents(m, events)).toBe(events)
+    ]
+    expect(validateStoredEvents(m, events as SessionEvent[])).toBe(events)
     expect(events[0]).toMatchObject({ type: 'mystery/event', data: { future: true } })
   })
 
   it('refuses a critical unknown event and identifies the supported correction', () => {
     const m = meta('critical-unknown')
-    const events = [
+    const events: ForeignStoredEvent[] = [
       { type: 'mystery/event', seq: 0, time: 1, data: {}, critical: true },
-    ] as unknown as SessionEvent[]
+    ]
     let refusal: unknown
     try {
-      validateStoredEvents(m, events, LOCATION)
+      validateStoredEvents(m, events as SessionEvent[], LOCATION)
     } catch (error) {
       refusal = error
     }

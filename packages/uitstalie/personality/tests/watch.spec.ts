@@ -12,10 +12,10 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import SessionQuery from '@deepseek-ai/dsh-session-query'
-import { createDshStore } from '@deepseek-ai/dsh-store-atom'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom/src/api.ts'
 import { mountAgentLoopTestDependencies, mountAgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
 import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
-import * as Personality from '../src/index.ts'
+import * as Personality from '../src/api.ts'
 import {
   createPersonalityDocument,
   globalPersonalityPath,

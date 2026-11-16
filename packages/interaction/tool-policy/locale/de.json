@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Weiche Werkzeugrichtlinie",
+    "description": "Wendet benannte Best-Effort-Richtlinien auf Werkzeugaufrufe des Modells und Pfade von Dateiwerkzeugen an. Sie ist keine Betriebssystem-Sandbox."
+  }
+}

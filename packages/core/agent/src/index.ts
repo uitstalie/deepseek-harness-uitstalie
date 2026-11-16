@@ -15,12 +15,13 @@ import type { Session, SessionEvent, SessionId, SessionLogOffset } from '@deepse
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import { installTurnArchiveAdmission } from './archive-admission.ts'
 import type { Agent, TurnBoundaryProjection } from './types.ts'
-import type { AgentOptions, SessionStartSource } from './runtime-types.ts'
+import type { AgentOptions, AgentRole, SessionStartSource } from './runtime-types.ts'
+import { agentRoleOf } from './role.ts'
 import { turnBoundaryProjectionDefinition } from './projection.ts'
 
 export * from './runtime-types.ts'
 export * from './types.ts'
-export { agentRoleOf } from './role.ts'
+
 export { AgentModel, modelSelectionProjectionDefinition, installModelSelection } from './model-selection.ts'
 export type { ModelSelectionProjectionState } from './model-selection.ts'
 export type * from './projection.ts'
@@ -291,6 +292,20 @@ export class AgentRegistry extends Service {
 
   protected async [Service.init](): Promise<void> {
     this.turnBoundaryProjectionHandle = await this.ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
+  }
+
+  /**
+   * Read the turn and step positions recorded in a Session.
+   * @param session - Session whose committed events are read.
+   * @returns the current turn and step positions; do not mutate the returned value.
+   */
+  /**
+   * Resolve one live Agent's effective role.
+   * @param agent - Agent carrying durable lineage and live options.
+   * @returns the explicit child/super role, otherwise `agent`.
+   */
+  roleOf(agent: Agent): AgentRole {
+    return agentRoleOf(agent)
   }
 
   /**

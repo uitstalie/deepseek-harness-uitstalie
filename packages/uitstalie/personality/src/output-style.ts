@@ -10,6 +10,7 @@
 
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import { HarnessError } from '@deepseek-ai/dsh-error'
 import type {} from '@deepseek-ai/dsh-store-atom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { DEFAULT_OUTPUT_STYLE, OUTPUT_STYLE_FILE_NAME, OUTPUT_STYLE_STORE_PATH, SUPERAGENT_OUTPUT_STYLE_FILE_NAME, SUPERAGENT_OUTPUT_STYLE_STORE_PATH } from './defaults.ts'
@@ -73,17 +74,20 @@ export interface OutputStyleRead {
 }
 
 /** Typed output-style failure. */
-export class OutputStyleError extends Error {
+export class OutputStyleError extends HarnessError {
   /**
    * @param message - reason naming the invalid key or value.
    */
   constructor(message: string) {
-    super(message)
-    this.name = 'OutputStyleError'
+    super(message, 'PERSONALITY_OUTPUT_STYLE_INVALID')
   }
 }
 
-/** Absolute path of one output-style slot. */
+/**
+ * Absolute path of one output-style slot.
+ * @param slot - `super` for the super-root file, ordinary when omitted.
+ * @returns the path in the personality directory under the harness home.
+ */
 export function outputStylePath(slot: 'ordinary' | 'super' = 'ordinary'): string {
   return join(
     dirname(globalPersonalityPath()),
@@ -91,7 +95,12 @@ export function outputStylePath(slot: 'ordinary' | 'super' = 'ordinary'): string
   )
 }
 
-/** Parse one output-style YAML file. */
+/**
+ * Parse one output-style YAML file.
+ * @param text - complete YAML contents of one style slot.
+ * @returns the validated configuration with fixed enum values.
+ * @throws OutputStyleError when the YAML is malformed or a key has an unknown value.
+ */
 export function parseOutputStyle(text: string): OutputStyleConfig {
   let parsed: unknown
   try {
@@ -118,7 +127,11 @@ export function parseOutputStyle(text: string): OutputStyleConfig {
   }
 }
 
-/** Render one configuration as canonical YAML. */
+/**
+ * Render one configuration as canonical YAML.
+ * @param config - validated configuration to serialize.
+ * @returns the canonical YAML text, without a document separator.
+ */
 export function renderOutputStyle(config: OutputStyleConfig): string {
   return stringifyYaml({
     version: config.version,
@@ -130,7 +143,14 @@ export function renderOutputStyle(config: OutputStyleConfig): string {
   }, { lineWidth: 0 })
 }
 
-/** Read one output-style slot; absence returns the seed defaults. */
+/**
+ * Read one output-style slot; absence returns the seed defaults.
+ * @param ctx - plugin context carrying the global store.
+ * @param signal - cancellation for the store read.
+ * @param slot - `super` for the super-root file, ordinary when omitted.
+ * @returns the slot path, the validated or default configuration, and the opaque store version when the file exists.
+ * @throws OutputStyleError when an existing file cannot be parsed.
+ */
 export async function readOutputStyle(
   ctx: Context,
   signal?: AbortSignal,
@@ -153,6 +173,9 @@ export async function readOutputStyle(
 /**
  * Render the section text: fixed field order, concrete style entries, the hard
  * boundary, and the status constraints that configuration cannot disable.
+ * @param config - validated configuration supplying the defaults.
+ * @param options - optional concrete entries that outrank the defaults, and whether to include the dispatch-voice line.
+ * @returns the complete prompt section text.
  */
 export function renderOutputStyleSection(
   config: OutputStyleConfig,

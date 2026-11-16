@@ -18,6 +18,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { HarnessError } from '@deepseek-ai/dsh-error'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { parse as parseYaml } from 'yaml'
@@ -161,17 +162,16 @@ const MEMORY_KIND_EVICTION_ORDER: Readonly<Record<MemoryEntryKind, number>> = {
 }
 
 /** Outcome codes a MEMORY.md read or write can report. */
-export type MemoryDocumentErrorCode = 'invalid-document' | 'unknown-kind' | 'budget-exceeded' | 'empty-summary'
+export type MemoryDocumentErrorCode = 'INVALID_DOCUMENT' | 'UNKNOWN_KIND' | 'BUDGET_EXCEEDED' | 'EMPTY_SUMMARY'
 
 /** Typed MEMORY.md failure; `code` is stable for callers and logs. */
-export class MemoryDocumentError extends Error {
+export class MemoryDocumentError extends HarnessError {
   /**
    * @param message - actionable description naming the offending field or line.
    * @param code - stable failure kind.
    */
-  constructor(message: string, readonly code: MemoryDocumentErrorCode) {
-    super(message)
-    this.name = 'MemoryDocumentError'
+  constructor(message: string, override readonly code: MemoryDocumentErrorCode) {
+    super(message, code)
   }
 }
 
@@ -502,7 +502,7 @@ export function assertMemoryEntryKind(kind: string): MemoryEntryKind {
   if (definition !== undefined) return definition.id
   throw new MemoryDocumentError(
     `unknown memory entry kind ${JSON.stringify(kind)}; valid kinds: ${MEMORY_ENTRY_KINDS.join(', ')}`,
-    'unknown-kind',
+    'UNKNOWN_KIND',
   )
 }
 
@@ -725,7 +725,7 @@ export async function revertMemorySummary(
   if (record === undefined) {
     throw new MemoryDocumentError(
       `no recorded edit for session ${sessionId} turn ${String(target.turn)}; only edited summaries can be reverted`,
-      'invalid-document',
+      'INVALID_DOCUMENT',
     )
   }
   return applySummaryChange(ctx, session, target, record.before, 'revert', signal, options)
@@ -743,7 +743,7 @@ async function applySummaryChange(
 ): Promise<MemorySummaryEditResult> {
   const current = await readMemoryDocument(ctx, session, signal)
   if (current.document === undefined) {
-    throw new MemoryDocumentError('MEMORY.md does not exist yet; run one summarized turn first', 'invalid-document')
+    throw new MemoryDocumentError('MEMORY.md does not exist yet; run one summarized turn first', 'INVALID_DOCUMENT')
   }
   const sessionId = target.sessionId ?? String(session.id)
   const located = locateSummaryEntry(current.document, sessionId, target.turn)
@@ -816,7 +816,7 @@ export async function pruneMemorySession(
 ): Promise<MemoryPruneResult> {
   const current = await readMemoryDocument(ctx, session, signal)
   if (current.document === undefined) {
-    throw new MemoryDocumentError('MEMORY.md does not exist yet; there is nothing to prune', 'invalid-document')
+    throw new MemoryDocumentError('MEMORY.md does not exist yet; there is nothing to prune', 'INVALID_DOCUMENT')
   }
   const sessionId = target.sessionId ?? String(session.id)
   const keep = Math.max(1, Math.floor(target.keep ?? options.maxEntries ?? DEFAULT_MEMORY_MAX_ENTRIES))
@@ -902,24 +902,24 @@ export async function forgetMemoryEntries(
   const kind = filter.kind === undefined ? undefined : assertMemoryEntryKind(filter.kind)
   const tag = filter.tag?.trim()
   if (tag !== undefined && tag.length === 0) {
-    throw new MemoryDocumentError('a forget tag must not be empty', 'invalid-document')
+    throw new MemoryDocumentError('a forget tag must not be empty', 'INVALID_DOCUMENT')
   }
   if (filter.beforeTurn !== undefined
     && (!Number.isSafeInteger(filter.beforeTurn) || filter.beforeTurn < 0)) {
-    throw new MemoryDocumentError('forget beforeTurn must be a non-negative integer', 'invalid-document')
+    throw new MemoryDocumentError('forget beforeTurn must be a non-negative integer', 'INVALID_DOCUMENT')
   }
   if (kind === undefined && tag === undefined && filter.beforeTurn === undefined) {
     throw new MemoryDocumentError(
       'forget needs at least one of kind, tag, or beforeTurn',
-      'invalid-document',
+      'INVALID_DOCUMENT',
     )
   }
   if (filter.allSessions === true && filter.sessionId !== undefined) {
-    throw new MemoryDocumentError('forget cannot combine allSessions with sessionId', 'invalid-document')
+    throw new MemoryDocumentError('forget cannot combine allSessions with sessionId', 'INVALID_DOCUMENT')
   }
   const current = await readMemoryDocument(ctx, session, signal)
   if (current.document === undefined) {
-    throw new MemoryDocumentError('MEMORY.md does not exist yet; there is nothing to forget', 'invalid-document')
+    throw new MemoryDocumentError('MEMORY.md does not exist yet; there is nothing to forget', 'INVALID_DOCUMENT')
   }
   const targetIds = filter.allSessions === true
     ? new Set(current.document.sessions.map(record => record.id))
@@ -1070,7 +1070,7 @@ export async function resolveMemoryEntriesInStore(
 ): Promise<MemoryResolveStoreResult> {
   const current = await readMemoryDocument(ctx, session, signal)
   if (current.document === undefined) {
-    throw new MemoryDocumentError('MEMORY.md does not exist yet; there is nothing to resolve', 'invalid-document')
+    throw new MemoryDocumentError('MEMORY.md does not exist yet; there is nothing to resolve', 'INVALID_DOCUMENT')
   }
   const resolved = resolveMemoryEntries(current.document, filter)
   const sessionId = filter.sessionId
@@ -1090,7 +1090,7 @@ export async function resolveMemoryEntriesInStore(
     ctx.logger.warn('memory: resolve skipped [FILE_IO]; the archive could not be written')
     throw new MemoryDocumentError(
       'MEMORY.archive.md could not be written; the resolve was skipped and no active entry was removed',
-      'invalid-document',
+      'INVALID_DOCUMENT',
     )
   }
   const next = appendEvictionRecords(
@@ -1125,7 +1125,7 @@ function locateSummaryEntry(
   const names = known.length === 0 ? 'none' : known.join(', ')
   throw new MemoryDocumentError(
     `MEMORY.md has no per-turn summary for session ${sessionId} turn ${String(turn)}; known turns: ${names}`,
-    'invalid-document',
+    'INVALID_DOCUMENT',
   )
 }
 
@@ -1182,21 +1182,21 @@ function parseSummaryHistory(text: string): readonly MemorySummaryHistoryRecord[
   try {
     parsed = JSON.parse(text)
   } catch (error: unknown) {
-    throw new MemoryDocumentError(`MEMORY.history.json is not valid JSON: ${errorMessage(error)}`, 'invalid-document')
+    throw new MemoryDocumentError(`MEMORY.history.json is not valid JSON: ${errorMessage(error)}`, 'INVALID_DOCUMENT')
   }
   if (!Array.isArray(parsed)) {
-    throw new MemoryDocumentError('MEMORY.history.json must be an array of records', 'invalid-document')
+    throw new MemoryDocumentError('MEMORY.history.json must be an array of records', 'INVALID_DOCUMENT')
   }
   return Object.freeze(parsed.map((value, index) => {
     const subject = `MEMORY.history.json[${String(index)}]`
     const record = asRecord(value, subject)
     const action = record['action']
     if (action !== 'edit' && action !== 'revert') {
-      throw new MemoryDocumentError(`${subject}.action must be "edit" or "revert"`, 'invalid-document')
+      throw new MemoryDocumentError(`${subject}.action must be "edit" or "revert"`, 'INVALID_DOCUMENT')
     }
     const tier = record['tier']
     if (tier !== 'detail' && tier !== 'brief') {
-      throw new MemoryDocumentError(`${subject}.tier must be "detail" or "brief"`, 'invalid-document')
+      throw new MemoryDocumentError(`${subject}.tier must be "detail" or "brief"`, 'INVALID_DOCUMENT')
     }
     return Object.freeze({
       at: requireString(record, 'at', subject),
@@ -1213,7 +1213,7 @@ function parseSummaryHistory(text: string): readonly MemorySummaryHistoryRecord[
 /** Collapse one manual summary edit onto one line and refuse empty text. */
 function normalizeSummaryText(text: string): string {
   const normalized = text.replaceAll(/\s+/gu, ' ').trim()
-  if (normalized === '') throw new MemoryDocumentError('a summary edit needs non-empty text', 'empty-summary')
+  if (normalized === '') throw new MemoryDocumentError('a summary edit needs non-empty text', 'EMPTY_SUMMARY')
   return normalized
 }
 
@@ -1419,16 +1419,16 @@ export async function appendTurnSummaries(
   options: MemoryTurnSummaryOptions = {},
 ): Promise<MemoryTurnSummariesResult> {
   if (summaries.length === 0) {
-    throw new MemoryDocumentError('a turn summary batch needs at least one turn', 'empty-summary')
+    throw new MemoryDocumentError('a turn summary batch needs at least one turn', 'EMPTY_SUMMARY')
   }
   const seen = new Set<number>()
   const prepared = summaries.map((summary) => {
     if (seen.has(summary.turn)) {
-      throw new MemoryDocumentError(`a turn summary batch repeats turn ${String(summary.turn)}`, 'invalid-document')
+      throw new MemoryDocumentError(`a turn summary batch repeats turn ${String(summary.turn)}`, 'INVALID_DOCUMENT')
     }
     seen.add(summary.turn)
     if (summary.entries.length === 0) {
-      throw new MemoryDocumentError('a turn summary needs at least one entry', 'empty-summary')
+      throw new MemoryDocumentError('a turn summary needs at least one entry', 'EMPTY_SUMMARY')
     }
     return {
       summary,
@@ -1520,7 +1520,7 @@ export async function appendTurnSummary(
   options: MemoryTurnSummaryOptions = {},
 ): Promise<MemoryTurnSummaryResult> {
   if (summary.entries.length === 0) {
-    throw new MemoryDocumentError('a turn summary needs at least one entry', 'empty-summary')
+    throw new MemoryDocumentError('a turn summary needs at least one entry', 'EMPTY_SUMMARY')
   }
   const entries = summary.entries.map(entry => ({
     kind: assertMemoryEntryKind(entry.kind),
@@ -2035,7 +2035,7 @@ function splitFrontmatter(text: string): { frontmatter: string; content: string 
   if (match === null) {
     throw new MemoryDocumentError(
       'MEMORY.md must start with a YAML frontmatter block between `---` lines',
-      'invalid-document',
+      'INVALID_DOCUMENT',
     )
   }
   return { frontmatter: match[1] ?? '', content: text.slice(match[0].length) }
@@ -2045,12 +2045,12 @@ function splitFrontmatter(text: string): { frontmatter: string; content: string 
 function splitManagedBlock(content: string): { body: string; frame: MemoryFrame } {
   const begin = content.indexOf(MEMORY_BLOCK_BEGIN)
   if (begin < 0) {
-    throw new MemoryDocumentError(`MEMORY.md has no ${MEMORY_BLOCK_BEGIN} marker`, 'invalid-document')
+    throw new MemoryDocumentError(`MEMORY.md has no ${MEMORY_BLOCK_BEGIN} marker`, 'INVALID_DOCUMENT')
   }
   const bodyStart = begin + MEMORY_BLOCK_BEGIN.length
   const end = content.indexOf(MEMORY_BLOCK_END, bodyStart)
   if (end < 0) {
-    throw new MemoryDocumentError(`MEMORY.md has no ${MEMORY_BLOCK_END} marker after the begin marker`, 'invalid-document')
+    throw new MemoryDocumentError(`MEMORY.md has no ${MEMORY_BLOCK_END} marker after the begin marker`, 'INVALID_DOCUMENT')
   }
   return {
     body: content.slice(bodyStart, end),
@@ -2069,21 +2069,21 @@ function parseFrontmatter(source: string): Pick<MemoryDocument, 'version' | 'win
   if (version !== MEMORY_DOCUMENT_VERSION) {
     throw new MemoryDocumentError(
       `unsupported MEMORY.md version ${version}; this provider reads version ${MEMORY_DOCUMENT_VERSION}`,
-      'invalid-document',
+      'INVALID_DOCUMENT',
     )
   }
   const windowRecord = asRecord(record['window'], 'frontmatter.window')
   const sessions = record['sessions']
   if (!Array.isArray(sessions)) {
-    throw new MemoryDocumentError('frontmatter.sessions must be an array', 'invalid-document')
+    throw new MemoryDocumentError('frontmatter.sessions must be an array', 'INVALID_DOCUMENT')
   }
   const summaryPaused = record['summaryPaused']
   if (summaryPaused !== undefined && typeof summaryPaused !== 'boolean') {
-    throw new MemoryDocumentError('frontmatter.summaryPaused must be a boolean', 'invalid-document')
+    throw new MemoryDocumentError('frontmatter.summaryPaused must be a boolean', 'INVALID_DOCUMENT')
   }
   const evictions = record['evictions']
   if (evictions !== undefined && !Array.isArray(evictions)) {
-    throw new MemoryDocumentError('frontmatter.evictions must be an array', 'invalid-document')
+    throw new MemoryDocumentError('frontmatter.evictions must be an array', 'INVALID_DOCUMENT')
   }
   return {
     version,
@@ -2108,14 +2108,14 @@ function parseEvictionRecord(value: unknown, subject: string): MemoryEvictionRec
   if (!isEvictionReason(reason)) {
     throw new MemoryDocumentError(
       `${subject}.reason must be one of ${EVICTION_REASONS.join(', ')}`,
-      'invalid-document',
+      'INVALID_DOCUMENT',
     )
   }
   const turn = optionalInteger(record, 'turn', subject)
   const tags = parseEvictionTags(record['tags'], subject)
   const originalAt = record['originalAt']
   if (originalAt !== undefined && typeof originalAt !== 'string') {
-    throw new MemoryDocumentError(`${subject}.originalAt must be a string`, 'invalid-document')
+    throw new MemoryDocumentError(`${subject}.originalAt must be a string`, 'INVALID_DOCUMENT')
   }
   return {
     at: requireString(record, 'at', subject),
@@ -2144,7 +2144,7 @@ function isEvictionReason(value: unknown): value is MemoryEvictionReason {
 function parseEvictionTags(value: unknown, subject: string): readonly string[] | undefined {
   if (value === undefined) return undefined
   if (!Array.isArray(value) || value.some(tag => typeof tag !== 'string')) {
-    throw new MemoryDocumentError(`${subject}.tags must be an array of strings`, 'invalid-document')
+    throw new MemoryDocumentError(`${subject}.tags must be an array of strings`, 'INVALID_DOCUMENT')
   }
   const tags = normalizeEntryTags(value)
   return tags.length === 0 ? undefined : tags
@@ -2157,7 +2157,7 @@ function parseFrontmatterYaml(source: string): unknown {
   } catch (error: unknown) {
     throw new MemoryDocumentError(
       `MEMORY.md frontmatter is not valid YAML: ${errorMessage(error)}`,
-      'invalid-document',
+      'INVALID_DOCUMENT',
     )
   }
 }
@@ -2167,12 +2167,12 @@ function parseSessionRecord(value: unknown, index: number): MemorySessionRecord 
   const subject = `frontmatter.sessions[${String(index)}]`
   const record = asRecord(value, subject)
   const id = requireString(record, 'id', subject)
-  if (id.length === 0) throw new MemoryDocumentError(`${subject}.id must not be empty`, 'invalid-document')
+  if (id.length === 0) throw new MemoryDocumentError(`${subject}.id must not be empty`, 'INVALID_DOCUMENT')
   const cwd = requireString(record, 'cwd', subject)
   const updatedAt = requireString(record, 'updatedAt', subject)
   const turns = record['turns']
   if (!Array.isArray(turns)) {
-    throw new MemoryDocumentError(`${subject}.turns must be an array`, 'invalid-document')
+    throw new MemoryDocumentError(`${subject}.turns must be an array`, 'INVALID_DOCUMENT')
   }
   const forgottenThrough = optionalInteger(record, 'forgottenThrough', subject)
   return {
@@ -2189,13 +2189,13 @@ function parseTurnRecord(value: unknown, subject: string): MemoryTurnRecord {
   const record = asRecord(value, subject)
   const seq = record['seq']
   if (!Array.isArray(seq) || seq.length !== 2) {
-    throw new MemoryDocumentError(`${subject}.seq must be a [start, end] integer pair`, 'invalid-document')
+    throw new MemoryDocumentError(`${subject}.seq must be a [start, end] integer pair`, 'INVALID_DOCUMENT')
   }
   const pair: unknown[] = seq
   const [start, end] = pair
   if (typeof start !== 'number' || !Number.isInteger(start)
     || typeof end !== 'number' || !Number.isInteger(end)) {
-    throw new MemoryDocumentError(`${subject}.seq must be a [start, end] integer pair`, 'invalid-document')
+    throw new MemoryDocumentError(`${subject}.seq must be a [start, end] integer pair`, 'INVALID_DOCUMENT')
   }
   const checkpointSeq = optionalInteger(record, 'checkpointSeq', subject)
   return {
@@ -2222,7 +2222,7 @@ function parseManagedBody(body: string): MemorySection[] {
     if (entries === undefined) {
       throw new MemoryDocumentError(
         `managed block line ${String(index + 1)}: entry before the first section heading`,
-        'invalid-document',
+        'INVALID_DOCUMENT',
       )
     }
     entries.push(parseEntryLine(trimmed, index))
@@ -2237,7 +2237,7 @@ function parseSectionHeading(line: string, index: number): Omit<MemorySection, '
   if (groups === undefined) {
     throw new MemoryDocumentError(
       `managed block line ${String(index + 1)}: expected "## <sessionId> · turn N–M（detail|brief）"`,
-      'invalid-document',
+      'INVALID_DOCUMENT',
     )
   }
   return {
@@ -2255,7 +2255,7 @@ function parseEntryLine(line: string, index: number): MemoryEntry {
   if (groups === undefined || groups['text'] === undefined) {
     throw new MemoryDocumentError(
       `managed block line ${String(index + 1)}: expected "- [kind] text"`,
-      'invalid-document',
+      'INVALID_DOCUMENT',
     )
   }
   const withoutVersion = splitEntryVersion(groups['text'])
@@ -2730,7 +2730,12 @@ export function archiveEvictionRecord(record: MemoryArchiveRecord): MemoryEvicti
   }
 }
 
-/** Attach cleanup/audit records to the frontmatter, newest last and bounded. */
+/**
+ * Attach cleanup/audit records to the frontmatter, newest last and bounded.
+ * @param document - parsed MEMORY.md document receiving the records.
+ * @param records - eviction records to append; an empty list returns the document unchanged.
+ * @returns a new document with the records appended, capped at `MEMORY_EVICTION_RECORD_LIMIT` newest entries.
+ */
 export function appendEvictionRecords(
   document: MemoryDocument,
   records: readonly MemoryEvictionRecord[],
@@ -3038,14 +3043,14 @@ function assertBodyBudget(document: MemoryDocument, maxBytes: number): void {
   throw new MemoryDocumentError(
     `memory body is ${String(bytes)} bytes, over the ${String(maxBytes)}-byte limit after evicting every unprotected `
     + 'entry; the incoming write alone does not fit, so raise maxBytes or run /memory prune with a kind/tag filter',
-    'budget-exceeded',
+    'BUDGET_EXCEEDED',
   )
 }
 
 /** Narrow one parsed frontmatter value to a mapping. */
 function asRecord(value: unknown, subject: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new MemoryDocumentError(`${subject} must be a mapping`, 'invalid-document')
+    throw new MemoryDocumentError(`${subject} must be a mapping`, 'INVALID_DOCUMENT')
   }
   return value as Record<string, unknown>
 }
@@ -3059,7 +3064,7 @@ function requireInteger(
 ): number {
   const value = record[key]
   if (typeof value !== 'number' || !Number.isInteger(value) || value < minimum) {
-    throw new MemoryDocumentError(`${subject}.${key} must be an integer >= ${String(minimum)}`, 'invalid-document')
+    throw new MemoryDocumentError(`${subject}.${key} must be an integer >= ${String(minimum)}`, 'INVALID_DOCUMENT')
   }
   return value
 }
@@ -3078,7 +3083,7 @@ function optionalInteger(
 function requireString(record: Record<string, unknown>, key: string, subject: string): string {
   const value = record[key]
   if (typeof value !== 'string') {
-    throw new MemoryDocumentError(`${subject}.${key} must be a string`, 'invalid-document')
+    throw new MemoryDocumentError(`${subject}.${key} must be a string`, 'INVALID_DOCUMENT')
   }
   return value
 }
@@ -3086,7 +3091,7 @@ function requireString(record: Record<string, unknown>, key: string, subject: st
 /** Narrow one parsed tier value. */
 function requireTier(value: unknown, subject: string): MemoryTier {
   if (value === 'detail' || value === 'brief') return value
-  throw new MemoryDocumentError(`${subject}.tier must be "detail" or "brief"`, 'invalid-document')
+  throw new MemoryDocumentError(`${subject}.tier must be "detail" or "brief"`, 'INVALID_DOCUMENT')
 }
 
 /** Build store call options without an undefined signal. */

@@ -14,11 +14,17 @@
 import { createHash } from 'node:crypto'
 import { relative } from 'node:path'
 import type { FileSystem, FsTarget } from '@deepseek-ai/dsh-fs'
-import {
-  instructionContentSha1,
-  trimmedInstructionDigest,
-  type LoadedInstructionFile,
-} from '@deepseek-ai/dsh-agent-instructions'
+import type { LoadedInstructionFile } from '@deepseek-ai/dsh-agent-instructions'
+
+/** SHA-1 of one rule's exact text, used by tests and the set digest. */
+const instructionContentSha1 = (content: string): string => createHash('sha1').update(content).digest('hex')
+
+/**
+ * Whitespace-insensitive identity used to collapse duplicate rules.
+ * @param content - exact rule text.
+ * @returns SHA-1 of the trimmed content.
+ */
+export const trimmedInstructionDigest = (content: string): string => instructionContentSha1(content.trim())
 
 /** Workspace-relative directory holding always-on rules. */
 export const RULES_DIRECTORY = '.dsh/rules'

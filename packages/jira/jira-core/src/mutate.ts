@@ -179,6 +179,7 @@ const changedFields = (issue: Issue, next: Partial<Issue>): readonly string[] =>
   const fields: string[] = []
   const current: Readonly<Record<string, unknown>> = { ...issue }
   for (const [field, value] of Object.entries(next)) {
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- Undefined means leave the field unchanged.
     if (value === undefined) continue
     const previous = current[field]
     const before = Array.isArray(previous) ? JSON.stringify(previous) : previous

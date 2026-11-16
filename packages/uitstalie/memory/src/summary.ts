@@ -84,7 +84,11 @@ export const MEMORY_SUMMARY_MAX_ATTEMPTS = 2
 /** Delay before the one bounded retry, in milliseconds. */
 const MEMORY_SUMMARY_RETRY_DELAY_MS = 100
 
-/** Model-visible notice text for one classified failure, inside the 120-character notice bound. */
+/**
+ * Model-visible notice text for one classified failure, inside the 120-character notice bound.
+ * @param failure - classified summary failure carrying its code, attempt count, and readable cause.
+ * @returns one notice line naming the code and attempts against the cap, and confirming that the previous memory still applies.
+ */
 export function memorySummaryFailureNotice(failure: MemorySummaryFailure): string {
   return `${MEMORY_SUMMARY_FAILURE_NOTICE} [${failure.code}] (attempt ${String(failure.attempts)}/${String(MEMORY_SUMMARY_MAX_ATTEMPTS)}); `
     + `previous memory still in effect: ${failure.detail}`

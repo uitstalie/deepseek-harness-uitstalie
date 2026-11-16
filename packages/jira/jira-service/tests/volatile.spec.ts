@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { updateVolatile } from '@deepseek-ai/cosmokit'
 import { afterEach, describe, expect, it } from 'vitest'
-import { JiraService, type Config } from '../src/index.ts'
+import { JiraService, type Config } from '../src/api.ts'
 
 /** The validated row configuration of the most recent mount, for targeted volatile updates. */
 let captured: Config | undefined

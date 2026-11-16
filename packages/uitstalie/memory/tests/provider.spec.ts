@@ -21,8 +21,8 @@ import {
   renderMemoryDocument,
   Config as MemoryConfig,
   MEMORY_CAPABILITY_DESCRIPTION, MEMORY_CAPABILITY_LABEL, MEMORY_PROMPT_ORDER, MEMORY_PROMPT_TEXT, resolveConfig,
-} from '../src/index.ts'
-import type { MemoryDocument } from '../src/index.ts'
+} from '../src/api.ts'
+import type { MemoryDocument } from '../src/api.ts'
 import {
   callTool,
   createRoot,

@@ -316,6 +316,7 @@ export const withLock = async <T>(
     void beat()
   }, heartbeatMs)
   // A held lock must never be the reason a process stays alive (a CLI that exits, a test runner).
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- unref is runtime-detected on non-Node hosts.
   if (typeof timer === 'object' && timer !== null && 'unref' in timer && typeof timer.unref === 'function') timer.unref()
 
   try {

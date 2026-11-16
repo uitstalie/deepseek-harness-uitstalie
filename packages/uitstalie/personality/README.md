@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-personality` gives every agent a stable, user-owned profile under the harness home. It reads four global files — `PERSONALITY.md`, `OUTPUT_STYLE.yaml`, `SUPERAGENT_OUTPUT_STYLE.yaml`, and `WRITING_RULES.yaml` — and contributes three prompt sections: the profile at order 100, the role-selected output style at 690, and enabled writing rules at 695. Subagents receive no 690 and only `personality_analyze`; ordinary and super roots use independent style files. `personality_analyze` scans session records and returns evidence-backed candidates without writing; root agents also get `personality_apply`, which writes the profile only after `confirm: true`, and `write_like_human`, which maintains the global writing rules. There is no workspace overlay, no turn-end learning, no history file, and no settings page.
+`dsh-personality` gives every agent a stable, user-owned profile in the harness home. It reads four global files — `PERSONALITY.md`, `OUTPUT_STYLE.yaml`, `SUPERAGENT_OUTPUT_STYLE.yaml`, `WRITING_RULES.yaml` — and contributes three prompt sections: profile at order 100, role-selected output style at 690, enabled writing rules at 695. Subagents receive no 690 and only `personality_analyze`; ordinary and super roots use independent style files. `personality_analyze` scans session records and returns evidence-backed candidates without writing; root agents also get `personality_apply`, which writes the profile only after `confirm: true`, and `write_like_human`, which maintains global writing rules. No workspace overlay, turn-end learning, history file, or settings page.
 
 ## Table of Contents
 
@@ -35,7 +35,8 @@ All data lives under `<DSH_HOME>/personality/`, where `$DSH_HOME` defaults to `~
 | Path | Purpose | Who writes it |
 |---|---|---|
 | `PERSONALITY.md` | understanding / preference / style / identity entries | `personality_apply` after confirmation, or a person |
-| `OUTPUT_STYLE.yaml` | ordinary root style: tone, length, conclusion, lists, dispatch voice | A person; the provider only reads it |`r`n| `SUPERAGENT_OUTPUT_STYLE.yaml` | super-root style (independent slot) | A person; the provider only reads it |
+| `OUTPUT_STYLE.yaml` | ordinary root style: tone, length, conclusion, lists, dispatch voice | A person; the provider only reads it |
+| `SUPERAGENT_OUTPUT_STYLE.yaml` | super-root style (independent slot) | A person; the provider only reads it |
 | `WRITING_RULES.yaml` | enabled writing constraints | A person; the provider only reads it |
 | `legacy/PERSONALITY.<YYYYMMDDTHHMMSSZ>.md` | read-only backup of the pre-rewrite profile | The first activation, once |
 

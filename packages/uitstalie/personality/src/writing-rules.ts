@@ -11,6 +11,7 @@
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import { HarnessError } from '@deepseek-ai/dsh-error'
 import type {} from '@deepseek-ai/dsh-store-atom'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { WRITING_RULES_FILE_NAME, WRITING_RULES_STORE_PATH } from './defaults.ts'
@@ -91,26 +92,33 @@ export interface WritingRulesMutation {
 }
 
 /** Typed writing-rules failure. */
-export class WritingRulesError extends Error {
+export class WritingRulesError extends HarnessError {
   /**
    * @param message - reason naming the offending rule or value.
    * @param code - stable failure kind.
    */
-  constructor(message: string, readonly code: 'invalid-document' | 'rule-limit' | 'rule-not-found' | 'duplicate-rule' = 'invalid-document') {
-    super(message)
-    this.name = 'WritingRulesError'
+  constructor(message: string, override readonly code: 'PERSONALITY_INVALID_DOCUMENT' | 'PERSONALITY_RULE_LIMIT' | 'PERSONALITY_RULE_NOT_FOUND' | 'PERSONALITY_DUPLICATE_RULE' = 'PERSONALITY_INVALID_DOCUMENT') {
+    super(message, code)
   }
 }
 
 /** The empty document seeded on first activation. */
 export const EMPTY_WRITING_RULES: WritingRulesDocument = Object.freeze({ version: 1, rules: [] })
 
-/** Absolute path of the writing-rules file. */
+/**
+ * Absolute path of the writing-rules file.
+ * @returns the path in the personality directory under the harness home.
+ */
 export function writingRulesPath(): string {
   return join(dirname(globalPersonalityPath()), WRITING_RULES_FILE_NAME)
 }
 
-/** Parse one writing-rules YAML file. */
+/**
+ * Parse one writing-rules YAML file.
+ * @param text - complete YAML contents.
+ * @returns the validated document with rule texts normalized.
+ * @throws WritingRulesError on malformed YAML, bad fields or ids, duplicate ids, or a count/text-byte bound violation.
+ */
 export function parseWritingRules(text: string): WritingRulesDocument {
   let parsed: unknown
   try {
@@ -122,7 +130,7 @@ export function parseWritingRules(text: string): WritingRulesDocument {
   if (record.version !== 1) throw new WritingRulesError('WRITING_RULES.yaml.version must be 1')
   if (!Array.isArray(record.rules)) throw new WritingRulesError('WRITING_RULES.yaml.rules must be a sequence')
   if (record.rules.length > WRITING_RULES_MAX_RULES) {
-    throw new WritingRulesError(`WRITING_RULES.yaml holds ${String(record.rules.length)} rules, over the ${String(WRITING_RULES_MAX_RULES)}-rule limit`, 'rule-limit')
+    throw new WritingRulesError(`WRITING_RULES.yaml holds ${String(record.rules.length)} rules, over the ${String(WRITING_RULES_MAX_RULES)}-rule limit`, 'PERSONALITY_RULE_LIMIT')
   }
   const rules: WritingRule[] = []
   const seen = new Set<string>()
@@ -134,7 +142,7 @@ export function parseWritingRules(text: string): WritingRulesDocument {
       throw new WritingRulesError(`WRITING_RULES.yaml.rules[${String(index)}] needs string id/text, boolean enabled, and number order`)
     }
     assertRuleId(id)
-    if (seen.has(id)) throw new WritingRulesError(`WRITING_RULES.yaml has duplicate rule id ${JSON.stringify(id)}`, 'duplicate-rule')
+    if (seen.has(id)) throw new WritingRulesError(`WRITING_RULES.yaml has duplicate rule id ${JSON.stringify(id)}`, 'PERSONALITY_DUPLICATE_RULE')
     seen.add(id)
     rules.push({
       id,
@@ -148,7 +156,12 @@ export function parseWritingRules(text: string): WritingRulesDocument {
   return document
 }
 
-/** Render one document as canonical YAML. */
+/**
+ * Render one document as canonical YAML.
+ * @param document - document to validate and serialize.
+ * @returns the canonical YAML text.
+ * @throws WritingRulesError when the document violates a rule or text-byte bound.
+ */
 export function renderWritingRules(document: WritingRulesDocument): string {
   assertRuleBudget(document)
   return stringifyYaml({
@@ -162,7 +175,13 @@ export function renderWritingRules(document: WritingRulesDocument): string {
   }, { lineWidth: 0 })
 }
 
-/** Read the writing-rules file; absence returns the empty document. */
+/**
+ * Read the writing-rules file; absence returns the empty document.
+ * @param ctx - plugin context carrying the global store.
+ * @param signal - cancellation for the store read.
+ * @returns the file path, the parsed or empty document, and the opaque store version when the file exists.
+ * @throws WritingRulesError when an existing file cannot be parsed.
+ */
 export async function readWritingRules(ctx: Context, signal?: AbortSignal): Promise<WritingRulesRead> {
   const read = await ctx.dshStore.readFile(undefined, WRITING_RULES_STORE_PATH, {
     scope: 'global',
@@ -176,7 +195,15 @@ export async function readWritingRules(ctx: Context, signal?: AbortSignal): Prom
   }
 }
 
-/** Write one document through the store's opaque version guard. */
+/**
+ * Write one document through the store's opaque version guard.
+ * @param ctx - plugin context carrying the global store.
+ * @param document - document to validate and write.
+ * @param expectedVersion - store version the write must still match; omitted for a first create.
+ * @param signal - cancellation for the write.
+ * @returns the file path and the new opaque store version when the backend reports one.
+ * @throws WritingRulesError when the document violates a rule bound; store write errors propagate unchanged.
+ */
 export async function writeWritingRules(
   ctx: Context,
   document: WritingRulesDocument,
@@ -194,7 +221,13 @@ export async function writeWritingRules(
   }
 }
 
-/** Apply one CRUD action without touching the store. */
+/**
+ * Apply one CRUD action without touching the store.
+ * @param document - current validated document.
+ * @param input - action and its optional id, text, order, and enabled fields.
+ * @returns the next document and, for list or preview, the injected section text.
+ * @throws WritingRulesError when a required field is missing, an id is unknown, or a bound would be exceeded.
+ */
 export function mutateWritingRules(document: WritingRulesDocument, input: WritingRuleInput): WritingRulesMutation {
   switch (input.action) {
     case 'list':
@@ -205,7 +238,7 @@ export function mutateWritingRules(document: WritingRulesDocument, input: Writin
       const text = requiredText(input.text)
       const id = input.id ?? autoRuleId(document, text)
       if (document.rules.some(rule => rule.id === id)) {
-        throw new WritingRulesError(`writing rule ${JSON.stringify(id)} already exists`, 'duplicate-rule')
+        throw new WritingRulesError(`writing rule ${JSON.stringify(id)} already exists`, 'PERSONALITY_DUPLICATE_RULE')
       }
       const rule: WritingRule = {
         id,
@@ -219,7 +252,7 @@ export function mutateWritingRules(document: WritingRulesDocument, input: Writin
     case 'update': {
       const id = requiredId(input.id)
       const current = document.rules.find(rule => rule.id === id)
-      if (current === undefined) throw new WritingRulesError(`writing rule ${JSON.stringify(id)} does not exist`, 'rule-not-found')
+      if (current === undefined) throw new WritingRulesError(`writing rule ${JSON.stringify(id)} does not exist`, 'PERSONALITY_RULE_NOT_FOUND')
       const next: WritingRule = {
         id,
         text: input.text === undefined ? current.text : requiredText(input.text),
@@ -231,7 +264,7 @@ export function mutateWritingRules(document: WritingRulesDocument, input: Writin
     case 'remove': {
       const id = requiredId(input.id)
       if (!document.rules.some(rule => rule.id === id)) {
-        throw new WritingRulesError(`writing rule ${JSON.stringify(id)} does not exist`, 'rule-not-found')
+        throw new WritingRulesError(`writing rule ${JSON.stringify(id)} does not exist`, 'PERSONALITY_RULE_NOT_FOUND')
       }
       return { document: withRules(document.rules.filter(rule => rule.id !== id)) }
     }
@@ -242,7 +275,11 @@ export function mutateWritingRules(document: WritingRulesDocument, input: Writin
   }
 }
 
-/** Render enabled rules in section order; an empty set is an empty string. */
+/**
+ * Render enabled rules in section order; an empty set is an empty string.
+ * @param document - document whose enabled rules are rendered.
+ * @returns up to the resident limit of enabled rules plus an omission line when more are enabled, or '' when none are.
+ */
 export function previewWritingRules(document: WritingRulesDocument): string {
   const enabled = [...document.rules]
     .filter(rule => rule.enabled)
@@ -266,7 +303,7 @@ function normalizeRuleText(text: string): string {
   if (Array.from(normalized).length > WRITING_RULES_MAX_TEXT_CHARS) {
     throw new WritingRulesError(
       `writing rule text is ${String(Array.from(normalized).length)} characters, over the ${String(WRITING_RULES_MAX_TEXT_CHARS)}-character limit`,
-      'rule-limit',
+      'PERSONALITY_RULE_LIMIT',
     )
   }
   return normalized
@@ -307,7 +344,7 @@ function withRules(rules: readonly WritingRule[]): WritingRulesDocument {
 /** Toggle one rule, rejecting an unknown id. */
 function setEnabled(document: WritingRulesDocument, id: string, enabled: boolean): WritingRulesDocument {
   if (!document.rules.some(rule => rule.id === id)) {
-    throw new WritingRulesError(`writing rule ${JSON.stringify(id)} does not exist`, 'rule-not-found')
+    throw new WritingRulesError(`writing rule ${JSON.stringify(id)} does not exist`, 'PERSONALITY_RULE_NOT_FOUND')
   }
   return withRules(document.rules.map(rule => rule.id === id ? { ...rule, enabled } : rule))
 }
@@ -341,11 +378,11 @@ function assertRuleBudget(document: WritingRulesDocument): void {
     }
   }
   if (document.rules.length > WRITING_RULES_MAX_RULES) {
-    throw new WritingRulesError(`writing rules hold ${String(document.rules.length)} rules, over the ${String(WRITING_RULES_MAX_RULES)}-rule limit`, 'rule-limit')
+    throw new WritingRulesError(`writing rules hold ${String(document.rules.length)} rules, over the ${String(WRITING_RULES_MAX_RULES)}-rule limit`, 'PERSONALITY_RULE_LIMIT')
   }
   const bytes = document.rules.reduce((total, rule) => total + Buffer.byteLength(rule.text, 'utf8'), 0)
   if (bytes > WRITING_RULES_MAX_TEXT_BYTES) {
-    throw new WritingRulesError(`writing rule text is ${String(bytes)} bytes, over the ${String(WRITING_RULES_MAX_TEXT_BYTES)}-byte limit`, 'rule-limit')
+    throw new WritingRulesError(`writing rule text is ${String(bytes)} bytes, over the ${String(WRITING_RULES_MAX_TEXT_BYTES)}-byte limit`, 'PERSONALITY_RULE_LIMIT')
   }
 }
 

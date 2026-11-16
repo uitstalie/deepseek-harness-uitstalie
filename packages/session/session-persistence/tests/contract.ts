@@ -58,6 +58,22 @@ export function meta(id: string, cwd?: string): SessionHeader {
   }
 }
 
+/**
+ * One decoded stored record whose event type this build does not know.
+ *
+ * Backends decode from disk before vocabulary validation, so a foreign-event
+ * fixture keeps the wire shape instead of pretending to be a current
+ * {@link SessionEvent}; validation decides whether the payload survives.
+ */
+export interface ForeignStoredEvent {
+  readonly type: string
+  readonly seq: number
+  readonly time: number
+  readonly data: unknown
+  readonly critical?: true
+  readonly ignorable?: true
+}
+
 /** A well-formed one-turn event log (contiguous seqs from 0). */
 export function oneTurnLog(): SessionEvent[] {
   return [
@@ -518,9 +534,10 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
         await writer.close()
 
         const critical = await persistence.create(meta('critical-vocabulary'))
-        await critical.append([
+        const foreign: ForeignStoredEvent[] = [
           { type: 'mystery/critical', seq: SessionSeq(0), time: 1, data: {}, critical: true },
-        ] as unknown as SessionEvent[])
+        ]
+        await critical.append(foreign as SessionEvent[])
         await critical.close()
         await expect(persistence.open(SessionId('critical-vocabulary'), 'write')).rejects.toBeInstanceOf(SessionFormatUnsupportedError)
         await expect(persistence.open(SessionId('critical-vocabulary'), 'write')).rejects.toBeInstanceOf(SessionFormatUnsupportedError)

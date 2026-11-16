@@ -6,9 +6,21 @@
  * @module @deepseek-ai/dsh-memory/failure
  */
 
+import { HarnessError } from '@deepseek-ai/dsh-error'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { LlmError } from '@deepseek-ai/dsh-llm'
 import { errorMessage } from './text.ts'
+
+/** The configured session index cannot serve a memory search. */
+export class MemorySearchDisabledError extends HarnessError {
+  /**
+   * @param message - actionable explanation naming the index setting to enable.
+   * @param cause - the lower-level session-query refusal.
+   */
+  constructor(message: string, cause: unknown) {
+    super(message, 'MEMORY_SEARCH_DISABLED', { cause })
+  }
+}
 
 /** Stable machine code for one failed memory operation. */
 export type MemorySummaryFailureCode =
@@ -42,7 +54,7 @@ export function classifySummaryFailure(error: unknown, attempts: number): Memory
     ? (error as { readonly code?: unknown }).code
     : undefined
   if (documentCode !== undefined) {
-    return documentCode === 'budget-exceeded'
+    return documentCode === 'BUDGET_EXCEEDED'
       ? { code: 'BUDGET_EXCEEDED', detail: 'body over the byte budget', attempts }
       : { code: 'FILE_IO', detail: 'MEMORY.md could not be written', attempts }
   }

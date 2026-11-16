@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { delegationDepthOf } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { defineTool, withMinRole } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import {
   DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, MAX_TITLE_LENGTH, MIN_EVERY_INTERVAL_SECONDS, ScheduleId, ScheduleInputError,
@@ -368,7 +368,7 @@ function registerScheduleTools(ctx: Context): void {
   // Plugin configuration is fixed for the life of the Host service, so the description is read once.
   const targetDescription = targetHelp(ctx.schedule.deliveryLimits().newSessionIntervalSeconds)
 
-  const registerGated = (tool: Parameters<typeof ctx.tools.register>[0]): (() => void) => ctx.tools.register(withMinRole(tool, 'agent'))
+  const registerGated = (tool: Parameters<typeof ctx.tools.register>[0]): (() => void) => ctx.tools.register({ ...tool, minRole: 'agent' })
 
   registerGated(defineTool({
     name: 'schedule_create',

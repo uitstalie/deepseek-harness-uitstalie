@@ -1,5 +1,5 @@
 ---
-description: "jira 账本的浏览器面：编辑账本行并读取看板、单个 issue 详情与知识搜索的设置页段落；账本本身在这里只读，唯一例外是确认待处理的提案。"
+description: "jira 账本的浏览器面：编辑账本行并读取看板、单个 issue 详情与知识搜索的设置页段落，以及 super agent 段落；页面只写账本行设置、提案确认与 super workspace 设置，账本其余部分在这里只读。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-jira` 提供账本的浏览器面：一个设置页段落（`id: 'jira'`、order 200）编辑 jira-service 行并读取看板、单个 issue 详情与知识搜索；另一个 super agent 段落（order 220）展示状态计数、提案与最近活动。账本视图只读，唯一例外是人类可确认待处理提案——写入与 CLI 相同的 `[claim-approved]` 凭证。行字段是 volatile，保存后无需重启即可生效。
+`dsh-client-ui-jira` 提供账本的浏览器面：一个设置页段落（`id: 'jira'`、order 200）编辑 jira-service 行并读取看板、单个 issue 详情与知识搜索；另一个 super agent 段落（order 220）展示状态计数、提案与最近活动。页面只写三类内容：行字段（`root`、`host`、`push.enabled`）、人类确认待处理提案（写入与 CLI 相同的 `[claim-approved]` 凭证），以及 super workspace 设置。行字段是 volatile，保存后无需重启即可生效。
 
 ## 目录
 
@@ -33,7 +33,7 @@ kind: "package-reference"
 | Issue 详情 | `remote.jira.get(key)`：frontmatter 字段与 Markdown 正文 | 无 |
 | 知识 | `remote.jira.kbSearch(query)`：排序后的命中及其 `file:line` | 无 |
 
-三个行字段（`root`、`host`、`push.enabled`）在设置区块里编辑。保存经设置服务写入 `jira-service` 的 profile 行；开关立即写入，服务无需重启即可按新值重新打开账本。账本写入仍留给模型：agent 的工具是通向账本唯一的路，`jira-agent` 的守卫约束它们。这里不读账本文件，也不写提交。
+三个行字段（`root`、`host`、`push.enabled`）在设置区块里编辑。保存经设置服务写入 `jira-service` 的 profile 行；开关立即写入，服务无需重启即可按新值重新打开账本。页面只写三类内容：行设置、人类确认待处理提案（写入与 CLI 相同的 `human:<git user.name>` `[claim-approved]` 评论），以及 super workspace 设置（创建并注册工作区，并把 `superagent_home` 持久化到 `jira-agent` 行）。账本的其它写入仍留给模型：agent 的工具是通向这些写入的唯一路径，`jira-agent` 的守卫约束它们。这里不直接读账本文件，也不直接写提交。
 
 页面跟随 `remote.jira.watch(signal)`：每次提交的变更——工具、另一个会话、一次 sync——都会刷新看板、账本状态与已打开的 issue 详情；重连后重读同一批快照，因为不重放。每次读取都带代次，较晚到达的旧答案会被丢弃；通知的 `version` 落后于已应用值时也不会再刷新。知识命中是一次查询的快照：变更只把它们标为过期而不自动重跑，下一次检索会替换它们。这里不轮询、也不监听账本文件。
 
@@ -59,7 +59,7 @@ kind: "package-reference"
 
 ## 模型体验
 
-无，因为这里没有任何内容到达模型：页面读的是工具写入的同一个服务，因此读者看到的与模型改的不会不一致，UI 也没有自己的写路径。
+无，因为这里没有任何内容到达模型：页面读的是工具写入的同一个服务，因此读者看到的与模型改的不会不一致；它的三类写入是 `jira-service` 行字段、提案确认与 super workspace 设置。
 
 #### KV 缓存影响
 

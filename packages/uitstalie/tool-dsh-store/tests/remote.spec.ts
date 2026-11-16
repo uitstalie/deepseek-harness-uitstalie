@@ -5,7 +5,7 @@
 import { expect, test } from 'vitest'
 import { join, resolve } from 'node:path'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
-import { storeRelativePath, storeRootOfWorkspace, workspaceRootOf } from '../src/index.ts'
+import { storeRelativePath, storeRootOfWorkspace, workspaceRootOf } from '../src/api.ts'
 
 test('refuses a workspace identity the host does not know', () => {
   try {

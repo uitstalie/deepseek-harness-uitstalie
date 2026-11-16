@@ -240,7 +240,7 @@ export function apply(ctx: Context, config: Config): void {
       debounce = undefined
       void refresh()
     }, WATCH_DEBOUNCE_MS)
-    debounce.unref?.()
+    debounce.unref()
   }
 
   /**

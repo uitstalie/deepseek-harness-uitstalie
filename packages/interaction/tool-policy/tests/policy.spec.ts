@@ -11,7 +11,7 @@ import ToolPolicyService, {
   applyVisibilityForAgent,
   renderToolPolicyPrompt,
   restrictableDeny,
-} from '../src/index.ts'
+} from '../src/api.ts'
 import { installToolGuard } from '../src/guard.ts'
 
 type PluginConfig = NonNullable<Parameters<typeof ToolPolicyService.Config>[0]>

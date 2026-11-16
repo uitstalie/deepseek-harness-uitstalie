@@ -312,6 +312,6 @@ it('tells the agent the next step for each change outcome it can act on', async 
 
 it('hides plugin_manager from a subagent', async () => {
   const { ctx } = await fixture()
-  const child = { id: SessionId('plugin-child'), session: { header: { origin: 'subagent', delegationDepth: 1 } }, options: {} } as unknown as Agent
+  const child = { id: SessionId('plugin-child'), role: 'subagent', session: { header: { origin: 'subagent', delegationDepth: 1 } } }
   expect(ctx.tools.schemas(child).some(schema => schema.name === 'plugin_manager')).toBe(false)
 })

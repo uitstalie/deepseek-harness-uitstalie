@@ -10,7 +10,7 @@ import { basename, dirname, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
-import { createDshStore } from '@deepseek-ai/dsh-store-atom'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom/src/api.ts'
 import {
   createPersonalityDocument,
   globalPersonalityPath,
@@ -195,7 +195,7 @@ test('refuses identity before any write', async () => {
     kind: 'identity',
     name: 'role',
     text: '独立开发者。',
-  })).rejects.toMatchObject({ code: 'identity-manual' })
+  })).rejects.toMatchObject({ code: 'PERSONALITY_IDENTITY_MANUAL' })
   expect(write).not.toHaveBeenCalled()
 })
 
@@ -204,7 +204,7 @@ test('rejects an unknown input kind before any read', async () => {
     kind: 'bogus' as PersonalityEntryKind,
     name: 'role',
     text: 'text',
-  })).rejects.toMatchObject({ code: 'unknown-kind' })
+  })).rejects.toMatchObject({ code: 'PERSONALITY_UNKNOWN_KIND' })
 })
 
 test('surfaces a non-stale write failure without retrying', async () => {
@@ -287,7 +287,7 @@ test('reports a move that published the destination but retained the source', as
     sourceFailure: { code: 'FS_IO_ERROR', message: 'remove failed' },
   } as never)
   await writeProfile('old profile')
-  await expect(migrateLegacyPersonality(ctx)).rejects.toMatchObject({ code: 'legacy-conflict' })
+  await expect(migrateLegacyPersonality(ctx)).rejects.toMatchObject({ code: 'PERSONALITY_LEGACY_CONFLICT' })
 })
 
 test('rethrows a non-filesystem move failure', async () => {
@@ -305,7 +305,7 @@ test('reports a full set of legacy names', async () => {
     await writeFile(join(legacyDirectory(), name), `occupied-${String(suffix)}`, 'utf8')
   }
   await writeProfile('old profile')
-  await expect(migrateLegacyPersonality(ctx)).rejects.toMatchObject({ code: 'legacy-conflict' })
+  await expect(migrateLegacyPersonality(ctx)).rejects.toMatchObject({ code: 'PERSONALITY_LEGACY_CONFLICT' })
 })
 
 test('reports a copy verification mismatch and a retained source after copy', async () => {
@@ -315,12 +315,12 @@ test('reports a copy verification mismatch and a retained source after copy', as
     .mockResolvedValueOnce('old profile')
     .mockResolvedValueOnce('different')
   await writeProfile('old profile')
-  await expect(migrateLegacyPersonality(ctx)).rejects.toMatchObject({ code: 'legacy-conflict' })
+  await expect(migrateLegacyPersonality(ctx)).rejects.toMatchObject({ code: 'PERSONALITY_LEGACY_CONFLICT' })
   readText.mockRestore()
   await rm(legacyDirectory(), { recursive: true, force: true })
 
   vi.spyOn(ctx.fs, 'deleteFile').mockRejectedValue(new FsError('delete failed', 'FS_IO_ERROR'))
-  await expect(migrateLegacyPersonality(ctx)).rejects.toMatchObject({ code: 'legacy-conflict' })
+  await expect(migrateLegacyPersonality(ctx)).rejects.toMatchObject({ code: 'PERSONALITY_LEGACY_CONFLICT' })
 })
 
 test('reports absent and non-file legacy sources', async () => {

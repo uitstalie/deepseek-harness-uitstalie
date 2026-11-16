@@ -10,7 +10,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { defineTool, withMinRole } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { ROOT_AGENT_NAME } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -81,7 +81,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       return { messageId }
     },
   })
-  const registeredSendMessage = withMinRole(sendMessage, 'subagent')
+  const registeredSendMessage = { ...sendMessage, minRole: 'subagent' }
   ctx.tools.register(registeredSendMessage)
   ctx.systemPrompt.context({
     name: 'subagent:identity',

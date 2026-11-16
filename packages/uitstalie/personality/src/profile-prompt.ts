@@ -26,7 +26,11 @@ const COMMUNICATION_KINDS = new Set<PersonalityEntryKind>(['identity', 'understa
 /** Kinds rendered under "How to respond". */
 const RESPONSE_KINDS = new Set<PersonalityEntryKind>(['preference', 'style'])
 
-/** Render one profile; an empty profile contributes an empty section. */
+/**
+ * Render one profile; an empty profile contributes an empty section.
+ * @param entries - profile entries in any order; the renderer sorts them by kind and then id.
+ * @returns the preamble plus the communication and response groups that carry entries, or '' when there are none.
+ */
 export function renderPersonalitySection(entries: readonly PersonalityEntry[]): string {
   if (entries.length === 0) return ''
   const sorted = [...entries].sort(compareEntries)

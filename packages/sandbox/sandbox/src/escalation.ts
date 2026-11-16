@@ -20,7 +20,7 @@ import { HarnessError } from '@deepseek-ai/dsh-error'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { escalationDisplayReason } from './locales.ts'
 // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled (Low-integrity whole-tree relabel; no auto-rollback)
-import { HOME_WRITE_DISABLED_MESSAGE, HOME_WRITE_ENABLED } from './modes.ts'
+import { HOME_WRITE_ENABLED, SandboxModeDisabledError } from './modes.ts'
 import type { SandboxMode } from './index.ts'
 
 // BEGIN uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled
@@ -231,7 +231,7 @@ export async function approveEscalation<A, C>(request: EscalationRequest, approv
   const { requestedMode: mode, effectiveMode, justification, subject } = request
   // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: refuse the target even when an old caller or a
   // persisted effective mode still names it (before the repeat short-circuit below).
-  if (mode === 'home-write' && !HOME_WRITE_ENABLED) throw new Error(HOME_WRITE_DISABLED_MESSAGE)
+  if (mode === 'home-write' && !HOME_WRITE_ENABLED) throw new SandboxModeDisabledError(mode)
   if (mode === effectiveMode) return effectiveMode
   // Strict widening is an EXECUTION check against the call's effective mode —
   // deliberately not a schema constraint (the enum is the closed target

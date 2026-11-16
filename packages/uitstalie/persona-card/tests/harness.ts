@@ -22,7 +22,7 @@ import {
   mountAgentLoopTestHarness,
 } from '@deepseek-ai/dsh-agent-loop-testkit'
 import type { AgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
-import * as PersonaCard from '../src/index.ts'
+import * as PersonaCard from '../src/api.ts'
 import type { Config } from '../src/provider.ts'
 
 /** Services and helpers bound to one mounted persona-card composition. */

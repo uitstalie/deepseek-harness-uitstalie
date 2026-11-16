@@ -3,20 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/jira/ui-jira/README.md
 /:
-  en: 1b16571174d50e2e
-  zh: 9b7c632bb735baf5
+  en: c9e2a90503429dd3
+  zh: a90b57831c9e32b1
 /deepseek-ai-dsh-client-ui-jira:
   en: 559ce181e8b6bf4d
   zh: 674a1a8adb9fcbf6
 /deepseek-ai-dsh-client-ui-jira/summary:
-  en: 3e180e500aa82a8c
-  zh: bb3b145b49962edf
+  en: 9f466ab42c399536
+  zh: 69fb7b714e04e7c7
 /deepseek-ai-dsh-client-ui-jira/table-of-contents:
   en: 6faf344e1bddf685
   zh: ebbf86a8469e68c4
 /deepseek-ai-dsh-client-ui-jira/the-page:
-  en: 367ce18ebc149649
-  zh: e679d9789d6cd94f
+  en: fc689de02a554f06
+  zh: dc4b39725a8bc8f6
 /deepseek-ai-dsh-client-ui-jira/faces:
   en: 0cd865845599bc43
   zh: 126a39453e058e3d
@@ -24,8 +24,8 @@
   en: 9043de9f2a2f0227
   zh: 140188ed11b739bd
 /deepseek-ai-dsh-client-ui-jira/model-experience:
-  en: 85b0d9a2b8d3ea65
-  zh: 2beec9db9df67582
+  en: 5aed3536f3162898
+  zh: d159411c4ba3090e
 /deepseek-ai-dsh-client-ui-jira/model-experience/kv-cache-effect:
   en: 096b08782de723be
   zh: 8364e08682ca97c6

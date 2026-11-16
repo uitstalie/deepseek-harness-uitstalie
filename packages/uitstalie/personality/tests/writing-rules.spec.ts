@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
-import { createDshStore } from '@deepseek-ai/dsh-store-atom'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom/src/api.ts'
 import { stringify as stringifyYaml } from 'yaml'
 import { EMPTY_WRITING_RULES_TEXT } from '../src/defaults.ts'
 import {

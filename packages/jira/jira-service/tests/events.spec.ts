@@ -12,7 +12,8 @@ import { asIdentity, utcTimestamp, type Identity } from '@deepseek-ai/dsh-jira-c
 import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core'
 import { storePaths } from '@deepseek-ai/dsh-jira-core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { JiraService } from '../src/index.ts'
+import { JiraService } from '../src/api.ts'
+import type { JiraChangeEvent } from '../src/types.ts'
 import type { ChangeNotice } from '../src/types.ts'
 
 const MACHINE = 'a1b2c3d4'
@@ -78,17 +79,20 @@ describe('the ledger change feed (DH-307)', () => {
   it('streams the same notice to the browser face, numbered, and ends on abort', async () => {
     const ctx = await mount()
     const lifetime = new AbortController()
-    const iterator = ctx.jiraRemote.watch(lifetime.signal)[Symbol.asyncIterator]()
-    const pending = iterator.next()
+    const iterator: AsyncIterator<JiraChangeEvent> = ctx.jiraRemote.watch(lifetime.signal)[Symbol.asyncIterator]()
+    const pending: Promise<IteratorResult<JiraChangeEvent>> = iterator.next()
     await tick()
 
     const created = await ctx.jira.createIssue('DH', undefined, { issueType: 'task', summary: 'streamed' }, ACTOR)
     expect(created.ok).toBe(true)
     const item = await pending
     expect(item.done).toBe(false)
-    expect(item.value?.version).toBe(1)
-    expect(item.value?.key).toBe('DH-1')
-    expect(item.value?.kind).toBe('write')
+    const value: unknown = item.value
+    expect(typeof value).toBe('object')
+    const event = value as JiraChangeEvent
+    expect(event.version).toBe(1)
+    expect(event.key).toBe('DH-1')
+    expect(event.kind).toBe('write')
 
     lifetime.abort()
     await expect(iterator.next()).resolves.toMatchObject({ done: true })

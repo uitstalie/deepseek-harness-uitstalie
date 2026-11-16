@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Soft tool policy",
+    "description": "Applies named best-effort policies to model tool calls and file-tool paths. It is not an OS sandbox."
+  }
+}

@@ -5,14 +5,14 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import Dafeiyu from '../src/index.ts'
+import Dafeiyu from '../src/api.ts'
 import type {
   CapabilityContribution,
   CapabilityProvider,
   CapabilityRuntime,
   CapabilitySettings,
   Config,
-} from '../src/index.ts'
+} from '../src/api.ts'
 
 const contexts: Context[] = []
 

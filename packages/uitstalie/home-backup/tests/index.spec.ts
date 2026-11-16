@@ -5,7 +5,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import * as SystemEnvironmentPlugin from '@deepseek-ai/dsh-system-environment'
-import * as HomeBackup from '../src/index.ts'
+import * as HomeBackup from '../src/api.ts'
 
 const roots: string[] = []
 const originalDshHome = process.env.DSH_HOME

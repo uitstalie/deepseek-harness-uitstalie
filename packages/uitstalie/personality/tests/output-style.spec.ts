@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import { createDshStore } from '@deepseek-ai/dsh-store-atom'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom/src/api.ts'
 import { DEFAULT_OUTPUT_STYLE, DEFAULT_OUTPUT_STYLE_TEXT } from '../src/defaults.ts'
 import {
   OUTPUT_STYLE_ORDER_NAME,

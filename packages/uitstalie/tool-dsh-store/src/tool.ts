@@ -9,13 +9,8 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import {
-  isMemoryPath,
-  normalizeStorePath,
-  STORE_DIR_NAME,
-  type DshStore,
-} from '@deepseek-ai/dsh-store-atom'
+import { defineTool, ToolArgsError, ToolContextUnavailableError, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import type { DshStore } from '@deepseek-ai/dsh-store-atom'
 
 /** What one store call reports back to the model. */
 export interface StoreToolValue {
@@ -48,11 +43,11 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions): ToolDe
   return defineTool({
     name: 'tool-dsh-store',
     description:
-      `Create, inspect, and delete files and folders under this workspace's \`${STORE_DIR_NAME}\` directory, `
-      + `which carries editor rules (\`${STORE_DIR_NAME}/rules\`), project skills, and runtime snapshots; `
-      + `\`${STORE_DIR_NAME}/memory\` is managed by the memory capability and read-only for this tool. `
+      'Create, inspect, and delete files and folders under this workspace\'s `.dsh` directory, '
+      + 'which carries editor rules (`.dsh/rules`), project skills, and runtime snapshots; '
+      + '`.dsh/memory` is managed by the memory capability and read-only for this tool. '
       + 'Give a path relative to that directory. Use this tool instead of the generic write, edit, or shell '
-      + `tools for \`${STORE_DIR_NAME}\` content, because it validates the path, refuses a rule that repeats an `
+      + 'tools for `.dsh` content, because it validates the path, refuses a rule that repeats an '
       + 'existing rule or a skill document missing the frontmatter a skill needs, and reports what it deleted.',
     parameters: {
       action: {
@@ -64,7 +59,7 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions): ToolDe
       path: {
         type: 'string',
         required: true,
-        description: `Target path relative to \`${STORE_DIR_NAME}\`, for example \`rules/api.md\`; an empty path names the store root.`,
+        description: 'Target path relative to `.dsh`, for example `rules/api.md`; an empty path names the store root.',
       },
       target: {
         type: 'string',
@@ -107,12 +102,12 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions): ToolDe
     },
     async execute(args, exec): Promise<StoreToolValue> {
       const session = exec.agent?.session
-      if (session === undefined) throw new Error('tool-dsh-store requires an owning agent session')
+      if (session === undefined) throw new ToolContextUnavailableError('tool-dsh-store requires an owning agent session')
 
       // The memory capability owns its namespace and writes it through the store
       // service; this tool may read that area but not mutate it. Checking before
       // the policy gate keeps that explanation even for a read-only session.
-      if (args.action !== 'query') refuseMemoryPath(args.path)
+      if (args.action !== 'query') refuseMemoryPath(options.store, args.path)
 
       // Querying reads the store, so a read-only session may still inspect it;
       // only create and delete pass the write gate inside the store service.
@@ -132,8 +127,8 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions): ToolDe
           const created = await options.store.createFolder(session, args.path, { signal: exec.signal })
           return { action: 'create', path: created.path, kind: 'directory' }
         }
-        if (args.target !== 'file') throw new Error('invalid create: `target` must be `file` or `folder`')
-        if (args.content === undefined) throw new Error('invalid create: creating a file requires `content`')
+        if (args.target !== 'file') throw new ToolArgsError(['`target` must be `file` or `folder`'])
+        if (args.content === undefined) throw new ToolArgsError(['creating a file requires `content`'])
         const created = await options.store.createFile(session, args.path, args.content, { signal: exec.signal })
         return { action: 'create', path: created.path, kind: 'file' }
       }
@@ -152,19 +147,20 @@ export function defineStoreTool(ctx: Context, options: StoreToolOptions): ToolDe
  * Refuse a model-side create or delete inside the managed-memory area. The
  * memory capability owns that area and persists it through the store service;
  * this tool may only query it.
+ * @param store - the owning store service.
  * @param path - the model-supplied store-relative path.
- * @throws Error when the normalized path is `memory` or below it.
+ * @throws {ToolArgsError} when the normalized path is `memory` or below it.
  */
-function refuseMemoryPath(path: string): void {
-  if (!isMemoryPath(normalizeStorePath(path).displayPath)) return
-  throw new Error(
-    `refusing to modify ${STORE_DIR_NAME}/memory: memory is managed by the memory capability; use its tools instead`,
-  )
+function refuseMemoryPath(store: DshStore, path: string): void {
+  if (!store.isMemoryPath(store.normalizePath(path))) return
+  throw new ToolArgsError([
+    `refusing to modify ${store.directoryName}/memory: memory is managed by the memory capability; use its tools instead`,
+  ])
 }
 
 /** Render one store result as the model-visible text. */
 function renderStoreValue(value: StoreToolValue): string {
-  const target = value.path.length === 0 ? `${STORE_DIR_NAME}/` : `${STORE_DIR_NAME}/${value.path}`
+  const target = value.path.length === 0 ? '.dsh/' : `.dsh/${value.path}`
   if (value.action === 'create') return `Created ${value.kind} ${target}.`
   if (value.action === 'delete') return `Deleted ${value.kind} ${target}.`
   if (value.kind === 'missing') return `Not found: ${target}.`
@@ -175,7 +171,7 @@ function renderStoreValue(value: StoreToolValue): string {
   const entries = value.entries ?? []
   const lines = entries.map((entry) => {
     const suffix = entry.size === undefined ? '' : ` (${entry.size} bytes)`
-    return `- ${entry.kind} ${STORE_DIR_NAME}/${entry.path}${suffix}`
+    return `- ${entry.kind} .dsh/${entry.path}${suffix}`
   })
   return [`${target} contains ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}:`, ...lines].join('\n')
 }

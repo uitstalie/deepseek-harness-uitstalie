@@ -19,7 +19,7 @@ import {
   provideWorkingDirectoryFixture,
   type AgentLoopTestHarness,
 } from '@deepseek-ai/dsh-agent-loop-testkit'
-import * as Plus from '../src/index.ts'
+import * as Plus from '../src/api.ts'
 
 const MAX_BYTES = 64 * 1024
 const signal = new AbortController().signal

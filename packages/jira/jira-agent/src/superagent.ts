@@ -21,7 +21,6 @@ import { existsSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
-import { withMinRole } from '@deepseek-ai/dsh-tools'
 import { clampText, asIdentity, invalidInput, ioFailed, leaseIsActive, notFound, readOnlySession, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
@@ -1296,6 +1295,19 @@ interface Candidate {
   reason?: string
 }
 
+/** Whether a tool-returned scan row carries the fields the dispatcher reads. */
+const isCandidate = (value: unknown): value is Candidate => {
+  if (typeof value !== 'object' || value === null) return false
+  const row = value as Record<string, unknown>
+  return typeof row['key'] === 'string'
+    && typeof row['project'] === 'string'
+    && typeof row['priority'] === 'string'
+    && typeof row['summary'] === 'string'
+    && typeof row['updated'] === 'string'
+    && typeof row['ready'] === 'boolean'
+    && (row['reason'] === undefined || typeof row['reason'] === 'string')
+}
+
 /** Ready first, then priority (S1 before S5, which sorts lexicographically), then most recent. */
 const candidateOrder = (left: Candidate, right: Candidate): number => {
   if (left.ready !== right.ready) return left.ready ? -1 : 1
@@ -1519,7 +1531,7 @@ export const runSuperagentPass = async (
 
     const scanned = await runScanTool({ limit: 10 }, options, call.me)
     if (!scanned.ok) return
-    const items = Array.isArray(scanned.items) ? scanned.items as unknown as Candidate[] : []
+    const items = Array.isArray(scanned.items) ? scanned.items.filter(isCandidate) : []
     const ready = items.find(item => item.ready)
     if (ready === undefined) return
 
@@ -1620,7 +1632,7 @@ export const runDaemonPass = async (host: ToolHost, options: DaemonPassOptions =
     if (status.ok && status.value.proposed.length > 0) return
     const scanned = await runScanTool({ limit: 10 }, runOptions, me)
     if (!scanned.ok) return
-    const items = Array.isArray(scanned.items) ? scanned.items as unknown as Candidate[] : []
+    const items = Array.isArray(scanned.items) ? scanned.items.filter(isCandidate) : []
     const ready = items.find(item => item.ready)
     if (ready === undefined) return
     const read = await host.ctx.jira.readIssue(ready.key as IssueKey)
@@ -2438,7 +2450,7 @@ export const activityOf = (agent: unknown, now: number = Date.now()): SessionAct
   const lastTool = typeof lastName === 'string' ? lastName : undefined
   return Object.freeze({
     running,
-    ...(running && started?.time !== undefined
+    ...(running && started.time !== undefined
       ? {
         turnStartedAt: started.time,
         elapsedMs: Math.max(0, now - started.time),
@@ -2696,7 +2708,7 @@ const waitForIdle = async (
       timer = setTimeout(() => {
         resolve(false)
       }, timeoutMs)
-      timer.unref?.()
+      timer.unref()
     })
     try {
       return await Promise.race([whenIdle.call(agent).then(() => true), timeout])
@@ -3058,15 +3070,13 @@ export const runSessionTool = async (
         const ledger = await recordTaskLedger(
           ctx as ToolHost['ctx'], caller, workspace, textArg.trim(), sessionId, options.at, reportTo, context.store, requestId, taskId,
         )
-        if (reportTo !== undefined) {
-          enqueueTaskRecord(context.tasks, sessionId, {
-            superSession: reportTo,
-            workspace: workspace.path,
-            requestId,
-            ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
-            ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
-          })
-        }
+        enqueueTaskRecord(context.tasks, sessionId, {
+          superSession: reportTo,
+          workspace: workspace.path,
+          requestId,
+          ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+          ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
+        })
         const sessionTitle = sessionTitleOf(ctx, sessionId)
         return withLedger(Object.freeze({
           ...verdict,
@@ -3188,18 +3198,18 @@ export const runSessionTool = async (
             ctx, controller, workspace.id, sessionId, WORKSPACE_SESSION_PERMISSION, 'explicit default for a superagent-created workspace Session',
           )
         } catch (error: unknown) {
-          return failStart(error, 'created',
+          return await failStart(error, 'created',
             `the Session was created but its default workspace-write permission could not be set; no task was sent: ${error instanceof Error ? error.message : String(error)}`,
             { reason: error instanceof Error ? error.message : String(error) })
         }
         if (initialPermission.error !== undefined) {
-          return failStart(initialPermission.error, 'created',
+          return await failStart(initialPermission.error, 'created',
             `the Session was created but its default workspace-write permission could not be set; no task was sent: ${initialPermission.error}`,
             { reason: initialPermission.error })
         }
         const selected = await applySessionModel(controller, sessionId, values, ctx)
         if (selected.error !== undefined) {
-          return failStart(selected.error, 'created', selected.error, selected.errorDetails)
+          return await failStart(selected.error, 'created', selected.error, selected.errorDetails)
         }
         // Name the conversation before its first task, so a later `list` tells it apart.
         let title: string | undefined
@@ -3207,7 +3217,7 @@ export const runSessionTool = async (
           try {
             title = (await controller.rename?.({ sessionId, title: titleArg }))?.title ?? titleArg
           } catch (error: unknown) {
-            return failStart(error, 'created',
+            return await failStart(error, 'created',
               `the Session was created but its title could not be recorded: ${error instanceof Error ? error.message : String(error)}`,
               { reason: error instanceof Error ? error.message : String(error) })
           }
@@ -3216,7 +3226,7 @@ export const runSessionTool = async (
         try {
           await recordDispatchReport(context, caller, workspace, taskArg.trim(), sessionId, options.at, reportTo, requestId, taskId)
         } catch (error: unknown) {
-          return failStart(error, 'configured',
+          return await failStart(error, 'configured',
             `the dispatch report binding could not be recorded, so the Session was not prompted: ${error instanceof Error ? error.message : String(error)}`,
             { reason: error instanceof Error ? error.message : String(error) })
         }
@@ -3227,28 +3237,26 @@ export const runSessionTool = async (
             sessionId,
             mode: 'queue',
             content: [{ type: 'text', text: composeTask(taskArg.trim(), curateMemory) }],
-          }, new AbortController().signal)).accepted === true
+          }, new AbortController().signal)).accepted
         } catch (error: unknown) {
-          return failStart(error, 'configured',
+          return await failStart(error, 'configured',
             `the Session was created but its first prompt was not admitted: ${error instanceof Error ? error.message : String(error)}`,
             { reason: error instanceof Error ? error.message : String(error) })
         }
         if (!accepted) {
-          return failStart(new Error('the Session did not accept its first prompt'), 'configured',
+          return await failStart(new Error('the Session did not accept its first prompt'), 'configured',
             'the Session was created but did not accept its first prompt; no task was admitted')
         }
         admitted = true
         try {
-          if (reportTo !== undefined) {
-            enqueueTaskRecord(context.tasks, sessionId, {
-              superSession: reportTo,
-              workspace: workspace.path,
-              requestId,
-              ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
-            })
-          }
+          enqueueTaskRecord(context.tasks, sessionId, {
+            superSession: reportTo,
+            workspace: workspace.path,
+            requestId,
+            ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+          })
         } catch (error: unknown) {
-          return failStart(error, 'admitted',
+          return await failStart(error, 'admitted',
             `the prompt was admitted but its report routing could not be recorded: ${error instanceof Error ? error.message : String(error)}`,
             { reason: error instanceof Error ? error.message : String(error) })
         }
@@ -3267,7 +3275,7 @@ export const runSessionTool = async (
       } catch (error: unknown) {
         if (failStart !== undefined) {
           const reason = error instanceof Error ? error.message : String(error)
-          return failStart(error, admitted ? 'admitted' : configured ? 'configured' : 'created',
+          return await failStart(error, admitted ? 'admitted' : configured ? 'configured' : 'created',
             `the workspace Session could not be started: ${reason}`, { reason })
         }
         return failure(invalidInput(
@@ -3351,16 +3359,14 @@ export const runSessionTool = async (
           : await recordTaskLedger(
             ctx as ToolHost['ctx'], caller, workspace, textArg.trim(), sessionId, options.at, reportTo, context.store, requestId, taskId,
           )
-        if (reportTo !== undefined) {
-          const known = lastTaskRecord(context.tasks, sessionId)
-          enqueueTaskRecord(context.tasks, sessionId, {
-            superSession: reportTo,
-            workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
-            requestId,
-            ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
-            ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
-          })
-        }
+        const known = lastTaskRecord(context.tasks, sessionId)
+        enqueueTaskRecord(context.tasks, sessionId, {
+          superSession: reportTo,
+          workspace: workspace?.path ?? known?.workspace ?? 'its workspace',
+          requestId,
+          ...(ledger.ledger === undefined ? {} : { ledger: ledger.ledger }),
+          ...(compaction?.before === undefined ? {} : { usageBefore: compaction.before }),
+        })
         const sessionTitle = sessionTitleOf(ctx, sessionId)
         return withLedger(Object.freeze({
           ...verdict,
@@ -4575,7 +4581,7 @@ export const handleTaskTurnEnd = async (
   const at = nowUtc(host.clock)
   const outcome = completed
     ? text ?? 'empty-output: the turn completed without assistant text'
-    : `the turn ended ${turnKind ?? 'unknown'}${reason.error?.message === undefined ? '' : `: ${reason.error.message}`}`
+    : `the turn ended ${turnKind}${reason.error?.message === undefined ? '' : `: ${reason.error.message}`}`
   const outcomeStatus = completed && text !== undefined ? 'returned' : 'failed'
   // One turn can carry several dispatch requestIds (a start plus steered appends). The final
   // assistant text answers the turn as a whole, so the turn is reported once per recipient
@@ -5353,11 +5359,13 @@ export const createSuperagentContribution = (
         await runDaemonPass(host, {
           ...(workerPreset === undefined ? {} : { workerPreset }),
           maxWorkers,
-          ...(daemonWorkspace === undefined ? {} : { cwd: daemonWorkspace }),
+          cwd: daemonWorkspace,
           propose: live === undefined,
         })
+        // oxlint-disable-next-line typescript/no-unnecessary-condition -- Disposal can begin while the awaited pass runs; recheck after it.
         if (disposed) return
       }
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- Disposal can begin while the awaited pass runs; recheck after it.
       if (live === undefined || disposed) return
       await runSuperagentPass(host, live, undefined, workerPreset, maxWorkers)
     } finally {
@@ -5435,7 +5443,7 @@ export const createSuperagentContribution = (
   }
 
   timer = setInterval(() => { void poll() }, SUPERAGENT_POLL_MS)
-  timer.unref?.()
+  timer.unref()
 
   const scan: Spec = {
     name: SCAN_TOOL_NAME,
@@ -5792,7 +5800,7 @@ export const createSuperagentContribution = (
           defineJiraTool(host, models),
           defineJiraTool(host, permission),
           defineJiraTool(host, deliver),
-        ].map(tool => withMinRole(tool, 'super')))
+        ].map(tool => ({ ...tool, minRole: 'super' as const })))
         : Object.freeze([
           defineJiraTool(host, source),
           defineJiraTool(host, scan),
@@ -5865,7 +5873,7 @@ export const createSuperagentContribution = (
             recoveryDone,
             new Promise<void>((resolve) => {
               timer = setTimeout(resolve, RECOVERY_DISPOSE_TIMEOUT_MS)
-              timer.unref?.()
+              timer.unref()
             }),
           ])
         } finally {

@@ -29,7 +29,7 @@ kind: "package-reference"
 
 | 配置字段 | 默认值 | 作用 |
 |---|---|---|
-| `sessionRowAction` | `true` | 把 overlay 的标记插入该行的动作列表，位置在原生 `archive`（`order` 100）与 `pin`（`order` 200）之间。 |
+| `sessionRowAction` | `false` | 把 overlay 的标记插入该行的动作列表，位置在原生 `archive`（`order` 100）与 `pin`（`order` 200）之间。 |
 | `takeoverArchive` | `false` | 以 `priority: -1` 注册原生 `archive` 所占据的同一 cell，于是由 overlay 的组件渲染，而原生注册仍然存活，可即时回退。 |
 | `accent` | `var(--dsw-alias-state-business-primary)` | 两项贡献所用的颜色。它以元素上内联设置的 `--dsh-common-view-accent` 自定义属性进入组件 CSS，绝不在样式表里写成字面色。 |
 | `unitGap` | `4px` | 布局单元子项之间的间距。 |

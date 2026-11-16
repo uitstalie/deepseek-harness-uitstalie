@@ -1,9 +1,8 @@
 /**
  * core/errors — the single source of truth for error codes.
  *
- * DESIGN.md decision 52: exactly twelve codes, one shape `{ code, message, context? }`,
- * defined once here and used by the tools, the CLI, and `/jira` alike. A test asserts
- * that this list and the list written in DESIGN.md agree (decision 52's own requirement).
+ * Exactly twelve codes, one shape `{ code, message, context? }`, defined once here and used by
+ * the tools, the CLI, and `/jira` alike.
  */
 
 
@@ -22,7 +21,7 @@ export const ERROR_CODES = [
   'READ_ONLY_SESSION',
 ] as const
 
-/** The frozen set of wire codes (decision 52); every failure carries exactly one. */
+/** The frozen set of wire codes; every failure carries exactly one. */
 export type ErrorCode = (typeof ERROR_CODES)[number]
 
 /** Free-form structured details attached to an error, for callers and for diagnostics. */
@@ -46,8 +45,8 @@ export const jiraError = (code: ErrorCode, message: string, context?: ErrorConte
   Object.freeze(context === undefined ? { code, message } : { code, message, context })
 
 /**
- * Attach extra context to an existing error without touching its code or message (decision 190's
- * `keyAllocated: false` marker is the first user: a refused create must say the number survives).
+ * Attach extra context to an existing error without touching its code or message. A refused create
+ * marks `keyAllocated: false` so the reader knows the allocated number survives.
  * @param error - the error to extend.
  * @param extra - the fields to add; they win over an existing key of the same name.
  * @returns a new error with the same code and message and the merged context.
@@ -56,7 +55,7 @@ export const withContext = (error: JiraError, extra: ErrorContext): JiraError =>
   jiraError(error.code, error.message, Object.freeze({ ...(error.context ?? {}), ...extra }))
 
 /**
- * Render an error the way the model-facing surfaces do (decision 55: English).
+ * Render an error the way the model-facing surfaces do, in English.
  * @param error - the error to render.
  * @returns `CODE: message`, with the context JSON appended when there is any.
  */
@@ -65,8 +64,8 @@ export const formatError = (error: JiraError): string => {
   return `${error.code}: ${error.message}${where}`
 }
 
-/* Named constructors for the codes the current slice can produce. Each is a pure
- * function so callers compose instead of assembling literals by hand. */
+/* Named constructors for the error codes. Each is a pure function so callers compose instead of
+ * assembling literals by hand. */
 
 /**
  * A caller mistake: the request is malformed and the message says how to fix it.
@@ -79,7 +78,7 @@ export const invalidInput = (message: string, context?: ErrorContext): JiraError
 
 /**
  * Build the not-found error for a key; `kind` lets a knowledge lookup say `knowledge entry`,
- * not `issue` (decision 75).
+ * not `issue`.
  * @param key - the id that was asked for.
  * @param kind - what sort of thing the key names.
  * @returns the typed `NOT_FOUND` error.
@@ -100,9 +99,9 @@ export const staleRevision = (expected: number, actual: number): JiraError =>
   })
 
 /**
- * Any **I/O** failure, read or write (C4 / decision 111): the wire code stays
- * `WRITE_FAILED` because the twelve codes are frozen (decision 52), but the meaning is
- * "this file operation did not happen", and the message says which one.
+ * Any **I/O** failure, read or write: the wire code stays `WRITE_FAILED` because the twelve codes
+ * are frozen, but the meaning is "this file operation did not happen", and the message says which
+ * one.
  * @param message - the sentence describing which operation did not happen.
  * @param context - optional structured details, such as the path involved.
  * @returns the typed `WRITE_FAILED` error.
@@ -143,12 +142,9 @@ export const resolutionRequired = (status: string, resolutions: readonly string[
   })
 
 /**
- * Decision 192 (trial feedback P0-2): a tag error has to **say what to do**.
- *
- * `suggestions` used to be the only guidance, and it is empty when nothing is registered (or nothing is
- * close), so a pure tool-surface session saw `UNKNOWN_TAG` with `suggestions: []` — a dead end that made
- * the tag system unusable for agents. Now the context always carries `registered` (every tag there is),
- * or an explicit `hint` when there are none.
+ * A tag error has to **say what to do**: the context always carries `registered` (every tag there
+ * is), or an explicit `hint` when there are none, so a failed create never leaves the reader with
+ * `suggestions: []` and no way out.
  * @param tag - the name the caller used.
  * @param suggestions - the close spellings worth trying, when there are any.
  * @param registered - every tag the store has registered.
@@ -174,9 +170,9 @@ export const unknownTag = (
     },
   )
 /**
- * Decision 24: claiming an issue that is still blocked by open issues is refused **for agents**,
- * naming exactly which keys are unresolved. A human may override, and the override is recorded as a
- * comment (the audit trail says the rule was stepped over, and by whom).
+ * Claiming an issue that is still blocked by open issues is refused **for agents**, naming exactly
+ * which keys are unresolved. A human may override, and the override is recorded as a comment (the
+ * audit trail says the rule was stepped over, and by whom).
  * @param key - the issue whose claim was refused.
  * @param blockers - the open keys that block it.
  * @returns the typed `BLOCKED_BY_OPEN` error.
@@ -187,9 +183,9 @@ export const blockedByOpen = (key: string, blockers: readonly string[]): JiraErr
     blockers: Object.freeze([...blockers]),
   })
 /**
- * §4.11: a project anchored to one machine (no remote) refuses writes from **other machines'
- * agents**. Humans are not affected, and the message names the owning machine so the reader knows
- * what to do about it (add a remote, or work on the machine that owns it).
+ * A project anchored to one machine (no remote) refuses writes from **other machines' agents**.
+ * Humans are not affected, and the message names the owning machine so the reader knows what to do
+ * about it (add a remote, or work on the machine that owns it).
  * @param project - the project that is anchored elsewhere.
  * @param ownerMachine - the machine the project belongs to.
  * @returns the typed `FOREIGN_MACHINE_READ_ONLY` error.
@@ -201,10 +197,10 @@ export const foreignMachineReadOnly = (project: string, ownerMachine: string): J
   })
 
 /**
- * A project's key space is finite (decisions 52/158): `<PROJECT>-<n>` with `n` up to
- * {@link MAX_KEY_NUMBER}. Past that, refusing is the honest answer — a ledger with ten thousand
- * issues in one project is a project that should be split, and a corrupt counters file must not be
- * able to mint `DEMO-999999999` either.
+ * A project's key space is finite: `<PROJECT>-<n>` with `n` up to {@link MAX_KEY_NUMBER}. Past
+ * that, refusing is the honest answer — a ledger with ten thousand issues in one project is a
+ * project that should be split, and a corrupt counters file must not be able to mint
+ * `DEMO-999999999` either.
  * @param project - the project whose space is exhausted.
  * @param limit - the last number the project may reach.
  * @param next - the number that would have been handed out.

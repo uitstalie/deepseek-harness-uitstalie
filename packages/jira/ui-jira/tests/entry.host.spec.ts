@@ -5,7 +5,7 @@
 
 import { expect, test } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import * as hostEntry from '../src/index.ts'
+import * as hostEntry from '../src/api.ts'
 
 test('the host entry is a loadable, inert plugin body', async () => {
   const ctx = new Context()

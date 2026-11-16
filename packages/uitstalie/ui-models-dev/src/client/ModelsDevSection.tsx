@@ -2,7 +2,7 @@
  * models.dev 目录设置页（settings.section 的注册组件）。
  * 结构：筛选框 → 提供商列表（ProviderCard）→ 提交栏（选中数 + 提交 + 回执）。
  * 组件是纯展示的：一切数据经 inject face（controller/useSnapshot/t）到达，
- * 一切变更经 controller 的动作派发出��。
+ * 一切变更经 controller 的动作派发出去。
  *
  * @module @deepseek-ai/dsh-client-ui-models-dev/ModelsDevSection
  */

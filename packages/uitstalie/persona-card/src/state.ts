@@ -14,7 +14,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { MessageSource, UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionSeq } from '@deepseek-ai/dsh-session'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { HarnessError } from '@deepseek-ai/dsh-error'
+import { defineTool, ToolArgsError, ToolContextUnavailableError } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { PersonaCard, PersonaStateSchema } from './types.ts'
 
@@ -199,6 +200,15 @@ export function syncPersonaStateMessage(
   }
 }
 
+/** Stable failure classes for one persona-state mutation or its bounded storage. */
+export type PersonaStateErrorCode =
+  | 'PERSONA_STATE_INVALID'
+  | 'PERSONA_STATE_UNKNOWN_REVISION'
+  | 'PERSONA_STATE_BUDGET_EXCEEDED'
+
+/** A rejected persona-state mutation that the model can correct. */
+export class PersonaStateError extends HarnessError {}
+
 /** Process-local state for every session, keyed by session id; the record names its card. */
 export class PersonaStateStore {
   private readonly records = new Map<string, PersonaStateRecord>()
@@ -221,7 +231,7 @@ export class PersonaStateStore {
    * @param schema - the card's `state_schema`.
    * @param mutation - the accepted mutation.
    * @returns the next record.
-   * @throws Error describing an invalid patch, unknown version, or exceeded byte budget.
+   * @throws {PersonaStateError} an invalid patch, unknown version, or exceeded byte budget.
    */
   apply(
     sessionId: string,
@@ -233,23 +243,23 @@ export class PersonaStateStore {
     let values: PersonaStateValues
     if (mutation.kind === 'patch') {
       if (typeof schema.type === 'string' && schema.type !== 'object') {
-        throw new Error(`persona card "${cardId}" declares a ${schema.type} state; persona_state patches an object`)
+        throw new PersonaStateError(`persona card "${cardId}" declares a ${schema.type} state; persona_state patches an object`, 'PERSONA_STATE_INVALID')
       }
       values = Object.freeze({ ...(record?.values ?? {}), ...mutation.values })
     } else {
       const entry = record?.history.find(candidate => candidate.revision === mutation.version)
       if (entry === undefined) {
         const known = record === undefined ? 'no revision history' : `known revisions: ${record.history.map(item => String(item.revision)).join(', ')}`
-        throw new Error(`persona state has no revision ${String(mutation.version)} (${known})`)
+        throw new PersonaStateError(`persona state has no revision ${String(mutation.version)} (${known})`, 'PERSONA_STATE_UNKNOWN_REVISION')
       }
       values = entry.values
     }
     const failure = validatePersonaStateValue(schema, values)
-    if (failure !== undefined) throw new Error(`persona state patch rejected: ${failure}`)
+    if (failure !== undefined) throw new PersonaStateError(`persona state patch rejected: ${failure}`, 'PERSONA_STATE_INVALID')
     const revision = (record?.revision ?? 0) + 1
     const text = renderPersonaStateText({ card: cardId, revision, values, history: [] })
     if (Buffer.byteLength(text, 'utf8') > PERSONA_STATE_MAX_BYTES) {
-      throw new Error(`persona state exceeds ${String(PERSONA_STATE_MAX_BYTES)} bytes after this change`)
+      throw new PersonaStateError(`persona state exceeds ${String(PERSONA_STATE_MAX_BYTES)} bytes after this change`, 'PERSONA_STATE_BUDGET_EXCEEDED')
     }
     const history = [...(record?.history ?? []), Object.freeze({ revision, values })].slice(-PERSONA_STATE_HISTORY_LIMIT)
     const next: PersonaStateRecord = Object.freeze({ card: cardId, revision, values, history: Object.freeze(history) })
@@ -312,14 +322,14 @@ export function personaStateTool(ctx: Context, target: PersonaStateTarget): Tool
     // oxlint-disable-next-line typescript/require-await -- execute() must return Promise; removing async breaks the tool contract.
     async execute(args, exec) {
       const agent = exec.agent
-      if (agent === undefined) throw new Error('persona_state requires an owning agent session')
+      if (agent === undefined) throw new ToolContextUnavailableError('persona_state requires an owning agent session')
       const sessionId = String(agent.session.id)
       const cardId = target.cardIdFor(sessionId)
-      if (cardId === '') throw new Error('persona_state requires a selected persona card; use /persona use <id>')
+      if (cardId === '') throw new ToolContextUnavailableError('persona_state requires a selected persona card; use /persona use <id>')
       const card = target.cardFor(sessionId)
-      if (card === undefined) throw new Error(`persona_state: persona card "${cardId}" is no longer loaded`)
+      if (card === undefined) throw new ToolContextUnavailableError(`persona_state: persona card "${cardId}" is no longer loaded`)
       const schema = card.state_schema
-      if (schema === undefined) throw new Error(`persona_state: persona card "${cardId}" declares no state_schema`)
+      if (schema === undefined) throw new ToolContextUnavailableError(`persona_state: persona card "${cardId}" declares no state_schema`)
       const state = (): string => {
         const record = target.store.read(sessionId, cardId)
         return renderPersonaStateText(record)
@@ -328,8 +338,9 @@ export function personaStateTool(ctx: Context, target: PersonaStateTarget): Tool
         case 'show': return state()
         case 'patch': {
           const values = args.values
+          // oxlint-disable-next-line typescript/no-unnecessary-condition -- Tool JSON is runtime data, not the declared type.
           if (typeof values !== 'object' || values === null || Array.isArray(values)) {
-            throw new Error('persona_state patch needs `values` as a JSON object')
+            throw new ToolArgsError(['patch needs `values` as a JSON object'])
           }
           const record = target.store.apply(sessionId, cardId, schema, { kind: 'patch', values: values })
           syncPersonaStateMessage(ctx, agent.session, record, target.targets)
@@ -337,7 +348,7 @@ export function personaStateTool(ctx: Context, target: PersonaStateTarget): Tool
         }
         case 'revert': {
           const version = args.version
-          if (version === undefined) throw new Error('persona_state revert needs `version`')
+          if (version === undefined) throw new ToolArgsError(['revert needs `version`'])
           const record = target.store.apply(sessionId, cardId, schema, { kind: 'revert', version })
           syncPersonaStateMessage(ctx, agent.session, record, target.targets)
           return state()
@@ -348,7 +359,7 @@ export function personaStateTool(ctx: Context, target: PersonaStateTarget): Tool
           return state()
         }
         /* v8 ignore next 2 -- the parameter enum is closed */
-        default: throw new Error(`persona_state: unknown action ${String(args.action)}`)
+        default: throw new ToolArgsError([`unknown action ${String(args.action)}`])
       }
     },
     output: {

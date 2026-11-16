@@ -11,6 +11,7 @@
  * @module @deepseek-ai/dsh-memory/cleanup
  */
 
+import { ToolArgsError } from '@deepseek-ai/dsh-tools'
 import {
   normalizeEntryTags,
   memoryArchiveRecord,
@@ -245,10 +246,10 @@ export function resolveMemoryEntries(
 ): MemoryResolveResult {
   const kind = filter.kind ?? 'open'
   if (filter.turn === undefined && filter.tag === undefined && filter.all !== true) {
-    throw new Error('memory_resolve needs turn, tag, or all: true')
+    throw new ToolArgsError(['memory_resolve needs turn, tag, or all: true'])
   }
   if (filter.tag !== undefined && filter.tag.trim() === '') {
-    throw new Error('memory_resolve tag must not be empty')
+    throw new ToolArgsError(['memory_resolve tag must not be empty'])
   }
   const tag = filter.tag?.trim()
   const nowIso = new Date().toISOString()

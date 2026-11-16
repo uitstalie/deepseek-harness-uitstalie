@@ -14,13 +14,13 @@ import {
   mountAgentLoopTestHarness,
 } from '@deepseek-ai/dsh-agent-loop-testkit'
 import type { AgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
-import Dafeiyu from '../src/index.ts'
+import Dafeiyu from '../src/api.ts'
 import type {
   CapabilityContribution,
   CapabilityProvider,
   Config,
   TurnEndInput,
-} from '../src/index.ts'
+} from '../src/api.ts'
 
 const contexts: Context[] = []
 

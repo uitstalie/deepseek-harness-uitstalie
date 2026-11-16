@@ -23,7 +23,7 @@ import * as AgentLoopPlugin from '@deepseek-ai/dsh-agent-loop'
 import * as FsLocalPlugin from '@deepseek-ai/dsh-fs-local'
 import * as WorkingDirectoryPlugin from '@deepseek-ai/dsh-working-directory'
 import * as AgentInstructionsPlugin from '@deepseek-ai/dsh-agent-instructions'
-import * as PlusPlugin from '../src/index.ts'
+import * as PlusPlugin from '../src/api.ts'
 
 let context: Context | undefined
 let root: string | undefined

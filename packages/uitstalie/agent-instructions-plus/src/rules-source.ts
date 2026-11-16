@@ -6,22 +6,22 @@
  */
 
 import { renderAgentInstructions } from '@deepseek-ai/dsh-agent-instructions'
-import { scanWorkspaceRules } from './rules.ts'
+import type { DshStore } from '@deepseek-ai/dsh-store-atom'
 import type { ResolvedRulesConfig } from './config.ts'
 import type { AgentContextSource } from './sources.ts'
 
 /**
  * Build the workspace-rules source.
  * @param config - resolved rules configuration.
+ * @param store - the owning `.dsh` store service.
  * @returns the source rendering `.dsh/rules` as one baseline segment.
  */
-export function createRulesSource(config: ResolvedRulesConfig): AgentContextSource {
+export function createRulesSource(config: ResolvedRulesConfig, store: DshStore): AgentContextSource {
   return {
     name: 'rules',
-    async render({ fileSystem, projectRoot, signal }) {
+    async render({ projectRoot, signal }) {
       if (!config.enabled || config.maxBytes <= 0 || !Number.isFinite(config.maxBytes)) return undefined
-      const scan = await scanWorkspaceRules(fileSystem, {
-        projectRoot,
+      const scan = await store.scanRules(projectRoot, {
         maxSourceBytes: config.maxSourceBytes,
         signal,
       })

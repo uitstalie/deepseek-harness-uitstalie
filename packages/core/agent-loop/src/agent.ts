@@ -9,6 +9,7 @@ import type {
   AgentCancelCause,
   AgentEventDispatch,
   AgentOptions,
+  AgentRole,
   AgentStatus,
   CancelOptions,
   ModelSelection,
@@ -157,6 +158,11 @@ export class ReactLoopAgent implements Agent {
 
   get status(): AgentStatus {
     return this.phase.kind === 'idle' || this.phase.kind === 'maintenance' ? 'idle' : 'running'
+  }
+
+  /** Effective role resolved by the owning Agent registry. */
+  get role(): AgentRole {
+    return this.ctx.agents.roleOf(this)
   }
 
   /** Commit a phase and publish its externally visible status transition. */

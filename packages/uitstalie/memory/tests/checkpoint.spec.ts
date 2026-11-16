@@ -21,8 +21,8 @@ import {
   migrateMemoryTiers,
   parseMemoryDocument,
   refreshMemorySnapshot,
-} from '../src/index.ts'
-import type { MemoryCheckpointWindow, MemoryEntry, MemoryNoticeSource } from '../src/index.ts'
+} from '../src/api.ts'
+import type { MemoryCheckpointWindow, MemoryEntry, MemoryNoticeSource } from '../src/api.ts'
 import { renderMemoryDocument } from '../src/memory-file.ts'
 import type { MemoryDocument } from '../src/memory-file.ts'
 import {

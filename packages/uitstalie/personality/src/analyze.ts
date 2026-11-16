@@ -11,6 +11,7 @@
 
 import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
+import { HarnessError } from '@deepseek-ai/dsh-error'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionResultFilter } from '@deepseek-ai/dsh-session-query'
@@ -75,14 +76,12 @@ export interface AnalyzeResult {
 }
 
 /** Typed invalid analysis request. */
-export class AnalyzeError extends Error {
+export class AnalyzeError extends HarnessError {
   /**
    * @param message - reason naming the invalid field.
-   * @param code - stable failure kind.
    */
-  constructor(message: string, readonly code: 'invalid-request') {
-    super(message)
-    this.name = 'AnalyzeError'
+  constructor(message: string) {
+    super(message, 'PERSONALITY_ANALYZE_INVALID')
   }
 }
 
@@ -122,7 +121,15 @@ const CANDIDATE_RULES: readonly CandidateRule[] = [
 /** Candidate cap default. */
 export const ANALYZE_DEFAULT_MAX_CANDIDATES = 10
 
-/** Analyze readable sessions and return candidates without writing. */
+/**
+ * Analyze readable sessions and return candidates without writing.
+ * @param ctx - plugin context carrying the Session query service.
+ * @param caller - session whose cwd bounds which other sessions are readable.
+ * @param input - scan scope, optional kind filter, and optional candidate cap.
+ * @param signal - cancellation for the session queries and reads.
+ * @returns the capped candidates, scanned-session count, truncation flag, and unreadable or out-of-scope warnings.
+ * @throws AnalyzeError when the scope, kind filter, or candidate cap is invalid.
+ */
 export async function analyzePersonality(
   ctx: Context,
   caller: Session,
@@ -160,7 +167,11 @@ export async function analyzePersonality(
   }
 }
 
-/** Render one analysis result as a compact model-facing report. */
+/**
+ * Render one analysis result as a compact model-facing report.
+ * @param result - analysis result to summarize.
+ * @returns one header line, one line per candidate with its evidence references, and one line per warning.
+ */
 export function renderAnalyzeResult(result: AnalyzeResult): string {
   const lines = [
     `Scanned ${String(result.sessionsScanned)} session(s); ${String(result.candidates.length)} candidate(s)${result.truncated ? ' (truncated)' : ''}.`,
@@ -178,14 +189,14 @@ export function renderAnalyzeResult(result: AnalyzeResult): string {
 /** Validate and expand the kind filter. */
 function normalizeKinds(kinds: readonly PersonalityEntryKind[] | undefined): ReadonlySet<Exclude<PersonalityEntryKind, 'identity'>> {
   const selected = kinds ?? ['understanding', 'preference', 'style']
-  if (selected.includes('identity')) throw new AnalyzeError('identity is manual-only and cannot be analyzed as a candidate kind', 'invalid-request')
+  if (selected.includes('identity')) throw new AnalyzeError('identity is manual-only and cannot be analyzed as a candidate kind')
   return new Set(selected.filter((kind): kind is Exclude<PersonalityEntryKind, 'identity'> => kind !== 'identity'))
 }
 
 /** Validate the candidate cap. */
 function normalizeMaxCandidates(value: number | undefined): number {
   const max = value ?? ANALYZE_DEFAULT_MAX_CANDIDATES
-  if (!Number.isSafeInteger(max) || max < 1 || max > 20) throw new AnalyzeError('maxCandidates must be an integer from 1 to 20', 'invalid-request')
+  if (!Number.isSafeInteger(max) || max < 1 || max > 20) throw new AnalyzeError('maxCandidates must be an integer from 1 to 20')
   return max
 }
 
@@ -219,7 +230,7 @@ async function readableSessions(
   }
   const limit = scope.limit
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20) {
-    throw new AnalyzeError('recent.limit must be an integer from 1 to 20', 'invalid-request')
+    throw new AnalyzeError('recent.limit must be an integer from 1 to 20')
   }
   if (cwd === undefined) {
     warnings.push('the caller has no cwd; only the current session was analyzed')

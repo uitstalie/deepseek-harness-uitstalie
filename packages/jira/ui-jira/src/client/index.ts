@@ -147,20 +147,9 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       inject: (): SuperagentSetupInjected => ({
         t,
         refresh: () => { void refreshSuperGroup() },
-        pickDirectory: async () => {
-          const workspace = (scoped as unknown as { get?: (name: string) => unknown }).get?.('uiWorkspace') as
-            | { pickDirectory?: () => Promise<string | null> }
-            | undefined
-          return workspace?.pickDirectory === undefined ? null : workspace.pickDirectory()
-        },
+        pickDirectory: () => scoped.get('uiWorkspace').pickDirectory(),
         setup: async (path: string) => {
-          const surface = scoped.remote.jira as unknown as {
-            superagentSetup(path: string): Promise<
-              | { ok: true; value: unknown }
-              | { ok: false; error: { message: string } }
-            >
-          }
-          const result = await surface.superagentSetup(path)
+          const result = await scoped.remote.jira.superagentSetup(path)
           if (!result.ok) throw new Error(result.error.message)
         },
       }),
@@ -171,23 +160,12 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
     const refreshSuperGroup = async (): Promise<void> => {
       disposeSuperGroup?.()
       disposeSuperGroup = undefined
-      const surface = scoped.remote.jira as unknown as {
-        superagentState?: () => Promise<
-          | { ok: true; value: { configured: boolean; workspaceId?: string } }
-          | { ok: false }
-        >
-      }
-      if (surface.superagentState === undefined) return
       try {
-        const result = await surface.superagentState()
+        const result = await scoped.remote.jira.superagentState()
         if (!result.ok) return
         const state = result.value
         if (!state.configured || state.workspaceId === undefined) return
-        const registry = (scoped as unknown as { get?: (name: string) => unknown }).get?.('workspaceGroups') as
-          | { register?: (group: { id: string; label: () => string; workspaceId: string }) => () => void }
-          | undefined
-        if (registry?.register === undefined) return
-        disposeSuperGroup = registry.register({
+        disposeSuperGroup = scoped.get('workspaceGroups').register({
           id: 'superagent',
           label: () => t('superagentWorkspace'),
           workspaceId: state.workspaceId,

@@ -20,7 +20,7 @@ import {
   mountAgentLoopTestHarness,
   type AgentLoopTestHarness,
 } from '@deepseek-ai/dsh-agent-loop-testkit'
-import * as Store from '../src/index.ts'
+import * as Store from '../src/api.ts'
 import * as StoreAtom from '@deepseek-ai/dsh-store-atom'
 
 const signal = new AbortController().signal

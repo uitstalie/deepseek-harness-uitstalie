@@ -31,6 +31,7 @@ import {
 import { instructionCandidateGroup, instructionScopeKey, scopeForDisplayPath, type AgentInstructionChange } from './render.ts'
 
 export { Config, name }
+export type { ResolvedConfig } from './config.ts'
 /** Services required by workspace instruction projection. */
 export const inject = ['agents', 'workingDirectory']
 export {
@@ -44,27 +45,27 @@ export type {
 export { renderAgentInstructions } from './render.ts'
 export type { RenderedAgentInstructions, TruncatedInstruction } from './render.ts'
 
-// BEGIN uitstalie-k3, 2026/09/30, task16, 让 plus 插件能复用 loader 的公开实现（纯导出可见性，行为不变）
-export {
-  agentInstructionsMessage,
-  applyInstructionVersionUpdates,
-  baselineInstructionState,
-  reconcileInstructionContext,
-  retainedInstructionVersionUpdates,
-} from './state.ts'
-export type {
-  AgentInstructionSource,
-  InstructionVersionCache,
-  InstructionVersionState,
-  InstructionVersionUpdate,
-  ReconciledInstructionContext,
-} from './state.ts'
-export type { AgentInstructionChange } from './render.ts'
-export { instructionContentSha1, trimmedInstructionDigest } from './digest.ts'
-export { findProjectRoot, loadBaselineInstructionSet } from './files.ts'
-export { resolveConfig, workspaceBaselineIdentity } from './config.ts'
-export type { Config as AgentInstructionsConfig, ResolvedConfig } from './config.ts'
-// END uitstalie-k3
+/**
+ * Reusable loader operations for the branch's plus loader, which decorates the
+ * baseline this service produced without importing its implementation module.
+ */
+export interface AgentInstructionsApi {
+  /** Native baseline state and file-discovery helpers used during one pre-step. */
+  readonly baselineInstructionState: typeof baselineInstructionState
+  /** Locate the project root for the current working directory. */
+  readonly findProjectRoot: typeof findProjectRoot
+  /** Resolve the native loader's configuration for the plus preset. */
+  readonly resolveConfig: typeof resolveConfig
+  /** Identify the baseline this loader publishes for one workspace. */
+  readonly workspaceBaselineIdentity: typeof workspaceBaselineIdentity
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Loader operations published by the native agent-instructions plugin. */
+    agentInstructionsApi: AgentInstructionsApi
+  }
+}
 
 function visibleBaselineSource(
   agent: Agent,
@@ -105,6 +106,12 @@ function filePathFromExecution(exec: ToolExecution): string | undefined {
 }
 
 export function apply(ctx: Context, config: Config): void {
+  ctx.provide('agentInstructionsApi', Object.freeze({
+    baselineInstructionState,
+    findProjectRoot,
+    resolveConfig,
+    workspaceBaselineIdentity,
+  }))
   const resolved: ResolvedConfig = resolveConfig(config)
   const instructionVersions: InstructionVersionCache = new WeakMap()
   const baselinePreparations = new WeakMap<Session, {

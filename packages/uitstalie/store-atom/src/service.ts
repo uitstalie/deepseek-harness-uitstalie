@@ -10,17 +10,18 @@
  * @module @deepseek-ai/dsh-store-atom/service
  */
 
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-system-environment'
 import { FsVersion } from '@deepseek-ai/dsh-fs'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { findProjectRoot, trimmedInstructionDigest } from '@deepseek-ai/dsh-agent-instructions'
 import { STORE_DIR_NAME, isPathInside, normalizeStorePath, resolveStoreTarget } from './paths.ts'
-import { isRulesPath, validateNamespaceContent } from './namespaces.ts'
+import { trimmedInstructionDigest } from './rules.ts'
+import { isMemoryPath, isRulesPath, validateNamespaceContent } from './namespaces.ts'
 import { scanWorkspaceRules } from './rules.ts'
+import type { RulesScan } from './rules.ts'
 import {
   createStoreFile,
   createStoreFolder,
@@ -36,6 +37,25 @@ export type StoreScope = 'global' | 'workspace'
 
 /** Project-root markers; the same convention `dsh-skill-filesystem` applies. */
 const PROJECT_ROOT_MARKERS = ['.git']
+
+/** Walk up from `cwd` to the first directory carrying a project marker. */
+const findProjectRoot = async (
+  cwd: string,
+  markers: readonly string[],
+  fileSystem: Context['fs'],
+  signal?: AbortSignal,
+): Promise<string> => {
+  let current = resolve(cwd)
+  for (;;) {
+    for (const marker of markers) {
+      const target = await fileSystem.resolve(join(current, marker), signal === undefined ? {} : { signal })
+      if (await fileSystem.stat(target, signal) !== undefined) return current
+    }
+    const parent = dirname(current)
+    if (parent === current) return resolve(cwd)
+    current = parent
+  }
+}
 
 /** The per-file cap applied when the rules namespace is scanned for duplicates. */
 const RULE_SOURCE_MAX_BYTES = 256 * 1024
@@ -92,6 +112,40 @@ export interface StoreReadResult {
  * session.
  */
 export interface DshStore {
+  /** Directory name of the store inside a workspace or harness home. */
+  readonly directoryName: string
+  /**
+   * Normalize one store-relative path without touching the filesystem.
+   * @param path - the model- or caller-supplied path.
+   * @returns the validated display path.
+   * @throws {StorePathError} when the path leaves the store root.
+   */
+  normalizePath(path: string): string
+  /**
+   * Whether a normalized path belongs to the rules namespace.
+   * @param path - store-relative display path.
+   */
+  isRulesPath(path: string): boolean
+  /**
+   * Whether a normalized path belongs to the memory namespace.
+   * @param path - store-relative display path.
+   */
+  isMemoryPath(path: string): boolean
+  /**
+   * Scan one workspace root's rules with the loader's own retention and deduplication rules.
+   * @param projectRoot - canonical workspace root.
+   * @param options - source byte cap and cancellation.
+   * @returns the retained rule files and set digest.
+   */
+  scanRules(projectRoot: string, options: { readonly maxSourceBytes: number; readonly signal?: AbortSignal }): Promise<RulesScan>
+  /**
+   * Query one target below a workspace root's store without a Session.
+   * @param projectRoot - canonical workspace root.
+   * @param path - store-relative path.
+   * @param options - cancellation.
+   * @returns the queried target, including file text.
+   */
+  queryAt(projectRoot: string, path: string, options?: { readonly signal?: AbortSignal }): Promise<StoreQueryResult>
   /**
    * Resolve the project root that owns the session's `.dsh` directory.
    * @param session - session whose cwd anchors discovery.
@@ -291,6 +345,23 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
   }
 
   return {
+    directoryName: STORE_DIR_NAME,
+    normalizePath: (path: string): string => normalizeStorePath(path).displayPath,
+    isRulesPath,
+    isMemoryPath,
+    scanRules: async (projectRoot, options) => await scanWorkspaceRules(ctx.fs, {
+      projectRoot,
+      maxSourceBytes: options.maxSourceBytes,
+      ...options.signal === undefined ? {} : { signal: options.signal },
+    }),
+    queryAt: async (projectRoot, path, options = {}) => {
+      const normalized = normalizeStorePath(path)
+      const target = resolveStoreTarget(join(projectRoot, STORE_DIR_NAME), normalized, under)
+      return await queryStoreTarget(ctx.fs, target, normalized.displayPath, {
+        readText: true,
+        ...options.signal === undefined ? {} : { signal: options.signal },
+      })
+    },
     projectRootFor,
     rootFor,
     prepare,

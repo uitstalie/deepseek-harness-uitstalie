@@ -4,6 +4,8 @@ import { Context } from '@deepseek-ai/cordis'
 import SessionStore, {
   Session,
   SessionId,
+  type SessionEvent,
+  type SessionEventInput,
 } from '@deepseek-ai/dsh-session'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { ApprovalPolicy } from '@deepseek-ai/dsh-user-approval'
@@ -41,6 +43,25 @@ async function mounted(options: {
 
 function freshSession(id: string): Session {
   return Session.create(SessionId(id))
+}
+
+/**
+ * Replace one Session's append with a fault injector: a single-event write the
+ * callback rejects throws, while batch writes and every accepted write still
+ * reach the real method.
+ */
+function interceptAppend(session: Session, failureOf: (type: string, data: unknown) => string | undefined): void {
+  const append = session.append.bind(session) as (
+    type: Parameters<Session['append']>[0] | readonly SessionEventInput[],
+    data?: unknown,
+    ...opts: unknown[]
+  ) => SessionEvent | readonly SessionEvent[]
+  session.append = ((type: Parameters<Session['append']>[0] | readonly SessionEventInput[], data?: unknown, ...opts: unknown[]) => {
+    if (typeof type !== 'string') return append(type)
+    const failure = failureOf(type, data)
+    if (failure !== undefined) throw new Error(failure)
+    return append(type, data, ...opts)
+  }) as Session['append']
 }
 
 async function mountAuto(ctx: Context, admit: () => void = () => {}) {
@@ -196,15 +217,8 @@ describe('PermissionPresetService', () => {
       currentValue: 'danger-full-access', sandboxMode: 'danger-full-access', approvalPolicy: 'never',
     })
 
-    // The merged Session.append is overloaded (batch + single event); the guard only
-    // inspects single-event writes and delegates everything else to the original.
-    const append = session.append.bind(session) as unknown as (type: unknown, data?: unknown, ...opts: unknown[]) => unknown
-    const failApproval = true
-    session.append = ((type: string | readonly unknown[], data?: unknown, ...opts: unknown[]) => {
-      if (typeof type !== 'string') return append(type)
-      if (type === 'approval/policy' && failApproval && (data as { policy?: string }).policy === 'ask') throw new Error('approval write failed')
-      return append(type, data, ...opts)
-    }) as unknown as Session['append']
+    interceptAppend(session, (type, data) =>
+      type === 'approval/policy' && (data as { policy?: string }).policy === 'ask' ? 'approval write failed' : undefined)
     expect(() => { ctx.permissionPresets.set(session, 'workspace-write', 'restore confinement') })
       .toThrow(/previous permission was restored through compensating events/)
     expect(ctx.permissionPresets.selection(session)).toEqual({
@@ -215,12 +229,11 @@ describe('PermissionPresetService', () => {
       'permission/preset', 'sandbox/mode', 'permission/preset', 'sandbox/mode',
     ])
 
-    session.append = ((type: string | readonly unknown[], data?: unknown, ...opts: unknown[]) => {
-      if (typeof type !== 'string') return append(type)
-      if (type === 'approval/policy') throw new Error('approval write failed')
-      if (type === 'sandbox/mode' && (data as { mode?: string }).mode === 'danger-full-access') throw new Error('sandbox restoration failed')
-      return append(type, data, ...opts)
-    }) as unknown as Session['append']
+    interceptAppend(session, (type, data) => {
+      if (type === 'approval/policy') return 'approval write failed'
+      if (type === 'sandbox/mode' && (data as { mode?: string }).mode === 'danger-full-access') return 'sandbox restoration failed'
+      return undefined
+    })
     expect(() => { ctx.permissionPresets.set(session, 'workspace-write', 'retry') })
       .toThrow(/compensation failed/)
     expect(session.snapshotEvents().at(-1)?.type).toBe('permission/preset')

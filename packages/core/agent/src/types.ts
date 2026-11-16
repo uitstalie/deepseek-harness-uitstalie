@@ -4,6 +4,7 @@
  * @module @deepseek-ai/dsh-agent/types
  */
 
+import type { AgentRole } from './runtime-types.ts'
 import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
 import type { UserMessage } from '@deepseek-ai/dsh-llm/types'
 // Type-only: the Workspace registry's archive-admission family map this registry merges `turn` into.
@@ -16,6 +17,8 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 export interface Agent {
   /** Session-backed Agent identity. */
   readonly id: SessionId
+  /** Effective role of this Agent; live registries always set it, minimal test faces may omit it. */
+  readonly role?: AgentRole
 }
 
 declare module '@deepseek-ai/dsh-workspace/types' {

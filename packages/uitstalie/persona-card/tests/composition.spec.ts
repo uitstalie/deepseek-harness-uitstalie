@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { PERSONA_CARD_SECTION_NAME, PERSONA_CARD_SECTION_ORDER } from '../src/index.ts'
+import { PERSONA_CARD_SECTION_NAME, PERSONA_CARD_SECTION_ORDER } from '../src/api.ts'
 import {
   createAgent,
   mountPersona,

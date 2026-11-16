@@ -11,9 +11,7 @@ test('binds dshStoreRules as the service key and dshStore as the wire namespace'
   await ctx.plugin(StoreRulesRemote)
 
   const base = (ctx.dshStore as { typertRemote?: unknown })
-  const remote = (ctx as unknown as {
-    dshStoreRules?: { typertRemote?: { serviceKey?: string; namespace?: string } }
-  }).dshStoreRules
+  const remote = ctx.get('dshStoreRules') as StoreRulesRemote | undefined
   expect(base.typertRemote).toBeUndefined()
   expect(remote?.typertRemote).toMatchObject({
     serviceKey: 'dshStoreRules',

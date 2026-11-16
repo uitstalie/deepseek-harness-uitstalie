@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Personality",
+    "description": "Owns the global personality profile, output styles, and writing rules that shape how every agent replies."
+  }
+}

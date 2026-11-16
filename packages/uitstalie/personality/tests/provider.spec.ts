@@ -15,14 +15,14 @@ import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import SessionQuery from '@deepseek-ai/dsh-session-query'
-import { createDshStore } from '@deepseek-ai/dsh-store-atom'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom/src/api.ts'
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,
 } from '@deepseek-ai/dsh-agent-loop-testkit'
 import type { AgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
 import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
-import * as Personality from '../src/index.ts'
+import * as Personality from '../src/api.ts'
 import {
   createPersonalityDocument,
   globalPersonalityPath,
@@ -34,7 +34,6 @@ import { renderPersonalitySection, PROFILE_SECTION_NAME } from '../src/profile-p
 import { outputStylePath, renderOutputStyle } from '../src/output-style.ts'
 import { DEFAULT_OUTPUT_STYLE } from '../src/defaults.ts'
 import { applyPersonalityCandidates } from '../src/apply.ts'
-import { agentRoleOf } from '@deepseek-ai/dsh-agent'
 import { analyzePersonality } from '../src/analyze.ts'
 
 const signal = new AbortController().signal
@@ -247,9 +246,9 @@ test('child agents inherit analyze and the profile section but not apply', async
   expect(mounted.ctx.tools.get('write_like_human', child.agent)).toBeUndefined()
   const apply = mounted.ctx.tools.get('personality_apply', root)
   const rules = mounted.ctx.tools.get('write_like_human', root)
-  await expect(apply?.execute({ candidates: [], confirm: true } as never, { agent: child.agent, signal } as never))
+  await expect(apply?.execute({ candidates: [], confirm: true }, { agent: child.agent, signal }))
     .rejects.toThrow(/unavailable to subagents/u)
-  await expect(rules?.execute({ action: 'list' } as never, { agent: child.agent, signal } as never))
+  await expect(rules?.execute({ action: 'list' }, { agent: child.agent, signal }))
     .rejects.toThrow(/unavailable to subagents/u)
   await child.dispose()
 })
@@ -267,8 +266,8 @@ test('role selects an independent output-style slot for ordinary and super roots
   )
   await until(() => mounted.ctx.tools.get('personality_analyze', ordinary) !== undefined)
   await until(() => mounted.ctx.tools.get('personality_analyze', superAgent) !== undefined)
-  expect((superAgent as unknown as { options: { role?: string } }).options.role).toBe('super')
-  expect(agentRoleOf(superAgent)).toBe('super')
+  expect(superAgent.options.role).toBe('super')
+  expect(superAgent.role).toBe('super')
   await settle()
   await untilSection(mounted.ctx, ordinary, 'personality:output-style', '- Tone: warm.')
   await untilSection(mounted.ctx, superAgent, 'personality:output-style', '- Tone: dry.')

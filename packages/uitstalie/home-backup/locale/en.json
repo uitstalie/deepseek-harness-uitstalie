@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Home Backup",
+    "title": "Home backup",
     "description": "Scheduled snapshots of sessions, storages, and profile configuration outside the harness home."
   }
 }

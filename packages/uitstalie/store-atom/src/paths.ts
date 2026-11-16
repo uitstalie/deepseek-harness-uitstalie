@@ -6,6 +6,7 @@
  */
 
 import { isAbsolute, join, relative, resolve } from 'node:path'
+import { HarnessError } from '@deepseek-ai/dsh-error'
 
 /** 工作区内的约定根目录名（锁定，不做配置项）。 */
 export const STORE_DIR_NAME = '.dsh'
@@ -31,15 +32,14 @@ export type StorePathRejection =
   | 'too-long'
   | 'too-deep'
 
-/** 被拒绝的 `.dsh/` 相对路径。 */
-export class StorePathError extends Error {
+/** A store-relative path refused by the `.dsh` path matrix. */
+export class StorePathError extends HarnessError {
   /**
-   * @param reason - 命中的拒绝原因。
-   * @param input - 模型给出的原始路径，用于回报而不做二次解释。
+   * @param reason - the rejection row the path matched.
+   * @param input - the model-supplied path, retained verbatim for the report.
    */
   constructor(readonly reason: StorePathRejection, readonly input: string) {
-    super(`${STORE_DIR_NAME} path rejected (${reason}): ${JSON.stringify(input)}`)
-    this.name = 'StorePathError'
+    super(`${STORE_DIR_NAME} path rejected (${reason}): ${JSON.stringify(input)}`, 'STORE_PATH_REJECTED')
   }
 }
 

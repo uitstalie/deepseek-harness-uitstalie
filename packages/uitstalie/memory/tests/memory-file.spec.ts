@@ -10,8 +10,8 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { Session, SessionId, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
-import { createDshStore } from '@deepseek-ai/dsh-store-atom'
-import type { DshStore } from '@deepseek-ai/dsh-store-atom'
+import { createDshStore } from '@deepseek-ai/dsh-store-atom/src/api.ts'
+import type { DshStore } from '@deepseek-ai/dsh-store-atom/src/api.ts'
 import { FsError } from '@deepseek-ai/dsh-fs'
 import {
   appendMemoryEntry,
@@ -258,7 +258,7 @@ test('a turn summary appends one detail section and extends consecutive turns', 
 
 test('a turn summary without entries is rejected before touching the file', async () => {
   await expect(appendTurnSummary(ctx, session, { turn: 1, seq: [1, 2], entries: [] }))
-    .rejects.toMatchObject({ code: 'empty-summary' })
+    .rejects.toMatchObject({ code: 'EMPTY_SUMMARY' })
   await expect(readMemoryDocument(ctx, session)).resolves.toEqual({ path: MEMORY_STORE_PATH })
 })
 
@@ -1123,7 +1123,7 @@ test('an edit names the known turns and refuses empty text', async () => {
   })
 
   await expect(editMemorySummary(ctx, session, { turn: 9 }, 'x')).rejects.toThrow(/known turns: 3/u)
-  await expect(editMemorySummary(ctx, session, { turn: 3 }, '   ')).rejects.toMatchObject({ code: 'empty-summary' })
+  await expect(editMemorySummary(ctx, session, { turn: 3 }, '   ')).rejects.toMatchObject({ code: 'EMPTY_SUMMARY' })
 })
 
 test('a revert without a recorded edit is refused', async () => {

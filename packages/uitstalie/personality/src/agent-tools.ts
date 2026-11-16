@@ -15,12 +15,15 @@ import { analyzePersonality, renderAnalyzeResult } from './analyze.ts'
 import type { AnalyzeInput } from './analyze.ts'
 import { applyPersonalityCandidates, renderApplyResult } from './apply.ts'
 import { globalPersonalityPath, PERSONALITY_ENTRY_KINDS } from './global-store.ts'
-import { agentRoleOf } from '@deepseek-ai/dsh-agent'
 
 /** Entry kinds accepted by the non-identity tool paths. */
 const NON_IDENTITY_ENTRY_KINDS = PERSONALITY_ENTRY_KINDS.filter(kind => kind !== 'identity')
 
-/** Build the all-agent read-only analysis tool. */
+/**
+ * Build the all-agent read-only analysis tool.
+ * @param ctx - plugin context carrying the Session query service used for the scan.
+ * @returns the `personality_analyze` tool definition; its execute path returns the analysis result for the shared renderer.
+ */
 export function personalityAnalyzeTool(ctx: Context): ToolDefinition {
   return defineTool({
     name: 'personality_analyze',
@@ -100,7 +103,12 @@ export function personalityAnalyzeTool(ctx: Context): ToolDefinition {
   })
 }
 
-/** Build the root-only confirmed write tool. */
+/**
+ * Build the root-only confirmed write tool.
+ * @param ctx - plugin context carrying the global store used for writes.
+ * @param refresh - reloads the calling agent's prompt after at least one accepted write.
+ * @returns the `personality_apply` tool definition; write failures return per-candidate rejections instead of throwing.
+ */
 export function personalityApplyTool(ctx: Context, refresh: (agent: Agent) => Promise<void>): ToolDefinition {
   return defineTool({
     name: 'personality_apply',
@@ -166,7 +174,7 @@ export function personalityApplyTool(ctx: Context, refresh: (agent: Agent) => Pr
     },
     async execute(args, exec) {
       const agent = requireAgent(exec.agent, 'personality_apply')
-      if (agentRoleOf(agent) === 'subagent') throw new Error('personality_apply is unavailable to subagents')
+      if ((agent.role ?? 'agent') === 'subagent') throw new Error('personality_apply is unavailable to subagents')
       try {
         const result = await applyPersonalityCandidates(ctx, {
           candidates: args.candidates,

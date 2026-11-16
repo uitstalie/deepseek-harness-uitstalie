@@ -260,7 +260,8 @@ export class ApiSessionAgentController {
   /**
    * Resolve the preset id and pre-publication Agent setup for a create or resume.
    * @param presetId - requested preset or the configured default when omitted.
-   * @returns the resolved preset identity and Agent setup callback.
+   * @param role - explicit Agent role resolved from the durable Workspace, when the caller has one.
+   * @returns the resolved preset identity, optional role, and Agent setup callback.
    */
   async composeAgent(presetId: string | undefined, role?: AgentRole): Promise<ApiSessionComposition> {
     const presets = this.ctx.get('agentPresets')

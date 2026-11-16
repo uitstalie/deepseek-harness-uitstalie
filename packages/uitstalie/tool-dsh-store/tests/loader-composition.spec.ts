@@ -24,7 +24,7 @@ import * as ToolsPlugin from '@deepseek-ai/dsh-tools'
 import * as ToolExecutorNativePlugin from '@deepseek-ai/dsh-tool-executor-native'
 import * as AgentLoopPlugin from '@deepseek-ai/dsh-agent-loop'
 import * as FsLocalPlugin from '@deepseek-ai/dsh-fs-local'
-import * as StorePlugin from '../src/index.ts'
+import * as StorePlugin from '../src/api.ts'
 import * as StoreAtomPlugin from '@deepseek-ai/dsh-store-atom'
 
 let context: Context | undefined

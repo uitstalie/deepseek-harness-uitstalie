@@ -11,6 +11,7 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { CompactionId } from '@deepseek-ai/dsh-compaction'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { LlmAdapter } from '@deepseek-ai/dsh-llm'
@@ -19,8 +20,8 @@ import type { SessionId as SessionIdValue, SurfaceEvent, UserMessage } from '@de
 import {
   isMemoryCheckpointSource,
   parseMemoryDocument,
-} from '../src/index.ts'
-import type { MemoryEntry } from '../src/index.ts'
+} from '../src/api.ts'
+import type { MemoryEntry } from '../src/api.ts'
 import {
   appendAssistantText,
   appendUserText,
@@ -83,8 +84,8 @@ function registerAdapter(mounted: MemoryTestHarness, adapter: SummaryAdapter): v
 
 /** Append a compaction boundary: the only point where a memory surface replace is allowed. */
 function markCompactionBoundary(agent: Agent, turn: number): void {
-  (agent.session as unknown as { append(type: string, data: unknown): void }).append('compaction/end', {
-    compactionId: 'compaction-test',
+  agent.session.append('compaction/end', {
+    compactionId: CompactionId('compaction-test'),
     turn,
   })
 }

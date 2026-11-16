@@ -1,7 +1,7 @@
 /** Discover the caller's entire subagent tree; the control plugin owns registration. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { defineTool, withMinRole } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
@@ -92,7 +92,7 @@ export function registerListAgents(ctx: Context): ToolDefinition {
       ]
     },
   })
-  const gated = withMinRole(definition, 'subagent')
+  const gated = { ...definition, minRole: 'subagent' }
   ctx.tools.register(gated)
   return gated
 }

@@ -2,10 +2,11 @@
 import { expect, test } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import { defineTool, roleAllows, withMinRole, toolMinRole, ToolRuntime } from '@deepseek-ai/dsh-tools'
+import { defineTool, ToolRuntime } from '@deepseek-ai/dsh-tools'
+import { roleAllows, withMinRole, toolMinRole } from '../src/role.ts'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { agentRoleOf } from '@deepseek-ai/dsh-agent'
-import type { Agent, AgentRole } from '@deepseek-ai/dsh-agent'
+import type { AgentRole } from '@deepseek-ai/dsh-agent'
 
 /** Every model-facing tool in the approved matrix and its declared minimum. */
 const MATRIX: Readonly<Record<string, AgentRole>> = {
@@ -58,10 +59,10 @@ function tool(name: string, minimum: AgentRole): ToolDefinition {
   }), minimum)
 }
 
-/** A minimal Agent-shaped fixture read by the role resolver. */
-function agent(role: AgentRole): Agent {
+/** A minimal Agent face: the public role plus the session gate the registry reads. */
+function agent(role: AgentRole) {
   const header = role === 'subagent' ? { origin: 'subagent', delegationDepth: 1 } : {}
-  return { id: `role-${role}`, session: { header }, options: { role } } as unknown as Agent
+  return { id: SessionId(`role-${role}`), role, session: { header } }
 }
 
 test('the registry exposes the approved full matrix for subagent, agent, and super', async () => {
@@ -92,9 +93,6 @@ test('the registry exposes the approved full matrix for subagent, agent, and sup
     'superagent_control', 'superagent_deliver', 'superagent_ledger', 'superagent_permission',
   ])
   for (const name of Object.keys(MATRIX)) expect(toolMinRole(ctx.tools.get(name)!)).toBe(MATRIX[name])
-  expect(agentRoleOf(agent('subagent'))).toBe('subagent')
-  expect(agentRoleOf(agent('agent'))).toBe('agent')
-  expect(agentRoleOf(agent('super'))).toBe('super')
 
   const plain = defineTool({
     name: 'plain_unscoped',

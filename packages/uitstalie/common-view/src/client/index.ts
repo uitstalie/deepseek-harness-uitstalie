@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the `ctx.slots` service declaration into this program.
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type { Config as CommonViewConfig } from '../index.ts'
+import type { Config as CommonViewConfig } from '../api.ts'
 import { resolveCommonViewConfig } from '../config.ts'
 import { en, zh, type CommonViewKey } from './locales.ts'
 import { ActionRow } from './views/session-row-action/ActionRow.tsx'

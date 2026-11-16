@@ -1248,9 +1248,6 @@
   "packages/llm/llm-pi-ai/src/catalog.ts": {
     "5b1064d0195802d24eaa5155c66eb381da6046a8ccd0cacc3d852336475da7ef": 1
   },
-  "packages/llm/llm-pi-ai/src/config.ts": {
-    "3b75d3d9ef1c54f306d105f274846b0cc0ab482aa9b558409db7f231132489ed": 1
-  },
   "packages/llm/llm-pi-ai/src/replay.ts": {
     "46197efe57255c9d92d64476470c89d0602c7333bf98ad75509bf43c1b357a3b": 1
   },
@@ -1366,9 +1363,6 @@
   "packages/sandbox/sandbox-windows-acl/tests/grant-failure-paths.spec.ts": {
     "24defbb8f6adc4ec8ebd3443b233aceadae85ab486413320de0967eaf7d43032": 1,
     "ff7b125eae197db9cb8866293613a5de2a984d42b4487b2cc37eeacc8c300783": 1
-  },
-  "packages/sandbox/sandbox-windows-acl/tests/probe.spec.ts": {
-    "d187b3ab8af0b780660e2b764b553ccff82e3af3254598ee18a059e5bd0381f5": 1
   },
   "packages/sandbox/sandbox-windows-acl/tests/token-failure-paths.spec.ts": {
     "066a1faa5764fd676db5c45c369ef588ede24ee6688d89b6d0d865a29f59a84b": 1,
@@ -1574,7 +1568,6 @@
     "1fba888e4068c1a19754657dc6d8d0f524a33211420783d4ec826c1b68dc5913": 1,
     "3c4c8a7c9685dc3d82b80a364a10cbb8cd04d9366e19924a25c6f691528f589e": 1,
     "55c2f7b71f50f90d37cb941196bd7b684ffe1fab297fe384b914b858f6a32881": 1,
-    "7fa6833571f26bb5c24d30ecf2665a2d2ed542c4bf5910436661c8f343460b89": 1,
     "9c0fcd22288b7bb850ffac4f5c1c858ee8541a3c5401ac337c466a12772e3a33": 1,
     "a5125fb6ffe7a074b9e1fa095f3b975049295e62e0ed97e8cd34f05cb9d09c43": 1,
     "c4b4640acc4c60390bda3290c8c9f50fac9677e11f0ba5543891903e5f4212b4": 1,

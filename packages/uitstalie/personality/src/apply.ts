@@ -9,6 +9,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { HarnessError } from '@deepseek-ai/dsh-error'
 import { globalPersonalityPath, upsertGlobalPersonalityEntry } from './global-store.ts'
 import type { PersonalityEntryKind } from './global-store.ts'
 import type { EvidenceRef } from './analyze.ts'
@@ -46,18 +47,23 @@ export interface ApplyResult {
 }
 
 /** Typed invalid apply request. */
-export class ApplyError extends Error {
+export class ApplyError extends HarnessError {
   /**
    * @param message - reason naming the invalid field.
-   * @param code - stable failure kind.
    */
-  constructor(message: string, readonly code: 'invalid-request') {
-    super(message)
-    this.name = 'ApplyError'
+  constructor(message: string) {
+    super(message, 'PERSONALITY_APPLY_INVALID')
   }
 }
 
-/** Write confirmed candidates; identity and per-candidate failures are rejected individually. */
+/**
+ * Write confirmed candidates; identity and per-candidate failures are rejected individually.
+ * @param ctx - plugin context carrying the global store.
+ * @param input - candidate batch and the required literal `confirm: true`.
+ * @param signal - cancellation for the reads and guarded writes.
+ * @returns applied entry ids, per-candidate rejections, the profile path, and the last successful revision (0 when nothing was written).
+ * @throws ApplyError when confirmation is not the literal true or the batch size is outside 1–20.
+ */
 export async function applyPersonalityCandidates(
   ctx: Context,
   input: ApplyInput,
@@ -65,9 +71,9 @@ export async function applyPersonalityCandidates(
 ): Promise<ApplyResult> {
   // Tool arguments arrive as untyped JSON; widen before the confirmation gate.
   const confirm: unknown = input.confirm
-  if (confirm !== true) throw new ApplyError('confirm must be the literal true; the user must explicitly ask to apply', 'invalid-request')
+  if (confirm !== true) throw new ApplyError('confirm must be the literal true; the user must explicitly ask to apply')
   if (input.candidates.length < 1 || input.candidates.length > 20) {
-    throw new ApplyError('candidates must contain 1 to 20 entries', 'invalid-request')
+    throw new ApplyError('candidates must contain 1 to 20 entries')
   }
   const applied: string[] = []
   const rejected: { name: string; reason: string }[] = []
@@ -92,7 +98,11 @@ export async function applyPersonalityCandidates(
   return { applied, rejected, path: globalPersonalityPath(), revision }
 }
 
-/** Render one apply result as a compact model-facing report. */
+/**
+ * Render one apply result as a compact model-facing report.
+ * @param result - apply result to report.
+ * @returns a summary line with the path and revision, then one line per applied id and per rejection.
+ */
 export function renderApplyResult(result: ApplyResult): string {
   const lines = [`Applied ${String(result.applied.length)} personality entr${result.applied.length === 1 ? 'y' : 'ies'} to ${result.path} (revision ${String(result.revision)}).`]
   for (const id of result.applied) lines.push(`- ${id}`)

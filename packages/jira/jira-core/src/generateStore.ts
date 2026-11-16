@@ -359,7 +359,7 @@ export const regenerateAndCommit = async (
   // as a **soft** failure — the file is the truth source, right for an ordinary write. For
   // regeneration it is not: what gets pushed has to agree with its sources, so a store whose
   // commit did not land must say so instead of returning a cheerful list of files.
-  if (committed.ok && !committed.value.committed) {
+  if (!committed.value.committed) {
     return err(committed.value.error ?? ioFailed('the regenerated files were written but not committed', { root: store.files.root }))
   }
   return ok(Object.freeze([...written.value.written]))

@@ -11,7 +11,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import {
   DIRECTOR_NOTE_CLEARED,
   DIRECTOR_NOTE_MAX_BYTES,
-} from '../src/index.ts'
+} from '../src/api.ts'
 import {
   createAgent,
   directorMessages,

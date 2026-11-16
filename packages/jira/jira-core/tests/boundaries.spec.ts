@@ -71,7 +71,7 @@ function tokenize(text: string): Token[] {
           continue
         }
         if (text[index] === '\n') line += 1
-        value += text[index]
+        value += text[index] ?? ''
         index += 1
       }
       index += 1
@@ -82,7 +82,7 @@ function tokenize(text: string): Token[] {
       const started = line
       let value = ''
       while (index < text.length && /[A-Za-z0-9_$]/u.test(text[index] ?? '')) {
-        value += text[index]
+        value += text[index] ?? ''
         index += 1
       }
       tokens.push({ kind: 'ident', value, line: started })

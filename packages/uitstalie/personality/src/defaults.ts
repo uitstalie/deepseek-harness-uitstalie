@@ -66,6 +66,9 @@ export interface SeedResult {
  *
  * An existing file is never overwritten. `PERSONALITY.md` is not created here:
  * a missing profile reads as empty and the first `personality_apply` creates it.
+ * @param ctx - plugin context carrying the global store.
+ * @param signal - cancellation for each read and write; omitted means uncancellable.
+ * @returns the store-relative paths created by this call in creation order; files already present are omitted.
  */
 export async function seedGlobalPersonalityFiles(ctx: Context, signal?: AbortSignal): Promise<SeedResult> {
   const created: string[] = []

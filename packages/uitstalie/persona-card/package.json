@@ -38,6 +38,7 @@
   "dependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-dafeiyu": "workspace:*",
+    "@deepseek-ai/dsh-error": "workspace:*",
     "@deepseek-ai/dsh-home-paths": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",

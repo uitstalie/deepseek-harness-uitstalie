@@ -7,7 +7,6 @@ import { ToolExecutorUnavailableError } from './executor.ts'
 import type { ToolExecutor, ToolBatchInput, ToolBatchResult } from './executor.ts'
 import './events.ts'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
-import { agentRoleOf } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { projectToolSchema } from './schema.ts'
 import { assertSupportedJsonSchema } from './json-schema.ts'
@@ -133,7 +132,7 @@ export class ToolsService extends Service {
     const scopeAgent = scopeOf(this.ctx) as Partial<Agent> | undefined
     const minimum = toolMinRole(definition)
     if (minimum !== undefined && scopeAgent?.session !== undefined && scopeAgent.options !== undefined
-      && !roleAllows(agentRoleOf(scopeAgent as Agent), minimum)) return () => {}
+      && !roleAllows(((scopeAgent as Agent).role ?? 'agent'), minimum)) return () => {}
     const output = (definition as Partial<ToolDefinition>).output
     if (output === undefined || typeof output !== 'object'
       || typeof output.render !== 'function'
@@ -313,7 +312,7 @@ export class ToolsService extends Service {
     const visible = toolSet === undefined ? [...this.view(scope).visible.values()] : [...toolSet.view(scope).values()]
     const agent = scope as Partial<Agent> | undefined
     if (agent?.session === undefined) return visible
-    const role = agentRoleOf(agent as Agent)
+    const role = ((agent as Agent).role ?? 'agent')
     return visible.filter(definition => roleAllows(role, toolMinRole(definition)))
   }
 
@@ -416,7 +415,6 @@ export class ToolsService extends Service {
 export default ToolsService
 
 export * from './contracts.ts'
-export { roleAllows, toolMinRole, withMinRole } from './role.ts'
 export * from './executor.ts'
 export * from './schema.ts'
 export * from './json-schema.ts'

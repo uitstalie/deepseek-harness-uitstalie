@@ -7,7 +7,7 @@
  * @module @deepseek-ai/dsh-token-calculator/tool
  */
 
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, ToolArgsError } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { countTokens } from './tokenizer.ts'
 
@@ -59,9 +59,9 @@ export function countTokensTool(): ToolDefinition {
     async execute(args) {
       const bytes = Buffer.byteLength(args.text, 'utf8')
       if (bytes > TOKEN_TEXT_MAX_BYTES) {
-        throw new Error(
-          `count_tokens refuses ${String(bytes)} bytes; measure at most ${String(TOKEN_TEXT_MAX_BYTES)} bytes at a time`,
-        )
+        throw new ToolArgsError([
+          `text is ${String(bytes)} bytes; measure at most ${String(TOKEN_TEXT_MAX_BYTES)} bytes at a time`,
+        ])
       }
       return countTokens(args.text, { addSpecialTokens: args.addSpecialTokens ?? false })
     },

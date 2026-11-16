@@ -262,18 +262,13 @@ describe('ApiSession creation', () => {
     ctx.provide('workspaceRegistry', {
       resolveByPath: async (path: string) => roles.get(path) ?? { role: 'agent' },
     } as never)
-    const registry = ctx.agents as unknown as {
-      create: (request: { sessionId: SessionId; agentOptions: { role?: string }; meta: { cwd: string } }) => Promise<{
-        agent: { id: SessionId; session: { header: SessionHeader }; options: { role?: string } }
-      }>
-    }
-    registry.create = async request => ({
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async request => ({
       agent: {
-        id: request.sessionId,
-        session: { header: header(request.sessionId, request.meta.cwd) },
-        options: request.agentOptions,
+        ...unpublishedAgent(ctx, header(request.sessionId, request.meta?.cwd ?? '/workspace')),
+        options: request.agentOptions ?? {},
       },
-    })
+      dispose: () => Promise.resolve(),
+    }))
 
     expect((await agents.createSession({ cwd: superDir, reusable: () => true })).agent.options.role).toBe('super')
     expect((await agents.createSession({ cwd: ordinaryDir, reusable: () => true })).agent.options.role).toBeUndefined()

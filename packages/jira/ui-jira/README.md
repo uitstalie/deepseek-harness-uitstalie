@@ -1,5 +1,5 @@
 ---
-description: "The jira ledger's browser surface: the settings section that edits the ledger row and reads the board, one issue's detail and the knowledge search; the ledger itself stays read-only here except for confirming a pending proposal."
+description: "The jira ledger's browser surface: the settings section that edits the ledger row and reads the board, one issue's detail and the knowledge search, and the super-agent section; the page writes the ledger row settings, a proposal confirmation and the super workspace setup, and the rest of the ledger is read-only here."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-jira` adds the ledger's browser surface: a settings section (`id: 'jira'`, order 200) that edits the jira-service row and reads the board, one issue's detail and the knowledge search, and a super-agent section (order 220) with status counts, proposals and recent activity. Ledger views are read-only, except that a person can confirm a pending proposal — the same `[claim-approved]` credential the CLI writes. Row fields are volatile, so a save applies without a restart.
+`dsh-client-ui-jira` adds the ledger's browser surface: a settings section (`id: 'jira'`, order 200) that edits the jira-service row and reads the board, one issue's detail and the knowledge search, and a super-agent section (order 220) with status counts, proposals and recent activity. The page writes three things: the row fields (`root`, `host`, `push.enabled`), a person's confirmation of a pending proposal — the same `[claim-approved]` credential the CLI writes — and the super workspace setup. Row fields are volatile, so a save applies without a restart.
 
 ## Table of Contents
 
@@ -33,7 +33,7 @@ English | [中文](README.zh.md)
 | Issue detail | `remote.jira.get(key)`: frontmatter fields, the Markdown body and comment history | none |
 | Knowledge | `remote.jira.kbSearch(query)`: ranked hits with their `file:line` | none |
 
-The three row fields (`root`, `host`, `push.enabled`) are edited in the settings block. Saving writes the `jira-service` profile row through the settings service; the switch writes immediately, and the service reopens the ledger against the new values without a restart. Every ledger write stays with the model: the agent's tools are the only path to the ledger, and the guard in `jira-agent` constrains them. Nothing here reads a ledger file or writes a commit.
+The three row fields (`root`, `host`, `push.enabled`) are edited in the settings block. Saving writes the `jira-service` profile row through the settings service; the switch writes immediately, and the service reopens the ledger against the new values without a restart. The page writes three things and nothing else: the row settings, a person's confirmation of a pending proposal (which writes the same `human:<git user.name>` `[claim-approved]` comment the CLI does), and the super workspace setup (which creates and registers the workspace and persists `superagent_home` on the `jira-agent` row). Every other ledger change stays with the model: the agent's tools are the only path to it, and the guard in `jira-agent` constrains them. Nothing here reads a ledger file or writes a commit directly.
 
 The page follows `remote.jira.watch(signal)`. Every committed change — a tool, another session, a sync — refreshes the board, the ledger status and the open issue detail; a reconnect re-reads the same snapshots, because nothing is replayed. Reads carry a generation, so an answer that arrives after a newer read started is dropped, and a notice whose `version` is behind one already applied is ignored. Knowledge hits are one query's snapshot: a change marks them stale instead of re-running the search, and the next search replaces them. Nothing here polls or watches a ledger file.
 
@@ -59,7 +59,7 @@ Run them with `pnpm exec vitest run packages/jira/ui-jira`.
 
 ## Model Experience
 
-None, as nothing here reaches a model: the page reads the same service the tools write, so what a reader sees and what a model changed cannot disagree; its only writes are the `jira-service` row fields.
+None, as nothing here reaches a model: the page reads the same service the tools write, so what a reader sees and what a model changed cannot disagree; its three writes are the `jira-service` row fields, a proposal confirmation, and the super workspace setup.
 
 #### KV Cache effect
 

@@ -32,7 +32,7 @@ import * as SystemPromptPlugin from '@deepseek-ai/dsh-system-prompt'
 import * as ToolDshStorePlugin from '@deepseek-ai/dsh-tool-dsh-store'
 import * as ToolExecutorNativePlugin from '@deepseek-ai/dsh-tool-executor-native'
 import * as ToolsPlugin from '@deepseek-ai/dsh-tools'
-import * as DafeiyuPlugin from '../src/index.ts'
+import * as DafeiyuPlugin from '../src/api.ts'
 
 const BRANCH_LAYER = new URL('../../../bundle/web-app/cordis.patch.uitstalie.yml', import.meta.url)
 
