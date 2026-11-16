@@ -139,8 +139,10 @@ const SECTION_ORDERS = {
   PERSONALITY: 100,
   PLAN_POLICY: 500,
   TEAM_POLICY: 600,
+  // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, personality output/style prompt section orders
   PERSONALITY_OUTPUT_STYLE: 690,
   PERSONALITY_WRITING_RULES: 695,
+  // END uitstalie-deepseek-flash
   PTC_ONLY: 800,
   FILE_REFERENCE: 900,
   TOOL_BASH: 1000,

@@ -42,7 +42,9 @@ import { ReactLoopInbox } from './inbox.ts'
 import { RuntimeContextProjection } from './runtime-context.ts'
 import { AssistantStreamAttempt } from './assistant-stream.ts'
 import { SystemPromptProjection } from './runtime-context.ts'
+// BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, request-local tool-pair repair before provider calls
 import { pairToolCalls } from './tool-pairing.ts'
+// END uitstalie-deepseek-flash
 
 /** Projected facts consumed by this driver; registration stays with the factory. */
 interface LoopProjections {
@@ -744,6 +746,7 @@ export class ReactLoopAgent implements Agent {
     // Never send a dangling or doubly-answered assistant tool call: a projection, surface replace,
     // compaction boundary or interleaved notice can remove a result or leave the real one outside
     // its window, and strict providers reject the whole request with an error the Session cannot
+    // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, request-local tool-pair repair before provider calls
     // recover from. The repair is request-local — the log and derived history keep the truth.
     const paired = pairToolCalls(boundaryMessages)
     if (paired.repairs.length > 0) {
@@ -757,6 +760,7 @@ export class ReactLoopAgent implements Agent {
       }, { ignorable: true })
     }
     const requestMessages = paired.repairs.length === 0 ? boundaryMessages : paired.messages
+    // END uitstalie-deepseek-flash
     for (const message of requestMessages) {
       if (this.frozenMessages.has(message)) continue
       deepFreeze(message)

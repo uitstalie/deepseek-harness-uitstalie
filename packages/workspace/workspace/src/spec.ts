@@ -16,8 +16,10 @@ const workspaceId = z.string().transform(value => value as WorkspaceId)
 
 const sessionId = z.string().transform(value => brandString<SessionId>(value))
 
+// BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, durable workspace role drives child/super agent role
 /** Workspace-level role; absent or unrecognized values resolve to agent. */
 export type WorkspaceRole = 'agent' | 'super'
+// END uitstalie-deepseek-flash
 
 /**
  * Resolve a persisted value to a workspace role without trusting it.
@@ -34,7 +36,9 @@ export const workspaceRoleOf = (value: unknown): WorkspaceRole => value === 'sup
 export const workspaceRecord = z.object({
   path: z.string(),
   title: z.string(),
+  // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, durable workspace role
   role: z.string().optional(),
+  // END uitstalie-deepseek-flash
   sessionIds: z.array(sessionId),
   createdAt: z.string(),
   updatedAt: z.string(),

@@ -384,6 +384,7 @@ function withoutDeveloperMessages(messages: readonly RequestMessage[]): readonly
  * A route that still reads system messages mid-conversation must not lose instructions that
  * happened to share one developer event with a tool change it cannot express.
  */
+// BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, keep non-tool developer instructions on routes without tool updates
 function withoutToolUpdateBlocks(messages: readonly RequestMessage[]): readonly RequestMessage[] {
   let changed = false
   const retained: RequestMessage[] = []
@@ -402,6 +403,7 @@ function withoutToolUpdateBlocks(messages: readonly RequestMessage[]): readonly 
   }
   return changed ? retained : messages
 }
+// END uitstalie-deepseek-flash
 
 /** Strip tool updates from history: unsupported routes drop the events, system-capable routes keep their text. */
 function withoutToolUpdates(messages: readonly RequestMessage[], keepDeveloperContent: boolean): readonly RequestMessage[] {
