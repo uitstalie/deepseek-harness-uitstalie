@@ -89,8 +89,17 @@
 - 修复后 `pnpm run typecheck` 5/5 PASS，正常 `git push origin cli-desktop`（无 `--no-verify`）成功。
 - 以后不得再用 `--no-verify` 绕过 pre-push；若门禁失败，先修或回滚，再正常 push。
 
+## 原生标记：按决定停在角色链路
+
+按用户决定，不再逐个补剩余原生标记。对 `goal/audits/code-conventions-20261116-native-markers.txt` 的 146 个候选做了一次性分流，明细见 [`native-markers-triage-20261116.md`](./native-markers-triage-20261116.md)：
+
+- A 需补：1 个 — `packages/workspace/workspace/src/index.ts` 的 `create` durable role 参数与持久化；已补 `uitstalie-deepseek-flash` 标记。
+- B 不需补：103 个 — 新文件、测试、README/i18n、样式、locale 字典、生成物、已有标记、类型/契约声明。
+- C 不确定：42 个 — 修改过的实现文件；仅凭文件级 diff 无法判断插入块归属与标记成本，需要 hunk 级 ownership/PR intent。按“停在角色链路”的决定不补。
+
+影响：只影响上游 merge 时对本分支插入块的可辨识度，不影响构建、类型检查或运行时行为。后续若重启该项，从 C 类的 hunk 级归属开始。
+
 ## 未完成 / 待决策
 
 1. **OAuth 协议时序仍未配置化**：GitHub 设备流的 5s、Kimi 的 poll/retry、OAuth HTTP 30s 是按外部协议/网络不变量保留；memory、UI 轮询、rule byte limit 已进 Config。
-2. **原生标记未覆盖 146 个候选**：本次只补了角色链路实际插入块；剩余块需要按实际 hunk 判断，不能机械全刷。
-3. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。
+2. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。
