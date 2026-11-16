@@ -51,7 +51,7 @@ describe('tool-policy real Loader composition', () => {
         if (!modules.has(specifier)) throw new Error('Unexpected Loader import: ' + specifier)
         return modules.get(specifier)
       },
-    } as unknown as NonNullable<typeof ctx.loader.internal>
+    } as never as NonNullable<typeof ctx.loader.internal>
     await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
     await ctx.loader.await()
 
