@@ -11,13 +11,21 @@
 
 ## 提交
 
+历史以 `git log --oneline` 为准。`ccd4aa817e`/`f39b2ff8ff` 曾被 `git reset --soft` 压成 `be8e2d359c`，两者已不在当前历史；下表其余 hash 均在当前历史中。
+
 | commit | 内容 |
 | --- | --- |
 | `30712953f9` | 入口导出、JSDoc、locale、unknown-cast、测试迁移与工具错误契约 |
 | `520f7850cb` | 未知事件语义、模块级共享状态、OAuth/models-dev 生命周期、客户端 disposer、非标准 export key、原生标记 |
 | `7fa3060f11` | 未知断言 baseline 随测试换行重新锚定 |
-| `ad034f2b0a` | 17 个 uitstalie 包 files 补齐，ui-memory props 窄化 |
-| `90024bc389` | persona-card/tool-policy 运行时常量移出 types.ts |
+| `c7d37c804b` | 门禁与测试计数记录 |
+| `be8e2d359c` | Host/client `SessionStore` 与 `ISessions` 契约拆分，client aggregate 转绿 |
+| `ad034f2b0a` | 17 个 uitstalie 包 `files` 补齐，ui-memory props 窄化 |
+| `90024bc389` | persona-card/tool-policy 运行时常量移出 `types.ts` |
+| `1a0b30b390` | 包清单、types、6.13 状态记录 |
+| `3f92611cf9` | ui-dafeiyu props 窄化为 `load/setEnabled` |
+| `c101f8a544` | ui-models-dev props 窄化为 `ModelsDevActions` |
+| `3c1f903c8c` | ui-jira props 窄化为 `JiraActions`/`LedgerSettingsActions` |
 
 ## 门禁
 
