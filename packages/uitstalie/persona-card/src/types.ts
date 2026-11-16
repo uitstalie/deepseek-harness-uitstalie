@@ -8,12 +8,6 @@
  * @module @deepseek-ai/dsh-persona/types
  */
 
-/** The card format this package reads and writes. */
-export const PERSONA_SCHEMA = 'persona/v1'
-
-/** Default injection budget for one card, in UTF-8 bytes. */
-export const DEFAULT_PERSONA_MAX_BYTES = 4096
-
 /** A failed parse or import. */
 export type PersonaErrorCode =
   | 'invalid-card'
@@ -55,7 +49,7 @@ export interface PersonaMetadata {
 
 /** One persona card in the `persona/v1` shape. */
 export interface PersonaCard {
-  readonly schema: typeof PERSONA_SCHEMA
+  readonly schema: 'persona/v1'
   readonly name: string
   readonly description?: string
   readonly personality?: string
@@ -82,7 +76,7 @@ export interface PersonaImport {
 
 /** Options for {@link parsePersonaCard}. */
 export interface ParsePersonaOptions {
-  /** Injection budget in UTF-8 bytes; defaults to {@link DEFAULT_PERSONA_MAX_BYTES}. */
+  /** Injection budget in UTF-8 bytes; defaults to the package budget. */
   readonly maxBytes?: number
 }
 

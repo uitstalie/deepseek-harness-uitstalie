@@ -8,7 +8,7 @@
  * @module @deepseek-ai/dsh-tool-policy/prompt
  */
 
-import { FILE_ACCESS_OPERATIONS } from './types.ts'
+import { FILE_ACCESS_OPERATIONS } from './constants.ts'
 import type { FileAccessOperation, PreparedProfile } from './types.ts'
 
 function operationsOf(rule: PreparedProfile['paths'][number]): string {

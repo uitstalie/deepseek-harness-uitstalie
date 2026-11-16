@@ -9,8 +9,8 @@
  */
 
 import { parsePersonaCard } from './card.ts'
+import { PERSONA_SCHEMA } from './constants.ts'
 import {
-  PERSONA_SCHEMA,
   type ParsePersonaOptions,
   type PersonaImport,
   type PersonaResult,

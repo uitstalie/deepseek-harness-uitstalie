@@ -26,7 +26,8 @@ import { registerDirectorCommand, registerPersonaCommands, type DirectorCommandT
 import { PersonaStateStore, personaStateTool, syncPersonaStateMessage } from './state.ts'
 import type { PersonaStateTarget } from './state.ts'
 import { syncDirectorNote } from './director.ts'
-import { DEFAULT_PERSONA_MAX_BYTES, type PersonaCard, type PersonaResult } from './types.ts'
+import { DEFAULT_PERSONA_MAX_BYTES } from './constants.ts'
+import type { PersonaCard, PersonaResult } from './types.ts'
 
 /** Cordis plugin name. */
 export const name = 'persona-card'

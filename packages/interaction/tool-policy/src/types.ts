@@ -19,9 +19,6 @@ import type {} from '@deepseek-ai/dsh-permission-presets'
 /** A model file operation a path rule can deny. */
 export type FileAccessOperation = 'read' | 'write' | 'list'
 
-/** Every file operation, in a stable order for prompts and diagnostics. */
-export const FILE_ACCESS_OPERATIONS: readonly FileAccessOperation[] = ['read', 'write', 'list']
-
 /**
  * One configured path deny rule. Matching is by canonical path prefix, on both
  * the lexical and the physical (symlink-resolved) spelling.

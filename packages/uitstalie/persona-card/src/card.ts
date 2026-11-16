@@ -7,9 +7,8 @@
  * @module @deepseek-ai/dsh-persona/card
  */
 
+import { DEFAULT_PERSONA_MAX_BYTES, PERSONA_SCHEMA } from './constants.ts'
 import {
-  DEFAULT_PERSONA_MAX_BYTES,
-  PERSONA_SCHEMA,
   type ParsePersonaOptions,
   type PersonaCard,
   type PersonaError,

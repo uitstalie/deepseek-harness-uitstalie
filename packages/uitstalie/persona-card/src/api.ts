@@ -7,7 +7,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { apply as applyProvider } from './provider.ts'
 import type { Config } from './provider.ts'
 
-export { PERSONA_SCHEMA, DEFAULT_PERSONA_MAX_BYTES } from './types.ts'
+export { PERSONA_SCHEMA, DEFAULT_PERSONA_MAX_BYTES } from './constants.ts'
 export type {
   ParsePersonaOptions,
   PersonaCard,

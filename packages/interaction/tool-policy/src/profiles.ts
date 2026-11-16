@@ -12,7 +12,7 @@
 import { homedir } from 'node:os'
 import { isAbsolute } from 'node:path'
 import { canonicalizeTarget, expandHome } from './canonicalize.ts'
-import { FILE_ACCESS_OPERATIONS } from './types.ts'
+import { FILE_ACCESS_OPERATIONS } from './constants.ts'
 import type {
   Config, FileAccessOperation, PreparedPathRule, PreparedProfile, PreparedToolRule, ProfileConfig,
 } from './types.ts'

@@ -168,11 +168,11 @@ describe('prompt', () => {
 describe('tool gate and visibility', () => {
   it('the guard denies run_code in guarded and allows bash', async () => {
     const ctx = await mounted()
-    let guard: ((exec: ToolExecution) => string | undefined) | undefined
+    let guard: ((exec: ToolExecution) => { reason: string; info: { name: string; code: string } } | undefined) | undefined
     const dispose = vi.fn()
-    const fake = { tools: { guard: (fn: (exec: ToolExecution) => string | undefined) => { guard = fn; return dispose } } }
+    const fake = { tools: { guard: (fn: typeof guard) => { guard = fn; return dispose } } }
     installToolGuard(fake as never, ctx.toolPolicy)
-    expect(guard?.({ name: 'run_code' } as ToolExecution)).toMatch(/denied by DSH tool policy "guarded"/)
+    expect(guard?.({ name: 'run_code' } as ToolExecution)).toMatchObject({ info: { name: 'ToolPolicyError', code: 'TOOL_POLICY_DENIED' } })
     expect(guard?.({ name: 'bash' } as ToolExecution)).toBeUndefined()
   })
 
