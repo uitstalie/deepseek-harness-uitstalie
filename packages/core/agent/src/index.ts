@@ -304,9 +304,11 @@ export class AgentRegistry extends Service {
    * @param agent - Agent carrying durable lineage and live options.
    * @returns the explicit child/super role, otherwise `agent`.
    */
+  // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, registry-resolved Agent role
   roleOf(agent: Agent): AgentRole {
     return agentRoleOf(agent)
   }
+  // END uitstalie-deepseek-flash
 
   /**
    * Read the turn and step positions recorded in a Session.

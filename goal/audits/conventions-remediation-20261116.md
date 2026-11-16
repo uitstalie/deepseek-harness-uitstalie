@@ -48,7 +48,7 @@
 - `as unknown` 新增为 0。
 - 非标准 export key 清理：删除 5 个 `./*`、`./dispatch`、`./deepseek-extra-params`；`./icon` 改为既有标准 `./icon.svg`。
 - 69 个 `src/*.test.ts` 迁移到 `tests/`，包脚本同步；`.oxlintrc` 的 tests override 直接适用，未全局关闭规则。
-- 原生插入点补 `uitstalie-deepseek-flash, 2026/11/16, DH-311` 标记，覆盖 Agent 角色链路的类型、registry、agent-loop getter/request-local pairing、session-controller composition、workspace role、system-prompt 段落顺序与 llm 的 tool-update 投影。**未覆盖全部 146 个候选点**，见“未完成”。
+- 原生插入点补 `uitstalie-deepseek-flash, 2026/11/16, DH-311` 标记，覆盖 Agent 角色链路的类型、registry/roleOf、tool 面过滤、agent-loop getter/request-local pairing、session-controller role 解析、workspace role、system-prompt 段落顺序与 llm 的 tool-update 投影。**未覆盖全部 146 个候选点**，见“未完成”。
 
 ## P2
 

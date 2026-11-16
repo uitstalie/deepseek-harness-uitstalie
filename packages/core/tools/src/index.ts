@@ -312,8 +312,10 @@ export class ToolsService extends Service {
     const visible = toolSet === undefined ? [...this.view(scope).visible.values()] : [...toolSet.view(scope).values()]
     const agent = scope as Partial<Agent> | undefined
     if (agent?.session === undefined) return visible
+    // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, filter the tool face by the Agent's registry role
     const role = ((agent as Agent).role ?? 'agent')
     return visible.filter(definition => roleAllows(role, toolMinRole(definition)))
+    // END uitstalie-deepseek-flash
   }
 
   /**
