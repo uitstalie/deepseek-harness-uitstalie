@@ -33,12 +33,14 @@
   transition: transform 150ms var(--ds-ease-in-out);
 }
 
-.groupRow:hover .groupArrow {
-  display: inline-flex;
-}
+@media (hover: hover) {
+  .groupRow:hover .groupArrow {
+    display: inline-flex;
+  }
 
-.groupRow:hover .groupFolder {
-  display: none;
+  .groupRow:hover .groupFolder {
+    display: none;
+  }
 }
 
 .groupArrowOpen {
@@ -128,9 +130,11 @@
   gap: 10px;
 }
 
-.groupRow:hover .actions,
-.sessionRow:hover .actions {
-  display: inline-flex;
+@media (hover: hover) {
+  .groupRow:hover .actions,
+  .sessionRow:hover .actions {
+    display: inline-flex;
+  }
 }
 
 .glyph {
@@ -148,6 +152,8 @@
   cursor: pointer;
 }
 
-.glyph:hover {
-  color: var(--dsw-alias-label-primary);
+@media (hover: hover) {
+  .glyph:hover {
+    color: var(--dsw-alias-label-primary);
+  }
 }

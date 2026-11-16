@@ -397,7 +397,7 @@
 .superagentConfirm {
   margin-left: 8px;
   padding: 1px 8px;
-  border: 1px solid var(--dsw-alias-border-secondary);
+  border: 0.5px solid var(--dsw-alias-border-secondary);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-secondary);
   font: inherit;
@@ -422,7 +422,7 @@
   flex: 1;
   min-width: 0;
   padding: 4px 8px;
-  border: 1px solid var(--dsw-alias-border-secondary);
+  border: 0.5px solid var(--dsw-alias-border-secondary);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-secondary);
   font-size: 12px;
@@ -446,7 +446,7 @@
 
 .superagentFilterDate {
   padding: 3px 6px;
-  border: 1px solid var(--dsw-alias-border-secondary);
+  border: 0.5px solid var(--dsw-alias-border-secondary);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-secondary);
   font-size: 12px;

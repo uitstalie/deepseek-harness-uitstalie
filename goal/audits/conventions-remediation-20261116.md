@@ -60,6 +60,7 @@
 - 后台 turn-end/timer pass 的静默 catch 改为 `logger.warn`，失败仍不打断会话但可观察。
 - `ui-memory` 改用 renderer 绑定的 `useSnapshot`，不再由业务组件自订阅；页面 CSS 改用已定义的 `--dsw-alias-*` token，焦点/错误/边框/字重符合共享样式规则。
 - 四个自研 client 包的中文代码注释翻为英文，保留 `zh` 用户字典；无 U+FFFD。
+- 其余 client hover 规则包进 `(hover: hover)`，Jira 中性分隔边框改 0.5px；`MemorySection` 使用已定义 alias token。
 
 ## 未完成 / 待决策
 

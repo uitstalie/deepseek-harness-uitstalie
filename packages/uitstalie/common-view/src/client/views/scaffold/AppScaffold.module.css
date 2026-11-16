@@ -87,8 +87,10 @@
   cursor: pointer;
 }
 
-.glyph:hover {
-  color: var(--dsw-alias-label-primary);
+@media (hover: hover) {
+  .glyph:hover {
+    color: var(--dsw-alias-label-primary);
+  }
 }
 
 .settingsLabel {
