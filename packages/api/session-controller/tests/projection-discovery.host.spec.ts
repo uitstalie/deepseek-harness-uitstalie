@@ -171,7 +171,7 @@ describe('Session projection discovery', () => {
     expect(await fixture.ctx.sessionPersistence.stat(parent.header.id)).toMatchObject({
       formatStatus: 'migration-required',
     })
-    expect(fixture.ctx.sessions.list()).toEqual([])
+    expect(fixture.ctx.sessions.listSessions()).toEqual([])
     for (const source of [parent, child, grandchild, fork, unrelated]) {
       expect(await readFile(source.path, 'utf8')).toBe(source.bytes)
       expect(await readdir(dirname(source.path))).toEqual(['session.v3.jsonl'])

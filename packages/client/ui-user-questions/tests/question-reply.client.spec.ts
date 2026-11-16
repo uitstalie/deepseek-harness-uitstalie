@@ -1,7 +1,7 @@
 /** Late-reply conversation node: source matching and payload projection. */
 import { describe, expect, it } from 'vitest'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { ChatConversationViewNode } from '../../ui-chat/src/client/contract/chat-nodes.ts'
 import type { ChatSnapshot } from '../../ui-chat/src/client/contract/snapshot.ts'
 import { chatViewDefinition } from '../../ui-chat/src/client/conversation-nodes/chat-snapshot-builder.ts'

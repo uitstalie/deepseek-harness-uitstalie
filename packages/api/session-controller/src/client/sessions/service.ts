@@ -447,7 +447,7 @@ export class ClientSessions implements ISessions {
    * @returns the created or reused session id.
    * @throws {SessionCreateError} with the requested id.
    */
-  async create(opts: {
+  async createSession(opts: {
     workspaceId?: WorkspaceId
     cwd?: string
     sessionId?: SessionId
@@ -473,7 +473,7 @@ export class ClientSessions implements ISessions {
    * @throws {SessionForkError} with the source id.
    * @throws {Error} when a requested child-title rename fails after creation.
    */
-  async fork(opts: {
+  async forkSession(opts: {
     sessionId: SessionId
     atSeq?: number
     increaseTitle?: boolean

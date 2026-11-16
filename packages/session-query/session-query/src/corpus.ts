@@ -73,7 +73,7 @@ export class SessionCorpus {
         ...(formatStatus === undefined ? {} : { formatStatus }),
       })
     }
-    for (const session of this._ctx.sessions.list()) {
+    for (const session of this._ctx.sessions.listSessions()) {
       const durable = records.get(session.id)
       if (durable !== undefined) assertSessionHeadersCompatible(session.header, durable.header)
       records.set(session.id, {

@@ -284,7 +284,7 @@ describe('agent loop', () => {
         { provider: 'mock', model: 'mock', maxTokens },
       )).rejects.toThrow('agent maxTokens must be a positive safe integer')
       expect(ctx.agents.list()).toEqual([])
-      expect(ctx.sessions.list()).toEqual([])
+      expect(ctx.sessions.listSessions()).toEqual([])
     },
   )
 

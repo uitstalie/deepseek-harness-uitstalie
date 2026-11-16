@@ -3,7 +3,7 @@
 import type { ComponentProps } from 'react'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TeamDisableConfirmation, type TeamDisableConfirmationProps } from '../src/client/TeamDisableConfirmation.tsx'

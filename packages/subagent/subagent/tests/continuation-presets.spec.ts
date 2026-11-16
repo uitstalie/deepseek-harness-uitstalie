@@ -103,7 +103,7 @@ function continueChild(ctx: Context, childId: SessionId) {
 describe('child preset start validation', () => {
   it('rejects an explicit same-as-parent preset before starting a fork', async () => {
     const { ctx, parent, adapter } = await setup()
-    const beforeSessions = ctx.sessions.list().length
+    const beforeSessions = ctx.sessions.listSessions().length
     const beforeEvents = parent.session.snapshotEvents()
     const published: string[] = []
     ctx.on('session/created', () => void published.push('session/created'))
@@ -118,7 +118,7 @@ describe('child preset start validation', () => {
       message: 'subagent provider "fork" does not support independent agent preset selection',
     })
     expect(ctx.agents.list().map(agent => agent.id)).toEqual([parent.id])
-    expect(ctx.sessions.list()).toHaveLength(beforeSessions)
+    expect(ctx.sessions.listSessions()).toHaveLength(beforeSessions)
     expect(parent.session.snapshotEvents()).toEqual(beforeEvents)
     expect(published).toEqual([])
     expect(adapter.requests).toEqual([])
@@ -128,7 +128,7 @@ describe('child preset start validation', () => {
     const { ctx, parent, adapter, presets } = await setup()
     await presets.dispose()
     expect(ctx.get('agentPresets')).toBeUndefined()
-    const beforeSessions = ctx.sessions.list().length
+    const beforeSessions = ctx.sessions.listSessions().length
     const beforeEvents = parent.session.snapshotEvents()
     const published: string[] = []
     ctx.on('session/created', () => void published.push('session/created'))
@@ -142,7 +142,7 @@ describe('child preset start validation', () => {
       message: 'selecting a child agent preset requires the agent-presets service',
     })
     expect(ctx.agents.list().map(agent => agent.id)).toEqual([parent.id])
-    expect(ctx.sessions.list()).toHaveLength(beforeSessions)
+    expect(ctx.sessions.listSessions()).toHaveLength(beforeSessions)
     expect(parent.session.snapshotEvents()).toEqual(beforeEvents)
     expect(published).toEqual(['session/created', 'session/disposed'])
     expect(adapter.requests).toEqual([])

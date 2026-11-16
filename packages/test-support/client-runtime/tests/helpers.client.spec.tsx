@@ -191,12 +191,12 @@ describe('Session fixture lifecycle', () => {
 
   it('requires an explicit create stub and records successful create and refresh calls', async () => {
     const runtime = await SlotTestRuntime.create()
-    await expect(runtime.sessions.create()).rejects.toThrow(/create is not stubbed/)
+    await expect(runtime.sessions.createSession()).rejects.toThrow(/create is not stubbed/)
     await runtime.sessions.add({ id: 'created' })
     const create = vi.fn(() => Promise.resolve('created' as SessionId))
     runtime.sessions.stubCreate(create)
 
-    await expect(runtime.sessions.create({ cwd: '/workspace' })).resolves.toBe('created')
+    await expect(runtime.sessions.createSession({ cwd: '/workspace' })).resolves.toBe('created')
     await expect(runtime.sessions.refresh()).resolves.toBeUndefined()
     expect(create).toHaveBeenCalledWith({ cwd: '/workspace' })
     expect(runtime.sessions.calls.slice(-2)).toEqual([

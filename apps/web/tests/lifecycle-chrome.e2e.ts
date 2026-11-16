@@ -387,7 +387,7 @@ describe('web e2e: lifecycle & chrome (workspace flow / reload / dark mode)', ()
     // flow created and adopted (<workspaceCwd>/workspace) — the proof the
     // send went through workspace materialization rather than a bare
     // default-cwd session.
-    const cwds = scaffold.ctx.sessions.list().map(session => session.header.cwd)
+    const cwds = scaffold.ctx.sessions.listSessions().map(session => session.header.cwd)
     expect(cwds).toEqual([join(scaffold.workspaceCwd, 'workspace')])
     const turnEnds = sessionEvents.filter(e => e.type === 'turn/end')
     expect(turnEnds).toHaveLength(1)

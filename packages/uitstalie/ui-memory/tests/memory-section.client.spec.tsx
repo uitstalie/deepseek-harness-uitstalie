@@ -35,7 +35,7 @@ function formOf() {
 }
 
 /** The renderer-bound snapshot hook for this page. */
-function useSnapshot(selector: (state: ReturnType<MemorySettingsController['store']['getSnapshot']>) => ReturnType<MemorySettingsController['store']['getSnapshot']>) {
+function useSnapshot<S>(selector: (state: ReturnType<MemorySettingsController['store']['getSnapshot']>) => S): S {
   return useSyncExternalStore(
     onChange => controllerForHook.store.subscribe(onChange),
     () => selector(controllerForHook.store.getSnapshot()),

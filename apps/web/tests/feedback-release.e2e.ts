@@ -294,7 +294,7 @@ describe.each(MODE === 'record' ? ['deepseek-official'] : ['deepseek-official', 
     await input.fill('/feedback Feedback before any model request.')
     expect(captured()).toHaveLength(releasedCount)
     await input.press('Enter')
-    const findHeaderless = () => scaffold.ctx.sessions.list().find(session => session.id !== sessionId
+    const findHeaderless = () => scaffold.ctx.sessions.listSessions().find(session => session.id !== sessionId
       && session.snapshotEvents().some(event => event.type === 'feedback/record'))
     // A command-only session keeps the hero view; its durable event confirms submission.
     await expect.poll(findHeaderless, { timeout: 10_000 }).toBeDefined()

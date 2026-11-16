@@ -36,7 +36,7 @@ Independent `Session.create()` and `Session.fromRestore()` instances accept even
 ```text
 const session = ctx.sessions.create(sessionId, { meta: { cwd: '/workspace' } })
 ctx.sessions.get(sessionId)      // the live session
-ctx.sessions.list()              // every live session, in creation order
+ctx.sessions.listSessions()              // every live session, in creation order
 ```
 
 ### Append and derive

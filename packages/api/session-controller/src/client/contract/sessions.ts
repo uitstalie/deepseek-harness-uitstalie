@@ -85,7 +85,7 @@ export interface ISessions {
    * @param opts - target workspace or directory, an optional blank Session to reuse, and an optional Agent preset.
    * @returns the catalogued identity the Host created or reused; retain it before borrowing its binding.
    */
-  create(opts?: {
+  createSession(opts?: {
     workspaceId?: WorkspaceId
     cwd?: string
     sessionId?: SessionId
@@ -133,7 +133,7 @@ export interface ISessions {
    * @returns the child session id.
    * @throws when the fork fails, or when a requested child-title rename fails after creation.
    */
-  fork(opts: {
+  forkSession(opts: {
     sessionId: SessionId
     atSeq?: number
     increaseTitle?: boolean

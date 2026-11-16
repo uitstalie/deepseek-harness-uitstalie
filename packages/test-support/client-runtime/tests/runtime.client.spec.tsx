@@ -218,7 +218,7 @@ describe('sessions', () => {
     reference.release()
     expect(runtime.sessions.binding('s1')).toBeUndefined()
     expect(runtime.sessions.subagentAddress('s1' as SessionId)).toEqual(address)
-    await expect(runtime.sessions.fork({
+    await expect(runtime.sessions.forkSession({
       sessionId: 's1' as SessionId, atSeq: 7, increaseTitle: true,
     })).resolves.toBe('s1')
     expect(runtime.sessions.calls).toEqual([

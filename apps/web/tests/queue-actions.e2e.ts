@@ -350,7 +350,7 @@ describe('web e2e: queue row actions', () => {
     await expect.poll(() => existsSync(readyFile), { timeout: 15_000 }).toBe(true)
     await page.locator('[data-goal-bar]').waitFor({ timeout: 10_000 })
 
-    const sessions = scaffold.ctx.sessions.list()
+    const sessions = scaffold.ctx.sessions.listSessions()
     expect(sessions).toHaveLength(1)
     sessions[0]!.append('todo/write', {
       todos: [

@@ -279,14 +279,14 @@ export class WorkspaceRegistry extends Service {
       const sessions = this.ctx.get('sessions')
       if (sessions === undefined) throw new Error('default Workspace initialization requires the Session store')
       if (state.workspaceIds.length > 0 || state.archivedSessionIds.length > 0
-        || sessions.list().length > 0 || (await this.listStoredHeaders()).length > 0) return undefined
+        || sessions.listSessions().length > 0 || (await this.listStoredHeaders()).length > 0) return undefined
 
       const path = await resolveDirectory()
       if (!fullyQualifiedWorkspacePath(path)) throw new TypeError(`Workspace path is not fully qualified: '${path}'`)
       await mkdir(path, { recursive: true })
       const canonical = await realpathNormalize(path)
       // A Session can start outside the registry queue while directory preparation awaits I/O.
-      if ((await this.listStoredHeaders()).length > 0 || sessions.list().length > 0) return undefined
+      if ((await this.listStoredHeaders()).length > 0 || sessions.listSessions().length > 0) return undefined
       return this.createCanonical(canonical, defaultWorkspaceTitle(path), true)
     })
   }
@@ -862,7 +862,7 @@ export class WorkspaceRegistry extends Service {
   private async indexLiveSessions(): Promise<void> {
     const sessions = this.ctx.get('sessions')
     if (sessions === undefined) return
-    await this.indexHeaders(sessions.list().map(session => session.header))
+    await this.indexHeaders(sessions.listSessions().map(session => session.header))
   }
 
   private reportFilteredCandidates(): void {

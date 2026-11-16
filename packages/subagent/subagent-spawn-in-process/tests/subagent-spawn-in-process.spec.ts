@@ -168,7 +168,7 @@ describe('dsh-subagent-spawn-in-process', () => {
     // visible, `started` must not fulfill, and the empty script proves no model turn occurs.
     const { ctx, parent } = await setup([])
     const beforeAgents = ctx.agents.list().length
-    const beforeSessions = ctx.sessions.list().length
+    const beforeSessions = ctx.sessions.listSessions().length
     const published: string[] = []
     ctx.on('session/created', () => void published.push('session/created'))
     ctx.on('agent/created', () => void published.push('agent/created'))
@@ -181,7 +181,7 @@ describe('dsh-subagent-spawn-in-process', () => {
     await expect(starting).rejects.toThrow()
     await Promise.resolve()
     expect(ctx.agents.list()).toHaveLength(beforeAgents)
-    expect(ctx.sessions.list()).toHaveLength(beforeSessions)
+    expect(ctx.sessions.listSessions()).toHaveLength(beforeSessions)
     expect(published).toEqual([])
   })
 
@@ -378,7 +378,7 @@ describe('dsh-subagent-spawn-in-process', () => {
     })
     await parentHandle.dispose()
     const before = ctx.agents.list().length
-    const sessionsBefore = ctx.sessions.list().length
+    const sessionsBefore = ctx.sessions.listSessions().length
     const published: string[] = []
     ctx.on('session/created', () => void published.push('session/created'))
     ctx.on('agent/created', () => void published.push('agent/created'))
@@ -387,7 +387,7 @@ describe('dsh-subagent-spawn-in-process', () => {
       parent: parentHandle.agent,
     })).rejects.toThrow(/exact live parent agent/)
     expect(ctx.agents.list().length).toBe(before)
-    expect(ctx.sessions.list()).toHaveLength(sessionsBefore)
+    expect(ctx.sessions.listSessions()).toHaveLength(sessionsBefore)
     expect(published).toEqual([])
   })
 

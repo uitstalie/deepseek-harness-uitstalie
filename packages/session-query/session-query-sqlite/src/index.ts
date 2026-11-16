@@ -512,7 +512,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
       assertNotAborted(signal)
       const persistenceBinding = this._persistenceBinding
       const persistence = persistenceBinding.service
-      const initiallyLive = new Set(this.ctx.sessions.list().map(session => session.id))
+      const initiallyLive = new Set(this.ctx.sessions.listSessions().map(session => session.id))
       let persisted = new Map<SessionId, ObservedPersistedSession>()
       const warnings: SessionSearchWarning[] = []
       if (persistence !== undefined) {
@@ -573,7 +573,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
         }
       }
       const live = new Map<SessionId, ObservedSession>()
-      for (const session of this.ctx.sessions.list()) {
+      for (const session of this.ctx.sessions.listSessions()) {
         const observed = observeLive(session)
         const durable = persisted.get(session.id)
         if (durable !== undefined) assertSessionHeadersCompatible(observed.header, durable.header)

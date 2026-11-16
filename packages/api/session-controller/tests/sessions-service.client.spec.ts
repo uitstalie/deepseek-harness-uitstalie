@@ -885,10 +885,10 @@ describe('create', () => {
   it('passes a preallocated id and preserves it on ordinary failure', async ({ bench }) => {
     const b = bench()
     b.mock.remote.session.create.mockResolvedValue(ok({ sessionId: sid('fresh') }))
-    await expect(b.svc.create({ cwd: '/w', sessionId: sid('fresh') })).resolves.toBe('fresh')
+    await expect(b.svc.createSession({ cwd: '/w', sessionId: sid('fresh') })).resolves.toBe('fresh')
     expect(b.mock.remote.session.create).toHaveBeenCalledExactlyOnceWith({ cwd: '/w', sessionId: 'fresh' })
     b.mock.remote.session.create.mockResolvedValue(err(new RemoteError('gateway/internal', '爆了', {})))
-    const failure = await b.svc.create({ sessionId: sid('candidate') }).catch((error: unknown) => error)
+    const failure = await b.svc.createSession({ sessionId: sid('candidate') }).catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(SessionCreateError)
     expect(failure).toMatchObject({
       requestedSessionId: 'candidate',
@@ -899,7 +899,7 @@ describe('create', () => {
   it('publishes a created identity without implicitly retaining its binding', async ({ bench }) => {
     const b = bench()
     b.mock.remote.session.create.mockResolvedValue(ok({ sessionId: sid('born') }))
-    const born = await b.svc.create({ workspaceId: 'ws' as never })
+    const born = await b.svc.createSession({ workspaceId: 'ws' as never })
     // Synchronously after resolution — the draft hand-off contract: the
     // create echo IS the entity entering the client's view (blank row +
     // catalog publication), no notifier flush in between.
@@ -918,7 +918,7 @@ describe('create', () => {
       'ledger unavailable',
       { sessionId: sid('published'), workspaceId: 'ws' },
     )))
-    const failure = await b.svc.create({
+    const failure = await b.svc.createSession({
       workspaceId: 'ws' as never,
       sessionId: sid('published'),
     }).catch((error: unknown) => error)
@@ -939,7 +939,7 @@ describe('fork', () => {
     const source = sid('source')
     const permission = allowMigration === undefined ? {} : { allowMigration }
 
-    await expect(b.svc.fork({ sessionId: source, atSeq: 7, ...permission })).resolves.toBe(sid('child'))
+    await expect(b.svc.forkSession({ sessionId: source, atSeq: 7, ...permission })).resolves.toBe(sid('child'))
 
     expect(b.mock.remote.session.fork).toHaveBeenCalledExactlyOnceWith({ sessionId: source, atSeq: 7, ...permission })
     expect(b.svc.binding(source)).toBeUndefined()
@@ -953,7 +953,7 @@ describe('fork', () => {
     const onCreated = vi.fn<(childId: SessionId) => void>()
     b.mock.remote.session.fork.mockResolvedValueOnce(err(error))
 
-    const failure = await b.svc.fork({ sessionId: source, allowMigration: false, onCreated })
+    const failure = await b.svc.forkSession({ sessionId: source, allowMigration: false, onCreated })
       .catch((cause: unknown) => cause)
 
     expect(failure).toBeInstanceOf(SessionForkError)
@@ -969,7 +969,7 @@ describe('fork', () => {
     const b = bench()
     const error = new RemoteError('session/not-found', 'source missing', { sessionId: sid('source') })
     b.mock.remote.session.fork.mockResolvedValue(err(error))
-    const failure = await b.svc.fork({ sessionId: sid('source') }).catch((cause: unknown) => cause)
+    const failure = await b.svc.forkSession({ sessionId: sid('source') }).catch((cause: unknown) => cause)
     expect(failure).toBeInstanceOf(SessionForkError)
     expect(failure).toMatchObject({ sourceSessionId: 'source', rpcError: error })
     expect(b.svc.list.getSnapshot().ids).toEqual([])
@@ -993,7 +993,7 @@ describe('fork', () => {
       return Promise.resolve(ok({ title, seq: 3 }))
     })
 
-    await expect(b.svc.fork({
+    await expect(b.svc.forkSession({
       sessionId: sid('source'), atSeq: 7, increaseTitle: true,
     })).resolves.toBe('child')
 
@@ -1023,7 +1023,7 @@ describe('fork', () => {
 
     for (const child of ['child-1', 'child-2']) {
       b.mock.remote.session.fork.mockResolvedValueOnce(ok({ sessionId: sid(child) }))
-      await b.svc.fork({ sessionId: sid('source'), increaseTitle: true })
+      await b.svc.forkSession({ sessionId: sid('source'), increaseTitle: true })
     }
 
     expect(b.mock.remote.session.rename.mock.calls).toEqual([
@@ -1038,7 +1038,7 @@ describe('fork', () => {
     await feedList(b, [{ id: 'source', cwd: '/work' }])
     b.mock.remote.session.fork.mockResolvedValue(ok({ sessionId: sid('child') }))
 
-    await expect(b.svc.fork({ sessionId: sid('source'), atSeq: 41 })).resolves.toBe('child')
+    await expect(b.svc.forkSession({ sessionId: sid('source'), atSeq: 41 })).resolves.toBe('child')
 
     expect(b.mock.remote.session.fork).toHaveBeenCalledExactlyOnceWith({ sessionId: 'source', atSeq: 41 })
   })
@@ -1047,11 +1047,11 @@ describe('fork', () => {
     const b = bench()
     await feedList(b, [{ id: 'source', cwd: '/work' }])
     b.mock.remote.session.fork.mockResolvedValue(ok({ sessionId: sid('child') }))
-    await expect(b.svc.fork({ sessionId: sid('source'), increaseTitle: true })).resolves.toBe('child')
+    await expect(b.svc.forkSession({ sessionId: sid('source'), increaseTitle: true })).resolves.toBe('child')
     expect(b.mock.remote.session.rename).not.toHaveBeenCalled()
 
     b.mock.remote.session.fork.mockResolvedValue(ok({ sessionId: sid('child-2') }))
-    await expect(b.svc.fork({ sessionId: sid('source') })).resolves.toBe('child-2')
+    await expect(b.svc.forkSession({ sessionId: sid('source') })).resolves.toBe('child-2')
     expect(b.mock.remote.session.rename).not.toHaveBeenCalled()
   })
 
@@ -1065,7 +1065,7 @@ describe('fork', () => {
     b.mock.remote.session.rename.mockResolvedValue(err(new RemoteError('session/title-invalid', 'rejected', { sessionId: sid('child') })))
 
     const onCreated = vi.fn()
-    await expect(b.svc.fork({ sessionId: sid('source'), increaseTitle: true, onCreated }))
+    await expect(b.svc.forkSession({ sessionId: sid('source'), increaseTitle: true, onCreated }))
       .rejects.toThrow('fork child rename failed: session/title-invalid: rejected')
     expect(onCreated).toHaveBeenCalledExactlyOnceWith('child')
     expect(b.svc.list.getSnapshot().byId[sid('child')]).toBeDefined()

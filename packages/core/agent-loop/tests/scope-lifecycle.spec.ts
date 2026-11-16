@@ -150,7 +150,7 @@ describe('agent scope lifecycle', () => {
     })).rejects.toBe(reason)
     expect(order).toEqual(['scope-disposed', 'agent-disposed', 'session-disposed'])
     expect(ctx.agents.list()).toEqual([])
-    expect(ctx.sessions.list()).toEqual([])
+    expect(ctx.sessions.listSessions()).toEqual([])
     expect(adapter.requests).toHaveLength(0)
     await ctx.fiber.dispose()
   })
@@ -435,14 +435,14 @@ describe('agent scope lifecycle', () => {
     })).rejects.toThrow(/already exists/)
     expect(secondSetup).not.toHaveBeenCalled()
     expect(ctx.agents.list()).toEqual([])
-    expect(ctx.sessions.list()).toEqual([session])
+    expect(ctx.sessions.listSessions()).toEqual([session])
 
     gate.resolve(undefined)
     const handle = await first
     expect(handle.agent.session).toBe(session)
     await handle.dispose()
     expect(ctx.agents.list()).toEqual([])
-    expect(ctx.sessions.list()).toEqual([])
+    expect(ctx.sessions.listSessions()).toEqual([])
   })
 
   it('uses signal only for creation: aborts pending setup but not a returned live handle', async () => {
@@ -635,7 +635,7 @@ describe('agent scope lifecycle', () => {
 
   it('create rechecks provider liveness before its first publication edge', async () => {
     const { ctx, loopFiber } = await harnessWithLoop()
-    const sessionsBefore = ctx.sessions.list().length
+    const sessionsBefore = ctx.sessions.listSessions().length
     let unloaded = false
     let unloading!: Promise<void>
     ctx.on('internal/plugin', (fiber) => {
@@ -650,7 +650,7 @@ describe('agent scope lifecycle', () => {
       .then(() => undefined, () => undefined)
     await unloading
     expect(ctx.agents.get(SessionId('config-scope-race')) === undefined).toBe(true)
-    expect(ctx.sessions.list().length).toBe(sessionsBefore)
+    expect(ctx.sessions.listSessions().length).toBe(sessionsBefore)
     await ctx.fiber.dispose()
   })
 
@@ -981,7 +981,7 @@ describe('agent scope lifecycle', () => {
 
   it('the config create helper rolls back when publication throws', async () => {
     const ctx = await harness()
-    const sessionsBefore = ctx.sessions.list().length
+    const sessionsBefore = ctx.sessions.listSessions().length
     let boom = true
     ctx.on('session/created', () => {
       if (boom) {
@@ -993,7 +993,7 @@ describe('agent scope lifecycle', () => {
     await expect(ctx.agentLoop.create(SessionId('config-bad'), { provider: 'mock', model: 'mock' }))
       .rejects.toThrow('config publish failed')
     await expect.poll(() => ctx.agents.get(SessionId('config-bad')) === undefined).toBe(true)
-    await expect.poll(() => ctx.sessions.list().length).toBe(sessionsBefore)
+    await expect.poll(() => ctx.sessions.listSessions().length).toBe(sessionsBefore)
   })
 
   it('registrations through a disposed agent ctx throw INACTIVE_EFFECT', async () => {

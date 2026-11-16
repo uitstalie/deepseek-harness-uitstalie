@@ -22,7 +22,7 @@ function append(
     eventType: string,
     eventData: unknown,
     eventOptions?: unknown,
-  ) => SessionEvent)(type, data, options)
+  ) => SessionEvent)(type, data, type.startsWith('fixture/') ? { ...options, ignorable: true } : options)
 }
 
 function event(type: string, seq: SessionSeq, data: unknown = {}): SessionEvent {

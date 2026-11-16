@@ -249,7 +249,7 @@ export class SessionReferenceResolver extends TypertRemoteService {
     // An attached session answers from its live cut only while the registry is mounted.
     const attached = new Map(sessions === undefined || projections === undefined
       ? undefined
-      : sessions.list().map(session => [session.id, session]))
+      : sessions.listSessions().map(session => [session.id, session]))
     const cache = this.ctx.get('sessionProjectionCache')
     const cachedSnapshot = cache?.cachedSnapshot.bind(cache)
     return items.map((item) => {

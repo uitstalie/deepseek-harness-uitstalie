@@ -260,7 +260,7 @@ describe('Chat inject API', () => {
 
     const track = vi.fn()
     b.runtime.ctx.provide('productAnalytics', { track } as never)
-    const forkCreated = vi.spyOn(b.runtime.sessions, 'fork').mockImplementation(async (input) => { input.onCreated?.(ROOT); return ROOT })
+    const forkCreated = vi.spyOn(b.runtime.sessions, 'forkSession').mockImplementation(async (input) => { input.onCreated?.(ROOT); return ROOT })
     injected.forkAt(17)
     expect(track).toHaveBeenCalledWith('branch_session_click', { session_id: ROOT, parent_session_id: ROOT, click_position: 'footer' })
     await b.runtime.sessions.replaceEvents(ROOT, [
@@ -282,7 +282,7 @@ describe('Chat inject API', () => {
       method: 'fork', args: [{ sessionId: ROOT, atSeq: 17, increaseTitle: true, onCreated: expect.any(Function) as (childId: SessionId) => void }],
     })
 
-    const fork = vi.spyOn(b.runtime.sessions, 'fork').mockRejectedValueOnce(new Error('fork failed'))
+    const fork = vi.spyOn(b.runtime.sessions, 'forkSession').mockRejectedValueOnce(new Error('fork failed'))
     injected.forkAt(18)
     await vi.waitFor(() => {
       expect(fork).toHaveBeenCalledWith({
@@ -522,7 +522,8 @@ describe('Chat inject API', () => {
     expect(flow.injected.keyedHooks.chatNode('missing')).toBe(injected.keyedHooks.chatNode('missing'))
     expect(flow.injected.keyedHooks.chatNodeProcess('missing')).toBe(injected.keyedHooks.chatNodeProcess('missing'))
     expect(flow.injected.keyedHooks.chatNodeBottom('missing')).toBe(injected.keyedHooks.chatNodeBottom('missing'))
-    expect(flow.injected.hooks.connectionState).toBe(b.runtime.ctx.get('connection')!.state)
+    const connection = b.runtime.ctx.get('connection') as { readonly state: unknown } | undefined
+    expect(flow.injected.hooks.connectionState).toBe(connection!.state)
     expect(flow.injected.hooks.presentation).toBe(injected.hooks.presentation)
 
     const entry = b.runtime.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'assistant-step')!

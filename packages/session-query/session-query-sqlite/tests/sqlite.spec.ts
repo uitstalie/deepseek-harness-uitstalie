@@ -1168,9 +1168,9 @@ describe('SQLite reconciliation and source lifecycle', () => {
     const internals = ctx.sessionQuery as unknown as {
       _persistenceBinding: { identity: symbol; service?: SessionPersistence }
     }
-    const originalList = ctx.sessions.list.bind(ctx.sessions)
+    const originalList = ctx.sessions.listSessions.bind(ctx.sessions)
     let bumped = false
-    const list = vi.spyOn(ctx.sessions, 'list').mockImplementation(() => {
+    const list = vi.spyOn(ctx.sessions, 'listSessions').mockImplementation(() => {
       if (!bumped) {
         bumped = true
         internals._persistenceBinding = {

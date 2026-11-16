@@ -39,12 +39,12 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
         await page.getByRole('button', { name: 'Choose workspace', exact: true })
           .getByText('Default workspace', { exact: true }).waitFor()
         expect(scaffold.ctx.workspaceRegistry.list()).toHaveLength(1)
-        const initialSession = scaffold.ctx.sessions.list()[0]!
-        expect(scaffold.ctx.sessions.list()).toHaveLength(1)
+        const initialSession = scaffold.ctx.sessions.listSessions()[0]!
+        expect(scaffold.ctx.sessions.listSessions()).toHaveLength(1)
         expect(initialSession.snapshotEvents().some(event => event.type === 'user/message')).toBe(false)
         await page.reload()
         await input.waitFor()
-        expect(scaffold.ctx.sessions.list().map(session => session.id)).toEqual([initialSession.id])
+        expect(scaffold.ctx.sessions.listSessions().map(session => session.id)).toEqual([initialSession.id])
         const prompt = fixtureUserPrompts(await readFile(fixture, 'utf8'))[0]!
         await input.fill(prompt)
         const settled = scaffold.whenTurnSettled()
@@ -113,7 +113,7 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
         const notice = page.getByRole('alert').filter({ hasText: '无法创建默认工作区' })
         await notice.waitFor()
         expect(scaffold.ctx.workspaceRegistry.list()).toEqual([])
-        expect(scaffold.ctx.sessions.list()).toEqual([])
+        expect(scaffold.ctx.sessions.listSessions()).toEqual([])
         await compareOrRefreshGolden(FAILURE_EXPECTED, await notice.ariaSnapshot(), MODE)
         expect(await page.getByRole('dialog').count()).toBe(0)
         expect(await input.count()).toBe(0)
@@ -129,8 +129,8 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
         await input.waitFor()
         expect(await input.textContent()).toBe('')
         expect(scaffold.ctx.workspaceRegistry.list()[0]?.path).toBe(chosen)
-        expect(scaffold.ctx.sessions.list()).toHaveLength(1)
-        expect(scaffold.ctx.sessions.list().every(session =>
+        expect(scaffold.ctx.sessions.listSessions()).toHaveLength(1)
+        expect(scaffold.ctx.sessions.listSessions().every(session =>
           session.snapshotEvents().every(event => event.type !== 'user/message'))).toBe(true)
         expect(tripwire.pageErrors).toEqual([])
         expect(tripwire.warnings).toEqual([])
@@ -156,7 +156,7 @@ describe.skipIf(MODE === 'record')('web e2e: default Workspace', () => {
       expect(await page.getByRole('alert').filter({ hasText: 'Unable to create default workspace' }).count()).toBe(0)
       expect(await page.locator('[data-composer-input][contenteditable="true"]').count()).toBe(0)
       expect(scaffold.ctx.workspaceRegistry.list()).toEqual([])
-      expect(scaffold.ctx.sessions.list()).toEqual([])
+      expect(scaffold.ctx.sessions.listSessions()).toEqual([])
     } finally {
       await browser.close()
     }

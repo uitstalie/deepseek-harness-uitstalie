@@ -1436,7 +1436,7 @@ describe('first-use Workspace preparation', () => {
     expect(first?.title).toBe('Workspace')
     expect(h.registry.list()).toEqual([first])
     expect(storedState(h.pool).defaultWorkspaceId).toBe(first?.id)
-    expect(h.ctx.sessions.list()).toEqual([])
+    expect(h.ctx.sessions.listSessions()).toEqual([])
     expect(h.open).not.toHaveBeenCalled()
   })
 
@@ -1535,7 +1535,7 @@ describe('first-use Workspace preparation', () => {
         { header: arrived, revision: SessionPersistenceRevision('arrived-revision') },
       ])
     } else {
-      vi.spyOn(h.ctx.sessions, 'list').mockReturnValueOnce([]).mockReturnValueOnce([{ header: arrived }] as never)
+      vi.spyOn(h.ctx.sessions, 'listSessions').mockReturnValueOnce([]).mockReturnValueOnce([{ header: arrived }] as never)
     }
     await expect(h.registry.initializeDefault(h.resolveDirectory)).resolves.toBeUndefined()
     expect(h.registry.list()).toEqual([])

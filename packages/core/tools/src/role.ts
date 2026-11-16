@@ -8,7 +8,7 @@
  * @module @deepseek-ai/dsh-tools/role
  */
 
-import type { AgentRole } from '@deepseek-ai/dsh-agent'
+import type { AgentRole } from '@deepseek-ai/dsh-agent/types'
 import type { ToolDefinition } from './contracts.ts'
 
 /** Rank one role for minimum-role comparisons. */

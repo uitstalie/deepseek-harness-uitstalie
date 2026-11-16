@@ -1532,11 +1532,11 @@ describe('cancellation and integration teardown', () => {
         await cancelled.promise
         expect(ctx.root.fiber.state).toBe(FiberState.UNLOADING)
         expect(disposed).toBe(false)
-        expect(sessions.list()).toContain(session)
+        expect(sessions.listSessions()).toContain(session)
         expect(events).toEqual(beforeShutdown)
         releaseSession.resolve(undefined)
         await detached.promise
-        expect(sessions.list()).not.toContain(session)
+        expect(sessions.listSessions()).not.toContain(session)
         expect(disposed).toBe(false)
         expect(permissionPresets.names).toContain(AUTO_PRESET)
       } finally {
@@ -1550,7 +1550,7 @@ describe('cancellation and integration teardown', () => {
       })
       expect(probe.runs()).toBe(0)
       expect(session.snapshotEvents()).toEqual(beforeShutdown)
-      expect(sessions.list()).not.toContain(session)
+      expect(sessions.listSessions()).not.toContain(session)
     })
 
   it.each([

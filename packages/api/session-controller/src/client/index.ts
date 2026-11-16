@@ -90,7 +90,7 @@ export type SessionReferenceSource = Extract<keyof SessionReferenceSourceMap, st
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Client Session object layer and Agent scope owner. */
-    sessions: import('./contract/sessions.ts').ISessions
+    sessions: import('@deepseek-ai/dsh-session').SessionStore
   }
 }
 

@@ -152,12 +152,12 @@ describe('spawn preset selection', () => {
     await provider.dispose()
     await mountSpawn(ctx, 'custom-spawn')
     const parent = await ctx.agents.create({ sessionId: SessionId('missing-child-preset') })
-    const sessions = ctx.sessions.list()
+    const sessions = ctx.sessions.listSessions()
     const result = await callSubagent(ctx, { ...args, ...selection }, { agent: parent.agent })
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('Unknown agent preset: absent')
     expect(ctx.agents.list()).toEqual([parent.agent])
-    expect(ctx.sessions.list()).toEqual(sessions)
+    expect(ctx.sessions.listSessions()).toEqual(sessions)
   })
 
   it('reports an unloadable child preset through the tool result', async () => {
@@ -169,12 +169,12 @@ describe('spawn preset selection', () => {
       id: 'reviewer', plugins: [{ name: 'cordis:missing-plugin' }],
     })
     const parent = await ctx.agents.create({ sessionId: SessionId('broken-child-preset') })
-    const sessions = ctx.sessions.list()
+    const sessions = ctx.sessions.listSessions()
     const result = await callSubagent(ctx, args, { agent: parent.agent })
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('missing-plugin')
     expect(ctx.agents.list()).toEqual([parent.agent])
-    expect(ctx.sessions.list()).toEqual(sessions)
+    expect(ctx.sessions.listSessions()).toEqual(sessions)
   })
 
   it('creates an Agent from a preset whose delegation tool selects itself', async () => {

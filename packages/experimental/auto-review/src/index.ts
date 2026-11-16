@@ -789,7 +789,7 @@ export function apply(ctx: Context): void {
       try {
         // Root unload begins before child cleanup; only live plugin removal changes Session policy.
         if (ctx.root.fiber.state === FiberState.ACTIVE) {
-          for (const session of ctx.sessions.list()) {
+          for (const session of ctx.sessions.listSessions()) {
             if (permissionPresets.current(session) !== AUTO_PRESET) continue
             permissionPresets.set(session, 'danger-full-access')
           }

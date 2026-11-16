@@ -118,7 +118,7 @@ export class SessionTelemetryCoordinator {
           this.relayAgentError(agent, turn, step, error)
         })
       })
-      for (const session of ctx.sessions.list()) {
+      for (const session of ctx.sessions.listSessions()) {
         this.adopt(session)
       }
     }

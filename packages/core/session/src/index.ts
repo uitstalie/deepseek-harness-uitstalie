@@ -1463,7 +1463,7 @@ export class SessionStore extends Service {
    * All live sessions, in creation order.
    * @returns a fresh array; mutating it does not affect the store.
    */
-  list(): Session[] {
+  listSessions(): Session[] {
     return [...this.store.values()].map(entry => entry.session)
   }
 

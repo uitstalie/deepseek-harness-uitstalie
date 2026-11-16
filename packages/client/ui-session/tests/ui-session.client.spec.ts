@@ -25,7 +25,7 @@ interface SessionsBench {
   readonly sessions: ISessions
   readonly list: ReturnType<typeof createSnapshotStore<SessionListState>>
   readonly resolveBinding: ReturnType<typeof vi.fn<(id: SessionId) => SessionBinding | undefined>>
-  readonly createSession: ReturnType<typeof vi.fn<ISessions['create']>>
+  readonly createSession: ReturnType<typeof vi.fn<ISessions['createSession']>>
   readonly retainInfo: ReturnType<typeof vi.fn<ISessions['retainInfo']>>
   binding(id: SessionId): SessionBinding
   reference(binding: SessionBinding): SessionReference
@@ -68,7 +68,7 @@ function createSessionsBench(ctx: Context): SessionsBench {
     return source
   }
   const resolveBinding = vi.fn((id: SessionId) => bindings.get(id))
-  const createSession = vi.fn<ISessions['create']>(async options =>
+  const createSession = vi.fn<ISessions['createSession']>(async options =>
     options?.sessionId ?? sessionId(`created-${String(options?.workspaceId ?? 'none')}`))
   const retainInfo = vi.fn<ISessions['retainInfo']>(id => retainSource(id))
   const sessions = {

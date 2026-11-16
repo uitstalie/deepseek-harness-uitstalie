@@ -13,6 +13,10 @@ declare module '@deepseek-ai/dsh-session/types' {
   }
 }
 
+function appendProjection(session: Session, data: { seq: SessionSeq; text: string }) {
+  return session.append('test/project', data, { ignorable: true })
+}
+
 const projection: SessionMessageProjection<'test/project'> = {
   type: 'test/project',
   project(event, context) {
@@ -48,9 +52,9 @@ describe('plugin-owned message projections', () => {
     const session = Session.create(SessionId('pure'), undefined, undefined, undefined, definitions)
     const source = input(session)
     const original = session.deriveMessages()
-    expect(() => session.append('test/project', { seq: source.seq, text: 'reject' })).toThrow('rejected decision')
+    expect(() => appendProjection(session, { seq: source.seq, text: 'reject' })).toThrow('rejected decision')
     expect(session.deriveMessages()).toEqual(original)
-    session.append('test/project', { seq: source.seq, text: 'projected' })
+    appendProjection(session, { seq: source.seq, text: 'projected' })
     expect(session.deriveMessages()[0]?.content).toEqual([{ type: 'text', text: 'projected' }])
     expect(session.surface.replaceGeneration).toBe(0)
     expect(session.surface.contentGeneration).toBe(1)
@@ -64,8 +68,8 @@ describe('plugin-owned message projections', () => {
     const original = createUserMessage({ content: [{ type: 'text', text: 'original' }], source: { kind: 'user' } })
     const append = () => session.append([
       ['user/message', original, { surfaceOp: 'append' }],
-      ['test/project', { seq: SessionSeq(0), text }],
-    ])
+      ['test/project', { seq: SessionSeq(0), text }, { ignorable: true }],
+    ] as never)
     if (text === 'reject') {
       expect(append).toThrow('rejected decision')
       expect(session.seq).toBe(0)
@@ -88,10 +92,10 @@ describe('plugin-owned message projections', () => {
     expect(() => ctx.sessions.registerMessageProjection(projection)).toThrow(/already registered/)
     const live = ctx.sessions.create(SessionId('live'))
     const source = input(live)
-    live.append('test/project', { seq: source.seq, text: 'changed' })
+    appendProjection(live, { seq: source.seq, text: 'changed' })
     const pending = ctx.sessions.create(SessionId('pending'))
     input(pending)
-    pending.append('test/project', { seq: source.seq, text: 'changed' })
+    appendProjection(pending, { seq: source.seq, text: 'changed' })
     const before = live.deriveMessages()
     const child = ctx.sessions.fork(live)
     expect(child.deriveMessages()).toEqual(before)
@@ -118,7 +122,7 @@ describe('plugin-owned message projections', () => {
     const session = Session.create(SessionId('window'), undefined, undefined, undefined, [projection])
     input(session)
     const source = input(session)
-    session.append('test/project', { seq: source.seq, text: 'window' })
+    appendProjection(session, { seq: source.seq, text: 'window' })
     const events = session.snapshotEvents().slice(1)
     const surface = new SurfaceManager(events, SessionLogOffset(1), [projection])
     expect(surface.nodes).toEqual([source.seq])
@@ -130,7 +134,7 @@ describe('plugin-owned message projections', () => {
     const source = input(session)
     const definitions: SessionMessageProjection[] = [projection]
     const surface = new SurfaceManager(session.snapshotEvents(), undefined, definitions)
-    surface.validateNext({ type: 'test/project', seq: SessionSeq(1), time: 0, data: { seq: source.seq, text: 'unused' } })
+    surface.validateNext({ type: 'test/project', seq: SessionSeq(1), time: 0, data: { seq: source.seq, text: 'unused' }, ignorable: true })
     definitions.length = 0
     expect(surface.deriveEventMessage(source)).toBe(source.data)
   })

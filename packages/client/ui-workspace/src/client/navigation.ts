@@ -68,7 +68,7 @@ export interface UiWorkspace {
   forkSession(
     sessionId: SessionId,
     onCreated?: (childId: SessionId) => void,
-    options?: Pick<Parameters<ISessions['fork']>[0], 'allowMigration'>,
+    options?: Pick<Parameters<ISessions['forkSession']>[0], 'allowMigration'>,
   ): Promise<SessionId>
   /**
    * Resolve the Session for a new conversation in a Workspace: navigation names the first reusable
@@ -259,7 +259,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     readonly sessionId?: SessionId
     readonly agentPreset?: string
   }): Promise<SessionId> {
-    const sessionId = await this.sessions.create(request)
+    const sessionId = await this.sessions.createSession(request)
     const named = request.sessionId
     if (named !== undefined && named !== sessionId) {
       void this.sessions.refreshProjections(named).catch((reason: unknown) => {
@@ -324,9 +324,9 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   async forkSession(
     sessionId: SessionId,
     onCreated?: (childId: SessionId) => void,
-    options?: Pick<Parameters<ISessions['fork']>[0], 'allowMigration'>,
+    options?: Pick<Parameters<ISessions['forkSession']>[0], 'allowMigration'>,
   ): Promise<SessionId> {
-    return this.sessions.fork({
+    return this.sessions.forkSession({
       sessionId,
       increaseTitle: true,
       ...onCreated === undefined ? {} : { onCreated },

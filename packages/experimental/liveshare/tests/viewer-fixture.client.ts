@@ -35,7 +35,6 @@ import {
 import type { AttachmentIdType, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { RetryId } from '@deepseek-ai/dsh-llm-retry/types'
 import type { SessionTitleEventData, SessionTitleProviderId } from '@deepseek-ai/dsh-session-title/types'
-import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-tool-present/types'
 import type {
   SessionEvent,

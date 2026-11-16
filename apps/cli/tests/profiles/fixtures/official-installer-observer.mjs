@@ -113,5 +113,5 @@ async function exercise(ctx, config) {
     steps.push({ name, install, savedVersion: manifest.dependencies?.[name], installed, localDependency, providerEnabled, nativeArtifact,
       presets, unavailable, unchangedAfterUnavailable, off, disabled, on, enabled, removed, absent })
   }
-  return { initial, steps, sessionCount: ctx.sessions.list().length }
+  return { initial, steps, sessionCount: ctx.sessions.listSessions().length }
 }

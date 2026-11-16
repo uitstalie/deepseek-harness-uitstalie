@@ -1283,7 +1283,7 @@ describe('SessionStore', () => {
     expect(events[1]![1].type).toBe('user/message')
 
     expect(ctx.sessions.get(session.id)).toBe(session)
-    expect(ctx.sessions.list()).toEqual([session])
+    expect(ctx.sessions.listSessions()).toEqual([session])
   })
 
   it('rejects duplicate ids and supports seeding', async () => {

@@ -5,7 +5,8 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "rewriteRelativeImportExtensions": false
+    "rewriteRelativeImportExtensions": false,
+    "types": ["node"]
   },
   "include": [
     "snapshots/session/headless.snapshot.ts",
@@ -274,7 +275,9 @@
     "apps/desktop/tests/keyboard.spec.ts",
     "packages/client/*/src/**",
     "packages/api/session-controller/src/client/**",
-    "packages/test-support/client-runtime/src/**",
+    "packages/test-support/client-runtime/**",
+    "apps/web/tests/assembled-remote.spec.ts",
+    "apps/web/tests/assembled-remote.ts",
     "benchmarks/**/*.client.ts",
     "benchmarks/**/*.client.tsx",
     "packages/*/*/tests/**/*.client.ts",
@@ -285,7 +288,8 @@
     "scripts/*.client.spec.ts",
     "scripts/client-bundle-css.spec.ts",
     "packages/typert/generator/tests/fixtures/**",
-    "scripts/client-bundle-purity.spec.ts"
+    "scripts/client-bundle-purity.spec.ts",
+    "scripts/types/client-session/**"
   ],
   "references": [
     { "path": "./packages/experimental/action-cards" },

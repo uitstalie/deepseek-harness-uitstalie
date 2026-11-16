@@ -88,7 +88,7 @@ describe('subagent working directories', () => {
 
   it('rolls back a local child whose setup realm has no directory service', async () => {
     const { ctx, parent, second, adapter } = await fixture()
-    const beforeSessions = ctx.sessions.list().length
+    const beforeSessions = ctx.sessions.listSessions().length
     const childId = SessionId('missing-directory-service')
     const create = ctx.agents.create.bind(ctx.agents)
     const creation = vi.spyOn(ctx.agents, 'create').mockImplementation(options => create({
@@ -105,7 +105,7 @@ describe('subagent working directories', () => {
 
       expect(ctx.agents.list().map(agent => agent.id)).toEqual([parent.id])
       expect(parent.session.snapshotEvents().filter(event => event.type === 'subagent/catalog')).toEqual([])
-      expect(ctx.sessions.list()).toHaveLength(beforeSessions)
+      expect(ctx.sessions.listSessions()).toHaveLength(beforeSessions)
       expect(adapter.requests).toEqual([])
     } finally {
       creation.mockRestore()

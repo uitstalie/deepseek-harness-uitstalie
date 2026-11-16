@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useCallback, useState, type ComponentProps } from 'react'
 import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { QuoteSelectionAction } from '../src/client/QuoteSelection.tsx'

@@ -36,11 +36,11 @@ describe('durable translation results', () => {
     expect(results(first)[0]).toMatchObject({ ignorable: true, data: { requestSeq: requests(first)[0]?.seq, text: 'Stored translation' } })
     expect((await readFile(original.file)).subarray(0, original.bytes.length)).toEqual(original.bytes)
     await b.restart()
-    expect(b.ctx.sessions.list()).toEqual([])
+    expect(b.ctx.sessions.listSessions()).toEqual([])
     expect(await b.ctx.translator.translate(spec())).toBe('Stored translation')
     expect(b.requests).toHaveLength(1)
     expect(await b.readEvents(original.id)).toEqual(first)
-    expect(b.ctx.sessions.list()).toEqual([])
+    expect(b.ctx.sessions.listSessions()).toEqual([])
     expect(b.errors).toEqual([])
   })
 
@@ -190,7 +190,7 @@ describe('translation storage guards', () => {
     expect(opened.mock.calls.every(([, access]) => access === 'read')).toBe(true)
     expect(await readFile(original.file)).toEqual(original.bytes)
     expect(b.requests).toEqual([])
-    expect(b.ctx.get('sessions')?.list() ?? []).toEqual([])
+    expect(b.ctx.get('sessions')?.listSessions() ?? []).toEqual([])
   })
   it('refuses missing storage or a missing Session before external I/O', async () => {
     const absent = await storageFixture(cleanups, { withPersistence: false })

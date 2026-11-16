@@ -638,7 +638,7 @@ describe('OpenTelemetrySessionBackend route and feedback', () => {
       expect(child.seq).toBeGreaterThan(child.inheritedEventCount)
       const put = await ctx.messageFeedback.put({ sessionId: child.id, messageId: message.id, rating: 'positive', ifVersion: null })
       if (!put.ok) throw new Error('cold child feedback failed')
-      expect(ctx.sessions.list()).toEqual([])
+      expect(ctx.sessions.listSessions()).toEqual([])
       const read = await ctx.sessionPersistence.open(child.id, 'read')
       try {
         const { events } = await read.read()
@@ -704,7 +704,7 @@ describe('OpenTelemetrySessionBackend route and feedback', () => {
       await ctx.messageFeedback.delete({ sessionId: session.id, messageId: message.id, ifVersion: edit.value.version })
       if (mode !== SessionTelemetryMode.DISABLED) await expect.poll(() => eventTypes(captures)).toContain('feedback/message-delete')
       expect(observer).toHaveBeenCalledTimes(3)
-      expect(ctx.sessions.list()).toEqual([])
+      expect(ctx.sessions.listSessions()).toEqual([])
       expect(await ctx.messageFeedback.list({ sessionId: session.id })).toEqual({ ok: true, value: { items: [] } })
     } finally {
       await ctx.fiber.dispose()

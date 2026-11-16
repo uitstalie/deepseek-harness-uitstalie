@@ -68,7 +68,7 @@ describe.skipIf(MODE === 'record')('web e2e: durable workflow run in Chat', () =
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
-    const sessions = scaffold.ctx.sessions.list()
+    const sessions = scaffold.ctx.sessions.listSessions()
     expect(sessions).toHaveLength(1)
     scaffold.ctx.permissionPresets.set(sessions[0]!, 'danger-full-access')
   }, 120_000)

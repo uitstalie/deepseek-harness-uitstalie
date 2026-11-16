@@ -1,4 +1,8 @@
 /** Serve change summaries and comparisons, and open declared or changed workspace files verified by the viewed Session's filesystem. */
+/** Narrow Host query face used here; the full engine stays behind the Host boundary. */
+interface SessionQueryReader {
+  readEvent(request: SessionEventReadRequest, signal?: AbortSignal): Promise<SessionEventWindow>
+}
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-api-workspace-files'
@@ -6,8 +10,8 @@ import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-client-connection'
-import type {} from '@deepseek-ai/dsh-session-query'
-import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import type { SessionEventReadRequest, SessionEventWindow } from '@deepseek-ai/dsh-session-query'
+import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { CHANGES_DIFF_PATH, CHANGES_OPEN_PATH, CHANGED_FILES_PATH, type ChangesSummary } from './changes.ts'
 import { isPresentedData, isPresentedFile, PRESENT_OPEN_PATH, PRESENT_HOST_PATH, type PresentedHost } from './presented.ts'
 
@@ -73,10 +77,11 @@ function failureStatus(error: unknown): number {
  * Read the addressed event once the Host desktop is known to be available.
  * @returns the event with its Session header, or the refusal to answer with.
  */
-async function readTarget(ctx: Context, request: Request, id: string, seq: number): Promise<Awaited<ReturnType<Context['sessionQuery']['readEvent']>> | Response> {
+async function readTarget(ctx: Context, request: Request, id: string, seq: number): Promise<SessionEventWindow | Response> {
   request.signal.throwIfAborted()
   if (!ctx.sessionController.workspaceDesktop().available) return new Response('Host desktop unavailable.', { status: 409 })
-  return ctx.sessionQuery.readEvent({ sessionId: id as SessionId, seq: seq as SessionSeq, before: 0, after: 0 }, request.signal)
+  const query = (ctx as Context & { sessionQuery: SessionQueryReader }).sessionQuery
+  return query.readEvent({ sessionId: id as SessionId, seq: seq as SessionSeq, before: 0, after: 0 }, request.signal)
 }
 
 /**

@@ -88,7 +88,7 @@ describe('serial creation listener integrations', () => {
       })).rejects.toThrow('context:file-reference')
       expect(errors.some(error => error.includes('context:file-reference'))).toBe(true)
       expect(ctx.agents.list()).toEqual([])
-      expect(ctx.sessions.list()).toEqual([])
+      expect(ctx.sessions.listSessions()).toEqual([])
     } finally {
       await ctx.fiber.dispose()
     }
@@ -102,7 +102,7 @@ describe('serial creation listener integrations', () => {
         sessionId: SessionId('review-tool'),
       })).rejects.toThrow('subagent model selection requires at least one allowed model')
       expect(ctx.agents.list()).toEqual([])
-      expect(ctx.sessions.list()).toEqual([])
+      expect(ctx.sessions.listSessions()).toEqual([])
     } finally {
       await ctx.fiber.dispose()
     }

@@ -328,7 +328,7 @@ export class TestSessions implements ISessions {
 
   /** Replaceable search behavior (see {@link TestSessions.stubSearch}). */
   private searchStub: ((query: string, signal: AbortSignal) => { items: SessionSearchResultItem[]; hasMore: boolean }) | undefined
-  private createStub: ((opts: Parameters<ISessions['create']>[0]) => Promise<SessionId>) | undefined
+  private createStub: ((opts: Parameters<ISessions['createSession']>[0]) => Promise<SessionId>) | undefined
 
   /**
    * @param stabilize - the owning runtime's act wrapper.
@@ -618,12 +618,12 @@ export class TestSessions implements ISessions {
    * Install Session creation behavior for navigation tests.
    * @param impl - implementation that must return an already-added fixture id.
    */
-  stubCreate(impl: (opts: Parameters<ISessions['create']>[0]) => Promise<SessionId>): void {
+  stubCreate(impl: (opts: Parameters<ISessions['createSession']>[0]) => Promise<SessionId>): void {
     this.createStub = impl
   }
 
   /** Create through the installed test behavior and require a catalogued fixture. */
-  async create(opts?: Parameters<ISessions['create']>[0]): Promise<SessionId> {
+  async createSession(opts?: Parameters<ISessions['createSession']>[0]): Promise<SessionId> {
     this.calls.push({ method: 'create', args: [opts] })
     if (this.createStub === undefined) {
       throw new Error('test sessions: create is not stubbed — call stubCreate() first')
@@ -685,7 +685,7 @@ export class TestSessions implements ISessions {
    * @param opts - source session id, optional cut anchor, and client title policy.
    * @returns the source id (no child record is created).
    */
-  fork(opts: Parameters<ISessions['fork']>[0]): Promise<SessionId> {
+  forkSession(opts: Parameters<ISessions['forkSession']>[0]): Promise<SessionId> {
     this.calls.push({ method: 'fork', args: [opts] })
     return Promise.resolve(opts.sessionId)
   }

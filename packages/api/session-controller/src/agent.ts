@@ -462,7 +462,9 @@ export class ApiSessionAgentController {
   // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, resolve Agent role from the durable Workspace
   /** Resolve the role from the durable Workspace record; absent/unknown means ordinary agent. */
   private async workspaceRoleFor(cwd: string): Promise<AgentRole | undefined> {
-    const workspace = await this.ctx.get('workspaceRegistry')?.resolveByPath(cwd)
+    const registry = this.ctx.get('workspaceRegistry')
+    if (typeof registry?.resolveByPath !== 'function') return undefined
+    const workspace = await registry.resolveByPath(cwd)
     return workspace?.role === 'super' ? 'super' : undefined
   }
   // END uitstalie-deepseek-flash

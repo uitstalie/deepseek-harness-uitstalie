@@ -16,7 +16,7 @@ import {
 import type {
   SessionEvent,
   SessionId,
-} from '@deepseek-ai/dsh-session'
+} from '@deepseek-ai/dsh-session/types'
 import type { GenericCallView } from '@deepseek-ai/dsh-tools'
 import { workspaceAccess } from './workspace-access.ts'
 

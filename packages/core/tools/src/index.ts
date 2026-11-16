@@ -7,7 +7,7 @@ import { ToolExecutorUnavailableError } from './executor.ts'
 import type { ToolExecutor, ToolBatchInput, ToolBatchResult } from './executor.ts'
 import './events.ts'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent } from '@deepseek-ai/dsh-agent/types'
 import { projectToolSchema } from './schema.ts'
 import { assertSupportedJsonSchema } from './json-schema.ts'
 import { RUN_CODE_NAME, ToolActivationError } from './contracts.ts'
@@ -129,11 +129,11 @@ export class ToolsService extends Service {
    */
   register(definition: ToolDefinition, options: ToolRegistrationOptions = {}): () => void {
     const name = definition.name
-    const scopeAgent = scopeOf(this.ctx) as Partial<Agent> | undefined
+    const scopeAgent: Partial<Agent> | undefined = scopeOf(this.ctx)
     // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, enforce minRole when registering a tool
     const minimum = toolMinRole(definition)
     if (minimum !== undefined && scopeAgent?.session !== undefined && scopeAgent.options !== undefined
-      && !roleAllows(((scopeAgent as Agent).role ?? 'agent'), minimum)) return () => {}
+      && !roleAllows((scopeAgent.role ?? 'agent'), minimum)) return () => {}
     // END uitstalie-deepseek-flash
     const output = (definition as Partial<ToolDefinition>).output
     if (output === undefined || typeof output !== 'object'
@@ -312,10 +312,10 @@ export class ToolsService extends Service {
    */
   definitions(scope?: ScopeKey, toolSet?: ResolvedToolSet): readonly ToolDefinition[] {
     const visible = toolSet === undefined ? [...this.view(scope).visible.values()] : [...toolSet.view(scope).values()]
-    const agent = scope as Partial<Agent> | undefined
+    const agent: Partial<Agent> | undefined = scope
     if (agent?.session === undefined) return visible
     // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, filter the tool face by the Agent's registry role
-    const role = ((agent as Agent).role ?? 'agent')
+    const role = (agent.role ?? 'agent')
     return visible.filter(definition => roleAllows(role, toolMinRole(definition)))
     // END uitstalie-deepseek-flash
   }

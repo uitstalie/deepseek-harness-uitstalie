@@ -506,7 +506,7 @@ describe('sessions.fork', () => {
       await expect(proxy.fork(request({ sessionId: sid('missing'), atSeq })))
         .resolves.toMatchObject({ ok: false, error: { code: 'gateway/bad-request' } })
     }
-    expect(ctx.sessions.list()).toEqual([])
+    expect(ctx.sessions.listSessions()).toEqual([])
     await ctx.fiber.dispose()
   })
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** File-operation contributions survive removal of application-opening providers. */
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'

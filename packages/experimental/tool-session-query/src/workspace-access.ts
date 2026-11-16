@@ -10,7 +10,7 @@ import { HarnessError } from '@deepseek-ai/dsh-llm'
 import {
   type SessionHeader,
   type SessionId as SessionIdValue,
-} from '@deepseek-ai/dsh-session'
+} from '@deepseek-ai/dsh-session/types'
 import type { TurnBoundaryProjection } from '@deepseek-ai/dsh-agent'
 import type {
   SessionLineageNode,

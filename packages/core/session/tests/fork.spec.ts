@@ -104,7 +104,7 @@ describe('SessionStore.fork', () => {
     const { ctx, sessions } = await setup()
     const source = ctx.sessions.create(SessionId('log-only-parent'))
     appendClosedTurn(source, 1, 'hello')
-    source.append('test/log-only', { value: 'after execution' })
+    source.append('test/log-only', { value: 'after execution' }, { ignorable: true })
 
     const child = sessions.fork(source, undefined, SessionId('log-only-child'))
 
@@ -163,7 +163,7 @@ describe('SessionStore.fork', () => {
     const { ctx, sessions } = await setup()
     const parent = ctx.sessions.create(SessionId('bracket-parent'), { meta: { cwd: '/workspace' } })
     appendClosedTurn(parent, 1, 'work')
-    const open = parent.append('test/bracket-open', { id: 'op-1' })
+    const open = parent.append('test/bracket-open', { id: 'op-1' }, { ignorable: true })
 
     const child = sessions.fork(parent, undefined, SessionId('bracket-child'))
 
@@ -405,7 +405,7 @@ describe('fork boundaries inside an open turn', () => {
 
   it('leaves a plugin bracket left open at the cut untouched (log-only locks belong to their owner)', async () => {
     const { sessions, source } = await openTurnSource('open-bracket')
-    source.append('test/bracket-open', { id: 'op-live' })
+    source.append('test/bracket-open', { id: 'op-live' }, { ignorable: true })
 
     const child = sessions.fork(source, lastSeq(source), SessionId('open-bracket-child'))
 

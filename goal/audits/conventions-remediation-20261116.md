@@ -27,8 +27,8 @@
 | `pnpm run verify-locale-metadata` | 通过 |
 | `pnpm run verify-package-readme-summaries` | 通过；455 个英文包 README 摘要 ≤100 词 |
 | 聚焦 oxlint（uitstalie/jira/superagent/tool-policy/permission-presets/subagent） | 0 errors |
-| 受影响包聚焦测试 | 241 passed（memory/UI/tool-dsh-store/jira-agent/ui-jira） |
-| `pnpm run build:check` | host aggregate 通过；client aggregate 失败，见文末“未完成” |
+| 受影响包聚焦测试 | 462 passed（session/UI/assembly/sqlite；25 files） |
+| `pnpm run build:check` | **通过**：host aggregate 与 client aggregate 均 PASS（`2 passed, 0 failed`） |
 
 ## P0
 
@@ -67,5 +67,9 @@
 1. **OAuth 协议时序仍未配置化**：GitHub 设备流的 5s、Kimi 的 poll/retry、OAuth HTTP 30s 是按外部协议/网络不变量保留；memory、UI 轮询、rule byte limit 已进 Config。
 2. **原生标记未覆盖 146 个候选**：本次只补了角色链路实际插入块；剩余块需要按实际 hunk 判断，不能机械全刷。
 3. **UI props 仍偏宽**：四个页面的快照订阅已改由 renderer `useSnapshot` 绑定，但 `Partial<InjectFace<...>>` 和整只 controller 仍作为测试/装配路径保留；完全改成窄动作 props 需要同时改 renderer 注入面。
-4. **`build:check` 的 client aggregate 未绿**：host aggregate 已通过；client aggregate 在 `Context.sessions` 上看到 Host 的 `SessionStore` 而不是 client 的 `ISessions`，报例如 `Property 'getSnapshot' does not exist on type '() => Session[]'`、`SessionStore is not assignable to ISessions`。该冲突来自仓库既有 host/client 双编译面设计，单包 `tsc`、host aggregate 与聚焦测试通过。修复需要拆 client aggregate 的依赖图，或把 `Context.sessions` 的 host/client 声明彻底分开，属于跨包架构决策。
+4. **`build:check` 的 client aggregate 已修复**：host 与 client 两个 aggregate 均 PASS。做法是把 `Context.sessions` 的两个面在类型层分开：
+   - Host `SessionStore` 的集合方法改名 `listSessions()`；client `ISessions` 继续用快照属性 `list`。
+   - Client 对象层方法改名 `createSession()` / `forkSession()`；Host store 的 `create()` / `fork()` 不变。
+   - Client `Context.sessions` 仍声明为同一个 `SessionStore`，client-only 的 `ISessions` 扩展只通过 `scripts/types/client-session`（仅 client `types` 加载，host 明确排除）合并；Host 程序不再看到 client 的 `list`/`create` 覆盖。
+   - 消费方：Host 工具/服务/测试调用 `listSessions()` 与 `create()`；client UI/test runtime 调用 `createSession()`/`forkSession()` 和快照 `list`。运行时行为未变，只改了这两个 client 方法名与 Host 集合方法名。
 5. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。

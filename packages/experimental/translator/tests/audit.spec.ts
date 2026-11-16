@@ -97,7 +97,7 @@ describe('common paid translation persistence', () => {
       b.setSignedIn(false)
       await b.restart({ withNativeOwners: unavailable !== 'native-owner' })
       expect(b.ctx).not.toBe(oldContext)
-      expect(b.ctx.sessions.list()).toEqual([])
+      expect(b.ctx.sessions.listSessions()).toEqual([])
       expect(await b.ctx.translator.availableProviders()).toEqual(['bing', 'google'])
       expect(await b.ctx.translator.translate(specification())).toBe('翻译结果')
       expect(await b.readEvents(id)).toEqual(committed)
@@ -123,7 +123,7 @@ describe('common paid translation persistence', () => {
     expect(prepare).not.toHaveBeenCalled()
     expect(b.requests).toEqual([])
     expect(await readFile(original.file)).toEqual(original.bytes)
-    expect(b.ctx.sessions.list()).toEqual([])
+    expect(b.ctx.sessions.listSessions()).toEqual([])
     const session = await b.activate(id)
     const resumed = await b.readEvents(id), surface = await b.ctx.sessionQuery.readSurface(id)
     const open = vi.spyOn(b.ctx.sessionPersistence, 'open')
@@ -158,7 +158,7 @@ describe('common paid translation persistence', () => {
       targetLanguage: 'zh', sessionId: SessionId('missing-historical') })))
       .rejects.toMatchObject({ code: 'TRANSLATION_SESSION_REQUIRED' })
     expect(b.requests).toEqual([])
-    expect(b.ctx.sessions.list()).toEqual([])
+    expect(b.ctx.sessions.listSessions()).toEqual([])
   })
 
   it('does not claim a historical writer on a cache miss or dispatch paid work', async () => {
@@ -170,7 +170,7 @@ describe('common paid translation persistence', () => {
     expect((await writer.read()).events).toEqual(original.events)
     expect(await readFile(original.file)).toEqual(original.bytes)
     expect(b.requests).toEqual([])
-    expect(b.ctx.sessions.list()).toEqual([])
+    expect(b.ctx.sessions.listSessions()).toEqual([])
   })
 
   it('withholds paid translated text when its durable result cannot be written', async () => {

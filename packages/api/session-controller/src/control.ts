@@ -53,7 +53,7 @@ export class SessionControlController {
   }
 
   private baseline(): SessionControlBaseline {
-    const sessions = this.ctx.sessions.list()
+    const sessions = this.ctx.sessions.listSessions()
     return {
       projections: this.projectionBaseline(sessions),
     }

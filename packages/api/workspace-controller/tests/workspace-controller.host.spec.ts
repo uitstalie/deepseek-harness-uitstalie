@@ -597,7 +597,7 @@ describe('first-use Remote', () => {
     expect(result!.workspace.path).toBe(join(root, 'deepseek-harness', DEFAULT_WORKSPACE_DIRECTORY))
     expect(result!.workspace.title).toBe(DEFAULT_WORKSPACE_DIRECTORY)
     expect(existsSync(result!.workspace.path)).toBe(true)
-    expect(ctx.sessions.list()).toEqual([])
+    expect(ctx.sessions.listSessions()).toEqual([])
     expect(await controller.initializeDefault(signal)).toEqual(result)
   })
 

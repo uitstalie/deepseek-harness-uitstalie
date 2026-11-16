@@ -6,6 +6,7 @@
 
 // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, Agent 角色按持久 Workspace 归属解析
 import type { AgentRole } from './runtime-types.ts'
+export type { AgentRole } from './runtime-types.ts'
 import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
 import type { UserMessage } from '@deepseek-ai/dsh-llm/types'
 // Type-only: the Workspace registry's archive-admission family map this registry merges `turn` into.

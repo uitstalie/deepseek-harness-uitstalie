@@ -92,7 +92,7 @@ function fakeSessions(ctx: Context): { sessions: ISessions; binding: SessionBind
   const sessions: ISessions = {
     list,
     searchResultLimit: 50,
-    create: () => Promise.reject(new Error('unused fake Sessions operation')),
+    createSession: () => Promise.reject(new Error('unused fake Sessions operation')),
     retain: () => reference,
     using: async (_target, _options, operation) => await operation(reference),
     retainInfo: () => createSnapshotStore({ referenceCount: 1, retainedBy: {} }),
@@ -100,7 +100,7 @@ function fakeSessions(ctx: Context): { sessions: ISessions; binding: SessionBind
     refreshProjections: () => Promise.reject(new Error('unused fake Sessions operation')),
     refresh: () => Promise.reject(new Error('unused fake Sessions operation')),
     search: () => Promise.reject(new Error('unused fake Sessions operation')),
-    fork: () => Promise.reject(new Error('unused fake Sessions operation')),
+    forkSession: () => Promise.reject(new Error('unused fake Sessions operation')),
     scope: id => id === SESSION_ID ? binding.ctx : undefined,
     scopeOf: candidate => candidate === binding.ctx ? SESSION_ID : undefined,
     sessionOf: candidate => candidate === binding.ctx ? binding.session : undefined,

@@ -158,7 +158,7 @@ describe('the session-persistence Agent Note: AgentLoop factory create/resume', 
     const sessionId = SessionId('sess-a')
     await ctx.agents.create({ sessionId })
     await expect(ctx.agents.create({ sessionId })).rejects.toThrow(/already exists/)
-    expect(ctx.sessions.list()).toHaveLength(1)
+    expect(ctx.sessions.listSessions()).toHaveLength(1)
     await ctx.fiber.dispose()
   })
 

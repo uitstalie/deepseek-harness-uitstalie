@@ -619,7 +619,7 @@ describe('agent/created', () => {
 
     await expect(ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })).rejects.toBe(reason)
     expect(ctx.agents.list()).toEqual([])
-    expect(ctx.sessions.list()).toEqual([])
+    expect(ctx.sessions.listSessions()).toEqual([])
     expect(adapter.requests).toHaveLength(0)
   })
 })
