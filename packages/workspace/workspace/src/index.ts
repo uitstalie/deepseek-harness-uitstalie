@@ -252,6 +252,7 @@ export class WorkspaceRegistry extends Service {
   // (.agents/notes/archived/simplification/2026-07-31-one-route-to-add-a-workspace.md);
   // drop the parameter with its @param clause and the `create(path, title?)`
   // lines in this package's README pair.
+  // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, durable workspace role on create
   async create(path: string, title?: string, role?: 'agent' | 'super'): Promise<Workspace> {
     const canonical = await realpathNormalize(path)
     if (!(await stat(canonical)).isDirectory()) {
@@ -259,6 +260,7 @@ export class WorkspaceRegistry extends Service {
     }
     return await this.enqueueOperation(() => this.createCanonical(canonical, title, false, role))
   }
+  // END uitstalie-deepseek-flash
 
   /**
    * Initialize the default Workspace only while both the registry and Session
@@ -543,7 +545,9 @@ export class WorkspaceRegistry extends Service {
     const record: WorkspaceRecord = {
       path: canonical,
       title: workspaceName,
+      // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, persist the durable workspace role
       ...(role === undefined ? {} : { role }),
+      // END uitstalie-deepseek-flash
       sessionIds: [],
       createdAt: now,
       updatedAt: now,
