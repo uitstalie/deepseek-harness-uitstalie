@@ -11,8 +11,8 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Issue, IssueKey, Timestamp } from '../jira-core/src/index.ts'
-import { CLAIM_APPROVED_MARKER, CLAIMABLE_STATUS, PROPOSAL_MARKER, claimability, isBlocked } from '../jira-agent/src/index.ts'
-import { SUPERAGENT_APPROVAL_MARKER, SUPERAGENT_CLAIMABLE_STATUS, SUPERAGENT_PROPOSAL_MARKER, superagentStatusOf } from '../jira-service/src/index.ts'
+import { CLAIM_APPROVED_MARKER, CLAIMABLE_STATUS, PROPOSAL_MARKER, claimability, isBlocked } from '../jira-agent/src/api.ts'
+import { SUPERAGENT_APPROVAL_MARKER, SUPERAGENT_CLAIMABLE_STATUS, SUPERAGENT_PROPOSAL_MARKER, superagentStatusOf } from '../jira-service/src/api.ts'
 
 /** The instant every lease is judged against. */
 const AT = '2026-11-02T09:00:00Z' as Timestamp

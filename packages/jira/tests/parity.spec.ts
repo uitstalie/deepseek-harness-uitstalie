@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { COMMAND_NAMES } from '../jira-cli/src/main.ts'
-import { ISSUE_PARAMETERS, LIST_TOOL_NAME, KB_PARAMETERS } from '../jira-agent/src/index.ts'
+import { ISSUE_PARAMETERS, LIST_TOOL_NAME, KB_PARAMETERS } from '../jira-agent/src/api.ts'
 import { JIRA_SUBCOMMANDS } from '../jira-agent/src/command.ts'
 
 /** Issue tool verbs and the CLI command each one must be reachable through. */
