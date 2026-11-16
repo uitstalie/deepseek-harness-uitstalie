@@ -167,3 +167,8 @@ export interface ISessions {
    */
   binding(id: SessionId): SessionBinding | undefined
 }
+
+/** In the client program the one sessions service carries both the Host store surface and this client face. */
+declare module '@deepseek-ai/dsh-session' {
+  interface SessionStore extends ISessions {}
+}

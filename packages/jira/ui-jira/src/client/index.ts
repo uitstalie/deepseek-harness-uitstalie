@@ -18,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 // Type-only: pulls the workspace-group registry merge ('ctx.workspaceGroups').
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -62,9 +63,8 @@ const NS = 'settings.jira'
 /**
  * Mount the ledger Remote namespace, its copy, and the settings section.
  * @param ctx - browser plugin context carrying slots, locale, and the Remote carrier.
- * @returns a disposer that unmounts the Remote contribution when this plugin provided it.
  */
-export async function apply(ctx: ClientContext): Promise<() => void> {
+export async function apply(ctx: ClientContext): Promise<void> {
   // Generated artifacts are mounted by whoever composes the row: the Web shell does not mount
   // them, while a row-based client test runtime already did.
   const mounted = ctx.get('remote.jira') === undefined ? await ctx.remote.$mount(jiraRemote) : undefined
@@ -181,7 +181,7 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       inject: (): SuperagentSetupInjected => ({
         t,
         refresh: () => { void refreshSuperGroup() },
-        pickDirectory: () => scoped.get('uiWorkspace').pickDirectory(),
+        pickDirectory: async () => await scoped.get('uiWorkspace')?.pickDirectory() ?? null,
         setup: async (path: string) => {
           const result = await scoped.remote.jira.superagentSetup(path)
           if (!result.ok) throw new Error(result.error.message)
@@ -199,10 +199,12 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
         if (!result.ok) return
         const state = result.value
         if (!state.configured || state.workspaceId === undefined) return
-        disposeSuperGroup = scoped.get('workspaceGroups').register({
+        const registry = scoped.get('workspaceGroups')
+        if (registry === undefined) return
+        disposeSuperGroup = registry.register({
           id: 'superagent',
           label: () => t('superagentWorkspace'),
-          workspaceId: state.workspaceId,
+          workspaceId: state.workspaceId as WorkspaceId,
         })
       } catch {
         // A Remote tier without the setup surface (a test composition) simply keeps the flat list.
