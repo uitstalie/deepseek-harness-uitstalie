@@ -38,7 +38,7 @@
 | `pnpm run verify-package-readme-summaries` | 通过；455 个英文包 README 摘要 ≤100 词 |
 | 聚焦 oxlint（uitstalie/jira/superagent/tool-policy/permission-presets/subagent） | 0 errors |
 | 受影响包聚焦测试 | 462 passed（session/UI/assembly/sqlite；25 files） |
-| `pnpm run build:check` | **通过**：host aggregate 与 client aggregate 均 PASS（`2 passed, 0 failed`） |
+| `pnpm run build:check` | **通过**：host aggregate 与 client aggregate 均 PASS（`2 passed, 0 failed`） |`n| `pnpm run typecheck` | **通过**：Host Typert、host/client compiler、host/client aggregate 5/5 PASS |
 
 ## P0
 
