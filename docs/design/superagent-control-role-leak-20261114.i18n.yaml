@@ -2,27 +2,27 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/superagent-control-role-leak-20261114.md
-/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14:
-  en: 133334241694694d
-  zh: 1062d45538005f0e
-/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/observed-behavior:
-  en: efa430dc4247255c
-  zh: a5d706611284935f
-/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/code-location:
-  en: 40a20010f4a39a0f
-  zh: c83a212e5cfed8bc
-/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/conflict-with-the-role-model:
-  en: fa3c778b5c8e4f76
-  zh: 67e4ce279ce6b8cb
-/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/impact:
-  en: 7c36fcb6d7999d09
-  zh: 7fdcb0648720d9b7
-/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/fix-options-and-decisions:
-  en: 59e21a3f194f810e
-  zh: e07e0c91fd8c968a
-/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/test-impact:
-  en: de3ba0e0c485b7f7
-  zh: 64c7bd21cbe0dc98
-/superagent-control-leaks-to-ordinary-agent-sessions-2026-11-14/scope:
-  en: 9fb81225fb92dcae
-  zh: b51f0e31eb4d5e6d
+/superagent-control-no-longer-reaches-ordinary-agent-sessions-2026-11-14:
+  en: 9b4dd93df929d25a
+  zh: e9a0cd820fea6c7b
+/superagent-control-no-longer-reaches-ordinary-agent-sessions-2026-11-14/observed-behavior:
+  en: 0ac7493ea2980278
+  zh: c946f2c7132b086d
+/superagent-control-no-longer-reaches-ordinary-agent-sessions-2026-11-14/code-location:
+  en: efe0eadee7fa4010
+  zh: 5ec9cbd5c4605a87
+/superagent-control-no-longer-reaches-ordinary-agent-sessions-2026-11-14/conflict-with-the-role-model:
+  en: 3330a348eb0d697a
+  zh: 08b0a1085678d4bc
+/superagent-control-no-longer-reaches-ordinary-agent-sessions-2026-11-14/impact-before-the-fix:
+  en: e71b1810c1e8f264
+  zh: c0d521cef46a28b0
+/superagent-control-no-longer-reaches-ordinary-agent-sessions-2026-11-14/fix:
+  en: da864bb406e0a02c
+  zh: 13f99ecc25ebc1eb
+/superagent-control-no-longer-reaches-ordinary-agent-sessions-2026-11-14/test-impact:
+  en: 2dc38f0202603cc7
+  zh: 5931903d28a778aa
+/superagent-control-no-longer-reaches-ordinary-agent-sessions-2026-11-14/scope:
+  en: f679d2d33d0f58ab
+  zh: 01e026ba37352126

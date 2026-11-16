@@ -5784,7 +5784,6 @@ export const createSuperagentContribution = (
           defineJiraTool(host, source),
           defineJiraTool(host, scan),
           defineJiraTool(host, claim),
-          defineJiraTool(host, control),
           defineJiraTool(host, status),
           defineJiraTool(host, dispatcher(host, workerPreset, maxWorkers)),
         ])),
