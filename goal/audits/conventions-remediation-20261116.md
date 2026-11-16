@@ -101,5 +101,5 @@
 
 ## 未完成 / 待决策
 
-1. **OAuth 协议时序仍未配置化**：GitHub 设备流的 5s、Kimi 的 poll/retry、OAuth HTTP 30s 是按外部协议/网络不变量保留；memory、UI 轮询、rule byte limit 已进 Config。
+1. **OAuth 协议时序配置化：已定，保持现状，不配置化。** GitHub 设备流 5s 是协议轮询下限；Kimi 的 poll/retry 是对方限流策略；OAuth HTTP 30s 超时是网络不变量。这些不是部署可变项，不进 Config；memory、UI 轮询、rule byte limit 已进 Config。
 2. **错误码大小写兼容层：已定，仅 release note，不加别名层。** 16 个重命名 code 全部位于 `private: true` 包（memory/personality/store-atom/persona-card），SDK、`snapshots/`、发布文档与 Typert API schema 均无引用；判定详见 [`error-code-case-compat-20261116.md`](./error-code-case-compat-20261116.md)。若将来 tool error 成为对外承诺，再加**读取侧**小写归一化，不在写入侧同时发两个 code。
