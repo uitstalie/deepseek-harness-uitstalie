@@ -60,5 +60,5 @@
 
 1. **配置硬编码 6 簇未全部进 Config**：OAuth 超时/重试、UI 轮询间隔、memory summary 重试次数/延迟等仍未抽成部署配置。需要决定哪些属于“部署可变”，避免把协议/安全常量误配置化。
 2. **原生标记未覆盖 146 个候选**：本次只补了角色链路实际插入块；剩余块需要按实际 hunk 判断，不能机械全刷。
-3. **`build:check` 未绿**：host/client 双程序在同一个 `Context.sessions` 键上合并 `SessionStore` 与 `ISessions`，聚合编译报 `TS2717`，并连带 client 测试看到 Host 的 `sessions` 类型。该冲突来自仓库既有双编译面设计，不是本次业务逻辑引入；单包 `tsc` 与聚焦测试通过。修复需要拆聚合编译图或调整 client/host 的 `Context.sessions` 契约，属于跨包架构决策。
+3. **`build:check` 的 client aggregate 未绿**：host aggregate 已通过；client aggregate 在 `Context.sessions` 上看到 Host 的 `SessionStore` 而不是 client 的 `ISessions`，报例如 `Property 'getSnapshot' does not exist on type '() => Session[]'`、`SessionStore is not assignable to ISessions`。该冲突来自仓库既有 host/client 双编译面设计，单包 `tsc`、host aggregate 与聚焦测试通过。修复需要拆 client aggregate 的依赖图，或把 `Context.sessions` 的 host/client 声明彻底分开，属于跨包架构决策。
 4. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。
