@@ -31,7 +31,11 @@ import type {} from '@deepseek-ai/dsh-jobs'
 import { BlockAssembler } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, FinishReason, GenerateOptions } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import type { MemorySettings } from './config.ts'
+import {
+  MEMORY_SUMMARY_MAX_ATTEMPTS,
+  MEMORY_SUMMARY_RETRY_DELAY_MS,
+  type MemorySettings,
+} from './config.ts'
 import { classifySummaryFailure } from './failure.ts'
 import type { MemorySummaryFailure, MemorySummaryFailureCode } from './failure.ts'
 import {
@@ -78,11 +82,7 @@ export const MEMORY_SUMMARY_FAILURE_NOTICE = 'Memory summary failed'
 export { classifySummaryFailure } from './failure.ts'
 export type { MemorySummaryFailure, MemorySummaryFailureCode } from './failure.ts'
 
-/** Attempts one pass makes before it gives up and leaves the previous memory in effect. */
-export const MEMORY_SUMMARY_MAX_ATTEMPTS = 2
-
-/** Delay before the one bounded retry, in milliseconds. */
-const MEMORY_SUMMARY_RETRY_DELAY_MS = 100
+export { MEMORY_SUMMARY_MAX_ATTEMPTS, MEMORY_SUMMARY_RETRY_DELAY_MS }
 
 /**
  * Model-visible notice text for one classified failure, inside the 120-character notice bound.
@@ -522,6 +522,8 @@ export class MemorySummaryRunner {
         conversation.text,
         input.session.id,
         signal,
+        this.settings.summaryMaxAttempts,
+        this.settings.summaryRetryDelayMs,
         () => { attempts += 1 },
       )
       const entries = parseSummaryEntries(raw)
@@ -647,6 +649,8 @@ export class MemorySummaryRunner {
         turns,
         session.id,
         signal,
+        this.settings.summaryMaxAttempts,
+        this.settings.summaryRetryDelayMs,
         () => { attempts += 1 },
       )
       const summaries = parseBatchSummaryEntries(raw, turns.map(turn => ({
@@ -903,6 +907,8 @@ async function streamSummaryWithRetry(
   conversation: string,
   sessionId: SessionId,
   signal: AbortSignal,
+  maxAttempts: number,
+  retryDelayMs: number,
   onAttempt: () => void,
 ): Promise<string> {
   for (let attempt = 1; ; attempt += 1) {
@@ -910,8 +916,8 @@ async function streamSummaryWithRetry(
     try {
       return await streamSummary(ctx, target, conversation, sessionId, signal)
     } catch (error: unknown) {
-      if (signal.aborted || attempt >= MEMORY_SUMMARY_MAX_ATTEMPTS || !isRetryableSummaryFailure(error)) throw error
-      await new Promise<void>((resolve) => { setTimeout(resolve, MEMORY_SUMMARY_RETRY_DELAY_MS) })
+      if (signal.aborted || attempt >= maxAttempts || !isRetryableSummaryFailure(error)) throw error
+      await new Promise<void>((resolve) => { setTimeout(resolve, retryDelayMs) })
       signal.throwIfAborted()
     }
   }
@@ -953,6 +959,8 @@ async function streamBatchSummaryWithRetry(
   turns: readonly BatchTurn[],
   sessionId: SessionId,
   signal: AbortSignal,
+  maxAttempts: number,
+  retryDelayMs: number,
   onAttempt: () => void,
 ): Promise<string> {
   for (let attempt = 1; ; attempt += 1) {
@@ -960,8 +968,8 @@ async function streamBatchSummaryWithRetry(
     try {
       return await streamBatchSummary(ctx, target, turns, sessionId, signal)
     } catch (error: unknown) {
-      if (signal.aborted || attempt >= MEMORY_SUMMARY_MAX_ATTEMPTS || !isRetryableSummaryFailure(error)) throw error
-      await new Promise<void>((resolve) => { setTimeout(resolve, MEMORY_SUMMARY_RETRY_DELAY_MS) })
+      if (signal.aborted || attempt >= maxAttempts || !isRetryableSummaryFailure(error)) throw error
+      await new Promise<void>((resolve) => { setTimeout(resolve, retryDelayMs) })
       signal.throwIfAborted()
     }
   }

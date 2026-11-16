@@ -492,6 +492,8 @@ test('configuration rejects a non-increasing window and a half summary pair', ()
     filesTtlDays: 14,
     supersessionMinSharedTags: 2,
     summarizeEveryTurns: 1,
+    summaryMaxAttempts: 2,
+    summaryRetryDelayMs: 100,
     snapshotTemplate: '',
     snapshotPosition: 'depth-0',
   })

@@ -109,7 +109,10 @@ export class ModelsDevStore {
   /** 页面快照源（renderer 绑为 useSnapshot）。 */
   readonly store: SnapshotStore<ModelsDevState> = createSnapshotStore(initialState())
 
-  constructor(private readonly wire: ModelsDevWire) {}
+  constructor(
+    private readonly wire: ModelsDevWire,
+    private readonly pacing: { readonly pollIntervalMs: number; readonly promptPollDelayMs: number },
+  ) {}
 
   /**
    * 拉取目录提供商列表（挂载时一次 + 失败重试共用此入口；后台刷新不打断现状）。
@@ -195,7 +198,7 @@ export class ModelsDevStore {
     this.polling = true
     void (async () => {
       while (this.isPolling()) {
-        await this.waitFor(60_000)
+        await this.waitFor(this.pacing.pollIntervalMs)
         if (this.isPolling() && !this.lifetime.signal.aborted) await this.load(true)
       }
     })()
@@ -353,7 +356,7 @@ export class ModelsDevStore {
         })
       }
       if (view === undefined || view.status === 'running') {
-        await this.waitFor(800)
+        await this.waitFor(this.pacing.promptPollDelayMs)
       }
     } while (view === undefined || view.status === 'running')
     await this.loadOAuthRoutes()

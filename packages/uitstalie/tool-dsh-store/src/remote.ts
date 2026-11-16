@@ -12,13 +12,24 @@
 
 import { join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: resolves the workspace-registry service declaration.
 import { WorkspaceId, type Workspace } from '@deepseek-ai/dsh-workspace'
 import type { StoreRuleEntry, StoreRulesListing, StoreRuleText } from './types.ts'
 
-/** Per-file cap applied when the rule set is scanned and read. */
-const MAX_RULE_BYTES = 256 * 1024
+/** Default per-file cap applied when the rule set is scanned and read. */
+export const DEFAULT_MAX_RULE_BYTES = 256 * 1024
+
+/** Deployment-tunable read limits for the sidebar rules surface. */
+export const Config = z.object({
+  maxRuleBytes: z.number().step(1).min(1).default(DEFAULT_MAX_RULE_BYTES),
+})
+
+/** Resolved limits the Remote receives after schema defaults apply. */
+export interface StoreRulesRemoteConfig {
+  readonly maxRuleBytes: number
+}
 
 /**
  * The workspace root of one workspace the Host resolved.
@@ -73,14 +84,19 @@ export function storeRelativePath(displayPath: string, directoryName = '.dsh'): 
  */
 export default class StoreRulesRemote extends TypertRemoteService {
   static inject = ['workspaceRegistry', 'dshStore']
+  static Config = Config
+
+  private readonly maxRuleBytes: number
 
   /**
    * @param ctx - owning context carrying the filesystem and the workspace registry.
+   * @param config - resolved read limits for this mount.
    */
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config: StoreRulesRemoteConfig) {
     // dshStore is already the base data service; give this Remote its own
     // service key and only use dshStore as the wire namespace.
     super(ctx, 'dshStoreRules', { namespace: 'dshStore' })
+    this.maxRuleBytes = config.maxRuleBytes
   }
 
   /** The workspace this Host resolved for one wire identity. */
@@ -103,7 +119,7 @@ export default class StoreRulesRemote extends TypertRemoteService {
   async listRules(workspaceId: string, signal: AbortSignal): Promise<StoreRulesListing> {
     const workspaceRoot = workspaceRootOf(this.workspaceOf(workspaceId), workspaceId)
     const scan = await this.ctx.dshStore.scanRules(workspaceRoot, {
-      maxSourceBytes: MAX_RULE_BYTES,
+      maxSourceBytes: this.maxRuleBytes,
       signal,
     })
     const entries: StoreRuleEntry[] = scan.files.map(file => ({

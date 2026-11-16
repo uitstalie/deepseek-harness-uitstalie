@@ -259,6 +259,8 @@ export function apply(ctx: Context, config: Config): void {
     get filesTtlDays() { return effective.filesTtlDays },
     get supersessionMinSharedTags() { return effective.supersessionMinSharedTags },
     get summarizeEveryTurns() { return effective.summarizeEveryTurns },
+    get summaryMaxAttempts() { return effective.summaryMaxAttempts },
+    get summaryRetryDelayMs() { return effective.summaryRetryDelayMs },
     get snapshotTemplate() { return effective.snapshotTemplate },
     get snapshotPosition() { return effective.snapshotPosition },
   })

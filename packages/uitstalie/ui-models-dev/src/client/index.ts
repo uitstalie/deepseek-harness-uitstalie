@@ -13,6 +13,7 @@
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 // Type-only：拉进 shell 的 SlotMap merge（'settings.section' 条目）
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only：拉进 locale 插件的 Context merge（ctx.locale）
@@ -39,6 +40,20 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** 文案命名空间。 */
 const NS = 'settings.models-dev'
 
+/** 目录页轮询节奏，部署可按 Host 负载调整。 */
+export const Config = z.object({
+  pollIntervalMs: z.number().step(1).min(1_000).default(60_000),
+  promptPollDelayMs: z.number().step(1).min(50).default(800),
+})
+
+/** 解析后的目录页节奏。 */
+export interface ModelsDevSectionConfig {
+  /** 目录后台刷新间隔。 */
+  readonly pollIntervalMs: number
+  /** OAuth 提交后轮询 attempt 的间隔。 */
+  readonly promptPollDelayMs: number
+}
+
 /**
  * Required services（cordis fiber inject）。'remote.modelsDev' 不在此列——
  * 它由本 apply 自己的 $mount 提供，模块级声明会死锁（等一个还不存在、
@@ -51,7 +66,10 @@ export const inject = ['slots', 'locale', 'remote', 'remote.settings', 'remote.c
  * 挂载目录设置页；Remote 与轮询清理归注册效果所有。
  * @returns settle 后页面已可注册。
  */
-export async function apply(ctx: ClientContext): Promise<void> {
+export async function apply(
+  ctx: ClientContext,
+  config: ModelsDevSectionConfig = { pollIntervalMs: 60_000, promptPollDelayMs: 800 },
+): Promise<void> {
   // 生成物由谁挂载取决于装配：Web 外壳不自动挂本包，按行装配的客户端测试运行时
   // 已按行挂好。缺了才自己挂——重复挂载会被 Client Remote 网关按命名空间冲突拒绝
   // （`client api: namespace "modelsDev" conflicts with an existing Remote namespace`）。
@@ -71,7 +89,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
       credentials: scoped.remote.credentials,
       llmPlusAuth: scoped.remote.llmPlusAuth,
     }
-    const controllerInstance = new ModelsDevStore(wire)
+    const controllerInstance = new ModelsDevStore(wire, config)
     controller = controllerInstance
     /** 首次打开本页才取数：装配态（如客户端测试运行时）不该为一个没人看的页面读 Host。 */
     let activated = false

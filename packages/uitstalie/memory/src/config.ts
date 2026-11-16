@@ -19,6 +19,12 @@ import {
   DEFAULT_MEMORY_SUPERSESSION_MIN_SHARED_TAGS,
 } from './cleanup.ts'
 
+/** Default model attempts for one summary call, including the first. */
+export const MEMORY_SUMMARY_MAX_ATTEMPTS = 2
+
+/** Default delay before a retryable summary attempt, in milliseconds. */
+export const MEMORY_SUMMARY_RETRY_DELAY_MS = 100
+
 /** Plain configuration values, as `resolveConfig` accepts them (a default or a test). */
 export interface MemoryConfigInput {
   /** Turn age at which a detail summary replaces the verbatim turn. */
@@ -51,6 +57,10 @@ export interface MemoryConfigInput {
   supersessionMinSharedTags?: number | undefined
   /** Completed turns coalesced into one summary model call; 1 preserves per-turn calls. */
   summarizeEveryTurns?: number | undefined
+  /** Model attempts for one summary call, including the first; default 2. */
+  summaryMaxAttempts?: number | undefined
+  /** Delay before a retryable summary attempt, in milliseconds; default 100. */
+  summaryRetryDelayMs?: number | undefined
   /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced and absent means the text alone. */
   snapshotTemplate?: string | undefined
   /** Where the snapshot reaches the model: a depth-0 message or a system-prompt section. */
@@ -110,6 +120,10 @@ export interface Config {
    * version-guarded append; tier migration still follows its own window.
    */
   summarizeEveryTurns: Volatile<number>
+  /** Model attempts for one summary call, including the first. */
+  summaryMaxAttempts: Volatile<number>
+  /** Delay before a retryable summary attempt, in milliseconds. */
+  summaryRetryDelayMs: Volatile<number>
   /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced. */
   snapshotTemplate: Volatile<string>
   /** Where the snapshot reaches the model. */
@@ -131,6 +145,8 @@ export const Config = z.object({
   supersessionMinSharedTags: z.number().step(1).min(1)
     .default(DEFAULT_MEMORY_SUPERSESSION_MIN_SHARED_TAGS).volatile(),
   summarizeEveryTurns: z.number().step(1).min(1).default(1).volatile(),
+  summaryMaxAttempts: z.number().step(1).min(1).default(MEMORY_SUMMARY_MAX_ATTEMPTS).volatile(),
+  summaryRetryDelayMs: z.number().step(1).min(0).default(MEMORY_SUMMARY_RETRY_DELAY_MS).volatile(),
   snapshotTemplate: z.string().default('').volatile(),
   snapshotPosition: z.string().default('depth-0').volatile(),
 })
@@ -155,6 +171,10 @@ export interface MemorySettings {
   readonly supersessionMinSharedTags: number
   /** Completed turns coalesced into one summary model call; 1 preserves per-turn calls. */
   readonly summarizeEveryTurns: number
+  /** Model attempts for one summary call, including the first. */
+  readonly summaryMaxAttempts: number
+  /** Delay before a retryable summary attempt, in milliseconds. */
+  readonly summaryRetryDelayMs: number
   /** Template wrapped around the snapshot text; empty means the text alone. */
   readonly snapshotTemplate: string
   /** Where the snapshot reaches the model. */
@@ -196,6 +216,14 @@ export function resolveConfig(config: MemoryConfigInput): MemorySettings {
   if (!Number.isSafeInteger(summarizeEveryTurns) || summarizeEveryTurns < 1) {
     throw new Error('memory: summarizeEveryTurns must be a positive integer')
   }
+  const summaryMaxAttempts = config.summaryMaxAttempts ?? MEMORY_SUMMARY_MAX_ATTEMPTS
+  if (!Number.isSafeInteger(summaryMaxAttempts) || summaryMaxAttempts < 1) {
+    throw new Error('memory: summaryMaxAttempts must be a positive integer')
+  }
+  const summaryRetryDelayMs = config.summaryRetryDelayMs ?? MEMORY_SUMMARY_RETRY_DELAY_MS
+  if (!Number.isSafeInteger(summaryRetryDelayMs) || summaryRetryDelayMs < 0) {
+    throw new Error('memory: summaryRetryDelayMs must be a non-negative integer')
+  }
   const snapshotPosition = config.snapshotPosition ?? 'depth-0'
   if (!(['depth-0', 'prompt'] as const).includes(snapshotPosition)) {
     throw new Error(`memory: snapshotPosition must be "depth-0" or "prompt"; got ${JSON.stringify(snapshotPosition)}`)
@@ -210,6 +238,8 @@ export function resolveConfig(config: MemoryConfigInput): MemorySettings {
     filesTtlDays: config.filesTtlDays ?? DEFAULT_MEMORY_FILES_TTL_DAYS,
     supersessionMinSharedTags: config.supersessionMinSharedTags ?? DEFAULT_MEMORY_SUPERSESSION_MIN_SHARED_TAGS,
     summarizeEveryTurns,
+    summaryMaxAttempts,
+    summaryRetryDelayMs,
     snapshotTemplate: config.snapshotTemplate ?? '',
     snapshotPosition,
   }

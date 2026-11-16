@@ -47,6 +47,7 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-dafeiyu": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
     "@deepseek-ai/dsh-store-atom": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
