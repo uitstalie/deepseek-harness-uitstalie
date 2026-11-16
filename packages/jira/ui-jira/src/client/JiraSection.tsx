@@ -22,15 +22,30 @@ import type { JiraKey } from './locales.ts'
 import type { JiraState, JiraStore } from './store.ts'
 import styles from './JiraSection.module.css'
 
+/** The subset of store methods the page may call. */
+export type JiraActions = Pick<JiraStore,
+  | 'load'
+  | 'select'
+  | 'closeDetail'
+  | 'setQuery'
+  | 'search'
+  | 'confirm'
+  | 'loadMoreHistory'
+  | 'loadMoreTriggers'
+>
+
+/** The subset of ledger-settings methods the block may call. */
+export type LedgerSettingsActions = Pick<JiraLedgerSettingsController, 'edit' | 'save' | 'discard' | 'setPush'>
+
 /** What the registration injects into the page. */
 export interface JiraSectionInjected {
-  /** The page controller (load, select, close, search). */
-  controller: JiraStore
+  /** The page actions (load, select, close, search), bound to the store. */
+  actions: JiraActions
   /** Start the first read; a mounted-but-unopened page does not touch the host. */
   activate: () => void
-  /** The editable `jira-service` row fields. */
+  /** The editable `jira-service` row fields and their actions. */
   ledgerSettings: {
-    controller: JiraLedgerSettingsController
+    actions: LedgerSettingsActions
     store: SnapshotStore<JiraLedgerSettingsState>
   }
   hooks: {
@@ -51,12 +66,12 @@ const noLedgerSettings = (): undefined => undefined
 
 /** The jira settings page. */
 export function JiraSection(props: JiraSectionProps) {
-  const { controller, useSnapshot, t, activate, ledgerSettings, useLedgerSettings } = props
+  const { actions, useSnapshot, t, activate, ledgerSettings, useLedgerSettings } = props
   // The assembly guarantees the page face; the partial props are the test path that supplies it.
-  if (controller === undefined || useSnapshot === undefined || t === undefined) return null
+  if (actions === undefined || useSnapshot === undefined || t === undefined) return null
   return (
     <JiraSectionBody
-      controller={controller}
+      actions={actions}
       useSnapshot={useSnapshot}
       t={t}
       activate={activate}
@@ -75,14 +90,14 @@ export function JiraSection(props: JiraSectionProps) {
  * @returns the settings page.
  */
 function JiraSectionBody({
-  controller,
+  actions,
   useSnapshot,
   t,
   activate,
   ledgerSettings,
   useLedgerSettings,
 }: {
-  controller: JiraStore
+  actions: JiraActions
   useSnapshot: <T>(select: (state: JiraState) => T) => T
   t: (key: JiraKey) => string
   activate: (() => void) | undefined
@@ -104,17 +119,17 @@ function JiraSectionBody({
           <LedgerSettings
             state={settingsState}
             t={t}
-            onEdit={(field, text) => { ledgerSettings.controller.edit(field, text) }}
-            onSave={() => { void ledgerSettings.controller.save() }}
-            onDiscard={() => { ledgerSettings.controller.discard() }}
-            onTogglePush={(enabled) => { void ledgerSettings.controller.setPush(enabled) }}
+            onEdit={(field, text) => { ledgerSettings.actions.edit(field, text) }}
+            onSave={() => { void ledgerSettings.actions.save() }}
+            onDiscard={() => { ledgerSettings.actions.discard() }}
+            onTogglePush={(enabled) => { void ledgerSettings.actions.setPush(enabled) }}
           />
         )}
       <JiraBoard
         board={state.board}
         t={t}
-        onSelect={(key) => { void controller.select(key) }}
-        onRetry={() => { void controller.load() }}
+        onSelect={(key) => { void actions.select(key) }}
+        onRetry={() => { void actions.load() }}
       />
       {state.detail === null
         ? null
@@ -122,14 +137,14 @@ function JiraSectionBody({
           <IssueDetail
             detail={state.detail}
             t={t}
-            onClose={() => { controller.closeDetail() }}
+            onClose={() => { actions.closeDetail() }}
           />
         )}
       <KnowledgeSearch
         knowledge={state.knowledge}
         t={t}
-        onChange={(query) => { controller.setQuery(query) }}
-        onSearch={() => { void controller.search() }}
+        onChange={(query) => { actions.setQuery(query) }}
+        onSearch={() => { void actions.search() }}
       />
     </div>
   )

@@ -59,6 +59,7 @@
 - personality 与 tool-policy 补齐 8 语言 locale，包 exports/files 同步。
 - 17 个 `packages/uitstalie/*/package.json` 的 `files` 补齐 `lib/types/**/*.d.ts.map` 与 `src`；包特定的 icon/locale/typert/client/asset 保留。
 - `verify-package-meta` 通过（plugin locale、SVG、resource exports、publication files）。
+- 四个自研 settings 页的 props 窄化：`ui-memory` 注入 `edit/save/discard`，`ui-dafeiyu` 注入 `load/setEnabled`，`ui-models-dev` 注入 `ModelsDevActions`，`ui-jira` 注入 `JiraActions`/`LedgerSettingsActions`；不再注入整只 controller/store。
 - `persona-card` 的 `PERSONA_SCHEMA`/`DEFAULT_PERSONA_MAX_BYTES` 与 `tool-policy` 的 `FILE_ACCESS_OPERATIONS` 移入 `constants.ts`，`types.ts` 只保留类型。
 - 6.14 生成文本与实现已一致：`known-event-types.ts` 与 `storage-contract.ts` 都要求 unknown 事件必须 `ignorable: true`。
 - 部署可变配置：memory 的 `summaryMaxAttempts`/`summaryRetryDelayMs`、ui-models-dev 的 `pollIntervalMs`/`promptPollDelayMs`、tool-dsh-store Remote 的 `maxRuleBytes` 进入 Config 并校验。OAuth 的 5s 设备流窗口、poll/retry 与 30s 请求超时按协议/网络不变量保留，未配置化。
@@ -72,6 +73,5 @@
 
 1. **OAuth 协议时序仍未配置化**：GitHub 设备流的 5s、Kimi 的 poll/retry、OAuth HTTP 30s 是按外部协议/网络不变量保留；memory、UI 轮询、rule byte limit 已进 Config。
 2. **原生标记未覆盖 146 个候选**：本次只补了角色链路实际插入块；剩余块需要按实际 hunk 判断，不能机械全刷。
-3. **UI props 仍偏宽**：四个页面的快照订阅已改由 renderer `useSnapshot` 绑定；`ui-memory` 已改为只注入 `actions.edit/save/discard`，`ui-dafeiyu` 已改为只注入 `actions.load/setEnabled`，不再传整只 controller。`ui-models-dev` 已改为只注入 `ModelsDevActions`（load/select/draft/submit），不再传整只 store。仅 `ui-jira` 仍保留 `Partial<InjectFace<...>>` 与整只 controller 作为测试/装配路径，完全窄化 `ui-jira` 需要同时改 renderer 注入面。
-4. **6.13 真实组合测试缺口未补**：tool-policy 仍只有手工 `ctx.plugin` 单测，缺经 Loader/tool executor 拒绝的 REAL-composition。
-5. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。
+3. **6.13 真实组合测试缺口未补**：tool-policy 仍只有手工 `ctx.plugin` 单测，缺经 Loader/tool executor 拒绝的 REAL-composition。
+4. **已发布错误码大小写变化**（如 `budget-exceeded` → `BUDGET_EXCEEDED`）可能影响外部消费者；若这些错误类属于已发布面，需要兼容层或版本说明。

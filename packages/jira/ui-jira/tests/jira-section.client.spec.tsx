@@ -51,9 +51,9 @@ function isJiraSectionInjected(face: unknown): face is JiraSectionInjected {
   if (typeof face !== 'object' || face === null) return false
   const record = face as Record<string, unknown>
   const hooks = record['hooks']
-  const controller = record['controller']
+  const actions = record['actions']
   return hooks !== null && typeof hooks === 'object'
-    && controller !== null && typeof controller === 'object'
+    && actions !== null && typeof actions === 'object'
     && typeof record['t'] === 'function'
     && typeof record['activate'] === 'function'
 }
@@ -165,7 +165,7 @@ function mountPage(remote: JiraWire, copy: (key: string) => string = t): JiraSto
     )
     return (
       <JiraSection
-        controller={store}
+        actions={store}
         activate={() => { void store.load() }}
         useSnapshot={useSnapshot}
         t={copy}

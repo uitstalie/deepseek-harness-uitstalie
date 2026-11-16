@@ -16,9 +16,9 @@ export type SuperagentSectionProps = Partial<InjectFace<JiraSectionInjected>>
 
 /** The super-agent settings page. */
 export function SuperagentSection(props: SuperagentSectionProps) {
-  const { controller, useSnapshot, t, activate } = props
+  const { actions, useSnapshot, t, activate } = props
   useEffect(() => { activate?.() }, [activate])
-  if (controller === undefined || useSnapshot === undefined || t === undefined) return null
+  if (actions === undefined || useSnapshot === undefined || t === undefined) return null
   const state = useSnapshot(snapshot => snapshot)
   return (
     <div className={styles.section}>
@@ -31,10 +31,10 @@ export function SuperagentSection(props: SuperagentSectionProps) {
         triggers={state.superagentTriggers.view}
         confirmState={state.superagentConfirm}
         t={t}
-        onLoadMore={() => { void controller.loadMoreTriggers() }}
-        onLoadMoreHistory={() => { void controller.loadMoreHistory() }}
-        onSelect={(key) => { void controller.select(key) }}
-        onConfirm={(key) => { void controller.confirm(key) }}
+        onLoadMore={() => { void actions.loadMoreTriggers() }}
+        onLoadMoreHistory={() => { void actions.loadMoreHistory() }}
+        onSelect={(key) => { void actions.select(key) }}
+        onConfirm={(key) => { void actions.confirm(key) }}
       />
     </div>
   )
