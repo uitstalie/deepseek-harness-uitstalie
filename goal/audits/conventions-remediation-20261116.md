@@ -27,8 +27,8 @@
 | `pnpm run verify-locale-metadata` | 通过 |
 | `pnpm run verify-package-readme-summaries` | 通过；455 个英文包 README 摘要 ≤100 词 |
 | 聚焦 oxlint（uitstalie/jira/superagent/tool-policy/permission-presets/subagent） | 0 errors |
-| 受影响包聚焦测试 | 92 passed |
-| `pnpm run build:check` | 见文末“未完成” |
+| 受影响包聚焦测试 | 241 passed（memory/UI/tool-dsh-store/jira-agent/ui-jira） |
+| `pnpm run build:check` | host aggregate 通过；client aggregate 失败，见文末“未完成” |
 
 ## P0
 
