@@ -26,6 +26,7 @@ import * as DafeiyuPlugin from '@deepseek-ai/dsh-dafeiyu'
 import * as JiraAgentPlugin from '@deepseek-ai/dsh-jira-agent'
 import * as JiraServicePlugin from '@deepseek-ai/dsh-jira-service'
 import * as JiraUiPlugin from '@deepseek-ai/dsh-client-ui-jira'
+import * as JiraUiSection from '../ui-jira/src/section.ts'
 import * as SkillPlugin from '@deepseek-ai/dsh-skill'
 import * as SystemPromptPlugin from '@deepseek-ai/dsh-system-prompt'
 import * as ToolExecutorPlugin from '@deepseek-ai/dsh-tool-executor-native'
@@ -158,9 +159,9 @@ describe('jira bundle composition', () => {
     expect(status?.present).toBe(true)
     expect(status?.state).toBe('active')
     // The capability list links to the section the browser half registers, once.
-    expect(status?.settings?.sectionId).toBe(JiraUiPlugin.JIRA_SETTINGS_SECTION)
-    expect(JiraUiPlugin.JIRA_SETTINGS_SECTION).toBe('jira')
-    expect(JiraUiPlugin.JIRA_SETTINGS_ORDER).toBe(200)
+    expect(status?.settings?.sectionId).toBe(JiraUiSection.JIRA_SETTINGS_SECTION)
+    expect(JiraUiSection.JIRA_SETTINGS_SECTION).toBe('jira')
+    expect(JiraUiSection.JIRA_SETTINGS_ORDER).toBe(200)
 
     expect(existsSync(fileURLToPath(STANDALONE_BUNDLE))).toBe(false)
   })

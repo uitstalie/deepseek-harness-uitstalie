@@ -1363,7 +1363,7 @@ void describe('superagent: report recovery after a plugin remount', () => {
         return { items: [{ sessionId: 'super-1', running: false, cwd: root, updatedAt: 1 }] }
       },
       async prompt(request) {
-        prompted.push({ sessionId: request.sessionId, text: request.content[0]?.text ?? '' })
+        prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '' })
         return { accepted: true }
       },
     }
@@ -1519,7 +1519,7 @@ void describe('superagent: report recovery after a plugin remount', () => {
 
     // Restore the fixture's successful queue after proving the failed delivery is durable.
     controller.prompt = async (request) => {
-      controller.prompted.push({ sessionId: request.sessionId, text: request.content[0]?.text ?? '' })
+      controller.prompted.push({ sessionId: String(request.sessionId), text: request.content[0]?.text ?? '' })
       return { accepted: true }
     }
     const retried = await runLedgerTool({ action: 'retry_report', id: saved?.id }, options, {}, ctx as never, undefined, journal)
@@ -3525,7 +3525,7 @@ class FakeSessionController {
   }, signal: AbortSignal): Promise<{ accepted: true }> {
     signal.throwIfAborted()
     this.prompts.push({
-      sessionId: request.sessionId,
+      sessionId: String(request.sessionId),
       text: request.content.map(part => part.text ?? '').join(''),
     })
     return { accepted: true }

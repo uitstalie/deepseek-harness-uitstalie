@@ -102,9 +102,9 @@ void describe('key allocation: a store seeded before the counters existed', () =
     const mine = JSON.parse(await readFile(storePaths.counters(root, 'a1b2c3d4'), 'utf8')) as { machine_id: string; projects: Record<string, { blocks: number[][] }> }
     assert.equal(mine.machine_id, 'a1b2c3d4')
     assert.deepEqual(Object.keys(mine.projects).sort(), ['DEMO', 'DH'])
-    assert.deepEqual(mine.projects.DEMO.blocks, [[8, 107]])
+    assert.deepEqual(mine.projects.DEMO!.blocks, [[8, 107]])
     const other = JSON.parse(await readFile(storePaths.counters(root, 'bbbb9999'), 'utf8')) as { machine_id: string; projects: Record<string, { blocks: number[][] }> }
-    assert.deepEqual(other.projects.DEMO.blocks, [[108, 207]])
+    assert.deepEqual(other.projects.DEMO!.blocks, [[108, 207]])
   })
 })
 
