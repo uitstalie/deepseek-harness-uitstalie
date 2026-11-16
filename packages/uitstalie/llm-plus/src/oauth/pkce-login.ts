@@ -101,8 +101,8 @@ interface CallbackServer {
   waitForCode(): Promise<{ code: string; state?: string } | null>
   /** 让 waitForCode 立刻以 null 结束（竞速的输家撤回）。 */
   cancelWait(): void
-  /** 关服务器。 */
-  close(): void
+  /** 关服务器，并在监听 socket 真正关闭后 settle。 */
+  close(): Promise<void>
 }
 
 /**
@@ -154,7 +154,7 @@ async function startCallbackServer(spec: CallbackServerSpec, expectedState: stri
         callbackUrl: '',
         waitForCode: () => Promise.resolve(null),
         cancelWait: () => {},
-        close: () => {},
+        close: () => Promise.resolve(),
       })
     })
     const onAbort = (): void => { settle(null) }
@@ -166,7 +166,13 @@ async function startCallbackServer(spec: CallbackServerSpec, expectedState: stri
         callbackUrl: `http://localhost:${port}${path}`,
         waitForCode: () => waiting,
         cancelWait: () => { settle(null) },
-        close: () => { server.close() },
+        close: () => new Promise<void>((resolveClose) => {
+          if (!server.listening) {
+            resolveClose()
+            return
+          }
+          server.close(() => { resolveClose() })
+        }),
       })
     })
   })
@@ -235,6 +241,6 @@ export async function runPkceLogin(interaction: OAuthInteraction, spec: PkceLogi
   } finally {
     interaction.signal.removeEventListener('abort', onAbort)
     manualAbort.abort()
-    server.close()
+    await server.close()
   }
 }

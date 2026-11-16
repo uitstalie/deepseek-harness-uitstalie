@@ -19,7 +19,7 @@ export interface SessionHandleReadOptions {
   readonly signal?: AbortSignal
 }
 
-/** Unknown non-critical events omitted from Session reconstruction. */
+/** Unknown ignorable events omitted from Session reconstruction. */
 export interface SessionSkippedEvents {
   /** Number of skipped events in this read. */
   readonly count: number
@@ -36,7 +36,7 @@ export interface SessionHandleReadResult {
   readonly eventState: SessionSeedEventState
   /** Event values in a caller-owned outer array. */
   readonly events: readonly SessionEvent[]
-  /** Unknown non-critical events excluded from reconstruction in the complete source log, not only this slice. */
+  /** Unknown ignorable events excluded from reconstruction in the complete source log, not only this slice. */
   readonly skipped?: SessionSkippedEvents | undefined
 }
 

@@ -67,9 +67,9 @@ export function restoreReleasedV4Artifact(artifact: SessionFormatArtifact, known
     sessionFormatSafeInteger(event.time, `format v4 event ${index} time`)
     if (event['ignorable'] !== undefined && event['ignorable'] !== true) throw new SessionFormatError(`format v4 event ${index} ignorable must be true`)
     if (event['critical'] !== undefined && event['critical'] !== true) throw new SessionFormatError(`format v4 event ${index} critical must be true`)
-    if (!knownEventTypes.has(event.type) && event['critical'] === true) {
+    if (!knownEventTypes.has(event.type) && event['ignorable'] !== true) {
       throw new SessionFormatUnsupportedMigrationError(
-        `format v4 contains critical unknown event type ${JSON.stringify(event.type)} at seq ${index}`,
+        `format v4 contains unknown event type ${JSON.stringify(event.type)} at seq ${index} that is not marked ignorable`,
       )
     }
     if (!knownEventTypes.has(event.type)) continue

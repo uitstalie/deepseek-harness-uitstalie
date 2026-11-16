@@ -333,7 +333,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
         })
         return { kind: 'activation' as const, name: started.name }
       },
-    }), minRole: 'agent' }
+    }), minRole: 'agent' as const }
     const disposeTool = ctx.effect(() => {
       const unregister = ctx.tools.register(definition)
       delegationTools.add(definition)

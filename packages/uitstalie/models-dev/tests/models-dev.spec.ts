@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { expect, test } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import ModelsDevCatalog from '@deepseek-ai/dsh-models-dev'
-import * as extraParams from '@deepseek-ai/dsh-models-dev/deepseek-extra-params'
+import * as extraParams from '../src/deepseek-extra-params.ts'
 import { DeepSeekLlmApiExtensionRegistry } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 
 const FIXTURE_URL = pathToFileURL(fileURLToPath(new URL('./fixtures/api.json', import.meta.url))).href

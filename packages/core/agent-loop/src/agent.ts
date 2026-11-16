@@ -160,10 +160,12 @@ export class ReactLoopAgent implements Agent {
     return this.phase.kind === 'idle' || this.phase.kind === 'maintenance' ? 'idle' : 'running'
   }
 
+  // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, Agent 角色按持久 Workspace 归属解析
   /** Effective role resolved by the owning Agent registry. */
   get role(): AgentRole {
     return this.ctx.agents.roleOf(this)
   }
+  // END uitstalie-deepseek-flash
 
   /** Commit a phase and publish its externally visible status transition. */
   private setPhase(next: Phase): void {

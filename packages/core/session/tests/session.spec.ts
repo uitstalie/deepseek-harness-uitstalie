@@ -196,7 +196,7 @@ describe('Session', () => {
       .toThrow('seed request/header at index 0 header must be an object')
 
     const unrelatedPrimitiveData = {
-      type: 'plugin/event', seq: 0, time: 1, data: null,
+      type: 'plugin/event', seq: 0, time: 1, data: null, ignorable: true,
     } as unknown as SessionEvent
     expect(Session.create(SessionId('primitive-plugin-data'), [unrelatedPrimitiveData]).snapshotEvents().slice(0, 1))
       .toEqual([unrelatedPrimitiveData])
@@ -745,7 +745,7 @@ describe('Session', () => {
         return reads === 1 ? 'accepted' : 1n
       },
     })
-    const seed = [{ type: 'test/unstable', seq: 0, time: 1, data }] as unknown as SessionEvent[]
+    const seed = [{ type: 'test/unstable', seq: 0, time: 1, data, ignorable: true }] as unknown as SessionEvent[]
 
     const session = Session.create(SessionId('seed-nested-drift'), seed)
 

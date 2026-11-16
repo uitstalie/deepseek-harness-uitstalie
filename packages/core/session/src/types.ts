@@ -518,18 +518,11 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
     data: SessionEventMap[K]
     /**
      * Marks an event a reader may safely skip when it does not recognize
-     * `type`. Unknown events are skipped by default and retain their original
-     * sequence numbers and opaque payloads. Writers set this explicitly on
-     * informational records so older readers with a fail-closed vocabulary can
-     * skip them too.
+     * `type`. Unknown events are refused unless this marker is present; an
+     * accepted unknown event retains its original sequence number and opaque
+     * payload without affecting state reconstruction.
      */
     ignorable?: true
-    /**
-     * Refuses reconstruction by a reader that does not recognize `type`.
-     * Use only when omitting the event could change the meaning of later
-     * events. Readers that recognize the type ignore this marker.
-     */
-    critical?: true
   } & (K extends SurfaceEventType ? SurfaceIntent<K> : {
     surfaceOp?: never
     sourceEventSeqs?: never

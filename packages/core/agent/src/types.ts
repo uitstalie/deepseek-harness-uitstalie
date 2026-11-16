@@ -4,6 +4,7 @@
  * @module @deepseek-ai/dsh-agent/types
  */
 
+// BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, Agent 角色按持久 Workspace 归属解析
 import type { AgentRole } from './runtime-types.ts'
 import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
 import type { UserMessage } from '@deepseek-ai/dsh-llm/types'
@@ -19,6 +20,7 @@ export interface Agent {
   readonly id: SessionId
   /** Effective role of this Agent; live registries always set it, minimal test faces may omit it. */
   readonly role?: AgentRole
+  // END uitstalie-deepseek-flash
 }
 
 declare module '@deepseek-ai/dsh-workspace/types' {

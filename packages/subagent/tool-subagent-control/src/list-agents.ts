@@ -92,7 +92,7 @@ export function registerListAgents(ctx: Context): ToolDefinition {
       ]
     },
   })
-  const gated = { ...definition, minRole: 'subagent' }
+  const gated = { ...definition, minRole: 'subagent' as const }
   ctx.tools.register(gated)
   return gated
 }

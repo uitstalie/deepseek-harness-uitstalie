@@ -6,7 +6,8 @@
 
 import { expect, test } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import * as hostEntry from '../src/api.ts'
+import * as hostEntry from '../src/index.ts'
+import * as section from '../src/section.ts'
 
 test('the host entry is a loadable, inert plugin body', async () => {
   const ctx = new Context()
@@ -17,6 +18,6 @@ test('the host entry is a loadable, inert plugin body', async () => {
 
 test('publishes the section identity the browser half registers', () => {
   // A v2 provider links to its own page by id; this section is the list those links live in.
-  expect(hostEntry.CAPABILITIES_SETTINGS_SECTION).toBe('capabilities')
-  expect(hostEntry.CAPABILITIES_SETTINGS_ORDER).toBe(150)
+  expect(section.CAPABILITIES_SETTINGS_SECTION).toBe('capabilities')
+  expect(section.CAPABILITIES_SETTINGS_ORDER).toBe(150)
 })

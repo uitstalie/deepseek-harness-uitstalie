@@ -102,10 +102,10 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
         }
       })()
       const stopReset = scoped.on('connection/reset', () => { controller.reconnected() })
-      return () => {
+      return async () => {
         lifetime.abort()
         stopReset()
-        void stream.dispose()
+        await stream.dispose()
       }
     }, 'ui-jira: follow ledger changes')
     scoped.slots.inject('settings.section', () => scoped.slots.register({
@@ -177,8 +177,7 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
     scoped.effect(() => () => { disposeSuperGroup?.() }, 'ui-jira: super workspace group')
     void refreshSuperGroup()
   })
-  return () => {
-    // The mount disposer is asynchronous; the fiber's cleanup callback is synchronous.
-    void mounted?.()
+  if (mounted !== undefined) {
+    ctx.effect(() => async () => { await mounted() }, 'ui-jira: remote mount')
   }
 }

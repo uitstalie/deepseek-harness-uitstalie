@@ -15,7 +15,7 @@ import { Context } from '@deepseek-ai/cordis'
 import JiraService from '@deepseek-ai/dsh-jira-service'
 // The mounted class: the Context augmentation alone is not in the package's declaration output,
 // because the root entry only uses the class as a value.
-import type JiraRemote from '@deepseek-ai/dsh-jira-service/remote.ts'
+import type JiraRemote from '../src/remote.ts'
 import { asIdentity, utcTimestamp } from '@deepseek-ai/dsh-jira-core'
 import { writeTextAtomic } from '@deepseek-ai/dsh-jira-core'
 import { createKnowledge, originFromIdentity } from '@deepseek-ai/dsh-jira-core'

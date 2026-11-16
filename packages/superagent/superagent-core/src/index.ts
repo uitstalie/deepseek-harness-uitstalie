@@ -614,3 +614,5 @@ export class DispatchReportStore {
     })
   }
 }
+export * from './dispatch.ts'
+export type { DispatchRecord } from './dispatch-store.ts'

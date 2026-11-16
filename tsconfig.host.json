@@ -273,6 +273,8 @@
   "exclude": [
     "apps/desktop/tests/keyboard.spec.ts",
     "packages/client/*/src/**",
+    "packages/api/session-controller/src/client/**",
+    "packages/test-support/client-runtime/src/**",
     "benchmarks/**/*.client.ts",
     "benchmarks/**/*.client.tsx",
     "packages/*/*/tests/**/*.client.ts",

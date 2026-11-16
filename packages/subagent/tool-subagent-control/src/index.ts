@@ -81,7 +81,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       return { messageId }
     },
   })
-  const registeredSendMessage = { ...sendMessage, minRole: 'subagent' }
+  const registeredSendMessage = { ...sendMessage, minRole: 'subagent' as const }
   ctx.tools.register(registeredSendMessage)
   ctx.systemPrompt.context({
     name: 'subagent:identity',

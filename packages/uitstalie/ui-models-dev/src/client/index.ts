@@ -48,10 +48,10 @@ const NS = 'settings.models-dev'
 export const inject = ['slots', 'locale', 'remote', 'remote.settings', 'remote.credentials']
 
 /**
- * 挂载目录设置页。
- * @returns 清理函数：摘除 Remote contribution（slots 注册随 fiber 自动摘除）。
+ * 挂载目录设置页；Remote 与轮询清理归注册效果所有。
+ * @returns settle 后页面已可注册。
  */
-export async function apply(ctx: ClientContext): Promise<() => void> {
+export async function apply(ctx: ClientContext): Promise<void> {
   // 生成物由谁挂载取决于装配：Web 外壳不自动挂本包，按行装配的客户端测试运行时
   // 已按行挂好。缺了才自己挂——重复挂载会被 Client Remote 网关按命名空间冲突拒绝
   // （`client api: namespace "modelsDev" conflicts with an existing Remote namespace`）。
@@ -101,10 +101,9 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       inject: injected,
     }, ModelsDevSection))
   })
-  return () => {
-    controller?.stopCatalogPolling()
-    // 两个 disposer 都是异步的；fiber 的清理回调本身同步，故显式丢弃它们的 promise。
-    void disposeModelsDev?.()
-    void disposeLlmPlus?.()
-  }
+  ctx.effect(() => async () => {
+    controller?.dispose()
+    const disposers = [disposeModelsDev?.(), disposeLlmPlus?.()].filter((item): item is Promise<void> => item !== undefined)
+    await Promise.allSettled(disposers)
+  }, 'ui-models-dev: remotes and polling')
 }

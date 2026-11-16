@@ -48,22 +48,24 @@ const SEAT = 'sidebar.workspaces.row.action'
  * Mount the rules Remote namespace and register the row button.
  * @param ctx - browser plugin context carrying slots, locale, and the Remote carrier.
  */
-export function apply(ctx: Context): void {
+export async function apply(ctx: Context): Promise<void> {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-tool-dsh-store: copy dictionaries')
   const t = ctx.locale.bind(NS) as RulesButtonInjected['t']
+  const mounted = ctx.get('remote.dshStore') === undefined ? await ctx.remote.$mount(storeRemote) : undefined
 
-  void ctx.remote.$mount(storeRemote).then(() => {
-    ctx.inject(['slots', 'remote.dshStore'], (scoped) => {
-      scoped.slots.inject(SEAT, () => scoped.slots.register({
-        name: SEAT,
-        id: 'tool-dsh-store-rules',
-        order: 100,
-        inject: (): RulesButtonInjected => ({
-          t,
-          loadRules: workspaceId => scoped.remote.dshStore.listRules(workspaceId),
-          loadRule: (workspaceId, path) => scoped.remote.dshStore.readRule(workspaceId, path),
-        }),
-      }, RulesButton))
-    })
+  if (mounted !== undefined) {
+    ctx.effect(() => async () => { await mounted() }, 'ui-tool-dsh-store: remote mount')
+  }
+  ctx.inject(['slots', 'remote.dshStore'], (scoped) => {
+    scoped.slots.inject(SEAT, () => scoped.slots.register({
+      name: SEAT,
+      id: 'tool-dsh-store-rules',
+      order: 100,
+      inject: (): RulesButtonInjected => ({
+        t,
+        loadRules: workspaceId => scoped.remote.dshStore.listRules(workspaceId),
+        loadRule: (workspaceId, path) => scoped.remote.dshStore.readRule(workspaceId, path),
+      }),
+    }, RulesButton))
   })
 }

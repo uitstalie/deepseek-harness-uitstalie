@@ -15,7 +15,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import JiraService from '@deepseek-ai/dsh-jira-service'
-import type JiraRemote from '@deepseek-ai/dsh-jira-service/remote.ts'
+import type JiraRemote from '../src/remote.ts'
 import {
   asIdentity, createInStore, createStore, runGit, scaffoldStore, utcTimestamp,
 } from '@deepseek-ai/dsh-jira-core'

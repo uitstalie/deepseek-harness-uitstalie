@@ -39,11 +39,11 @@ describe('known V4 event interpretation', () => {
     expect(() => restoreReleasedV4Artifact(input, new Set(['tool/result']))).toThrow(/data must be an object/)
   })
 
-  it('validates unknown envelopes and refuses critical unknown types', () => {
+  it('validates unknown envelopes and refuses unmarked unknown types', () => {
     const required = artifact([{ type: 'external/event', data: null }])
-    expect(restoreReleasedV4Artifact(required, new Set())).toBe(required)
-    const critical = artifact([{ type: 'external/event', data: null, critical: true } as never])
-    expect(() => restoreReleasedV4Artifact(critical, new Set())).toThrow(/critical unknown event type/)
+    expect(() => restoreReleasedV4Artifact(required, new Set())).toThrow(/not marked ignorable/)
+    const marked = artifact([{ type: 'external/event', data: null, ignorable: true }])
+    expect(restoreReleasedV4Artifact(marked, new Set())).toBe(marked)
     const input = artifact([{ type: 'external/event', data: null, ignorable: true }])
     expect(() => restoreReleasedV4Artifact({ ...input, events: [{ ...input.events[0]!, seq: 3 }] }, new Set())).toThrow(/not dense/)
   })

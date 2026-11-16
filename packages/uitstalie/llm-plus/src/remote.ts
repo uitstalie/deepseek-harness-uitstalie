@@ -34,10 +34,7 @@ interface AttemptRecord {
   error?: string
 }
 
-/** 尝试 id 自增（进程内唯一即可）。 */
-let nextAttemptId = 0
-/** prompt id 自增。 */
-let nextPromptId = 0
+
 
 /** 终结尝试的判定：begin 的 outcome → 尝试状态。 */
 function settleStatus(outcome: { status: 'authorized' | 'cancelled' }): AttemptView['status'] {
@@ -50,8 +47,13 @@ function settleStatus(outcome: { status: 'authorized' | 'cancelled' }): AttemptV
  * 'authorization-unavailable'——组合没有缝时登录无处可去。
  */
 export class PlusAuthRemote extends TypertRemoteService {
-  /** 在途与最近的尝试（页面轮询的数据源；进程内存，重启即清）。 */
+  /** 在途与最近的尝试（页面轮询的数据源；实例内存，重启即清）。 */
   private readonly attempts = new Map<string, AttemptRecord>()
+  /** In-flight login flows owned by this service instance. */
+  private readonly inFlight = new Set<Promise<void>>()
+  private nextAttemptId = 0
+  private nextPromptId = 0
+  private disposed = false
 
   /**
    * @param ctx - 宿主 Context。
@@ -62,6 +64,15 @@ export class PlusAuthRemote extends TypertRemoteService {
     private readonly routesNow: () => readonly ResolvedRoute[],
   ) {
     super(ctx, 'llmPlusAuth')
+    ctx.effect(() => async () => {
+      this.disposed = true
+      for (const attempt of this.attempts.values()) {
+        attempt.pending?.decline(new Error('llm-plus service disposed'))
+        attempt.pending = undefined
+        if (attempt.status === 'running') attempt.controller.abort(new Error('llm-plus service disposed'))
+      }
+      await Promise.allSettled([...this.inFlight])
+    }, 'llm-plus.oauthAttempts.dispose()')
   }
 
   /**
@@ -89,6 +100,7 @@ export class PlusAuthRemote extends TypertRemoteService {
    */
   @Remote
   beginFlow(routeId: string): Promise<{ attemptId: string }> {
+    if (this.disposed) throw new Error('llm-plus: the auth service is disposed')
     const route = this.routesNow().find(candidate => candidate.id === routeId)
     if (route?.oauth === undefined) {
       throw new Error(`llm-plus: route ${JSON.stringify(routeId)} declares no oauth flow`)
@@ -98,7 +110,7 @@ export class PlusAuthRemote extends TypertRemoteService {
       throw new Error('llm-plus: the authorization capability is not mounted in this composition')
     }
     const attempt: AttemptRecord = {
-      id: `attempt-${++nextAttemptId}`,
+      id: `attempt-${++this.nextAttemptId}`,
       routeId,
       controller: new AbortController(),
       notices: [],
@@ -110,7 +122,7 @@ export class PlusAuthRemote extends TypertRemoteService {
       prompt: prompt => this.askPrompt(attempt, prompt),
     }
     // begin 的结果落到尝试状态；失败消息进 error（文案回显给页面）
-    void authorization.begin({
+    const settled: Promise<void> = authorization.begin({
       key: grantKeyFor(routeId),
       interaction,
       signal: attempt.controller.signal,
@@ -119,6 +131,8 @@ export class PlusAuthRemote extends TypertRemoteService {
     }).catch((error: unknown) => {
       this.settleAttempt(attempt, 'failed', error instanceof Error ? error.message : String(error))
     })
+    this.inFlight.add(settled)
+    void settled.finally(() => { this.inFlight.delete(settled) })
     return Promise.resolve({ attemptId: attempt.id })
   }
 
@@ -185,7 +199,7 @@ export class PlusAuthRemote extends TypertRemoteService {
   private askPrompt(attempt: AttemptRecord, prompt: AuthorizationPrompt): Promise<string> {
     return new Promise((resolve, reject) => {
       const view: AttemptPromptView = {
-        promptId: `prompt-${++nextPromptId}`,
+        promptId: `prompt-${++this.nextPromptId}`,
         kind: prompt.kind,
         message: prompt.message,
         ...(prompt.kind === 'select'

@@ -153,6 +153,37 @@ export class ModelsDevStore {
 
   /** 轮询循环的存活开关（fiber 摘除时停）。 */
   private polling = false
+  /** Timers owned by this controller, including OAuth polling and catalog refresh. */
+  private readonly timers = new Set<ReturnType<typeof setTimeout>>()
+  /** Aborted when the controller is disposed, so pending waits settle immediately. */
+  private readonly lifetime = new AbortController()
+
+  /** Wait for one owned timer, or settle immediately once the controller is disposed. */
+  private async waitFor(milliseconds: number): Promise<void> {
+    if (this.lifetime.signal.aborted) return
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        this.timers.delete(timer)
+        this.lifetime.signal.removeEventListener('abort', onAbort)
+        resolve()
+      }, milliseconds)
+      const onAbort = (): void => {
+        clearTimeout(timer)
+        this.timers.delete(timer)
+        resolve()
+      }
+      this.timers.add(timer)
+      this.lifetime.signal.addEventListener('abort', onAbort, { once: true })
+    })
+  }
+
+  /** Stop every owned timer and wake pending loops; the controller is not reusable afterwards. */
+  dispose(): void {
+    this.polling = false
+    this.lifetime.abort()
+    for (const timer of this.timers) clearTimeout(timer)
+    this.timers.clear()
+  }
 
   /**
    * 目录刷新循环：60s 轮一次（目录 TTL 是小时级，摘要调用极轻；gateway 的
@@ -164,8 +195,8 @@ export class ModelsDevStore {
     this.polling = true
     void (async () => {
       while (this.isPolling()) {
-        await new Promise(resolve => setTimeout(resolve, 60_000))
-        if (this.isPolling()) await this.load(true)
+        await this.waitFor(60_000)
+        if (this.isPolling() && !this.lifetime.signal.aborted) await this.load(true)
       }
     })()
   }
@@ -313,6 +344,7 @@ export class ModelsDevStore {
     // 轮询桥：直到终态；终结后刷新路由清单（configured 可能翻转为 true）
     let view: AttemptView | undefined
     do {
+      if (this.lifetime.signal.aborted) return
       const described = await this.wire.llmPlusAuth.describeAttempt(attemptId)
       if (described.ok) {
         view = described.value
@@ -321,7 +353,7 @@ export class ModelsDevStore {
         })
       }
       if (view === undefined || view.status === 'running') {
-        await new Promise(resolve => setTimeout(resolve, 800))
+        await this.waitFor(800)
       }
     } while (view === undefined || view.status === 'running')
     await this.loadOAuthRoutes()

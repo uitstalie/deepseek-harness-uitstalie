@@ -80,8 +80,7 @@ export async function apply(ctx: ClientContext): Promise<() => void> {
       }),
     }, CapabilitiesSection))
   })
-  return () => {
-    // The mount disposer is asynchronous; the fiber's cleanup callback is synchronous.
-    void mounted?.()
+  if (mounted !== undefined) {
+    ctx.effect(() => async () => { await mounted() }, 'ui-dafeiyu: remote mount')
   }
 }

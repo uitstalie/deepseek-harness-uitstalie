@@ -33,8 +33,7 @@ import {
   appendSuperWorkspaceDefinitionNotice,
   ensureSuperWorkspaceDefinition,
   failedNotice,
-  syncSuperWorkspaceDefinition,
-  takeSuperWorkspaceDefinitionNotice,
+  SuperWorkspaceDefinitionSync,
 } from './super-workspace-definition.ts'
 import { workspaceConventionsText } from './workspace-conventions.ts'
 import {
@@ -1008,31 +1007,7 @@ const recordTaskLedger = async (
   }
 }
 
-/**
- * One report journal per super workspace root; a store serializes the writes it receives.
- *
- * Deliberately process-level and not closed by `dispose`: the journal is a file, holds no OS handle,
- * and the claim/lease plus the deterministic delivery request id already prevent duplicate
- * delivery across a remount. A turn-end already in flight cannot be cancelled by dispose, so
- * removing this map would not make teardown quiescent; retain it until a real teardown redesign
- * (see audit J-20). Revisit if a long-lived Host accumulates roots or dispose must drain turn-end.
- */
-const reportJournals = new Map<string, DispatchReportStore>()
 
-/**
- * The report journal for one super workspace root, shared by the tools and the turn-end hook of
- * the same process. A fresh process builds a fresh instance over the same file, which is what makes
- * an in-flight dispatch recoverable after a plugin remount.
- * @param root - the super workspace root.
- * @returns the shared journal instance.
- */
-const reportStoreAt = (root: string): DispatchReportStore => {
-  const existing = reportJournals.get(root)
-  if (existing !== undefined) return existing
-  const created = new DispatchReportStore(root)
-  reportJournals.set(root, created)
-  return created
-}
 
 /**
  * Record the report binding for a dispatch **before** its child prompt is admitted.
@@ -1062,10 +1037,11 @@ const recordDispatchReport = async (
   superSession: string | undefined,
   requestId: string,
   id: string,
-): Promise<DispatchReportRecord> => {
+): Promise<DispatchReportRecord | undefined> => {
   const root = caller.cwd
   if (root === undefined) throw new Error('the dispatcher has no checkout, so the report journal has no root')
-  const store = context.reports ?? reportStoreAt(root)
+  const store = context.reports
+  if (store === undefined) return undefined
   return await store.record({
     id,
     workspace: { id: workspace.id, title: workspace.title, path: workspace.path },
@@ -1098,7 +1074,7 @@ const failDispatchReport = async (
   const root = caller.cwd
   if (root === undefined) return
   try {
-    await (context.reports ?? reportStoreAt(root)).settle(id, 'failed', at, error instanceof Error ? error.message : String(error))
+    await context.reports?.settle(id, 'failed', at, error instanceof Error ? error.message : String(error))
   } catch {
     // The tool already returns the dispatch failure; a journal write failure must not mask it.
   }
@@ -4515,7 +4491,7 @@ export const handleTaskTurnEnd = async (
   stopped?: Set<string>,
 ): Promise<boolean> => {
   const sessionId = String(input.agent.id)
-  const journal = reports ?? (superHome === undefined ? undefined : reportStoreAt(superHome))
+  const journal = reports
   if (journal === undefined) return false
   let bindings: readonly DispatchReportRecord[]
   try {
@@ -5264,6 +5240,7 @@ export const createSuperagentContribution = (
   // write a proposal or start a daemon pass after its teardown began.
   let disposed = false
   const superHome = home === undefined || home.trim() === '' ? undefined : home
+  const definitionSync = new SuperWorkspaceDefinitionSync()
 
   /**
    * Check the managed `AGENTS.md` section for this workspace and show its pending notice.
@@ -5277,8 +5254,8 @@ export const createSuperagentContribution = (
   const synchronizeDefinition = async (agent: Agent): Promise<void> => {
     const root = superHome
     if (root === undefined) return
-    const result = await syncSuperWorkspaceDefinition(root)
-    const notice = await takeSuperWorkspaceDefinitionNotice(root)
+    const result = await definitionSync.sync(root)
+    const notice = await definitionSync.takeNotice(root)
     if (notice !== undefined) {
       appendSuperWorkspaceDefinitionNotice(agent.session, notice)
       return
@@ -5294,7 +5271,7 @@ export const createSuperagentContribution = (
   const dispatchStore = superHome === undefined ? undefined : createDispatchStore(host.ctx, superHome)
   // The report journal is superagent-owned and deliberately outside the ledger: it binds a child
   // turn to its dispatch before the prompt is admitted, so reports never depend on ledger state.
-  const reportStore = superHome === undefined ? undefined : reportStoreAt(superHome)
+  const reportStore = superHome === undefined ? undefined : new DispatchReportStore(superHome)
   const stopped = new Set<string>()
   let recoveryAbort: AbortController | undefined
   let recoveryDone: Promise<void> | undefined
@@ -5319,7 +5296,7 @@ export const createSuperagentContribution = (
   if (superHome !== undefined && typeof inject === 'function') {
     inject.call(host.ctx, ['systemPrompt'], (scope) => {
       // A rebuild or remount re-reads the definition; the sync writes only on a real change.
-      void syncSuperWorkspaceDefinition(superHome)
+      void definitionSync.sync(superHome)
       const systemPrompt = (scope as { systemPrompt?: PromptContextHost & PromptContextRegistry }).systemPrompt
       if (systemPrompt?.context === undefined || disposed) return
       rosterDispose = registerPromptContext(systemPrompt, {

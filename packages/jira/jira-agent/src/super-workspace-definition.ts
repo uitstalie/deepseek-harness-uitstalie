@@ -254,24 +254,58 @@ const malformedNotice = (path: string): string =>
 export const failedNotice = (path: string, message: string): string =>
   `[superagent] The AGENTS.md managed section could not be updated: ${message}. Path: ${path} (no automatic retry)`
 
-/** Per-root serialization, so concurrent triggers cannot interleave their read-compare-write. */
-const queues = new Map<string, Promise<unknown>>()
+/** Per-instance, per-root serialization so concurrent triggers cannot interleave their read-compare-write. */
+export class SuperWorkspaceDefinitionSync {
+  private readonly queues = new Map<string, Promise<unknown>>()
 
-/**
- * Run one task after every earlier task for this root.
- * @param root - the super workspace directory.
- * @param task - the read-compare-write to run alone.
- * @returns the task's own result.
- */
-const serialize = <T>(root: string, task: () => Promise<T>): Promise<T> => {
-  const previous = queues.get(root) ?? Promise.resolve()
-  const next = previous.then(task, task)
-  const tail = next.then(() => undefined, () => undefined)
-  queues.set(root, tail)
-  void tail.then(() => {
-    if (queues.get(root) === tail) queues.delete(root)
-  })
-  return next
+  /**
+   * Run one task after every earlier task for this root.
+   * @param root - the super workspace directory.
+   * @param task - the read-compare-write to run alone.
+   * @returns the task's own result.
+   */
+  private serialize<T>(root: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.queues.get(root) ?? Promise.resolve()
+    const next = previous.then(task, task)
+    const tail = next.then(() => undefined, () => undefined)
+    this.queues.set(root, tail)
+    void tail.then(() => {
+      if (this.queues.get(root) === tail) this.queues.delete(root)
+    })
+    return next
+  }
+
+  /**
+   * Bring one super workspace's `AGENTS.md` up to the current managed-section version.
+   * @param root - the super workspace directory.
+   * @param io - the read/write seam; tests inject one to count writes.
+   * @returns what this pass did.
+   */
+  sync(
+    root: string,
+    io: SuperWorkspaceDefinitionIo = defaultSuperWorkspaceDefinitionIo,
+  ): Promise<SuperWorkspaceDefinitionResult> {
+    return this.serialize(root, async () => syncOnce(root, io))
+  }
+
+  /**
+   * Take the pending managed-section notice, clearing it so it is shown once.
+   * @param root - the super workspace directory.
+   * @param io - the read/write seam.
+   * @returns the notice text, or undefined when none is pending.
+   */
+  takeNotice(
+    root: string,
+    io: SuperWorkspaceDefinitionIo = defaultSuperWorkspaceDefinitionIo,
+  ): Promise<string | undefined> {
+    return this.serialize(root, async () => {
+      const state = await readState(root, io)
+      if (state?.pendingNotice === undefined) return undefined
+      const { pendingNotice, ...rest } = state
+      await writeState(root, io, rest)
+      return pendingNotice
+    })
+  }
 }
 
 /** One serialized synchronisation pass. */
@@ -383,7 +417,7 @@ const syncOnce = async (
 export const syncSuperWorkspaceDefinition = (
   root: string,
   io: SuperWorkspaceDefinitionIo = defaultSuperWorkspaceDefinitionIo,
-): Promise<SuperWorkspaceDefinitionResult> => serialize(root, async () => syncOnce(root, io))
+): Promise<SuperWorkspaceDefinitionResult> => new SuperWorkspaceDefinitionSync().sync(root, io)
 
 /**
  * Take the pending managed-section notice, clearing it so it is shown once.
@@ -394,13 +428,7 @@ export const syncSuperWorkspaceDefinition = (
 export const takeSuperWorkspaceDefinitionNotice = (
   root: string,
   io: SuperWorkspaceDefinitionIo = defaultSuperWorkspaceDefinitionIo,
-): Promise<string | undefined> => serialize(root, async () => {
-  const state = await readState(root, io)
-  if (state?.pendingNotice === undefined) return undefined
-  const { pendingNotice, ...rest } = state
-  await writeState(root, io, rest)
-  return pendingNotice
-})
+): Promise<string | undefined> => new SuperWorkspaceDefinitionSync().takeNotice(root, io)
 
 /**
  * Append one visible notice to a Session as a synthetic user message.

@@ -54,8 +54,8 @@ export function assertVersion(
 
 /**
  * Validate one exclusively owned stored event array in place: adopt each
- * record (validating and freezing it) and refuse an unknown event type only
- * when its writer marked it `critical: true`. Other unknown events remain
+ * record (validating and freezing it) and refuse every unknown event type
+ * unless its writer marked it `ignorable: true`. Unknown ignorable events remain
  * opaque and do not affect state reconstruction; this validator performs no migration.
  * @param meta - the stored header the events belong to.
  * @param events - exclusively owned decoded events; validated in place.
@@ -70,16 +70,16 @@ export function validateStoredEvents(
   location?: SessionLocation,
 ): SessionEvent[] {
   for (const event of events) {
-    if (!KNOWN_SESSION_EVENT_TYPES.has(event.type) && event.critical === true) {
-      throw unsupported(
-        `session "${meta.id}" contains critical event type "${event.type}" (seq ${event.seq}) unknown to this harness; use the writing harness or a reader that supports this event type`,
-        location,
-      )
-    }
     const eventType: string = event.type
     if (eventType === 'request/header-delta') {
       throw unsupported(
         `session "${meta.id}" contains retired event type "request/header-delta" (seq ${event.seq}); use a harness that supports its historical migration`,
+        location,
+      )
+    }
+    if (!KNOWN_SESSION_EVENT_TYPES.has(event.type) && event.ignorable !== true) {
+      throw unsupported(
+        `session "${meta.id}" contains event type "${event.type}" (seq ${event.seq}) unknown to this harness and not marked ignorable; use the writing harness or a reader that supports this event type`,
         location,
       )
     }

@@ -1,2 +1,2 @@
-export { default, ModelsDevCatalog } from './api.ts'
+export { default } from './api.ts'
 export type * from './api.ts'

@@ -302,8 +302,13 @@ function isReplaceOp(value: object): value is Extract<SurfaceOp, { op: 'replace'
 function surfaceOpOf(event: SessionEvent): SurfaceOp | undefined {
   const raw: { surfaceOp?: unknown; sourceEventSeqs?: unknown } = event
   if (!isSurfaceEligibleType(event.type)) {
-    // Unknown records retain opaque metadata without affecting history.
-    if (!KNOWN_SESSION_EVENT_TYPES.has(event.type)) return
+    // Unknown records are readable only when their writer marked them ignorable.
+    if (!KNOWN_SESSION_EVENT_TYPES.has(event.type)) {
+      if (event.ignorable !== true) {
+        throw new Error(`unknown session event "${event.type}" must be marked ignorable`)
+      }
+      return
+    }
     if (raw.surfaceOp !== undefined) {
       throw new Error(`session event "${event.type}" is not surface-eligible and cannot carry surfaceOp`)
     }

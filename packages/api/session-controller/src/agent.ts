@@ -79,8 +79,10 @@ export interface ApiSessionCreated {
 /** Resolved preset and pre-publication Agent setup for one create or resume. */
 interface ApiSessionComposition {
   readonly agentPreset?: string
+  // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, Agent 角色按持久 Workspace 归属解析
   readonly role?: AgentRole
   readonly setup: AgentSetup
+  // END uitstalie-deepseek-flash
 }
 
 /** Failures produced while resolving one ordinary Session identity to its live Agent. */

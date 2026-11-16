@@ -5,7 +5,8 @@
 
 import { expect, test } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import * as hostEntry from '../src/api.ts'
+import * as hostEntry from '../src/index.ts'
+import * as section from '../src/section.ts'
 
 test('the host entry is a loadable, inert plugin body', async () => {
   const ctx = new Context()
@@ -16,7 +17,7 @@ test('the host entry is a loadable, inert plugin body', async () => {
 
 test('publishes the section identity the browser half registers', () => {
   // `dafeiyu` links to the section by this id; both halves read it from one module.
-  expect(hostEntry.JIRA_SETTINGS_SECTION).toBe('jira')
-  expect(hostEntry.JIRA_SETTINGS_ORDER).toBe(200)
-  expect(hostEntry.JIRA_SETTINGS_FIELDS).toEqual(['root', 'host', 'push.enabled'])
+  expect(section.JIRA_SETTINGS_SECTION).toBe('jira')
+  expect(section.JIRA_SETTINGS_ORDER).toBe(200)
+  expect(section.JIRA_SETTINGS_FIELDS).toEqual(['root', 'host', 'push.enabled'])
 })

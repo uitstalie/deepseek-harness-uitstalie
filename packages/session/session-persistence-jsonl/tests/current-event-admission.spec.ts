@@ -47,7 +47,7 @@ describe('current event admission at EOF', () => {
   }
 
   it.each([{ surfaceOp: 'append' }, { sourceEventSeqs: [] }])('retains unknown metadata %j without truncating a provider append', async (metadata) => {
-    const event = { type: 'future/optional', seq: 0, time: 1, data: {}, ...metadata }
+    const event = { type: 'future/optional', seq: 0, time: 1, data: {}, ignorable: true, ...metadata }
     const bytes = Buffer.from([header, event].map(row => JSON.stringify(row)).join('\n') + '\n')
     expect(scanLog(bytes)).toMatchObject({ events: [event], committedBytes: bytes.length })
     const path = await store(bytes)
@@ -69,11 +69,11 @@ describe('current event admission at EOF', () => {
     expect((await readFile(path)).subarray(0, bytes.length)).toEqual(bytes)
   })
 
-  it('refuses a critical unknown event without modifying the log', async () => {
-    const event = { type: 'future/critical', seq: 0, time: 1, data: {}, critical: true }
+  it('refuses an unmarked unknown event without modifying the log', async () => {
+    const event = { type: 'future/critical', seq: 0, time: 1, data: {} }
     const bytes = Buffer.from([header, event].map(row => JSON.stringify(row)).join('\n') + '\n')
     const path = await store(bytes)
-    await expect(ctx.sessionPersistence.open(id, 'read')).rejects.toThrow('critical event type "future/critical"')
+    await expect(ctx.sessionPersistence.open(id, 'read')).rejects.toThrow('event type "future/critical"')
     expect(await readFile(path)).toEqual(bytes)
   })
 

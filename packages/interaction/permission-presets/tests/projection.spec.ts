@@ -121,7 +121,9 @@ describe('permissions projection unit', () => {
     const warned = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => undefined)
     ctx.on('permission-presets/catalog-changed', () => { throw new Error('sync observer failed') })
     ctx.on('permission-presets/catalog-changed', () => { throw 'sync non-error failed' })
+    // oxlint-disable-next-line typescript/no-misused-promises -- rejecting listener exercises async containment.
     ctx.on('permission-presets/catalog-changed', () => Promise.reject(new Error('async observer failed')))
+    // oxlint-disable-next-line typescript/no-misused-promises -- rejecting listener exercises async containment.
     ctx.on('permission-presets/catalog-changed', async () => { throw 'async non-error failed' })
 
     const fiber = await mountAuto(ctx)

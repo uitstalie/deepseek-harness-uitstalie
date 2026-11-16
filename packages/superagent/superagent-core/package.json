@@ -18,10 +18,6 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./dispatch": {
-      "types": "./lib/types/dispatch.d.ts",
-      "default": "./lib/dispatch.js"
-    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },

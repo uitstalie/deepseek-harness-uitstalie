@@ -12,10 +12,7 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./deepseek-extra-params": {
-      "types": "./lib/types/deepseek-extra-params.d.ts",
-      "default": "./lib/deepseek-extra-params.js"
-    },
+
     "./typert": {
       "types": "./lib/typert.host.d.ts",
       "default": "./lib/typert.host.js"
@@ -30,7 +27,7 @@
     },
     "./src/*": "./src/*",
     "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg",
+    "./icon.svg": "./icon.svg",
     "./package.json": "./package.json"
   },
   "files": [

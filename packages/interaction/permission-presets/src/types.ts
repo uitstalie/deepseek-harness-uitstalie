@@ -32,7 +32,10 @@ export interface PermissionCatalog {
   defaultPreset: string
 }
 
-/** Whole `permissions` Session projection: current durable selection only. */
+/**
+ * Whole `permissions` Session projection: the effective current preset, sandbox mode, and approval
+ * policy after composition defaults apply.
+ */
 export interface PermissionSelection {
   /** The effective current value: a configured preset key, `auto`, or `custom`. */
   currentValue: string

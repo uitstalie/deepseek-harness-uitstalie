@@ -516,7 +516,7 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
       }
     })
 
-    it('skips unknown stored events but refuses critical unknown types', async () => {
+    it('refuses unmarked unknown stored events and skips ignorable ones', async () => {
       const { persistence, dispose } = await make()
       try {
         const m = meta('foreign-vocabulary')
@@ -526,21 +526,18 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
           { type: 'mystery/event', seq: SessionSeq(6), time: 7, data: { payload: true } },
         ] as unknown as SessionEvent[])
         await handle.close()
+        await expect(persistence.open(m.id, 'write')).rejects.toBeInstanceOf(SessionFormatUnsupportedError)
+        await expect(persistence.open(m.id, 'read')).rejects.toBeInstanceOf(SessionFormatUnsupportedError)
 
-        const reader = await persistence.open(m.id, 'read')
+        const ignorable = await persistence.create(meta('ignorable-vocabulary'))
+        await ignorable.append(oneTurnLog())
+        await ignorable.append([
+          { type: 'mystery/event', seq: SessionSeq(6), time: 7, data: { payload: true }, ignorable: true },
+        ] as unknown as SessionEvent[])
+        await ignorable.close()
+        const reader = await persistence.open(ignorable.id, 'read')
         await expect(reader.read()).resolves.toMatchObject({ skipped: { count: 1, types: ['mystery/event'] } })
         await reader.close()
-        const writer = await persistence.open(m.id, 'write')
-        await writer.close()
-
-        const critical = await persistence.create(meta('critical-vocabulary'))
-        const foreign: ForeignStoredEvent[] = [
-          { type: 'mystery/critical', seq: SessionSeq(0), time: 1, data: {}, critical: true },
-        ]
-        await critical.append(foreign as SessionEvent[])
-        await critical.close()
-        await expect(persistence.open(SessionId('critical-vocabulary'), 'write')).rejects.toBeInstanceOf(SessionFormatUnsupportedError)
-        await expect(persistence.open(SessionId('critical-vocabulary'), 'write')).rejects.toBeInstanceOf(SessionFormatUnsupportedError)
       } finally {
         await dispose()
       }

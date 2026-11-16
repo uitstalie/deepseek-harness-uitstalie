@@ -282,31 +282,6 @@ export const createPushQueue = (options: PushQueueOptions): PushQueue => {
   })
 }
 
-/** A queue per store root, so a plugin registration and a CLI run share one debounce. */
-const queues = new Map<string, PushQueue>()
-
-/**
- * The queue for a root, created on first use so a plugin registration and a CLI run share one
- * debounce.
- * @param options - the queue's options; only the root decides which queue is reused.
- * @returns the shared queue for that root.
- */
-export const sharedPushQueue = (options: PushQueueOptions): PushQueue => {
-  const existing = queues.get(options.root)
-  if (existing !== undefined) return existing
-  const created = createPushQueue(options)
-  queues.set(options.root, created)
-  return created
-}
-
-/**
- * Drop the cached queue for a root, so a switched-away store stops being reused.
- * @param root - the store root whose queue is forgotten.
- */
-export const forgetPushQueue = (root: string): void => {
-  queues.delete(root)
-}
-
 /**
  * The error a caller reports when a flush was asked for and could not happen.
  * @param outcome - the flush outcome to inspect.

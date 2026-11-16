@@ -205,9 +205,10 @@ export const queryIssues = (
     if (query.tag !== undefined && !issue.tags.includes(query.tag)) return false
     if (query.tags !== undefined && !query.tags.every(tag => issue.tags.includes(tag))) return false
     if (query.assignee !== undefined && issue.assignee !== query.assignee) return false
+    const linkFilter = query.link
     if (
-      query.link !== undefined
-      && !issue.links.some(link => link.type === query.link.type && link.target === query.link.target)
+      linkFilter !== undefined
+      && !issue.links.some(link => link.type === linkFilter.type && link.target === linkFilter.target)
     ) return false
     if (query.includeClosed !== true && vocab !== undefined && vocab.closed.includes(issue.status)) return false
     return true

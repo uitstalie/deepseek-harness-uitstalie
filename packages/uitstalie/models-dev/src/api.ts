@@ -198,8 +198,10 @@ export default class ModelsDevCatalog extends TypertRemoteService {
     this.config = Object.freeze(resolved)
     // 启动加载不阻塞构造（插件激活不等网络）；依赖方用 whenReady() 对齐
     this.ready = this.load()
-    ctx.effect(() => () => {
+    ctx.effect(() => async () => {
       this.lifetime.abort(new Error('models-dev service disposed'))
+      const refreshing = this.refreshing
+      await Promise.allSettled(refreshing === undefined ? [this.ready] : [this.ready, refreshing])
     }, 'models-dev.dispose')
   }
 

@@ -10,7 +10,7 @@
  * @module @deepseek-ai/dsh-jira-agent/workspace-conventions
  */
 
-import { readFileSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { WorkspaceRegistryLike } from './superagent.ts'
 
@@ -26,15 +26,6 @@ export const CONVENTIONS_PER_WORKSPACE_MAX = 1000
 /** Most workspaces with conventions rendered in one snapshot. */
 export const CONVENTIONS_MAX_WORKSPACES = 6
 
-/** One cached extraction, stamped by the file's stat facts. */
-interface CachedConventions {
-  readonly stamp: string
-  readonly text: string
-}
-
-/** Process-local cache keyed by absolute `AGENTS.md` path. */
-const cache = new Map<string, CachedConventions>()
-
 /**
  * Whether two absolute paths name the same directory on this platform.
  * @param left - one path.
@@ -46,27 +37,16 @@ const samePath = (left: string, right: string): boolean => process.platform === 
   : left === right
 
 /**
- * Read one workspace's conventions section, reusing the last extraction while the file is unchanged.
+ * Read one workspace's conventions section from its current `AGENTS.md`.
  * @param workspacePath - the registered workspace directory.
  * @returns the trimmed section, or undefined when the file or section is absent.
  */
 const conventionsOf = (workspacePath: string): string | undefined => {
   const file = join(workspacePath, 'AGENTS.md')
-  let stamp: string
-  try {
-    const stat = statSync(file)
-    stamp = `${String(stat.mtimeMs)}:${String(stat.size)}`
-  } catch {
-    cache.delete(file)
-    return undefined
-  }
-  const cached = cache.get(file)
-  if (cached?.stamp === stamp) return cached.text === '' ? undefined : cached.text
   let content: string
   try {
     content = readFileSync(file, 'utf8')
   } catch {
-    cache.delete(file)
     return undefined
   }
   const start = content.indexOf(WORKSPACE_CONVENTIONS_BEGIN)
@@ -77,7 +57,6 @@ const conventionsOf = (workspacePath: string): string | undefined => {
   if (text.length > CONVENTIONS_PER_WORKSPACE_MAX) {
     text = `${text.slice(0, CONVENTIONS_PER_WORKSPACE_MAX - 1)}…`
   }
-  cache.set(file, { stamp, text })
   return text === '' ? undefined : text
 }
 
@@ -117,12 +96,4 @@ export const workspaceConventionsText = (
   return '[superagent workspace conventions] read-only; cite the file and section when used\n'
     + rendered.join('\n')
     + (omitted === 0 ? '' : `\n  … ${String(omitted)} more workspace(s) with conventions omitted`)
-}
-
-/**
- * Drop the process-local extraction cache; tests and a workspace remount use this to start clean.
- * @returns nothing.
- */
-export const clearWorkspaceConventionsCache = (): void => {
-  cache.clear()
 }

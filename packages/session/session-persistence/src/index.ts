@@ -128,7 +128,8 @@ declare module '@deepseek-ai/cordis' {
  * Storage semantics shared by every backend: events are contiguous from seq 0
  * and never rewritten; a torn physical tail is never returned to a reader and
  * is truncated by the write path before its first append; reads validate
- * current-format records, skip unknown non-critical events, and refuse critical unknown types.
+ * current-format records, skip unknown events marked ignorable, and refuse
+ * unknown events without that marker.
  * `append` persists best-effort; `flush` — per handle or service-wide — is
  * the durability barrier.
  *

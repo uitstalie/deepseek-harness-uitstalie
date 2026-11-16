@@ -134,17 +134,16 @@ describe('restoreReleasedV4Artifact', () => {
     unknown.splice(2, 0, { type: 'campaign/unknown', seq: 0, time: 1, data: { x: 1 } })
     for (const [index, item] of unknown.entries()) (item as { seq: number }).seq = index
     expect(() => { assertReleasedV4PhysicalArtifact(artifact(unknown)) }).not.toThrow()
-    expect(() => restoreReleasedV4Artifact(artifact(unknown), KNOWN)).not.toThrow()
+    expect(() => restoreReleasedV4Artifact(artifact(unknown), KNOWN)).toThrow(/not marked ignorable/)
   })
 
-  it('skips unmarked unknown types and refuses critical unknown ones', () => {
+  it('refuses unmarked unknown types and accepts ignorable ones', () => {
     const unknown = conversation()
     unknown.splice(2, 0, { type: 'campaign/unknown', seq: 99, time: 1, data: { x: 1 } })
     for (const [index, item] of unknown.entries()) (item as { seq: number }).seq = index
-    expect(() => restoreReleasedV4Artifact(artifact(unknown), KNOWN)).not.toThrow()
-    const critical = unknown.map(item => item.type === 'campaign/unknown' ? { ...item, critical: true } : item)
-    expect(() => restoreReleasedV4Artifact(artifact(critical), KNOWN))
-      .toThrow(/critical unknown event type/)
+    expect(() => restoreReleasedV4Artifact(artifact(unknown), KNOWN)).toThrow(/not marked ignorable/)
+    const marked = unknown.map(item => item.type === 'campaign/unknown' ? { ...item, ignorable: true } : item)
+    expect(() => restoreReleasedV4Artifact(artifact(marked), KNOWN)).not.toThrow()
     const ignorable = conversation()
     ignorable.splice(0, 0, {
       type: 'campaign/unknown', seq: 0, time: 1, ignorable: true, data: { x: 1 },

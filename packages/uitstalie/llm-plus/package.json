@@ -26,7 +26,7 @@
     },
     "./src/*": "./src/*",
     "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg",
+    "./icon.svg": "./icon.svg",
     "./package.json": "./package.json"
   },
   "files": [

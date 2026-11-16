@@ -91,9 +91,11 @@ export class WorkspaceEntity implements Workspace {
     return this.record.title
   }
 
+  // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, Agent 角色按持久 Workspace 归属解析
   get role(): 'agent' | 'super' {
     return workspaceRoleOf(this.record.role)
   }
+  // END uitstalie-deepseek-flash
 
   get createdAt(): string {
     return this.record.createdAt

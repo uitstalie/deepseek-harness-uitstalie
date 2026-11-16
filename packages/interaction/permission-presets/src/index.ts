@@ -6,8 +6,8 @@
  * intent when two presets share a bundle. The Auto review integration may
  * publish one fixed, current-session-only preset with a synchronous admission
  * check; settings defaults remain limited to the configured table. The read
- * side exposes a process catalog plus the current-value-only `permissions`
- * Session projection; the write side ships as the `/permission` command.
+ * side exposes a process catalog plus the `permissions` Session projection with the effective
+ * preset, sandbox mode, and approval policy; the write side ships as the `/permission` command.
  *
  * @module dsh-permission-presets
  */

@@ -245,7 +245,8 @@ it('follows the Host change stream while open, and stops when the page goes away
   }
 
   const scripted = wire()
-  const board = vi.mocked(scripted.board)
+  // oxlint-disable-next-line typescript/unbound-method -- the mock is invoked through scripted, its owning object.
+  const board = scripted.board
   // The scripted namespace is mounted, so the plugin never reaches the carrier's `$mount`.
   new TestRemote(ctx, { jira: { ...scripted, watch } })
   const slots = ctx.get('slots') as SlotRegistry

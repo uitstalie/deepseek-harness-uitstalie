@@ -10,7 +10,6 @@ import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
 import type { WorkspaceRegistryLike } from '../src/superagent.ts'
 import {
-  clearWorkspaceConventionsCache,
   CONVENTIONS_MAX_WORKSPACES,
   CONVENTIONS_PER_WORKSPACE_MAX,
   workspaceConventionsText,
@@ -58,7 +57,6 @@ const writeConventions = async (workspace: string, title: string, body?: string)
 
 void describe('superagent: workspace conventions context', () => {
   void it('renders sorted, deterministic sections and skips the super home', async () => {
-    clearWorkspaceConventionsCache()
     const { root, home } = await fixture()
     const first = join(root, 'system-img')
     const second = join(root, 'analyze')
@@ -84,7 +82,6 @@ void describe('superagent: workspace conventions context', () => {
   })
 
   void it('contributes nothing when no workspace declares a section', async () => {
-    clearWorkspaceConventionsCache()
     const { root, home } = await fixture()
     const quiet = join(root, 'quiet')
     await writeConventions(quiet, 'quiet')
@@ -95,7 +92,6 @@ void describe('superagent: workspace conventions context', () => {
   })
 
   void it('picks up a workspace edit and keeps the old text until the file changes', async () => {
-    clearWorkspaceConventionsCache()
     const { root, home } = await fixture()
     const workspace = join(root, 'analyze')
     await writeConventions(workspace, 'analyze', 'Deliver CSV.')
@@ -114,7 +110,6 @@ void describe('superagent: workspace conventions context', () => {
   })
 
   void it('caps one section and the number of rendered workspaces', async () => {
-    clearWorkspaceConventionsCache()
     const { root, home } = await fixture()
     const rows: Row[] = []
     for (let index = 0; index < CONVENTIONS_MAX_WORKSPACES + 1; index += 1) {

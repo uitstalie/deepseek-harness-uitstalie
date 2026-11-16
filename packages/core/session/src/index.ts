@@ -217,7 +217,6 @@ function assertSessionEventEnvelope(value: unknown, index: number): asserts valu
       case 'surfaceOp':
       case 'sourceEventSeqs':
       case 'ignorable':
-      case 'critical':
         break
       default:
         throw new Error(`seed event at index ${index} has an invalid event envelope`)
@@ -230,8 +229,7 @@ function assertSessionEventEnvelope(value: unknown, index: number): asserts valu
     || typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 0 || Object.is(seq, -0)
     || typeof time !== 'number' || !Number.isSafeInteger(time)
     || event['data'] === undefined
-    || (event['ignorable'] !== undefined && event['ignorable'] !== true)
-    || (event['critical'] !== undefined && event['critical'] !== true)) {
+    || (event['ignorable'] !== undefined && event['ignorable'] !== true)) {
     throw new Error(`seed event at index ${index} has an invalid event envelope`)
   }
   validateSessionEventData(event as SessionEvent, `seed ${type} at index ${index}`)

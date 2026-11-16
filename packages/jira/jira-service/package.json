@@ -23,7 +23,6 @@
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types/types.js"
     },
-    "./*": "./src/*",
     "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
