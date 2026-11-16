@@ -45,6 +45,7 @@ export type {
 export { renderAgentInstructions } from './render.ts'
 export type { RenderedAgentInstructions, TruncatedInstruction } from './render.ts'
 
+// BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, expose baseline loader operations to the branch plus loader
 /**
  * Reusable loader operations for the branch's plus loader, which decorates the
  * baseline this service produced without importing its implementation module.
@@ -59,6 +60,7 @@ export interface AgentInstructionsApi {
   /** Identify the baseline this loader publishes for one workspace. */
   readonly workspaceBaselineIdentity: typeof workspaceBaselineIdentity
 }
+// END uitstalie-deepseek-flash
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

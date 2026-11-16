@@ -130,9 +130,11 @@ export class ToolsService extends Service {
   register(definition: ToolDefinition, options: ToolRegistrationOptions = {}): () => void {
     const name = definition.name
     const scopeAgent = scopeOf(this.ctx) as Partial<Agent> | undefined
+    // BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, enforce minRole when registering a tool
     const minimum = toolMinRole(definition)
     if (minimum !== undefined && scopeAgent?.session !== undefined && scopeAgent.options !== undefined
       && !roleAllows(((scopeAgent as Agent).role ?? 'agent'), minimum)) return () => {}
+    // END uitstalie-deepseek-flash
     const output = (definition as Partial<ToolDefinition>).output
     if (output === undefined || typeof output !== 'object'
       || typeof output.render !== 'function'
