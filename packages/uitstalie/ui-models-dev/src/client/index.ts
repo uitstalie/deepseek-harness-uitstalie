@@ -107,7 +107,24 @@ export async function apply(
       controllerInstance.startCatalogPolling()
     }
     const injected = (): ModelsDevSectionInjected => ({
-      controller: controllerInstance,
+      actions: {
+        load: () => controllerInstance.load(),
+        beginLogin: routeId => controllerInstance.beginLogin(routeId),
+        cancelLogin: routeId => controllerInstance.cancelLogin(routeId),
+        answerPrompt: (routeId, promptId) => controllerInstance.answerPrompt(routeId, promptId),
+        setAnswerDraft: (promptId, value) => { controllerInstance.setAnswerDraft(promptId, value) },
+        startEditRoute: (routeId) => { controllerInstance.startEditRoute(routeId) },
+        patchEditDraft: (patch) => { controllerInstance.patchEditDraft(patch) },
+        saveEditRoute: () => controllerInstance.saveEditRoute(),
+        cancelEditRoute: () => { controllerInstance.cancelEditRoute() },
+        deleteRoute: routeId => controllerInstance.deleteRoute(routeId),
+        setFilter: (value) => { controllerInstance.setFilter(value) },
+        toggleProvider: (provider, checked) => { controllerInstance.toggleProvider(provider, checked) },
+        updateDraft: (id, patch) => { controllerInstance.updateDraft(id, patch) },
+        setModelMode: (id, mode) => { controllerInstance.setModelMode(id, mode) },
+        toggleModel: (id, modelId, checked) => { controllerInstance.toggleModel(id, modelId, checked) },
+        submit: () => controllerInstance.submit(),
+      },
       activate,
       hooks: { snapshot: controllerInstance.store },
       t,

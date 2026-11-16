@@ -20,8 +20,8 @@ import styles from './ModelsDevSection.module.css'
 
 /** The dependency face injected into this page via slots inject. */
 export interface ModelsDevSectionInjected {
-  /** Page controller (load/select/draft/submit actions). */
-  controller: ModelsDevStore
+  /** Page actions (load/select/draft/submit), bound to the store. */
+  actions: ModelsDevActions
   /** Start fetching when this page is first opened; under an assembly state nobody opens the page, so the Host is not read. */
   activate: () => void
   hooks: {
@@ -31,6 +31,26 @@ export interface ModelsDevSectionInjected {
   /** Copy for this page (the settings.models-dev namespace). */
   t: (key: ModelsDevKey) => string
 }
+
+/** The subset of store methods the page may call. */
+export type ModelsDevActions = Pick<ModelsDevStore,
+  | 'load'
+  | 'beginLogin'
+  | 'cancelLogin'
+  | 'answerPrompt'
+  | 'setAnswerDraft'
+  | 'startEditRoute'
+  | 'patchEditDraft'
+  | 'saveEditRoute'
+  | 'cancelEditRoute'
+  | 'deleteRoute'
+  | 'setFilter'
+  | 'toggleProvider'
+  | 'updateDraft'
+  | 'setModelMode'
+  | 'toggleModel'
+  | 'submit'
+>
 
 /** Component props: the inject face flattened (tests may provide only some values). */
 export type ModelsDevSectionProps = Partial<InjectFace<ModelsDevSectionInjected>>
@@ -47,10 +67,10 @@ function failureText(failure: SubmitFailure, t: (key: ModelsDevKey) => string): 
 
 /** Page root component. */
 export function ModelsDevSection(props: ModelsDevSectionProps) {
-  const { controller, useSnapshot, t, activate } = props
+  const { actions, useSnapshot, t, activate } = props
   useEffect(() => { activate?.() }, [activate])
   // All three are guaranteed under the assembly; Partial is the no-magic path for tests that pass props directly
-  if (controller === undefined || useSnapshot === undefined || t === undefined) return null
+  if (actions === undefined || useSnapshot === undefined || t === undefined) return null
   const state = useSnapshot(snapshot => snapshot)
 
   if (state.status === 'loading' || state.status === 'idle') {
@@ -61,7 +81,7 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
       <div className={styles.section}>
         <span className={styles.errorText}>{fill(t('loadFailed'), { message: state.error ?? '' })}</span>
         <div className={styles.submitBar}>
-          <Button variant="outline" onClick={() => void controller.load()}>{t('retry')}</Button>
+          <Button variant="outline" onClick={() => void actions.load()}>{t('retry')}</Button>
         </div>
       </div>
     )
@@ -83,27 +103,27 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
         attempts={state.oauth.attempts}
         answerDrafts={state.oauth.answerDrafts}
         t={t}
-        onBegin={routeId => void controller.beginLogin(routeId)}
-        onCancel={routeId => void controller.cancelLogin(routeId)}
-        onAnswer={(routeId, promptId) => void controller.answerPrompt(routeId, promptId)}
-        onAnswerDraft={(promptId, value) => { controller.setAnswerDraft(promptId, value) }}
+        onBegin={routeId => void actions.beginLogin(routeId)}
+        onCancel={routeId => void actions.cancelLogin(routeId)}
+        onAnswer={(routeId, promptId) => void actions.answerPrompt(routeId, promptId)}
+        onAnswerDraft={(promptId, value) => { actions.setAnswerDraft(promptId, value) }}
       />
       <MyRoutes
         routes={state.myRoutes.routes}
         editing={state.myRoutes.editing}
         failure={state.myRoutes.failure}
         t={t}
-        onStartEdit={(routeId) => { controller.startEditRoute(routeId) }}
-        onPatchDraft={(patch) => { controller.patchEditDraft(patch) }}
-        onSaveEdit={() => void controller.saveEditRoute()}
-        onCancelEdit={() => { controller.cancelEditRoute() }}
-        onDelete={routeId => void controller.deleteRoute(routeId)}
+        onStartEdit={(routeId) => { actions.startEditRoute(routeId) }}
+        onPatchDraft={(patch) => { actions.patchEditDraft(patch) }}
+        onSaveEdit={() => void actions.saveEditRoute()}
+        onCancelEdit={() => { actions.cancelEditRoute() }}
+        onDelete={routeId => void actions.deleteRoute(routeId)}
       />
       <input
         className={styles.input}
         value={state.filter}
         placeholder={t('filterPlaceholder')}
-        onChange={(event) => { controller.setFilter(event.target.value) }}
+        onChange={(event) => { actions.setFilter(event.target.value) }}
       />
       {visible.length === 0 && (
         <span className={styles.notice}>{state.providers.length === 0 ? t('empty') : t('emptyFilter')}</span>
@@ -116,10 +136,10 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
             draft={state.drafts[provider.id]}
             models={state.models[provider.id]}
             t={t}
-            onToggle={(checked) => { controller.toggleProvider(provider, checked) }}
-            onPatch={(patch) => { controller.updateDraft(provider.id, patch) }}
-            onModelMode={(mode) => { controller.setModelMode(provider.id, mode) }}
-            onToggleModel={(modelId, checked) => { controller.toggleModel(provider.id, modelId, checked) }}
+            onToggle={(checked) => { actions.toggleProvider(provider, checked) }}
+            onPatch={(patch) => { actions.updateDraft(provider.id, patch) }}
+            onModelMode={(mode) => { actions.setModelMode(provider.id, mode) }}
+            onToggleModel={(modelId, checked) => { actions.toggleModel(provider.id, modelId, checked) }}
           />
         ))}
       </div>
@@ -128,7 +148,7 @@ export function ModelsDevSection(props: ModelsDevSectionProps) {
           <Button
             variant="primary"
             disabled={state.submitting}
-            onClick={() => void controller.submit()}
+            onClick={() => void actions.submit()}
           >
             {state.submitting ? t('adding') : fill(t('addSelected'), { count: String(selectedCount) })}
           </Button>
