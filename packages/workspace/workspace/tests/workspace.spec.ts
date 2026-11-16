@@ -64,7 +64,7 @@ async function harness(options: HarnessOptions = {}) {
     const live = new Map(options.liveSessions.map(meta => [meta.id, { header: meta }]))
     ctx.provide('sessions', {
       get: (id: SessionId) => live.get(id),
-      list: () => [...live.values()],
+      listSessions: () => [...live.values()],
     } as never)
   }
 
