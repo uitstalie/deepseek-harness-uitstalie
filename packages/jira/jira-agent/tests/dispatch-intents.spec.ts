@@ -426,6 +426,17 @@ describe('dispatch through the intent card', () => {
       taskType: 'fix',
     })
     expect(intentCodeOf(missingCard)).toBe('INTENT_INCOMPLETE')
+    const missingVersion = await callTool(composition.superAgent, 'superagent_control', {
+      action: 'start',
+      workspace: String(composition.workspaceA.id),
+      task: 'no card version',
+      intentId: 'intent-without-version',
+      acceptance: ['keep the build green'],
+      boundaries: ['do not touch the README'],
+      taskType: 'fix',
+    })
+    expect(intentCodeOf(missingVersion)).toBe('INTENT_INCOMPLETE')
+    // A refused dispatch starts no Session.
     expect(composition.controller.created).toBe(1)
   })
 
