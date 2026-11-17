@@ -83,7 +83,9 @@ export interface CapabilityContribution {
   promptSections?(agent: Agent): readonly PromptSection[]
   /**
    * Receive each agent this capability is wired to, for resources the two
-   * registration hooks cannot express.
+   * registration hooks cannot express. The organizer calls this again for the
+   * same Agent after a profile reload re-wires it, so the hook must be
+   * idempotent and must not overwrite a durable user choice.
    * @param agent - the agent being wired.
    */
   onAgentCreated?(agent: Agent): void
