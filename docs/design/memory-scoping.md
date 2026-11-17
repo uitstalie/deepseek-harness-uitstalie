@@ -1,0 +1,644 @@
+# Memory and workspace information for every session: a static prompt, one toolset, and global memory
+
+English | [中文](memory-scoping.zh.md)
+
+Status: draft for review. Length: not bound by the 12-page cap; content completeness takes precedence. This draft is 8,850 words (about 18 pages).
+
+## 1. Background and the problem
+
+Unless stated otherwise, the counts below come from a snapshot taken at 17:14 on 2026-11-17 and from that session's event log.
+
+One super agent session accumulated 406 memory entries (40 active, 366 archived) and put 1,312 memory messages (737 KiB) onto its own surface: 812 snapshots, 149 checkpoints carrying 704 entry lines, and 350 write notices. The same session called `memory_write` 352 times and ran 818 memory summary jobs. Five failure modes and one data-loss defect follow from that evidence.
+
+The same mechanisms run in every workspace session, not only the super agent; this session is simply the largest observed case. The change therefore applies to every session, with no opt-out and no per-session exception.
+
+### 1.1 The same conclusion is written more than once
+
+39 of the 352 explicit writes were written again verbatim by the automatic summary job in the same turn. Another duplicate pair is split by language: the turn 824 conclusion exists once in Chinese and once in English, and the archived turn 666 `is_default` conclusion exists once in Chinese and once in English.
+
+The cleanup pass cannot catch these. Deduplication runs only within one turn, one session, and one kind, and it recognizes only commit hashes or a single file path (`cleanup.ts:196-227`, `cleanup.ts:301-310`); identical text is explicitly excluded (`cleanup.ts:302`). Of 366 archived entries, 9 were removed as duplicates, all of them `open` or `files`, none a `decision`.
+
+### 1.2 Superseded conclusions coexist with their replacements
+
+`supersedes` applies only to `open` and `files` (`cleanup.ts:169`) and only within one session (`cleanup.ts:175`). In 352 calls it was used once and archived nothing. Decisions, the entries that matter most, never participate.
+
+The visible result is contradiction: an old claim that the automation could not read images stayed active next to the correction that a local `read_image` call did read a PNG; an old production-chain constraint stayed active next to the finding that it had been wrongly generalized. Capacity pressure does not repair this. 356 of 366 archive removals were byte-budget removals, which delete by age, not by contradiction.
+
+### 1.3 Facts from other workspaces are mixed in
+
+A session whose workspace is `D:\dqc\superAgent` recorded conclusions that belong to `D:\dqc\analyze` and `D:\dqc\system_img`; six duplicate pairs exist across those workspace memories. An entry carries only `kind`, `text`, `turn`, and `tags` (`memory-file.ts:236-249`), while the writer's working directory is recorded per session (`memory-file.ts:2552`) and the subject workspace is not recorded at all.
+
+### 1.4 Dispatch and session state is stored as memory
+
+Between 50 and 60 entries are dispatch or session status: "dispatched to session X", "waiting for a receipt", "session aborted", "third task deferred". The dispatch ledger already holds this state; the memory copy adds a second, stale source.
+
+### 1.5 Per-turn injection is the largest cost
+
+Every summary pass appended a snapshot, and every explicit write appended an update notice. The result is 812 snapshots (216 KiB), 350 "Memory updated" notices, and 149 checkpoints containing 704 entry lines (240 KiB). None of this is a bounded, queryable view; it is an append-only stream that grows for the life of the session, and the model reads it as context. It is the main reason the session's surface grows without bound, and it must be removed rather than tuned.
+
+### 1.6 The data-loss defect: over-cap entries are dropped without an archive record
+
+`pruneSessionEntries` (`memory-file.ts:2857-2928`) enforces the 40-entry-per-session cap by dropping whole oldest sections and exact-text duplicates. It returns counts, not archive records; `retainDocument` (`memory-file.ts:2591`) discards those counts; the write paths archive only byte-budget and cleanup removals (`memory-file.ts:1358-1374`). A dropped entry therefore leaves no trace.
+
+One instance, observed directly in the live workspace file:
+
+- At 16:04 the active block still held turns 816–817, including the decisions that memory entries must carry workspace, source session, and source turn, and that entries whose workspace cannot be determined are marked unassigned and not injected.
+- At 17:13 those entries were gone from `MEMORY.md`. `MEMORY.archive.md` had no copy: searching the active and archived files for `workspace_id` returned zero hits, and the archive file's modification time was still 15:37. The frontmatter turn records for turns 810–817 were gone as well.
+
+This was not retention pressure with a record. It was silent loss of the most recent design decisions, which is why the fix must not wait for the rest of this design.
+
+## 2. Goals and non-goals
+
+### 2.1 Goals
+
+1. Reduce the prompt, for every session, to one static list of workspace names, ids, and directories. No memory snapshot, no session index, and no dispatch state is injected, and no per-turn memory message is appended.
+2. Put workspace information and delivery behind one toolset: sessions and progress, dispatch tasks and receipts, messages and acknowledgements, and artifact references, each with a query scope enforced by the tool. Delivery is an explicit tool call, not an implicit side effect of ending a turn.
+3. Shrink memory to `global` only: cross-workspace facts and conventions. Dispatch state and business facts never enter memory, and the existing silent-drop defect is fixed first.
+
+### 2.2 Non-goals
+
+- No kanban or card UI in this change.
+- No memory card stream and no event-log store for memory.
+- No per-workspace business memory, no workspace memory fields, and no workspace topic library.
+- No migration of business or dispatch facts into memory; those facts stay in their tools and stores.
+- No redesign of the session, ledger, or JIRA tool contracts beyond adding the workspace toolset and moving delivery.
+- No global configuration changes.
+- No snapshot or prompt-cache optimization beyond removing the per-turn injection.
+- No per-session exception or feature flag that restores snapshots, update notices, or checkpoints for one session type.
+- No JIRA compatibility layer: JIRA is deprecated, treated as out of service, and will be redesigned; `jiraKey` and ledger compatibility are not kept.
+- No re-arrangement of the personality, JIRA, or `.dsh` store tools; that is a separate design item (section 2.3).
+
+### 2.3 Related designs (out of scope for this document)
+
+- Re-arranging the `personality`, `jira`, and `dsh` tools is an independent design item; this document only states the dependencies and the conflict points.
+- The `jira` tools are deprecated: treat them as out of service; no compatibility layer is kept. Their retirement and any redesign are a separate design item.
+- Cross-document conclusions (the tool-surface design owns the detail):
+  - namespace ownership: no `dsh_*` rename; `tool-dsh-store` keeps its name;
+  - `superagent_*` vs `workspace_tasks`: the orchestration tools move to `workspace_*`; this document's table is revised after approval;
+  - personality storage: no merge; the profile and writing rules stay separate after `memory_*` is narrowed;
+  - `.dsh` tools: `tool-dsh-store` remains the sole validated entry; artifacts reference it rather than replace it;
+  - JIRA: deprecated, no compatibility layer.
+- This document does not modify the contracts of those three tool groups.
+
+## 3. Key decisions
+
+### 3.1 The prompt carries only the static workspace directory
+
+The prompt contains one line per registered workspace: title, id, and directory. It is generated from the workspace registry at session start and does not change per turn. Only registered workspaces appear; a subdirectory is not a workspace, and a session that tries to create or address one is refused with a prompt to register the directory first.
+
+Why: the prompt is a fixed contract. Anything dynamic in it either forces a rewrite of the prompt or becomes an append-only message, which is exactly how 812 snapshots accumulated. Status, progress, tasks, and artifacts change constantly and belong in a query, not in the prompt.
+
+Cost: the model must call a tool to learn what a workspace is doing. This is a deliberate move from "push everything" to "pull what is needed". The same static list applies to every session; an ordinary workspace session and the super agent get the same contract.
+
+### 3.2 One workspace information toolset owns status, tasks, messages, and artifacts
+
+A single tool family answers: which sessions exist, what each is doing, which dispatch tasks exist and what their receipts say, how to send a message or follow-up, and where a session's or task's artifacts are.
+
+Why: these questions are queries with a natural scope, and a tool can enforce that scope from the calling session. A memory entry cannot: it is a copy with no owner and no expiry.
+
+Cost: more tool calls, a new tool surface to maintain, and a clear ownership rule between the toolset, the JIRA ledger, and the session store.
+
+### 3.3 Memory is `global` only
+
+Memory keeps cross-workspace facts and conventions: shared server addresses, the harness default model, shared rules, and cross-workspace user preferences. Dispatch state and business facts are rejected at write time.
+
+Why: after decisions 3.1 and 3.2, memory's only remaining unique value is a fact that applies everywhere and has no better owner.
+
+Cost: no automatic recall of business conclusions; the model must query, and the query may be slower than reading an injected entry.
+
+### 3.4 Per-turn memory injection is removed
+
+The memory snapshot, the `memory-state` prompt section, and the "Memory updated" notice are removed for every session, not only the super agent. Transcript compression is kept; it happens only at compaction boundaries and is not a memory message. Compaction triggers at 40% of the context budget by default; the threshold is configurable, and the super agent may use a different preset per agent (default 40%, adjustable).
+
+Why: the 812 snapshots and 350 updates are the flood; tuning their size or frequency only slows it down.
+
+Cost: the model loses an always-present summary of recent work; that information now comes from `workspace_sessions` and `session_event_read`. Context compression still needs a compaction path, so the existing checkpoint machinery is kept only as a compaction behavior, not as a per-turn memory feature.
+
+### 3.5 Delivery is a tool call; no turn-end fallback
+
+Sending a message, a follow-up, or a file reference is an explicit `workspace_message` or `workspace_artifacts` call. The turn-end delivery path is removed, not kept as a fallback.
+
+Why: an implicit turn-end delivery cannot tell a new problem from an old one, carries no reference model, and cannot pass files or citations between sessions. An explicit call can carry artifact references, an idempotency key, and a receipt.
+
+Cost: a model that forgets to call the tool sends nothing, so the prompt must teach when and how to reply. Replies are short: conclusion, evidence, next step; no report-length prose.
+
+## 4. Data model
+
+### 4.1 Memory: global entries only
+
+One entry has four fields: `topic`, `source_session_id`, `created_at`, and `text`. `topic` comes from a closed allowlist: `global-model`, `global-server`, `global-convention`, `global-account`, `global-tooling`. There is no `workspace_id`, no `dispatch`, no expiry, no `tags`, and no `kind` as a scope key.
+
+- A newer entry with the same topic archives the older one.
+- Stored at `$DSH_HOME/memory/GLOBAL.md` through the global store (`store-atom/src/service.ts:107-113`, `store-atom/src/service.ts:193-213`); whole-file limit 8 KiB.
+- States are `active` and `archived`. No state is workspace-specific.
+
+### 4.2 Toolset records
+
+The toolset owns the records it returns; memory does not duplicate them.
+
+| Record | Fields (logical) | Owner |
+|---|---|---|
+| Session progress | session id, title, status, current turn, current activity, last progress time, latest progress line | Session store, summarized by the tool |
+| Dispatch task | task id, workspace, title, goal, acceptance, status, assignee, created/updated, receipts, artifact references | Dispatch ledger plus a general task journal for non-JIRA work |
+| Message | message id, target session, text, kind (message or follow-up), delivery status, receipt, artifact references | Session inbox and message journal |
+| Artifact reference | artifact id, workspace, path, sha256, size, version, kind, session id, task id, created time, summary | Workspace artifact index |
+
+The toolset must not create a second copy of a fact that the ledger, the session store, or the workspace files already own. It aggregates and mutates through those owners, and the task journal exists only for work the JIRA ledger does not cover.
+
+### 4.3 Prompt data
+
+One line per registered workspace: `- <title> (<id>) · <directory>`. The list is static for the session and contains no status, no memory, and no task data. Only registered workspaces appear; a subdirectory is refused, not treated as a workspace.
+
+## 5. The workspace information toolset
+
+### 5.1 Common scope rules
+
+- The calling session's workspace is the default scope. A cross-workspace query requires an explicit `workspace` id that appears in the workspace registry, and the call is recorded.
+- A target that is a subdirectory of a registered workspace is refused with the same message as an unknown workspace; it is never auto-registered as a new workspace.
+- A query returns only records that belong to the named workspace. There is no implicit aggregation across workspaces; a cross-workspace view is an explicit list of workspace ids.
+- Results are bounded summaries: no file contents, no full transcripts, and a cursor for paging. Raw content stays behind `read`, `session_event_read`, and the artifact reference resolution in section 6.
+- Reads are open to any agent in the workspace. Task creation and status changes require the dispatcher role; a session may update its own task and append its own receipt.
+- Every mutation carries a request id so a retry cannot duplicate a task, a message, or a receipt.
+
+### 5.2 `workspace_sessions`
+
+Lists sessions in a workspace and reports what each is doing.
+
+Input:
+
+```
+{ action: 'list' | 'get', workspace?, sessionId?, status?, cursor?, limit? }
+```
+
+Output (`list`): `{ items: [{ sessionId, title, status, currentTurn, currentActivity, lastProgressAt, latestProgress, taskId? }], nextCursor? }`.
+
+Output (`get`): the same fields plus `recentProgress: [{ at, summary }]`, `pendingInbox`, and `artifactCount`.
+
+Scope: sessions whose workspace matches the resolved scope. `status` is one of `running`, `idle`, `blocked`, `done`. `currentActivity` is a bounded one-line summary derived from the live turn, not a full transcript.
+
+### 5.3 `workspace_tasks`
+
+Creates, reads, and updates dispatch tasks and their receipts.
+
+Input:
+
+```
+{ action: 'list' | 'get' | 'create' | 'update' | 'receipt',
+  workspace?, taskId?, status?, targetSessionId?, title?, goal?, acceptance?, boundaries?,
+  intentId?, intentVersion?, taskType?, alignment?, note?, cursor?, limit? }
+```
+
+- `create` returns `{ taskId, status, createdAt }`; `goal` and `acceptance` are required; `targetSessionId` is optional. `create` also requires `intentId` and `intentVersion`; a missing, stale, or unconfirmed version rejects the dispatch (section 11). `taskType` is required and comes from the closed six-category taxonomy in section 11.6.
+- `update` accepts `status`, `note`, and `assignee`; allowed transitions are `pending → in_progress → waiting_review → done | blocked | cancelled`, and any state may return to `in_progress`.
+- The vocabulary above is the new system's vocabulary. Existing task data is not migrated: old states remain as historical text and are not mapped. A one-time script can translate them later if needed; that script is outside this design.
+- `receipt` appends `{ status, note }` and returns `{ receiptId, at }`.
+- `get` returns the task, its receipts, its target session, and its artifact references.
+- `list` filters by workspace, status, and assignee.
+
+Scope: a task belongs to exactly one workspace. A mutation must come from the dispatcher or from the session assigned to the task. Cross-workspace task listing requires explicit workspace ids.
+
+### 5.4 `workspace_message`
+
+Sends a message or follow-up to one session and reads the delivery receipt. The full delivery and reference design is section 6.
+
+Input:
+
+```
+{ action: 'send' | 'read', targetSessionId?, messageId?, text?, kind?: 'message' | 'followup',
+  priority?: 'normal' | 'urgent', replyTo?, references?, taskId?, requestId? }
+```
+
+- `send` returns `{ messageId, deliveredAt, status: 'queued' | 'delivered' | 'interrupted' | 'target_archived' }`. A repeated `requestId` returns the original result.
+- `read` returns the message and its receipts: `{ messageId, targetSessionId, text, references, receipts: [{ at, status }], nextCursor? }`.
+- `priority` defaults to `normal`; `urgent` is limited to the three cases below.
+- `replyTo` links a reply to the message it answers.
+- Scope: sessions in the same workspace may message each other; a cross-workspace message goes through the super agent, not directly. The target must be a session in an authorized workspace; there is no broadcast, and the message body is bounded to one screen.
+
+Normal versus urgent: a normal message queues and arrives at the target's next turn boundary. An urgent message is one of three cases: a correction of a wrong conclusion the target is acting on; a stop order for a dangerous or irreversible operation; a user instruction change that invalidates the current work. The sender, any agent, marks `priority: 'urgent'`; the tool validates the three cases. The super agent is not special here; it was only the first dispatcher. An urgent message inserts before the target's next tool call and may interrupt the current step. Today every message uses the normal append path, so an urgent correction waits behind the queue and a wrong conclusion can run to completion; that is the defect this channel fixes.
+
+Reply guidance: an ordinary agent replies with `workspace_message.send` and `replyTo` when the requested work is done or blocked. The reply is conclusion, evidence, next step, a few lines, no report; references replace attachments. The prompt states this, because an ordinary agent does not infer the tool contract.
+
+Ask-user and approval are a separate reliability item; see section 7.5.
+
+Attaching `references` to `send` is the push path; see section 6.6.
+
+This tool is not the subagent-tree messaging tool. It addresses workspace sessions, including sessions the caller did not start.
+
+### 5.5 `workspace_artifacts`
+
+Publishes, references, requests, and resolves the files and reports a session or task produced.
+
+Input:
+
+```
+{ action: 'publish' | 'reference' | 'request' | 'grant' | 'resolve' | 'list',
+  workspace?, path?, sessionId?, taskId?, artifactId?, requestId?, approve?, reason?,
+  kind?, summary?, pathPrefix?, cursor?, limit? }
+```
+
+- `publish` registers a file and returns an artifact reference; it does not copy the file.
+- `reference` attaches an existing artifact reference to a message or task without copying it.
+- `request` is the pull path: the requester asks for a reference or path and gets `{ requestId, status: 'granted' | 'pending' | 'denied', grant? }`. Same-workspace policy may grant immediately; a cross-workspace request defaults to pending until the holder grants.
+- `grant` is the holder or workspace policy decision on a pending request: `{ requestId, approve }` returns `granted` or `denied`; only the holder or the policy may call it.
+- `resolve` reports whether the reference still matches and whether the caller holds a grant; it returns no content.
+- `list` returns references only; a task with no recorded artifact returns an empty list, not a guess.
+
+Scope: paths must resolve inside the workspace root. The tool returns references, not contents; `read` returns the content after the caller has a valid grant. The reference model is section 6.4; the pull and push checkpoints are section 6.6.
+
+### 5.6 When to call which
+
+| Question | Tool |
+|---|---|
+| Which sessions exist in this workspace, and what are they doing? | `workspace_sessions` with `action: 'list'` |
+| What is this session working on, and what happened recently? | `workspace_sessions` with `action: 'get'` |
+| Create a dispatch task, or change its status | `workspace_tasks` with `action: 'create'` or `'update'` |
+| What is the task status, and what did the executor report? | `workspace_tasks` with `action: 'get'` |
+| Send a message or follow-up with references | `workspace_message` with `action: 'send'` |
+| Did the target receive it? | `workspace_message` with `action: 'read'` |
+| Where is the report or file this session or task produced? | `workspace_artifacts` with `action: 'list'` or `'resolve'` |
+| What exactly did the session say in a turn? | `session_event_read` |
+| Find an older session by content | `session_search` |
+| What is the shared server address or default model? | Memory `global` entries |
+| What workspaces exist? | The static list in the prompt; no call |
+
+### 5.7 The board reads the same toolset
+
+A future board view needs sessions, progress, tasks, receipts, messages, and artifacts. All of them come from `workspace_sessions`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. Memory contributes nothing to the board; it is not queried for sessions, progress, or tasks.
+
+## 6. Tool consolidation and tool-based delivery
+
+### 6.1 Why the tools move
+
+Today the memory tools carry session-reading duties, the super agent tools are specific to the JIRA ledger, and outbound information is delivered by the turn-end mechanism rather than by a tool. That split makes cross-session and cross-workspace handoff hard: a message cannot carry a file reference, a report cannot cite another report, and the receiver cannot verify what it received.
+
+The target ownership is one workspace toolset for sessions, tasks, messages, and artifacts; memory reduced to global facts; the turn-end path removed. This section is the migration map and the delivery/reference contract.
+
+### 6.2 Existing tool to new home
+
+| Existing tool or path | Current responsibility | New home | Action |
+|---|---|---|---|
+| `memory_write` | Writes any durable entry, including business facts | Memory, global only | Keep, narrow |
+| `memory_search` | Searches memory entries and session history | Memory, global only | Keep, narrow |
+| `memory_read` | Reads a session turn as a transcript | Session query: `session_event_read`, `workspace_sessions` | Delete |
+| `memory_forget` | Forgets entries by session, turn, kind, or tag | Memory, global only | Keep, narrow |
+| `memory_resolve` | Resolves open work items | No open or dispatch memory entries remain | Delete |
+| `session_search` | Searches prior sessions in the caller workspace | Session query | Keep |
+| `session_event_search`, `session_event_read`, `session_trace`, `session_event_trace` | Reads authorized session events and lineage | Session query | Keep |
+| `superagent_scan`, `superagent_status` | Reads the JIRA ledger's readiness and counts | JIRA ledger view | Deprecated with JIRA; no compatibility (section 2.3) |
+| `superagent_claim`, `superagent_dispatch` | Claims an issue and starts an executor | JIRA ledger actions | Deprecated with JIRA; no compatibility (section 2.3) |
+| `workspace_sessions` | Lists sessions, status, current activity, recent progress | Workspace toolset | Add |
+| `workspace_tasks` | General dispatch tasks and receipts | Workspace toolset | Add |
+| `workspace_message` | Sends messages, follow-ups, and references; reads receipts | Workspace toolset | Add |
+| `workspace_artifacts` | Publishes, references, and resolves artifacts | Workspace toolset | Add |
+| `send_message`, `wait_agent` | Messaging inside the subagent tree | Subagent tree | Keep; out of scope |
+| Turn-end delivery | Implicit outbound message after a turn | Removed; no fallback | Delete |
+| `read`, `glob`, `grep` | Reads workspace content | Content tools | Keep |
+| `tool-dsh-store` | Reads `.dsh` content | Store tool | Out of scope here; unchanged (section 2.3) |
+
+`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary.
+
+### 6.3 Delivery as a tool call
+
+`workspace_message.send` is the primary delivery path:
+
+Input: `{ targetSessionId, kind: 'message' | 'followup', text, priority?: 'normal' | 'urgent', replyTo?, references?, taskId?, requestId }`.
+
+- `text` is bounded to one screen. The schema caps it at 600 characters, and the prompt requires conclusion, evidence, and next step, at most six lines. The schema caps it at 600 characters, and the prompt requires three parts: conclusion, evidence, next step, at most six lines.
+- `references` is a list of artifact references. No file content is ever placed in the message body.
+- `taskId` links the message to a task when the message is a status update or follow-up.
+- `priority: 'urgent'` is marked by the sender, any agent, and validated by the tool against the three cases in section 5.4; it inserts before the target's next tool call and may interrupt the current step.
+- `replyTo` marks a reply to an earlier message.
+- `requestId` is the idempotency key. A repeated call returns the first result.
+
+Output: `{ messageId, deliveredAt, status: 'queued' | 'delivered' | 'interrupted' | 'target_archived', references }`.
+
+A reply is short: conclusion, evidence, next step; references carry the files; no report-length prose. Attaching references is the push path; section 6.6 defines its checkpoints.
+
+`workspace_artifacts.publish` registers the file and returns a reference. `workspace_artifacts.reference` attaches that reference to a message or task without copying the file. The receiver calls `workspace_artifacts.resolve` to check the reference, then `read` to read the content. A message, task, or report cites another one by artifact id, not by pasting its content.
+
+### 6.4 Reference model
+
+An artifact reference is immutable at send time:
+
+```
+ArtifactRef = { artifactId, workspaceId, path, sha256, size, version,
+                kind, sessionId, taskId?, createdAt }
+```
+
+- `artifactId` is stable per logical artifact: `artifact-<sha256(workspaceId|path|kind)[:16]>`.
+- `version` increases when the file at that path is published again; `sha256` and `size` describe the published content.
+- A message or task stores the reference's `artifactId`, `version`, and `sha256` at send time. Later changes do not rewrite it.
+- `resolve` compares the recorded hash with the current file and the caller's grant, and returns one status:
+  - `ok`: the file exists, the hash matches, and the caller holds a valid grant or push attachment.
+  - `changed`: the file exists but the hash differs; this is "the file changed", not "the file is gone".
+  - `missing`: the path no longer exists; this is "the file is gone".
+  - `denied`: the caller may not read that workspace or artifact, or the holder refused.
+  - `pending`: a pull request exists but no grant or denial has been decided.
+  - `expired`: the grant window passed.
+- A grant is scoped to one artifact version and one requester, and it expires. A push attachment is a grant for that target session only. A new version needs a new grant; an old grant does not follow the new content.
+- Cross-session references resolve inside the same workspace by default. A reference from another workspace requires an explicit `workspace` id; if the caller has no access, the result is `denied`, never `missing`.
+- Deleting a file does not delete the artifact index entry; `resolve` returns `missing`, and the reference remains for audit. Re-publishing the same path creates a new version; old references resolve as `changed` rather than silently following the new content.
+- A report can cite another report by artifact id. The citation is a reference, so the report does not duplicate the other report's body.
+
+### 6.5 No turn-end fallback; retries and reply shape
+
+There is no turn-end delivery path. Every outbound message is an explicit `workspace_message.send`; a turn that sends nothing delivers nothing. `requestId` still deduplicates retries; because there is only one delivery path, the same content cannot be delivered twice and a new problem cannot be mistaken for an old one.
+
+If the tool call fails, the model retries with the same `requestId` or reports the failure; it must not assume an automatic delivery. A reply is short: conclusion, evidence, next step; references carry files; no report-length prose.
+
+### 6.6 Artifact access: pull and push
+
+Artifact access has two modes, chosen by which tool runs first.
+
+**Pull.** The requester calls `workspace_artifacts.request`. Checkpoints, in order:
+
+1. The requester's access to the target workspace, by membership and role.
+2. The artifact's existence and version, checked only after access. A cross-workspace caller that fails access gets `denied`, never `missing`, so artifact existence does not leak.
+3. The holder's grant or the workspace policy. Same-workspace policy may auto-grant; a cross-workspace request defaults to `pending` until the holder grants.
+4. The read: the grant is still valid and the version and hash match.
+
+Failures: `denied` (no access or refused), `pending` (no decision yet), `expired` (deadline passed), `missing` (no file), `changed` (hash or version moved).
+
+**Push.** The sender calls `workspace_message.send` with references. Checkpoints, in order:
+
+1. The sender's share permission for each artifact.
+2. The target's membership in the workspace.
+3. The reference's existence and version at send time. An invalid reference fails the send atomically; no message is delivered with a broken reference.
+4. At the receiver, the attachment is the grant; `resolve` checks the version and hash and returns `changed` or `missing` as above.
+
+Failures: a send-time `denied` fails the message and names the reference; a receive-time `changed` or `missing` leaves the message intact and marks that reference.
+
+Who initiates changes the order: a pull checks the receiver's access before existence; a push checks the sender's share permission before the target's membership. A grant is version-scoped and expires; a new version needs a new grant.
+
+### 6.7 Memory tools after the split
+
+- `memory_write` accepts only a global fact or convention; it rejects business facts and dispatch state with a pointer to the workspace tools.
+- `memory_search` searches global entries only; the session-corpus half is removed.
+- `memory_read` is deleted; session context is `session_event_read` or `workspace_sessions`.
+- `memory_forget` forgets global entries by topic or entry id; the session, turn, and kind filters are removed with the dispatch namespace.
+- `memory_resolve` is deleted; there are no open or dispatch entries to resolve.
+- The `/memory` command keeps global listing, statistics, and forget; summary, pause, prune, and session-editing subcommands move to transcript housekeeping or are removed.
+
+### 6.8 Risks in the consolidated toolset
+
+- Delivery reliability: retries use `requestId`; the result distinguishes queued, delivered, interrupted, and failed; there is no fallback, so one explicit path is the only path.
+- Double delivery: both paths share one idempotency key and one journal; the second write is a no-op.
+- Reference invalidation: `changed`, `missing`, and `denied` are distinct; references are immutable; no silent follow of a new version.
+- Permissions: who may send to which session, and who may read whose artifacts. Cross-workspace reads are explicit and audited; `denied` is not `missing`.
+- Session lifecycle: a message to an archived session returns `target_archived` and does not create a pending inbox; the artifact references remain resolvable after the session is archived.
+- Tool removal breakage: deleting `memory_read` and `memory_resolve` changes the prompt and the tool catalog; the prompt, tool descriptions, and snapshots must change in the same step.
+
+## 7. Prompt, write, and injection rules
+
+### 7.1 Memory write rules
+
+- The only accepted entry is a `global` fact or convention. `memory_write` takes `topic`, `text`, and `source_session_id`; `topic` must be in the allowlist.
+- The body is rejected if it contains an absolute workspace path, a JIRA key, a version or commit, a device or mirror, a dispatch status, or an analysis conclusion. The rejection code is `NOT_GLOBAL_MEMORY` and the message names the workspace tool to use instead.
+- There is no `dispatch` namespace and no per-turn automatic memory entry. The summary job no longer writes memory.
+- A business or dispatch write is rejected; the caller is told to use `workspace_tasks`, `workspace_sessions`, `workspace_message`, `workspace_artifacts`, `session_event_read`, or `read`.
+
+### 7.2 Prompt and injection rules
+
+- The prompt has one static workspace directory section. It is not rewritten per turn, and it contains no status, no memory, and no tasks.
+- The memory snapshot, the `memory-state` prompt section (`api.ts:303-312`), and the `appendMemoryUpdate` notices (`snapshot.ts:442-449`) are removed.
+- The cross-session index (`snapshot.ts:343-374`) is removed with them.
+- Transcript compression, when the session is compacted, may still replace old turns with a summary. That is a compaction behavior: it does not append a memory message per turn, and it is not injected at session start.
+- The prompt states the reply contract: conclusion, evidence, next step, at most six lines or 600 characters, and references for files.
+- The prompt states the three urgent cases and that a normal message is not urgent.
+- The prompt tells a worker to state what information is missing and stop; only the root or super agent asks the user.
+- The prompt states that only registered workspaces exist; a subdirectory is refused.
+- Compaction triggers at 40% of the context budget by default; the threshold is configurable, and the super agent may use a different preset per agent (default 40%, adjustable).
+- No other memory message is appended on a write.
+
+### 7.3 Search and read rules
+
+- `memory_search` searches global memory only. The session-corpus half is removed (`tools.ts:490-506`); session search is `session_search`.
+- `memory_read` is removed from the model-facing tools; session context is `session_event_read` or `workspace_sessions`.
+- Archived global entries are queryable when explicitly requested but are never injected.
+
+### 7.4 Every session, no exceptions
+
+The prompt change, the removal of per-turn memory messages, and the memory rules apply uniformly: an ordinary workspace session and the super agent get the same static workspace list, the same toolset, and the same global-only memory rules. There is no feature flag that restores snapshots for one session type, because the flood is a property of the mechanism, not of the agent role.
+
+Acceptance measurement for an ordinary session:
+
+- Before: one snapshot per summary pass, one "Memory updated" notice per explicit write, and at most one checkpoint per tier boundary. In the observed super-agent session that produced 812 snapshots, 350 update notices, and 149 checkpoints (704 entry lines), 737 KiB in total.
+- After: zero memory-sourced messages per turn in steady state; per-turn memory bytes are 0. The only context is the static workspace list in the prompt and the results of tool calls. Compaction summaries are not memory messages and are measured separately.
+
+The "what did I do last turn" case is the one that per-turn notices used to cover. After the change, `workspace_sessions` with `action: 'get'` returns `recentProgress` and `currentActivity` for the session, and the prompt's "where to look" map names that tool. The acceptance test removes the notice, asks the session what it did last turn, and asserts that the answer comes from `workspace_sessions` (or `session_event_read` for the raw turn), not from a memory message.
+
+This test is part of step 2 and runs on an ordinary workspace session, not the super agent.
+
+### 7.5 Confirmation channel: ask-user and approval
+
+The old ask-user and approval path is removed now, with no transition. It was barely executed: requests stalled, no responder answered, and failures were silent. Keeping it as a fallback would preserve the failure mode.
+
+The chain is:
+
+```
+worker agent --(blocked; states what is missing)--> super agent
+super agent --(one consolidated question, options, deadline)--> user
+user --(decision)--> super agent
+super agent --(explicit instruction)--> worker agent
+```
+
+A worker does not pop its own confirmation. It states the missing information and stops. The super agent, or the session's root agent when there is no super agent, is the only asker. The super agent gives explicit instructions, not open-ended questions.
+
+Every request has a state: `pending`, `answered`, `expired`, or `denied`, visible in the UI. If no answer arrives by the deadline, the request becomes `expired` and returns the consequence to the asker; the worker must stop or use a pre-declared safe default, never continue silently. A broken chain (asker gone, target gone) marks the request `failed`; there is no silent hang.
+
+The old path is removed in the same release; there is no dual path and no data migration. Tests cover answered, expired, denied, and broken-chain cases.
+
+## 8. Migration and the stop-the-bleeding fix
+
+### 8.1 Stop-the-bleeding fix: ship first, independent of this design
+
+Change `pruneSessionEntries` to return archive records for every over-cap and exact-duplicate removal; add `over-cap` and `duplicate` removal reasons; have `retainDocument` collect those records; archive them before writing the active file on every write path; and keep the entries if archiving fails rather than dropping them.
+
+Acceptance: lowering the cap to three entries and writing a fourth turn always leaves an archive record for each dropped entry; a failed archive keeps the entry; a stale-version retry never duplicates an archive record.
+
+### 8.2 Migration rules
+
+| Class | Rule | Treatment |
+|---|---|---|
+| `global` | Cross-workspace fact or convention: shared server address, harness default model, shared rules, cross-workspace preference | Human confirmation required; becomes a global entry |
+| `dispatch` | Names a task, session, or ledger path and describes a plan, next step, or progress | Archived; the task tool and the ledger are the durable owners |
+| `business` | Analysis conclusion, device or mirror, production version or HEAD, code path or commit, test result, report content, workspace configuration | Archived, never injected; the pointer, if any, lives in the task or ledger, not in memory |
+| `unclassified` | No source session, no turn, or ownership that cannot be determined | Archived, listed in the report, never injected, no guessing |
+
+The dry-run report lists, per file and entry: the class, the proposed global topic, the reason, and the pointer target if any. Global candidates are listed separately for a person to confirm. Applying requires the report's hash, writes a backup first, archives before the active file, and is reversible by restoring the backup.
+
+Every workspace's memory file is migrated with the same rules; an ordinary session is not a special case. Its file gets the same report, backup, archive-first write, and rollback.
+
+A heuristic pass over the current 406 entries suggests about 15 global candidates (most of which review should reject), about 50 dispatch entries, and about 340 business or unclassified entries. These numbers are for planning; the report is authoritative.
+
+## 9. Milestones
+
+| Step | What | Acceptance |
+|---|---|---|
+| 0 | Stop-the-bleeding fix to the over-cap path | Cap and archive tests pass; no silent loss; independent release, rollback by reverting the commit |
+| 1 | Read side of the consolidated toolset: `workspace_sessions`, `workspace_tasks` read, `workspace_artifacts` list/resolve, `workspace_message` read; narrow the memory tools; keep the prompt and injection unchanged | A session in workspace A sees only A; a cross-workspace call without an explicit id fails; memory tools no longer read sessions; results are bounded and paged |
+| 2 | Delivery becomes a tool call and the flood is removed in the same release: `workspace_message.send`, artifact publish/reference, the static prompt, and no snapshot, update notice, cross-session index, or turn-end delivery | A message and a reference round-trip; a retry does not duplicate; a turn with no send delivers nothing; an ordinary session's per-turn memory message count is 0 and bytes are 0; "what did I do last turn" is answered from `workspace_sessions` |
+| 3 | Memory becomes global-only and the old entries are migrated | A business or dispatch write is rejected with a tool hint; the dry-run report is produced; only confirmed global entries remain injected; backups and rollback verified |
+
+Each step is independently shippable and reversible. Step 0 ships first. Steps 1–3 do not depend on the board direction.
+
+Ordering: the read side lands first so the model can query before anything is removed. The flood removal and the delivery tool land in the same release, so there is no window where the old injection is gone and the new delivery path is not yet available. The memory migration is last because it rewrites user data and benefits from a stable toolset.
+
+Rollback: step 0 is one commit revert. Steps 1–3 keep a reader that parses the previous file version and write a per-file backup before migration, so reverting the code leaves existing files readable and step 3 can restore its backups. The archive stays append-only, so a rollback never loses the record of what was removed.
+
+Acceptance for every session: before the change, an ordinary session receives one snapshot per summary pass plus one update per write, and at most one checkpoint per tier boundary; after step 2, its per-turn memory message count is 0 and its per-turn memory bytes are 0. The "what did I do last turn" test in section 7.4 passes on that session through `workspace_sessions`.
+
+## 10. Risks and open questions
+
+### 10.1 Open items
+
+None. The decisions above are conclusions, and the implementation values are fixed: 40% compaction, the six task types, and the 600-character reply cap.
+
+### 10.2 Later, not this design
+
+- The board UI and its rendering.
+- An event-log store for tasks and messages; the toolset can start on the existing stores.
+- Archive retention policy and size budget.
+- A latency budget for the toolset once the model relies on it for progress.
+
+### 10.3 Risks
+
+- Tool latency and cost: keep the results bounded, and put a short "where to look" map in the prompt.
+- Two owners for a task: the toolset must wrap the existing ledger and journal rather than create a second task list.
+- Message priority: an urgent message may interrupt a step. The three urgent cases are narrow, and a normal message is never urgent; a misclassified urgent message is a defect to review.
+- Reference invalidation: changed, missing, denied, pending, and expired are distinct; a grant is version-scoped and a new version needs a new grant; a cross-workspace denial never reveals existence.
+- Cross-workspace authorization: an explicit workspace id, registry membership, and a recorded call; pull checks the receiver first, push checks the sender first; no implicit aggregation.
+- Losing context compression: a compaction preset that is too aggressive may drop context; make it configurable, test a long session, and keep the previous value as a rollback.
+- Confirmation channel: the old path is removed; the new chain has a deadline and visible states, and a broken chain marks the request failed instead of hanging.
+- Migration misclassification: dry run, human confirmation, backup, and rollback; a wrongly archived global fact can be re-added.
+- Every-session blast radius: a prompt or toolset defect now reaches ordinary sessions too. Stage the rollout as toolset first, then prompt and injection removal, and keep the previous prompt available as a build-time rollback for one release.
+
+### 10.4 Confirmed in this round
+
+- Task status: new vocabulary only; old task data is not migrated; a one-time script can do it later.
+- Messaging: same-workspace messages are allowed; cross-workspace messages go through the super agent; the sender, any agent, marks urgent and the tool validates the three cases; the prompt teaches the short reply.
+- Reply format: conclusion, evidence, next step; at most 6 lines or 600 characters; files as references.
+- Task types: analysis and diagnosis, fix, test verification, migration and deployment, design document, other; a closed list changed only by review.
+- Artifact access: pull via `request`/`grant`, push via message references; the tool order decides; same-workspace policy may auto-grant; a cross-workspace read needs an explicit grant; denied, pending, expired, missing, and changed are distinct.
+- Ask user and approval: the old path is removed now; the chain is worker → super agent → user → super agent → worker; a worker states what is missing and stops; expired, denied, and failed are visible; no silent hang.
+- Workspace list: registered workspaces only; subdirectories are refused with a registration prompt.
+- Compaction: kept; triggers at 40% of the context budget by default; configurable; the super agent may use per-agent presets (default 40%, adjustable).
+- Turn-end delivery: removed; no fallback; replies are conclusion, evidence, next step, not reports.
+- JIRA: removed now; only GitHub credential code/config kept; other JIRA cloud config removed; no compatibility layer.
+- JIRA local data: deleted; an optional one-time static export may be taken before deletion; irreversible.
+- Dispatch ledger: dropped; no migration or import; `workspace_tasks` starts fresh.
+- JIRA skills and the `superagent_session`/`superagent_workspace` aliases: removed; no alias names are kept.
+- Intent cards: every dispatch requires one; corrections append versions; receipts carry an alignment checklist; deviation rate is tracked.
+
+## 11. Intent cards: dispatch alignment
+
+### 11.1 The failure this fixes
+
+The super agent decomposes a user request into tasks. The request is re-expressed in the decomposition, and each re-expression can drift; the user corrects it, the correction is lost in the next task, and the same drift returns. Prompt improvements reduce the rate but cannot make the intent durable: the task carries a paraphrase, not the user's words, and nothing checks the task before dispatch or the result after it.
+
+This is a structural failure, so the fix is a structural object: an intent card that the super agent writes once, that tasks must reference, that dispatch validates against, that receipts are checked against, and that corrections append to.
+
+### 11.2 The intent card
+
+| Field | Meaning |
+|---|---|
+| `intentId` | Stable id for one user request |
+| `version` | 1, 2, 3…; each correction appends a new version |
+| `workspaceId` | The workspace the request is for |
+| `sourceSessionId`, `sourceTurn` | Where the user stated the request |
+| `rawUserText` | The user's original words, verbatim |
+| `goal` | The outcome the user wants |
+| `acceptance` | Ordered list of checkable acceptance points |
+| `boundaries` | What must not be touched: files, permissions, environments, data |
+| `outputForm` | The expected deliverable: code, report, patch, decision, etc. |
+| `status` | `proposed`, `active`, `superseded` |
+| `createdAt`, `author` | When and who created this version |
+
+Storage: `$DSH_HOME/intents/<intentId>/` with `index.json` (latest version and status) and `versions/<n>.json`. The store is append-only: a correction writes a new version; old versions are never edited or deleted. It is host-level control-plane state, not workspace business content and not memory.
+
+Ownership: the user owns the intent. The super agent may create a `proposed` draft from the user's request and must get the user to confirm it as `active`; a correction by the user appends a new `active` version and marks the previous one `superseded`. Ordinary agents read the card; they do not edit it. The super agent cannot silently rewrite an active version.
+
+### 11.3 Pre-dispatch validation
+
+`workspace_tasks.create` requires `intentId`, `intentVersion`, `workspace` (the target), `acceptance`, and `boundaries`. Missing any of them rejects the call with `INTENT_INCOMPLETE`. A version that is not the latest active one rejects with `INTENT_STALE`, and the caller must re-read the card.
+
+The service then runs a coverage check: every goal, acceptance point, boundary, and output-form item in the card must map to an item in the task brief. A missing mapping rejects the dispatch with `INTENT_COVERAGE_MISSING`, unless the caller supplies `nonCoverage: [{ point, reason }]` and the super agent confirms it. There is no default pass and no "assume covered".
+
+The schema and the service enforce this; the prompt only tells the super agent to read the card first, then the task, then write the coverage list. A model that forgets the card cannot dispatch.
+
+### 11.4 Post-execution alignment
+
+When a task returns, the super agent checks the receipt against the same `intentId` and `intentVersion` that the task referenced. Each item gets one status:
+
+- acceptance: `satisfied`, `not_satisfied`, or `out_of_scope`;
+- boundary: `respected` or `violated`;
+- output form: `matched` or `not_matched`.
+
+Each status carries evidence: the changed file, the test, the report line, or the missing item. The alignment is produced by the super agent or a validator, not by the executor alone. The task cannot move to `done` while any acceptance item is `not_satisfied` or any boundary is `violated`; it goes to `waiting_review` or `blocked` with the checklist. The receipt shown to the user includes the checklist, so drift appears as a list, not as a surprise.
+
+### 11.5 Correction capture and recurrence
+
+Every user correction appends a new intent version with `reason`, the correcting message, and the changed points. The raw user text, goal, acceptance, boundaries, and output form are all versioned; history is immutable. The next dispatch reads the latest active version automatically; no one restates the intent from memory.
+
+A correction that repeats an earlier point is recorded against both versions. The store counts recurrence by `(intent point, correction reason)` across tasks, so a recurring drift is a number, not an impression.
+
+### 11.6 Metrics
+
+Deviation rate = user corrections / dispatched tasks, computed per workspace and task type over a rolling window (7 and 30 days). A correction event is one new intent version created by a user correction; several changed points in one correction count once. Recurrence rate = corrections whose point was already corrected before / corrections in the window.
+
+Task types are a closed list of six: analysis and diagnosis, fix, test verification, migration and deployment, design document, and other. Adding or renaming a type requires a review; the model cannot invent one.
+
+The inputs are recorded at three points: the intent version append, the task dispatch, and the receipt alignment. No metric depends on memory or on a model's self-report.
+
+### 11.7 Tool surface
+
+`workspace_intents` provides `create`, `get`, `correct`, `history`, and `metrics`. The user or the UI creates and confirms; the super agent may create a `proposed` draft and read; ordinary agents read only. `workspace_tasks.create` requires the intent reference, as above. `workspace_tasks.receipt` accepts the alignment checklist, and the task state machine refuses `done` with an unsatisfied item.
+
+### 11.8 What this does not do
+
+This is not a stronger prompt. The prompt only says where to look and in what order: read the intent card, then the task, then the coverage list. The constraints live in the schema, the coverage check, the receipt gate, and the versioned store. It also does not put intent cards in memory; they are control-plane state.
+
+### 11.9 Acceptance tests
+
+1. A deliberately vague request cannot be dispatched: `workspace_tasks.create` without an intent card returns `INTENT_INCOMPLETE`, and no task is created.
+2. A task whose brief omits an acceptance point returns `INTENT_COVERAGE_MISSING`; adding the point or an explicit non-coverage reason lets it proceed.
+3. A task that returns with a deviation produces a checklist with `not_satisfied` or `violated`, and the task cannot be `done`.
+4. After one user correction, the next task automatically references the new version; the old version is still readable and unchanged.
+5. A repeated correction on the same point increments the recurrence count, and the deviation rate appears in `workspace_intents.metrics` for the workspace and task type.
+
+## 12. Capability inventory: memory and super agent
+
+This section lists what the two surfaces do today, whether the new design keeps each capability, and what replaces it when it does not.
+
+### 12.1 Memory capabilities
+
+| Capability | Today's problem | Still needed? | New home / replacement | Action |
+|---|---|---|---|---|
+| Write | Records any durable conclusion, including business facts | Only global facts and conventions | `memory_write` for global only | Change |
+| Search | Searches memory entries and session history | Memory only | `memory_search`; session search is `session_search` | Change |
+| Read | Reads a session turn as a transcript | No | `session_event_read`, `workspace_sessions` | Delete |
+| Forget | Forgets by session, turn, kind, or tag | Global only | `memory_forget` without the session filters | Change |
+| Archive | Keeps removed entries searchable | Global only | Global archive; business history stays in its workspace | Change |
+| TTL and expiry | Expires `open` and `files` after 3 and 14 days | No | Removed with the dispatch namespace | Delete |
+| Snapshot injection | Per-turn memory snapshot | No | Static prompt plus tool queries | Delete |
+| Summary generation | Writes per-turn business entries | No memory entries | Compaction summary only, not memory | Change |
+| Cross-session index | "Recent sessions" outline | No | `workspace_sessions` | Delete |
+| Global and personal preference sharing | Mixes cross-workspace facts with persona and style | Split | Global memory for facts; personality for persona and style | Change |
+
+### 12.2 Super-agent capabilities
+
+| Capability | Today's problem | Still needed? | New home / replacement | Action |
+|---|---|---|---|---|
+| Workspace registry and list | Static list injected in the prompt | Yes | Keep the registry; static prompt; `workspace_sessions` for status | Keep, change |
+| Session create, reuse, archive | `superagent_session` and session tools | Yes | Session service; `workspace_sessions`; no memory copy | Move |
+| Dispatch | `superagent_dispatch` plus JIRA claim | Yes | `workspace_tasks`; JIRA claim and dispatch retired | Move |
+| Ledger and receipts | `.superagent/ledger`, `superagent_ledger` | Yes | `workspace_tasks` journal and receipts; starts fresh, no migration | Move |
+| Delivery | `superagent_deliver` plus the turn-end path | Yes | `workspace_message`; no turn-end fallback | Move |
+| Report presentation | `reports.jsonl` and delivery | Yes | `workspace_artifacts` references plus `workspace_message`; the UI renders | Move |
+| Permission switch | `superagent_permission` | Yes | Permission-preset service | Move |
+| Long-task monitoring | Session status and JIRA status | Yes | `workspace_sessions` status and progress plus the write lease | Move |
+| Cross-workspace collaboration | Dispatch, with memory copies | Yes | `workspace_tasks`, `workspace_message`, `workspace_artifacts` with explicit scope; never memory | Move |
+
+## 13. Appendix: future direction
+
+A board view is a plausible later UI. Its data comes from `workspace_sessions`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`; memory contributes only global facts and is never queried for sessions, progress, or tasks. A memory card stream, a per-workspace memory index, and an event-log store are explicitly out of scope; if the board needs one later, it is a new design over the same toolset, not a change to memory.

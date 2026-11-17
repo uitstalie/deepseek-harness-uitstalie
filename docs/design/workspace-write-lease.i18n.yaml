@@ -1,0 +1,103 @@
+# Bilingual-pair consistency record for workspace-write-lease.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/design/workspace-write-lease.md
+/workspace-write-lease:
+  en: 8b0fbe17ef9baf01
+  zh: 5895409e8df5b2e2
+/workspace-write-lease/1-background-and-the-incident:
+  en: afc6da9e186058d9
+  zh: 1e7a22b71d5e812c
+/workspace-write-lease/2-scope-goals-and-non-goals:
+  en: f37b1a681ba69cda
+  zh: 9bff538a1e6cdeb1
+/workspace-write-lease/2-scope-goals-and-non-goals/2-1-goals:
+  en: c4349b43b051e173
+  zh: 1c17a70103572fe2
+/workspace-write-lease/2-scope-goals-and-non-goals/2-2-non-goals:
+  en: 362fc9f07a487ed9
+  zh: d962819871333c14
+/workspace-write-lease/3-granularity-one-checkout-one-lease:
+  en: 27a1b22ad19a11ff
+  zh: 8caab4578097531a
+/workspace-write-lease/4-what-counts-as-a-write:
+  en: 5498207b906c7211
+  zh: ec2f50116dcc1714
+/workspace-write-lease/4-what-counts-as-a-write/4-1-classification:
+  en: dd27435e5ac707e9
+  zh: 0d6132728c82e68f
+/workspace-write-lease/4-what-counts-as-a-write/4-2-shell-commands:
+  en: 7d3c98abb0b3d319
+  zh: 01cb8a06c2529b16
+/workspace-write-lease/4-what-counts-as-a-write/4-3-new-tools:
+  en: bcfa2d10671bc26a
+  zh: 3daff5b0e215612c
+/workspace-write-lease/5-acquisition-and-conflict-behavior:
+  en: 5265bbf4faa5c72a
+  zh: 7e961c5de8084555
+/workspace-write-lease/5-acquisition-and-conflict-behavior/5-1-when-the-lease-is-taken:
+  en: aae849f78785cfcd
+  zh: d83d209c4327b26a
+/workspace-write-lease/5-acquisition-and-conflict-behavior/5-2-conflict:
+  en: d44305cf73e14e28
+  zh: 5ee80e9970c8001e
+/workspace-write-lease/5-acquisition-and-conflict-behavior/5-3-queue:
+  en: 910037c463b798b5
+  zh: 3ee7a79ee8d310b7
+/workspace-write-lease/6-release-renewal-expiry-and-crash-recovery:
+  en: bb1edae21459a094
+  zh: e08deb2484c57356
+/workspace-write-lease/6-release-renewal-expiry-and-crash-recovery/6-1-normal-release:
+  en: e5b859679ea538c8
+  zh: 093774e48288d84c
+/workspace-write-lease/6-release-renewal-expiry-and-crash-recovery/6-2-renewal-and-maximum-lifetime:
+  en: 33879d6b01493479
+  zh: fb1956bd14a871d5
+/workspace-write-lease/6-release-renewal-expiry-and-crash-recovery/6-3-crash-cancellation-and-host-restart:
+  en: db520fe595d4e5b6
+  zh: c063fd5d35509281
+/workspace-write-lease/6-release-renewal-expiry-and-crash-recovery/6-4-fencing:
+  en: d779cdb043f2eb39
+  zh: 463aa747bf7d644b
+/workspace-write-lease/6-release-renewal-expiry-and-crash-recovery/6-5-deadlock-freedom:
+  en: c341209c3e756515
+  zh: bfd004fed6fb1b50
+/workspace-write-lease/7-visibility-and-audit:
+  en: 590a9ecbcf30c36f
+  zh: bff145cd0e2aa863
+/workspace-write-lease/7-visibility-and-audit/7-1-ui-visibility:
+  en: 04aaecbf7a1d526e
+  zh: dc8d2638324e29f5
+/workspace-write-lease/7-visibility-and-audit/7-2-audit-log:
+  en: a9a2b1c206380d23
+  zh: 5885b166a84559c4
+/workspace-write-lease/8-relationship-with-existing-mechanisms:
+  en: 6868fc9d90785170
+  zh: 5bfa273fe4ecefbc
+/workspace-write-lease/8-relationship-with-existing-mechanisms/8-1-subagents-and-forks:
+  en: c87737c691530752
+  zh: 24ce46655ed50fc4
+/workspace-write-lease/8-relationship-with-existing-mechanisms/8-2-scheduled-batches:
+  en: 01b2a10ec1e2c8ba
+  zh: 4f0565accf7a0ba5
+/workspace-write-lease/8-relationship-with-existing-mechanisms/8-3-read-only-analysis:
+  en: 480077e624633cb6
+  zh: 6990f777f66a40e6
+/workspace-write-lease/8-relationship-with-existing-mechanisms/8-4-permissions:
+  en: f2acc94c3a783ece
+  zh: 113d049b9bc9daf9
+/workspace-write-lease/9-testing:
+  en: 51d72205b66ccf39
+  zh: a287a0523a1c911f
+/workspace-write-lease/10-rollout-and-risks:
+  en: 894d2d50f0606db4
+  zh: ff2f2068afdda78d
+/workspace-write-lease/10-rollout-and-risks/10-1-phases:
+  en: b37f265d8bbe1005
+  zh: aba351fd67165dff
+/workspace-write-lease/10-rollout-and-risks/10-2-risks:
+  en: 2536438b76828c2c
+  zh: 53ff6da471f0a4d2
+/workspace-write-lease/11-conflicts-with-the-other-two-designs:
+  en: 179dae29d5202c90
+  zh: abee07689e160ded
