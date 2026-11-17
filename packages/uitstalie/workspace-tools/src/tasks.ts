@@ -16,6 +16,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import type { Session } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { ObjectValueSchemaSpec } from '@deepseek-ai/dsh-tools'
@@ -663,6 +664,7 @@ async function createTask(
   }, {
     dispatcher: agent?.role === 'super',
     workspaceNamed: args.workspace !== undefined,
+    ...agent?.session === undefined ? {} : { session: agent.session },
     ...signal === undefined ? {} : { signal },
   })
 }
@@ -684,7 +686,12 @@ async function createTask(
 export async function createDispatchTask(
   ctx: Context,
   input: DispatchTaskInput,
-  options: { readonly dispatcher: boolean; readonly workspaceNamed?: boolean; readonly signal?: AbortSignal },
+  options: {
+    readonly dispatcher: boolean
+    readonly workspaceNamed?: boolean
+    readonly session?: Session
+    readonly signal?: AbortSignal
+  },
 ): Promise<DispatchTaskIdentity> {
   if (!options.dispatcher) {
     throw new WorkspaceTaskError(
@@ -767,7 +774,7 @@ export async function createDispatchTask(
     receipts: [],
     artifactIds: [],
   }
-  await writeTask(ctx, workspaceId, task)
+  await writeTask(ctx, workspaceId, task, options.session === undefined ? {} : { session: options.session })
   return {
     workspace: workspaceId,
     taskId,
@@ -789,6 +796,7 @@ export async function cancelDispatchTask(
   ctx: Context,
   input: { readonly workspaceId: string; readonly taskId: string; readonly reason: string },
   signal?: AbortSignal,
+  session?: Session,
 ): Promise<boolean> {
   const stored = await readTask(ctx, input.workspaceId, input.taskId, signal)
   if (stored === undefined || stored.task.status !== 'pending') return false
@@ -798,7 +806,10 @@ export async function cancelDispatchTask(
     updatedAt: new Date().toISOString(),
     note: oneLine(`dispatch did not start: ${input.reason}`, 240),
   }
-  await writeTask(ctx, input.workspaceId, task, stored.version === undefined ? {} : { expected: stored.version })
+  await writeTask(ctx, input.workspaceId, task, {
+    ...stored.version === undefined ? {} : { expected: stored.version },
+    ...session === undefined ? {} : { session },
+  })
   return true
 }
 
@@ -961,7 +972,10 @@ async function updateTask(
     updatedAt: new Date().toISOString(),
     ...args.requestId === undefined ? {} : { lastRequestId: args.requestId },
   }
-  await writeTask(ctx, workspace.id, next, stored.version === undefined ? {} : { expected: stored.version })
+  await writeTask(ctx, workspace.id, next, {
+    ...stored.version === undefined ? {} : { expected: stored.version },
+    ...agent?.session === undefined ? {} : { session: agent.session },
+  })
   return { workspace: String(workspace.id), taskId, status: next.status }
 }
 
@@ -1044,7 +1058,10 @@ async function appendReceipt(
     updatedAt: now,
     receipts: [...stored.task.receipts, receipt],
   }
-  await writeTask(ctx, workspace.id, next, stored.version === undefined ? {} : { expected: stored.version })
+  await writeTask(ctx, workspace.id, next, {
+    ...stored.version === undefined ? {} : { expected: stored.version },
+    ...agent?.session === undefined ? {} : { session: agent.session },
+  })
   return {
     workspace: String(workspace.id),
     taskId,

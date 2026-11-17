@@ -15,6 +15,7 @@
  */
 
 import { invalidInput, type JiraError } from '@deepseek-ai/dsh-jira-core'
+import type { Session } from '@deepseek-ai/dsh-session'
 
 /** One card point mapped to the task-brief item that covers it. */
 export interface DispatchCoverage {
@@ -68,7 +69,7 @@ export interface WorkspaceTasksBridge {
     readonly nonCoverage?: readonly DispatchNonCoverage[]
     readonly taskType: DispatchTaskType
     readonly requestId: string
-  }, signal?: AbortSignal): Promise<{
+  }, signal?: AbortSignal, session?: Session): Promise<{
     readonly workspace: string
     readonly taskId: string
     readonly status: string
@@ -85,7 +86,7 @@ export interface WorkspaceTasksBridge {
     readonly workspaceId: string
     readonly taskId: string
     readonly reason: string
-  }, signal?: AbortSignal): Promise<boolean>
+  }, signal?: AbortSignal, session?: Session): Promise<boolean>
 }
 
 /**
@@ -170,12 +171,14 @@ const dispatchRefusal = (error: unknown, input: StartDispatchInput): JiraError =
  * @param ctx - the plugin context carrying `workspaceTasks`, when composed.
  * @param input - the dispatch the start action is about to perform.
  * @param signal - cancellation for the store reads and writes.
+ * @param session - calling session, whose sandbox mode gates the record write.
  * @returns the task id, or the refusal that blocked the dispatch.
  */
 export const startDispatchTask = async (
   ctx: unknown,
   input: StartDispatchInput,
   signal?: AbortSignal,
+  session?: Session,
 ): Promise<StartDispatchOutcome> => {
   if (input.intentId === undefined || input.intentId.trim() === ''
     || input.intentVersion === undefined || !Number.isInteger(input.intentVersion) || input.intentVersion < 1) {
@@ -225,7 +228,7 @@ export const startDispatchTask = async (
       ...input.outputForm === undefined ? {} : { outputForm: input.outputForm },
       ...input.coverage === undefined ? {} : { coverage: input.coverage },
       ...input.nonCoverage === undefined ? {} : { nonCoverage: input.nonCoverage },
-    }, signal)
+    }, signal, session)
     return { ok: true, taskId: created.taskId }
   } catch (error: unknown) {
     return { ok: false, error: dispatchRefusal(error, input) }
@@ -238,16 +241,18 @@ export const startDispatchTask = async (
  * @param ctx - the plugin context carrying `workspaceTasks`, when composed.
  * @param input - the workspace, task, and reason.
  * @param signal - cancellation for the store operations.
+ * @param session - calling session, whose sandbox mode gates the record write.
  */
 export const cancelDispatchedTask = async (
   ctx: unknown,
   input: { readonly workspaceId: string; readonly taskId: string; readonly reason: string },
   signal?: AbortSignal,
+  session?: Session,
 ): Promise<void> => {
   const service = workspaceTasksOf(ctx)
   if (service === undefined) return
   try {
-    await service.cancelDispatchTask(input, signal)
+    await service.cancelDispatchTask(input, signal, session)
   } catch {
     // The dispatch already failed; a cancelled record is bookkeeping, not the answer.
   }

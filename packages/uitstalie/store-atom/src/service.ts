@@ -13,6 +13,7 @@
 import { dirname, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
+import { canonicalPath } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-system-environment'
 import { FsVersion } from '@deepseek-ai/dsh-fs'
@@ -171,7 +172,8 @@ export interface DshStore {
   prepare(scope: StoreScope, session?: Session, signal?: AbortSignal): Promise<string>
   /**
    * Create a file below the store root.
-   * @param session - session whose policy gates a workspace write; omit for global.
+   * @param session - session whose policy gates the call; for `global` the root is
+   *   `$DSH_HOME` and the session supplies only the mode.
    * @param path - store-relative target path.
    * @param content - complete file text.
    * @param options - scope and cancellation.
@@ -183,9 +185,11 @@ export interface DshStore {
    *
    * This is the provider-facing write: it skips the `rules` and `skills`
    * authoring checks, because a plugin that owns a namespace persists its own
-   * content there and no model-authoring rule applies to it. A global write has
-   * no sandbox-policy gate, because the session policy covers the workspace.
-   * @param session - session whose policy gates a workspace write; omit for global.
+   * content there and no model-authoring rule applies to it. A workspace write
+   * uses the calling Session's policy; a global write keeps that mode and
+   * grants only `$DSH_HOME` to the fence for this call.
+   * @param session - session whose policy gates the call; for `global` the root is
+   *   `$DSH_HOME` and the session supplies only the mode.
    * @param path - store-relative target path; the root itself is refused.
    * @param content - complete file text.
    * @param options - scope, cancellation, and the version the file must still carry.
@@ -213,7 +217,8 @@ export interface DshStore {
   readFile(session: Session | undefined, path: string, options?: StoreCallOptions): Promise<StoreReadResult>
   /**
    * Create a folder below the store root.
-   * @param session - session whose policy gates a workspace write; omit for global.
+   * @param session - session whose policy gates the call; for `global` the root is
+   *   `$DSH_HOME` and the session supplies only the mode.
    * @param path - store-relative target path.
    * @param options - scope and cancellation.
    * @returns the created target record.
@@ -229,7 +234,8 @@ export interface DshStore {
   query(session: Session | undefined, path: string, options?: StoreCallOptions): Promise<StoreQueryResult>
   /**
    * Remove one store target.
-   * @param session - session whose policy gates a workspace write; omit for global.
+   * @param session - session whose policy gates the call; for `global` the root is
+   *   `$DSH_HOME` and the session supplies only the mode.
    * @param path - store-relative target path.
    * @param options - scope, recursive removal, and cancellation.
    * @returns the removed target record.
@@ -273,12 +279,15 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
     return projectRoot
   }
 
+  /** The global store root: the environment atom's home when mounted, else the host default. */
+  const globalStoreRoot = (): string => globalRoot ??= environment()?.dshHome() ?? resolveDshHome()
+
   const rootFor = async (
     scope: StoreScope,
     session?: Session,
     signal?: AbortSignal,
   ): Promise<string> => {
-    if (scope === 'global') return globalRoot ??= environment()?.dshHome() ?? resolveDshHome()
+    if (scope === 'global') return globalStoreRoot()
     if (session === undefined) {
       throw new Error('the workspace scope requires a session; pass scope: global to address the user store')
     }
@@ -292,12 +301,47 @@ export function createDshStore(ctx: Context, ensureRoot: boolean): DshStore {
   /** Which root one call addresses; every method defaults to the workspace. */
   const scopeOf = (options: StoreCallOptions = {}): StoreScope => options.scope ?? 'workspace'
 
-  /** The policy gate belongs to the workspace; a global write has no session gate. */
+  /**
+   * Resolve the policy for a global-store mutation and grant the store root to
+   * the filesystem fence.
+   * @param session - calling session, when the call has one.
+   * @returns the call's policy, widened with the store root under `workspace-write`.
+   */
+  const globalStorePolicy = (session: Session | undefined): SandboxExecutionPolicy | undefined => {
+    const policy = session === undefined
+      ? sandboxPolicyOf(ctx)?.resolve({})
+      : resolveSessionStorePolicy(ctx, session)
+    if (policy === undefined || policy.mode !== 'workspace-write') return policy
+    return Object.freeze({
+      ...policy,
+      fsAdditionalWritableRoots: Object.freeze([
+        ...(policy.fsAdditionalWritableRoots ?? []),
+        canonicalPath(globalStoreRoot()),
+      ]),
+    })
+  }
+
+  /**
+   * The policy for one store call.
+   *
+   * A workspace write uses the calling Session's policy verbatim: its workspace
+   * root contains the project's `.dsh`. The global store lives under
+   * `$DSH_HOME`, which is outside every Session workspace, so the same call
+   * keeps the resolved mode (a read-only Session therefore keeps refusing) and
+   * grants only the store root to the in-process fence for this call. The
+   * store's own normalization confines the target; the grant never widens the
+   * Session's standing policy, so an ordinary file tool still cannot write
+   * elsewhere under `$DSH_HOME`.
+   * @param scope - the store root this call addresses.
+   * @param session - calling session, when the call has one.
+   * @returns the policy to stamp onto the call, or undefined without a provider.
+   */
   const policyFor = (
     scope: StoreScope,
     session: Session | undefined,
-  ): SandboxExecutionPolicy | undefined =>
-    scope === 'workspace' && session !== undefined ? resolveSessionStorePolicy(ctx, session) : undefined
+  ): SandboxExecutionPolicy | undefined => scope === 'workspace'
+    ? (session === undefined ? undefined : resolveSessionStorePolicy(ctx, session))
+    : globalStorePolicy(session)
 
   /** Refuse a duplicate rule before the write; the load-time set dedups by content. */
   const refuseDuplicateRule = async (

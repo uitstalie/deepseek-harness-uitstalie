@@ -21,6 +21,7 @@ import { existsSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { type Comment, type FieldSpec, type Identity, type Issue, type IssueKey, type Timestamp } from '@deepseek-ai/dsh-jira-core'
+import type { Session } from '@deepseek-ai/dsh-session'
 import { clampText, asIdentity, invalidInput, ioFailed, leaseIsActive, notFound, readOnlySession, renderIssueHuman, validateArgs } from '@deepseek-ai/dsh-jira-core'
 import { SUMMARY_MAX_CHARS } from '@deepseek-ai/dsh-jira-core'
 import { type GhRunner, type GithubItem, pollGithub } from './github.ts'
@@ -610,6 +611,7 @@ export const runControlTool = async (
   ctx: unknown,
   context: SessionToolContext,
   signal?: AbortSignal,
+  session?: Session,
 ): Promise<ToolValue> => {
   const validated = validateArgs(CONTROL_PARAMETERS, args)
   if (!validated.ok) return failure(validated.error, options.caller, me)
@@ -651,7 +653,7 @@ export const runControlTool = async (
     const workspaceAction = action === 'remove_workspace' ? 'remove' : action === 'rename_workspace' ? 'rename' : action
     return runWorkspaceTool({ ...values, action: workspaceAction }, options, me, ctx as ToolHost['ctx'])
   }
-  return runSessionTool(values, options, me, ctx, context, signal)
+  return runSessionTool(values, options, me, ctx, context, signal, session)
 }
 
 const CONTROL_ACTIONS = [
@@ -2967,6 +2969,7 @@ export const runSessionTool = async (
   ctx: unknown,
   context: SessionToolContext,
   signal?: AbortSignal,
+  session?: Session,
 ): Promise<ToolValue> => {
   const { caller } = options
   const validated = validateArgs(SESSION_PARAMETERS, args)
@@ -3242,7 +3245,7 @@ export const runSessionTool = async (
         ...coverage === undefined ? {} : { coverage },
         ...nonCoverage === undefined ? {} : { nonCoverage },
         ...taskType === undefined ? {} : { taskType },
-      }, signal)
+      }, signal, session)
       if (!dispatch.ok) return failure(dispatch.error, caller, me)
       const taskId = dispatch.taskId
       let sessionId = `unstarted:${taskId}`
@@ -3269,7 +3272,7 @@ export const runSessionTool = async (
             // The journal is the thing that just failed; the dispatch refusal below is the answer.
           }
           if (!admitted) {
-            await cancelDispatchedTask(ctx, { workspaceId: workspace.id, taskId, reason }, signal)
+            await cancelDispatchedTask(ctx, { workspaceId: workspace.id, taskId, reason }, signal, session)
           }
           if (ledger.ledger !== undefined) {
             if (context.store !== undefined) {
@@ -5897,7 +5900,7 @@ export const createSuperagentContribution = (
       compactThresholdPercent,
       longRunningMinutes,
       stopped,
-    }, exec.signal),
+    }, exec.signal, exec.agent?.session),
   }
   const deliver: Spec = {
     name: DELIVER_TOOL_NAME,

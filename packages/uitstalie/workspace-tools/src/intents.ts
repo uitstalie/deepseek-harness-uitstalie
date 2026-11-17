@@ -657,8 +657,8 @@ async function createIntent(
     ...status === 'active' ? { latestActiveVersion: 1 } : {},
     versions: [summary],
   }
-  await writeIntentVersion(ctx, record)
-  await writeIntentIndex(ctx, index)
+  await writeIntentVersion(ctx, record, session)
+  await writeIntentIndex(ctx, index, session)
   return await cardValue(ctx, workspace, index, 1, signal)
 }
 
@@ -785,7 +785,7 @@ async function confirmIntent(
       ...decision === 'confirm' ? { latestActiveVersion: version } : {},
       versions,
     }
-  }, signal)
+  }, signal, session)
   return await cardValue(ctx, workspace, next, version, signal)
 }
 
@@ -885,7 +885,7 @@ async function correctIntent(
     ...changedRefs.length === 0 ? {} : { changedPointRefs: changedRefs },
     ...taskType === undefined ? {} : { taskType },
   }
-  await writeIntentVersion(ctx, record)
+  await writeIntentVersion(ctx, record, session)
   const next = await updateIntentIndex(ctx, workspace.id, intentId, current => ({
     ...current,
     latestVersion: version,
@@ -897,7 +897,7 @@ async function correctIntent(
           : candidate),
       summary,
     ],
-  }), signal)
+  }), signal, session)
   return await cardValue(ctx, workspace, next, version, signal)
 }
 

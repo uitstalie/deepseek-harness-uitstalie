@@ -10,6 +10,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Session } from '@deepseek-ai/dsh-session'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { z } from 'zod'
 import type {
@@ -194,9 +195,9 @@ export async function writeTask(
   ctx: Context,
   workspaceId: WorkspaceId | string,
   task: TaskRecord,
-  options: { readonly expected?: string } = {},
+  options: { readonly expected?: string; readonly session?: Session } = {},
 ): Promise<{ readonly version?: string }> {
-  const written = await ctx.dshStore.writeFile(undefined, taskPath(workspaceId, task.taskId), `${JSON.stringify(task, undefined, 2)}\n`, {
+  const written = await ctx.dshStore.writeFile(options.session, taskPath(workspaceId, task.taskId), `${JSON.stringify(task, undefined, 2)}\n`, {
     scope: 'global',
     ...options.expected === undefined ? {} : { expected: options.expected },
   })

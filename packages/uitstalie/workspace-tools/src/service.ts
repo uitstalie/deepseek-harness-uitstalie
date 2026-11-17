@@ -15,6 +15,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Session } from '@deepseek-ai/dsh-session'
 import { cancelDispatchTask, createDispatchTask } from './tasks.ts'
 import type { DispatchTaskIdentity, DispatchTaskInput } from './tasks.ts'
 
@@ -34,17 +35,19 @@ export interface WorkspaceTasksService {
    * Create the task record for one dispatch, against an active card version.
    * @param input - the workspace, card reference, brief, coverage, and idempotency key.
    * @param signal - cancellation for the store reads and writes.
+   * @param session - calling session, whose sandbox mode gates the record write.
    * @returns the created or replayed task identity.
    * @throws WorkspaceIntentError when the card, coverage, or required fields refuse.
    */
-  createDispatchTask(input: DispatchTaskInput, signal?: AbortSignal): Promise<DispatchTaskIdentity>
+  createDispatchTask(input: DispatchTaskInput, signal?: AbortSignal, session?: Session): Promise<DispatchTaskIdentity>
   /**
    * Cancel a dispatch task whose Session never started; a terminal task is left unchanged.
    * @param input - the workspace, task, and reason recorded on the task.
    * @param signal - cancellation for the store reads and writes.
+   * @param session - calling session, whose sandbox mode gates the record write.
    * @returns whether the task moved to `cancelled`.
    */
-  cancelDispatchTask(input: CancelDispatchTaskInput, signal?: AbortSignal): Promise<boolean>
+  cancelDispatchTask(input: CancelDispatchTaskInput, signal?: AbortSignal, session?: Session): Promise<boolean>
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -61,9 +64,13 @@ declare module '@deepseek-ai/cordis' {
  */
 export function createWorkspaceTasksService(ctx: Context): WorkspaceTasksService {
   return Object.freeze({
-    createDispatchTask: async (input: DispatchTaskInput, signal?: AbortSignal): Promise<DispatchTaskIdentity> =>
-      await createDispatchTask(ctx, input, { dispatcher: true, ...signal === undefined ? {} : { signal } }),
-    cancelDispatchTask: async (input: CancelDispatchTaskInput, signal?: AbortSignal): Promise<boolean> =>
-      await cancelDispatchTask(ctx, input, signal),
+    createDispatchTask: async (input: DispatchTaskInput, signal?: AbortSignal, session?: Session): Promise<DispatchTaskIdentity> =>
+      await createDispatchTask(ctx, input, {
+        dispatcher: true,
+        ...session === undefined ? {} : { session },
+        ...signal === undefined ? {} : { signal },
+      }),
+    cancelDispatchTask: async (input: CancelDispatchTaskInput, signal?: AbortSignal, session?: Session): Promise<boolean> =>
+      await cancelDispatchTask(ctx, input, signal, session),
   })
 }

@@ -12,6 +12,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Session } from '@deepseek-ai/dsh-session'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { z } from 'zod'
 import { WorkspaceRecordError } from './errors.ts'
@@ -203,9 +204,10 @@ export async function readIntentVersion(
 export async function writeIntentVersion(
   ctx: Context,
   record: IntentVersionRecord,
+  session?: Session,
 ): Promise<{ readonly version?: string }> {
   const written = await ctx.dshStore.writeFile(
-    undefined,
+    session,
     intentVersionPath(record.workspaceId, record.intentId, record.version),
     `${JSON.stringify(record, undefined, 2)}\n`,
     { scope: 'global' },
@@ -235,6 +237,7 @@ export async function updateIntentIndex(
   intentId: string,
   mutate: (current: IntentIndex) => IntentIndex,
   signal?: AbortSignal,
+  session?: Session,
 ): Promise<IntentIndex> {
   for (let attempt = 0; attempt < INDEX_WRITE_ATTEMPTS; attempt += 1) {
     const stored = await readIntentIndex(ctx, workspaceId, intentId, signal)
@@ -246,7 +249,7 @@ export async function updateIntentIndex(
     }
     const next = mutate(stored.index)
     try {
-      await ctx.dshStore.writeFile(undefined, intentIndexPath(workspaceId, intentId), `${JSON.stringify(next, undefined, 2)}\n`, {
+      await ctx.dshStore.writeFile(session, intentIndexPath(workspaceId, intentId), `${JSON.stringify(next, undefined, 2)}\n`, {
         scope: 'global',
         ...stored.version === undefined ? {} : { expected: stored.version },
       })
@@ -266,9 +269,9 @@ export async function updateIntentIndex(
  * @param ctx - context carrying the `.dsh` store.
  * @param index - complete index to persist.
  */
-export async function writeIntentIndex(ctx: Context, index: IntentIndex): Promise<void> {
+export async function writeIntentIndex(ctx: Context, index: IntentIndex, session?: Session): Promise<void> {
   await ctx.dshStore.writeFile(
-    undefined,
+    session,
     intentIndexPath(index.workspaceId, index.intentId),
     `${JSON.stringify(index, undefined, 2)}\n`,
     { scope: 'global' },

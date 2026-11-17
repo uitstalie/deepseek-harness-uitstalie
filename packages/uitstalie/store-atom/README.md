@@ -31,7 +31,7 @@ Mount the row once per composition, before any consumer of `ctx.dshStore`:
     ensureRoot: true
 ```
 
-A provider then reads and writes its own area with a store-relative path. The workspace scope is the default; the global scope takes `{ scope: 'global' }` and no session:
+A provider then reads and writes its own area with a store-relative path. The workspace scope is the default; the global scope takes `{ scope: 'global' }`, and a **write** passes the calling session so its sandbox mode gates the call (the root is still `$DSH_HOME`):
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
@@ -48,6 +48,7 @@ const written = await ctx.dshStore.writeFile(session, 'memory/sessions/MEMORY.md
   signal,
 })
 const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALITY.md', { scope: 'global' })
+const globalWrite = await ctx.dshStore.writeFile(session, 'personality/PERSONALITY.md', text, { scope: 'global' })
 ```
 
 `expected` is the version an earlier read returned; omitting it writes unconditionally. A concurrent writer surfaces as `FS_STALE_VERSION` instead of a silent overwrite. `ensureRoot` controls whether a writable session gets `<projectRoot>/.dsh` created on its first mutation (writes are prepared lazily; the atom never subscribes to the agent lifecycle); a global `prepare('global')` creates `$DSH_HOME` itself.
@@ -61,13 +62,13 @@ const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALI
 - `src/rules.ts` — workspace-rules discovery for `.dsh/rules/**` (path order, trimmed-content deduplication, per-file cap, set digest). The atom's own duplicate check and the instructions loader consume the same scan, so the atom owns the rules area without depending on an instruction provider.
 - `src/store-ops.ts` — the filesystem operations shared by the service and the Remote.
 
-The workspace root is `<projectRoot>/.dsh`, where the project root is discovered from the session cwd by the `.git` marker. The global root is `ctx.systemEnvironment.dshHome()` when that atom is mounted, and `resolveDshHome()` (`$DSH_HOME`, else `~/.dsh`) otherwise; a mounted atom also supplies the containment comparison, while an independent composition keeps the atom's own path check. Reads are allowed in every session mode; workspace writes pass the session's policy gate, while a global write has no session gate because the policy covers the workspace, so the caller owns that audit.
+The workspace root is `<projectRoot>/.dsh`, where the project root is discovered from the session cwd by the `.git` marker. The global root is `ctx.systemEnvironment.dshHome()` when that atom is mounted, and `resolveDshHome()` (`$DSH_HOME`, else `~/.dsh`) otherwise; a mounted atom also supplies the containment comparison, while an independent composition keeps the atom's own path check. Reads are allowed in every session mode. A workspace write uses the session's policy; a global write keeps that same mode (a `read-only` session still refuses) and grants only `$DSH_HOME`, the store's own root, to the in-process fence for that call, so an ordinary file operation elsewhere under `$DSH_HOME` still cannot reach it.
 
 ## Known Limitations and Deferred Work
 
 - **Two roots and no more.** A call addresses `$DSH_HOME` or the session workspace's `.dsh`; there is no third root and no caller-supplied absolute path, so a provider cannot point the store at an arbitrary directory.
-- **The global scope is not policy-gated.** A global write ignores the workspace sandbox policy by design; the caller must only expose it on a user-confirmed path, and a misbehaving caller has no session gate to stop it.
-- **The workspace scope still requires a session.** Root resolution and its write gate derive from the session's project and policy; a global call passes `undefined` instead.
+- **The global scope is granted, not fenced.** A global write keeps the calling session's mode and the fence grants the store's own root for that one call; the store's path check, not the fence, is what confines the target. A caller that exposes arbitrary store paths can still write anywhere under `$DSH_HOME`.
+- **The workspace scope still requires a session.** Root resolution and its write gate derive from the session's project and policy. A global write accepts one optional session for the mode; omitting it uses the deployment default mode, and the root stays `$DSH_HOME` either way.
 
 ## Dev Note
 

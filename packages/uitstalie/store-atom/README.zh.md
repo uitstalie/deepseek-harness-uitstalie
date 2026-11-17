@@ -33,7 +33,7 @@ kind: "package-reference"
     ensureRoot: true
 ```
 
-提供方随后用存储相对路径读写自己的区域。工作区 scope 是默认值；全局 scope 传 `{ scope: 'global' }` 且不需要会话：
+提供方随后用存储相对路径读写自己的区域。工作区 scope 是默认值；全局 scope 传 `{ scope: 'global' }`，其中**写**要传入调用会话，让会话的沙箱模式约束这次调用（根仍是 `$DSH_HOME`）：
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
@@ -50,6 +50,7 @@ const written = await ctx.dshStore.writeFile(session, 'memory/sessions/MEMORY.md
   signal,
 })
 const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALITY.md', { scope: 'global' })
+const globalWrite = await ctx.dshStore.writeFile(session, 'personality/PERSONALITY.md', text, { scope: 'global' })
 ```
 
 `expected` 是先前读取返回的版本；省略即无条件写入。并发写入方会以 `FS_STALE_VERSION` 暴露，而不是静默覆盖。`ensureRoot` 控制可写会话是否在**首次变更**时创建 `<projectRoot>/.dsh`（写路径按需 prepare，atom 不订阅 Agent 生命周期）；`prepare('global')` 会创建 `$DSH_HOME` 本身。
@@ -65,15 +66,15 @@ const globalRead = await ctx.dshStore.readFile(undefined, 'personality/PERSONALI
 - `src/rules.ts` —— `.dsh/rules/**` 的工作区规则发现（路径顺序、按去空白内容去重、逐文件上限、集合 digest）。atom 自己的重复校验与指令加载器共用同一份扫描，因此 atom 拥有 rules 区域，却不依赖指令 provider。
 - `src/store-ops.ts` —— 服务与 Remote 共用的文件系统操作。
 
-工作区根是 `<projectRoot>/.dsh`，项目根由会话 cwd 按 `.git` 标记发现。挂载了环境原子时，全局根取 `ctx.systemEnvironment.dshHome()`，否则回退 `resolveDshHome()`（设置了 `$DSH_HOME` 就用它，否则 `~/.dsh`）；挂载时包含判定也由该原子提供，独立组合则保留本原子自己的路径检查。任何会话模式下都可以读；工作区写要过会话的策略门，全局写没有会话门（策略只覆盖工作区），因此审计由调用方承担。
+工作区根是 `<projectRoot>/.dsh`，项目根由会话 cwd 按 `.git` 标记发现。挂载了环境原子时，全局根取 `ctx.systemEnvironment.dshHome()`，否则回退 `resolveDshHome()`（设置了 `$DSH_HOME` 就用它，否则 `~/.dsh`）；挂载时包含判定也由该原子提供，独立组合则保留本原子自己的路径检查。任何会话模式下都可以读。工作区写用会话策略；全局写沿用同一个模式（`read-only` 会话仍会拒绝），并只为这次调用把存储自己的根 `$DSH_HOME` 授予进程内围栏，因此 `$DSH_HOME` 下的普通文件操作仍到不了那里。
 
 ## 已知限制与延期工作
 
 <a id="known-limitations-and-deferred-work"></a>
 
 - **只有两个根。** 调用要么指向 `$DSH_HOME`，要么指向会话工作区的 `.dsh`；没有第三个根，也没有调用方提供的绝对路径，提供方无法把存储指向任意目录。
-- **全局 scope 不过策略门。** 全局写按设计忽略工作区沙箱策略；调用方必须只在用户确认的路径上暴露它，行为不端的调用方没有会话门来兜底。
-- **工作区 scope 仍需要会话。** 根解析与写入门来自会话的项目与策略；全局调用传 `undefined` 即可。
+- **全局 scope 是授予，不是围栏。** 全局写沿用调用会话的模式，围栏只为这一次调用授予存储自己的根；真正约束目标的是存储的路径检查，不是围栏。把任意存储路径暴露给模型的调用方仍可写到 `$DSH_HOME` 下任何位置。
+- **工作区 scope 仍需要会话。** 根解析与写入门来自会话的项目与策略。全局写可以选传会话来取模式；不传就用部署默认模式，两种情况下根都仍是 `$DSH_HOME`。
 
 ## 开发备注
 
