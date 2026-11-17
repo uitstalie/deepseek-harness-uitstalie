@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/memory/README.md
 /:
-  en: 2173eec562c32411
-  zh: c61314aa136fc7d2
+  en: 57aa2296770c3c25
+  zh: c8f6c18cb7299b6f
 /deepseek-ai-dsh-memory:
   en: 451d0d0b45211d36
   zh: 98cef595909ea324
 /deepseek-ai-dsh-memory/summary:
-  en: 10c1602eb6d13979
-  zh: 9f28ec405eb789dd
+  en: d8532ebb9b129146
+  zh: 354d884cbde8b29d
 /deepseek-ai-dsh-memory/table-of-contents:
   en: cbfb676bb9a7a2de
   zh: 528864635b577290
 /deepseek-ai-dsh-memory/use-this-package:
-  en: 15a036a84dac8926
-  zh: aedd8b0a4a6a8756
+  en: ce9695717f1375f2
+  zh: 4de3304add78b597
 /deepseek-ai-dsh-memory/understand-the-implementation:
-  en: c2e2ffbf785bbbdd
-  zh: 745185896eb606d8
+  en: 4dfbf20da3ba9ea4
+  zh: ac9d50c22671913e
 /deepseek-ai-dsh-memory/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -27,8 +27,8 @@
   en: c0ac6604a97c662a
   zh: 4409508acbe18181
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/what-the-model-sees:
-  en: e400b4629ecb0cdf
-  zh: c0bba003ed8160fd
+  en: 8e5c358d9c35a65d
+  zh: a62cb13309192cc4
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/what-the-model-sees/fixed-memory-section-text:
   en: 7852e132e880ee31
   zh: f73a669cb32b47f5
@@ -42,11 +42,11 @@
   en: b160ca92da193ddb
   zh: ac8fae468916718e
 /deepseek-ai-dsh-memory/model-experience/memory-tools/what-the-model-sees:
-  en: e14b38103640df93
-  zh: da6c667514bc7094
+  en: 1b7ac35fbd07725a
+  zh: 39b7358cd123e1c8
 /deepseek-ai-dsh-memory/model-experience/memory-tools/token-effect:
-  en: 6730f1181dce8ce9
-  zh: 8a720cef780d67d8
+  en: c1cfd24dcf65904e
+  zh: f7595ae8cda87029
 /deepseek-ai-dsh-memory/model-experience/memory-tools/kv-cache-effect:
   en: 9336f6c9c92be6fc
   zh: bed1c1dc049fde5c
@@ -54,8 +54,8 @@
   en: 166f1150192f93a1
   zh: ba18457c7a36b6e0
 /deepseek-ai-dsh-memory/model-experience/memory-snapshot-message/what-the-model-sees:
-  en: 677fb5a56e2befe9
-  zh: 9ee618d3a0a83639
+  en: 135fd6ea5554ed58
+  zh: ec1fa340e1a52d46
 /deepseek-ai-dsh-memory/model-experience/memory-snapshot-message/token-effect:
   en: 6bab999cee7ac5ae
   zh: 9501e851d73d9ea7
@@ -87,8 +87,8 @@
   en: 3fd317b042a59673
   zh: 9cc5318f0fd02c79
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work:
-  en: 2c9e7a4e6209dd0c
-  zh: 1896f1436409e074
+  en: f71ecca7d100abe9
+  zh: 49cade1417452c41
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work/dev-note:
   en: 164f2d3e79e7c776
   zh: 22b11728c82dbcf0

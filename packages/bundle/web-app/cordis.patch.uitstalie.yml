@@ -13,6 +13,8 @@
           jira: { enabled: true }
     - id: memory
       name: '@deepseek-ai/dsh-memory'
+    - id: workspace-tools
+      name: '@deepseek-ai/dsh-workspace-tools'
     - id: persona-card
       name: '@deepseek-ai/dsh-persona-card'
     - id: personality

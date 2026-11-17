@@ -649,6 +649,7 @@
     // END uitstalie-deepseek-flash
     // BEGIN uitstalie-deepseek-flash, 2026/10/29, DH-506, 注册 token 计算器进 Host 聚合程序
     { "path": "./packages/uitstalie/token-calculator" },
+    { "path": "./packages/uitstalie/workspace-tools" },
     // END uitstalie-deepseek-flash
     // BEGIN uitstalie-k3, 2026/10/24, DH-13, 注册迁移后的 jira 五包进 Host 聚合程序
     { "path": "./packages/jira/jira-core" },

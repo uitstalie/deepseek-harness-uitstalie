@@ -1,26 +1,24 @@
 /**
- * The five model-facing memory tools.
+ * The four model-facing memory tools.
  *
  * `memory_write` appends one summary entry to this workspace's MEMORY.md through
  * the store's version-guarded write and refreshes the durable memory snapshot
  * after the write commits. `memory_resolve` archives finished open work,
- * `memory_search` searches this workspace's session history, managed memory
- * notes, and archive. `memory_read` renders one turn of a
- * workspace-authorized session as a bounded conversation surface; its turn
- * resolution, authorization, and rendering live in `read.ts`.
+ * `memory_search` searches this workspace's managed memory notes and archive,
+ * and `memory_forget` removes entries. Session history is read with the
+ * session tools (`session_search`, `session_event_read`, `workspace_sessions`),
+ * never through a memory tool.
  *
  * Every tool derives the caller's workspace from the owning agent session and
  * never accepts a workspace argument, so a call can only reach the caller's own
- * sessions and memory file.
+ * memory file.
  * @module @deepseek-ai/dsh-memory/tools
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
-import { SessionId } from '@deepseek-ai/dsh-session'
 import { defineTool, ToolArgsError, ToolContextUnavailableError } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
-import type { SessionResultFilter, SessionSearchHit, SessionSearchWarning } from '@deepseek-ai/dsh-session-query'
 import type { MemorySettings } from './config.ts'
 import {
   appendMemoryEntry,
@@ -34,9 +32,7 @@ import {
 } from './memory-file.ts'
 import type { MemoryEntryKind, MemorySection } from './memory-file.ts'
 import { readMemoryArchive } from './archive.ts'
-import { readMemoryWindow } from './read.ts'
 import { truncateToBytes } from './text.ts'
-import { MemorySearchDisabledError } from './failure.ts'
 import { appendMemoryUpdate, lastSnapshotText, refreshMemorySnapshot } from './snapshot.ts'
 
 /** Maximum `content` of one `memory_write` entry, in UTF-8 bytes. */
@@ -63,18 +59,10 @@ export interface TurnFacts {
 
 /** One ranked `memory_search` result. */
 export interface MemorySearchItem {
-  /** Whether the excerpt came from a session event or the managed memory block. */
-  readonly source: 'session' | 'memory'
-  /** Session the excerpt belongs to. */
+  /** Session whose memory section the excerpt belongs to. */
   readonly sessionId: string
-  /** Latest log-backed session title; absent when the session has none. */
-  readonly title?: string
-  /** Event seq of the best match, for session results. */
-  readonly seq?: number
-  /** Turn number of the matching section's last turn, for memory results. */
+  /** Turn number of the matching section's last turn. */
   readonly turn?: number
-  /** Event time in Unix epoch milliseconds, for session results. */
-  readonly time?: number
   /** Bounded plain-text excerpt. */
   readonly snippet: string
   /** Whether the excerpt came from the searchable archive rather than the active block. */
@@ -91,8 +79,6 @@ export interface MemorySearchValue {
   readonly items: MemorySearchItem[]
   /** Whether results were dropped to stay inside the budget. */
   readonly truncated?: boolean
-  /** Sessions the search backend skipped, when any source could not be observed. */
-  warnings?: SessionSearchWarning[]
 }
 
 /**
@@ -112,7 +98,6 @@ export function memoryTools(
     { ...defineMemoryResolveTool(ctx, settings, onSnapshotText), minRole: 'agent' },
     { ...defineMemoryForgetTool(ctx, settings, onSnapshotText), minRole: 'agent' },
     { ...defineMemorySearchTool(ctx), minRole: 'subagent' },
-    { ...defineMemoryReadTool(ctx), minRole: 'subagent' },
   ]
 }
 
@@ -416,22 +401,19 @@ function defineMemoryForgetTool(
   })
 }
 
-/** Build `memory_search`: search this workspace's sessions and memory notes. */
+/** Build `memory_search`: search this workspace's managed memory notes and archive. */
 function defineMemorySearchTool(ctx: Context): ToolDefinition {
   return defineTool({
     name: 'memory_search',
     description:
-      'Search this workspace\'s session history and managed memory notes for a phrase. '
-      + 'Returns ranked excerpts with the session id and event seq; only sessions from this workspace are searched.',
+      'Search this workspace\'s managed memory notes and archive for a phrase. Returns ranked excerpts with the '
+      + 'session and turn the entry came from. Session history is not searched here: use `session_search` for '
+      + 'session text and `session_event_read` for one turn.',
     parameters: {
       query: {
         type: 'string',
         required: true,
         description: 'Text to look for; matched literally, not as search syntax.',
-      },
-      sessionId: {
-        type: 'string',
-        description: 'Restrict the search to one session of this workspace.',
       },
       limit: {
         type: 'integer',
@@ -451,12 +433,8 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
               type: 'object',
               additionalProperties: false,
               properties: {
-                source: { type: 'string', required: true, enum: ['session', 'memory'] },
                 sessionId: { type: 'string', required: true },
-                title: { type: 'string' },
-                seq: { type: 'integer' },
                 turn: { type: 'integer' },
-                time: { type: 'integer' },
                 snippet: { type: 'string', required: true },
                 archived: { type: 'boolean' },
                 reason: { type: 'string' },
@@ -464,18 +442,6 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
             },
           },
           truncated: { type: 'boolean' },
-          warnings: {
-            type: 'array',
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                sessionId: { type: 'string', required: true },
-                code: { type: 'string', required: true },
-                message: { type: 'string', required: true },
-              },
-            },
-          },
         },
       },
       render: (_args, value) => [{ type: 'text', text: renderMemorySearch(value) }],
@@ -485,84 +451,8 @@ function defineMemorySearchTool(ctx: Context): ToolDefinition {
       const query = args.query.trim()
       if (query.length === 0) throw new ToolArgsError(['query must not be empty'])
       const limit = clampSearchLimit(args.limit)
-      let page
-      try {
-        page = await ctx.sessionQuery.searchSessions({
-          query,
-          sessionFilters: workspaceFilters(session, args.sessionId),
-          limit,
-        }, { signal: exec.signal })
-      } catch (error: unknown) {
-        if (error instanceof Error && (error as { code?: unknown }).code === 'SESSION_QUERY_SEARCH_DISABLED') {
-          throw new MemorySearchDisabledError(
-            'memory_search: session full-text search is disabled (session-query openAt is "never"); '
-            + 'enable that index or use memory_read for a known session/turn',
-            error,
-          )
-        }
-        throw error
-      }
-      const sessionItems = page.items.map(sessionSearchItem)
-      const memoryItems = await searchMemoryEntries(ctx, session, query, exec.signal)
-      const items = [...sessionItems, ...memoryItems].slice(0, limit)
-      const titles = await searchTitles(ctx, items.map(item => item.sessionId), exec.signal)
-      return boundSearchValue({
-        query,
-        items: items.map((item) => {
-          const title = titles.get(item.sessionId)
-          return title === undefined ? item : { ...item, title }
-        }),
-        ...page.nextCursor === undefined ? {} : { truncated: true },
-        ...page.warnings === undefined ? {} : {
-          warnings: page.warnings.map(warning => ({
-            sessionId: warning.sessionId,
-            code: warning.code,
-            message: warning.message,
-          })),
-        },
-      }, MEMORY_SEARCH_MAX_BYTES)
-    },
-  })
-}
-
-/** Build `memory_read`: render one authorized session turn as a bounded transcript. */
-function defineMemoryReadTool(ctx: Context): ToolDefinition {
-  return defineTool({
-    name: 'memory_read',
-    description:
-      'Read one completed turn from this workspace\'s session history as a conversation transcript. '
-      + 'With no turn, it reads the latest completed turn; `seq` reads the turn containing that event. '
-      + 'User and assistant text is kept, tool calls and results appear as status lines without payloads, '
-      + 'and the result is capped at 16 KiB.',
-    parameters: {
-      sessionId: {
-        type: 'string',
-        description: 'Session to read; defaults to the current session.',
-      },
-      turn: {
-        type: 'integer',
-        description: 'Completed turn number to read; defaults to the latest completed turn.',
-      },
-      seq: {
-        type: 'integer',
-        description: 'Event seq whose containing turn to read, typically from a memory_search hit.',
-      },
-      before: {
-        type: 'integer',
-        description: 'Neighboring events to include before the turn, from 0 to 10; defaults to 0.',
-      },
-      after: {
-        type: 'integer',
-        description: 'Neighboring events to include after the turn, from 0 to 10; defaults to 0.',
-      },
-    },
-    output: {
-      schema: { type: 'string' },
-      render: (_args, value) => [{ type: 'text', text: value }],
-    },
-    execute(args, exec) {
-      const session = requireSession(exec.agent?.session, 'memory_read')
-      return readMemoryWindow(ctx, session, args, exec.signal)
+      const items = (await searchMemoryEntries(ctx, session, query, exec.signal)).slice(0, limit)
+      return boundSearchValue({ query, items }, MEMORY_SEARCH_MAX_BYTES)
     },
   })
 }
@@ -627,54 +517,6 @@ function clampSearchLimit(limit: number | undefined): number {
   return Math.min(Math.max(Math.trunc(limit), 1), MEMORY_SEARCH_LIMIT)
 }
 
-/** Build the session predicates every memory search applies. */
-function workspaceFilters(session: Session, sessionId: string | undefined): readonly SessionResultFilter[] {
-  const filters: SessionResultFilter[] = [
-    { kind: 'cwd', values: [session.header.cwd ?? null] },
-  ]
-  if (sessionId !== undefined) filters.push({ kind: 'id', values: [SessionId(sessionId)] })
-  return filters
-}
-
-/** Project one full-text session hit into a memory search item. */
-function sessionSearchItem(hit: SessionSearchHit): MemorySearchItem {
-  return {
-    source: 'session',
-    sessionId: hit.header.id,
-    seq: hit.bestMatch.seq,
-    time: hit.bestMatch.time,
-    snippet: hit.bestMatch.snippet,
-  }
-}
-
-/**
- * Fold the latest title for each hit's session.
- *
- * Titles are display metadata: a session whose log cannot be read, or that has
- * no title event yet, simply contributes no title and the hit renders its id.
- * @param ctx - context carrying `sessionQuery`.
- * @param sessionIds - session ids of the current hit list, duplicates included.
- * @param signal - cancellation for the corpus observation.
- * @returns title text by session id, for the sessions that carry one.
- */
-async function searchTitles(
-  ctx: Context,
-  sessionIds: readonly string[],
-  signal: AbortSignal,
-): Promise<ReadonlyMap<string, string>> {
-  const ids = [...new Set(sessionIds)]
-  if (ids.length === 0) return new Map()
-  const observations = await ctx.sessionQuery.readTitleSnapshots(ids.map(id => SessionId(id)), signal)
-  const titles = new Map<string, string>()
-  ids.forEach((id, index) => {
-    const observation = observations[index]
-    if (observation === undefined || observation.status === 'rejected') return
-    const title = observation.value.title?.title
-    if (title !== undefined) titles.set(id, title)
-  })
-  return titles
-}
-
 /** Search the managed block of this workspace's MEMORY.md. */
 async function searchMemoryEntries(
   ctx: Context,
@@ -689,7 +531,6 @@ async function searchMemoryEntries(
     for (const entry of section.entries) {
       if (!entry.text.toLowerCase().includes(needle)) continue
       items.push({
-        source: 'memory',
         sessionId: section.sessionId,
         turn: section.endTurn,
         snippet: `[${entry.kind}] ${entry.text}`,
@@ -700,7 +541,6 @@ async function searchMemoryEntries(
   for (const record of archived) {
     if (!record.text.toLowerCase().includes(needle)) continue
     items.push({
-      source: 'memory',
       sessionId: record.sessionId,
       ...record.turn === undefined ? {} : { turn: record.turn },
       snippet: `[${record.kind}] ${record.text} (archived: ${record.reason})`,
@@ -825,22 +665,9 @@ function renderMemoryForget(value: MemoryForgetValue): string {
 function renderMemorySearch(value: MemorySearchValue): string {
   const lines = value.items.length === 0
     ? [`No memory matches for ${JSON.stringify(value.query)} in this workspace.`]
-    : value.items.map(item => item.source === 'memory'
-      ? `- [memory] ${searchLabel(item)} · turn ${String(item.turn ?? 0)}${item.archived === true ? ` · archived: ${item.reason ?? 'unknown'}` : ''} · ${item.snippet}`
-      : `- [session] ${searchLabel(item)}#${String(item.seq ?? 0)} · ${formatTime(item.time)} · ${item.snippet}`)
+    : value.items.map(item =>
+      `- [memory] ${item.sessionId} · turn ${String(item.turn ?? 0)}`
+      + `${item.archived === true ? ` · archived: ${item.reason ?? 'unknown'}` : ''} · ${item.snippet}`)
   if (value.truncated === true) lines.push('(results truncated; narrow the query or lower `limit`)')
-  for (const warning of value.warnings ?? []) {
-    lines.push(`Warning: ${warning.message} [${warning.code}]`)
-  }
   return lines.join('\n')
-}
-
-/** Render a hit's label: its title, with the session id kept when a title exists. */
-function searchLabel(item: MemorySearchItem): string {
-  return item.title === undefined ? item.sessionId : `${item.title} (${item.sessionId})`
-}
-
-/** Render one event time; an absent time renders as a dash. */
-function formatTime(time: number | undefined): string {
-  return time === undefined ? '—' : new Date(time).toISOString()
 }

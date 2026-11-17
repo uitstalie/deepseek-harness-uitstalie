@@ -36,14 +36,12 @@ import type { MemoryEntry } from '../src/api.ts'
 import {
   appendAssistantText,
   appendUserText,
-  callTool,
   createRoot,
   memoryFilePath,
   memoryNotices,
   memorySnapshots,
   mountMemory,
   settle,
-  textOf,
   waitForValue,
 } from './harness.ts'
 import type { MemoryMountOptions, MemoryTestHarness } from './harness.ts'
@@ -415,10 +413,9 @@ test('summarizeEveryTurns=3 makes one model call for three turns and records eac
     [3, 'batch summary 3'],
   ])
 
-  const read = await callTool(mounted.ctx, root, 'memory_read', { turn: 2 })
-  expect(read.isError, textOf(read)).toBe(false)
-  expect(textOf(read)).toContain('request 2')
-  expect(textOf(read)).toContain('answer 2')
+  const surface = await mounted.ctx.sessionQuery.readSurface(root.session.id)
+  expect(JSON.stringify(surface.events)).toContain('request 2')
+  expect(JSON.stringify(surface.events)).toContain('answer 2')
 })
 
 test('session disposal flushes a partial batch with one model call', async () => {

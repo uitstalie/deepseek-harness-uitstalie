@@ -19,10 +19,13 @@ const MATRIX: Readonly<Record<string, AgentRole>> = {
   issue_work: 'agent',
   'tool-dsh-store': 'agent',
   memory_search: 'subagent',
-  memory_read: 'subagent',
   memory_write: 'agent',
   memory_forget: 'agent',
   memory_resolve: 'agent',
+  workspace_sessions: 'subagent',
+  workspace_tasks: 'subagent',
+  workspace_message: 'subagent',
+  workspace_artifacts: 'subagent',
   send_message: 'subagent',
   list_agents: 'subagent',
   wait_agent: 'subagent',
@@ -83,9 +86,9 @@ test('the registry exposes the approved full matrix for subagent, agent, and sup
   // This spec snapshots the approved matrix, not any one capability's wiring: `superagent_control`
   // is already declared `super` here, so the jira ordinary-branch fix does not change 32/36.
   // The real contribution is covered by packages/jira/jira-agent/src/superagent.test.ts.
-  expect(names('subagent')).toHaveLength(14)
-  expect(names('agent')).toHaveLength(32)
-  expect(names('super')).toHaveLength(36)
+  expect(names('subagent')).toHaveLength(17)
+  expect(names('agent')).toHaveLength(35)
+  expect(names('super')).toHaveLength(39)
   expect(names('agent')).not.toContain('superagent_control')
   expect(names('super')).toContain('superagent_control')
   expect(names('agent').filter(name => !names('subagent').includes(name))).toEqual([

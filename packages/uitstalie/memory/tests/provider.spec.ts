@@ -3,7 +3,7 @@
  * store. They assert the root-only contribution, the fixed prompt section, the
  * three tool schemas, the working append path, and the completed-turn dispatch.
  */
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -78,7 +78,7 @@ test('registers an active root-scoped capability with the fixed prompt section',
   expect(MEMORY_PROMPT_ORDER).toBe(2350)
 })
 
-test('root agents get all five tools; child agents get only memory read/search', async () => {
+test('root agents get all four tools; child agents get only memory_search', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
   const child = await mounted.ctx.agents.create({
@@ -87,13 +87,12 @@ test('root agents get all five tools; child agents get only memory read/search',
   })
 
   const names = mounted.ctx.tools.schemas(root).map(schema => schema.name)
-  expect(names).toEqual(expect.arrayContaining(['memory_write', 'memory_resolve', 'memory_forget', 'memory_search', 'memory_read']))
-  expect(mounted.ctx.tools.schemas(child.agent).map(schema => schema.name).sort()).toEqual(['memory_read', 'memory_search'])
+  expect(names).toEqual(expect.arrayContaining(['memory_write', 'memory_resolve', 'memory_forget', 'memory_search']))
+  expect(mounted.ctx.tools.schemas(child.agent).map(schema => schema.name).sort()).toEqual(['memory_search'])
   expect(mounted.ctx.tools.get('memory_write', child.agent)).toBeUndefined()
   expect(mounted.ctx.tools.get('memory_forget', child.agent)).toBeUndefined()
   expect(mounted.ctx.tools.get('memory_resolve', child.agent)).toBeUndefined()
   expect(mounted.ctx.tools.get('memory_search', child.agent)).toBeDefined()
-  expect(mounted.ctx.tools.get('memory_read', child.agent)).toBeDefined()
   const childAssembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(child.agent))
   expect(childAssembly.sections.map(entry => entry.name)).not.toContain('memory')
   await child.dispose()
@@ -412,43 +411,7 @@ test('memory_search returns managed-block matches inside this workspace', async 
   expect(result.isError).toBe(false)
   expect(textOf(result)).toContain('[memory]')
   expect(textOf(result)).toContain('the store path stays relative')
-  expect(searchRequests).toHaveLength(1)
-  expect(searchRequests[0]?.sessionFilters).toEqual([{ kind: 'cwd', values: [project] }])
-})
-
-test('memory_search reports a skipped session as a warning and keeps the managed-block results', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-  await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'the store path stays relative' })
-  vi.spyOn(mounted.ctx.sessionQuery, 'searchSessions').mockResolvedValueOnce({
-    items: [],
-    warnings: [{
-      sessionId: 'session-broken',
-      code: 'SESSION_QUERY_SESSION_SKIPPED',
-      message: 'session session-broken was skipped: chunk references are not one complete ordered attempt',
-    }],
-  })
-
-  const result = await callTool(mounted.ctx, root, 'memory_search', { query: 'store path' })
-  expect(result.isError, textOf(result)).toBe(false)
-  expect(textOf(result)).toContain('[memory]')
-  expect(textOf(result)).toContain('Warning: session session-broken was skipped')
-  expect(textOf(result)).toContain('[SESSION_QUERY_SESSION_SKIPPED]')
-})
-
-test('memory_search explains a disabled session-query index instead of a raw search error', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-  vi.spyOn(mounted.ctx.sessionQuery, 'searchSessions').mockRejectedValue(Object.assign(
-    new Error('session search is disabled: this deployment configures the session-query index with openAt "never"'),
-    { code: 'SESSION_QUERY_SEARCH_DISABLED' },
-  ))
-
-  const result = await callTool(mounted.ctx, root, 'memory_search', { query: 'anything' })
-
-  expect(result.isError).toBe(true)
-  expect(textOf(result)).toContain('memory_search: session full-text search is disabled')
-  expect(textOf(result)).toContain('use memory_read for a known session/turn')
+  expect(textOf(result)).not.toContain('[session]')
 })
 
 test('unloading the provider removes the capability and its tools', async () => {

@@ -132,7 +132,7 @@ function documentFixture(): MemoryDocument {
 /** The window manifest the fixture renders for the current session. */
 const FIXTURE_MANIFEST = 'Archived: turns 7–10 (detail), turns 17–20 (brief). '
   + 'Turns through 20 are removed from context and searchable. '
-  + 'Raw turns stay in context until the next compaction; use memory_read for the archived details.'
+  + 'Raw turns stay in context until the next compaction; use session_event_read for them.'
 
 test('an empty document produces no snapshot and no message', async () => {
   const mounted = await mount()

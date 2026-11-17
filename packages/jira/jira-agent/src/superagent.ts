@@ -2268,7 +2268,7 @@ const contextMarker = (before?: ContextUsage, after?: ContextUsage): string => {
 /** The standing instruction handed to a workspace Session that should curate its own memory first. */
 export const MEMORY_CURATION_INSTRUCTION =
   'Before starting: curate this workspace\'s memory. Read the memory entries and summaries '
-  + '(`memory_search` / `memory_read`), merge duplicates, mark what is stale, and add one line for a '
+  + '(`memory_search`), merge duplicates, mark what is stale, and add one line for a '
   + 'missing durable conclusion. Memory is per-workspace: do not read or write another workspace\'s '
   + 'memory. Then do the following work.\n\n'
 

@@ -43,6 +43,7 @@ kind: "package-group"
 | [`ui-memory`](ui-memory/README.zh.md) | memory 设置段：编辑 provider 的 volatile 窗口、保留会话数、预算与摘要模型字段 | 设置页段落 |
 | [`ui-models-dev`](ui-models-dev/README.zh.md) | Web 设置页段落：浏览目录并把选中的提供商物化为 `llm-plus` 路由 | 设置页段落 |
 | [`ui-tool-dsh-store`](ui-tool-dsh-store/README.zh.md) | Web 侧栏按钮：列出并读取工作区的 `.dsh/rules` | 工作区行菜单 |
+| [`workspace-tools`](workspace-tools/README.zh.md) | 工作区信息工具集：按已注册工作区限定作用域的会话、任务、消息与产物读取，以及它们聚合的持久记录 | 注册到 `ctx.dafeiyu` |
 
 -----
 

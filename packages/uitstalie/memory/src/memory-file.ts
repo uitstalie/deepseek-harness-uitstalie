@@ -2034,7 +2034,7 @@ function renderForgetText(sessionId: string, range: TurnRange): string {
   const seq = range.seq[0] === range.seq[1]
     ? `seq ${String(range.seq[0])}`
     : `seq ${String(range.seq[0])}–${String(range.seq[1])}`
-  return `Memory pointer: session ${sessionId}, ${turns} (${seq}) left the context; the original remains searchable with memory_search / memory_read.`
+  return `Memory pointer: session ${sessionId}, ${turns} (${seq}) left the context; the original remains readable with session_event_read.`
 }
 
 /** Split the leading frontmatter block from the rest of the file. */
