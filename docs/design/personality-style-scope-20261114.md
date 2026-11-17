@@ -36,22 +36,22 @@ The 300-rule case consumes about a tenth of a 128k context before the conversati
 
 ### Current behavior
 
-Section 690 is registered for **all** agents: the capability declares `scope: 'all'` and `promptSections` returns the same three sections without an agent-type filter (`packages/uitstalie/personality/src/index.ts:116-154`). The dispatch flag only changes the rendered `Dispatch voice` line; it does not gate the section (`index.ts:112`, `output-style.ts:145-164`).
+Section 690 is omitted for `subagent` and registered for ordinary and super roots: `packages/uitstalie/personality/src/api.ts:141-151` returns the profile and writing-rules sections for every role but adds the output-style section only when the role is not `subagent`. The dispatch flag only changes the rendered `Dispatch voice` line; it does not gate the section (`output-style.ts:190-193`).
 
-`isRootAgent` is the only current classification (`index.ts:231-235`): it requires `origin !== 'subagent'`, no `parentSession`, and `delegationDepth === 0`. This separates a delegated subagent from a root, but **does not distinguish an ordinary root from the super agent**; both satisfy it. The super agent is the root Session whose cwd is the configured super workspace (`packages/jira/jira-agent/src/index.ts:174-186`), and the workspace title is `Super agent` (`superagent.ts:100`). Personality itself receives no super-agent role flag; `AgentHeader.origin` is typed only as `'subagent'` today (`packages/core/agent/src/index.ts:82-85`), not a super/ordinary role.
+Role resolution now lives in `packages/core/agent/src/role.ts`: `agentRoleOf` returns `subagent` from durable lineage, otherwise the declared `agent`/`super` role, defaulting to `agent`. The Workspace record carries `role` (`packages/workspace/workspace/src/entity.ts:95-117`), `SessionController` resolves it by canonical cwd, and personality reads `agent.role` rather than inferring from cwd or tool presence. That separation is what distinguishes an ordinary root from the super agent.
 
 **Current ordinary/super difference: one line.** Both use the same `OUTPUT_STYLE.yaml` and the same `renderOutputStyleSection`; the super agent gets `- Dispatch voice: terse.` while the ordinary agent gets no dispatch line. `Hard boundary:` and `Status reporting discipline:` currently reach **both**; that is the difference the product decisions below change.
 
 ### Decision update (2026-11-14): two independent slots
 
 - Ordinary and super styles **may differ from the start**; do not hold either slot back to keep them identical. The super slot owns dispatch/reporting discipline; the ordinary slot stays clean.
-- The two slots have independent sources, defaults, and write paths. A missing super file must not fall back to the ordinary file (and vice versa); today there is only one file and one section implementation.
+- The two slots have independent sources, defaults, and write paths. A missing super file must not fall back to the ordinary file (and vice versa); the data layer already ships both files (`packages/uitstalie/personality/src/defaults.ts:46-53,76-77`), and `output-style.ts:160-161` selects the source by role.
 - Both slots still use section name/order `personality:output-style` at 690, selected per agent. A separate order is needed only if the two texts must occupy different positions; that is not required for independent content.
 - Subagents receive no output-style slot at all. Sections 100 and 695 are not part of this decision.
 
 ### Subagent tools: ban, no read-only variants
 
-Current registration already excludes both write paths for subagents: `tools: agent => isRootAgent(agent) ? [analyzeTool, applyTool, rulesTool] : [analyzeTool]` (`index.ts:119-121`). A subagent therefore sees only `personality_analyze`; there is no read-only `write_like_human` or `personality_apply` variant. This already satisfies the “ban the tools” decision at the model-facing layer.
+Current registration already excludes both write paths for subagents: `packages/uitstalie/personality/src/api.ts:121` declares `personality_analyze` at `minRole: 'subagent'` and `personality_apply` plus `write_like_human` at `minRole: 'agent'`, enforced by the tool registry. A subagent therefore sees only `personality_analyze`; there is no read-only `write_like_human` or `personality_apply` variant. This already satisfies the “ban the tools” decision at the model-facing layer.
 
 Options if implementation changes:
 

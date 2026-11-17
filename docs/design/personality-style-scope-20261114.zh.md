@@ -36,22 +36,22 @@
 
 ### 当前行为
 
-Section 690 注册给 **所有** agent：该 capability 声明 `scope: 'all'`，且 `promptSections` 返回同样的三个 section，不带 agent 类型过滤（`packages/uitstalie/personality/src/index.ts:116-154`）。dispatch 标志只改变渲染出的 `Dispatch voice` 一行，并不对该 section 做门控（`index.ts:112`、`output-style.ts:145-164`）。
+Section 690 对 `subagent` 不注入，只注册给普通 root 与 super root：`packages/uitstalie/personality/src/api.ts:141-151` 对所有角色都返回 profile 与 writing-rules 两个 section，但只有角色不是 `subagent` 时才追加 output-style section。dispatch 标志只改变渲染出的 `Dispatch voice` 一行，并不对该 section 做门控（`output-style.ts:190-193`）。
 
-`isRootAgent` 是当前唯一的分类（`index.ts:231-235`）：它要求 `origin !== 'subagent'`、没有 `parentSession`，且 `delegationDepth === 0`。这能把被委派的 subagent 与 root 区分开，但**不能区分普通 root 与 super agent**；两者都满足它。super agent 是 cwd 为所配置 super 工作区的 root Session（`packages/jira/jira-agent/src/index.ts:174-186`），其工作区标题为 `Super agent`（`superagent.ts:100`）。personality 本身收不到任何 super agent 角色标志；目前 `AgentHeader.origin` 只被类型化为 `'subagent'`（`packages/core/agent/src/index.ts:82-85`），而不是 super/ordinary 角色。
+角色判定现在位于 `packages/core/agent/src/role.ts`：`agentRoleOf` 先看持久血缘，返回 `subagent`；否则取声明的 `agent`/`super`，缺省为 `agent`。Workspace 记录携带 `role`（`packages/workspace/workspace/src/entity.ts:95-117`），`SessionController` 按规范 cwd 解析，personality 直接读 `agent.role`，不再从 cwd 或工具存在性推断。正是这个区分把普通 root 与 super agent 分开。
 
 **当前普通/super 的差异：一行。** 两者使用同一份 `OUTPUT_STYLE.yaml` 和同一个 `renderOutputStyleSection`；super agent 会得到 `- Dispatch voice: terse.`，而普通 agent 没有 dispatch 行。`Hard boundary:` 与 `Status reporting discipline:` 目前**两者**都会收到；下面的产品决策改变的正是这个差异。
 
 ### 决定更新（2026-11-14）：两个独立槽位
 
 - 普通风格与 super 风格**可以从一开始就不同**；不要为了让两者相同而压住任一个槽位。super 槽位负责派发/汇报纪律；普通槽位保持干净。
-- 两个槽位有各自独立的来源、默认值与写入路径。super 文件缺失时不得回退到普通文件（反之亦然）；目前只有一个文件和一个 section 实现。
+- 两个槽位有各自独立的来源、默认值与写入路径。super 文件缺失时不得回退到普通文件（反之亦然）；数据层已经同时提供两个文件（`packages/uitstalie/personality/src/defaults.ts:46-53,76-77`），`output-style.ts:160-161` 按角色选择来源。
 - 两个槽位仍使用位于 690 的 section 名/顺序 `personality:output-style`，按 agent 选择。只有两段文本必须占据不同位置时才需要单独的 order；独立内容并不要求这一点。
 - subagent 完全收不到 output-style 槽位。section 100 与 695 不属于本决定。
 
 ### subagent 工具：禁用，不提供只读变体
 
-当前的注册已经对 subagent 排除了两条写入路径：`tools: agent => isRootAgent(agent) ? [analyzeTool, applyTool, rulesTool] : [analyzeTool]`（`index.ts:119-121`）。因此 subagent 只看到 `personality_analyze`，不存在只读的 `write_like_human` 或 `personality_apply` 变体。这在模型可见层已经满足了“ban the tools”决定。
+当前的注册已经对 subagent 排除了两条写入路径：`packages/uitstalie/personality/src/api.ts:121` 把 `personality_analyze` 声明为 `minRole: 'subagent'`，把 `personality_apply` 与 `write_like_human` 声明为 `minRole: 'agent'`，由工具注册表执行。因此 subagent 只看到 `personality_analyze`，不存在只读的 `write_like_human` 或 `personality_apply` 变体。这在模型可见层已经满足了“ban the tools”决定。
 
 若实施有变，可选方案：
 

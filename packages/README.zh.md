@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会话与 agent loop（智能体循环）、面向模型的工具、shell 与文件系统执行、Web 访问与 subagent。本页是顶层地图：先找到所属组，再打开其 README。每个包都以 `@deepseek-ai/dsh-*` 为作用域、只属于一个组；每个组的 README 都是该能力系列的权威包映射。
+harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会话与 agent loop（智能体循环）、面向模型的工具、shell 与文件系统执行、Web 访问与 subagent。本页是顶层地图：先找到所属组，再打开其 README。每个包都以 `@deepseek-ai/dsh-*` 为作用域、只属于一个组，其组 README 就是该包的权威映射。
 
 ## 目录
 
@@ -87,7 +87,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 <a id="release-expectations"></a>
 ## 发布预期
 
-产品组承担维护职责，但其公开 API 仍处于预稳定阶段。[实验性状态](experimental/README.zh.md#status)独立于发布、安装和可选交付。非实验运行时包必须被产品使用或在[包分类策略](../scripts/product-package-policy.ts)中明确列出；SDK、构建、测试与声明基础设施分别分类。
+产品组承担维护职责，但其公开 API 仍处于预稳定阶段。[实验性状态](experimental/README.zh.md#status)独立于发布、安装和可选交付。非实验运行时包需要被产品使用或被[分类策略](../scripts/product-package-policy.ts)明确列出；SDK、构建、测试与声明基础设施各自分类。
 
 -----
 
@@ -96,14 +96,14 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 
 依赖图由工具生成：[docs/module-graph.md](../docs/module-graph.zh.md)（`pnpm run gen-module-graph`，CI 中有新鲜度门禁）。
 
-**扩展插件依赖 Service Definition，绝不依赖具体提供方。** `dsh-agent-loop` 可替换；UI、钩子和工具插件使用 `dsh-agent`。组合包可以依赖主干插件。能力在需要独立演进时分离 Service Definition／Service Provider／Consumer 角色；详见[能力 seam](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)。
+**扩展插件依赖 Service Definition，绝不依赖具体提供方。** `dsh-agent-loop` 可替换；UI、钩子和工具插件使用 `dsh-agent`。组合包可以依赖主干插件。能力在需要独立演进时分离 Definition／Provider／Consumer 角色；详见[能力 seam](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)。
 
 -----
 
 <a id="package-readme-contracts"></a>
 ## 包 README 约定
 
-每个包 README 都覆盖用途、配置、扩展点与[模型体验](../docs/cookbook/adding-a-package.zh.md#4-write-the-package-readme)，列入模型无关[省略允许清单](../scripts/verify-package-readme-model-experience.ts)的包除外。它还要包含 `## Known Limitations and Deferred Work`，或列入其[允许清单](../scripts/verify-package-readme-limitations.ts)。包约定——导出、服务访问、测试——见 [packages/AGENTS.md](AGENTS.md)。
+每个包 README 都覆盖用途、配置、扩展点与[模型体验](../docs/cookbook/adding-a-package.zh.md#4-write-the-package-readme)，列入其[省略允许清单](../scripts/verify-package-readme-model-experience.ts)的包除外。它还要包含 `## Known Limitations and Deferred Work`，或列入其[允许清单](../scripts/verify-package-readme-limitations.ts)。包约定见 [packages/AGENTS.md](AGENTS.md)。
 
 -----
 
