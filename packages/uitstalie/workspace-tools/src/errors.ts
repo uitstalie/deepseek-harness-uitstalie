@@ -56,3 +56,43 @@ export class WorkspaceArtifactError extends HarnessError {
     this.name = 'WorkspaceArtifactError'
   }
 }
+
+/** Code of an intent-card refusal. */
+export type WorkspaceIntentCode =
+  | 'INTENT_INCOMPLETE'
+  | 'INTENT_UNCONFIRMED'
+  | 'INTENT_STALE'
+  | 'INTENT_SCOPE_MISMATCH'
+  | 'INTENT_COVERAGE_MISSING'
+  | 'INTENT_ALIGNMENT_MISSING'
+  | 'INTENT_ALIGNMENT_INCOMPLETE'
+  | 'INTENT_ALIGNMENT_UNSATISFIED'
+  | 'INTENT_PERMISSION_DENIED'
+  | 'INTENT_INVALID'
+
+/** An intent card rule refused the call: a missing field, a stale version, or a failed check. */
+export class WorkspaceIntentError extends HarnessError {
+  /**
+   * @param message - the card, version, or point that failed.
+   * @param code - which intent rule refused the call.
+   */
+  constructor(message: string, code: WorkspaceIntentCode) {
+    super(message, code)
+    this.name = 'WorkspaceIntentError'
+  }
+}
+
+/** Code of a task-mutation refusal that is not a missing record. */
+export type WorkspaceTaskCode = 'WORKSPACE_TASK_FORBIDDEN' | 'WORKSPACE_TASK_TRANSITION'
+
+/** A task mutation was refused by the dispatcher rule or the state machine. */
+export class WorkspaceTaskError extends HarnessError {
+  /**
+   * @param message - the task and transition or role that failed.
+   * @param code - which task rule refused the call.
+   */
+  constructor(message: string, code: WorkspaceTaskCode) {
+    super(message, code)
+    this.name = 'WorkspaceTaskError'
+  }
+}

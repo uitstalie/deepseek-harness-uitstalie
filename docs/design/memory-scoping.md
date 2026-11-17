@@ -2,7 +2,7 @@
 
 English | [中文](memory-scoping.zh.md)
 
-Status: draft for review; Step 0 (the over-cap archive fix, `3cb8eeaf3d`) and Step 1 (the read-side workspace toolset, `cb4cc58385`) are implemented; Step 2 onward is not started. Length: not bound by the 12-page cap; content completeness takes precedence. This draft is 9,841 words (about 20 pages).
+Status: draft for review; Step 0 (the over-cap archive fix, `3cb8eeaf3d`), Step 1 (the read-side workspace toolset, `cb4cc58385`), and Step 2 (intent cards and task creation, this change) are implemented; Step 3 onward is not started. Length: not bound by the 12-page cap; content completeness takes precedence. This draft is 9,841 words (about 20 pages).
 
 ## 1. Background and the problem
 
@@ -145,7 +145,7 @@ The toolset owns the records it returns; memory does not duplicate them.
 | Message | message id, target session, text, kind (message or follow-up), delivery status, receipt, artifact references | Session inbox and message journal |
 | Artifact reference | artifact id, workspace, path, sha256, size, version, kind, session id, task id, created time, summary | Workspace artifact index |
 
-The toolset must not create a second copy of a fact that the ledger, the session store, or the workspace files already own. It aggregates and mutates through those owners, and the task journal exists only for work the JIRA ledger does not cover. Current state after Step 1: the shipped read-side toolset already stores its own task, message, and artifact records under `$DSH_HOME/workspaces/<workspace-id>/`, while the dispatch ledger `.superagent/ledger` remains the only writer. Until Step 2 adds task creation and the ledger is dropped, two task stores coexist; that is the open risk in section 10.3, not a satisfied constraint.
+The toolset must not create a second copy of a fact that the ledger, the session store, or the workspace files already own. It aggregates and mutates through those owners, and the task journal exists only for work the JIRA ledger does not cover. Current state after Step 2: the workspace toolset writes its own tasks, receipts, and intent cards under `$DSH_HOME/workspaces/<workspace-id>/`, and `workspace_tasks.create` refuses a dispatch that lacks an active card version and a coverage mapping. The dispatch ledger `.superagent/ledger` is still the JIRA writer because JIRA removal is out of scope for this step, so two task stores still coexist; that is the open risk in section 10.3, not a satisfied constraint.
 
 An intent card is a workspace record, not a memory entry. One card belongs to exactly one workspace. A cross-workspace request creates one card in each target workspace, and each card keeps the user's original words verbatim. The card is stored with the workspace's toolset state at `$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/` (`index.json`, `versions/<n>.json`), not in a host-global intent store. Versions are append-only; an old version stays readable after it is superseded.
 
@@ -190,17 +190,18 @@ Input:
 ```
 { action: 'list' | 'get' | 'create' | 'update' | 'receipt',
   workspace?, taskId?, status?, targetSessionId?, title?, goal?, acceptance?, boundaries?,
-  intentId?, intentVersion?, taskType?, alignment?, note?, cursor?, limit? }
+  outputForm?, intentId?, intentVersion?, coverage?, nonCoverage?, taskType?, alignment?,
+  assignee?, note?, requestId?, cursor?, limit? }
 ```
 
-- `create` returns `{ taskId, status, createdAt }`; `goal` and `acceptance` are required; `targetSessionId` is optional. `create` also requires `intentId` and `intentVersion` in the task's workspace. A missing card rejects with `INTENT_INCOMPLETE`; a proposed version with `INTENT_UNCONFIRMED`; a superseded version with `INTENT_STALE` (section 11.4). `taskType` is required and comes from the closed six-category taxonomy in section 11.7.
+- `create` returns `{ taskId, status, createdAt }`; `workspace`, `goal`, `acceptance`, `boundaries`, `intentId`, `intentVersion`, and `taskType` are required; `targetSessionId` is optional. A missing field or card rejects with `INTENT_INCOMPLETE`; a proposed version with `INTENT_UNCONFIRMED`; a superseded or non-current version with `INTENT_STALE`; a card from another workspace with `INTENT_SCOPE_MISMATCH` (section 11.4). `taskType` comes from the closed six-category taxonomy in section 11.7, and every card point needs a `coverage` mapping or an explicit `nonCoverage` reason.
 - `update` accepts `status`, `note`, and `assignee`; allowed transitions are `pending → in_progress → waiting_review → done | blocked | cancelled`, and any state may return to `in_progress`.
 - The vocabulary above is the new system's vocabulary. Existing task data is not migrated: old states remain as historical text and are not mapped. A one-time script can translate them later if needed; that script is outside this design.
-- `receipt` appends `{ status, note }` and returns `{ receiptId, at }`.
+- `receipt` appends `{ status, note, alignment }` and returns `{ receiptId, at, status }`; `alignment` carries one status and one piece of evidence per card point, and a `not_satisfied` acceptance point or a `violated` boundary makes the effective state `waiting_review` or `blocked` instead of `done`.
 - `get` returns the task, its receipts, its target session, and its artifact references.
 - `list` filters by workspace, status, and assignee.
 
-Scope: a task belongs to exactly one workspace. A mutation must come from the dispatcher or from the session assigned to the task. Cross-workspace task listing requires explicit workspace ids.
+Scope: a task belongs to exactly one workspace. Creating or changing a task requires the dispatcher (the super agent); the session named as a task's target may update that task and append its own receipt. Every mutation carries a `requestId`, so a retry does not duplicate a task or a receipt. Cross-workspace task listing requires explicit workspace ids.
 
 ### 5.4 `workspace_message`
 
@@ -304,7 +305,7 @@ The target ownership is one workspace toolset for sessions, tasks, messages, art
 | `read`, `glob`, `grep` | Reads workspace content | Content tools | Keep |
 | `tool-dsh-store` | Reads `.dsh` content | Store tool | Out of scope here; unchanged (section 2.3) |
 
-`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The workspace toolset has five members: `workspace_sessions`, `workspace_intents`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary. Current state: this consolidation is not implemented. `memory_read` is deleted (`cb4cc58385`), but `memory_resolve` still exists (`packages/uitstalie/memory/src/tools.ts:229`); JIRA and the `superagent_*` tools are still enabled (`jira: { enabled: true }` in `packages/bundle/web-app/cordis.patch.uitstalie.yml`); `workspace_intents` does not exist; and `workspace_tasks` is read-only. Removing JIRA and `memory_resolve` remains an open decision, not a shipped change.
+`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The workspace toolset has five members: `workspace_sessions`, `workspace_intents`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary. Current state after Step 2: `workspace_sessions`, `workspace_intents`, `workspace_tasks` (`list`/`get`/`create`/`update`/`receipt`), `workspace_message` read, and `workspace_artifacts` `list`/`resolve` are shipped; message send and artifact publish/reference remain Step 3. `memory_read` is deleted (`cb4cc58385`), but `memory_resolve` still exists (`packages/uitstalie/memory/src/tools.ts:229`); JIRA and the `superagent_*` tools are still enabled (`jira: { enabled: true }` in `packages/bundle/web-app/cordis.patch.uitstalie.yml`). Removing JIRA and `memory_resolve` remains an open decision, not a shipped change.
 
 ### 6.3 Delivery as a tool call
 
@@ -490,6 +491,8 @@ A heuristic pass over the current 406 entries suggests about 15 global candidate
 | 3 | Delivery becomes a tool call and the flood is removed in the same release: `workspace_message.send`, artifact publish/reference, the static prompt, and no snapshot, update notice, cross-session index, or turn-end delivery | A message and a reference round-trip; a retry does not duplicate; a turn with no send delivers nothing; an ordinary session's per-turn memory message count is 0 and bytes are 0; "what did I do last turn" is answered from `workspace_sessions` |
 | 4 | Memory becomes global-only and the old entries are migrated | A business or dispatch write is rejected with a tool hint; the dry-run report is produced; only confirmed global entries remain injected; backups and rollback verified |
 
+Implemented: Steps 0, 1, and 2. Not started: Steps 3 and 4.
+
 Each step is independently shippable and reversible. Step 0 ships first. Steps 1–4 do not depend on the board direction.
 
 Ordering: the read side lands first so the model can query before anything is removed. Task creation and the intent card land next, so dispatch has a workspace record to validate against. The flood removal and the delivery tool land in the same release, so there is no window where the old injection is gone and the new delivery path is not yet available. The memory migration is last because it rewrites user data and benefits from a stable toolset.
@@ -514,7 +517,7 @@ None. The decisions above are conclusions, and the implementation values are fix
 ### 10.3 Risks
 
 - Tool latency and cost: keep the results bounded, and put a short "where to look" map in the prompt.
-- Two owners for a task: the toolset must wrap the existing ledger and journal rather than create a second task list. This risk is live today: the read-side toolset already owns task records under `$DSH_HOME/workspaces/<workspace-id>/tasks`, while `.superagent/ledger` remains the only writer, so a task can be read from one store and written to the other.
+- Two owners for a task: the toolset must wrap the existing ledger and journal rather than create a second task list. The risk is still live after Step 2: the workspace toolset now creates and validates tasks under `$DSH_HOME/workspaces/<workspace-id>/tasks`, while `.superagent/ledger` remains the JIRA writer, so a task can still be read from one store and written to the other until JIRA is removed.
 - Message priority: an urgent message may interrupt a step. The three urgent cases are narrow, and a normal message is never urgent; a misclassified urgent message is a defect to review.
 - Reference invalidation: changed, missing, denied, pending, and expired are distinct; a grant is version-scoped and a new version needs a new grant; a cross-workspace denial never reveals existence.
 - Cross-workspace authorization: an explicit workspace id, registry membership, and a recorded call; pull checks the receiver first, push checks the sender first; no implicit aggregation.
@@ -623,6 +626,8 @@ The inputs are recorded at three points: the intent version append, the task dis
 
 `workspace_tasks.create` requires the active card reference, as above. `workspace_tasks.receipt` accepts the alignment checklist, and the task state machine refuses `done` with an unsatisfied item.
 
+Current state: the tool enforces the four dispatch refusals, the coverage check, and the receipt gate. Until a card UI exists, the super agent is the channel that records the user's confirmation and correction, so `create`, `confirm`, and `correct` require the super agent role or the user; ordinary agents read cards only. A `nonCoverage` entry is the super agent's explicit dispatch waiver, recorded on the task with its reason; it is not a default pass.
+
 ### 11.9 What this does not do
 
 This is not a stronger prompt. The prompt only says where to look and in what order: read the intent card, then the task, then the coverage list. The constraints live in the schema, the confirmation state, the coverage check, the receipt gate, and the workspace store.
@@ -637,6 +642,8 @@ It also does not put intent cards in memory, in a host-global intent directory, 
 4. A correction appends a version: `workspace_intents.correct` creates version 2, marks version 1 `superseded`, and version 1 remains readable with its original items; the next task references version 2.
 5. Coverage is enforced: a task brief missing an acceptance point returns `INTENT_COVERAGE_MISSING`; adding the point or an explicit non-coverage reason lets it proceed.
 6. A receipt with a deviation is gated: an alignment with `not_satisfied` or `violated` cannot move the task to `done`.
+
+These tests run in `packages/uitstalie/workspace-tools/tests/intents.spec.ts`; the same file covers `INTENT_INCOMPLETE`, `INTENT_STALE`, `INTENT_SCOPE_MISMATCH`, role refusals, subdirectory refusals, `requestId` retries, and the history cursor.
 
 ## 12. Capability inventory: memory and super agent
 
@@ -674,7 +681,7 @@ Intent cards are not a memory capability; they are workspace records and never e
 | Long-task monitoring | Session status and JIRA status | Yes | `workspace_sessions` status and progress plus the write lease | Move |
 | Cross-workspace collaboration | Dispatch, with memory copies | Yes | `workspace_tasks`, `workspace_message`, `workspace_artifacts`, and `workspace_intents` with explicit scope; never memory | Move |
 
-Current state: the JIRA-bound capabilities remain implemented and enabled, while the `workspace_*` replacements exist only as a read side and `workspace_intents` has no implementation. This table records the target ownership, not what this tree ships.
+Current state after Step 2: `workspace_intents`, task creation, the coverage check, and the receipt gate are implemented; the JIRA-bound capabilities remain implemented and enabled; `workspace_message.send` and artifact publication remain Step 3. This table records the target ownership, and the implemented rows are the ones this tree ships.
 
 ## 13. Appendix: future direction
 

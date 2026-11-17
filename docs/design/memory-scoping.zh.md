@@ -2,7 +2,7 @@
 
 [English](memory-scoping.md) | 中文
 
-状态：评审稿；Step 0（超上限归档修复，`3cb8eeaf3d`）与 Step 1（读侧工作区工具集，`cb4cc58385`）已合并，Step 2 起尚未开始。篇幅：不受 12 页上限约束，以内容完整为准；本稿约 12,374 汉字（约 20 页）。
+状态：评审稿；Step 0（超上限归档修复，`3cb8eeaf3d`）、Step 1（读侧工作区工具集，`cb4cc58385`）与 Step 2（意图卡与任务创建，即本次改动）已合并，Step 3 起尚未开始。篇幅：不受 12 页上限约束，以内容完整为准；本稿约 12,374 汉字（约 20 页）。
 
 ## 1. 背景与问题
 
@@ -145,7 +145,7 @@
 | 消息 | 消息 id、目标会话、正文、类型（消息或追问）、投递状态、回执、产物引用 | 会话 inbox 与消息日志 |
 | 产物引用 | 产物 id、工作区、路径、sha256、大小、版本、类型、会话 id、任务 id、创建时间、摘要 | 工作区产物索引 |
 
-工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。Step 1 之后的当前状态：已交付的读侧工具集已经在 `$DSH_HOME/workspaces/<workspace-id>/` 下存自己的任务、消息与产物引用，而派发账本 `.superagent/ledger` 仍是唯一写入方。在 Step 2 加上任务创建、丢弃账本之前，两套任务存储并存；这是 §10.3 记录的当前风险，不是已经满足的约束。
+工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。Step 2 之后的当前状态：工作区工具集已经在 `$DSH_HOME/workspaces/<workspace-id>/` 下写自己的任务、回执与意图卡，`workspace_tasks.create` 会拒绝缺少 active 卡版本与覆盖映射的派发。派发账本 `.superagent/ledger` 仍是 JIRA 的写入方，因为移除 JIRA 不在本步范围内，所以两套任务存储仍然并存；这是 §10.3 记录的当前风险，不是已经满足的约束。
 
 意图卡是工作区记录，不是记忆条目。一张卡只属于一个工作区。跨工作区请求会在每个目标工作区各建一张卡，每张卡都逐字保留用户原话。卡随工作区工具集状态存放：`$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/`（`index.json`、`versions/<n>.json`），不在宿主全局意图存储里。版本是追加式的；旧版本被 supersede 后仍可读。
 
@@ -190,17 +190,18 @@
 ```
 { action: 'list' | 'get' | 'create' | 'update' | 'receipt',
   workspace?, taskId?, status?, targetSessionId?, title?, goal?, acceptance?, boundaries?,
-  intentId?, intentVersion?, taskType?, alignment?, note?, cursor?, limit? }
+  outputForm?, intentId?, intentVersion?, coverage?, nonCoverage?, taskType?, alignment?,
+  assignee?, note?, requestId?, cursor?, limit? }
 ```
 
-- `create` 返回 `{ taskId, status, createdAt }`；`goal` 与 `acceptance` 必填；`targetSessionId` 可选。`create` 还必须带任务所在工作区的 `intentId` 与 `intentVersion`。缺卡返回 `INTENT_INCOMPLETE`；`proposed` 版本返回 `INTENT_UNCONFIRMED`；被 supersede 的版本返回 `INTENT_STALE`（见 11.4 节）。`taskType` 必填，取 11.7 节的六类封闭清单。
+- `create` 返回 `{ taskId, status, createdAt }`；`workspace`、`goal`、`acceptance`、`boundaries`、`intentId`、`intentVersion` 与 `taskType` 必填；`targetSessionId` 可选。缺字段或缺卡返回 `INTENT_INCOMPLETE`；`proposed` 版本返回 `INTENT_UNCONFIRMED`；被 supersede 或不是当前版本的返回 `INTENT_STALE`；卡属于别的工作区返回 `INTENT_SCOPE_MISMATCH`（见 11.4 节）。`taskType` 取 11.7 节的六类封闭清单，且卡里每个点都需要一条 `coverage` 映射或一条显式 `nonCoverage` 理由。
 - `update` 接受 `status`、`note`、`assignee`；允许的迁移是 `pending → in_progress → waiting_review → done | blocked | cancelled`，任何状态都可以回到 `in_progress`。
 - 上面的词表就是新体系的词表。旧任务数据不迁移：旧状态作为历史文本保留，不做映射。以后确实需要时用一次性脚本转换；该脚本不在本设计内。
-- `receipt` 追加 `{ status, note }`，返回 `{ receiptId, at }`。
+- `receipt` 追加 `{ status, note, alignment }`，返回 `{ receiptId, at, status }`；`alignment` 为卡里每个点带一种状态与一条证据，`not_satisfied` 的验收点或 `violated` 的边界会让有效状态变成 `waiting_review` 或 `blocked`，而不是 `done`。
 - `get` 返回任务、回执、目标会话与产物引用。
 - `list` 按工作区、状态、负责人过滤。
 
-范围：一个任务只属于一个工作区。变更必须来自派发方，或来自被指派该任务的会话。跨工作区列任务必须显式给工作区 id。
+范围：一个任务只属于一个工作区。创建或变更任务需要派发方（super agent）；被指定为任务目标会话的会话可以更新该任务并追加自己的回执。每次变更都带 `requestId`，因此重试不会重复创建任务或回执。跨工作区列任务必须显式给工作区 id。
 
 ### 5.4 `workspace_message`
 
@@ -304,7 +305,7 @@ ask user 与用户批准是独立的可靠性设计项，见 7.5。
 | `read`、`glob`、`grep` | 读工作区内容 | 内容工具 | 保留 |
 | `tool-dsh-store` | 读 `.dsh` 内容 | 存储工具 | 不在本文范围；不改（见 2.3） |
 
-`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。当前状态：这次合并尚未实现。`memory_read` 已删除（`cb4cc58385`），但 `memory_resolve` 仍在（`packages/uitstalie/memory/src/tools.ts:229`）；JIRA 与 `superagent_*` 工具仍启用（`packages/bundle/web-app/cordis.patch.uitstalie.yml` 中 `jira: { enabled: true }`）；`workspace_intents` 不存在；`workspace_tasks` 只有读侧。移除 JIRA 与 `memory_resolve` 仍是待决策项，不是已发布的改动。
+`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。Step 2 之后的当前状态：`workspace_sessions`、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message` 读取与 `workspace_artifacts` 的 `list`/`resolve` 已交付；消息发送与产物发布/引用仍属 Step 3。`memory_read` 已删除（`cb4cc58385`），但 `memory_resolve` 仍在（`packages/uitstalie/memory/src/tools.ts:229`）；JIRA 与 `superagent_*` 工具仍启用（`packages/bundle/web-app/cordis.patch.uitstalie.yml` 中 `jira: { enabled: true }`）。移除 JIRA 与 `memory_resolve` 仍是待决策项，不是已发布的改动。
 
 ### 6.3 投递改成工具调用
 
@@ -490,6 +491,8 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 | 3 | 投递改成工具调用，并在同一版本删除洪水：`workspace_message.send`、产物发布/引用、静态提示词，且不再有快照、更新通知、跨会话索引、回合结束投递 | 消息与引用能往返；重试不重复；一个 turn 不发就什么都不投递；普通会话每轮记忆消息数为 0、字节数为 0；“上一轮做了什么”由 `workspace_sessions` 回答 |
 | 4 | 记忆变为只留 global，并迁移旧条目 | 业务或派发写入被拒并给出工具提示；产出 dry-run 报告；只有确认过的 global 条目仍被注入；备份与回滚已验证 |
 
+已完成：第 0、1、2 步。未开始：第 3、4 步。
+
 每一步都可独立上线、可回滚。第 0 步先合。第 1 到 4 步不依赖看板方向。
 
 顺序：读侧先落，模型在任何东西被删除之前就能查询。任务创建与意图卡紧接着落，派发才有工作区记录可校验。删洪水与投递工具放在同一版本，避免出现“旧注入已删、新投递路径还没上”的空窗。记忆迁移最后做，因为它改写用户数据，并且需要稳定的工具集。
@@ -514,7 +517,7 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 ### 10.3 风险
 
 - 工具调用延迟与成本：结果保持有界，并在提示词里放一张简短的“去哪里查”地图。
-- 一个任务两个主人：工具集必须包住现有账本与日志，而不是再造一份任务清单。这个风险今天已经存在：读侧工具集已经在 `$DSH_HOME/workspaces/<workspace-id>/tasks` 下持有任务记录，而 `.superagent/ledger` 仍是唯一写入方，任务可能从一边读、往另一边写。
+- 一个任务两个主人：工具集必须包住现有账本与日志，而不是再造一份任务清单。这个风险在 Step 2 之后仍然存在：工作区工具集现在会在 `$DSH_HOME/workspaces/<workspace-id>/tasks` 下创建并校验任务，而 `.superagent/ledger` 仍是 JIRA 的写入方，因此在 JIRA 被移除之前，任务仍可能从一边读、往另一边写。
 - 消息优先级：紧急消息可以中断一个步骤。三种紧急情况很窄，普通消息永远不紧急；误判紧急是缺陷，要评审。
 - 引用失效：changed、missing、denied、pending、expired 分开；授权按版本限定，新版本需要新授权；跨工作区拒绝不泄漏产物是否存在。
 - 跨工作区授权：显式工作区 id、注册表成员校验、调用留痕；拉先查接收方，推先查发送方；不做隐式聚合。
@@ -623,6 +626,8 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 
 `workspace_tasks.create` 必须带 active 卡引用；`workspace_tasks.receipt` 接收对齐清单；有未满足项时状态机拒绝 `done`。
 
+当前状态：工具已经强制四个派发拒绝码、覆盖检查与回执门。在卡片 UI 出现之前，super agent 是记录用户确认与纠正的通道，因此 `create`、`confirm` 与 `correct` 需要 super agent 角色或用户；普通 agent 只读卡。`nonCoverage` 条目就是 super agent 的显式派发豁免，连同理由记录在任务上；它不是默认通过。
+
 ### 11.9 不做什么
 
 这不是更强的提示词。提示词只说去哪里查、按什么顺序：读意图卡，再读任务，再写覆盖清单。约束在 schema、确认状态、覆盖检查、回执门与工作区存储里。
@@ -637,6 +642,8 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 4. 纠正追加版本：`workspace_intents.correct` 创建版本 2，把版本 1 标为 `superseded`，版本 1 及其原始条目仍可读；下一个任务引用版本 2。
 5. 覆盖检查生效：简报漏掉一个验收点时返回 `INTENT_COVERAGE_MISSING`；补上该点或给出显式不覆盖理由后才放行。
 6. 有偏差的回执被门控：对齐结果含 `not_satisfied` 或 `violated` 时，任务不能进 `done`。
+
+这些测试在 `packages/uitstalie/workspace-tools/tests/intents.spec.ts` 中运行；同一文件还覆盖 `INTENT_INCOMPLETE`、`INTENT_STALE`、`INTENT_SCOPE_MISMATCH`、角色拒绝、子目录拒绝、`requestId` 重试与 history cursor。
 
 ## 12. 能力盘点：memory 与 super agent
 
@@ -674,7 +681,7 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 | 长任务监控 | 会话状态与 JIRA 状态 | 需要 | `workspace_sessions` 状态与进展，加写租约 | 下移 |
 | 跨工作区协作 | 派发，以及把事实复制进记忆 | 需要 | `workspace_tasks`、`workspace_message`、`workspace_artifacts`、`workspace_intents` 显式范围；永不进记忆 | 下移 |
 
-当前状态：绑定 JIRA 的能力仍然实现并启用，而 `workspace_*` 替换只有读侧，`workspace_intents` 没有实现。本表记录的是目标归属，不是本代码树已交付的状态。
+Step 2 之后的当前状态：`workspace_intents`、任务创建、覆盖检查与回执门已经实现；绑定 JIRA 的能力仍然实现并启用；`workspace_message.send` 与产物发布仍属 Step 3。本表记录的是目标归属，已实现的行就是本代码树已交付的状态。
 
 ## 13. 附录：未来方向
 

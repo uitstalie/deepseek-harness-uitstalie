@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/workspace-tools/README.md
 /:
-  en: 4377a82c3e59fd8b
-  zh: b1f0c2b15744022f
+  en: dc32177ac0855a64
+  zh: a5112ff8571b6118
 /deepseek-ai-dsh-workspace-tools:
   en: e5b11f3366821795
   zh: e6b25929cb77fe77
 /deepseek-ai-dsh-workspace-tools/summary:
-  en: a9541a26774d0d13
-  zh: 8282a284d4d7e4b1
+  en: 368e396e9a7160d9
+  zh: 3019519e3adb58e3
 /deepseek-ai-dsh-workspace-tools/table-of-contents:
   en: 38e63a365c23e401
   zh: c1646d02a1bf2c53
@@ -18,14 +18,14 @@
   en: 24b44e6c44205a45
   zh: e30e027f004c712f
 /deepseek-ai-dsh-workspace-tools/tools:
-  en: d7347a9254b14c69
-  zh: 83a8e9485b1c27b5
+  en: ec796f4c5657ed36
+  zh: 96be9e363bbc78a8
 /deepseek-ai-dsh-workspace-tools/scope:
-  en: 980c12c283b4e29e
-  zh: 6ccff0a77dc3dfe3
+  en: cb0e9f99e335468e
+  zh: 8c3cfe5a17f3780d
 /deepseek-ai-dsh-workspace-tools/storage:
-  en: 66fe0b4048914739
-  zh: 4ec4f65c4872a66e
+  en: 14275b43933f7335
+  zh: 560feffb1ce47126
 /deepseek-ai-dsh-workspace-tools/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -33,17 +33,17 @@
   en: 760826e4b97b24a0
   zh: 238c89535cdba88a
 /deepseek-ai-dsh-workspace-tools/model-experience/the-workspace-toolset/what-the-model-sees:
-  en: 6fd70666a8aaf8f3
-  zh: e514d01f2ecd6978
+  en: 8b16eadb413dfec9
+  zh: fb3c9c9ba918c127
 /deepseek-ai-dsh-workspace-tools/model-experience/the-workspace-toolset/token-effect:
-  en: 2748055f56648818
-  zh: 19b74573f9c93053
+  en: 6892eed9e16df4af
+  zh: 75253d3f8cfbd4ad
 /deepseek-ai-dsh-workspace-tools/model-experience/the-workspace-toolset/kv-cache-effect:
   en: d939f14b34513625
   zh: 3799bbd3b7a63966
 /deepseek-ai-dsh-workspace-tools/known-limitations-and-deferred-work:
-  en: fb8c35f872d15801
-  zh: 1b4f27da7bd8d94b
+  en: 91b27fca8b3c2f7b
+  zh: 350d2da4a32a224d
 /deepseek-ai-dsh-workspace-tools/known-limitations-and-deferred-work/dev-note:
-  en: 0b10f1361f5b2b41
-  zh: 9d2e6d3cb14a416a
+  en: 7888b1b5408d4daf
+  zh: ccc7ffde40918009

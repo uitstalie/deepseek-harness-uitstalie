@@ -43,7 +43,7 @@ Each row names the package's contribution and the `ctx` key or surface it attach
 | [`ui-memory`](ui-memory/README.md) | Memory settings section that edits the provider's volatile window, retention, budget and summary-model fields | settings section |
 | [`ui-models-dev`](ui-models-dev/README.md) | Web settings section that browses the catalog and materializes chosen providers as `llm-plus` routes | settings section |
 | [`ui-tool-dsh-store`](ui-tool-dsh-store/README.md) | Web sidebar button that lists and reads a workspace's `.dsh/rules` | workspace row menu |
-| [`workspace-tools`](workspace-tools/README.md) | Workspace information toolset: session, task, message, and artifact reads scoped to one registered workspace, with the durable records they aggregate | registers on `ctx.dafeiyu` |
+| [`workspace-tools`](workspace-tools/README.md) | Workspace information toolset: sessions, intent cards, dispatch tasks, messages, and artifacts scoped to one registered workspace, including task creation with card coverage and the receipt alignment gate | registers on `ctx.dafeiyu` |
 
 -----
 

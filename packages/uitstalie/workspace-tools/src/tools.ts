@@ -3,14 +3,16 @@
  *
  * Every tool is scoped to the calling session's workspace and is visible to
  * every agent in it, so an ordinary workspace session and the super agent use
- * the same read contract. Mutating actions arrive in later milestones; this
- * module keeps one registration order for all of them.
+ * the same read contract. Mutating actions check the caller's role inside the
+ * tool: dispatching and card changes require the super agent, while the target
+ * session may report on its own task.
  * @module @deepseek-ai/dsh-workspace-tools/tools
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { workspaceArtifactsTool } from './artifacts.ts'
+import { workspaceIntentsTool } from './intents.ts'
 import { workspaceMessageTool } from './messages.ts'
 import { workspaceSessionsTool } from './sessions.ts'
 import { workspaceTasksTool } from './tasks.ts'
@@ -26,5 +28,6 @@ export function workspaceTools(ctx: Context): readonly ToolDefinition[] {
     { ...workspaceTasksTool(ctx), minRole: 'subagent' },
     { ...workspaceMessageTool(ctx), minRole: 'subagent' },
     { ...workspaceArtifactsTool(ctx), minRole: 'subagent' },
+    { ...workspaceIntentsTool(ctx), minRole: 'subagent' },
   ]
 }

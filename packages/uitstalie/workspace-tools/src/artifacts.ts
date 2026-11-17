@@ -353,7 +353,7 @@ function renderArtifacts(value: WorkspaceArtifactsValue): string {
   const lines = items.map(reference =>
     `- ${reference.artifactId} v${String(reference.version)} · ${reference.path} · ${reference.kind}`
     + ` · ${String(reference.size)} bytes · session ${reference.sessionId}`
-    + `${reference.taskId === undefined ? '' : ` · task ${reference.taskId}`}`)
+    + (reference.taskId === undefined ? '' : ` · task ${reference.taskId}`))
   if (value.nextCursor !== undefined) lines.push(`(more artifacts: pass cursor ${value.nextCursor})`)
   return lines.join('\n')
 }

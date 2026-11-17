@@ -31,22 +31,54 @@ const taskSchema = z.strictObject({
   goal: z.string(),
   acceptance: z.array(z.string()),
   boundaries: z.array(z.string()),
+  outputForm: z.array(z.string()).optional(),
   status: z.enum(['pending', 'in_progress', 'waiting_review', 'done', 'blocked', 'cancelled']),
   assignee: z.string().optional(),
   targetSessionId: z.string().optional(),
   intentId: z.string().optional(),
   intentVersion: z.number().int().positive().optional(),
+  coverage: z.array(z.strictObject({
+    point: z.string().min(1),
+    brief: z.string().min(1),
+    note: z.string().optional(),
+  })).optional(),
+  nonCoverage: z.array(z.strictObject({
+    point: z.string().min(1),
+    reason: z.string().min(1),
+  })).optional(),
   taskType: z.enum([
     'analysis-diagnosis', 'fix', 'test-verification', 'migration-deployment', 'design-document', 'other',
   ]).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   requestId: z.string(),
+  lastRequestId: z.string().optional(),
+  note: z.string().optional(),
   receipts: z.array(z.strictObject({
     receiptId: z.string().min(1),
     at: z.string(),
     status: z.enum(['pending', 'in_progress', 'waiting_review', 'done', 'blocked', 'cancelled']),
     note: z.string().optional(),
+    requestId: z.string().optional(),
+    alignment: z.strictObject({
+      intentId: z.string().min(1),
+      intentVersion: z.number().int().positive(),
+      acceptance: z.array(z.strictObject({
+        point: z.string().min(1),
+        status: z.enum(['satisfied', 'not_satisfied', 'out_of_scope']),
+        evidence: z.string().min(1),
+      })),
+      boundaries: z.array(z.strictObject({
+        point: z.string().min(1),
+        status: z.enum(['respected', 'violated']),
+        evidence: z.string().min(1),
+      })),
+      outputForm: z.array(z.strictObject({
+        point: z.string().min(1),
+        status: z.enum(['matched', 'not_matched']),
+        evidence: z.string().min(1),
+      })),
+    }).optional(),
   })),
   artifactIds: z.array(z.string()),
 }) satisfies z.ZodType<TaskRecord>
@@ -148,6 +180,27 @@ export async function readTask(
 ): Promise<{ readonly task: TaskRecord; readonly version?: string } | undefined> {
   const stored = await readJson(ctx, taskPath(workspaceId, taskId), taskSchema, signal)
   return stored === undefined ? undefined : { task: stored.value, ...stored.version === undefined ? {} : { version: stored.version } }
+}
+
+/**
+ * Write one task record with an optional version guard.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that owns the task.
+ * @param task - complete record to persist.
+ * @param options - expected store version for a guarded update.
+ * @returns the store version after the write.
+ */
+export async function writeTask(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  task: TaskRecord,
+  options: { readonly expected?: string } = {},
+): Promise<{ readonly version?: string }> {
+  const written = await ctx.dshStore.writeFile(undefined, taskPath(workspaceId, task.taskId), `${JSON.stringify(task, undefined, 2)}\n`, {
+    scope: 'global',
+    ...options.expected === undefined ? {} : { expected: options.expected },
+  })
+  return written.version === undefined ? {} : { version: written.version }
 }
 
 /**
@@ -314,10 +367,15 @@ async function listJson<T>(
 }
 
 /** Keep one id usable as a single path segment. */
-function safeSegment(value: string): string {
+export function safeRecordSegment(value: string): string {
   const safe = value.replace(/[^A-Za-z0-9._-]/gu, '_')
   if (safe.length === 0 || safe === '.' || safe === '..') {
     throw new WorkspaceRecordError(`invalid record id ${JSON.stringify(value)}`, 'WORKSPACE_RECORD_CORRUPT')
   }
   return safe
+}
+
+/** Keep one id usable as a single path segment. */
+function safeSegment(value: string): string {
+  return safeRecordSegment(value)
 }

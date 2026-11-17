@@ -13,7 +13,7 @@ import { realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentRole } from '@deepseek-ai/dsh-agent'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionId as SessionIdValue } from '@deepseek-ai/dsh-session'
@@ -205,14 +205,16 @@ export async function registerWorkspace(
  * @param mounted - mounted composition.
  * @param id - session id.
  * @param directory - working directory of the new session.
+ * @param role - explicit agent role; a super agent may mutate cards and dispatch tasks.
  * @returns the created agent.
  */
 export async function createRoot(
   mounted: WorkspaceToolsHarness,
   id: string,
   directory: string,
+  role?: AgentRole,
 ): Promise<Agent> {
-  return await mounted.harness.create(SessionId(id), {}, { cwd: directory })
+  return await mounted.harness.create(SessionId(id), role === undefined ? {} : { role }, { cwd: directory })
 }
 
 /** Invoke one registered tool through the real tool runtime. */

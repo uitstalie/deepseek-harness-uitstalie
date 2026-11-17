@@ -31,6 +31,39 @@ export const TASK_TYPES: readonly TaskType[] = [
   'analysis-diagnosis', 'fix', 'test-verification', 'migration-deployment', 'design-document', 'other',
 ]
 
+/** Whether one alignment item met the card point it was checked against. */
+export type AcceptanceAlignmentStatus = 'satisfied' | 'not_satisfied' | 'out_of_scope'
+
+/** Whether one boundary was kept. */
+export type BoundaryAlignmentStatus = 'respected' | 'violated'
+
+/** Whether one output-form item was delivered. */
+export type OutputFormAlignmentStatus = 'matched' | 'not_matched'
+
+/** One checked card point with the evidence the checker reported. */
+export interface AlignmentEntry<Status extends string> {
+  /** Card point the entry checks, such as `acceptance[0]`. */
+  readonly point: string
+  /** Checked status. */
+  readonly status: Status
+  /** Evidence: the changed file, the test, the report line, or the missing item. */
+  readonly evidence: string
+}
+
+/** Post-execution alignment of one task against the card version it referenced. */
+export interface TaskAlignment {
+  /** Card the task was dispatched against. */
+  readonly intentId: string
+  /** Card version the task was dispatched against. */
+  readonly intentVersion: number
+  /** One checked status per card acceptance point. */
+  readonly acceptance: AlignmentEntry<AcceptanceAlignmentStatus>[]
+  /** One checked status per card boundary. */
+  readonly boundaries: AlignmentEntry<BoundaryAlignmentStatus>[]
+  /** One checked status per card output-form item. */
+  readonly outputForm: AlignmentEntry<OutputFormAlignmentStatus>[]
+}
+
 /** One reported task outcome. */
 export interface TaskReceipt {
   /** Stable receipt id inside the task. */
@@ -41,6 +74,28 @@ export interface TaskReceipt {
   readonly status: TaskStatus
   /** Optional one-line note. */
   readonly note?: string | undefined
+  /** Idempotency key of the receipt call; absent on receipts written before this field existed. */
+  readonly requestId?: string | undefined
+  /** Post-execution alignment checked against the task's card version. */
+  readonly alignment?: TaskAlignment | undefined
+}
+
+/** One card point mapped to the task-brief item that covers it. */
+export interface TaskCoverage {
+  /** Card point, such as `acceptance[0]`. */
+  readonly point: string
+  /** Task-brief item text that covers the point. */
+  readonly brief: string
+  /** Optional note on how the brief item covers the point. */
+  readonly note?: string | undefined
+}
+
+/** One card point the caller explicitly leaves uncovered. */
+export interface TaskNonCoverage {
+  /** Card point, such as `outputForm[0]`. */
+  readonly point: string
+  /** Why the task does not cover the point. */
+  readonly reason: string
 }
 
 /** One dispatch task in one workspace. */
@@ -57,6 +112,8 @@ export interface TaskRecord {
   readonly acceptance: string[]
   /** Boundaries the executor must respect. */
   readonly boundaries: string[]
+  /** Expected deliverable items the card's output form requires. */
+  readonly outputForm?: string[] | undefined
   /** Current state. */
   readonly status: TaskStatus
   /** Assignee identity when one was recorded. */
@@ -67,6 +124,10 @@ export interface TaskRecord {
   readonly intentId?: string | undefined
   /** Intent card version this task was dispatched against. */
   readonly intentVersion?: number | undefined
+  /** Card points mapped to task-brief items at dispatch time. */
+  readonly coverage?: TaskCoverage[] | undefined
+  /** Card points the caller explicitly left uncovered. */
+  readonly nonCoverage?: TaskNonCoverage[] | undefined
   /** Six-category task type. */
   readonly taskType?: TaskType | undefined
   /** ISO-8601 creation instant. */
@@ -75,10 +136,154 @@ export interface TaskRecord {
   readonly updatedAt: string
   /** Idempotency key of the create call. */
   readonly requestId: string
+  /** Idempotency key of the most recent `update` call, when one was recorded. */
+  readonly lastRequestId?: string | undefined
+  /** One-line note recorded by the most recent `update`, when one was given. */
+  readonly note?: string | undefined
   /** Appended receipts in report order. */
   readonly receipts: TaskReceipt[]
   /** Artifact ids published for this task. */
   readonly artifactIds: string[]
+}
+
+/** How one intent item was sourced. */
+export type IntentItemSource = 'user-verbatim' | 'user-anchor' | 'inference'
+
+/** Every accepted intent item source. */
+export const INTENT_ITEM_SOURCES: readonly IntentItemSource[] = ['user-verbatim', 'user-anchor', 'inference']
+
+/** Which part of the card one item belongs to. */
+export type IntentItemKind = 'goal' | 'acceptance' | 'boundaries' | 'outputForm'
+
+/** Every card part, in report order. */
+export const INTENT_ITEM_KINDS: readonly IntentItemKind[] = ['goal', 'acceptance', 'boundaries', 'outputForm']
+
+/** Lifecycle of one card version. */
+export type IntentStatus = 'proposed' | 'active' | 'superseded'
+
+/** Every card version state. */
+export const INTENT_STATUSES: readonly IntentStatus[] = ['proposed', 'active', 'superseded']
+
+/** Workspace-relative document and heading a `user-anchor` item quotes. */
+export interface IntentAnchor {
+  /** Workspace-relative document path. */
+  readonly path: string
+  /** Heading inside that document, when the user named one. */
+  readonly heading?: string | undefined
+}
+
+/** One source-annotated item of an intent card. */
+export interface IntentItem {
+  /** Item text; verbatim for `user-verbatim`, a quote for `user-anchor`. */
+  readonly text: string
+  /** How the item was sourced. */
+  readonly source: IntentItemSource
+  /** Quoted document and heading for a `user-anchor` item. */
+  readonly anchor?: IntentAnchor | undefined
+  /** Why the item was inferred, for an `inference` item. */
+  readonly reason?: string | undefined
+}
+
+/** The goal, acceptance, boundary, and output-form items of one card version. */
+export interface IntentItems {
+  /** Outcomes the user wants. */
+  readonly goal: IntentItem[]
+  /** Checkable acceptance points. */
+  readonly acceptance: IntentItem[]
+  /** What must not be touched or changed. */
+  readonly boundaries: IntentItem[]
+  /** Expected deliverable shape. */
+  readonly outputForm: IntentItem[]
+}
+
+/** One immutable card version as stored in `versions/<n>.json`. */
+export interface IntentVersionRecord {
+  /** Stable card id inside the workspace. */
+  readonly intentId: string
+  /** Workspace that owns the card. */
+  readonly workspaceId: string
+  /** Version number, starting at 1. */
+  readonly version: number
+  /** State the version was created with; later states live in the index. */
+  readonly status: 'proposed' | 'active'
+  /** The user's original words, verbatim. */
+  readonly rawUserText: string
+  /** Source-annotated card items. */
+  readonly items: IntentItems
+  /** Session where the user stated the request. */
+  readonly sourceSessionId?: string | undefined
+  /** Turn where the user stated the request. */
+  readonly sourceTurn?: number | undefined
+  /** ISO-8601 creation instant. */
+  readonly createdAt: string
+  /** Identity that created this version. */
+  readonly author: string
+  /** Version this one replaces, when it is a correction. */
+  readonly supersedesVersion?: number | undefined
+  /** Why the correction was made. */
+  readonly reason?: string | undefined
+  /** The user's correcting words, verbatim. */
+  readonly correctionText?: string | undefined
+  /** Card point texts that changed in this correction. */
+  readonly changedPoints?: string[] | undefined
+  /** Card point identities that changed in this correction, for recurrence metrics. */
+  readonly changedPointRefs?: string[] | undefined
+  /** Six-category task type this correction is attributed to. */
+  readonly taskType?: TaskType | undefined
+  /** Idempotency key of the `create` or `correct` call that wrote this version. */
+  readonly requestId: string
+}
+
+/** Mutable bookkeeping of one card version, held in `index.json`. */
+export interface IntentVersionSummary {
+  /** Version number. */
+  readonly version: number
+  /** Current state. */
+  readonly status: IntentStatus
+  /** ISO-8601 creation instant. */
+  readonly createdAt: string
+  /** Identity that created this version. */
+  readonly author: string
+  /** ISO-8601 instant the user confirmed the inferred items. */
+  readonly confirmedAt?: string | undefined
+  /** Identity that recorded the confirmation. */
+  readonly confirmedBy?: string | undefined
+  /** Inferred card points confirmed for this version. */
+  readonly confirmedPoints?: string[] | undefined
+  /** ISO-8601 instant the user rejected the proposed version. */
+  readonly rejectedAt?: string | undefined
+  /** Identity that recorded the rejection. */
+  readonly rejectedBy?: string | undefined
+  /** Version this one replaces, when it is a correction. */
+  readonly supersedesVersion?: number | undefined
+  /** Why the correction was made. */
+  readonly reason?: string | undefined
+  /** Whether this version was appended by a user correction. */
+  readonly correction?: boolean | undefined
+  /** Card point texts that changed in this correction. */
+  readonly changedPoints?: string[] | undefined
+  /** Card point identities that changed in this correction, for recurrence metrics. */
+  readonly changedPointRefs?: string[] | undefined
+  /** Six-category task type this correction is attributed to. */
+  readonly taskType?: TaskType | undefined
+  /** Idempotency key of the call that wrote this version. */
+  readonly requestId: string
+}
+
+/** Mutable index of one card; the version files it points at are append-only. */
+export interface IntentIndex {
+  /** Stable card id inside the workspace. */
+  readonly intentId: string
+  /** Workspace that owns the card. */
+  readonly workspaceId: string
+  /** ISO-8601 creation instant. */
+  readonly createdAt: string
+  /** Latest version number. */
+  readonly latestVersion: number
+  /** Latest version a task may reference; absent while no version is active. */
+  readonly latestActiveVersion?: number | undefined
+  /** Every version, oldest first. */
+  readonly versions: IntentVersionSummary[]
 }
 
 /** Whether a message is an ordinary message or a follow-up to earlier work. */

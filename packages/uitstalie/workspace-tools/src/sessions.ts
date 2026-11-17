@@ -366,8 +366,7 @@ function foldLog(events: readonly SessionEvent[]): LogFacts {
         break
       case 'assistant/message': {
         const text = event.data.message.content
-          .filter(block => block.type === 'text')
-          .map(block => block.type === 'text' ? block.text : '')
+          .flatMap(block => block.type === 'text' ? [block.text] : [])
           .join(' ')
           .trim()
         if (text.length === 0) break
@@ -487,9 +486,9 @@ function renderSessions(value: WorkspaceSessionsValue): string {
   const details = value.session
   if (details !== undefined) {
     const lines = [
-      `${details.title === undefined ? details.sessionId : `${details.title} (${details.sessionId})`}`
+      (details.title === undefined ? details.sessionId : `${details.title} (${details.sessionId})`)
       + ` · ${details.status} · turn ${String(details.currentTurn)}`
-      + `${details.taskId === undefined ? '' : ` · task ${details.taskId}`}`
+      + (details.taskId === undefined ? '' : ` · task ${details.taskId}`)
       + ` · ${String(details.pendingInbox)} queued · ${String(details.artifactCount)} artifacts`,
       `Current: ${details.currentActivity ?? 'no activity recorded'}${details.lastProgressAt === undefined ? '' : ` (${details.lastProgressAt})`}`,
     ]
@@ -504,8 +503,8 @@ function renderSessions(value: WorkspaceSessionsValue): string {
   const lines = items.map(item =>
     `- ${item.title === undefined ? item.sessionId : `${item.title} (${item.sessionId})`}`
     + ` · ${item.status} · turn ${String(item.currentTurn)}`
-    + `${item.currentActivity === undefined ? '' : ` · ${item.currentActivity}`}`
-    + `${item.taskId === undefined ? '' : ` · task ${item.taskId}`}`)
+    + (item.currentActivity === undefined ? '' : ` · ${item.currentActivity}`)
+    + (item.taskId === undefined ? '' : ` · task ${item.taskId}`))
   if (value.nextCursor !== undefined) lines.push(`(more sessions: pass cursor ${value.nextCursor})`)
   return lines.join('\n')
 }
