@@ -2,7 +2,7 @@
 
 English | [中文](memory-scoping.zh.md)
 
-Status: draft for review. Length: not bound by the 12-page cap; content completeness takes precedence. This draft is 8,850 words (about 18 pages).
+Status: draft for review. Length: not bound by the 12-page cap; content completeness takes precedence. This draft is 9,841 words (about 20 pages).
 
 ## 1. Background and the problem
 
@@ -78,6 +78,7 @@ This was not retention pressure with a record. It was silent loss of the most re
   - personality storage: no merge; the profile and writing rules stay separate after `memory_*` is narrowed;
   - `.dsh` tools: `tool-dsh-store` remains the sole validated entry; artifacts reference it rather than replace it;
   - JIRA: deprecated, no compatibility layer.
+  - Intent cards: workspace records owned by the workspace toolset; one card per workspace, and a cross-workspace request is split into one card per workspace. They are not memory and not a host-global store.
 - This document does not modify the contracts of those three tool groups.
 
 ## 3. Key decisions
@@ -90,9 +91,9 @@ Why: the prompt is a fixed contract. Anything dynamic in it either forces a rewr
 
 Cost: the model must call a tool to learn what a workspace is doing. This is a deliberate move from "push everything" to "pull what is needed". The same static list applies to every session; an ordinary workspace session and the super agent get the same contract.
 
-### 3.2 One workspace information toolset owns status, tasks, messages, and artifacts
+### 3.2 One workspace information toolset owns status, tasks, messages, artifacts, and intent cards
 
-A single tool family answers: which sessions exist, what each is doing, which dispatch tasks exist and what their receipts say, how to send a message or follow-up, and where a session's or task's artifacts are.
+A single tool family answers: which sessions exist, what each is doing, which dispatch tasks exist and what their receipts say, what the user asked for and which parts are inferred, how to send a message or follow-up, and where a session's or task's artifacts are.
 
 Why: these questions are queries with a natural scope, and a tool can enforce that scope from the calling session. A memory entry cannot: it is a copy with no owner and no expiry.
 
@@ -140,10 +141,13 @@ The toolset owns the records it returns; memory does not duplicate them.
 |---|---|---|
 | Session progress | session id, title, status, current turn, current activity, last progress time, latest progress line | Session store, summarized by the tool |
 | Dispatch task | task id, workspace, title, goal, acceptance, status, assignee, created/updated, receipts, artifact references | Dispatch ledger plus a general task journal for non-JIRA work |
+| Intent card | intent id, workspace, version, status, raw user text, source-annotated goal/acceptance/boundaries/output form, source session and turn, created and confirmed times | Workspace intent store; one card per workspace |
 | Message | message id, target session, text, kind (message or follow-up), delivery status, receipt, artifact references | Session inbox and message journal |
 | Artifact reference | artifact id, workspace, path, sha256, size, version, kind, session id, task id, created time, summary | Workspace artifact index |
 
 The toolset must not create a second copy of a fact that the ledger, the session store, or the workspace files already own. It aggregates and mutates through those owners, and the task journal exists only for work the JIRA ledger does not cover.
+
+An intent card is a workspace record, not a memory entry. One card belongs to exactly one workspace. A cross-workspace request creates one card in each target workspace, and each card keeps the user's original words verbatim. The card is stored with the workspace's toolset state at `$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/` (`index.json`, `versions/<n>.json`), not in a host-global intent store. Versions are append-only; an old version stays readable after it is superseded.
 
 ### 4.3 Prompt data
 
@@ -154,6 +158,7 @@ One line per registered workspace: `- <title> (<id>) · <directory>`. The list i
 ### 5.1 Common scope rules
 
 - The calling session's workspace is the default scope. A cross-workspace query requires an explicit `workspace` id that appears in the workspace registry, and the call is recorded.
+- `workspace_intents` follows the same scope. One card belongs to one workspace. A cross-workspace request is split into one card per workspace, each with the original text verbatim; reading a card from another workspace requires the explicit workspace id and is recorded.
 - A target that is a subdirectory of a registered workspace is refused with the same message as an unknown workspace; it is never auto-registered as a new workspace.
 - A query returns only records that belong to the named workspace. There is no implicit aggregation across workspaces; a cross-workspace view is an explicit list of workspace ids.
 - Results are bounded summaries: no file contents, no full transcripts, and a cursor for paging. Raw content stays behind `read`, `session_event_read`, and the artifact reference resolution in section 6.
@@ -188,7 +193,7 @@ Input:
   intentId?, intentVersion?, taskType?, alignment?, note?, cursor?, limit? }
 ```
 
-- `create` returns `{ taskId, status, createdAt }`; `goal` and `acceptance` are required; `targetSessionId` is optional. `create` also requires `intentId` and `intentVersion`; a missing, stale, or unconfirmed version rejects the dispatch (section 11). `taskType` is required and comes from the closed six-category taxonomy in section 11.6.
+- `create` returns `{ taskId, status, createdAt }`; `goal` and `acceptance` are required; `targetSessionId` is optional. `create` also requires `intentId` and `intentVersion` in the task's workspace. A missing card rejects with `INTENT_INCOMPLETE`; a proposed version with `INTENT_UNCONFIRMED`; a superseded version with `INTENT_STALE` (section 11.4). `taskType` is required and comes from the closed six-category taxonomy in section 11.7.
 - `update` accepts `status`, `note`, and `assignee`; allowed transitions are `pending → in_progress → waiting_review → done | blocked | cancelled`, and any state may return to `in_progress`.
 - The vocabulary above is the new system's vocabulary. Existing task data is not migrated: old states remain as historical text and are not mapped. A one-time script can translate them later if needed; that script is outside this design.
 - `receipt` appends `{ status, note }` and returns `{ receiptId, at }`.
@@ -251,8 +256,11 @@ Scope: paths must resolve inside the workspace root. The tool returns references
 |---|---|
 | Which sessions exist in this workspace, and what are they doing? | `workspace_sessions` with `action: 'list'` |
 | What is this session working on, and what happened recently? | `workspace_sessions` with `action: 'get'` |
-| Create a dispatch task, or change its status | `workspace_tasks` with `action: 'create'` or `'update'` |
+| Create a dispatch task, or change its status (an active intent card is required) | `workspace_tasks` with `action: 'create'` or `'update'` |
 | What is the task status, and what did the executor report? | `workspace_tasks` with `action: 'get'` |
+| What did the user ask for, and which items are inferred? | `workspace_intents` with `action: 'get'` |
+| Confirm an inferred card version | `workspace_intents` with `action: 'confirm'` |
+| Record a correction to the card | `workspace_intents` with `action: 'correct'` |
 | Send a message or follow-up with references | `workspace_message` with `action: 'send'` |
 | Did the target receive it? | `workspace_message` with `action: 'read'` |
 | Where is the report or file this session or task produced? | `workspace_artifacts` with `action: 'list'` or `'resolve'` |
@@ -263,7 +271,7 @@ Scope: paths must resolve inside the workspace root. The tool returns references
 
 ### 5.7 The board reads the same toolset
 
-A future board view needs sessions, progress, tasks, receipts, messages, and artifacts. All of them come from `workspace_sessions`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. Memory contributes nothing to the board; it is not queried for sessions, progress, or tasks.
+A future board view needs sessions, progress, tasks, receipts, messages, and artifacts. All of them come from `workspace_sessions`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. The fifth member, `workspace_intents`, supplies the dispatch context; the board does not query memory.
 
 ## 6. Tool consolidation and tool-based delivery
 
@@ -271,7 +279,7 @@ A future board view needs sessions, progress, tasks, receipts, messages, and art
 
 Today the memory tools carry session-reading duties, the super agent tools are specific to the JIRA ledger, and outbound information is delivered by the turn-end mechanism rather than by a tool. That split makes cross-session and cross-workspace handoff hard: a message cannot carry a file reference, a report cannot cite another report, and the receiver cannot verify what it received.
 
-The target ownership is one workspace toolset for sessions, tasks, messages, and artifacts; memory reduced to global facts; the turn-end path removed. This section is the migration map and the delivery/reference contract.
+The target ownership is one workspace toolset for sessions, tasks, messages, artifacts, and intent cards; memory reduced to global facts; the turn-end path removed. This section is the migration map and the delivery/reference contract.
 
 ### 6.2 Existing tool to new home
 
@@ -287,6 +295,7 @@ The target ownership is one workspace toolset for sessions, tasks, messages, and
 | `superagent_scan`, `superagent_status` | Reads the JIRA ledger's readiness and counts | JIRA ledger view | Deprecated with JIRA; no compatibility (section 2.3) |
 | `superagent_claim`, `superagent_dispatch` | Claims an issue and starts an executor | JIRA ledger actions | Deprecated with JIRA; no compatibility (section 2.3) |
 | `workspace_sessions` | Lists sessions, status, current activity, recent progress | Workspace toolset | Add |
+| `workspace_intents` | Creates, reads, confirms, corrects, and versions workspace intent cards | Workspace toolset | Add |
 | `workspace_tasks` | General dispatch tasks and receipts | Workspace toolset | Add |
 | `workspace_message` | Sends messages, follow-ups, and references; reads receipts | Workspace toolset | Add |
 | `workspace_artifacts` | Publishes, references, and resolves artifacts | Workspace toolset | Add |
@@ -295,7 +304,7 @@ The target ownership is one workspace toolset for sessions, tasks, messages, and
 | `read`, `glob`, `grep` | Reads workspace content | Content tools | Keep |
 | `tool-dsh-store` | Reads `.dsh` content | Store tool | Out of scope here; unchanged (section 2.3) |
 
-`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary.
+`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The workspace toolset has five members: `workspace_sessions`, `workspace_intents`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary.
 
 ### 6.3 Delivery as a tool call
 
@@ -303,7 +312,7 @@ The target ownership is one workspace toolset for sessions, tasks, messages, and
 
 Input: `{ targetSessionId, kind: 'message' | 'followup', text, priority?: 'normal' | 'urgent', replyTo?, references?, taskId?, requestId }`.
 
-- `text` is bounded to one screen. The schema caps it at 600 characters, and the prompt requires conclusion, evidence, and next step, at most six lines. The schema caps it at 600 characters, and the prompt requires three parts: conclusion, evidence, next step, at most six lines.
+- `text` is bounded to one screen. The schema caps it at 600 characters, and the prompt requires three parts: conclusion, evidence, next step, at most six lines.
 - `references` is a list of artifact references. No file content is ever placed in the message body.
 - `taskId` links the message to a task when the message is a status update or follow-up.
 - `priority: 'urgent'` is marked by the sender, any agent, and validated by the tool against the three cases in section 5.4; it inserts before the target's next tool call and may interrupt the current step.
@@ -427,7 +436,7 @@ Acceptance measurement for an ordinary session:
 
 The "what did I do last turn" case is the one that per-turn notices used to cover. After the change, `workspace_sessions` with `action: 'get'` returns `recentProgress` and `currentActivity` for the session, and the prompt's "where to look" map names that tool. The acceptance test removes the notice, asks the session what it did last turn, and asserts that the answer comes from `workspace_sessions` (or `session_event_read` for the raw turn), not from a memory message.
 
-This test is part of step 2 and runs on an ordinary workspace session, not the super agent.
+This test is part of step 3 and runs on an ordinary workspace session, not the super agent.
 
 ### 7.5 Confirmation channel: ask-user and approval
 
@@ -477,16 +486,17 @@ A heuristic pass over the current 406 entries suggests about 15 global candidate
 |---|---|---|
 | 0 | Stop-the-bleeding fix to the over-cap path | Cap and archive tests pass; no silent loss; independent release, rollback by reverting the commit |
 | 1 | Read side of the consolidated toolset: `workspace_sessions`, `workspace_tasks` read, `workspace_artifacts` list/resolve, `workspace_message` read; narrow the memory tools; keep the prompt and injection unchanged | A session in workspace A sees only A; a cross-workspace call without an explicit id fails; memory tools no longer read sessions; results are bounded and paged |
-| 2 | Delivery becomes a tool call and the flood is removed in the same release: `workspace_message.send`, artifact publish/reference, the static prompt, and no snapshot, update notice, cross-session index, or turn-end delivery | A message and a reference round-trip; a retry does not duplicate; a turn with no send delivers nothing; an ordinary session's per-turn memory message count is 0 and bytes are 0; "what did I do last turn" is answered from `workspace_sessions` |
-| 3 | Memory becomes global-only and the old entries are migrated | A business or dispatch write is rejected with a tool hint; the dry-run report is produced; only confirmed global entries remain injected; backups and rollback verified |
+| 2 | Task creation + intent card: `workspace_intents` (workspace record, source annotations, per-version confirmation) and `workspace_tasks.create` requiring an active card; coverage check and the receipt gate | A traceable card becomes active without confirmation and dispatches; an inferred card stays proposed and dispatch rejects with `INTENT_UNCONFIRMED` until one consolidated confirmation; a cross-workspace request produces one card per workspace with the original text verbatim; a correction appends a version and leaves the old one readable; a missing coverage point rejects with `INTENT_COVERAGE_MISSING`; a receipt with an unsatisfied item cannot be `done` |
+| 3 | Delivery becomes a tool call and the flood is removed in the same release: `workspace_message.send`, artifact publish/reference, the static prompt, and no snapshot, update notice, cross-session index, or turn-end delivery | A message and a reference round-trip; a retry does not duplicate; a turn with no send delivers nothing; an ordinary session's per-turn memory message count is 0 and bytes are 0; "what did I do last turn" is answered from `workspace_sessions` |
+| 4 | Memory becomes global-only and the old entries are migrated | A business or dispatch write is rejected with a tool hint; the dry-run report is produced; only confirmed global entries remain injected; backups and rollback verified |
 
-Each step is independently shippable and reversible. Step 0 ships first. Steps 1–3 do not depend on the board direction.
+Each step is independently shippable and reversible. Step 0 ships first. Steps 1–4 do not depend on the board direction.
 
-Ordering: the read side lands first so the model can query before anything is removed. The flood removal and the delivery tool land in the same release, so there is no window where the old injection is gone and the new delivery path is not yet available. The memory migration is last because it rewrites user data and benefits from a stable toolset.
+Ordering: the read side lands first so the model can query before anything is removed. Task creation and the intent card land next, so dispatch has a workspace record to validate against. The flood removal and the delivery tool land in the same release, so there is no window where the old injection is gone and the new delivery path is not yet available. The memory migration is last because it rewrites user data and benefits from a stable toolset.
 
-Rollback: step 0 is one commit revert. Steps 1–3 keep a reader that parses the previous file version and write a per-file backup before migration, so reverting the code leaves existing files readable and step 3 can restore its backups. The archive stays append-only, so a rollback never loses the record of what was removed.
+Rollback: step 0 is one commit revert. Steps 1–4 keep a reader that parses the previous file version and write a per-file backup before migration, so reverting the code leaves existing files readable and step 4 can restore its backups. Step 2 stores cards per workspace and append-only; disabling `workspace_intents` leaves the files readable, and already dispatched tasks keep their recorded `intentId` and `intentVersion`, but no new task passes the card check. The archive stays append-only, so a rollback never loses the record of what was removed.
 
-Acceptance for every session: before the change, an ordinary session receives one snapshot per summary pass plus one update per write, and at most one checkpoint per tier boundary; after step 2, its per-turn memory message count is 0 and its per-turn memory bytes are 0. The "what did I do last turn" test in section 7.4 passes on that session through `workspace_sessions`.
+Acceptance for every session: before the change, an ordinary session receives one snapshot per summary pass plus one update per write, and at most one checkpoint per tier boundary; after step 3, its per-turn memory message count is 0 and its per-turn memory bytes are 0. The "what did I do last turn" test in section 7.4 passes on that session through `workspace_sessions`.
 
 ## 10. Risks and open questions
 
@@ -528,7 +538,7 @@ None. The decisions above are conclusions, and the implementation values are fix
 - JIRA local data: deleted; an optional one-time static export may be taken before deletion; irreversible.
 - Dispatch ledger: dropped; no migration or import; `workspace_tasks` starts fresh.
 - JIRA skills and the `superagent_session`/`superagent_workspace` aliases: removed; no alias names are kept.
-- Intent cards: every dispatch requires one; corrections append versions; receipts carry an alignment checklist; deviation rate is tracked.
+- Intent cards: workspace records, one per workspace; a cross-workspace request is split into one card per workspace with the original text verbatim; every item is source-annotated; an all-traceable version is active immediately; a version with inferred items is proposed and confirmed once before dispatch; an active version is reused without re-confirmation; a correction appends a version and supersedes the previous one.
 
 ## 11. Intent cards: dispatch alignment
 
@@ -536,37 +546,54 @@ None. The decisions above are conclusions, and the implementation values are fix
 
 The super agent decomposes a user request into tasks. The request is re-expressed in the decomposition, and each re-expression can drift; the user corrects it, the correction is lost in the next task, and the same drift returns. Prompt improvements reduce the rate but cannot make the intent durable: the task carries a paraphrase, not the user's words, and nothing checks the task before dispatch or the result after it.
 
-This is a structural failure, so the fix is a structural object: an intent card that the super agent writes once, that tasks must reference, that dispatch validates against, that receipts are checked against, and that corrections append to.
+This is a structural failure, so the fix is a workspace record: an intent card that the super agent writes once, that tasks must reference, that dispatch validates against, that receipts are checked against, and that corrections append to. The card belongs to the workspace the work happens in, not to the host or to memory.
 
 ### 11.2 The intent card
 
+An intent card is one workspace's record of one user request. It has one stable id and append-only versions.
+
 | Field | Meaning |
 |---|---|
-| `intentId` | Stable id for one user request |
+| `intentId` | Stable id for the request inside the workspace |
+| `workspaceId` | The one workspace this card belongs to |
 | `version` | 1, 2, 3…; each correction appends a new version |
-| `workspaceId` | The workspace the request is for |
-| `sourceSessionId`, `sourceTurn` | Where the user stated the request |
+| `status` | `proposed`, `active`, or `superseded` |
 | `rawUserText` | The user's original words, verbatim |
-| `goal` | The outcome the user wants |
-| `acceptance` | Ordered list of checkable acceptance points |
-| `boundaries` | What must not be touched: files, permissions, environments, data |
-| `outputForm` | The expected deliverable: code, report, patch, decision, etc. |
-| `status` | `proposed`, `active`, `superseded` |
+| `items` | The goal, acceptance points, boundaries, and output form; each item carries its own source annotation |
+| `sourceSessionId`, `sourceTurn` | Where the user stated the request |
 | `createdAt`, `author` | When and who created this version |
+| `confirmedAt`, `confirmedBy` | When and who confirmed the inferred items, if any |
+| `supersedesVersion` | The previous version this one replaces, if any |
 
-Storage: `$DSH_HOME/intents/<intentId>/` with `index.json` (latest version and status) and `versions/<n>.json`. The store is append-only: a correction writes a new version; old versions are never edited or deleted. It is host-level control-plane state, not workspace business content and not memory.
+Each item is `{ text, source, anchor?, confirmedAt? }` and appears in `goal`, `acceptance`, `boundaries`, or `outputForm`. `rawUserText` is not an item; it is stored verbatim and is never paraphrased.
 
-Ownership: the user owns the intent. The super agent may create a `proposed` draft from the user's request and must get the user to confirm it as `active`; a correction by the user appends a new `active` version and marks the previous one `superseded`. Ordinary agents read the card; they do not edit it. The super agent cannot silently rewrite an active version.
+- `user-verbatim`: the item text is copied from `rawUserText` without paraphrase. This is traceable.
+- `user-anchor`: the user named a workspace document or section; `anchor` records the workspace-relative path and heading, and the item quotes that anchor. This is traceable.
+- `inference`: the super agent wrote the item from its own interpretation. It is not traceable and needs confirmation.
 
-### 11.3 Pre-dispatch validation
+Storage: `$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/` with `index.json` (latest active version and version list) and `versions/<n>.json`. The store is append-only: a correction writes a new version; old versions are never edited or deleted. It is workspace state beside the task, message, and artifact records, not a host-global intent directory and not memory.
 
-`workspace_tasks.create` requires `intentId`, `intentVersion`, `workspace` (the target), `acceptance`, and `boundaries`. Missing any of them rejects the call with `INTENT_INCOMPLETE`. A version that is not the latest active one rejects with `INTENT_STALE`, and the caller must re-read the card.
+Ownership: the user owns the intent. The super agent may create a version from the request and annotate every item. A version whose items are all traceable is created `active`; a version with any inferred item is created `proposed`. The user confirms inferred items or appends a correction; ordinary agents read the card. The super agent cannot silently rewrite an active version.
+
+### 11.3 Per-version confirmation
+
+Confirmation is per version and only for inferred items.
+
+- `workspace_intents.create` computes the status from the source annotations. All items traceable means `active`, with no user interaction.
+- Any inferred item means `proposed`. The create result includes one consolidated confirmation request: `{ requestId, items: [{ point, text, reason }] }`. The super agent asks the user once, through the chain in section 7.5.
+- `workspace_intents.confirm` takes `{ intentId, version, decision: 'confirm' | 'reject', note? }`. Confirm sets `status: 'active'`, writes `confirmedAt` and `confirmedBy` on each inferred item, and keeps the source annotation so each item remains traceable. Reject leaves the version `proposed`; dispatch stays blocked.
+- An `active` version is reused by every later dispatch. It is not confirmed again. A correction appends a new version; the old version becomes `superseded`.
+- A task that references a `proposed` version is rejected with `INTENT_UNCONFIRMED` and the pending confirmation id; it never produces a separate confirmation per item.
+
+### 11.4 Pre-dispatch validation
+
+`workspace_tasks.create` requires `intentId`, `intentVersion`, `workspace` (the target), `acceptance`, and `boundaries`. Missing any of them rejects the call with `INTENT_INCOMPLETE`. A proposed version rejects with `INTENT_UNCONFIRMED`. A version that is superseded or not the latest active one rejects with `INTENT_STALE`, and the caller must re-read the card. A card from a different workspace rejects with `INTENT_SCOPE_MISMATCH`; the task must reference the card in its own workspace.
 
 The service then runs a coverage check: every goal, acceptance point, boundary, and output-form item in the card must map to an item in the task brief. A missing mapping rejects the dispatch with `INTENT_COVERAGE_MISSING`, unless the caller supplies `nonCoverage: [{ point, reason }]` and the super agent confirms it. There is no default pass and no "assume covered".
 
 The schema and the service enforce this; the prompt only tells the super agent to read the card first, then the task, then write the coverage list. A model that forgets the card cannot dispatch.
 
-### 11.4 Post-execution alignment
+### 11.5 Post-execution alignment
 
 When a task returns, the super agent checks the receipt against the same `intentId` and `intentVersion` that the task referenced. Each item gets one status:
 
@@ -574,15 +601,15 @@ When a task returns, the super agent checks the receipt against the same `intent
 - boundary: `respected` or `violated`;
 - output form: `matched` or `not_matched`.
 
-Each status carries evidence: the changed file, the test, the report line, or the missing item. The alignment is produced by the super agent or a validator, not by the executor alone. The task cannot move to `done` while any acceptance item is `not_satisfied` or any boundary is `violated`; it goes to `waiting_review` or `blocked` with the checklist. The receipt shown to the user includes the checklist, so drift appears as a list, not as a surprise.
+Each status carries evidence: the changed file, the test, the report line, or the missing item. The alignment is produced by the super agent or a validator, not by the executor alone. The task cannot move to `done` while any acceptance item is `not_satisfied` or any boundary is `violated`; it goes to `waiting_review` or `blocked` with the checklist. The receipt shown to the user includes the checklist, so drift appears as a list, not as a surprise. A new card version during the task does not change the version the task is checked against.
 
-### 11.5 Correction capture and recurrence
+### 11.6 Correction capture and recurrence
 
-Every user correction appends a new intent version with `reason`, the correcting message, and the changed points. The raw user text, goal, acceptance, boundaries, and output form are all versioned; history is immutable. The next dispatch reads the latest active version automatically; no one restates the intent from memory.
+Every user correction appends a new intent version with `reason`, the correcting message, and the changed items. The previous active version becomes `superseded`; it stays readable. The new version follows the same source rule: traceable items make it `active`, and any inferred item makes it `proposed` until confirmed.
 
-A correction that repeats an earlier point is recorded against both versions. The store counts recurrence by `(intent point, correction reason)` across tasks, so a recurring drift is a number, not an impression.
+The next dispatch reads the latest active version automatically; no one restates the intent from memory. A correction that repeats an earlier point is recorded against both versions. The store counts recurrence by `(intent point, correction reason)` across tasks, so a recurring drift is a number, not an impression.
 
-### 11.6 Metrics
+### 11.7 Metrics
 
 Deviation rate = user corrections / dispatched tasks, computed per workspace and task type over a rolling window (7 and 30 days). A correction event is one new intent version created by a user correction; several changed points in one correction count once. Recurrence rate = corrections whose point was already corrected before / corrections in the window.
 
@@ -590,21 +617,26 @@ Task types are a closed list of six: analysis and diagnosis, fix, test verificat
 
 The inputs are recorded at three points: the intent version append, the task dispatch, and the receipt alignment. No metric depends on memory or on a model's self-report.
 
-### 11.7 Tool surface
+### 11.8 Tool surface
 
-`workspace_intents` provides `create`, `get`, `correct`, `history`, and `metrics`. The user or the UI creates and confirms; the super agent may create a `proposed` draft and read; ordinary agents read only. `workspace_tasks.create` requires the intent reference, as above. `workspace_tasks.receipt` accepts the alignment checklist, and the task state machine refuses `done` with an unsatisfied item.
+`workspace_intents` is the fifth member of the workspace toolset, after sessions, tasks, messages, and artifacts. It provides `create`, `get`, `confirm`, `correct`, `history`, and `metrics`. It follows the scope rules in section 5.1: the caller's workspace is the default, and a cross-workspace call requires the explicit workspace id and is recorded. The user or the UI creates, confirms, and corrects; the super agent may create a proposed version and read; ordinary agents read only.
 
-### 11.8 What this does not do
+`workspace_tasks.create` requires the active card reference, as above. `workspace_tasks.receipt` accepts the alignment checklist, and the task state machine refuses `done` with an unsatisfied item.
 
-This is not a stronger prompt. The prompt only says where to look and in what order: read the intent card, then the task, then the coverage list. The constraints live in the schema, the coverage check, the receipt gate, and the versioned store. It also does not put intent cards in memory; they are control-plane state.
+### 11.9 What this does not do
 
-### 11.9 Acceptance tests
+This is not a stronger prompt. The prompt only says where to look and in what order: read the intent card, then the task, then the coverage list. The constraints live in the schema, the confirmation state, the coverage check, the receipt gate, and the workspace store.
 
-1. A deliberately vague request cannot be dispatched: `workspace_tasks.create` without an intent card returns `INTENT_INCOMPLETE`, and no task is created.
-2. A task whose brief omits an acceptance point returns `INTENT_COVERAGE_MISSING`; adding the point or an explicit non-coverage reason lets it proceed.
-3. A task that returns with a deviation produces a checklist with `not_satisfied` or `violated`, and the task cannot be `done`.
-4. After one user correction, the next task automatically references the new version; the old version is still readable and unchanged.
-5. A repeated correction on the same point increments the recurrence count, and the deviation rate appears in `workspace_intents.metrics` for the workspace and task type.
+It also does not put intent cards in memory, in a host-global intent directory, or in a second workspace index. It does not require confirmation for an all-traceable version, and it does not re-confirm an active version.
+
+### 11.10 Acceptance tests
+
+1. A traceable card dispatches without confirmation: `workspace_intents.create` with only `user-verbatim` and `user-anchor` items returns `status: 'active'`; `workspace_tasks.create` succeeds without a confirmation call.
+2. An inferred card is blocked until confirmed: a card with one `inference` returns `status: 'proposed'`; `workspace_tasks.create` returns `INTENT_UNCONFIRMED`; `workspace_intents.confirm` with the version makes it active; the same version then dispatches, and a second task reuses it without another confirmation.
+3. A cross-workspace request splits cards: a request for workspaces A and B creates one card in each; `rawUserText` is byte-identical in both; a task in A references A's card; a task that references B's card from A returns `INTENT_SCOPE_MISMATCH`.
+4. A correction appends a version: `workspace_intents.correct` creates version 2, marks version 1 `superseded`, and version 1 remains readable with its original items; the next task references version 2.
+5. Coverage is enforced: a task brief missing an acceptance point returns `INTENT_COVERAGE_MISSING`; adding the point or an explicit non-coverage reason lets it proceed.
+6. A receipt with a deviation is gated: an alignment with `not_satisfied` or `violated` cannot move the task to `done`.
 
 ## 12. Capability inventory: memory and super agent
 
@@ -625,6 +657,8 @@ This section lists what the two surfaces do today, whether the new design keeps 
 | Cross-session index | "Recent sessions" outline | No | `workspace_sessions` | Delete |
 | Global and personal preference sharing | Mixes cross-workspace facts with persona and style | Split | Global memory for facts; personality for persona and style | Change |
 
+Intent cards are not a memory capability; they are workspace records and never enter the global memory store.
+
 ### 12.2 Super-agent capabilities
 
 | Capability | Today's problem | Still needed? | New home / replacement | Action |
@@ -632,13 +666,14 @@ This section lists what the two surfaces do today, whether the new design keeps 
 | Workspace registry and list | Static list injected in the prompt | Yes | Keep the registry; static prompt; `workspace_sessions` for status | Keep, change |
 | Session create, reuse, archive | `superagent_session` and session tools | Yes | Session service; `workspace_sessions`; no memory copy | Move |
 | Dispatch | `superagent_dispatch` plus JIRA claim | Yes | `workspace_tasks`; JIRA claim and dispatch retired | Move |
+| Intent capture and alignment | A request is re-expressed per task and can drift | Yes | `workspace_intents` as a workspace record, plus `workspace_tasks` coverage and receipt checks | Add |
 | Ledger and receipts | `.superagent/ledger`, `superagent_ledger` | Yes | `workspace_tasks` journal and receipts; starts fresh, no migration | Move |
 | Delivery | `superagent_deliver` plus the turn-end path | Yes | `workspace_message`; no turn-end fallback | Move |
 | Report presentation | `reports.jsonl` and delivery | Yes | `workspace_artifacts` references plus `workspace_message`; the UI renders | Move |
 | Permission switch | `superagent_permission` | Yes | Permission-preset service | Move |
 | Long-task monitoring | Session status and JIRA status | Yes | `workspace_sessions` status and progress plus the write lease | Move |
-| Cross-workspace collaboration | Dispatch, with memory copies | Yes | `workspace_tasks`, `workspace_message`, `workspace_artifacts` with explicit scope; never memory | Move |
+| Cross-workspace collaboration | Dispatch, with memory copies | Yes | `workspace_tasks`, `workspace_message`, `workspace_artifacts`, and `workspace_intents` with explicit scope; never memory | Move |
 
 ## 13. Appendix: future direction
 
-A board view is a plausible later UI. Its data comes from `workspace_sessions`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`; memory contributes only global facts and is never queried for sessions, progress, or tasks. A memory card stream, a per-workspace memory index, and an event-log store are explicitly out of scope; if the board needs one later, it is a new design over the same toolset, not a change to memory.
+A board view is a plausible later UI. Its data comes from the workspace toolset: `workspace_sessions`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`; `workspace_intents` supplies dispatch context, and memory contributes only global facts. A memory card stream, a per-workspace memory index, and an event-log store are explicitly out of scope; if the board needs one later, it is a new design over the same toolset, not a change to memory. Intent cards are workspace records, not memory.

@@ -2,7 +2,7 @@
 
 [English](memory-scoping.md) | 中文
 
-状态：评审稿。篇幅：不受 12 页上限约束，以内容完整为准；本稿约 11,100 汉字（约 18 页）。
+状态：评审稿。篇幅：不受 12 页上限约束，以内容完整为准；本稿约 12,374 汉字（约 20 页）。
 
 ## 1. 背景与问题
 
@@ -78,6 +78,7 @@
   - personality 存储：不合并；`memory_*` 收窄后画像与写作规则仍分开；
   - `.dsh` 工具：`tool-dsh-store` 仍是唯一经校验的入口；产物引用它，而不是取代它；
   - JIRA：已废弃，不保留兼容层。
+  - 意图卡：工作区记录，归工作区工具集；一张卡属于一个工作区，跨工作区请求拆成每个工作区一张卡。它既不是记忆，也不是宿主全局存储。
 - 本文件不修改这三类工具的契约。
 
 ## 3. 关键决策
@@ -90,9 +91,9 @@
 
 代价：模型必须调用工具才知道某个工作区在做什么。这是从“全部推送”到“按需拉取”的有意转变。同一份静态清单对所有会话生效；普通工作区会话与 super agent 使用同一套契约。
 
-### 3.2 一套工作区信息工具集负责状态、任务、消息与产物
+### 3.2 一套工作区信息工具集负责状态、任务、消息、产物与意图卡
 
-同一组工具回答：有哪些会话、每个在做什么、有哪些派发任务及其回执、怎么向会话发消息或追问、某个会话或任务的产物在哪里。
+同一组工具回答：有哪些会话、每个在做什么、有哪些派发任务及其回执、用户要什么以及哪些部分是推断的、怎么向会话发消息或追问、某个会话或任务的产物在哪里。
 
 为什么：这些问题天然带范围，工具可以从调用会话派生并强制这个范围；记忆条目做不到，它只是一份没有主人、没有过期的副本。
 
@@ -140,10 +141,13 @@
 |---|---|---|
 | 会话进展 | 会话 id、标题、状态、当前 turn、当前活动、最近进展时间、最新进展一行 | 会话存储，由工具汇总 |
 | 派发任务 | 任务 id、工作区、标题、目标、验收、状态、负责人、创建/更新时间、回执、产物引用 | 派发账本；非 JIRA 工作另有一份通用任务日志 |
+| 意图卡 | 意图 id、工作区、版本、状态、用户原话、带来源标注的目标/验收/边界/产出形式、来源会话与 turn、创建与确认时间 | 工作区意图存储；一张卡一个工作区 |
 | 消息 | 消息 id、目标会话、正文、类型（消息或追问）、投递状态、回执、产物引用 | 会话 inbox 与消息日志 |
 | 产物引用 | 产物 id、工作区、路径、sha256、大小、版本、类型、会话 id、任务 id、创建时间、摘要 | 工作区产物索引 |
 
 工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。
+
+意图卡是工作区记录，不是记忆条目。一张卡只属于一个工作区。跨工作区请求会在每个目标工作区各建一张卡，每张卡都逐字保留用户原话。卡随工作区工具集状态存放：`$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/`（`index.json`、`versions/<n>.json`），不在宿主全局意图存储里。版本是追加式的；旧版本被 supersede 后仍可读。
 
 ### 4.3 提示词数据
 
@@ -154,6 +158,7 @@
 ### 5.1 公共范围规则
 
 - 调用会话所在工作区是默认范围。跨工作区查询必须显式给 `workspace` id，且该 id 必须在工作区注册表里；该调用会被记录。
+- `workspace_intents` 遵循同一范围。一张卡只属于一个工作区。跨工作区请求拆成每个工作区一张卡，每张都逐字保留原话；从别的工作区读卡必须显式给工作区 id，并留痕。
 - 目标是已注册工作区的子目录时，按“未知工作区”拒绝；绝不把子目录自动注册成新工作区。
 - 查询只返回属于指定工作区的记录。不做隐式的跨工作区聚合；跨工作区视图必须显式列出工作区 id。
 - 结果都是有界摘要：不返回文件内容，不返回完整转录，并带游标分页。原始内容仍走 `read`、`session_event_read`，以及第 6 节的产物引用解析。
@@ -188,7 +193,7 @@
   intentId?, intentVersion?, taskType?, alignment?, note?, cursor?, limit? }
 ```
 
-- `create` 返回 `{ taskId, status, createdAt }`；`goal` 与 `acceptance` 必填；`targetSessionId` 可选。`create` 还必须带 `intentId` 与 `intentVersion`；缺失、过期或未确认的版本拒绝派发（见 11 节）。`taskType` 必填，取 11.6 节的六类封闭清单。
+- `create` 返回 `{ taskId, status, createdAt }`；`goal` 与 `acceptance` 必填；`targetSessionId` 可选。`create` 还必须带任务所在工作区的 `intentId` 与 `intentVersion`。缺卡返回 `INTENT_INCOMPLETE`；`proposed` 版本返回 `INTENT_UNCONFIRMED`；被 supersede 的版本返回 `INTENT_STALE`（见 11.4 节）。`taskType` 必填，取 11.7 节的六类封闭清单。
 - `update` 接受 `status`、`note`、`assignee`；允许的迁移是 `pending → in_progress → waiting_review → done | blocked | cancelled`，任何状态都可以回到 `in_progress`。
 - 上面的词表就是新体系的词表。旧任务数据不迁移：旧状态作为历史文本保留，不做映射。以后确实需要时用一次性脚本转换；该脚本不在本设计内。
 - `receipt` 追加 `{ status, note }`，返回 `{ receiptId, at }`。
@@ -251,8 +256,11 @@ ask user 与用户批准是独立的可靠性设计项，见 7.5。
 |---|---|
 | 这个工作区有哪些会话，分别在做什么？ | `workspace_sessions`，`action: 'list'` |
 | 这个会话在做什么，最近发生了什么？ | `workspace_sessions`，`action: 'get'` |
-| 创建一个派发任务，或改它的状态 | `workspace_tasks`，`action: 'create'` 或 `'update'` |
+| 创建一个派发任务，或改它的状态（必须有 active 意图卡） | `workspace_tasks`，`action: 'create'` 或 `'update'` |
 | 任务状态如何，执行方回了什么？ | `workspace_tasks`，`action: 'get'` |
+| 用户要什么，哪些条目是推断的？ | `workspace_intents`，`action: 'get'` |
+| 确认一个含推断项的卡版本 | `workspace_intents`，`action: 'confirm'` |
+| 记录对卡的纠正 | `workspace_intents`，`action: 'correct'` |
 | 带引用发一条消息或追问 | `workspace_message`，`action: 'send'` |
 | 对方收到了吗？ | `workspace_message`，`action: 'read'` |
 | 这个会话或任务产出的报告/文件在哪里？ | `workspace_artifacts`，`action: 'list'` 或 `'resolve'` |
@@ -263,7 +271,7 @@ ask user 与用户批准是独立的可靠性设计项，见 7.5。
 
 ### 5.7 看板读同一套工具集
 
-未来的看板需要会话、进展、任务、回执、消息、产物。它们全部来自 `workspace_sessions`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。记忆不为看板贡献任何内容；看板不会向记忆查询会话、进展或任务。
+未来的看板需要会话、进展、任务、回执、消息、产物。它们全部来自 `workspace_sessions`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。第五个成员 `workspace_intents` 提供派发上下文；看板不会向记忆查询。
 
 ## 6. 工具重新整合与投递改成工具调用
 
@@ -271,7 +279,7 @@ ask user 与用户批准是独立的可靠性设计项，见 7.5。
 
 现在 memory 工具兼着会话读取职责，super agent 工具只服务 JIRA 账本，出站信息靠回合结束机制而不是工具投递。这个拆法让跨会话、跨工作区交接很难：消息带不了文件引用，报告引用不了另一份报告，接收方也没法校验自己收到的是什么。
 
-目标归属是：会话、任务、消息、产物归一套工作区工具集；记忆缩到只做全局事实；回合结束投递删除。这一节给迁移映射，以及投递与引用的契约。
+目标归属是：会话、任务、消息、产物与意图卡归一套工作区工具集；记忆缩到只做全局事实；回合结束投递删除。这一节给迁移映射，以及投递与引用的契约。
 
 ### 6.2 现有工具到新归属
 
@@ -287,6 +295,7 @@ ask user 与用户批准是独立的可靠性设计项，见 7.5。
 | `superagent_scan`、`superagent_status` | 读 JIRA 账本就绪度与计数 | JIRA 账本视图 | 随 JIRA 废弃；不保留兼容（见 2.3） |
 | `superagent_claim`、`superagent_dispatch` | 认领单据、启动执行会话 | JIRA 账本动作 | 随 JIRA 废弃；不保留兼容（见 2.3） |
 | `workspace_sessions` | 列会话、状态、当前活动、最近进展 | 工作区工具集 | 新增 |
+| `workspace_intents` | 创建、读取、确认、纠正、版本化工作区意图卡 | 工作区工具集 | 新增 |
 | `workspace_tasks` | 通用派发任务与回执 | 工作区工具集 | 新增 |
 | `workspace_message` | 发消息、追问、引用；读回执 | 工作区工具集 | 新增 |
 | `workspace_artifacts` | 发布、引用、解析产物 | 工作区工具集 | 新增 |
@@ -295,7 +304,7 @@ ask user 与用户批准是独立的可靠性设计项，见 7.5。
 | `read`、`glob`、`grep` | 读工作区内容 | 内容工具 | 保留 |
 | `tool-dsh-store` | 读 `.dsh` 内容 | 存储工具 | 不在本文范围；不改（见 2.3） |
 
-`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。`.dsh` 这一行是依赖，不是决定；边界归 2.3。
+`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。
 
 ### 6.3 投递改成工具调用
 
@@ -427,7 +436,7 @@ ArtifactRef = { artifactId, workspaceId, path, sha256, size, version,
 
 “上一轮做了什么”正是过去靠每轮通知覆盖的场景。改造后，`workspace_sessions` 的 `action: 'get'` 返回该会话的 `recentProgress` 与 `currentActivity`，提示词里的“去哪里查”地图会点名这个工具。验收测试先移除通知，再问会话“上一轮做了什么”，并断言答案来自 `workspace_sessions`（原始 turn 则用 `session_event_read`），而不是来自记忆消息。
 
-这项测试属于第 2 步，并且在一个普通工作区会话上运行，不是 super agent。
+这项测试属于第 3 步，并且在一个普通工作区会话上运行，不是 super agent。
 
 ### 7.5 确认通道：ask user 与用户批准
 
@@ -477,16 +486,17 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 |---|---|---|
 | 0 | 超上限路径的止血修复 | 上限与归档测试通过；无静默丢失；可独立发布，回滚只需还原该提交 |
 | 1 | 整合工具的读侧：`workspace_sessions`、`workspace_tasks` 读取、`workspace_artifacts` 列/解析、`workspace_message` 读取；收窄 memory 工具；提示词与注入暂不动 | 工作区 A 的会话只看得到 A；没有显式 id 的跨工作区调用失败；memory 工具不再读会话；结果有界并分页 |
-| 2 | 投递改成工具调用，并在同一版本删除洪水：`workspace_message.send`、产物发布/引用、静态提示词，且不再有快照、更新通知、跨会话索引、回合结束投递 | 消息与引用能往返；重试不重复；一个 turn 不发就什么都不投递；普通会话每轮记忆消息数为 0、字节数为 0；“上一轮做了什么”由 `workspace_sessions` 回答 |
-| 3 | 记忆变为只留 global，并迁移旧条目 | 业务或派发写入被拒并给出工具提示；产出 dry-run 报告；只有确认过的 global 条目仍被注入；备份与回滚已验证 |
+| 2 | 任务创建 + 意图卡：`workspace_intents`（工作区记录、来源标注、按版本确认）与要求 active 卡的 `workspace_tasks.create`；保留覆盖检查与回执门 | 可追溯的卡直接 active 并能派发；含推断项的卡保持 proposed，派发返回 `INTENT_UNCONFIRMED`，直到一次汇总确认；跨工作区请求为每个工作区各建一张卡，原话逐字保留；纠正追加版本，旧版本仍可读；漏覆盖点返回 `INTENT_COVERAGE_MISSING`；回执有未满足项不能 `done` |
+| 3 | 投递改成工具调用，并在同一版本删除洪水：`workspace_message.send`、产物发布/引用、静态提示词，且不再有快照、更新通知、跨会话索引、回合结束投递 | 消息与引用能往返；重试不重复；一个 turn 不发就什么都不投递；普通会话每轮记忆消息数为 0、字节数为 0；“上一轮做了什么”由 `workspace_sessions` 回答 |
+| 4 | 记忆变为只留 global，并迁移旧条目 | 业务或派发写入被拒并给出工具提示；产出 dry-run 报告；只有确认过的 global 条目仍被注入；备份与回滚已验证 |
 
-每一步都可独立上线、可回滚。第 0 步先合。第 1 到 3 步不依赖看板方向。
+每一步都可独立上线、可回滚。第 0 步先合。第 1 到 4 步不依赖看板方向。
 
-顺序：读侧先落，模型在任何东西被删除之前就能查询。删洪水与投递工具放在同一版本，避免出现“旧注入已删、新投递路径还没上”的空窗。记忆迁移最后做，因为它改写用户数据，并且需要稳定的工具集。
+顺序：读侧先落，模型在任何东西被删除之前就能查询。任务创建与意图卡紧接着落，派发才有工作区记录可校验。删洪水与投递工具放在同一版本，避免出现“旧注入已删、新投递路径还没上”的空窗。记忆迁移最后做，因为它改写用户数据，并且需要稳定的工具集。
 
-回滚方式：第 0 步只需还原一个提交。第 1 到 3 步保留能解析上一版文件的读取路径，并在任何迁移前写逐文件备份；因此回滚代码后既有文件仍可读，第 3 步可以还原自己的备份。归档保持追加式，回滚不会丢失“删过什么”的记录。
+回滚方式：第 0 步只需还原一个提交。第 1 到 4 步保留能解析上一版文件的读取路径，并在任何迁移前写逐文件备份；因此回滚代码后既有文件仍可读，第 4 步可以还原自己的备份。第 2 步的卡按工作区、追加式存放；停用 `workspace_intents` 后文件仍可读，已派发的任务保留记录下来的 `intentId` 与 `intentVersion`，但新任务不再过卡校验。归档保持追加式，回滚不会丢失“删过什么”的记录。
 
-所有会话的验收：改造前，普通会话每次摘要收到 1 条快照、每次写入收到 1 条更新，每个 tier 边界最多 1 条 checkpoint；第 2 步之后，它的每轮记忆消息数为 0，每轮记忆字节数为 0。7.4 节里的“上一轮做了什么”测试在该会话上通过 `workspace_sessions` 完成。
+所有会话的验收：改造前，普通会话每次摘要收到 1 条快照、每次写入收到 1 条更新，每个 tier 边界最多 1 条 checkpoint；第 3 步之后，它的每轮记忆消息数为 0，每轮记忆字节数为 0。7.4 节里的“上一轮做了什么”测试在该会话上通过 `workspace_sessions` 完成。
 
 ## 10. 风险与未决问题
 
@@ -528,7 +538,7 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 - JIRA 本地数据：删除；删除前可选一次静态导出；不可恢复。
 - 派发账本：丢弃；不迁移、不导入；`workspace_tasks` 从新开始。
 - JIRA 技能与 `superagent_session`/`superagent_workspace` 别名：移除；不保留别名。
-- 意图卡：每次派发都要有；纠正追加版本；回执带对齐清单；偏差率被统计。
+- 意图卡：工作区记录，一张卡一个工作区；跨工作区请求拆成每个工作区一张卡，原话逐字保留；每一项都标来源；全可追溯版本直接 active；含推断项的版本为 proposed，派发前确认一次；active 版本复用，不再确认；纠正追加版本并 supersede 上一版。
 
 ## 11. 意图卡：派发对齐
 
@@ -536,37 +546,54 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 
 super agent 把用户需求拆成任务时，需求会在拆解里被重新表述，每次重新表述都可能走样；用户纠正后，下一次任务又丢掉纠正，同样的偏差再出现。提示词只能降低概率，不能让意图持久：任务带的是转述，不是用户原话；派发前没人检查任务，执行后也没人对照结果。
 
-这是结构性问题，所以修法是一个结构对象：意图卡。super agent 写一次；任务必须引用；派发时校验；回执逐条对照；用户纠正以追加方式写回。
+这是结构性问题，所以修法是一个工作区记录：意图卡。super agent 写一次；任务必须引用；派发时校验；回执逐条对照；用户纠正以追加方式写回。卡属于工作发生的那个工作区，不属于宿主，也不属于记忆。
 
 ### 11.2 意图卡
 
+意图卡是一个工作区对一次用户请求的记录。它有一个稳定 id 和追加式版本。
+
 | 字段 | 含义 |
 |---|---|
-| `intentId` | 一次用户请求的稳定 id |
+| `intentId` | 工作区内这次请求的稳定 id |
+| `workspaceId` | 这张卡所属的唯一工作区 |
 | `version` | 1、2、3……；每次纠正追加新版本 |
-| `workspaceId` | 这次请求所属的工作区 |
-| `sourceSessionId`、`sourceTurn` | 用户在哪里提出请求 |
+| `status` | `proposed`、`active` 或 `superseded` |
 | `rawUserText` | 用户原话，逐字保留 |
-| `goal` | 用户要达成的结果 |
-| `acceptance` | 可逐条检查的验收点，有序 |
-| `boundaries` | 不能碰的东西：文件、权限、环境、数据 |
-| `outputForm` | 期望产出形式：代码、报告、补丁、决定等 |
-| `status` | `proposed`、`active`、`superseded` |
+| `items` | 目标、验收点、边界、产出形式；每一项都带来源标注 |
+| `sourceSessionId`、`sourceTurn` | 用户在哪里提出请求 |
 | `createdAt`、`author` | 这一版何时、由谁创建 |
+| `confirmedAt`、`confirmedBy` | 推断项何时、由谁确认（若有） |
+| `supersedesVersion` | 这一版替换的上一版（若有） |
 
-存储：`$DSH_HOME/intents/<intentId>/`，含 `index.json`（最新版本与状态）和 `versions/<n>.json`。存储是追加式：纠正写新版本，旧版本永不改写或删除。它是宿主级控制面状态，不是工作区业务内容，也不是记忆。
+每一项是 `{ text, source, anchor?, confirmedAt? }`，出现在 `goal`、`acceptance`、`boundaries` 或 `outputForm` 里。`rawUserText` 不是条目；它逐字保存，永不被转述。
 
-归属：意图归用户。super agent 可以按用户请求建 `proposed` 草稿，但必须让用户确认成 `active`；用户纠正时追加一个新的 `active` 版本，并把上一版标为 `superseded`。普通 agent 只读，不改。super agent 不能静默改写 active 版本。
+- `user-verbatim`：条目文字从 `rawUserText` 原样复制，没有转述。可追溯。
+- `user-anchor`：用户点名了一个工作区文档或章节；`anchor` 记录工作区相对路径与标题，条目引用该锚点。可追溯。
+- `inference`：super agent 按自己的理解写的条目。不可追溯，需要确认。
 
-### 11.3 派发前校验
+存储：`$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/`，含 `index.json`（最新 active 版本与版本列表）和 `versions/<n>.json`。存储是追加式：纠正写新版本，旧版本永不改写或删除。它是工作区状态，与任务、消息、产物记录放在一起，不是宿主全局意图目录，也不是记忆。
 
-`workspace_tasks.create` 必须带 `intentId`、`intentVersion`、`workspace`（目标）、`acceptance`、`boundaries`。缺任一项返回 `INTENT_INCOMPLETE`。版本不是最新 active 时返回 `INTENT_STALE`，调用方必须重读卡。
+归属：意图归用户。super agent 可以按请求创建版本并标注每一项。所有条目都可追溯的版本直接创建为 `active`；含推断项的版本创建为 `proposed`。用户确认推断项或追加纠正；普通 agent 只读。super agent 不能静默改写 active 版本。
 
-服务随后做覆盖检查：卡里的每个 goal、验收点、边界、产出形式，都必须映射到任务简报里的一项。缺映射返回 `INTENT_COVERAGE_MISSING`，除非调用方提供 `nonCoverage: [{ point, reason }]` 且 super agent 确认。不允许默认通过，也不允许“假设已覆盖”。
+### 11.3 按版本确认
+
+确认按版本进行，而且只针对推断项。
+
+- `workspace_intents.create` 根据来源标注计算状态。所有条目可追溯就是 `active`，不需要用户交互。
+- 只要有一项推断，状态就是 `proposed`。create 结果带一个汇总确认请求：`{ requestId, items: [{ point, text, reason }] }`。super agent 走 7.5 节的链路，只问用户一次。
+- `workspace_intents.confirm` 接收 `{ intentId, version, decision: 'confirm' | 'reject', note? }`。确认把 `status` 设为 `active`，在每个推断项上写 `confirmedAt` 与 `confirmedBy`，并保留来源标注以便追溯。拒绝则版本保持 `proposed`，派发继续被拦。
+- 一个 `active` 版本会被之后每次派发复用，不再确认。纠正会追加新版本；旧版本变为 `superseded`。
+- 引用 `proposed` 版本的任务返回 `INTENT_UNCONFIRMED` 和待确认 id；它不会为每一项单独产生确认。
+
+### 11.4 派发前校验
+
+`workspace_tasks.create` 必须带 `intentId`、`intentVersion`、`workspace`（目标）、`acceptance`、`boundaries`。缺任一项返回 `INTENT_INCOMPLETE`。`proposed` 版本返回 `INTENT_UNCONFIRMED`。被 supersede 或不是最新 active 的版本返回 `INTENT_STALE`，调用方必须重读卡。卡属于别的工作区时返回 `INTENT_SCOPE_MISMATCH`；任务必须引用自己工作区的卡。
+
+服务随后做覆盖检查：卡里的每个目标、验收点、边界、产出形式，都必须映射到任务简报里的一项。缺映射返回 `INTENT_COVERAGE_MISSING`，除非调用方提供 `nonCoverage: [{ point, reason }]` 且 super agent 确认。不允许默认通过，也不允许“假设已覆盖”。
 
 schema 与服务强制这件事；提示词只说顺序：先读卡，再读任务，再写覆盖清单。忘了卡的模型无法派发。
 
-### 11.4 执行后对齐
+### 11.5 执行后对齐
 
 任务返回时，super agent 用任务引用的同一个 `intentId` 与 `intentVersion` 核对回执。每一项得到一种状态：
 
@@ -574,15 +601,15 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 - 边界：`respected`、`violated`；
 - 产出形式：`matched`、`not_matched`。
 
-每个状态都带证据：改动的文件、测试、报告行，或缺了哪一项。对齐由 super agent 或校验方产出，不是执行方自证。只要有 `not_satisfied` 或 `violated`，任务不能进 `done`，而是进 `waiting_review` 或 `blocked`，并带清单。给用户的回执包含这份清单，走样以列表出现，而不是等用户发现。
+每个状态都带证据：改动的文件、测试、报告行，或缺了哪一项。对齐由 super agent 或校验方产出，不是执行方自证。只要有 `not_satisfied` 或 `violated`，任务不能进 `done`，而是进 `waiting_review` 或 `blocked`，并带清单。给用户的回执包含这份清单，走样以列表出现，而不是等用户发现。任务执行期间出现新卡版本，不改变这个任务对照的版本。
 
-### 11.5 纠正沉淀与重复
+### 11.6 纠正沉淀与重复
 
-每次用户纠正追加一个新意图版本，带 `reason`、纠正消息、改动点。用户原话、目标、验收、边界、产出形式都版本化；历史不可变。下一次派发自动读最新 active 版本；没有人靠记忆转述意图。
+每次用户纠正追加一个新意图版本，带 `reason`、纠正消息、改动项。上一 active 版本变为 `superseded`，仍可读。新版本遵循同样的来源规则：可追溯条目让它直接 `active`；含推断项则先 `proposed`，等确认。
 
-重复纠正同一个点时，两个版本都记录该点。存储按 `(intent point, correction reason)` 跨任务统计重复，让反复出现的偏差变成数字，而不是印象。
+下一次派发自动读最新 active 版本；没有人靠记忆转述意图。重复纠正同一个点时，两个版本都记录该点。存储按 `(intent point, correction reason)` 跨任务统计重复，让反复出现的偏差变成数字，而不是印象。
 
-### 11.6 度量
+### 11.7 度量
 
 偏差率 = 用户纠正次数 / 派发任务数，按工作区与任务类型、7 天与 30 天滚动窗口计算。一次用户纠正产生一个新意图版本，算一次纠正事件；同一次纠正改多个点只算一次。重复率 = 窗口内“该点以前已被纠正过”的纠正数 / 窗口内纠正数。
 
@@ -590,21 +617,26 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 
 输入在三个点采集：意图版本追加、任务派发、回执对齐。任何指标都不依赖记忆或模型自报。
 
-### 11.7 工具面
+### 11.8 工具面
 
-`workspace_intents` 提供 `create`、`get`、`correct`、`history`、`metrics`。用户或界面创建与确认；super agent 可以建 `proposed` 草稿并读取；普通 agent 只读。`workspace_tasks.create` 必须带意图引用；`workspace_tasks.receipt` 接收对齐清单；有未满足项时状态机拒绝 `done`。
+`workspace_intents` 是工作区工具集的第五个成员，排在会话、任务、消息、产物之后。它提供 `create`、`get`、`confirm`、`correct`、`history`、`metrics`。它遵循 5.1 节的作用域规则：默认调用方工作区；跨工作区调用必须显式给工作区 id，并留痕。用户或界面创建、确认、纠正；super agent 可以创建 `proposed` 版本并读取；普通 agent 只读。
 
-### 11.8 不做什么
+`workspace_tasks.create` 必须带 active 卡引用；`workspace_tasks.receipt` 接收对齐清单；有未满足项时状态机拒绝 `done`。
 
-这不是更强的提示词。提示词只说去哪里查、按什么顺序：读意图卡，再读任务，再写覆盖清单。约束在 schema、覆盖检查、回执门与版本存储里。它也不把意图卡放进记忆；意图卡是控制面状态。
+### 11.9 不做什么
 
-### 11.9 验收测试
+这不是更强的提示词。提示词只说去哪里查、按什么顺序：读意图卡，再读任务，再写覆盖清单。约束在 schema、确认状态、覆盖检查、回执门与工作区存储里。
 
-1. 故意含糊的需求无法派发：`workspace_tasks.create` 没带意图卡时返回 `INTENT_INCOMPLETE`，不创建任务。
-2. 简报漏掉一个验收点时返回 `INTENT_COVERAGE_MISSING`；补上该点或给出显式不覆盖理由后才放行。
-3. 执行后偏离的任务产出清单，标出 `not_satisfied` 或 `violated`，任务不能进 `done`。
-4. 用户纠正一次后，下一次任务自动引用新版本；旧版本仍可读且未被改写。
-5. 同一个点重复被纠正时，重复计数增加，偏差率出现在 `workspace_intents.metrics` 的工作区与任务类型下。
+它也不把意图卡放进记忆、放进宿主全局意图目录，或额外建一个工作区索引。它不要求全可追溯版本走确认，也不对 active 版本重复确认。
+
+### 11.10 验收测试
+
+1. 可追溯的卡不经确认即可派发：`workspace_intents.create` 只含 `user-verbatim` 与 `user-anchor` 条目时返回 `status: 'active'`；`workspace_tasks.create` 不调用确认也能成功。
+2. 含推断项的卡在确认前被拦：有一条 `inference` 的卡返回 `status: 'proposed'`；`workspace_tasks.create` 返回 `INTENT_UNCONFIRMED`；`workspace_intents.confirm` 确认该版本后变 active；同一版本随后可派发，第二个任务复用它且不再确认。
+3. 跨工作区请求拆卡：面向工作区 A 与 B 的请求各建一张卡；两张卡的 `rawUserText` 逐字节一致；A 里的任务引用 A 的卡；在 A 里引用 B 的卡返回 `INTENT_SCOPE_MISMATCH`。
+4. 纠正追加版本：`workspace_intents.correct` 创建版本 2，把版本 1 标为 `superseded`，版本 1 及其原始条目仍可读；下一个任务引用版本 2。
+5. 覆盖检查生效：简报漏掉一个验收点时返回 `INTENT_COVERAGE_MISSING`；补上该点或给出显式不覆盖理由后才放行。
+6. 有偏差的回执被门控：对齐结果含 `not_satisfied` 或 `violated` 时，任务不能进 `done`。
 
 ## 12. 能力盘点：memory 与 super agent
 
@@ -625,6 +657,8 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 | 跨会话索引 | “Recent sessions” 概要 | 不要 | `workspace_sessions` | 删除 |
 | 全局与个人偏好共享 | 把跨工作区事实与画像/风格混在一起 | 拆开 | 全局记忆放事实；personality 放画像与风格 | 改造 |
 
+意图卡不是记忆能力；它是工作区记录，永不进入全局记忆存储。
+
 ### 12.2 super agent 能力
 
 | 能力 | 今天解决的问题 | 还需要吗？ | 新归属 / 替代 | 动作 |
@@ -632,13 +666,14 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 | 工作区注册与清单 | 提示词里注入静态清单 | 需要 | 保留注册表；提示词静态；状态用 `workspace_sessions` | 保留、改造 |
 | 会话创建、复用、归档 | `superagent_session` 与会话工具 | 需要 | 会话服务；`workspace_sessions`；不复制进记忆 | 下移 |
 | 派发 | `superagent_dispatch` 加 JIRA 认领 | 需要 | `workspace_tasks`；JIRA 认领与派发下线 | 下移 |
+| 意图捕获与对齐 | 请求在拆成任务时被重新表述，可能走样 | 需要 | `workspace_intents` 作为工作区记录，加 `workspace_tasks` 覆盖检查与回执 | 新增 |
 | 账本与回执 | `.superagent/ledger`、`superagent_ledger` | 需要 | `workspace_tasks` 日志与回执；从新开始，不迁移 | 下移 |
 | 投递 | `superagent_deliver` 加回合结束路径 | 需要 | `workspace_message`；不保留回合结束兜底 | 下移 |
 | 报告呈现 | `reports.jsonl` 与投递 | 需要 | `workspace_artifacts` 引用加 `workspace_message`；界面渲染 | 下移 |
 | 权限切换 | `superagent_permission` | 需要 | 权限预设服务 | 下移 |
 | 长任务监控 | 会话状态与 JIRA 状态 | 需要 | `workspace_sessions` 状态与进展，加写租约 | 下移 |
-| 跨工作区协作 | 派发，以及把事实复制进记忆 | 需要 | `workspace_tasks`、`workspace_message`、`workspace_artifacts` 显式范围；永不进记忆 | 下移 |
+| 跨工作区协作 | 派发，以及把事实复制进记忆 | 需要 | `workspace_tasks`、`workspace_message`、`workspace_artifacts`、`workspace_intents` 显式范围；永不进记忆 | 下移 |
 
 ## 13. 附录：未来方向
 
-看板是以后可能出现的界面。它的数据来自 `workspace_sessions`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`；记忆只贡献全局事实，从不被看板用于查询会话、进展或任务。记忆卡片流、按工作区的记忆索引、事件日志存储都明确不在范围内；如果看板以后需要，那是在同一套工具集上的新设计，不是对记忆模型的修改。
+看板是以后可能出现的界面。它的数据来自工作区工具集：`workspace_sessions`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`；`workspace_intents` 提供派发上下文，记忆只贡献全局事实。记忆卡片流、按工作区的记忆索引、事件日志存储都明确不在范围内；如果看板以后需要，那是在同一套工具集上的新设计，不是对记忆模型的修改。意图卡是工作区记录，不是记忆。
