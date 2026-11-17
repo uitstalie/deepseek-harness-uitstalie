@@ -47,7 +47,20 @@ export async function readMemoryArchive(
 ): Promise<readonly MemoryArchiveRecord[]> {
   const read = await ctx.dshStore.readFile(session, MEMORY_ARCHIVE_STORE_PATH, signal === undefined ? {} : { signal })
   if (read.text === undefined) return Object.freeze([])
-  return Object.freeze(parseArchiveRecords(read.text))
+  return Object.freeze(parseMemoryArchiveText(read.text))
+}
+
+/**
+ * Parse one archive file without a store or Session.
+ *
+ * The migration reads a workspace's archive through the filesystem seam, so the
+ * parser is exported instead of being reachable only through `readMemoryArchive`.
+ * Unrelated hand-written text is ignored, as before.
+ * @param text - complete `MEMORY.archive.md` contents.
+ * @returns every well-formed archive record in file order.
+ */
+export function parseMemoryArchiveText(text: string): MemoryArchiveRecord[] {
+  return parseArchiveRecords(text)
 }
 
 /**
@@ -68,7 +81,7 @@ export async function appendMemoryArchive(
   if (records.length === 0) return { path: MEMORY_ARCHIVE_STORE_PATH, added: 0 }
   const append = async (): Promise<{ readonly path: string; readonly added: number }> => {
     const read = await ctx.dshStore.readFile(session, MEMORY_ARCHIVE_STORE_PATH, signal === undefined ? {} : { signal })
-    const existing = read.text === undefined ? [] : parseArchiveRecords(read.text)
+    const existing = read.text === undefined ? [] : parseMemoryArchiveText(read.text)
     const seen = new Set(existing.map(archiveKey))
     const added: MemoryArchiveRecord[] = []
     for (const record of records) {
@@ -79,7 +92,7 @@ export async function appendMemoryArchive(
     }
     if (added.length === 0) return { path: MEMORY_ARCHIVE_STORE_PATH, added: 0 }
     const combined = [...existing, ...added]
-    const text = renderArchive(read.text, combined)
+    const text = renderMemoryArchiveText(read.text, combined)
     const options: StoreWriteOptions = {
       ...signal === undefined ? {} : { signal },
       ...read.version === undefined ? {} : { expected: read.version },
@@ -95,8 +108,17 @@ export async function appendMemoryArchive(
   }
 }
 
-/** Render the archive around any hand-written frame, capped to the record limit. */
-function renderArchive(previous: string | undefined, records: readonly MemoryArchiveRecord[]): string {
+/**
+ * Render one archive file without a store or Session.
+ *
+ * The frame outside the provider markers is preserved verbatim, so the one-time
+ * migration can append records to a workspace archive without changing the
+ * bytes a person wrote.
+ * @param previous - existing file text, when the file exists.
+ * @param records - complete record list to render.
+ * @returns the file text ending with one newline.
+ */
+export function renderMemoryArchiveText(previous: string | undefined, records: readonly MemoryArchiveRecord[]): string {
   const lines = records.map(renderRecord).join('\n')
   const body = `${MEMORY_ARCHIVE_BEGIN}\n${lines === '' ? '' : `${lines}\n`}${MEMORY_ARCHIVE_END}`
   if (previous === undefined) return `${MEMORY_ARCHIVE_TITLE}\n\n${body}\n`

@@ -21,7 +21,6 @@ const MATRIX: Readonly<Record<string, AgentRole>> = {
   memory_search: 'subagent',
   memory_write: 'agent',
   memory_forget: 'agent',
-  memory_resolve: 'agent',
   workspace_sessions: 'subagent',
   workspace_intents: 'subagent',
   workspace_tasks: 'subagent',
@@ -91,12 +90,12 @@ test('the registry exposes the approved full matrix for subagent, agent, and sup
   // change; the capability wiring is covered by
   // packages/jira/jira-agent/tests/dispatch-intents.spec.ts.
   expect(names('subagent')).toHaveLength(18)
-  expect(names('agent')).toHaveLength(36)
-  expect(names('super')).toHaveLength(40)
+  expect(names('agent')).toHaveLength(35)
+  expect(names('super')).toHaveLength(39)
   expect(names('agent')).not.toContain('superagent_control')
   expect(names('super')).toContain('superagent_control')
   expect(names('agent').filter(name => !names('subagent').includes(name))).toEqual([
-    'issue_work', 'jira_issue', 'jira_kb', 'jira_list', 'memory_forget', 'memory_resolve',
+    'issue_work', 'jira_issue', 'jira_kb', 'jira_list', 'memory_forget',
     'memory_write', 'personality_apply', 'plugin_manager', 'schedule_create', 'schedule_edit',
     'schedule_list', 'schedule_view', 'subagent', 'subagent_fork', 'tool-dsh-store',
     'workflow', 'write_like_human',

@@ -1,26 +1,28 @@
 /**
  * Provider tests: the real plugin mounted over a real AgentLoop, organizer, and
- * store. They assert the root-only contribution, the fixed prompt section, the
- * three tool schemas, the working append path, and the completed-turn dispatch.
+ * store. They assert the root-only contribution, the static global-memory prompt
+ * section, the three global tools, the NOT_GLOBAL_MEMORY refusals with their
+ * tool hints, global search, and the absence of any per-turn memory write.
  */
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
-// Type-only: the Loader's `loader/volatile-update` event declaration.
-import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
-  appendMemoryEntry,
-  createMemoryDocument,
-  MEMORY_ARCHIVE_STORE_PATH,
-  MEMORY_STORE_PATH,
-  parseMemoryDocument,
-  renderMemoryDocument,
   Config as MemoryConfig,
-  MEMORY_CAPABILITY_DESCRIPTION, MEMORY_CAPABILITY_LABEL, MEMORY_PROMPT_ORDER, MEMORY_PROMPT_TEXT, resolveConfig,
+  GLOBAL_MEMORY_STORE_PATH,
+  MEMORY_CAPABILITY_DESCRIPTION,
+  MEMORY_CAPABILITY_LABEL,
+  MEMORY_PROMPT_ORDER,
+  MEMORY_PROMPT_TEXT,
+  createMemoryDocument,
+  globalMemoryPath,
+  readGlobalMemory,
+  renderMemoryDocument,
+  resolveConfig,
 } from '../src/api.ts'
 import type { MemoryDocument } from '../src/api.ts'
 import {
@@ -28,11 +30,9 @@ import {
   createRoot,
   memoryFilePath,
   memoryMessages,
-  messageText,
   mountMemory,
-  searchRequests,
   textOf,
-  waitForValue,
+  settle,
 } from './harness.ts'
 import type { MemoryTestHarness } from './harness.ts'
 
@@ -44,11 +44,13 @@ beforeEach(async () => {
   // A `.git` marker makes the fixture look like a checkout, so project-root
   // discovery resolves to the fixture rather than to the temp directory above it.
   await mkdir(join(project, '.git'), { recursive: true })
+  // Every test's global store lives in a temporary `$DSH_HOME`, never the real one.
+  vi.stubEnv('DSH_HOME', join(project, 'home'))
   contexts = []
-  searchRequests.length = 0
 })
 
 afterEach(async () => {
+  vi.unstubAllEnvs()
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   await rm(project, { recursive: true, force: true })
 })
@@ -60,7 +62,7 @@ async function mount(): Promise<MemoryTestHarness> {
   return mountMemory(ctx, project)
 }
 
-test('registers an active root-scoped capability with the fixed prompt section', async () => {
+test('registers an active root-scoped capability with the static global-memory section', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
 
@@ -76,10 +78,11 @@ test('registers an active root-scoped capability with the fixed prompt section',
   const assembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))
   const section = assembly.sections.find(entry => entry.name === 'memory')
   expect(section?.text).toBe(MEMORY_PROMPT_TEXT)
+  expect(section?.text).toContain('global-only')
   expect(MEMORY_PROMPT_ORDER).toBe(2350)
 })
 
-test('a resumed session is not injected with a memory snapshot', async () => {
+test('neither a legacy workspace file nor the global file is injected per turn', async () => {
   const mounted = await mount()
   const seeded: MemoryDocument = {
     ...createMemoryDocument(),
@@ -89,19 +92,26 @@ test('a resumed session is not injected with a memory snapshot', async () => {
     }],
     sections: [{
       sessionId: 'memory-root', startTurn: 1, endTurn: 1, tier: 'detail',
-      entries: [{ kind: 'decision', text: 'a conclusion recorded before this process started' }],
+      entries: [{ kind: 'decision', text: 'a legacy conclusion recorded before this process started' }],
     }],
   }
   await mkdir(dirname(memoryFilePath(project)), { recursive: true })
   await writeFile(memoryFilePath(project), renderMemoryDocument(seeded))
+
   const root = await createRoot(mounted)
+  const written = await callTool(mounted.ctx, root, 'memory_write', {
+    topic: 'global-server',
+    text: 'The shared build server is reachable as server alpha.',
+  })
+  expect(written.isError, textOf(written)).toBe(false)
 
   expect(await memoryMessages(mounted.ctx, root.id)).toEqual([])
   const assembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))
   expect(assembly.sections.map(section => section.name)).not.toContain('memory-state')
+  expect(assembly.sections.find(section => section.name === 'memory')?.text).not.toContain('server alpha')
 })
 
-test('root agents get all four tools; child agents get only memory_search', async () => {
+test('root agents get three tools; child agents get only memory_search', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
   const child = await mounted.ctx.agents.create({
@@ -110,316 +120,125 @@ test('root agents get all four tools; child agents get only memory_search', asyn
   })
 
   const names = mounted.ctx.tools.schemas(root).map(schema => schema.name)
-  expect(names).toEqual(expect.arrayContaining(['memory_write', 'memory_resolve', 'memory_forget', 'memory_search']))
+  expect(names).toEqual(expect.arrayContaining(['memory_write', 'memory_forget', 'memory_search']))
+  expect(names).not.toContain('memory_resolve')
   expect(mounted.ctx.tools.schemas(child.agent).map(schema => schema.name).sort()).toEqual(['memory_search'])
   expect(mounted.ctx.tools.get('memory_write', child.agent)).toBeUndefined()
   expect(mounted.ctx.tools.get('memory_forget', child.agent)).toBeUndefined()
-  expect(mounted.ctx.tools.get('memory_resolve', child.agent)).toBeUndefined()
-  expect(mounted.ctx.tools.get('memory_search', child.agent)).toBeDefined()
   const childAssembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(child.agent))
   expect(childAssembly.sections.map(entry => entry.name)).not.toContain('memory')
   await child.dispose()
 })
 
-test('memory_write appends one entry to this workspace MEMORY.md', async () => {
+test('memory_write records one global entry under $DSH_HOME, not in the workspace store', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
 
   const result = await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'decision',
-    content: 'write memory through the version-guarded store',
-    tags: ['store'],
-  })
-
-  expect(result.isError, textOf(result)).toBe(false)
-  expect(textOf(result)).toContain('Recorded a decision memory entry')
-  expect((await stat(memoryFilePath(project))).isFile()).toBe(true)
-  expect(await readFile(memoryFilePath(project), 'utf8'))
-    .toContain('- [decision] write memory through the version-guarded store')
-})
-
-test('a volatile settings update reaches the next write without a remount', async () => {
-  const ctx = new Context()
-  contexts.push(ctx)
-  const mounted = await mountMemory(ctx, project, { config: { sessions: 1 } })
-  const root = await createRoot(mounted)
-
-  if (mounted.config === undefined) throw new Error('the memory provider did not resolve its configuration')
-  // This harness mounts the plugin with plain values, so the settings page's write is a field replacement.
-  Object.assign(mounted.config, { sessions: 3 })
-  ctx.emit('loader/volatile-update', [['sessions']])
-  const result = await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'decision',
-    content: 'written after the settings change',
+    topic: 'global-model',
+    text: 'The harness default model is the routed model.',
   })
   expect(result.isError, textOf(result)).toBe(false)
-  // The file records the window that wrote it: a stale apply closure would still say 1.
-  expect(await readFile(memoryFilePath(project), 'utf8')).toContain('sessions: 3')
+  expect(textOf(result)).toContain('Recorded a global-model global memory entry')
+  expect(globalMemoryPath()).toBe(join(project, 'home', 'memory', 'GLOBAL.md'))
+  expect((await stat(globalMemoryPath())).isFile()).toBe(true)
+  expect(await readFile(globalMemoryPath(), 'utf8')).toContain('The harness default model is the routed model.')
+  await expect(stat(memoryFilePath(project))).rejects.toThrow()
+  expect((await readGlobalMemory(mounted.ctx)).document?.entries[0]?.topic).toBe('global-model')
 })
 
-test('an ordinary session receives zero memory messages per turn', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-  for (let turn = 1; turn <= 3; turn += 1) {
-    if (turn > 1) root.session.append('turn/start', { turn })
-    const written = await callTool(mounted.ctx, root, 'memory_write', {
-      kind: 'decision',
-      content: `turn ${String(turn)} conclusion`,
-    })
-    expect(written.isError, textOf(written)).toBe(false)
-  }
-
-  const messages = await memoryMessages(mounted.ctx, root.id)
-  expect(messages).toHaveLength(0)
-  expect(messages.reduce((total, message) => total + Buffer.byteLength(messageText(message), 'utf8'), 0)).toBe(0)
-})
-
-test('an invalid volatile update keeps the previous settings', async () => {
-  const ctx = new Context()
-  contexts.push(ctx)
-  const mounted = await mountMemory(ctx, project, { config: { detail: 2, brief: 16, forget: 21 } })
-  const root = await createRoot(mounted)
-
-  if (mounted.config === undefined) throw new Error('the memory provider did not resolve its configuration')
-  Object.assign(mounted.config, { detail: 20 })
-  ctx.emit('loader/volatile-update', [['detail']])
-  const result = await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'decision',
-    content: 'written after an invalid change',
-  })
-  expect(result.isError, textOf(result)).toBe(false)
-  const text = await readFile(memoryFilePath(project), 'utf8')
-  expect(text).toContain('detail: 2')
-  expect(text).not.toContain('detail: 20')
-})
-
-test('memory_write rejects an unknown kind with the valid list', async () => {
+test('a business write is refused with the workspace tool hints', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
 
-  const result = await callTool(mounted.ctx, root, 'memory_write', { kind: 'bogus', content: 'text' })
-
+  const result = await callTool(mounted.ctx, root, 'memory_write', {
+    topic: 'global-tooling',
+    text: 'The commit 548dc157ba changed the workspace layout.',
+  })
   expect(result.isError).toBe(true)
-  expect(textOf(result)).toContain('must be one of')
-  expect(textOf(result)).toContain('preference')
+  expect(textOf(result)).toContain('NOT_GLOBAL_MEMORY')
+  expect(textOf(result)).toContain('workspace_tasks')
+  expect(textOf(result)).toContain('workspace_intents')
+  expect(textOf(result)).toContain('session_search')
+  await expect(stat(globalMemoryPath())).rejects.toThrow()
 })
 
-test('memory_write rejects content over the 8 KiB cap', async () => {
+test('a dispatch write points at workspace_sessions and a persona write at personality_apply', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
 
-  const result = await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'decision',
-    content: 'x'.repeat(8 * 1024 + 1),
+  const dispatch = await callTool(mounted.ctx, root, 'memory_write', {
+    topic: 'global-convention',
+    text: 'Dispatched the task to session memory-worker; waiting for the receipt.',
   })
+  expect(dispatch.isError).toBe(true)
+  expect(textOf(dispatch)).toContain('NOT_GLOBAL_MEMORY')
+  expect(textOf(dispatch)).toContain('workspace_sessions')
 
-  expect(result.isError).toBe(true)
-  expect(textOf(result)).toContain('the limit is 8192')
-})
-
-test('memory_write evicts older entries when full and names an evicted decision', async () => {
-  const ctx = new Context()
-  contexts.push(ctx)
-  const mounted = await mountMemory(ctx, project, { config: { maxBytes: 300 } })
-  const root = await createRoot(mounted)
-  const seed = { maxBytes: 4096, maxEntries: 40 }
-  await appendMemoryEntry(mounted.ctx, root.session, {
-    kind: 'open', text: `old open ${'o'.repeat(80)}`, turn: 1, seq: [1, 2],
-  }, undefined, seed)
-  await appendMemoryEntry(mounted.ctx, root.session, {
-    kind: 'decision', text: `old decision ${'d'.repeat(80)}`, turn: 2, seq: [3, 4],
-  }, undefined, seed)
-
-  const result = await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'decision',
-    content: 'new decision after eviction',
+  const persona = await callTool(mounted.ctx, root, 'memory_write', {
+    topic: 'global-convention',
+    text: 'The user prefers a calm tone of voice.',
   })
-
-  expect(result.isError, textOf(result)).toBe(false)
-  expect(textOf(result)).toContain('Recorded a decision memory entry')
-  expect(textOf(result)).toContain('Evicted')
-  expect(textOf(result)).toContain('A decision entry was evicted')
-  const text = await readFile(memoryFilePath(project), 'utf8')
-  expect(text).toContain('new decision after eviction')
-  expect(text).toContain('evictions:')
+  expect(persona.isError).toBe(true)
+  expect(textOf(persona)).toContain('NOT_GLOBAL_MEMORY')
+  expect(textOf(persona)).toContain('personality_apply')
 })
 
-test('memory_write reports plural evictions when several entries leave', async () => {
-  const ctx = new Context()
-  contexts.push(ctx)
-  const mounted = await mountMemory(ctx, project, { config: { maxBytes: 300 } })
-  const root = await createRoot(mounted)
-  const seed = { maxBytes: 4096, maxEntries: 40 }
-  await appendMemoryEntry(mounted.ctx, root.session, {
-    kind: 'open', text: `first ${'o'.repeat(100)}`, turn: 1, seq: [1, 2],
-  }, undefined, seed)
-  await appendMemoryEntry(mounted.ctx, root.session, {
-    kind: 'files', text: `second ${'f'.repeat(100)}`, turn: 2, seq: [3, 4],
-  }, undefined, seed)
-  await appendMemoryEntry(mounted.ctx, root.session, {
-    kind: 'decision', text: `third ${'d'.repeat(100)}`, turn: 3, seq: [5, 6],
-  }, undefined, seed)
-
-  const result = await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'new fact' })
-  expect(result.isError, textOf(result)).toBe(false)
-  expect(textOf(result)).toMatch(/Evicted [2-9] older entries/)
-})
-
-test('memory_forget removes matching entries', async () => {
+test('memory_search reads the global store only, never a workspace MEMORY.md', async () => {
   const mounted = await mount()
-  const root = await createRoot(mounted)
-  for (const [kind, content, tags, turn] of [
-    ['open', 'stale open', ['stale'], 1],
-    ['files', 'stale file', ['stale'], 2],
-    ['decision', 'kept decision', [], 3],
-  ] as const) {
-    const result = await callTool(mounted.ctx, root, 'memory_write', { kind, content, tags })
-    expect(result.isError, textOf(result)).toBe(false)
-    root.session.append('turn/start', { turn: turn + 1 })
-  }
-
-  const result = await callTool(mounted.ctx, root, 'memory_forget', { tag: 'stale' })
-  expect(result.isError, textOf(result)).toBe(false)
-  expect(textOf(result)).toContain('Forgot 2 memory entries')
-  expect(textOf(result)).toContain('open 1')
-  expect(textOf(result)).toContain('files 1')
-  const text = await readFile(memoryFilePath(project), 'utf8')
-  const parsed = parseMemoryDocument(text)
-  const texts = parsed.sections.flatMap(section => section.entries).map(entry => entry.text)
-  expect(texts).toEqual(['kept decision'])
-  expect(text).toContain('manual-forget')
-})
-
-test('memory_forget refuses a call without any filter', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-  await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'one fact' })
-  const result = await callTool(mounted.ctx, root, 'memory_forget', {})
-  expect(result.isError).toBe(true)
-  expect(textOf(result)).toContain('kind, tag, or beforeTurn')
-})
-
-test('memory_write reports a single eviction and omits a turn for a legacy entry', async () => {
-  const ctx = new Context()
-  contexts.push(ctx)
-  const mounted = await mountMemory(ctx, project, { config: { maxBytes: 190 } })
   const root = await createRoot(mounted)
   const legacy: MemoryDocument = {
     ...createMemoryDocument(),
     sessions: [{ id: 'memory-root', cwd: project, updatedAt: '2026-01-01T00:00:00.000Z', turns: [] }],
-    sections: [{
-      sessionId: 'memory-root', startTurn: 1, endTurn: 1, tier: 'detail',
-      entries: [{ kind: 'open', text: `legacy ${'x'.repeat(120)}` }],
-    }],
+    sections: [{ sessionId: 'memory-root', startTurn: 1, endTurn: 1, tier: 'detail', entries: [{ kind: 'decision', text: 'workspace secret alpha' }] }],
   }
-  await mounted.ctx.dshStore.writeFile(root.session, MEMORY_STORE_PATH, renderMemoryDocument(legacy))
-
-  const result = await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'new fact' })
-  expect(result.isError, textOf(result)).toBe(false)
-  expect(textOf(result)).toContain('Evicted 1 older entry')
-  expect(textOf(result)).not.toContain('(turn ')
-})
-
-test('memory_forget supports beforeTurn, sessionId, allSessions, and a no-match result', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-  const other = await createRoot(mounted, 'memory-other')
-  await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'current fact' })
-  await callTool(mounted.ctx, other, 'memory_write', { kind: 'decision', content: 'other fact' })
-
-  const before = await callTool(mounted.ctx, root, 'memory_forget', { beforeTurn: 2 })
-  expect(before.isError, textOf(before)).toBe(false)
-  expect(textOf(before)).toContain('Forgot 1 memory entry')
-
-  const bySession = await callTool(mounted.ctx, root, 'memory_forget', { kind: 'decision', sessionId: 'memory-other' })
-  expect(bySession.isError, textOf(bySession)).toBe(false)
-  expect(textOf(bySession)).toContain('Forgot 1 memory entry')
-
-  const noMatch = await callTool(mounted.ctx, root, 'memory_forget', { kind: 'preference' })
-  expect(noMatch.isError, textOf(noMatch)).toBe(false)
-  expect(textOf(noMatch)).toContain('No memory entries matched')
-
-  await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'current again' })
-  await callTool(mounted.ctx, other, 'memory_write', { kind: 'decision', content: 'other again' })
-  const all = await callTool(mounted.ctx, root, 'memory_forget', { kind: 'decision', allSessions: true })
-  expect(all.isError, textOf(all)).toBe(false)
-  expect(textOf(all)).toContain('Forgot 2 memory entries')
-  expect(textOf(all)).toContain('decision 2')
-})
-
-test('memory_resolve archives finished open entries and search finds the archived copy', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
+  await mkdir(dirname(memoryFilePath(project)), { recursive: true })
+  await writeFile(memoryFilePath(project), renderMemoryDocument(legacy))
   await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'open', content: 'finished report waiting for handoff', tags: ['report'],
-  })
-  root.session.append('turn/start', { turn: 2 })
-  await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'open', content: 'still open work', tags: ['keep'],
+    topic: 'global-server',
+    text: 'The shared build server is reachable as server alpha.',
   })
 
-  const resolved = await callTool(mounted.ctx, root, 'memory_resolve', { tag: 'report' })
-  expect(resolved.isError, textOf(resolved)).toBe(false)
-  expect(textOf(resolved)).toContain('Resolved 1 memory entry')
-  const active = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
-  expect(active.sections.flatMap(section => section.entries).map(entry => entry.text)).toEqual(['still open work'])
-  const archive = await readFile(join(project, '.dsh', MEMORY_ARCHIVE_STORE_PATH), 'utf8')
-  expect(archive).toContain('finished report waiting for handoff')
-  expect(archive).toContain('"reason":"resolved"')
+  const global = await callTool(mounted.ctx, root, 'memory_search', { query: 'alpha' })
+  expect(global.isError).toBe(false)
+  expect(textOf(global)).toContain('[global-server]')
+  expect(textOf(global)).toContain('The shared build server')
 
-  const search = await callTool(mounted.ctx, root, 'memory_search', { query: 'finished report' })
-  expect(search.isError, textOf(search)).toBe(false)
-  expect(textOf(search)).toContain('archived: resolved')
-  expect(textOf(search)).toContain('finished report waiting for handoff')
+  const legacyHit = await callTool(mounted.ctx, root, 'memory_search', { query: 'workspace secret' })
+  expect(textOf(legacyHit)).toContain('No global memory matches')
 })
 
-test('an expired open entry is archived automatically and stays searchable', async () => {
+test('memory_forget has no session filters and archives by topic', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
-  const old: MemoryDocument = {
-    ...createMemoryDocument(),
-    sessions: [{
-      id: String(root.id), cwd: project, updatedAt: '2026-01-01T00:00:00.000Z',
-      turns: [{ turn: 99, seq: [1, 2], tier: 'detail' }],
-    }],
-    sections: [{
-      sessionId: String(root.id), startTurn: 99, endTurn: 99, tier: 'detail',
-      entries: [
-        { kind: 'open', text: 'expired plan from the old session', turn: 99 },
-        { kind: 'decision', text: 'durable old decision', turn: 99 },
-      ],
-    }],
+  await callTool(mounted.ctx, root, 'memory_write', { topic: 'global-server', text: 'Server alpha is the shared build host.' })
+  await callTool(mounted.ctx, root, 'memory_write', { topic: 'global-model', text: 'The harness default model is the routed model.' })
+
+  const parameters = mounted.ctx.tools.get('memory_forget', root)?.parameters as {
+    readonly properties?: Record<string, unknown>
   }
-  await mounted.ctx.dshStore.writeFile(root.session, MEMORY_STORE_PATH, renderMemoryDocument(old))
-  const written = await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'decision', content: 'new fact after cleanup',
-  })
-  expect(written.isError, textOf(written)).toBe(false)
-  const active = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
-  expect(active.sections.flatMap(section => section.entries).map(entry => entry.text))
-    .toContain('durable old decision')
-  expect(active.sections.flatMap(section => section.entries).map(entry => entry.text))
-    .not.toContain('expired plan from the old session')
+  expect(Object.keys(parameters.properties ?? {}).sort()).toEqual(['entryId', 'topic'])
+  expect(JSON.stringify(parameters)).not.toContain('sessionId')
 
-  const search = await callTool(mounted.ctx, root, 'memory_search', { query: 'expired plan' })
-  expect(textOf(search)).toContain('archived: ttl')
-  expect(textOf(search)).toContain('expired plan from the old session')
+  const forgotten = await callTool(mounted.ctx, root, 'memory_forget', { topic: 'global-server' })
+  expect(forgotten.isError, textOf(forgotten)).toBe(false)
+  expect(textOf(forgotten)).toContain('Forgot 1 global memory entry')
+  expect((await readGlobalMemory(mounted.ctx)).document?.entries.map(entry => entry.topic)).toEqual(['global-model'])
+
+  const bare = await callTool(mounted.ctx, root, 'memory_forget', {})
+  expect(bare.isError).toBe(true)
+  expect(textOf(bare)).toContain('one of `topic` or `entryId` is required')
 })
 
-test('memory_search returns managed-block matches inside this workspace', async () => {
+test('a completed turn writes no memory job, no MEMORY.md, and no memory message', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
-  await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'decision',
-    content: 'the store path stays relative',
-  })
+  root.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+  await settle()
 
-  const result = await callTool(mounted.ctx, root, 'memory_search', { query: 'store path' })
-
-  expect(result.isError).toBe(false)
-  expect(textOf(result)).toContain('[memory]')
-  expect(textOf(result)).toContain('the store path stays relative')
-  expect(textOf(result)).not.toContain('[session]')
+  expect(await memoryMessages(mounted.ctx, root.id)).toEqual([])
+  await expect(stat(memoryFilePath(project))).rejects.toThrow()
+  expect(mounted.ctx.dafeiyu.status()[0]?.lastTurnAt).toBeUndefined()
 })
 
 test('unloading the provider removes the capability and its tools', async () => {
@@ -433,36 +252,25 @@ test('unloading the provider removes the capability and its tools', async () => 
   expect(mounted.ctx.tools.get('memory_write', root)).toBeUndefined()
 })
 
-test('a completed turn is dispatched and leaves MEMORY.md absent when there is no surface to summarize', async () => {
-  const mounted = await mount()
-  const root = await createRoot(mounted)
-  root.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-  await waitForValue(() =>
-    root.session.snapshotEvents().some(event => event.type === 'job/settled') ? true : undefined)
-
-  expect(mounted.ctx.dafeiyu.status()[0]?.lastTurnAt).toEqual(expect.any(Number))
-  await expect(stat(memoryFilePath(project))).rejects.toThrow()
-})
-
-test('configuration rejects a non-increasing window and a half summary pair', () => {
-  expect(() => resolveConfig({ detail: 6, brief: 16, forget: 16 })).toThrow(/must increase/)
+test('the legacy settings row still fails loudly when its window is invalid', () => {
+  expect(() => resolveConfig({ detail: 6, brief: 16, forget: 16 })).toThrow(/must increase/u)
   expect(() => resolveConfig({ summarizationProvider: 'deepseek' }))
-    .toThrow(/both be set or both be empty/)
+    .toThrow(/both be set or both be empty/u)
   expect(() => new MemoryConfig({ summarizeEveryTurns: 0 })).toThrow()
-  expect(() => new MemoryConfig({ summarizeEveryTurns: 1.5 })).toThrow()
-  expect(() => resolveConfig({ summarizeEveryTurns: 0 })).toThrow(/positive integer/)
-  expect(() => resolveConfig({ summarizeEveryTurns: 1.5 })).toThrow(/positive integer/)
-  expect(resolveConfig({})).toEqual({
+  expect(resolveConfig({})).toMatchObject({
     window: { detail: 6, brief: 16, forget: 21, sessions: 10 },
-    summarizationProvider: '',
-    summarizationModel: '',
     maxBytes: 16384,
     maxEntries: 40,
     openTtlDays: 3,
     filesTtlDays: 14,
-    supersessionMinSharedTags: 2,
-    summarizeEveryTurns: 1,
-    summaryMaxAttempts: 2,
-    summaryRetryDelayMs: 100,
   })
+})
+
+test('the global store is reachable through the same contract as the tools', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  await mounted.ctx.dshStore.writeFile(undefined, GLOBAL_MEMORY_STORE_PATH, 'not a document', { scope: 'global' })
+  const result = await callTool(mounted.ctx, root, 'memory_search', { query: 'anything' })
+  expect(result.isError).toBe(true)
+  expect(textOf(result)).toContain('frontmatter')
 })

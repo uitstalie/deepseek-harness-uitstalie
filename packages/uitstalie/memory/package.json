@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-memory",
-  "description": "Memory capability provider: the workspace MEMORY.md file, the completed-turn detail summary job, a fixed system prompt section for the forgetting window, and the memory_write/memory_resolve/memory_forget/memory_search tools",
+  "description": "Global memory capability provider: the cross-workspace GLOBAL.md store, the memory_write/memory_forget/memory_search tools, and the one-time migration of legacy per-workspace memory files",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -28,6 +28,7 @@
   "dependencies": {
     "@deepseek-ai/dsh-error": "workspace:*",
     "@deepseek-ai/dsh-fs": "workspace:*",
+    "@deepseek-ai/dsh-home-paths": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-store-atom": "workspace:*",

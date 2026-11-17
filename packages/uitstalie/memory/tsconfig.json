@@ -49,6 +49,9 @@
     },
     {
       "path": "../store-atom"
+    },
+    {
+      "path": "../../util/home-paths"
     }
   ]
 }

@@ -3,80 +3,56 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/memory/README.md
 /:
-  en: 52407acaa4513662
-  zh: 6d3921dede95b64c
+  en: 7722644ad419ccac
+  zh: e64dc74fa021e92b
 /deepseek-ai-dsh-memory:
   en: 451d0d0b45211d36
   zh: 98cef595909ea324
 /deepseek-ai-dsh-memory/summary:
-  en: 7301782afc46aca7
-  zh: 4a9822afa71e5e3e
+  en: e63e4f261c3d7dfd
+  zh: 53df5f3203abf2d8
 /deepseek-ai-dsh-memory/table-of-contents:
   en: 122f0d41696980b1
-  zh: 528864635b577290
+  zh: 122f0d41696980b1
 /deepseek-ai-dsh-memory/use-this-package:
-  en: 1bcef138ca372e0f
-  zh: d28f485aa7d96970
+  en: fbec14a29d9fe808
+  zh: d900771f1ef562b7
 /deepseek-ai-dsh-memory/understand-the-implementation:
-  en: 67e98c9dad274bd1
-  zh: bb230e607ee38b9a
+  en: 3ffc4fe2312174de
+  zh: 173c4840feed738c
 /deepseek-ai-dsh-memory/model-experience:
   en: 215e7ba838619b7b
-  zh: a311da3843709f90
+  zh: 215e7ba838619b7b
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section:
   en: c0ac6604a97c662a
-  zh: 4409508acbe18181
+  zh: c0ac6604a97c662a
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/what-the-model-sees:
-  en: 848e4e51adeac263
-  zh: f844082a51a37b15
+  en: 4c3a557c312c039a
+  zh: 12072d95316875a7
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/what-the-model-sees/fixed-memory-section-text:
   en: 7852e132e880ee31
-  zh: f73a669cb32b47f5
+  zh: 7852e132e880ee31
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/token-effect:
-  en: b6e8a6e8f659f9d4
-  zh: 4c350a8d2f63cb4c
+  en: a128e83221a5f93b
+  zh: ec2e0539cd1a8ae6
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/kv-cache-effect:
-  en: d486025ccb8721af
-  zh: d08ba56c6fd29ece
-/deepseek-ai-dsh-memory/model-experience/memory-tools:
-  en: b160ca92da193ddb
-  zh: ac8fae468916718e
-/deepseek-ai-dsh-memory/model-experience/memory-tools/what-the-model-sees:
-  en: 0dc0d848e67898e7
-  zh: 748f132933ab6ebd
-/deepseek-ai-dsh-memory/model-experience/memory-tools/token-effect:
-  en: c1cfd24dcf65904e
-  zh: f7595ae8cda87029
-/deepseek-ai-dsh-memory/model-experience/memory-tools/kv-cache-effect:
-  en: 9336f6c9c92be6fc
-  zh: bed1c1dc049fde5c
-/deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints:
-  en: c65f1ca009d1dc17
-  zh: fe34d093608adbda
-/deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/what-the-model-sees:
-  en: 81fe9b81592316a0
-  zh: 1abaacfff5a6a150
-/deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/token-effect:
-  en: 25b149a36664263f
-  zh: 89b82b03e6adb636
-/deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/kv-cache-effect:
-  en: ba88a837c9ae8f85
-  zh: 8fd051c5929aece5
-/deepseek-ai-dsh-memory/model-experience/memory-failure-notice:
-  en: 181b494f66f3b14a
-  zh: dbd8abbaae67e3b0
-/deepseek-ai-dsh-memory/model-experience/memory-failure-notice/what-the-model-sees:
-  en: 93c35af77a315785
-  zh: 0ba91c571229ab44
-/deepseek-ai-dsh-memory/model-experience/memory-failure-notice/token-effect:
-  en: 48e27ca7d5502f5d
-  zh: 2e1f6cb84aee9a05
-/deepseek-ai-dsh-memory/model-experience/memory-failure-notice/kv-cache-effect:
-  en: 9db72ef29b712b0c
-  zh: c5c4908e8aed0053
+  en: fa0d346f21143cd1
+  zh: 75418ac09f61126d
+/deepseek-ai-dsh-memory/model-experience/the-global-memory-tools:
+  en: 84c6f7d6f59dcdf2
+  zh: 84c6f7d6f59dcdf2
+/deepseek-ai-dsh-memory/model-experience/the-global-memory-tools/what-the-model-sees:
+  en: 60d1aea12fed5ed1
+  zh: 93287ab81b88a03a
+/deepseek-ai-dsh-memory/model-experience/the-global-memory-tools/token-effect:
+  en: c042edec4a3a0af3
+  zh: 193819333e6ccf2e
+/deepseek-ai-dsh-memory/model-experience/the-global-memory-tools/kv-cache-effect:
+  en: 8b6cee1777e312c7
+  zh: 07977830f8ea1b62
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work:
-  en: 0f1ca6f582cd58a3
-  zh: dd49baf157f5c37d
+  en: 98632fafabfc07dd
+  zh: c6fe76da06347f86
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work/dev-note:
-  en: 164f2d3e79e7c776
-  zh: 22b11728c82dbcf0
+  en: 03c579ea0525a94b
+  zh: 794d9711a6cd7f6d

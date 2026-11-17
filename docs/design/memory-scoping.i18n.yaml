@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/memory-scoping.md
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory:
-  en: 17a8d98b1d4ca8a3
-  zh: 932b77928309a44a
+  en: 9d54936674f48791
+  zh: 1d497305827d8c24
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/1-background-and-the-problem:
   en: 5e818a6a13f3dd2a
   zh: bda69e9e5fbf5222
@@ -63,8 +63,8 @@
   en: 06f626d1474c066e
   zh: 38836b15608f2548
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/4-data-model/4-2-toolset-records:
-  en: 91919aeeb7948be9
-  zh: 42ae9310480b8b8d
+  en: 9cbf78fc52ada372
+  zh: 25f7012331ec2cf2
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/4-data-model/4-3-prompt-data:
   en: ff1e91da55a9a8db
   zh: 510292093a62fa8d
@@ -144,11 +144,11 @@
   en: 2718f5bec26f1ff1
   zh: 306187e04b49a9c1
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/8-migration-and-the-stop-the-bleeding-fix/8-2-migration-rules:
-  en: 81f02533700d4564
-  zh: 3f6bcae211ecc901
+  en: ab95d0fb722182a4
+  zh: 0979502c06ad9aa3
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/9-milestones:
-  en: f9c8ba7aba257aeb
-  zh: 02d28c942aaa21c6
+  en: 4c3f26ed54f8d084
+  zh: 7f6a49d95bd4964e
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions:
   en: ac347e271643ae3f
   zh: 0e4690809fb27331
@@ -159,8 +159,8 @@
   en: 9c7479b056deea5e
   zh: 00099da39b680361
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions/10-3-risks:
-  en: ba91efb6626f054c
-  zh: 63175716e4bfd56d
+  en: 9b972865b4045953
+  zh: c4f3f78e328671b0
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions/10-4-confirmed-in-this-round:
   en: b762eabfa091a7f1
   zh: 10b822d60b151ad4
@@ -201,26 +201,29 @@
   en: defafc9bfc7d21f6
   zh: e128306721e2d08c
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/12-capability-inventory-memory-and-super-agent/12-1-memory-capabilities:
-  en: 384260c89e737286
-  zh: 8886c3ac6b2b9399
+  en: ea6020d242e3e8de
+  zh: 68ced3cb3c2268a2
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/12-capability-inventory-memory-and-super-agent/12-2-super-agent-capabilities:
   en: 15f1275200c30eb3
   zh: 28e6766fb4f91f5f
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/13-appendix-future-direction:
   en: 034e2e95e7f2ee2a
   zh: 33d2cb5b76c6408a
-/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-step-3:
-  en: 37f3a9df3c54e7e8
-  zh: 54d024d1b8651a89
-/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-step-3/14-1-ordinary-session-no-per-turn-memory-injection:
-  en: 6156e239818ccb6f
-  zh: 2630125ed8e8c4ae
-/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-step-3/14-2-delivery-only-through-the-tool:
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-steps-3-and-4:
+  en: 2945576e62091021
+  zh: e0ad9e803f41f018
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-steps-3-and-4/14-1-ordinary-session-no-per-turn-memory-injection:
+  en: 39caedf452284ffe
+  zh: 819dd264b492914d
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-steps-3-and-4/14-2-delivery-only-through-the-tool:
   en: e89fd25aed8f7071
   zh: 3e069af235416eeb
-/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-step-3/14-3-known-gap-jira-turn-end-delivery:
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-steps-3-and-4/14-3-known-gap-jira-turn-end-delivery:
   en: 2b8363d0631428fa
   zh: a393306900aaf187
-/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-step-3/14-4-not-provable-in-ci:
-  en: 136aef19d4cf511a
-  zh: 3e849a81bc760c88
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-steps-3-and-4/14-4-step-4-global-only-memory-and-migration:
+  en: ac6997f1017f3ba0
+  zh: d626fe2411a5c7be
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-steps-3-and-4/14-5-not-provable-in-ci:
+  en: addeda5144185b81
+  zh: 3c300424d8010dbf

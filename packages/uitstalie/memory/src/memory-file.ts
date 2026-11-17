@@ -102,6 +102,7 @@ export type MemoryEvictionReason =
   | 'superseded'
   | 'duplicate'
   | 'over-cap'
+  | 'migration'
 
 /**
  * One entry the provider removed from the managed block, recorded in the frontmatter.
@@ -2138,7 +2139,7 @@ function parseEvictionRecord(value: unknown, subject: string): MemoryEvictionRec
 
 /** All eviction reasons the frontmatter and archive understand. */
 const EVICTION_REASONS: readonly MemoryEvictionReason[] = [
-  'byte-budget', 'manual-forget', 'ttl', 'resolved', 'superseded', 'duplicate', 'over-cap',
+  'byte-budget', 'manual-forget', 'ttl', 'resolved', 'superseded', 'duplicate', 'over-cap', 'migration',
 ]
 
 /** Narrow one persisted eviction reason. */

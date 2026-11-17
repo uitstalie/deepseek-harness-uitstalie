@@ -1,22 +1,21 @@
 /**
- * memory: the memory capability provider. It registers one capability with the
- * dafeiyu organizer, which wires the fixed prompt section and the memory tools
- * onto root agents and forwards completed turns back here.
+ * memory: the global-only memory capability provider.
  *
- * The provider owns the window policy, the MEMORY.md file, the prompt text, and
- * the tools. It never subscribes to session events or registers tools itself:
- * the organizer decides which agents receive the contribution and filters the
- * turns the provider sees.
+ * The provider registers one capability with the dafeiyu organizer, which wires
+ * the fixed prompt section and the three global memory tools onto root agents.
+ * It no longer receives completed turns: the per-turn summary job that wrote
+ * `MEMORY.md` is gone, so a turn ending writes no memory entry and appends no
+ * memory message.
+ *
+ * The global store lives at `$DSH_HOME/memory/GLOBAL.md` and is independent of
+ * the caller's workspace; the legacy per-workspace files stay readable for the
+ * one-time migration in `migration.ts`.
  * @module @deepseek-ai/dsh-memory
  */
 
 import type { Context, Volatile } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { CapabilityContribution, CapabilityRuntime, TurnEndInput } from '@deepseek-ai/dsh-dafeiyu'
-import type {} from '@deepseek-ai/dsh-fs'
-import type {} from '@deepseek-ai/dsh-jobs'
-import type {} from '@deepseek-ai/dsh-llm'
-import type {} from '@deepseek-ai/dsh-session-query'
+import type { CapabilityContribution } from '@deepseek-ai/dsh-dafeiyu'
 import type {} from '@deepseek-ai/dsh-store-atom'
 // Type-only: the Loader's loader/volatile-update event declaration.
 import type {} from '@deepseek-ai/cordis-plugin-loader'
@@ -24,12 +23,11 @@ import { resolveConfig } from './config.ts'
 import type { Config, MemorySettings } from './config.ts'
 import { registerMemoryCommands } from './commands.ts'
 import { MEMORY_PROMPT_SECTION } from './prompt.ts'
-import { MemorySummaryRunner } from './summary.ts'
 import { memoryTools } from './tools.ts'
 
 export const name = 'memory'
-/** The organizer, the store, session history, model calls, and the job registry. */
-export const inject = ['dafeiyu', 'dshStore', 'sessionQuery', 'jobs', 'llm']
+/** The organizer and the `.dsh` store; global memory reads no session state. */
+export const inject = ['dafeiyu', 'dshStore']
 
 /** Stable capability id this provider registers with the organizer. */
 export const MEMORY_CAPABILITY_ID = 'memory'
@@ -47,7 +45,7 @@ export const MEMORY_CONTRACT_VERSION = 2
 export const MEMORY_CAPABILITY_LABEL = 'Memory'
 
 /** One-sentence capability-list description. */
-export const MEMORY_CAPABILITY_DESCRIPTION = 'Session summaries, searchable history, and tiered forgetting'
+export const MEMORY_CAPABILITY_DESCRIPTION = 'Global facts and conventions shared by every workspace'
 
 export { Config } from './config.ts'
 export { resolveConfig } from './config.ts'
@@ -165,27 +163,75 @@ export type {
 export { MEMORY_PROMPT_ORDER, MEMORY_PROMPT_SECTION, MEMORY_PROMPT_SECTION_NAME, MEMORY_PROMPT_TEXT } from './prompt.ts'
 export { appendMemoryNotice } from './notice.ts'
 export type { MemoryNoticeSource } from './notice.ts'
-export type {
-  MemorySummaryFailure,
-  MemorySummaryFailureCode,
-} from './summary.ts'
-export {
-  MEMORY_SUMMARY_ENTRY_MAX_CHARS,
-  MEMORY_SUMMARY_FAILURE_NOTICE,
-  MEMORY_SUMMARY_INPUT_MAX_BYTES,
-  MEMORY_SUMMARY_MAX_ATTEMPTS,
-  memorySummaryFailureNotice,
-  classifySummaryFailure,
-  MEMORY_SUMMARY_JOB_KIND,
-  MEMORY_SUMMARY_JOB_LABEL,
-  MEMORY_SUMMARY_TEXT_MAX_BYTES,
-  MemorySummaryRunner,
-  parseBriefEntries,
-  parseSummaryEntries,
-} from './summary.ts'
-
 export { memoryTools } from './tools.ts'
-export type { MemorySearchItem, MemorySearchValue, TurnFacts } from './tools.ts'
+export {
+  GLOBAL_MEMORY_ARCHIVE_STORE_PATH,
+  GLOBAL_MEMORY_MAX_BYTES,
+  GLOBAL_MEMORY_SEARCH_LIMIT,
+  GLOBAL_MEMORY_STORE_PATH,
+  GLOBAL_MEMORY_TOPICS,
+  GlobalMemoryError,
+  appendGlobalArchive,
+  classifyMemoryText,
+  createGlobalArchiveDocument,
+  createGlobalMemoryDocument,
+  forgetGlobalEntries,
+  globalMemoryEntryId,
+  globalMemoryPath,
+  normalizeEntryText,
+  parseGlobalArchiveDocument,
+  parseGlobalMemoryDocument,
+  readGlobalMemory,
+  readGlobalMemoryArchive,
+  renderGlobalArchiveDocument,
+  renderGlobalMemoryDocument,
+  renderSearchValue,
+  searchGlobalMemory,
+  writeGlobalEntry,
+} from './global-memory.ts'
+export type {
+  GlobalMemoryArchiveDocument,
+  GlobalMemoryArchiveEntry,
+  GlobalMemoryArchiveRead,
+  GlobalMemoryArchiveReason,
+  GlobalMemoryDocument,
+  GlobalMemoryEntry,
+  GlobalMemoryErrorCode,
+  GlobalMemoryForgetFilter,
+  GlobalMemoryForgetResult,
+  GlobalMemoryRead,
+  GlobalMemorySearchItem,
+  GlobalMemorySearchValue,
+  GlobalMemoryTopic,
+  GlobalMemoryWriteInput,
+  GlobalMemoryWriteResult,
+  MemoryClassification,
+  MemoryFactClass,
+} from './global-memory.ts'
+export {
+  MemoryMigrationError,
+  applyMemoryMigration,
+  dryRunMemoryMigration,
+  rollbackMemoryMigration,
+} from './migration.ts'
+export type {
+  MemoryMigrationApplyOptions,
+  MemoryMigrationApplyResult,
+  MemoryMigrationErrorCode,
+  MemoryMigrationOptions,
+  MemoryMigrationReport,
+  MemoryMigrationRollbackOptions,
+  MemoryMigrationRollbackResult,
+  MigrationBackup,
+  MigrationClassCounts,
+  MigrationDisposition,
+  MigrationFile,
+  MigrationFileKind,
+  MigrationSummary,
+  MigrationUnit,
+  MigrationUnitOrigin,
+  MigrationWorkspace,
+} from './migration.ts'
 export {
   MEMORY_COMMAND_NAME,
   MEMORY_COMMAND_USAGE,
@@ -203,51 +249,19 @@ export type {
 /**
  * Register the memory capability with the organizer.
  *
- * Configuration is resolved once per plugin load; a bad window fails the load
- * rather than silently degrading. The organizer owns per-agent wiring and turn
- * filtering, so the contribution only declares what it provides. Tool closures
- * capture this plugin's context, whose `inject` declaration admits the services
- * the tools read; the organizer's runtime context does not declare them.
- *
- * One {@link MemorySummaryRunner} per registration owns the per-session summary
- * jobs. A completed turn starts a job whose failure stays contained to a notice
- * message; the registration signal aborts in-flight work on unload.
- *
- * A root agent receives the static prompt section and the tools only. Memory
- * messages are limited to tier checkpoints at compaction boundaries and
- * summary-failure notices; no memory state is injected at session start or per
- * turn.
- * @param ctx - plugin context carrying the organizer and services.
+ * The contribution is the static prompt section and the three global memory
+ * tools. There is no `onTurnEnd` hook: a completed turn writes no memory entry,
+ * starts no summary job, and appends no memory message. The legacy settings row
+ * is still resolved so an existing deployment whose window or summary pair is
+ * invalid fails the load loudly instead of being silently ignored; those values
+ * no longer reach a live write path.
+ * @param ctx - plugin context carrying the organizer and the store.
  * @param config - raw provider configuration from the Loader row.
- * @throws Error when the window thresholds or summary model pair are invalid,
+ * @throws Error when the legacy window thresholds or summary model pair are invalid,
  *   or when the capability id is already registered.
  */
 export function apply(ctx: Context, config: Config): void {
-  let effective = readSettings(config)
-  // Every consumer reads these getters, so a volatile settings write applies to the next tool
-  // call, summary pass or write without rebuilding the registration or keeping a stale closure.
-  const settings: MemorySettings = Object.freeze({
-    get window() { return effective.window },
-    get summarizationProvider() { return effective.summarizationProvider },
-    get summarizationModel() { return effective.summarizationModel },
-    get maxBytes() { return effective.maxBytes },
-    get maxEntries() { return effective.maxEntries },
-    get openTtlDays() { return effective.openTtlDays },
-    get filesTtlDays() { return effective.filesTtlDays },
-    get supersessionMinSharedTags() { return effective.supersessionMinSharedTags },
-    get summarizeEveryTurns() { return effective.summarizeEveryTurns },
-    get summaryMaxAttempts() { return effective.summaryMaxAttempts },
-    get summaryRetryDelayMs() { return effective.summaryRetryDelayMs },
-  })
-  ctx.on('loader/volatile-update', () => {
-    try {
-      effective = readSettings(config)
-    } catch (error) {
-      // The schema accepted the write; a cross-field rule (detail < brief < forget, provider and
-      // model set together) can still refuse it. Keep the last valid settings and say so.
-      ctx.logger.warn('memory: keeping previous settings after an invalid update: %o', error)
-    }
-  })
+  const effective = readSettings(config)
   const registration = ctx.dafeiyu.register({
     id: MEMORY_CAPABILITY_ID,
     contractVersion: MEMORY_CONTRACT_VERSION,
@@ -255,39 +269,18 @@ export function apply(ctx: Context, config: Config): void {
     description: MEMORY_CAPABILITY_DESCRIPTION,
     settings: { sectionId: MEMORY_SETTINGS_SECTION, order: MEMORY_SETTINGS_ORDER },
     config: effective,
-    create: (runtime: CapabilityRuntime): CapabilityContribution => {
-      const summaries = new MemorySummaryRunner(ctx, settings, runtime.signal)
-      // A session can close without another completed turn; flush its partial summary batch
-      // while the registration signal is still live, then stop observing.
-      const stopFlushOnDispose = ctx.on('session/disposed', (session) => {
-        summaries.flush(String(session.id))
-      })
-      if (runtime.signal.aborted) stopFlushOnDispose()
-      else runtime.signal.addEventListener('abort', stopFlushOnDispose, { once: true })
-      return {
-        scope: 'all',
-        promptSections: (agent: Agent) => (agent.role ?? 'agent') === 'subagent' ? [] : [MEMORY_PROMPT_SECTION],
-        tools: () => memoryTools(ctx, settings),
-        onTurnEnd: (input) => {
-          // The organizer dispatches every turn ending, including aborted, blocked, failed and
-          // token-ceiling turns (dafeiyu's contract). Only a completed turn has a conversation to
-          // summarize; without this filter an aborted turn starts a job that can only fail, and
-          // appends a misleading "Memory summary failed" notice.
-          if (input.event.data.reason.kind !== 'completed') return
-          if ((input.agent.role ?? 'agent') === 'subagent') return
-          validateTurnEnd(input)
-          summaries.onTurnEnd(input)
-        },
-        dispose: () => { summaries.dispose() },
-      }
-    },
+    create: (): CapabilityContribution => ({
+      scope: 'all',
+      promptSections: (agent: Agent) => (agent.role ?? 'agent') === 'subagent' ? [] : [MEMORY_PROMPT_SECTION],
+      tools: () => memoryTools(ctx),
+    }),
   })
   ctx.effect(() => registration, 'memory.register()')
 
-  // `/memory` is a human maintenance surface: it is not gated by the capability switch, so a paused
-  // or broken capability can still be inspected and corrected.
+  // `/memory` is a human maintenance surface: it is not gated by the capability switch, so a
+  // paused or broken capability can still be inspected and corrected.
   ctx.inject(['commands'], (commandCtx) => {
-    ctx.effect(() => registerMemoryCommands(commandCtx, settings), 'memory.commands()')
+    ctx.effect(() => registerMemoryCommands(commandCtx), 'memory.commands()')
   })
 }
 
@@ -327,19 +320,4 @@ function readSettings(config: Config): MemorySettings {
     supersessionMinSharedTags: current(config.supersessionMinSharedTags),
     summarizeEveryTurns: current(config.summarizeEveryTurns),
   })
-}
-
-/**
- * Validate one completed turn before the summary job reads the log.
- *
- * The organizer already filters turn outcomes and resolves the live agent; this
- * checks the one value read from the durable event, so a malformed turn number
- * fails loudly instead of being recorded into MEMORY.md.
- * @param input - the completed turn dispatched by the organizer.
- * @throws Error when the turn number is not a non-negative safe integer.
- */
-function validateTurnEnd(input: TurnEndInput): void {
-  if (!Number.isSafeInteger(input.turn) || input.turn < 0) {
-    throw new Error(`memory: turn/end carried an invalid turn number: ${String(input.turn)}`)
-  }
 }

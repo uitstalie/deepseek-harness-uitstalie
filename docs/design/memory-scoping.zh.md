@@ -2,7 +2,7 @@
 
 [English](memory-scoping.md) | 中文
 
-状态：评审稿；第 0–3 步已实现。第 0 步（超上限归档修复，`3cb8eeaf3d`）、第 1 步（读侧工作区工具集，`cb4cc58385`）、第 2 步（意图卡与任务创建，`9218cf1c73`）与第 3 步（投递改成工具调用、删除每轮记忆注入，即本次改动）已在 `cli-desktop` 上。第 4 步（只留 global 记忆并迁移）尚未开始。JIRA 自己的回合结束报告投递仍在，因为 JIRA 本身仍启用；10.3 节把它记为未收口缺口，而不是已完成。篇幅：不受 12 页上限约束，以内容完整为准；本稿约 14,479 汉字（约 20 页）。
+状态：评审稿；第 0–4 步已实现。第 0 步（超上限归档修复，`3cb8eeaf3d`）、第 1 步（读侧工作区工具集，`cb4cc58385`）、第 2 步（意图卡与任务创建，`9218cf1c73`）、第 3 步（投递改成工具调用、删除每轮记忆注入，`548dc157ba`）与第 4 步（只留 global 记忆并迁移，即本次改动）已在 `cli-desktop` 上。JIRA 自己的回合结束报告投递仍在，因为 JIRA 本身仍启用；10.3 节把它记为未收口缺口，而不是已完成。旧的按工作区记忆读取器、它的清理与窗口模块，以及 `memory` 设置行作为迁移兼容面保留；它们不是活的写入或注入路径，12.1 节记录这一点。篇幅：不受 12 页上限约束，以内容完整为准；本稿约 14,479 汉字（约 20 页）。
 
 ## 1. 背景与问题
 
@@ -145,7 +145,7 @@
 | 消息 | 消息 id、目标会话、正文、类型（消息或追问）、投递状态、回执、产物引用 | 会话 inbox 与消息日志 |
 | 产物引用 | 产物 id、工作区、路径、sha256、大小、版本、类型、会话 id、任务 id、创建时间、摘要 | 工作区产物索引 |
 
-工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。第 3 步之后的当前状态：工作区工具集在 `$DSH_HOME/workspaces/<workspace-id>/` 下写任务、回执、消息、产物引用与意图卡；`workspace_message.send` 是它唯一的出站投递路径，`workspace_artifacts.publish`/`reference` 是它唯一的引用路径。消息或任务引用在发送时保存产物 id、版本与 SHA-256；文件本身仍在工作区里。super agent 的 `superagent_control start` 在启动会话之前就写下这条任务，派发账本 `.superagent/ledger` 是同一条任务、同一个 task id 的投影，而不是第二份任务列表；它的追加式历史与报告日志仍然可读。卡缺失、proposed、stale、属于别的工区，或 brief 漏掉卡上的点，都在派发入口被拒绝。跨工作区消息对普通 agent 拒绝，只有 super agent 显式给出目标工作区 id 才能发送，且调用会留痕。JIRA 本身仍启用，因为移除是后续步骤；在配置了 `superagent_home` 时，它的 superagent 报告路径仍会在回合结束时投递报告，10.3 节把它记为唯一剩下的回合结束投递路径。账本的手工 `record` 回退仍只是兼容路径，不是派发事实源。
+工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。第 4 步之后的当前状态：记忆就是 4.1 节的全局存储——`$DSH_HOME/memory/GLOBAL.md`、它的 `GLOBAL.archive.md`，除此之外没有别的。没有工作区记忆条目被写入或注入：每轮摘要作业已移除，旧的按工作区文件只由一次性迁移与旧文件读取器读取。工作区工具集在 `$DSH_HOME/workspaces/<workspace-id>/` 下写任务、回执、消息、产物引用与意图卡；`workspace_message.send` 是它唯一的出站投递路径，`workspace_artifacts.publish`/`reference` 是它唯一的引用路径。消息或任务引用在发送时保存产物 id、版本与 SHA-256；文件本身仍在工作区里。super agent 的 `superagent_control start` 在启动会话之前就写下这条任务，派发账本 `.superagent/ledger` 是同一条任务、同一个 task id 的投影，而不是第二份任务列表；它的追加式历史与报告日志仍然可读。卡缺失、proposed、stale、属于别的工区，或 brief 漏掉卡上的点，都在派发入口被拒绝。跨工作区消息对普通 agent 拒绝，只有 super agent 显式给出目标工作区 id 才能发送，且调用会留痕。JIRA 本身仍启用，因为移除是后续步骤；在配置了 `superagent_home` 时，它的 superagent 报告路径仍会在回合结束时投递报告，10.3 节把它记为唯一剩下的回合结束投递路径。账本的手工 `record` 回退仍只是兼容路径，不是派发事实源。
 
 意图卡是工作区记录，不是记忆条目。一张卡只属于一个工作区。跨工作区请求会在每个目标工作区各建一张卡，每张卡都逐字保留用户原话。卡随工作区工具集状态存放：`$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/`（`index.json`、`versions/<n>.json`），不在宿主全局意图存储里。版本是追加式的；旧版本被 supersede 后仍可读。
 
@@ -476,7 +476,7 @@ Step 0 已在 `3cb8eeaf3d` 合并，独立于本设计的其余部分。`pruneSe
 | `business` | 分析结论、设备或镜像、生产版本或 HEAD、代码路径或 commit、测试结果、报告内容、工作区配置 | 归档，永不注入；如需指针，指针放在任务或账本里，不放在记忆里 |
 | `unclassified` | 无来源会话、无 turn、归属无法判定 | 归档，进报告清单，永不注入，不猜 |
 
-dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因，以及如有需要的指针目标。global 候选单独列出，供人确认。应用需要报告哈希，先写备份，先归档再写活动文件，并可通过还原备份回滚。
+dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因、字节数，以及目标路径。global 候选单独列出，供人确认。报告自身的 SHA-256 哈希就是确认令牌：`--apply <哈希>` 会重新扫描，哈希不再匹配就拒绝，因此不能在报告读完之后文件又变了的情况下应用。应用会在第一次写入之前给每个被改文件写备份，在重写活动文件之前追加迁移归档记录，把每条已处理条目记入日志，使重复 dry-run 收敛，并可用 `--rollback <run-id>` 回滚。重写后的活动文件保持版本 1 格式，旧解析器仍能读，代码回滚后也仍可读。人类使用的命令是 `packages/uitstalie/memory/scripts/migrate-global-memory.ts`，背后的模块是 `packages/uitstalie/memory/src/migration.ts`。
 
 每个工作区的记忆文件都按同一套规则迁移；普通会话不是特例。它的文件同样得到报告、备份、先归档再写、以及回滚。
 
@@ -492,7 +492,7 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 | 3 | 投递改成工具调用，并在同一版本删除洪水：`workspace_message.send`、产物发布/引用、静态提示词，且不再有快照、更新通知、跨会话索引、回合结束投递 | 消息与引用能往返；重试不重复；一个 turn 不发就什么都不投递；普通会话每轮记忆消息数为 0、字节数为 0；“上一轮做了什么”由 `workspace_sessions` 回答 |
 | 4 | 记忆变为只留 global，并迁移旧条目 | 业务或派发写入被拒并给出工具提示；产出 dry-run 报告；只有确认过的 global 条目仍被注入；备份与回滚已验证 |
 
-已完成：第 0–3 步。第 3 步交付了 `workspace_message.send`、产物 `publish`/`reference`、静态工作区目录，并删除了记忆快照、`memory-state` 段、“Memory updated”通知与跨会话索引。一个不发 send 的 turn 不会经工作区工具集投递任何东西：唯一会调用宿主会话控制器的路径是 `workspace_message.send`。未开始：第 4 步、产物的 `request`/`grant`，以及删除 JIRA 自己的回合结束报告投递（见 10.3 节）。
+已完成：第 0–4 步。第 3 步交付了 `workspace_message.send`、产物 `publish`/`reference`、静态工作区目录，并删除了记忆快照、`memory-state` 段、“Memory updated”通知与跨会话索引。一个不发 send 的 turn 不会经工作区工具集投递任何东西：唯一会调用宿主会话控制器的路径是 `workspace_message.send`。第 4 步交付了只留全局的存储（`$DSH_HOME/memory/GLOBAL.md` 与 `GLOBAL.archive.md`）、三件工具（`memory_write`、`memory_forget`、`memory_search`）、带工具指针的 `NOT_GLOBAL_MEMORY` 拒绝、每轮摘要作业的移除，以及带备份、日志与回滚的报告哈希迁移。`memory_resolve`、工作区摘要类命令、实时 TTL 清理与跨会话索引都已从模型面与人类面消失。未开始：产物的 `request`/`grant`，以及删除 JIRA 自己的回合结束报告投递（见 10.3 节）。
 
 每一步都可独立上线、可回滚。第 0 步先合。第 1 到 4 步不依赖看板方向。
 
@@ -524,7 +524,8 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 - 跨工作区授权：显式工作区 id、注册表成员校验、调用留痕。跨工作区消息对普通 agent 拒绝，只允许 super agent。拉先查接收方，推先查发送方；不做隐式聚合。
 - 丢失上下文压缩：compaction 预置太激进会丢上下文；把它做成可配置，用长会话测试，并保留上一版值以便回滚。
 - 确认通道：旧路径已移除；新链路有截止时间与可见状态，链路断开标为 failed，不静默挂起。
-- 迁移误分类：dry-run、人工确认、备份、回滚；被误归档的 global 事实可以重新加回。
+- 迁移误分类：dry-run 逐条列出候选的类别、原因、主题、字节数与目标；apply 拒绝过期的报告哈希；备份让错误迁移可逆，日志让重复 dry-run 收敛。被误归档的 global 事实可以重新加回，代码回滚后仍能解析重写过的版本 1 文件。
+- 旧记忆外壳：按工作区的 `MEMORY.md` 读取器（`memory-file.ts`）、它的清理、窗口与 checkpoint 模块，以及 `memory` 设置行作为旧文件与迁移的兼容代码保留。它们没有活的写入或注入路径；等迁移在部署数据上跑过再删除。JIRA 的提示词仍写着旧的 `memory_write` 参数；那段文字随 JIRA 退役处理，不属于本步。
 - 所有会话的爆炸半径：提示词或工具集的缺陷现在会波及普通会话。第 3 步按“先工具集、再切静态提示词与删注入”的顺序上线，并保留上一版提示词作为一版构建期回滚。零注入回归测试就是门禁：只要有一轮记忆消息被追加，构建自己的测试就会红。
 - JIRA 的回合结束投递仍在：唯一存活的隐式出站路径是 jira-agent 的派发报告投递，在配置了 `superagent_home` 时生效。第 3 步的投递工具不依赖它，工作区工具集也没有路径调用它，但删除它要等 JIRA 退役。在那之前两条路径并存，“不发 send 就不投递”只对工作区工具集成立。这是未收口缺口，不能当成已完成。
 
@@ -657,18 +658,20 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 
 | 能力 | 今天解决的问题 | 还需要吗？ | 新归属 / 替代 | 动作 |
 |---|---|---|---|---|
-| 写入 | 记录任何持久结论，包括业务事实 | 只留全局事实与约定 | `memory_write` 只写 global | 改造 |
-| 检索 | 搜记忆条目与会话历史 | 只搜记忆 | `memory_search`；会话检索是 `session_search` | 改造 |
-| 读取 | 把某一轮会话读成转录 | 不要 | `session_event_read`、`workspace_sessions` | 删除 |
-| 忘记 | 按会话、turn、kind、tag 遗忘 | 只处理 global | `memory_forget` 去掉会话过滤 | 改造 |
-| 归档 | 让被移除的条目仍可搜 | 只留 global | 全局归档；业务历史留在工作区 | 改造 |
-| TTL 与过期 | `open`/`files` 3/14 天过期 | 不要 | 随 dispatch 命名空间删除 | 删除 |
-| 快照注入 | 每轮记忆快照 | 不要 | 静态提示词 + 工具查询 | 删除 |
-| 摘要生成 | 写每轮业务条目 | 不写记忆条目 | 只做 compaction 摘要，不做记忆 | 改造 |
-| 跨会话索引 | “Recent sessions” 概要 | 不要 | `workspace_sessions` | 删除 |
-| 全局与个人偏好共享 | 把跨工作区事实与画像/风格混在一起 | 拆开 | 全局记忆放事实；personality 放画像与风格 | 改造 |
+| 写入 | 记录任何持久结论，包括业务事实 | 只留全局事实与约定 | `memory_write` 只写 global | 已实现：只收五个 global 主题；业务、派发与 persona 文本以 `NOT_GLOBAL_MEMORY` 加工具提示拒绝 |
+| 检索 | 搜记忆条目与会话历史 | 只搜记忆 | `memory_search`；会话检索是 `session_search` | 已实现：只搜 `GLOBAL.md` 与 `GLOBAL.archive.md` |
+| 读取 | 把某一轮会话读成转录 | 不要 | `session_event_read`、`workspace_sessions` | 已实现：工具集中不存在 |
+| 忘记 | 按会话、turn、kind、tag 遗忘 | 只处理 global | `memory_forget` 去掉会话过滤 | 已实现：只按 `topic` 或 `entryId` |
+| 归档 | 让被移除的条目仍可搜 | 只留 global | 全局归档；业务历史留在工作区 | 已实现：`GLOBAL.archive.md`；工作区归档只是旧数据 |
+| TTL 与过期 | `open`/`files` 3/14 天过期 | 不要 | 随 dispatch 命名空间删除 | 删除：没有活的路径；旧读取器只为解析旧文件保留该规则 |
+| 快照注入 | 每轮记忆快照 | 不要 | 静态提示词 + 工具查询 | 已实现：已删除；注入面为空 |
+| 摘要生成 | 写每轮业务条目 | 不写记忆条目 | 只做 compaction 摘要，不做记忆 | 已实现：每轮摘要作业已移除 |
+| 跨会话索引 | “Recent sessions” 概要 | 不要 | `workspace_sessions` | 已实现：随快照在 `548dc157ba` 中删除 |
+| 全局与个人偏好共享 | 把跨工作区事实与画像/风格混在一起 | 拆开 | 全局记忆放事实；personality 放画像与风格 | 已实现：画像与风格归 `personality_apply` / `write_like_human` |
 
 意图卡不是记忆能力；它是工作区记录，永不进入全局记忆存储。
+
+第 4 步之后的实现状态：每一行都按 Action 列所述实现。注入面为空，所以没有任何记忆条目——global 或旧工作区——被注入；已确认的 global 条目只能通过 `memory_search` 读取。10.3 节点名的旧模块为迁移与旧文件解析而保留，`memory` 设置行保留但暂不生效，直到旧外壳删除。
 
 ### 12.2 super agent 能力
 
@@ -691,9 +694,9 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 
 看板是以后可能出现的界面。它的数据来自工作区工具集：`workspace_sessions`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`；`workspace_intents` 提供派发上下文，记忆只贡献全局事实。记忆卡片流、按工作区的记忆索引、事件日志存储都明确不在范围内；如果看板以后需要，那是在同一套工具集上的新设计，不是对记忆模型的修改。意图卡是工作区记录，不是记忆。
 
-## 14. 第 3 步的部署验收
+## 14. 第 3 步与第 4 步的部署验收
 
-本节没有任何一项已经在部署后的 Windows 主机上验过。它给的是明天同步这个分支、部署、继续工作的人用的清单。**CI** 表示本分支的自动化套件已经覆盖该项；**Deploy** 表示必须由真实进程、真实会话或运行中的 GUI 确认，测试套件证明不了。不要只凭测试套件勾选 **Deploy** 项，也不要在勾选之前汇报“第 3 步已部署验收”。
+本节没有任何一项已经在部署后的 Windows 主机上验过。它给的是明天同步这个分支、部署、继续工作的人用的清单。**CI** 表示本分支的自动化套件已经覆盖该项；**Deploy** 表示必须由真实进程、真实会话或运行中的 GUI 确认，或必须在真实 `$DSH_HOME` 与真实工作区上执行，测试套件证明不了。不要只凭测试套件勾选 **Deploy** 项，也不要在勾选之前汇报“第 3–4 步已部署验收”。
 
 自动化的一半是 `pnpm exec vitest run packages/uitstalie/memory packages/uitstalie/workspace-tools`。
 
@@ -704,7 +707,7 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 - [ ] 在已有 `MEMORY.md` 的工作区里恢复会话，不会收到快照。CI：`a resumed session is not injected with a memory snapshot`。Deploy：在 `MEMORY.md` 已有条目的工作区打开一个会话。
 - [ ] 写入后不出现“Memory updated”消息，完成的 turn 后不出现“Memory snapshot”消息。CI：两者都断言不存在。Deploy：在 GUI 里做一次写入、完成一个 turn。
 
-摘要**失败**仍会追加一条 `form: 'notice'` 消息并写明错误码；那是一次性错误报告，不是每轮注入。如果看到它，请读摘要作业日志，不要把它当成注入回归。
+每轮摘要作业已移除，所以不再追加摘要失败通知。如果仍看到 `form: 'notice'` 的记忆消息，那是残留代码路径，应当按注入回归处理。
 
 ### 14.2 只有工具能投递
 
@@ -720,6 +723,16 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 
 - [ ] 如果配置了 `superagent_home`，JIRA 派发仍会经 jira-agent 的回合结束路径报告。第 3 步**没有**删除它：JIRA 仍启用，它的退役是后续步骤（见 10.3 节）。CI：没有删除断言；既有 JIRA 套件仍通过。Deploy：确认该部署是否使用 JIRA superagent。如果使用，记录 14.2 的“不发 send 就不投递”只对工作区工具集成立，并且不要把回合结束投递的删除汇报为已完成。
 
-### 14.4 CI 证明不了的部分
+### 14.4 第 4 步：只留 global 记忆并迁移
 
-- 真实 Windows 部署、GUI、进程重启与恢复，以及真实的多工作区注册表都在套件之外。上面标 **Deploy** 的项就是人工门禁；在部署主机上勾选之前，它们保持未勾选。
+- [ ] dry-run 报告逐文件逐条列出类别、建议主题、原因、字节数与目标路径，并且不写任何记忆数据。CI：`the dry run reports files, entries, classes, bytes, and the target without writing data`（`packages/uitstalie/memory/tests/migration.spec.ts`）。Deploy：对每个已注册工作区运行 `migrate-global-memory.ts --workspace <dir> ...`，确认 `$DSH_HOME/memory` 未被改动。
+- [ ] apply 拒绝与最新扫描不符的报告哈希，拒绝时不写任何东西。CI：`apply refuses a report hash from another scan`。Deploy：用过期哈希重试 apply。
+- [ ] 每个被改文件在第一次写入之前都有备份，回滚能还原完全相同的字节；旧 `MEMORY.md` 在 apply 前、apply 后与回滚后都能解析。CI：`apply migrates only confirmed global entries, backs up every changed file, and keeps old files parseable`、`rollback restores the exact original bytes and makes the first report reproducible`。Deploy：检查 `$DSH_HOME/memory/migration/runs/<run-id>/`，在一个真实工作区的副本上 apply 再回滚。
+- [ ] `$DSH_HOME/memory/GLOBAL.md` 只含已确认的 global 条目；业务、派发、persona 与无法判定的文本不在其中，并在报告里列为已丢弃。CI：同一 apply spec。Deploy：真实 apply 后读全局文件。
+- [ ] 注入面不含任何记忆条目：在旧 `MEMORY.md` 与已写入的 `GLOBAL.md` 同时存在时，会话收不到任何记忆来源的消息，也没有 `memory-state` 段。CI：`neither a legacy workspace file nor the global file is injected per turn`（`packages/uitstalie/memory/tests/provider.spec.ts`）。Deploy：打开一个会话检查提示词与日志。
+- [ ] 业务写入以 `NOT_GLOBAL_MEMORY` 加工具提示拒绝，完成的 turn 不写任何记忆条目。CI：`a business write is refused with the workspace tool hints`、`a completed turn writes no memory job, no MEMORY.md, and no memory message`。Deploy：用业务事实调用 `memory_write`，再完成一个 turn。
+
+### 14.5 CI 证明不了的部分
+
+- 真实 Windows 部署、GUI、进程重启与恢复、真实的多工作区注册表，以及真实记忆文件都在套件之外。上面标 **Deploy** 的项就是人工门禁；在部署主机上勾选之前，它们保持未勾选。
+- 迁移故意不在 CI 里对真实数据运行。它的报告、备份与回滚只在临时 `$DSH_HOME` 与临时工作区上验证；真实 apply 仍是需要人确认的一步，不是自动部署动作。
