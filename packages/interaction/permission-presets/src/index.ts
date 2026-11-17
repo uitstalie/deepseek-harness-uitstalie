@@ -8,6 +8,9 @@
  * check; settings defaults remain limited to the configured table. The read
  * side exposes a process catalog plus the `permissions` Session projection with the effective
  * preset, sandbox mode, and approval policy; the write side ships as the `/permission` command.
+ * The Session log is the source of truth: the initial default pin is marked
+ * `source: 'default'`, while an explicit switch leaves the source absent, so
+ * `hasExplicitSelection()` lets later enforcement keep a user's choice.
  *
  * @module dsh-permission-presets
  */
@@ -50,9 +53,11 @@ declare module '@deepseek-ai/dsh-session/types' {
      * Records the selected preset as durable, log-only user intent. The knob
      * events follow in the same turn and control execution; this event stays
      * out of the model transcript and lets the permission projection unit
-     * preserve a selection when bundles match.
+     * preserve a selection when bundles match. `source: 'default'` marks the
+     * deployment default pinned when a Session is created; an absent source is
+     * an explicit selection and outranks every later default or enforcement.
      */
-    'permission/preset': { preset: string; reason?: string }
+    'permission/preset': { preset: string; reason?: string; source?: 'default' }
   }
 }
 
@@ -104,6 +109,12 @@ export interface KnobState {
 interface PermissionProjectionState extends KnobState {
   /** Whether the log contains a constructor-seed boundary. */
   seeded: boolean
+  /**
+   * Whether any event records a choice other than the deployment default:
+   * an explicit user switch, a configured enforcement, or a delegated policy.
+   * False only while every knob event is the initial `source: 'default'` pin.
+   */
+  explicit: boolean
 }
 
 const permissionStateSchema: zod.ZodType<PermissionProjectionState> = zod.object({
@@ -118,6 +129,7 @@ const permissionStateSchema: zod.ZodType<PermissionProjectionState> = zod.object
   ]).nullable(),
   approval: zod.union([zod.literal('ask'), zod.literal('never')]).nullable(),
   seeded: zod.boolean(),
+  explicit: zod.boolean(),
 }).strict()
 
 /** State for the empty log: every knob at its composition default. */
@@ -136,11 +148,23 @@ function applyPermissionEvent(
 ): PermissionProjectionState {
   switch (event.type) {
     case 'permission/preset':
-      return { ...state, preset: event.data.preset }
+      return {
+        ...state,
+        preset: event.data.preset,
+        explicit: state.explicit || event.data.source !== 'default',
+      }
     case 'sandbox/mode':
-      return { ...state, sandbox: event.data.mode }
+      return {
+        ...state,
+        sandbox: event.data.mode,
+        explicit: state.explicit || event.data.source !== 'default',
+      }
     case 'approval/policy':
-      return { ...state, approval: event.data.policy }
+      return {
+        ...state,
+        approval: event.data.policy,
+        explicit: state.explicit || event.data.source !== 'default',
+      }
     case 'session/end-seed':
       return { ...state, seeded: true }
     default:
@@ -259,9 +283,9 @@ export class PermissionPresetService extends TypertRemoteService {
     }) as zod.ZodType<PermissionSelection>
     this.permissionProjectionHandle = await ctx.sessionProjections.register({
       key: 'permissions',
-      stateVersion: 2,
+      stateVersion: 3,
       stateSchema: permissionStateSchema,
-      init: () => ({ ...EMPTY_KNOBS, seeded: false }),
+      init: () => ({ ...EMPTY_KNOBS, seeded: false, explicit: false }),
       apply: applyPermissionEvent,
       wire: { viewSchema: selectionSchema, view: (state) => {
         const sandboxMode = state.sandbox ?? this.ctx.shell.sandboxMode as SandboxMode
@@ -383,6 +407,20 @@ export class PermissionPresetService extends TypertRemoteService {
     }
   }
 
+  /**
+   * Whether the Session log records a permission choice rather than only the
+   * deployment default pinned at creation. The Session log is the source of
+   * truth: once this is true, the current preset/knobs were chosen explicitly
+   * (or enforced by a configured policy) and a later default, resume, rewire,
+   * or reconnect must not replace them. Only the initial pin writes
+   * `source: 'default'` events; every other writer leaves the source absent.
+   * @param session - the Session whose permission provenance is read.
+   * @returns true when an explicit selection exists.
+   */
+  hasExplicitSelection(session: Session): boolean {
+    return this.permissionState(session).explicit
+  }
+
   /** Resolve the preset for one folded knob state (the shared mathematics of `current` and the projection unit). */
   private derive(state: KnobState): string {
     const sandbox = state.sandbox ?? this.ctx.shell.sandboxMode
@@ -499,10 +537,12 @@ export class PermissionPresetService extends TypertRemoteService {
    * Fill every missing permission fact during Agent creation. A
    * genuinely fresh session uses the current user default; seeded or partially
    * initialized sessions preserve their effective knob values and only gain
-   * the missing durable facts. A stored Auto identity requires its live
-   * integration and passes its admission check before
-   * creation completes. Creation while the permission reader is still registering
-   * fails so the publishing caller can roll back.
+   * the missing durable facts. Every fact written here is marked
+   * `source: 'default'`, so `hasExplicitSelection()` stays false and a
+   * configured enforcement may still replace the inherited bundle. A stored
+   * Auto identity requires its live integration and passes its admission check
+   * before creation completes. Creation while the permission reader is still
+   * registering fails so the publishing caller can roll back.
    */
   private pinInitialPermission(session: Session): void {
     const state = this.permissionState(session)
@@ -516,22 +556,27 @@ export class PermissionPresetService extends TypertRemoteService {
     if (preset === null && sandbox === null && approval === null && !seeded) {
       const name = this.defaultPreset
       const spec = this.resolve(name)
-      session.append('permission/preset', { preset: name })
-      setSandboxMode(session, spec.sandbox)
-      setApprovalPolicy(session, spec.approval)
+      this.appendDefault(session, name, spec)
       return
     }
 
     const effective = this.derive(state)
     if (preset === null && effective !== CUSTOM_PRESET) {
-      session.append('permission/preset', { preset: effective })
+      session.append('permission/preset', { preset: effective, source: 'default' })
     }
     if (sandbox === null) {
-      setSandboxMode(session, this.ctx.shell.sandboxMode as SandboxMode)
+      setSandboxMode(session, this.ctx.shell.sandboxMode as SandboxMode, 'default')
     }
     if (approval === null) {
-      setApprovalPolicy(session, this.ctx.approval.config.policy ?? 'ask')
+      setApprovalPolicy(session, this.ctx.approval.config.policy ?? 'ask', 'default')
     }
+  }
+
+  /** Pin the deployment default with its provenance, so no later enforcement treats it as a user choice. */
+  private appendDefault(session: Session, name: string, spec: PresetSpec): void {
+    session.append('permission/preset', { preset: name, source: 'default' })
+    setSandboxMode(session, spec.sandbox, 'default')
+    setApprovalPolicy(session, spec.approval, 'default')
   }
 
   /** Publish a non-vetoing payload-free catalog invalidation. */

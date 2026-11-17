@@ -16,6 +16,7 @@ import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
 import PermissionPresetService from '@deepseek-ai/dsh-permission-presets'
 import ToolPolicyService from '@deepseek-ai/dsh-tool-policy'
 import { applySessionPermission } from '../src/superagent-permission.ts'
+import { enforceSuperAgentPermission } from '../src/superagent.ts'
 import { testAgent } from '../src/testing/host.ts'
 
 async function fixture(soft: boolean) {
@@ -104,14 +105,44 @@ void describe('superagent permission integration', { concurrency: false }, () =>
       assert.equal(await readFile(f.outside, 'utf8'), 'probe')
       const events = f.target.session.snapshotEvents().filter(event => event.type === 'permission/preset' || event.type === 'sandbox/mode')
       assert.deepEqual(events.map(event => [event.type, event.data]), [
-        ['permission/preset', { preset: 'workspace-write' }],
-        ['sandbox/mode', { mode: 'workspace-write' }],
+        ['permission/preset', { preset: 'workspace-write', source: 'default' }],
+        ['sandbox/mode', { mode: 'workspace-write', source: 'default' }],
         ['permission/preset', { preset: 'read-only' }],
         ['sandbox/mode', { mode: 'read-only' }],
         ['permission/preset', { preset: 'danger-full-access', reason: 'integration needs an outside probe' }],
         ['sandbox/mode', { mode: 'danger-full-access' }],
       ])
       assert.equal((await applySessionPermission(f.permissionCtx, f.controller, 'w1', f.target.id, 'soft', 'must refuse')).error?.includes('unavailable'), true)
+    } finally {
+      f.restoreHome?.()
+      await f.ctx.fiber.dispose()
+      await rm(f.root, { recursive: true, force: true })
+    }
+  })
+
+  void it('keeps an explicit user choice when the super-agent preset is re-applied after a reload', async () => {
+    const f = await fixture(false)
+    try {
+      // First wiring of a fresh super Session applies the configured preset.
+      assert.equal(enforceSuperAgentPermission(f.permissionCtx, f.target, f.workspace, 'workspace-write'), true)
+      assert.equal(f.ctx.permissionPresets.current(f.target.session), 'workspace-write')
+      assert.equal(f.ctx.permissionPresets.hasExplicitSelection(f.target.session), false)
+
+      // The person switches the current Session to full access.
+      const applied = await applySessionPermission(
+        f.permissionCtx, f.controller, 'w1', f.target.id, 'danger-full-access', 'the person chose full access',
+      )
+      assert.equal(applied.error, undefined, applied.error)
+      assert.equal(f.ctx.permissionPresets.current(f.target.session), 'danger-full-access')
+      assert.equal(f.ctx.permissionPresets.hasExplicitSelection(f.target.session), true)
+
+      // A resume/reload re-runs agent wiring with the same configured preset;
+      // the explicit choice must survive unchanged (no appended event).
+      const before = f.target.session.snapshotEvents().length
+      assert.equal(enforceSuperAgentPermission(f.permissionCtx, f.target, f.workspace, 'workspace-write'), false)
+      assert.equal(f.ctx.permissionPresets.current(f.target.session), 'danger-full-access')
+      assert.equal(f.ctx.sandboxPolicy.resolve({ session: f.target.session }).mode, 'danger-full-access')
+      assert.equal(f.target.session.snapshotEvents().length, before)
     } finally {
       f.restoreHome?.()
       await f.ctx.fiber.dispose()

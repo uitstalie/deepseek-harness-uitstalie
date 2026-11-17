@@ -63,6 +63,8 @@ kind: "package-reference"
 
 `permission` 设置命名空间为未来会话持有 `defaultPreset`，且只接受配置预设。创建 Agent 时读取它，将其应用于 Session 的沙箱模式与审批策略，并把应用的预设记录为一次 `permission/preset` 选择。之后的设置变更绝不会改变现有会话。恢复的 seed（包括由 `session/end-seed` 明确标记的空 seed）会保留其有效权限，并只接收缺失的持久事实，而不会接收最新用户默认值；持久化的 `auto` 身份在发布前必须存在 live Auto 注册并通过准入。
 
+Session 日志是该 Session 权限的唯一事实来源。首次部署默认值在写入三个 knob 事件时都带 `source: 'default'`；任何显式切换（`/permission` 命令、输入框控件或其它已授权写入方）都不带 source。`hasExplicitSelection(session)` 暴露这一区分：配置的强制预设只能在 Session 仍继承默认值时生效，而在重启恢复、重连、插件重载后都必须保留用户的显式选择。
+
 -----
 
 <a id="understand-the-implementation"></a>

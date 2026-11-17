@@ -30,12 +30,14 @@ declare module '@deepseek-ai/dsh-session/types' {
      * NOT a surface event, carries no `surfaceOp`): durable and replayable,
      * never in the model transcript. The LAST such event is the session's
      * override (folded by the sandboxMode projection unit). `source: 'delegation'` marks
-     * an override seeded into a child; an absent source is a runtime switch.
+     * an override seeded into a child, `source: 'default'` marks the initial
+     * deployment default pinned at Session creation, and an absent source is a
+     * runtime switch or an explicit user choice.
      */
     'sandbox/mode': {
       mode: SandboxMode
-      /** Marks an override seeded into a child at delegation. */
-      source?: 'delegation'
+      /** Marks where the value came from; an absent source is an explicit switch. */
+      source?: 'delegation' | 'default'
     }
   }
 }
@@ -60,9 +62,16 @@ export const SANDBOX_MODES: readonly SandboxMode[] = [
  * @param session - the session the override belongs to.
  * @param mode - the mode every subsequent confined call in this session runs
  *   under (until the next switch).
+ * @param source - provenance marker: `'default'` for the initial deployment
+ *   value pinned at creation, `'delegation'` for an inherited child value;
+ *   omitted for an explicit runtime/user switch.
  */
-export function setSandboxMode(session: Session, mode: SandboxMode): void {
+export function setSandboxMode(
+  session: Session,
+  mode: SandboxMode,
+  source?: 'delegation' | 'default',
+): void {
   // uitstalie-deepseek-flash, 2026/11/06, DH-902, home-write disabled: refuse the write path, not just the read path
   assertSandboxModeEnabled(mode)
-  session.append('sandbox/mode', { mode })
+  session.append('sandbox/mode', { mode, ...source === undefined ? {} : { source } })
 }

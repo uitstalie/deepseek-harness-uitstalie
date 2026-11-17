@@ -42,7 +42,7 @@ export function assertReleasedPayloadSemantics(event: SessionFormatEvent, versio
       return
     case 'approval/policy':
       literalValue(data['policy'], ['ask', 'never'], `${label} policy`)
-      if (data['source'] !== undefined) literalValue(data['source'], ['delegation'], `${label} source`)
+      if (data['source'] !== undefined) literalValue(data['source'], ['delegation', 'default'], `${label} source`)
       return
     case 'assistant/chunk':
       coordinatePair(data, label)
@@ -150,6 +150,7 @@ export function assertReleasedPayloadSemantics(event: SessionFormatEvent, versio
     case 'permission/preset':
       nonEmptyString(data['preset'], `${label} preset`)
       if (data['reason'] !== undefined) nonEmptyString(data['reason'], `${label} reason`)
+      if (data['source'] !== undefined) literalValue(data['source'], ['default'], `${label} source`)
       return
     case 'plan/mode':
       booleanValue(data['active'], `${label} active`)
@@ -166,7 +167,7 @@ export function assertReleasedPayloadSemantics(event: SessionFormatEvent, versio
       return
     case 'sandbox/mode':
       literalValue(data['mode'], ['read-only', 'workspace-write', 'danger-full-access'], `${label} mode`)
-      if (data['source'] !== undefined) literalValue(data['source'], ['delegation'], `${label} source`)
+      if (data['source'] !== undefined) literalValue(data['source'], ['delegation', 'default'], `${label} source`)
       return
     case 'schedule/change':
       scheduleChangeValue(data, label)

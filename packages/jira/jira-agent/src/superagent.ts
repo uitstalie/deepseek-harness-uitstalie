@@ -500,12 +500,17 @@ export const pinWorkspaceFirst = async (
 }
 
 /**
- * Force the super agent onto a fixed permission preset.
+ * Force the super agent onto a fixed permission preset while its Session still
+ * inherits the deployment default.
  *
- * The super agent owns a checkout, so its sandbox must stay the workspace-write bundle: a session
- * that opened with a looser (or custom) bundle would otherwise be able to write outside that
- * checkout. The host's preset service is duck-typed (decision 108), so a deployment without one
- * keeps its own defaults instead of failing to mount.
+ * The super agent owns a checkout, so a Session that opened with a looser (or
+ * custom) bundle must not be able to write outside that checkout. The Session
+ * log is the source of truth for an explicit permission choice: after the user
+ * (or another authorized writer) selects a preset, this function leaves it
+ * alone. Re-running the wiring after a resume, reconnect, or capability reload
+ * therefore cannot undo that choice. The host's preset service is duck-typed
+ * (decision 108), so a deployment without one keeps its own defaults instead
+ * of failing to mount.
  * @param ctx - the plugin context, duck-typed.
  * @param agent - the agent being wired.
  * @param homePath - the configured super workspace path.
@@ -522,10 +527,17 @@ export const enforceSuperAgentPermission = (
   if (preset === undefined || preset.trim() === '') return false
   if (!isSuperAgentSession(agent, homePath)) return false
   const service = (ctx as { get?: (key: string) => unknown } | undefined)?.get?.('permissionPresets') as
-    | { set?: (session: unknown, name: string) => void }
+    | {
+      set?: (session: unknown, name: string) => void
+      hasExplicitSelection?: (session: unknown) => boolean
+    }
     | undefined
   if (service === undefined || typeof service.set !== 'function') return false
-  service.set((agent as { session: unknown }).session, preset)
+  const session = (agent as { session: unknown }).session
+  // A Session that already carries an explicit selection outranks the
+  // configured preset; only a Session still on its pinned default is forced.
+  if (service.hasExplicitSelection?.(session) === true) return false
+  service.set(session, preset)
   return true
 }
 

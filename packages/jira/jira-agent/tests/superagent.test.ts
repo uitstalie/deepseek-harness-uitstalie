@@ -3335,15 +3335,25 @@ void describe('superagent: the super workspace', () => {
     const home = join(dir, 'super-agent')
     const agentCtx = new Context()
     const calls: { session: unknown; preset: string }[] = []
+    let explicit = false
     const permissionCtx = {
       get: (key: string) => key === 'permissionPresets'
-        ? { set: (session: unknown, preset: string) => { calls.push({ session, preset }) } }
+        ? {
+          set: (session: unknown, preset: string) => { calls.push({ session, preset }) },
+          hasExplicitSelection: () => explicit,
+        }
         : undefined,
     }
     const superAgent = testAgent(agentCtx, 'super-perm', { cwd: home })
     assert.equal(enforceSuperAgentPermission(permissionCtx, superAgent, home, 'workspace-write'), true)
     assert.equal(calls.length, 1)
     assert.equal(calls[0]?.preset, 'workspace-write')
+    // After an explicit user switch the same wiring runs again (a resume,
+    // reconnect, or capability reload) but must not replace the choice.
+    explicit = true
+    assert.equal(enforceSuperAgentPermission(permissionCtx, superAgent, home, 'workspace-write'), false)
+    assert.equal(calls.length, 1)
+    explicit = false
     assert.equal(enforceSuperAgentPermission(permissionCtx, superAgent, home, undefined), false)
     const other = testAgent(agentCtx, 'main-perm', { cwd: dir })
     assert.equal(enforceSuperAgentPermission(permissionCtx, other, home, 'workspace-write'), false)

@@ -35,13 +35,14 @@ declare module '@deepseek-ai/dsh-session/types' {
      * replayable, never in the model transcript (the model learns the policy
      * from the runtime-context snapshot and live switch notices). The LAST
      * such event is the session's override.
-     * `source: 'delegation'` marks an override seeded into a child; an absent
-     * source is a runtime switch.
+     * `source: 'delegation'` marks an override seeded into a child,
+     * `source: 'default'` marks the initial deployment default pinned at
+     * Session creation; an absent source is an explicit runtime switch.
      */
     'approval/policy': {
       policy: ApprovalPolicy
-      /** Marks an override seeded into a child at delegation. */
-      source?: 'delegation'
+      /** Marks where the value came from; an absent source is an explicit switch. */
+      source?: 'delegation' | 'default'
     }
   }
 }
@@ -113,12 +114,19 @@ const approvalStateDefinition = {
  * values throw before the log changes; projected state follows the committed record.
  * @param session - the session the override belongs to.
  * @param policy - the policy in effect until the next switch.
+ * @param source - provenance marker: `'default'` for the initial deployment
+ *   value pinned at creation, `'delegation'` for an inherited child value;
+ *   omitted for an explicit runtime/user switch.
  */
-export function setApprovalPolicy(session: Session, policy: ApprovalPolicy): void {
+export function setApprovalPolicy(
+  session: Session,
+  policy: ApprovalPolicy,
+  source?: 'delegation' | 'default',
+): void {
   if (!APPROVAL_POLICIES.includes(policy)) {
     throw new TypeError('approval policy must be one of "ask" or "never"')
   }
-  session.append('approval/policy', { policy })
+  session.append('approval/policy', { policy, ...source === undefined ? {} : { source } })
 }
 
 /**

@@ -373,7 +373,7 @@ describe('web e2e: settings modal and General preferences', () => {
     }
     const existing = await createSession('settings-permission-before')
     expect(existing.snapshotEvents().find(event => event.type === 'permission/preset')?.data)
-      .toEqual({ preset: 'workspace-write' })
+      .toEqual({ preset: 'workspace-write', source: 'default' })
 
     await openSettings(page, 'zh')
     const dialog = page.getByRole('dialog', { name: '设置' })
@@ -389,13 +389,13 @@ describe('web e2e: settings modal and General preferences', () => {
     expect(document).toContain('id: permission')
     expect(document).toContain('defaultPreset: read-only')
     expect(existing.snapshotEvents().find(event => event.type === 'permission/preset')?.data)
-      .toEqual({ preset: 'workspace-write' })
+      .toEqual({ preset: 'workspace-write', source: 'default' })
 
     const created = await createSession('settings-permission-after')
     expect(created.snapshotEvents().map(event => [event.type, event.data])).toEqual([
-      ['permission/preset', { preset: 'read-only' }],
-      ['sandbox/mode', { mode: 'read-only' }],
-      ['approval/policy', { policy: 'ask' }],
+      ['permission/preset', { preset: 'read-only', source: 'default' }],
+      ['sandbox/mode', { mode: 'read-only', source: 'default' }],
+      ['approval/policy', { policy: 'ask', source: 'default' }],
     ])
 
     await dialog.getByRole('button', { name: '仅可查看' }).click()
@@ -410,9 +410,9 @@ describe('web e2e: settings modal and General preferences', () => {
     expect(confirmedDocument).toContain('defaultPreset: danger-full-access')
     const confirmed = await createSession('settings-permission-confirmed')
     expect(confirmed.snapshotEvents().map(event => [event.type, event.data])).toEqual([
-      ['permission/preset', { preset: 'danger-full-access' }],
-      ['sandbox/mode', { mode: 'danger-full-access' }],
-      ['approval/policy', { policy: 'never' }],
+      ['permission/preset', { preset: 'danger-full-access', source: 'default' }],
+      ['sandbox/mode', { mode: 'danger-full-access', source: 'default' }],
+      ['approval/policy', { policy: 'never', source: 'default' }],
     ])
     await page.keyboard.press('Escape')
     expect(tripwire.pageErrors).toEqual([])

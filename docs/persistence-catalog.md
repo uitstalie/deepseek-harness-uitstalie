@@ -27,7 +27,7 @@ The [format references](persistence-changes/historical-formats/README.md) cover 
 | `event:agent/tool-pair-repair` | event | `7ab7de380dbbfd80b119c13e12f543b21bad8902bec175b64045120486463a11` | [`{ type: "agent/tool-pair-repair" }`](#persistence-type-sha256-7ab7de380dbbfd80b119c13e12f543b21bad8902bec175b64045120486463a11) |
 | `event:approval/asked` | event | `3bfeb47b58606f4661904bc723da612782214c463d01e6d61cd6d6193d7374e1` | [`{ type: "approval/asked" }`](#persistence-type-sha256-3bfeb47b58606f4661904bc723da612782214c463d01e6d61cd6d6193d7374e1) |
 | `event:approval/decided` | event | `bb1ab3d08f49a9f3b265f844cd78d5c49813062a7b34b54904b426f85d0ff6e3` | [`{ type: "approval/decided" }`](#persistence-type-sha256-bb1ab3d08f49a9f3b265f844cd78d5c49813062a7b34b54904b426f85d0ff6e3) |
-| `event:approval/policy` | event | `26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78` | [`{ type: "approval/policy" }`](#persistence-type-sha256-26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78) |
+| `event:approval/policy` | event | `73349dced99b57f91fd4211c18cc59ba23bba84005eb208f41e77cf0c7062c5b` | [`{ type: "approval/policy" }`](#persistence-type-sha256-73349dced99b57f91fd4211c18cc59ba23bba84005eb208f41e77cf0c7062c5b) |
 | `event:assistant/attempt` | event | `15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4` | [`{ type: "assistant/attempt" }`](#persistence-type-sha256-15d5dfdd822aa35e115afd74a8982825a493880457774e6850bc1520b50875e4) |
 | `event:assistant/message` | event | `1033093edd0db80ff410e00830b523405e00bb0c7684948e531ff65095799625` | [`{ type: "assistant/message" }`](#persistence-type-sha256-1033093edd0db80ff410e00830b523405e00bb0c7684948e531ff65095799625) |
 | `event:command/done` | event | `15196447222782e773eb943c92b18316ce96b9af0f0cfddb6e57ba8274ecc5ff` | [`{ type: "command/done" }`](#persistence-type-sha256-15196447222782e773eb943c92b18316ce96b9af0f0cfddb6e57ba8274ecc5ff) |
@@ -50,11 +50,11 @@ The [format references](persistence-changes/historical-formats/README.md) cover 
 | `event:llm/retry` | event | `525254db03b1d1e6b74cf55aced52817568331ac1f96c0818728910b6692e336` | [`{ type: "llm/retry" }`](#persistence-type-sha256-525254db03b1d1e6b74cf55aced52817568331ac1f96c0818728910b6692e336) |
 | `event:llm/retry-started` | event | `48e5c9861f16ac07e78cb7b5ae9dabdf7bb85c58baed5a51b4ad275050ea58e3` | [`{ type: "llm/retry-started" }`](#persistence-type-sha256-48e5c9861f16ac07e78cb7b5ae9dabdf7bb85c58baed5a51b4ad275050ea58e3) |
 | `event:model/selection` | event | `35203ba7ad5ef6f97d556b85df20ae98f04f09c65748cecdf8eefdb8b6405ffc` | [`{ type: "model/selection" }`](#persistence-type-sha256-35203ba7ad5ef6f97d556b85df20ae98f04f09c65748cecdf8eefdb8b6405ffc) |
-| `event:permission/preset` | event | `295ea4c6e3feae9b4105020ce65beeadfb73966a5eeb219068fb2ca7a88d911c` | [`{ type: "permission/preset" }`](#persistence-type-sha256-295ea4c6e3feae9b4105020ce65beeadfb73966a5eeb219068fb2ca7a88d911c) |
+| `event:permission/preset` | event | `c2226c57463f6d1d3f5e0ba7ca0cfcc73c50f74d3a569e739365c4c84f904bf7` | [`{ type: "permission/preset" }`](#persistence-type-sha256-c2226c57463f6d1d3f5e0ba7ca0cfcc73c50f74d3a569e739365c4c84f904bf7) |
 | `event:plan/mode` | event | `a7cf43ce7c2a4c038feed1885cd7a00d5c6ee2d90a7e0d56b46f78a3e1ca327f` | [`{ type: "plan/mode" }`](#persistence-type-sha256-a7cf43ce7c2a4c038feed1885cd7a00d5c6ee2d90a7e0d56b46f78a3e1ca327f) |
 | `event:request/context` | event | `37cbc9cf06d494cfe5c67f078af1605eacb8e4c2c853e9e26455b73de0ee7ccf` | [`{ type: "request/context" }`](#persistence-type-sha256-37cbc9cf06d494cfe5c67f078af1605eacb8e4c2c853e9e26455b73de0ee7ccf) |
 | `event:request/header` | event | `4208123b50df5006b181481ab45fcf1cde807b88d3fd4d340090bc2e202fac41` | [`{ type: "request/header" }`](#persistence-type-sha256-4208123b50df5006b181481ab45fcf1cde807b88d3fd4d340090bc2e202fac41) |
-| `event:sandbox/mode` | event | `ea63d9bf9f597888b0e1a1e4166b4e807d56b14283576616de583195eed51ace` | [`{ type: "sandbox/mode" }`](#persistence-type-sha256-ea63d9bf9f597888b0e1a1e4166b4e807d56b14283576616de583195eed51ace) |
+| `event:sandbox/mode` | event | `bd6efcf593852e821aaf7b53f208610640fbfb652faf2a40a3b01e96816eda38` | [`{ type: "sandbox/mode" }`](#persistence-type-sha256-bd6efcf593852e821aaf7b53f208610640fbfb652faf2a40a3b01e96816eda38) |
 | `event:schedule/change` | event | `a0a2e5c42e1c929445ecd1cd70f49be6b66441894ec72c08e8ae332821d4a3cb` | [`{ type: "schedule/change" }`](#persistence-type-sha256-a0a2e5c42e1c929445ecd1cd70f49be6b66441894ec72c08e8ae332821d4a3cb) |
 | `event:session-log-deepseek/delivery-accepted` | event | `d63b8b8ffad9c02fd80c43a17df4f240c1fe8118ecca9de34f9d5871838ab5b9` | [`{ type: "session-log-deepseek/delivery-accepted" }`](#persistence-type-sha256-d63b8b8ffad9c02fd80c43a17df4f240c1fe8118ecca9de34f9d5871838ab5b9) |
 | `event:session/end-seed` | event | `5e6db6e24948d4a853c71cb9fabd252ad051ce93d4672c1266cf837c1c17b84e` | [`{ type: "session/end-seed" }`](#persistence-type-sha256-5e6db6e24948d4a853c71cb9fabd252ad051ce93d4672c1266cf837c1c17b84e) |
@@ -183,7 +183,7 @@ Sources: [`packages/core/session/src/types.ts:439`](../packages/core/session/src
 }
 ```
 
-Source: [`packages/core/agent/src/types.ts:113`](../packages/core/agent/src/types.ts)
+Source: [`packages/core/agent/src/types.ts:116`](../packages/core/agent/src/types.ts)
 
 <a id="agenttool-pair-repair--log-only"></a>
 
@@ -285,17 +285,18 @@ Source: [`packages/interaction/user-approval/src/types.ts:55`](../packages/inter
  * replayable, never in the model transcript (the model learns the policy
  * from the runtime-context snapshot and live switch notices). The LAST
  * such event is the session's override.
- * `source: 'delegation'` marks an override seeded into a child; an absent
- * source is a runtime switch.
+ * `source: 'delegation'` marks an override seeded into a child,
+ * `source: 'default'` marks the initial deployment default pinned at
+ * Session creation; an absent source is an explicit runtime switch.
  */
 'approval/policy': {
   policy: ApprovalPolicy
-  /** Marks an override seeded into a child at delegation. */
-  source?: 'delegation'
+  /** Marks where the value came from; an absent source is an explicit switch. */
+  source?: 'delegation' | 'default'
 }
 ```
 
-Source: [`packages/interaction/user-approval/src/index.ts:41`](../packages/interaction/user-approval/src/index.ts)
+Source: [`packages/interaction/user-approval/src/index.ts:42`](../packages/interaction/user-approval/src/index.ts)
 
 ### `assistant/*`
 
@@ -722,7 +723,7 @@ Source: [`packages/llm/llm-retry/src/types.ts:11`](../packages/llm/llm-retry/src
 'model/selection': ModelSelection
 ```
 
-Source: [`packages/core/agent/src/types.ts:124`](../packages/core/agent/src/types.ts)
+Source: [`packages/core/agent/src/types.ts:127`](../packages/core/agent/src/types.ts)
 
 ### `permission/*`
 
@@ -735,12 +736,14 @@ Source: [`packages/core/agent/src/types.ts:124`](../packages/core/agent/src/type
  * Records the selected preset as durable, log-only user intent. The knob
  * events follow in the same turn and control execution; this event stays
  * out of the model transcript and lets the permission projection unit
- * preserve a selection when bundles match.
+ * preserve a selection when bundles match. `source: 'default'` marks the
+ * deployment default pinned when a Session is created; an absent source is
+ * an explicit selection and outranks every later default or enforcement.
  */
-'permission/preset': { preset: string; reason?: string }
+'permission/preset': { preset: string; reason?: string; source?: 'default' }
 ```
 
-Source: [`packages/interaction/permission-presets/src/index.ts:55`](../packages/interaction/permission-presets/src/index.ts)
+Source: [`packages/interaction/permission-presets/src/index.ts:60`](../packages/interaction/permission-presets/src/index.ts)
 
 ### `plan/*`
 
@@ -808,16 +811,18 @@ Source: [`packages/core/session/src/types.ts:398`](../packages/core/session/src/
  * NOT a surface event, carries no `surfaceOp`): durable and replayable,
  * never in the model transcript. The LAST such event is the session's
  * override (folded by the sandboxMode projection unit). `source: 'delegation'` marks
- * an override seeded into a child; an absent source is a runtime switch.
+ * an override seeded into a child, `source: 'default'` marks the initial
+ * deployment default pinned at Session creation, and an absent source is a
+ * runtime switch or an explicit user choice.
  */
 'sandbox/mode': {
   mode: SandboxMode
-  /** Marks an override seeded into a child at delegation. */
-  source?: 'delegation'
+  /** Marks where the value came from; an absent source is an explicit switch. */
+  source?: 'delegation' | 'default'
 }
 ```
 
-Source: [`packages/sandbox/sandbox-policy/src/session-mode.ts:35`](../packages/sandbox/sandbox-policy/src/session-mode.ts)
+Source: [`packages/sandbox/sandbox-policy/src/session-mode.ts:37`](../packages/sandbox/sandbox-policy/src/session-mode.ts)
 
 ### `schedule/*`
 
@@ -1757,6 +1762,14 @@ SHA-256: `7624ca28c61ca0eaa4f015140f3cea6e0c16cce2f2960fab5f531203d253903e`
 SHA-256: `18fce9540bb20897a66275499faee6b8296c97e9901fa1ff45a191772448ad1a`
 
 `"danger-full-access"`
+
+<a id="persistence-type-sha256-d66ba5eb62ddba9fc264067c47d1152ca3bd8c2bdf2ededb66695e04ab588550"></a>
+
+### `"default"`
+
+SHA-256: `d66ba5eb62ddba9fc264067c47d1152ca3bd8c2bdf2ededb66695e04ab588550`
+
+`"default"`
 
 <a id="persistence-type-sha256-76632533f67879dcb346fcae640540dbc89b2472b0bce88c59f7e48fc5c0e668"></a>
 
@@ -3314,7 +3327,7 @@ One of:
 
 SHA-256: `05d2ae1e0c7f8770f83f9a09047afb39a335d8ac986df3193659aa1e581472cf`
 
-Sources: [`packages/interaction/user-approval/src/index.ts:68`](../packages/interaction/user-approval/src/index.ts)
+Sources: [`packages/interaction/user-approval/src/index.ts:69`](../packages/interaction/user-approval/src/index.ts)
 
 One of:
 
@@ -3961,7 +3974,7 @@ Array of [`ImageOffloadTarget`](#persistence-type-sha256-1cde1bedde79c5e8a56aee9
 
 SHA-256: `96f4a9c81fc0f940ef71528a8cc66731ae4cf1f40d79680c5fe3c39f96d7723c`
 
-Sources: [`packages/core/agent/src/types.ts:43`](../packages/core/agent/src/types.ts)
+Sources: [`packages/core/agent/src/types.ts:46`](../packages/core/agent/src/types.ts)
 
 One of:
 
@@ -4601,7 +4614,7 @@ Sources: [`packages/llm/llm/src/message.ts:24`](../packages/llm/llm/src/message.
 
 SHA-256: `f09e5e7acf5ff5ccd193ff2eeec015fa2ff7c29d98bc465f8c3302058d47e29b`
 
-Sources: [`packages/core/agent/src/types.ts:82`](../packages/core/agent/src/types.ts)
+Sources: [`packages/core/agent/src/types.ts:85`](../packages/core/agent/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|
@@ -5925,6 +5938,17 @@ SHA-256: `b993441f8ce7d27b80e619e113e232ae8e62d3d5a8340f6bfe12d8c4c018e62f`
 |---|---|---|
 | 0 | required | [`{ role: "user" }`](#persistence-type-sha256-9a2a9029f8d7ede05336980d8342737557f487b913bfd28853d0ab5214600ab5) |
 
+<a id="persistence-type-sha256-06b254393db7f8e38569e5dd508b43e79e9574af8871195b24b83b4fb30902db"></a>
+
+### `union (2 variants)`
+
+SHA-256: `06b254393db7f8e38569e5dd508b43e79e9574af8871195b24b83b4fb30902db`
+
+One of:
+
+- `"default"`
+- `"delegation"`
+
 <a id="persistence-type-sha256-1ab2ef1296f157ba96998f179bb5daa9d21a82480da2901127aeab2730797c92"></a>
 
 ### `union (2 variants)`
@@ -6783,7 +6807,7 @@ Sources: [`packages/core/session/src/types.ts:435`](../packages/core/session/src
 
 SHA-256: `fea7d490e9754ea8831043888e2a386acb79460ad6332fbdb431501b925cd6eb`
 
-Sources: [`packages/core/agent/src/types.ts:113`](../packages/core/agent/src/types.ts)
+Sources: [`packages/core/agent/src/types.ts:116`](../packages/core/agent/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|
@@ -8354,44 +8378,45 @@ Sources: [`packages/team/agent-team/src/types.ts:185`](../packages/team/agent-te
 | `teamId` | required | `string` |
 | `version` | required | `2` |
 
-<a id="persistence-type-sha256-e692ca347f0e72a5a49d1435abeae0f7bbd233ce8a427136577068b5c608ee38"></a>
+<a id="persistence-type-sha256-bc25971ed042ab02c79bf422d6799fc8bfda0dbffbc621a357eb21f1014aef76"></a>
 
 ### `{ mode, source? }`
 
-SHA-256: `e692ca347f0e72a5a49d1435abeae0f7bbd233ce8a427136577068b5c608ee38`
+SHA-256: `bc25971ed042ab02c79bf422d6799fc8bfda0dbffbc621a357eb21f1014aef76`
 
-Sources: [`packages/sandbox/sandbox-policy/src/session-mode.ts:35`](../packages/sandbox/sandbox-policy/src/session-mode.ts)
+Sources: [`packages/sandbox/sandbox-policy/src/session-mode.ts:37`](../packages/sandbox/sandbox-policy/src/session-mode.ts)
 
 | Property | Presence | Type |
 |---|---|---|
 | `mode` | required | [`SandboxMode`](#persistence-type-sha256-1edf8cc2457bc1b08d0da6487ecb32b4d20d5852b2e7f54528a352e144c38d0c) |
-| `source` | optional | `"delegation"` |
+| `source` | optional | [`union (2 variants)`](#persistence-type-sha256-06b254393db7f8e38569e5dd508b43e79e9574af8871195b24b83b4fb30902db) |
 
-<a id="persistence-type-sha256-11f70b595aa76897fc4e25a352bfa718c659f44b799e5aa14e84e5a38fe72912"></a>
+<a id="persistence-type-sha256-16d54c4ce84a0cc9b8a906b4594a92fb96163f7e7526beaa7016fb916c896b5b"></a>
 
 ### `{ policy, source? }`
 
-SHA-256: `11f70b595aa76897fc4e25a352bfa718c659f44b799e5aa14e84e5a38fe72912`
+SHA-256: `16d54c4ce84a0cc9b8a906b4594a92fb96163f7e7526beaa7016fb916c896b5b`
 
-Sources: [`packages/interaction/user-approval/src/index.ts:41`](../packages/interaction/user-approval/src/index.ts)
+Sources: [`packages/interaction/user-approval/src/index.ts:42`](../packages/interaction/user-approval/src/index.ts)
 
 | Property | Presence | Type |
 |---|---|---|
 | `policy` | required | [`ApprovalPolicy`](#persistence-type-sha256-05d2ae1e0c7f8770f83f9a09047afb39a335d8ac986df3193659aa1e581472cf) |
-| `source` | optional | `"delegation"` |
+| `source` | optional | [`union (2 variants)`](#persistence-type-sha256-06b254393db7f8e38569e5dd508b43e79e9574af8871195b24b83b4fb30902db) |
 
-<a id="persistence-type-sha256-ca800ecc1d5f0fbe6d09d8dddbbf2ccf063acdd298fc4c3fc832917b3d2e5a47"></a>
+<a id="persistence-type-sha256-012ae60a492457bf5ffd4ee55e0e2e1d433838999fdc6f9928975bc1815748c0"></a>
 
-### `{ preset, reason? }`
+### `{ preset, reason?, source? }`
 
-SHA-256: `ca800ecc1d5f0fbe6d09d8dddbbf2ccf063acdd298fc4c3fc832917b3d2e5a47`
+SHA-256: `012ae60a492457bf5ffd4ee55e0e2e1d433838999fdc6f9928975bc1815748c0`
 
-Sources: [`packages/interaction/permission-presets/src/index.ts:55`](../packages/interaction/permission-presets/src/index.ts)
+Sources: [`packages/interaction/permission-presets/src/index.ts:60`](../packages/interaction/permission-presets/src/index.ts)
 
 | Property | Presence | Type |
 |---|---|---|
 | `preset` | required | `string` |
 | `reason` | optional | `string` |
+| `source` | optional | `"default"` |
 
 <a id="persistence-type-sha256-e481c46af3813e0010558e93f578b2986acd658404cec2d1679e3ac2a6c48654"></a>
 
@@ -8618,17 +8643,17 @@ SHA-256: `bb1ab3d08f49a9f3b265f844cd78d5c49813062a7b34b54904b426f85d0ff6e3`
 | `time` | required | `number` |
 | `type` | required | `"approval/decided"` |
 
-<a id="persistence-type-sha256-26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78"></a>
+<a id="persistence-type-sha256-73349dced99b57f91fd4211c18cc59ba23bba84005eb208f41e77cf0c7062c5b"></a>
 
 <a id="persistence-type-eventapprovalpolicy"></a>
 
 ### `{ type: "approval/policy" }`
 
-SHA-256: `26718e15e7e395bce9642dba5bbe09b3b1a4ce2213d20d566cd9207d7fc5fb78`
+SHA-256: `73349dced99b57f91fd4211c18cc59ba23bba84005eb208f41e77cf0c7062c5b`
 
 | Property | Presence | Type |
 |---|---|---|
-| `data` | required | [`{ policy, source? }`](#persistence-type-sha256-11f70b595aa76897fc4e25a352bfa718c659f44b799e5aa14e84e5a38fe72912) |
+| `data` | required | [`{ policy, source? }`](#persistence-type-sha256-16d54c4ce84a0cc9b8a906b4594a92fb96163f7e7526beaa7016fb916c896b5b) |
 | `ignorable` | optional | `true` |
 | `seq` | required | `number` |
 | `time` | required | `number` |
@@ -9057,17 +9082,17 @@ SHA-256: `35203ba7ad5ef6f97d556b85df20ae98f04f09c65748cecdf8eefdb8b6405ffc`
 | `time` | required | `number` |
 | `type` | required | `"model/selection"` |
 
-<a id="persistence-type-sha256-295ea4c6e3feae9b4105020ce65beeadfb73966a5eeb219068fb2ca7a88d911c"></a>
+<a id="persistence-type-sha256-c2226c57463f6d1d3f5e0ba7ca0cfcc73c50f74d3a569e739365c4c84f904bf7"></a>
 
 <a id="persistence-type-eventpermissionpreset"></a>
 
 ### `{ type: "permission/preset" }`
 
-SHA-256: `295ea4c6e3feae9b4105020ce65beeadfb73966a5eeb219068fb2ca7a88d911c`
+SHA-256: `c2226c57463f6d1d3f5e0ba7ca0cfcc73c50f74d3a569e739365c4c84f904bf7`
 
 | Property | Presence | Type |
 |---|---|---|
-| `data` | required | [`{ preset, reason? }`](#persistence-type-sha256-ca800ecc1d5f0fbe6d09d8dddbbf2ccf063acdd298fc4c3fc832917b3d2e5a47) |
+| `data` | required | [`{ preset, reason?, source? }`](#persistence-type-sha256-012ae60a492457bf5ffd4ee55e0e2e1d433838999fdc6f9928975bc1815748c0) |
 | `ignorable` | optional | `true` |
 | `seq` | required | `number` |
 | `time` | required | `number` |
@@ -9151,17 +9176,17 @@ SHA-256: `4208123b50df5006b181481ab45fcf1cde807b88d3fd4d340090bc2e202fac41`
 | `time` | required | `number` |
 | `type` | required | `"request/header"` |
 
-<a id="persistence-type-sha256-ea63d9bf9f597888b0e1a1e4166b4e807d56b14283576616de583195eed51ace"></a>
+<a id="persistence-type-sha256-bd6efcf593852e821aaf7b53f208610640fbfb652faf2a40a3b01e96816eda38"></a>
 
 <a id="persistence-type-eventsandboxmode"></a>
 
 ### `{ type: "sandbox/mode" }`
 
-SHA-256: `ea63d9bf9f597888b0e1a1e4166b4e807d56b14283576616de583195eed51ace`
+SHA-256: `bd6efcf593852e821aaf7b53f208610640fbfb652faf2a40a3b01e96816eda38`
 
 | Property | Presence | Type |
 |---|---|---|
-| `data` | required | [`{ mode, source? }`](#persistence-type-sha256-e692ca347f0e72a5a49d1435abeae0f7bbd233ce8a427136577068b5c608ee38) |
+| `data` | required | [`{ mode, source? }`](#persistence-type-sha256-bc25971ed042ab02c79bf422d6799fc8bfda0dbffbc621a357eb21f1014aef76) |
 | `ignorable` | optional | `true` |
 | `seq` | required | `number` |
 | `time` | required | `number` |

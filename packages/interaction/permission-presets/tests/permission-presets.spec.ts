@@ -402,9 +402,9 @@ describe('new-session default', () => {
       ['permission/preset', 'sandbox/mode', 'approval/policy'],
     ])
     expect(first.snapshotEvents().map(event => [event.type, event.data])).toEqual([
-      ['permission/preset', { preset: 'workspace-write' }],
-      ['sandbox/mode', { mode: 'workspace-write' }],
-      ['approval/policy', { policy: 'ask' }],
+      ['permission/preset', { preset: 'workspace-write', source: 'default' }],
+      ['sandbox/mode', { mode: 'workspace-write', source: 'default' }],
+      ['approval/policy', { policy: 'ask', source: 'default' }],
     ])
 
     await configurations.get(ctx)!.update({
@@ -492,6 +492,54 @@ describe('new-session default', () => {
       'sandbox/mode', 'approval/policy',
     ])
     expect(ctx.permissionPresets.current(existing)).toBe(CUSTOM_PRESET)
+  })
+
+  it('distinguishes the pinned deployment default from an explicit user selection', async () => {
+    const ctx = await mountedStore()
+    const session = (await ctx.agents.create({ sessionId: SessionId('permission-provenance') })).agent.session
+    // The initial pin records where its values came from, so it is not an explicit choice.
+    expect(ctx.permissionPresets.hasExplicitSelection(session)).toBe(false)
+    expect(session.snapshotEvents().map(event => event.data)).toEqual([
+      { preset: 'workspace-write', source: 'default' },
+      { mode: 'workspace-write', source: 'default' },
+      { policy: 'ask', source: 'default' },
+    ])
+
+    // The user command / composer switch writes the same events without a
+    // source: that selection now outranks every deployment default.
+    ctx.permissionPresets.set(session, 'danger-full-access')
+    expect(ctx.permissionPresets.hasExplicitSelection(session)).toBe(true)
+    expect(session.snapshotEvents().slice(-3).map(event => [event.type, event.data])).toEqual([
+      ['permission/preset', { preset: 'danger-full-access' }],
+      ['sandbox/mode', { mode: 'danger-full-access' }],
+      ['approval/policy', { policy: 'never' }],
+    ])
+  })
+
+  it('preserves an explicit preset when the service mounts over an existing session', async () => {
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await mountAgentLoopTestDependencies(ctx)
+    await mountAgentLoopTestHarness(ctx)
+    ctx.provide('shell', {
+      sandboxMode: 'workspace-write',
+      resolve() { throw new Error('permission tests do not execute bash') },
+      run() { throw new Error('permission tests do not execute bash') },
+      start() { throw new Error('permission tests do not execute bash') },
+    })
+    ctx.provide('approval', { config: { policy: 'ask' } })
+    const existing = (await ctx.agents.create({ sessionId: SessionId('existing-explicit') })).agent.session
+    // The durable shape a previous mount left after the user switched preset.
+    existing.append('permission/preset', { preset: 'danger-full-access' })
+    existing.append('sandbox/mode', { mode: 'danger-full-access' })
+    existing.append('approval/policy', { policy: 'never' })
+
+    configurations.set(ctx, await liveConfig(ctx, PermissionPresetService))
+    expect(existing.snapshotEvents().map(event => event.type)).toEqual([
+      'permission/preset', 'sandbox/mode', 'approval/policy',
+    ])
+    expect(ctx.permissionPresets.current(existing)).toBe('danger-full-access')
+    expect(ctx.permissionPresets.hasExplicitSelection(existing)).toBe(true)
   })
 
   it('fills only missing legacy facts and preserves an unmatched seeded combination', async () => {
