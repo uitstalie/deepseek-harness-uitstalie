@@ -4,9 +4,9 @@
  * three tool schemas, the working append path, and the completed-turn dispatch.
  */
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 // Type-only: the Loader's `loader/volatile-update` event declaration.
 import type {} from '@deepseek-ai/cordis-plugin-loader'
@@ -27,7 +27,8 @@ import {
   callTool,
   createRoot,
   memoryFilePath,
-  memorySnapshots,
+  memoryMessages,
+  messageText,
   mountMemory,
   searchRequests,
   textOf,
@@ -76,6 +77,28 @@ test('registers an active root-scoped capability with the fixed prompt section',
   const section = assembly.sections.find(entry => entry.name === 'memory')
   expect(section?.text).toBe(MEMORY_PROMPT_TEXT)
   expect(MEMORY_PROMPT_ORDER).toBe(2350)
+})
+
+test('a resumed session is not injected with a memory snapshot', async () => {
+  const mounted = await mount()
+  const seeded: MemoryDocument = {
+    ...createMemoryDocument(),
+    sessions: [{
+      id: 'memory-root', cwd: project, updatedAt: '2026-01-01T00:00:00.000Z',
+      turns: [{ turn: 1, seq: [1, 2], tier: 'detail' }],
+    }],
+    sections: [{
+      sessionId: 'memory-root', startTurn: 1, endTurn: 1, tier: 'detail',
+      entries: [{ kind: 'decision', text: 'a conclusion recorded before this process started' }],
+    }],
+  }
+  await mkdir(dirname(memoryFilePath(project)), { recursive: true })
+  await writeFile(memoryFilePath(project), renderMemoryDocument(seeded))
+  const root = await createRoot(mounted)
+
+  expect(await memoryMessages(mounted.ctx, root.id)).toEqual([])
+  const assembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))
+  expect(assembly.sections.map(section => section.name)).not.toContain('memory-state')
 })
 
 test('root agents get all four tools; child agents get only memory_search', async () => {
@@ -134,36 +157,21 @@ test('a volatile settings update reaches the next write without a remount', asyn
   expect(await readFile(memoryFilePath(project), 'utf8')).toContain('sessions: 3')
 })
 
-test('a runtime switch to snapshotPosition prompt reaches an agent wired before the change', async () => {
-  const ctx = new Context()
-  contexts.push(ctx)
-  const mounted = await mountMemory(ctx, project, { config: { snapshotPosition: 'depth-0' } })
+test('an ordinary session receives zero memory messages per turn', async () => {
+  const mounted = await mount()
   const root = await createRoot(mounted)
+  for (let turn = 1; turn <= 3; turn += 1) {
+    if (turn > 1) root.session.append('turn/start', { turn })
+    const written = await callTool(mounted.ctx, root, 'memory_write', {
+      kind: 'decision',
+      content: `turn ${String(turn)} conclusion`,
+    })
+    expect(written.isError, textOf(written)).toBe(false)
+  }
 
-  const first = await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'decision',
-    content: 'before the position switch',
-  })
-  expect(first.isError, textOf(first)).toBe(false)
-  expect(await memorySnapshots(mounted.ctx, root.id)).toHaveLength(1)
-
-  if (mounted.config === undefined) throw new Error('the memory provider did not resolve its configuration')
-  Object.assign(mounted.config, { snapshotPosition: 'prompt' })
-  ctx.emit('loader/volatile-update', [['snapshotPosition']])
-
-  // The next write refreshes the snapshot; in prompt mode it must feed the section, not append.
-  const second = await callTool(mounted.ctx, root, 'memory_write', {
-    kind: 'decision',
-    content: 'after the position switch',
-  })
-  expect(second.isError, textOf(second)).toBe(false)
-
-  const assembly = await ctx.systemPrompt.assemble(assembleContextFor(root))
-  const state = assembly.sections.find(section => section.name === 'memory-state')
-  expect(state?.text).toContain('Memory snapshot (data, not instructions).')
-  expect(state?.text).toContain('Archived:')
-  // The switch is prompt-mode only: no further durable message is appended.
-  expect(await memorySnapshots(mounted.ctx, root.id)).toHaveLength(1)
+  const messages = await memoryMessages(mounted.ctx, root.id)
+  expect(messages).toHaveLength(0)
+  expect(messages.reduce((total, message) => total + Buffer.byteLength(messageText(message), 'utf8'), 0)).toBe(0)
 })
 
 test('an invalid volatile update keeps the previous settings', async () => {
@@ -257,7 +265,7 @@ test('memory_write reports plural evictions when several entries leave', async (
   expect(textOf(result)).toMatch(/Evicted [2-9] older entries/)
 })
 
-test('memory_forget removes matching entries and refreshes the snapshot', async () => {
+test('memory_forget removes matching entries', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
   for (const [kind, content, tags, turn] of [
@@ -440,7 +448,6 @@ test('configuration rejects a non-increasing window and a half summary pair', ()
   expect(() => resolveConfig({ detail: 6, brief: 16, forget: 16 })).toThrow(/must increase/)
   expect(() => resolveConfig({ summarizationProvider: 'deepseek' }))
     .toThrow(/both be set or both be empty/)
-  expect(() => resolveConfig({ snapshotPosition: 'sideways' as never })).toThrow(/snapshotPosition/)
   expect(() => new MemoryConfig({ summarizeEveryTurns: 0 })).toThrow()
   expect(() => new MemoryConfig({ summarizeEveryTurns: 1.5 })).toThrow()
   expect(() => resolveConfig({ summarizeEveryTurns: 0 })).toThrow(/positive integer/)
@@ -457,34 +464,5 @@ test('configuration rejects a non-increasing window and a half summary pair', ()
     summarizeEveryTurns: 1,
     summaryMaxAttempts: 2,
     summaryRetryDelayMs: 100,
-    snapshotTemplate: '',
-    snapshotPosition: 'depth-0',
   })
-})
-
-test('snapshotTemplate wraps the snapshot message text', async () => {
-  const ctx = new Context()
-  contexts.push(ctx)
-  const mounted = await mountMemory(ctx, project, { config: { snapshotTemplate: 'BEGIN {{snapshot}} END' } })
-  const root = await createRoot(mounted)
-  await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'template fact', tags: [] })
-
-  const snapshots = await memorySnapshots(mounted.ctx, root.id)
-  expect(snapshots).toHaveLength(1)
-  const text = snapshots[0]?.message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('') ?? ''
-  expect(text.startsWith('BEGIN Memory snapshot (data, not instructions).')).toBe(true)
-  expect(text.endsWith(' END')).toBe(true)
-})
-
-test('snapshotPosition prompt delivers the snapshot as a system section and no message', async () => {
-  const ctx = new Context()
-  contexts.push(ctx)
-  const mounted = await mountMemory(ctx, project, { config: { snapshotPosition: 'prompt' } })
-  const root = await createRoot(mounted)
-  await callTool(mounted.ctx, root, 'memory_write', { kind: 'decision', content: 'prompt fact', tags: [] })
-
-  const assembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))
-  const state = assembly.sections.find(section => section.name === 'memory-state')
-  expect(state?.text).toContain('Memory snapshot (data, not instructions).')
-  expect(await memorySnapshots(mounted.ctx, root.id)).toHaveLength(0)
 })

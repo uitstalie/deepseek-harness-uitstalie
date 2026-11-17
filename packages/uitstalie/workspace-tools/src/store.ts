@@ -100,6 +100,7 @@ const messageSchema = z.strictObject({
   text: z.string(),
   kind: z.enum(['message', 'followup']),
   priority: z.enum(['normal', 'urgent']),
+  urgentReason: z.enum(['wrong-conclusion', 'stop-order', 'instruction-change']).optional(),
   replyTo: z.string().optional(),
   references: z.array(citationSchema),
   taskId: z.string().optional(),
@@ -239,6 +240,27 @@ export async function readMessage(
 }
 
 /**
+ * Write one message record with an optional version guard.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that owns the message.
+ * @param message - complete record to persist.
+ * @param options - expected store version for a guarded update.
+ * @returns the store version after the write.
+ */
+export async function writeMessage(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  message: MessageRecord,
+  options: { readonly expected?: string; readonly session?: Session } = {},
+): Promise<{ readonly version?: string }> {
+  const written = await ctx.dshStore.writeFile(options.session, messagePath(workspaceId, message.messageId), `${JSON.stringify(message, undefined, 2)}\n`, {
+    scope: 'global',
+    ...options.expected === undefined ? {} : { expected: options.expected },
+  })
+  return written.version === undefined ? {} : { version: written.version }
+}
+
+/**
  * List every message record of one workspace, newest first.
  * @param ctx - context carrying the `.dsh` store.
  * @param workspaceId - workspace whose messages are listed.
@@ -270,6 +292,27 @@ export async function readArtifact(
 ): Promise<{ readonly record: ArtifactRecord; readonly version?: string } | undefined> {
   const stored = await readJson(ctx, artifactPath(workspaceId, artifactId), artifactSchema, signal)
   return stored === undefined ? undefined : { record: stored.value, ...stored.version === undefined ? {} : { version: stored.version } }
+}
+
+/**
+ * Write one artifact record with an optional version guard.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that owns the artifact.
+ * @param record - complete record to persist.
+ * @param options - expected store version for a guarded update.
+ * @returns the store version after the write.
+ */
+export async function writeArtifact(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  record: ArtifactRecord,
+  options: { readonly expected?: string; readonly session?: Session } = {},
+): Promise<{ readonly version?: string }> {
+  const written = await ctx.dshStore.writeFile(options.session, artifactPath(workspaceId, record.artifactId), `${JSON.stringify(record, undefined, 2)}\n`, {
+    scope: 'global',
+    ...options.expected === undefined ? {} : { expected: options.expected },
+  })
+  return written.version === undefined ? {} : { version: written.version }
 }
 
 /**

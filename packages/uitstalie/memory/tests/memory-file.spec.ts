@@ -339,7 +339,7 @@ function otherSession(id: string): Session {
 /** Sessions limit of one, so every second session write must drop the previous one. */
 const ONE_SESSION: MemoryWindow = { detail: 6, brief: 16, forget: 21, sessions: 1 }
 
-test('the sessions window applies to the persisted file, not only to the snapshot', async () => {
+test('the sessions window applies to the persisted file, not only to the rendered view', async () => {
   const first = session
   const second = otherSession('session-b')
   await store.writeFile(first, MEMORY_STORE_PATH, seedText('Hand-written note.'))

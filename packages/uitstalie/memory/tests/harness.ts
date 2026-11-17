@@ -15,7 +15,7 @@ import { createAssistantMessage, createUserMessage, ToolCallId } from '@deepseek
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { SessionId as SessionIdValue, SessionSeq, UserMessage } from '@deepseek-ai/dsh-session'
+import type { SessionId as SessionIdValue, UserMessage } from '@deepseek-ai/dsh-session'
 import SessionQueryEngine from '@deepseek-ai/dsh-session-query'
 import type {
   SessionEventSearchPage,
@@ -34,9 +34,7 @@ import type { AgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
 import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
 import { join } from 'node:path'
 import * as Memory from '../src/api.ts'
-import { isMemorySnapshotSource } from '../src/api.ts'
 import type { Config, MemoryConfigInput } from '../src/config.ts'
-import type { MemorySnapshotSource } from '../src/api.ts'
 
 /** Signal for tool calls that are not cancelled. */
 export const signal = new AbortController().signal
@@ -60,16 +58,6 @@ export class TestSessionQueryEngine extends SessionQueryEngine {
   ): Promise<SessionEventSearchPage> {
     return { session: (await this.readSurface(request.sessionId)).session, items: [] }
   }
-}
-
-/** One memory snapshot observed on a session's current model surface. */
-export interface ObservedSnapshot {
-  /** Seq of the surface node carrying the snapshot. */
-  readonly seq: SessionSeq
-  /** The durable user message. */
-  readonly message: UserMessage
-  /** The declared memory source, which carries the rendered sections. */
-  readonly source: MemorySnapshotSource
 }
 
 /** Services and helpers bound to one mounted memory composition. */
@@ -233,20 +221,15 @@ export async function waitForValue<T>(
   }
 }
 
-/** Read every memory snapshot from one session's current model surface, in surface order. */
-export async function memorySnapshots(
-  ctx: Context,
-  sessionId: SessionIdValue,
-): Promise<ObservedSnapshot[]> {
+/** Read every memory-sourced user message from one session's current model surface, in surface order. */
+export async function memoryMessages(ctx: Context, sessionId: SessionIdValue): Promise<UserMessage[]> {
   const surface = await ctx.sessionQuery.readSurface(sessionId)
-  const snapshots: ObservedSnapshot[] = []
+  const messages: UserMessage[] = []
   for (const event of surface.events) {
     if (event.type !== 'user/message') continue
-    const source = event.data.source
-    if (!isMemorySnapshotSource(source)) continue
-    snapshots.push({ seq: event.seq, message: event.data, source })
+    if (event.data.source.kind === 'memory') messages.push(event.data)
   }
-  return snapshots
+  return messages
 }
 
 /** Read every one-off memory notice from one session's current model surface. */

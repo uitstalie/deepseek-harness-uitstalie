@@ -19,6 +19,11 @@ import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-store-atom'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { createWorkspaceTasksService } from './service.ts'
+import {
+  WORKSPACE_DIRECTORY_SECTION_NAME,
+  WORKSPACE_DIRECTORY_SECTION_ORDER,
+  workspaceDirectoryText,
+} from './prompt.ts'
 import { workspaceTools } from './tools.ts'
 
 export const name = 'workspace-tools'
@@ -57,6 +62,11 @@ export function apply(ctx: Context): void {
     create: (_runtime: CapabilityRuntime): CapabilityContribution => ({
       scope: 'all',
       tools: () => workspaceTools(ctx),
+      promptSections: () => [{
+        name: WORKSPACE_DIRECTORY_SECTION_NAME,
+        order: WORKSPACE_DIRECTORY_SECTION_ORDER,
+        text: () => workspaceDirectoryText(ctx),
+      }],
     }),
   })
   ctx.effect(() => registration, 'workspace-tools.register()')

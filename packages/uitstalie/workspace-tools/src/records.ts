@@ -295,6 +295,12 @@ export type MessageDeliveryStatus = 'queued' | 'delivered' | 'interrupted' | 'ta
 /** Priority of one message; `urgent` is limited to the three validated cases. */
 export type MessagePriority = 'normal' | 'urgent'
 
+/** The three cases that justify an urgent message. */
+export type UrgentReason = 'wrong-conclusion' | 'stop-order' | 'instruction-change'
+
+/** Every accepted urgent reason, in design order. */
+export const URGENT_REASONS: readonly UrgentReason[] = ['wrong-conclusion', 'stop-order', 'instruction-change']
+
 /** One artifact reference captured when a message or task referenced it. */
 export interface ArtifactCitation {
   /** Stable artifact id. */
@@ -329,6 +335,8 @@ export interface MessageRecord {
   readonly kind: MessageKind
   /** Effective priority. */
   readonly priority: MessagePriority
+  /** Which of the three cases made the message urgent; absent for a normal message. */
+  readonly urgentReason?: UrgentReason | undefined
   /** Message this one answers, when it is a reply. */
   readonly replyTo?: string | undefined
   /** Artifact references attached at send time. */

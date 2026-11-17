@@ -16,7 +16,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { LlmAdapter } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
-import type { SessionId as SessionIdValue, SurfaceEvent, UserMessage } from '@deepseek-ai/dsh-session'
+import type { SurfaceEvent, UserMessage } from '@deepseek-ai/dsh-session'
 import {
   isMemoryCheckpointSource,
   parseMemoryDocument,
@@ -27,7 +27,7 @@ import {
   appendUserText,
   createRoot,
   memoryFilePath,
-  memorySnapshots,
+  memoryMessages,
   mountMemory,
   waitForValue,
 } from './harness.ts'
@@ -148,12 +148,6 @@ function checkpoints(events: readonly SurfaceEvent[]): UserMessage[] {
     event.type === 'user/message' && isMemoryCheckpointSource(event.data.source) ? [event.data] : [])
 }
 
-/** The single snapshot text on one live surface. */
-async function snapshotText(mounted: MemoryTestHarness, sessionId: SessionIdValue): Promise<string> {
-  const snapshots = await memorySnapshots(mounted.ctx, sessionId)
-  return snapshots.map(observation => contentText(observation.message)).join('\n')
-}
-
 test('the default window replaces the raw turn with a detail checkpoint at age 6', async () => {
   const mounted = await mount()
   const adapter = new SummaryAdapter(call => decisionReply(`detail ${String(call)}`))
@@ -190,12 +184,8 @@ test('the default window replaces the raw turn with a detail checkpoint at age 6
   const document = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
   expect(document.sessions[0]?.turns[0]).toMatchObject({ turn: 1, tier: 'detail' })
   expect(document.sessions[0]?.turns[0]?.checkpointSeq).toEqual(expect.any(Number))
-  // Snapshots are append-only now: the trunk snapshot from session start stays, and each
-  // summary pass may append a newer one; the latest describes the current window.
-  expect((await memorySnapshots(mounted.ctx, root.id)).length).toBeGreaterThanOrEqual(1)
-  const snapshot = await snapshotText(mounted, root.id)
-  expect(snapshot).toContain('Archived: turn 1 (detail)')
-  expect(snapshot).not.toContain('request one')
+  // No snapshot is injected: the only memory message is the checkpoint itself.
+  expect(await memoryMessages(mounted.ctx, root.id)).toEqual([checkpoint])
 })
 
 test('a brief checkpoint replaces the detail checkpoint node instead of appending a second copy', async () => {
@@ -240,7 +230,7 @@ test('a brief checkpoint replaces the detail checkpoint node instead of appendin
   const document = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
   expect(document.sections.map(section => [section.startTurn, section.tier]))
     .toEqual([[1, 'brief'], [3, 'detail'], [5, 'detail']])
-  expect(await snapshotText(mounted, root.id)).toContain('Archived: turn 1 (brief)')
+  expect(await memoryMessages(mounted.ctx, root.id)).toEqual(observed)
 })
 
 test('keeps the surface append-only between compaction boundaries', async () => {

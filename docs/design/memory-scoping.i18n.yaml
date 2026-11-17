@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/memory-scoping.md
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory:
-  en: ee8c883dd1860efc
-  zh: 91e838ae13e6bd94
+  en: 17a8d98b1d4ca8a3
+  zh: 932b77928309a44a
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/1-background-and-the-problem:
   en: 5e818a6a13f3dd2a
   zh: bda69e9e5fbf5222
@@ -63,8 +63,8 @@
   en: 06f626d1474c066e
   zh: 38836b15608f2548
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/4-data-model/4-2-toolset-records:
-  en: b633f4ebc09ec670
-  zh: 62c08e3c9728b005
+  en: 91919aeeb7948be9
+  zh: 42ae9310480b8b8d
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/4-data-model/4-3-prompt-data:
   en: ff1e91da55a9a8db
   zh: 510292093a62fa8d
@@ -81,8 +81,8 @@
   en: bd44e7ce7a1dd0a3
   zh: e5ed1e8d67a1279a
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/5-the-workspace-information-toolset/5-4-workspace-message:
-  en: ce6e1c52af9dc557
-  zh: ce76f622058902c1
+  en: ce539b5fa7c24bcf
+  zh: 5a4cf1ce9b0ce685
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/5-the-workspace-information-toolset/5-5-workspace-artifacts:
   en: a777d0667c29bda3
   zh: 2d5bc9d533bb9c0e
@@ -99,11 +99,11 @@
   en: e1dec6bba77a0d05
   zh: 8ac48b96675094eb
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-2-existing-tool-to-new-home:
-  en: 0a69abf9981d7fa0
-  zh: 53dc1c201ca12f6e
+  en: 0d6938ba5cf17237
+  zh: 53c3157b293651ba
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-3-delivery-as-a-tool-call:
-  en: d964dcfaba1b1e0e
-  zh: aa48fd7ee750e2ad
+  en: 8eb9c99044ae8646
+  zh: f859e07fdeb0f5c5
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-4-reference-model:
   en: b93bb98e6067c8d2
   zh: 52b33e91e333f111
@@ -147,8 +147,8 @@
   en: 81f02533700d4564
   zh: 3f6bcae211ecc901
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/9-milestones:
-  en: ead91c67539ca934
-  zh: 9fcaed139da8fe95
+  en: f9c8ba7aba257aeb
+  zh: 02d28c942aaa21c6
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions:
   en: ac347e271643ae3f
   zh: 0e4690809fb27331
@@ -159,8 +159,8 @@
   en: 9c7479b056deea5e
   zh: 00099da39b680361
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions/10-3-risks:
-  en: 9de53d91d9b102ea
-  zh: 5bea1a00770f5b63
+  en: ba91efb6626f054c
+  zh: 63175716e4bfd56d
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions/10-4-confirmed-in-this-round:
   en: b762eabfa091a7f1
   zh: 10b822d60b151ad4
@@ -189,8 +189,8 @@
   en: dec8235ed46defb8
   zh: 8bd8b19899f18234
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/11-intent-cards-dispatch-alignment/11-8-tool-surface:
-  en: 798b7e5cb8b3f17d
-  zh: 77e165e80c79dba8
+  en: 61054e9eb6f54a6c
+  zh: bb63d09ed381360e
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/11-intent-cards-dispatch-alignment/11-9-what-this-does-not-do:
   en: 8a9695fa24be1261
   zh: a2eeddca4a803422
@@ -204,8 +204,23 @@
   en: 384260c89e737286
   zh: 8886c3ac6b2b9399
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/12-capability-inventory-memory-and-super-agent/12-2-super-agent-capabilities:
-  en: 6acd90e7a703ff76
-  zh: 288e1498b318d9e6
+  en: 15f1275200c30eb3
+  zh: 28e6766fb4f91f5f
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/13-appendix-future-direction:
   en: 034e2e95e7f2ee2a
   zh: 33d2cb5b76c6408a
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-step-3:
+  en: 37f3a9df3c54e7e8
+  zh: 54d024d1b8651a89
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-step-3/14-1-ordinary-session-no-per-turn-memory-injection:
+  en: 6156e239818ccb6f
+  zh: 2630125ed8e8c4ae
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-step-3/14-2-delivery-only-through-the-tool:
+  en: e89fd25aed8f7071
+  zh: 3e069af235416eeb
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-step-3/14-3-known-gap-jira-turn-end-delivery:
+  en: 2b8363d0631428fa
+  zh: a393306900aaf187
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/14-deployment-acceptance-for-step-3/14-4-not-provable-in-ci:
+  en: 136aef19d4cf511a
+  zh: 3e849a81bc760c88

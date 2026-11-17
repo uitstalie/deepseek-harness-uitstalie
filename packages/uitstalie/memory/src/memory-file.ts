@@ -63,11 +63,9 @@ export const MEMORY_DOCUMENT_VERSION = 1
 /**
  * Default body budget in UTF-8 bytes.
  *
- * The provider renders the complete managed body into the durable snapshot, whose own fixed budget is
- * {@link MEMORY_SNAPSHOT_MAX_BYTES} (also 16 KiB). Keeping the persisted body at or below the snapshot
- * budget makes the file and its model-facing rendering one prompt-sized block instead of letting the
- * file outgrow what the model can see. Raise it when a workspace needs more retained detail and accepts
- * a larger snapshot; lower it to bound prompt cost.
+ * A write that would push the managed body past this budget evicts the least durable entries instead
+ * of failing. Raise it when a workspace needs more retained detail, lower it to bound the file and the
+ * summary job's reading cost.
  */
 export const DEFAULT_MEMORY_MAX_BYTES = 16 * 1024
 
@@ -1591,8 +1589,8 @@ export async function appendTurnSummary(
  * reached the brief age through the supplied model callback, replaces the
  * matching surface range with a brief checkpoint, removes forgotten section
  * bodies, and writes the complete batch with one version-guarded write. Ranges an
- * earlier pass migrated but could not replace on the surface (a snapshot, a
- * compaction checkpoint, or a gap) are retried from the stored text, without
+ * earlier pass migrated but could not replace on the surface (a compaction
+ * checkpoint or a gap) are retried from the stored text, without
  * re-compressing. A failed compression keeps that section at detail and does not
  * block the other ranges. One stale-version conflict re-reads and applies the
  * plan once more; surface replacements already made are reused by their window,
@@ -2572,7 +2570,7 @@ function recordTurn(
  *
  * `window.sessions` is the number of sessions whose summaries stay in MEMORY.md, so the limit is
  * applied to **the file that is written**, together with the sections and the frontmatter index
- * that describe those sessions — not only to the snapshot a reader slices. The session that just
+ * that describe those sessions — not only to the rendered view a reader slices. The session that just
  * wrote is always retained. A body still over the byte budget loses individual entries in eviction
  * order — `open`, then `files`, then `decision`, then `preference`, oldest first inside one kind —
  * so the newest write is never the entry that makes room for itself. Each removal is recorded in the

@@ -2842,7 +2842,7 @@ export interface McpManagedServerEntry {
 
 - `inject`: `dafeiyu` · `dshStore` · `sessionQuery` · `jobs` · `llm`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/uitstalie/memory/src/config.ts:71`](../packages/uitstalie/memory/src/config.ts)
+- `source`: [`packages/uitstalie/memory/src/config.ts:66`](../packages/uitstalie/memory/src/config.ts)
 
 ```ts config-catalog
 /** Configuration as the Loader passes it; every field is a live reference. */
@@ -2851,7 +2851,7 @@ export interface Config {
   detail: Volatile<number>
   /** Turns kept as one-line briefs. */
   brief: Volatile<number>
-  /** Turns after which entries leave the snapshot. */
+  /** Turns after which entries leave the managed block. */
   forget: Volatile<number>
   /** Sessions kept with summaries in MEMORY.md. */
   sessions: Volatile<number>
@@ -2862,9 +2862,8 @@ export interface Config {
   /**
    * Managed-block body budget in UTF-8 bytes.
    *
-   * Defaults to 16384, matching the snapshot's 16 KiB budget so the persisted body and its rendered
-   * snapshot stay one prompt-sized block. A write that would exceed it evicts the least durable
-   * entries (`open`, then `files`, then `decision`, `preference`) and records each removal.
+   * Defaults to 16384. A write that would exceed it evicts the least durable entries (`open`, then
+   * `files`, then `decision`, `preference`) and records each removal.
    */
   maxBytes: Volatile<number>
   /** Maximum entries retained per session. */
@@ -2902,10 +2901,6 @@ export interface Config {
   summaryMaxAttempts: Volatile<number>
   /** Delay before a retryable summary attempt, in milliseconds. */
   summaryRetryDelayMs: Volatile<number>
-  /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced. */
-  snapshotTemplate: Volatile<string>
-  /** Where the snapshot reaches the model. */
-  snapshotPosition: Volatile<'depth-0' | 'prompt'>
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-memory -->

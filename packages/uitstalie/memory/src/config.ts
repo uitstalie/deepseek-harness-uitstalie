@@ -42,9 +42,8 @@ export interface MemoryConfigInput {
   /**
    * Maximum managed-block body size in UTF-8 bytes.
    *
-   * The default is 16384 because the rendered snapshot has the same 16 KiB budget: the persisted body
-   * and the model-facing snapshot stay one prompt-sized block. Raise it for longer retention, lower it
-   * to bound prompt cost; writes evict entries instead of failing when the body reaches it.
+   * The default is 16384. Raise it for longer retention, lower it to bound the prompt cost of the
+   * summary job; writes evict entries instead of failing when the body reaches it.
    */
   maxBytes?: number | undefined
   /** Maximum entries retained per session; older sections leave the managed block. */
@@ -61,10 +60,6 @@ export interface MemoryConfigInput {
   summaryMaxAttempts?: number | undefined
   /** Delay before a retryable summary attempt, in milliseconds; default 100. */
   summaryRetryDelayMs?: number | undefined
-  /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced and absent means the text alone. */
-  snapshotTemplate?: string | undefined
-  /** Where the snapshot reaches the model: a depth-0 message or a system-prompt section. */
-  snapshotPosition?: 'depth-0' | 'prompt' | undefined
 }
 
 /** Configuration as the Loader passes it; every field is a live reference. */
@@ -73,7 +68,7 @@ export interface Config {
   detail: Volatile<number>
   /** Turns kept as one-line briefs. */
   brief: Volatile<number>
-  /** Turns after which entries leave the snapshot. */
+  /** Turns after which entries leave the managed block. */
   forget: Volatile<number>
   /** Sessions kept with summaries in MEMORY.md. */
   sessions: Volatile<number>
@@ -84,9 +79,8 @@ export interface Config {
   /**
    * Managed-block body budget in UTF-8 bytes.
    *
-   * Defaults to 16384, matching the snapshot's 16 KiB budget so the persisted body and its rendered
-   * snapshot stay one prompt-sized block. A write that would exceed it evicts the least durable
-   * entries (`open`, then `files`, then `decision`, `preference`) and records each removal.
+   * Defaults to 16384. A write that would exceed it evicts the least durable entries (`open`, then
+   * `files`, then `decision`, `preference`) and records each removal.
    */
   maxBytes: Volatile<number>
   /** Maximum entries retained per session. */
@@ -124,10 +118,6 @@ export interface Config {
   summaryMaxAttempts: Volatile<number>
   /** Delay before a retryable summary attempt, in milliseconds. */
   summaryRetryDelayMs: Volatile<number>
-  /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced. */
-  snapshotTemplate: Volatile<string>
-  /** Where the snapshot reaches the model. */
-  snapshotPosition: Volatile<'depth-0' | 'prompt'>
 }
 
 /** Schemastery configuration for the memory provider. */
@@ -147,8 +137,6 @@ export const Config = z.object({
   summarizeEveryTurns: z.number().step(1).min(1).default(1).volatile(),
   summaryMaxAttempts: z.number().step(1).min(1).default(MEMORY_SUMMARY_MAX_ATTEMPTS).volatile(),
   summaryRetryDelayMs: z.number().step(1).min(0).default(MEMORY_SUMMARY_RETRY_DELAY_MS).volatile(),
-  snapshotTemplate: z.string().default('').volatile(),
-  snapshotPosition: z.string().default('depth-0').volatile(),
 })
 
 /** Resolved provider settings; the provider reads configuration only in this form. */
@@ -175,10 +163,6 @@ export interface MemorySettings {
   readonly summaryMaxAttempts: number
   /** Delay before a retryable summary attempt, in milliseconds. */
   readonly summaryRetryDelayMs: number
-  /** Template wrapped around the snapshot text; empty means the text alone. */
-  readonly snapshotTemplate: string
-  /** Where the snapshot reaches the model. */
-  readonly snapshotPosition: 'depth-0' | 'prompt'
 }
 
 /**
@@ -224,10 +208,6 @@ export function resolveConfig(config: MemoryConfigInput): MemorySettings {
   if (!Number.isSafeInteger(summaryRetryDelayMs) || summaryRetryDelayMs < 0) {
     throw new Error('memory: summaryRetryDelayMs must be a non-negative integer')
   }
-  const snapshotPosition = config.snapshotPosition ?? 'depth-0'
-  if (!(['depth-0', 'prompt'] as const).includes(snapshotPosition)) {
-    throw new Error(`memory: snapshotPosition must be "depth-0" or "prompt"; got ${JSON.stringify(snapshotPosition)}`)
-  }
   return {
     window,
     summarizationProvider,
@@ -240,7 +220,5 @@ export function resolveConfig(config: MemoryConfigInput): MemorySettings {
     summarizeEveryTurns,
     summaryMaxAttempts,
     summaryRetryDelayMs,
-    snapshotTemplate: config.snapshotTemplate ?? '',
-    snapshotPosition,
   }
 }

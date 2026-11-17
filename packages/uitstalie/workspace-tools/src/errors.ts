@@ -42,8 +42,8 @@ export class WorkspaceRecordError extends HarnessError {
   }
 }
 
-/** Code of an artifact resolution refusal that is not one of the statuses. */
-export type WorkspaceArtifactCode = 'ARTIFACT_TOO_LARGE'
+/** Code of an artifact refusal that is not one of the resolution statuses. */
+export type WorkspaceArtifactCode = 'ARTIFACT_TOO_LARGE' | 'ARTIFACT_PATH_OUTSIDE' | 'ARTIFACT_NOT_A_FILE' | 'ARTIFACT_INVALID'
 
 /** The referenced file cannot be hashed inside the tool's resource bound. */
 export class WorkspaceArtifactError extends HarnessError {
@@ -79,6 +79,24 @@ export class WorkspaceIntentError extends HarnessError {
   constructor(message: string, code: WorkspaceIntentCode) {
     super(message, code)
     this.name = 'WorkspaceIntentError'
+  }
+}
+
+/** Code of a message refusal that is not a missing record. */
+export type WorkspaceMessageCode =
+  | 'WORKSPACE_MESSAGE_FORBIDDEN'
+  | 'WORKSPACE_MESSAGE_TARGET'
+  | 'WORKSPACE_MESSAGE_INVALID'
+
+/** A message send was refused by the scope, role, or target rule. */
+export class WorkspaceMessageError extends HarnessError {
+  /**
+   * @param message - the target, role, or field that refused the send.
+   * @param code - which message rule refused the call.
+   */
+  constructor(message: string, code: WorkspaceMessageCode) {
+    super(message, code)
+    this.name = 'WorkspaceMessageError'
   }
 }
 

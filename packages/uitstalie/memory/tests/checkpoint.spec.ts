@@ -1,8 +1,8 @@
 /**
  * Surface checkpoint tests: a real Agent/session, store, and session-query
  * composition around synthetic turn events. They cover raw-range replacement,
- * replacing the previous checkpoint at the forget age, refusing a range with a
- * compaction checkpoint, and leaving a memory snapshot untouched.
+ * replacing the previous checkpoint at the forget age, and refusing a range
+ * with a compaction checkpoint.
  */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -20,7 +20,6 @@ import {
   isMemoryCheckpointSource,
   migrateMemoryTiers,
   parseMemoryDocument,
-  refreshMemorySnapshot,
 } from '../src/api.ts'
 import type { MemoryCheckpointWindow, MemoryEntry, MemoryNoticeSource } from '../src/api.ts'
 import { renderMemoryDocument } from '../src/memory-file.ts'
@@ -432,41 +431,6 @@ test('a replacement skipped by an earlier pass is retried without re-compressing
     { window: { detail: 6, brief: 16, forget: 21, sessions: 10 } },
   )
   expect(again).toBeUndefined()
-})
-
-test('a range carrying a memory snapshot is refused and the snapshot remains', async () => {
-  const mounted = await mount()
-  const seeded = await seedDetail(mounted)
-  await refreshMemorySnapshot(mounted.ctx, seeded.root, signal)
-  appendAssistantText(seeded.root, 1, 'more turn one work')
-  const metadata = parseMemoryDocument(await readFile(memoryFilePath(project), 'utf8'))
-  const snapshotSeq = (await mounted.ctx.sessionQuery.readSurface(SessionId('memory-root'))).events
-    .filter(event => event.type === 'user/message'
-      && event.data.source.kind === 'memory'
-      && event.data.source.form === 'snapshot')
-    .at(-1)?.seq
-  expect(snapshotSeq).toEqual(expect.any(Number))
-  const turnRecord = metadata.sessions[0]?.turns[0]
-  expect(turnRecord).toBeDefined()
-  if (turnRecord !== undefined) {
-    await appendTurnSummary(mounted.ctx, seeded.root.session, {
-      turn: 1,
-      seq: [turnRecord.seq[0], seeded.root.session.seq - 1],
-      entries: DETAIL,
-    })
-  }
-
-  const result = await migrateMemoryTiers(mounted.ctx, seeded.root.session, 17, () => Promise.resolve(BRIEF), signal, {
-    window: { detail: 6, brief: 16, forget: 21, sessions: 10 },
-  })
-
-  expect(result).toMatchObject({ briefed: 1, forgotten: 0 })
-  expect(await checkpoints(mounted, 'memory-root')).toEqual([])
-  const surface = await mounted.ctx.sessionQuery.readSurface(SessionId('memory-root'))
-  expect(surface.events.some(event =>
-    event.type === 'user/message'
-      && event.data.source.kind === 'memory'
-      && event.data.source.form === 'snapshot')).toBe(true)
 })
 
 test('one stale write retries without appending a second checkpoint', async () => {

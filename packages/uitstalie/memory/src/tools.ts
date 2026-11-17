@@ -2,8 +2,7 @@
  * The four model-facing memory tools.
  *
  * `memory_write` appends one summary entry to this workspace's MEMORY.md through
- * the store's version-guarded write and refreshes the durable memory snapshot
- * after the write commits. `memory_resolve` archives finished open work,
+ * the store's version-guarded write. `memory_resolve` archives finished open work,
  * `memory_search` searches this workspace's managed memory notes and archive,
  * and `memory_forget` removes entries. Session history is read with the
  * session tools (`session_search`, `session_event_read`, `workspace_sessions`),
@@ -33,7 +32,6 @@ import {
 import type { MemoryEntryKind, MemorySection } from './memory-file.ts'
 import { readMemoryArchive } from './archive.ts'
 import { truncateToBytes } from './text.ts'
-import { appendMemoryUpdate, lastSnapshotText, refreshMemorySnapshot } from './snapshot.ts'
 
 /** Maximum `content` of one `memory_write` entry, in UTF-8 bytes. */
 const MEMORY_WRITE_CONTENT_MAX_BYTES = 8 * 1024
@@ -85,27 +83,22 @@ export interface MemorySearchValue {
  * Build the memory tool definitions for one root agent.
  * @param ctx - context carrying `dshStore` and `sessionQuery`.
  * @param settings - resolved provider settings.
- * @param onSnapshotText - optional sink for the rendered snapshot (the prompt-position cache).
  * @returns the four tools, in registration order.
  */
 export function memoryTools(
   ctx: Context,
   settings: MemorySettings,
-  onSnapshotText?: SnapshotTextSink,
 ): readonly ToolDefinition[] {
   return [
-    { ...defineMemoryWriteTool(ctx, settings, onSnapshotText), minRole: 'agent' },
-    { ...defineMemoryResolveTool(ctx, settings, onSnapshotText), minRole: 'agent' },
-    { ...defineMemoryForgetTool(ctx, settings, onSnapshotText), minRole: 'agent' },
+    { ...defineMemoryWriteTool(ctx, settings), minRole: 'agent' },
+    { ...defineMemoryResolveTool(ctx, settings), minRole: 'agent' },
+    { ...defineMemoryForgetTool(ctx, settings), minRole: 'agent' },
     { ...defineMemorySearchTool(ctx), minRole: 'subagent' },
   ]
 }
 
-/** Receives one rendered snapshot, or undefined when there is nothing to report. */
-export type SnapshotTextSink = (sessionId: string, text: string | undefined) => void
-
 /** Build `memory_write`: append one entry to the caller's workspace MEMORY.md. */
-function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapshotText?: SnapshotTextSink): ToolDefinition {
+function defineMemoryWriteTool(ctx: Context, settings: MemorySettings): ToolDefinition {
   return defineTool({
     name: 'memory_write',
     description:
@@ -185,24 +178,6 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapsho
         filesTtlDays: settings.filesTtlDays,
         supersessionMinSharedTags: settings.supersessionMinSharedTags,
       })
-      // A surface read failure must not fail the committed write; treat it as "no snapshot"
-      // and let the refresh below report (and swallow) the failure.
-      const hasSnapshot = await lastSnapshotText(ctx, String(session.id))
-        .then(text => text !== undefined)
-        .catch(() => false)
-      if (settings.snapshotPosition === 'prompt' || !hasSnapshot) {
-        // Prompt mode renders a system section; a session without a snapshot yet gets its trunk
-        // here (a fresh session receives none before its first write).
-        await refreshMemorySnapshot(ctx, exec.agent, exec.signal, {
-          template: settings.snapshotTemplate,
-          position: settings.snapshotPosition,
-          ...onSnapshotText === undefined ? {} : { onText: onSnapshotText },
-        })
-      } else {
-        // Append only the new fact: replacing the snapshot node (or re-injecting the whole state)
-        // on every write collapsed the KV-cache prefix from the snapshot's early position.
-        appendMemoryUpdate(session, written.kind, content)
-      }
       return {
         path: written.path,
         kind: written.kind,
@@ -223,7 +198,6 @@ function defineMemoryWriteTool(ctx: Context, settings: MemorySettings, onSnapsho
 function defineMemoryResolveTool(
   ctx: Context,
   settings: MemorySettings,
-  onSnapshotText?: SnapshotTextSink,
 ): ToolDefinition {
   return defineTool({
     name: 'memory_resolve',
@@ -286,13 +260,6 @@ function defineMemoryResolveTool(
         maxBytes: settings.maxBytes,
         maxEntries: settings.maxEntries,
       })
-      if (result.removed > 0) {
-        await refreshMemorySnapshot(ctx, exec.agent, exec.signal, {
-          template: settings.snapshotTemplate,
-          position: settings.snapshotPosition,
-          ...onSnapshotText === undefined ? {} : { onText: onSnapshotText },
-        })
-      }
       return {
         path: result.path,
         ...result.version === undefined ? {} : { version: result.version },
@@ -307,7 +274,6 @@ function defineMemoryResolveTool(
 function defineMemoryForgetTool(
   ctx: Context,
   settings: MemorySettings,
-  onSnapshotText?: SnapshotTextSink,
 ): ToolDefinition {
   return defineTool({
     name: 'memory_forget',
@@ -377,13 +343,6 @@ function defineMemoryForgetTool(
         maxBytes: settings.maxBytes,
         maxEntries: settings.maxEntries,
       })
-      if (result.removed > 0) {
-        await refreshMemorySnapshot(ctx, exec.agent, exec.signal, {
-          template: settings.snapshotTemplate,
-          position: settings.snapshotPosition,
-          ...onSnapshotText === undefined ? {} : { onText: onSnapshotText },
-        })
-      }
       return {
         path: result.path,
         ...result.version === undefined ? {} : { version: result.version },

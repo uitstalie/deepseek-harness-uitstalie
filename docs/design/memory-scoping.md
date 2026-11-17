@@ -2,7 +2,7 @@
 
 English | [中文](memory-scoping.zh.md)
 
-Status: draft for review; Step 0 (the over-cap archive fix, `3cb8eeaf3d`), Step 1 (the read-side workspace toolset, `cb4cc58385`), and Step 2 (intent cards and task creation, this change) are implemented; Step 3 onward is not started. Length: not bound by the 12-page cap; content completeness takes precedence. This draft is 9,841 words (about 20 pages).
+Status: draft for review; Steps 0–3 are implemented. Step 0 (the over-cap archive fix, `3cb8eeaf3d`), Step 1 (the read-side workspace toolset, `cb4cc58385`), Step 2 (intent cards and task creation, `9218cf1c73`), and Step 3 (delivery as a tool call and the removal of per-turn memory injection, this change) are on `cli-desktop`. Step 4 (global-only memory and migration) is not started. The JIRA-owned turn-end report delivery is still present because JIRA itself is still enabled; section 10.3 records that as an open gap, not as done. Length: not bound by the 12-page cap; content completeness takes precedence. This draft is 11,686 words (about 20 pages).
 
 ## 1. Background and the problem
 
@@ -145,7 +145,7 @@ The toolset owns the records it returns; memory does not duplicate them.
 | Message | message id, target session, text, kind (message or follow-up), delivery status, receipt, artifact references | Session inbox and message journal |
 | Artifact reference | artifact id, workspace, path, sha256, size, version, kind, session id, task id, created time, summary | Workspace artifact index |
 
-The toolset must not create a second copy of a fact that the ledger, the session store, or the workspace files already own. It aggregates and mutates through those owners, and the task journal exists only for work the JIRA ledger does not cover. Current state after the dispatch wiring: the workspace toolset writes the tasks, receipts, and intent cards under `$DSH_HOME/workspaces/<workspace-id>/`, and the super agent's `superagent_control start` records that task before it starts a Session. A missing, proposed, stale, or cross-workspace card, or a brief that does not cover a card point, refuses the dispatch at that entry. The dispatch ledger `.superagent/ledger` is now the projection of the same task under the same task id, not a second task list; its append-only history and the report journal stay readable. JIRA itself is still enabled because its removal is a later step, and the ledger's manual `record` fallback remains a compatibility path rather than the dispatch truth.
+The toolset must not create a second copy of a fact that the ledger, the session store, or the workspace files already own. It aggregates and mutates through those owners, and the task journal exists only for work the JIRA ledger does not cover. Current state after Step 3: the workspace toolset writes tasks, receipts, messages, artifact references, and intent cards under `$DSH_HOME/workspaces/<workspace-id>/`; `workspace_message.send` is its only outbound delivery path and `workspace_artifacts.publish`/`reference` are its only reference paths. A message or a task citation stores the artifact id, version, and SHA-256 at send time; the file itself stays in the workspace. The super agent's `superagent_control start` records the task before it starts a Session, and the dispatch ledger `.superagent/ledger` is the projection of the same task under the same task id, not a second task list; its append-only history and the report journal stay readable. A missing, proposed, stale, or cross-workspace card, or a brief that does not cover a card point, refuses the dispatch at that entry. A cross-workspace message is refused for an ordinary agent and requires the super agent plus the explicit target workspace id; the call is recorded. JIRA is still enabled because its removal is a later step, and its superagent report path still delivers a turn report at turn end when `superagent_home` is configured; section 10.3 records that as the one remaining turn-end delivery path. The ledger's manual `record` fallback remains a compatibility path rather than the dispatch truth.
 
 An intent card is a workspace record, not a memory entry. One card belongs to exactly one workspace. A cross-workspace request creates one card in each target workspace, and each card keeps the user's original words verbatim. The card is stored with the workspace's toolset state at `$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/` (`index.json`, `versions/<n>.json`), not in a host-global intent store. Versions are append-only; an old version stays readable after it is superseded.
 
@@ -211,7 +211,8 @@ Input:
 
 ```
 { action: 'send' | 'read', targetSessionId?, messageId?, text?, kind?: 'message' | 'followup',
-  priority?: 'normal' | 'urgent', replyTo?, references?, taskId?, requestId? }
+  priority?: 'normal' | 'urgent', urgentReason?: 'wrong-conclusion' | 'stop-order' | 'instruction-change',
+  replyTo?, references?, taskId?, requestId? }
 ```
 
 - `send` returns `{ messageId, deliveredAt, status: 'queued' | 'delivered' | 'interrupted' | 'target_archived' }`. A repeated `requestId` returns the original result.
@@ -220,7 +221,7 @@ Input:
 - `replyTo` links a reply to the message it answers.
 - Scope: sessions in the same workspace may message each other; a cross-workspace message goes through the super agent, not directly. The target must be a session in an authorized workspace; there is no broadcast, and the message body is bounded to one screen.
 
-Normal versus urgent: a normal message queues and arrives at the target's next turn boundary. An urgent message is one of three cases: a correction of a wrong conclusion the target is acting on; a stop order for a dangerous or irreversible operation; a user instruction change that invalidates the current work. The sender, any agent, marks `priority: 'urgent'`; the tool validates the three cases. The super agent is not special here; it was only the first dispatcher. An urgent message inserts before the target's next tool call and may interrupt the current step. Today every message uses the normal append path, so an urgent correction waits behind the queue and a wrong conclusion can run to completion; that is the defect this channel fixes.
+Normal versus urgent: a normal message queues and arrives at the target's next turn boundary. An urgent message is one of three cases: a correction of a wrong conclusion the target is acting on; a stop order for a dangerous or irreversible operation; a user instruction change that invalidates the current work. The sender, any agent, marks `priority: 'urgent'` and names one of the three cases in `urgentReason`; the tool rejects an urgent message without it. The super agent is not special here; it was only the first dispatcher. An urgent message inserts before the target's next tool call and may interrupt the current step. Before Step 3 every message used the normal append path, so an urgent correction waited behind the queue and a wrong conclusion could run to completion; that is the defect this channel fixes. Step 3 sends an urgent message with `steer` and falls back to the queue when the target is idle.
 
 Reply guidance: an ordinary agent replies with `workspace_message.send` and `replyTo` when the requested work is done or blocked. The reply is conclusion, evidence, next step, a few lines, no report; references replace attachments. The prompt states this, because an ordinary agent does not infer the tool contract.
 
@@ -305,13 +306,13 @@ The target ownership is one workspace toolset for sessions, tasks, messages, art
 | `read`, `glob`, `grep` | Reads workspace content | Content tools | Keep |
 | `tool-dsh-store` | Reads `.dsh` content | Store tool | Out of scope here; unchanged (section 2.3) |
 
-`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The workspace toolset has five members: `workspace_sessions`, `workspace_intents`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary. Current state after Step 2: `workspace_sessions`, `workspace_intents`, `workspace_tasks` (`list`/`get`/`create`/`update`/`receipt`), `workspace_message` read, and `workspace_artifacts` `list`/`resolve` are shipped; message send and artifact publish/reference remain Step 3. `memory_read` is deleted (`cb4cc58385`), but `memory_resolve` still exists (`packages/uitstalie/memory/src/tools.ts:229`); JIRA and the `superagent_*` tools are still enabled (`jira: { enabled: true }` in `packages/bundle/web-app/cordis.patch.uitstalie.yml`). Removing JIRA and `memory_resolve` remains an open decision, not a shipped change.
+`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The workspace toolset has five members: `workspace_sessions`, `workspace_intents`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary. Current state after Step 3: `workspace_sessions`, `workspace_intents`, `workspace_tasks` (`list`/`get`/`create`/`update`/`receipt`), `workspace_message` (`send`/`read`), and `workspace_artifacts` (`publish`/`reference`/`list`/`resolve`) are shipped, and the static `workspace-directory` prompt section is wired for every agent. `memory_read` is deleted (`cb4cc58385`); `memory_resolve` still exists (`packages/uitstalie/memory/src/tools.ts:229`); artifact `request`/`grant` are not implemented, so `pending` and `expired` remain unreachable. JIRA and the `superagent_*` tools are still enabled (`jira: { enabled: true }` in `packages/bundle/web-app/cordis.patch.uitstalie.yml`), and their turn-end report delivery is not removed by Step 3. Removing JIRA and `memory_resolve` remains an open decision, not a shipped change.
 
 ### 6.3 Delivery as a tool call
 
 `workspace_message.send` is the primary delivery path:
 
-Input: `{ targetSessionId, kind: 'message' | 'followup', text, priority?: 'normal' | 'urgent', replyTo?, references?, taskId?, requestId }`.
+Input: `{ targetSessionId, kind: 'message' | 'followup', text, priority?: 'normal' | 'urgent', urgentReason?, replyTo?, references?, taskId?, requestId }`. An urgent message must name one of the three cases in `urgentReason`, which is the tool's machine-checkable validation of section 5.4.
 
 - `text` is bounded to one screen. The schema caps it at 600 characters, and the prompt requires three parts: conclusion, evidence, next step, at most six lines.
 - `references` is a list of artifact references. No file content is ever placed in the message body.
@@ -491,7 +492,7 @@ A heuristic pass over the current 406 entries suggests about 15 global candidate
 | 3 | Delivery becomes a tool call and the flood is removed in the same release: `workspace_message.send`, artifact publish/reference, the static prompt, and no snapshot, update notice, cross-session index, or turn-end delivery | A message and a reference round-trip; a retry does not duplicate; a turn with no send delivers nothing; an ordinary session's per-turn memory message count is 0 and bytes are 0; "what did I do last turn" is answered from `workspace_sessions` |
 | 4 | Memory becomes global-only and the old entries are migrated | A business or dispatch write is rejected with a tool hint; the dry-run report is produced; only confirmed global entries remain injected; backups and rollback verified |
 
-Implemented: Steps 0, 1, and 2, including the dispatch wiring: `superagent_control start` validates the target workspace's intent card, records the task through `workspace_tasks`, and writes `.superagent/ledger` only as that task's projection under the same id. Not started: Steps 3 and 4.
+Implemented: Steps 0–3. Step 3 shipped `workspace_message.send`, artifact `publish`/`reference`, the static workspace directory, and the removal of the memory snapshot, the `memory-state` section, the "Memory updated" notice, and the cross-session index. A turn that sends nothing delivers nothing through the workspace toolset: the only call that reaches the host Session controller is `workspace_message.send`. Not started: Step 4, artifact `request`/`grant`, and the removal of JIRA's own turn-end report delivery (section 10.3).
 
 Each step is independently shippable and reversible. Step 0 ships first. Steps 1–4 do not depend on the board direction.
 
@@ -518,13 +519,14 @@ None. The decisions above are conclusions, and the implementation values are fix
 
 - Tool latency and cost: keep the results bounded, and put a short "where to look" map in the prompt.
 - Two owners for a task: closed for new dispatches. `superagent_control start` reads the target workspace's intent card, records the task through the workspace toolset, and writes `.superagent/ledger` only as that task's projection under the same task id, so a dispatched task has one identity in both places. `superagent_ledger` keeps its read and correction contract but no longer mints a separate identity. The JIRA ledger itself is untouched until its removal step, and the ledger's manual `record` fallback stays a compatibility path, not the dispatch truth.
-- Message priority: an urgent message may interrupt a step. The three urgent cases are narrow, and a normal message is never urgent; a misclassified urgent message is a defect to review.
-- Reference invalidation: changed, missing, denied, pending, and expired are distinct; a grant is version-scoped and a new version needs a new grant; a cross-workspace denial never reveals existence.
-- Cross-workspace authorization: an explicit workspace id, registry membership, and a recorded call; pull checks the receiver first, push checks the sender first; no implicit aggregation.
+- Message priority: an urgent message may interrupt a step. `workspace_message.send` requires one of the three named cases as `urgentReason` when the priority is urgent, steers the running step when the target is running, and falls back to the queue when it is idle. The three cases are narrow, and a normal message is never urgent; a misclassified urgent message is a defect to review.
+- Reference invalidation: `publish`/`reference`/`send` shipped, so changed, missing, and denied are reachable and distinct; a citation is immutable at send time, and a new version needs a new citation. `pending` and `expired` are not reachable until artifact `request`/`grant` ships; a cross-workspace denial never reveals existence.
+- Cross-workspace authorization: an explicit workspace id, registry membership, and a recorded call. A cross-workspace message is refused for an ordinary agent and allowed for the super agent only. Pull checks the receiver first, push checks the sender first; no implicit aggregation.
 - Losing context compression: a compaction preset that is too aggressive may drop context; make it configurable, test a long session, and keep the previous value as a rollback.
 - Confirmation channel: the old path is removed; the new chain has a deadline and visible states, and a broken chain marks the request failed instead of hanging.
 - Migration misclassification: dry run, human confirmation, backup, and rollback; a wrongly archived global fact can be re-added.
-- Every-session blast radius: a prompt or toolset defect now reaches ordinary sessions too. Stage the rollout as toolset first, then prompt and injection removal, and keep the previous prompt available as a build-time rollback for one release.
+- Every-session blast radius: a prompt or toolset defect now reaches ordinary sessions too. Step 3 staged shipment as toolset first, then the static prompt and injection removal, and keeps the previous prompt available as a build-time rollback for one release. The zero-injection regression test is the gate: a build that appends one per-turn memory message fails its own suite.
+- Turn-end delivery remains in JIRA: the only surviving implicit outbound path is jira-agent's dispatch-report delivery, active when `superagent_home` is configured. Step 3's delivery tool does not depend on it and no workspace-toolset path calls it, but removing it is deferred to JIRA's retirement. Until then the two paths coexist, and the "no send, no delivery" rule holds for the workspace toolset only. This is an open gap, not accepted as done.
 
 ### 10.4 Confirmed in this round
 
@@ -626,11 +628,9 @@ The inputs are recorded at three points: the intent version append, the task dis
 
 `workspace_tasks.create` requires the active card reference, as above. `workspace_tasks.receipt` accepts the alignment checklist, and the task state machine refuses `done` with an unsatisfied item.
 
-The dispatch entry is `superagent_control start`: it requires the same card reference, the brief's acceptance and boundaries, its task type, and the coverage map, records the task in the target workspace before any Session starts, and writes the ledger entry as that task's projection under the same id. `append`, `prompt`, and `abort` continue a Session that already passed this check and do not create a second task. The workspace toolset is mounted in the same composition, so `workspace_intents` and `workspace_tasks` are on the super agent's own session; an ordinary agent keeps the read side of both tools and the mutation role check still refuses its writes.
-
 The dispatch entry is `superagent_control start`: it requires the same card reference, the brief's acceptance and boundaries, its task type, and the coverage map, records the task in the target workspace before any Session starts, and writes the ledger entry as that task's projection under the same id. `append`, `prompt`, and `abort` continue a Session that already passed this check and do not create a second task. The workspace toolset is mounted in the same composition, so `workspace_intents` and `workspace_tasks` are on the super agent's own session; an ordinary agent keeps the read side of both tools, and the mutation role check still refuses its writes.
 
-Current state: the tool enforces the dispatch refusals, the coverage check, and the receipt gate. Until a card UI exists, the super agent is the channel that records the user's confirmation and correction, so `create`, `confirm`, and `correct` require the super agent role or the user; ordinary agents read cards only. A `nonCoverage` entry is the super agent's explicit dispatch waiver, recorded on the task with its reason; it is not a default pass.
+Current state after Step 3: the tool enforces the dispatch refusals, the coverage check, the receipt gate, the static workspace directory, the message scope and idempotency rules, and artifact publish/reference. `workspace_message.send` and `workspace_artifacts.publish`/`reference` are shipped; artifact `request`/`grant` are not. Until a card UI exists, the super agent is the channel that records the user's confirmation and correction, so `create`, `confirm`, and `correct` require the super agent role or the user; ordinary agents read cards only. A `nonCoverage` entry is the super agent's explicit dispatch waiver, recorded on the task with its reason; it is not a default pass.
 
 ### 11.9 What this does not do
 
@@ -685,8 +685,41 @@ Intent cards are not a memory capability; they are workspace records and never e
 | Long-task monitoring | Session status and JIRA status | Yes | `workspace_sessions` status and progress plus the write lease | Move |
 | Cross-workspace collaboration | Dispatch, with memory copies | Yes | `workspace_tasks`, `workspace_message`, `workspace_artifacts`, and `workspace_intents` with explicit scope; never memory | Move |
 
-Current state after Step 2: `workspace_intents`, task creation, the coverage check, and the receipt gate are implemented; the JIRA-bound capabilities remain implemented and enabled; `workspace_message.send` and artifact publication remain Step 3. This table records the target ownership, and the implemented rows are the ones this tree ships.
+Current state after Step 3: `workspace_intents`, task creation, the coverage check, the receipt gate, `workspace_message.send`, artifact publish/reference, and the static workspace directory are implemented; the JIRA-bound capabilities, including their turn-end report delivery, remain implemented and enabled. This table records the target ownership, and the implemented rows are the ones this tree ships.
 
 ## 13. Appendix: future direction
 
 A board view is a plausible later UI. Its data comes from the workspace toolset: `workspace_sessions`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`; `workspace_intents` supplies dispatch context, and memory contributes only global facts. A memory card stream, a per-workspace memory index, and an event-log store are explicitly out of scope; if the board needs one later, it is a new design over the same toolset, not a change to memory. Intent cards are workspace records, not memory.
+
+## 14. Deployment acceptance for Step 3
+
+Nothing in this section has been checked on a deployed Windows host. It is the checklist for the person who syncs this branch, deploys it tomorrow, and continues the work there. **CI** means the branch's automated suite already covers the item; **Deploy** means a real process, a real Session, or the running GUI is required and the suite cannot prove it. Do not tick a **Deploy** item from the test suite alone, and do not report Step 3 as deployed-accepted before it is ticked.
+
+The automated half is `pnpm exec vitest run packages/uitstalie/memory packages/uitstalie/workspace-tools`.
+
+### 14.1 Ordinary session: no per-turn memory injection
+
+- [ ] A fresh ordinary workspace Session, after at least three turns with at least one `memory_write`, has zero `user/message` events whose `source.kind` is `memory` in its durable log, and zero memory bytes. CI: `an ordinary session receives zero memory messages per turn` (`packages/uitstalie/memory/tests/provider.spec.ts`). Deploy: read the real Session's log or surface and count.
+- [ ] The assembled system prompt has no section named `memory-state`. CI: the same spec asserts the assembled prompt. Deploy: inspect the prompt in the running host.
+- [ ] A resumed Session over an existing `MEMORY.md` receives no snapshot. CI: `a resumed session is not injected with a memory snapshot`. Deploy: open a Session in a workspace whose `MEMORY.md` already holds entries.
+- [ ] No "Memory updated" message appears after a write, and no "Memory snapshot" message appears after a completed turn. CI: both are asserted absent. Deploy: perform one write and one completed turn in the GUI.
+
+A summary *failure* still appends one `form: 'notice'` message naming the error code; that is a one-off error report, not per-turn injection. If one appears, read the summary job log instead of counting it as an injection regression.
+
+### 14.2 Delivery only through the tool
+
+- [ ] A turn that calls no send delivers nothing: no message record and no prompt into another Session. CI: `a turn with no send delivers nothing` (`packages/uitstalie/workspace-tools/tests/delivery.spec.ts`). Deploy: run a turn in Session A, then confirm Session B's inbox is unchanged and no `messages/*.json` was written.
+- [ ] A message and an artifact reference round-trip. CI: `a message round-trips with its artifact reference`. Deploy: send from the super agent to a workspace Session and read it back.
+- [ ] A retried send with the same `requestId` returns the first message and appends nothing. CI: `a repeated requestId returns the first message without a second delivery`. Deploy: repeat the call and compare ids.
+- [ ] `workspace_sessions` answers "what did I do last turn". CI: `"what did I do last turn" is answered by workspace_sessions`. Deploy: ask after a real turn and confirm the answer is the Session's own progress, not a memory notice.
+- [ ] A cross-workspace send is refused for an ordinary agent and allowed for the super agent with the explicit workspace id; the call is recorded. CI: `an ordinary agent cannot message another workspace; the super agent can`. Deploy: attempt both.
+- [ ] Publishing a path outside the workspace root is refused. CI: `publish refuses a path outside the workspace root and a missing file`. Deploy: repeat with a relative `..` path.
+- [ ] The static `workspace-directory` prompt section lists the registered workspaces and contains no status, task, or memory data. CI: `every session gets the same static workspace directory section`. Deploy: compare two Sessions and the super agent's prompt.
+
+### 14.3 Known gap: JIRA turn-end delivery
+
+- [ ] If `superagent_home` is configured, a JIRA dispatch still reports through jira-agent's turn-end path. Step 3 did **not** remove it: JIRA is still enabled and its retirement is a later step (section 10.3). CI: no removal assertion; the existing JIRA suite still passes. Deploy: confirm whether the deployment uses the JIRA superagent. If it does, record that the "no send, no delivery" rule in 14.2 holds for the workspace toolset only, and do not report the turn-end removal as complete.
+
+### 14.4 Not provable in CI
+
+- A real Windows deployment, the GUI, a process restart and resume, and the real multi-workspace registry are outside the suite. The **Deploy** items above are the manual gate; they stay unchecked until a person checks them on the deployed host.

@@ -4,8 +4,8 @@
  *
  * The command is a human surface over the same `MEMORY.md` the automatic job writes: an edit marks
  * the entry `source: manual` and bumps its revision, and every edit or revert is recorded in the
- * `MEMORY.history.json` sidecar so it can be reverted. The window schedule and the snapshot message
- * are untouched.
+ * `MEMORY.history.json` sidecar so it can be reverted. The window schedule and existing checkpoint
+ * messages are untouched.
  * @module @deepseek-ai/dsh-memory/commands
  */
 

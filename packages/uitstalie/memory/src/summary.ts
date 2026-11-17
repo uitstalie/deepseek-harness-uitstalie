@@ -10,8 +10,8 @@
  * turn's entries and frontmatter record in one version-guarded append; a
  * partial batch flushes when the session is disposed. Each pass reads only the
  * selected turns' conversation surface, asks the routed or configured model
- * for strict JSON, appends through the repository, migrates aged sections
- * through the same target, and refreshes the durable snapshot.
+ * for strict JSON, appends through the repository, and migrates aged sections
+ * through the same target.
  *
  * Failures are contained. A model or repository failure before the detail append
  * leaves the previous MEMORY.md in place and appends one notice message per
@@ -49,9 +49,8 @@ import {
   summaryPaused,
 } from './memory-file.ts'
 import type { MemoryDocument, MemoryEntry, MemoryTurnSummaryInput } from './memory-file.ts'
-import { appendMemoryNotice, refreshMemorySnapshot } from './snapshot.ts'
+import { appendMemoryNotice } from './notice.ts'
 import { byteLength, errorMessage, truncateToBytes } from './text.ts'
-import type { SnapshotTextSink } from './tools.ts'
 import type { TurnRange } from './window.ts'
 
 declare module '@deepseek-ai/dsh-jobs' {
@@ -274,7 +273,6 @@ export class MemorySummaryRunner {
     private readonly ctx: Context,
     private readonly settings: MemorySettings,
     private readonly runtimeSignal: AbortSignal,
-    private readonly onSnapshotText?: SnapshotTextSink,
   ) {}
 
   /** Effective batch size, clamped to the schema's positive integer. */
@@ -574,11 +572,6 @@ export class MemorySummaryRunner {
         filesTtlDays: this.settings.filesTtlDays,
         supersessionMinSharedTags: this.settings.supersessionMinSharedTags,
       })
-      await refreshMemorySnapshot(this.ctx, input.agent, signal, {
-        template: this.settings.snapshotTemplate,
-        position: this.settings.snapshotPosition,
-        ...this.onSnapshotText === undefined ? {} : { onText: this.onSnapshotText },
-      })
       this.noticed.delete(input.session.id)
       this.ctx.logger.debug(
         'memory: summarized turn %d (%d input bytes, model %s, %d ms, %d attempt(s))',
@@ -695,11 +688,6 @@ export class MemorySummaryRunner {
         openTtlDays: this.settings.openTtlDays,
         filesTtlDays: this.settings.filesTtlDays,
         supersessionMinSharedTags: this.settings.supersessionMinSharedTags,
-      })
-      await refreshMemorySnapshot(this.ctx, first.agent, signal, {
-        template: this.settings.snapshotTemplate,
-        position: this.settings.snapshotPosition,
-        ...this.onSnapshotText === undefined ? {} : { onText: this.onSnapshotText },
       })
       this.noticed.delete(session.id)
       this.ctx.logger.debug(

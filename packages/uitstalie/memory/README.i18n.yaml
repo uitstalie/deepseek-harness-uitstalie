@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/memory/README.md
 /:
-  en: 57aa2296770c3c25
-  zh: c8f6c18cb7299b6f
+  en: 52407acaa4513662
+  zh: 6d3921dede95b64c
 /deepseek-ai-dsh-memory:
   en: 451d0d0b45211d36
   zh: 98cef595909ea324
 /deepseek-ai-dsh-memory/summary:
-  en: d8532ebb9b129146
-  zh: 354d884cbde8b29d
+  en: 7301782afc46aca7
+  zh: 4a9822afa71e5e3e
 /deepseek-ai-dsh-memory/table-of-contents:
-  en: cbfb676bb9a7a2de
+  en: 122f0d41696980b1
   zh: 528864635b577290
 /deepseek-ai-dsh-memory/use-this-package:
-  en: ce9695717f1375f2
-  zh: 4de3304add78b597
+  en: 1bcef138ca372e0f
+  zh: d28f485aa7d96970
 /deepseek-ai-dsh-memory/understand-the-implementation:
-  en: 4dfbf20da3ba9ea4
-  zh: ac9d50c22671913e
+  en: 67e98c9dad274bd1
+  zh: bb230e607ee38b9a
 /deepseek-ai-dsh-memory/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -27,14 +27,14 @@
   en: c0ac6604a97c662a
   zh: 4409508acbe18181
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/what-the-model-sees:
-  en: 8e5c358d9c35a65d
-  zh: a62cb13309192cc4
+  en: 848e4e51adeac263
+  zh: f844082a51a37b15
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/what-the-model-sees/fixed-memory-section-text:
   en: 7852e132e880ee31
   zh: f73a669cb32b47f5
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/token-effect:
-  en: 120292c9ca5c01de
-  zh: 108bff9ebaa28316
+  en: b6e8a6e8f659f9d4
+  zh: 4c350a8d2f63cb4c
 /deepseek-ai-dsh-memory/model-experience/the-memory-system-prompt-section/kv-cache-effect:
   en: d486025ccb8721af
   zh: d08ba56c6fd29ece
@@ -42,32 +42,20 @@
   en: b160ca92da193ddb
   zh: ac8fae468916718e
 /deepseek-ai-dsh-memory/model-experience/memory-tools/what-the-model-sees:
-  en: 1b7ac35fbd07725a
-  zh: 39b7358cd123e1c8
+  en: 0dc0d848e67898e7
+  zh: 748f132933ab6ebd
 /deepseek-ai-dsh-memory/model-experience/memory-tools/token-effect:
   en: c1cfd24dcf65904e
   zh: f7595ae8cda87029
 /deepseek-ai-dsh-memory/model-experience/memory-tools/kv-cache-effect:
   en: 9336f6c9c92be6fc
   zh: bed1c1dc049fde5c
-/deepseek-ai-dsh-memory/model-experience/memory-snapshot-message:
-  en: 166f1150192f93a1
-  zh: ba18457c7a36b6e0
-/deepseek-ai-dsh-memory/model-experience/memory-snapshot-message/what-the-model-sees:
-  en: 135fd6ea5554ed58
-  zh: ec1fa340e1a52d46
-/deepseek-ai-dsh-memory/model-experience/memory-snapshot-message/token-effect:
-  en: 6bab999cee7ac5ae
-  zh: 9501e851d73d9ea7
-/deepseek-ai-dsh-memory/model-experience/memory-snapshot-message/kv-cache-effect:
-  en: 8d9f024ee376b947
-  zh: 0622289ba9364e9e
 /deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints:
   en: c65f1ca009d1dc17
   zh: fe34d093608adbda
 /deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/what-the-model-sees:
   en: 81fe9b81592316a0
-  zh: 22c99cd77e5b4b5e
+  zh: 1abaacfff5a6a150
 /deepseek-ai-dsh-memory/model-experience/memory-turn-checkpoints/token-effect:
   en: 25b149a36664263f
   zh: 89b82b03e6adb636
@@ -78,17 +66,17 @@
   en: 181b494f66f3b14a
   zh: dbd8abbaae67e3b0
 /deepseek-ai-dsh-memory/model-experience/memory-failure-notice/what-the-model-sees:
-  en: f5310e65b94fb0e7
-  zh: 4319a6416bc7aa2e
+  en: 93c35af77a315785
+  zh: 0ba91c571229ab44
 /deepseek-ai-dsh-memory/model-experience/memory-failure-notice/token-effect:
   en: 48e27ca7d5502f5d
   zh: 2e1f6cb84aee9a05
 /deepseek-ai-dsh-memory/model-experience/memory-failure-notice/kv-cache-effect:
-  en: 3fd317b042a59673
-  zh: 9cc5318f0fd02c79
+  en: 9db72ef29b712b0c
+  zh: c5c4908e8aed0053
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work:
-  en: f71ecca7d100abe9
-  zh: 49cade1417452c41
+  en: 0f1ca6f582cd58a3
+  zh: dd49baf157f5c37d
 /deepseek-ai-dsh-memory/known-limitations-and-deferred-work/dev-note:
   en: 164f2d3e79e7c776
   zh: 22b11728c82dbcf0

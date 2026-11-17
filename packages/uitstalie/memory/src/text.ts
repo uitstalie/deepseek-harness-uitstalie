@@ -1,10 +1,10 @@
 /**
  * Small text helpers shared by the memory modules.
  *
- * They live in one place because the snapshot, read, summary, checkpoint and MEMORY.md paths all
- * bound user or model text the same way: bytes for the model budget, characters for one entry, and
- * a single rendering of an unknown error. Duplicating them per module let the tiny-budget edge
- * cases drift apart.
+ * They live in one place because the tools, summary, checkpoint and MEMORY.md paths all bound
+ * user or model text the same way: bytes for the model budget, characters for one entry, and a
+ * single rendering of an unknown error. Duplicating them per module let the tiny-budget edge cases
+ * drift apart.
  * @module @deepseek-ai/dsh-memory/text
  */
 

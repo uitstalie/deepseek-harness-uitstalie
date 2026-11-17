@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-memory` is the memory provider's settings page. It edits seven of the `memory` row's fourteen volatile fields (the detail, brief and forget turn ages, the sessions kept in `MEMORY.md`, the body budget, and the summary provider and model) as one revision-fenced mutation. The other seven (`maxEntries`, `openTtlDays`, `filesTtlDays`, `supersessionMinSharedTags`, `summarizeEveryTurns`, `snapshotTemplate`, `snapshotPosition`) stay profile-YAML settings: the first five control retention, cleanup and summary frequency; the last two change the snapshot. It owns no memory data or tools: the host provider applies a saved value on its next write or summary pass. Without `configForms` the section shows an unavailable notice.
+`dsh-client-ui-memory` is the memory provider's settings page. It edits seven of the `memory` row's twelve volatile fields (the detail, brief and forget turn ages, the sessions kept in `MEMORY.md`, the body budget, and the summary provider and model) as one revision-fenced mutation. The other five (`maxEntries`, `openTtlDays`, `filesTtlDays`, `supersessionMinSharedTags`, `summarizeEveryTurns`) stay profile-YAML settings: they control retention, cleanup and summary frequency. It owns no memory data or tools: the host provider applies a saved value on its next write or summary pass. Without `configForms` the section shows an unavailable notice.
 
 ## Table of Contents
 

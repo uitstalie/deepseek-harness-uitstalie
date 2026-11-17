@@ -24,8 +24,6 @@ import { resolveConfig } from './config.ts'
 import type { Config, MemorySettings } from './config.ts'
 import { registerMemoryCommands } from './commands.ts'
 import { MEMORY_PROMPT_SECTION } from './prompt.ts'
-import { refreshMemorySnapshot } from './snapshot.ts'
-import { MEMORY_STATE_SECTION_NAME, MEMORY_STATE_SECTION_ORDER } from './snapshot.ts'
 import { MemorySummaryRunner } from './summary.ts'
 import { memoryTools } from './tools.ts'
 
@@ -165,22 +163,8 @@ export type {
   SurfaceCheckpoint,
 } from './checkpoint.ts'
 export { MEMORY_PROMPT_ORDER, MEMORY_PROMPT_SECTION, MEMORY_PROMPT_SECTION_NAME, MEMORY_PROMPT_TEXT } from './prompt.ts'
-export {
-  appendMemoryNotice,
-  isMemorySnapshotSource,
-  MEMORY_SNAPSHOT_HINT,
-  MEMORY_SNAPSHOT_MAX_BYTES,
-  MEMORY_SNAPSHOT_SECTION_NAME,
-  MEMORY_SNAPSHOT_TITLE,
-  MEMORY_STATE_SECTION_NAME,
-  MEMORY_STATE_SECTION_ORDER,
-  applySnapshotTemplate,
-  appendMemoryUpdate,
-  refreshMemorySnapshot,
-  renderMemorySnapshot,
-  syncMemorySnapshot,
-} from './snapshot.ts'
-export type { MemoryNoticeSource, MemorySnapshotSource } from './snapshot.ts'
+export { appendMemoryNotice } from './notice.ts'
+export type { MemoryNoticeSource } from './notice.ts'
 export type {
   MemorySummaryFailure,
   MemorySummaryFailureCode,
@@ -210,7 +194,7 @@ export {
 } from './commands.ts'
 export { planTierMigrations } from './window.ts'
 export type {
-  MemoryWindowSnapshot,
+  MemoryWindowValues,
   TierMigrationConfig,
   TierMigrationPlan,
   TurnRange,
@@ -229,12 +213,10 @@ export type {
  * jobs. A completed turn starts a job whose failure stays contained to a notice
  * message; the registration signal aborts in-flight work on unload.
  *
- * A root agent resumed over a workspace that already holds memory entries gets
- * its snapshot from the registration's agent hook, so a restarted provider
- * injects the current state before the first write of the new process. A
- * brand-new session has no surface yet; injecting there would place the snapshot
- * ahead of the system prompt, so it receives its first snapshot from the first
- * successful write instead.
+ * A root agent receives the static prompt section and the tools only. Memory
+ * messages are limited to tier checkpoints at compaction boundaries and
+ * summary-failure notices; no memory state is injected at session start or per
+ * turn.
  * @param ctx - plugin context carrying the organizer and services.
  * @param config - raw provider configuration from the Loader row.
  * @throws Error when the window thresholds or summary model pair are invalid,
@@ -256,8 +238,6 @@ export function apply(ctx: Context, config: Config): void {
     get summarizeEveryTurns() { return effective.summarizeEveryTurns },
     get summaryMaxAttempts() { return effective.summaryMaxAttempts },
     get summaryRetryDelayMs() { return effective.summaryRetryDelayMs },
-    get snapshotTemplate() { return effective.snapshotTemplate },
-    get snapshotPosition() { return effective.snapshotPosition },
   })
   ctx.on('loader/volatile-update', () => {
     try {
@@ -268,11 +248,6 @@ export function apply(ctx: Context, config: Config): void {
       ctx.logger.warn('memory: keeping previous settings after an invalid update: %o', error)
     }
   })
-  const snapshotTexts = new Map<string, string>()
-  const onSnapshotText = (sessionId: string, text: string | undefined): void => {
-    if (text === undefined) snapshotTexts.delete(sessionId)
-    else snapshotTexts.set(sessionId, text)
-  }
   const registration = ctx.dafeiyu.register({
     id: MEMORY_CAPABILITY_ID,
     contractVersion: MEMORY_CONTRACT_VERSION,
@@ -281,7 +256,7 @@ export function apply(ctx: Context, config: Config): void {
     settings: { sectionId: MEMORY_SETTINGS_SECTION, order: MEMORY_SETTINGS_ORDER },
     config: effective,
     create: (runtime: CapabilityRuntime): CapabilityContribution => {
-      const summaries = new MemorySummaryRunner(ctx, settings, runtime.signal, onSnapshotText)
+      const summaries = new MemorySummaryRunner(ctx, settings, runtime.signal)
       // A session can close without another completed turn; flush its partial summary batch
       // while the registration signal is still live, then stop observing.
       const stopFlushOnDispose = ctx.on('session/disposed', (session) => {
@@ -291,32 +266,8 @@ export function apply(ctx: Context, config: Config): void {
       else runtime.signal.addEventListener('abort', stopFlushOnDispose, { once: true })
       return {
         scope: 'all',
-        // The state section is always wired, even while `snapshotPosition` is `depth-0`: an empty
-        // text contributes nothing to the prompt, and a later switch to `prompt` then reaches the
-        // agents that were created before the change. Deciding the section set at wiring time left
-        // those agents without any snapshot after the switch.
-        promptSections: (agent: Agent) => (agent.role ?? 'agent') === 'subagent' ? [] : [
-          MEMORY_PROMPT_SECTION,
-          {
-            name: MEMORY_STATE_SECTION_NAME,
-            order: MEMORY_STATE_SECTION_ORDER,
-            text: () => settings.snapshotPosition === 'prompt'
-              ? snapshotTexts.get(String(agent.session.id)) ?? ''
-              : '',
-          },
-        ],
-        tools: () => memoryTools(ctx, settings, onSnapshotText),
-        onAgentCreated: (agent: Agent) => {
-          if ((agent.role ?? 'agent') === 'subagent') return
-          // A resumed session already has a surface; a fresh one is empty until
-          // its first step, and a user message must not precede the system prompt.
-          if (agent.session.surface.nodes.length === 0) return
-          void refreshMemorySnapshot(ctx, agent, runtime.signal, {
-            template: settings.snapshotTemplate,
-            position: settings.snapshotPosition,
-            onText: onSnapshotText,
-          })
-        },
+        promptSections: (agent: Agent) => (agent.role ?? 'agent') === 'subagent' ? [] : [MEMORY_PROMPT_SECTION],
+        tools: () => memoryTools(ctx, settings),
         onTurnEnd: (input) => {
           // The organizer dispatches every turn ending, including aborted, blocked, failed and
           // token-ceiling turns (dafeiyu's contract). Only a completed turn has a conversation to
@@ -375,8 +326,6 @@ function readSettings(config: Config): MemorySettings {
     filesTtlDays: current(config.filesTtlDays),
     supersessionMinSharedTags: current(config.supersessionMinSharedTags),
     summarizeEveryTurns: current(config.summarizeEveryTurns),
-    snapshotTemplate: current(config.snapshotTemplate),
-    snapshotPosition: current(config.snapshotPosition),
   })
 }
 

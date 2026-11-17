@@ -42,7 +42,7 @@ export interface TurnRange {
 }
 
 /** One session's frontmatter state after the planned migration. */
-export interface MemoryWindowSnapshot {
+export interface MemoryWindowValues {
   /** Session these values belong to. */
   readonly sessionId: string
   /** Turn records with each successful brief migration applied. */
@@ -69,12 +69,12 @@ export interface TierMigrationPlan {
   readonly toForget: readonly TurnRange[]
   /**
    * Ranges an earlier pass already migrated in the document but could not replace on
-   * the surface (a snapshot, a compaction checkpoint, or a gap). The body is already
+   * the surface (a compaction checkpoint or a gap). The body is already
    * correct; only the surface replacement is retried.
    */
   readonly retry: readonly SurfaceRetry[]
   /** New frontmatter values to record after applying the plan. */
-  readonly window: MemoryWindowSnapshot
+  readonly window: MemoryWindowValues
 }
 
 /** Window thresholds plus the session whose turns the ages measure. */
@@ -409,7 +409,7 @@ function nextForgottenThrough(
   return current === undefined ? highest : Math.max(current, highest)
 }
 
-/** Mark every turn covered by a brief range as brief in the snapshot values. */
+/** Mark every turn covered by a brief range as brief in the recorded turn values. */
 function applyBriefTiers(
   turns: readonly MemoryTurnRecord[],
   toBrief: readonly TurnRange[],

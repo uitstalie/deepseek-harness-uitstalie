@@ -5,8 +5,8 @@
  * plus a `window` naming the turn run and tier it replaces. The message replaces
  * either the raw turn's contiguous surface nodes or the previous memory
  * checkpoint for the same run. It never appends: a range that left the live
- * surface, contains a snapshot, or touches a compaction checkpoint is skipped
- * with a debug log, so the surface stays consistent with what a caller can see.
+ * surface or touches a compaction checkpoint is skipped with a debug log, so the
+ * surface stays consistent with what a caller can see.
  * @module @deepseek-ai/dsh-memory/checkpoint
  */
 
@@ -56,8 +56,8 @@ type SurfaceTargetResult =
  *
  * Resolution order is the recorded checkpoint seq, a live memory checkpoint
  * whose window matches the same turns, then the raw turn's surface nodes. A raw
- * target must be a non-empty contiguous run that contains no memory snapshot
- * and no compaction checkpoint. The append is attempted once; a surface refusal
+ * target must be a non-empty contiguous run that contains no compaction
+ * checkpoint. The append is attempted once; a surface refusal
  * skips the range without appending, and the next pass recomputes from the live
  * surface. A cancellation checked before the surface read and again before the
  * append skips the range: this function never publishes a checkpoint for a
@@ -184,9 +184,6 @@ function rawTurnTarget(events: readonly SurfaceEvent[], range: TurnRange): Surfa
   }
   const selected = indices.map(index => events[index] as SurfaceEvent)
   for (const event of selected) {
-    if (event.type === 'user/message' && isSnapshotSource(event.data.source)) {
-      return { ok: false, reason: 'the range contains a memory snapshot' }
-    }
     if (event.type === 'user/message' && isCompactionCheckpoint(event.data.source)) {
       return { ok: false, reason: 'the range contains a compaction checkpoint' }
     }
@@ -200,12 +197,6 @@ function rawTurnTarget(events: readonly SurfaceEvent[], range: TurnRange): Surfa
     return { ok: false, reason: 'the turn range has no surface nodes' }
   }
   return { ok: true, target: { start, end, seqs: selected.map(event => event.seq) } }
-}
-
-/** Whether a source is the memory producer's snapshot form. */
-function isSnapshotSource(source: MessageSource): boolean {
-  const candidate: { readonly kind?: string; readonly form?: string } = source
-  return candidate.kind === 'memory' && candidate.form === 'snapshot'
 }
 
 /** Whether a merge-extensible source is a compaction checkpoint. */

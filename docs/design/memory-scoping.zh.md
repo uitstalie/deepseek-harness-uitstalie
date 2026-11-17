@@ -2,7 +2,7 @@
 
 [English](memory-scoping.md) | 中文
 
-状态：评审稿；Step 0（超上限归档修复，`3cb8eeaf3d`）、Step 1（读侧工作区工具集，`cb4cc58385`）与 Step 2（意图卡与任务创建，即本次改动）已合并，Step 3 起尚未开始。篇幅：不受 12 页上限约束，以内容完整为准；本稿约 12,374 汉字（约 20 页）。
+状态：评审稿；第 0–3 步已实现。第 0 步（超上限归档修复，`3cb8eeaf3d`）、第 1 步（读侧工作区工具集，`cb4cc58385`）、第 2 步（意图卡与任务创建，`9218cf1c73`）与第 3 步（投递改成工具调用、删除每轮记忆注入，即本次改动）已在 `cli-desktop` 上。第 4 步（只留 global 记忆并迁移）尚未开始。JIRA 自己的回合结束报告投递仍在，因为 JIRA 本身仍启用；10.3 节把它记为未收口缺口，而不是已完成。篇幅：不受 12 页上限约束，以内容完整为准；本稿约 14,479 汉字（约 20 页）。
 
 ## 1. 背景与问题
 
@@ -145,7 +145,7 @@
 | 消息 | 消息 id、目标会话、正文、类型（消息或追问）、投递状态、回执、产物引用 | 会话 inbox 与消息日志 |
 | 产物引用 | 产物 id、工作区、路径、sha256、大小、版本、类型、会话 id、任务 id、创建时间、摘要 | 工作区产物索引 |
 
-工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。派发接通之后的当前状态：工作区工具集在 `$DSH_HOME/workspaces/<workspace-id>/` 下写任务、回执与意图卡，super agent 的 `superagent_control start` 在启动会话之前就写下这条任务。卡缺失、proposed、stale、属于别的工区，或 brief 漏掉卡上的点，都在这个入口被拒绝。派发账本 `.superagent/ledger` 现在是同一条任务、同一个 task id 的投影，而不是第二份任务列表；它的追加式历史与报告日志仍然可读。JIRA 本身仍启用，因为移除是后续步骤；账本的手工 `record` 回退仍只是兼容路径，不是派发事实源。
+工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。第 3 步之后的当前状态：工作区工具集在 `$DSH_HOME/workspaces/<workspace-id>/` 下写任务、回执、消息、产物引用与意图卡；`workspace_message.send` 是它唯一的出站投递路径，`workspace_artifacts.publish`/`reference` 是它唯一的引用路径。消息或任务引用在发送时保存产物 id、版本与 SHA-256；文件本身仍在工作区里。super agent 的 `superagent_control start` 在启动会话之前就写下这条任务，派发账本 `.superagent/ledger` 是同一条任务、同一个 task id 的投影，而不是第二份任务列表；它的追加式历史与报告日志仍然可读。卡缺失、proposed、stale、属于别的工区，或 brief 漏掉卡上的点，都在派发入口被拒绝。跨工作区消息对普通 agent 拒绝，只有 super agent 显式给出目标工作区 id 才能发送，且调用会留痕。JIRA 本身仍启用，因为移除是后续步骤；在配置了 `superagent_home` 时，它的 superagent 报告路径仍会在回合结束时投递报告，10.3 节把它记为唯一剩下的回合结束投递路径。账本的手工 `record` 回退仍只是兼容路径，不是派发事实源。
 
 意图卡是工作区记录，不是记忆条目。一张卡只属于一个工作区。跨工作区请求会在每个目标工作区各建一张卡，每张卡都逐字保留用户原话。卡随工作区工具集状态存放：`$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/`（`index.json`、`versions/<n>.json`），不在宿主全局意图存储里。版本是追加式的；旧版本被 supersede 后仍可读。
 
@@ -211,7 +211,8 @@
 
 ```
 { action: 'send' | 'read', targetSessionId?, messageId?, text?, kind?: 'message' | 'followup',
-  priority?: 'normal' | 'urgent', replyTo?, references?, taskId?, requestId? }
+  priority?: 'normal' | 'urgent', urgentReason?: 'wrong-conclusion' | 'stop-order' | 'instruction-change',
+  replyTo?, references?, taskId?, requestId? }
 ```
 
 - `send` 返回 `{ messageId, deliveredAt, status: 'queued' | 'delivered' | 'interrupted' | 'target_archived' }`。重复的 `requestId` 返回第一次的结果。
@@ -220,7 +221,7 @@
 - `replyTo` 把回复挂到它回答的消息上。
 - 范围：同一工作区的会话可以互发；跨工作区经 super agent，不直发。目标必须是授权工作区里的会话；不支持广播；正文限制在一屏内。
 
-正常与紧急：普通消息排队，在目标的下一个 turn 边界到达。紧急消息只限三种：纠正目标正在执行的错误结论；停止危险或不可逆操作；用户指令变更使当前工作失效。发送方（任何 agent）显式标 `priority: 'urgent'`，工具按这三种情形校验；super agent 在这里没有特殊性，它只是当前最早的派发方。紧急消息插入到目标的下一次工具调用之前，并可以中断当前步骤。现在所有消息都走正常追加，紧急纠正排在队列后面，错误结论可以一路跑完；这就是紧急通道要修的缺陷。
+正常与紧急：普通消息排队，在目标的下一个 turn 边界到达。紧急消息只限三种：纠正目标正在执行的错误结论；停止危险或不可逆操作；用户指令变更使当前工作失效。发送方（任何 agent）显式标 `priority: 'urgent'`，并用 `urgentReason` 给出三种情形之一；没有它的 urgent 消息被工具拒绝。super agent 在这里没有特殊性，它只是当前最早的派发方。紧急消息插入到目标的下一次工具调用之前，并可以中断当前步骤。第 3 步之前所有消息都走正常追加，紧急纠正排在队列后面，错误结论可以一路跑完；这就是紧急通道要修的缺陷。第 3 步用 `steer` 发送紧急消息，目标空闲时回退为排队。
 
 回复指引：普通 agent 在请求完成或受阻时，用 `workspace_message.send` 加 `replyTo` 回复。回复是结论、依据、下一步，几行，不写报告；文件用引用，不粘贴正文。提示词要写明这一点，因为普通 agent 不会自己推断工具契约。
 
@@ -305,13 +306,13 @@ ask user 与用户批准是独立的可靠性设计项，见 7.5。
 | `read`、`glob`、`grep` | 读工作区内容 | 内容工具 | 保留 |
 | `tool-dsh-store` | 读 `.dsh` 内容 | 存储工具 | 不在本文范围；不改（见 2.3） |
 
-`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。Step 2 之后的当前状态：`workspace_sessions`、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message` 读取与 `workspace_artifacts` 的 `list`/`resolve` 已交付；消息发送与产物发布/引用仍属 Step 3。`memory_read` 已删除（`cb4cc58385`），但 `memory_resolve` 仍在（`packages/uitstalie/memory/src/tools.ts:229`）；JIRA 与 `superagent_*` 工具仍启用（`packages/bundle/web-app/cordis.patch.uitstalie.yml` 中 `jira: { enabled: true }`）。移除 JIRA 与 `memory_resolve` 仍是待决策项，不是已发布的改动。
+`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。第 3 步之后的当前状态：`workspace_sessions`、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message`（`send`/`read`）与 `workspace_artifacts`（`publish`/`reference`/`list`/`resolve`）已交付，静态 `workspace-directory` 提示词段已接到每个 agent。`memory_read` 已删除（`cb4cc58385`）；`memory_resolve` 仍在（`packages/uitstalie/memory/src/tools.ts:229`）；产物的 `request`/`grant` 未实现，因此 `pending` 与 `expired` 仍不可达。JIRA 与 `superagent_*` 工具仍启用（`packages/bundle/web-app/cordis.patch.uitstalie.yml` 中 `jira: { enabled: true }`），其回合结束报告投递没有被第 3 步删除。移除 JIRA 与 `memory_resolve` 仍是待决策项，不是已发布的改动。
 
 ### 6.3 投递改成工具调用
 
 `workspace_message.send` 是主投递路径：
 
-输入：`{ targetSessionId, kind: 'message' | 'followup', text, priority?: 'normal' | 'urgent', replyTo?, references?, taskId?, requestId }`。
+输入：`{ targetSessionId, kind: 'message' | 'followup', text, priority?: 'normal' | 'urgent', urgentReason?, replyTo?, references?, taskId?, requestId }`。urgent 消息必须用 `urgentReason` 给出 5.4 节三种情况之一，这是工具对三种情况的机器可校验实现。
 
 - `text` 限制在一屏内。schema 上限 600 字符，提示词要求三段：结论、依据、下一步，最多六行。
 - `references` 是产物引用列表。消息体里永远不放文件内容。
@@ -491,7 +492,7 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 | 3 | 投递改成工具调用，并在同一版本删除洪水：`workspace_message.send`、产物发布/引用、静态提示词，且不再有快照、更新通知、跨会话索引、回合结束投递 | 消息与引用能往返；重试不重复；一个 turn 不发就什么都不投递；普通会话每轮记忆消息数为 0、字节数为 0；“上一轮做了什么”由 `workspace_sessions` 回答 |
 | 4 | 记忆变为只留 global，并迁移旧条目 | 业务或派发写入被拒并给出工具提示；产出 dry-run 报告；只有确认过的 global 条目仍被注入；备份与回滚已验证 |
 
-已完成：第 0、1、2 步，包括派发接通：`superagent_control start` 校验目标工作区的意图卡，通过 `workspace_tasks` 记录任务，`.superagent/ledger` 只作为这条任务同 id 的投影写入。未开始：第 3、4 步。
+已完成：第 0–3 步。第 3 步交付了 `workspace_message.send`、产物 `publish`/`reference`、静态工作区目录，并删除了记忆快照、`memory-state` 段、“Memory updated”通知与跨会话索引。一个不发 send 的 turn 不会经工作区工具集投递任何东西：唯一会调用宿主会话控制器的路径是 `workspace_message.send`。未开始：第 4 步、产物的 `request`/`grant`，以及删除 JIRA 自己的回合结束报告投递（见 10.3 节）。
 
 每一步都可独立上线、可回滚。第 0 步先合。第 1 到 4 步不依赖看板方向。
 
@@ -518,13 +519,14 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 
 - 工具调用延迟与成本：结果保持有界，并在提示词里放一张简短的“去哪里查”地图。
 - 一个任务两个主人：新的派发路径已收口。`superagent_control start` 读取目标工作区的意图卡，通过工作区工具集记录任务，`.superagent/ledger` 只作为这条任务同 id 的投影写入，所以一次派发的任务在两处只有一个身份。`superagent_ledger` 保留读与纠偏契约，但不再另铸身份。JIRA 账本本身在移除步骤之前不动；账本的手工 `record` 回退仍是兼容路径，不是派发事实源。
-- 消息优先级：紧急消息可以中断一个步骤。三种紧急情况很窄，普通消息永远不紧急；误判紧急是缺陷，要评审。
-- 引用失效：changed、missing、denied、pending、expired 分开；授权按版本限定，新版本需要新授权；跨工作区拒绝不泄漏产物是否存在。
-- 跨工作区授权：显式工作区 id、注册表成员校验、调用留痕；拉先查接收方，推先查发送方；不做隐式聚合。
+- 消息优先级：紧急消息可以中断一个步骤。`workspace_message.send` 在标记 urgent 时要求给出 `urgentReason`（三种已命名情况之一），目标在运行时 steer 当前步骤，目标空闲时回退为排队。三种紧急情况很窄，普通消息永远不紧急；误判紧急是缺陷，要评审。
+- 引用失效：`publish`/`reference`/`send` 已交付，changed、missing、denied 可达且分开；引用在发送时固定，新版本需要新的引用。产物的 `request`/`grant` 交付之前，`pending` 与 `expired` 不可达；跨工作区拒绝不泄漏产物是否存在。
+- 跨工作区授权：显式工作区 id、注册表成员校验、调用留痕。跨工作区消息对普通 agent 拒绝，只允许 super agent。拉先查接收方，推先查发送方；不做隐式聚合。
 - 丢失上下文压缩：compaction 预置太激进会丢上下文；把它做成可配置，用长会话测试，并保留上一版值以便回滚。
 - 确认通道：旧路径已移除；新链路有截止时间与可见状态，链路断开标为 failed，不静默挂起。
 - 迁移误分类：dry-run、人工确认、备份、回滚；被误归档的 global 事实可以重新加回。
-- 所有会话的爆炸半径：提示词或工具集的缺陷现在会波及普通会话。上线顺序按“先工具集、再切提示词与删注入”，并保留上一版提示词作为一版构建期回滚。
+- 所有会话的爆炸半径：提示词或工具集的缺陷现在会波及普通会话。第 3 步按“先工具集、再切静态提示词与删注入”的顺序上线，并保留上一版提示词作为一版构建期回滚。零注入回归测试就是门禁：只要有一轮记忆消息被追加，构建自己的测试就会红。
+- JIRA 的回合结束投递仍在：唯一存活的隐式出站路径是 jira-agent 的派发报告投递，在配置了 `superagent_home` 时生效。第 3 步的投递工具不依赖它，工作区工具集也没有路径调用它，但删除它要等 JIRA 退役。在那之前两条路径并存，“不发 send 就不投递”只对工作区工具集成立。这是未收口缺口，不能当成已完成。
 
 ### 10.4 本轮确认
 
@@ -628,7 +630,7 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 
 派发入口是 `superagent_control start`：它要求同一份卡引用、brief 的验收与边界、任务类型与覆盖映射，在任何会话启动之前先把任务写进目标工作区，并把账本条目写成这条任务同 id 的投影。`append`、`prompt`、`abort` 只是继续一个已过卡校验的会话，不创建第二条任务。工作区工具集挂在同一组合里，因此 `workspace_intents` 与 `workspace_tasks` 就在 super agent 自己的会话上；普通 agent 保留两个工具的读侧，写入仍被角色检查拒绝。
 
-当前状态：工具已经强制派发拒绝码、覆盖检查与回执门。在卡片 UI 出现之前，super agent 是记录用户确认与纠正的通道，因此 `create`、`confirm` 与 `correct` 需要 super agent 角色或用户；普通 agent 只读卡。`nonCoverage` 条目就是 super agent 的显式派发豁免，连同理由记录在任务上；它不是默认通过。
+第 3 步之后的当前状态：工具已经强制派发拒绝码、覆盖检查、回执门、静态工作区目录、消息作用域与幂等规则，以及产物发布/引用。`workspace_message.send` 与 `workspace_artifacts.publish`/`reference` 已交付；产物的 `request`/`grant` 尚未。在卡片 UI 出现之前，super agent 是记录用户确认与纠正的通道，因此 `create`、`confirm` 与 `correct` 需要 super agent 角色或用户；普通 agent 只读卡。`nonCoverage` 条目就是 super agent 的显式派发豁免，连同理由记录在任务上；它不是默认通过。
 
 ### 11.9 不做什么
 
@@ -683,8 +685,41 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 | 长任务监控 | 会话状态与 JIRA 状态 | 需要 | `workspace_sessions` 状态与进展，加写租约 | 下移 |
 | 跨工作区协作 | 派发，以及把事实复制进记忆 | 需要 | `workspace_tasks`、`workspace_message`、`workspace_artifacts`、`workspace_intents` 显式范围；永不进记忆 | 下移 |
 
-Step 2 之后的当前状态：`workspace_intents`、任务创建、覆盖检查与回执门已经实现；绑定 JIRA 的能力仍然实现并启用；`workspace_message.send` 与产物发布仍属 Step 3。本表记录的是目标归属，已实现的行就是本代码树已交付的状态。
+第 3 步之后的当前状态：`workspace_intents`、任务创建、覆盖检查、回执门、`workspace_message.send`、产物发布/引用与静态工作区目录已经实现；绑定 JIRA 的能力（包括其回合结束报告投递）仍然实现并启用。本表记录的是目标归属，已实现的行就是本代码树已交付的状态。
 
 ## 13. 附录：未来方向
 
 看板是以后可能出现的界面。它的数据来自工作区工具集：`workspace_sessions`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`；`workspace_intents` 提供派发上下文，记忆只贡献全局事实。记忆卡片流、按工作区的记忆索引、事件日志存储都明确不在范围内；如果看板以后需要，那是在同一套工具集上的新设计，不是对记忆模型的修改。意图卡是工作区记录，不是记忆。
+
+## 14. 第 3 步的部署验收
+
+本节没有任何一项已经在部署后的 Windows 主机上验过。它给的是明天同步这个分支、部署、继续工作的人用的清单。**CI** 表示本分支的自动化套件已经覆盖该项；**Deploy** 表示必须由真实进程、真实会话或运行中的 GUI 确认，测试套件证明不了。不要只凭测试套件勾选 **Deploy** 项，也不要在勾选之前汇报“第 3 步已部署验收”。
+
+自动化的一半是 `pnpm exec vitest run packages/uitstalie/memory packages/uitstalie/workspace-tools`。
+
+### 14.1 普通会话：没有每轮记忆注入
+
+- [ ] 一个全新的普通工作区会话，在至少三个 turn、其中至少一次 `memory_write` 之后，持久日志里 `source.kind` 为 `memory` 的 `user/message` 事件数为 0，记忆字节数为 0。CI：`an ordinary session receives zero memory messages per turn`（`packages/uitstalie/memory/tests/provider.spec.ts`）。Deploy：读真实会话的日志或表面并计数。
+- [ ] 组装后的系统提示词里没有名为 `memory-state` 的段。CI：同一 spec 断言组装结果。Deploy：在运行中的宿主里检查提示词。
+- [ ] 在已有 `MEMORY.md` 的工作区里恢复会话，不会收到快照。CI：`a resumed session is not injected with a memory snapshot`。Deploy：在 `MEMORY.md` 已有条目的工作区打开一个会话。
+- [ ] 写入后不出现“Memory updated”消息，完成的 turn 后不出现“Memory snapshot”消息。CI：两者都断言不存在。Deploy：在 GUI 里做一次写入、完成一个 turn。
+
+摘要**失败**仍会追加一条 `form: 'notice'` 消息并写明错误码；那是一次性错误报告，不是每轮注入。如果看到它，请读摘要作业日志，不要把它当成注入回归。
+
+### 14.2 只有工具能投递
+
+- [ ] 一个不调用 send 的 turn 什么都不投递：没有消息记录，也没有 prompt 进入别的会话。CI：`a turn with no send delivers nothing`（`packages/uitstalie/workspace-tools/tests/delivery.spec.ts`）。Deploy：在会话 A 跑一个 turn，确认会话 B 的收件箱没变、也没有写入 `messages/*.json`。
+- [ ] 消息与产物引用能往返。CI：`a message round-trips with its artifact reference`。Deploy：从 super agent 发给工作区会话并读回。
+- [ ] 用同一个 `requestId` 重试发送，返回第一条消息且不追加第二条。CI：`a repeated requestId returns the first message without a second delivery`。Deploy：重复调用并比较 id。
+- [ ] `workspace_sessions` 能回答“上一轮做了什么”。CI：`"what did I do last turn" is answered by workspace_sessions`。Deploy：在一个真实 turn 之后提问，确认答案是会话自己的进度，而不是记忆通知。
+- [ ] 跨工作区发送对普通 agent 拒绝，对显式给出目标工作区 id 的 super agent 允许，且调用留痕。CI：`an ordinary agent cannot message another workspace; the super agent can`。Deploy：两种都试一次。
+- [ ] 发布工作区根外的路径被拒绝。CI：`publish refuses a path outside the workspace root and a missing file`。Deploy：用相对 `..` 路径重复一次。
+- [ ] 静态 `workspace-directory` 提示词段列出已注册工作区，且不含状态、任务或记忆数据。CI：`every session gets the same static workspace directory section`。Deploy：比较两个会话与 super agent 的提示词。
+
+### 14.3 已知缺口：JIRA 的回合结束投递
+
+- [ ] 如果配置了 `superagent_home`，JIRA 派发仍会经 jira-agent 的回合结束路径报告。第 3 步**没有**删除它：JIRA 仍启用，它的退役是后续步骤（见 10.3 节）。CI：没有删除断言；既有 JIRA 套件仍通过。Deploy：确认该部署是否使用 JIRA superagent。如果使用，记录 14.2 的“不发 send 就不投递”只对工作区工具集成立，并且不要把回合结束投递的删除汇报为已完成。
+
+### 14.4 CI 证明不了的部分
+
+- 真实 Windows 部署、GUI、进程重启与恢复，以及真实的多工作区注册表都在套件之外。上面标 **Deploy** 的项就是人工门禁；在部署主机上勾选之前，它们保持未勾选。

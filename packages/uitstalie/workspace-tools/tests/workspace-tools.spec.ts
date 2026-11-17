@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
@@ -90,6 +91,34 @@ test('a session sees only its own workspace; a cross-workspace read needs the ex
   })
   expect(subdirectory.isError).toBe(true)
   expect(textOf(subdirectory)).toContain('is not registered')
+})
+
+test('every session gets the same static workspace directory section', async () => {
+  const a = await registerWorkspace(mounted.registry, projectA, 'a')
+  const b = await registerWorkspace(mounted.registry, projectB, 'b')
+  const ordinary = await createRoot(mounted, 'directory-ordinary', projectA)
+  const superAgent = await createRoot(mounted, 'directory-super', projectA, 'super')
+  await a.attachSession(ordinary.session.id)
+  await b.attachSession(superAgent.session.id)
+
+  const ordinaryAssembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(ordinary))
+  const superAssembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(superAgent))
+  const ordinarySection = ordinaryAssembly.sections.find(section => section.name === 'workspace-directory')
+  const superSection = superAssembly.sections.find(section => section.name === 'workspace-directory')
+  expect(ordinarySection).toBeDefined()
+  expect(ordinarySection?.text).toBe(superSection?.text)
+  expect(ordinarySection?.text).toContain(`- a (${String(a.id)}) · ${a.path}`)
+  expect(ordinarySection?.text).toContain(`- b (${String(b.id)}) · ${b.path}`)
+  // Identity only: no status, no task, and no memory content in the static list.
+  expect(ordinarySection?.text).not.toContain('running')
+  expect(ordinarySection?.text).not.toContain('task-')
+  expect(ordinarySection?.text).not.toContain('memory')
+
+  // A brand-new session sees the same list, and nothing was delivered to it.
+  const fresh = await createRoot(mounted, 'directory-fresh', projectA)
+  const freshAssembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(fresh))
+  expect(freshAssembly.sections.find(section => section.name === 'workspace-directory')?.text)
+    .toBe(ordinarySection?.text)
 })
 
 test('list results are bounded by limit and walkable with the returned cursor', async () => {

@@ -44,11 +44,15 @@ kind: "package-reference"
 |---|---|---|
 | `workspace_sessions` | `list`、`get` | 会话摘要：状态、当前 turn、当前活动、最新进度与任务 id；`get` 另返回近期进度、待收件箱与产物数量 |
 | `workspace_tasks` | `list`、`get`、`create`、`update`、`receipt` | 按状态与 assignee 过滤的任务摘要；`get` 返回任务、其回执、目标会话与产物引用；`create` 要求 active 意图卡与覆盖映射；`update` 推进状态机；`receipt` 追加对齐清单 |
-| `workspace_message` | `read` | 按 id 读一条消息，或按目标会话分页读消息，含投递回执与产物引用 |
-| `workspace_artifacts` | `list`、`resolve` | 每个产物的最新发布引用，可按会话、任务、kind 或路径前缀过滤；`resolve` 用记录版本比对文件，回答 `ok`、`changed`、`missing` 或 `denied` |
+| `workspace_message` | `send`、`read` | `send` 投递一条消息或追问（可带产物引用），返回消息 id、状态与投递回执；重复 `requestId` 返回第一次的结果。`read` 按 id 读一条消息，或按目标会话分页读消息 |
+| `workspace_artifacts` | `publish`、`reference`、`list`、`resolve` | `publish` 对工作区根内的一个文件计算哈希并记录不可变引用；内容未变时重复发布返回已记录版本。`reference` 把已发布引用挂到消息或任务。`list` 返回每个产物的最新引用；`resolve` 用记录版本比对文件，回答 `ok`、`changed`、`missing` 或 `denied` |
 | `workspace_intents` | `create`、`get`、`confirm`、`correct`、`history`、`metrics` | 一个意图卡版本，含带来源标注的目标、验收、边界与产出形式条目；`confirm` 与 `correct` 追加状态；`history` 分页版本；`metrics` 汇总派发对齐 |
 
 `list` 动作用不透明 cursor 分页，默认 20 条、上限 100 条。摘要会限制文本长度；原始 turn 仍由 `session_event_read` 读取，文件正文仍由 `read` 读取。
+
+投递是一次显式工具调用。`workspace_message.send` 校验目标会话、引用的产物版本与调用者作用域，再把受限正文（600 字符）交给宿主会话控制器。一个 turn 不调用 send 就什么都不投递；没有回合结束兜底。跨工作区发送需要 super agent 与目标工作区 id；普通 agent 只能给本工作区的会话发消息。`priority: "urgent"` 必须给出三种已校验 `urgentReason` 之一（目标正在执行错误结论、危险操作停止令、用户指令变更），并 steer 目标当前步骤；目标空闲时回退为排队。
+
+产物引用在发布时不可变：`{ artifactId, workspaceId, path, sha256, size, version, kind, sessionId, taskId?, createdAt }`。产物 id 按 `workspace|path|kind` 稳定；文件变化后再发布追加一个版本。消息或任务保存被引用的 `artifactId`、`version` 与 `sha256`；之后文件变化不会改写引用，`resolve` 报 `changed` 或 `missing`，不会静默跟随新内容。
 
 `workspace_tasks.create` 必须带 `intentId`、`intentVersion`、`workspace`、`acceptance`、`boundaries` 与六类 `taskType`。缺字段或缺卡返回 `INTENT_INCOMPLETE`，`proposed` 版本返回 `INTENT_UNCONFIRMED`，被 supersede 或非当前版本返回 `INTENT_STALE`，跨工作区的卡返回 `INTENT_SCOPE_MISMATCH`，未覆盖的卡点返回 `INTENT_COVERAGE_MISSING`。覆盖没有默认通过：卡里每个点都需要一条覆盖条目或一条显式 `nonCoverage` 理由。`receipt` 为卡里每个点追加一条带证据的对齐条目；`not_satisfied` 的验收点或 `violated` 的边界会把任务转入 `waiting_review` 或 `blocked`，绝不进入 `done`。
 
@@ -56,7 +60,7 @@ kind: "package-reference"
 
 ## 作用域
 
-调用会话的工作区，是注册表中列出该会话的那条账目，或规范路径等于该会话规范 cwd 的已注册工作区。调用只有在给出已注册 id 时才能访问其他工作区，且该读取会写入宿主日志。目录路径、未注册 id 与已注册工作区的子目录都得到同一个拒绝：先把该目录注册为工作区。id 不在已解析工作区账目上的会话在工作区里不可见，因此跨工作区问题不会被隐式回答。
+调用会话的工作区，是注册表中列出该会话的那条账目，或规范路径等于该会话规范 cwd 的已注册工作区。调用只有在给出已注册 id 时才能访问其他工作区，且该读取会写入宿主日志。目录路径、未注册 id 与已注册工作区的子目录都得到同一个拒绝：先把该目录注册为工作区。id 不在已解析工作区账目上的会话在工作区里不可见，因此跨工作区问题不会被隐式回答。`workspace_message.send` 只有经 super agent 才能访问别的工作区：普通 agent 的跨工作区发送会被拒绝，super agent 则显式给出目标工作区 id，且该调用会被记录。
 
 `workspace_intents` 遵循同一作用域。一张卡只属于一个工作区；跨工作区请求会在每个目标工作区各建一张卡，且每张卡逐字保留用户原话。读取其他工作区的卡需要显式 id，并会被记录。任务引用别的工作区的卡时以 `INTENT_SCOPE_MISMATCH` 拒绝。
 
@@ -78,13 +82,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-工作区里的每个 agent 都看到这五个工具的固定 schema；本步没有每轮消息，也没有提示词段。结果是受限摘要：一页最多 100 条，活动与进度都是一行字符串，且不返回文件正文或对话记录。`workspace_sessions` 的 `action: 'get'` 回答“上一回合做了什么”：它从会话自己的日志返回近期进度与当前活动，因此模型查询会话存储，而不依赖 memory 通知。
-
-`workspace_intents.get` 返回卡版本，并为每个条目给出稳定 point id，因此 `create` 与 `receipt` 能直接指名某个点而不用重复其文本。`proposed` 版本返回它的确认请求；在版本变 active 之前，任务无法派发。`workspace_tasks.get` 返回每条回执记录的对齐清单，因此漂移会以列表形式出现。
+工作区里的每个 agent 都看到这五个工具的固定 schema，以及一个名为 `workspace-directory` 的静态系统提示词段（order 700），按 `- <title> (<id>) · <directory>` 列出已注册工作区。清单对每个会话相同，不含状态、任务或记忆数据，因此提示词前缀保持稳定。结果是受限摘要：一页最多 100 条，活动与进度都是一行字符串，且不返回文件正文或对话记录。`workspace_sessions` 的 `action: 'get'` 回答“上一回合做了什么”：它从会话自己的日志返回近期进度与当前活动，因此模型查询会话存储，而不依赖 memory 通知。`workspace_message.send` 与 `workspace_artifacts.publish` 是仅有的投递路径：消息携带引用，已发布引用挂到消息或任务时不复制文件。`workspace_intents.get` 返回卡版本，并为每个条目给出稳定 point id，因此 `create` 与 `receipt` 能直接指名某个点而不用重复其文本。`proposed` 版本返回它的确认请求；在版本变 active 之前，任务无法派发。`workspace_tasks.get` 返回每条回执记录的对齐清单，因此漂移会以列表形式出现。
 
 #### Token 影响
 
-agent 可见这些工具时，每次请求的固定 schema 成本，加上每次调用的受限结果。五个 schema 携带 action 枚举、过滤器、卡条目、覆盖与对齐，是这项贡献中最大的固定部分。
+agent 可见这些工具时，每次请求的固定 schema 成本，加上每次调用的受限结果与静态 `workspace-directory` 段（每个已注册工作区一行）。五个 schema 携带 action 枚举、过滤器、卡条目、覆盖与对齐，是这项贡献中最大的固定部分。
 
 #### KV 缓存影响
 
@@ -94,8 +96,8 @@ agent 可见这些工具时，每次请求的固定 schema 成本，加上每次
 
 ## 已知限制与后续工作
 
-- **本步没有卡片 UI** —— `confirm` 与 `correct` 是模型可调用的，且需要 super agent，由它记录对话送达的用户决定。没有 super agent 或卡片 UI 时，`proposed` 版本无法激活。`workspace_message.send` 与产物的 `publish`/`reference`/`request`/`grant` 仍是同一设计的后续里程碑。
-- **尚无授权模型** —— `resolve` 对同工作区调用者回答 `ok`，对工作区根外路径回答 `denied`；`pending` 与 `expired` 会随产物授权路径变得可达。
+- **本步没有卡片 UI** —— `confirm` 与 `correct` 是模型可调用的，且需要 super agent，由它记录对话送达的用户决定。没有 super agent 或卡片 UI 时，`proposed` 版本无法激活。
+- **尚无授权模型** —— `publish` 之后同工作区的 `read` 被允许，`resolve` 对匹配的同工作区引用回答 `ok`，对工作区根外路径回答 `denied`；产物的 `request`/`grant` 与 `pending`/`expired` 状态仍是该设计的后续里程碑，因此跨工作区读取需要那条路径将来提供的显式 holder grant。
 - **状态是推导的，不是存储的** —— `running` 来自 live agent，`done` 来自注册表归档集合，`blocked` 来自最近一次 `turn/end` 原因，其余会话报 `idle`。
 - **工作区会话扫描会读每个账目日志** —— `workspace_sessions` 在分页前对账目中每个会话折叠状态，因此会话较多的工作区每次 list 都要为每个日志付费。
 
@@ -104,5 +106,5 @@ agent 可见这些工具时，每次请求的固定 schema 成本，加上每次
 ### 开发说明
 
 - `src/api.ts` 注册能力；`src/tools.ts` 固定注册顺序。
-- `src/scope.ts` 负责工作区解析与跨工作区记录；`src/store.ts` 负责任务、消息与产物目录及其读取校验；`src/intent-store.ts` 负责追加式意图卡；`src/intent-rules.ts` 负责来源规则、point id、覆盖与对齐；`src/paging.ts` 负责 cursor。
-- `tests/workspace-tools.spec.ts` 与 `tests/intents.spec.ts` 通过真实 agent loop、组织者、存储、会话查询与文件系统运行，工作区注册表为内存实现。
+- `src/scope.ts` 负责工作区解析与跨工作区记录；`src/delivery.ts` 负责 `workspace_message.send` 的会话控制器接缝；`src/prompt.ts` 渲染静态工作区目录；`src/store.ts` 负责任务、消息与产物目录及其读取校验；`src/intent-store.ts` 负责追加式意图卡；`src/intent-rules.ts` 负责来源规则、point id、覆盖与对齐；`src/paging.ts` 负责 cursor。
+- `tests/workspace-tools.spec.ts`、`tests/intents.spec.ts` 与 `tests/delivery.spec.ts` 通过真实 agent loop、组织者、存储、会话查询与文件系统运行，工作区注册表为内存实现。投递 spec 只替换宿主会话控制器，并记录被接收的 prompt。

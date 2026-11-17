@@ -18,11 +18,11 @@
   en: 24b44e6c44205a45
   zh: e30e027f004c712f
 /deepseek-ai-dsh-workspace-tools/tools:
-  en: ec796f4c5657ed36
-  zh: 96be9e363bbc78a8
+  en: e1766d7eb80b0ad9
+  zh: d5c57fdb82a63386
 /deepseek-ai-dsh-workspace-tools/scope:
-  en: cb0e9f99e335468e
-  zh: 8c3cfe5a17f3780d
+  en: 431502166a2adef2
+  zh: a4500d7965d781a0
 /deepseek-ai-dsh-workspace-tools/storage:
   en: 18eb4af6a3854f1c
   zh: ab148bdcc38a873d
@@ -33,17 +33,17 @@
   en: 760826e4b97b24a0
   zh: 238c89535cdba88a
 /deepseek-ai-dsh-workspace-tools/model-experience/the-workspace-toolset/what-the-model-sees:
-  en: 8b16eadb413dfec9
-  zh: fb3c9c9ba918c127
+  en: dbd684751bebe67b
+  zh: 15963c0bf7bf320b
 /deepseek-ai-dsh-workspace-tools/model-experience/the-workspace-toolset/token-effect:
-  en: 6892eed9e16df4af
-  zh: 75253d3f8cfbd4ad
+  en: 739773c3eaec5cfb
+  zh: 5d5631b5ca6eb58e
 /deepseek-ai-dsh-workspace-tools/model-experience/the-workspace-toolset/kv-cache-effect:
   en: d939f14b34513625
   zh: 3799bbd3b7a63966
 /deepseek-ai-dsh-workspace-tools/known-limitations-and-deferred-work:
-  en: 91b27fca8b3c2f7b
-  zh: 350d2da4a32a224d
+  en: 01c5279932068597
+  zh: be76a94b94cd13fc
 /deepseek-ai-dsh-workspace-tools/known-limitations-and-deferred-work/dev-note:
-  en: 7888b1b5408d4daf
-  zh: ccc7ffde40918009
+  en: 81aa8317b87acb3d
+  zh: fb572ee0adc01d87

@@ -1,7 +1,7 @@
 /**
  * Summary job tests: the real AgentLoop, organizer, store, session query, and
  * local job registry around a stub model adapter. They assert the completed-turn
- * trigger, the detail section and snapshot it writes, the one-pending-pass
+ * trigger, the detail section it writes, the one-pending-pass
  * dedupe, defensive JSON parsing, the one-notice failure path, cancellation, and
  * the unavailable-registry guard.
  */
@@ -23,7 +23,6 @@ import {
   MEMORY_SUMMARY_FAILURE_NOTICE,
   MEMORY_SUMMARY_JOB_KIND,
   MEMORY_SUMMARY_JOB_LABEL,
-  MEMORY_SNAPSHOT_MAX_BYTES,
   MEMORY_SUMMARY_MAX_ATTEMPTS,
   classifySummaryFailure,
   parseBriefEntries,
@@ -38,8 +37,8 @@ import {
   appendUserText,
   createRoot,
   memoryFilePath,
+  memoryMessages,
   memoryNotices,
-  memorySnapshots,
   mountMemory,
   settle,
   waitForValue,
@@ -186,7 +185,7 @@ function batchReply(turns: readonly number[]): string {
   })
 }
 
-test('a completed turn runs one memory job that appends a detail section and refreshes the snapshot', async () => {
+test('a completed turn runs one memory job that appends a detail section', async () => {
   const mounted = await mount()
   const adapter = new SummaryAdapter(() => jsonReply([
     { kind: 'decision', text: 'keep the version-guarded write' },
@@ -220,13 +219,20 @@ test('a completed turn runs one memory job that appends a detail section and ref
   const promptText = block?.type === 'text' ? block.text : ''
   expect(promptText).toContain('[user] summarize this turn')
   expect(promptText).toContain('[assistant] the job wrote a section')
+})
 
-  const snapshots = await memorySnapshots(mounted.ctx, root.id)
-  expect(snapshots).toHaveLength(1)
-  expect(snapshots[0]?.source.form).toBe('snapshot')
-  const snapshotText = snapshots[0]?.message.content
-    .flatMap(block => block.type === 'text' ? [block.text] : []).join('') ?? ''
-  expect(snapshotText).toContain('Archived: turn 1 (detail)')
+test('a completed turn summary appends no memory message on success', async () => {
+  const mounted = await mount()
+  const adapter = new SummaryAdapter(() => jsonReply([{ kind: 'decision', text: 'a successful pass' }]))
+  registerAdapter(mounted, adapter)
+  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
+
+  completeTurn(root, 1)
+  const jobs = await waitForSettledJobs(root, 1)
+  expect(jobs[0]).toMatchObject({ status: 'completed' })
+  await waitForMemoryFile()
+
+  expect(await memoryMessages(mounted.ctx, root.id)).toEqual([])
 })
 
 test('a paused workspace skips the completed turn without writing or noticing', async () => {
@@ -771,7 +777,6 @@ test('a later completed turn compresses an old detail section into a brief check
   const checkpoint = surface.events.find(event =>
     event.type === 'user/message' && isMemoryCheckpointSource(event.data.source))
   expect(checkpoint).toBeDefined()
-  expect(await memorySnapshots(mounted.ctx, root.id)).toHaveLength(1)
 })
 
 test('migration frees budget before the append, so a full body does not block the pass (DH-710)', async () => {
@@ -836,29 +841,4 @@ test('parseSummaryEntries accepts fenced JSON, drops invalid entries, and bounds
   ])
   expect(parseSummaryEntries(JSON.stringify({ entries: [{ kind: 'decision', text: 'x'.repeat(400) }] }))[0]?.text)
     .toHaveLength(300)
-})
-
-test('summary boundaries append bounded snapshots instead of rewriting the trunk', async () => {
-  const mounted = await mount({ config: { detail: 2, brief: 16, forget: 21 } })
-  const adapter = new SummaryAdapter(call => jsonReply([{ kind: 'decision', text: `summary ${String(call)}` }]))
-  registerAdapter(mounted, adapter)
-  const root = await createRoot(mounted, 'memory-root', 1, ROUTE)
-
-  completeTurn(root, 1)
-  await waitForSettledJobs(root, 1)
-  root.session.append('turn/start', { turn: 2 })
-  completeTurn(root, 2)
-  await waitForSettledJobs(root, 2)
-
-  const snapshots = await memorySnapshots(mounted.ctx, root.id)
-  // Append-only by design (DH-723): each summary boundary appends a fresh snapshot, so the
-  // surface carries more than one over a long session. This pins the documented behaviour: none
-  // is rewritten, and every one stays inside the snapshot byte budget.
-  expect(snapshots).toHaveLength(2)
-  expect(snapshots[1]?.seq).toBeGreaterThan(snapshots[0]?.seq ?? 0)
-  expect(snapshots[0]?.source.sections[0]?.text).toContain('Archived:')
-  for (const snapshot of snapshots) {
-    const text = snapshot.source.sections.map(section => section.text).join('')
-    expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(MEMORY_SNAPSHOT_MAX_BYTES)
-  }
 })
