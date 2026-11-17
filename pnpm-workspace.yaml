@@ -106,7 +106,7 @@ minimumReleaseAgeExclude:
   # packageManager field pins, so both exact pins must be exempt from the
   # release-age window that guards other packages.
   - pnpm@11.28.5
-  - pnpm@12.18.0
+  - pnpm@12.21.0
   # Desktop packaging requires this Electron fingerprint with node-addon-require-builtin 0.1.9.
   - electron@44.7.0
   # Stagehand 4.4.0 carries the reviewed zod 4.6.6 pin; install it without the release-age wait.
