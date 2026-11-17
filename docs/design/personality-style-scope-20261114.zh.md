@@ -10,7 +10,7 @@
 
 ### 当前限额
 
-`WRITING_RULES_MAX_RULES = 32`、`WRITING_RULES_MAX_TEXT_CHARS = 240` 与 `WRITING_RULES_MAX_TEXT_BYTES = 4096`（`packages/uitstalie/personality/src/writing-rules.ts:27-33`）。在当前的单条规则长度下，英文文本会先触及字节上限，再触及条数上限：4 KiB 大约能容纳 17 条规则。因此当前的库是一个硬规则列表，而不是长期风格库。
+`WRITING_RULES_MAX_RULES = 100`、`WRITING_RULES_MAX_TEXT_CHARS = 240`、`WRITING_RULES_RESIDENT_MAX = 40` 与 `WRITING_RULES_MAX_TEXT_BYTES = 32 * 1024`（`packages/uitstalie/personality/src/writing-rules.ts:28-37`）。ASCII 文本下 100 条上限先到（规则文本约 24 KB）；CJK 文本可能先触及 32 KiB 字节上限。因此当前的库是一个硬规则列表，而不是长期风格库。
 
 ### Token 成本估算
 

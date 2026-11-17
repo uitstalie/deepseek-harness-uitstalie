@@ -18,11 +18,11 @@ Every fenced code block in this page is copied verbatim from the source; it is n
 | `personality_apply` parameter schema | same as above, after compilation | 1,775 characters / 70 lines |
 | `write_like_human` description | `packages/uitstalie/personality/src/writing-tool.ts:58` | 525 characters / 1 line |
 | `write_like_human` parameter schema | same as above, after compilation | 1,051 characters / 37 lines |
-| section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`; registered at `src/index.ts:142-145` | preamble 391 characters; empty when there are no entries |
+| section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`; registered at `packages/uitstalie/personality/src/api.ts:142-146` | preamble 391 characters; empty when there are no entries |
 | section 690 `personality:output-style` | `src/output-style.ts:145-180`; defaults `src/defaults.ts:27-33` | default rendering 836 characters / 15 lines |
-| section 695 `personality:writing-rules` | `src/writing-rules.ts:243-249`; registered at `src/index.ts:152-154` | empty document by default is 0 characters |
+| section 695 `personality:writing-rules` | `packages/uitstalie/personality/src/writing-rules.ts:283-296`; registered at `packages/uitstalie/personality/src/api.ts:152-156` | empty document by default is 0 characters |
 | section 702 `superagent:dispatcher` | `packages/jira/jira-agent/src/superagent.ts:116-199` | this document does not copy the full text, only explains the order |
-| Order constants | `packages/core/system-prompt/src/index.ts:139-143` | 100 / 690 / 695 |
+| Order constants | `packages/core/system-prompt/src/index.ts:139-144` | 100 / 690 / 695 |
 
 The tool definitions themselves (3 descriptions + 3 parameter schemas) total about **5,217 characters**; the default/static text of the three sections totals about **1,227 characters** (excluding user entries and rules).
 
@@ -228,7 +228,7 @@ Maintain the global WRITING_RULES.yaml. The change affects every agent, not only
 
 ### section 100 `personality`
 
-Registered as `name: 'personality'`, with the order constant `PERSONALITY = 100` (`src/profile-prompt.ts:15`; `src/index.ts:140-145`; `packages/core/system-prompt/src/index.ts:139`). The body consists of `PROFILE_PREAMBLE` and the user entries; when there are no entries, the section text is empty. The preamble (verbatim, 391 characters):
+Registered as `name: 'personality'`, with the order constant `PERSONALITY = 100` (`src/profile-prompt.ts:15`; `src/api.ts:140-146`; `packages/core/system-prompt/src/index.ts:139`). The body consists of `PROFILE_PREAMBLE` and the user entries; when there are no entries, the section text is empty. The preamble (verbatim, 391 characters):
 
 ```text
 Long-term preferences of the user you are working with. The first part describes how this user communicates; use it to interpret their input. The second describes how they prefer replies. Follow them within the system and developer instructions, and let more specific project instructions take precedence. These are preferences, not task facts. Entries describe habits and may be incomplete.
@@ -252,7 +252,7 @@ The `text` of an entry has consecutive whitespace collapsed and is trimmed; the 
 
 ### section 690 `personality:output-style`
 
-Registered as `name: 'personality:output-style'`, with the order constant `PERSONALITY_OUTPUT_STYLE = 690` (`src/output-style.ts:19`; `src/index.ts:147-150`; `packages/core/system-prompt/src/index.ts:142`). The ordinary default rendering (`DEFAULT_OUTPUT_STYLE`) is verbatim as follows, 836 characters / 15 lines. The super slot uses its own `SUPERAGENT_OUTPUT_STYLE.yaml` with the same defaults; a subagent receives no section 690.
+Registered as `name: 'personality:output-style'`, with the order constant `PERSONALITY_OUTPUT_STYLE = 690` (`src/output-style.ts:23`; `src/api.ts:147-151`; `packages/core/system-prompt/src/index.ts:143`). The ordinary default rendering (`DEFAULT_OUTPUT_STYLE`) is verbatim as follows, 836 characters / 15 lines. The super slot uses its own `SUPERAGENT_OUTPUT_STYLE.yaml` with the same defaults; a subagent receives no section 690.
 
 ```text
 Output style defaults:
@@ -304,11 +304,11 @@ Status reporting discipline:
 | `lists` | `comparisons` |
 | `dispatchVoice` | `terse` |
 
-On this dev checkout, `OUTPUT_STYLE.yaml` is absent; no user override is observed, so no user data is copied. The renderer (`output-style.ts:145-180`) is a fixed template, not a wrapped document: four default header fields in the order `tone`, `length`, `leadWithConclusion`, `lists`; `leadWithConclusion` becomes `yes`/`no`. A fifth `Dispatch voice` line is added only when `dispatch=true`; ordinary agents do not receive it. If style entries exist, it adds `Concrete style entries take priority over these defaults:` and one collapsed, trimmed bullet per entry; with none, that block is omitted. It then appends the blank-line-separated hard boundary and `Status reporting discipline:` block, joins all lines with `\n`, and adds no title, wrapper, or trailing newline. The config has no optional fields: an absent file uses these defaults, while an invalid present file is warned about and falls back to them (`index.ts:162-175`).
+On this dev checkout, `OUTPUT_STYLE.yaml` is absent; no user override is observed, so no user data is copied. The renderer (`output-style.ts:145-180`) is a fixed template, not a wrapped document: four default header fields in the order `tone`, `length`, `leadWithConclusion`, `lists`; `leadWithConclusion` becomes `yes`/`no`. A fifth `Dispatch voice` line is added only when `dispatch=true`; ordinary agents do not receive it. If style entries exist, it adds `Concrete style entries take priority over these defaults:` and one collapsed, trimmed bullet per entry; with none, that block is omitted. It then appends the blank-line-separated hard boundary and `Status reporting discipline:` block, joins all lines with `\n`, and adds no title, wrapper, or trailing newline. The config has no optional fields: an absent file uses these defaults, while an invalid present file is warned about and falls back to them (`api.ts:161-175`).
 
 ### section 695 `personality:writing-rules`
 
-Registered as `name: 'personality:writing-rules'`, with the order constant `PERSONALITY_WRITING_RULES = 695` (`src/writing-rules.ts:20`; `src/index.ts:152-155`; `packages/core/system-prompt/src/index.ts:143`). The body is a line-by-line list of enabled rules (`writing-rules.ts:243-249`):
+Registered as `name: 'personality:writing-rules'`, with the order constant `PERSONALITY_WRITING_RULES = 695` (`src/writing-rules.ts:24`; `src/api.ts:152-156`; `packages/core/system-prompt/src/index.ts:144`). The body is a line-by-line list of enabled rules (`writing-rules.ts:283-296`):
 
 ```text
 - {rule.text}
@@ -328,25 +328,26 @@ The `name` of `SUPERAGENT_SECTION` is `superagent:dispatcher`, and its `order` i
 
 ## ④ Result / Error / Constraint Source Text
 
-Result rendering templates (`analyze.ts:161-174`, `apply.ts:95-101`, `writing-tool.ts:143-153`):
+Result rendering templates (`analyze.ts:175-191`, `apply.ts:106-111`, `writing-tool.ts:183-196`):
 
-```ts
+```text
 `Scanned ${String(result.sessionsScanned)} session(s); ${String(result.candidates.length)} candidate(s)${result.truncated ? ' (truncated)' : ''}.`
 `- ${candidate.kind}.${candidate.name} [${candidate.confidence}, ${String(candidate.occurrences)}x] ${candidate.text} — ${evidence}`
 `warning: ${warning}`
 ```
 
-```ts
+```text
 `Applied ${String(result.applied.length)} personality entr${result.applied.length === 1 ? 'y' : 'ies'} to ${result.path} (revision ${String(result.revision)}).`
 `- ${id}`
 `- rejected ${item.name}: ${item.reason}`
 ```
 
-```ts
+```text
 `write_like_human failed (${result.action}): ${String(result.error)}`
 `write_like_human ${result.action}: ${String(result.rules.length)} rule(s) in ${result.path}`
 `- ${rule.id} [${rule.enabled ? 'on' : 'off'}, order ${String(rule.order)}] ${rule.text}`
-`Injected text:` + promptSection
+`${String(enabled - WRITING_RULES_RESIDENT_MAX)} rule(s) not injected: resident limit is ${String(WRITING_RULES_RESIDENT_MAX)}.`
+`Injected text:` + (result.promptSection === undefined || result.promptSection === '' ? '(empty)' : result.promptSection)
 ```
 
 Key rejection/constraint sentences (verbatim, sources in parentheses):
@@ -398,10 +399,10 @@ Constants table:
 | `PERSONALITY_MAX_ENTRY_CHARS` | 400 | `global-store.ts:116` |
 | `PERSONALITY_MAX_BODY_BYTES` | 32 × 1024 = 32,768 | `global-store.ts:119` |
 | `ANALYZE_DEFAULT_MAX_CANDIDATES` | 10 (allowed 1–20) | `analyze.ts:123`, `:188` |
-| `WRITING_RULES_MAX_RULES` | 100 | `writing-rules.ts:27` |
-| `WRITING_RULES_MAX_TEXT_CHARS` | 240 | `writing-rules.ts:30` |
-| `WRITING_RULES_MAX_TEXT_BYTES` | 32,768 | `writing-rules.ts:33` |
-| `WRITING_RULES_RESIDENT_MAX` | 40 | `writing-rules.ts:33` |
+| `WRITING_RULES_MAX_RULES` | 100 | `writing-rules.ts:28` |
+| `WRITING_RULES_MAX_TEXT_CHARS` | 240 | `writing-rules.ts:31` |
+| `WRITING_RULES_MAX_TEXT_BYTES` | 32,768 | `writing-rules.ts:37` |
+| `WRITING_RULES_RESIDENT_MAX` | 40 | `writing-rules.ts:34` |
 
 ## ⑤ Content Not Included
 

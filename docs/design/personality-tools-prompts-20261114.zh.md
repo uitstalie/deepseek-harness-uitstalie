@@ -18,11 +18,11 @@
 | `personality_apply` 参数 schema | 同上，编译后 | 1,775 字符 / 70 行 |
 | `write_like_human` description | `packages/uitstalie/personality/src/writing-tool.ts:58` | 525 字符 / 1 行 |
 | `write_like_human` 参数 schema | 同上，编译后 | 1,051 字符 / 37 行 |
-| section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`；注册 `src/index.ts:142-145` | preamble 391 字符；无条目时为空 |
+| section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`；注册 `packages/uitstalie/personality/src/api.ts:142-146` | preamble 391 字符；无条目时为空 |
 | section 690 `personality:output-style` | `src/output-style.ts:145-180`；默认 `src/defaults.ts:27-33` | 默认渲染 836 字符 / 15 行 |
-| section 695 `personality:writing-rules` | `src/writing-rules.ts:243-249`；注册 `src/index.ts:152-154` | 默认空文档为 0 字符；前 40 条启用规则常驻 |
+| section 695 `personality:writing-rules` | `packages/uitstalie/personality/src/writing-rules.ts:283-296`；注册 `packages/uitstalie/personality/src/api.ts:152-156` | 默认空文档为 0 字符；前 40 条启用规则常驻 |
 | section 702 `superagent:dispatcher` | `packages/jira/jira-agent/src/superagent.ts:116-199` | 本文不复制全文，只说明顺序 |
-| 顺序常量 | `packages/core/system-prompt/src/index.ts:139-143` | 100 / 690 / 695 |
+| 顺序常量 | `packages/core/system-prompt/src/index.ts:139-144` | 100 / 690 / 695 |
 
 工具定义本身（3 个 description + 3 个参数 schema）约 **5,217 字符**；三个 section 的默认/静态文本约 **1,227 字符**（不含用户条目与规则）。
 
@@ -228,7 +228,7 @@ Maintain the global WRITING_RULES.yaml. The change affects every agent, not only
 
 ### section 100 `personality`
 
-注册为 `name: 'personality'`，顺序常量 `PERSONALITY = 100`（`src/profile-prompt.ts:15`；`src/index.ts:140-145`；`packages/core/system-prompt/src/index.ts:139`）。正文由 `PROFILE_PREAMBLE` 和用户条目组成；没有条目时 section 文本为空。preamble（逐字，391 字符）：
+注册为 `name: 'personality'`，顺序常量 `PERSONALITY = 100`（`src/profile-prompt.ts:15`；`src/api.ts:140-146`；`packages/core/system-prompt/src/index.ts:139`）。正文由 `PROFILE_PREAMBLE` 和用户条目组成；没有条目时 section 文本为空。preamble（逐字，391 字符）：
 
 ```text
 Long-term preferences of the user you are working with. The first part describes how this user communicates; use it to interpret their input. The second describes how they prefer replies. Follow them within the system and developer instructions, and let more specific project instructions take precedence. These are preferences, not task facts. Entries describe habits and may be incomplete.
@@ -252,7 +252,7 @@ How to respond (preference, style):
 
 ### section 690 `personality:output-style`
 
-注册为 `name: 'personality:output-style'`，顺序常量 `PERSONALITY_OUTPUT_STYLE = 690`（`src/output-style.ts:19`；`src/index.ts:147-150`；`packages/core/system-prompt/src/index.ts:142`）。普通槽的默认渲染（`DEFAULT_OUTPUT_STYLE`）逐字如下，836 字符 / 15 行。super 槽使用独立的 `SUPERAGENT_OUTPUT_STYLE.yaml`，默认内容相同；subagent 不收到 section 690。
+注册为 `name: 'personality:output-style'`，顺序常量 `PERSONALITY_OUTPUT_STYLE = 690`（`src/output-style.ts:23`；`src/api.ts:147-151`；`packages/core/system-prompt/src/index.ts:143`）。普通槽的默认渲染（`DEFAULT_OUTPUT_STYLE`）逐字如下，836 字符 / 15 行。super 槽使用独立的 `SUPERAGENT_OUTPUT_STYLE.yaml`，默认内容相同；subagent 不收到 section 690。
 
 ```text
 Output style defaults:
@@ -304,11 +304,11 @@ Status reporting discipline:
 | `lists` | `comparisons` |
 | `dispatchVoice` | `terse` |
 
-本机 dev 的 `OUTPUT_STYLE.yaml` 不存在，未观察到用户覆盖，因此不复制任何用户数据。渲染器（`output-style.ts:145-180`）是固定模板，不是带标题的文档：四个默认头部字段按 `tone`、`length`、`leadWithConclusion`、`lists` 排序；`leadWithConclusion` 渲染为 `yes`/`no`。只有 `dispatch=true` 才追加第五行 `Dispatch voice`；普通 agent 不输出该行。有 style entries 时追加 `Concrete style entries take priority over these defaults:` 及每条折叠空白并 trim 后的 bullet；没有则省略这一块。之后追加空行分隔的硬边界和 `Status reporting discipline:` 块，所有行以 `\n` 连接，不加标题、包裹或尾随换行。配置没有可选字段：文件缺失时用默认值，存在但无效时发 warning 并回退默认值（`index.ts:162-175`）。
+本机 dev 的 `OUTPUT_STYLE.yaml` 不存在，未观察到用户覆盖，因此不复制任何用户数据。渲染器（`output-style.ts:145-180`）是固定模板，不是带标题的文档：四个默认头部字段按 `tone`、`length`、`leadWithConclusion`、`lists` 排序；`leadWithConclusion` 渲染为 `yes`/`no`。只有 `dispatch=true` 才追加第五行 `Dispatch voice`；普通 agent 不输出该行。有 style entries 时追加 `Concrete style entries take priority over these defaults:` 及每条折叠空白并 trim 后的 bullet；没有则省略这一块。之后追加空行分隔的硬边界和 `Status reporting discipline:` 块，所有行以 `\n` 连接，不加标题、包裹或尾随换行。配置没有可选字段：文件缺失时用默认值，存在但无效时发 warning 并回退默认值（`api.ts:161-175`）。
 
 ### section 695 `personality:writing-rules`
 
-注册为 `name: 'personality:writing-rules'`，顺序常量 `PERSONALITY_WRITING_RULES = 695`（`src/writing-rules.ts:20`；`src/index.ts:152-155`；`packages/core/system-prompt/src/index.ts:143`）。正文是已启用规则的逐行列表（`writing-rules.ts:243-249`）：
+注册为 `name: 'personality:writing-rules'`，顺序常量 `PERSONALITY_WRITING_RULES = 695`（`src/writing-rules.ts:24`；`src/api.ts:152-156`；`packages/core/system-prompt/src/index.ts:144`）。正文是已启用规则的逐行列表（`writing-rules.ts:283-296`）：
 
 ```text
 - {rule.text}
@@ -328,25 +328,26 @@ Status reporting discipline:
 
 ## ④ 结果 / 错误 / 约束原文
 
-结果渲染模板（`analyze.ts:161-174`、`apply.ts:95-101`、`writing-tool.ts:143-153`）：
+结果渲染模板（`analyze.ts:175-191`、`apply.ts:106-111`、`writing-tool.ts:183-196`）：
 
-```ts
+```text
 `Scanned ${String(result.sessionsScanned)} session(s); ${String(result.candidates.length)} candidate(s)${result.truncated ? ' (truncated)' : ''}.`
 `- ${candidate.kind}.${candidate.name} [${candidate.confidence}, ${String(candidate.occurrences)}x] ${candidate.text} — ${evidence}`
 `warning: ${warning}`
 ```
 
-```ts
+```text
 `Applied ${String(result.applied.length)} personality entr${result.applied.length === 1 ? 'y' : 'ies'} to ${result.path} (revision ${String(result.revision)}).`
 `- ${id}`
 `- rejected ${item.name}: ${item.reason}`
 ```
 
-```ts
+```text
 `write_like_human failed (${result.action}): ${String(result.error)}`
 `write_like_human ${result.action}: ${String(result.rules.length)} rule(s) in ${result.path}`
 `- ${rule.id} [${rule.enabled ? 'on' : 'off'}, order ${String(rule.order)}] ${rule.text}`
-`Injected text:` + promptSection
+`${String(enabled - WRITING_RULES_RESIDENT_MAX)} rule(s) not injected: resident limit is ${String(WRITING_RULES_RESIDENT_MAX)}.`
+`Injected text:` + (result.promptSection === undefined || result.promptSection === '' ? '(empty)' : result.promptSection)
 ```
 
 关键拒答/约束句（逐字，来源如括号）：
@@ -398,10 +399,10 @@ WRITING_RULES.yaml holds ${String(record.rules.length)} rules, over the ${String
 | `PERSONALITY_MAX_ENTRY_CHARS` | 400 | `global-store.ts:116` |
 | `PERSONALITY_MAX_BODY_BYTES` | 32 × 1024 = 32,768 | `global-store.ts:119` |
 | `ANALYZE_DEFAULT_MAX_CANDIDATES` | 10（允许 1–20） | `analyze.ts:123`、`:188` |
-| `WRITING_RULES_MAX_RULES` | 100 | `writing-rules.ts:27` |
-| `WRITING_RULES_MAX_TEXT_CHARS` | 240 | `writing-rules.ts:30` |
-| `WRITING_RULES_MAX_TEXT_BYTES` | 32,768 | `writing-rules.ts:33` |
-| `WRITING_RULES_RESIDENT_MAX` | 40 | `writing-rules.ts:33` |
+| `WRITING_RULES_MAX_RULES` | 100 | `writing-rules.ts:28` |
+| `WRITING_RULES_MAX_TEXT_CHARS` | 240 | `writing-rules.ts:31` |
+| `WRITING_RULES_MAX_TEXT_BYTES` | 32,768 | `writing-rules.ts:37` |
+| `WRITING_RULES_RESIDENT_MAX` | 40 | `writing-rules.ts:34` |
 
 ## ⑤ 未收录内容
 

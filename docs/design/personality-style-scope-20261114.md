@@ -10,7 +10,7 @@ This document answers three product directions: agent-type gating, a long-term s
 
 ### Current limits
 
-`WRITING_RULES_MAX_RULES = 32`, `WRITING_RULES_MAX_TEXT_CHARS = 240`, and `WRITING_RULES_MAX_TEXT_BYTES = 4096` (`packages/uitstalie/personality/src/writing-rules.ts:27-33`). The byte cap binds before the rule cap for English text at the current single-rule size: about 17 rules fit in 4 KiB. The current library is therefore a hard-rule list, not a long-term style library.
+`WRITING_RULES_MAX_RULES = 100`, `WRITING_RULES_MAX_TEXT_CHARS = 240`, `WRITING_RULES_RESIDENT_MAX = 40`, and `WRITING_RULES_MAX_TEXT_BYTES = 32 * 1024` (`packages/uitstalie/personality/src/writing-rules.ts:28-37`). For ASCII text the 100-rule cap binds first (about 24 KB of rule text); CJK text can hit the 32 KiB byte cap first. The current library is therefore a hard-rule list, not a long-term style library.
 
 ### Token-cost estimate
 
