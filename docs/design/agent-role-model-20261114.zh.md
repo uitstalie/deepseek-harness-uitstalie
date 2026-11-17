@@ -2,7 +2,7 @@
 
 [English](agent-role-model-20261114.md) | 中文
 
-状态：**角色字段、section 门控以及已批准的工具门槛均已实现。** 工具可见性由工具注册表统一执行一次；已批准的矩阵（包括仅限 super 的工具）已完成迁移。
+状态：**角色字段、section 门控以及已批准的工具门槛均已实现。** 工具可见性由工具注册表统一执行一次；已批准的矩阵（包括仅限 super 的工具）已完成迁移。已批准矩阵快照为 `subagent`/`agent`/`super` 各 17/35/39 条（`packages/core/tools/tests/role-visibility.spec.ts`）。
 
 ## 1. 角色分类
 
@@ -58,8 +58,10 @@
 | jira `issue_work` | agent+（新增）；`minRole: agent` | `agent` | worker executor 就是一个 agent root | 对 subagent 隐藏 |
 | `tool-dsh-store` | agent+（新增）；`minRole: agent` | `agent` | 规则/技能管理 | 对 subagent 隐藏 |
 | `memory_write` / `forget` / `resolve` | agent+（新增）；`memory/src/tools.ts` `minRole: agent` | `agent` | 单一写入者 | 无写权限（新近隐藏） |
-| `memory_search` / `read` | subagent+（新增）；`memory/src/index.ts` scope 现为 `all`，工具携带 `minRole: subagent` | `subagent` | 研究可能需要历史 | 现在可用；无损失 |
+| `memory_search` | subagent+（新增）；`memory/src/api.ts:293` scope 为 `all`，工具携带 `minRole: subagent`（`memory/src/tools.ts:100`） | `subagent` | 研究可能需要历史 | 现在可用；无损失 |
+| `workspace_sessions` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+（新增）；`minRole: subagent`（`packages/uitstalie/workspace-tools/src/tools.ts:23-29`） | `subagent` | 只读的工作区状态、任务、消息与 artifact 引用 | 现在可用；无损失 |
 | `superagent_control` / `ledger` / `deliver` / `permission` | super+（新增）；`minRole: super` | `super` | 调度/账本/交付 | 对所有非 super 角色隐藏 |
+| `superagent_models` | super（新增）；jira super 分支内 `minRole: super`（`jira-agent/src/superagent.ts:755`、`:5788-5795`）；不在已批准矩阵快照中 | `super` | 供被调度工作使用的模型目录 | 对所有非 super 角色隐藏 |
 | `schedule_create/edit/list/view` | agent+（新增）；`minRole: agent`，保留运行时防护 | `agent` | subagent 无法触达下一次触发 | 对 subagent 隐藏；运行时拒绝仍然存在 |
 | `plugin_manager` | agent+（新增）；`minRole: agent` | `agent` | 全局 profile 管理 | 对 subagent 隐藏 |
 | `subagent` / `subagent_fork` / `workflow` | agent+（新增）；`minRole: agent` | `agent` | 不支持嵌套扇出 | 对 subagent 隐藏；深度防护仍然存在 |
@@ -68,9 +70,9 @@
 
 ## 7. 接口预留
 
-`withMinRole(tool, role)` 与 `toolMinRole(tool)` 位于 `packages/core/tools/src/role.ts`，由 `@deepseek-ai/dsh-tools` 导出；feature 包声明门槛不需要 import dafeiyu。`ToolRegistry.register` 与 `ToolRegistry.definitions` 集中执行 `ToolDefinition.minRole`（`core/tools/src/index.ts:128` 和 `:312`）。预期的消费方签名是：
+`withMinRole(tool, role)` 与 `toolMinRole(tool)` 位于 `packages/core/tools/src/role.ts`，由 `@deepseek-ai/dsh-tools` 导出；feature 包声明门槛不需要 import dafeiyu。`ToolRegistry.register` 与 `ToolRegistry.definitions` 集中执行 `ToolDefinition.minRole`（`core/tools/src/index.ts:133-138` 和 `:313-320`）。预期的消费方签名是：
 
-```ts
+```text
 tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(agentRoleOf(agent), minRole)
 ```
 

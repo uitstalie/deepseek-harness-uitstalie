@@ -55,9 +55,9 @@ The capability now declares ten tools in total: five ordinary-root tools and fiv
 
 ## Test impact
 
-`packages/core/tools/tests/role-visibility.spec.ts` snapshots the **approved matrix**, not the jira contribution wiring. It already declares `superagent_control` as `super`, so its approved counts stay **32** for `agent` and **36** for `super`; it now also asserts explicitly that the agent set excludes `superagent_control` and the super set includes it. The earlier note's claim that the 32-name agent snapshot included `superagent_control` was incorrect.
+`packages/core/tools/tests/role-visibility.spec.ts` snapshots the **approved matrix**, not the jira contribution wiring. It already declares `superagent_control` as `super`, so its approved counts are **17** for `subagent`, **35** for `agent`, and **39** for `super`; it also asserts explicitly that the agent set excludes `superagent_control` and the super set includes it. The earlier note's claim that the agent snapshot included `superagent_control` was incorrect.
 
-The real wiring is covered in `packages/jira/jira-agent/src/superagent.test.ts`: an ordinary root gets exactly five names and no super-only tool, the super agent gets all five super tools, and the regression test is `hides every super-only workspace tool from an ordinary root`. README tool counts were corrected from nine/six to ten/five.
+The real wiring is covered in `packages/jira/jira-agent/tests/superagent.test.ts`: an ordinary root gets exactly five names and no super-only tool, the super agent gets all five super tools, and the regression test is `hides every super-only workspace tool from an ordinary root`. README tool counts were corrected from nine/six to ten/five.
 
 ## Scope
 

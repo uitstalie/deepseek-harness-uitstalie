@@ -13,7 +13,7 @@
 
 ## 1. 现状清单（B 已实现，tag `personality-rewrite-20261113`）
 
-原来的四组工具是合并前的状态。B 已实现：三个模型入口，全部在 `packages/jira/jira-agent/src/superagent.ts` 声明，经 `createSuperagentContribution` 按角色注册，共享 `SUPERAGENT_OUTPUT_SCHEMA` 与 `ToolValue` envelope。
+原来的四组工具是合并前的状态。B 已实现：五个模型入口（`superagent_control`、`superagent_ledger`、`superagent_models`、`superagent_permission`、`superagent_deliver`），全部在 `packages/jira/jira-agent/src/superagent.ts` 声明，经 `createSuperagentContribution` 按角色注册，共享 `SUPERAGENT_OUTPUT_SCHEMA` 与 `ToolValue` envelope。
 
 ### `superagent_control`
 
@@ -141,7 +141,7 @@ B 的粗略工作量：生产/测试/提示与文档约 8–12 个文件，外�
 
 仓库里没有找到关于这次合并的 benchmark、token 统计、误用报告、PR 描述或 commit message 测量；因此本记录不编造收益数字。
 
-B 已在 `personality-rewrite-20261113` 实现，当前代码保留三个入口。记录的依据是结构性的、不是实测：A 会重写 22 个动作并破坏所有现有 `superagent_workspace`/`superagent_session` 调用方；B 保留两个内部 runner、现有 envelope 和动作级校验。本记录把 B 接受为当前基线，避免设计与代码继续分叉。
+B 已在 `personality-rewrite-20261113` 实现，当前代码保留五个入口。记录的依据是结构性的、不是实测：A 会重写 22 个动作并破坏所有现有 `superagent_workspace`/`superagent_session` 调用方；B 保留两个内部 runner、现有 envelope 和动作级校验。本记录把 B 接受为当前基线，避免设计与代码继续分叉。
 
 回退触发条件：如果真实 benchmark、现场报告或回归证明发现/误用、token 成本或调用方契约变差，回退 `personality-rewrite-20261113`，恢复 `superagent_workspace`/`superagent_session`，保留同一 envelope 与聚合校验，并重跑 superagent 行为/组合测试。在拿到证据前不做任何数字声明。
 ## 6. 反向证据：何时合并更糟

@@ -55,9 +55,9 @@
 
 ## 测试影响
 
-`packages/core/tools/tests/role-visibility.spec.ts` 快照的是**已批准矩阵**，不是 jira contribution 的真实接线。它本来就把 `superagent_control` 声明为 `super`，因此 `agent` 仍为 **32** 条、`super` 仍为 **36** 条；现在额外断言 agent 集合不含 `superagent_control`、super 集合含它。原记录“agent 的 32 条包含 `superagent_control`”的说法不正确。
+`packages/core/tools/tests/role-visibility.spec.ts` 快照的是**已批准矩阵**，不是 jira contribution 的真实接线。它本来就把 `superagent_control` 声明为 `super`，因此 `subagent` 为 **17** 条、`agent` 为 **35** 条、`super` 为 **39** 条；并且额外断言 agent 集合不含 `superagent_control`、super 集合含它。原记录“agent 的 32 条包含 `superagent_control`”的说法不正确。
 
-真实接线由 `packages/jira/jira-agent/src/superagent.test.ts` 覆盖：普通 root 恰好五个名字且不含任何 super-only 工具，super agent 拿到全部五个 super 工具；新增回归测试名为 `hides every super-only workspace tool from an ordinary root`。README 的工具总数与普通 root 数量已从九/六修正为十/五。
+真实接线由 `packages/jira/jira-agent/tests/superagent.test.ts` 覆盖：普通 root 恰好五个名字且不含任何 super-only 工具，super agent 拿到全部五个 super 工具；新增回归测试名为 `hides every super-only workspace tool from an ordinary root`。README 的工具总数与普通 root 数量已从九/六修正为十/五。
 
 ## 范围
 

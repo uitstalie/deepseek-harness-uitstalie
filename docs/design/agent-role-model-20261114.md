@@ -2,7 +2,7 @@
 
 English | [中文](agent-role-model-20261114.zh.md)
 
-Status: **role field, section gating, and the approved tool gates are implemented.** Tool visibility is enforced once in the tool registry; the approved matrix is migrated, including the super-only tools.
+Status: **role field, section gating, and the approved tool gates are implemented.** Tool visibility is enforced once in the tool registry; the approved matrix is migrated, including the super-only tools. The approved-matrix snapshot is 17/35/39 for `subagent`/`agent`/`super` (`packages/core/tools/tests/role-visibility.spec.ts`).
 
 ## 1. Role classification
 
@@ -58,8 +58,10 @@ The role field is the shared source; each consumer migrates separately. This rou
 | jira `issue_work` | agent+ (new); `minRole: agent` | `agent` | Worker executor is an agent root | Hidden from subagent |
 | `tool-dsh-store` | agent+ (new); `minRole: agent` | `agent` | Rules/skills management | Hidden from subagent |
 | `memory_write` / `forget` / `resolve` | agent+ (new); `memory/src/tools.ts` `minRole: agent` | `agent` | Single writer | No write access (newly hidden) |
-| `memory_search` / `read` | subagent+ (new); `memory/src/index.ts` scope now `all`, tools carry `minRole: subagent` | `subagent` | Research may need history | Now available; no loss |
+| `memory_search` | subagent+ (new); `memory/src/api.ts:293` scope `all`, the tool carries `minRole: subagent` (`memory/src/tools.ts:100`) | `subagent` | Research may need history | Now available; no loss |
+| `workspace_sessions` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+ (new); `minRole: subagent` (`packages/uitstalie/workspace-tools/src/tools.ts:23-29`) | `subagent` | Read-only workspace status, tasks, messages, and artifact references | Now available; no loss |
 | `superagent_control` / `ledger` / `deliver` / `permission` | super+ (new); `minRole: super` | `super` | Dispatch/ledger/delivery | Hidden from all non-super roles |
+| `superagent_models` | super (new); `minRole: super` in the jira super branch (`jira-agent/src/superagent.ts:755`, `:5788-5795`); not enumerated in the approved-matrix snapshot | `super` | Model catalog for dispatched work | Hidden from all non-super roles |
 | `schedule_create/edit/list/view` | agent+ (new); `minRole: agent`, runtime guard retained | `agent` | Subagent cannot reach next trigger | Hidden from subagent; runtime refusal remains |
 | `plugin_manager` | agent+ (new); `minRole: agent` | `agent` | Global profile management | Hidden from subagent |
 | `subagent` / `subagent_fork` / `workflow` | agent+ (new); `minRole: agent` | `agent` | No nested fan-out | Hidden from subagent; depth guards remain |
@@ -68,9 +70,9 @@ The role field is the shared source; each consumer migrates separately. This rou
 
 ## 7. Interface reservation
 
-`withMinRole(tool, role)` and `toolMinRole(tool)` live in `packages/core/tools/src/role.ts` and are exported by `@deepseek-ai/dsh-tools`; a feature package declares a gate without importing dafeiyu. `ToolRegistry.register` and `ToolRegistry.definitions` enforce `ToolDefinition.minRole` centrally (`core/tools/src/index.ts:128` and `:312`). The intended consumer signature is:
+`withMinRole(tool, role)` and `toolMinRole(tool)` live in `packages/core/tools/src/role.ts` and are exported by `@deepseek-ai/dsh-tools`; a feature package declares a gate without importing dafeiyu. `ToolRegistry.register` and `ToolRegistry.definitions` enforce `ToolDefinition.minRole` centrally (`core/tools/src/index.ts:133-138` and `:313-320`). The intended consumer signature is:
 
-```ts
+```text
 tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filters roleAllows(agentRoleOf(agent), minRole)
 ```
 
