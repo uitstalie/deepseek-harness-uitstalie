@@ -626,7 +626,7 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 
 `workspace_tasks.create` 必须带 active 卡引用；`workspace_tasks.receipt` 接收对齐清单；有未满足项时状态机拒绝 `done`。
 
-当前状态：工具已经强制四个派发拒绝码、覆盖检查与回执门。在卡片 UI 出现之前，super agent 是记录用户确认与纠正的通道，因此 `create`、`confirm` 与 `correct` 需要 super agent 角色或用户；普通 agent 只读卡。`nonCoverage` 条目就是 super agent 的显式派发豁免，连同理由记录在任务上；它不是默认通过。
+当前状态：工具已经强制派发拒绝码、覆盖检查与回执门。在卡片 UI 出现之前，super agent 是记录用户确认与纠正的通道，因此 `create`、`confirm` 与 `correct` 需要 super agent 角色或用户；普通 agent 只读卡。`nonCoverage` 条目就是 super agent 的显式派发豁免，连同理由记录在任务上；它不是默认通过。
 
 ### 11.9 不做什么
 

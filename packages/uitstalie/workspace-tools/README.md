@@ -64,7 +64,7 @@ The calling session's workspace is the registry account that lists the session, 
 
 Records live under `$DSH_HOME/workspaces/<workspace-id>/`: `tasks/<taskId>.json`, `messages/<messageId>.json`, `artifacts/<artifactId>.json`, and `intents/<intentId>/` with `index.json` plus `versions/<n>.json`. Each file is validated on read, because a durable record is an untrusted boundary; a record that does not match its schema fails with `WORKSPACE_RECORD_CORRUPT` instead of being skipped. An artifact record holds every published version, and `resolve` checks the selected version's recorded SHA-256 against the file inside the workspace root.
 
-A card index holds the current state of each version, the latest active version, per-item confirmation times, and the version list; each version file holds the immutable card content and is never rewritten. A correction appends a version and leaves the superseded one readable; confirmation changes only the index. A proposed version carries one consolidated confirmation request with a stable id. An event id is derived from the workspace and its idempotency key, so a retried create returns the version it already wrote.
+A card index holds the current state of each version, the latest active version, per-item confirmation times, and the version list; each version file holds the immutable card content and is never rewritten. A correction appends a version and leaves the superseded one readable; confirmation changes only the index. A proposed version carries one consolidated confirmation request with a stable id. An intent id is derived from the workspace and its idempotency key, so a retried create returns the version it already wrote.
 
 
 ## Model Experience

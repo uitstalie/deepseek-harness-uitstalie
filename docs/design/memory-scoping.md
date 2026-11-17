@@ -626,7 +626,7 @@ The inputs are recorded at three points: the intent version append, the task dis
 
 `workspace_tasks.create` requires the active card reference, as above. `workspace_tasks.receipt` accepts the alignment checklist, and the task state machine refuses `done` with an unsatisfied item.
 
-Current state: the tool enforces the four dispatch refusals, the coverage check, and the receipt gate. Until a card UI exists, the super agent is the channel that records the user's confirmation and correction, so `create`, `confirm`, and `correct` require the super agent role or the user; ordinary agents read cards only. A `nonCoverage` entry is the super agent's explicit dispatch waiver, recorded on the task with its reason; it is not a default pass.
+Current state: the tool enforces the dispatch refusals, the coverage check, and the receipt gate. Until a card UI exists, the super agent is the channel that records the user's confirmation and correction, so `create`, `confirm`, and `correct` require the super agent role or the user; ordinary agents read cards only. A `nonCoverage` entry is the super agent's explicit dispatch waiver, recorded on the task with its reason; it is not a default pass.
 
 ### 11.9 What this does not do
 
