@@ -199,7 +199,7 @@ Do not merge `PERSONALITY.md` or `WRITING_RULES.yaml` into global memory. They a
 
 ### 7.2 Relationship to `workspace_artifacts`
 
-`workspace_artifacts` publishes a reference with an id, path, hash, size, and version. For a path under `.dsh`, publishing and resolving must use the store's checks: the artifact tool does not write the file, does not bypass path confinement, and does not copy `.dsh/memory`. The receiver reads the content through the store tool or the store service, after resolving the reference.
+`workspace_artifacts` is read-only today: it lists published references and resolves one recorded version (`packages/uitstalie/workspace-tools/src/artifacts.ts:78-90`); the `publish`/`reference` action does not exist yet. When it lands, it will publish a reference with an id, path, hash, size, and version. For a path under `.dsh`, publishing and resolving must use the store's checks: the artifact tool does not write the file, does not bypass path confinement, and does not copy `.dsh/memory`. The receiver reads the content through the store tool or the store service, after resolving the reference.
 
 ### 7.3 Permissions and sandbox
 
@@ -221,14 +221,16 @@ None. The remaining decisions are closed; see section 8.3.
 - `.dsh` bypass through artifacts. Mitigation: publish and resolve go through the store checks; `.dsh/memory` stays read-only.
 - Immediate removal has no phased rollback: reinstall the previous release; the dropped dispatch ledger and deleted JIRA data cannot be restored.
 
-### 8.3 Confirmed this round
+### 8.3 Decisions confirmed this round
 
-- JIRA: removed now, no phases; only GitHub credential code/config kept; other JIRA cloud config removed; no compatibility layer.
-- Dispatch ledger: dropped; no migration or import; `workspace_tasks` starts fresh.
-- JIRA skills: removed together with the tools; no copy kept.
-- Aliases: none; `superagent_session` and `superagent_workspace` are removed, and `workspace_*` implements the capability.
-- JIRA local data: deleted; an optional one-time static export may be taken before deletion; irreversible.
-- Personality: `write_like_human` merged into `personality_apply`; no standalone tool is kept.
+These remain decisions, not shipped changes. In the current tree JIRA is still enabled (`jira: { enabled: true }` in `packages/bundle/web-app/cordis.patch.uitstalie.yml`), the dispatch ledger is still the only task writer, and `write_like_human` is still a standalone tool (`packages/uitstalie/personality/src/writing-tool.ts:64`); the aliases are the one item already removed (`packages/jira/jira-agent/tests/superagent.test.ts:402-403`).
+
+- JIRA: removed now, no phases; only GitHub credential code/config kept; other JIRA cloud config removed; no compatibility layer. Not implemented.
+- Dispatch ledger: dropped; no migration or import; `workspace_tasks` starts fresh. Not implemented.
+- JIRA skills: removed together with the tools; no copy kept. Not implemented.
+- Aliases: none; `superagent_session` and `superagent_workspace` are removed, and `workspace_*` implements the capability. Implemented.
+- JIRA local data: deleted; an optional one-time static export may be taken before deletion; irreversible. Not applicable until JIRA is removed.
+- Personality: `write_like_human` merged into `personality_apply`; no standalone tool is kept. Not implemented.
 
 ## 9. Conflicts with the memory and workspace design
 

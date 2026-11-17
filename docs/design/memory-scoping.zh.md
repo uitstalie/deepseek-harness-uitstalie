@@ -2,7 +2,7 @@
 
 [English](memory-scoping.md) | 中文
 
-状态：评审稿。篇幅：不受 12 页上限约束，以内容完整为准；本稿约 12,374 汉字（约 20 页）。
+状态：评审稿；Step 0（超上限归档修复，`3cb8eeaf3d`）与 Step 1（读侧工作区工具集，`cb4cc58385`）已合并，Step 2 起尚未开始。篇幅：不受 12 页上限约束，以内容完整为准；本稿约 12,374 汉字（约 20 页）。
 
 ## 1. 背景与问题
 
@@ -36,9 +36,9 @@
 
 每次摘要都会追加一条快照，每次显式写入都会追加一条更新通知。结果是 812 条快照（216 KiB）、350 条 “Memory updated” 通知、149 条 checkpoint（含 704 条条目文本，240 KiB）。这些都不是有界、可查询的视图，而是随会话生命周期不断增长的追加流，模型把它当上下文读。它是会话表面无限增长的主要原因，必须删除，而不是调参。
 
-### 1.6 丢数据缺陷：超上限的条目被直接丢弃，不写归档
+### 1.6 丢数据缺陷：超上限的条目曾被直接丢弃，不写归档
 
-`pruneSessionEntries`（`memory-file.ts:2857-2928`）用“丢弃最旧的整段 section + 丢弃完全重复文本”来执行每会话 40 条上限。它返回的是计数，不是归档记录；`retainDocument`（`memory-file.ts:2591`）把这个计数丢掉；写入路径只归档字节预算与清理产生的删除（`memory-file.ts:1358-1374`）。因此被丢的条目没有留下任何痕迹。
+`pruneSessionEntries`（`memory-file.ts:2857-2928`）用“丢弃最旧的整段 section + 丢弃完全重复文本”来执行每会话 40 条上限。事故发生时，它返回的是计数，不是归档记录；`retainDocument`（`memory-file.ts:2591`）把这个计数丢掉；写入路径只归档字节预算与清理产生的删除（`memory-file.ts:1358-1374`）。因此被丢的条目没有留下任何痕迹。Step 0（`3cb8eeaf3d`）已修复：每次超上限删除与完全重复删除都会产生归档记录，附 `over-cap` 或 `duplicate` 原因，并在所有写入路径上先于活动文件写入。
 
 一个直接观察到的实例：
 
@@ -145,7 +145,7 @@
 | 消息 | 消息 id、目标会话、正文、类型（消息或追问）、投递状态、回执、产物引用 | 会话 inbox 与消息日志 |
 | 产物引用 | 产物 id、工作区、路径、sha256、大小、版本、类型、会话 id、任务 id、创建时间、摘要 | 工作区产物索引 |
 
-工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。
+工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。Step 1 之后的当前状态：已交付的读侧工具集已经在 `$DSH_HOME/workspaces/<workspace-id>/` 下存自己的任务、消息与产物引用，而派发账本 `.superagent/ledger` 仍是唯一写入方。在 Step 2 加上任务创建、丢弃账本之前，两套任务存储并存；这是 §10.3 记录的当前风险，不是已经满足的约束。
 
 意图卡是工作区记录，不是记忆条目。一张卡只属于一个工作区。跨工作区请求会在每个目标工作区各建一张卡，每张卡都逐字保留用户原话。卡随工作区工具集状态存放：`$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/`（`index.json`、`versions/<n>.json`），不在宿主全局意图存储里。版本是追加式的；旧版本被 supersede 后仍可读。
 
@@ -304,7 +304,7 @@ ask user 与用户批准是独立的可靠性设计项，见 7.5。
 | `read`、`glob`、`grep` | 读工作区内容 | 内容工具 | 保留 |
 | `tool-dsh-store` | 读 `.dsh` 内容 | 存储工具 | 不在本文范围；不改（见 2.3） |
 
-`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。
+`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。当前状态：这次合并尚未实现。`memory_read` 已删除（`cb4cc58385`），但 `memory_resolve` 仍在（`packages/uitstalie/memory/src/tools.ts:229`）；JIRA 与 `superagent_*` 工具仍启用（`packages/bundle/web-app/cordis.patch.uitstalie.yml` 中 `jira: { enabled: true }`）；`workspace_intents` 不存在；`workspace_tasks` 只有读侧。移除 JIRA 与 `memory_resolve` 仍是待决策项，不是已发布的改动。
 
 ### 6.3 投递改成工具调用
 
@@ -461,7 +461,7 @@ worker 不自己弹确认。它说明缺什么信息然后停下。super agent�
 
 ### 8.1 止血修复：先合，独立于本设计
 
-让 `pruneSessionEntries` 为每一次超上限删除与完全重复删除返回归档记录；新增 `over-cap` 与 `duplicate` 两种移除原因；`retainDocument` 收集这些记录；所有写入路径在写活动文件之前先归档；归档失败时保留条目，而不是丢弃。
+Step 0 已在 `3cb8eeaf3d` 合并，独立于本设计的其余部分。`pruneSessionEntries` 现在为每一次超上限删除与完全重复删除返回归档记录，新增 `over-cap` 与 `duplicate` 两种移除原因；`retainDocument` 收集这些记录；所有写入路径在写活动文件之前先归档；归档失败时保留条目，而不是丢弃。
 
 验收：把上限降到 3 条、再写第 4 轮，每一条被丢条目都必须有归档记录；归档失败时条目仍在；版本冲突重试不会产生重复归档。
 
@@ -514,7 +514,7 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 ### 10.3 风险
 
 - 工具调用延迟与成本：结果保持有界，并在提示词里放一张简短的“去哪里查”地图。
-- 一个任务两个主人：工具集必须包住现有账本与日志，而不是再造一份任务清单。
+- 一个任务两个主人：工具集必须包住现有账本与日志，而不是再造一份任务清单。这个风险今天已经存在：读侧工具集已经在 `$DSH_HOME/workspaces/<workspace-id>/tasks` 下持有任务记录，而 `.superagent/ledger` 仍是唯一写入方，任务可能从一边读、往另一边写。
 - 消息优先级：紧急消息可以中断一个步骤。三种紧急情况很窄，普通消息永远不紧急；误判紧急是缺陷，要评审。
 - 引用失效：changed、missing、denied、pending、expired 分开；授权按版本限定，新版本需要新授权；跨工作区拒绝不泄漏产物是否存在。
 - 跨工作区授权：显式工作区 id、注册表成员校验、调用留痕；拉先查接收方，推先查发送方；不做隐式聚合。
@@ -673,6 +673,8 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 | 权限切换 | `superagent_permission` | 需要 | 权限预设服务 | 下移 |
 | 长任务监控 | 会话状态与 JIRA 状态 | 需要 | `workspace_sessions` 状态与进展，加写租约 | 下移 |
 | 跨工作区协作 | 派发，以及把事实复制进记忆 | 需要 | `workspace_tasks`、`workspace_message`、`workspace_artifacts`、`workspace_intents` 显式范围；永不进记忆 | 下移 |
+
+当前状态：绑定 JIRA 的能力仍然实现并启用，而 `workspace_*` 替换只有读侧，`workspace_intents` 没有实现。本表记录的是目标归属，不是本代码树已交付的状态。
 
 ## 13. 附录：未来方向
 

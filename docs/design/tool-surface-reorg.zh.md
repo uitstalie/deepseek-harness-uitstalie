@@ -197,7 +197,7 @@ JIRA 一步移除，不分阶段：
 
 ### 7.2 与 `workspace_artifacts` 的关系
 
-`workspace_artifacts` 发布带 id、路径、哈希、大小、版本的引用。对 `.dsh` 下的路径，发布与解析必须经过 store 的检查：产物工具不写文件、不绕过路径限制、不复制 `.dsh/memory`。接收方在解析引用后，通过 store 工具或 store 服务读取内容。
+`workspace_artifacts` 目前是只读的：它列出已发布的引用，并解析某个已记录的版本（`packages/uitstalie/workspace-tools/src/artifacts.ts:78-90`）；`publish`/`reference` 动作尚不存在。落地后它会发布带 id、路径、哈希、大小、版本的引用。对 `.dsh` 下的路径，发布与解析必须经过 store 的检查：产物工具不写文件、不绕过路径限制、不复制 `.dsh/memory`。接收方在解析引用后，通过 store 工具或 store 服务读取内容。
 
 ### 7.3 权限与沙箱
 
@@ -219,14 +219,16 @@ store 工具在写入时检查 `.dsh` 规则，并拒绝修改 `.dsh/memory`。�
 - 通过产物绕过 `.dsh`。缓解：发布与解析都走 store 检查；`.dsh/memory` 保持只读。
 - 立即移除没有阶段回滚：重装上一版；丢掉的派发账本与删除的 JIRA 数据都无法恢复。
 
-### 8.3 本轮确认
+### 8.3 本轮确认的决策
 
-- JIRA：现在移除，不分阶段；只留 GitHub 凭据相关代码/配置；其余 JIRA cloud 配置删除；不做兼容层。
-- 派发账本：丢弃；不迁移、不导入；`workspace_tasks` 从新开始。
-- JIRA 技能：随工具一起移除；不留副本。
-- 别名：不保留；`superagent_session` 与 `superagent_workspace` 移除，`workspace_*` 实现能力。
-- JIRA 本地数据：删除；删除前可选一次静态导出；不可恢复。
-- personality：`write_like_human` 并入 `personality_apply`；不保留独立工具。
+这些仍是决策，不是已交付的改动。当前代码树里 JIRA 仍然启用（`packages/bundle/web-app/cordis.patch.uitstalie.yml` 中 `jira: { enabled: true }`），派发账本仍是唯一任务写入方，`write_like_human` 仍是独立工具（`packages/uitstalie/personality/src/writing-tool.ts:64`）；已移除的只有别名一项（`packages/jira/jira-agent/tests/superagent.test.ts:402-403`）。
+
+- JIRA：现在移除，不分阶段；只留 GitHub 凭据相关代码/配置；其余 JIRA cloud 配置删除；不做兼容层。未实现。
+- 派发账本：丢弃；不迁移、不导入；`workspace_tasks` 从新开始。未实现。
+- JIRA 技能：随工具一起移除；不留副本。未实现。
+- 别名：不保留；`superagent_session` 与 `superagent_workspace` 移除，`workspace_*` 实现能力。已实现。
+- JIRA 本地数据：删除；删除前可选一次静态导出；不可恢复。JIRA 尚未移除，暂不适用。
+- personality：`write_like_human` 并入 `personality_apply`；不保留独立工具。未实现。
 
 ## 9. 与记忆/工作区设计的冲突
 

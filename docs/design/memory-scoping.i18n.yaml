@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/memory-scoping.md
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory:
-  en: bafc3a10fb113f97
-  zh: 797d88c7f41d65c7
+  en: 0f64afb163e34034
+  zh: 42331e73b5b5c083
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/1-background-and-the-problem:
   en: 5e818a6a13f3dd2a
   zh: bda69e9e5fbf5222
@@ -23,9 +23,9 @@
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/1-background-and-the-problem/1-5-per-turn-injection-is-the-largest-cost:
   en: fb675e07ee7cf366
   zh: 1b1e18b9671e430e
-/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/1-background-and-the-problem/1-6-the-data-loss-defect-over-cap-entries-are-dropped-without-an-archive-record:
-  en: 50badbaae3f28471
-  zh: 8e12ec607aede2ab
+/memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/1-background-and-the-problem/1-6-the-data-loss-defect-over-cap-entries-were-dropped-without-an-archive-record:
+  en: 403227a5cd91d17e
+  zh: ff157159a84a1081
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/2-goals-and-non-goals:
   en: f8d669f0755c73a7
   zh: 53905f1c494344f9
@@ -63,8 +63,8 @@
   en: 06f626d1474c066e
   zh: 38836b15608f2548
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/4-data-model/4-2-toolset-records:
-  en: d464a481acf496eb
-  zh: 4c4617505b1dd00d
+  en: 3032ce260d2136a4
+  zh: b9de86524bd6196d
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/4-data-model/4-3-prompt-data:
   en: ff1e91da55a9a8db
   zh: 510292093a62fa8d
@@ -99,8 +99,8 @@
   en: e1dec6bba77a0d05
   zh: 8ac48b96675094eb
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-2-existing-tool-to-new-home:
-  en: 8a5ae04851f03b28
-  zh: 7db9652d325e3c6e
+  en: 17e91ae5ed780c59
+  zh: 66d169dd5e202dcf
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-3-delivery-as-a-tool-call:
   en: d964dcfaba1b1e0e
   zh: aa48fd7ee750e2ad
@@ -141,8 +141,8 @@
   en: 206def409429fa1f
   zh: 547e1e4bb4b50f61
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/8-migration-and-the-stop-the-bleeding-fix/8-1-stop-the-bleeding-fix-ship-first-independent-of-this-design:
-  en: a61e5f120a200b74
-  zh: 2a0495460d461608
+  en: 2718f5bec26f1ff1
+  zh: 306187e04b49a9c1
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/8-migration-and-the-stop-the-bleeding-fix/8-2-migration-rules:
   en: 81f02533700d4564
   zh: 3f6bcae211ecc901
@@ -159,8 +159,8 @@
   en: 9c7479b056deea5e
   zh: 00099da39b680361
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions/10-3-risks:
-  en: 0cea4f21a6209007
-  zh: ce69504a4ea9123e
+  en: ed4988c0f121313b
+  zh: c2d159c26bded43c
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions/10-4-confirmed-in-this-round:
   en: b762eabfa091a7f1
   zh: 10b822d60b151ad4
@@ -204,8 +204,8 @@
   en: 384260c89e737286
   zh: 8886c3ac6b2b9399
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/12-capability-inventory-memory-and-super-agent/12-2-super-agent-capabilities:
-  en: 9631bf332bcd8714
-  zh: 7b1be2a2c210c0f0
+  en: e26bad56679dc46c
+  zh: 2f976efb7b374b7e
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/13-appendix-future-direction:
   en: 034e2e95e7f2ee2a
   zh: 33d2cb5b76c6408a

@@ -2,7 +2,7 @@
 
 English | [中文](memory-scoping.zh.md)
 
-Status: draft for review. Length: not bound by the 12-page cap; content completeness takes precedence. This draft is 9,841 words (about 20 pages).
+Status: draft for review; Step 0 (the over-cap archive fix, `3cb8eeaf3d`) and Step 1 (the read-side workspace toolset, `cb4cc58385`) are implemented; Step 2 onward is not started. Length: not bound by the 12-page cap; content completeness takes precedence. This draft is 9,841 words (about 20 pages).
 
 ## 1. Background and the problem
 
@@ -36,9 +36,9 @@ Between 50 and 60 entries are dispatch or session status: "dispatched to session
 
 Every summary pass appended a snapshot, and every explicit write appended an update notice. The result is 812 snapshots (216 KiB), 350 "Memory updated" notices, and 149 checkpoints containing 704 entry lines (240 KiB). None of this is a bounded, queryable view; it is an append-only stream that grows for the life of the session, and the model reads it as context. It is the main reason the session's surface grows without bound, and it must be removed rather than tuned.
 
-### 1.6 The data-loss defect: over-cap entries are dropped without an archive record
+### 1.6 The data-loss defect: over-cap entries were dropped without an archive record
 
-`pruneSessionEntries` (`memory-file.ts:2857-2928`) enforces the 40-entry-per-session cap by dropping whole oldest sections and exact-text duplicates. It returns counts, not archive records; `retainDocument` (`memory-file.ts:2591`) discards those counts; the write paths archive only byte-budget and cleanup removals (`memory-file.ts:1358-1374`). A dropped entry therefore leaves no trace.
+`pruneSessionEntries` (`memory-file.ts:2857-2928`) enforces the 40-entry-per-session cap by dropping whole oldest sections and exact-text duplicates. At the time of the incident it returned counts, not archive records; `retainDocument` (`memory-file.ts:2591`) discarded those counts; the write paths archived only byte-budget and cleanup removals (`memory-file.ts:1358-1374`). A dropped entry therefore left no trace. Step 0 (`3cb8eeaf3d`) fixed this: every over-cap and exact-duplicate removal now produces an archive record with an `over-cap` or `duplicate` reason, written before the active file on every write path.
 
 One instance, observed directly in the live workspace file:
 
@@ -145,7 +145,7 @@ The toolset owns the records it returns; memory does not duplicate them.
 | Message | message id, target session, text, kind (message or follow-up), delivery status, receipt, artifact references | Session inbox and message journal |
 | Artifact reference | artifact id, workspace, path, sha256, size, version, kind, session id, task id, created time, summary | Workspace artifact index |
 
-The toolset must not create a second copy of a fact that the ledger, the session store, or the workspace files already own. It aggregates and mutates through those owners, and the task journal exists only for work the JIRA ledger does not cover.
+The toolset must not create a second copy of a fact that the ledger, the session store, or the workspace files already own. It aggregates and mutates through those owners, and the task journal exists only for work the JIRA ledger does not cover. Current state after Step 1: the shipped read-side toolset already stores its own task, message, and artifact records under `$DSH_HOME/workspaces/<workspace-id>/`, while the dispatch ledger `.superagent/ledger` remains the only writer. Until Step 2 adds task creation and the ledger is dropped, two task stores coexist; that is the open risk in section 10.3, not a satisfied constraint.
 
 An intent card is a workspace record, not a memory entry. One card belongs to exactly one workspace. A cross-workspace request creates one card in each target workspace, and each card keeps the user's original words verbatim. The card is stored with the workspace's toolset state at `$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/` (`index.json`, `versions/<n>.json`), not in a host-global intent store. Versions are append-only; an old version stays readable after it is superseded.
 
@@ -304,7 +304,7 @@ The target ownership is one workspace toolset for sessions, tasks, messages, art
 | `read`, `glob`, `grep` | Reads workspace content | Content tools | Keep |
 | `tool-dsh-store` | Reads `.dsh` content | Store tool | Out of scope here; unchanged (section 2.3) |
 
-`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The workspace toolset has five members: `workspace_sessions`, `workspace_intents`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary.
+`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The workspace toolset has five members: `workspace_sessions`, `workspace_intents`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary. Current state: this consolidation is not implemented. `memory_read` is deleted (`cb4cc58385`), but `memory_resolve` still exists (`packages/uitstalie/memory/src/tools.ts:229`); JIRA and the `superagent_*` tools are still enabled (`jira: { enabled: true }` in `packages/bundle/web-app/cordis.patch.uitstalie.yml`); `workspace_intents` does not exist; and `workspace_tasks` is read-only. Removing JIRA and `memory_resolve` remains an open decision, not a shipped change.
 
 ### 6.3 Delivery as a tool call
 
@@ -461,7 +461,7 @@ The old path is removed in the same release; there is no dual path and no data m
 
 ### 8.1 Stop-the-bleeding fix: ship first, independent of this design
 
-Change `pruneSessionEntries` to return archive records for every over-cap and exact-duplicate removal; add `over-cap` and `duplicate` removal reasons; have `retainDocument` collect those records; archive them before writing the active file on every write path; and keep the entries if archiving fails rather than dropping them.
+Step 0 shipped in `3cb8eeaf3d`, independent of the rest of this design. `pruneSessionEntries` now returns archive records for every over-cap and exact-duplicate removal, with `over-cap` and `duplicate` removal reasons; `retainDocument` collects those records; every write path archives them before writing the active file; and a failed archive keeps the entries instead of dropping them.
 
 Acceptance: lowering the cap to three entries and writing a fourth turn always leaves an archive record for each dropped entry; a failed archive keeps the entry; a stale-version retry never duplicates an archive record.
 
@@ -514,7 +514,7 @@ None. The decisions above are conclusions, and the implementation values are fix
 ### 10.3 Risks
 
 - Tool latency and cost: keep the results bounded, and put a short "where to look" map in the prompt.
-- Two owners for a task: the toolset must wrap the existing ledger and journal rather than create a second task list.
+- Two owners for a task: the toolset must wrap the existing ledger and journal rather than create a second task list. This risk is live today: the read-side toolset already owns task records under `$DSH_HOME/workspaces/<workspace-id>/tasks`, while `.superagent/ledger` remains the only writer, so a task can be read from one store and written to the other.
 - Message priority: an urgent message may interrupt a step. The three urgent cases are narrow, and a normal message is never urgent; a misclassified urgent message is a defect to review.
 - Reference invalidation: changed, missing, denied, pending, and expired are distinct; a grant is version-scoped and a new version needs a new grant; a cross-workspace denial never reveals existence.
 - Cross-workspace authorization: an explicit workspace id, registry membership, and a recorded call; pull checks the receiver first, push checks the sender first; no implicit aggregation.
@@ -673,6 +673,8 @@ Intent cards are not a memory capability; they are workspace records and never e
 | Permission switch | `superagent_permission` | Yes | Permission-preset service | Move |
 | Long-task monitoring | Session status and JIRA status | Yes | `workspace_sessions` status and progress plus the write lease | Move |
 | Cross-workspace collaboration | Dispatch, with memory copies | Yes | `workspace_tasks`, `workspace_message`, `workspace_artifacts`, and `workspace_intents` with explicit scope; never memory | Move |
+
+Current state: the JIRA-bound capabilities remain implemented and enabled, while the `workspace_*` replacements exist only as a read side and `workspace_intents` has no implementation. This table records the target ownership, not what this tree ships.
 
 ## 13. Appendix: future direction
 
