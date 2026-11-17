@@ -3573,6 +3573,9 @@ importers:
       '@deepseek-ai/dsh-workspace-changes':
         specifier: workspace:*
         version: link:../../deliverables/workspace-changes
+      '@deepseek-ai/dsh-workspace-tools':
+        specifier: workspace:*
+        version: link:../../uitstalie/workspace-tools
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery

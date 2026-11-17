@@ -701,30 +701,92 @@ function findInject(ctx: FileCtx, pluginClass: ts.ClassDeclaration | null, viola
   return []
 }
 
-/** Resolve the entry file's default export to its class/function declaration
- * (mirroring the Loader's `unwrapExports`), or null when there is none. */
-function defaultExport(ctx: FileCtx): ts.ClassDeclaration | ts.FunctionDeclaration | null {
-  for (const stmt of ctx.sf.statements) {
-    if (ts.isExportAssignment(stmt) && !stmt.isExportEquals && ts.isIdentifier(stmt.expression)) {
-      const name = stmt.expression.text
-      for (const s of ctx.sf.statements) {
-        if ((ts.isClassDeclaration(s) || ts.isFunctionDeclaration(s)) && s.name?.text === name) return s
+/**
+ * Resolve one exported binding from a package entry, following local
+ * declarations, `export { name } from './module.ts'`, `export * from`, and
+ * `export default identifier` chains. The Loader unwraps the module exports the
+ * same way, so a thin entry that re-exports its plugin is still that plugin.
+ * @param world - scan root, file cache, and package maps.
+ * @param entry - parsed entry (or re-exported) source file.
+ * @param names - exported binding names to find, `default` included.
+ * @param seen - files and names already visited, to stop re-export cycles.
+ * @returns the declaring file and the function or class declaration, or null.
+ */
+function resolveEntryExport(
+  world: World,
+  entry: FileCtx,
+  names: readonly string[],
+  seen = new Set<string>(),
+): { readonly ctx: FileCtx; readonly decl: ts.FunctionDeclaration | ts.ClassDeclaration } | null {
+  const key = `${entry.abs}#${names.join(',')}`
+  if (seen.has(key)) return null
+  seen.add(key)
+  for (const stmt of entry.sf.statements) {
+    for (const name of names) {
+      if (ts.isFunctionDeclaration(stmt) && stmt.name?.text === name && hasExportModifier(stmt)) {
+        return { ctx: entry, decl: stmt }
       }
-      return null
+      if (ts.isClassDeclaration(stmt)) {
+        const matches = name === 'default'
+          ? stmt.modifiers?.some(m => m.kind === ts.SyntaxKind.DefaultKeyword) === true
+          : stmt.name?.text === name && hasExportModifier(stmt)
+        if (matches) return { ctx: entry, decl: stmt }
+      }
+      if (name !== 'default' || !ts.isExportAssignment(stmt) || stmt.isExportEquals || !ts.isIdentifier(stmt.expression)) {
+        continue
+      }
+      // `export default LocalName` exports a local declaration that carries no
+      // export modifier of its own; resolve that declaration directly.
+      for (const local of entry.sf.statements) {
+        if ((ts.isClassDeclaration(local) || ts.isFunctionDeclaration(local))
+          && local.name?.text === stmt.expression.text) {
+          return { ctx: entry, decl: local }
+        }
+      }
+      const target = resolveEntryExport(world, entry, [stmt.expression.text], seen)
+      if (target !== null) return target
     }
-    if ((ts.isClassDeclaration(stmt) || ts.isFunctionDeclaration(stmt))
-      && stmt.modifiers?.some(m => m.kind === ts.SyntaxKind.DefaultKeyword)) return stmt
+    if (!ts.isExportDeclaration(stmt) || stmt.moduleSpecifier === undefined
+      || !ts.isStringLiteral(stmt.moduleSpecifier)) continue
+    const target = resolveRelativeModule(world, entry, stmt.moduleSpecifier.text)
+    if (target === null) continue
+    const clause = stmt.exportClause
+    if (clause === undefined) {
+      const found = resolveEntryExport(world, target, names, seen)
+      if (found !== null) return found
+      continue
+    }
+    if (!ts.isNamedExports(clause)) continue
+    for (const name of names) {
+      const element = clause.elements.find(candidate => candidate.name.text === name)
+      if (element === undefined) continue
+      const found = resolveEntryExport(world, target, [element.propertyName?.text ?? element.name.text], seen)
+      if (found !== null) return found
+    }
   }
   return null
 }
 
-/** Find the exported `apply` function declaration in the entry file, or null. */
-function applyExport(ctx: FileCtx): ts.FunctionDeclaration | null {
-  for (const stmt of ctx.sf.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.name?.text === 'apply'
-      && stmt.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) return stmt
-  }
-  return null
+/** Whether a declaration carries an `export` modifier. */
+function hasExportModifier(node: ts.Node): boolean {
+  return ts.canHaveModifiers(node)
+    && ts.getModifiers(node)?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) === true
+}
+
+/**
+ * Load a module named by a relative export specifier.
+ * @param world - scan root and file cache.
+ * @param from - file carrying the specifier.
+ * @param specifier - module specifier, expected to be relative.
+ * @returns the parsed module, or null for a non-relative or missing target.
+ */
+function resolveRelativeModule(world: World, from: FileCtx, specifier: string): FileCtx | null {
+  if (!specifier.startsWith('.')) return null
+  let abs = resolve(dirname(from.abs), specifier)
+  if (!existsSync(abs) && existsSync(`${abs}.ts`)) abs = `${abs}.ts`
+  if (!existsSync(abs)) return null
+  const rel = relative(world.scanRoot, abs).split(sep).join('/')
+  return loadFile(abs, rel, world.cache)
 }
 
 /**
@@ -775,14 +837,21 @@ export function collectConfigCatalog(scanRoot: string = root): CatalogEntry[] {
 
     // Classify, mirroring the Loader's unwrapExports: the default export IS
     // the plugin when present; else an exported `apply` makes the module
-    // namespace the plugin; else the package is a plain library.
-    const dflt = defaultExport(ctx)
-    const apply = applyExport(ctx)
+    // namespace the plugin; else the package is a plain library. A thin entry
+    // that re-exports either binding is followed to its declaring file.
+    const resolvedDefault = resolveEntryExport(world, ctx, ['default'])
+    const resolvedApply = resolvedDefault === null ? resolveEntryExport(world, ctx, ['apply']) : null
+    const defining = resolvedDefault ?? resolvedApply
+    if (defining !== null) ctx = defining.ctx
+    const dflt = resolvedDefault?.decl
+    const apply = resolvedApply?.decl !== undefined && ts.isFunctionDeclaration(resolvedApply.decl)
+      ? resolvedApply.decl
+      : null
     let pluginClass: ts.ClassDeclaration | null = null
     let configParam: ts.ParameterDeclaration | undefined
     let kind: Kind
     let className: string | undefined
-    if (dflt && ts.isClassDeclaration(dflt)) {
+    if (dflt !== undefined && ts.isClassDeclaration(dflt)) {
       className = dflt.name?.text
       if (dflt.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword)) {
         kind = 'seam'
@@ -792,10 +861,10 @@ export function collectConfigCatalog(scanRoot: string = root): CatalogEntry[] {
         configParam = ctor?.parameters[1]
         kind = configParam ? 'config' : 'no-config'
       }
-    } else if (dflt) {
+    } else if (dflt !== undefined) {
       configParam = dflt.parameters[1]
       kind = configParam ? 'config' : 'no-config'
-    } else if (apply) {
+    } else if (apply !== null) {
       configParam = apply.parameters[1]
       kind = configParam ? 'config' : 'no-config'
     } else {

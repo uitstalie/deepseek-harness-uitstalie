@@ -104,6 +104,33 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-instructions -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-instructions-plus -->
+<a id="deepseek-aidsh-agent-instructions-plus"></a>
+
+## `@deepseek-ai/dsh-agent-instructions-plus`
+
+- `inject`: `sessionProjections` · `workingDirectory` · `agentInstructionsApi` · `dshStore`
+- `source`: [`packages/uitstalie/agent-instructions-plus/src/config.ts:26`](../packages/uitstalie/agent-instructions-plus/src/config.ts)
+
+```ts config-catalog
+/** Plus configuration. */
+export interface Config {
+  /** Always-on workspace rules under `<projectRoot>/.dsh/rules`. */
+  rules?: RulesConfig
+}
+
+/** Workspace-rules source configuration. */
+export interface RulesConfig {
+  /** Load `<projectRoot>/.dsh/rules` at all; `false` drops this source. */
+  enabled?: boolean
+  /** Byte cap for the rendered rules segment, independent of the native chain's `maxBytes`. */
+  maxBytes?: number
+  /** Maximum UTF-8 bytes read from one rule file; larger files are skipped. */
+  maxSourceBytes?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-instructions-plus -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-loop -->
 <a id="deepseek-aidsh-agent-loop"></a>
 
@@ -906,6 +933,19 @@ export interface Config extends CuaConfig {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-cua-windows -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-dafeiyu -->
+<a id="deepseek-aidsh-dafeiyu"></a>
+
+## `@deepseek-ai/dsh-dafeiyu`
+
+- `source`: [`packages/uitstalie/dafeiyu/src/api.ts:66`](../packages/uitstalie/dafeiyu/src/api.ts)
+
+```ts config-catalog
+/** Resolved organizer configuration: `capabilities` is the live reference. */
+export type ResolvedConfig = ReturnType<typeof ConfigSchema>
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-dafeiyu -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-deepseek-account -->
 <a id="deepseek-aidsh-deepseek-account"></a>
 
@@ -1348,6 +1388,48 @@ export interface InspectorOptions {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-inspector -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-liveshare -->
+<a id="deepseek-aidsh-experimental-liveshare"></a>
+
+## `@deepseek-ai/dsh-experimental-liveshare`
+
+- `inject`: `connection`
+- `refs`: [`IdentityActor`](../packages/experimental/liveshare-protocol/src/index.ts)
+- `source`: [`packages/experimental/liveshare/src/host/share-host.ts:76`](../packages/experimental/liveshare/src/host/share-host.ts)
+
+```ts config-catalog
+/**
+ * Host plugin configuration: the owner identity shares are created under and the owner-local files that
+ * retain shares and the credential across restarts.
+ *
+ * The public Relay address is not configuration. The owner saves it in the Share dialog, where it
+ * persists in the owner state file, so a profile that switches this bundle on without an address still
+ * loads: its sharing surfaces report that no address is set until the owner saves one.
+ */
+export interface Config {
+  /** Provider subject ids allowed to view every share created by this host. */
+  readonly allowedSubjectIds?: readonly string[]
+  /** Authenticated owner identity used to scope people-directory searches. */
+  readonly ownerIdentity?: IdentityActor
+  /** Owner identity provider used when `ownerIdentity` is assembled from fields. */
+  readonly ownerIdentityProvider?: string
+  /** Owner identity tenant used when `ownerIdentity` is assembled from fields. */
+  readonly ownerIdentityTenant?: string
+  /** Owner identity subject used when `ownerIdentity` is assembled from fields. */
+  readonly ownerIdentitySubject?: string
+  /** Owner identity display name used when `ownerIdentity` is assembled from fields. */
+  readonly ownerIdentityDisplayName?: string
+  /** Owner-local JSON file retaining share metadata and gateway tokens across host restarts. */
+  readonly ownerStateFile?: string
+  /**
+   * Owner credential file. Defaults beside the owner state file; it holds the Relay-issued
+   * credential, which is why it is written with owner-only permissions and never reported.
+   */
+  readonly ownerCredentialFile?: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-liveshare -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-ptc-runtime-python -->
 <a id="deepseek-aidsh-experimental-ptc-runtime-python"></a>
 
@@ -1750,6 +1832,34 @@ export interface HmrConfig extends ChokidarOptions {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-hmr -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-home-backup -->
+<a id="deepseek-aidsh-home-backup"></a>
+
+## `@deepseek-ai/dsh-home-backup`
+
+- `source`: [`packages/uitstalie/home-backup/src/api.ts:37`](../packages/uitstalie/home-backup/src/api.ts)
+
+```ts config-catalog
+/** Plugin configuration; every field is optional and the schema supplies the default. */
+export interface Config {
+  /** Snapshot directory; absent (or empty) means {@link defaultDestination}. */
+  destination?: string
+  /** Interval between snapshots in milliseconds. */
+  intervalMs?: number
+  /** Delay before the first snapshot in milliseconds; `0` snapshots at mount. */
+  initialDelayMs?: number
+  /** Snapshots kept, including the newest. */
+  retain?: number
+  /** Home-relative paths copied whole. */
+  paths?: string[]
+  /** Copy each profile's configuration files; default `true`. */
+  profileConfig?: boolean
+  /** Copy the credentials file; default `false`, so a snapshot holds no secrets. */
+  credentials?: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-home-backup -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-hooks-claude-code -->
 <a id="deepseek-aidsh-hooks-claude-code"></a>
 
@@ -1971,6 +2081,106 @@ export interface TlsConfig {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-host-webserver -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->
+<a id="deepseek-aidsh-jira-agent"></a>
+
+## `@deepseek-ai/dsh-jira-agent`
+
+- `inject`: `jira` · `tools` · `dafeiyu`
+- `source`: [`packages/jira/jira-agent/src/api.ts:75`](../packages/jira/jira-agent/src/api.ts)
+
+```ts config-catalog
+/**
+ * The agent row's own configuration: which preset an executor Session joins.
+ *
+ * Everything about the ledger itself still belongs to the `jira-service` row, and whether a model
+ * surface exists at all belongs to dafeiyu's gates. This one field exists because a real executor
+ * Session gets a whole composition, and the composition it may join has to be decided here rather
+ * than by the model (DH-702): without it a dispatched Session would inherit the dispatcher's tools.
+ */
+export type Config = Readonly<{
+  /** The agent preset a `superagent_dispatch` Session joins; unset means dispatch refuses. */
+  superagent_worker_preset?: string
+  /** How many issues one dispatcher may hold in progress at once; defaults to two. */
+  superagent_max_workers?: number
+  /** The single GitHub repository the source polls, as `owner/name`; unset means no source. */
+  superagent_github_repo?: string
+  /** Whether a session-less dispatcher pass may run; defaults to false (DH-714). */
+  superagent_daemon?: boolean
+  /** The checkout a session-less claim is dispatched into; the daemon needs it to run. */
+  superagent_daemon_workspace?: string
+  /**
+   * The directory the super agent lives in (DH-716, DH-718); **required** — unset means no super
+   * agent at all.
+   *
+   * The location is the person's decision, never a default: the path must be absolute, must not be
+   * a filesystem root, and must not live under the harness home, because the super agent owns that
+   * checkout with a write-capable sandbox. Once set, it is registered once at mount, pinned to the
+   * front of the workspace list, and a conversation opened there is the dispatcher.
+   */
+  superagent_home?: string
+  /**
+   * The permission preset the super agent is pinned to; defaults to `workspace-write`.
+   *
+   * Pinned when the agent is wired, so an opened session cannot silently inherit a looser bundle
+   * than the workspace it owns. Unset or blank leaves the host's own default in place.
+   */
+  superagent_permission_preset?: string
+  /**
+   * The preset a workspace Session started by `superagent_control start` joins; unset keeps the
+   * deployment's default composition (DH-719).
+   */
+  superagent_agent_preset?: string
+  /**
+   * Whether the super agent may hand files to every registered workspace through the in-process
+   * filesystem fence (default: true). Only the super agent's own sessions receive the grant, and
+   * shell/terminal confinement is unchanged; set false to keep the stricter single-workspace fence.
+   */
+  superagent_write_registered_workspaces?: boolean
+  /**
+   * Context percentage at which a Session row starts suggesting compaction (default 30). It is
+   * advice for the super agent, never an automatic compaction; the super agent still decides.
+   */
+  superagent_compact_threshold_percent?: number
+  /**
+   * Minutes a running workspace Session may run before the monitor names it (default 10). The
+   * summary is a suggestion for the super agent; nothing is aborted or interrupted automatically.
+   */
+  superagent_long_running_minutes?: number
+}>
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-jira-service -->
+<a id="deepseek-aidsh-jira-service"></a>
+
+## `@deepseek-ai/dsh-jira-service`
+
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/jira/jira-service/src/api.ts:91`](../packages/jira/jira-service/src/api.ts)
+
+```ts config-catalog
+/** What a `jira-service` row may configure: where the ledger is, who writes, whether to push. */
+export interface Config {
+  /** Ledger root; absent means resolve through `$JIRA_ROOT`, `$DSH_HOME/jira`, then the profile. */
+  root: Volatile<string | undefined>
+  /** The `owner.host` audit field; absent means this machine's hostname. */
+  host: Volatile<string | undefined>
+  /** Override the machine identity; absent means `$DSH_HOME/dsh-jira/machine-id`. */
+  machine_id: string | undefined
+  /** Git remote to join on load; a local, offline operation that never clones or fetches. */
+  remote: string | undefined
+  /** Push switch and debounce for the queue this service owns. */
+  push: {
+    /** Whether a settle schedules a push. Absent means false: everything stays local. */
+    enabled: Volatile<boolean>
+    /** Debounce window in milliseconds; absent means the core's default. */
+    debounce_ms: number | undefined
+  }
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-service -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-jobs-local -->
 <a id="deepseek-aidsh-jobs-local"></a>
@@ -2324,6 +2534,24 @@ export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-llm-pi-ai -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-llm-plus -->
+<a id="deepseek-aidsh-llm-plus"></a>
+
+## `@deepseek-ai/dsh-llm-plus`
+
+- `inject`: `llm` · `credentials`
+- `source`: [`packages/uitstalie/llm-plus/src/config.ts:166`](../packages/uitstalie/llm-plus/src/config.ts)
+
+```ts config-catalog
+/**
+ * 插件配置（schema 的输出形态）：`routes` 是 volatile 引用——整张路由表是
+ * 一个引用，Loader 提交新快照并 emit `loader/volatile-update`，本实例不被
+ * 重挂（见 index.ts 的同步点）。
+ */
+export type PlusConfig = ReturnType<typeof Config>
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-llm-plus -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-llm-replay -->
 <a id="deepseek-aidsh-llm-replay"></a>
 
@@ -2605,6 +2833,81 @@ export interface McpManagedServerEntry {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-mcp-manager -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-memory -->
+<a id="deepseek-aidsh-memory"></a>
+
+## `@deepseek-ai/dsh-memory`
+
+- `inject`: `dafeiyu` · `dshStore` · `sessionQuery` · `jobs` · `llm`
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/uitstalie/memory/src/config.ts:71`](../packages/uitstalie/memory/src/config.ts)
+
+```ts config-catalog
+/** Configuration as the Loader passes it; every field is a live reference. */
+export interface Config {
+  /** Turns kept verbatim; older turns enter the detail tier. */
+  detail: Volatile<number>
+  /** Turns kept as one-line briefs. */
+  brief: Volatile<number>
+  /** Turns after which entries leave the snapshot. */
+  forget: Volatile<number>
+  /** Sessions kept with summaries in MEMORY.md. */
+  sessions: Volatile<number>
+  /** Provider for the summary job; empty follows the routed model. */
+  summarizationProvider: Volatile<string>
+  /** Model for the summary job; empty follows the routed model. */
+  summarizationModel: Volatile<string>
+  /**
+   * Managed-block body budget in UTF-8 bytes.
+   *
+   * Defaults to 16384, matching the snapshot's 16 KiB budget so the persisted body and its rendered
+   * snapshot stay one prompt-sized block. A write that would exceed it evicts the least durable
+   * entries (`open`, then `files`, then `decision`, `preference`) and records each removal.
+   */
+  maxBytes: Volatile<number>
+  /** Maximum entries retained per session. */
+  maxEntries: Volatile<number>
+  /**
+   * Days after which an `open` entry is archived and removed from injection.
+   *
+   * Defaults to 3. `0` disables the rule; `decision` and `preference` never
+   * expire. Archived entries stay searchable in `MEMORY.archive.md`.
+   */
+  openTtlDays: Volatile<number>
+  /**
+   * Days after which a `files` entry is archived and removed from injection.
+   *
+   * Defaults to 14. `0` disables the rule; `decision` and `preference` never
+   * expire. Archived entries stay searchable in `MEMORY.archive.md`.
+   */
+  filesTtlDays: Volatile<number>
+  /**
+   * Shared tags required before an automatically observed supersession.
+   *
+   * Defaults to 2; the same session and kind are always required, and an
+   * explicit `supersedes` tag on the new entry takes precedence.
+   */
+  supersessionMinSharedTags: Volatile<number>
+  /**
+   * Completed turns coalesced into one summary model call.
+   *
+   * Defaults to 1 (one call per completed turn, the previous behavior). A
+   * larger value batches turns and writes their per-turn entries in one
+   * version-guarded append; tier migration still follows its own window.
+   */
+  summarizeEveryTurns: Volatile<number>
+  /** Model attempts for one summary call, including the first. */
+  summaryMaxAttempts: Volatile<number>
+  /** Delay before a retryable summary attempt, in milliseconds. */
+  summaryRetryDelayMs: Volatile<number>
+  /** Template wrapped around the snapshot text; `{{snapshot}}` is replaced. */
+  snapshotTemplate: Volatile<string>
+  /** Where the snapshot reaches the model. */
+  snapshotPosition: Volatile<'depth-0' | 'prompt'>
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-memory -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-message-feedback -->
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -2621,6 +2924,61 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-message-feedback -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-models-dev -->
+<a id="deepseek-aidsh-models-dev"></a>
+
+## `@deepseek-ai/dsh-models-dev`
+
+- `source`: [`packages/uitstalie/models-dev/src/api.ts:64`](../packages/uitstalie/models-dev/src/api.ts)
+
+```ts config-catalog
+/** 插件配置（全部可选；缺省值由 schema 的 .default() 在 cordis 校验期物化，
+ *  直接 ctx.plugin 的调用方由构造器的 ?? 兜底——两条路径产物一致）。 */
+export interface Config {
+  /** 数据集源 URL；file:// 读磁盘。 */
+  sourceUrl?: string
+  /** 磁盘缓存文件路径（默认 ~/.dsh/cache/models-dev.json）。 */
+  cachePath?: string
+  /** 缓存新鲜度窗口（毫秒）；窗口内零网络。 */
+  cacheTtlMs?: number
+  /** 单次拉取超时（毫秒）。 */
+  timeoutMs?: number
+  /**
+   * harness provider 路由 → models.dev provider id 的映射。
+   * 例子：harness 的 DeepSeek 路由叫 `deepseek-official`，数据集里叫 `deepseek`。
+   * 未列出的路由原样当作 models.dev id 使用。
+   */
+  routeAliases?: Record<string, string>
+  /** 额外请求参数写入位置，键为 models.dev provider id。 */
+  extraParams?: Record<string, ExtraParamsConfig>
+}
+
+/**
+ * 用户为单个 provider 配置的额外参数（写入位置）。
+ * 键用 models.dev provider id（不是 harness 路由名），经 routeAliases 解析。
+ */
+export interface ExtraParamsConfig {
+  /** 额外 HTTP 头（当前仅暴露数据，注入缺缝——见 deepseek-extra-params.ts 头注释）。 */
+  headers?: Record<string, string>
+  /** 额外顶层请求体字段。 */
+  body?: Record<string, JsonValue>
+  /** 按模型的覆盖，与 provider 级浅合并（模型级取胜）。 */
+  models?: Record<string, {
+    /** 该模型专属的额外 HTTP 头，覆盖 provider 级同名字段。 */
+    headers?: Record<string, string>
+    /** 该模型专属的额外顶层请求体字段，覆盖 provider 级同名字段。 */
+    body?: Record<string, JsonValue>
+  }>
+}
+
+/**
+ * 无损 JSON 值（与请求体兼容的递归类型）。
+ * 用于 extraParams 的 body 字段值，保证最终能 JSON.stringify 进请求体。
+ */
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-models-dev -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-office-kit -->
 <a id="deepseek-aidsh-office-kit"></a>
@@ -2749,6 +3107,26 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-persona -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-persona-card -->
+<a id="deepseek-aidsh-persona-card"></a>
+
+## `@deepseek-ai/dsh-persona-card`
+
+- `inject`: `dafeiyu`
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/uitstalie/persona-card/src/provider.ts:49`](../packages/uitstalie/persona-card/src/provider.ts)
+
+```ts config-catalog
+/** Row configuration, accepting live references or plain test values. */
+export interface Config {
+  /** Card id (file name without `.md`) used by sessions that never chose one; empty disables the section. */
+  readonly active?: Volatile<string> | string | undefined
+  /** Injection budget for one card, in UTF-8 bytes. */
+  readonly maxBytes?: Volatile<number> | number | undefined
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-persona-card -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-plan-mode -->
 <a id="deepseek-aidsh-plan-mode"></a>
@@ -3058,6 +3436,75 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-sandbox-local -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-sandbox-policy -->
+<a id="deepseek-aidsh-sandbox-policy"></a>
+
+## `@deepseek-ai/dsh-sandbox-policy`
+
+- `inject`: `sessionProjections`
+- `refs`: [`SandboxMode`](subsystems/sandbox.md)
+- `source`: [`packages/sandbox/sandbox-policy/src/api.ts:133`](../packages/sandbox/sandbox-policy/src/api.ts)
+
+```ts config-catalog
+/**
+ * Plugin config: the deployment's sandbox default. All optional — `Config`
+ * supplies the defaults (`mode: 'read-only'` is the fail-safe default; a
+ * deployment that wants a workspace-writable agent opts in explicitly). The
+ * runner choice is NOT here (it is the `ctx.sandbox` provider's config), nor
+ * is any per-family knob: this is the one shared policy home.
+ */
+export interface Config {
+  /** File-sandbox mode a session starts from (default: `read-only`). */
+  mode?: SandboxMode | 'non-critical-write'
+  /**
+   * Absolute fallback root for agentless calls and sessions without a cwd (default:
+   * `process.cwd()`). Normal agent calls use their session cwd instead.
+   */
+  workspaceRoot?: string
+  /**
+   * Extra physical absolute directories that `workspace-write` may also write under
+   * (default: none). Entries are execution-world paths: this service validates
+   * absoluteness and detaches the list, while the enforcing host rejects
+   * missing, non-directory, or symlinked paths. They grant nothing under
+   * `read-only`. Windows process confinement ignores them; harness file tools honor them.
+   */
+  additionalWritableRoots?: string[]
+  /**
+   * Explicit roots for `home-write`; default: the user home plus every
+   * non-system fixed drive on Windows, the user home elsewhere. Replace the
+   * default, not appended to it. Entries are execution-world paths and may
+   * start with `~`; the session workspace is always added separately. On
+   * Windows a C: root outside the user home is dropped (C: stays read-only).
+   *
+   * Compatibility: `nonCriticalRoots` (the folded mode's old key) and
+   * `homeWriteRoot` (a single root) are accepted aliases.
+   */
+  homeWriteRoots?: string[]
+  /** Compatibility alias for `homeWriteRoots` (the folded `non-critical-write` key). */
+  nonCriticalRoots?: string[]
+  /** Compatibility alias for a single-root `homeWriteRoots` configuration. */
+  homeWriteRoot?: string
+  /**
+   * Directories forced read-only inside `home-write`, even when they sit under
+   * a writable root (default: none — the home is fully writable, credential
+   * stores included). Entries are execution-world absolute paths; a leading
+   * `~` expands on the enforcing host. A trailing `/*` or `/**` means the same
+   * directory subtree; any other glob syntax is rejected. The path must exist
+   * when a confined call resolves the policy.
+   *
+   * Compatibility: `homeWriteReadOnlyRoots` is accepted as an alias.
+   */
+  excludePaths?: string[]
+  /** Compatibility alias for `excludePaths`. */
+  homeWriteReadOnlyRoots?: string[]
+  /** Temporary directories also writable under `home-write` (default: none). */
+  homeWriteTempRoots?: string[]
+  /** Allow symlink spellings for configured home-write roots (default false). */
+  homeWriteAllowSymlinkedRoots?: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-sandbox-policy -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-schedule -->
 <a id="deepseek-aidsh-schedule"></a>
 
@@ -3172,6 +3619,39 @@ export interface Config {
 export type SessionLogCompressionLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-session-log-export -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-session-persistence-jsonl -->
+<a id="deepseek-aidsh-session-persistence-jsonl"></a>
+
+## `@deepseek-ai/dsh-session-persistence-jsonl`
+
+- `source`: [`packages/session/session-persistence-jsonl/src/api.ts:94`](../packages/session/session-persistence-jsonl/src/api.ts)
+
+```ts config-catalog
+/** Plugin config for the JSONL backend's root, physical encoding, and listing concurrency. */
+export interface Config {
+  /**
+   * Root directory for all session files. Required (no default): a default of
+   * `process.cwd()` would scatter session files as the process's cwd changes
+   * (bash calls, subprocesses). Sessions group under human-readable project
+   * directories, then per-session directories. An existing root must be a
+   * readable directory; an absent root is created on first materialization.
+   */
+  root: string
+  /** Physical encoding; defaults to checksummed Zstandard frames. */
+  compression?: JsonlCompression
+  /**
+   * Maximum directory, header, and stat reads in flight across all concurrent
+   * listings of this backend (`list()`, the root encoding check, and historical
+   * fingerprints). Defaults to 3.
+   */
+  listConcurrency?: number
+}
+
+/** Physical encoding selected for JSONL session artifacts. */
+export type JsonlCompression = 'zstd' | 'none'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-session-persistence-jsonl -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-session-projection-cache -->
 <a id="deepseek-aidsh-session-projection-cache"></a>
@@ -3661,6 +4141,23 @@ export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-storage-sqlite -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-store-atom -->
+<a id="deepseek-aidsh-store-atom"></a>
+
+## `@deepseek-ai/dsh-store-atom`
+
+- `inject`: `fs`
+- `source`: [`packages/uitstalie/store-atom/src/api.ts:25`](../packages/uitstalie/store-atom/src/api.ts)
+
+```ts config-catalog
+/** Store atom configuration. */
+export interface Config {
+  /** Create `<projectRoot>/.dsh` for a session that needs the store; `false` leaves it absent. */
+  ensureRoot?: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-store-atom -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-subagent -->
 <a id="deepseek-aidsh-subagent"></a>
 
@@ -3878,6 +4375,27 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-subagent-spawn-in-process -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-system-environment -->
+<a id="deepseek-aidsh-system-environment"></a>
+
+## `@deepseek-ai/dsh-system-environment`
+
+- `source`: [`packages/uitstalie/system-environment/src/api.ts:30`](../packages/uitstalie/system-environment/src/api.ts)
+
+```ts config-catalog
+/** Row configuration: the test seam for platform and environment. */
+export interface Config {
+  /** Pin the platform rules; defaults to the running host. */
+  platform?: SystemPlatform
+  /** Read environment values from this map instead of `process.env`. */
+  env?: Record<string, string>
+}
+
+/** The two path dialects this service speaks. */
+export type SystemPlatform = 'win32' | 'posix'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-system-environment -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-system-prompt -->
 <a id="deepseek-aidsh-system-prompt"></a>
@@ -4344,6 +4862,61 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-office -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-policy -->
+<a id="deepseek-aidsh-tool-policy"></a>
+
+## `@deepseek-ai/dsh-tool-policy`
+
+- `inject`: `sessionProjections`
+- `source`: [`packages/interaction/tool-policy/src/types.ts:56`](../packages/interaction/tool-policy/src/types.ts)
+
+```ts config-catalog
+/** Plugin config: named profiles plus the deployment default. */
+export interface Config {
+  /** Profile a session starts from (default: `guarded`). */
+  defaultProfile?: string
+  /** Profiles; entries merge over the built-ins and may override them. */
+  profiles?: Record<string, ProfileConfig>
+}
+
+/** One named policy profile as configured in `cordis.yml`. */
+export interface ProfileConfig {
+  /** One sentence shown by `/policy` and in the prompt. */
+  description?: string
+  /** Path prefixes denied for the listed operations. */
+  paths?: readonly PathRuleConfig[]
+  /** Tools denied for the whole call, independent of arguments. */
+  tools?: readonly ToolRuleConfig[]
+}
+
+/**
+ * One configured path deny rule. Matching is by canonical path prefix, on both
+ * the lexical and the physical (symlink-resolved) spelling.
+ */
+export interface PathRuleConfig {
+  /** Absolute path or a leading `~`; canonicalized when the profile is prepared. */
+  path: string
+  /** Operations to deny (default: every operation). */
+  operations?: readonly FileAccessOperation[]
+  /** Whether the path itself is denied (default: true). */
+  includeSelf?: boolean
+  /** Optional model-facing explanation appended to the denial. */
+  reason?: string
+}
+
+/** One configured tool deny rule. Names are exact and case-sensitive. */
+export interface ToolRuleConfig {
+  /** Exact model-visible tool name. */
+  name: string
+  /** Optional model-facing explanation appended to the denial. */
+  reason?: string
+}
+
+/** A model file operation a path rule can deny. */
+export type FileAccessOperation = 'read' | 'write' | 'list'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-policy -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-present -->
 <a id="deepseek-aidsh-tool-present"></a>
@@ -5014,6 +5587,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-api-remotes` | `typertGateway` | [`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts) |
 | `@deepseek-ai/dsh-authorization` | `credentials` | [`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts) |
 | `@deepseek-ai/dsh-browser-use` | — | [`packages/browser-use/browser-use/src/index.ts`](../packages/browser-use/browser-use/src/index.ts) |
+| `@deepseek-ai/dsh-client-common-view` | — | [`packages/uitstalie/common-view/src/index.ts`](../packages/uitstalie/common-view/src/index.ts) |
 | `@deepseek-ai/dsh-client-file-upload` | `agents` · `attachments` · `commands` · `connection` | [`packages/client/file-upload/src/index.ts`](../packages/client/file-upload/src/index.ts) |
 | `@deepseek-ai/dsh-client-locale` | — | [`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts) |
 | `@deepseek-ai/dsh-client-modules` | `loader` | [`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts) |
@@ -5109,6 +5683,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-mcp-resources` | `tools` | [`packages/mcp/mcp-resources/src/index.ts`](../packages/mcp/mcp-resources/src/index.ts) |
 | `@deepseek-ai/dsh-message-quotes` | — | [`packages/session/message-quotes/src/index.ts`](../packages/session/message-quotes/src/index.ts) |
 | `@deepseek-ai/dsh-otel` | — | [`packages/telemetry/otel/src/index.ts`](../packages/telemetry/otel/src/index.ts) |
+| `@deepseek-ai/dsh-personality` | `dafeiyu` · `dshStore` · `fs` · `sessionQuery` · `systemPrompt` | [`packages/uitstalie/personality/src/index.ts`](../packages/uitstalie/personality/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-recommendations` | `pluginManager` · `agents` · `skills` · `actionCards` | [`packages/experimental/plugin-recommendations/src/index.ts`](../packages/experimental/plugin-recommendations/src/index.ts) |
 | `@deepseek-ai/dsh-sandbox-ssh` | `ssh` | [`packages/ssh/sandbox-ssh/src/index.ts`](../packages/ssh/sandbox-ssh/src/index.ts) |
 | `@deepseek-ai/dsh-session` | — | [`packages/core/session/src/index.ts`](../packages/core/session/src/index.ts) |
@@ -5122,15 +5697,19 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-subprocess-local` | — | [`packages/subprocess/subprocess-local/src/index.ts`](../packages/subprocess/subprocess-local/src/index.ts) |
 | `@deepseek-ai/dsh-subprocess-ssh` | `ssh` | [`packages/ssh/subprocess-ssh/src/index.ts`](../packages/ssh/subprocess-ssh/src/index.ts) |
 | `@deepseek-ai/dsh-terminal` | — | [`packages/terminal/terminal/src/index.ts`](../packages/terminal/terminal/src/index.ts) |
+| `@deepseek-ai/dsh-token-calculator` | `dafeiyu` | [`packages/uitstalie/token-calculator/src/index.ts`](../packages/uitstalie/token-calculator/src/index.ts) |
 | `@deepseek-ai/dsh-tool-call-timeout-policy` | `tools` | [`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts) |
 | `@deepseek-ai/dsh-tool-cordis` | `tools` · `cordisInspect` | [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts) |
+| `@deepseek-ai/dsh-tool-dsh-store` | `dafeiyu` · `dshStore` · `tools` | [`packages/uitstalie/tool-dsh-store/src/index.ts`](../packages/uitstalie/tool-dsh-store/src/index.ts) |
 | `@deepseek-ai/dsh-tool-executor-native` | `tools` | [`packages/core/tool-executor-native/src/index.ts`](../packages/core/tool-executor-native/src/index.ts) |
 | `@deepseek-ai/dsh-tool-schedule` | `tools` · `systemPrompt` | [`packages/schedule/tool-schedule/src/index.ts`](../packages/schedule/tool-schedule/src/index.ts) |
 | `@deepseek-ai/dsh-tool-working-directory` | `tools` · `workingDirectory` | [`packages/session/tool-working-directory/src/index.ts`](../packages/session/tool-working-directory/src/index.ts) |
 | `@deepseek-ai/dsh-tools` | `systemPrompt` | [`packages/core/tools/src/index.ts`](../packages/core/tools/src/index.ts) |
+| `@deepseek-ai/dsh-typert-registry` | — | [`packages/typert/registry/src/index.ts`](../packages/typert/registry/src/index.ts) |
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |
 | `@deepseek-ai/dsh-webhook` | `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` | [`packages/experimental/webhook/src/index.ts`](../packages/experimental/webhook/src/index.ts) |
 | `@deepseek-ai/dsh-workspace` | `storageDomain` · `sessionPersistence` | [`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts) |
+| `@deepseek-ai/dsh-workspace-tools` | `dafeiyu` · `dshStore` · `sessionQuery` · `workspaceRegistry` · `fs` | [`packages/uitstalie/workspace-tools/src/index.ts`](../packages/uitstalie/workspace-tools/src/index.ts) |
 <!-- END GENERATED config-catalog:no-config -->
 
 ## Seam packages (not directly loadable)
@@ -5164,7 +5743,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 <!-- BEGIN GENERATED config-catalog:library -->
 | `package` | `inject` | `source` |
 | --- | --- | --- |
-| `@deepseek-ai/dsh-agent-instructions-plus` | — | [`packages/uitstalie/agent-instructions-plus/src/index.ts`](../packages/uitstalie/agent-instructions-plus/src/index.ts) |
 | `@deepseek-ai/dsh-agent-loop-testkit` | — | [`packages/test-support/agent-loop-testkit/src/index.ts`](../packages/test-support/agent-loop-testkit/src/index.ts) |
 | `@deepseek-ai/dsh-anonymous-user-id` | — | [`packages/identity/anonymous-user-id/src/index.ts`](../packages/identity/anonymous-user-id/src/index.ts) |
 | `@deepseek-ai/dsh-app-boot` | — | [`packages/boot/app-boot/src/index.ts`](../packages/boot/app-boot/src/index.ts) |
@@ -5172,7 +5750,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-base` | — | [`packages/bundle/base/src/index.ts`](../packages/bundle/base/src/index.ts) |
 | `@deepseek-ai/dsh-brand` | — | [`packages/util/brand/src/index.ts`](../packages/util/brand/src/index.ts) |
 | `@deepseek-ai/dsh-chunked-list` | — | [`packages/util/chunked-list/src/index.ts`](../packages/util/chunked-list/src/index.ts) |
-| `@deepseek-ai/dsh-client-common-view` | — | [`packages/uitstalie/common-view/src/index.ts`](../packages/uitstalie/common-view/src/index.ts) |
 | `@deepseek-ai/dsh-client-store` | — | [`packages/client/store/src/index.ts`](../packages/client/store/src/index.ts) |
 | `@deepseek-ai/dsh-client-test-runtime` | — | [`packages/test-support/client-runtime/src/index.ts`](../packages/test-support/client-runtime/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-dockkit` | — | [`packages/client/ui-dockkit/src/index.ts`](../packages/client/ui-dockkit/src/index.ts) |
@@ -5181,7 +5758,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-client-web` | — | [`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts) |
 | `@deepseek-ai/dsh-cmdline` | — | [`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts) |
 | `@deepseek-ai/dsh-cua-bundle` | — | [`packages/experimental/cua-bundle/src/index.ts`](../packages/experimental/cua-bundle/src/index.ts) |
-| `@deepseek-ai/dsh-dafeiyu` | — | [`packages/uitstalie/dafeiyu/src/index.ts`](../packages/uitstalie/dafeiyu/src/index.ts) |
 | `@deepseek-ai/dsh-deque` | — | [`packages/util/deque/src/index.ts`](../packages/util/deque/src/index.ts) |
 | `@deepseek-ai/dsh-error` | — | [`packages/util/error/src/index.ts`](../packages/util/error/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-badge-skill-bundle` | — | [`packages/experimental/badge-skill-bundle/src/index.ts`](../packages/experimental/badge-skill-bundle/src/index.ts) |
@@ -5189,7 +5765,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-experimental-cot-translation-bundle` | — | [`packages/experimental/cot-translation-bundle/src/index.ts`](../packages/experimental/cot-translation-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-forge-bundle` | — | [`packages/experimental/forge-bundle/src/index.ts`](../packages/experimental/forge-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-inspector-profile` | — | [`packages/experimental/inspector-profile/src/index.ts`](../packages/experimental/inspector-profile/src/index.ts) |
-| `@deepseek-ai/dsh-experimental-liveshare` | — | [`packages/experimental/liveshare/src/index.ts`](../packages/experimental/liveshare/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-liveshare-protocol` | — | [`packages/experimental/liveshare-protocol/src/index.ts`](../packages/experimental/liveshare-protocol/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-plugin-market-bundle` | — | [`packages/experimental/plugin-market-bundle/src/index.ts`](../packages/experimental/plugin-market-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-ralph-bundle` | — | [`packages/experimental/ralph-bundle/src/index.ts`](../packages/experimental/ralph-bundle/src/index.ts) |
@@ -5200,33 +5775,24 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-experimental-webworker-packer` | — | [`packages/experimental/webworker-packer/src/index.ts`](../packages/experimental/webworker-packer/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-webworker-runtime` | — | [`packages/experimental/webworker-runtime/src/index.ts`](../packages/experimental/webworker-runtime/src/index.ts) |
 | `@deepseek-ai/dsh-fs-patch` | — | [`packages/fs/fs-patch/src/index.ts`](../packages/fs/fs-patch/src/index.ts) |
-| `@deepseek-ai/dsh-home-backup` | — | [`packages/uitstalie/home-backup/src/index.ts`](../packages/uitstalie/home-backup/src/index.ts) |
 | `@deepseek-ai/dsh-home-paths` | — | [`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts) |
 | `@deepseek-ai/dsh-hook-protocol` | — | [`packages/experimental/hook-protocol/src/index.ts`](../packages/experimental/hook-protocol/src/index.ts) |
 | `@deepseek-ai/dsh-http-proxy` | — | [`packages/util/http-proxy/src/index.ts`](../packages/util/http-proxy/src/index.ts) |
-| `@deepseek-ai/dsh-jira-agent` | — | [`packages/jira/jira-agent/src/index.ts`](../packages/jira/jira-agent/src/index.ts) |
 | `@deepseek-ai/dsh-jira-cli` | — | [`packages/jira/jira-cli/src/index.ts`](../packages/jira/jira-cli/src/index.ts) |
 | `@deepseek-ai/dsh-jira-core` | — | [`packages/jira/jira-core/src/index.ts`](../packages/jira/jira-core/src/index.ts) |
-| `@deepseek-ai/dsh-jira-service` | — | [`packages/jira/jira-service/src/index.ts`](../packages/jira/jira-service/src/index.ts) |
 | `@deepseek-ai/dsh-launch-environment` | — | [`packages/util/launch-environment/src/index.ts`](../packages/util/launch-environment/src/index.ts) |
 | `@deepseek-ai/dsh-lazy-require` | — | [`packages/util/lazy-require/src/index.ts`](../packages/util/lazy-require/src/index.ts) |
 | `@deepseek-ai/dsh-llm-deepseek` | — | [`packages/llm/llm-deepseek/src/index.ts`](../packages/llm/llm-deepseek/src/index.ts) |
 | `@deepseek-ai/dsh-llm-mock-server` | — | [`packages/test-support/llm-mock-server/src/index.ts`](../packages/test-support/llm-mock-server/src/index.ts) |
-| `@deepseek-ai/dsh-llm-plus` | — | [`packages/uitstalie/llm-plus/src/index.ts`](../packages/uitstalie/llm-plus/src/index.ts) |
 | `@deepseek-ai/dsh-loader-smoke` | — | [`packages/test-support/loader-smoke/src/index.ts`](../packages/test-support/loader-smoke/src/index.ts) |
-| `@deepseek-ai/dsh-memory` | — | [`packages/uitstalie/memory/src/index.ts`](../packages/uitstalie/memory/src/index.ts) |
-| `@deepseek-ai/dsh-models-dev` | — | [`packages/uitstalie/models-dev/src/index.ts`](../packages/uitstalie/models-dev/src/index.ts) |
 | `@deepseek-ai/dsh-native-command` | — | [`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts) |
 | `@deepseek-ai/dsh-official-bundles` | — | [`packages/util/official-bundles/src/index.ts`](../packages/util/official-bundles/src/index.ts) |
 | `@deepseek-ai/dsh-output-retention` | — | [`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts) |
 | `@deepseek-ai/dsh-package-manifest` | — | [`packages/util/package-manifest/src/index.ts`](../packages/util/package-manifest/src/index.ts) |
-| `@deepseek-ai/dsh-persona-card` | — | [`packages/uitstalie/persona-card/src/index.ts`](../packages/uitstalie/persona-card/src/index.ts) |
-| `@deepseek-ai/dsh-personality` | — | [`packages/uitstalie/personality/src/index.ts`](../packages/uitstalie/personality/src/index.ts) |
 | `@deepseek-ai/dsh-personalized-recommendations` | — | [`packages/experimental/personalized-recommendations/src/index.ts`](../packages/experimental/personalized-recommendations/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-detail` | — | [`packages/util/plugin-detail/src/index.ts`](../packages/util/plugin-detail/src/index.ts) |
 | `@deepseek-ai/dsh-plugin-market-index` | — | [`packages/util/plugin-market-index/src/index.ts`](../packages/util/plugin-market-index/src/index.ts) |
 | `@deepseek-ai/dsh-remote-mock` | — | [`packages/test-support/remote-mock/src/index.ts`](../packages/test-support/remote-mock/src/index.ts) |
-| `@deepseek-ai/dsh-sandbox-policy` | — | [`packages/sandbox/sandbox-policy/src/index.ts`](../packages/sandbox/sandbox-policy/src/index.ts) |
 | `@deepseek-ai/dsh-sandbox-windows-acl` | — | [`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts) |
 | `@deepseek-ai/dsh-scope` | — | [`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts) |
 | `@deepseek-ai/dsh-sdk-client` | — | [`packages/sdk/client/src/index.ts`](../packages/sdk/client/src/index.ts) |
@@ -5238,22 +5804,15 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-session-format-v1-to-v2` | — | [`packages/session/session-format-v1-to-v2/src/index.ts`](../packages/session/session-format-v1-to-v2/src/index.ts) |
 | `@deepseek-ai/dsh-session-format-v2-to-v3` | — | [`packages/session/session-format-v2-to-v3/src/index.ts`](../packages/session/session-format-v2-to-v3/src/index.ts) |
 | `@deepseek-ai/dsh-session-format-v3-to-v4` | — | [`packages/session/session-format-v3-to-v4/src/index.ts`](../packages/session/session-format-v3-to-v4/src/index.ts) |
-| `@deepseek-ai/dsh-session-persistence-jsonl` | — | [`packages/session/session-persistence-jsonl/src/index.ts`](../packages/session/session-persistence-jsonl/src/index.ts) |
 | `@deepseek-ai/dsh-session-snapshot` | — | [`packages/test-support/session-snapshot/src/index.ts`](../packages/test-support/session-snapshot/src/index.ts) |
 | `@deepseek-ai/dsh-session-telemetry` | — | [`packages/session/session-telemetry/src/index.ts`](../packages/session/session-telemetry/src/index.ts) |
 | `@deepseek-ai/dsh-session-title-llm` | — | [`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts) |
 | `@deepseek-ai/dsh-ssh-helper-runtime` | — | [`packages/ssh/ssh-helper-runtime/src/index.ts`](../packages/ssh/ssh-helper-runtime/src/index.ts) |
-| `@deepseek-ai/dsh-store-atom` | — | [`packages/uitstalie/store-atom/src/index.ts`](../packages/uitstalie/store-atom/src/index.ts) |
 | `@deepseek-ai/dsh-superagent-core` | — | [`packages/superagent/superagent-core/src/index.ts`](../packages/superagent/superagent-core/src/index.ts) |
-| `@deepseek-ai/dsh-system-environment` | — | [`packages/uitstalie/system-environment/src/index.ts`](../packages/uitstalie/system-environment/src/index.ts) |
 | `@deepseek-ai/dsh-timeout` | — | [`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts) |
-| `@deepseek-ai/dsh-token-calculator` | — | [`packages/uitstalie/token-calculator/src/index.ts`](../packages/uitstalie/token-calculator/src/index.ts) |
-| `@deepseek-ai/dsh-tool-dsh-store` | — | [`packages/uitstalie/tool-dsh-store/src/index.ts`](../packages/uitstalie/tool-dsh-store/src/index.ts) |
-| `@deepseek-ai/dsh-tool-policy` | — | [`packages/interaction/tool-policy/src/index.ts`](../packages/interaction/tool-policy/src/index.ts) |
 | `@deepseek-ai/dsh-tool-testkit` | — | [`packages/test-support/tool-testkit/src/index.ts`](../packages/test-support/tool-testkit/src/index.ts) |
 | `@deepseek-ai/dsh-typert-generator` | — | [`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts) |
 | `@deepseek-ai/dsh-typert-protocol` | — | [`packages/typert/protocol/src/index.ts`](../packages/typert/protocol/src/index.ts) |
-| `@deepseek-ai/dsh-typert-registry` | — | [`packages/typert/registry/src/index.ts`](../packages/typert/registry/src/index.ts) |
 | `@deepseek-ai/dsh-util-code-language` | — | [`packages/util/code-language/src/index.ts`](../packages/util/code-language/src/index.ts) |
 | `@deepseek-ai/dsh-util-crypto` | — | [`packages/util/crypto/src/index.ts`](../packages/util/crypto/src/index.ts) |
 | `@deepseek-ai/dsh-util-file-drag` | — | [`packages/util/file-drag/src/index.ts`](../packages/util/file-drag/src/index.ts) |
@@ -5262,5 +5821,4 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-util-values` | — | [`packages/util/values/src/index.ts`](../packages/util/values/src/index.ts) |
 | `@deepseek-ai/dsh-util-workspace-path` | — | [`packages/util/workspace-path/src/index.ts`](../packages/util/workspace-path/src/index.ts) |
 | `@deepseek-ai/dsh-win32-process` | — | [`packages/subprocess/win32-process/src/index.ts`](../packages/subprocess/win32-process/src/index.ts) |
-| `@deepseek-ai/dsh-workspace-tools` | — | [`packages/uitstalie/workspace-tools/src/index.ts`](../packages/uitstalie/workspace-tools/src/index.ts) |
 <!-- END GENERATED config-catalog:library -->
