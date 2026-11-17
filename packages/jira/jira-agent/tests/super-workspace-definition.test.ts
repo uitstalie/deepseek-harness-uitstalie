@@ -16,6 +16,7 @@ import {
   MANAGED_SECTION_VERSION,
   managedSectionBody,
   renderManagedSection,
+  SuperWorkspaceDefinitionSync,
   superWorkspaceDefinitionPath,
   superWorkspaceDefinitionStatePath,
   syncSuperWorkspaceDefinition,
@@ -165,9 +166,11 @@ void describe('superagent: managed AGENTS.md section', () => {
 
   void it('serializes concurrent triggers into one creation', async () => {
     const f = await fixture()
+    // Serialization belongs to one sync owner, which the production contribution holds for its workspace.
+    const sync = new SuperWorkspaceDefinitionSync()
     const results = await Promise.all([
-      syncSuperWorkspaceDefinition(f.root, f.io),
-      syncSuperWorkspaceDefinition(f.root, f.io),
+      sync.sync(f.root, f.io),
+      sync.sync(f.root, f.io),
     ])
     assert.deepEqual(results.map(result => result.kind).sort(), ['created', 'unchanged'])
     const text = await readFile(agentsPath(f), 'utf8')

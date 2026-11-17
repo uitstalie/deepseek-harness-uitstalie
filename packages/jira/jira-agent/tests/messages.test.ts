@@ -28,7 +28,7 @@ const CLI_FILES = [
 ]
 const SURFACES: readonly (readonly [string, string])[] = Object.freeze([
   ['jira-cli', CLI_FILES.map(url => readFileSync(url, 'utf8')).join('\n')],
-  ['jira-agent/src/command.ts', readFileSync(new URL('./command.ts', import.meta.url), 'utf8')],
+  ['jira-agent/src/command.ts', readFileSync(new URL('../src/command.ts', import.meta.url), 'utf8')],
 ])
 
 /**
