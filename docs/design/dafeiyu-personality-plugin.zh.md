@@ -47,7 +47,7 @@
 | 旧源码模块 | `commands.ts`、`proposals.ts`、`remote.ts`、`types.ts`、`tools.ts`、`prompt.ts`、`personality-file.ts`、`config.ts` |
 | 旧测试 | `tests/commands.spec.ts`、`tests/personality-file.spec.ts` |
 | 旧 UI 包 | `packages/uitstalie/ui-personality`（27 个受版本控制的文件，含 README 与 locale） |
-| 包导出 | `./remote`、`./types`、`./typert`、`./locale/*.json` |
+| 包导出 | `./remote`、`./types`、`./typert`；`./locale/*.json` 仍保留（`packages/uitstalie/personality/package.json:15`） |
 | 配置 | `Config` 删除；`workspaceOverlay`、`maxBytes`、`autoLearn`、`historyLimit` 不再读取。仍带这些键的 profile 行可以加载，因为 Loader 不拒绝未知键，值会被忽略。 |
 | 依赖 | `@deepseek-ai/dsh-commands` peer、`@deepseek-ai/schemastery`、`diff`、`@deepseek-ai/dsh-typert-protocol` |
 | 挂载与工程引用 | `cordis.patch.uitstalie.yml` 的 `ui-personality` 行、它在 `tsconfig.host.json` / `tsconfig.client.json` / `tsconfig.base.json` 的引用，以及生成的 slot catalog 条目 |
@@ -208,7 +208,7 @@ interface WritingRulesDocument {
 | 100 | `personality` | section | all | understanding / preference / style / identity 条目 |
 | 500 | `PLAN_POLICY` | section | all | 计划策略 |
 | 600 | `TEAM_POLICY` | section | all | 团队策略 |
-| 690 | `personality:output-style` | section | all | output-style 默认表达 |
+| 690 | `personality:output-style` | section | root agent（不含 `subagent`） | output-style 默认表达 |
 | 695 | `personality:writing-rules` | section | all | 已启用的 write-like-human 规则 |
 | 702 | `superagent:dispatcher` | section | super agent | 现有规则 + 并入的 brief 规则 |
 | 704 | `superagent:workspaces` | runtime context | super agent | 注册工作区，每请求重建 |
@@ -422,10 +422,12 @@ interface WritingRuleView {
 
 interface WriteLikeHumanResult {
   readonly action: WritingRuleAction
+  readonly ok: boolean
+  readonly error?: string                            // present only when ok is false
   readonly rules: readonly WritingRuleView[]         // current list, sorted by order then id
   readonly promptSection?: string                    // preview only; enabled rules joined
   readonly path: string                              // global WRITING_RULES.yaml
-  readonly revision: number
+  readonly version?: string                          // opaque store version, when reported
 }
 ```
 
@@ -457,7 +459,7 @@ interface WriteLikeHumanResult {
 5. `PERSONALITY.md` 的 `style` 条目（100）——具体场景规则。
 6. output-style 默认值（690）。
 
-writing rules 不能覆盖前两层；与 output-style 冲突时具体 writing rule 赢；与 `style` 条目同级时，id 更具体的规则在前，section 文本明确“更具体规则优先”。
+writing rules 不能覆盖前两层；与 output-style 冲突时具体 writing rule 赢；与 `style` 条目同级时，id 更具体的规则在前，设计上要求 section 文本写明“更具体规则优先”。当前渲染器只输出规则行（`packages/uitstalie/personality/src/writing-rules.ts:283-296`），这句话尚未实现。
 
 ### 7.5 验收（3 条）
 
@@ -479,7 +481,7 @@ writing rules 不能覆盖前两层；与 output-style 冲突时具体 writing r
 
 ### 8.2 配置与注入
 
-数据见 3.3。section `personality:output-style`，order **690**，所有 agent。
+数据见 3.3。section `personality:output-style`，order **690**，面向普通 root 与 super root；`subagent` 不收到 690。
 
 ```ts
 interface OutputStyleRenderInput {
@@ -510,7 +512,7 @@ Output style never overrides safety, approval, sandbox, tool permission, or work
 ### 8.3 验收（3 条）
 
 1. **命名**：代码、配置、section、fixture 用 `output-style`/`outputStyle`；不得出现 `output-summary`；`persona` 只允许用于既有 deployment persona 前缀和 persona-card 概念。`outputStyle` 字段全部可解析，未知 enum 拒绝。
-2. **顺序/范围**：section order 690，所有 agent 都有；在 `SUPERAGENT_SECTION`（702）之前；`style` 条目在 100，具体规则优先。
+2. **顺序/范围**：section order 690，普通 root 与 super root 都有（`subagent` 不收到 690）；在 `SUPERAGENT_SECTION`（702）之前；`style` 条目在 100，具体规则优先。
 3. **硬边界/状态**：section 匹配“never overrides safety, approval, sandbox, tool permission, or workspace rules”；给“报告 pending”fixture，固定状态约束禁止“已完成/已报告”。
 
 ### 8.4 风险

@@ -47,7 +47,7 @@ The current implementation is a maintained capability, not an unmaintained draft
 | Old source modules | `commands.ts`, `proposals.ts`, `remote.ts`, `types.ts`, `tools.ts`, `prompt.ts`, `personality-file.ts`, and `config.ts` |
 | Old tests | `tests/commands.spec.ts` and `tests/personality-file.spec.ts` |
 | Old UI package | `packages/uitstalie/ui-personality` (27 tracked files, including its README and locale files) |
-| Package exports | `./remote`, `./types`, `./typert`, and `./locale/*.json` |
+| Package exports | `./remote`, `./types`, and `./typert`; `./locale/*.json` is retained (`packages/uitstalie/personality/package.json:15`) |
 | Config | `Config` removed; `workspaceOverlay`, `maxBytes`, `autoLearn`, and `historyLimit` are no longer read. A profile row that still carries them loads because the Loader does not reject unknown keys, and the values are ignored. |
 | Dependencies | the `@deepseek-ai/dsh-commands` peer, `@deepseek-ai/schemastery`, `diff`, and `@deepseek-ai/dsh-typert-protocol` |
 | Mounting and project refs | the `ui-personality` row in `cordis.patch.uitstalie.yml`, its `tsconfig.host.json` / `tsconfig.client.json` / `tsconfig.base.json` references, and the generated slot-catalog entry |
@@ -208,7 +208,7 @@ interface WritingRulesDocument {
 | 100 | `personality` | section | all | understanding / preference / style / identity entries |
 | 500 | `PLAN_POLICY` | section | all | Plan policy |
 | 600 | `TEAM_POLICY` | section | all | Team policy |
-| 690 | `personality:output-style` | section | all | output-style default expression |
+| 690 | `personality:output-style` | section | root agents (not `subagent`) | output-style default expression |
 | 695 | `personality:writing-rules` | section | all | Enabled write-like-human rules |
 | 702 | `superagent:dispatcher` | section | super agent | Existing rules + merged brief rules |
 | 704 | `superagent:workspaces` | runtime context | super agent | Registered workspaces, rebuilt per request |
@@ -422,10 +422,12 @@ interface WritingRuleView {
 
 interface WriteLikeHumanResult {
   readonly action: WritingRuleAction
+  readonly ok: boolean
+  readonly error?: string                            // present only when ok is false
   readonly rules: readonly WritingRuleView[]         // current list, sorted by order then id
   readonly promptSection?: string                    // preview only; enabled rules joined
   readonly path: string                              // global WRITING_RULES.yaml
-  readonly revision: number
+  readonly version?: string                          // opaque store version, when reported
 }
 ```
 
@@ -457,7 +459,7 @@ Highest to lowest:
 5. `style` entries in `PERSONALITY.md` (100) — concrete scenario rules.
 6. output-style defaults (690).
 
-writing rules cannot override the first two layers; when they conflict with output-style, the concrete writing rule wins; when they are at the same level as `style` entries, the rule with the more specific id comes first, and the section text states clearly that "more specific rules take priority".
+writing rules cannot override the first two layers; when they conflict with output-style, the concrete writing rule wins; when they are at the same level as `style` entries, the rule with the more specific id comes first, and the design asks the section text to state that "more specific rules take priority". The current renderer emits only the rule lines (`packages/uitstalie/personality/src/writing-rules.ts:283-296`), so that sentence is not implemented.
 
 ### 7.5 Acceptance (3 items)
 
@@ -479,7 +481,7 @@ writing rules cannot override the first two layers; when they conflict with outp
 
 ### 8.2 Configuration and injection
 
-Data is in 3.3. Section `personality:output-style`, order **690**, all agents.
+Data is in 3.3. Section `personality:output-style`, order **690**, for ordinary and super roots; a `subagent` receives no 690.
 
 ```ts
 interface OutputStyleRenderInput {
@@ -510,7 +512,7 @@ Fixed status constraints (not disabled by configuration):
 ### 8.3 Acceptance (3 items)
 
 1. **Naming**: code, configuration, sections, and fixtures use `output-style`/`outputStyle`; `output-summary` must not appear; `persona` is allowed only for the existing deployment persona prefix and persona-card concepts. All `outputStyle` fields parse, and unknown enums are rejected.
-2. **Order/scope**: section order 690, present for all agents; before `SUPERAGENT_SECTION` (702); `style` entries are at 100, and concrete rules take priority.
+2. **Order/scope**: section order 690, present for ordinary and super roots (a `subagent` receives no 690); before `SUPERAGENT_SECTION` (702); `style` entries are at 100, and concrete rules take priority.
 3. **Hard boundary/status**: the section matches "never overrides safety, approval, sandbox, tool permission, or workspace rules"; given a "report pending" fixture, the fixed status constraints forbid "completed/reported".
 
 ### 8.4 Risks
