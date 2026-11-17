@@ -103,6 +103,7 @@ export type MemoryEvictionReason =
   | 'resolved'
   | 'superseded'
   | 'duplicate'
+  | 'over-cap'
 
 /**
  * One entry the provider removed from the managed block, recorded in the frontmatter.
@@ -162,7 +163,7 @@ const MEMORY_KIND_EVICTION_ORDER: Readonly<Record<MemoryEntryKind, number>> = {
 }
 
 /** Outcome codes a MEMORY.md read or write can report. */
-export type MemoryDocumentErrorCode = 'INVALID_DOCUMENT' | 'UNKNOWN_KIND' | 'BUDGET_EXCEEDED' | 'EMPTY_SUMMARY'
+export type MemoryDocumentErrorCode = 'INVALID_DOCUMENT' | 'UNKNOWN_KIND' | 'BUDGET_EXCEEDED' | 'EMPTY_SUMMARY' | 'ARCHIVE_FAILED'
 
 /** Typed MEMORY.md failure; `code` is stable for callers and logs. */
 export class MemoryDocumentError extends HarnessError {
@@ -832,6 +833,13 @@ export async function pruneMemorySession(
       keep,
     }
   }
+  const archived = await archiveContained(ctx, session, pruned.records, signal)
+  if (!archived) {
+    throw new MemoryDocumentError(
+      'memory: could not archive pruned entries; the file was left unchanged',
+      'ARCHIVE_FAILED',
+    )
+  }
   const written = await writeNextMemoryDocument(ctx, session, pruned.document, current.version, signal, options)
   return {
     path: written.path,
@@ -1256,6 +1264,42 @@ async function archiveContained(
 }
 
 /**
+ * Archive every removal before the active write, and keep the removable entries when archiving fails.
+ *
+ * Cleanup and retention removals are archived in order. If cleanup entries cannot be archived,
+ * the composed document is written unchanged. If retention entries cannot be archived, the
+ * untrimmed document is written; the caller's body-budget check decides whether that is possible.
+ * @param ctx - context carrying the store.
+ * @param session - session whose project owns the files.
+ * @param composed - document before cleanup.
+ * @param cleaned - cleanup result and its removals.
+ * @param retained - retention result and its removals.
+ * @param signal - cancellation for the archive writes.
+ * @returns the document to write and the removals that were archived.
+ */
+async function archiveWrite(
+  ctx: Context,
+  session: Session,
+  composed: MemoryDocument,
+  cleaned: { readonly records: readonly MemoryArchiveRecord[] },
+  retained: MemoryRetention,
+  signal: AbortSignal | undefined,
+): Promise<{ readonly document: MemoryDocument; readonly evictions: readonly MemoryEvictionRecord[] }> {
+  const cleanupArchived = await archiveContained(ctx, session, cleaned.records, signal)
+  if (!cleanupArchived) return { document: composed, evictions: [] }
+  const cleanupEvictions = cleaned.records.map(archiveEvictionRecord)
+  const retentionArchived = await archiveContained(ctx, session, retained.archive, signal)
+  const document = retentionArchived ? retained.document : retained.untrimmed
+  return {
+    document: appendEvictionRecords(document, cleanupEvictions),
+    evictions: [
+      ...cleanupEvictions,
+      ...retentionArchived ? retained.evictions : [],
+    ],
+  }
+}
+
+/**
  * Run the automatic cleanup rules over a composed append.
  * @param ctx - context carrying the session query for entry ages.
  * @param document - document after the new entries were composed.
@@ -1355,24 +1399,11 @@ export async function appendMemoryEntry(
       ...entry.supersedes === undefined ? {} : { supersedes: normalizeEntryTags(entry.supersedes) },
     }
     const cleaned = await cleanupForAppend(ctx, document, composed, options, signal, newer)
-    let retained = retainDocument(cleaned.document, session.id, window, maxBytes, maxEntries, protect)
-    assertBodyBudget(retained.document, maxBytes)
-    const cleanupArchived = await archiveContained(ctx, session, cleaned.records, signal)
-    let evictions = retained.evictions
-    if (!cleanupArchived) {
-      // Keep the entries that could not be archived; retention still guarantees the budget.
-      retained = retainDocument(composed, session.id, window, maxBytes, maxEntries, protect)
-      await archiveContained(ctx, session, retained.archive, signal)
-      evictions = retained.evictions
-    } else {
-      await archiveContained(ctx, session, retained.archive, signal)
-      evictions = [...retained.evictions, ...cleaned.records.map(archiveEvictionRecord)]
-    }
-    const next = appendEvictionRecords(
-      retained.document,
-      cleanupArchived ? cleaned.records.map(archiveEvictionRecord) : [],
-    )
-    assertBodyBudget(next, maxBytes)
+    const retained = retainDocument(cleaned.document, session.id, window, maxBytes, maxEntries, protect)
+    const archived = await archiveWrite(ctx, session, composed, cleaned, retained, signal)
+    assertBodyBudget(archived.document, maxBytes)
+    const next = archived.document
+    const evictions = archived.evictions
     const written = await ctx.dshStore.writeFile(
       session,
       MEMORY_STORE_PATH,
@@ -1453,23 +1484,11 @@ export async function appendTurnSummaries(
       composed = appendTurnToDocument(composed, session, summary, entries)
     }
     const cleaned = await cleanupForAppend(ctx, document, composed, options, signal)
-    let retained = retainDocument(cleaned.document, session.id, window, maxBytes, maxEntries, protect)
-    assertBodyBudget(retained.document, maxBytes)
-    const cleanupArchived = await archiveContained(ctx, session, cleaned.records, signal)
-    let evictions = retained.evictions
-    if (!cleanupArchived) {
-      retained = retainDocument(composed, session.id, window, maxBytes, maxEntries, protect)
-      await archiveContained(ctx, session, retained.archive, signal)
-      evictions = retained.evictions
-    } else {
-      await archiveContained(ctx, session, retained.archive, signal)
-      evictions = [...retained.evictions, ...cleaned.records.map(archiveEvictionRecord)]
-    }
-    const next = appendEvictionRecords(
-      retained.document,
-      cleanupArchived ? cleaned.records.map(archiveEvictionRecord) : [],
-    )
-    assertBodyBudget(next, maxBytes)
+    const retained = retainDocument(cleaned.document, session.id, window, maxBytes, maxEntries, protect)
+    const archived = await archiveWrite(ctx, session, composed, cleaned, retained, signal)
+    assertBodyBudget(archived.document, maxBytes)
+    const next = archived.document
+    const evictions = archived.evictions
     const written = await ctx.dshStore.writeFile(
       session,
       MEMORY_STORE_PATH,
@@ -1537,23 +1556,11 @@ export async function appendTurnSummary(
     const document = current.document ?? createMemoryDocument(window)
     const composed = appendTurnToDocument(document, session, summary, entries)
     const cleaned = await cleanupForAppend(ctx, document, composed, options, signal)
-    let retained = retainDocument(cleaned.document, session.id, window, maxBytes, maxEntries, protect)
-    assertBodyBudget(retained.document, maxBytes)
-    const cleanupArchived = await archiveContained(ctx, session, cleaned.records, signal)
-    let evictions = retained.evictions
-    if (!cleanupArchived) {
-      retained = retainDocument(composed, session.id, window, maxBytes, maxEntries, protect)
-      await archiveContained(ctx, session, retained.archive, signal)
-      evictions = retained.evictions
-    } else {
-      await archiveContained(ctx, session, retained.archive, signal)
-      evictions = [...retained.evictions, ...cleaned.records.map(archiveEvictionRecord)]
-    }
-    const next = appendEvictionRecords(
-      retained.document,
-      cleanupArchived ? cleaned.records.map(archiveEvictionRecord) : [],
-    )
-    assertBodyBudget(next, maxBytes)
+    const retained = retainDocument(cleaned.document, session.id, window, maxBytes, maxEntries, protect)
+    const archived = await archiveWrite(ctx, session, composed, cleaned, retained, signal)
+    assertBodyBudget(archived.document, maxBytes)
+    const next = archived.document
+    const evictions = archived.evictions
     const written = await ctx.dshStore.writeFile(
       session,
       MEMORY_STORE_PATH,
@@ -1646,12 +1653,13 @@ export async function migrateMemoryTiers(
       (_candidate, section) => section.sessionId === String(session.id) && section.tier === 'brief',
     )
     const next = retained.document
-    assertBodyBudget(next, maxBytes)
-    await archiveContained(ctx, session, retained.archive, undefined)
+    const archived = await archiveContained(ctx, session, retained.archive, undefined)
+    const document = archived ? next : retained.untrimmed
+    assertBodyBudget(document, maxBytes)
     const written = await ctx.dshStore.writeFile(
       session,
       MEMORY_STORE_PATH,
-      renderMemoryDocument(next),
+      renderMemoryDocument(document),
       writeOptions(undefined, current.version),
     )
     return {
@@ -1660,7 +1668,7 @@ export async function migrateMemoryTiers(
       briefed: briefs.length,
       forgotten: plan.toForget.length,
       retried,
-      evictions: retained.evictions,
+      evictions: archived ? retained.evictions : [],
       ...written.version === undefined ? {} : { version: written.version },
     }
   }
@@ -2132,7 +2140,7 @@ function parseEvictionRecord(value: unknown, subject: string): MemoryEvictionRec
 
 /** All eviction reasons the frontmatter and archive understand. */
 const EVICTION_REASONS: readonly MemoryEvictionReason[] = [
-  'byte-budget', 'manual-forget', 'ttl', 'resolved', 'superseded', 'duplicate',
+  'byte-budget', 'manual-forget', 'ttl', 'resolved', 'superseded', 'duplicate', 'over-cap',
 ]
 
 /** Narrow one persisted eviction reason. */
@@ -2586,12 +2594,16 @@ function retainDocument(
   maxEntries: number = DEFAULT_MEMORY_MAX_ENTRIES,
   protect?: (entry: MemoryEntry, section: MemorySection) => boolean,
 ): MemoryRetention {
-  let retained = retainSessions({ ...document, window }, currentSessionId, window.sessions)
-  for (const record of retained.sessions) {
-    retained = pruneSessionEntries(retained, record.id, maxEntries).document
-  }
+  const base = retainSessions({ ...document, window }, currentSessionId, window.sessions)
+  let retained = base
   const added: MemoryEvictionRecord[] = []
   const archive: MemoryArchiveRecord[] = []
+  for (const record of retained.sessions) {
+    const pruned = pruneSessionEntries(retained, record.id, maxEntries)
+    retained = pruned.document
+    archive.push(...pruned.records)
+    added.push(...pruned.evictions)
+  }
   while (Buffer.byteLength(renderManagedBody(retained.sections), 'utf8') > maxBytes) {
     const candidate = selectEvictionCandidate(retained, protect)
     if (candidate === undefined) break
@@ -2600,9 +2612,9 @@ function retainDocument(
     archive.push(memoryArchiveRecord(candidate.entry, candidate.section, 'byte-budget', detail, new Date().toISOString()))
     retained = dropEmptySessions(removeSectionEntry(retained, candidate.section, candidate.entry))
   }
-  if (added.length === 0) return { document: retained, evictions: added, archive }
+  if (added.length === 0) return { document: retained, evictions: added, archive, untrimmed: base }
   const evictions = [...(retained.evictions ?? []), ...added].slice(-MEMORY_EVICTION_RECORD_LIMIT)
-  return { document: { ...retained, evictions }, evictions: added, archive }
+  return { document: { ...retained, evictions }, evictions: added, archive, untrimmed: base }
 }
 
 /** Result of applying retention to one composed document. */
@@ -2613,6 +2625,8 @@ interface MemoryRetention {
   readonly evictions: readonly MemoryEvictionRecord[]
   /** Full-text archive records for the same removals. */
   readonly archive: readonly MemoryArchiveRecord[]
+  /** Document after the session window but before the entry cap and the body budget. */
+  readonly untrimmed: MemoryDocument
 }
 
 /** One entry and its section chosen for budget eviction. */
@@ -2840,6 +2854,10 @@ export interface SessionPrune {
   readonly duplicates: number
   /** Entries removed with the oldest whole sections over the per-session cap. */
   readonly overCap: number
+  /** Full-text archive records for every removed entry. */
+  readonly records: readonly MemoryArchiveRecord[]
+  /** Frontmatter eviction records for the same removals. */
+  readonly evictions: readonly MemoryEvictionRecord[]
 }
 
 /**
@@ -2860,6 +2878,8 @@ export function pruneSessionEntries(document: MemoryDocument, sessionId: string,
   let duplicates = 0
   const keptSections: MemorySection[] = []
   const droppedTurns = new Set<number>()
+  const records: MemoryArchiveRecord[] = []
+  const evictions: MemoryEvictionRecord[] = []
   for (const section of document.sections) {
     if (section.sessionId !== sessionId) {
       keptSections.push(section)
@@ -2870,6 +2890,9 @@ export function pruneSessionEntries(document: MemoryDocument, sessionId: string,
       const key = normalizeEntryText(entry.text)
       if (seen.has(key)) {
         duplicates += 1
+        const archivedAt = new Date().toISOString()
+        records.push(memoryArchiveRecord(entry, section, 'duplicate', 'duplicate: exact text', archivedAt))
+        evictions.push(evictionRecord(entry, section, 'duplicate', 'duplicate: exact text'))
         continue
       }
       seen.add(key)
@@ -2898,6 +2921,12 @@ export function pruneSessionEntries(document: MemoryDocument, sessionId: string,
     remaining -= section.entries.length
     overCap += section.entries.length
     rememberTurns(droppedTurns, section)
+    for (const entry of section.entries) {
+      const archivedAt = new Date().toISOString()
+      const detail = `over the per-session cap of ${String(cap)}`
+      records.push(memoryArchiveRecord(entry, section, 'over-cap', detail, archivedAt))
+      evictions.push(evictionRecord(entry, section, 'over-cap', detail))
+    }
   }
   const sections = dropped.size === 0 ? keptSections : keptSections.filter(section => !dropped.has(section))
   if (duplicates === 0 && overCap === 0) {
@@ -2907,6 +2936,8 @@ export function pruneSessionEntries(document: MemoryDocument, sessionId: string,
         : Object.freeze({ ...document, sections: Object.freeze(sections) }),
       duplicates,
       overCap,
+      records,
+      evictions,
     }
   }
   const sessions = droppedTurns.size === 0
@@ -2924,6 +2955,8 @@ export function pruneSessionEntries(document: MemoryDocument, sessionId: string,
     }),
     duplicates,
     overCap,
+    records,
+    evictions,
   }
 }
 

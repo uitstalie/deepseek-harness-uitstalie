@@ -1222,10 +1222,52 @@ test('pruneSessionEntries removes duplicates and over-cap sections in one pass',
   const pruned = pruneSessionEntries(seeded, 'session-a', 1)
   expect(pruned.duplicates).toBe(1)
   expect(pruned.overCap).toBeGreaterThan(0)
+  expect(pruned.records).toHaveLength(3)
+  expect(pruned.records.map(record => record.reason)).toContain('duplicate')
+  expect(pruned.records.map(record => record.reason)).toContain('over-cap')
+  expect(pruned.evictions.map(record => record.reason)).toEqual(
+    expect.arrayContaining(['duplicate', 'over-cap']),
+  )
   const remaining = pruned.document.sections.flatMap(section => section.entries)
   expect(remaining).toHaveLength(1)
   expect(remaining[0]?.text).toBe('c')
   expect(pruned.document.sessions[0]?.turns.map(turn => turn.turn)).toEqual([3])
+})
+
+test('the per-session cap archives the dropped section instead of losing it', async () => {
+  await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'first decision', turn: 1, seq: [1, 2],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0, maxEntries: 1 })
+  const written = await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'second decision', turn: 2, seq: [3, 4],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0, maxEntries: 1 })
+
+  expect(written.evictions).toMatchObject([{ reason: 'over-cap', text: 'first decision' }])
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text)).toEqual(['second decision'])
+  const archived = await readFile(join(project, '.dsh', MEMORY_ARCHIVE_STORE_PATH), 'utf8')
+  expect(archived).toContain('first decision')
+  expect(archived).toContain('over-cap')
+})
+
+test('an archive failure keeps the over-cap entries in the active file', async () => {
+  await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'kept first', turn: 1, seq: [1, 2],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0, maxEntries: 1 })
+
+  const writeFile = store.writeFile.bind(store)
+  vi.spyOn(store, 'writeFile').mockImplementation(async (target, path, content, options) => {
+    if (path === MEMORY_ARCHIVE_STORE_PATH) throw new Error('archive unavailable')
+    return writeFile(target, path, content, options)
+  })
+
+  await appendMemoryEntry(ctx, session, {
+    kind: 'decision', text: 'kept second', turn: 2, seq: [3, 4],
+  }, undefined, { openTtlDays: 0, filesTtlDays: 0, maxEntries: 1 })
+
+  const parsed = parseMemoryDocument(await readFile(memoryFile(), 'utf8'))
+  expect(parsed.sections.flatMap(section => section.entries).map(entry => entry.text))
+    .toEqual(['kept first', 'kept second'])
 })
 
 test('pruneMemorySession writes the compacted document and reports the counts', async () => {
