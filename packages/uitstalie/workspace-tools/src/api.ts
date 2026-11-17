@@ -2,10 +2,13 @@
  * workspace-tools: the workspace information toolset provider.
  *
  * The provider registers one capability with the dafeiyu organizer, which wires
- * its tools onto every agent. It owns no records of its own beyond the task,
- * message, and artifact state under `$DSH_HOME/workspaces/`; sessions come from
- * the session store, workspaces from the workspace registry, and artifact
- * content from the workspace directory.
+ * its tools onto every agent, and provides the dispatcher-only
+ * `ctx.workspaceTasks` service so the super agent's dispatch path records the
+ * same card-validated task instead of a second list. It owns no records of its
+ * own beyond the task, message, intent, and artifact state under
+ * `$DSH_HOME/workspaces/`; sessions come from the session store, workspaces
+ * from the workspace registry, and artifact content from the workspace
+ * directory.
  * @module @deepseek-ai/dsh-workspace-tools
  */
 
@@ -15,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-store-atom'
 import type {} from '@deepseek-ai/dsh-workspace'
+import { createWorkspaceTasksService } from './service.ts'
 import { workspaceTools } from './tools.ts'
 
 export const name = 'workspace-tools'
@@ -43,6 +47,7 @@ export const WORKSPACE_TOOLSET_DESCRIPTION = 'Sessions, dispatch tasks, intent c
  * @param ctx - plugin context carrying the organizer and the read services.
  */
 export function apply(ctx: Context): void {
+  ctx.provide('workspaceTasks', createWorkspaceTasksService(ctx))
   const registration = ctx.dafeiyu.register({
     id: WORKSPACE_TOOLSET_CAPABILITY_ID,
     contractVersion: WORKSPACE_TOOLSET_CONTRACT_VERSION,

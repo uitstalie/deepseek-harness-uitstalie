@@ -92,8 +92,39 @@ import * as jiraAgent from '../src/api.ts'
 import { type DispatchLedgerTask, listDispatchTasks, queryDispatchTasks, recordDispatch } from '../src/dispatch-ledger.ts'
 import { DispatchReportStore, dispatchDeliveryRequestId, withDispatchDeliveryMarker, type DispatchReportRecord } from '../src/dispatch-reports.ts'
 import { createDispatchStore, pendingTask } from '../src/dispatch-store.ts'
+import type { WorkspaceTasksBridge } from '../src/dispatch-intents.ts'
 import { callerOf, identityOf } from '../src/tools.ts'
 import { type JiraHarness, concurrencySafe, createLedgerFixture, dispatchTool, mountJira, testAgent, waitFor } from '../src/testing/host.ts'
+
+/**
+ * The dispatch-task service the Session-lifecycle tests expose.
+ *
+ * These tests exercise routing, permissions, model selection, and report binding,
+ * not the card rules; the card refusals are asserted end to end in
+ * `dispatch-intents.spec.ts`. The stub still mints the task id the ledger
+ * projection uses, so the same-id invariant is exercised here too.
+ */
+const TEST_WORKSPACE_TASKS: WorkspaceTasksBridge = {
+  createDispatchTask: async input => ({
+    workspace: input.workspaceId,
+    taskId: `task-${input.requestId}`,
+    status: 'pending',
+  }),
+  cancelDispatchTask: async () => true,
+}
+
+/** The card reference every successful start in this file passes. */
+const START_CARD = Object.freeze({ intentId: 'intent-test', intentVersion: 1, taskType: 'other' })
+
+/**
+ * Add the dispatch-task service to one duck-typed test context.
+ * @param ctx - the test context whose `get` resolves the other services.
+ * @returns the same services, with `workspaceTasks` answered.
+ */
+const withWorkspaceTasks = <C extends { get(key: string): unknown }>(ctx: C): C => ({
+  ...ctx,
+  get: (key: string) => key === 'workspaceTasks' ? TEST_WORKSPACE_TASKS : ctx.get(key),
+})
 
 /** An agent handle the harness built. */
 type AgentHandle = ReturnType<typeof testAgent>
@@ -424,6 +455,7 @@ void describe('superagent: the workspace roster', () => {
       assert.deepEqual(Object.keys(CONTROL_PARAMETERS).sort(), [
         'action', 'workspace', 'path', 'title', 'session', 'task', 'text', 'confirm',
         'provider', 'model', 'reasoning_effort', 'atSeq', 'compact', 'curate_memory', 'delivery',
+        'intentId', 'intentVersion', 'acceptance', 'boundaries', 'outputForm', 'coverage', 'nonCoverage', 'taskType',
       ].sort())
       assert.equal(CONTROL_PARAMETERS.task?.required, undefined, 'task is required by start, not by every action')
       assert.deepEqual(CONTROL_PARAMETERS.action?.enum, [
@@ -649,8 +681,8 @@ void describe('superagent: workspace Sessions', () => {
     const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
 
     const started = await runControlTool(
-      { action: 'start', workspace: 'hello', task: 'write the README' },
-      options, me, permissionCtx, { agentPreset: 'cordis', tasks },
+      { action: 'start', workspace: 'hello', task: 'write the README', ...START_CARD },
+      options, me, withWorkspaceTasks(permissionCtx), { agentPreset: 'cordis', tasks },
     )
     assert.equal(started.ok, true, JSON.stringify(started.error))
     assert.deepEqual(controller.created, [{ workspaceId: 'w1', agentPreset: 'cordis' }])
@@ -698,10 +730,10 @@ void describe('superagent: workspace Sessions', () => {
     const failingController = new CompactController()
     failingController.create = async () => { throw new Error('injected start failure') }
     const failed = await runControlTool(
-      { action: 'start', workspace: 'hello', task: 'must not become pending' },
+      { action: 'start', workspace: 'hello', task: 'must not become pending', ...START_CARD },
       { ...options, caller: { writable: true, sessionId: 'super-1', cwd: failureRoot } },
       me,
-      { get: (key: string) => key === 'sessionController' ? failingController : key === 'workspaceRegistry' ? registry : undefined },
+      withWorkspaceTasks({ get: (key: string) => key === 'sessionController' ? failingController : key === 'workspaceRegistry' ? registry : undefined }),
       { tasks: new Map() },
     )
     assert.equal(failed.ok, false)
@@ -854,10 +886,10 @@ void describe('superagent: start stage cleanup', () => {
               : undefined,
     }
     const result = await runControlTool(
-      { action: 'start', workspace: 'work', task: 'go' },
+      { action: 'start', workspace: 'work', task: 'go', ...START_CARD },
       { jira: {} as never, caller: { writable: true, sessionId: 'super-1', cwd: root }, at: AT },
       { session: 'super-1', identity: MAIN },
-      ctx,
+      withWorkspaceTasks(ctx),
       { tasks: tasks as never, reports: reports as never },
     )
     return { result, registry, controller }
@@ -1053,7 +1085,8 @@ void describe('superagent: workspace Session permissions', () => {
     f.controller.prompt = async () => { prompts.push(true); return { accepted: true } }
     f.ctx.get = (key: string) => f.services[key]
     const result = await runControlTool(
-      { action: 'start', workspace: 'w1', task: 'must not run' }, f.options, { session: 'super' }, f.ctx, { tasks: new Map() },
+      { action: 'start', workspace: 'w1', task: 'must not run', ...START_CARD },
+      f.options, { session: 'super' }, withWorkspaceTasks(f.ctx), { tasks: new Map() },
     )
     assert.equal(result.ok, false)
     assert.match(JSON.stringify(result.error), /default workspace-write permission/u)
@@ -1112,8 +1145,8 @@ void describe('superagent: the dispatch ledger', () => {
       }
       const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
       const started = await runControlTool(
-        { action: 'start', workspace: 'rimworld', task: 'build the colony' },
-        options, me, ctx, { agentPreset: 'worker', tasks: new Map() },
+        { action: 'start', workspace: 'rimworld', task: 'build the colony', ...START_CARD },
+        options, me, withWorkspaceTasks(ctx), { agentPreset: 'worker', tasks: new Map() },
       )
       assert.equal(started.ok, true, JSON.stringify(started.error))
       const file = join(root, '.superagent/ledger', `${workspace.id}.md`)
@@ -1489,6 +1522,8 @@ void describe('superagent: report recovery after a plugin remount', () => {
       new Map(),
       [],
       root,
+      undefined,
+      journalOf(root),
     )
 
     assert.equal(handled, true)
@@ -1515,7 +1550,7 @@ void describe('superagent: report recovery after a plugin remount', () => {
       at: AT,
     }
     const ctx = { get: (key: string) => key === 'sessionController' ? controller : undefined }
-    await handleTaskTurnEnd(recoveryHost(controller) as never, completed('child-retry', 'saved result') as never, new Map(), [], root)
+    await handleTaskTurnEnd(recoveryHost(controller) as never, completed('child-retry', 'saved result') as never, new Map(), [], root, undefined, journal)
     const failed = await runLedgerTool({ action: 'report_status' }, options, {}, ctx as never, undefined, journal)
     assert.equal((failed.entries as DispatchReportRecord[])[0]?.error, 'the report could not be delivered to the super Session')
     const saved = (await journal.forSession('child-retry'))[0]
@@ -1595,6 +1630,8 @@ void describe('superagent: report recovery after a plugin remount', () => {
       new Map(),
       [],
       root,
+      undefined,
+      journalOf(root),
     )
 
     assert.equal(handled, true)
@@ -1616,6 +1653,8 @@ void describe('superagent: report recovery after a plugin remount', () => {
       new Map(),
       [],
       root,
+      undefined,
+      journalOf(root),
     )
 
     assert.equal(handled, true)
@@ -1644,6 +1683,8 @@ void describe('superagent: report recovery after a plugin remount', () => {
       new Map(),
       [],
       root,
+      undefined,
+      journalOf(root),
     )
 
     assert.equal(handled, true)
@@ -1689,6 +1730,7 @@ void describe('superagent: report recovery after a plugin remount', () => {
         [],
         root,
         store,
+        journalOf(root),
       )
 
       assert.equal(handled, true)
@@ -1745,7 +1787,7 @@ void describe('superagent: report recovery after a plugin remount', () => {
     const input = { agent, session: agent.session, turn: 1, event: end, signal: new AbortController().signal }
 
     const handled = await handleTaskTurnEnd(
-      recoveryHost(controller) as never, input as never, new Map(), [], root,
+      recoveryHost(controller) as never, input as never, new Map(), [], root, undefined, journalOf(root),
     )
 
     assert.equal(handled, true)
@@ -1766,7 +1808,7 @@ void describe('superagent: report recovery after a plugin remount', () => {
     }
 
     const replay = await handleTaskTurnEnd(
-      recoveryHost(controller) as never, input as never, new Map(), [], root,
+      recoveryHost(controller) as never, input as never, new Map(), [], root, undefined, journalOf(root),
     )
     assert.equal(replay, true)
     assert.equal(controller.prompted.length, 1, 'a replayed turn end sends nothing more')
@@ -1796,7 +1838,7 @@ void describe('superagent: report recovery after a plugin remount', () => {
     await handleTaskTurnEnd(
       recoveryHost(controller) as never,
       { agent, session: agent.session, turn: 1, event: end, signal: new AbortController().signal } as never,
-      new Map(), [], root,
+      new Map(), [], root, undefined, journalOf(root),
     )
 
     const delivered = controller.prompted[0]?.text ?? ''
@@ -1828,7 +1870,7 @@ void describe('superagent: report recovery after a plugin remount', () => {
     await handleTaskTurnEnd(
       recoveryHost(controller) as never,
       { agent, session: agent.session, turn: 1, event: end, signal: new AbortController().signal } as never,
-      new Map(), [], root,
+      new Map(), [], root, undefined, journalOf(root),
     )
 
     assert.equal(controller.prompted.length, 2, 'one report per recipient Session')
@@ -1843,8 +1885,8 @@ void describe('superagent: report recovery after a plugin remount', () => {
     await seedBinding(root, { sessionId: 'child-dup', requestId: 'req-dup', task: 'one report only' })
     const input = (): never => completed('child-dup', 'the single outcome') as never
 
-    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, input(), new Map(), [], root), true)
-    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, input(), new Map(), [], root), true)
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, input(), new Map(), [], root, undefined, journalOf(root)), true)
+    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, input(), new Map(), [], root, undefined, journalOf(root)), true)
 
     assert.equal(controller.prompted.length, 1)
     assert.match(controller.prompted[0]?.text ?? '', /the single outcome/u)
@@ -1861,8 +1903,12 @@ void describe('superagent: report recovery after a plugin remount', () => {
       { text: 'the newer result' },
     ])
 
-    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(0) as never, new Map(), [], root), true)
-    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(1) as never, new Map(), [], root), true)
+    assert.equal(await handleTaskTurnEnd(
+      recoveryHost(controller) as never, child.input(0) as never, new Map(), [], root, undefined, journalOf(root),
+    ), true)
+    assert.equal(await handleTaskTurnEnd(
+      recoveryHost(controller) as never, child.input(1) as never, new Map(), [], root, undefined, journalOf(root),
+    ), true)
 
     assert.equal(controller.prompted.length, 2)
     assert.match(controller.prompted[0]?.text ?? '', /the older result/u)
@@ -1891,8 +1937,12 @@ void describe('superagent: report recovery after a plugin remount', () => {
       { requestId: 'req-fserror', text: 'the FsError root cause is a stale handle' },
     ])
 
-    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(0) as never, new Map(), [], root), true)
-    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, child.input(1) as never, new Map(), [], root), true)
+    assert.equal(await handleTaskTurnEnd(
+      recoveryHost(controller) as never, child.input(0) as never, new Map(), [], root, undefined, journalOf(root),
+    ), true)
+    assert.equal(await handleTaskTurnEnd(
+      recoveryHost(controller) as never, child.input(1) as never, new Map(), [], root, undefined, journalOf(root),
+    ), true)
 
     assert.equal(controller.prompted.length, 2)
     assert.match(controller.prompted[0]?.text ?? '', /the sync finished/u)
@@ -1908,7 +1958,9 @@ void describe('superagent: report recovery after a plugin remount', () => {
     const controller = recoveryController(root)
     const ordinary = turnSession('ordinary-child', [{ requestId: 'req-human', text: 'just chatting' }])
 
-    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, ordinary.input(0) as never, new Map(), [], root), false)
+    assert.equal(await handleTaskTurnEnd(
+      recoveryHost(controller) as never, ordinary.input(0) as never, new Map(), [], root, undefined, journalOf(root),
+    ), false)
     assert.deepEqual(controller.prompted, [])
 
     // A pending dispatch exists, but this turn carries another prompt: never steal it for the task.
@@ -1919,7 +1971,9 @@ void describe('superagent: report recovery after a plugin remount', () => {
       requestId: 'req-queued',
     })
     const unrelated = turnSession('mixed-child', [{ requestId: 'req-someone-else', text: 'unrelated turn' }])
-    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, unrelated.input(0) as never, new Map(), [], root), false)
+    assert.equal(await handleTaskTurnEnd(
+      recoveryHost(controller) as never, unrelated.input(0) as never, new Map(), [], root, undefined, journalOf(root),
+    ), false)
     assert.deepEqual(controller.prompted, [])
     const rows = await listDispatchTasks(root, { status: 'pending' })
     assert.equal(rows.find(row => row.id === recorded.task.id)?.status, 'pending')
@@ -1931,7 +1985,9 @@ void describe('superagent: report recovery after a plugin remount', () => {
     await seedBinding(root, { sessionId: 'mixed-child', requestId: 'req-queued', task: 'still queued' })
     const unrelated = turnSession('mixed-child', [{ requestId: 'req-someone-else', text: 'unrelated turn' }])
 
-    assert.equal(await handleTaskTurnEnd(recoveryHost(controller) as never, unrelated.input(0) as never, new Map(), [], root), false)
+    assert.equal(await handleTaskTurnEnd(
+      recoveryHost(controller) as never, unrelated.input(0) as never, new Map(), [], root, undefined, journalOf(root),
+    ), false)
     assert.deepEqual(controller.prompted, [])
     assert.equal((await journalOf(root).forSession('mixed-child'))[0]?.status, 'pending')
   })
@@ -2181,8 +2237,8 @@ void describe('superagent: dispatch report binding', () => {
     }
     const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
     const started = await runControlTool(
-      { action: 'start', workspace: 'hello', task: 'do the thing' },
-      options, me, bindingHost(controller).ctx, { tasks: new Map() },
+      { action: 'start', workspace: 'hello', task: 'do the thing', ...START_CARD },
+      options, me, withWorkspaceTasks(bindingHost(controller).ctx), { tasks: new Map(), reports: new DispatchReportStore(root) },
     )
     assert.equal(started.ok, true, JSON.stringify(started.error))
     assert.equal(childPrompts.length, 1)
@@ -2202,8 +2258,12 @@ void describe('superagent: dispatch report binding', () => {
     ]
     const agent = { id: 'child-immediate', session: { snapshotEvents: () => events } }
     const input = { agent, session: agent.session, turn: 1, event: events[3], signal: new AbortController().signal }
-    assert.equal(await handleTaskTurnEnd(bindingHost(controller) as never, input as never, new Map(), [], root), true)
-    assert.equal(await handleTaskTurnEnd(bindingHost(controller) as never, input as never, new Map(), [], root), true)
+    assert.equal(await handleTaskTurnEnd(
+      bindingHost(controller) as never, input as never, new Map(), [], root, undefined, new DispatchReportStore(root),
+    ), true)
+    assert.equal(await handleTaskTurnEnd(
+      bindingHost(controller) as never, input as never, new Map(), [], root, undefined, new DispatchReportStore(root),
+    ), true)
 
     assert.equal(parentReports.length, 1)
     assert.match(parentReports[0] ?? '', /immediate result/u)
@@ -2228,8 +2288,8 @@ void describe('superagent: dispatch report binding', () => {
     }
     const me = { session: 'super-1', identity: 'agent:test|dsh|m|super-1' }
     const started = await runControlTool(
-      { action: 'start', workspace: 'hello', task: 'should not be admitted' },
-      options, me, bindingHost(new NeverController()).ctx, { tasks: new Map() },
+      { action: 'start', workspace: 'hello', task: 'should not be admitted', ...START_CARD },
+      options, me, withWorkspaceTasks(bindingHost(new NeverController()).ctx), { tasks: new Map(), reports: new DispatchReportStore(root) },
     )
     assert.equal(started.ok, false)
     assert.match(JSON.stringify(started.error), /report binding could not be recorded/u)
@@ -2263,8 +2323,8 @@ void describe('superagent: model selection and discovery', () => {
     const me = { session: 'super-1' }
 
     const started = await runControlTool(
-      { action: 'start', workspace: 'model work', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'high' },
-      options, me, ctx, { tasks: new Map() },
+      { action: 'start', workspace: 'model work', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'high', ...START_CARD },
+      options, me, withWorkspaceTasks(ctx), { tasks: new Map() },
     )
     assert.equal(started.ok, true, JSON.stringify(started.error))
     assert.deepEqual(controller.selections[0], { sessionId: 'model-child', provider: 'p', model: 'm', reasoningEffort: 'high' })
@@ -2297,7 +2357,7 @@ void describe('superagent: model selection and discovery', () => {
     const ctx = withInitialPermission({ get: (key: string) => key === 'sessionController' ? controller : key === 'workspaceRegistry' ? new Registry() : undefined })
     const options = { jira: {} as never, caller: { writable: true, sessionId: 's', cwd: await scratchDirectory() } as never, at: '2026-11-05T00:00:00Z' as never }
     const me = { session: 's' }
-    const noApi = await runControlTool({ action: 'start', workspace: 'r', task: 'x', provider: 'p', model: 'm' }, options, me, ctx, { tasks: new Map() })
+    const noApi = await runControlTool({ action: 'start', workspace: 'r', task: 'x', provider: 'p', model: 'm', ...START_CARD }, options, me, withWorkspaceTasks(ctx), { tasks: new Map() })
     assert.equal(noApi.ok, false)
     assert.match(JSON.stringify(noApi.error), /no Session model-selection API/u)
     const providerOnly = await runControlTool({ action: 'prompt', session: 'x', text: 'x', provider: 'p' }, options, me, ctx, { tasks: new Map() })
@@ -2397,8 +2457,8 @@ void describe('superagent: model selection and discovery', () => {
 
     // Bare route on a reasoning model: refused, with the effort list — never the silent default.
     const bare = await runControlTool(
-      { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm' },
-      options, me, ctx, { tasks: new Map() },
+      { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm', ...START_CARD },
+      options, me, withWorkspaceTasks(ctx), { tasks: new Map() },
     )
     assert.equal(bare.ok, false)
     assert.match(JSON.stringify(bare.error), /advertises reasoning efforts/u)
@@ -2408,8 +2468,8 @@ void describe('superagent: model selection and discovery', () => {
 
     // An unknown effort is refused with the same list.
     const unknown = await runControlTool(
-      { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'ultra' },
-      options, me, ctx, { tasks: new Map() },
+      { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'ultra', ...START_CARD },
+      options, me, withWorkspaceTasks(ctx), { tasks: new Map() },
     )
     assert.equal(unknown.ok, false)
     assert.match(JSON.stringify(unknown.error), /not a reasoning effort/u)
@@ -2417,8 +2477,8 @@ void describe('superagent: model selection and discovery', () => {
 
     // An explicit valid effort lands and is echoed.
     const chosen = await runControlTool(
-      { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'high' },
-      options, me, ctx, { tasks: new Map() },
+      { action: 'start', workspace: 'efforts', task: 'plan', provider: 'p', model: 'm', reasoning_effort: 'high', ...START_CARD },
+      options, me, withWorkspaceTasks(ctx), { tasks: new Map() },
     )
     assert.equal(chosen.ok, true, JSON.stringify(chosen.error))
     assert.deepEqual(controller.selections[0], { sessionId: 'effort-child', provider: 'p', model: 'm', reasoningEffort: 'high' })
@@ -3109,7 +3169,7 @@ void describe('superagent: context, compaction and memory curation', () => {
         : key === 'agents' ? { get: () => agent }
           : undefined,
     }
-    const result = await runControlTool({ action: 'abort', session: 'w-session', text: 'skip the wait and continue' }, { ...options, caller: { writable: true, sessionId: 'super-1', cwd: root } }, me, ctx, { tasks: new Map() })
+    const result = await runControlTool({ action: 'abort', session: 'w-session', text: 'skip the wait and continue' }, { ...options, caller: { writable: true, sessionId: 'super-1', cwd: root } }, me, ctx, { tasks: new Map(), reports: new DispatchReportStore(root) })
     assert.equal(result.ok, true, JSON.stringify(result.error))
     assert.equal(cancelled, 1)
     assert.equal(idleCalls, 1)

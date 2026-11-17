@@ -13612,6 +13612,9 @@ importers:
       '@deepseek-ai/dsh-storage-json':
         specifier: workspace:*
         version: link:../../storage/storage-json
+      '@deepseek-ai/dsh-store-atom':
+        specifier: workspace:*
+        version: link:../../uitstalie/store-atom
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:*
         version: link:../../core/system-prompt
@@ -13636,6 +13639,12 @@ importers:
       '@deepseek-ai/dsh-working-directory':
         specifier: workspace:*
         version: link:../../session/working-directory
+      '@deepseek-ai/dsh-workspace':
+        specifier: workspace:*
+        version: link:../../workspace/workspace
+      '@deepseek-ai/dsh-workspace-tools':
+        specifier: workspace:*
+        version: link:../../uitstalie/workspace-tools
       tsx:
         specifier: ^4.23.13
         version: 4.23.13

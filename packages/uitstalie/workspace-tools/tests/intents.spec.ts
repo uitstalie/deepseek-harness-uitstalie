@@ -696,3 +696,55 @@ test('mutations are idempotent per requestId and history pages with a cursor', a
   expect(value.metrics.windows[0]?.corrections ?? 0).toBeGreaterThanOrEqual(3)
   expect((value.metrics.windows[0] as { recurringCorrections?: number }).recurringCorrections ?? 0).toBeGreaterThanOrEqual(1)
 })
+
+test('the dispatcher service records the same card-validated task and cancels a failed dispatch', async () => {
+  const card = await createCard(workspaceA, 'card-service', RAW_TRACEABLE, TRACEABLE_ITEMS)
+  const created = await mounted.ctx.workspaceTasks.createDispatchTask({
+    workspaceId: String(workspaceA.id),
+    requestId: 'service-task-1',
+    intentId: card.intentId,
+    intentVersion: card.version,
+    taskType: 'fix',
+    ...TRACEABLE_BRIEF,
+    coverage: TRACEABLE_COVERAGE,
+  })
+  expect(created.taskId).toMatch(/^task-/u)
+  expect(created.status).toBe('pending')
+
+  const read = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'get',
+    workspace: String(workspaceA.id),
+    taskId: created.taskId,
+  })
+  expect(read.isError).toBe(false)
+  const task = (valueOf(read) as { task: { intentId: string; intentVersion: number; taskType: string; status: string } }).task
+  expect(task).toMatchObject({
+    intentId: card.intentId,
+    intentVersion: card.version,
+    taskType: 'fix',
+    status: 'pending',
+  })
+
+  expect(await mounted.ctx.workspaceTasks.cancelDispatchTask({
+    workspaceId: String(workspaceA.id),
+    taskId: created.taskId,
+    reason: 'the Session could not be started',
+  })).toBe(true)
+  const cancelled = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'get',
+    workspace: String(workspaceA.id),
+    taskId: created.taskId,
+  })
+  expect((valueOf(cancelled) as { task: { status: string } }).task.status).toBe('cancelled')
+  expect(await mounted.ctx.workspaceTasks.cancelDispatchTask({
+    workspaceId: String(workspaceA.id),
+    taskId: created.taskId,
+    reason: 'a terminal task must not change',
+  })).toBe(false)
+
+  await expect(mounted.ctx.workspaceTasks.createDispatchTask({
+    workspaceId: String(workspaceA.id),
+    requestId: 'service-task-2',
+    goal: 'no card reference',
+  })).rejects.toMatchObject({ code: 'INTENT_INCOMPLETE' })
+})

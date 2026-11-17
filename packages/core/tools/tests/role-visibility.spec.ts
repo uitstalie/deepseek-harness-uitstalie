@@ -86,7 +86,10 @@ test('the registry exposes the approved full matrix for subagent, agent, and sup
   expect(names('super')).toEqual(expected('super'))
   // This spec snapshots the approved matrix, not any one capability's wiring: `superagent_control`
   // is already declared `super` here, so the jira ordinary-branch fix does not change these totals.
-  // The real contribution is covered by packages/jira/jira-agent/src/superagent.test.ts.
+  // The dispatch-to-intent-card path reuses `workspace_intents` / `workspace_tasks` at their existing
+  // `subagent` minimum, so the counts stay 18 subagent / 36 agent / 40 super before and after that
+  // change; the capability wiring is covered by
+  // packages/jira/jira-agent/tests/dispatch-intents.spec.ts.
   expect(names('subagent')).toHaveLength(18)
   expect(names('agent')).toHaveLength(36)
   expect(names('super')).toHaveLength(40)

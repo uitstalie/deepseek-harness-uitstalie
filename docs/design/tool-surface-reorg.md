@@ -108,6 +108,8 @@ The store service (`ctx.dshStore`) owns project-root discovery, path confinement
 
 `superagent_ledger`, `superagent_deliver`, `superagent_session`, and `superagent_workspace` are the current task, message, and session surface. The workspace toolset defines the same concepts with explicit scopes, receipts, references, and an idempotency key. Keeping both would create two task systems; the design therefore moves behavior to `workspace_tasks`, `workspace_message`, and `workspace_sessions`, and does not preserve a parallel `superagent_*` task API.
 
+Current state (2026-11-17, after the dispatch wiring; this note records what the tree does, not a change to this design's direction): `superagent_control start` records the task in the target workspace and `.superagent/ledger` is its projection under the same task id. `superagent_ledger` still reads and corrects that projection; dropping it in favour of `workspace_tasks` remains the direction of this document.
+
 ### 3.3 JIRA is removed now; the dispatch ledger is dropped, not migrated
 
 JIRA is deprecated and removed immediately: the tools and skills go, only the GitHub credential code/config stays, and no compatibility layer is built. The dispatch ledger has no old account or historical value; it is dropped, not migrated. `workspace_tasks` starts fresh, with no import and no compatibility.

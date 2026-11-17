@@ -37,6 +37,13 @@ import {
 } from './super-workspace-definition.ts'
 import { workspaceConventionsText } from './workspace-conventions.ts'
 import {
+  DISPATCH_TASK_TYPES,
+  cancelDispatchedTask,
+  startDispatchTask,
+  type DispatchCoverage,
+  type DispatchNonCoverage,
+} from './dispatch-intents.ts'
+import {
   findDispatchTask,
   isDispatchLedgerStatus,
   listAllDispatchTasks,
@@ -149,6 +156,11 @@ export const SUPERAGENT_SECTION: PromptSection = Object.freeze({
     + '边界: <in scope / out of scope / stop conditions>\n'
     + '证据来源: <workspace-relative paths, commands, convention anchors>\n'
     + '\n'
+    + '- A dispatch starts from the intent card, not from the brief. The order is fixed: read the card '
+    + 'with `workspace_intents`, then build the brief, then pass the card reference, the brief\'s '
+    + 'acceptance and boundaries, and one coverage entry per card point to `superagent_control` '
+    + '`start`. A proposed card is confirmed by the person first. A card point the task deliberately '
+    + 'leaves out needs an explicit non-coverage reason; there is no default pass.\n'
     + '- Give the workspace only the goal, acceptance, and boundaries; do not prescribe its implementation path, commands, or step list (evidence-source anchors may name commands, but that is not an implementation sequence) — that Session knows its own tools and environment. Offer a method only when the workspace explicitly says it does not know how to start; over-detailed instructions make it follow the list instead of judging situations outside it, and wrong steps can lead it astray.\n'
     + '\n'
     + 'Result contract:\n'
@@ -597,6 +609,7 @@ export const runControlTool = async (
   me: unknown,
   ctx: unknown,
   context: SessionToolContext,
+  signal?: AbortSignal,
 ): Promise<ToolValue> => {
   const validated = validateArgs(CONTROL_PARAMETERS, args)
   if (!validated.ok) return failure(validated.error, options.caller, me)
@@ -638,7 +651,7 @@ export const runControlTool = async (
     const workspaceAction = action === 'remove_workspace' ? 'remove' : action === 'rename_workspace' ? 'rename' : action
     return runWorkspaceTool({ ...values, action: workspaceAction }, options, me, ctx as ToolHost['ctx'])
   }
-  return runSessionTool(values, options, me, ctx, context)
+  return runSessionTool(values, options, me, ctx, context, signal)
 }
 
 const CONTROL_ACTIONS = [
@@ -650,6 +663,36 @@ type ControlAction = (typeof CONTROL_ACTIONS)[number]
 
 const WORKSPACE_CONTROL_ACTIONS: readonly ControlAction[] = ['roster', 'orphans', 'ensure', 'remove_workspace', 'rename_workspace']
 const CONTROL_READ_ACTIONS: readonly ControlAction[] = ['roster', 'orphans', 'list', 'inspect']
+
+/**
+ * Narrow the validated `coverage` argument to the dispatch contract.
+ * @param value - the validated tool argument.
+ * @returns the coverage entries, or undefined when the argument was omitted.
+ */
+const coverageOf = (value: unknown): readonly DispatchCoverage[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+  return value.map((entry) => {
+    const note = asString((entry as { note?: unknown }).note)
+    return {
+      point: asString((entry as { point?: unknown }).point) ?? '',
+      brief: asString((entry as { brief?: unknown }).brief) ?? '',
+      ...note === undefined ? {} : { note },
+    }
+  })
+}
+
+/**
+ * Narrow the validated `nonCoverage` argument to the dispatch contract.
+ * @param value - the validated tool argument.
+ * @returns the non-coverage entries, or undefined when the argument was omitted.
+ */
+const nonCoverageOf = (value: unknown): readonly DispatchNonCoverage[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+  return value.map(entry => ({
+    point: asString((entry as { point?: unknown }).point) ?? '',
+    reason: asString((entry as { reason?: unknown }).reason) ?? '',
+  }))
+}
 
 /** Session lifecycle fields used by the internal Session runner. */
 const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
@@ -686,6 +729,62 @@ const SESSION_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.freeze({
   },
   text: { type: 'string', description: 'append/prompt: the follow-up instruction; abort: the instruction to run after aborting the running turn.' },
   confirm: { type: 'string', description: 'delete: required; repeat the target Session id exactly. Deletion is irreversible.' },
+  intentId: {
+    type: 'string',
+    description: 'start: the active intent card id read from `workspace_intents`; required, and the card must be in the '
+      + 'task\'s own workspace.',
+  },
+  intentVersion: {
+    type: 'integer',
+    description: 'start: the card version read from `workspace_intents`; required. A proposed version refuses with '
+      + 'INTENT_UNCONFIRMED and a superseded one with INTENT_STALE.',
+  },
+  acceptance: {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'start: the brief\'s acceptance items, one per checkable outcome; required by the task record.',
+  },
+  boundaries: {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'start: the brief\'s boundaries; required by the task record.',
+  },
+  outputForm: {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'start: the brief\'s deliverable items; covers the card\'s output form when it has one.',
+  },
+  coverage: {
+    type: 'array',
+    items: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        point: { type: 'string', required: true, description: 'Card point from `workspace_intents.get`, such as `acceptance[0]`.' },
+        brief: { type: 'string', required: true, description: 'Exact text of the brief item that covers the point.' },
+        note: { type: 'string' },
+      },
+    },
+    description: 'start: one entry per card point. A missing point refuses the dispatch with INTENT_COVERAGE_MISSING '
+      + 'unless `nonCoverage` waives it; there is no default pass.',
+  },
+  nonCoverage: {
+    type: 'array',
+    items: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        point: { type: 'string', required: true },
+        reason: { type: 'string', required: true },
+      },
+    },
+    description: 'start: an explicit waiver for one card point, recorded on the task with its reason.',
+  },
+  taskType: {
+    type: 'string',
+    enum: [...DISPATCH_TASK_TYPES],
+    description: 'start: the six-category task type; required.',
+  },
   provider: { type: 'string', description: 'start/append/prompt: optional LLM provider id; requires `model`. Check superagent_models first.' },
   model: { type: 'string', description: 'start/append/prompt: optional model id; requires `provider`.' },
   reasoning_effort: {
@@ -727,8 +826,11 @@ export const CONTROL_DESCRIPTION =
   + 'Never remove or rename the super workspace this Session runs in. '
   + 'Use `list` before addressing a Session. Reuse a Session whose title and purpose match, or pass '
   + 'an id (append also accepts latest); never guess. Start only for a new or isolated conversation. '
-  + '`start` needs workspace and task; `append` needs workspace, session and text; `prompt` and '
-  + '`abort` need session and text. `stop` cancels without '
+  + '`start` needs workspace, task, and the active intent card: `intentId`, `intentVersion`, '
+  + '`acceptance`, `boundaries`, `taskType`, and one `coverage` entry per card point (or an explicit '
+  + '`nonCoverage` waiver). The tool records that task in the target workspace and refuses a missing, '
+  + 'proposed, stale, or cross-workspace card before any Session starts. `append` needs workspace, '
+  + 'session and text; `prompt` and `abort` need session and text. `stop` cancels without '
   + 'admitting text; `abort` cancels then sends text. `fork`, `archive`, `compact`, `inspect` and '
   + '`delete` keep the host lifecycle semantics. Reports arrive separately; use superagent_ledger '
   + 'for business results and delivery recovery, and superagent_deliver for file handoff.'
@@ -939,12 +1041,13 @@ export const LEDGER_PARAMETERS: Readonly<Record<string, FieldSpec>> = Object.fre
 
 /** `superagent_ledger`'s description: structured dispatch state, separate from jira. */
 export const LEDGER_DESCRIPTION =
-  'Read and correct the super workspace\'s dispatch ledger. The ledger is the structured task truth: '
-  + 'dispatch records `pending` automatically, and the child turn end records `returned`/`failed`; '
-  + 'use `record` only as a manual fallback and `resolve` to add the conclusion, artifact paths and '
-  + 'open decisions the automatic record could not know. The storage domain owns task results; '
-  + 'Markdown under `.superagent/ledger/` is a human-readable projection, with a Markdown-only '
-  + 'compatibility store when no domain is composed. Report delivery is separate: a task result does '
+  'Read and correct the super workspace\'s dispatch ledger. A dispatched task is owned by the '
+  + 'destination workspace\'s task records, and this ledger is its projection under the same task id: '
+  + 'a dispatch starts `pending`, the child turn end records `returned`/`failed`, and `resolve` adds '
+  + 'the conclusion, artifact paths and open decisions the automatic record could not know. Use '
+  + '`record` only as a manual fallback. The storage domain owns task results; Markdown under '
+  + '`.superagent/ledger/` is the human-readable form, with a Markdown-only compatibility store when '
+  + 'no domain is composed. Report delivery is separate: a task result does '
   + 'not prove its report reached the super Session. Use `report_status` to inspect failed deliveries '
   + 'and `retry_report` to resend the exact saved report after the recipient is available. The ledger '
   + 'references jira issue keys without '
@@ -2863,6 +2966,7 @@ export const runSessionTool = async (
   me: unknown,
   ctx: unknown,
   context: SessionToolContext,
+  signal?: AbortSignal,
 ): Promise<ToolValue> => {
   const { caller } = options
   const validated = validateArgs(SESSION_PARAMETERS, args)
@@ -3115,7 +3219,32 @@ export const runSessionTool = async (
       }
       const titleArg = asString(values.title)?.trim()
       const requestId = `superagent-task-${randomUUID()}`
-      const taskId = newDispatchReportId()
+      // The task record comes first: a card, coverage, or field refusal must stop the dispatch
+      // before a Session exists, and the ledger entry below is its projection under the same id.
+      const intentId = asString(values.intentId)
+      const intentVersion = typeof values.intentVersion === 'number' ? values.intentVersion : undefined
+      const acceptance = asStringList(values.acceptance)
+      const boundaries = asStringList(values.boundaries)
+      const outputForm = asStringList(values.outputForm)
+      const coverage = coverageOf(values.coverage)
+      const nonCoverage = nonCoverageOf(values.nonCoverage)
+      const taskType = asString(values.taskType)
+      const dispatch = await startDispatchTask(ctx, {
+        workspaceId: workspace.id,
+        requestId,
+        goal: taskArg.trim(),
+        ...titleArg === undefined || titleArg === '' ? {} : { title: titleArg },
+        ...intentId === undefined ? {} : { intentId },
+        ...intentVersion === undefined ? {} : { intentVersion },
+        ...acceptance === undefined ? {} : { acceptance },
+        ...boundaries === undefined ? {} : { boundaries },
+        ...outputForm === undefined ? {} : { outputForm },
+        ...coverage === undefined ? {} : { coverage },
+        ...nonCoverage === undefined ? {} : { nonCoverage },
+        ...taskType === undefined ? {} : { taskType },
+      }, signal)
+      if (!dispatch.ok) return failure(dispatch.error, caller, me)
+      const taskId = dispatch.taskId
       let sessionId = `unstarted:${taskId}`
       let createdSession = false
       let configured = false
@@ -3134,7 +3263,14 @@ export const runSessionTool = async (
         )
         failStart = async (error, stage, message, details = {}) => {
           const reason = error instanceof Error ? error.message : String(error)
-          await context.reports?.settle(taskId, 'failed', options.at, reason)
+          try {
+            await context.reports?.settle(taskId, 'failed', options.at, reason)
+          } catch {
+            // The journal is the thing that just failed; the dispatch refusal below is the answer.
+          }
+          if (!admitted) {
+            await cancelDispatchedTask(ctx, { workspaceId: workspace.id, taskId, reason }, signal)
+          }
           if (ledger.ledger !== undefined) {
             if (context.store !== undefined) {
               await context.store.resolve(taskId, { status: 'failed', outcome: reason, updatedAt: options.at })
@@ -3259,6 +3395,7 @@ export const runSessionTool = async (
             ...(title === undefined ? {} : { sessionTitle: title }),
           }),
           start: Object.freeze({ stage: 'prompted', created: true, configured: true, admitted: true, prompted: true }),
+          dispatchTask: Object.freeze({ taskId, workspace: workspace.id }),
           permission: initialPermission.permission,
           ...(selected.model === undefined ? {} : { model: selected.model }),
         }), ledger)
@@ -5656,6 +5793,7 @@ export const createSuperagentContribution = (
         ]
         return renderText(compactParts.join(''))
       }
+      const dispatched = typed.dispatchTask as { taskId?: string } | undefined
       const one = typed.session as {
         id?: string
         archived?: boolean
@@ -5749,9 +5887,9 @@ export const createSuperagentContribution = (
       const echoModel = echo?.provider === undefined
         ? ''
         : `  → ${echo.provider}/${echo.model}${echo.reasoningEffort === undefined ? '' : ` (${echo.reasoningEffort})`}${echo.fallback === true ? ' (host fallback)' : ''}${echo.deferred === true ? ' (takes effect at the next turn boundary)' : ''}`
-      return renderText(`session ${one.id}${one.sessionTitle === undefined ? '' : ` "${one.sessionTitle}"`}${how}${echoModel}`)
+      return renderText(`session ${one.id}${one.sessionTitle === undefined ? '' : ` "${one.sessionTitle}"`}${dispatched?.taskId === undefined ? '' : `  task ${dispatched.taskId}`}${how}${echoModel}`)
     },
-    run: (args, call) => runControlTool(args, runOptionsOf(host, call), call.me, host.ctx, {
+    run: (args, call, exec) => runControlTool(args, runOptionsOf(host, call), call.me, host.ctx, {
       ...(agentPreset === undefined ? {} : { agentPreset }),
       tasks,
       ...(dispatchStore === undefined ? {} : { store: dispatchStore }),
@@ -5759,7 +5897,7 @@ export const createSuperagentContribution = (
       compactThresholdPercent,
       longRunningMinutes,
       stopped,
-    }),
+    }, exec.signal),
   }
   const deliver: Spec = {
     name: DELIVER_TOOL_NAME,

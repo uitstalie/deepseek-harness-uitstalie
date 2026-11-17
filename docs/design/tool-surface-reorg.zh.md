@@ -106,6 +106,8 @@ store 服务（`ctx.dshStore`）负责项目根发现、路径限制、命名空
 
 `superagent_ledger`、`superagent_deliver`、`superagent_session`、`superagent_workspace` 是当前的任务、消息与会话面。工作区工具集用显式范围、回执、引用与幂等键定义同样的概念。两者都留会造出两套任务系统；因此设计把行为迁到 `workspace_tasks`、`workspace_message`、`workspace_sessions`，不保留并行的 `superagent_*` 任务 API。
 
+当前状态（2026-11-17，派发接通之后；这里只记录代码现状，不改变本文的设计方向）：`superagent_control start` 在目标工作区记录任务，`.superagent/ledger` 是这条任务同 id 的投影。`superagent_ledger` 仍读写并纠偏这份投影；以 `workspace_tasks` 取代它仍是本文的方向。
+
 ### 3.3 JIRA 现在移除；派发账本丢弃，不迁移
 
 JIRA 已废弃并立即移除：工具与技能都走，只留 GitHub 凭据相关的代码/配置，其余 JIRA cloud 配置删除，不做兼容层。派发账本没有旧账或历史价值，直接丢弃，不迁移；`workspace_tasks` 从新开始，不导入、不兼容。

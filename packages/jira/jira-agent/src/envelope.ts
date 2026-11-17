@@ -64,6 +64,8 @@ export type ToolValue = Readonly<{
   sessionsKept?: unknown
   /** `superagent_control`: the workspace Session started, continued, archived or branched (DH-719). */
   session?: unknown
+  /** `superagent_control action: 'start'`: the workspace task the dispatch recorded. */
+  dispatchTask?: unknown
   /** `superagent_control action: 'list'`: the Sessions of one workspace. */
   sessions?: unknown
   /** `superagent_deliver`: the file copied into a registered workspace. */

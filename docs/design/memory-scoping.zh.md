@@ -145,7 +145,7 @@
 | 消息 | 消息 id、目标会话、正文、类型（消息或追问）、投递状态、回执、产物引用 | 会话 inbox 与消息日志 |
 | 产物引用 | 产物 id、工作区、路径、sha256、大小、版本、类型、会话 id、任务 id、创建时间、摘要 | 工作区产物索引 |
 
-工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。Step 2 之后的当前状态：工作区工具集已经在 `$DSH_HOME/workspaces/<workspace-id>/` 下写自己的任务、回执与意图卡，`workspace_tasks.create` 会拒绝缺少 active 卡版本与覆盖映射的派发。派发账本 `.superagent/ledger` 仍是 JIRA 的写入方，因为移除 JIRA 不在本步范围内，所以两套任务存储仍然并存；这是 §10.3 记录的当前风险，不是已经满足的约束。
+工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。派发接通之后的当前状态：工作区工具集在 `$DSH_HOME/workspaces/<workspace-id>/` 下写任务、回执与意图卡，super agent 的 `superagent_control start` 在启动会话之前就写下这条任务。卡缺失、proposed、stale、属于别的工区，或 brief 漏掉卡上的点，都在这个入口被拒绝。派发账本 `.superagent/ledger` 现在是同一条任务、同一个 task id 的投影，而不是第二份任务列表；它的追加式历史与报告日志仍然可读。JIRA 本身仍启用，因为移除是后续步骤；账本的手工 `record` 回退仍只是兼容路径，不是派发事实源。
 
 意图卡是工作区记录，不是记忆条目。一张卡只属于一个工作区。跨工作区请求会在每个目标工作区各建一张卡，每张卡都逐字保留用户原话。卡随工作区工具集状态存放：`$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/`（`index.json`、`versions/<n>.json`），不在宿主全局意图存储里。版本是追加式的；旧版本被 supersede 后仍可读。
 
@@ -491,7 +491,7 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 | 3 | 投递改成工具调用，并在同一版本删除洪水：`workspace_message.send`、产物发布/引用、静态提示词，且不再有快照、更新通知、跨会话索引、回合结束投递 | 消息与引用能往返；重试不重复；一个 turn 不发就什么都不投递；普通会话每轮记忆消息数为 0、字节数为 0；“上一轮做了什么”由 `workspace_sessions` 回答 |
 | 4 | 记忆变为只留 global，并迁移旧条目 | 业务或派发写入被拒并给出工具提示；产出 dry-run 报告；只有确认过的 global 条目仍被注入；备份与回滚已验证 |
 
-已完成：第 0、1、2 步。未开始：第 3、4 步。
+已完成：第 0、1、2 步，包括派发接通：`superagent_control start` 校验目标工作区的意图卡，通过 `workspace_tasks` 记录任务，`.superagent/ledger` 只作为这条任务同 id 的投影写入。未开始：第 3、4 步。
 
 每一步都可独立上线、可回滚。第 0 步先合。第 1 到 4 步不依赖看板方向。
 
@@ -517,7 +517,7 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 ### 10.3 风险
 
 - 工具调用延迟与成本：结果保持有界，并在提示词里放一张简短的“去哪里查”地图。
-- 一个任务两个主人：工具集必须包住现有账本与日志，而不是再造一份任务清单。这个风险在 Step 2 之后仍然存在：工作区工具集现在会在 `$DSH_HOME/workspaces/<workspace-id>/tasks` 下创建并校验任务，而 `.superagent/ledger` 仍是 JIRA 的写入方，因此在 JIRA 被移除之前，任务仍可能从一边读、往另一边写。
+- 一个任务两个主人：新的派发路径已收口。`superagent_control start` 读取目标工作区的意图卡，通过工作区工具集记录任务，`.superagent/ledger` 只作为这条任务同 id 的投影写入，所以一次派发的任务在两处只有一个身份。`superagent_ledger` 保留读与纠偏契约，但不再另铸身份。JIRA 账本本身在移除步骤之前不动；账本的手工 `record` 回退仍是兼容路径，不是派发事实源。
 - 消息优先级：紧急消息可以中断一个步骤。三种紧急情况很窄，普通消息永远不紧急；误判紧急是缺陷，要评审。
 - 引用失效：changed、missing、denied、pending、expired 分开；授权按版本限定，新版本需要新授权；跨工作区拒绝不泄漏产物是否存在。
 - 跨工作区授权：显式工作区 id、注册表成员校验、调用留痕；拉先查接收方，推先查发送方；不做隐式聚合。
@@ -625,6 +625,8 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 `workspace_intents` 是工作区工具集的第五个成员，排在会话、任务、消息、产物之后。它提供 `create`、`get`、`confirm`、`correct`、`history`、`metrics`。它遵循 5.1 节的作用域规则：默认调用方工作区；跨工作区调用必须显式给工作区 id，并留痕。用户或界面创建、确认、纠正；super agent 可以创建 `proposed` 版本并读取；普通 agent 只读。
 
 `workspace_tasks.create` 必须带 active 卡引用；`workspace_tasks.receipt` 接收对齐清单；有未满足项时状态机拒绝 `done`。
+
+派发入口是 `superagent_control start`：它要求同一份卡引用、brief 的验收与边界、任务类型与覆盖映射，在任何会话启动之前先把任务写进目标工作区，并把账本条目写成这条任务同 id 的投影。`append`、`prompt`、`abort` 只是继续一个已过卡校验的会话，不创建第二条任务。工作区工具集挂在同一组合里，因此 `workspace_intents` 与 `workspace_tasks` 就在 super agent 自己的会话上；普通 agent 保留两个工具的读侧，写入仍被角色检查拒绝。
 
 当前状态：工具已经强制派发拒绝码、覆盖检查与回执门。在卡片 UI 出现之前，super agent 是记录用户确认与纠正的通道，因此 `create`、`confirm` 与 `correct` 需要 super agent 角色或用户；普通 agent 只读卡。`nonCoverage` 条目就是 super agent 的显式派发豁免，连同理由记录在任务上；它不是默认通过。
 

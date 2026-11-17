@@ -558,6 +558,59 @@ interface CreateTaskInput {
   readonly requestId?: string
 }
 
+/**
+ * One dispatch task to create against a workspace's active intent card.
+ *
+ * This is the programmatic half of `workspace_tasks.create`: the tool supplies
+ * the same fields, and a dispatcher outside this package (the super agent's
+ * control tool) creates the task through the service instead of re-implementing
+ * the card, coverage, and idempotency rules.
+ */
+export interface DispatchTaskInput {
+  /** Workspace that owns both the task and the card. */
+  readonly workspaceId: string
+  /** What the task must achieve; required. */
+  readonly goal?: string
+  /** Short task title; defaults to the goal's first line. */
+  readonly title?: string
+  /** Checkable acceptance points; required. */
+  readonly acceptance?: readonly string[]
+  /** Boundaries the executor must respect; required. */
+  readonly boundaries?: readonly string[]
+  /** Expected deliverable items the card's output form requires. */
+  readonly outputForm?: readonly string[]
+  /** Active card the task is dispatched against; required. */
+  readonly intentId?: string
+  /** Card version the task is dispatched against; required. */
+  readonly intentVersion?: number
+  /** One mapping per card point; required unless `nonCoverage` waives it. */
+  readonly coverage?: readonly TaskCoverage[]
+  /** Explicit non-coverage for a card point, with the reason. */
+  readonly nonCoverage?: readonly TaskNonCoverage[]
+  /** Six-category task type; required. */
+  readonly taskType?: TaskType
+  /** Session expected to execute the task. */
+  readonly targetSessionId?: string
+  /** One-line note. */
+  readonly note?: string
+  /** Idempotency key; required. A retry returns the first task. */
+  readonly requestId?: string
+}
+
+/** Identity of the task one dispatch create call produced. */
+export interface DispatchTaskIdentity {
+  /** Workspace that owns the task. */
+  readonly workspace: string
+  /** Stable task id. */
+  readonly taskId: string
+  /** Task state after the call. */
+  readonly status: TaskStatus
+  /** ISO-8601 creation instant, absent on a replay. */
+  readonly createdAt?: string
+  /** Whether an idempotent retry replayed an earlier result. */
+  readonly replayed?: boolean
+}
+
 /** Caller-supplied update arguments after schema validation. */
 interface UpdateTaskInput {
   readonly taskId?: string
@@ -592,21 +645,62 @@ async function createTask(
   agent: Agent | undefined,
   signal: AbortSignal | undefined,
 ): Promise<WorkspaceTasksValue> {
-  if (agent?.role !== 'super') {
+  return await createDispatchTask(ctx, {
+    workspaceId: String(workspace.id),
+    ...args.goal === undefined ? {} : { goal: args.goal },
+    ...args.title === undefined ? {} : { title: args.title },
+    ...args.acceptance === undefined ? {} : { acceptance: args.acceptance },
+    ...args.boundaries === undefined ? {} : { boundaries: args.boundaries },
+    ...args.outputForm === undefined ? {} : { outputForm: args.outputForm },
+    ...args.intentId === undefined ? {} : { intentId: args.intentId },
+    ...args.intentVersion === undefined ? {} : { intentVersion: args.intentVersion },
+    ...args.coverage === undefined ? {} : { coverage: args.coverage },
+    ...args.nonCoverage === undefined ? {} : { nonCoverage: args.nonCoverage },
+    ...args.taskType === undefined ? {} : { taskType: args.taskType },
+    ...args.targetSessionId === undefined ? {} : { targetSessionId: args.targetSessionId },
+    ...args.note === undefined ? {} : { note: args.note },
+    ...args.requestId === undefined ? {} : { requestId: args.requestId },
+  }, {
+    dispatcher: agent?.role === 'super',
+    workspaceNamed: args.workspace !== undefined,
+    ...signal === undefined ? {} : { signal },
+  })
+}
+
+/**
+ * Create one dispatch task through the same card, coverage, and idempotency
+ * rules the `workspace_tasks.create` tool applies.
+ *
+ * The dispatcher verdict is a parameter rather than an Agent: the only
+ * non-tool caller is the super agent's own control tool, which the registry
+ * has already gated to the `super` role.
+ * @param ctx - context carrying the store and registry.
+ * @param input - complete create input; missing required fields refuse with `INTENT_INCOMPLETE`.
+ * @param options - the dispatcher verdict, whether the caller named a workspace, and cancellation.
+ * @returns the created or replayed task identity.
+ * @throws WorkspaceTaskError `WORKSPACE_TASK_FORBIDDEN` when the caller is not the dispatcher.
+ * @throws WorkspaceIntentError the card, coverage, or field refusal.
+ */
+export async function createDispatchTask(
+  ctx: Context,
+  input: DispatchTaskInput,
+  options: { readonly dispatcher: boolean; readonly workspaceNamed?: boolean; readonly signal?: AbortSignal },
+): Promise<DispatchTaskIdentity> {
+  if (!options.dispatcher) {
     throw new WorkspaceTaskError(
       'workspace_tasks.create requires the dispatcher role (the super agent); ordinary agents do not dispatch',
       'WORKSPACE_TASK_FORBIDDEN',
     )
   }
   const missing = [
-    args.workspace === undefined ? 'workspace' : undefined,
-    args.intentId === undefined ? 'intentId' : undefined,
-    args.intentVersion === undefined ? 'intentVersion' : undefined,
-    args.acceptance === undefined ? 'acceptance' : undefined,
-    args.boundaries === undefined ? 'boundaries' : undefined,
-    args.taskType === undefined ? 'taskType' : undefined,
-    args.goal === undefined ? 'goal' : undefined,
-    args.requestId === undefined ? 'requestId' : undefined,
+    options.workspaceNamed === false || input.workspaceId === '' ? 'workspace' : undefined,
+    input.intentId === undefined ? 'intentId' : undefined,
+    input.intentVersion === undefined ? 'intentVersion' : undefined,
+    input.acceptance === undefined ? 'acceptance' : undefined,
+    input.boundaries === undefined ? 'boundaries' : undefined,
+    input.taskType === undefined ? 'taskType' : undefined,
+    input.goal === undefined ? 'goal' : undefined,
+    input.requestId === undefined ? 'requestId' : undefined,
   ].filter((field): field is string => field !== undefined)
   if (missing.length > 0) {
     throw new WorkspaceIntentError(
@@ -614,27 +708,28 @@ async function createTask(
       'INTENT_INCOMPLETE',
     )
   }
-  const intentId = args.intentId as string
-  const intentVersion = args.intentVersion as number
-  const requestId = args.requestId as string
-  const taskId = taskIdFor(workspace.id, requestId)
-  const existing = await readTask(ctx, workspace.id, taskId, signal)
+  const workspaceId = input.workspaceId
+  const intentId = input.intentId as string
+  const intentVersion = input.intentVersion as number
+  const requestId = input.requestId as string
+  const taskId = taskIdFor(workspaceId, requestId)
+  const existing = await readTask(ctx, workspaceId, taskId, options.signal)
   if (existing !== undefined) {
     return {
-      workspace: String(workspace.id),
+      workspace: workspaceId,
       taskId: existing.task.taskId,
       status: existing.task.status,
       createdAt: existing.task.createdAt,
       replayed: true,
     }
   }
-  const card = await dispatchCard(ctx, workspace, intentId, intentVersion, signal)
-  const acceptance = [...args.acceptance as readonly string[]]
-  const boundaries = [...args.boundaries as readonly string[]]
-  const outputForm = [...args.outputForm ?? []]
-  const brief = [args.goal as string, ...acceptance, ...boundaries, ...outputForm]
-  const coverage = args.coverage === undefined ? undefined : [...args.coverage]
-  const nonCoverage = args.nonCoverage === undefined ? undefined : [...args.nonCoverage]
+  const card = await dispatchCard(ctx, workspaceId, intentId, intentVersion, options.signal)
+  const acceptance = [...input.acceptance as readonly string[]]
+  const boundaries = [...input.boundaries as readonly string[]]
+  const outputForm = [...input.outputForm ?? []]
+  const brief = [input.goal as string, ...acceptance, ...boundaries, ...outputForm]
+  const coverage = input.coverage === undefined ? undefined : [...input.coverage]
+  const nonCoverage = input.nonCoverage === undefined ? undefined : [...input.nonCoverage]
   const checked = checkCoverage(card.record.items, brief, coverage, nonCoverage)
   if (checked.unknown.length > 0) {
     throw new WorkspaceIntentError(
@@ -652,33 +747,59 @@ async function createTask(
   const now = new Date().toISOString()
   const task: TaskRecord = {
     taskId,
-    workspaceId: String(workspace.id),
-    title: args.title ?? oneLine(args.goal as string, 120),
-    goal: args.goal as string,
+    workspaceId,
+    title: input.title ?? oneLine(input.goal as string, 120),
+    goal: input.goal as string,
     acceptance,
     boundaries,
     ...outputForm.length === 0 ? {} : { outputForm },
     status: 'pending',
-    ...args.targetSessionId === undefined ? {} : { targetSessionId: args.targetSessionId },
+    ...input.targetSessionId === undefined ? {} : { targetSessionId: input.targetSessionId },
     intentId,
     intentVersion,
     ...coverage === undefined ? {} : { coverage },
     ...nonCoverage === undefined ? {} : { nonCoverage },
-    taskType: args.taskType,
+    taskType: input.taskType,
     createdAt: now,
     updatedAt: now,
     requestId,
-    ...args.note === undefined ? {} : { note: args.note },
+    ...input.note === undefined ? {} : { note: input.note },
     receipts: [],
     artifactIds: [],
   }
-  await writeTask(ctx, workspace.id, task)
+  await writeTask(ctx, workspaceId, task)
   return {
-    workspace: String(workspace.id),
+    workspace: workspaceId,
     taskId,
     status: 'pending',
     createdAt: now,
   }
+}
+
+/**
+ * Cancel a dispatch task whose Session never started, leaving a terminal task
+ * untouched. This keeps a refused dispatch from leaving a misleading `pending`
+ * record: only `pending` moves to `cancelled`.
+ * @param ctx - context carrying the store.
+ * @param input - the workspace, task, and reason recorded on the task.
+ * @param signal - cancellation for the store reads and writes.
+ * @returns whether the task moved to `cancelled`.
+ */
+export async function cancelDispatchTask(
+  ctx: Context,
+  input: { readonly workspaceId: string; readonly taskId: string; readonly reason: string },
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const stored = await readTask(ctx, input.workspaceId, input.taskId, signal)
+  if (stored === undefined || stored.task.status !== 'pending') return false
+  const task: TaskRecord = {
+    ...stored.task,
+    status: 'cancelled',
+    updatedAt: new Date().toISOString(),
+    note: oneLine(`dispatch did not start: ${input.reason}`, 240),
+  }
+  await writeTask(ctx, input.workspaceId, task, stored.version === undefined ? {} : { expected: stored.version })
+  return true
 }
 
 /**
@@ -688,7 +809,7 @@ async function createTask(
  * the caller sees `INTENT_SCOPE_MISMATCH` rather than a misleading
  * `INTENT_INCOMPLETE`.
  * @param ctx - context carrying the store and registry.
- * @param workspace - workspace that owns the task.
+ * @param workspaceId - workspace that owns the task.
  * @param intentId - card identity.
  * @param intentVersion - card version.
  * @param signal - cancellation for the store reads.
@@ -696,22 +817,22 @@ async function createTask(
  */
 async function dispatchCard(
   ctx: Context,
-  workspace: Workspace,
+  workspaceId: string,
   intentId: string,
   intentVersion: number,
   signal: AbortSignal | undefined,
 ): Promise<{ readonly index: IntentIndex; readonly record: IntentVersionRecord }> {
-  const stored = await readIntentIndex(ctx, workspace.id, intentId, signal)
+  const stored = await readIntentIndex(ctx, workspaceId, intentId, signal)
   if (stored === undefined) {
-    const owner = await findCardOwner(ctx, intentId, workspace.id, signal)
+    const owner = await findCardOwner(ctx, intentId, workspaceId, signal)
     if (owner !== undefined) {
       throw new WorkspaceIntentError(
-        `intent card ${JSON.stringify(intentId)} belongs to workspace ${String(owner.id)}, not ${String(workspace.id)}; a task must reference the card in its own workspace`,
+        `intent card ${JSON.stringify(intentId)} belongs to workspace ${owner}, not ${workspaceId}; a task must reference the card in its own workspace`,
         'INTENT_SCOPE_MISMATCH',
       )
     }
     throw new WorkspaceIntentError(
-      `workspace ${String(workspace.id)} holds no intent card ${JSON.stringify(intentId)}; create the card before dispatching`,
+      `workspace ${workspaceId} holds no intent card ${JSON.stringify(intentId)}; create the card before dispatching`,
       'INTENT_INCOMPLETE',
     )
   }
@@ -723,7 +844,7 @@ async function dispatchCard(
     )
   }
   if (summary.status === 'proposed') {
-    const proposed = await readCardRecord(ctx, workspace, intentId, intentVersion, signal)
+    const proposed = await readCardRecord(ctx, workspaceId, intentId, intentVersion, signal)
     const confirmation = confirmationRequest(intentId, intentVersion, proposed.items)
     throw new WorkspaceIntentError(
       `intent card ${intentId} v${String(intentVersion)} is proposed and not confirmed; dispatch is blocked until the user confirms it once`
@@ -737,14 +858,14 @@ async function dispatchCard(
       'INTENT_STALE',
     )
   }
-  const record = await readCardRecord(ctx, workspace, intentId, intentVersion, signal)
+  const record = await readCardRecord(ctx, workspaceId, intentId, intentVersion, signal)
   return { index: stored.index, record }
 }
 
 /**
  * Read one card version record, failing when the index points at a missing file.
  * @param ctx - context carrying the store.
- * @param workspace - workspace that owns the card.
+ * @param workspaceId - workspace that owns the card.
  * @param intentId - card identity.
  * @param version - version number.
  * @param signal - cancellation for the store read.
@@ -752,15 +873,15 @@ async function dispatchCard(
  */
 async function readCardRecord(
   ctx: Context,
-  workspace: Workspace,
+  workspaceId: string,
   intentId: string,
   version: number,
   signal: AbortSignal | undefined,
 ): Promise<IntentVersionRecord> {
-  const stored = await readIntentVersion(ctx, workspace.id, intentId, version, signal)
+  const stored = await readIntentVersion(ctx, workspaceId, intentId, version, signal)
   if (stored === undefined) {
     throw new WorkspaceRecordError(
-      `intent card ${intentId} v${String(version)} has no stored version in workspace ${String(workspace.id)}`,
+      `intent card ${intentId} v${String(version)} has no stored version in workspace ${workspaceId}`,
       'WORKSPACE_RECORD_CORRUPT',
     )
   }
@@ -773,25 +894,25 @@ async function readCardRecord(
  * @param intentId - card identity.
  * @param ownWorkspaceId - workspace that owns the task.
  * @param signal - cancellation for the store reads.
- * @returns the owning workspace, or undefined when no workspace has the card.
+ * @returns the owning workspace id, or undefined when no workspace has the card.
  */
 async function findCardOwner(
   ctx: Context,
   intentId: string,
-  ownWorkspaceId: Workspace['id'],
+  ownWorkspaceId: string,
   signal: AbortSignal | undefined,
-): Promise<Workspace | undefined> {
+): Promise<string | undefined> {
   for (const candidate of workspaceDirectory(ctx).list()) {
-    if (candidate.id === ownWorkspaceId) continue
+    if (String(candidate.id) === ownWorkspaceId) continue
     const stored = await readIntentIndex(ctx, candidate.id, intentId, signal)
     if (stored !== undefined) {
       ctx.logger.info(
         'workspace-tools: task in workspace %s referenced intent card %s owned by workspace %s',
-        String(ownWorkspaceId),
+        ownWorkspaceId,
         intentId,
         String(candidate.id),
       )
-      return candidate
+      return String(candidate.id)
     }
   }
   return undefined
@@ -1010,7 +1131,7 @@ async function doneGate(
       ),
     }
   }
-  const record = await readCardRecord(ctx, workspace, task.intentId, task.intentVersion, signal)
+  const record = await readCardRecord(ctx, String(workspace.id), task.intentId, task.intentVersion, signal)
   const checked: AlignmentCheck = checkAlignment(record.items, effective, task.intentId, task.intentVersion)
   if (checked.unknown.length > 0) {
     return {
@@ -1154,8 +1275,8 @@ function requireTaskId(taskId: string | undefined, action: string): string {
  * @param requestId - create idempotency key.
  * @returns the task id.
  */
-export function taskIdFor(workspaceId: Workspace['id'], requestId: string): string {
-  const digest = createHash('sha256').update(`${String(workspaceId)}\n${requestId}`).digest('hex')
+export function taskIdFor(workspaceId: string, requestId: string): string {
+  const digest = createHash('sha256').update(`${workspaceId}\n${requestId}`).digest('hex')
   return `task-${digest.slice(0, 16)}`
 }
 
