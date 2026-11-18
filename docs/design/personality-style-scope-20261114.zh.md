@@ -2,9 +2,9 @@
 
 [English](personality-style-scope-20261114.md) | 中文
 
-状态：已实现的决策为显式角色、690 门控（subagent 不注入）、普通与 super 独立样式槽，以及 100 条 / 240 字符 / 32 KiB 且常驻 40 条。本页的分层检索、702 抽取与本地化提案尚未开始，也没有阶段编号。下面的分析仍作为评估记录。
+状态：已实现的决策为显式角色、690 门控（subagent 不注入）、普通与 super 独立样式槽，以及 100 条 / 240 字符 / 32 KiB 且常驻 40 条。分层检索与本地化提案尚未开始，也没有阶段编号；702 抽取已随 702 与 JIRA 一起退场作废（原 `jira-agent` 包已删除），不再实施。下面的分析仍作为评估记录。
 
-本文回答三个产品方向：按 agent 类型门控、长期风格库，以及 section 690 与 section 702 之间的边界。它还记录了版本冲突决定：#5 remains description-only。
+本文回答三个产品方向：按 agent 类型门控、长期风格库，以及 section 690 与当时 section 702 之间的边界（702 已退场）。它还记录了版本冲突决定：#5 remains description-only。
 
 ## A. 长期风格库的额度
 
@@ -68,7 +68,7 @@ Section 690 对 `subagent` 不注入，只注册给普通 root 与 super root：
 - subagent：完全省略 section 690；保留现有的工具禁用。section 100 与 695 保持不变，除非另有决定认为 subagent 完全不需要 profile/writing rules。
 - 普通 root：一个干净的 output-style 槽位。
 - super agent root：一个独立的 output-style 槽位，包含派发/汇报纪律。
-- 不要从 cwd、工作区标题、是否出现 `super-agent control` 或 preset 名推断角色。这些都是可变/附属信息，会让 personality 依赖 jira 内部实现。应在创建 Session 的地方加入显式的 agent 角色信号，或暴露一个两个 capability 都能查询的小型角色服务。这是设计前提，不是可以藏在路径比较里的实现细节。
+- 不要从 cwd、工作区标题、是否出现某个已退场的工具名或 preset 名推断角色。这些都是可变/附属信息，会让 personality 依赖 JIRA 内部实现。应在创建 Session 的地方加入显式的 agent 角色信号，或暴露一个两个 capability 都能查询的小型角色服务。这是设计前提，不是可以藏在路径比较里的实现细节；后来落点是 `agent.options.role`。
 
 低改动的结构是：把 section 名/顺序 `personality:output-style` 保持在 690，并在 `sectionsFor` 内按角色选择来源：subagent → 不产出 section；普通 → `OUTPUT_STYLE.yaml`；super → 第二个存储，例如 `SUPERAGENT_OUTPUT_STYLE.yaml`。这样不新增 section 编号就能得到两个槽位。如果两段文本在组装后的提示词中必须处于不同位置，替代方案是单独的 order（例如 691），但这会改变 order 映射和所有顺序断言。
 
@@ -76,15 +76,15 @@ Section 690 对 `subagent` 不注入，只注册给普通 root 与 super root：
 
 两个槽位预计会立即分化。super 槽位从 dispatch 行和状态汇报纪律开始；普通槽位从干净状态开始。当二者进一步分化时，只有来源选择、各存储的 seed/默认值以及角色信号会变化。section 名与 order 可以保持 690；subagent 省略和工具禁用各仍是一个分支。渲染、section 顺序、角色选择以及提示词来源内容的测试必须覆盖两个来源；提示词参考文档必须同时展示两者。
 
-## C. Section 702 的边界
+## C. Section 702 的边界（已退场）
 
-当前 702 的文本有 31 行（`packages/jira/jira-agent/src/superagent.ts:116-199`）。下表按各 slot/契约行的实际角色分组。这里的“Output style”指的是关于 super agent 自己如何向人汇报或推理的规则，而不是关于被派发 worker 必须产出什么的规则。
+702（`superagent:dispatcher`）已随 JIRA 退场与原 `jira-agent` 包一起删除；JIRA 只保留 GitHub 上的 cloudstore 数据仓，按数据原样，不接入任何工具或流程。本节保留当时的评估记录：原 702 文本有 31 行，下表按各 slot/契约行的实际角色分组，第三列是当时的迁移建议，不再是现行设计。这里的“Output style”指的是关于 super agent 自己如何向人汇报或推理的规则，而不是关于被派发 worker 必须产出什么的规则。
 
-| 702 行号 / 前 20 个字符 | 分类 | 迁移影响 |
+| 702 行号 / 前 20 个字符 | 分类 | 当时的迁移建议 |
 |---|---|---|
 | L1 `You are the super ag` | 派发/角色 | 保留 702；移动它会改变该 section 所描述的对象。 |
 | L3 `The [superagent works` | 派发/上下文 | 保留 702；依赖运行时工作区上下文。 |
-| L4 `` `super-agent control` `` | 派发/安全 | 保留 702；action 顺序与写入警告。 |
+| L4（原调用已退场的会话控制工具） | 派发/安全 | 历史；该工具随 JIRA 退场删除。 |
 | L5 `A workspace brief has` | 派发 | 保留 702；brief 来源规则。 |
 | L7 `Brief slots (fill ev` | 派发模板 | 保留 702；移动它会拆散 brief 契约。 |
 | L13 `Result contract:` | 派发契约 | 保留 702；它描述被派发任务的输出，而不是 super agent 的行文。 |
@@ -107,9 +107,9 @@ Section 690 对 `subagent` 不注入，只注册给普通 root 与 super root：
 
 ### 合并还是保持分开
 
-**建议：702 大体保持分开；只把两条 output-style 规则（L19 与 L26）抽到 super agent 风格槽位。** 702 是 dispatcher 的角色/brief/安全契约；其中大部分不是风格库。被抽出的两条规则关于 super agent 如何总结和比较，因此属于 super 风格；抽取之后，702 应指向风格 section，而不是重复措辞。不要把 result contract、monitor 语义、权限或工作区角色并入风格库。
+**当时的建议（已作废）：702 大体保持分开；只把两条 output-style 规则（L19 与 L26）抽到 super agent 风格槽位。** 702 曾是 dispatcher 的角色/brief/安全契约；其中大部分不是风格库。被抽出的两条规则关于 super agent 如何总结和比较，因此属于 super 风格；抽取之后，702 应指向风格 section，而不是重复措辞。不要把 result contract、monitor 语义、权限或工作区角色并入风格库。
 
-这是一次**部分合并**：仅 super 使用的风格槽位负责行文/汇报纪律，而 702 保留派发工作流、角色与安全。普通风格库不得接收仅属 super 的纪律。
+当时计划的是一次**部分合并**：仅 super 使用的风格槽位负责行文/汇报纪律，而 702 保留派发工作流、角色与安全。702 已删除，该计划未实施；普通风格库不得接收仅属 super 的纪律。
 
 ## D. 工具结果与错误信息的本地化
 
@@ -146,7 +146,7 @@ Section 690 对 `subagent` 不注入，只注册给普通 root 与 super root：
 | 分层检索 | 新的检索工具/服务、提示词词汇、工具测试；文档与提示词参考 | 代码变更：是 |
 | 按 agent 类型门控 | `personality/src/index.ts`（`sectionsFor`、`loadBundle`）、`output-style.ts`/`defaults.ts`、Session 元数据或角色服务中的角色信号；`provider.spec`、`output-style.spec`、section 顺序测试 | 代码变更：是 |
 | 两个风格槽位 | 第二个全局存储的路径/seed；`index.ts` 的来源选择；角色选择测试；README 与提示词参考 | 代码变更：是 |
-| 702 抽取 | `superagent.ts` 文本；`superagent-brief.test.ts`；提示词参考与设计 §6 | 代码变更：是 |
+| 702 抽取（已退场） | 原 `jira-agent` 包已删除，不再有抽取改动 | 代码变更：否 |
 | 本地化 | `analyze.ts`、`apply.ts`、`writing-tool.ts`、`writing-rules.ts`、`global-store.ts`；新的 locale 来源；结果/错误测试；提示词参考 | 代码变更：是 |
 | 仅文档 | design/prompt 文档；无运行时影响 | 否 |
 
@@ -154,7 +154,7 @@ Section 690 对 `subagent` 不注入，只注册给普通 root 与 super root：
 
 ## 非目标与待定决策
 
-- 本轮不修改额度、不拆分 section、不新增角色字段、不新增检索，也不移动 702 文本。
+- 本轮不修改额度、不拆分 section、不新增角色字段、不新增检索；702 已退场，其文本不存在，也不再移动。
 - 普通与 super 槽位相互独立，且可以从一开始就不同；不计划为 subagent 提供只读的 `personality_apply`/`write_like_human` 变体。
 - super agent 角色信号是明确的前提；基于 cwd/标题/工具是否存在的启发式被否决。
 - 版本冲突项仍只写说明：写入在内部重试一次（`packages/uitstalie/personality/src/global-store.ts`），工具描述要求模型在第二次尝试前先 `list`（`packages/uitstalie/personality/src/writing-tool.ts`）。

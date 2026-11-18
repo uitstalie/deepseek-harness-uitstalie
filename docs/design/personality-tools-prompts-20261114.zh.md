@@ -21,7 +21,7 @@
 | section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`；注册 `packages/uitstalie/personality/src/api.ts:142-146` | preamble 391 字符；无条目时为空 |
 | section 690 `personality:output-style` | `src/output-style.ts:145-180`；默认 `src/defaults.ts:27-33` | 默认渲染 836 字符 / 15 行 |
 | section 695 `personality:writing-rules` | `packages/uitstalie/personality/src/writing-rules.ts:283-296`；注册 `packages/uitstalie/personality/src/api.ts:152-156` | 默认空文档为 0 字符；前 40 条启用规则常驻 |
-| section 702 `superagent:dispatcher` | `packages/jira/jira-agent/src/superagent.ts:116-199` | 本文不复制全文，只说明顺序 |
+| section 702 `superagent:dispatcher`（已退场） | 原 `jira-agent` 包；随 JIRA 退场删除 | 不再是现役 section，只保留历史记录 |
 | 顺序常量 | `packages/core/system-prompt/src/index.ts:139-144` | 100 / 690 / 695 |
 
 工具定义本身（3 个 description + 3 个参数 schema）约 **5,217 字符**；三个 section 的默认/静态文本约 **1,227 字符**（不含用户条目与规则）。
@@ -320,11 +320,11 @@ Status reporting discipline:
 
 默认没有启用任何 writing rule：`rules: []` 产生空 section，assembly 会丢弃它。额度为 **100 条**、**每条 240 字符**、**全文 32 KiB**（`writing-rules.ts:27-33`）；只有前 **40** 条启用规则常驻，其余写入后会在段内提示 `N rule(s) not injected: resident limit is 40.`。
 
-### 与 702 的顺序
+### 702 退场后的顺序
 
-`SUPERAGENT_SECTION` 的 `name` 是 `superagent:dispatcher`，`order` 是 **702**，只注册给 super agent（`packages/jira/jira-agent/src/superagent.ts:116-118`）。顺序为 **100 → 690 → 695 → 702**；702 之后是既有 runtime contexts 704（workspaces）、705（conventions）、706（running）。没有 703。
+原 `SUPERAGENT_SECTION`（`superagent:dispatcher`，order **702**）随 `jira-agent` 包删除；它当时只注册给 super agent，顺序是 **100 → 690 → 695 → 702**，之后是 704（workspaces）、705（conventions）、706（running）。当前固定顺序表只有 100（personality）、690（output-style）、695（writing-rules）；工作区目录由 workspace-tools 注册在 700，702、703 与 704–706 都不存在。
 
-702 本身不是 personality section，且约 80 行；本文只记录顺序，不复制全文，避免把 super agent 的完整常驻规则混入 personality 汇总。
+702 当时不属于 personality section，且约 80 行；本文只记录顺序，不复制全文。该 section 已删除。
 
 ## ④ 结果 / 错误 / 约束原文
 
@@ -407,7 +407,7 @@ WRITING_RULES.yaml holds ${String(record.rules.length)} rules, over the ${String
 ## ⑤ 未收录内容
 
 - `memory_forget` / `memory_resolve`：属于 memory 包（`packages/uitstalie/memory/src/tools.ts:243`、`:327`），不是 personality 设计范围，未收录。
-- section 702 全文：只收录顺序与来源，不复制 super agent 的完整 dispatcher 规则。
+- section 702（已退场）：只收录当时的顺序与来源；该 section 已随 `jira-agent` 包删除。
 - 用户数据：`PERSONALITY.md` 的实际条目、`OUTPUT_STYLE.yaml` 的实际值、`WRITING_RULES.yaml` 的启用规则均未复制；只给出模板、默认值和空 section 行为。
 - 工具 output schema：本任务要求参数 schema；输出 schema 未逐字展开，只收录模型可见的结果渲染模板。
 

@@ -2,9 +2,9 @@
 
 English | [中文](personality-style-scope-20261114.zh.md)
 
-Status: the implemented decisions are the explicit role, 690 gating (omitted for subagents), independent ordinary/super style slots, and 100 rules / 240 characters / 32 KiB with 40 resident. The tiered-retrieval, 702-extraction, and localization proposals in this page are not started and carry no stage numbering. The analysis below remains the evaluation record.
+Status: the implemented decisions are the explicit role, 690 gating (omitted for subagents), independent ordinary/super style slots, and 100 rules / 240 characters / 32 KiB with 40 resident. The tiered-retrieval and localization proposals in this page are not started and carry no stage numbering; the 702 extraction lapsed when 702 retired with JIRA (the former `jira-agent` package is deleted) and will not be implemented. The analysis below remains the evaluation record.
 
-This document answers three product directions: agent-type gating, a long-term style library, and the boundary between section 690 and section 702. It also records the version-conflict decision: #5 remains description-only.
+This document answers three product directions: agent-type gating, a long-term style library, and the boundary between section 690 and the former section 702 (702 is retired). It also records the version-conflict decision: #5 remains description-only.
 
 ## A. Quota for a long-term style library
 
@@ -68,7 +68,7 @@ Do not add a read-only variant. The context saved for a subagent is the two tool
 - Subagent: omit section 690 entirely; keep the existing tool ban. Keep sections 100 and 695 unchanged unless a separate decision says subagents need no profile/writing rules at all.
 - Ordinary root: one clean output-style slot.
 - Super-agent root: a distinct output-style slot containing dispatch/reporting discipline.
-- Do not infer the role from cwd, workspace title, presence of `super-agent control`, or a preset name. Those are mutable/incidental and would make personality depend on jira internals. Add an explicit agent-role signal where the Session is created, or expose a small role service that both capabilities can consult. This is a design prerequisite, not an implementation detail to hide in a path comparison.
+- Do not infer the role from cwd, workspace title, presence of a retired tool name, or a preset name. Those are mutable/incidental and would make personality depend on JIRA internals. Add an explicit agent-role signal where the Session is created, or expose a small role service that both capabilities can consult. This is a design prerequisite, not an implementation detail to hide in a path comparison; the eventual landing point is `agent.options.role`.
 
 A low-churn structure is to keep the section name/order `personality:output-style` at 690 and choose the source by role inside `sectionsFor`: subagent → no section; ordinary → `OUTPUT_STYLE.yaml`; super → a second store such as `SUPERAGENT_OUTPUT_STYLE.yaml`. This gives two slots without a new section number. If the two texts must have different positions in the assembled prompt, a separate order (for example 691) is the alternative, but it changes the order map and all order assertions.
 
@@ -76,15 +76,15 @@ A low-churn structure is to keep the section name/order `personality:output-styl
 
 The two slots are expected to diverge immediately. The super slot starts with the dispatch line and the status-reporting discipline; the ordinary slot starts clean. When they diverge further, only the source selection, each store's seed/default, and the role signal change. The section name and order can remain 690; subagent omission and the tool ban remain one branch each. Tests for rendering, section order, role selection, and prompt-source contents must cover both sources; the prompt reference document must show both.
 
-## C. Section 702 boundary
+## C. Section 702 boundary (retired)
 
-The current 702 text has 31 lines (`packages/jira/jira-agent/src/superagent.ts:116-199`). The table groups the slots/contract lines by their actual role. “Output style” here means a rule about how the super agent itself reports or reasons to the person, not a rule about what a dispatched worker must produce.
+702 (`superagent:dispatcher`) was deleted with the JIRA retirement and the former `jira-agent` package; JIRA keeps only the cloudstore data repository on GitHub, its content and history, as data, not connected to any tool or process. This section preserves the evaluation record of the time: the former 702 text had 31 lines, the table groups its slots/contract lines by their actual role, and the third column is the migration advice of the time, no longer the current design. “Output style” here means a rule about how the super agent itself reports or reasons to the person, not a rule about what a dispatched worker must produce.
 
-| 702 line / first 20 chars | Classification | Migration impact |
+| 702 line / first 20 chars | Classification | Migration impact at the time |
 |---|---|---|
 | L1 `You are the super ag` | Dispatch/role | Keep 702; moving it would change who the section describes. |
 | L3 `The [superagent works` | Dispatch/context | Keep 702; depends on runtime workspace context. |
-| L4 `` `super-agent control` `` | Dispatch/safety | Keep 702; action ordering and write warnings. |
+| L4 (the line that called the retired session-control tool) | Dispatch/safety | Historical; the tool was removed with JIRA. |
 | L5 `A workspace brief has` | Dispatch | Keep 702; brief-source rule. |
 | L7 `Brief slots (fill ev` | Dispatch template | Keep 702; moving it would split the brief contract. |
 | L13 `Result contract:` | Dispatch contract | Keep 702; it describes the dispatched task's output, not the super agent's prose. |
@@ -107,9 +107,9 @@ The current 702 text has 31 lines (`packages/jira/jira-agent/src/superagent.ts:1
 
 ### Merge versus keep separate
 
-**Recommendation: keep 702 mostly separate; extract only the two output-style rules (L19 and L26) into the super-agent style slot.** 702 is the dispatcher's role/brief/safety contract; most of it is not a style library. The two extracted rules are about how the super agent summarizes and compares, so they belong to the super style; after extraction, 702 should point to the style section rather than duplicate the wording. Do not merge the result contract, monitor semantics, permissions, or workspace role into the style library.
+**Recommendation at the time (void): keep 702 mostly separate; extract only the two output-style rules (L19 and L26) into the super-agent style slot.** 702 was the dispatcher's role/brief/safety contract; most of it was not a style library. The two extracted rules are about how the super agent summarizes and compares, so they belong to the super style; after extraction, 702 should point to the style section rather than duplicate the wording. Do not merge the result contract, monitor semantics, permissions, or workspace role into the style library.
 
-This is a **partial merge**: a super-only style slot owns prose/reporting discipline, while 702 keeps dispatch workflow, role, and safety. The ordinary style library must not receive super-only discipline.
+The planned step was a **partial merge**: a super-only style slot owns prose/reporting discipline, while 702 keeps dispatch workflow, role, and safety. 702 is deleted, so the plan was not implemented; the ordinary style library must not receive super-only discipline.
 
 ## D. Localization of tool results and errors
 
@@ -146,7 +146,7 @@ These strings are tool **return values**, not UI copy. The model reads the rende
 | Tiered retrieval | new lookup tool/service, prompt vocabulary, tool tests; docs and prompt reference | Code change: yes |
 | Agent gating | `personality/src/index.ts` (`sectionsFor`, `loadBundle`), `output-style.ts`/`defaults.ts`, a role signal in the Session metadata or role service; `provider.spec`, `output-style.spec`, section-order tests | Code change: yes |
 | Two style slots | second global store path/seed; `index.ts` source selection; role-selection tests; README and prompt reference | Code change: yes |
-| 702 extraction | `superagent.ts` text; `superagent-brief.test.ts`; prompt reference and design §6 | Code change: yes |
+| 702 extraction (retired) | The former `jira-agent` package is deleted; no extraction change remains | Code change: no |
 | Localization | `analyze.ts`, `apply.ts`, `writing-tool.ts`, `writing-rules.ts`, `global-store.ts`; new locale source; result/error tests; prompt reference | Code change: yes |
 | Documentation only | design/prompt docs; no runtime effect | No |
 
@@ -154,7 +154,7 @@ All code or prompt changes require a rebuild and restart of the running harness.
 
 ## Non-goals and open decisions
 
-- This round does not change quotas, split sections, add a role field, add retrieval, or move 702 text.
+- This round does not change quotas, split sections, add a role field, or add retrieval; 702 is retired, its text no longer exists, and nothing moves it.
 - The ordinary and super slots are independent and may differ from the start; no read-only `personality_apply`/`write_like_human` variant is planned for subagents.
 - The super-agent role signal is an explicit prerequisite; cwd/title/tool-presence heuristics are rejected.
 - The version-conflict item remains description-only: writes retry once internally (`packages/uitstalie/personality/src/global-store.ts`) and the model is told to `list` before a second attempt (`packages/uitstalie/personality/src/writing-tool.ts`).

@@ -2,7 +2,7 @@
 
 English | [中文](dafeiyu-personality-plugin.zh.md)
 
-Status: implemented (Phase 4–6, 2026-11-13). The removal list in 2.1.1 records what the rewrite deleted; the legacy-data rules in 2.2 still apply, and §12 lists what stays out of scope.
+Status: implemented (Phases 4–6, 2026-11-13). The removal list in 2.1.1 records the surfaces dropped by this rewrite; the old-data rules in 2.2 still apply, and §12 lists what is out of scope. JIRA and 702 are retired (only the cloudstore data repository on GitHub, its content and history, is kept as data, not connected); the 702/704–706 rows in §4 and all of §6 are historical records only.
 
 ## 0. 7 decisions and corresponding changes
 
@@ -12,7 +12,7 @@ Status: implemented (Phase 4–6, 2026-11-13). The removal list in 2.1.1 records
 | 2. Cancel turn-end automatic learning | Remove the regex and `onTurnEnd` learning; replace them with a tool that scans session records and produces candidates and evidence | Remove automatic learning, the `autoLearn` budget, and the automatic write path of `personality_learn` |
 | 3. Users can invoke analysis explicitly | The `personality_analyze` tool analyzes the current, specified, or most recent N sessions and returns only candidates without changing files; it runs only when the user asks | Remove the implicit path of "learning in the background only at turn end" |
 | 4. Drop the old personality directly | Remove the old code; move the old `PERSONALITY.md` to a read-only legacy backup, then never parse or migrate it; the new implementation starts empty | Remove the approach of "adding scope/compatibility layers/old-data migration on top of the old implementation" |
-| 5. Merge dispatch rules into the super agent system prompt/rules | Write them directly into the existing `SUPERAGENT_SECTION` (702), at the same layer as the existing rules | Add no separate `703` section, no separate data file, and no second brief injection mechanism; none exists in HEAD |
+| 5. Merge dispatch rules into the super agent system prompt/rules | The plan was to write them into the existing `SUPERAGENT_SECTION` (702); that section was deleted with the JIRA retirement and the former `jira-agent` package, so the plan is void | Add no separate `703` section, no separate data file, and no second brief injection mechanism; none exists in HEAD |
 | 6. Turn write-like-human into a tool with customizable prompt rules | The new `write_like_human` tool manages a global rules file and injects the rules into the prompt; the tool handles CRUD/enable/disable/preview | No skill-only implementation or blacklist file exists in HEAD; write-like-human is added as a tool, not renamed from a skill |
 | 7. Use `output-style` for the config | The config object, file names, section name, and test fixtures all use `output-style`/`outputStyle`; `persona` remains the deployment persona prefix and persona-card concept, not this config | `output-summary` is not a current name; do not introduce it, and do not rename the separate `persona` concepts |
 
@@ -23,7 +23,7 @@ The four modules keep their division of responsibilities, but all their forms ch
 | Module | Form | Location |
 |---|---|---|
 | user-input | Global personality data + `personality_analyze` / `personality_apply` tools | `PERSONALITY.md`, section 100 |
-| super-agent-dispatch | Part of the existing super agent static rules | `SUPERAGENT_SECTION`, section 702 |
+| super-agent-dispatch | Retired: was part of the existing super agent static rules | The former `SUPERAGENT_SECTION` (702), deleted with JIRA and the `jira-agent` package |
 | write-like-human | Tool + rules file + injection section | `WRITING_RULES.yaml`, section 695 |
 | output-style | Global config + injection section | `OUTPUT_STYLE.yaml`, section 690 |
 
@@ -210,13 +210,9 @@ interface WritingRulesDocument {
 | 600 | `TEAM_POLICY` | section | all | Team policy |
 | 690 | `personality:output-style` | section | root agents (not `subagent`) | output-style default expression |
 | 695 | `personality:writing-rules` | section | all | Enabled write-like-human rules |
-| 702 | `superagent:dispatcher` | section | super agent | Existing rules + merged brief rules |
-| 704 | `superagent:workspaces` | runtime context | super agent | Registered workspaces, rebuilt per request |
-| 705 | `superagent:conventions` | runtime context | super agent | Workspace conventions, updated when files change |
-| 706 | `superagent:running` | runtime context | super agent | Long-task status, rebuilt per request |
 | 1000+ | Tool sections | section | all | Tool descriptions |
 
-**There is no 703 and no `dispatch-brief.md` in HEAD.** Do not add a separate section or data file. The three new names are `PERSONALITY` (100), `PERSONALITY_OUTPUT_STYLE` (690), and `PERSONALITY_WRITING_RULES` (695); all three are added to `SECTION_ORDERS` and resolved through `getSectionOrder`.
+**702, 703, and 704–706 do not exist.** 702 and 704–706 were deleted with the JIRA retirement, and there is no `dispatch-brief.md`; do not add a separate dispatch section or data file. The current fixed table ends at 695, and workspace-tools registers the workspace directory at 700. The three new names are `PERSONALITY` (100), `PERSONALITY_OUTPUT_STYLE` (690), and `PERSONALITY_WRITING_RULES` (695); all three are added to `SECTION_ORDERS` and resolved through `getSectionOrder`.
 
 ### 4.2 Cache impact
 
@@ -225,10 +221,8 @@ interface WritingRulesDocument {
 | `PERSONALITY.md` entry changes | From 100 | Happens only after the user confirms `personality_apply`, low frequency; no background automatic writes |
 | `OUTPUT_STYLE.yaml` changes | From 690 | Edited by a person, low frequency |
 | `WRITING_RULES.yaml` changes | From 695 | Tool CRUD, bounded by size limits; invalidated only by enable/order/text changes |
-| `SUPERAGENT_SECTION` changes | From 702 | Static rules, deployment-level changes |
-| runtime context | 704–706 | Rebuilt per request; does not affect the system prefix |
 
-Rule files must not contain timestamps, seqs, current task names, or other volatile content; these go only in tool results or runtime context.
+The rule file must not contain timestamps, seqs, current task names, or other volatile content; those belong only in tool results or runtime context. 702 and 704–706 were deleted with the JIRA retirement, so they no longer have a cache-invalidation range.
 
 ## 5. user-input: tool-based collection and confirmation
 
@@ -352,15 +346,15 @@ interface ApplyResult {
 - With many sessions, reading `recent` is expensive; limit it to 20, truncate results, and set `truncated`.
 - A single global file has no overlay, so workspace-specific preferences can only rely on the current turn's instructions; this is the explicit cost of decision 1.
 
-## 6. super-agent-dispatch: merged into existing rules
+## 6. super-agent-dispatch: retired
 
 ### 6.1 Form
 
-**Modify the text of the existing `SUPERAGENT_SECTION` (order 702) directly**, writing the brief template into the same section. There is no separate section, no `dispatch-brief.md`, and no new injection mechanism.
+**The plan was to modify the text of the existing `SUPERAGENT_SECTION` (order 702) directly**, writing the brief template into the same section; that section was deleted with the JIRA retirement and the former `jira-agent` package, so this section's plan no longer applies. The current dispatch and return contract is in the [memory and workspace design](memory-scoping.md) section 6.5, and role and prompt ownership is in the [agent role model](agent-role-model-20261114.md). There is no separate section, no `dispatch-brief.md`, and no new injection mechanism — and none is needed now.
 
 ### 6.2 Rule content
 
-Append the fixed template after the existing rule that "a brief has only two sources and must not invent standards":
+The plan was to append the fixed template after the existing rule that "a brief has only two sources and must not invent standards":
 
 ```text
 Brief slots (fill every slot; no slot has a default):
@@ -377,22 +371,22 @@ Result contract:
 - Do not require memory_search; do not modify ACLs, admin permissions, or system directories.
 ```
 
-- This template is at the same layer as the existing rules; `SUPERAGENT_SECTION` remains the only source.
+- At the time the template sat at the same layer as the existing rules; that section is deleted, and the template content is now expressed by intent cards and the `workspace_tasks` coverage map.
 - 2026-11-14 user decision: comparison, selection, and A/B acceptance must give per-dimension verdicts with numeric evidence, name which dimension improves or worsens and under what condition, and mark unmeasured dimensions "untested + why"; a single "better overall" verdict is forbidden.
 - 2026-11-14 user criticism: do not dispatch implementation paths, commands, or step lists; give only goal, acceptance, and boundaries, and offer a method only when the workspace says it cannot start.
-- Relationships with `superagent:workspaces` (704), `superagent:conventions` (705), and `superagent:running` (706): 702 is the static rule; 704 provides workspace identity; 705 provides the target workspace conventions, and 702 requires citing them; 706 provides long-task status. No new order.
-- On conflict, 702's "two sources, do not invent standards" takes priority over any wording in the template; the template is only an execution form.
+- The 704 (workspace identity), 705 (target workspace conventions), and 706 (long-task status) sections of the time were deleted with JIRA together with 702; that relationship no longer holds, and there is no new order.
+- At the time, 702's "two sources, do not invent standards" took priority over any wording in the template; the template was only an execution form. That priority ended with the 702 retirement.
 
-### 6.3 Acceptance (3 items)
+### 6.3 Acceptance at the time (void, 3 items)
 
-1. `SUPERAGENT_SECTION` text contains the four slots, `status/task_id`, `artifacts/checks`, the `interactive ask` prohibition, `memory_search` not required, and the ACL prohibition; an ordinary workspace agent's prompt does not contain these super agent rules.
-2. No new `703` section is added; the section order remains 702 and runtime context remains 704–706; the test asserts that the assembly has no `superagent:brief-template`.
-3. All hard rules of the existing `superagent-brief.test.ts` still match; a new fixture writing "counts only, no names" is still covered by "never invent a standard".
+1. At the time, `SUPERAGENT_SECTION` text was required to contain the four slots, `status/task_id`, `artifacts/checks`, the `interactive ask` prohibition, `memory_search` not required, and the ACL prohibition; that section is deleted, so this item is no longer accepted.
+2. At the time no new `703` section was added; 702 and 704–706 were all deleted with JIRA, so this item is no longer accepted.
+3. The former `superagent-brief.test.ts` was deleted with the `jira-agent` package, so this item is no longer accepted.
 
 ### 6.4 Risks
 
-- The rule text grows, increasing the fixed per-request cost for the super agent; this is the cost of merging the template into 702.
-- 702 is already large; implement only the necessary slots and failure constraints, and do not copy the content of `superagent:conventions` again.
+- At the time the growing rule text was expected to increase the fixed per-request cost for the super agent; 702 is deleted, so that cost does not exist.
+- 702 was already large at the time; only the necessary slots and failure constraints were to be added, without copying the content of `superagent:conventions` again. That constraint ended with the section's deletion.
 
 ## 7. write-like-human: rules tool
 
@@ -454,10 +448,9 @@ Highest to lowest:
 
 1. Platform/system/approval/sandbox.
 2. Explicit user instructions in the current turn ("do not use that rule this time").
-3. superagent hard rules and workspace conventions (702/705).
-4. writing rules (695) — concrete output rules.
-5. `style` entries in `PERSONALITY.md` (100) — concrete scenario rules.
-6. output-style defaults (690).
+3. writing rules (695) — concrete output rules.
+4. `style` entries in `PERSONALITY.md` (100) — concrete scenario rules.
+5. output-style defaults (690).
 
 writing rules cannot override the first two layers; when they conflict with output-style, the concrete writing rule wins; when they are at the same level as `style` entries, the rule with the more specific id comes first, and the design asks the section text to state that "more specific rules take priority". The current renderer emits only the rule lines (`packages/uitstalie/personality/src/writing-rules.ts:283-296`), so that sentence is not implemented.
 
@@ -465,7 +458,7 @@ writing rules cannot override the first two layers; when they conflict with outp
 
 1. **CRUD**: after `add` → `list` → `update` → `disable` → `remove`, the file keeps only the expected rules; disabled rules do not appear in `preview`/the section; after `remove` the section does not contain that rule.
 2. **Limits/injection**: writes are allowed within the 100-rule/32 KiB boundary, and beyond it are rejected without changing the file; section order is 695, sorted by order/id, and an empty set produces no text.
-3. **Conflict**: a fixture has both output-style "terse" and a writing rule "explain in detail"; the section text specifies that the writing rule wins; a fixture has both a superagent hard rule and a writing rule, and the hard rule wins. The tool does not modify 702.
+3. **Conflict**: a fixture has both output-style "terse" and a writing rule "explain in detail"; the section text specifies that the writing rule wins; the tool does not modify any super agent section (the former 702 is retired).
 
 ### 7.6 Risks
 
@@ -512,7 +505,7 @@ Fixed status constraints (not disabled by configuration):
 ### 8.3 Acceptance (3 items)
 
 1. **Naming**: code, configuration, sections, and fixtures use `output-style`/`outputStyle`; `output-summary` must not appear; `persona` is allowed only for the existing deployment persona prefix and persona-card concepts. All `outputStyle` fields parse, and unknown enums are rejected.
-2. **Order/scope**: section order 690, present for ordinary and super roots (a `subagent` receives no 690); before `SUPERAGENT_SECTION` (702); `style` entries are at 100, and concrete rules take priority.
+2. **Order/scope**: section order 690, present for ordinary and super roots (a `subagent` receives no 690); before writing rules 695 and the workspace directory 700; `style` entries are at 100, and concrete rules take priority.
 3. **Hard boundary/status**: the section matches "never overrides safety, approval, sandbox, tool permission, or workspace rules"; given a "report pending" fixture, the fixed status constraints forbid "completed/reported".
 
 ### 8.4 Risks
@@ -543,8 +536,7 @@ Fixed status constraints (not disabled by configuration):
       → section 690 下次 assembly 生效
 
 super agent 派发
-  → SUPERAGENT_SECTION 702（含 brief 模板）
-  → runtime context 704–706（工作区/约定/长任务）
+  → 已退场：原 SUPERAGENT_SECTION 702（含 brief 模板）与 704–706 都不存在
 ```
 
 ## 10. Implementation order
@@ -555,7 +547,7 @@ super agent 派发
 | 2 | Build the new global `PERSONALITY.md` data layer + `personality_analyze` / `personality_apply` + section 100 | user-input is the foundation of the new design; the other modules depend on the global data model | 1 |
 | 3 | `output-style` configuration + section 690 | Depends on global configuration and section order; independent of tools | 2 |
 | 4 | `write_like_human` tool + `WRITING_RULES.yaml` + section 695 | Needs section order and the global write path; CRUD can be tested independently | 2 |
-| 5 | Merge the brief template into `SUPERAGENT_SECTION` | Changes only the 702 text; depends on the existing superagent rules and runtime context | None (can run in parallel with 2–4, but test conflicts last) |
+| 5 (void) | Merge the brief template into `SUPERAGENT_SECTION` | 702 was deleted with the JIRA retirement and is not implemented | — |
 | 6 | Integration tests: injection order, caching, global paths, old-data backup/warnings | Per-module tests cannot prove priority and global constraints | 1–5 |
 
 Do 1 first because "drop the old implementation directly" is the highest constraint; if the old code remains, other modules will be polluted by old tools/old sections.
@@ -569,8 +561,8 @@ Do 1 first because "drop the old implementation directly" is the highest constra
 | Old personality implementation | `packages/uitstalie/personality` | Delete the old provider/tools/commands/proposals/overlay; put the new implementation in the same package or a new one, and per decision 4 do not reuse the old API |
 | Old UI | `packages/uitstalie/ui-personality` | Remove the old proposal pages/settings fields; build new output-style/writing-rules pages separately |
 | Organizer | `packages/uitstalie/dafeiyu` | The new personality can still register as a capability; tools and sections use the existing contribution |
-| prompt order | `packages/core/system-prompt` | 100/690/695/702 reuse/add fixed orders; do not change mechanisms outside the fixed table |
-| super agent rules | `packages/jira/jira-agent` | Change only the `SUPERAGENT_SECTION` text; add no section and no `703` |
+| prompt order | `packages/core/system-prompt` | 100/690/695 reuse/add fixed orders; workspace-tools registers the workspace directory at 700; 702 is retired, and mechanisms outside the fixed table do not change |
+| super agent rules (retired) | The former `jira-agent` package, deleted | No change needed; the current dispatch and return contract is in the [memory and workspace design](memory-scoping.md) section 6.5 |
 | Global file service | `packages/uitstalie/store-atom`, `packages/fs/fs` | Global `$DSH_HOME` reads/writes, version guard, file watching |
 | web mounting | `packages/bundle/web-app/cordis.patch.uitstalie.yml` | Replace old personality/UI lines; new tools and pages need new lines |
 
@@ -596,9 +588,9 @@ No new skill directory is needed, and `skill-filesystem`/`tool-skill` need no ch
 - Do not build workspace override/overlay/scope; do not write workspace personality.
 - Do not build turn-end automatic learning, regexes, background scanning, or automatic writes.
 - Do not migrate old data; do not delete old data; do not keep old API compatibility aliases.
-- Do not build a separate dispatch section/data file/`703`.
+- Do not build a separate dispatch section/data file/`703`; the former 702 is retired, and no dispatch section is restored.
 - Do not build skill-only write-like-human; do not add a skill directory.
-- Do not change superagent runtime context mechanisms outside `SUPERAGENT_SECTION`.
+- Do not change superagent runtime context mechanisms; 702 and 704–706 were deleted with the JIRA retirement.
 - Do not delete `PERSONALITY.history.jsonl` / `PERSONALITY.proposals.jsonl`; leave them in place.
 - Do not build multi-user/multi-workspace personality isolation.
 

@@ -2,7 +2,7 @@
 
 [English](dafeiyu-personality-plugin.md) | 中文
 
-状态：已实施（Phase 4–6，2026-11-13）。2.1.1 的删除清单记录本次重写删掉的面；2.2 的旧数据处理规则仍然有效，§12 列出不在本次范围内的内容。
+状态：已实施（Phase 4–6，2026-11-13）。2.1.1 的删除清单记录本次重写删掉的面；2.2 的旧数据处理规则仍然有效，§12 列出不在本次范围内的内容。JIRA 与 702 已退场（只保留 GitHub 上的 cloudstore 数据仓，按数据原样，不接入）；§4 的 702/704–706 行与 §6 只保留历史记录。
 
 ## 0. 7 条裁决与对应改动
 
@@ -12,7 +12,7 @@
 | 2. 取消 turn-end 自动学习 | 删除正则和 `onTurnEnd` 学习；改为工具扫描会话记录，产出候选与证据 | 删除自动学习、`autoLearn` 预算、`personality_learn` 的自动写入路径 |
 | 3. 用户可主动调用分析 | `personality_analyze` 工具，按当前/指定/最近 N 个会话分析，只返回候选，不改文件；用户说跑才跑 | 删除“只在 turn end 后台学习”的隐式路径 |
 | 4. 旧 personality 直接 drop | 旧代码移除；旧 `PERSONALITY.md` 移动到只读 legacy 备份后不再解析、不迁移；新实现从空开始 | 删除“在旧实现上加 scope/兼容层/旧数据迁移”的方案 |
-| 5. dispatch 规则并入 super agent 系统提示词/规则 | 直接写进现有 `SUPERAGENT_SECTION`（702），与现有规则同层 | 不新增独立 `703` section、独立数据文件或第二套 brief 注入机制；HEAD 中也没有这些对象 |
+| 5. dispatch 规则并入 super agent 系统提示词/规则 | 原计划写进 `SUPERAGENT_SECTION`（702）；该 section 已随 JIRA 退场与原 `jira-agent` 包删除，计划作废 | 不新增独立 `703` section、独立数据文件或第二套 brief 注入机制；HEAD 中也没有这些对象 |
 | 6. write-like-human 改为可定制 prompt 规则的工具 | 新工具 `write_like_human` 管理全局规则文件，规则注入 prompt；工具负责增删改查/启停/预览 | HEAD 中没有 skill-only 实现或黑名单文件；write-like-human 是新增工具，不是把旧 skill 改名 |
 | 7. 配置统一用 `output-style` | 配置对象、文件名、section 名、测试 fixture 全部用 `output-style`/`outputStyle`；`persona` 仍是 deployment persona 前缀和 persona-card 的概念，不是这个配置 | `output-summary` 不是当前名字；不要引入它，也不要重命名独立的 `persona` 概念 |
 
@@ -23,7 +23,7 @@
 | 模块 | 形态 | 位置 |
 |---|---|---|
 | user-input | 全局 personality 数据 + `personality_analyze` / `personality_apply` 工具 | `PERSONALITY.md`，section 100 |
-| super-agent-dispatch | 现有 super agent 静态规则的一部分 | `SUPERAGENT_SECTION`，section 702 |
+| super-agent-dispatch | 已退场：原是 super agent 静态规则的一部分 | 原 `SUPERAGENT_SECTION`（702），随 JIRA 与 `jira-agent` 包删除 |
 | write-like-human | 工具 + 规则文件 + 注入 section | `WRITING_RULES.yaml`，section 695 |
 | output-style | 全局配置 + 注入 section | `OUTPUT_STYLE.yaml`，section 690 |
 
@@ -210,13 +210,9 @@ interface WritingRulesDocument {
 | 600 | `TEAM_POLICY` | section | all | 团队策略 |
 | 690 | `personality:output-style` | section | root agent（不含 `subagent`） | output-style 默认表达 |
 | 695 | `personality:writing-rules` | section | all | 已启用的 write-like-human 规则 |
-| 702 | `superagent:dispatcher` | section | super agent | 现有规则 + 并入的 brief 规则 |
-| 704 | `superagent:workspaces` | runtime context | super agent | 注册工作区，每请求重建 |
-| 705 | `superagent:conventions` | runtime context | super agent | 工作区约定，文件变化时更新 |
-| 706 | `superagent:running` | runtime context | super agent | 长任务状态，每请求重建 |
 | 1000+ | 工具 section | section | all | 工具说明 |
 
-**HEAD 中没有 703，也没有 `dispatch-brief.md`。** 不要新增独立 section 或数据文件。三个新名字是 `PERSONALITY`（100）、`PERSONALITY_OUTPUT_STYLE`（690）、`PERSONALITY_WRITING_RULES`（695）；三者都加进 `SECTION_ORDERS`，并通过 `getSectionOrder` 解析。
+**702、703 与 704–706 都不存在。** 702 与 704–706 随 JIRA 退场删除，也没有 `dispatch-brief.md`；不要新增独立 dispatch section 或数据文件。当前固定表只到 695，工作区目录由 workspace-tools 注册在 700。三个新名字是 `PERSONALITY`（100）、`PERSONALITY_OUTPUT_STYLE`（690）、`PERSONALITY_WRITING_RULES`（695）；三者都加进 `SECTION_ORDERS`，并通过 `getSectionOrder` 解析。
 
 ### 4.2 缓存影响
 
@@ -225,10 +221,8 @@ interface WritingRulesDocument {
 | `PERSONALITY.md` 条目变化 | 从 100 起 | 只在用户确认 `personality_apply` 后发生，低频；无后台自动写 |
 | `OUTPUT_STYLE.yaml` 变化 | 从 690 起 | 人编辑，低频 |
 | `WRITING_RULES.yaml` 变化 | 从 695 起 | 工具 CRUD，受体积上限约束；只有启用/顺序/文本变化才失效 |
-| `SUPERAGENT_SECTION` 变化 | 从 702 起 | 静态规则，部署级变化 |
-| runtime context | 704–706 | 每请求重建，不影响 system prefix |
 
-规则文件不允许时间戳、seq、当前任务名等易变内容；这些只放工具结果或 runtime context。
+规则文件不允许时间戳、seq、当前任务名等易变内容；这些只放工具结果或 runtime context。702 与 704–706 已随 JIRA 退场删除，不再有对应的缓存失效范围。
 
 ## 5. user-input：工具化收集与确认
 
@@ -352,15 +346,15 @@ interface ApplyResult {
 - 会话很多时 `recent` 的读取成本高；限制 20 个、结果截断并给 `truncated`。
 - 全局单文件没有 overlay，工作区特殊偏好只能靠当前轮指令；这是裁决 1 的明确代价。
 
-## 6. super-agent-dispatch：并入现有规则
+## 6. super-agent-dispatch：已退场
 
 ### 6.1 形态
 
-**直接修改现有 `SUPERAGENT_SECTION`（order 702）的文本**，把 brief 模板写进同一节。没有独立 section、没有 `dispatch-brief.md`、没有新的注入机制。
+**原计划直接修改 `SUPERAGENT_SECTION`（order 702）的文本**，把 brief 模板写进同一节；该 section 已随 JIRA 退场与原 `jira-agent` 包删除，本节记录的计划不再适用。现行派发与回传契约见 [记忆/工作区设计](memory-scoping.zh.md) 6.5 节，角色与提示词归属见 [agent 角色模型](agent-role-model-20261114.zh.md)。没有独立 section、没有 `dispatch-brief.md`、没有新的注入机制，也因此不需要再新增。
 
 ### 6.2 规则内容
 
-在现有“brief 只有两个来源、不许发明标准”的规则后，追加固定模板：
+当时计划在既有“brief 只有两个来源、不许发明标准”的规则后追加固定模板：
 
 ```text
 Brief slots (fill every slot; no slot has a default):
@@ -377,22 +371,22 @@ Result contract:
 - Do not require memory_search; do not modify ACLs, admin permissions, or system directories.
 ```
 
-- 该模板与现有规则同层；`SUPERAGENT_SECTION` 仍是唯一来源。
+- 当时该模板与既有规则同层；该 section 已删除，模板内容现由意图卡与 `workspace_tasks` 的覆盖映射表达。
 - 2026-11-14 用户裁定：方案比较、选型与 A/B 评估的验收必须按维度给结论和数值依据，写明哪个维度变好/变差及条件，测不出来的维度写“未测 + 原因”；禁止单一“综合更好”结论。
 - 2026-11-14 用户批评：不许在派单里给实现路径、命令或步骤清单；只给目标、验收和边界，只有工作区明确说不知道怎么下手时才给做法。
-- 与 `superagent:workspaces`（704）、`superagent:conventions`（705）、`superagent:running`（706）的关系：702 是静态规则；704 提供工作区身份；705 提供目标工作区约定，702 要求引用它；706 提供长任务状态。没有新 order。
-- 冲突时 702 的“两个来源、不许发明标准”优先于模板的任何措辞；模板只是执行形式。
+- 当时的 704（工作区身份）、705（目标工作区约定）、706（长任务状态）与 702 一起随 JIRA 退场删除；这段关系不再成立，也没有新 order。
+- 当时冲突时 702 的“两个来源、不许发明标准”优先于模板的任何措辞；模板只是执行形式。该优先级随 702 退场结束。
 
-### 6.3 验收（3 条）
+### 6.3 当时的验收（已作废，3 条）
 
-1. `SUPERAGENT_SECTION` 文本包含四个槽位、`status/task_id`、`artifacts/checks`、`interactive ask` 禁止、`memory_search` 非必需、ACL 禁止；普通工作区 agent 的 prompt 没有这些 super agent 规则。
-2. 没有新增 `703` section；section 顺序仍是 702，runtime context 仍 704–706；测试断言 assembly 中没有 `superagent:brief-template`。
-3. 现有 `superagent-brief.test.ts` 的硬规则仍全部匹配；新增 fixture 写“counts only, no names”仍被“never invent a standard”覆盖。
+1. 当时要求 `SUPERAGENT_SECTION` 文本包含四个槽位、`status/task_id`、`artifacts/checks`、`interactive ask` 禁止、`memory_search` 非必需、ACL 禁止；该 section 已删除，这项不再验收。
+2. 当时没有新增 `703` section；702 与 704–706 都已随 JIRA 删除，这项不再验收。
+3. 原 `superagent-brief.test.ts` 已随 `jira-agent` 包删除，这项不再验收。
 
 ### 6.4 风险
 
-- 规则文本变长，super agent 每请求固定成本增加；这是把模板并入 702 的代价。
-- 702 已经很大；实现时只追加必要槽位和失败约束，不再复制 `superagent:conventions` 的内容。
+- 当时预估规则文本变长会增加 super agent 每请求固定成本；702 已删除，这项代价不存在。
+- 702 当时已经很大；实现时只追加必要槽位和失败约束，不复制 `superagent:conventions` 的内容。该约束随 section 删除结束。
 
 ## 7. write-like-human：规则工具
 
@@ -454,10 +448,9 @@ interface WriteLikeHumanResult {
 
 1. 平台/系统/审批/沙箱。
 2. 当前轮用户明确指令（“这次不用那条规则”）。
-3. superagent 硬规则与工作区约定（702/705）。
-4. writing rules（695）——具体输出规则。
-5. `PERSONALITY.md` 的 `style` 条目（100）——具体场景规则。
-6. output-style 默认值（690）。
+3. writing rules（695）——具体输出规则。
+4. `PERSONALITY.md` 的 `style` 条目（100）——具体场景规则。
+5. output-style 默认值（690）。
 
 writing rules 不能覆盖前两层；与 output-style 冲突时具体 writing rule 赢；与 `style` 条目同级时，id 更具体的规则在前，设计上要求 section 文本写明“更具体规则优先”。当前渲染器只输出规则行（`packages/uitstalie/personality/src/writing-rules.ts:283-296`），这句话尚未实现。
 
@@ -465,7 +458,7 @@ writing rules 不能覆盖前两层；与 output-style 冲突时具体 writing r
 
 1. **CRUD**：`add` → `list` → `update` → `disable` → `remove` 后文件只保留预期规则；`disable` 的规则不出现在 `preview`/section；`remove` 后 section 不含该条。
 2. **上限/注入**：100 条/32 KiB 边界内可写，超出拒绝且文件不变；section order 695，按 order/id 排序，空集合不产生文本。
-3. **冲突**：fixture 同时有 output-style “terse” 与 writing rule “详细解释”，section 文本规定 writing rule 优先；fixture 同时有 superagent 硬规则与 writing rule，硬规则优先。工具不修改 702。
+3. **冲突**：fixture 同时有 output-style “terse” 与 writing rule “详细解释”，section 文本规定 writing rule 优先；工具不修改任何 super agent section（原 702 已退场）。
 
 ### 7.6 风险
 
@@ -512,7 +505,7 @@ Output style never overrides safety, approval, sandbox, tool permission, or work
 ### 8.3 验收（3 条）
 
 1. **命名**：代码、配置、section、fixture 用 `output-style`/`outputStyle`；不得出现 `output-summary`；`persona` 只允许用于既有 deployment persona 前缀和 persona-card 概念。`outputStyle` 字段全部可解析，未知 enum 拒绝。
-2. **顺序/范围**：section order 690，普通 root 与 super root 都有（`subagent` 不收到 690）；在 `SUPERAGENT_SECTION`（702）之前；`style` 条目在 100，具体规则优先。
+2. **顺序/范围**：section order 690，普通 root 与 super root 都有（`subagent` 不收到 690）；在 writing rules 695 与工作区目录 700 之前；`style` 条目在 100，具体规则优先。
 3. **硬边界/状态**：section 匹配“never overrides safety, approval, sandbox, tool permission, or workspace rules”；给“报告 pending”fixture，固定状态约束禁止“已完成/已报告”。
 
 ### 8.4 风险
@@ -543,8 +536,7 @@ Output style never overrides safety, approval, sandbox, tool permission, or work
       → section 690 下次 assembly 生效
 
 super agent 派发
-  → SUPERAGENT_SECTION 702（含 brief 模板）
-  → runtime context 704–706（工作区/约定/长任务）
+  → 已退场：原 SUPERAGENT_SECTION 702（含 brief 模板）与 704–706 都不存在
 ```
 
 ## 10. 实施顺序
@@ -555,7 +547,7 @@ super agent 派发
 | 2 | 新建全局 `PERSONALITY.md` 数据层 + `personality_analyze` / `personality_apply` + section 100 | user-input 是新设计的基础，其他模块依赖全局数据模型 | 1 |
 | 3 | `output-style` 配置 + section 690 | 依赖全局配置和 section 顺序；独立于工具 | 2 |
 | 4 | `write_like_human` 工具 + `WRITING_RULES.yaml` + section 695 | 需要 section 顺序与全局写入路径；可独立测 CRUD | 2 |
-| 5 | 把 brief 模板并入 `SUPERAGENT_SECTION` | 只改 702 文本，依赖现有 superagent 规则和 runtime context | 无（可与 2–4 并行，但最后测冲突） |
+| 5（已作废） | 把 brief 模板并入 `SUPERAGENT_SECTION` | 702 已随 JIRA 退场删除，不再实施 | — |
 | 6 | 集成测试：注入顺序、缓存、全局路径、旧数据备份/警告 | 单模块测试不能证明优先级和全局约束 | 1–5 |
 
 先做 1，因为“旧实现直接 drop”是最高约束；如果旧代码还在，其他模块会被旧工具/旧 section 污染。
@@ -569,8 +561,8 @@ super agent 派发
 | 旧 personality 实现 | `packages/uitstalie/personality` | 删除旧 provider/tools/commands/proposals/overlay；新实现放同一包或新包，按裁决 4 不复用旧 API |
 | 旧 UI | `packages/uitstalie/ui-personality` | 旧 proposal 页/设置字段移除；新 output-style/writing-rules 页面另做 |
 | 组织者 | `packages/uitstalie/dafeiyu` | 新 personality 仍可注册为 capability；工具和 section 走现有 contribution |
-| prompt 顺序 | `packages/core/system-prompt` | 100/690/695/702 沿用/新增固定 order；不改固定表以外的机制 |
-| super agent 规则 | `packages/jira/jira-agent` | 只改 `SUPERAGENT_SECTION` 文本；不新增 section、不加 `703` |
+| prompt 顺序 | `packages/core/system-prompt` | 100/690/695 沿用/新增固定 order；工作区目录由 workspace-tools 注册在 700；702 已退场，不改固定表以外的机制 |
+| super agent 规则（已退场） | 原 `jira-agent` 包，已删除 | 无需改动；现行派发与回传契约见 [记忆/工作区设计](memory-scoping.zh.md) 6.5 节 |
 | 全局文件服务 | `packages/uitstalie/store-atom`、`packages/fs/fs` | 全局 `$DSH_HOME` 读写、version guard、文件监听 |
 | web 挂载 | `packages/bundle/web-app/cordis.patch.uitstalie.yml` | 替换旧 personality/UI 行；新工具和页面需要新行 |
 
@@ -596,9 +588,9 @@ super agent 派发
 - 不做工作区 override/overlay/scope；不写工作区 personality。
 - 不做 turn-end 自动学习、正则、后台扫描、自动写入。
 - 不迁移旧数据；不删除旧数据；不保留旧 API 兼容别名。
-- 不做独立 dispatch section/数据文件/`703`。
+- 不做独立 dispatch section/数据文件/`703`；原 702 已退场，也不恢复任何 dispatch section。
 - 不做 skill-only write-like-human；不新增 skill 目录。
-- 不改 `SUPERAGENT_SECTION` 之外的 superagent runtime context 机制。
+- 不改 superagent runtime context 机制；702 与 704–706 已随 JIRA 退场删除。
 - 不删除 `PERSONALITY.history.jsonl` / `PERSONALITY.proposals.jsonl`；只留在原处。
 - 不做多用户/多 workspace 人格隔离。
 

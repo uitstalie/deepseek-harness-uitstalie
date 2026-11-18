@@ -21,7 +21,7 @@ Every fenced code block in this page is copied verbatim from the source; it is n
 | section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`; registered at `packages/uitstalie/personality/src/api.ts:142-146` | preamble 391 characters; empty when there are no entries |
 | section 690 `personality:output-style` | `src/output-style.ts:145-180`; defaults `src/defaults.ts:27-33` | default rendering 836 characters / 15 lines |
 | section 695 `personality:writing-rules` | `packages/uitstalie/personality/src/writing-rules.ts:283-296`; registered at `packages/uitstalie/personality/src/api.ts:152-156` | empty document by default is 0 characters |
-| section 702 `superagent:dispatcher` | `packages/jira/jira-agent/src/superagent.ts:116-199` | this document does not copy the full text, only explains the order |
+| section 702 `superagent:dispatcher` (retired) | the former `jira-agent` package; deleted with the JIRA retirement | no longer a live section; a historical record only |
 | Order constants | `packages/core/system-prompt/src/index.ts:139-144` | 100 / 690 / 695 |
 
 The tool definitions themselves (3 descriptions + 3 parameter schemas) total about **5,217 characters**; the default/static text of the three sections totals about **1,227 characters** (excluding user entries and rules).
@@ -320,11 +320,11 @@ The default `WRITING_RULES.yaml` is `rules: []`, so the section text is **empty*
 
 No writing rules are enabled by default: `rules: []` produces an empty section, which assembly drops. The limits are **100 rules**, **240 characters per rule**, and **32 KiB total** (`writing-rules.ts:27-33`); only the first **40** enabled rules are resident. A longer set is stored but emits a `N rule(s) not injected: resident limit is 40.` line.
 
-### Order with 702
+### Order after the 702 retirement
 
-The `name` of `SUPERAGENT_SECTION` is `superagent:dispatcher`, and its `order` is **702**; it is registered only for the super agent (`packages/jira/jira-agent/src/superagent.ts:116-118`). The order is **100 → 690 → 695 → 702**; after 702 come the existing runtime contexts 704 (workspaces), 705 (conventions), and 706 (running). There is no 703.
+The former `SUPERAGENT_SECTION` (`superagent:dispatcher`, order **702**) was deleted with the `jira-agent` package; at the time it was registered only for the super agent, and the order was **100 → 690 → 695 → 702**, followed by 704 (workspaces), 705 (conventions), and 706 (running). The current fixed order table has only 100 (personality), 690 (output-style), and 695 (writing-rules); workspace-tools registers the workspace directory at 700, and 702, 703, and 704–706 do not exist.
 
-702 itself is not a personality section and is about 80 lines; this document only records the order and does not copy the full text, to avoid mixing the super agent's complete always-on rules into the personality collection.
+702 was not a personality section and was about 80 lines; this document only records the order and does not copy the full text. That section is deleted.
 
 ## ④ Result / Error / Constraint Source Text
 
@@ -407,7 +407,7 @@ Constants table:
 ## ⑤ Content Not Included
 
 - `memory_forget` / `memory_resolve`: belong to the memory package (`packages/uitstalie/memory/src/tools.ts:243`, `:327`), are not within the personality design scope, and are not included.
-- Full text of section 702: only the order and source are included; the super agent's complete dispatcher rules are not copied.
+- Section 702 (retired): only the order and source of the time are included; the section was deleted with the `jira-agent` package.
 - User data: the actual entries of `PERSONALITY.md`, the actual values of `OUTPUT_STYLE.yaml`, and the enabled rules of `WRITING_RULES.yaml` are not copied; only templates, default values, and empty-section behavior are given.
 - Tool output schema: this task requires parameter schemas; the output schemas are not expanded verbatim, and only the model-visible result rendering templates are included.
 
