@@ -531,7 +531,7 @@ test('delete refuses a mismatched confirm and a host without a delete API', asyn
   expect(controller.deleted).toEqual([])
 })
 
-test('an ordinary agent may list and read but every lifecycle action is refused', async () => {
+test('an ordinary agent writes Sessions in its own workspace but not in another one', async () => {
   const controller = installController(mounted)
   const start = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'start', workspace: String(workspaceB.id), task: 'started by the super agent', title: 'super session',
@@ -574,4 +574,23 @@ test('an ordinary agent may list and read but every lifecycle action is refused'
   const list = await callTool(mounted.ctx, ordinaryAgent, 'workspace_sessions', { action: 'list' })
   expect(list.isError).toBe(false)
   expect((valueOf(list) as { items: { sessionId: string }[] }).items.some(item => item.sessionId === String(ordinaryAgent.id))).toBe(true)
+})
+
+test('an ordinary agent may start, prompt, and stop a Session in its own workspace', async () => {
+  const controller = installController(mounted)
+  const started = await callTool(mounted.ctx, ordinaryAgent, 'workspace_sessions', {
+    action: 'start', task: 'ordinary task', title: 'ordinary session',
+  })
+  expect(started.isError).toBe(false)
+  const sessionId = (valueOf(started) as { started: { sessionId: string } }).started.sessionId
+  expect(controller.created).toHaveLength(1)
+
+  const prompted = await callTool(mounted.ctx, ordinaryAgent, 'workspace_sessions', {
+    action: 'prompt', sessionId, text: 'ordinary follow-up',
+  })
+  expect(prompted.isError).toBe(false)
+
+  const stopped = await callTool(mounted.ctx, ordinaryAgent, 'workspace_sessions', { action: 'stop', sessionId })
+  expect(stopped.isError).toBe(false)
+  expect(controller.cancelled).toHaveLength(1)
 })

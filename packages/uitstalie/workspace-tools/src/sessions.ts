@@ -7,8 +7,9 @@
  * The tool returns bounded one-line summaries; raw turns stay behind
  * `session_event_read`. Lifecycle actions (`start`, `append`, `prompt`, `stop`,
  * `abort`, `fork`, `archive`, `compact`, `delete`) drive the host's Session
- * controller and workspace registry by duck-typed lookup, and are reserved for
- * the super agent; `list` and `get` stay available to every agent.
+ * controller and workspace registry by duck-typed lookup, and are open to agents
+ * in the caller's workspace; a cross-workspace action is reserved for the super
+ * agent, and `list` and `get` stay available to every agent.
  * @module @deepseek-ai/dsh-workspace-tools/sessions
  */
 
@@ -38,7 +39,7 @@ export const WORKSPACE_SESSION_STATUSES: readonly WorkspaceSessionStatus[] = ['r
 /** Actions that only read a workspace. */
 export const WORKSPACE_SESSION_READ_ACTIONS = ['list', 'get'] as const
 
-/** Actions that create or change a real Session; they require the super agent. */
+/** Actions that create or change a real Session; a cross-workspace write requires the super agent. */
 export const WORKSPACE_SESSION_LIFECYCLE_ACTIONS = [
   'start', 'append', 'prompt', 'stop', 'abort', 'fork', 'archive', 'compact', 'delete',
 ] as const
@@ -429,7 +430,8 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       'List the sessions of a workspace and report what each is doing, read one session, or manage the '
       + 'lifecycle of a real Session in a registered workspace. `list` and `get` are open to every agent and '
       + 'return the caller\'s workspace by default; a cross-workspace read needs the registered workspace id. '
-      + 'The lifecycle actions require the super agent: `start` opens a new Session in a workspace with a first '
+      + 'The lifecycle actions are open to an agent in the Session\'s workspace, and a cross-workspace action '
+      + 'requires the super agent: `start` opens a new Session in a workspace with a first '
       + 'task and a durable purpose title (no intent card is involved); `append` continues one of the '
       + 'workspace\'s Sessions and needs `session` (an id, or "latest"); `prompt` sends text to an explicit '
       + 'sessionId; `stop` cuts off the running turn and admits nothing; `abort` cuts it off and then sends '
@@ -443,7 +445,8 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         required: true,
         enum: [...WORKSPACE_SESSION_ACTIONS],
         description: '`list`/`get` read a workspace. `start`, `append`, `prompt`, `stop`, `abort`, `fork`, '
-          + '`archive`, `compact`, and `delete` change a real Session and require the super agent.',
+          + '`archive`, `compact`, and `delete` change a real Session; a cross-workspace action requires the '
+          + 'super agent.',
       },
       workspace: {
         type: 'string',
@@ -690,9 +693,9 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         }
       }
 
-      requireLifecycleRole(exec.agent, action)
       validateLifecycleArguments(action, args)
       const scope = await resolveWorkspace(ctx, session, `sessions.${action}`, args.workspace)
+      requireLifecycleRole(exec.agent, action, scope.crossWorkspace)
       const workspace = scope.workspace
       const controller = requireSessionController(ctx)
       const signal = exec.signal ?? new AbortController().signal
@@ -895,16 +898,20 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
 }
 
 /**
- * Require the super agent for a lifecycle action.
+ * Refuse a lifecycle write only when it crosses workspaces without the super agent.
+ * A caller in the Session's workspace may write it; a cross-workspace write still
+ * requires the super agent.
  * @param agent - the calling agent, when one is attached.
  * @param action - lifecycle action being attempted.
- * @throws WorkspaceSessionError `WORKSPACE_SESSION_FORBIDDEN` for every other role.
+ * @param crossWorkspace - whether the call named another workspace.
+ * @throws WorkspaceSessionError `WORKSPACE_SESSION_FORBIDDEN` for a cross-workspace caller that is not the super agent.
  */
-function requireLifecycleRole(agent: Agent | undefined, action: WorkspaceSessionAction): void {
+function requireLifecycleRole(agent: Agent | undefined, action: WorkspaceSessionAction, crossWorkspace: boolean): void {
+  if (!crossWorkspace) return
   if (agent?.role === 'super') return
   throw new WorkspaceSessionError(
-    `workspace_sessions.${action} requires the super agent role; an ordinary root or subagent may only `
-    + 'list and read Sessions',
+    `workspace_sessions.${action} from another workspace requires the super agent; an agent may list, read, `
+    + 'and write Sessions in its own workspace',
     'WORKSPACE_SESSION_FORBIDDEN',
   )
 }

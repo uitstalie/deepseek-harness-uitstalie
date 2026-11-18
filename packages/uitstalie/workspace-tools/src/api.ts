@@ -2,9 +2,9 @@
  * workspace-tools: the workspace information toolset provider.
  *
  * The provider registers one capability with the dafeiyu organizer, which wires
- * its tools onto every agent, and provides the dispatcher-only
- * `ctx.workspaceTasks` service so the super agent's dispatch path records the
- * same card-validated task instead of a second list. It owns no records of its
+ * its tools onto every agent, and provides the `ctx.workspaceTasks` service so
+ * a trusted in-process caller records the same card-validated task instead of a
+ * second list. It owns no records of its
  * own beyond the task, message, intent, and artifact state under
  * `$DSH_HOME/workspaces/`; sessions come from the session store, workspaces
  * from the workspace registry, and artifact content from the workspace

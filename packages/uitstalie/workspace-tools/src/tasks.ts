@@ -90,6 +90,8 @@ export interface TaskView {
   readonly assignee?: string
   /** Session expected to execute the task. */
   readonly targetSessionId?: string
+  /** Session that started the task; a task-bound cross-workspace return targets it. */
+  readonly dispatcherSessionId?: string
   /** Intent card this task was dispatched against. */
   readonly intentId?: string
   /** Intent card version this task was dispatched against. */
@@ -126,6 +128,8 @@ export interface TaskSummary {
   readonly assignee?: string
   /** Session expected to execute the task. */
   readonly targetSessionId?: string
+  /** Session that started the task. */
+  readonly dispatcherSessionId?: string
   /** ISO-8601 instant of the last mutation. */
   readonly updatedAt: string
   /** Instant of the newest receipt. */
@@ -144,6 +148,8 @@ export interface WorkspaceTasksValue {
   readonly taskId?: string
   /** Task state after the call. */
   readonly status?: TaskStatus
+  /** Session that started the task, when one was recorded. */
+  readonly dispatcherSessionId?: string
   /** ISO-8601 creation instant returned by `create`. */
   readonly createdAt?: string
   /** Receipt appended by `receipt`. */
@@ -174,8 +180,10 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
       + 'it reads the card first, so a missing, proposed, or stale card refuses the dispatch. `update` moves the '
       + 'task state and `receipt` appends the executor\'s alignment against the same card version. A receipt with '
       + 'an unsatisfied acceptance point or a violated boundary cannot move the task to `done`; it becomes '
-      + '`waiting_review` or `blocked` with the checklist. Reads are open to every agent; mutations require the '
-      + 'dispatcher role, and the target session may update its own task and append its own receipt.',
+      + '`waiting_review` or `blocked` with the checklist. Reads are open to every agent. Mutations are open to '
+      + 'an agent in the task\'s workspace; a cross-workspace mutation requires the super agent. `create` records '
+      + 'the calling session as `dispatcherSessionId`, and a task-bound cross-workspace return from the target '
+      + 'session to that dispatcher is the only cross-workspace message a task authorizes.',
     parameters: {
       action: {
         type: 'string',
@@ -344,6 +352,7 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
                 status: { type: 'string', required: true, enum: [...TASK_STATUSES] },
                 assignee: { type: 'string' },
                 targetSessionId: { type: 'string' },
+                dispatcherSessionId: { type: 'string' },
                 updatedAt: { type: 'string', required: true },
                 latestReceiptAt: { type: 'string' },
               },
@@ -363,6 +372,7 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
               status: { type: 'string', required: true, enum: [...TASK_STATUSES] },
               assignee: { type: 'string' },
               targetSessionId: { type: 'string' },
+              dispatcherSessionId: { type: 'string' },
               intentId: { type: 'string' },
               intentVersion: { type: 'integer' },
               coverage: { type: 'array', items: coverageSchema },
@@ -378,6 +388,7 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
           },
           taskId: { type: 'string' },
           status: { type: 'string', enum: [...TASK_STATUSES] },
+          dispatcherSessionId: { type: 'string' },
           createdAt: { type: 'string' },
           receipt: receiptSchema,
           deviations: { type: 'array', items: { type: 'string' } },
@@ -433,11 +444,11 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
           }
         }
         case 'create':
-          return await createTask(ctx, scope.workspace, args, exec.agent, exec.signal)
+          return await createTask(ctx, scope.workspace, args, exec.agent, scope.crossWorkspace, exec.signal)
         case 'update':
-          return await updateTask(ctx, scope.workspace, args, exec.agent, exec.signal)
+          return await updateTask(ctx, scope.workspace, args, exec.agent, scope.crossWorkspace, exec.signal)
         case 'receipt':
-          return await appendReceipt(ctx, scope.workspace, args, exec.agent, exec.signal)
+          return await appendReceipt(ctx, scope.workspace, args, exec.agent, scope.crossWorkspace, exec.signal)
         default:
           throw new WorkspaceRecordError(`unknown workspace_tasks action ${JSON.stringify(String(args.action))}`, 'WORKSPACE_RECORD_NOT_FOUND')
       }
@@ -563,9 +574,8 @@ interface CreateTaskInput {
  * One dispatch task to create against a workspace's active intent card.
  *
  * This is the programmatic half of `workspace_tasks.create`: the tool supplies
- * the same fields, and a dispatcher outside this package (the super agent's
- * control tool) creates the task through the service instead of re-implementing
- * the card, coverage, and idempotency rules.
+ * the same fields, and a trusted in-process caller creates the task through the
+ * service instead of re-implementing the card, coverage, and idempotency rules.
  */
 export interface DispatchTaskInput {
   /** Workspace that owns both the task and the card. */
@@ -644,6 +654,7 @@ async function createTask(
   workspace: Workspace,
   args: CreateTaskInput,
   agent: Agent | undefined,
+  crossWorkspace: boolean,
   signal: AbortSignal | undefined,
 ): Promise<WorkspaceTasksValue> {
   return await createDispatchTask(ctx, {
@@ -662,7 +673,7 @@ async function createTask(
     ...args.note === undefined ? {} : { note: args.note },
     ...args.requestId === undefined ? {} : { requestId: args.requestId },
   }, {
-    dispatcher: agent?.role === 'super',
+    authorized: !crossWorkspace || agent?.role === 'super',
     workspaceNamed: args.workspace !== undefined,
     ...agent?.session === undefined ? {} : { session: agent.session },
     ...signal === undefined ? {} : { signal },
@@ -673,29 +684,29 @@ async function createTask(
  * Create one dispatch task through the same card, coverage, and idempotency
  * rules the `workspace_tasks.create` tool applies.
  *
- * The dispatcher verdict is a parameter rather than an Agent: the only
- * non-tool caller is the super agent's own control tool, which the registry
- * has already gated to the `super` role.
+ * Authorization is a parameter rather than an Agent verdict: the tool computes
+ * it from the caller's workspace and role, and a trusted in-process caller
+ * passes `authorized: true`.
  * @param ctx - context carrying the store and registry.
  * @param input - complete create input; missing required fields refuse with `INTENT_INCOMPLETE`.
- * @param options - the dispatcher verdict, whether the caller named a workspace, and cancellation.
+ * @param options - the authorization verdict, whether the caller named a workspace, the calling Session, and cancellation.
  * @returns the created or replayed task identity.
- * @throws WorkspaceTaskError `WORKSPACE_TASK_FORBIDDEN` when the caller is not the dispatcher.
+ * @throws WorkspaceTaskError `WORKSPACE_TASK_FORBIDDEN` when the caller may not write the task.
  * @throws WorkspaceIntentError the card, coverage, or field refusal.
  */
 export async function createDispatchTask(
   ctx: Context,
   input: DispatchTaskInput,
   options: {
-    readonly dispatcher: boolean
+    readonly authorized: boolean
     readonly workspaceNamed?: boolean
     readonly session?: Session
     readonly signal?: AbortSignal
   },
 ): Promise<DispatchTaskIdentity> {
-  if (!options.dispatcher) {
+  if (!options.authorized) {
     throw new WorkspaceTaskError(
-      'workspace_tasks.create requires the dispatcher role (the super agent); ordinary agents do not dispatch',
+      'workspace_tasks.create requires an agent in the task\'s workspace; a cross-workspace create requires the super agent',
       'WORKSPACE_TASK_FORBIDDEN',
     )
   }
@@ -762,6 +773,7 @@ export async function createDispatchTask(
     ...outputForm.length === 0 ? {} : { outputForm },
     status: 'pending',
     ...input.targetSessionId === undefined ? {} : { targetSessionId: input.targetSessionId },
+    ...options.session === undefined ? {} : { dispatcherSessionId: String(options.session.id) },
     intentId,
     intentVersion,
     ...coverage === undefined ? {} : { coverage },
@@ -943,6 +955,7 @@ async function updateTask(
   workspace: Workspace,
   args: UpdateTaskInput,
   agent: Agent | undefined,
+  crossWorkspace: boolean,
   signal: AbortSignal | undefined,
 ): Promise<WorkspaceTasksValue> {
   const taskId = requireTaskId(args.taskId, 'update')
@@ -953,12 +966,18 @@ async function updateTask(
       'WORKSPACE_RECORD_NOT_FOUND',
     )
   }
-  requireTaskMutator(agent, stored.task, 'update')
+  requireTaskMutator(agent, 'update', crossWorkspace)
   if (args.status === undefined && args.assignee === undefined && args.note === undefined) {
     throw new WorkspaceTaskError('workspace_tasks.update requires status, assignee, or note', 'WORKSPACE_TASK_TRANSITION')
   }
   if (args.requestId !== undefined && args.requestId === stored.task.lastRequestId) {
-    return { workspace: String(workspace.id), taskId, status: stored.task.status, replayed: true }
+    return {
+      workspace: String(workspace.id),
+      taskId,
+      status: stored.task.status,
+      ...stored.task.dispatcherSessionId === undefined ? {} : { dispatcherSessionId: stored.task.dispatcherSessionId },
+      replayed: true,
+    }
   }
   if (args.status !== undefined) {
     assertTransition(stored.task.status, args.status)
@@ -976,7 +995,12 @@ async function updateTask(
     ...stored.version === undefined ? {} : { expected: stored.version },
     ...agent?.session === undefined ? {} : { session: agent.session },
   })
-  return { workspace: String(workspace.id), taskId, status: next.status }
+  return {
+    workspace: String(workspace.id),
+    taskId,
+    status: next.status,
+    ...next.dispatcherSessionId === undefined ? {} : { dispatcherSessionId: next.dispatcherSessionId },
+  }
 }
 
 /**
@@ -993,6 +1017,7 @@ async function appendReceipt(
   workspace: Workspace,
   args: ReceiptInput,
   agent: Agent | undefined,
+  crossWorkspace: boolean,
   signal: AbortSignal | undefined,
 ): Promise<WorkspaceTasksValue> {
   const taskId = requireTaskId(args.taskId, 'receipt')
@@ -1011,13 +1036,14 @@ async function appendReceipt(
       'WORKSPACE_RECORD_NOT_FOUND',
     )
   }
-  requireTaskMutator(agent, stored.task, 'receipt')
+  requireTaskMutator(agent, 'receipt', crossWorkspace)
   const replayed = stored.task.receipts.find(receipt => receipt.requestId === requestId)
   if (replayed !== undefined) {
     return {
       workspace: String(workspace.id),
       taskId,
       status: stored.task.status,
+      ...stored.task.dispatcherSessionId === undefined ? {} : { dispatcherSessionId: stored.task.dispatcherSessionId },
       receipt: receiptView(replayed),
       replayed: true,
     }
@@ -1066,6 +1092,7 @@ async function appendReceipt(
     workspace: String(workspace.id),
     taskId,
     status: effective,
+    ...next.dispatcherSessionId === undefined ? {} : { dispatcherSessionId: next.dispatcherSessionId },
     receipt: receiptView(receipt),
     ...deviations === undefined ? {} : { deviations },
   }
@@ -1257,18 +1284,19 @@ export function assertTransition(from: TaskStatus, to: TaskStatus): void {
 }
 
 /**
- * Require the dispatcher role or the task's own target session.
+ * Refuse a mutation only when it crosses workspaces without the super agent.
+ * A caller in the task's workspace may mutate it; a cross-workspace mutation
+ * still requires the super agent.
  * @param agent - calling agent, when the call has one.
- * @param task - task being mutated.
  * @param action - action name for the failure message.
- * @throws WorkspaceTaskError `WORKSPACE_TASK_FORBIDDEN`.
+ * @param crossWorkspace - whether the call named another workspace.
+ * @throws WorkspaceTaskError `WORKSPACE_TASK_FORBIDDEN` for a cross-workspace caller that is not the super agent.
  */
-function requireTaskMutator(agent: Agent | undefined, task: TaskRecord, action: string): void {
+function requireTaskMutator(agent: Agent | undefined, action: string, crossWorkspace: boolean): void {
+  if (!crossWorkspace) return
   if (agent?.role === 'super') return
-  const sessionId = agent?.session.id
-  if (sessionId !== undefined && task.targetSessionId !== undefined && String(sessionId) === task.targetSessionId) return
   throw new WorkspaceTaskError(
-    `workspace_tasks.${action} requires the dispatcher role or the task's target session`,
+    `workspace_tasks.${action} from another workspace requires the super agent`,
     'WORKSPACE_TASK_FORBIDDEN',
   )
 }
@@ -1321,6 +1349,7 @@ function summarizeTask(task: TaskRecord): TaskSummary {
     status: task.status,
     ...task.assignee === undefined ? {} : { assignee: task.assignee },
     ...task.targetSessionId === undefined ? {} : { targetSessionId: task.targetSessionId },
+    ...task.dispatcherSessionId === undefined ? {} : { dispatcherSessionId: task.dispatcherSessionId },
     updatedAt: task.updatedAt,
     ...latest === undefined ? {} : { latestReceiptAt: latest.at },
   }
@@ -1375,6 +1404,7 @@ function taskView(task: TaskRecord): TaskView {
     status: task.status,
     ...task.assignee === undefined ? {} : { assignee: task.assignee },
     ...task.targetSessionId === undefined ? {} : { targetSessionId: task.targetSessionId },
+    ...task.dispatcherSessionId === undefined ? {} : { dispatcherSessionId: task.dispatcherSessionId },
     ...task.intentId === undefined ? {} : { intentId: task.intentId },
     ...task.intentVersion === undefined ? {} : { intentVersion: task.intentVersion },
     ...task.coverage === undefined ? {} : { coverage: task.coverage.map(entry => ({

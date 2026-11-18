@@ -1,16 +1,15 @@
 /**
  * The dispatch-task service the workspace toolset provides as `ctx.workspaceTasks`.
  *
- * The model-facing `workspace_tasks` tool is the surface an agent calls; the
- * super agent's dispatch tool is the one other caller, and it must record the
- * same card-validated task. Exposing the creation and cancellation rules as a
+ * The model-facing `workspace_tasks` tool is the surface an agent calls, and a
+ * trusted in-process caller may use this service to record the same
+ * card-validated task. Exposing the creation and cancellation rules as a
  * service keeps one implementation of the card, coverage, and idempotency
- * checks instead of a second copy in the dispatch path.
+ * checks instead of a second copy in another caller.
  *
  * The service is not a model surface and carries no role check of its own: the
- * `workspace_tasks.create` tool enforces the dispatcher role, and only the
- * dispatcher tool calls this service. A caller that is not the super agent must
- * not reach it.
+ * `workspace_tasks.create` tool computes caller authorization, and this service
+ * records the task for a caller that has already been authorized elsewhere.
  * @module @deepseek-ai/dsh-workspace-tools/service
  */
 
@@ -29,7 +28,7 @@ export interface CancelDispatchTaskInput {
   readonly reason: string
 }
 
-/** The dispatcher-only task path, provided as `ctx.workspaceTasks`. */
+/** The task-record path provided as `ctx.workspaceTasks`. */
 export interface WorkspaceTasksService {
   /**
    * Create the task record for one dispatch, against an active card version.
@@ -66,7 +65,7 @@ export function createWorkspaceTasksService(ctx: Context): WorkspaceTasksService
   return Object.freeze({
     createDispatchTask: async (input: DispatchTaskInput, signal?: AbortSignal, session?: Session): Promise<DispatchTaskIdentity> =>
       await createDispatchTask(ctx, input, {
-        dispatcher: true,
+        authorized: true,
         ...session === undefined ? {} : { session },
         ...signal === undefined ? {} : { signal },
       }),

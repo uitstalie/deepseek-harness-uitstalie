@@ -198,7 +198,7 @@ test('the super agent starts, continues, stops, aborts, forks, archives, compact
   expect(controller.sessions.some(row => row.sessionId === sessionId)).toBe(false)
 })
 
-test('an ordinary root cannot start, stop, or delete a Session', async () => {
+test('an ordinary root cannot write another workspace\'s Sessions', async () => {
   const workspaceB = await registerWorkspace(mounted.registry, projectB, 'ordinary-target')
   const ordinary = await createRoot(mounted, 'ordinary-lifecycle', projectA, 'agent')
   for (const args of [
@@ -208,7 +208,7 @@ test('an ordinary root cannot start, stop, or delete a Session', async () => {
   ]) {
     const refused = await callTool(mounted.ctx, ordinary, 'workspace_sessions', args)
     expect(refused.isError).toBe(true)
-    expect(textOf(refused)).toContain('requires the super agent role')
+    expect(textOf(refused)).toContain('requires the super agent')
   }
   expect(controller.sessions).toEqual([])
 })

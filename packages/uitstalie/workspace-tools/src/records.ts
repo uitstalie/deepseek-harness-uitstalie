@@ -120,6 +120,8 @@ export interface TaskRecord {
   readonly assignee?: string | undefined
   /** Session expected to execute the task. */
   readonly targetSessionId?: string | undefined
+  /** Session that started the task; a task-bound cross-workspace return targets it. */
+  readonly dispatcherSessionId?: string | undefined
   /** Intent card this task was dispatched against. */
   readonly intentId?: string | undefined
   /** Intent card version this task was dispatched against. */

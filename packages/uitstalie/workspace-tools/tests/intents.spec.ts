@@ -560,16 +560,17 @@ test('§11.10(6) a receipt with a deviation cannot move the task to done', async
   expect(valueOf(receiptRetry)).toMatchObject({ replayed: true, status: 'done' })
 })
 
-test('dispatch refuses incomplete cards and missing fields, and role rules keep ordinary agents read-only', async () => {
+test('an agent in the workspace may write cards and tasks; a cross-workspace write still needs the super agent', async () => {
   const card = await createCard(workspaceA, 'card-roles', RAW_TRACEABLE, TRACEABLE_ITEMS)
-  const forbiddenCard = await callTool(mounted.ctx, agentA, 'workspace_intents', {
+  const ordinaryCard = await callTool(mounted.ctx, agentA, 'workspace_intents', {
     action: 'create',
     workspace: String(workspaceA.id),
     requestId: 'ordinary-card',
     rawUserText: RAW_TRACEABLE,
     items: TRACEABLE_ITEMS,
   })
-  expectCode(forbiddenCard, 'INTENT_PERMISSION_DENIED')
+  expect(ordinaryCard.isError).toBe(false)
+  expect((valueOf(ordinaryCard) as { intentId: string }).intentId).toBe(card.intentId)
 
   const ordinaryTask = await callTool(mounted.ctx, agentA, 'workspace_tasks', {
     action: 'create',
@@ -581,7 +582,16 @@ test('dispatch refuses incomplete cards and missing fields, and role rules keep 
     ...TRACEABLE_BRIEF,
     coverage: TRACEABLE_COVERAGE,
   })
-  expectCode(ordinaryTask, 'WORKSPACE_TASK_FORBIDDEN')
+  expect(ordinaryTask.isError).toBe(false)
+  const ordinaryTaskId = (valueOf(ordinaryTask) as { taskId: string }).taskId
+  const readTaskAsOrdinary = await callTool(mounted.ctx, agentA, 'workspace_tasks', {
+    action: 'get',
+    workspace: String(workspaceA.id),
+    taskId: ordinaryTaskId,
+  })
+  expect(readTaskAsOrdinary.isError).toBe(false)
+  expect((valueOf(readTaskAsOrdinary) as { task: { dispatcherSessionId?: string } }).task.dispatcherSessionId)
+    .toBe(String(agentA.session.id))
 
   const readAsOrdinary = await callTool(mounted.ctx, agentA, 'workspace_intents', {
     action: 'get',
@@ -598,7 +608,16 @@ test('dispatch refuses incomplete cards and missing fields, and role rules keep 
     decision: 'confirm',
     requestId: 'ordinary-confirm',
   })
-  expectCode(confirmAsOrdinary, 'INTENT_PERMISSION_DENIED')
+  expect(confirmAsOrdinary.isError).toBe(false)
+
+  const crossWorkspaceCard = await callTool(mounted.ctx, agentA, 'workspace_intents', {
+    action: 'create',
+    workspace: String(workspaceB.id),
+    requestId: 'ordinary-cross-card',
+    rawUserText: RAW_TRACEABLE,
+    items: TRACEABLE_ITEMS,
+  })
+  expectCode(crossWorkspaceCard, 'INTENT_PERMISSION_DENIED')
 
   const incomplete = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
     action: 'create',

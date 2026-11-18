@@ -214,36 +214,115 @@ test('a turn with no send delivers nothing', async () => {
   expect((valueOf(read) as { messages: unknown[] }).messages).toEqual([])
 })
 
-test('an ordinary agent cannot message another workspace; the super agent can', async () => {
+test('a cross-workspace send is allowed only as a task-bound return', async () => {
   const a = await registerWorkspace(mounted.registry, projectA, 'scope-a')
   const b = await registerWorkspace(mounted.registry, projectB, 'scope-b')
-  const ordinary = await createRoot(mounted, 'ordinary', projectA)
-  const superAgent = await createRoot(mounted, 'super', projectA, 'super')
-  const target = await createRoot(mounted, 'scope-target', projectB)
-  await a.attachSession(ordinary.session.id)
-  await a.attachSession(superAgent.session.id)
-  await b.attachSession(target.session.id)
+  const executor = await createRoot(mounted, 'scope-executor', projectA)
+  const bystander = await createRoot(mounted, 'scope-bystander', projectA)
+  const dispatcher = await createRoot(mounted, 'scope-dispatcher', projectB, 'super')
+  await a.attachSession(executor.session.id)
+  await a.attachSession(bystander.session.id)
+  await b.attachSession(dispatcher.session.id)
 
-  const refused = await callTool(mounted.ctx, ordinary, 'workspace_message', {
+  // The dispatcher records the card and task in the executor's workspace; create
+  // records the calling session as the task's dispatcher.
+  const unboundOrdinary = await callTool(mounted.ctx, executor, 'workspace_message', {
     action: 'send',
     workspace: String(b.id),
-    targetSessionId: String(target.id),
-    text: 'cross-workspace from an ordinary agent',
-    requestId: 'cross-1',
+    targetSessionId: String(dispatcher.session.id),
+    text: 'unbound from the executor',
+    requestId: 'cross-unbound-1',
   })
-  expect(refused.isError).toBe(true)
-  expect((refused.content[0] as { text?: string }).text).toContain('super agent')
+  expect(unboundOrdinary.isError).toBe(true)
+  expect(textOf(unboundOrdinary)).toContain('task')
 
-  const allowed = await callTool(mounted.ctx, superAgent, 'workspace_message', {
+  // A super-agent caller is no longer enough on its own.
+  const unboundSuper = await callTool(mounted.ctx, dispatcher, 'workspace_message', {
+    action: 'send',
+    workspace: String(a.id),
+    targetSessionId: String(executor.session.id),
+    text: 'unbound from the super agent',
+    requestId: 'cross-unbound-2',
+  })
+  expect(unboundSuper.isError).toBe(true)
+
+  const cardResult = await callTool(mounted.ctx, dispatcher, 'workspace_intents', {
+    action: 'create',
+    workspace: String(a.id),
+    requestId: 'binding-card',
+    rawUserText: 'Run the suite; the suite passes; do not touch docs.',
+    items: {
+      goal: [{ text: 'Run the suite', source: 'user-verbatim' }],
+      acceptance: [{ text: 'the suite passes', source: 'user-verbatim' }],
+      boundaries: [{ text: 'do not touch docs', source: 'user-verbatim' }],
+    },
+  })
+  expect(cardResult.isError).toBe(false)
+  const card = (valueOf(cardResult) as { intent: { intentId: string; version: number } }).intent
+  const taskResult = await callTool(mounted.ctx, dispatcher, 'workspace_tasks', {
+    action: 'create',
+    workspace: String(a.id),
+    requestId: 'binding-task',
+    intentId: card.intentId,
+    intentVersion: card.version,
+    taskType: 'test-verification',
+    targetSessionId: String(executor.session.id),
+    goal: 'Run the suite',
+    acceptance: ['the suite passes'],
+    boundaries: ['do not touch docs'],
+    coverage: [
+      { point: 'goal[0]', brief: 'Run the suite' },
+      { point: 'acceptance[0]', brief: 'the suite passes' },
+      { point: 'boundaries[0]', brief: 'do not touch docs' },
+    ],
+  })
+  expect(taskResult.isError).toBe(false)
+  const taskId = (valueOf(taskResult) as { taskId: string }).taskId
+  const read = await callTool(mounted.ctx, executor, 'workspace_tasks', {
+    action: 'get', workspace: String(a.id), taskId,
+  })
+  expect(read.isError).toBe(false)
+  expect((valueOf(read) as { task: { dispatcherSessionId?: string; targetSessionId?: string } }).task)
+    .toMatchObject({
+      dispatcherSessionId: String(dispatcher.session.id),
+      targetSessionId: String(executor.session.id),
+    })
+
+  const bound = await callTool(mounted.ctx, executor, 'workspace_message', {
     action: 'send',
     workspace: String(b.id),
-    targetSessionId: String(target.id),
-    text: 'cross-workspace from the super agent',
-    requestId: 'cross-2',
+    targetSessionId: String(dispatcher.session.id),
+    taskId,
+    text: 'task-bound return',
+    requestId: 'cross-bound-1',
   })
-  expect(allowed.isError).toBe(false)
-  expect((valueOf(allowed) as { sent: { status: string } }).sent.status).toBe('delivered')
-  expect(delivered.at(-1)?.text).toContain('super agent')
+  expect(bound.isError).toBe(false)
+  expect((valueOf(bound) as { sent: { status: string } }).sent.status).toBe('delivered')
+  expect(delivered.at(-1)?.text).toContain('task-bound return')
+
+  const byBinding = await callTool(mounted.ctx, executor, 'workspace_message', {
+    action: 'send',
+    workspace: String(b.id),
+    targetSessionId: String(dispatcher.session.id),
+    text: 'task-bound return without taskId',
+    requestId: 'cross-bound-2',
+  })
+  expect(byBinding.isError).toBe(false)
+
+  const page = await callTool(mounted.ctx, dispatcher, 'workspace_message', { action: 'read' })
+  expect(page.isError).toBe(false)
+  const records = (valueOf(page) as { messages: { text: string; taskId?: string }[] }).messages
+  expect(records.find(record => record.text === 'task-bound return')?.taskId).toBe(taskId)
+  expect(records.find(record => record.text === 'task-bound return without taskId')?.taskId).toBe(taskId)
+
+  const unboundBystander = await callTool(mounted.ctx, bystander, 'workspace_message', {
+    action: 'send',
+    workspace: String(b.id),
+    targetSessionId: String(dispatcher.session.id),
+    text: 'unbound from a bystander',
+    requestId: 'cross-unbound-3',
+  })
+  expect(unboundBystander.isError).toBe(true)
 })
 
 test('publish is idempotent for unchanged content and versions a changed file', async () => {

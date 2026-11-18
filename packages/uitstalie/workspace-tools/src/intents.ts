@@ -212,8 +212,9 @@ export function workspaceIntentsTool(ctx: Context): ToolDefinition {
       + 'document, or an inference. `create` computes the state from those annotations: all traceable means '
       + '`active`, any inference means `proposed` with one consolidated confirmation request. `confirm` records '
       + 'that confirmation; `correct` appends a version and supersedes the previous one. `history` lists versions '
-      + 'and `metrics` summarizes dispatch alignment. Reads are open to every agent; `create`, `confirm`, and '
-      + '`correct` require the super agent role or the user. The caller\'s workspace is the default scope.',
+      + 'and `metrics` summarizes dispatch alignment. Reads are open to every agent. `create`, `confirm`, and '
+      + '`correct` are open to an agent in the card\'s workspace, and a cross-workspace write requires the super '
+      + 'agent. The caller\'s workspace is the default scope.',
     parameters: {
       action: {
         type: 'string',
@@ -488,13 +489,13 @@ export function workspaceIntentsTool(ctx: Context): ToolDefinition {
       const scope = await resolveWorkspace(ctx, session, `intents.${args.action}`, args.workspace)
       switch (args.action) {
         case 'create':
-          return await createIntent(ctx, scope.workspace, args, exec.agent, session, exec.signal)
+          return await createIntent(ctx, scope.workspace, args, exec.agent, session, scope.crossWorkspace, exec.signal)
         case 'get':
           return await getIntent(ctx, scope.workspace, args, exec.signal)
         case 'confirm':
-          return await confirmIntent(ctx, scope.workspace, args, exec.agent, session, exec.signal)
+          return await confirmIntent(ctx, scope.workspace, args, exec.agent, session, scope.crossWorkspace, exec.signal)
         case 'correct':
-          return await correctIntent(ctx, scope.workspace, args, exec.agent, session, exec.signal)
+          return await correctIntent(ctx, scope.workspace, args, exec.agent, session, scope.crossWorkspace, exec.signal)
         case 'history':
           return await historyIntent(ctx, scope.workspace, args, exec.signal)
         case 'metrics':
@@ -605,15 +606,10 @@ async function createIntent(
   args: CreateArgs,
   agent: Agent | undefined,
   session: Session,
+  crossWorkspace: boolean,
   signal: AbortSignal | undefined,
 ): Promise<WorkspaceIntentsValue> {
-  const role = agent?.role
-  if (role !== undefined && role !== 'super') {
-    throw new WorkspaceIntentError(
-      'workspace_intents.create requires the super agent role or the user; ordinary agents read cards only',
-      'INTENT_PERMISSION_DENIED',
-    )
-  }
+  requireIntentWrite(agent, 'create', crossWorkspace)
   const requestId = requiredText(args.requestId, 'requestId', 'create')
   const rawUserText = requiredText(args.rawUserText, 'rawUserText', 'create')
   if (args.items === undefined) {
@@ -710,15 +706,10 @@ async function confirmIntent(
   args: ConfirmArgs,
   agent: Agent | undefined,
   session: Session,
+  crossWorkspace: boolean,
   signal: AbortSignal | undefined,
 ): Promise<WorkspaceIntentsValue> {
-  const role = agent?.role
-  if (role !== undefined && role !== 'super') {
-    throw new WorkspaceIntentError(
-      'workspace_intents.confirm requires the super agent role or the user; ordinary agents read cards only',
-      'INTENT_PERMISSION_DENIED',
-    )
-  }
+  requireIntentWrite(agent, 'confirm', crossWorkspace)
   const intentId = requiredText(args.intentId, 'intentId', 'confirm')
   const version = requiredVersion(args.version, 'confirm')
   const decision = args.decision
@@ -805,15 +796,10 @@ async function correctIntent(
   args: CorrectArgs,
   agent: Agent | undefined,
   session: Session,
+  crossWorkspace: boolean,
   signal: AbortSignal | undefined,
 ): Promise<WorkspaceIntentsValue> {
-  const role = agent?.role
-  if (role !== undefined && role !== 'super') {
-    throw new WorkspaceIntentError(
-      'workspace_intents.correct requires the super agent role or the user; ordinary agents read cards only',
-      'INTENT_PERMISSION_DENIED',
-    )
-  }
+  requireIntentWrite(agent, 'correct', crossWorkspace)
   const intentId = requiredText(args.intentId, 'intentId', 'correct')
   const requestId = requiredText(args.requestId, 'requestId', 'correct')
   const reason = requiredText(args.reason, 'reason', 'correct')
@@ -1171,6 +1157,24 @@ export function intentIdFor(workspaceId: Workspace['id'], rawUserText: string): 
  */
 function callerIdentity(agent: Agent | undefined, session: Session): string {
   return agent === undefined ? 'user' : `agent:${String(session.id)}`
+}
+
+/**
+ * Refuse a card write only when it crosses workspaces without the super agent.
+ * A caller in the card's workspace may write it; a cross-workspace write still
+ * requires the super agent.
+ * @param agent - calling agent, when the call has one.
+ * @param action - action being attempted.
+ * @param crossWorkspace - whether the call named another workspace.
+ * @throws WorkspaceIntentError `INTENT_PERMISSION_DENIED` for a cross-workspace caller that is not the super agent.
+ */
+function requireIntentWrite(agent: Agent | undefined, action: string, crossWorkspace: boolean): void {
+  if (!crossWorkspace) return
+  if (agent?.role === 'super') return
+  throw new WorkspaceIntentError(
+    `workspace_intents.${action} from another workspace requires the super agent`,
+    'INTENT_PERMISSION_DENIED',
+  )
 }
 
 /**
