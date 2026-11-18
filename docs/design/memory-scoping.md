@@ -732,6 +732,8 @@ The per-turn summary job is removed, so no summary-failure notice is appended an
 - [ ] The injection surface holds no memory entry: with both a legacy `MEMORY.md` and a populated `GLOBAL.md`, a Session receives no memory-sourced message and no `memory-state` section. CI: `neither a legacy workspace file nor the global file is injected per turn` (`packages/uitstalie/memory/tests/provider.spec.ts`). Deploy: open a Session and inspect its prompt and log.
 - [ ] A business write is refused with `NOT_GLOBAL_MEMORY` and a tool hint, and a completed turn writes no memory entry. CI: `a business write is refused with the workspace tool hints`, `a completed turn writes no memory job, no MEMORY.md, and no memory message`. Deploy: call `memory_write` with a business fact, then complete a turn.
 
+The dry run has run on the seven real workspaces; [the dry-run review](memory-migration-dryrun-review-20261118.md) records 23 of 27 global candidates outside the global class and the business-history retrieval gap, so the apply item above stays unchecked.
+
 ### 14.5 Not provable in CI
 
 - A real Windows deployment, the GUI, a process restart and resume, the real multi-workspace registry, and the real memory files are outside the suite. The **Deploy** items above are the manual gate; they stay unchecked until a person checks them on the deployed host.

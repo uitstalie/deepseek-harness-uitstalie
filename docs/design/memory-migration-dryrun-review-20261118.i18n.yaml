@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for memory-migration-dryrun-review-20261118.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/design/memory-migration-dryrun-review-20261118.md
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap:
+  en: 51e044f233748a43
+  zh: edc3cc3da10b5d4a
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/1-scope-and-evidence:
+  en: 3aa019ecb6c947d7
+  zh: d680671c60c13587
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/2-conclusion:
+  en: 7ea3ff8d380bbefd
+  zh: 64753541a0dae17f
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/3-candidate-classification:
+  en: 8c87c6c0048adb7d
+  zh: 75324fc04a477f6f
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/3-candidate-classification/3-1-session-and-task-state:
+  en: 081e84b027d2fc07
+  zh: e154cd007530d999
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/3-candidate-classification/3-2-removed-and-superseded-mechanisms:
+  en: 4d54a086073cb52d
+  zh: 32a4d2ece53d24ed
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/3-candidate-classification/3-3-workspace-business-and-preferences:
+  en: e3f94b3d326d8d34
+  zh: be83ded1a95dc0d2
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/3-candidate-classification/3-4-plausible-global-records:
+  en: 4fbf20330f5f89af
+  zh: 55b3906a8858e8f0
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/4-report-presentation:
+  en: 88d55a9da39b6dfc
+  zh: 0cf7e654a44e1092
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/5-design-gaps:
+  en: d8cfbaf931b06460
+  zh: 2ac619b682cb07c9
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/5-design-gaps/5-1-business-history-has-no-live-retrieval-path:
+  en: e2333cda8f893278
+  zh: 68df6710c370fc2f
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/5-design-gaps/5-2-the-global-class-has-no-operational-test:
+  en: 2fe86cdd4e939ded
+  zh: c64c72756e8c046a
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/6-what-this-round-does-not-do:
+  en: 50643deb55156612
+  zh: 4fb3eb3da4176390
+/memory-migration-dry-run-on-real-data-classification-precision-and-the-business-history-gap/7-reproduction:
+  en: 2097ebbf962b6e43
+  zh: b60192234a4c4be3

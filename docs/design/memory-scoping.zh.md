@@ -732,6 +732,8 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 - [ ] 注入面不含任何记忆条目：在旧 `MEMORY.md` 与已写入的 `GLOBAL.md` 同时存在时，会话收不到任何记忆来源的消息，也没有 `memory-state` 段。CI：`neither a legacy workspace file nor the global file is injected per turn`（`packages/uitstalie/memory/tests/provider.spec.ts`）。Deploy：打开一个会话检查提示词与日志。
 - [ ] 业务写入以 `NOT_GLOBAL_MEMORY` 加工具提示拒绝，完成的 turn 不写任何记忆条目。CI：`a business write is refused with the workspace tool hints`、`a completed turn writes no memory job, no MEMORY.md, and no memory message`。Deploy：用业务事实调用 `memory_write`，再完成一个 turn。
 
+dry-run 已在七个真实工作区上跑过；[dry-run 复核](memory-migration-dryrun-review-20261118.zh.md)记录 27 条 global 候选里有 23 条不属于 global 类，以及业务历史的检索缺口，因此上面的 apply 项仍未勾选。
+
 ### 14.5 CI 证明不了的部分
 
 - 真实 Windows 部署、GUI、进程重启与恢复、真实的多工作区注册表，以及真实记忆文件都在套件之外。上面标 **Deploy** 的项就是人工门禁；在部署主机上勾选之前，它们保持未勾选。
