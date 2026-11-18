@@ -2,7 +2,7 @@
 
 [English](tool-surface-reorg.md) | 中文
 
-状态：已实现。JIRA 产品退场，包括其模型工具、技能、面板、CLI、本地账本、派发历史与 super agent 工具；只保留 GitHub 上的 cloudstore 仓库及其内容与历史，按数据原样保留，不接入任何工具或流程。会话生命周期现在由 `workspace_sessions` 承载；投递与回传只经 `workspace_message`，任务状态只经 `workspace_tasks`，派发顺序与回传契约归[记忆/工作区设计](memory-scoping.zh.md) 6.5 节。personality 用一个工具拥有两个全局文件，`tool-dsh-store` 仍是唯一 `.dsh` 入口。篇幅上限：12 页 / 4,600 汉字。
+状态：已实现。JIRA 产品退场，包括其模型工具、技能、面板、CLI、本地账本、派发历史与 super agent 工具；只保留 GitHub 上的 cloudstore 仓库及其内容与历史，按数据原样保留，不接入任何工具或流程。会话生命周期现在由 `workspace_sessions` 承载；投递与回传只经 `workspace_message`，任务状态只经 `workspace_tasks`，工作区请求与回传契约归[记忆/工作区设计](memory-scoping.zh.md) 6.5 节。personality 用一个工具拥有两个全局文件，`tool-dsh-store` 仍是唯一 `.dsh` 入口。篇幅上限：12 页 / 4,600 汉字。
 
 ## 1. 范围与结果
 
@@ -29,16 +29,16 @@ JIRA 只保留云端数据仓：GitHub 上的 cloudstore 仓库及其内容与�
 `workspace_sessions` 是唯一的会话生命周期入口。动作是 `list`、`get`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact` 与 `delete`。
 
 - `list` 与 `get` 保持既有读语义：工作区会话、状态、当前活动、最近进展、待处理收件箱与产物计数。
-- `start` 在指定的已注册工作区创建 Session，只接收并发送首个任务文本与持久标题；它不检查意图卡。派发顺序是意图卡 → `workspace_tasks.create` → `workspace_sessions.start`/`prompt`，细节归[记忆/工作区设计](memory-scoping.zh.md) 6.5 节。
+- `start` 在指定的已注册工作区创建 Session，只接收并发送首个任务文本与持久标题；它不检查意图卡。工作区请求是通用能力：任意 agent 可经 `workspace_message` 或 `workspace_sessions` 向其他 agent/session 发起请求；意图卡与 `workspace_tasks` 只在需要正式任务记录时使用，细节归[记忆/工作区设计](memory-scoping.zh.md) 6.5 节。
 - `append` 继续指定 Session 或最近更新的 Session；`prompt` 只面向明确的 Session id。
 - `stop` 切断运行中的 turn、不投递文本；`abort` 切断后再投递后续文本。
 - `fork`、`archive`、`compact` 与 `delete` 保留 Host 生命周期语义。`delete` 要求精确重复 Session id 作为确认；Host 没有真实删除 API 时明确拒绝。
 
-调用方工作区是默认范围。生命周期写入要求 super agent 角色；读取仍对工作区内所有 agent 开放。跨工作区调用必须显式给出已注册工作区 id，并留痕。
+调用方工作区是默认范围。生命周期写入当前要求 super agent 角色（阶段门控；目标契约对普通 agent 开放）；读取仍对工作区内所有 agent 开放。跨工作区调用必须显式给出已注册工作区 id，并留痕。
 
 投递状态由 `workspace_message` 承载。`send` 记录消息与投递尝试。`status` 报告消息状态、失败原因与尝试次数。`retry` 用同一请求标识、正文与引用重发失败消息；重复 retry 不会重复入队。失败消息仍可用 `read` 读出，因此失败不会静默丢失。
 
-派发顺序与回传契约由记忆/工作区设计拥有（[记忆/工作区设计](memory-scoping.zh.md) 5.4、6.5、11.8 节）：执行者用 `workspace_message.send` 带 `taskId` 回传，跨工作区只允许任务绑定（`task.targetSessionId` 是调用者、`task.dispatcherSessionId` 是发送目标；后者是目标契约），`requestId` 幂等，`status`/`retry` 处理失败，任务状态只经 `workspace_tasks`。本文不重复定义这些契约，也不把未实现的任务绑定写成已实现。
+工作区请求与回传契约由记忆/工作区设计拥有（[记忆/工作区设计](memory-scoping.zh.md) 5.4、6.5、11.8 节）：任意 agent 可经 `workspace_message`（`send`/`read`/`status`/`retry`）向同一工作区的其他 agent/session 发起请求；需要正式任务记录时才用意图卡与 `workspace_tasks`，简单的或明确的动作不需要单独发卡。执行者用 `workspace_message.send` 带 `taskId` 回传，跨工作区只允许任务绑定（`task.targetSessionId` 是调用者、`task.dispatcherSessionId` 是发送目标；后者是目标契约），`requestId` 幂等，`status`/`retry` 处理失败，任务状态只经 `workspace_tasks`。当前阶段建任务与派发仅 super agent（阶段门控，目标契约对普通 agent 开放）。本文不重复定义这些契约，也不把未实现的能力写成已实现。
 
 ## 4. Personality
 
@@ -69,7 +69,7 @@ JIRA 只保留云端数据仓：GitHub 上的 cloudstore 仓库及其内容与�
 
 ## 8. 与记忆/工作区设计对齐
 
-记忆设计的映射行已在同一改动中修订：JIRA 认领/派发面移除，JIRA 模型工具消失，投递与回传归 `workspace_message`，任务状态归 `workspace_tasks`，会话生命周期归 `workspace_sessions`，`.dsh` 指针保留。派发顺序与回传契约只由记忆/工作区设计定义；本文只指向它。`workspace_tasks` 从空白开始；不存在 JIRA key 或账本兼容字段。
+记忆设计的映射行已在同一改动中修订：JIRA 认领/派发面移除，JIRA 模型工具消失，投递与回传归 `workspace_message`，任务状态归 `workspace_tasks`，会话生命周期归 `workspace_sessions`，`.dsh` 指针保留。工作区请求与回传契约只由记忆/工作区设计定义；本文只指向它。`workspace_tasks` 从空白开始；不存在 JIRA key 或账本兼容字段。
 
 ## 9. 验证
 

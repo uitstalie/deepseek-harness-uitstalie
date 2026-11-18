@@ -2,7 +2,7 @@
 
 English | [中文](tool-surface-reorg.zh.md)
 
-Status: implemented. The JIRA product is retired, including its model tools, skills, panel, CLI, local ledger, dispatch history, and super-agent tools; only the cloudstore repository on GitHub, its content and history, is kept as data, not connected to any tool or process. Session lifecycle now lives in `workspace_sessions`; delivery and return go only through `workspace_message`, task state only through `workspace_tasks`, and the dispatch order and return contract belong to the [memory and workspace design](memory-scoping.md) section 6.5. Personality owns both global files through one tool, and `tool-dsh-store` remains the only `.dsh` entry. Length budget: 12 pages / 4,000 words.
+Status: implemented. The JIRA product is retired, including its model tools, skills, panel, CLI, local ledger, dispatch history, and super-agent tools; only the cloudstore repository on GitHub, its content and history, is kept as data, not connected to any tool or process. Session lifecycle now lives in `workspace_sessions`; delivery and return go only through `workspace_message`, task state only through `workspace_tasks`, and workspace requests and the return contract belong to the [memory and workspace design](memory-scoping.md) section 6.5. Personality owns both global files through one tool, and `tool-dsh-store` remains the only `.dsh` entry. Length budget: 12 pages / 4,000 words.
 
 ## 1. Scope and result
 
@@ -29,16 +29,16 @@ Who observes the removal: prompts, skills, and evaluation sets that expected the
 `workspace_sessions` is the single Session-lifecycle entry. Its actions are `list`, `get`, `start`, `append`, `prompt`, `stop`, `abort`, `fork`, `archive`, `compact`, and `delete`.
 
 - `list` and `get` keep the existing read semantics: workspace sessions, status, current activity, recent progress, pending inbox, and artifact count.
-- `start` creates a Session in a named registered workspace and only receives and sends its first task text and durable title; it does not check an intent card. The dispatch order is intent card → `workspace_tasks.create` → `workspace_sessions.start`/`prompt`; the details are in the [memory and workspace design](memory-scoping.md) section 6.5.
+- `start` creates a Session in a named registered workspace and only receives and sends its first task text and durable title; it does not check an intent card. Workspace requests are a general capability: any agent can send a request to another agent or Session through `workspace_message` or `workspace_sessions`; intent cards and `workspace_tasks` are used only when a formal task record is needed, and the details are in the [memory and workspace design](memory-scoping.md) section 6.5.
 - `append` continues a named Session or the most recently updated one; `prompt` addresses one explicit Session id.
 - `stop` cuts off the running turn without text; `abort` cuts it off and then sends the follow-up text.
 - `fork`, `archive`, `compact`, and `delete` keep the Host lifecycle semantics. `delete` requires the exact Session id as confirmation and refuses when the Host exposes no real delete API.
 
-The caller's workspace is the default scope. A lifecycle write requires the super-agent role; reads stay open to every agent in the workspace. Cross-workspace calls take an explicit registered workspace id and are recorded.
+The caller's workspace is the default scope. A lifecycle write currently requires the super-agent role (a stage gate; the target contract opens it to ordinary agents); reads stay open to every agent in the workspace. Cross-workspace calls take an explicit registered workspace id and are recorded.
 
 Delivery state lives in `workspace_message`. `send` records a message and its delivery attempt. `status` reports the message's state, failure reason, and attempt count. `retry` resends a failed message with the same request identity, body, and references; a repeated retry does not enqueue twice. A failed message remains readable through `read`, so a failure is never a silent loss.
 
-The dispatch order and return contract belong to the memory and workspace design ([memory and workspace design](memory-scoping.md) sections 5.4, 6.5, and 11.8): the executor returns with `workspace_message.send` carrying `taskId`; a cross-workspace return is allowed only through a task binding (`task.targetSessionId` is the caller and `task.dispatcherSessionId` is the target, the latter being a target contract); `requestId` is idempotent; `status` and `retry` handle failures; task state changes only through `workspace_tasks`. This document does not redefine those contracts, and it does not present the unimplemented task binding as implemented.
+Workspace requests and the return contract belong to the memory and workspace design ([memory and workspace design](memory-scoping.md) sections 5.4, 6.5, and 11.8): any agent can send a request to another agent or Session in the same workspace through `workspace_message` (`send`/`read`/`status`/`retry`); intent cards and `workspace_tasks` are used only when a formal task record is needed, and a simple or clear action needs no separate card. The executor returns with `workspace_message.send` carrying `taskId`; a cross-workspace return is allowed only through a task binding (`task.targetSessionId` is the caller and `task.dispatcherSessionId` is the target, the latter being a target contract); `requestId` is idempotent; `status` and `retry` handle failures; task state changes only through `workspace_tasks`. At the current stage, task creation and dispatch are limited to the super agent (a stage gate; the target contract opens them to ordinary agents). This document does not redefine those contracts, and it does not present unimplemented capability as implemented.
 
 ## 4. Personality
 
@@ -69,7 +69,7 @@ The dispatch order and return contract belong to the memory and workspace design
 
 ## 8. Alignment with the memory and workspace design
 
-The memory design's mapping rows were revised in the same change: the JIRA claim/dispatch surface is removed, the JIRA model tools are gone, delivery and return are `workspace_message`, task state is `workspace_tasks`, session lifecycle is `workspace_sessions`, and the `.dsh` pointer stays. The dispatch order and return contract are defined only by the memory and workspace design; this document points to it. `workspace_tasks` starts fresh; no JIRA key or ledger compatibility field exists.
+The memory design's mapping rows were revised in the same change: the JIRA claim/dispatch surface is removed, the JIRA model tools are gone, delivery and return are `workspace_message`, task state is `workspace_tasks`, session lifecycle is `workspace_sessions`, and the `.dsh` pointer stays. Workspace requests and the return contract are defined only by the memory and workspace design; this document points to it. `workspace_tasks` starts fresh; no JIRA key or ledger compatibility field exists.
 
 ## 9. Verification
 
