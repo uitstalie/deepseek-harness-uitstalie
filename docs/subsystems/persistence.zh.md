@@ -380,7 +380,7 @@ Source: [`packages/experimental/deepseek-chat-import/src/index.ts`](../../packag
 
 Durable append-only session storage addressed through per-session handles.
 
-Storage semantics shared by every backend: events are contiguous from seq 0 and never rewritten; a torn physical tail is never returned to a reader and is truncated by the write path before its first append; reads validate current-format records, skip unknown events marked ignorable, and refuse unmarked unknown types. `append` persists best-effort; `flush` — per handle or service-wide — is the durability barrier.
+Storage semantics shared by every backend: events are contiguous from seq 0 and never rewritten; a torn physical tail is never returned to a reader and is truncated by the write path before its first append; reads validate current-format records, skip unknown events marked ignorable, and refuse unknown events without that marker. `append` persists best-effort; `flush` — per handle or service-wide — is the durability barrier.
 
 Visibility: a created session is observable through `stat`/`list`/`open` in this process from the moment `create` resolves, even while a backend defers physical materialization (a pure optimization); other processes see the session only once it materializes, and a session that never materialized before a crash never existed. `SessionHandle.flush` forces materialization.
 

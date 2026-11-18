@@ -1106,6 +1106,22 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns platform facts, path spelling and comparison, environment lookup, and the user and Harness home directories; branch plugins inject it instead of deciding platform questions a second way.',
   },
   {
+    key: 'agentInstructionsApi',
+    pkg: 'agent-instructions',
+    title: 'Instruction baseline API',
+    mode: 'service',
+    consumers: ['agent-instructions-plus'],
+    note: 'Exposes native instruction baseline state, project-root discovery, and config resolution to branch instruction sources.',
+  },
+  {
+    key: 'workspaceTasks',
+    pkg: 'workspace-tools',
+    title: 'Card-validated dispatch tasks',
+    mode: 'service',
+    consumers: ['jira-agent'],
+    note: 'Creates and cancels dispatch task records through the active intent card, coverage, and idempotency rules; the model-facing tool and the super agent share it.',
+  },
+  {
     key: 'jira',
     pkg: 'jira-service',
     title: 'Jira ledger single writer',

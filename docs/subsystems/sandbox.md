@@ -361,7 +361,7 @@ overrideOf(session: Session): SandboxMode | undefined
 
 Types: [Session](session.md)
 
-Source: [`packages/sandbox/sandbox-policy/src/index.ts`](../../packages/sandbox/sandbox-policy/src/index.ts)
+Source: [`packages/sandbox/sandbox-policy/src/api.ts`](../../packages/sandbox/sandbox-policy/src/api.ts)
 
 <a id="ctxtoolpolicy--toolpolicyservice"></a>
 
@@ -442,5 +442,5 @@ select(session: Session, name: string, reason?: string): void
 
 Types: [Agent](core.md) · [Session](session.md) · [ToolExecution](tools.md)
 
-Source: [`packages/interaction/tool-policy/src/index.ts`](../../packages/interaction/tool-policy/src/index.ts)
+Source: [`packages/interaction/tool-policy/src/api.ts`](../../packages/interaction/tool-policy/src/api.ts)
 <!-- END GENERATED cordis-surface -->

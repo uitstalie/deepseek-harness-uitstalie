@@ -125,11 +125,13 @@ export interface DshStore {
   /**
    * Whether a normalized path belongs to the rules namespace.
    * @param path - store-relative display path.
+   * @returns `true` for `rules` itself and every path below it.
    */
   isRulesPath(path: string): boolean
   /**
    * Whether a normalized path belongs to the memory namespace.
    * @param path - store-relative display path.
+   * @returns `true` when the first path segment is `memory`, case-insensitively.
    */
   isMemoryPath(path: string): boolean
   /**

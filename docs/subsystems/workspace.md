@@ -537,9 +537,10 @@ Durable workspace registry. Startup waits for `sessionPersistence`, builds one c
  * Different canonical paths may share a display title.
  * @param path - Existing directory to own, in a fully qualified path spelling.
  * @param title - Display title used only when a new record is created.
+ * @param role - Durable workspace role; omitted records no explicit role and resolves as `agent`.
  * @returns the existing or newly durable workspace.
  */
-async create(path: string, title?: string): Promise<Workspace>
+async create(path: string, title?: string, role?: 'agent' | 'super'): Promise<Workspace>
 
 /**
  * Initialize the default Workspace only while both the registry and Session

@@ -222,9 +222,9 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   workspaceGroups: 'client-side workspace section grouping registry — packages/client/ui-workspace/README.md owns the API',
   jiraRemote: 'branch-owned read-only ledger Remote — packages/jira/jira-service/README.md owns the API (the projection cannot walk it because src/index.ts does not re-export the module)',
   // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-313, personality 与 systemEnvironment 服务按分支文档归属登记豁免
-  personalityProposals: 'branch-owned identity-proposal Remote — packages/uitstalie/personality/README.md owns the API',
-  personalityRemote: 'branch-owned personality Remote — packages/uitstalie/personality/README.md owns the API',
   systemEnvironment: 'branch-owned host environment facts service — packages/uitstalie/system-environment/README.md owns the API',
+  agentInstructionsApi: 'branch-owned instruction baseline API — packages/context/agent-instructions/README.md owns the API',
+  workspaceTasks: 'branch-owned dispatcher task service — packages/uitstalie/workspace-tools/README.md owns the API',
   // END uitstalie-deepseek-flash
   fileUpload: 'client-side browser upload service — packages/client/file-upload/README.md owns the API',
   uiRenderer: 'client-side interface-typed browser service — packages/client/ui-renderer/README.md owns the API',
@@ -1107,6 +1107,11 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  AgentRole: 'the branch role type is owned by packages/core/agent/README.md',
+  RulesScan: 'the rules scan result is owned by packages/uitstalie/store-atom/src/service.ts',
+  DispatchTaskInput: 'the dispatcher task input is owned by packages/uitstalie/workspace-tools/src/tasks.ts',
+  DispatchTaskIdentity: 'the dispatcher task identity is owned by packages/uitstalie/workspace-tools/src/tasks.ts',
+  CancelDispatchTaskInput: 'the dispatch cancellation input is owned by packages/uitstalie/workspace-tools/src/service.ts',
   AnyConnectorAccountView: 'generic connector account view is owned by packages/client/ui-connector-account/README.md',
   ConnectorAccountRegistration: 'Plugins page account registration is owned by packages/client/ui-connector-account/README.md',
   ConnectorAccountsView: 'registered account stream item is owned by packages/client/ui-connector-account/README.md',

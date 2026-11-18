@@ -701,6 +701,13 @@ Initiator methods provide same-process causal attribution only. Ambient presence
 
 ```ts cordis-catalog
 /**
+ * Resolve one live Agent's effective role.
+ * @param agent - Agent carrying durable lineage and live options.
+ * @returns the explicit child/super role, otherwise `agent`.
+ */
+roleOf(agent: Agent): AgentRole
+
+/**
  * Read the turn and step positions recorded in a Session.
  * @param session - Session whose committed events are read.
  * @returns the current turn and step positions; do not mutate the returned value.

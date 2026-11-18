@@ -1229,7 +1229,7 @@ get(id: SessionId): Session | undefined
  * All live sessions, in creation order.
  * @returns a fresh array; mutating it does not affect the store.
  */
-list(): Session[]
+listSessions(): Session[]
 
 /**
  * Create an independent live session from an exact prefix of a live source.

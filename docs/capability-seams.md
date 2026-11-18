@@ -271,6 +271,8 @@ flowchart LR
   svc_approval["ctx.approval<br/>Approval seam"]
   pkg_permission_presets["permission-presets"]
   svc_permissionPresets["ctx.permissionPresets<br/>Permission presets"]
+  pkg_tool_policy["tool-policy"]
+  svc_toolPolicy["ctx.toolPolicy<br/>Soft tool policy"]
   pkg_ptc_runtime["ptc-runtime"]
   svc_ptcRuntime["ctx.ptcRuntime<br/>PTC execution seam"]
   pkg_ptc_runtime_node["ptc-runtime-node"]
@@ -335,11 +337,34 @@ flowchart LR
   pkg_cordis_host_runner["cordis-host-runner"]
   svc_dynamicCordisRunner["ctx.dynamicCordisRunner<br/>Dynamic Cordis package host runner"]
   svc_cordisInspect["ctx.cordisInspect<br/>Dynamic Cordis inspect registry"]
+  pkg_agent_instructions_plus["agent-instructions-plus"]
+  svc_agentContextSources["ctx.agentContextSources<br/>Always-on agent context source registry"]
+  pkg_dafeiyu["dafeiyu"]
+  svc_dafeiyu["ctx.dafeiyu<br/>Capability organizer and enable gate"]
+  pkg_memory["memory"]
+  pkg_personality["personality"]
+  pkg_jira_agent["jira-agent"]
+  svc_dafeiyuRemote["ctx.dafeiyuRemote<br/>Capability status Remote"]
+  pkg_client_ui_dafeiyu["client-ui-dafeiyu"]
+  pkg_tool_dsh_store["tool-dsh-store"]
+  svc_dshStore["ctx.dshStore<br/>.dsh store base interface"]
+  pkg_system_environment["system-environment"]
+  svc_systemEnvironment["ctx.systemEnvironment<br/>Host environment facts"]
+  pkg_agent_instructions["agent-instructions"]
+  svc_agentInstructionsApi["ctx.agentInstructionsApi<br/>Instruction baseline API"]
+  pkg_workspace_tools["workspace-tools"]
+  svc_workspaceTasks["ctx.workspaceTasks<br/>Card-validated dispatch tasks"]
+  pkg_jira_service["jira-service"]
+  svc_jira["ctx.jira<br/>Jira ledger single writer"]
+  pkg_models_dev["models-dev"]
+  svc_modelsDev["ctx.modelsDev<br/>models.dev catalog service"]
   pkg_experimental_liveshare["experimental-liveshare"]
   svc_liveshareShares["ctx.liveshareShares<br/>Owner share management Remote"]
   pkg_action_cards --> svc_actionCards
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
+  pkg_agent_instructions --> svc_agentInstructionsApi
+  pkg_agent_instructions_plus --> svc_agentContextSources
   pkg_agent_loop --> svc_agentLoop
   pkg_agent_preset_registry --> svc_agentPresets
   pkg_agent_team --> svc_agentTeams
@@ -386,6 +411,8 @@ flowchart LR
   pkg_credentials_local --> svc_credentials
   pkg_cua --> svc_cuaAccess
   pkg_cua --> svc_cuaPrograms
+  pkg_dafeiyu --> svc_dafeiyu
+  pkg_dafeiyu --> svc_dafeiyuRemote
   pkg_deepseek_account --> svc_deepseekAccount
   pkg_deepseek_auth --> svc_deepseekAuth
   pkg_deepseek_chat_import --> svc_deepseekChatImport
@@ -425,6 +452,7 @@ flowchart LR
   pkg_host_product_telemetry_otel --> svc_productTelemetry
   pkg_host_webserver --> svc_webServer
   pkg_inspector --> svc_inspector
+  pkg_jira_service --> svc_jira
   pkg_jobs --> svc_jobs
   pkg_jobs_local --> svc_jobs
   pkg_llm --> svc_llm
@@ -439,6 +467,7 @@ flowchart LR
   pkg_mcp_manager --> svc_mcpManager
   pkg_mcp_resources --> svc_mcpResources
   pkg_message_feedback --> svc_messageFeedback
+  pkg_models_dev --> svc_modelsDev
   pkg_office_kit --> svc_officeKit
   pkg_otel --> svc_otel
   pkg_permission_presets --> svc_permissionPresets
@@ -495,11 +524,14 @@ flowchart LR
   pkg_subprocess --> svc_subprocess
   pkg_subprocess_local --> svc_subprocess
   pkg_subprocess_ssh --> svc_subprocess
+  pkg_system_environment --> svc_systemEnvironment
   pkg_system_prompt --> svc_systemPrompt
   pkg_terminal --> svc_terminals
   pkg_terminal_bash --> svc_terminals
   pkg_terminal_panel --> svc_terminals
   pkg_token_meter --> svc_tokenMeter
+  pkg_tool_dsh_store --> svc_dshStore
+  pkg_tool_policy --> svc_toolPolicy
   pkg_tool_subagent --> svc_subagentModelSelection
   pkg_tools --> svc_tools
   pkg_typert_registry --> svc_typert
@@ -517,10 +549,12 @@ flowchart LR
   pkg_working_directory --> svc_workingDirectory
   pkg_workspace --> svc_workspaceRegistry
   pkg_workspace_changes --> svc_workspaceChanges
+  pkg_workspace_tools --> svc_workspaceTasks
   svc_actionCards --> pkg_client_ui_action_cards
   svc_actionCards --> pkg_creation_recommendations
   svc_agentDefaultModel --> pkg_api_session_controller
   svc_agentDefaultModel --> pkg_headless
+  svc_agentInstructionsApi --> pkg_agent_instructions_plus
   svc_agentLoop --> pkg_base
   svc_agentLoop --> pkg_sdk_minimal
   svc_agentTeams --> pkg_tool_agent_team
@@ -553,6 +587,10 @@ flowchart LR
   svc_credentials --> pkg_llm_pi_ai
   svc_cuaAccess --> pkg_cua
   svc_cuaPrograms --> pkg_cua_mcp
+  svc_dafeiyu --> pkg_jira_agent
+  svc_dafeiyu --> pkg_memory
+  svc_dafeiyu --> pkg_personality
+  svc_dafeiyuRemote --> pkg_client_ui_dafeiyu
   svc_deepseekAccount --> pkg_deepseek_auth
   svc_deepseekAccount --> pkg_llm_deepseek_account
   svc_deepseekAuth --> pkg_llm_deepseek_account
@@ -561,6 +599,8 @@ flowchart LR
   svc_deepseekAuth --> pkg_web_search_deepseek
   svc_deepseekLlmApiExtensions --> pkg_llm_deepseek
   svc_directoryPicker --> pkg_api_workspace_controller
+  svc_dshStore --> pkg_memory
+  svc_dshStore --> pkg_personality
   svc_dynamicCordisRunner --> pkg_tool_cordis
   svc_fileReferences --> pkg_api_session_controller
   svc_fileUploads --> pkg_api_session_controller
@@ -570,6 +610,7 @@ flowchart LR
   svc_fs --> pkg_tool_fs
   svc_headlessStartup --> pkg_headless
   svc_hmr --> pkg_app_boot
+  svc_jira --> pkg_jira_agent
   svc_jobs --> pkg_api_job_controller
   svc_jobs --> pkg_tool_bash
   svc_jobs --> pkg_tool_jobs
@@ -658,6 +699,8 @@ flowchart LR
   svc_systemPrompt --> pkg_tools
   svc_terminals --> pkg_tool_terminal
   svc_tokenMeter --> pkg_compaction_basic
+  svc_toolPolicy --> pkg_headless
+  svc_toolPolicy --> pkg_tool_fs
   svc_toolResultPruner --> pkg_compaction_basic
   svc_tools --> pkg_agent_loop
   svc_tools --> pkg_tool_ask_user
@@ -688,6 +731,7 @@ flowchart LR
   svc_workingDirectory --> pkg_tool_pwsh
   svc_workspaceRegistry --> pkg_api_session_controller
   svc_workspaceRegistry --> pkg_api_workspace_controller
+  svc_workspaceTasks --> pkg_jira_agent
   svc_worktrees --> pkg_experimental_tool_worktree
   svc_fs -. event gate .-> pkg_fs_observation_policy
 ```
@@ -792,6 +836,7 @@ flowchart LR
 | `ctx.sandboxPolicy` | `core` | [`sandbox-policy`](../packages/sandbox/sandbox-policy) | - | [`bash-sandbox`](../packages/shell/bash-sandbox), [`fs-sandbox`](../packages/fs/fs-sandbox), [`terminal-bash`](../packages/terminal/terminal-bash), [`terminal-panel`](../packages/experimental/terminal-panel) | - | The one home for the deployment default mode + workspace root; only the sandboxed executor and provider read the service (the tool layers use the pure `sandbox/mode` fold it also exports). Both enforcing families read it so bash and fs cannot confine to different roots. |
 | `ctx.approval` | `seam` | [`user-approval`](../packages/interaction/user-approval) | - | [`tools`](../packages/core/tools), [`tool-bash`](../packages/shell/tool-bash), [`acp`](../packages/acp/acp) | - | One-shot permission decisions dispatched over the `approval/request` waterfall; answerers are listeners (the ACP bridge for its own agents), absence fails closed to `unavailable`. |
 | `ctx.permissionPresets` | `core` | [`permission-presets`](../packages/interaction/permission-presets) | - | - | - | User-facing preset table (`workspace-write`/`danger-full-access`) bundling the sandbox-mode and approval-policy knobs; a switch writes one `permission/preset` event through to both knob events. |
+| `ctx.toolPolicy` | `service` | [`tool-policy`](../packages/interaction/tool-policy) | - | [`tool-fs`](../packages/fs/tool-fs), [`headless`](../packages/bundle/headless) | - | Named profiles pair a tool blacklist with file-target blacklists; denied tools leave the model schema and are refused by the monotonic tool guard, tool-fs asks before file access, and headless applies or selects a profile. The process keeps the user permissions. |
 | `ctx.ptcRuntime` | `seam` | [`ptc-runtime`](../packages/ptc-runtime/ptc-runtime) | [`ptc-runtime-node`](../packages/ptc-runtime/ptc-runtime-node) | [`tool-executor-ptc`](../packages/core/tool-executor-ptc), [`workflow-ptc`](../packages/workflow/workflow-ptc) | - | Runs programs against host-provided async bindings; tool-executor-ptc owns PTC presentation and workflow-ptc owns workflow orchestration. |
 | `ctx.fs` | `seam` | [`fs`](../packages/fs/fs) | [`fs-local`](../packages/fs/fs-local), [`fs-sandbox`](../packages/fs/fs-sandbox), [`fs-ssh`](../packages/ssh/fs-ssh) | [`tool-fs`](../packages/fs/tool-fs) | [`fs-observation-policy`](../packages/fs/fs-observation-policy) | tool-fs executes read/write/edit through ctx.fs; fs-sandbox fences mutations by the shared sandbox mode; fs-observation-policy contributes observed-state checks through the fs/* event gate. |
 | `ctx.compaction` | `seam` | [`compaction`](../packages/compaction/compaction) | [`compaction-basic`](../packages/compaction/compaction-basic) | [`compaction-basic`](../packages/compaction/compaction-basic) | - | The basic backend consumes post-step pressure and request-error recovery events; there is no model-facing compact tool. |
@@ -813,6 +858,15 @@ flowchart LR
 | `ctx.lsp` | `seam` | [`lsp`](../packages/lsp/lsp) | [`lsp-stdio`](../packages/lsp/lsp-stdio) | [`tool-lsp`](../packages/lsp/tool-lsp) | - | Provider registration and selection plus normalized query execution over exactly four operations; the seam offers no protocol escape hatch, so a backend translates into the normalized request and result. |
 | `ctx.dynamicCordisRunner` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | Owns the in-memory definition registry, the vm sandbox for host halves, and the request-run round trip; browser pages reach the same service over the wire through its remote namespace. |
 | `ctx.cordisInspect` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport. |
+| `ctx.agentContextSources` | `service` | [`agent-instructions-plus`](../packages/uitstalie/agent-instructions-plus) | - | - | - | Collects sources whose rendered text joins the native instruction baseline; registration order and the per-source digest are the contract. |
+| `ctx.dafeiyu` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality), [`jira-agent`](../packages/jira/jira-agent) | - | Registers capability providers, gates their create() calls, and dispatches tools, prompt sections, and turn-end hooks per agent. |
+| `ctx.dafeiyuRemote` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`client-ui-dafeiyu`](../packages/uitstalie/ui-dafeiyu) | - | Publishes the read-only remote.dafeiyu status snapshot; it cannot register, enable, or disable a capability. |
+| `ctx.dshStore` | `service` | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality) | - | Owns path-confined .dsh store operations and the per-session policy gate; the store tool and sidebar Remote consume it. |
+| `ctx.systemEnvironment` | `service` | [`system-environment`](../packages/uitstalie/system-environment) | - | - | - | Owns platform facts, path spelling and comparison, environment lookup, and the user and Harness home directories; branch plugins inject it instead of deciding platform questions a second way. |
+| `ctx.agentInstructionsApi` | `service` | [`agent-instructions`](../packages/context/agent-instructions) | - | [`agent-instructions-plus`](../packages/uitstalie/agent-instructions-plus) | - | Exposes native instruction baseline state, project-root discovery, and config resolution to branch instruction sources. |
+| `ctx.workspaceTasks` | `service` | [`workspace-tools`](../packages/uitstalie/workspace-tools) | - | [`jira-agent`](../packages/jira/jira-agent) | - | Creates and cancels dispatch task records through the active intent card, coverage, and idempotency rules; the model-facing tool and the super agent share it. |
+| `ctx.jira` | `service` | [`jira-service`](../packages/jira/jira-service) | - | [`jira-agent`](../packages/jira/jira-agent) | - | Owns the one ledger writer, read and write methods, push queue, and changed notices; the browser reads it through remote.jira. |
+| `ctx.modelsDev` | `service` | [`models-dev`](../packages/uitstalie/models-dev) | - | - | - | Serves the models.dev provider and model catalog, route resolution, and harness-shaped model defaults and extra params. |
 | `ctx.liveshareShares` | `service` | [`experimental-liveshare`](../packages/experimental/liveshare) | - | - | - | Publishes the owner share-management operations as one Typert Remote namespace that the owner client face calls; every method delegates to the same operations the same-origin routes used. |
 
 Maintenance mode: hybrid: services are discovered from Cordis declarations; interface/implementation/consumer roles are classified in `scripts/gen-doc-graphs.ts` with a completeness guard.

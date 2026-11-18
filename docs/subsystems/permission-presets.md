@@ -157,6 +157,18 @@ current(session: Session): string
 selection(session: Session): PermissionSelection
 
 /**
+ * Whether the Session log records a permission choice rather than only the
+ * deployment default pinned at creation. The Session log is the source of
+ * truth: once this is true, the current preset/knobs were chosen explicitly
+ * (or enforced by a configured policy) and a later default, resume, rewire,
+ * or reconnect must not replace them. Only the initial pin writes
+ * `source: 'default'` events; every other writer leaves the source absent.
+ * @param session - the Session whose permission provenance is read.
+ * @returns true when an explicit selection exists.
+ */
+hasExplicitSelection(session: Session): boolean
+
+/**
  * Resolve an available preset's knob bundle.
  * @param name - the preset name to resolve.
  * @returns the configured bundle.

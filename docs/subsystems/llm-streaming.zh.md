@@ -1294,7 +1294,7 @@ configuredBodyKeys(route: string): string[]
 refresh(): Promise<void>
 ```
 
-Source: [`packages/uitstalie/models-dev/src/index.ts`](../../packages/uitstalie/models-dev/src/index.ts)
+Source: [`packages/uitstalie/models-dev/src/api.ts`](../../packages/uitstalie/models-dev/src/api.ts)
 
 <a id="llm-events"></a>
 
@@ -1411,5 +1411,5 @@ Source: [`packages/llm/llm-pi-ai/src/index.ts`](../../packages/llm/llm-pi-ai/src
 'models-dev/updated'(this: ModelsDevCatalog, origin: CatalogOrigin): void
 ```
 
-Source: [`packages/uitstalie/models-dev/src/index.ts`](../../packages/uitstalie/models-dev/src/index.ts)
+Source: [`packages/uitstalie/models-dev/src/api.ts`](../../packages/uitstalie/models-dev/src/api.ts)
 <!-- END GENERATED cordis-surface -->
