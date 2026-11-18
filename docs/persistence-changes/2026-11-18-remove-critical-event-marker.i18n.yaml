@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-18-remove-critical-event-marker.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-18-remove-critical-event-marker.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-18-remove-critical-event-marker:
+  en: 53488dfc4a50697b
+  zh: 952a1abbcfead721
+/2026-11-18-remove-critical-event-marker/summary:
+  en: db4e5de050a11063
+  zh: 77cf3f4c7b9d9e5f
+/2026-11-18-remove-critical-event-marker/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-18-remove-critical-event-marker/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-18-remove-critical-event-marker/compatibility:
+  en: bc82455369d5e044
+  zh: 204c6959887f8b9a
+/2026-11-18-remove-critical-event-marker/verification:
+  en: 8176e7cbe87c46c2
+  zh: d2a1a00a9a27aadc
+/2026-11-18-remove-critical-event-marker/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

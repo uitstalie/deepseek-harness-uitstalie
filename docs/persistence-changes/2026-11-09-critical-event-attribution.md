@@ -35,7 +35,7 @@ changes:
     after: "7387559e11f3e57fb03be1f907e639f517ac984b46ee81a4bbdada27dbbd38e9"
     decision: same-version
   - root: "event:agent/inbox/spliced"
-    previous: "2026-10-27-retry-control-input"
+    previous: "2026-11-05-timeline-priority-notice"
     after: "7e573f8970aa5cf2487252b1e8377a3f887d663f0581a1cd2c1c2c9413e8434e"
     decision: same-version
   - root: "event:agent/tool-pair-repair"
@@ -91,7 +91,7 @@ changes:
     after: "0299106a211ea26f7b427c7d2996120e9fe3099ef9c1710af120b92beedf426a"
     decision: same-version
   - root: "event:developer/message"
-    previous: "2026-10-27-retry-control-input"
+    previous: "2026-11-05-timeline-priority-notice"
     after: "564d4d33868cef0cfa6500d741de7d60e6baeca05c02987bddcee24e4814bf6b"
     decision: same-version
   - root: "event:feedback/message-delete"
@@ -179,7 +179,7 @@ changes:
     after: "9151e801a7f328c78e8db150617625171ea06203eb2bb69abd1f08c0946b9206"
     decision: same-version
   - root: "event:session/title-llm-request"
-    previous: "2026-10-27-retry-control-input"
+    previous: "2026-11-05-timeline-priority-notice"
     after: "e8d289544abf353b1b56b00389c81e046ff97485412e02077fc00b724080a1e5"
     decision: same-version
   - root: "event:step/end"
@@ -271,7 +271,7 @@ changes:
     after: "ce34eede84c60114f431c703d1b7ddebe42b2c7c9cbfcfd64be352d0677f26e2"
     decision: same-version
   - root: "event:user/message"
-    previous: "2026-10-27-retry-control-input"
+    previous: "2026-11-05-timeline-priority-notice"
     after: "417b14cf91bfd83386c27eb74ce394410214de7e7d9f0a5845d2c52154a70cb6"
     decision: same-version
   - root: "event:web/deepseek-search-llm-request"
