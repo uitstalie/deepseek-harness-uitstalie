@@ -17,16 +17,18 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineTool, ToolArgsError } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import type { Page } from './paging.ts'
 import { pageOf } from './paging.ts'
-import { WorkspaceRecordError, WorkspaceSessionError } from './errors.ts'
+import { WorkspaceIntentError, WorkspaceRecordError, WorkspaceSessionError, WorkspaceTaskError } from './errors.ts'
 import { resolveWorkspace, workspaceDirectory } from './scope.ts'
-import { listArtifacts, listMessages, listTasks } from './store.ts'
-import type { TaskRecord } from './records.ts'
+import { listArtifacts, listMessages, listTasks, readTask } from './store.ts'
+import { TASK_TYPES } from './records.ts'
+import type { TaskCoverage, TaskNonCoverage, TaskRecord, TaskType } from './records.ts'
+import { attachDispatchTaskSession } from './tasks.ts'
 import { oneLine, requireCallerSession } from './tooling.ts'
 
 /** One derived status of a workspace session. */
@@ -116,6 +118,12 @@ export interface StartedSession {
   readonly titleRecorded: boolean
   /** Whether the first task was admitted. */
   readonly admitted: boolean
+  /** The task record created or referenced before the Session was prompted. */
+  readonly taskId: string
+  /** Intent card the task was dispatched against, when it has one. */
+  readonly intentId?: string
+  /** Intent card version the task was dispatched against, when it has one. */
+  readonly intentVersion?: number
 }
 
 /** One admitted instruction and how the host delivered it. */
@@ -132,6 +140,8 @@ export interface SessionDelivery {
   readonly wasRunning: boolean
   /** True when `interrupt` was requested on an idle Session and queued instead. */
   readonly fallback?: boolean
+  /** The task record this delivery was associated with, when one was named. */
+  readonly taskId?: string
 }
 
 /** Result of `stop`. */
@@ -371,6 +381,24 @@ interface LifecycleArguments {
   readonly model?: string
   /** Optional reasoning effort. */
   readonly reasoning_effort?: string
+  /** Existing dispatch task to start from, or to associate an append/prompt with. */
+  readonly taskId?: string
+  /** Active intent card the new Session is dispatched against. */
+  readonly intentId?: string
+  /** Card version the new Session is dispatched against. */
+  readonly intentVersion?: number
+  /** The brief's acceptance items, mirrored on the task record. */
+  readonly acceptance?: readonly string[]
+  /** The brief's boundaries, mirrored on the task record. */
+  readonly boundaries?: readonly string[]
+  /** The brief's deliverable items. */
+  readonly outputForm?: readonly string[]
+  /** One mapping per card point. */
+  readonly coverage?: readonly TaskCoverage[]
+  /** Explicit non-coverage for a card point. */
+  readonly nonCoverage?: readonly TaskNonCoverage[]
+  /** Six-category task type the card dispatch requires. */
+  readonly taskType?: TaskType
 }
 
 /** The slice of the host token meter lifecycle results read. */
@@ -429,14 +457,19 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       'List the sessions of a workspace and report what each is doing, read one session, or manage the '
       + 'lifecycle of a real Session in a registered workspace. `list` and `get` are open to every agent and '
       + 'return the caller\'s workspace by default; a cross-workspace read needs the registered workspace id. '
-      + 'The lifecycle actions require the super agent: `start` opens a new Session in a workspace with a first '
-      + 'task and a durable purpose title (no intent card is involved); `append` continues one of the '
-      + 'workspace\'s Sessions and needs `session` (an id, or "latest"); `prompt` sends text to an explicit '
-      + 'sessionId; `stop` cuts off the running turn and admits nothing; `abort` cuts it off and then sends '
-      + '`text`; `fork` branches a Session at an optional `atSeq`; `archive` hides it; `compact` compresses its '
-      + 'history; `delete` erases a stored Session only when the host exposes a real delete API — otherwise it '
-      + 'refuses, because an archive is not a deletion. `delivery` is queue (default) or interrupt for `append` '
-      + 'and `prompt`; trust `get` before addressing a Session.',
+      + 'The lifecycle actions require the super agent. `start` dispatches a new Session from an active intent '
+      + 'card: read the card with `workspace_intents`, then pass `intentId`, `intentVersion`, the brief\'s '
+      + '`acceptance`, `boundaries`, and `taskType`, plus one `coverage` entry per card point (or an explicit '
+      + '`nonCoverage` reason). The workspace task record is created before the Session is prompted, and a '
+      + 'missing, proposed, stale, or cross-workspace card, or an uncovered card point, refuses the dispatch; '
+      + '`start` also accepts an existing pending `taskId` in place of the card fields. `append` continues one '
+      + 'of the workspace\'s Sessions and needs `session` (an id, or "latest"); `prompt` sends text to an '
+      + 'explicit sessionId; both accept `taskId` to associate the delivery with its task. `stop` cuts off the '
+      + 'running turn and admits nothing; `abort` cuts it off and then sends `text`; `fork` branches a Session '
+      + 'at an optional `atSeq`; `archive` hides it; `compact` compresses its history; `delete` erases a stored '
+      + 'Session only when the host exposes a real delete API — otherwise it refuses, because an archive is not '
+      + 'a deletion. `delivery` is queue (default) or interrupt for `append` and `prompt`; trust `get` before '
+      + 'addressing a Session.',
     parameters: {
       action: {
         type: 'string',
@@ -462,7 +495,70 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       },
       task: {
         type: 'string',
-        description: '`start`: the self-contained first task for the new Session.',
+        description: '`start`: the self-contained first task for the new Session; it becomes the task goal and '
+          + 'is what the Session is prompted with.',
+      },
+      taskId: {
+        type: 'string',
+        description: '`start`: an existing pending `workspace_tasks` task to dispatch instead of creating one '
+          + 'from a card (do not also pass card fields). `append`/`prompt`: associate this delivery with that '
+          + 'task; it must belong to the target Session.',
+      },
+      intentId: {
+        type: 'string',
+        description: '`start`: the active intent card id read with `workspace_intents`; required unless `taskId` '
+          + 'names an existing task.',
+      },
+      intentVersion: {
+        type: 'integer',
+        description: '`start`: the card version read with `workspace_intents`; required with `intentId`. A '
+          + 'proposed version refuses with INTENT_UNCONFIRMED and a superseded one with INTENT_STALE.',
+      },
+      acceptance: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '`start`: the brief\'s acceptance items, one per checkable outcome; required with a card.',
+      },
+      boundaries: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '`start`: the brief\'s boundaries; required with a card.',
+      },
+      outputForm: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '`start`: the brief\'s deliverable items; covers the card\'s output form when it has one.',
+      },
+      coverage: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            point: { type: 'string', required: true, description: 'Card point from `workspace_intents` `get`, such as `acceptance[0]`.' },
+            brief: { type: 'string', required: true, description: 'Exact text of the brief item that covers the point.' },
+            note: { type: 'string' },
+          },
+        },
+        description: '`start`: one entry per card point. A missing point refuses the dispatch with '
+          + 'INTENT_COVERAGE_MISSING unless `nonCoverage` waives it; there is no default pass.',
+      },
+      nonCoverage: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            point: { type: 'string', required: true },
+            reason: { type: 'string', required: true },
+          },
+        },
+        description: '`start`: an explicit waiver for one card point, recorded on the task with its reason.',
+      },
+      taskType: {
+        type: 'string',
+        enum: [...TASK_TYPES],
+        description: '`start`: the six-category task type; required with a card.',
       },
       title: {
         type: 'string',
@@ -577,6 +673,9 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
               title: { type: 'string', required: true },
               titleRecorded: { type: 'boolean', required: true },
               admitted: { type: 'boolean', required: true },
+              taskId: { type: 'string', required: true },
+              intentId: { type: 'string' },
+              intentVersion: { type: 'integer' },
             },
           },
           delivery: {
@@ -589,6 +688,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
               accepted: { type: 'boolean', required: true },
               wasRunning: { type: 'boolean', required: true },
               fallback: { type: 'boolean' },
+              taskId: { type: 'string' },
             },
           },
           stopped: {
@@ -669,7 +769,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
     },
     async execute(args, exec) {
       const session = requireCallerSession(exec.agent?.session, 'workspace_sessions')
-      const action = args.action as WorkspaceSessionAction
+      const action = args.action
       if (action === 'get') {
         if (args.sessionId === undefined || args.sessionId.trim() === '') {
           throw new ToolArgsError(['workspace_sessions with action "get" requires sessionId'])
@@ -695,60 +795,153 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       const scope = await resolveWorkspace(ctx, session, `sessions.${action}`, args.workspace)
       const workspace = scope.workspace
       const controller = requireSessionController(ctx)
-      const signal = exec.signal ?? new AbortController().signal
+      const signal = exec.signal
       const requestedDelivery: SessionDeliveryMode = args.delivery === 'interrupt' ? 'interrupt' : 'queue'
 
       if (action === 'start') {
         const task = requiredText(args.task, 'task', action)
         const title = requiredText(args.title, 'title', action).trim()
         const model = modelChoiceOf(args)
-        let created: { readonly sessionId: unknown }
-        try {
-          created = await controller.create({ workspaceId: String(workspace.id) })
-        } catch (error: unknown) {
-          throw new WorkspaceSessionError(
-            `workspace ${String(workspace.id)} could not create a Session: ${messageOf(error)}`,
-            'WORKSPACE_SESSION_INVALID',
-          )
-        }
-        const sessionId = String(created.sessionId)
-        let titleRecorded = false
-        if (typeof controller.rename === 'function') {
-          try {
-            await controller.rename({ sessionId, title })
-            titleRecorded = true
-          } catch (error: unknown) {
+        const taskRef = args.taskId?.trim()
+        let taskId: string
+        let intentId: string | undefined
+        let intentVersion: number | undefined
+        let createdTask = false
+        if (taskRef !== undefined && taskRef !== '') {
+          const existing = await readTask(ctx, workspace.id, taskRef, signal)
+          if (existing === undefined) {
             throw new WorkspaceSessionError(
-              `Session ${sessionId} was created but its title could not be recorded: ${messageOf(error)}; no task was sent`,
+              `workspace ${String(workspace.id)} holds no task ${JSON.stringify(taskRef)}; create it with `
+              + '`workspace_tasks.create` before dispatching',
               'WORKSPACE_SESSION_INVALID',
             )
           }
-        }
-        await applySessionModel(controller, sessionId, model)
-        let admitted: { readonly accepted: boolean }
-        try {
-          admitted = await controller.prompt({
-            requestId: `workspace-session-start-${randomUUID()}`,
-            sessionId,
-            mode: 'queue',
-            content: [{ type: 'text', text: task }],
-          }, signal)
-        } catch (error: unknown) {
-          throw new WorkspaceSessionError(
-            `Session ${sessionId} was created in workspace ${String(workspace.id)} but its first task was not admitted: ${messageOf(error)}`,
-            'WORKSPACE_SESSION_INVALID',
-          )
-        }
-        return {
-          workspace: String(workspace.id),
-          started: {
-            sessionId,
-            workspace: String(workspace.id),
-            cwd: workspace.path,
+          if (existing.task.status !== 'pending') {
+            throw new WorkspaceSessionError(
+              `task ${taskRef} is ${existing.task.status}; only a pending task can be dispatched to a new Session`,
+              'WORKSPACE_SESSION_INVALID',
+            )
+          }
+          if (existing.task.targetSessionId !== undefined) {
+            throw new WorkspaceTaskError(
+              `task ${taskRef} is already dispatched to Session ${existing.task.targetSessionId}; one task is executed by one Session`,
+              'WORKSPACE_TASK_TRANSITION',
+            )
+          }
+          taskId = taskRef
+          intentId = existing.task.intentId
+          intentVersion = existing.task.intentVersion
+        } else {
+          const dispatchIntentId = args.intentId
+          const dispatchIntentVersion = args.intentVersion
+          const dispatchAcceptance = args.acceptance
+          const dispatchBoundaries = args.boundaries
+          const dispatchTaskType = args.taskType
+          const missing = [
+            dispatchIntentId === undefined || dispatchIntentId.trim() === '' ? 'intentId' : undefined,
+            dispatchIntentVersion === undefined ? 'intentVersion' : undefined,
+            dispatchAcceptance === undefined ? 'acceptance' : undefined,
+            dispatchBoundaries === undefined ? 'boundaries' : undefined,
+            dispatchTaskType === undefined ? 'taskType' : undefined,
+          ].filter((field): field is string => field !== undefined)
+          if (missing.length > 0
+            || dispatchIntentId === undefined
+            || dispatchIntentVersion === undefined
+            || dispatchAcceptance === undefined
+            || dispatchBoundaries === undefined
+            || dispatchTaskType === undefined) {
+            throw new WorkspaceIntentError(
+              'workspace_sessions.start dispatches only from an active intent card: read the card with '
+              + `\`workspace_intents\` and pass ${missing.join(', ')} (plus one \`coverage\` entry per card point), `
+              + 'or name an existing pending `taskId`; the task record must exist before the Session is prompted',
+              'INTENT_INCOMPLETE',
+            )
+          }
+          const createdDispatch = await ctx.workspaceTasks.createDispatchTask({
+            workspaceId: String(workspace.id),
+            goal: task,
             title,
-            titleRecorded,
-            admitted: admitted.accepted,
-          },
+            acceptance: dispatchAcceptance,
+            boundaries: dispatchBoundaries,
+            ...args.outputForm === undefined ? {} : { outputForm: args.outputForm },
+            intentId: dispatchIntentId,
+            intentVersion: dispatchIntentVersion,
+            ...args.coverage === undefined ? {} : { coverage: args.coverage },
+            ...args.nonCoverage === undefined ? {} : { nonCoverage: args.nonCoverage },
+            taskType: dispatchTaskType,
+            requestId: `workspace-session-task-${randomUUID()}`,
+          }, signal, session)
+          taskId = createdDispatch.taskId
+          intentId = dispatchIntentId
+          intentVersion = dispatchIntentVersion
+          createdTask = true
+        }
+        try {
+          let created: { readonly sessionId: unknown }
+          try {
+            created = await controller.create({ workspaceId: String(workspace.id) })
+          } catch (error: unknown) {
+            throw new WorkspaceSessionError(
+              `workspace ${String(workspace.id)} could not create a Session: ${messageOf(error)}`,
+              'WORKSPACE_SESSION_INVALID',
+            )
+          }
+          const sessionId = String(created.sessionId)
+          let titleRecorded = false
+          if (typeof controller.rename === 'function') {
+            try {
+              await controller.rename({ sessionId, title })
+              titleRecorded = true
+            } catch (error: unknown) {
+              throw new WorkspaceSessionError(
+                `Session ${sessionId} was created but its title could not be recorded: ${messageOf(error)}; no task was sent`,
+                'WORKSPACE_SESSION_INVALID',
+              )
+            }
+          }
+          await applySessionModel(controller, sessionId, model)
+          await attachDispatchTaskSession(
+            ctx,
+            { workspaceId: String(workspace.id), taskId, sessionId },
+            { session, signal },
+          )
+          let admitted: { readonly accepted: boolean }
+          try {
+            admitted = await controller.prompt({
+              requestId: `workspace-session-start-${randomUUID()}`,
+              sessionId,
+              mode: 'queue',
+              content: [{ type: 'text', text: task }],
+            }, signal)
+          } catch (error: unknown) {
+            throw new WorkspaceSessionError(
+              `Session ${sessionId} was created in workspace ${String(workspace.id)} but its first task was not admitted: ${messageOf(error)}`,
+              'WORKSPACE_SESSION_INVALID',
+            )
+          }
+          return {
+            workspace: String(workspace.id),
+            started: {
+              sessionId,
+              workspace: String(workspace.id),
+              cwd: workspace.path,
+              title,
+              titleRecorded,
+              admitted: admitted.accepted,
+              taskId,
+              ...intentId === undefined ? {} : { intentId },
+              ...intentVersion === undefined ? {} : { intentVersion },
+            },
+          }
+        } catch (error: unknown) {
+          if (createdTask) {
+            await ctx.workspaceTasks.cancelDispatchTask({
+              workspaceId: String(workspace.id),
+              taskId,
+              reason: messageOf(error),
+            }, signal, session).catch(() => false)
+          }
+          throw error
         }
       }
 
@@ -758,11 +951,12 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         const sessionId = String(target.sessionId)
         const model = modelChoiceOf(args)
         await applySessionModel(controller, sessionId, model)
+        const taskId = await associateDeliveryTask(ctx, workspace, args.taskId, sessionId, session, signal)
         const delivery = decideDelivery(requestedDelivery, target.running)
         const admitted = await admit(controller, sessionId, delivery.used, text, action, signal)
         return {
           workspace: String(workspace.id),
-          delivery: deliveryOf(sessionId, requestedDelivery, delivery, target.running, admitted),
+          delivery: deliveryOf(sessionId, requestedDelivery, delivery, target.running, admitted, taskId),
         }
       }
 
@@ -772,18 +966,19 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         const target = await listedSessionOf(controller, workspace, sessionId, signal)
         const model = modelChoiceOf(args)
         await applySessionModel(controller, sessionId, model)
+        const taskId = await associateDeliveryTask(ctx, workspace, args.taskId, sessionId, session, signal)
         const delivery = decideDelivery(requestedDelivery, target.running)
         const admitted = await admit(controller, sessionId, delivery.used, text, action, signal)
         return {
           workspace: String(workspace.id),
-          delivery: deliveryOf(sessionId, requestedDelivery, delivery, target.running, admitted),
+          delivery: deliveryOf(sessionId, requestedDelivery, delivery, target.running, admitted, taskId),
         }
       }
 
       if (action === 'stop') {
         const sessionId = requiredText(args.sessionId, 'sessionId', action).trim()
         const target = await listedSessionOf(controller, workspace, sessionId, signal)
-        if (target.running !== true) {
+        if (!target.running) {
           return {
             workspace: String(workspace.id),
             stopped: { sessionId, accepted: false, wasRunning: false, alreadyIdle: true },
@@ -800,7 +995,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         const text = requiredText(args.text, 'text', action)
         const sessionId = requiredText(args.sessionId, 'sessionId', action).trim()
         const target = await listedSessionOf(controller, workspace, sessionId, signal)
-        if (target.running !== true) {
+        if (!target.running) {
           throw new WorkspaceSessionError(
             `Session ${sessionId} is idle, so there is nothing to abort; use append or prompt to continue it`,
             'WORKSPACE_SESSION_INVALID',
@@ -994,6 +1189,18 @@ function validateLifecycleArguments(action: WorkspaceSessionAction, args: Lifecy
       violations.push('provider, model, and reasoning_effort are accepted only by start, append, and prompt')
     }
   }
+  const cardFields = ['intentId', 'intentVersion', 'acceptance', 'boundaries', 'outputForm', 'coverage', 'nonCoverage', 'taskType'] as const
+  const namedCard = cardFields.some(field => args[field] !== undefined)
+  const namedTask = args.taskId !== undefined && args.taskId.trim() !== ''
+  if (namedCard && action !== 'start') {
+    violations.push('intent card fields are accepted only by start; continue an existing Session with `taskId`')
+  }
+  if (args.taskId !== undefined && action !== 'start' && action !== 'append' && action !== 'prompt') {
+    violations.push('taskId is accepted only by start, append, and prompt')
+  }
+  if (action === 'start' && namedCard && namedTask) {
+    violations.push('taskId names an existing task; do not also pass intent card fields')
+  }
   if (violations.length > 0) throw new ToolArgsError(violations)
 }
 
@@ -1104,6 +1311,7 @@ function deliveryOf(
   decision: Readonly<{ used: SessionDeliveryMode; fallback: boolean }>,
   wasRunning: boolean,
   accepted: boolean,
+  taskId?: string,
 ): SessionDelivery {
   return {
     sessionId,
@@ -1112,7 +1320,59 @@ function deliveryOf(
     accepted,
     wasRunning,
     ...(decision.fallback ? { fallback: true } : {}),
+    ...taskId === undefined ? {} : { taskId },
   }
+}
+
+/**
+ * Associate an `append`/`prompt` delivery with the task it names.
+ *
+ * The task reference is optional so a plain follow-up keeps the published
+ * behavior; when one is named it must belong to the target Session, and an
+ * unbound task is attached to it. The task was created (with its card and
+ * coverage checks) before any Session consumed it.
+ * @param ctx - context carrying the store.
+ * @param workspace - workspace that owns the task and the Session.
+ * @param taskIdArg - caller-supplied task id, when one was named.
+ * @param sessionId - the Session receiving the delivery.
+ * @param caller - the dispatching Session, for the store policy.
+ * @param signal - cancellation for the store reads and writes.
+ * @returns the task id, or undefined when the caller named none.
+ * @throws WorkspaceSessionError when the task does not exist or belongs to another Session.
+ */
+async function associateDeliveryTask(
+  ctx: Context,
+  workspace: Workspace,
+  taskIdArg: string | undefined,
+  sessionId: string,
+  caller: Session,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  const taskId = taskIdArg?.trim()
+  if (taskId === undefined || taskId === '') return undefined
+  const stored = await readTask(ctx, workspace.id, taskId, signal)
+  if (stored === undefined) {
+    throw new WorkspaceSessionError(
+      `workspace ${String(workspace.id)} holds no task ${JSON.stringify(taskId)}; create it with `
+      + '`workspace_tasks.create` before continuing the Session',
+      'WORKSPACE_SESSION_INVALID',
+    )
+  }
+  const bound = stored.task.targetSessionId
+  if (bound !== undefined && bound !== sessionId) {
+    throw new WorkspaceSessionError(
+      `task ${taskId} belongs to Session ${bound}, not ${sessionId}; a delivery is associated with its own task`,
+      'WORKSPACE_SESSION_INVALID',
+    )
+  }
+  if (bound === undefined) {
+    await attachDispatchTaskSession(
+      ctx,
+      { workspaceId: String(workspace.id), taskId, sessionId },
+      { session: caller, signal },
+    )
+  }
+  return taskId
 }
 
 /**
@@ -1286,7 +1546,7 @@ async function appendTargetOf(
  * @returns the meter when it can measure context pressure.
  */
 function tokenMeterOf(ctx: unknown): TokenMeterLike | undefined {
-  const service = lookup<Partial<TokenMeterLike>>(ctx, 'tokenMeter')
+  const service = lookup(ctx, 'tokenMeter') as Partial<TokenMeterLike> | undefined
   return service !== undefined && typeof service.contextPressure === 'function'
     ? service as TokenMeterLike
     : undefined
@@ -1298,7 +1558,7 @@ function tokenMeterOf(ctx: unknown): TokenMeterLike | undefined {
  * @returns the compaction seam when it can compact now.
  */
 function compactionOf(ctx: unknown): CompactionLike | undefined {
-  const service = lookup<Partial<CompactionLike>>(ctx, 'compaction')
+  const service = lookup(ctx, 'compaction') as Partial<CompactionLike> | undefined
   return service !== undefined && typeof service.compactNow === 'function'
     ? service as CompactionLike
     : undefined
@@ -1310,7 +1570,7 @@ function compactionOf(ctx: unknown): CompactionLike | undefined {
  * @returns the bridge when it exposes per-Agent preset services.
  */
 function agentPresetsOf(ctx: unknown): AgentPresetsLike | undefined {
-  const service = lookup<AgentPresetsLike>(ctx, 'agentPresets')
+  const service = lookup(ctx, 'agentPresets') as AgentPresetsLike | undefined
   return service !== undefined && typeof service.serviceFor === 'function' ? service : undefined
 }
 
@@ -1339,10 +1599,10 @@ function presetCompactionOf(ctx: unknown, agent: unknown): CompactionLike | unde
  * @param key - service name.
  * @returns the service, when present.
  */
-function lookup<T>(ctx: unknown, key: string): T | undefined {
+function lookup(ctx: unknown, key: string): unknown {
   const get = (ctx as { get?: (name: string) => unknown } | undefined)?.get
   if (typeof get !== 'function') return undefined
-  return get.call(ctx, key) as T | undefined
+  return get.call(ctx, key)
 }
 
 /**
@@ -1750,6 +2010,8 @@ function renderLifecycle(value: WorkspaceSessionsValue): string | undefined {
   if (started !== undefined) {
     return `Started "${started.title}" (${started.sessionId}) in workspace ${started.workspace}`
       + ` · cwd ${started.cwd}`
+      + ` · task ${started.taskId}`
+      + (started.intentId === undefined ? '' : ` (intent ${started.intentId} v${String(started.intentVersion ?? '?')})`)
       + (started.titleRecorded ? '' : ' · title not recorded: the host exposes no rename API')
       + (started.admitted ? ' · first task admitted' : ' · first task not admitted')
   }
@@ -1796,6 +2058,7 @@ function renderLifecycle(value: WorkspaceSessionsValue): string | undefined {
  */
 function renderDelivery(delivery: SessionDelivery): string {
   return `Delivered to ${delivery.sessionId}`
+    + (delivery.taskId === undefined ? '' : ` · task ${delivery.taskId}`)
     + ` · ${delivery.used}${delivery.requested === delivery.used ? '' : ` (requested ${delivery.requested})`}`
     + (delivery.fallback === true ? ' · the Session was idle, so interrupt queued' : '')
     + ` · ${delivery.accepted ? 'accepted' : 'not accepted'}`

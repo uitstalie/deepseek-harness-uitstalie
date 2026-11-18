@@ -13,6 +13,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CapabilityContribution, CapabilityRuntime } from '@deepseek-ai/dsh-dafeiyu'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-session-query'
@@ -22,6 +23,9 @@ import { createWorkspaceTasksService } from './service.ts'
 import {
   WORKSPACE_DIRECTORY_SECTION_NAME,
   WORKSPACE_DIRECTORY_SECTION_ORDER,
+  WORKSPACE_DISPATCH_SECTION_NAME,
+  WORKSPACE_DISPATCH_SECTION_ORDER,
+  WORKSPACE_DISPATCH_TEXT,
   workspaceDirectoryText,
 } from './prompt.ts'
 import { workspaceTools } from './tools.ts'
@@ -62,11 +66,20 @@ export function apply(ctx: Context): void {
     create: (_runtime: CapabilityRuntime): CapabilityContribution => ({
       scope: 'all',
       tools: () => workspaceTools(ctx),
-      promptSections: () => [{
-        name: WORKSPACE_DIRECTORY_SECTION_NAME,
-        order: WORKSPACE_DIRECTORY_SECTION_ORDER,
-        text: () => workspaceDirectoryText(ctx),
-      }],
+      promptSections: (agent: Agent) => [
+        {
+          name: WORKSPACE_DIRECTORY_SECTION_NAME,
+          order: WORKSPACE_DIRECTORY_SECTION_ORDER,
+          text: () => workspaceDirectoryText(ctx),
+        },
+        ...agent.role === 'super'
+          ? [{
+            name: WORKSPACE_DISPATCH_SECTION_NAME,
+            order: WORKSPACE_DISPATCH_SECTION_ORDER,
+            text: (): string => WORKSPACE_DISPATCH_TEXT,
+          }]
+          : [],
+      ],
     }),
   })
   ctx.effect(() => registration, 'workspace-tools.register()')

@@ -121,6 +121,25 @@ test('every session gets the same static workspace directory section', async () 
     .toBe(ordinarySection?.text)
 })
 
+test('only the super agent receives the dispatch instructions', async () => {
+  const a = await registerWorkspace(mounted.registry, projectA, 'dispatch-a')
+  const ordinary = await createRoot(mounted, 'dispatch-ordinary', projectA)
+  const superAgent = await createRoot(mounted, 'dispatch-super', projectA, 'super')
+  await a.attachSession(ordinary.session.id)
+  await a.attachSession(superAgent.session.id)
+
+  const ordinaryAssembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(ordinary))
+  const superAssembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(superAgent))
+  expect(ordinaryAssembly.sections.find(section => section.name === 'workspace-dispatch')).toBeUndefined()
+  const dispatch = superAssembly.sections.find(section => section.name === 'workspace-dispatch')
+  expect(dispatch).toBeDefined()
+  // The order and the reporting path, not implementation details.
+  expect(dispatch?.text).toContain('intent card')
+  expect(dispatch?.text).toContain('workspace_intents')
+  expect(dispatch?.text).toContain('coverage')
+  expect(dispatch?.text).toContain('workspace_tasks')
+})
+
 test('list results are bounded by limit and walkable with the returned cursor', async () => {
   const a = await registerWorkspace(mounted.registry, projectA, 'paged')
   const agents = []

@@ -13,6 +13,7 @@ import {
   createRoot,
   mountWorkspaceTools,
   registerWorkspace,
+  startDispatchArgs,
   textOf,
   valueOf,
 } from './harness.ts'
@@ -133,6 +134,7 @@ test('the super agent starts, continues, stops, aborts, forks, archives, compact
     workspace: String(workspaceB.id),
     title: 'implement the thing',
     task: 'do the work',
+    ...await startDispatchArgs(mounted, superAgent, workspaceB, 'do the work', 'lifecycle-start'),
   })
   expect(started.isError).toBe(false)
   const startValue = valueOf(started) as { started: { sessionId: string; workspace: string; title: string; admitted: boolean } }

@@ -19,6 +19,7 @@ import {
   provideWorkingDirectoryFixture,
   type AgentLoopTestHarness,
 } from '@deepseek-ai/dsh-agent-loop-testkit'
+import * as StoreAtom from '@deepseek-ai/dsh-store-atom'
 import * as Plus from '../src/api.ts'
 
 const MAX_BYTES = 64 * 1024
@@ -54,6 +55,7 @@ async function mountLoader(
   await mountAgentLoopTestDependencies(ctx)
   provideWorkingDirectoryFixture(ctx, project)
   await ctx.plugin(LocalFileSystem, { cwd: project })
+  await ctx.plugin(StoreAtom as never, { ensureRoot: false } as never)
   const harness = await mountAgentLoopTestHarness(ctx)
   // Plus registers its decorator first, so its listener wraps the native one.
   if (plugin !== undefined) await ctx.plugin(plugin, config)
