@@ -2838,7 +2838,7 @@ export interface McpManagedServerEntry {
 
 ## `@deepseek-ai/dsh-memory`
 
-- `inject`: `dafeiyu` · `dshStore` · `sessionQuery` · `jobs` · `llm`
+- `inject`: `dafeiyu` · `dshStore`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
 - `source`: [`packages/uitstalie/memory/src/config.ts:66`](../packages/uitstalie/memory/src/config.ts)
 
