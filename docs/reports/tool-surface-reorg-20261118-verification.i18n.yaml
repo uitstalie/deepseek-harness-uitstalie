@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for tool-surface-reorg-20261118-verification.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/reports/tool-surface-reorg-20261118-verification.md
+/tool-surface-re-organization-verification-report-2026-11-18:
+  en: 6628dae2e2d8ac6f
+  zh: 183b5a80a59a1a6f
+/tool-surface-re-organization-verification-report-2026-11-18/1-final-action-lists:
+  en: 711c8ed3b3e32c77
+  zh: 545bb28594fbf0b2
+/tool-surface-re-organization-verification-report-2026-11-18/1-final-action-lists/workspace-sessions:
+  en: c251a966db7af09d
+  zh: 81ef591a6f611493
+/tool-surface-re-organization-verification-report-2026-11-18/1-final-action-lists/workspace-tasks:
+  en: 657e742ba3f1c3fc
+  zh: fbae0b5ee1cd976f
+/tool-surface-re-organization-verification-report-2026-11-18/1-final-action-lists/workspace-message:
+  en: f915682c2ed7a696
+  zh: 6f1421259d52b077
+/tool-surface-re-organization-verification-report-2026-11-18/1-final-action-lists/delivery-failure-visibility-and-resend:
+  en: 4aab16d87146dfe0
+  zh: c90c2597dd34b65c
+/tool-surface-re-organization-verification-report-2026-11-18/2-tests-added-or-changed:
+  en: 3b5aa090ee9094f3
+  zh: e61ea37d006b5446
+/tool-surface-re-organization-verification-report-2026-11-18/3-residue-proof-for-removed-names:
+  en: 882967c71267b3a0
+  zh: 7b5ffa1ca4fbde11
+/tool-surface-re-organization-verification-report-2026-11-18/4-design-document-terminal-state:
+  en: 9b72c8f582f50b1e
+  zh: 37b25e1b39912ee9
+/tool-surface-re-organization-verification-report-2026-11-18/5-deferred-until-after-the-main-checkout-merge-not-touched:
+  en: 27eaa84237e4f5a4
+  zh: 7a04c78453d55e55
+/tool-surface-re-organization-verification-report-2026-11-18/6-static-gates-one-command-at-a-time:
+  en: d8d85ac214c1f3f7
+  zh: 0f4c9e3f6812e82e
+/tool-surface-re-organization-verification-report-2026-11-18/7-gates-not-completed-this-round:
+  en: 30968b5907fd07e9
+  zh: 558d8df67e4ccc3e
+/tool-surface-re-organization-verification-report-2026-11-18/8-outstanding-not-done:
+  en: e6fe6bd3cb95bb0f
+  zh: cad63f97bb907ef7
