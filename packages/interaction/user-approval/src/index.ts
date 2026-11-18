@@ -115,7 +115,7 @@ const approvalStateDefinition = {
  * values throw before the log changes; projected state follows the committed record.
  * @param session - the session the override belongs to.
  * @param policy - the policy in effect until the next switch.
- * @param source - provenance marker: `'default'` for the initial deployment
+ * @param source - source marker: `'default'` for the initial deployment
  *   value pinned at creation, `'delegation'` for an inherited child value;
  *   omitted for an explicit runtime/user switch.
  */

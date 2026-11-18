@@ -3124,7 +3124,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: 'hasExplicitSelection(session: Session): boolean',
         description: 'Whether the Session log records a permission choice rather than only the deployment default pinned at creation. The Session log is the source of truth: once this is true, the current preset/knobs were chosen explicitly (or enforced by a configured policy) and a later default, resume, rewire, or reconnect must not replace them. Only the initial pin writes `source: \'default\'` events; every other writer leaves the source absent.',
-        parameters: [{ name: 'session', description: 'the Session whose permission provenance is read.' }],
+        parameters: [{ name: 'session', description: 'the Session whose permission choice is read.' }],
         returns: 'true when an explicit selection exists.',
       },
       {

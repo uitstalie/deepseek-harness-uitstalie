@@ -602,6 +602,8 @@ const controlWrites = (action: ControlAction): boolean => !CONTROL_READ_ACTIONS.
  * @param me - the caller's identity tuple, returned in every result.
  * @param ctx - the plugin context supplying the workspace registry and Session controller.
  * @param context - the Session preset and report bookkeeping forwarded to the Session runner.
+ * @param signal - cancellation for the dispatch record the forwarded Session runner may write.
+ * @param session - the calling Session, whose sandbox mode gates that record write.
  * @returns the selected runner's envelope, or an aggregated INVALID_INPUT before any action runs.
  */
 export const runControlTool = async (
@@ -2960,6 +2962,8 @@ export const compactWorkspaceSession = async (
  * @param me - the caller identity tuple, echoed in every result.
  * @param ctx - the plugin context the controller and registry are read from.
  * @param context - the configured preset and the report bookkeeping.
+ * @param signal - cancellation for the dispatch record write and its rollback cancel.
+ * @param session - the calling Session, whose sandbox mode gates the dispatch record write.
  * @returns the envelope, carrying the Session or the listing.
  */
 export const runSessionTool = async (
@@ -5683,7 +5687,7 @@ export const createSuperagentContribution = (
     render: (typed) => {
       const source = typeof typed.source === 'string' ? typed.source : undefined
       const degradeReason = typeof typed.degradeReason === 'string' ? typed.degradeReason : undefined
-      const provenance = source === undefined
+      const sourceSuffix = source === undefined
         ? ''
         : `\nsource: ${source}${degradeReason === undefined ? '' : ` — ${degradeReason}`}`
       if (Array.isArray(typed.entries)) {
@@ -5696,7 +5700,7 @@ export const createSuperagentContribution = (
           ? 'the dispatch ledger has no matching task'
           : rows.map(row => 'reportText' in row
             ? `${row.id}  report ${row.status}  ${row.workspaceTitle}  ${row.task}${'error' in row && typeof row.error === 'string' ? `\n  ${row.error}` : ''}`
-            : `${row.id}  ${row.status}  ${row.workspaceTitle}  ${row.task}`).join('\n')) + suffix + provenance)
+            : `${row.id}  ${row.status}  ${row.workspaceTitle}  ${row.task}`).join('\n')) + suffix + sourceSuffix)
       }
       const task = typed.task as { id?: string; status?: string; workspaceTitle?: string } | undefined
       return renderText(task?.id === undefined

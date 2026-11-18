@@ -485,7 +485,7 @@ export class PermissionPresetService extends TypertRemoteService {
    * (or enforced by a configured policy) and a later default, resume, rewire,
    * or reconnect must not replace them. Only the initial pin writes
    * `source: 'default'` events; every other writer leaves the source absent.
-   * @param session - the Session whose permission provenance is read.
+   * @param session - the Session whose permission choice is read.
    * @returns true when an explicit selection exists.
    */
   hasExplicitSelection(session: Session): boolean {
@@ -643,7 +643,7 @@ export class PermissionPresetService extends TypertRemoteService {
     }
   }
 
-  /** Pin the deployment default with its provenance, so no later enforcement treats it as a user choice. */
+  /** Pin the deployment default with its recorded source, so no later enforcement treats it as a user choice. */
   private appendDefault(session: Session, name: string, spec: PresetSpec): void {
     session.append('permission/preset', { preset: name, source: 'default' })
     setSandboxMode(session, spec.sandbox, 'default')

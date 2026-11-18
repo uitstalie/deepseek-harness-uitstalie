@@ -209,7 +209,10 @@ export interface GlobalMemoryForgetResult {
   readonly topics: readonly string[]
 }
 
-/** Absolute path of the global memory file under the current harness home. */
+/**
+ * Absolute path of the global memory file under the current harness home.
+ * @returns the `memory/GLOBAL.md` path inside the resolved DSH home.
+ */
 export function globalMemoryPath(): string {
   return join(resolveDshHome(), 'memory', 'GLOBAL.md')
 }
@@ -219,7 +222,13 @@ export function globalMemoryArchivePath(): string {
   return join(resolveDshHome(), 'memory', 'GLOBAL.archive.md')
 }
 
-/** Stable entry id: `gm-` plus twelve hex characters of the content hash. */
+/**
+ * Stable entry id: `gm-` plus twelve hex characters of the content hash.
+ * @param topic - topic the entry belongs to.
+ * @param createdAt - ISO-8601 creation instant included in the hash.
+ * @param text - normalized entry text included in the hash.
+ * @returns the `gm-`-prefixed twelve-hex-character id.
+ */
 export function globalMemoryEntryId(topic: GlobalMemoryTopic, createdAt: string, text: string): string {
   return `gm-${createHash('sha256').update(`${topic}\u0000${createdAt}\u0000${text}`).digest('hex').slice(0, 12)}`
 }
@@ -240,17 +249,29 @@ function sortActive(entries: readonly GlobalMemoryEntry[]): readonly GlobalMemor
     (TOPIC_RANK.get(left.topic) ?? 0) - (TOPIC_RANK.get(right.topic) ?? 0))
 }
 
-/** Create an empty active document at revision 1. */
+/**
+ * Create an empty active document at revision 1.
+ * @param now - write instant stamped as `updatedAt`; defaults to the current time.
+ * @returns a revision-1 document with no entries.
+ */
 export function createGlobalMemoryDocument(now: Date = new Date()): GlobalMemoryDocument {
   return { version: 1, updatedAt: now.toISOString(), entries: [] }
 }
 
-/** Create an empty archive document at revision 1. */
+/**
+ * Create an empty archive document at revision 1.
+ * @param now - write instant stamped as `updatedAt`; defaults to the current time.
+ * @returns a revision-1 archive document with no entries.
+ */
 export function createGlobalArchiveDocument(now: Date = new Date()): GlobalMemoryArchiveDocument {
   return { version: 1, updatedAt: now.toISOString(), entries: [] }
 }
 
-/** Render the active document as canonical file text. */
+/**
+ * Render the active document as canonical file text.
+ * @param document - the active document to render.
+ * @returns the `---`-delimited YAML frontmatter with entries in canonical topic order.
+ */
 export function renderGlobalMemoryDocument(document: GlobalMemoryDocument): string {
   const body = stringifyYaml({
     version: document.version,
@@ -266,7 +287,11 @@ export function renderGlobalMemoryDocument(document: GlobalMemoryDocument): stri
   return `---\n${body}---\n`
 }
 
-/** Render the archive as canonical file text. */
+/**
+ * Render the archive as canonical file text.
+ * @param document - the archive document to render.
+ * @returns the `---`-delimited YAML frontmatter with entries in their stored order.
+ */
 export function renderGlobalArchiveDocument(document: GlobalMemoryArchiveDocument): string {
   const body = stringifyYaml({
     version: document.version,
@@ -298,7 +323,13 @@ function splitFrontmatter(text: string, subject: string): string {
   return match[1] as string
 }
 
-/** Parse one active `GLOBAL.md`, rejecting unknown shapes and invalid entries. */
+/**
+ * Parse one active `GLOBAL.md`, rejecting unknown shapes and invalid entries.
+ * @param text - the whole file text; a leading BOM and CRLF line endings are accepted.
+ * @returns the parsed document with entries in canonical topic order.
+ * @throws GlobalMemoryError `GLOBAL_MEMORY_INVALID_DOCUMENT` for a malformed frontmatter block, field, or entry.
+ * @throws GlobalMemoryError `GLOBAL_MEMORY_FULL` when the re-rendered document exceeds the whole-file cap.
+ */
 export function parseGlobalMemoryDocument(text: string): GlobalMemoryDocument {
   const record = parseFrontmatterRecord(text, 'GLOBAL.md')
   const entries: GlobalMemoryEntry[] = []
@@ -320,7 +351,12 @@ export function parseGlobalMemoryDocument(text: string): GlobalMemoryDocument {
   return document
 }
 
-/** Parse one `GLOBAL.archive.md`, rejecting unknown shapes and invalid entries. */
+/**
+ * Parse one `GLOBAL.archive.md`, rejecting unknown shapes and invalid entries.
+ * @param text - the whole archive file text; a leading BOM and CRLF line endings are accepted.
+ * @returns the parsed archive with its entries in their stored order.
+ * @throws GlobalMemoryError `GLOBAL_MEMORY_INVALID_DOCUMENT` for a malformed block, field, entry, or archive reason.
+ */
 export function parseGlobalArchiveDocument(text: string): GlobalMemoryArchiveDocument {
   const record = parseFrontmatterRecord(text, 'GLOBAL.archive.md')
   const entries: GlobalMemoryArchiveEntry[] = []
@@ -430,7 +466,12 @@ function assertGlobalBudget(rendered: string): void {
   }
 }
 
-/** Trim and validate one entry's text. */
+/**
+ * Trim and validate one entry's text.
+ * @param text - the raw one-line candidate, trimmed before validation.
+ * @returns the trimmed text, otherwise unchanged.
+ * @throws GlobalMemoryError `GLOBAL_MEMORY_INVALID_DOCUMENT` when the text is empty, spans lines, or exceeds the byte limit.
+ */
 export function normalizeEntryText(text: string): string {
   const normalized = text.trim()
   if (normalized.length === 0) {
@@ -755,7 +796,11 @@ export interface RenderableSearchValue {
   readonly truncated?: boolean
 }
 
-/** Render one search value; the tools render the same text, so the budget matches the model-visible size. */
+/**
+ * Render one search value; the tools render the same text, so the budget matches the model-visible size.
+ * @param value - the query, ranked items, and whether results were truncated.
+ * @returns one line per hit, or a no-match line when nothing matched.
+ */
 export function renderSearchValue(value: RenderableSearchValue): string {
   const lines = value.items.length === 0
     ? [`No global memory matches for ${JSON.stringify(value.query)}.`]

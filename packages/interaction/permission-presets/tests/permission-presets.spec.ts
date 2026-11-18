@@ -497,7 +497,7 @@ describe('new-session default', () => {
 
   it('distinguishes the pinned deployment default from an explicit user selection', async () => {
     const ctx = await mountedStore()
-    const session = (await ctx.agents.create({ sessionId: SessionId('permission-provenance') })).agent.session
+    const session = (await ctx.agents.create({ sessionId: SessionId('permission-selection') })).agent.session
     // The initial pin records where its values came from, so it is not an explicit choice.
     expect(ctx.permissionPresets.hasExplicitSelection(session)).toBe(false)
     expect(session.snapshotEvents().map(event => event.data)).toEqual([

@@ -62,7 +62,7 @@ export const SANDBOX_MODES: readonly SandboxMode[] = [
  * @param session - the session the override belongs to.
  * @param mode - the mode every subsequent confined call in this session runs
  *   under (until the next switch).
- * @param source - provenance marker: `'default'` for the initial deployment
+ * @param source - source marker: `'default'` for the initial deployment
  *   value pinned at creation, `'delegation'` for an inherited child value;
  *   omitted for an explicit runtime/user switch.
  */

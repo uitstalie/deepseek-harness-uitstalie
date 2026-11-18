@@ -71,7 +71,10 @@ interface PresetOption {
 `permissions` 投影保留生效的预设与两个 knob 值，因此消费方读取一份当前选择，而不必分别从多个服务重建它。
 
 ```ts type-equiv
-/** Whole `permissions` Session projection: current durable selection only. */
+/**
+ * Whole `permissions` Session projection: the effective current preset, sandbox mode, and approval
+ * policy after composition defaults apply.
+ */
 interface PermissionSelection {
   /** The effective current value: a configured preset key, `auto`, or `custom`. */
   currentValue: string
@@ -163,7 +166,7 @@ selection(session: Session): PermissionSelection
  * (or enforced by a configured policy) and a later default, resume, rewire,
  * or reconnect must not replace them. Only the initial pin writes
  * `source: 'default'` events; every other writer leaves the source absent.
- * @param session - the Session whose permission provenance is read.
+ * @param session - the Session whose permission choice is read.
  * @returns true when an explicit selection exists.
  */
 hasExplicitSelection(session: Session): boolean
