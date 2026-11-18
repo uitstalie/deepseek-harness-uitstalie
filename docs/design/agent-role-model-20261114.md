@@ -2,7 +2,7 @@
 
 English | [中文](agent-role-model-20261114.zh.md)
 
-Status: **role field, section gating, and the approved tool gates are implemented.** Tool visibility is enforced once in the tool registry; the JIRA and super-agent-only tools are retired, so every approved-matrix row is at `agent` or below. The approved-matrix snapshot is 18/30/30 for `subagent`/`agent`/`super` (`packages/core/tools/tests/role-visibility.spec.ts`).
+Status: **role field, section gating, and the approved tool gates are implemented.** Tool visibility is enforced once in the tool registry; the JIRA and super-agent-only tools are retired, so every approved-matrix row is at `agent` or below. The approved-matrix snapshot is 18/30/30 for `subagent`/`agent`/`super` (`packages/core/tools/tests/role-visibility.spec.ts`). Workspace-tool writes are open to agents in the workspace; a cross-workspace write still requires the super agent.
 
 ## 1. Role classification
 
@@ -10,7 +10,7 @@ Status: **role field, section gating, and the approved tool gates are implemente
 |---|---|
 | `subagent` | A delegated child, or any Session with child lineage; least privilege. |
 | `agent` | A normal root/workspace Session; ordinary work. |
-| `super` | The super-agent root; most privilege, and the current-stage role gate for dispatch and task creation. |
+| `super` | The super-agent root; most privilege, and the role gate for cross-workspace writes. |
 
 The role type and reader live in `packages/core/agent/src/runtime-types.ts` and `packages/core/agent/src/role.ts`: `AgentRole`, `agentRoleOf`. Feature packages declare a tool gate through `@deepseek-ai/dsh-tools` (`withMinRole` / `toolMinRole`); no feature package imports dafeiyu for role. The organizer attaches tools to agents; the tool registry performs the role filter.
 
@@ -54,7 +54,7 @@ The role field is the shared source; tool visibility is enforced centrally by th
 | `tool-dsh-store` | agent+ (new); `minRole: agent` | `agent` | Rules/skills management | Hidden from subagent |
 | `memory_write` / `memory_forget` | agent+ (new); `memory/src/tools.ts:42-43` `minRole: agent` | `agent` | Single writer | No write access (newly hidden) |
 | `memory_search` | subagent+ (new); `memory/src/api.ts:273` scope `all`, the tool carries `minRole: subagent` (`memory/src/tools.ts:44`) | `subagent` | Research may need history | Now available; no loss |
-| `workspace_sessions` / `workspace_intents` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+ (new); `minRole: subagent` (`packages/uitstalie/workspace-tools/src/tools.ts:27-31`), with action-level role checks inside each tool | `subagent` | Reads are open to every agent in the workspace; writes are currently refused by a stage gate: lifecycle, card writes, and task create need the super agent, task update/receipt is open to the dispatcher or the task's target session, and a cross-workspace send needs the super agent; the target contract opens writes to ordinary agents | Now available; write actions are currently still refused by the stage gate |
+| `workspace_sessions` / `workspace_intents` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+ (new); `minRole: subagent` (`packages/uitstalie/workspace-tools/src/tools.ts:27-31`), with action-level role checks inside each tool | `subagent` | Reads are open to every agent in the workspace; writes are open to any agent in the workspace: lifecycle, card writes, and task create/update/receipt all work, and a cross-workspace write needs the super agent; a cross-workspace send is allowed only through a task binding | Now available; writes work in the workspace, and cross-workspace writes stay gated |
 | `schedule_create/edit/list/view` | agent+ (new); `minRole: agent`, runtime guard retained | `agent` | Subagent cannot reach next trigger | Hidden from subagent; runtime refusal remains |
 | `plugin_manager` | agent+ (new); `minRole: agent` | `agent` | Global profile management | Hidden from subagent |
 | `subagent` / `subagent_fork` / `workflow` | agent+ (new); `minRole: agent` | `agent` | No nested fan-out | Hidden from subagent; depth guards remain |

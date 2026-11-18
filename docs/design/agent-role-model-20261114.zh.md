@@ -2,7 +2,7 @@
 
 [English](agent-role-model-20261114.md) | 中文
 
-状态：**角色字段、section 门控以及已批准的工具门槛均已实现。** 工具可见性由工具注册表统一执行一次；JIRA 与 super agent 专用工具已退场，已批准矩阵的每一行都在 `agent` 或更低角色上。已批准矩阵快照为 `subagent`/`agent`/`super` 各 18/30/30 条（`packages/core/tools/tests/role-visibility.spec.ts`）。
+状态：**角色字段、section 门控以及已批准的工具门槛均已实现。** 工具可见性由工具注册表统一执行一次；JIRA 与 super agent 专用工具已退场，已批准矩阵的每一行都在 `agent` 或更低角色上。已批准矩阵快照为 `subagent`/`agent`/`super` 各 18/30/30 条（`packages/core/tools/tests/role-visibility.spec.ts`）。工作区工具集的写动作已对工作区内 agent 开放，跨工作区写仍要求 super agent。
 
 ## 1. 角色分类
 
@@ -10,7 +10,7 @@
 |---|---|
 | `subagent` | 被委派的子级，或任何具有子级血缘的 Session；权限最小。 |
 | `agent` | 普通的 root/workspace Session；承担常规工作。 |
-| `super` | super-agent 根；权限最大，当前阶段承担派发/任务创建的角色门控。 |
+| `super` | super-agent 根；权限最大，承担跨工作区写的角色门控。 |
 
 角色类型与读取函数位于 `packages/core/agent/src/runtime-types.ts` 和 `packages/core/agent/src/role.ts`：`AgentRole`、`agentRoleOf`。feature 包通过 `@deepseek-ai/dsh-tools`（`withMinRole` / `toolMinRole`）声明工具门槛；没有任何 feature 包为角色而 import dafeiyu。organizer 只负责把工具挂到 agent 上，角色过滤由工具注册表执行。
 
@@ -54,7 +54,7 @@
 | `tool-dsh-store` | agent+（新增）；`minRole: agent` | `agent` | 规则/技能管理 | 对 subagent 隐藏 |
 | `memory_write` / `memory_forget` | agent+（新增）；`memory/src/tools.ts:42-43` `minRole: agent` | `agent` | 单一写入者 | 无写权限（新近隐藏） |
 | `memory_search` | subagent+（新增）；`memory/src/api.ts:273` scope 为 `all`，工具携带 `minRole: subagent`（`memory/src/tools.ts:44`） | `subagent` | 研究可能需要历史 | 现在可用；无损失 |
-| `workspace_sessions` / `workspace_intents` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+（新增）；`minRole: subagent`（`packages/uitstalie/workspace-tools/src/tools.ts:27-31`），动作级角色检查在各工具内 | `subagent` | 读对工作区内所有 agent 开放；写动作当前按阶段门控拒绝：生命周期、卡写入与任务 create 要求 super，任务 update/receipt 对派发方或任务的目标会话开放，跨工作区发送要求 super；目标契约对普通 agent 开放写动作 | 现在可用；写动作当前仍按阶段门控拒绝 |
+| `workspace_sessions` / `workspace_intents` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+（新增）；`minRole: subagent`（`packages/uitstalie/workspace-tools/src/tools.ts:27-31`），动作级角色检查在各工具内 | `subagent` | 读对工作区内所有 agent 开放；写动作对工作区内任何 agent 开放：生命周期、卡写入与任务 create/update/receipt 均可用，跨工作区写要求 super；跨工作区发送只按任务绑定放行 | 现在可用；本工作区可写，跨工作区写受门控 |
 | `schedule_create/edit/list/view` | agent+（新增）；`minRole: agent`，保留运行时防护 | `agent` | subagent 无法触达下一次触发 | 对 subagent 隐藏；运行时拒绝仍然存在 |
 | `plugin_manager` | agent+（新增）；`minRole: agent` | `agent` | 全局 profile 管理 | 对 subagent 隐藏 |
 | `subagent` / `subagent_fork` / `workflow` | agent+（新增）；`minRole: agent` | `agent` | 不支持嵌套扇出 | 对 subagent 隐藏；深度防护仍然存在 |

@@ -34,11 +34,11 @@ JIRA 只保留云端数据仓：GitHub 上的 cloudstore 仓库及其内容与�
 - `stop` 切断运行中的 turn、不投递文本；`abort` 切断后再投递后续文本。
 - `fork`、`archive`、`compact` 与 `delete` 保留 Host 生命周期语义。`delete` 要求精确重复 Session id 作为确认；Host 没有真实删除 API 时明确拒绝。
 
-调用方工作区是默认范围。生命周期写入当前要求 super agent 角色（阶段门控；目标契约对普通 agent 开放）；读取仍对工作区内所有 agent 开放。跨工作区调用必须显式给出已注册工作区 id，并留痕。
+调用方工作区是默认范围。生命周期写动作对工作区内任何 agent 开放；跨工作区写要求 super agent（已实现）；读取仍对工作区内所有 agent 开放。跨工作区调用必须显式给出已注册工作区 id，并留痕。
 
 投递状态由 `workspace_message` 承载。`send` 记录消息与投递尝试。`status` 报告消息状态、失败原因与尝试次数。`retry` 用同一请求标识、正文与引用重发失败消息；重复 retry 不会重复入队。失败消息仍可用 `read` 读出，因此失败不会静默丢失。
 
-工作区请求与回传契约由记忆/工作区设计拥有（[记忆/工作区设计](memory-scoping.zh.md) 5.4、6.5、11.8 节）：任意 agent 可经 `workspace_message`（`send`/`read`/`status`/`retry`）向同一工作区的其他 agent/session 发起请求；需要正式任务记录时才用意图卡与 `workspace_tasks`，简单的或明确的动作不需要单独发卡。执行者用 `workspace_message.send` 带 `taskId` 回传，跨工作区只允许任务绑定（`task.targetSessionId` 是调用者、`task.dispatcherSessionId` 是发送目标；后者是目标契约），`requestId` 幂等，`status`/`retry` 处理失败，任务状态只经 `workspace_tasks`。当前阶段建任务与派发仅 super agent（阶段门控，目标契约对普通 agent 开放）。本文不重复定义这些契约，也不把未实现的能力写成已实现。
+工作区请求与回传契约由记忆/工作区设计拥有（[记忆/工作区设计](memory-scoping.zh.md) 5.4、6.5、11.8 节）：任意 agent 可经 `workspace_message`（`send`/`read`/`status`/`retry`）向同一工作区的其他 agent/session 发起请求；需要正式任务记录时才用意图卡与 `workspace_tasks`，简单的或明确的动作不需要单独发卡。执行者用 `workspace_message.send` 带 `taskId` 回传，跨工作区只按任务绑定放行（`task.targetSessionId` 是调用者、`task.dispatcherSessionId` 是发送目标，已实现），`requestId` 幂等，`status`/`retry` 处理失败，任务状态只经 `workspace_tasks`。本工作区的建任务与意图卡写动作对任何 agent 开放；跨工作区写仍要求 super agent。本文不重复定义这些契约。
 
 ## 4. Personality
 
