@@ -105,7 +105,7 @@ describe('pairToolCalls: the request never carries an unanswered tool call', () 
     expect(roles(result.messages)).toEqual(['user', 'assistant', 'tool', 'assistant', 'tool', 'assistant'])
   })
 
-  it('keeps a tool result whose call was compacted away (no pairing violation)', () => {
+  it('drops a tool result whose call was compacted away', () => {
     const history = [
       user('context'),
       // The assistant message was shadowed; its result survived the replace.
@@ -113,8 +113,35 @@ describe('pairToolCalls: the request never carries an unanswered tool call', () 
       assistant([], 'noted'),
     ]
     const result = pairToolCalls(history)
+    // Strict providers reject a result that answers no pending call, so the request drops it.
     expect(result.repairs).toEqual([])
-    expect(result.messages).toEqual(history)
+    expect(result.dropped.map(drop => [String(drop.callId), drop.reason])).toEqual([['gone-call', 'orphan']])
+    expect(roles(result.messages)).toEqual(['user', 'assistant'])
+  })
+
+  it('drops a duplicate result for a call that already has an answer', () => {
+    const history = [
+      assistant([{ id: 'dup', name: 'read' }]),
+      tool('dup'),
+      tool('dup'),
+      assistant([], 'done'),
+    ]
+    const result = pairToolCalls(history)
+    expect(result.repairs).toEqual([])
+    expect(result.dropped.map(drop => [String(drop.callId), drop.reason])).toEqual([['dup', 'duplicate']])
+    expect(roles(result.messages)).toEqual(['assistant', 'tool', 'assistant'])
+  })
+
+  it('drops an orphan result while answering the calls that remain open', () => {
+    const history = [
+      tool('gone-call'),
+      assistant([{ id: 'kept', name: 'read' }]),
+      user('continue'),
+    ]
+    const result = pairToolCalls(history)
+    expect(result.repairs.map(repair => repair.callId)).toEqual(['kept'])
+    expect(result.dropped.map(drop => [String(drop.callId), drop.reason])).toEqual([['gone-call', 'orphan']])
+    expect(roles(result.messages)).toEqual(['assistant', 'tool', 'user'])
   })
 
   it('answers every call of a multi-call assistant message', () => {
@@ -136,8 +163,8 @@ describe('pairToolCalls: the request never carries an unanswered tool call', () 
   })
 
   it('relocates a real answer that a notice split away from its call', () => {
-    // The memory plugin appends its "Memory updated" notice from inside the tool handler, so the
-    // notice lands between the call and the call's own result. Synthesizing a second answer made
+    // A tool handler appends a notice, so it lands between the call and the call's own result.
+    // Synthesizing a second answer made
     // the DeepSeek serializer reject the request ("tool result has no matching call") on every
     // turn, which bricked the Session: the gap is durable, so each retry repeated it.
     const history = [

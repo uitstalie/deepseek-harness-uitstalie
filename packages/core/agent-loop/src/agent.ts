@@ -759,7 +759,14 @@ export class ReactLoopAgent implements Agent {
         })),
       }, { ignorable: true })
     }
-    const requestMessages = paired.repairs.length === 0 ? boundaryMessages : paired.messages
+    if (paired.dropped.length > 0) {
+      this.loopCtx.logger.warn(
+        'agent-loop: dropped %d orphan or duplicate tool result(s) from the request: %s',
+        paired.dropped.length,
+        paired.dropped.map(drop => `${String(drop.callId)} (${drop.reason})`).join(', '),
+      )
+    }
+    const requestMessages = paired.repairs.length === 0 && paired.dropped.length === 0 ? boundaryMessages : paired.messages
     // END uitstalie-deepseek-flash
     for (const message of requestMessages) {
       if (this.frozenMessages.has(message)) continue

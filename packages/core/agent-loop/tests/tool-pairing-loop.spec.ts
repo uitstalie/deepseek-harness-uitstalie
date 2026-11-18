@@ -104,8 +104,8 @@ describe('request tool-call pairing at the loop boundary', () => {
   })
 
   it('a notice appended inside a tool handler travels after the real result, which stays single', async () => {
-    // The memory plugin appends its "Memory updated" snapshot from inside memory_write's handler, so
-    // the notice lands between the assistant call and the call's own tool result. The request must
+    // A tool handler may append a notice, so it lands between the assistant call and the call's own
+    // tool result. The request must
     // still carry exactly one answer for that call: a synthesized duplicate made the DeepSeek
     // serializer reject every later request with "tool result has no matching call".
     const adapter = new MockAdapter([
@@ -195,6 +195,46 @@ describe('request tool-call pairing at the loop boundary', () => {
       // The derived history keeps the truthful gap — only the request was repaired.
       expect(agent.session.deriveMessages()
         .some(m => m.role === 'tool' && String((m as { toolCallId?: string }).toolCallId) === 'victim')).toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('a replace that shadows only the assistant call drops the orphan result from the request', async () => {
+    const adapter = new MockAdapter([
+      toolCallResponse('orphaned', 'echo-fixture', { text: 'x' }),
+      textResponse('second request'),
+    ])
+    const ctx = await harness(adapter)
+    try {
+      ctx.tools.register(defineContentToolFixture({
+        name: 'echo-fixture',
+        description: 'a tool that echoes its input',
+        parameters: { text: { type: 'string', description: 'the text to echo' } },
+        execute: async args => [{ type: 'text', text: args.text ?? '' }],
+      }))
+      const agent = await ctx.agentLoop.create(SessionId('pair-after-assistant-replace'), { provider: 'mock', model: 'mock' })
+
+      send(agent, 'call the tool')
+      await agent.whenIdle()
+
+      // A replace shadows only the assistant message: its result survives and becomes an orphan.
+      const assistantEvent = agent.session.snapshotEvents().find(e => e.type === 'assistant/message')!
+      agent.session.append('user/message',
+        createUserMessage({ content: [{ type: 'text', text: '(call shadowed)' }], source: { kind: 'user' } }),
+        { surfaceOp: { op: 'replace', startSeq: assistantEvent.seq, endSeq: assistantEvent.seq }, sourceEventSeqs: [assistantEvent.seq] })
+
+      send(agent, 'continue')
+      await agent.whenIdle()
+
+      // The request omits the result that answers no call; the log still holds it.
+      const request = adapter.requests.at(-1)!
+      const { answers } = pairings(request.messages)
+      expect(answers).not.toContain('orphaned')
+      expect(agent.session.snapshotEvents().some(event => event.type === 'tool/result'
+        && event.data.message.toolCallId === 'orphaned')).toBe(true)
+      // No call was repaired: the only change was dropping the orphan result.
+      expect(agent.session.snapshotEvents().some(event => event.type === 'agent/tool-pair-repair')).toBe(false)
     } finally {
       await ctx.fiber.dispose()
     }

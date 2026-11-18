@@ -53,10 +53,19 @@ export interface ToolPairRepair {
   readonly name: string
 }
 
-/** The pairing pass's outcome: the messages to send plus what it had to place. */
+/** One tool result the pairing pass removed from the request and why. */
+export interface ToolPairDrop {
+  /** Call id carried by the dropped result. */
+  readonly callId: ToolCallId
+  /** `orphan` when no assistant call remains, `duplicate` when the call already has an answer. */
+  readonly reason: 'orphan' | 'duplicate'
+}
+
+/** The pairing pass's outcome: the messages to send plus what it had to place or drop. */
 export interface ToolPairingResult {
   readonly messages: Message[]
   readonly repairs: readonly ToolPairRepair[]
+  readonly dropped: readonly ToolPairDrop[]
 }
 
 /** Model-visible wording of one synthesized error result. */
@@ -93,16 +102,31 @@ const syntheticResult = (callId: ToolCallId): ToolResultMessage => ({
  * assistant message may begin while a call of the previous one is still open. A surface replace
  * that shadows one result of a multi-call batch breaks the second rule without breaking
  * "answered at all", so both are repaired: the still-open calls receive their answer before the
- * next assistant message, moving a later real result rather than duplicating it. Tool results
- * answering an unknown call (their assistant message was compacted away) are kept: they pair with
- * nothing but violate no provider rule.
+ * next assistant message, moving a later real result rather than duplicating it.
+ *
+ * A tool result whose assistant call is no longer in the history is dropped from the request:
+ * strict providers reject every result that does not answer a pending call, so an orphan result
+ * would break the whole Session. The durable log keeps the original event; only the request is
+ * corrected. A duplicate result for an already-answered call is dropped for the same reason.
  *
  * @param messages - the derived request history (not mutated).
- * @returns the repaired history and the repairs it made, `repairs` empty when already paired.
+ * @returns the repaired history, the repairs it made, and the orphan or duplicate results it dropped.
  */
 export const pairToolCalls = (messages: readonly Message[]): ToolPairingResult => {
   const out: Message[] = []
   const repairs: ToolPairRepair[] = []
+  const dropped: ToolPairDrop[] = []
+  // Every assistant call in the history, before the walk: a tool result matching none of them is
+  // an orphan (its assistant message was compacted or replaced away) and cannot be sent.
+  const knownCalls = new Set<ToolCallId>()
+  for (const message of messages) {
+    if (message.role !== 'assistant') continue
+    for (const block of message.content) {
+      if (block.type === 'tool-call') knownCalls.add(block.id)
+    }
+  }
+  // Calls already answered, either by their own result or by a synthetic one.
+  const answered = new Set<ToolCallId>()
   // Every real answer in the history, by call id, in transcript order. A call closed out of its
   // window takes the answer from here instead of receiving a second, synthetic one.
   const answers = new Map<ToolCallId, number[]>()
@@ -132,6 +156,7 @@ export const pairToolCalls = (messages: readonly Message[]): ToolPairingResult =
   const flush = (): void => {
     for (const call of open) {
       out.push(realAnswer(call.id) ?? syntheticResult(call.id))
+      answered.add(call.id)
       repairs.push({ messageIndex: openIndex, callId: call.id, name: call.name })
     }
     open = []
@@ -153,9 +178,18 @@ export const pairToolCalls = (messages: readonly Message[]): ToolPairingResult =
       continue
     }
     if (message.role === 'tool') {
+      if (!knownCalls.has(message.toolCallId)) {
+        dropped.push({ callId: message.toolCallId, reason: 'orphan' })
+        continue
+      }
       const position = open.findIndex(call => call.id === message.toolCallId)
-      if (position >= 0) open = open.filter((_, at) => at !== position)
-      out.push(message)
+      if (position >= 0) {
+        open = open.filter((_, at) => at !== position)
+        answered.add(message.toolCallId)
+        out.push(message)
+        continue
+      }
+      dropped.push({ callId: message.toolCallId, reason: answered.has(message.toolCallId) ? 'duplicate' : 'orphan' })
       continue
     }
     // Any other role (user, system, developer) also ends the answering window.
@@ -163,5 +197,5 @@ export const pairToolCalls = (messages: readonly Message[]): ToolPairingResult =
     out.push(message)
   }
   flush()
-  return Object.freeze({ messages: out, repairs: Object.freeze(repairs) })
+  return Object.freeze({ messages: out, repairs: Object.freeze(repairs), dropped: Object.freeze(dropped) })
 }

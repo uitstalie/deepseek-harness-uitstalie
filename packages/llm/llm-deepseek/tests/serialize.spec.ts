@@ -57,6 +57,16 @@ describe('Messages request conversion', () => {
     ])
   })
 
+  it('rejects a tool result whose call is absent from the request', () => {
+    expect(() => body([user(), result('gone')]))
+      .toThrow(expect.objectContaining({ code: 'INVALID_REQUEST', message: 'DeepSeek Messages tool result has no matching call' }))
+  })
+
+  it('rejects a second result for the same call', () => {
+    expect(() => body([user(), assistant([call('a')]), result('a'), result('a')]))
+      .toThrow(expect.objectContaining({ code: 'INVALID_REQUEST', message: 'DeepSeek Messages tool result has no matching call' }))
+  })
+
   it('rejects unknown plugin content without interpreting its payload', () => {
     expect(() => body([createUserMessage({ source: { kind: 'user' }, content: [
       { type: 'plugin:text', text: 'opaque' } as never,
