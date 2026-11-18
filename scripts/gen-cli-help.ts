@@ -211,7 +211,7 @@ async function collectHelp(): Promise<HelpPage[]> {
     const help = execFileAsync(process.execPath, [
       '--import', 'tsx/esm', 'apps/cli/src/bin.ts', ...args, '--help',
     ], {
-      cwd: root, env: environment, encoding: 'utf8', timeout: 30_000,
+      cwd: root, env: environment, encoding: 'utf8', timeout: 60_000,
       killSignal: 'SIGKILL', maxBuffer: 2 * 1024 * 1024,
     })
     // Killing directly, not through execFile's signal option, settles the read only after the child closes.
@@ -219,7 +219,15 @@ async function collectHelp(): Promise<HelpPage[]> {
     signal.addEventListener('abort', abort, { once: true })
     try {
       const { stdout, stderr } = await help
-      if (stderr !== '') throw new Error(`${['dsh', ...args].join(' ')} --help wrote diagnostics: ${stderr}`)
+      // Node 24 prints an ExperimentalWarning when the CLI imports node:sqlite; it is runtime noise,
+      // not help output, and appears on hosts whose Node version enables that module.
+      const diagnostics = stderr
+        .split('\n')
+        .filter(line => !/^\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature/.test(line))
+        .filter(line => !/^\(Use `node --trace-warnings/.test(line))
+        .join('\n')
+        .trim()
+      if (diagnostics !== '') throw new Error(`${['dsh', ...args].join(' ')} --help wrote diagnostics: ${diagnostics}`)
       return stdout
     } finally {
       signal.removeEventListener('abort', abort)

@@ -1244,7 +1244,7 @@
     {
       "doc": "docs/subsystems/sandbox.md",
       "symbol": "SandboxPolicyRequest",
-      "source": "packages/sandbox/sandbox-policy/src/index.ts"
+      "source": "packages/sandbox/sandbox-policy/src/api.ts"
     },
     {
       "doc": "docs/subsystems/sandbox.md",
