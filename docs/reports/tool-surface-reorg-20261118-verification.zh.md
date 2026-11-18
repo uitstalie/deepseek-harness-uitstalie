@@ -145,3 +145,15 @@
 - 运行中安装的 JIRA 账本/派发数据未删除；清单见第 5 节，必须等主检出升级/重启后处理。
 - 设计终态已提交并推送，但运行中的 GUI（旧构建）在重启前仍暴露退场工具。
 - 本报告不声称 `check:all` 或全量 `vitest` 全绿；它声称第 6 节列出的静态门禁、43/43 doc-sync 与包测试结果。
+
+## 9. 全量 `check:all` 窗口（2026-11-18 19:39–20:19）
+
+- 命令：`pnpm run check:all`。
+- 起止：19:39:34–20:19:35（约 2,400 秒）。达到 40 分钟上限被停止；没有最终 `run-gates` 汇总。
+- 结果：**失败 / 未完成**。停止前有 15 个 gate 报 `FAILED`，其余 gate 仍在收尾。
+- 观察到的失败 gate：client domain graph、duplication、runtime closure、constraints、vendor rescope、plugin locale metadata、product package classification、proxy-aware dispatchers、no new silent catches、no new unknown casts、no new Cordis root reads、CLI help reference、plugin entry exports、documentation site checks、package dependencies。
+- 本次改动引起：
+  - `product package classification`（`verify-product-use`）：`packages/jira/jira-cli: stale package policy; remove the missing or ineligible directory`。删除包后，`scripts/product-package-policy.ts` 仍保留 `packages/jira/jira-cli` 条目。需要后续策略修补；本轮未改。
+  - `no new unknown casts`（`verify-no-unknown-casts`）：`packages/uitstalie/workspace-tools/tests/delivery.spec.ts` 与 `intents.spec.ts` 中 15 处 `as unknown as`，是上一轮为通过 TypeScript 加的。需要改成类型收窄或记录豁免；本轮未改。
+- 非本次改动引起（文件/行不在改动集，或在 `HEAD~1` 已存在）：client domain graph、duplication、runtime closure、constraints、vendor rescope、plugin locale metadata（`HEAD~1` 中 workspace-tools 没有 `locale`）、proxy-aware dispatchers（`service.ts`/`tasks.ts` 未改）、no new silent catches（`memory/src/entry-times.ts` 未改）、no new Cordis root reads（`llm-plus` 测试未改）、CLI help reference（`headless --help` 进程被杀）、plugin entry exports（`workspace-tools/src/index.ts` 未改）、documentation site checks（5 秒测试超时）、package dependencies（`ui-models-dev` 未改）。
+- 因为 `check:all` 未通过，条件性的全量 `pnpm test` **未运行**。第 2 节的改动包测试已通过。

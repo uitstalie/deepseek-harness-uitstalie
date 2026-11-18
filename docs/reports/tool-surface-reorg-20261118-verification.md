@@ -145,3 +145,15 @@ The two `doc-sync` failures were fixed inside the window (format facts regenerat
 - Running-installation JIRA ledger and dispatch data are not deleted in this checkout; they are listed in section 5 and must be handled after the main checkout is upgraded/restarted.
 - The designed terminal state is committed and pushed, but the running GUI (old build) still exposes the retired tools until it is restarted with this build.
 - This report does not claim `doc-sync` green; it claims the seven static gates above and the listed package tests.
+
+## 9. Full `check:all` window (2026-11-18 19:39–20:19)
+
+- Command: `pnpm run check:all`.
+- Start/end: 19:39:34–20:19:35 (about 2,400 s). Stopped at the 40-minute cap; no final `run-gates` summary was produced.
+- Result: **failed / incomplete**. Fifteen gates reported `FAILED` before the cap; the run was still completing remaining gates when stopped.
+- Failed gates observed: client domain graph, duplication, runtime closure, constraints, vendor rescope, plugin locale metadata, product package classification, proxy-aware dispatchers, no new silent catches, no new unknown casts, no new Cordis root reads, CLI help reference, plugin entry exports, documentation site checks, package dependencies.
+- Caused by this change:
+  - `product package classification` (`verify-product-use`): `packages/jira/jira-cli: stale package policy; remove the missing or ineligible directory`. The deletion left the `packages/jira/jira-cli` entry in `scripts/product-package-policy.ts` (and related entrypoint checks). This needs a follow-up policy edit; not fixed in this verification round.
+  - `no new unknown casts` (`verify-no-unknown-casts`): 15 `as unknown as` assertions in `packages/uitstalie/workspace-tools/tests/delivery.spec.ts` and `intents.spec.ts`; the casts were added to satisfy TypeScript in the prior round. This needs typed narrowing or a documented exemption; not fixed in this verification round.
+- Not caused by this change (files/lines outside the changed set or pre-existing in `HEAD~1`): client domain graph, duplication, runtime closure, constraints, vendor rescope, plugin locale metadata (no `workspace-tools/locale` in `HEAD~1`), proxy-aware dispatchers (`service.ts`/`tasks.ts` unchanged), no new silent catches (`memory/src/entry-times.ts` unchanged), no new Cordis root reads (`llm-plus` tests unchanged), CLI help reference (`headless --help` process killed), plugin entry exports (`workspace-tools/src/index.ts` unchanged), documentation site checks (5 s test timeout), package dependencies (`ui-models-dev` unchanged).
+- Because `check:all` did not pass, the conditional full `pnpm test` was **not run**. The changed-package tests in section 2 already pass.
