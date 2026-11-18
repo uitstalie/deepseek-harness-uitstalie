@@ -2,7 +2,7 @@
 
 [English](agent-role-model-20261114.md) | 中文
 
-状态：**角色字段、section 门控以及已批准的工具门槛均已实现。** 工具可见性由工具注册表统一执行一次；已批准的矩阵（包括仅限 super 的工具）已完成迁移。已批准矩阵快照为 `subagent`/`agent`/`super` 各 17/35/39 条（`packages/core/tools/tests/role-visibility.spec.ts`）。
+状态：**角色字段、section 门控以及已批准的工具门槛均已实现。** 工具可见性由工具注册表统一执行一次；JIRA 与 super agent 专用工具已退场，已批准矩阵的每一行都在 `agent` 或更低角色上。已批准矩阵快照为 `subagent`/`agent`/`super` 各 18/30/30 条（`packages/core/tools/tests/role-visibility.spec.ts`）。
 
 ## 1. 角色分类
 
@@ -12,7 +12,7 @@
 | `agent` | 普通的 root/workspace Session；承担常规工作。 |
 | `super` | 负责调度工作的 super-agent 根；权限最大。 |
 
-角色类型与读取函数位于 `packages/core/agent/src/runtime-types.ts` 和 `packages/core/agent/src/role.ts`：`AgentRole`、`agentRoleOf`。feature 包通过 `@deepseek-ai/dsh-tools`（`withMinRole` / `toolMinRole`）声明工具门槛；没有任何 feature 包为角色而 import dafeiyu。organizer 只负责未来的注册过滤。
+角色类型与读取函数位于 `packages/core/agent/src/runtime-types.ts` 和 `packages/core/agent/src/role.ts`：`AgentRole`、`agentRoleOf`。feature 包通过 `@deepseek-ai/dsh-tools`（`withMinRole` / `toolMinRole`）声明工具门槛；没有任何 feature 包为角色而 import dafeiyu。organizer 只负责把工具挂到 agent 上，角色过滤由工具注册表执行。
 
 ## 2. 声明来源与默认值
 
@@ -31,15 +31,12 @@
 
 | 当前判断 | 位置 | 未来的角色替换 |
 |---|---|---|
-| 能力 `scope: 'root'` | `dafeiyu/src/index.ts:318-320` | 非工具资源保留 scope；工具可见性应使用 `agentRoleOf`。 |
-| Personality 工具过滤 | `personality/src/index.ts:122` | 现有行为：subagent 只获得 analyze；本轮不迁移到 minRole。 |
-| Jira worker 测试 | `jira-agent/src/contribution.ts:146-179` | `isWorker` 继续选择 worker 工具集；每个返回的工具同时带 `minRole: agent`，由 role 拦住 subagent。 |
-| Super-agent 测试 | `jira-agent/src/superagent.ts:418-424`、`:5752-5769` | Workspace `role: 'super'` + `SessionController.workspaceRoleFor`；cwd 检查仍保留在 jira 能力内部。 |
-| Compaction bridge | `jira-agent/src/superagent.ts:2198-2215`、`:2790-2805` | `agentPresets.serviceFor(agent, 'compaction')` 到达目标 Session 自己的 preset 引擎；引擎不移动、不复制。 |
-| Memory 能力 scope | `memory/src/index.ts:296` | 未来做工具级角色声明；当前行为不变。 |
-| Schedule 运行时拒绝 | `schedule/tool-schedule/src/index.ts:307` | 当前拒绝 subagent 调用；可见性不变。 |
+| 能力 `scope: 'root'` | `dafeiyu/src/api.ts:325` | 非工具资源保留 scope；工具可见性由注册表的 `minRole` 执行。 |
+| Personality 工具过滤 | `personality/src/api.ts:120` | 已迁移：analyze 声明 `minRole: subagent`，apply 声明 `minRole: agent`。 |
+| Memory 能力 scope | `memory/src/tools.ts:42-44` | 已迁移：三个记忆工具各自声明 `minRole`。 |
+| Schedule 运行时拒绝 | `schedule/tool-schedule/src/index.ts:298-315` | subagent 调用仍被运行时拒绝；可见性由 `minRole` 给出。 |
 
-角色字段是共享来源；每个消费方分别迁移。本轮**不会**替换上述任何行为。
+角色字段是共享来源；工具可见性统一由注册表的 `minRole` 执行，非工具判断保留在各自能力里。
 
 ## 5. 690 门控与配额
 
@@ -48,20 +45,16 @@
 
 ## 6. 工具矩阵草案
 
-“当前”指本代码树中执行的可见性；标记为“新增”的行是在本轮迁移的。
+“当前”指本代码树中执行的可见性；标记为“新增”的行是在本轮迁移的。JIRA 与 super agent 专用工具已退场；JIRA 只保留 GitHub 上的 cloudstore 数据仓，按数据原样保留，不接入任何工具或流程，不作为设计能力，也不需要凭据或 remote 接入说明。
 
 | 工具族 | 当前可见性（过滤位置） | 建议角色 | 理由 | subagent 会失去什么 |
 |---|---|---|---|---|
-| `personality_analyze` | 所有 agent；`personality/index.ts:122` | `subagent`+ | 只读研究 | 无 |
-| `personality_apply` / `write_like_human` | 排除 subagent；`personality/index.ts:122` | `agent`+ | 全局写入 | 无写权限（本来就没有） |
-| `JIRA issue tool` / `JIRA list tool` / `JIRA knowledge tool` | agent+（新增）；`minRole: agent` | `agent` | 账本身份属于主/workspace Session | 对 subagent 隐藏 |
-| jira `executor ledger tool` | agent+（新增）；`minRole: agent` | `agent` | worker executor 就是一个 agent root | 对 subagent 隐藏 |
+| `personality_analyze` | 所有 agent；`personality/src/api.ts:120` | `subagent`+ | 只读研究 | 无 |
+| `personality_apply` / `write_like_human` | 排除 subagent；`personality/src/api.ts:120` | `agent`+ | 全局写入 | 无写权限（本来就没有） |
 | `tool-dsh-store` | agent+（新增）；`minRole: agent` | `agent` | 规则/技能管理 | 对 subagent 隐藏 |
-| `memory_write` / `forget` / `resolve` | agent+（新增）；`memory/src/tools.ts` `minRole: agent` | `agent` | 单一写入者 | 无写权限（新近隐藏） |
-| `memory_search` | subagent+（新增）；`memory/src/api.ts:293` scope 为 `all`，工具携带 `minRole: subagent`（`memory/src/tools.ts:100`） | `subagent` | 研究可能需要历史 | 现在可用；无损失 |
-| `workspace_sessions` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+（新增）；`minRole: subagent`（`packages/uitstalie/workspace-tools/src/tools.ts:23-29`） | `subagent` | 只读的工作区状态、任务、消息与 artifact 引用 | 现在可用；无损失 |
-| `super-agent control` / `ledger` / `deliver` / `permission` | super+（新增）；`minRole: super` | `super` | 调度/账本/交付 | 对所有非 super 角色隐藏 |
-| `superagent_models` | super（新增）；jira super 分支内 `minRole: super`（`jira-agent/src/superagent.ts:755`、`:5788-5795`）；不在已批准矩阵快照中 | `super` | 供被调度工作使用的模型目录 | 对所有非 super 角色隐藏 |
+| `memory_write` / `memory_forget` | agent+（新增）；`memory/src/tools.ts:42-43` `minRole: agent` | `agent` | 单一写入者 | 无写权限（新近隐藏） |
+| `memory_search` | subagent+（新增）；`memory/src/api.ts:273` scope 为 `all`，工具携带 `minRole: subagent`（`memory/src/tools.ts:44`） | `subagent` | 研究可能需要历史 | 现在可用；无损失 |
+| `workspace_sessions` / `workspace_intents` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+（新增）；`minRole: subagent`（`packages/uitstalie/workspace-tools/src/tools.ts:27-31`），动作级角色检查在各工具内 | `subagent` | 读对工作区内所有 agent 开放；写动作按角色拒绝：生命周期与卡写入要求 super，任务 create/update 要求派发方或任务的目标会话，跨工作区发送要求 super | 现在可用；写动作仍按角色拒绝 |
 | `schedule_create/edit/list/view` | agent+（新增）；`minRole: agent`，保留运行时防护 | `agent` | subagent 无法触达下一次触发 | 对 subagent 隐藏；运行时拒绝仍然存在 |
 | `plugin_manager` | agent+（新增）；`minRole: agent` | `agent` | 全局 profile 管理 | 对 subagent 隐藏 |
 | `subagent` / `subagent_fork` / `workflow` | agent+（新增）；`minRole: agent` | `agent` | 不支持嵌套扇出 | 对 subagent 隐藏；深度防护仍然存在 |
@@ -86,6 +79,6 @@ tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filter
 
 ## 9. 验证与非目标
 
-- 现有测试：personality 105/105、tool-dsh-store 19/19、jira superagent 125/125、typecheck 5/5。
-- 工具可见性现在恰好对标记为“新增”的行发生变化：memory 读写拆分、通信保留，schedule/plugin/delegation/jira/.dsh 对 subagent 隐藏，superagent 对所有非 super 角色隐藏。
+- 现有测试：`role-visibility.spec.ts` 断言 18/30/30 的已批准矩阵；personality、tool-dsh-store 与 workspace-tools 套件通过；typecheck 通过。
+- 工具可见性现在恰好对标记为“新增”的行发生变化：memory 读写拆分、通信保留，schedule/plugin/delegation/.dsh 对 subagent 隐藏；没有 super 专用工具行。
 - 本轮不包括：702 抽取、本地化，以及任何配额变更。

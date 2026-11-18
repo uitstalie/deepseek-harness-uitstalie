@@ -3,17 +3,17 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/tool-surface-reorg.md
 /tool-surface-re-organization-personality-jira-retirement-and-dsh-tools:
-  en: c314701a3e565b2e
-  zh: 9a7f692f6844f9dc
+  en: d1a70d826c86bfd9
+  zh: 679532eb56e0ac9f
 /tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/1-scope-and-result:
   en: a3b3a1201baf06ab
   zh: b67ffb4a4e6c2c4f
 /tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/2-retired-jira-surface:
-  en: e8808d871bdd353f
-  zh: e4685cbb4cd8a2cd
+  en: 13799e09cc5685fc
+  zh: 27130282a482558e
 /tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/3-session-lifecycle-and-delivery-state-move-into-workspace:
-  en: 8d6a7eb4a74ebb71
-  zh: 7626034aaa0204ce
+  en: e3a62ebd0a556b5f
+  zh: b77e268a0db1a02d
 /tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/4-personality:
   en: f05491045ee0c491
   zh: a9f65c1a35d79e0c
@@ -24,11 +24,11 @@
   en: 1d0cadf7eaf83a62
   zh: 4e7eb8647e253439
 /tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/7-risks-and-rollback:
-  en: c8fb8a189a80a000
-  zh: d5ac7191db892d52
+  en: f506d78b9d2dd7b8
+  zh: 2529c3dcf9e21c92
 /tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/8-alignment-with-the-memory-and-workspace-design:
-  en: e0f52f14879d36d3
-  zh: bff2e487c8e5d58a
+  en: c52f977adae4c783
+  zh: 9ec1492e98e2ea52
 /tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/9-verification:
   en: 146f48029adfb67f
   zh: 558ca2170b4dc212

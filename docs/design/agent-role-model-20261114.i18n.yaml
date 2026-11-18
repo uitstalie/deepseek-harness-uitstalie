@@ -3,11 +3,11 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/agent-role-model-20261114.md
 /agent-role-model-and-tool-matrix-draft-2026-11-14:
-  en: cfc5d6fa85e13cff
-  zh: 7bf1f76c680df9cf
+  en: 9ed958dfaa374c3f
+  zh: be57283050c729ea
 /agent-role-model-and-tool-matrix-draft-2026-11-14/1-role-classification:
-  en: e800d29f297b75bf
-  zh: 6772873bd7f3ee35
+  en: 2e128b12ea241919
+  zh: 4df400fa8a5f1cb9
 /agent-role-model-and-tool-matrix-draft-2026-11-14/2-declaration-source-and-default:
   en: 0dc597b410af18d8
   zh: ef9e1dadcd70f004
@@ -15,14 +15,14 @@
   en: 7f7139402f532953
   zh: 8e2aa0615f92e85c
 /agent-role-model-and-tool-matrix-draft-2026-11-14/4-existing-implicit-judgments-and-future-replacement:
-  en: 98e48ff19d8b2e2b
-  zh: 8e3004c47c5ef576
+  en: dbf2762b939970c2
+  zh: 8aacb3772979709f
 /agent-role-model-and-tool-matrix-draft-2026-11-14/5-690-gating-and-quota:
   en: 516e6baafc265502
   zh: 6adc3bfd6ed355e9
 /agent-role-model-and-tool-matrix-draft-2026-11-14/6-tool-matrix-draft:
-  en: 182941a2076f73ae
-  zh: 1d5a58d9c2668140
+  en: 355eb3e70cbc8533
+  zh: e686f20fc6e2eaae
 /agent-role-model-and-tool-matrix-draft-2026-11-14/7-interface-reservation:
   en: 1207be8c0fc5c993
   zh: 51832dbad9011360
@@ -30,5 +30,5 @@
   en: 42b10d797c104712
   zh: 174c989be3176129
 /agent-role-model-and-tool-matrix-draft-2026-11-14/9-verification-and-non-goals:
-  en: 7e798cdb189ce014
-  zh: 66744123fed94a25
+  en: ccc3cfd5b0aadba2
+  zh: 52b1b63ed41f6e0c

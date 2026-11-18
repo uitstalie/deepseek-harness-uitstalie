@@ -2,7 +2,7 @@
 
 [English](tool-surface-reorg.md) | 中文
 
-状态：已实现。JIRA 产品退场，包括其模型工具、技能、面板、CLI、本地账本与派发历史。会话生命周期现在由 `workspace_sessions` 承载；投递失败状态与重发由 `workspace_message` 承载。personality 用一个工具拥有两个全局文件，`tool-dsh-store` 仍是唯一 `.dsh` 入口。篇幅上限：12 页 / 4,600 汉字。
+状态：已实现。JIRA 产品退场，包括其模型工具、技能、面板、CLI、本地账本、派发历史与 super agent 工具；只保留 GitHub 上的 cloudstore 仓库及其内容与历史，按数据原样保留，不接入任何工具或流程。会话生命周期现在由 `workspace_sessions` 承载；投递与回传只经 `workspace_message`，任务状态只经 `workspace_tasks`，派发顺序与回传契约归[记忆/工作区设计](memory-scoping.zh.md) 6.5 节。personality 用一个工具拥有两个全局文件，`tool-dsh-store` 仍是唯一 `.dsh` 入口。篇幅上限：12 页 / 4,600 汉字。
 
 ## 1. 范围与结果
 
@@ -18,9 +18,9 @@ JIRA 产品一步移除。不保留别名、分阶段移除或兼容层。回滚
 
 JIRA 模型工具、执行器账本工具、认领/派发工具、super agent 控制与账本工具、三个 JIRA 技能、`/jira` 命令、写守卫、注入行与回合结束账本结算全部移除。`packages/jira` 包与派发核心包删除。Web app 组合不再挂载 JIRA 服务、agent 或面板行，也不再提供执行器预设。
 
-只保留 GitHub 凭据路径作为可复用代码：操作者自己的 `gh` 登录，不存 token。代码中没有 JIRA endpoint、project、tenant 或 timeout 设置；账本自己的路径与审计设置随账本一起移除。
+JIRA 只保留云端数据仓：GitHub 上的 cloudstore 仓库及其内容与历史，按数据原样保留，不接入任何工具或流程，不作为设计能力，也不需要凭据或 remote 接入说明。代码中没有 JIRA endpoint、project、tenant 或 timeout 设置；本地账本的路径与审计设置随账本一起移除。
 
-本地 JIRA 账本 `$DSH_HOME/jira` 与 `.superagent` 下的派发历史在一次性导出到 `D:\dqc\_exports\tool-surface-reorg-20261118` 后删除。导出不属于仓库。没有模型工具读取已删除路径。工作区任务存储从空白开始，不导入旧历史。
+本地 JIRA 账本 `$DSH_HOME/jira` 与 `.superagent` 下的派发历史已删除，不可恢复；没有模型工具读取已删除路径。工作区任务存储从空白开始，不导入旧历史。
 
 受影响的对象：期望旧工具的提示词、技能与评测集；引用 JIRA 行或执行器预设的 profile 与 patch；失去本地数据的 JIRA 面板与 CLI 用户；以及转录里提到旧调用的已存储 Session，新调用返回 `unknown tool`。
 
@@ -29,7 +29,7 @@ JIRA 模型工具、执行器账本工具、认领/派发工具、super agent �
 `workspace_sessions` 是唯一的会话生命周期入口。动作是 `list`、`get`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact` 与 `delete`。
 
 - `list` 与 `get` 保持既有读语义：工作区会话、状态、当前活动、最近进展、待处理收件箱与产物计数。
-- `start` 在指定的已注册工作区创建 Session 并发送首个任务。任务文本携带工作内容；不再有执行器账本工具单独读取单据。
+- `start` 在指定的已注册工作区创建 Session，只接收并发送首个任务文本与持久标题；它不检查意图卡。派发顺序是意图卡 → `workspace_tasks.create` → `workspace_sessions.start`/`prompt`，细节归[记忆/工作区设计](memory-scoping.zh.md) 6.5 节。
 - `append` 继续指定 Session 或最近更新的 Session；`prompt` 只面向明确的 Session id。
 - `stop` 切断运行中的 turn、不投递文本；`abort` 切断后再投递后续文本。
 - `fork`、`archive`、`compact` 与 `delete` 保留 Host 生命周期语义。`delete` 要求精确重复 Session id 作为确认；Host 没有真实删除 API 时明确拒绝。
@@ -37,6 +37,8 @@ JIRA 模型工具、执行器账本工具、认领/派发工具、super agent �
 调用方工作区是默认范围。生命周期写入要求 super agent 角色；读取仍对工作区内所有 agent 开放。跨工作区调用必须显式给出已注册工作区 id，并留痕。
 
 投递状态由 `workspace_message` 承载。`send` 记录消息与投递尝试。`status` 报告消息状态、失败原因与尝试次数。`retry` 用同一请求标识、正文与引用重发失败消息；重复 retry 不会重复入队。失败消息仍可用 `read` 读出，因此失败不会静默丢失。
+
+派发顺序与回传契约由记忆/工作区设计拥有（[记忆/工作区设计](memory-scoping.zh.md) 5.4、6.5、11.8 节）：执行者用 `workspace_message.send` 带 `taskId` 回传，跨工作区只允许任务绑定（`task.targetSessionId` 是调用者、`task.dispatcherSessionId` 是发送目标；后者是目标契约），`requestId` 幂等，`status`/`retry` 处理失败，任务状态只经 `workspace_tasks`。本文不重复定义这些契约，也不把未实现的任务绑定写成已实现。
 
 ## 4. Personality
 
@@ -60,14 +62,14 @@ JIRA 模型工具、执行器账本工具、认领/派发工具、super agent �
 
 ## 7. 风险与回滚
 
-- 本地 JIRA 账本与派发历史已删除；删除后不可恢复，只剩仓库外的导出副本。
+- 本地 JIRA 账本与派发历史已删除；删除后不可恢复。云端只保留 cloudstore 数据仓，按数据原样，不接入工具或流程。
 - 移除是一个发布，没有分阶段路径。回滚靠重装上一版；被删数据不会回来。
 - 仍引用旧工具或 JIRA 行的提示词与预设会显式失败：工具调用返回 `unknown tool`，命名已移除行的 patch 在加载时失败。
 - `.dsh` 边界由 store 执行；`.dsh/memory` 下的产物路径被拒绝，而不是被复制。
 
 ## 8. 与记忆/工作区设计对齐
 
-记忆设计的映射行已在同一改动中修订：JIRA 认领/派发面移除，JIRA 模型工具消失，投递归 `workspace_message`，任务状态归 `workspace_tasks`，会话生命周期归 `workspace_sessions`，`.dsh` 指针保留。`workspace_tasks` 从空白开始；不存在 JIRA key 或账本兼容字段。
+记忆设计的映射行已在同一改动中修订：JIRA 认领/派发面移除，JIRA 模型工具消失，投递与回传归 `workspace_message`，任务状态归 `workspace_tasks`，会话生命周期归 `workspace_sessions`，`.dsh` 指针保留。派发顺序与回传契约只由记忆/工作区设计定义；本文只指向它。`workspace_tasks` 从空白开始；不存在 JIRA key 或账本兼容字段。
 
 ## 9. 验证
 
