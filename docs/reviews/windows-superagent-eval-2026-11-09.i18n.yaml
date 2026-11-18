@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/reviews/windows-superagent-eval-2026-11-09.md
 /windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory:
-  en: b4b8db54310a745b
-  zh: 3c2bd059cb592836
+  en: 9a227408b2ee4c7d
+  zh: 3a018d9250c8dd0c
 /windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/0-executive-summary:
   en: 18b7d51e293f2fa4
   zh: e48afb20c95a6500
@@ -36,8 +36,8 @@
   en: 6e50f60b04f774aa
   zh: 7d824bad8584de84
 /windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-1-a-report-loop/a-2-no-report-empty-output-observed-but-the-ledger-records-success-on-machine-p0:
-  en: be3e5410770c0b15
-  zh: ae335f6ec2b32b4f
+  en: 25026b9aecf71680
+  zh: f0811b520a9b14ad
 /windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-1-a-report-loop/a-3-delivery-failure-the-mechanism-exists-but-it-remains-terminal-code-unit-tests-not-induced-on-machine:
   en: e1a6b7625f29c946
   zh: 206e167d377d2a4c
@@ -48,14 +48,14 @@
   en: 8bac6f3841b3453c
   zh: 2596e3fcc9d7bfc6
 /windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-2-dispatch-domain-opened-and-used-authority-relationship-and-data-source-need-checking-original-conclusion-withdrawn:
-  en: 35bdc2e72eee693b
-  zh: 0aa9d9135367d511
+  en: ce2dc247e386fe00
+  zh: 3f76996c84e55a1f
 /windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-3-b-lifecycle:
   en: dc8ab515b4853979
   zh: 20a3e4fbbcad025d
 /windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-4-c-session-routing:
-  en: 095f2be7bf620e51
-  zh: a8d36aa02bfbbf0c
+  en: 2928474beaa6efc9
+  zh: 8e9ef37e98d16641
 /windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/3-measurement-matrix/3-5-e-windows-environment:
   en: fa04f632b0e0e403
   zh: bbe673a838744cbb
@@ -69,8 +69,8 @@
   en: 117076c6f82ef43c
   zh: 207c549fb6f1ffb4
 /windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/8-recommendations-correctness-first-then-convergence:
-  en: 633c6bc5f5390509
-  zh: 5de13022be0c47ba
+  en: 25d072c6f4bfb571
+  zh: e31e7031846fc434
 /windows-on-machine-evaluation-super-agent-report-loop-lifecycle-routing-question-permissions-environment-memory/9-temporary-files:
   en: c69c3039e71d29bd
   zh: 4971e03ed4282f4e

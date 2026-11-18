@@ -1079,7 +1079,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'dafeiyu',
     title: 'Capability organizer and enable gate',
     mode: 'service',
-    consumers: ['memory', 'personality', 'jira-agent'],
+    consumers: ['memory', 'personality'],
     note: 'Registers capability providers, gates their create() calls, and dispatches tools, prompt sections, and turn-end hooks per agent.',
   },
   {
@@ -1118,16 +1118,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'workspace-tools',
     title: 'Card-validated dispatch tasks',
     mode: 'service',
-    consumers: ['jira-agent'],
-    note: 'Creates and cancels dispatch task records through the active intent card, coverage, and idempotency rules; the model-facing tool and the super agent share it.',
-  },
-  {
-    key: 'jira',
-    pkg: 'jira-service',
-    title: 'Jira ledger single writer',
-    mode: 'service',
-    consumers: ['jira-agent'],
-    note: 'Owns the one ledger writer, read and write methods, push queue, and changed notices; the browser reads it through remote.jira.',
+    note: 'Creates and cancels dispatch task records through the active intent card, coverage, and idempotency rules; the model-facing tool and the dispatcher share it.',
   },
   {
     key: 'modelsDev',

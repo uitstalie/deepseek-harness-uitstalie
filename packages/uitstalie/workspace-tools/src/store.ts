@@ -19,6 +19,7 @@ import type {
   MessageRecord,
   TaskRecord,
 } from './records.ts'
+import { MESSAGE_DELIVERY_STATUSES } from './records.ts'
 import { WorkspaceRecordError } from './errors.ts'
 
 /** Directory, under `$DSH_HOME`, that owns every workspace's toolset state. */
@@ -91,6 +92,9 @@ const citationSchema = z.strictObject({
   sha256: z.string().min(1),
 })
 
+/** Durable delivery state of one message. */
+const messageDeliveryStatusSchema = z.enum(MESSAGE_DELIVERY_STATUSES)
+
 /** Durable message schema. */
 const messageSchema = z.strictObject({
   messageId: z.string().min(1),
@@ -105,12 +109,14 @@ const messageSchema = z.strictObject({
   references: z.array(citationSchema),
   taskId: z.string().optional(),
   requestId: z.string(),
-  status: z.enum(['queued', 'delivered', 'interrupted', 'target_archived']),
+  status: messageDeliveryStatusSchema,
   createdAt: z.string(),
   deliveredAt: z.string().optional(),
+  error: z.string().optional(),
+  attempts: z.number().int().nonnegative().optional(),
   receipts: z.array(z.strictObject({
     at: z.string(),
-    status: z.enum(['queued', 'delivered', 'interrupted', 'target_archived']),
+    status: messageDeliveryStatusSchema,
   })),
 }) satisfies z.ZodType<MessageRecord>
 

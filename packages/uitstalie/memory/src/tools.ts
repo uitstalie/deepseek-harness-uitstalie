@@ -56,7 +56,7 @@ function defineMemoryWriteTool(ctx: Context): ToolDefinition {
       + 'account or tooling fact, or a shared convention. Business facts, dispatch or session state, and '
       + 'persona/style notes are refused with a pointer to the tool that owns them: `workspace_tasks`, '
       + '`workspace_intents`, `workspace_sessions`, `workspace_message`, `workspace_artifacts`, `session_search`, '
-      + '`session_event_read`, `read`, or `personality_apply`/`write_like_human`. Do not edit `.dsh/memory` with file tools.',
+      + '`session_event_read`, `read`, or `personality_apply`. Do not edit `.dsh/memory` with file tools.',
     parameters: {
       topic: {
         type: 'string',

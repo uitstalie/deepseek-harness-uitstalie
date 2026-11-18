@@ -60,7 +60,7 @@ runtime `D:\dqc\deepseek-harness-uitstalie` 与 dev 的 HEAD 均复核为 `2026-
 
 主数据库 mtime 仍为 09:31:48，但 WAL 已有约 247 KB 且持续更新。**WAL 模式下只看主库 mtime 会漏掉已提交写入。** 原报告曾记录 WAL 0 B，也不能抵消同一数据库中已经存在的当日记录。
 
-`superagent_ledger list` 返回 Markdown 中存在的任务不能证明“Markdown 独有”。`dispatch-store.ts:179-187,204-227` 会迁移 Markdown 并同步投影；`:234-249` 的 durable 查询本来就会返回相同任务。原报告没有对 seq 863 的结果做数据源标记，也没有先查该 id 是否已在 SQLite，因而“list 返回 ⇒ store.list undefined ⇒ table undefined”的推理前提不成立。P0-2 的 SQLite 最终 failed 与 super seq 911-912 精确一致，反而证明至少该次人工 resolve 使用了 domain。
+`super-agent ledger list` 返回 Markdown 中存在的任务不能证明“Markdown 独有”。`dispatch-store.ts:179-187,204-227` 会迁移 Markdown 并同步投影；`:234-249` 的 durable 查询本来就会返回相同任务。原报告没有对 seq 863 的结果做数据源标记，也没有先查该 id 是否已在 SQLite，因而“list 返回 ⇒ store.list undefined ⇒ table undefined”的推理前提不成立。P0-2 的 SQLite 最终 failed 与 super seq 911-912 精确一致，反而证明至少该次人工 resolve 使用了 domain。
 
 结论应为：**当前 runtime 的 domain 已打开并被 dispatch/resolve 使用；撤销“根本没打开、全程 Markdown、今日 0 条、75 行”的故障项及“接近 P0”表述。** `dispatch-store.ts:169-171` 构造时单次采样 `ctx.get('storageDomain')` 仍是静态晚到服务风险，但不是本次实机根因。可另列 P2 的“工具不暴露 domain/Markdown 来源和降级原因”；若产品要求永远使用唯一权威，再单独评估其 P1 必要性。
 

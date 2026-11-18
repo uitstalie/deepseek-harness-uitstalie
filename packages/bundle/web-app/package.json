@@ -39,7 +39,6 @@
     "presets/ptc.patch.yml",
     "presets/minimal.patch.yml",
     "presets/cordis.patch.yml",
-    "presets/jira-worker.patch.yml",
     "cordis.patch.uitstalie.yml",
     "lib/public-url-*.js",
     "lib/types/**/*.d.ts",
@@ -56,7 +55,6 @@
         "./presets/ptc.patch.yml",
         "./presets/minimal.patch.yml",
         "./presets/cordis.patch.yml",
-        "./presets/jira-worker.patch.yml",
         "./cordis.patch.uitstalie.yml"
       ]
     }
@@ -106,7 +104,6 @@
     "@deepseek-ai/dsh-client-ui-file-drag": "workspace:*",
     "@deepseek-ai/dsh-client-ui-goal": "workspace:*",
     "@deepseek-ai/dsh-client-ui-input-trigger": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-jira": "workspace:*",
     "@deepseek-ai/dsh-client-ui-memory": "workspace:*",
     "@deepseek-ai/dsh-client-ui-jobs": "workspace:*",
     "@deepseek-ai/dsh-client-ui-layout": "workspace:*",
@@ -170,8 +167,6 @@
     "@deepseek-ai/dsh-host-plugin-inventory": "workspace:*",
     "@deepseek-ai/dsh-host-product-telemetry-otel": "workspace:*",
     "@deepseek-ai/dsh-host-webserver": "workspace:*",
-    "@deepseek-ai/dsh-jira-agent": "workspace:*",
-    "@deepseek-ai/dsh-jira-service": "workspace:*",
     "@deepseek-ai/dsh-launch-environment": "workspace:*",
     "@deepseek-ai/dsh-mcp-account": "workspace:*",
     "@deepseek-ai/dsh-mcp-manager": "workspace:*",
@@ -194,7 +189,6 @@
     "@deepseek-ai/dsh-skill-filesystem": "workspace:*",
     "@deepseek-ai/dsh-skill-office": "workspace:*",
     "@deepseek-ai/dsh-subprocess": "workspace:*",
-    "@deepseek-ai/dsh-superagent-core": "workspace:*",
     "@deepseek-ai/dsh-terminal": "workspace:*",
     "@deepseek-ai/dsh-terminal-bash": "workspace:*",
     "@deepseek-ai/dsh-time-context": "workspace:*",

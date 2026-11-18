@@ -2,9 +2,10 @@
  * personality: the global personality capability.
  *
  * The provider registers one dafeiyu capability. It exposes three stable
- * prompt sections (profile, output style, enabled writing rules) and three
+ * prompt sections (profile, output style, enabled writing rules) and two
  * model tools: read-only `personality_analyze` on every agent, plus root-only
- * `personality_apply` and `write_like_human`. The old workspace overlay,
+ * `personality_apply`, whose `candidates` or `writingRules` path writes the
+ * corresponding global file. The old workspace overlay,
  * turn-end learning, proposal queue, drift-review command, and file watcher
  * are not wired here.
  *
@@ -12,7 +13,7 @@
  * first moves the pre-rewrite `PERSONALITY.md` to `legacy/`, then seeds the two
  * configuration files when absent. Prompt text is cached per agent; there is no
  * watcher, so a file edited outside the tools reaches a new agent, not a live
- * one. Both write tools refresh the calling agent after a write.
+ * one. The apply tool refreshes the calling agent after a write.
  * @module @deepseek-ai/dsh-personality
  */
 
@@ -22,7 +23,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CapabilityContribution, CapabilityRuntime } from '@deepseek-ai/dsh-dafeiyu'
 import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 import { personalityAnalyzeTool, personalityApplyTool } from './agent-tools.ts'
-import { writingRulesTool } from './writing-tool.ts'
 import { seedGlobalPersonalityFiles } from './defaults.ts'
 import {
   migrateLegacyPersonality,
@@ -113,12 +113,11 @@ async function createContribution(
   }
   const analyzeTool = personalityAnalyzeTool(ctx)
   const applyTool = personalityApplyTool(ctx, refresh)
-  const rulesTool = writingRulesTool(ctx, refresh)
 
   return {
     scope: 'all',
     promptSections: agent => sectionsFor(ctx, agent, promptTexts, fallback),
-    tools: () => [{ ...analyzeTool, minRole: 'subagent' }, { ...applyTool, minRole: 'agent' }, { ...rulesTool, minRole: 'agent' }],
+    tools: () => [{ ...analyzeTool, minRole: 'subagent' }, { ...applyTool, minRole: 'agent' }],
     onAgentCreated: (agent) => {
       warnLegacyWorkspaceFile(ctx, agent, checkedWorkspaceFiles, runtime.signal)
       /* v8 ignore next 3 -- loadBundle contains every file read failure; refresh has no other throw. */

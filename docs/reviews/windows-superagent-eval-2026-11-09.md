@@ -3,7 +3,7 @@
 English | [中文](windows-superagent-eval-2026-11-09.zh.md)
 
 
-Date: 2026-11-09. Subject: the **running** super agent on a physical Windows 10 machine (`@deepseek-ai/dsh-jira-agent`'s `superagent_session` / `superagent_ledger` / report journal / dispatch ledger), assessed using the severity scales in `goal/superagent-implementation-assessment-2026-11-08.md`, `goal/memory-plugin-assessment-2026-11-08.md`, and `goal/jira-ledger-assessment-2026-11-08.md`; `goal/linux-sandbox-audit.md` is used only as a reference for platform differences. Handoff file: `docs/reviews/windows-superagent-eval-handoff-2026-11-09.md`.
+Date: 2026-11-09. Subject: the **running** super agent on a physical Windows 10 machine (`@deepseek-ai/dsh-jira-agent`'s `superagent_session` / `super-agent ledger` / report journal / dispatch ledger), assessed using the severity scales in `goal/superagent-implementation-assessment-2026-11-08.md`, `goal/memory-plugin-assessment-2026-11-08.md`, and `goal/jira-ledger-assessment-2026-11-08.md`; `goal/linux-sandbox-audit.md` is used only as a reference for platform differences. Handoff file: `docs/reviews/windows-superagent-eval-handoff-2026-11-09.md`.
 
 **Nature**: read-only evaluation. No production code or configuration was changed, and nothing was committed or pushed; temporary scripts and logs are in `.tmp-eval/` (untracked; see §9). The three evidence levels in this report are strictly separate: **committed code** / **loaded by the runtime** / **reproduced on the physical Windows machine**.
 
@@ -124,7 +124,7 @@ Delivery latency was 1–2 s; one message per task; 10 delivered messages for th
 6102: ## task-mw8m5yg4-c19b2a0a · failed
 ```
 
-`superagent_ledger list` did return `returned` at 02:12:14 (super log seq 863), and only at 02:12:52 did a manual `resolve status=failed` change it to failed (seq 911-912). **“No output” was automatically recorded as `returned` and required human correction.** This is an even sharper instance of Fedora P0, “business result written as returned before delivery”: even empty output was returned.
+`super-agent ledger list` did return `returned` at 02:12:14 (super log seq 863), and only at 02:12:52 did a manual `resolve status=failed` change it to failed (seq 911-912). **“No output” was automatically recorded as `returned` and required human correction.** This is an even sharper instance of Fedora P0, “business result written as returned before delivery”: even empty output was returned.
 
 #### A-3 Delivery failure: the mechanism exists, but it remains terminal (code + unit tests; not induced on-machine)
 
@@ -162,8 +162,8 @@ The four surfaces **did not show the same state**. The domain absence was not sp
 
 - **Recheck method**: copy `<DSH_HOME>\storages\superagent.sqlite` **together with `-wal` (267,832 B) and `-shm`** to `.tmp-eval/dbcopy/`, open the copy read-write (SQLite automatically recovers the WAL), then query `u_superagent_dispatch_dispatches`.
 - **Result**: `rows 90`, statuses `{"returned":63,"pending":23,"failed":4}`, **15 rows** today (2026-11-09); `task-mw8lnutt` was created at 01:45:59 and returned at 01:50:57; `task-mw8m5yg4` became **failed at 02:12:52** (the same moment as the manual resolve); this evaluation task `task-mw8mct4b` and the re-review task `task-mw8n3mda` are also in the domain.
-- **Conclusion**: the current runtime's `DispatchStore` is open, and dispatch/resolve really writes to SQLite. The original report's chain of reasoning—“domain unopened / `store.list` returned undefined / tasks present only in Markdown”—does not hold: tasks returned by `superagent_ledger list` also exist in the domain, so the data source cannot be inferred from that result (re-review §4.1). P1-1 is withdrawn.
-- **Weak conclusion that remains (P2)**: `superagent_ledger` does not expose “whether this entry comes from the domain or Markdown, whether it is degraded, and why,” so a person can only guess from the result; the single sampling of `storageDomain` during `DispatchStore` construction (`dispatch-store.ts:169-171`) still poses the static lifecycle risk that “a late-arriving service causes permanent degradation,” but **this was not the root cause on-machine** (the domain opened normally this time).
+- **Conclusion**: the current runtime's `DispatchStore` is open, and dispatch/resolve really writes to SQLite. The original report's chain of reasoning—“domain unopened / `store.list` returned undefined / tasks present only in Markdown”—does not hold: tasks returned by `super-agent ledger list` also exist in the domain, so the data source cannot be inferred from that result (re-review §4.1). P1-1 is withdrawn.
+- **Weak conclusion that remains (P2)**: `super-agent ledger` does not expose “whether this entry comes from the domain or Markdown, whether it is degraded, and why,” so a person can only guess from the result; the single sampling of `storageDomain` during `DispatchStore` construction (`dispatch-store.ts:169-171`) still poses the static lifecycle risk that “a late-arriving service causes permanent degradation,” but **this was not the root cause on-machine** (the domain opened normally this time).
 - **Authority relationship**: the domain and Markdown projection coexist (`dispatch-store.ts:214-227` projection synchronization). This round **did not** compare the domain/projection field by field for the same id; the re-review still raises the issue (not run on-machine) that `artifacts/decisions` are short-circuited by `dispatch-store.ts:282-289` after the domain has returned, making the projection non-replayable. This is listed as P2/unverified.
 
 ### 3.3 B. Lifecycle
@@ -182,7 +182,7 @@ The four surfaces **did not show the same state**. The domain absence was not sp
 - **An unregistered workspace is rejected**: `"…" is not a registered workspace` (`2665-2666`).
 - **`list` provides enough information** (on-machine): it returns title/model/effort/context%/cache%/lastTask/running/idle (super log seq 667: `session-6e0cddc9… memory 与 jira 插件实现审查 running 2m context 61% deepseek-official/deepseek-flash cache 100% (consider compact)`).
 - **Untitled/duplicate names**: all Sessions created today had titles (`Windows super agent 评测`, `反馈记录分析 2026-11-06～2026-11-09`); no untitled Session appeared; historical untitled behavior was not reproduced in this round.
-- **Recursive ledger filenames (historical residue, visible on-machine)**: `ledger/` contains `D__dqc_superAgent_.superagent_ledger_544e144b….md` and `…_D__dqc_superAgent_.superagent_ledger_544e144b….md` (two- and three-level nesting), dated 2026-11-05; the corresponding domain records have this slug as `workspace.id`, and `path` contains backticks (`` `<dev-checkout>…` ``). The current `append` rejects unregistered workspaces, but `DispatchStore.migrate()` still reads these historical rows into the domain (`dispatch-store.ts:205-211`), and `ledgerFileOf` continues to generate filenames from ids (`dispatch-ledger.ts:116-117`).
+- **Recursive ledger filenames (historical residue, visible on-machine)**: `ledger/` contains `D__dqc_superAgent_.super-agent ledger_544e144b….md` and `…_D__dqc_superAgent_.super-agent ledger_544e144b….md` (two- and three-level nesting), dated 2026-11-05; the corresponding domain records have this slug as `workspace.id`, and `path` contains backticks (`` `<dev-checkout>…` ``). The current `append` rejects unregistered workspaces, but `DispatchStore.migrate()` still reads these historical rows into the domain (`dispatch-store.ts:205-211`), and `ledgerFileOf` continues to generate filenames from ids (`dispatch-ledger.ts:116-117`).
 
 ### 3.5 E. Windows environment
 
@@ -241,13 +241,13 @@ Unit test results for this round (Windows, measured runtime baseline): `dispatch
 
 1. **P0-1**: Give the journal a genuine cross-process claim—a same-directory lock file (`mkdir`/exclusive open) + lease, or make claim an atomic rename/single writer; at minimum, explicitly reject more than one deliverer for the same superHome instead of relying on a deployment constraint.
 2. **P0-2**: Record “business result” and “delivery status” separately: with no assistant text / on delivery failure, automatic projection must be `failed` (or `unknown`), not `returned` first; place `projectReportToLedger` after successful `deliver`, or explicitly mark “no output” in the outcome.
-3. **P0-3**: Failure must not be terminal. Add `retry` to `superagent_ledger`, scan pending/delivering at startup (including expired leases), and display failed + reason in the UI.
+3. **P0-3**: Failure must not be terminal. Add `retry` to `super-agent ledger`, scan pending/delivering at startup (including expired leases), and display failed + reason in the UI.
 4. **P0-4**: The prompt for continuing after `abort` must also go through `recordDispatchReport` (new taskId + requestId); otherwise the continuation never reports back.
 5. **P1-1**: Decouple `memory_search` from session FTS—with `openAt:"never"`, still return MEMORY.md hits and explicitly mark them `partial`; do not leave “retrieval unavailable” for the caller to work around with grep.
 6. **P1-2/P1-3**: Continue controlled before/after ACL snapshots and identification of the persistent-label writer, distinguishing historical residue, rewrites by old processes, and application by the current entry point; on Windows, change the default to the full-permission soft sandbox described in §3.8, retaining deny lists, tool policies, and audit logs, with hard ACL/Low integrity only as optional strong isolation. This recommendation is pending implementation; this report does not state that the configuration has been switched.
 7. **P1-4**: `start` should resolve model/title/permission/binding capability before create; unavoidable failures should record `created/configured/admitted/failed` and permit continuation/cleanup.
 8. **P1-5**: The projection must be replayable; supplementing artifacts/decisions after returned must not be short-circuited; archive historical invalid workspace ids and nested ledgers without deleting evidence.
-9. **P2-1**: Identify the data source (domain/Markdown) and degradation reason in `superagent_ledger` results; retry or explicitly reject when `storageDomain` arrives late.
+9. **P2-1**: Identify the data source (domain/Markdown) and degradation reason in `super-agent ledger` results; retry or explicitly reject when `storageDomain` arrives late.
 
 ---
 

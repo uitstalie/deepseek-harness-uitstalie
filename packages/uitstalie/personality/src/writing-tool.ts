@@ -1,21 +1,18 @@
 /**
- * The root-only `write_like_human` tool.
+ * The writing-rules actions behind `personality_apply`.
  *
- * It is a thin tool over `writing-rules.ts`: validate the request, read the
- * global file, mutate the document, and write it back through the store's
- * version guard with one stale retry. Failures are canonical results with a
- * readable one-line message, never thrown stacks. The tool is registered only
- * for a root agent by the capability's `tools(agent)` filter; section 695 is
- * still injected for every agent, so child agents read the rules but cannot
- * change them.
+ * This module is a thin layer over `writing-rules.ts`: validate the request,
+ * read the global file, mutate the document, and write it back through the
+ * store's version guard with one stale retry. Failures are canonical results
+ * with a readable one-line message, never thrown stacks. `agent-tools.ts`
+ * calls `runWritingRuleAction` from the root-only `personality_apply`; section
+ * 695 is still injected for every agent, so child agents read the rules but
+ * cannot change them.
  * @module @deepseek-ai/dsh-personality/writing-tool
  */
 
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Context } from '@deepseek-ai/cordis'
 import { FsError } from '@deepseek-ai/dsh-fs'
-import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import {
   mutateWritingRules,
   previewWritingRules,
@@ -33,7 +30,7 @@ import type {
 } from './writing-rules.ts'
 
 /** Actions that write the file; every other action only reads it. */
-const WRITE_ACTIONS: ReadonlySet<WritingRuleAction> = new Set(['add', 'update', 'remove', 'enable', 'disable'])
+export const WRITING_RULE_WRITE_ACTIONS: ReadonlySet<WritingRuleAction> = new Set(['add', 'update', 'remove', 'enable', 'disable'])
 
 /** One tool call result. `ok: false` carries the readable reason in `error`. */
 export interface WriteLikeHumanResult {
@@ -51,73 +48,6 @@ export interface WriteLikeHumanResult {
   readonly path: string
   /** Opaque store version after the action, when the store reports one. */
   readonly version?: string
-}
-
-/**
- * Build the root-only writing-rules tool.
- * @param ctx - plugin context carrying the global store.
- * @param refresh - reloads the calling agent's prompt after a successful write action.
- * @returns the `write_like_human` tool definition; action failures return canonical `ok: false` results.
- */
-export function writingRulesTool(ctx: Context, refresh: (agent: Agent) => Promise<void>): ToolDefinition {
-  return defineTool({
-    name: 'write_like_human',
-    description:
-      'Maintain the global WRITING_RULES.yaml. The change affects every agent, not only this conversation. '
-      + 'Use list/preview to inspect rules, and add/update/remove/enable/disable to write them; writes are '
-      + 'global and version-guarded, with one internal retry on a stale conflict. If the retry still '
-      + 'fails, call list for the latest state before retrying; do not blindly repeat the same call. '
-      + 'Only a root agent can call this tool. Child agents only read the '
-      + 'injected rules; they must return to the main conversation to request a change.',
-    parameters: {
-      action: {
-        type: 'string',
-        required: true,
-        enum: ['list', 'add', 'update', 'remove', 'enable', 'disable', 'preview'],
-        description: 'list/preview need no other field; add needs text; update needs id and accepts text/order/enabled; remove and enable/disable need id.',
-      },
-      id: { type: 'string', description: 'Required for update/remove/enable/disable; optional for add (generated when absent).' },
-      text: { type: 'string', description: 'Required for add; optional for update. Trimmed and whitespace-collapsed.' },
-      order: { type: 'integer', description: 'Optional safe-integer order; add appends, update preserves unless supplied.' },
-      enabled: { type: 'boolean', description: 'Optional enabled state; add defaults true, update preserves unless supplied.' },
-    },
-    output: {
-      schema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          action: { type: 'string', required: true },
-          ok: { type: 'boolean', required: true },
-          error: { type: 'string' },
-          rules: {
-            type: 'array',
-            required: true,
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                id: { type: 'string', required: true },
-                text: { type: 'string', required: true },
-                enabled: { type: 'boolean', required: true },
-                order: { type: 'integer', required: true },
-              },
-            },
-          },
-          promptSection: { type: 'string' },
-          path: { type: 'string', required: true },
-          version: { type: 'string' },
-        },
-      },
-      render: (_args, value) => [{ type: 'text', text: renderWritingRulesResult(value as never) }],
-    },
-    async execute(args, exec) {
-      const agent = requireAgent(exec.agent, 'write_like_human')
-      if ((agent.role ?? 'agent') === 'subagent') throw new Error('write_like_human is unavailable to subagents')
-      const result = await runWritingRuleAction(ctx, args as WritingRuleInput, exec.signal)
-      if (result.ok && WRITE_ACTIONS.has(result.action)) await refresh(agent)
-      return result as never
-    },
-  })
 }
 
 /**
@@ -149,7 +79,7 @@ export async function runWritingRuleAction(
     } catch (error: unknown) {
       return failure(input.action, error, current.document.rules, current.version)
     }
-    if (!WRITE_ACTIONS.has(input.action)) {
+    if (!WRITING_RULE_WRITE_ACTIONS.has(input.action)) {
       return {
         action: input.action,
         ok: true,
@@ -181,8 +111,8 @@ export async function runWritingRuleAction(
  * @returns the failure line, or the action summary with one line per rule, an omission note, and preview text when applicable.
  */
 export function renderWritingRulesResult(result: WriteLikeHumanResult): string {
-  if (!result.ok) return `write_like_human failed (${result.action}): ${String(result.error)}`
-  const lines = [`write_like_human ${result.action}: ${String(result.rules.length)} rule(s) in ${result.path}`]
+  if (!result.ok) return `personality_apply failed (${result.action}): ${String(result.error)}`
+  const lines = [`personality_apply ${result.action}: ${String(result.rules.length)} rule(s) in ${result.path}`]
   for (const rule of result.rules) {
     lines.push(`- ${rule.id} [${rule.enabled ? 'on' : 'off'}, order ${String(rule.order)}] ${rule.text}`)
   }
@@ -214,11 +144,4 @@ function failure(
 /** Whether a store write failed because the observed version moved. */
 function isStaleWrite(error: unknown): boolean {
   return error instanceof FsError && (error.code === 'FS_STALE_VERSION' || error.code === 'FS_NOT_OBSERVED')
-}
-
-/** Require the owning agent a tool needs. */
-function requireAgent(agent: Agent | undefined, tool: string): Agent {
-  /* v8 ignore next -- the tool runtime always passes the owning agent. */
-  if (agent === undefined) throw new Error(`${tool} requires an owning agent`)
-  return agent
 }

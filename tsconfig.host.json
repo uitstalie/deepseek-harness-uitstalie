@@ -451,9 +451,6 @@
     { "path": "./packages/storage/storage-domain" },
     { "path": "./packages/feedback/message-feedback" },
     { "path": "./packages/workspace/workspace" },
-    // BEGIN uitstalie-kimi, 2026/11/10, superagent-journal, register the Jira-independent report journal
-    { "path": "./packages/superagent/superagent-core" },
-    // END uitstalie-kimi
     { "path": "./packages/session/session-title" },
     { "path": "./packages/session/working-directory" },
     { "path": "./packages/experimental/worktree" },
@@ -680,14 +677,6 @@
     { "path": "./packages/uitstalie/token-calculator" },
     { "path": "./packages/uitstalie/workspace-tools" },
     // END uitstalie-deepseek-flash
-    // BEGIN uitstalie-k3, 2026/10/24, DH-13, 注册迁移后的 jira 五包进 Host 聚合程序
-    { "path": "./packages/jira/jira-core" },
-    { "path": "./packages/jira/jira-cli" },
-    { "path": "./packages/jira/jira-service" },
-    { "path": "./packages/jira/jira-agent" },
-    // ui-jira 是 client 双面包（dsh.client），编译面在 tsconfig.client.json
-    { "path": "./packages/jira/ui-jira/tsconfig.host.json" },
-    // END uitstalie-k3
     // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-12, 注册能力总代 client 双面包的 Host 编译面
     { "path": "./packages/uitstalie/ui-dafeiyu/tsconfig.host.json" },
     // END uitstalie-deepseek-flash

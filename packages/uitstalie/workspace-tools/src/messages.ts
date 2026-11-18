@@ -1,13 +1,17 @@
 /**
- * `workspace_message`: send a message or follow-up to one Session and read the
- * delivery receipts a workspace holds.
+ * `workspace_message`: send or retry a message to one Session, read the
+ * delivery receipts a workspace holds, and inspect one message's delivery
+ * status.
  *
  * Delivery is an explicit tool call: `send` validates the target, the artifact
  * citations, and the caller's scope, then hands the text to the host Session
- * controller. The controller's request identity is derived from the message id,
- * so a retried send cannot append the same message twice. `read` returns one
- * message by id, or a bounded page filtered by target Session, with delivery
- * receipts and artifact citations.
+ * controller. A controller that throws or declines is recorded as a durable
+ * `failed` message with its reason and attempt count instead of losing the
+ * message. `retry` re-sends one failed message under its original identity, so
+ * the controller's request dedupe prevents a second admission. `status` returns
+ * one message with its delivery state, failure reason, attempts, and artifact
+ * citations; `read` returns one message by id, or a bounded page filtered by
+ * target Session, with delivery receipts and artifact citations.
  * @module @deepseek-ai/dsh-workspace-tools/messages
  */
 
@@ -18,10 +22,18 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { WorkspaceMessageError, WorkspaceRecordError } from './errors.ts'
-import { isArchivedSession, messageDeliveryController } from './delivery.ts'
+import { DELIVERY_ERROR_MAX_CHARS, isArchivedSession, messageDeliveryController, requestDelivery } from './delivery.ts'
+import type { DeliveryOutcome } from './delivery.ts'
 import { pageOf } from './paging.ts'
-import type { ArtifactCitation, MessageKind, MessagePriority, MessageRecord, UrgentReason } from './records.ts'
-import { URGENT_REASONS } from './records.ts'
+import type {
+  ArtifactCitation,
+  MessageDeliveryStatus,
+  MessageKind,
+  MessagePriority,
+  MessageRecord,
+  UrgentReason,
+} from './records.ts'
+import { MESSAGE_DELIVERY_STATUSES, URGENT_REASONS } from './records.ts'
 import { artifactVersion, listMessages, readArtifact, readMessage, readTask, writeMessage } from './store.ts'
 import { resolveWorkspace } from './scope.ts'
 import { oneLine, requireCallerSession } from './tooling.ts'
@@ -46,31 +58,39 @@ export interface MessageView {
   /** Which of the three cases made the message urgent; absent for a normal message. */
   readonly urgentReason?: UrgentReason
   /** Current delivery state. */
-  readonly status: 'queued' | 'delivered' | 'interrupted' | 'target_archived'
+  readonly status: MessageDeliveryStatus
   /** ISO-8601 creation instant. */
   readonly createdAt: string
   /** ISO-8601 instant the message reached its target. */
   readonly deliveredAt?: string
+  /** Readable reason the last delivery attempt failed; absent while no attempt failed. */
+  readonly error?: string
+  /** Delivery attempts made; absent on records written before this field existed. */
+  readonly attempts?: number
   /** Message this one answers. */
   readonly replyTo?: string
   /** Task this message reports on. */
   readonly taskId?: string
   /** Delivery observations in report order. */
-  readonly receipts: { readonly at: string; readonly status: 'queued' | 'delivered' | 'interrupted' | 'target_archived' }[]
+  readonly receipts: { readonly at: string; readonly status: MessageDeliveryStatus }[]
   /** Artifact citations attached at send time. */
   readonly references: { readonly artifactId: string; readonly version: number; readonly sha256: string }[]
 }
 
-/** Result of one `send` call. */
+/** Result of one `send` or `retry` call. */
 export interface SentMessage {
   /** Stable message id. */
   readonly messageId: string
   /** Session the message addresses. */
   readonly targetSessionId: string
   /** Effective delivery state. */
-  readonly status: 'queued' | 'delivered' | 'interrupted' | 'target_archived'
+  readonly status: MessageDeliveryStatus
   /** ISO-8601 instant the message reached its target. */
   readonly deliveredAt?: string
+  /** Readable reason a `failed` send or retry could not be delivered; absent otherwise. */
+  readonly error?: string
+  /** Delivery attempts made; absent on records written before this field existed. */
+  readonly attempts?: number
   /** Citations captured at send time. */
   readonly references: ArtifactCitation[]
 }
@@ -81,8 +101,10 @@ export interface WorkspaceMessageValue {
   readonly workspace: string
   /** Messages read, newest first. */
   readonly messages?: MessageView[]
-  /** Result of one send. */
+  /** Result of one send or retry. */
   readonly sent?: SentMessage
+  /** One message inspected by `status`. */
+  readonly message?: MessageView
   /** Cursor of the next page. */
   readonly nextCursor?: string
 }
@@ -96,10 +118,16 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
   return defineTool({
     name: 'workspace_message',
     description:
-      'Send a message or follow-up to one Session, or read messages a workspace delivered and their receipts. '
+      'Send a message or follow-up to one Session, retry a failed delivery, inspect one message\'s delivery status, '
+      + 'or read messages a workspace delivered and their receipts. '
       + '`send` requires `targetSessionId`, `text` (at most 600 characters: conclusion, evidence, next step), and '
       + '`requestId`; a repeated `requestId` returns the first result. Same-workspace sends are allowed; a '
-      + 'cross-workspace send requires the super agent and the target workspace id. `priority: "urgent"` is limited '
+      + 'cross-workspace send requires the super agent and the target workspace id. A delivery the host rejects is '
+      + 'recorded as `failed` with its reason and attempt count instead of being lost. `status` returns one message '
+      + 'by `messageId` (or the newest message for `targetSessionId`) with its delivery state, failure reason, '
+      + 'attempts, receipts, and references. `retry` re-delivers one `failed` message under its original identity; '
+      + 'retrying a message that is not failed returns its current state without delivering again. '
+      + '`priority: "urgent"` is limited '
       + 'to an urgentReason: a wrong conclusion being acted on, a stop order for a dangerous operation, or a user '
       + 'instruction change. Attach files with `references` (artifact ids), never pasted content. '
       + '`read` returns one message by id or a page filtered by target session. '
@@ -108,8 +136,10 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       action: {
         type: 'string',
         required: true,
-        enum: ['send', 'read'],
-        description: '`send` delivers one message; `read` returns messages and receipts.',
+        enum: ['send', 'read', 'status', 'retry'],
+        description:
+          '`send` delivers one message; `read` returns messages and receipts; `status` returns one message\'s '
+          + 'delivery status, failure reason, attempts, and references; `retry` re-delivers one failed message.',
       },
       workspace: {
         type: 'string',
@@ -117,11 +147,14 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       },
       targetSessionId: {
         type: 'string',
-        description: 'Target session for `send`; required there. For `read`, filters the page to one receiver.',
+        description:
+          'Target session for `send`; required there. For `read`, filters the page to one receiver; for `status`, '
+          + 'names the newest message addressed to that session when `messageId` is omitted.',
       },
       messageId: {
         type: 'string',
-        description: 'Message to read; when present, other read filters are ignored.',
+        description:
+          'Message to read, inspect with `status`, or re-deliver with `retry`; required by `retry`.',
       },
       text: {
         type: 'string',
@@ -195,9 +228,11 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
                 kind: { type: 'string', required: true, enum: ['message', 'followup'] },
                 priority: { type: 'string', required: true, enum: ['normal', 'urgent'] },
                 urgentReason: { type: 'string', enum: [...URGENT_REASONS] },
-                status: { type: 'string', required: true, enum: ['queued', 'delivered', 'interrupted', 'target_archived'] },
+                status: { type: 'string', required: true, enum: [...MESSAGE_DELIVERY_STATUSES] },
                 createdAt: { type: 'string', required: true },
                 deliveredAt: { type: 'string' },
+                error: { type: 'string' },
+                attempts: { type: 'integer' },
                 replyTo: { type: 'string' },
                 taskId: { type: 'string' },
                 receipts: {
@@ -208,7 +243,7 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
                     additionalProperties: false,
                     properties: {
                       at: { type: 'string', required: true },
-                      status: { type: 'string', required: true, enum: ['queued', 'delivered', 'interrupted', 'target_archived'] },
+                      status: { type: 'string', required: true, enum: [...MESSAGE_DELIVERY_STATUSES] },
                     },
                   },
                 },
@@ -228,14 +263,61 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
               },
             },
           },
+          message: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              messageId: { type: 'string', required: true },
+              targetSessionId: { type: 'string', required: true },
+              sourceSessionId: { type: 'string', required: true },
+              text: { type: 'string', required: true },
+              kind: { type: 'string', required: true, enum: ['message', 'followup'] },
+              priority: { type: 'string', required: true, enum: ['normal', 'urgent'] },
+              urgentReason: { type: 'string', enum: [...URGENT_REASONS] },
+              status: { type: 'string', required: true, enum: [...MESSAGE_DELIVERY_STATUSES] },
+              createdAt: { type: 'string', required: true },
+              deliveredAt: { type: 'string' },
+              error: { type: 'string' },
+              attempts: { type: 'integer' },
+              replyTo: { type: 'string' },
+              taskId: { type: 'string' },
+              receipts: {
+                type: 'array',
+                required: true,
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    at: { type: 'string', required: true },
+                    status: { type: 'string', required: true, enum: [...MESSAGE_DELIVERY_STATUSES] },
+                  },
+                },
+              },
+              references: {
+                type: 'array',
+                required: true,
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    artifactId: { type: 'string', required: true },
+                    version: { type: 'integer', required: true },
+                    sha256: { type: 'string', required: true },
+                  },
+                },
+              },
+            },
+          },
           sent: {
             type: 'object',
             additionalProperties: false,
             properties: {
               messageId: { type: 'string', required: true },
               targetSessionId: { type: 'string', required: true },
-              status: { type: 'string', required: true, enum: ['queued', 'delivered', 'interrupted', 'target_archived'] },
+              status: { type: 'string', required: true, enum: [...MESSAGE_DELIVERY_STATUSES] },
               deliveredAt: { type: 'string' },
+              error: { type: 'string' },
+              attempts: { type: 'integer' },
               references: {
                 type: 'array',
                 required: true,
@@ -258,7 +340,7 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
     },
     async execute(args, exec) {
       const session = requireCallerSession(exec.agent?.session, 'workspace_message')
-      if (args.action === 'send') {
+      if (args.action === 'send' || args.action === 'retry') {
         const scope = await resolveWorkspace(ctx, session, 'message.send', args.workspace)
         if (scope.crossWorkspace && exec.agent?.role !== 'super') {
           throw new WorkspaceMessageError(
@@ -269,10 +351,18 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
         }
         return {
           workspace: String(scope.workspace.id),
-          sent: await sendMessage(ctx, scope.workspace, session, args, exec.signal),
+          sent: args.action === 'retry'
+            ? await retryMessage(ctx, scope.workspace, session, args.messageId, exec.signal)
+            : await sendMessage(ctx, scope.workspace, session, args, exec.signal),
         }
       }
       const scope = await resolveWorkspace(ctx, session, 'message.read', args.workspace)
+      if (args.action === 'status') {
+        return {
+          workspace: String(scope.workspace.id),
+          message: await statusMessage(ctx, scope.workspace, args.messageId, args.targetSessionId, exec.signal),
+        }
+      }
       if (args.messageId !== undefined) {
         return {
           workspace: String(scope.workspace.id),
@@ -305,9 +395,11 @@ interface SendRequest {
 /**
  * Validate, deliver, and record one message.
  *
- * The record is written only after the delivery attempt settles: a failed tool
- * call leaves no half-record, and a retry reuses the deterministic controller
- * request identity so the recipient cannot receive the body twice.
+ * The record is written only after the delivery attempt settles: a validation
+ * failure leaves no half-record, while a host refusal is recorded as `failed`
+ * with its reason and attempt count so the caller can inspect and retry it.
+ * The controller request identity derives from the message id, so a retry
+ * cannot make the recipient receive the body twice.
  * @param ctx - context carrying the store, registry, and controller.
  * @param workspace - workspace the message belongs to.
  * @param session - sending Session.
@@ -383,19 +475,23 @@ async function sendMessage(
   const messageId = `message-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
   const kind = request.kind ?? 'message'
   const archived = isArchivedSession(ctx, targetSessionId)
-  let status: MessageRecord['status'] = 'queued'
+  let status: MessageDeliveryStatus = 'queued'
   let deliveredAt: string | undefined
-  if (!archived) {
+  let error: string | undefined
+  if (archived) {
+    status = 'target_archived'
+  } else {
     const delivery = messageDeliveryController(ctx)
     if (delivery !== undefined) {
-      const admitted = await admit(ctx, delivery, messageId, targetSessionId, priority, text, signal)
-      if (admitted) {
+      const outcome = await admit(ctx, delivery, messageId, targetSessionId, priority, text, signal)
+      if (outcome.accepted) {
         status = 'delivered'
         deliveredAt = new Date().toISOString()
+      } else {
+        status = 'failed'
+        error = outcome.error
       }
     }
-  } else {
-    status = 'target_archived'
   }
   const message: MessageRecord = {
     messageId,
@@ -413,6 +509,8 @@ async function sendMessage(
     status,
     createdAt,
     ...deliveredAt === undefined ? {} : { deliveredAt },
+    ...error === undefined ? {} : { error },
+    attempts: 1,
     receipts: [{ at: deliveredAt ?? createdAt, status }],
   }
   await writeMessage(ctx, workspace.id, message, { session })
@@ -420,11 +518,171 @@ async function sendMessage(
 }
 
 /**
+ * Re-deliver one failed message under its original identity.
+ *
+ * A message that is not `failed` is returned unchanged: it was already admitted
+ * once (or is still queued), so retrying it must not enqueue a second copy. A
+ * failed message keeps its id, request id, body, priority, citations, and
+ * target, so the controller's stable request identity dedupes the retry even
+ * when a previous acknowledgement was lost.
+ * @param ctx - context carrying the store, registry, and controller.
+ * @param workspace - workspace that owns the message.
+ * @param session - Session asking for the retry, recorded on the updated record.
+ * @param messageId - message to re-deliver.
+ * @param signal - cancellation for the store and delivery operations.
+ * @returns the message's delivery state after the retry attempt.
+ * @throws WorkspaceMessageError when messageId is missing.
+ * @throws WorkspaceRecordError when the workspace holds no such message.
+ */
+async function retryMessage(
+  ctx: Context,
+  workspace: Workspace,
+  session: Session,
+  messageId: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<SentMessage> {
+  const id = messageId?.trim() ?? ''
+  if (id === '') {
+    throw new WorkspaceMessageError(
+      'workspace_message with action "retry" requires messageId of the failed message',
+      'WORKSPACE_MESSAGE_INVALID',
+    )
+  }
+  const stored = await readMessage(ctx, workspace.id, id, signal)
+  if (stored === undefined) {
+    throw new WorkspaceRecordError(
+      `workspace ${String(workspace.id)} holds no message ${JSON.stringify(id)}`,
+      'WORKSPACE_RECORD_NOT_FOUND',
+    )
+  }
+  const record = stored.message
+  if (record.status !== 'failed') return sentOf(record)
+  const attempts = (record.attempts ?? 1) + 1
+  if (!workspace.sessionIds.some(sessionId => String(sessionId) === record.targetSessionId)) {
+    return await persistedRetryFailure(
+      ctx, workspace, record, session, stored.version, attempts,
+      `session ${record.targetSessionId} is no longer a session of workspace ${String(workspace.id)}`,
+    )
+  }
+  if (isArchivedSession(ctx, record.targetSessionId)) {
+    return await persistedRetryFailure(
+      ctx, workspace, record, session, stored.version, attempts,
+      `target session ${record.targetSessionId} is archived`,
+    )
+  }
+  const delivery = messageDeliveryController(ctx)
+  if (delivery === undefined) {
+    return await persistedRetryFailure(
+      ctx, workspace, record, session, stored.version, attempts,
+      'the host session controller is not mounted, so the message cannot be re-delivered',
+    )
+  }
+  const outcome = await admit(ctx, delivery, record.messageId, record.targetSessionId, record.priority, record.text, signal)
+  if (!outcome.accepted) {
+    return await persistedRetryFailure(
+      ctx, workspace, record, session, stored.version, attempts,
+      outcome.error ?? 'the host session controller declined the message',
+    )
+  }
+  const deliveredAt = new Date().toISOString()
+  const delivered: MessageRecord = {
+    ...record,
+    status: 'delivered',
+    deliveredAt,
+    error: undefined,
+    attempts,
+    receipts: [...record.receipts, { at: deliveredAt, status: 'delivered' }],
+  }
+  await writeMessage(ctx, workspace.id, delivered, {
+    session,
+    ...stored.version === undefined ? {} : { expected: stored.version },
+  })
+  return sentOf(delivered)
+}
+
+/**
+ * Persist one retry attempt that could not reach the host controller.
+ * @param ctx - context carrying the store.
+ * @param workspace - workspace that owns the message.
+ * @param record - the failed message being retried.
+ * @param session - Session asking for the retry.
+ * @param expected - store version read before the retry.
+ * @param attempts - attempt count including this one.
+ * @param reason - readable failure reason.
+ * @returns the updated `failed` send result.
+ */
+async function persistedRetryFailure(
+  ctx: Context,
+  workspace: Workspace,
+  record: MessageRecord,
+  session: Session,
+  expected: string | undefined,
+  attempts: number,
+  reason: string,
+): Promise<SentMessage> {
+  const at = new Date().toISOString()
+  const failed: MessageRecord = {
+    ...record,
+    status: 'failed',
+    error: reason,
+    attempts,
+    receipts: [...record.receipts, { at, status: 'failed' }],
+  }
+  await writeMessage(ctx, workspace.id, failed, {
+    session,
+    ...expected === undefined ? {} : { expected },
+  })
+  return sentOf(failed)
+}
+
+/**
+ * Read the delivery status of one message.
+ *
+ * `messageId` selects one message exactly. Without it, the newest message
+ * addressed to `targetSessionId` is inspected, so a caller that only knows the
+ * receiver can still see the latest delivery state.
+ * @param ctx - context carrying the store.
+ * @param workspace - workspace that owns the message.
+ * @param messageId - message identity, when the caller named one.
+ * @param targetSessionId - receiver whose newest message is inspected otherwise.
+ * @param signal - cancellation for the store reads.
+ * @returns the message's status view.
+ * @throws WorkspaceMessageError when neither selector was given.
+ * @throws WorkspaceRecordError when no matching message exists.
+ */
+async function statusMessage(
+  ctx: Context,
+  workspace: Workspace,
+  messageId: string | undefined,
+  targetSessionId: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<MessageView> {
+  if (messageId !== undefined) return await readOneMessage(ctx, workspace, messageId, signal)
+  const target = targetSessionId?.trim() ?? ''
+  if (target === '') {
+    throw new WorkspaceMessageError(
+      'workspace_message with action "status" requires messageId or targetSessionId',
+      'WORKSPACE_MESSAGE_INVALID',
+    )
+  }
+  const newest = (await listMessages(ctx, workspace.id, signal))
+    .find(message => message.targetSessionId === target)
+  if (newest === undefined) {
+    throw new WorkspaceRecordError(
+      `workspace ${String(workspace.id)} holds no message for session ${JSON.stringify(target)}`,
+      'WORKSPACE_RECORD_NOT_FOUND',
+    )
+  }
+  return messageView(newest)
+}
+
+/**
  * Hand one message to the host controller.
  *
  * A normal message queues for the target's next turn boundary. An urgent one
  * first tries to steer the running step and falls back to the queue when the
- * target is idle, recording the same request identity either way.
+ * target is idle, recording the same request identity either way. A thrown
+ * refusal becomes the outcome's readable reason instead of escaping the call.
  * @param ctx - context, for the debug log on an urgent fallback.
  * @param delivery - host Session controller.
  * @param messageId - stable message id the request identity derives from.
@@ -432,7 +690,7 @@ async function sendMessage(
  * @param priority - normal or urgent.
  * @param text - message body.
  * @param signal - cancellation for the admission.
- * @returns whether the controller accepted the message.
+ * @returns whether the controller accepted the message, with the failure reason when it did not.
  */
 async function admit(
   ctx: Context,
@@ -442,26 +700,25 @@ async function admit(
   priority: MessagePriority,
   text: string,
   signal: AbortSignal | undefined,
-): Promise<boolean> {
+): Promise<DeliveryOutcome> {
   const requestId = `workspace-message-${messageId}`
   const content = [{ type: 'text' as const, text }]
   const admission = signal ?? new AbortController().signal
   if (priority === 'normal') {
-    const result = await delivery.prompt({ requestId, sessionId: targetSessionId, mode: 'queue', content }, admission)
-    return result.accepted
+    return await requestDelivery(delivery, { requestId, sessionId: targetSessionId, mode: 'queue', content }, admission)
   }
-  try {
-    const result = await delivery.prompt({ requestId, sessionId: targetSessionId, mode: 'steer', content }, admission)
-    return result.accepted
-  } catch (error: unknown) {
-    ctx.logger.debug(
-      'workspace-tools: urgent steer to %s was refused, queueing instead: %s',
-      targetSessionId,
-      error instanceof Error ? error.message : String(error),
-    )
-    const result = await delivery.prompt({ requestId, sessionId: targetSessionId, mode: 'queue', content }, admission)
-    return result.accepted
-  }
+  const steered = await requestDelivery(
+    delivery,
+    { requestId, sessionId: targetSessionId, mode: 'steer', content },
+    admission,
+  )
+  if (steered.accepted) return steered
+  ctx.logger.debug(
+    'workspace-tools: urgent steer to %s was refused, queueing instead: %s',
+    targetSessionId,
+    steered.error ?? 'declined',
+  )
+  return await requestDelivery(delivery, { requestId, sessionId: targetSessionId, mode: 'queue', content }, admission)
 }
 
 /**
@@ -514,6 +771,8 @@ function sentOf(message: MessageRecord): SentMessage {
     targetSessionId: message.targetSessionId,
     status: message.status,
     ...message.deliveredAt === undefined ? {} : { deliveredAt: message.deliveredAt },
+    ...message.error === undefined ? {} : { error: message.error },
+    ...message.attempts === undefined ? {} : { attempts: message.attempts },
     references: message.references.map(reference => ({
       artifactId: reference.artifactId,
       version: reference.version,
@@ -584,6 +843,8 @@ function messageView(message: MessageRecord): MessageView {
     status: message.status,
     createdAt: message.createdAt,
     ...message.deliveredAt === undefined ? {} : { deliveredAt: message.deliveredAt },
+    ...message.error === undefined ? {} : { error: message.error },
+    ...message.attempts === undefined ? {} : { attempts: message.attempts },
     ...message.replyTo === undefined ? {} : { replyTo: message.replyTo },
     ...message.taskId === undefined ? {} : { taskId: message.taskId },
     receipts: message.receipts.map(receipt => ({ at: receipt.at, status: receipt.status })),
@@ -607,20 +868,37 @@ function renderMessages(value: WorkspaceMessageValue): string {
       ? ''
       : ` · refs ${sent.references.map(reference => `${reference.artifactId} v${String(reference.version)}`).join(', ')}`
     return `Sent ${sent.messageId} to ${sent.targetSessionId} · ${sent.status}`
-      + (sent.deliveredAt === undefined ? '' : ` at ${sent.deliveredAt}`) + references
+      + (sent.deliveredAt === undefined ? '' : ` at ${sent.deliveredAt}`)
+      + (sent.attempts === undefined ? '' : ` · attempt ${String(sent.attempts)}`)
+      + (sent.error === undefined ? '' : ` · error: ${oneLine(sent.error, DELIVERY_ERROR_MAX_CHARS)}`)
+      + references
   }
+  if (value.message !== undefined) return renderOneMessage(value.message)
   const messages = value.messages ?? []
   if (messages.length === 0) return `No messages in workspace ${value.workspace}.`
-  const lines = messages.map((message) => {
-    const receipts = message.receipts.length === 0
-      ? 'no receipts'
-      : message.receipts.map(receipt => `${receipt.at} ${receipt.status}`).join('; ')
-    const references = message.references.length === 0
-      ? ''
-      : ` · refs ${message.references.map(reference => `${reference.artifactId} v${String(reference.version)}`).join(', ')}`
-    return `- ${message.messageId} · ${message.kind} · ${message.status} · to ${message.targetSessionId}`
-      + ` · ${message.createdAt}${references}\n  ${oneLine(message.text, MESSAGE_TEXT_MAX_CHARS)}\n  receipts: ${receipts}`
-  })
+  const lines = messages.map(message => `- ${renderOneMessage(message)}`)
   if (value.nextCursor !== undefined) lines.push(`(more messages: pass cursor ${value.nextCursor})`)
   return lines.join('\n')
+}
+
+/**
+ * Render one message's delivery state, failure reason, attempts, receipts, and
+ * citations as the multi-line body shared by `read` and `status`.
+ * @param message - the message view.
+ * @returns the model-facing text.
+ */
+function renderOneMessage(message: MessageView): string {
+  const receipts = message.receipts.length === 0
+    ? 'no receipts'
+    : message.receipts.map(receipt => `${receipt.at} ${receipt.status}`).join('; ')
+  const references = message.references.length === 0
+    ? ''
+    : ` · refs ${message.references.map(reference => `${reference.artifactId} v${String(reference.version)}`).join(', ')}`
+  return `${message.messageId} · ${message.kind} · ${message.status} · to ${message.targetSessionId}`
+    + ` · ${message.createdAt}`
+    + (message.attempts === undefined ? '' : ` · attempt ${String(message.attempts)}`)
+    + (message.deliveredAt === undefined ? '' : ` · delivered at ${message.deliveredAt}`)
+    + references
+    + (message.error === undefined ? '' : `\n  error: ${oneLine(message.error, DELIVERY_ERROR_MAX_CHARS)}`)
+    + `\n  ${oneLine(message.text, MESSAGE_TEXT_MAX_CHARS)}\n  receipts: ${receipts}`
 }

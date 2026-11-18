@@ -328,14 +328,6 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-user-approval` | yes | User-approval seam (ctx.approval) for the DeepSeek Harness: one-shot permission decisions dispatched to composed answerers over the approval/request waterfall, fail-closed by default |
 | `@deepseek-ai/dsh-user-questions` | no | Abstract user-questions seam (ctx.userQuestions) for asking the human during agent runs |
 
-## jira
-
-| Package | Config | Description |
-|---|---|---|
-| `@deepseek-ai/dsh-client-ui-jira` | no | The jira ledger's browser surface: the settings section that owns the ledger root, host and push switch, and the read-only board, issue and knowledge views |
-| `@deepseek-ai/dsh-jira-agent` | yes | The jira ledger's model surface: the jira capability provider registering the jira_issue, jira_list and jira_kb tools, the write guard, the /jira command, the bundled skills and the turn-end settle |
-| `@deepseek-ai/dsh-jira-service` | yes | The jira ledger's single writer: resolves the root, opens the store, owns the push queue and settle, and registers the ctx.jira service |
-
 ## jobs
 
 | Package | Config | Description |
@@ -569,7 +561,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-memory` | yes | Global memory capability provider: the cross-workspace GLOBAL.md store, the memory_write/memory_forget/memory_search tools, and the one-time migration of legacy per-workspace memory files |
 | `@deepseek-ai/dsh-models-dev` | yes | models.dev catalog service: startup fetch with disk-cache TTL fallback, harness-shaped model defaults, and a user-facing write location for extra request params |
 | `@deepseek-ai/dsh-persona-card` | yes | Assistant persona cards: the persona/v1 format, a pure validator and renderer, and a safe Character Card V2/V3 JSON importer |
-| `@deepseek-ai/dsh-personality` | no | Personality capability provider: the global PERSONALITY.md profile, output-style and writing-rules configuration, three stable system-prompt sections, and the read-only personality_analyze plus root-only personality_apply and write_like_human tools |
+| `@deepseek-ai/dsh-personality` | no | Personality capability provider: the global PERSONALITY.md profile, output-style and writing-rules configuration, three stable system-prompt sections, and the read-only personality_analyze plus root-only personality_apply tool owning both global personality files |
 | `@deepseek-ai/dsh-store-atom` | yes | The .dsh store atom: the dshStore base interface with project-root discovery, path confinement, namespace authoring checks, and version-guarded reads and writes |
 | `@deepseek-ai/dsh-system-environment` | yes | The host environment atom: one provider for platform facts, path spelling and comparison rules, environment lookup, and the user and Harness home directories |
 | `@deepseek-ai/dsh-token-calculator` | no | DeepSeek V4 token calculator: an offline byte-level BPE tokenizer and the count_tokens tool for budgeting prompts |

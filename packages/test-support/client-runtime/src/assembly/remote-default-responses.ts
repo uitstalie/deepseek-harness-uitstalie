@@ -43,10 +43,6 @@ export const remoteDefaultResponses: RemoteTable = {
     'account/getNotifications': ok(null),
     'account/getNotificationContent': ok(null),
     'account/reportNotificationEvent': ok(true),
-    // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-315, ui-jira 在 apply 时读取 super agent 的配置状态
-    // ui-jira `apply`: the super-agent setup card reads its configured state before the panel renders.
-    'jira/superagentState': ok({ configured: false }),
-    // END uitstalie-deepseek-flash
   },
   // Stream endpoints the roster opens later than boot; declared so a spec that forgets the script gets a stream miss.
   streams: [
@@ -59,10 +55,6 @@ export const remoteDefaultResponses: RemoteTable = {
     'session/control': openStream([{ type: 'baseline', value: { projections: {} } }]),
     // ui-settings-account shares the account snapshot across settings and the sidebar menu.
     'account/watch': openStream([{ type: 'snapshot', state: { status: 'signed-out', attempt: null, links: { usageUrl: 'https://platform.deepseek.com/usage', topUpUrl: 'https://platform.deepseek.com/top_up' } } }]),
-    // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-315, 分支 web roster 的 ui-jira 在 apply 时打开台账变更流
-    // ui-jira `apply`: the ledger change stream opens with the page and stays open.
-    'jira/watch': openStream(),
-    // END uitstalie-deepseek-flash
     // api-workspace-controller client `apply`: the follow stream's opening baseline, then open.
     'workspace/follow': openStream([{ type: 'baseline', value: { items: [], archivedSessionIds: [], pinnedSessionIds: [] } }]),
     // api-remote-access client `mountAccess`: the owner's access snapshot, then open.

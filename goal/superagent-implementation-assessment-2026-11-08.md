@@ -54,7 +54,7 @@
 
 ### 2.2 多本账是真实工作量，不是所有副本都同权
 
-在本次 super session 的日志横截面中，有 51 次 `superagent_session`、38 次 `superagent_ledger`、33 次 `memory_write`，包括 28 次 append、10 次 inspect、7 次 start、6 次 list。报告、手工 resolve 和 memory 收尾反复出现，说明超管在承担系统未完成的集成工作。
+在本次 super session 的日志横截面中，有 51 次 `superagent_session`、38 次 `super-agent ledger`、33 次 `memory_write`，包括 28 次 append、10 次 inspect、7 次 start、6 次 list。报告、手工 resolve 和 memory 收尾反复出现，说明超管在承担系统未完成的集成工作。
 
 但这不证明“四套存储都该合并”：Session 是原始证据，journal 是路由/投递，dispatch domain 是业务结果，Jira/memory 分别是审计知识与可淘汰结论。错误在于这些记录含相同正文、状态和责任，且没有一个面向用户的统一视图。重复案例是：
 

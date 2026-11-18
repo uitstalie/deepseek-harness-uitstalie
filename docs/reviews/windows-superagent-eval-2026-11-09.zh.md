@@ -3,7 +3,7 @@
 [English](windows-superagent-eval-2026-11-09.md) | 中文
 
 
-日期：2026-11-09。评测对象：Windows 10 实机上**正在运行**的 super agent（`@deepseek-ai/dsh-jira-agent` 的 `superagent_session` / `superagent_ledger` / 报告 journal / dispatch 台账），按 `goal/superagent-implementation-assessment-2026-11-08.md`、`goal/memory-plugin-assessment-2026-11-08.md`、 `goal/jira-ledger-assessment-2026-11-08.md` 的严重度尺度判定；`goal/linux-sandbox-audit.md` 只作平台差异参考。 交接文件：`docs/reviews/windows-superagent-eval-handoff-2026-11-09.md`。
+日期：2026-11-09。评测对象：Windows 10 实机上**正在运行**的 super agent（`@deepseek-ai/dsh-jira-agent` 的 `superagent_session` / `super-agent ledger` / 报告 journal / dispatch 台账），按 `goal/superagent-implementation-assessment-2026-11-08.md`、`goal/memory-plugin-assessment-2026-11-08.md`、 `goal/jira-ledger-assessment-2026-11-08.md` 的严重度尺度判定；`goal/linux-sandbox-audit.md` 只作平台差异参考。 交接文件：`docs/reviews/windows-superagent-eval-handoff-2026-11-09.md`。
 
 **性质**：只读评测。未改生产代码、未改配置、未 commit、未 push；临时脚本与日志在 `.tmp-eval/`（未跟踪，见 §9）。 本文的三个事实等级严格分开：**代码已提交** / **runtime 已加载** / **Windows 实机复现**。
 
@@ -124,7 +124,7 @@ super 会话收到的对应 `[task-report]`（`kind:"user"`，`rpcId:"superagent
 6102: ## task-mw8m5yg4-c19b2a0a · failed
 ```
 
-`superagent_ledger list` 在 02:12:14 也确实返回 `returned`（super 日志 seq 863），到 02:12:52 才被人工 `resolve status=failed` 改成 failed（seq 911-912）。**“没有产出”被自动记成 `returned`，需要人纠正。** 这就是 Fedora P0“业务结果在投递前写成 returned”的一个更尖锐的实例：连空输出也 returned。
+`super-agent ledger list` 在 02:12:14 也确实返回 `returned`（super 日志 seq 863），到 02:12:52 才被人工 `resolve status=failed` 改成 failed（seq 911-912）。**“没有产出”被自动记成 `returned`，需要人纠正。** 这就是 Fedora P0“业务结果在投递前写成 returned”的一个更尖锐的实例：连空输出也 returned。
 
 #### A-3 投递失败：机制存在，但仍是终态（代码+单测，实机未制造）
 
@@ -162,8 +162,8 @@ super 会话收到的对应 `[task-report]`（`kind:"user"`，`rpcId:"superagent
 
 - **重查方法**：把 `<DSH_HOME>\storages\superagent.sqlite` **连同 `-wal`（267,832 B）与 `-shm`** 复制到 `.tmp-eval/dbcopy/`，以读写方式打开副本（SQLite 自动恢复 WAL），再查 `u_superagent_dispatch_dispatches`。
 - **结果**：`rows 90`，状态 `{"returned":63,"pending":23,"failed":4}`，当日（2026-11-09）**15 行**； `task-mw8lnutt` 在 01:45:59 创建、01:50:57 returned；`task-mw8m5yg4` 在 **02:12:52 failed**（与人工 resolve 同刻）； 本评测任务 `task-mw8mct4b` 与复审任务 `task-mw8n3mda` 也都在 domain 里。
-- **结论**：当前 runtime 的 `DispatchStore` 已打开，dispatch/resolve 确实写入 SQLite。原报告“domain 未打开／ `store.list` 返回 undefined／Markdown 独有任务”的推理链不成立：`superagent_ledger list` 返回的任务在 domain 中同样存在， 不能据此反推数据源（复审 §4.1）。P1-1 撤销。
-- **仍需保留的弱结论（P2）**：`superagent_ledger` 不暴露“这条来自 domain 还是 Markdown、是否降级及原因”， 人只能从结果猜；`DispatchStore` 构造时单次采样 `storageDomain`（`dispatch-store.ts:169-171`）仍是“晚到服务即永久降级”的 静态生命周期风险，但**不是本次实机根因**（本次已正常打开）。
+- **结论**：当前 runtime 的 `DispatchStore` 已打开，dispatch/resolve 确实写入 SQLite。原报告“domain 未打开／ `store.list` 返回 undefined／Markdown 独有任务”的推理链不成立：`super-agent ledger list` 返回的任务在 domain 中同样存在， 不能据此反推数据源（复审 §4.1）。P1-1 撤销。
+- **仍需保留的弱结论（P2）**：`super-agent ledger` 不暴露“这条来自 domain 还是 Markdown、是否降级及原因”， 人只能从结果猜；`DispatchStore` 构造时单次采样 `storageDomain`（`dispatch-store.ts:169-171`）仍是“晚到服务即永久降级”的 静态生命周期风险，但**不是本次实机根因**（本次已正常打开）。
 - **权威关系**：domain 与 Markdown 投影同时存在（`dispatch-store.ts:214-227` 投影同步）。本轮**未**对同一 id 做 domain/投影逐字段比对；`artifacts/decisions` 在 domain 已 returned 后被 `dispatch-store.ts:282-289` 短路、 投影不可重放的问题仍由复审提出（未实跑），列 P2/未验证。
 
 ### 3.3 B. 生命周期
@@ -182,7 +182,7 @@ super 会话收到的对应 `[task-report]`（`kind:"user"`，`rpcId:"superagent
 - **未注册 workspace 会拒绝**：`"…" is not a registered workspace`（`2665-2666`）。
 - **`list` 的信息足够用**（实机）：返回 title/model/effort/context%/cache%/lastTask/running/idle （super 日志 seq 667：`session-6e0cddc9… memory 与 jira 插件实现审查 running 2m context 61% deepseek-official/deepseek-flash cache 100% (consider compact)`）。
 - **untitled/重名**：今天新建的会话都有标题（`Windows super agent 评测`、`反馈记录分析 2026-11-06～2026-11-09`）， 未出现 untitled；历史 untitled 行为未在本轮复现。
-- **递归台账文件名（历史遗留，实机可见）**： `ledger/` 下存在 `D__dqc_superAgent_.superagent_ledger_544e144b….md`、 `…_D__dqc_superAgent_.superagent_ledger_544e144b….md`（两层、三层嵌套），时间 2026-11-05； domain 里对应记录的 `workspace.id` 被写成这个 slug、`path` 带反引号（`` `<dev-checkout>…` ``）。 当前 `append` 已拒绝未注册 workspace，但 `DispatchStore.migrate()` 仍会把这些历史行读进 domain （`dispatch-store.ts:205-211`），`ledgerFileOf` 继续按 id 生成文件名（`dispatch-ledger.ts:116-117`）。
+- **递归台账文件名（历史遗留，实机可见）**： `ledger/` 下存在 `D__dqc_superAgent_.super-agent ledger_544e144b….md`、 `…_D__dqc_superAgent_.super-agent ledger_544e144b….md`（两层、三层嵌套），时间 2026-11-05； domain 里对应记录的 `workspace.id` 被写成这个 slug、`path` 带反引号（`` `<dev-checkout>…` ``）。 当前 `append` 已拒绝未注册 workspace，但 `DispatchStore.migrate()` 仍会把这些历史行读进 domain （`dispatch-store.ts:205-211`），`ledgerFileOf` 继续按 id 生成文件名（`dispatch-ledger.ts:116-117`）。
 
 ### 3.5 E. Windows 环境
 
@@ -241,13 +241,13 @@ Error: session search is disabled: this deployment configures the session-query 
 
 1. **P0-1**：给 journal 一个真正的跨进程 claim——同目录锁文件（`mkdir`/独占打开）+ 租约，或把 claim 变成 原子 rename/单写者；至少把“同一 superHome 只允许一个投递者”做成显式拒绝而不是靠部署约束。
 2. **P0-2**：把“业务结果”和“投递状态”分开落账：无 assistant 文本 / 投递失败时自动投影必须是 `failed`（或 `unknown`），不要先写 `returned`；`projectReportToLedger` 放在 `deliver` 成功之后，或在 outcome 里显式标注 “无产出”。
-3. **P0-3**：失败不是终态。给 `superagent_ledger` 加 `retry`，启动时扫描 pending/delivering（含 lease 过期）， 并在 UI 显示 failed + 原因。
+3. **P0-3**：失败不是终态。给 `super-agent ledger` 加 `retry`，启动时扫描 pending/delivering（含 lease 过期）， 并在 UI 显示 failed + 原因。
 4. **P0-4**：`abort` 续跑的 prompt 也走 `recordDispatchReport`（新 taskId + requestId），否则续跑永远不会回报。
 5. **P1-1**：解耦 `memory_search` 与 session FTS——`openAt:"never"` 时仍返回 MEMORY.md 命中并显式标 `partial`； 不要把“检索不可用”留给调用者 grep 兜底。
 6. **P1-2/P1-3**：继续做受控的 ACL 前后快照与持久标签写入者定位，区分历史残留、旧进程重写和当前入口施加；Windows 默认按 §3.8 改为完全权限软沙盒，保留黑名单、工具策略和审计日志，硬 ACL/Low 完整性只作可选强隔离。该建议待实施，本文不代表配置已切换。
 7. **P1-4**：`start` 先解析 model/title/permission/binding 能力，再 create；无法避免的失败写 `created/configured/admitted/failed` 并可继续/清理。
 8. **P1-5**：投影必须可重放；已 returned 后补 artifacts/decisions 不能被短路；历史非法 workspace id 与嵌套 ledger 只归档、不删证据。
-9. **P2-1**：`superagent_ledger` 返回里标明数据源（domain/Markdown）与降级原因；`storageDomain` 晚到时可重试或显式拒绝。
+9. **P2-1**：`super-agent ledger` 返回里标明数据源（domain/Markdown）与降级原因；`storageDomain` 晚到时可重试或显式拒绝。
 
 ---
 

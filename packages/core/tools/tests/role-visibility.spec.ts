@@ -12,11 +12,6 @@ import type { AgentRole } from '@deepseek-ai/dsh-agent'
 const MATRIX: Readonly<Record<string, AgentRole>> = {
   personality_analyze: 'subagent',
   personality_apply: 'agent',
-  write_like_human: 'agent',
-  jira_issue: 'agent',
-  jira_list: 'agent',
-  jira_kb: 'agent',
-  issue_work: 'agent',
   'tool-dsh-store': 'agent',
   memory_search: 'subagent',
   memory_write: 'agent',
@@ -37,10 +32,6 @@ const MATRIX: Readonly<Record<string, AgentRole>> = {
   subagent: 'agent',
   subagent_fork: 'agent',
   workflow: 'agent',
-  superagent_control: 'super',
-  superagent_ledger: 'super',
-  superagent_deliver: 'super',
-  superagent_permission: 'super',
   read: 'subagent',
   write: 'subagent',
   edit: 'subagent',
@@ -83,26 +74,19 @@ test('the registry exposes the approved full matrix for subagent, agent, and sup
   expect(names('subagent')).toEqual(expected('subagent'))
   expect(names('agent')).toEqual(expected('agent'))
   expect(names('super')).toEqual(expected('super'))
-  // This spec snapshots the approved matrix, not any one capability's wiring: `superagent_control`
-  // is already declared `super` here, so the jira ordinary-branch fix does not change these totals.
-  // The dispatch-to-intent-card path reuses `workspace_intents` / `workspace_tasks` at their existing
-  // `subagent` minimum, so the counts stay 18 subagent / 36 agent / 40 super before and after that
-  // change; the capability wiring is covered by
-  // packages/jira/jira-agent/tests/dispatch-intents.spec.ts.
+  // This spec snapshots the approved matrix, not any one capability's wiring. The JIRA product
+  // and the super-agent-only tools are retired; every remaining tool is visible at `agent` or
+  // below.
   expect(names('subagent')).toHaveLength(18)
-  expect(names('agent')).toHaveLength(35)
-  expect(names('super')).toHaveLength(39)
-  expect(names('agent')).not.toContain('superagent_control')
-  expect(names('super')).toContain('superagent_control')
+  expect(names('agent')).toHaveLength(30)
+  expect(names('super')).toHaveLength(30)
   expect(names('agent').filter(name => !names('subagent').includes(name))).toEqual([
-    'issue_work', 'jira_issue', 'jira_kb', 'jira_list', 'memory_forget',
+    'memory_forget',
     'memory_write', 'personality_apply', 'plugin_manager', 'schedule_create', 'schedule_edit',
     'schedule_list', 'schedule_view', 'subagent', 'subagent_fork', 'tool-dsh-store',
-    'workflow', 'write_like_human',
+    'workflow',
   ])
-  expect(names('super').filter(name => !names('agent').includes(name))).toEqual([
-    'superagent_control', 'superagent_deliver', 'superagent_ledger', 'superagent_permission',
-  ])
+  expect(names('super').filter(name => !names('agent').includes(name))).toEqual([])
   for (const name of Object.keys(MATRIX)) expect(toolMinRole(ctx.tools.get(name)!)).toBe(MATRIX[name])
 
   const plain = defineTool({

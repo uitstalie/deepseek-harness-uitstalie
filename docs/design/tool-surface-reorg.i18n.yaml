@@ -2,114 +2,33 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/tool-surface-reorg.md
-/tool-surface-re-organization-personality-jira-and-dsh-tools:
-  en: 56a6e055eef9d644
-  zh: 9cb5eb4168b78dfb
-/tool-surface-re-organization-personality-jira-and-dsh-tools/1-scope-and-evidence:
-  en: a451d75f9e389460
-  zh: 610786d169b2c9be
-/tool-surface-re-organization-personality-jira-and-dsh-tools/1-scope-and-evidence/1-1-scope:
-  en: 9c6d26e83defe9d0
-  zh: ffced17196b1db89
-/tool-surface-re-organization-personality-jira-and-dsh-tools/1-scope-and-evidence/1-2-evidence-window:
-  en: 92d61d703d52a2df
-  zh: 508262b8d26349b2
-/tool-surface-re-organization-personality-jira-and-dsh-tools/1-scope-and-evidence/1-3-why-this-document-exists:
-  en: 375bb41df398f16d
-  zh: d465bd95b19eb8bc
-/tool-surface-re-organization-personality-jira-and-dsh-tools/2-current-inventory:
-  en: 8ac4ae45d3ded410
-  zh: b333535db6145f78
-/tool-surface-re-organization-personality-jira-and-dsh-tools/2-current-inventory/2-1-personality-tools:
-  en: 8a7d266de605a95c
-  zh: 84cd2b42b031eb9a
-/tool-surface-re-organization-personality-jira-and-dsh-tools/2-current-inventory/2-2-jira-and-super-agent-tools:
-  en: b7c237cb8741503e
-  zh: 109bb9ab2d0c2ce3
-/tool-surface-re-organization-personality-jira-and-dsh-tools/2-current-inventory/2-2-jira-and-super-agent-tools/2-2-1-jira-issue-tools:
-  en: bf4967688639eeb2
-  zh: a3fbe79db0972d25
-/tool-surface-re-organization-personality-jira-and-dsh-tools/2-current-inventory/2-2-jira-and-super-agent-tools/2-2-2-jira-claim-dispatch-tools:
-  en: 2a79b5153bc60a9a
-  zh: 4a9b3e4257ee2bb5
-/tool-surface-re-organization-personality-jira-and-dsh-tools/2-current-inventory/2-2-jira-and-super-agent-tools/2-2-3-super-agent-orchestration-tools:
-  en: a252ab8c4dd933a0
-  zh: ae23ea075f75691c
-/tool-surface-re-organization-personality-jira-and-dsh-tools/2-current-inventory/2-3-dsh-store-tools:
-  en: 77a13dbe7fa13695
-  zh: 26b90191915454d3
-/tool-surface-re-organization-personality-jira-and-dsh-tools/3-re-arrangement-principles:
-  en: 6ce9867844498eea
-  zh: 56ff4bfc41ee7fd2
-/tool-surface-re-organization-personality-jira-and-dsh-tools/3-re-arrangement-principles/3-1-one-owner-per-namespace:
-  en: 10fa8a5cbed9457b
-  zh: 9493959ac1520b2b
-/tool-surface-re-organization-personality-jira-and-dsh-tools/3-re-arrangement-principles/3-2-workspace-replaces-the-super-agent-task-surface:
-  en: a449c092d6b0d632
-  zh: b820966c74f32142
-/tool-surface-re-organization-personality-jira-and-dsh-tools/3-re-arrangement-principles/3-3-jira-is-removed-now-the-dispatch-ledger-is-dropped-not-migrated:
-  en: 3ee33f04e5c011a1
-  zh: 98880685366e5b88
-/tool-surface-re-organization-personality-jira-and-dsh-tools/3-re-arrangement-principles/3-4-personality-and-global-memory-keep-separate-storage:
-  en: d0fa11d453cb0797
-  zh: 0891364ea88fa8a2
-/tool-surface-re-organization-personality-jira-and-dsh-tools/3-re-arrangement-principles/3-5-the-dsh-store-stays-the-only-validated-entry:
-  en: 9cf6420baeb97b3d
-  zh: f65777db139ade8a
-/tool-surface-re-organization-personality-jira-and-dsh-tools/4-decisions-by-tool:
-  en: e8750b85d4d00dbc
-  zh: 6b5e03dfa209e78e
-/tool-surface-re-organization-personality-jira-and-dsh-tools/5-jira-removal-and-cloud-configuration:
-  en: a4485d81b42d1078
-  zh: 2858d46a9ff7bc70
-/tool-surface-re-organization-personality-jira-and-dsh-tools/5-jira-removal-and-cloud-configuration/5-1-immediate-removal:
-  en: 03b840f8e8640a06
-  zh: de75d216990e462d
-/tool-surface-re-organization-personality-jira-and-dsh-tools/5-jira-removal-and-cloud-configuration/5-2-dependencies:
-  en: 56243fa767f4f117
-  zh: 3663c20834118bed
-/tool-surface-re-organization-personality-jira-and-dsh-tools/5-jira-removal-and-cloud-configuration/5-3-rollback:
-  en: a5b0e67352889db1
-  zh: 063cbc3494dd8712
-/tool-surface-re-organization-personality-jira-and-dsh-tools/6-personality:
-  en: 812e07855a289b6c
-  zh: 4f54108e847d12ff
-/tool-surface-re-organization-personality-jira-and-dsh-tools/6-personality/6-1-boundary-with-global-memory:
-  en: 94f326a2c95d6756
-  zh: b3aebad36dc4eba5
-/tool-surface-re-organization-personality-jira-and-dsh-tools/6-personality/6-2-storage:
-  en: ebd8c292c7684dc7
-  zh: 0b69f5a088e5f343
-/tool-surface-re-organization-personality-jira-and-dsh-tools/6-personality/6-3-tools:
-  en: 776deee645cb2bf6
-  zh: 231e49318496b211
-/tool-surface-re-organization-personality-jira-and-dsh-tools/7-dsh-tools:
-  en: 27c4f9024c64e175
-  zh: 2dc62a8956d0dc5d
-/tool-surface-re-organization-personality-jira-and-dsh-tools/7-dsh-tools/7-1-single-entry:
-  en: ed32bd94147c610f
-  zh: 6e554699b0776cfa
-/tool-surface-re-organization-personality-jira-and-dsh-tools/7-dsh-tools/7-2-relationship-to-workspace-artifacts:
-  en: 7db3d2e55314a482
-  zh: 1dff2d2dfa6e5b0f
-/tool-surface-re-organization-personality-jira-and-dsh-tools/7-dsh-tools/7-3-permissions-and-sandbox:
-  en: 95d8afeb610bf436
-  zh: a34a8f4c7be1d589
-/tool-surface-re-organization-personality-jira-and-dsh-tools/8-risks-and-decisions-needed:
-  en: ded37d721535c7c8
-  zh: 15220627598864c2
-/tool-surface-re-organization-personality-jira-and-dsh-tools/8-risks-and-decisions-needed/8-1-decisions-needed-from-you:
-  en: 41e148088d0a0ae0
-  zh: a87ad9327f32a586
-/tool-surface-re-organization-personality-jira-and-dsh-tools/8-risks-and-decisions-needed/8-2-risks:
-  en: c18aa02955db5260
-  zh: 21e7081eb5381825
-/tool-surface-re-organization-personality-jira-and-dsh-tools/8-risks-and-decisions-needed/8-3-decisions-confirmed-this-round:
-  en: 10123f580b6d3184
-  zh: c4264d7dcc0af72f
-/tool-surface-re-organization-personality-jira-and-dsh-tools/9-conflicts-with-the-memory-and-workspace-design:
-  en: 5bdf575f840bbb83
-  zh: d1c7ac9bfd34dc66
-/tool-surface-re-organization-personality-jira-and-dsh-tools/10-appendix-evidence-and-open-data:
-  en: bd4f20c799957810
-  zh: 1d2ceb908db75db3
+/tool-surface-re-organization-personality-jira-retirement-and-dsh-tools:
+  en: c314701a3e565b2e
+  zh: 9a7f692f6844f9dc
+/tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/1-scope-and-result:
+  en: a3b3a1201baf06ab
+  zh: b67ffb4a4e6c2c4f
+/tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/2-retired-jira-surface:
+  en: e8808d871bdd353f
+  zh: e4685cbb4cd8a2cd
+/tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/3-session-lifecycle-and-delivery-state-move-into-workspace:
+  en: 8d6a7eb4a74ebb71
+  zh: 7626034aaa0204ce
+/tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/4-personality:
+  en: f05491045ee0c491
+  zh: a9f65c1a35d79e0c
+/tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/5-dsh:
+  en: 0abfdd2e8df32cf7
+  zh: abc69f7a55f4d386
+/tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/6-final-tool-surface:
+  en: 1d0cadf7eaf83a62
+  zh: 4e7eb8647e253439
+/tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/7-risks-and-rollback:
+  en: c8fb8a189a80a000
+  zh: d5ac7191db892d52
+/tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/8-alignment-with-the-memory-and-workspace-design:
+  en: e0f52f14879d36d3
+  zh: bff2e487c8e5d58a
+/tool-surface-re-organization-personality-jira-retirement-and-dsh-tools/9-verification:
+  en: 146f48029adfb67f
+  zh: 558ca2170b4dc212

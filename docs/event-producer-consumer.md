@@ -125,7 +125,7 @@ Application listeners are outside this package matrix. Desktop Host subscribes t
 | `internal/plugin` | - | `computer-use-cua-driver-native`, `inspector`, `loader`, [`lsp-stdio`](../packages/lsp/lsp-stdio), [`mcp-client`](../packages/mcp/mcp-client), [`mcp-manager`](../packages/mcp/mcp-manager), `modules` |
 | `internal/service` | - | `client-ui-forge`, `gateway` |
 | `internal/status` | - | [`agent`](../packages/core/agent), `claude-code-mods`, `inspector`, `modules`, `translator`, [`web`](../packages/web/web) |
-| `loader/volatile-update` | - | [`dafeiyu`](../packages/uitstalie/dafeiyu), [`jira-service`](../packages/jira/jira-service), [`llm-deepseek`](../packages/llm/llm-deepseek), [`llm-deepseek-api-key`](../packages/llm/llm-deepseek-api-key), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-plus`](../packages/uitstalie/llm-plus), [`mcp-manager`](../packages/mcp/mcp-manager), `modules`, [`plugin-market`](../packages/boot/plugin-market), `product-analytics`, `speech-to-text`, [`timeline`](../packages/experimental/timeline) |
+| `loader/volatile-update` | - | [`dafeiyu`](../packages/uitstalie/dafeiyu), [`llm-deepseek`](../packages/llm/llm-deepseek), [`llm-deepseek-api-key`](../packages/llm/llm-deepseek-api-key), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-plus`](../packages/uitstalie/llm-plus), [`mcp-manager`](../packages/mcp/mcp-manager), `modules`, [`plugin-market`](../packages/boot/plugin-market), `product-analytics`, `speech-to-text`, [`timeline`](../packages/experimental/timeline) |
 | `locale/change` | `locale` (`emit`) | `locale` |
 | `slots/changed` | `ui-renderer` (`emit`) | - |
 | `theme/change` | `ui-theme` (`emit`) | `ui-layout`, `ui-theme` |

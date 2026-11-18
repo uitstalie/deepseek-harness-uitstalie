@@ -71,13 +71,14 @@
 ### 2.3 关联设计（不在本文件范围）
 
 - `personality`、`jira`、`dsh` 工具的重新排布是独立设计项；本文件只声明依赖与冲突点。
-- `jira` 工具已废弃：按停用处理，不保留兼容层；下线与后续重新设计是另一个设计项。
+- `jira` 产品一步退场：模型工具、技能、面板、CLI、本地账本与派发历史全部移除，不保留兼容层。
 - 跨文档结论（细节归工具面设计）：
-  - 命名空间归属：不改 `dsh_*`；`tool-dsh-store` 保留名字；
-  - `superagent_*` 与 `workspace_tasks`：编排工具迁到 `workspace_*`；本文件的表在批准后修订；
-  - personality 存储：不合并；`memory_*` 收窄后画像与写作规则仍分开；
+  - 命名空间归属：不改 `dsh_*`；`tool-dsh-store` 保留名字并仍是唯一经校验的 `.dsh` 入口；`workspace_artifacts` 发布或解析 `.dsh` 路径时必须走该 store 的路径与命名空间检查；
+  - `workspace_*` 取代退场的 super agent 编排面：会话生命周期归 `workspace_sessions`（`list`、`get`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact`、`delete`），投递失败状态与重发归 `workspace_message`（`status`、`retry`），任务状态归 `workspace_tasks`。不再有并行的任务或投递 API；`workspace_tasks` 从新开始；
+  - `superagent_deliver`：移除；由 `workspace_message.send` 携带的产物引用取代文件复制；
+  - personality 存储：不合并；画像与写作规则仍分开，合并后的 `personality_apply` 是它们唯一的模型面写入者；
   - `.dsh` 工具：`tool-dsh-store` 仍是唯一经校验的入口；产物引用它，而不是取代它；
-  - JIRA：已废弃，不保留兼容层。
+  - JIRA：一步移除，包括其模型工具与技能；本地账本与派发历史被删除，没有工具读取它们。
   - 意图卡：工作区记录，归工作区工具集；一张卡属于一个工作区，跨工作区请求拆成每个工作区一张卡。它既不是记忆，也不是宿主全局存储。
 - 本文件不修改这三类工具的契约。
 
@@ -145,7 +146,7 @@
 | 消息 | 消息 id、目标会话、正文、类型（消息或追问）、投递状态、回执、产物引用 | 会话 inbox 与消息日志 |
 | 产物引用 | 产物 id、工作区、路径、sha256、大小、版本、类型、会话 id、任务 id、创建时间、摘要 | 工作区产物索引 |
 
-工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。第 4 步之后的当前状态：记忆就是 4.1 节的全局存储——`$DSH_HOME/memory/GLOBAL.md`、它的 `GLOBAL.archive.md`，除此之外没有别的。没有工作区记忆条目被写入或注入：每轮摘要作业已移除，旧的按工作区文件只由一次性迁移与旧文件读取器读取。工作区工具集在 `$DSH_HOME/workspaces/<workspace-id>/` 下写任务、回执、消息、产物引用与意图卡；`workspace_message.send` 是它唯一的出站投递路径，`workspace_artifacts.publish`/`reference` 是它唯一的引用路径。消息或任务引用在发送时保存产物 id、版本与 SHA-256；文件本身仍在工作区里。super agent 的 `superagent_control start` 在启动会话之前就写下这条任务，派发账本 `.superagent/ledger` 是同一条任务、同一个 task id 的投影，而不是第二份任务列表；它的追加式历史与报告日志仍然可读。卡缺失、proposed、stale、属于别的工区，或 brief 漏掉卡上的点，都在派发入口被拒绝。跨工作区消息对普通 agent 拒绝，只有 super agent 显式给出目标工作区 id 才能发送，且调用会留痕。JIRA 本身仍启用，因为移除是后续步骤；在配置了 `superagent_home` 时，它的 superagent 报告路径仍会在回合结束时投递报告，10.3 节把它记为唯一剩下的回合结束投递路径。账本的手工 `record` 回退仍只是兼容路径，不是派发事实源。
+工具集不得复制账本、会话存储或工作区文件已经持有的事实。它只做聚合与变更，通用任务日志只覆盖 JIRA 账本没有的工作。第 4 步之后的当前状态：记忆就是 4.1 节的全局存储——`$DSH_HOME/memory/GLOBAL.md`、它的 `GLOBAL.archive.md`，除此之外没有别的。没有工作区记忆条目被写入或注入：每轮摘要作业已移除，旧的按工作区文件只由一次性迁移与旧文件读取器读取。工作区工具集在 `$DSH_HOME/workspaces/<workspace-id>/` 下写任务、回执、消息、产物引用与意图卡；`workspace_message.send` 是它唯一的出站投递路径，`workspace_artifacts.publish`/`reference` 是它唯一的引用路径。消息或任务引用在发送时保存产物 id、版本与 SHA-256；文件本身仍在工作区里。super agent 的 `super-agent control start` 在启动会话之前就写下这条任务，派发账本 `.superagent/ledger` 是同一条任务、同一个 task id 的投影，而不是第二份任务列表；它的追加式历史与报告日志仍然可读。卡缺失、proposed、stale、属于别的工区，或 brief 漏掉卡上的点，都在派发入口被拒绝。跨工作区消息对普通 agent 拒绝，只有 super agent 显式给出目标工作区 id 才能发送，且调用会留痕。JIRA 本身仍启用，因为移除是后续步骤；在配置了 `superagent_home` 时，它的 superagent 报告路径仍会在回合结束时投递报告，10.3 节把它记为唯一剩下的回合结束投递路径。账本的手工 `record` 回退仍只是兼容路径，不是派发事实源。
 
 意图卡是工作区记录，不是记忆条目。一张卡只属于一个工作区。跨工作区请求会在每个目标工作区各建一张卡，每张卡都逐字保留用户原话。派发方为每个工作区各调用一次 `workspace_intents.create` 建卡：工具只接受单个 `workspace`，没有多工作区清单。卡 id 由工作区与原话派生，因此同一工作区重复 create 会复用该卡。卡随工作区工具集状态存放：`$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/`（`index.json`、`versions/<n>.json`），不在宿主全局意图存储里。版本文件不可变；`index.json` 记录每个版本的当前状态、确认与拒绝元数据，所以旧版本被 supersede 后仍可读。
 
@@ -293,19 +294,29 @@ ask user 与用户批准是独立的可靠性设计项，见 7.5。
 | `memory_resolve` | 结掉 open 工作项 | 不再有 open 或 dispatch 记忆条目 | 删除 |
 | `session_search` | 在调用方工作区里搜历史会话 | 会话查询 | 保留 |
 | `session_event_search`、`session_event_read`、`session_trace`、`session_event_trace` | 读授权会话的事件与血缘 | 会话查询 | 保留 |
-| `superagent_scan`、`superagent_status` | 读 JIRA 账本就绪度与计数 | JIRA 账本视图 | 随 JIRA 废弃；不保留兼容（见 2.3） |
-| `superagent_claim`、`superagent_dispatch` | 认领单据、启动执行会话 | JIRA 账本动作 | 随 JIRA 废弃；不保留兼容（见 2.3） |
-| `workspace_sessions` | 列会话、状态、当前活动、最近进展 | 工作区工具集 | 新增 |
+| `superagent_scan`、`superagent_status` | 读 JIRA 账本就绪度与计数 | 无新归属；JIRA 账本被删除 | 随 JIRA 移除；不保留兼容（见 2.3） |
+| `superagent_claim`、`superagent_dispatch` | 认领单据、启动执行会话 | 无新归属；JIRA 工作下线 | 随 JIRA 移除；不保留兼容（见 2.3） |
+| `superagent_source` | 把 GitHub 开放 issue 导入 JIRA 账本 | GitHub 凭据代码/配置保留；导入路径不保留 | 移除；GitHub 配置留作复用 |
+| `super-agent control` | 注册表与会话生命周期：`start`、`append`、`prompt`、`inspect`、`stop`、`abort`、`fork`、`archive`、`compact`、`delete`，以及工作区 `roster`/`orphans`/`ensure`/`remove_workspace`/`rename_workspace` | 会话生命周期归 `workspace_sessions`；注册表动作随 JIRA 退场 | 移除；不留别名 |
+| `super-agent ledger` | 读写派发账本投影；报告状态与重试 | 投递状态归 `workspace_message`（`status`、`retry`）；任务状态归 `workspace_tasks`；派发历史丢弃 | 移除；不留别名 |
+| `superagent_deliver` | 把文件复制到另一个工作区 | `workspace_artifacts` 发布引用，`workspace_message.send` 携带它 | 移除；引用取代复制 |
+| `superagent_permission` | 切换调用方会话的权限预设 | 权限预设服务与 Host 设置拥有预设 | 移除；不留别名 |
+| `superagent_models` | 列出 provider、模型与推理档位 | 模型设置拥有模型路由 | 移除；不留别名 |
+| `workspace_sessions` | 列出、读取并控制会话：`list`、`get`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact`、`delete` | 工作区工具集 | 新增；生命周期取代退场的 control 工具 |
 | `workspace_intents` | 创建、读取、确认、纠正、版本化工作区意图卡 | 工作区工具集 | 新增 |
 | `workspace_tasks` | 通用派发任务与回执 | 工作区工具集 | 新增 |
-| `workspace_message` | 发消息、追问、引用；读回执 | 工作区工具集 | 新增 |
-| `workspace_artifacts` | 发布、引用、解析产物 | 工作区工具集 | 新增 |
+| `workspace_message` | 发消息、追问、引用；读回执；`status` 报告投递失败，`retry` 重发 | 工作区工具集 | 新增；投递状态取代退场的账本报告动作 |
+| `workspace_artifacts` | 发布、引用、解析产物；`.dsh` 路径走 store 检查 | 工作区工具集 | 新增 |
 | `send_message`、`wait_agent` | 子代理树内消息 | 子代理树 | 保留；不在本轮范围 |
 | 回合结束投递 | 回合结束后隐式发出消息 | 删除；不留兜底 | 删除 |
 | `read`、`glob`、`grep` | 读工作区内容 | 内容工具 | 保留 |
-| `tool-dsh-store` | 读 `.dsh` 内容 | 存储工具 | 不在本文范围；不改（见 2.3） |
+| `tool-dsh-store` | 规则、技能与其它 store 内容的唯一模型面 `.dsh` 入口 | 存储工具 | 保留；`workspace_artifacts` 的 `.dsh` 路径走它的路径与命名空间检查 |
+| `JIRA issue tool`、`JIRA knowledge tool`、`JIRA list tool` | 读取或修改本地 JIRA 账本 | 无新归属；账本被删除 | 随 JIRA 移除；不保留兼容 |
+| JIRA 技能 `jira-work`、`jira-board`、`jira-triage` | 基于 JIRA 账本的过程 | 无新归属 | 随工具移除 |
+| JIRA 本地账本 `$DSH_HOME/jira` | 单据与知识存储 | 一次性静态导出后删除；没有工具读取它 | 删除；不可恢复 |
+| 派发账本 `.superagent/ledger` | 派发历史的投影 | `workspace_tasks` 从新开始 | 丢弃；不迁移、不导入 |
 
-`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。第 4 步之后的当前状态：`workspace_sessions`、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message`（`send`/`read`）与 `workspace_artifacts`（`publish`/`reference`/`list`/`resolve`）已交付，静态 `workspace-directory` 提示词段已接到每个 agent。`memory_read` 已删除（第 1 步），`memory_resolve` 随 dispatch 命名空间在第 4 步删除；memory 工具面只剩 `memory_write`、`memory_forget` 与 `memory_search`。产物的 `request`/`grant` 未实现，因此 `pending` 与 `expired` 仍不可达。JIRA 与 `superagent_*` 工具仍启用（`packages/bundle/web-app/cordis.patch.uitstalie.yml` 中 `jira: { enabled: true }`），其回合结束报告投递没有被第 3 步删除。移除 JIRA 仍是待决策项，不是已发布的改动。
+`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已移除，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。工具面改动后的当前状态：`workspace_sessions`（`list`/`get`/`start`/`append`/`prompt`/`stop`/`abort`/`fork`/`archive`/`compact`/`delete`）、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message`（`send`/`read`/`status`/`retry`）与 `workspace_artifacts`（`publish`/`reference`/`list`/`resolve`）已交付，静态 `workspace-directory` 提示词段已接到每个 agent。`memory_read` 已删除（第 1 步），`memory_resolve` 随 dispatch 命名空间在第 4 步删除；memory 工具面只剩 `memory_write`、`memory_forget` 与 `memory_search`。产物的 `request`/`grant` 未实现，因此 `pending` 与 `expired` 仍不可达。JIRA 模型工具、执行器账本工具、认领/派发工具、super agent 控制与账本工具、三个 JIRA 技能、面板与 CLI 已移除；会话生命周期与投递状态分别归 `workspace_sessions` 与 `workspace_message`。本地 JIRA 账本与派发账本已一次性导出，随后删除；`workspace_tasks` 从空白开始。不再有 JIRA 包。
 
 ### 6.3 投递改成工具调用
 
@@ -516,7 +527,7 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 ### 10.3 风险
 
 - 工具调用延迟与成本：结果保持有界，并在提示词里放一张简短的“去哪里查”地图。
-- 一个任务两个主人：新的派发路径已收口。`superagent_control start` 读取目标工作区的意图卡，通过工作区工具集记录任务，`.superagent/ledger` 只作为这条任务同 id 的投影写入，所以一次派发的任务在两处只有一个身份。`superagent_ledger` 保留读与纠偏契约，但不再另铸身份。JIRA 账本本身在移除步骤之前不动；账本的手工 `record` 回退仍是兼容路径，不是派发事实源。
+- 一个任务两个主人：新的派发路径已收口。`super-agent control start` 读取目标工作区的意图卡，通过工作区工具集记录任务，`.superagent/ledger` 只作为这条任务同 id 的投影写入，所以一次派发的任务在两处只有一个身份。`super-agent ledger` 保留读与纠偏契约，但不再另铸身份。JIRA 账本本身在移除步骤之前不动；账本的手工 `record` 回退仍是兼容路径，不是派发事实源。
 - 消息优先级：紧急消息可以中断一个步骤。`workspace_message.send` 在标记 urgent 时要求给出 `urgentReason`（三种已命名情况之一），目标在运行时 steer 当前步骤，目标空闲时回退为排队。三种紧急情况很窄，普通消息永远不紧急；误判紧急是缺陷，要评审。
 - 引用失效：`publish`/`reference`/`send` 已交付，changed、missing、denied 可达且分开；引用在发送时固定，新版本需要新的引用。产物的 `request`/`grant` 交付之前，`pending` 与 `expired` 不可达；跨工作区拒绝不泄漏产物是否存在。
 - 跨工作区授权：显式工作区 id、注册表成员校验、调用留痕。跨工作区消息对普通 agent 拒绝，只允许 super agent。拉先查接收方，推先查发送方；不做隐式聚合。
@@ -631,7 +642,7 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 
 `workspace_tasks.create` 必须带 active 卡引用；`workspace_tasks.receipt` 接收对齐清单；缺完整清单，或有 `not_satisfied` 验收点、`violated` 边界时，状态机拒绝 `done`。
 
-派发入口是 `superagent_control start`：它要求同一份卡引用、brief 的验收与边界、任务类型与覆盖映射，在任何会话启动之前先把任务写进目标工作区，并把账本条目写成这条任务同 id 的投影。`append`、`prompt`、`abort` 只是继续一个已过卡校验的会话，不创建第二条任务。工作区工具集挂在同一组合里，因此 `workspace_intents` 与 `workspace_tasks` 就在 super agent 自己的会话上；普通 agent 保留两个工具的读侧，写入仍被角色检查拒绝。
+派发入口是 `super-agent control start`：它要求同一份卡引用、brief 的验收与边界、任务类型与覆盖映射，在任何会话启动之前先把任务写进目标工作区，并把账本条目写成这条任务同 id 的投影。`append`、`prompt`、`abort` 只是继续一个已过卡校验的会话，不创建第二条任务。工作区工具集挂在同一组合里，因此 `workspace_intents` 与 `workspace_tasks` 就在 super agent 自己的会话上；普通 agent 保留两个工具的读侧，写入仍被角色检查拒绝。
 
 第 4 步之后的当前状态：工具已经强制派发拒绝码、覆盖检查、回执门、静态工作区目录、消息作用域与幂等规则，以及产物发布/引用。`workspace_message.send` 与 `workspace_artifacts.publish`/`reference` 已交付；产物的 `request`/`grant` 尚未。在卡片 UI 出现之前，super agent 是记录用户确认与纠正的通道，因此 `create`、`confirm` 与 `correct` 需要 super agent 角色或用户；普通 agent 只读卡。`nonCoverage` 条目就是 super agent 的显式派发豁免，连同理由记录在任务上；它不是默认通过。
 
@@ -683,7 +694,7 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 | 会话创建、复用、归档 | `superagent_session` 与会话工具 | 需要 | 会话服务；`workspace_sessions`；不复制进记忆 | 下移 |
 | 派发 | `superagent_dispatch` 加 JIRA 认领 | 需要 | `workspace_tasks`；JIRA 认领与派发下线 | 下移 |
 | 意图捕获与对齐 | 请求在拆成任务时被重新表述，可能走样 | 需要 | `workspace_intents` 作为工作区记录，加 `workspace_tasks` 覆盖检查与回执 | 新增 |
-| 账本与回执 | `.superagent/ledger`、`superagent_ledger` | 需要 | `workspace_tasks` 日志与回执；从新开始，不迁移 | 下移 |
+| 账本与回执 | `.superagent/ledger`、`super-agent ledger` | 需要 | `workspace_tasks` 日志与回执；从新开始，不迁移 | 下移 |
 | 投递 | `superagent_deliver` 加回合结束路径 | 需要 | `workspace_message`；不保留回合结束兜底 | 下移 |
 | 报告呈现 | `reports.jsonl` 与投递 | 需要 | `workspace_artifacts` 引用加 `workspace_message`；界面渲染 | 下移 |
 | 权限切换 | `superagent_permission` | 需要 | 权限预设服务 | 下移 |

@@ -15,7 +15,7 @@ Super agent 的对话一被压缩/重开，`superagent_session` 的派发与回�
 1. **调度台账（结构化、可更新）**：每个工作区一个 Markdown 文件，位于
    `<super workspace>/.superagent/ledger/<workspace-id>.md`。
    这是派发事实的唯一权威：任务、时间、状态、结论、产物、决策、可选 issue key。
-   人可读，工具用 `superagent_ledger` 追加/更新/检索。
+   人可读，工具用 `super-agent ledger` 追加/更新/检索。
 2. **memory（对话结论层）**：继续使用现有 memory 能力，写入 super workspace 的
    `MEMORY.md`。memory 记录“人跟 super agent 聊出的 durable conclusion”，
    不承担任务状态机。
@@ -65,7 +65,7 @@ Super agent 的对话一被压缩/重开，`superagent_session` 的派发与回�
   task id、workspace、ledger root 放进 `TaskSessionRecord`；
 - 子会话 `turn end` 时，插件在投递报告前后用 `lastAssistantText` 更新同一条为
   `returned`（无文本则 `returned` 并注明没有结论；投递失败单独记录）；
-- 如果事件丢失/插件重启/手动改过，模型可用 `superagent_ledger resolve` 补
+- 如果事件丢失/插件重启/手动改过，模型可用 `super-agent ledger resolve` 补
   `returned`/`failed`、结论、产物、决策；
 - 报告作为新消息回到 super 会话后，提示词要求模型调用 `memory_write`，写一行
   `relation: superagent, workspace: <title>, task: <id>, issue: <key>` 的
@@ -89,7 +89,7 @@ host 支持**中途换模型**：`sessionController.selectModel` 校验 route �
 
 - jira 记 issue 的 claim/status/review；台账记“人让 super agent 派了什么活、结果如何”。
 - 台账只允许可选 `issue: DH-xxx` 引用，不复制 issue 状态、评论或 claim 身份。
-- 派发/完成仍走现有 `superagent_claim` / `issue_work`；台账不改 jira 状态。
+- 派发/完成仍走现有 `superagent_claim` / `executor ledger tool`；台账不改 jira 状态。
 
 ## 正式定义文件
 
@@ -99,13 +99,13 @@ host 支持**中途换模型**：`sessionController.selectModel` 校验 route �
 - 这是人跟 harness 对话的唯一入口，不是普通代码仓库；
 - 对话/决策/台账/memory 归这里；目标工作区的代码、文档、数据必须派进该工作区 Session；
 - `.superagent/ledger/` 与 `.dsh/memory/` 的约定；
-- 台账动作顺序：先 `superagent_ledger list`，派发自动 pending，收到报告后
+- 台账动作顺序：先 `super-agent ledger list`，派发自动 pending，收到报告后
   `resolve` + `memory_write`；禁止把 jira 状态复制进台账。
 
 ## 验收
 
 - 新工作区首次挂载会得到 AGENTS.md，已有文件不被覆盖；
 - 派发自动 pending，turn end 自动 returned，手动 resolve 可纠正；
-- `superagent_ledger list` 可按 workspace/status/query 检索；
+- `super-agent ledger list` 可按 workspace/status/query 检索；
 - 测试覆盖 record/update/list 与自动 pending/outcome；
 - typecheck / build 通过；提示词、README/设计文档同步。

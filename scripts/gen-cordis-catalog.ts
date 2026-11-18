@@ -218,9 +218,7 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   dafeiyu: 'branch-owned capability organizer — goal/dafeiyu.md owns the provider and status contracts',
   dafeiyuRemote: 'branch-owned capability-status Remote — goal/dafeiyu.md owns the status contract',
   dshStore: 'branch-owned .dsh store service — packages/uitstalie/tool-dsh-store/README.md owns the store API',
-  jira: 'branch-owned ledger service — packages/jira/jira-service/README.md owns the service API',
   workspaceGroups: 'client-side workspace section grouping registry — packages/client/ui-workspace/README.md owns the API',
-  jiraRemote: 'branch-owned read-only ledger Remote — packages/jira/jira-service/README.md owns the API (the projection cannot walk it because src/index.ts does not re-export the module)',
   // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-313, personality 与 systemEnvironment 服务按分支文档归属登记豁免
   systemEnvironment: 'branch-owned host environment facts service — packages/uitstalie/system-environment/README.md owns the API',
   agentInstructionsApi: 'branch-owned instruction baseline API — packages/context/agent-instructions/README.md owns the API',

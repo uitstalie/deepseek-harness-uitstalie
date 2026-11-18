@@ -153,6 +153,15 @@ export class TestWorkspaceRegistry {
   list(): Workspace[] {
     return this.workspaces
   }
+
+  /**
+   * Record one archived Session, as the durable registry would.
+   * @param sessionId - Session the caller archived.
+   * @param options - archive choices; this fake does not run activity providers.
+   */
+  async archiveSession(sessionId: SessionIdValue, _options: { readonly stopActivity?: boolean } = {}): Promise<void> {
+    if (!this.archivedSessionIds.includes(sessionId)) this.archivedSessionIds.push(sessionId)
+  }
 }
 
 /** Services and helpers bound to one mounted toolset composition. */

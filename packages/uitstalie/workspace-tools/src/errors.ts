@@ -100,6 +100,24 @@ export class WorkspaceMessageError extends HarnessError {
   }
 }
 
+/** Code of a Session-lifecycle refusal that is not a missing record. */
+export type WorkspaceSessionCode =
+  | 'WORKSPACE_SESSION_FORBIDDEN'
+  | 'WORKSPACE_SESSION_UNAVAILABLE'
+  | 'WORKSPACE_SESSION_INVALID'
+
+/** A Session lifecycle action was refused by the role rule, a missing host service, or an unusable target. */
+export class WorkspaceSessionError extends HarnessError {
+  /**
+   * @param message - the action, Session, or host service that refused the call.
+   * @param code - which Session rule refused the call.
+   */
+  constructor(message: string, code: WorkspaceSessionCode) {
+    super(message, code)
+    this.name = 'WorkspaceSessionError'
+  }
+}
+
 /** Code of a task-mutation refusal that is not a missing record. */
 export type WorkspaceTaskCode = 'WORKSPACE_TASK_FORBIDDEN' | 'WORKSPACE_TASK_TRANSITION'
 

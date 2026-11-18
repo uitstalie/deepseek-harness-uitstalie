@@ -68,7 +68,7 @@ Section 690 对 `subagent` 不注入，只注册给普通 root 与 super root：
 - subagent：完全省略 section 690；保留现有的工具禁用。section 100 与 695 保持不变，除非另有决定认为 subagent 完全不需要 profile/writing rules。
 - 普通 root：一个干净的 output-style 槽位。
 - super agent root：一个独立的 output-style 槽位，包含派发/汇报纪律。
-- 不要从 cwd、工作区标题、是否出现 `superagent_control` 或 preset 名推断角色。这些都是可变/附属信息，会让 personality 依赖 jira 内部实现。应在创建 Session 的地方加入显式的 agent 角色信号，或暴露一个两个 capability 都能查询的小型角色服务。这是设计前提，不是可以藏在路径比较里的实现细节。
+- 不要从 cwd、工作区标题、是否出现 `super-agent control` 或 preset 名推断角色。这些都是可变/附属信息，会让 personality 依赖 jira 内部实现。应在创建 Session 的地方加入显式的 agent 角色信号，或暴露一个两个 capability 都能查询的小型角色服务。这是设计前提，不是可以藏在路径比较里的实现细节。
 
 低改动的结构是：把 section 名/顺序 `personality:output-style` 保持在 690，并在 `sectionsFor` 内按角色选择来源：subagent → 不产出 section；普通 → `OUTPUT_STYLE.yaml`；super → 第二个存储，例如 `SUPERAGENT_OUTPUT_STYLE.yaml`。这样不新增 section 编号就能得到两个槽位。如果两段文本在组装后的提示词中必须处于不同位置，替代方案是单独的 order（例如 691），但这会改变 order 映射和所有顺序断言。
 
@@ -84,7 +84,7 @@ Section 690 对 `subagent` 不注入，只注册给普通 root 与 super root：
 |---|---|---|
 | L1 `You are the super ag` | 派发/角色 | 保留 702；移动它会改变该 section 所描述的对象。 |
 | L3 `The [superagent works` | 派发/上下文 | 保留 702；依赖运行时工作区上下文。 |
-| L4 `` `superagent_control` `` | 派发/安全 | 保留 702；action 顺序与写入警告。 |
+| L4 `` `super-agent control` `` | 派发/安全 | 保留 702；action 顺序与写入警告。 |
 | L5 `A workspace brief has` | 派发 | 保留 702；brief 来源规则。 |
 | L7 `Brief slots (fill ev` | 派发模板 | 保留 702；移动它会拆散 brief 契约。 |
 | L13 `Result contract:` | 派发契约 | 保留 702；它描述被派发任务的输出，而不是 super agent 的行文。 |

@@ -15,6 +15,7 @@
 import { createHash } from 'node:crypto'
 import { isAbsolute, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import type { DshStore } from '@deepseek-ai/dsh-store-atom'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { Session } from '@deepseek-ai/dsh-session'
@@ -45,6 +46,64 @@ export const ARTIFACT_PUBLISH_MAX_BYTES = 64 * 1024 * 1024
 export const ARTIFACT_RESOLUTION_STATUSES: readonly ArtifactResolutionStatus[] = [
   'ok', 'changed', 'missing', 'denied', 'pending', 'expired',
 ]
+
+/** The `.dsh` store, when this composition mounts it. */
+function dshStoreOf(ctx: Context): DshStore | undefined {
+  const service = ctx.get('dshStore') as Partial<DshStore> | undefined
+  return service !== undefined
+    && typeof service.normalizePath === 'function'
+    && typeof service.isMemoryPath === 'function'
+    ? service as DshStore
+    : undefined
+}
+
+/**
+ * Apply the `.dsh` store's path and namespace rules to a workspace-relative path.
+ *
+ * A path outside `.dsh` is returned unchanged. A path inside it is normalized by
+ * the store, so the artifact tool never assembles store paths itself, and a
+ * memory path is refused because the managed-memory area belongs to the memory
+ * capability rather than to a published reference.
+ * @param ctx - context carrying the optional `.dsh` store.
+ * @param relative - workspace-relative path as the caller supplied it.
+ * @returns the path with `.dsh` display separators normalized.
+ * @throws WorkspaceArtifactError when a `.dsh` path cannot be validated or names managed memory.
+ */
+export function validateDshArtifactPath(ctx: Context, relative: string): string {
+  const display = relative.replaceAll('\\', '/').replace(/^\.\//u, '')
+  const [first] = display.split('/', 1)
+  if (first !== '.dsh') return display
+  const store = dshStoreOf(ctx)
+  if (store === undefined) {
+    throw new WorkspaceArtifactError(
+      `path ${JSON.stringify(relative)} is under .dsh, and this composition has no .dsh store to validate it`,
+      'ARTIFACT_PATH_OUTSIDE',
+    )
+  }
+  const inner = display.slice('.dsh'.length + 1)
+  if (inner === '') {
+    throw new WorkspaceArtifactError(
+      `path ${JSON.stringify(relative)} names the .dsh directory, not a file`,
+      'ARTIFACT_NOT_A_FILE',
+    )
+  }
+  let normalized: string
+  try {
+    normalized = store.normalizePath(inner)
+  } catch (error: unknown) {
+    throw new WorkspaceArtifactError(
+      `path ${JSON.stringify(relative)} was refused by the .dsh store: ${error instanceof Error ? error.message : String(error)}`,
+      'ARTIFACT_PATH_OUTSIDE',
+    )
+  }
+  if (store.isMemoryPath(normalized)) {
+    throw new WorkspaceArtifactError(
+      `path ${JSON.stringify(relative)} is managed memory; the memory capability owns .dsh/memory and an artifact cannot publish or resolve it`,
+      'ARTIFACT_PATH_OUTSIDE',
+    )
+  }
+  return display
+}
 
 /** One published artifact reference as the tool returns it. */
 export interface ArtifactView {
@@ -302,20 +361,21 @@ async function publishArtifact(
       'ARTIFACT_INVALID',
     )
   }
-  const relative = request.path?.trim() ?? ''
+  const requested = request.path?.trim() ?? ''
   const kind = request.kind?.trim() ?? ''
-  if (relative === '') {
+  if (requested === '') {
     throw new WorkspaceArtifactError('workspace_artifacts with action "publish" requires path', 'ARTIFACT_INVALID')
   }
   if (kind === '') {
     throw new WorkspaceArtifactError('workspace_artifacts with action "publish" requires kind', 'ARTIFACT_INVALID')
   }
-  if (isAbsolute(relative)) {
+  if (isAbsolute(requested)) {
     throw new WorkspaceArtifactError(
-      `publish path ${JSON.stringify(relative)} is absolute; use a workspace-relative path`,
+      `publish path ${JSON.stringify(requested)} is absolute; use a workspace-relative path`,
       'ARTIFACT_PATH_OUTSIDE',
     )
   }
+  const relative = validateDshArtifactPath(ctx, requested)
   const root = await ctx.fs.resolve(workspace.path, signal === undefined ? {} : { signal })
   const target = await ctx.fs.resolve(join(workspace.path, relative), signal === undefined ? {} : { signal })
   if (!ctx.fs.contains(root, target)) {
@@ -575,7 +635,8 @@ async function resolveReference(
     status: 'missing',
   }
   const root = await ctx.fs.resolve(workspace.path, signal === undefined ? {} : { signal })
-  const target = await ctx.fs.resolve(join(workspace.path, reference.path), signal === undefined ? {} : { signal })
+  const relative = validateDshArtifactPath(ctx, reference.path)
+  const target = await ctx.fs.resolve(join(workspace.path, relative), signal === undefined ? {} : { signal })
   if (!ctx.fs.contains(root, target)) return { ...base, status: 'denied' }
   const info = await ctx.fs.stat(target, signal)
   if (info === undefined) return base

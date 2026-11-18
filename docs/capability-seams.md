@@ -343,7 +343,6 @@ flowchart LR
   svc_dafeiyu["ctx.dafeiyu<br/>Capability organizer and enable gate"]
   pkg_memory["memory"]
   pkg_personality["personality"]
-  pkg_jira_agent["jira-agent"]
   svc_dafeiyuRemote["ctx.dafeiyuRemote<br/>Capability status Remote"]
   pkg_client_ui_dafeiyu["client-ui-dafeiyu"]
   pkg_tool_dsh_store["tool-dsh-store"]
@@ -354,8 +353,6 @@ flowchart LR
   svc_agentInstructionsApi["ctx.agentInstructionsApi<br/>Instruction baseline API"]
   pkg_workspace_tools["workspace-tools"]
   svc_workspaceTasks["ctx.workspaceTasks<br/>Card-validated dispatch tasks"]
-  pkg_jira_service["jira-service"]
-  svc_jira["ctx.jira<br/>Jira ledger single writer"]
   pkg_models_dev["models-dev"]
   svc_modelsDev["ctx.modelsDev<br/>models.dev catalog service"]
   pkg_experimental_liveshare["experimental-liveshare"]
@@ -452,7 +449,6 @@ flowchart LR
   pkg_host_product_telemetry_otel --> svc_productTelemetry
   pkg_host_webserver --> svc_webServer
   pkg_inspector --> svc_inspector
-  pkg_jira_service --> svc_jira
   pkg_jobs --> svc_jobs
   pkg_jobs_local --> svc_jobs
   pkg_llm --> svc_llm
@@ -587,7 +583,6 @@ flowchart LR
   svc_credentials --> pkg_llm_pi_ai
   svc_cuaAccess --> pkg_cua
   svc_cuaPrograms --> pkg_cua_mcp
-  svc_dafeiyu --> pkg_jira_agent
   svc_dafeiyu --> pkg_memory
   svc_dafeiyu --> pkg_personality
   svc_dafeiyuRemote --> pkg_client_ui_dafeiyu
@@ -610,7 +605,6 @@ flowchart LR
   svc_fs --> pkg_tool_fs
   svc_headlessStartup --> pkg_headless
   svc_hmr --> pkg_app_boot
-  svc_jira --> pkg_jira_agent
   svc_jobs --> pkg_api_job_controller
   svc_jobs --> pkg_tool_bash
   svc_jobs --> pkg_tool_jobs
@@ -731,7 +725,6 @@ flowchart LR
   svc_workingDirectory --> pkg_tool_pwsh
   svc_workspaceRegistry --> pkg_api_session_controller
   svc_workspaceRegistry --> pkg_api_workspace_controller
-  svc_workspaceTasks --> pkg_jira_agent
   svc_worktrees --> pkg_experimental_tool_worktree
   svc_fs -. event gate .-> pkg_fs_observation_policy
 ```
@@ -859,13 +852,12 @@ flowchart LR
 | `ctx.dynamicCordisRunner` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | Owns the in-memory definition registry, the vm sandbox for host halves, and the request-run round trip; browser pages reach the same service over the wire through its remote namespace. |
 | `ctx.cordisInspect` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | Registers host inspect providers, mirrors the client provider manifest, and routes client queries through the dynamic Cordis transport. |
 | `ctx.agentContextSources` | `service` | [`agent-instructions-plus`](../packages/uitstalie/agent-instructions-plus) | - | - | - | Collects sources whose rendered text joins the native instruction baseline; registration order and the per-source digest are the contract. |
-| `ctx.dafeiyu` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality), [`jira-agent`](../packages/jira/jira-agent) | - | Registers capability providers, gates their create() calls, and dispatches tools, prompt sections, and turn-end hooks per agent. |
+| `ctx.dafeiyu` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality) | - | Registers capability providers, gates their create() calls, and dispatches tools, prompt sections, and turn-end hooks per agent. |
 | `ctx.dafeiyuRemote` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`client-ui-dafeiyu`](../packages/uitstalie/ui-dafeiyu) | - | Publishes the read-only remote.dafeiyu status snapshot; it cannot register, enable, or disable a capability. |
 | `ctx.dshStore` | `service` | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality) | - | Owns path-confined .dsh store operations and the per-session policy gate; the store tool and sidebar Remote consume it. |
 | `ctx.systemEnvironment` | `service` | [`system-environment`](../packages/uitstalie/system-environment) | - | - | - | Owns platform facts, path spelling and comparison, environment lookup, and the user and Harness home directories; branch plugins inject it instead of deciding platform questions a second way. |
 | `ctx.agentInstructionsApi` | `service` | [`agent-instructions`](../packages/context/agent-instructions) | - | [`agent-instructions-plus`](../packages/uitstalie/agent-instructions-plus) | - | Exposes native instruction baseline state, project-root discovery, and config resolution to branch instruction sources. |
-| `ctx.workspaceTasks` | `service` | [`workspace-tools`](../packages/uitstalie/workspace-tools) | - | [`jira-agent`](../packages/jira/jira-agent) | - | Creates and cancels dispatch task records through the active intent card, coverage, and idempotency rules; the model-facing tool and the super agent share it. |
-| `ctx.jira` | `service` | [`jira-service`](../packages/jira/jira-service) | - | [`jira-agent`](../packages/jira/jira-agent) | - | Owns the one ledger writer, read and write methods, push queue, and changed notices; the browser reads it through remote.jira. |
+| `ctx.workspaceTasks` | `service` | [`workspace-tools`](../packages/uitstalie/workspace-tools) | - | - | - | Creates and cancels dispatch task records through the active intent card, coverage, and idempotency rules; the model-facing tool and the dispatcher share it. |
 | `ctx.modelsDev` | `service` | [`models-dev`](../packages/uitstalie/models-dev) | - | - | - | Serves the models.dev provider and model catalog, route resolution, and harness-shaped model defaults and extra params. |
 | `ctx.liveshareShares` | `service` | [`experimental-liveshare`](../packages/experimental/liveshare) | - | - | - | Publishes the owner share-management operations as one Typert Remote namespace that the owner client face calls; every method delegates to the same operations the same-origin routes used. |
 

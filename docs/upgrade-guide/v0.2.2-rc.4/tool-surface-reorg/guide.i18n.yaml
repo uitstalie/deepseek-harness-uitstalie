@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.4/tool-surface-reorg/guide.md
+/:
+  en: bcdd16a99b0f6e9d
+  zh: a25b52da5d8dff71
+/the-jira-product-is-removed-session-lifecycle-moves-to-the-workspace-toolset:
+  en: 085779e0ad373f7e
+  zh: 3a442ba85769a117
+/the-jira-product-is-removed-session-lifecycle-moves-to-the-workspace-toolset/change:
+  en: 37a0d042607be331
+  zh: bb510e75e3eeff66
+/the-jira-product-is-removed-session-lifecycle-moves-to-the-workspace-toolset/migration:
+  en: 229bc59840ecadcd
+  zh: d84dd9c6b3b71590

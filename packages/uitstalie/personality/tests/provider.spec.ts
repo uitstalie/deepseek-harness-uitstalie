@@ -35,6 +35,7 @@ import { outputStylePath, renderOutputStyle } from '../src/output-style.ts'
 import { DEFAULT_OUTPUT_STYLE } from '../src/defaults.ts'
 import { applyPersonalityCandidates } from '../src/apply.ts'
 import { analyzePersonality } from '../src/analyze.ts'
+import { writingRulesPath } from '../src/writing-rules.ts'
 
 const signal = new AbortController().signal
 
@@ -163,7 +164,7 @@ function appendUser(agent: Agent, text: string, turn = 1): void {
   }), { surfaceOp: 'append' })
 }
 
-test('registers the all-agent analyze tool, root apply and writing tools, and three prompt sections', async () => {
+test('registers the all-agent analyze tool, the merged root apply tool, and three prompt sections', async () => {
   const entries = [entry('style', 'language', '用中文回答；代码保持英文原文。')]
   await seedGlobal(entries)
   const mounted = await mount()
@@ -180,12 +181,19 @@ test('registers the all-agent analyze tool, root apply and writing tools, and th
   expect(await promptText(mounted.ctx, root)).toBe(renderPersonalitySection(entries))
   expect(mounted.ctx.tools.get('personality_analyze', root)).toBeDefined()
   expect(mounted.ctx.tools.get('personality_apply', root)).toBeDefined()
-  expect(mounted.ctx.tools.get('write_like_human', root)).toBeDefined()
+  const visible = mounted.ctx.tools.schemas(root).map(schema => schema.name)
+  expect(visible).toEqual(expect.arrayContaining(['personality_analyze', 'personality_apply']))
+  expect(visible).not.toContain('write_like_human')
   const apply = mounted.ctx.tools.get('personality_apply', root)
-  const applyCandidates = (apply?.parameters as {
-    properties?: { candidates?: { items?: { properties?: { kind?: { enum?: readonly string[] } } } } }
-  } | undefined)?.properties?.candidates
-  expect(applyCandidates?.items?.properties?.kind?.enum).toEqual(['understanding', 'preference', 'style'])
+  const applyProperties = (apply?.parameters as {
+    properties?: {
+      candidates?: { items?: { properties?: { kind?: { enum?: readonly string[] } } } }
+      writingRules?: { properties?: { action?: { enum?: readonly string[] } } }
+    }
+  } | undefined)?.properties
+  expect(applyProperties?.candidates?.items?.properties?.kind?.enum).toEqual(['understanding', 'preference', 'style'])
+  expect(applyProperties?.writingRules?.properties?.action?.enum)
+    .toEqual(['list', 'add', 'update', 'remove', 'enable', 'disable', 'preview'])
   const names = (await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))).sections.map(section => section.name)
   expect(names).toEqual(expect.arrayContaining(['personality', 'personality:output-style', 'personality:writing-rules']))
 })
@@ -245,10 +253,9 @@ test('child agents inherit analyze and the profile section but not apply', async
   expect(mounted.ctx.tools.get('personality_apply', child.agent)).toBeUndefined()
   expect(mounted.ctx.tools.get('write_like_human', child.agent)).toBeUndefined()
   const apply = mounted.ctx.tools.get('personality_apply', root)
-  const rules = mounted.ctx.tools.get('write_like_human', root)
   await expect(apply?.execute({ candidates: [], confirm: true }, { agent: child.agent, signal } as never))
     .rejects.toThrow(/unavailable to subagents/u)
-  await expect(rules?.execute({ action: 'list' }, { agent: child.agent, signal } as never))
+  await expect(apply?.execute({ writingRules: { action: 'list' }, confirm: true }, { agent: child.agent, signal } as never))
     .rejects.toThrow(/unavailable to subagents/u)
   await child.dispose()
 })
@@ -276,34 +283,94 @@ test('role selects an independent output-style slot for ordinary and super roots
   expect(await sectionText(mounted.ctx, superAgent, 'personality:output-style')).toContain('- Dispatch voice: terse.')
 })
 
-test('write_like_human writes the global file and refreshes the injected section', async () => {
+test('personality_apply with writingRules writes the global file and refreshes the injected section', async () => {
   const mounted = await mount()
   const root = await createRoot(mounted)
+  const rulesPath = join(project, 'home', 'personality', 'WRITING_RULES.yaml')
 
-  const added = await call(mounted.ctx, root, 'write_like_human', {
-    action: 'add',
-    id: 'no-em-dash',
-    text: 'Prefer no em dash.',
+  const added = await call(mounted.ctx, root, 'personality_apply', {
+    writingRules: {
+      action: 'add',
+      id: 'no-em-dash',
+      text: 'Prefer no em dash.',
+    },
+    confirm: true,
   })
+  expect(added.isError, text(added)).toBe(false)
+  expect(text(added)).toContain('personality_apply add:')
   expect(text(added)).toContain('no-em-dash')
-  expect(text(added)).toContain('1 rule(s)')
-  const stored = await readFile(join(project, 'home', 'personality', 'WRITING_RULES.yaml'), 'utf8')
+  expect(added).toMatchObject({
+    value: {
+      applied: [],
+      rejected: [],
+      path: rulesPath,
+      revision: 0,
+      writingRules: { action: 'add', ok: true, path: rulesPath },
+    },
+  })
+  const stored = await readFile(rulesPath, 'utf8')
   expect(stored).toContain('no-em-dash')
 
   const assembly = await mounted.ctx.systemPrompt.assemble(assembleContextFor(root))
   const section = assembly.sections.find(candidate => candidate.name === 'personality:writing-rules')
   expect(section?.text).toBe('- Prefer no em dash.')
 
-  const preview = await call(mounted.ctx, root, 'write_like_human', { action: 'preview' })
-  expect(text(preview)).toContain('Injected text:')
-
-  const duplicate = await call(mounted.ctx, root, 'write_like_human', {
-    action: 'add',
-    id: 'no-em-dash',
-    text: 'Again.',
+  const preview = await call(mounted.ctx, root, 'personality_apply', {
+    writingRules: { action: 'preview' },
+    confirm: true,
   })
-  expect(text(duplicate)).toContain('write_like_human failed')
+  expect(preview.isError, text(preview)).toBe(false)
+  expect(text(preview)).toContain('Injected text:')
+  expect(text(preview)).toContain('- Prefer no em dash.')
+
+  const duplicate = await call(mounted.ctx, root, 'personality_apply', {
+    writingRules: {
+      action: 'add',
+      id: 'no-em-dash',
+      text: 'Again.',
+    },
+    confirm: true,
+  })
+  expect(duplicate.isError, text(duplicate)).toBe(false)
+  expect(text(duplicate)).toContain('personality_apply failed (add)')
   expect(text(duplicate)).toContain('already exists')
+})
+
+test('personality_apply rejects two or no write payloads and a non-literal confirm without writing', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+
+  const both = await call(mounted.ctx, root, 'personality_apply', {
+    candidates: [],
+    writingRules: { action: 'list' },
+    confirm: true,
+  })
+  expect(both.isError, text(both)).toBe(false)
+  expect(text(both)).toContain('pass exactly one of candidates or writingRules, not both')
+
+  const neither = await call(mounted.ctx, root, 'personality_apply', { confirm: true })
+  expect(neither.isError, text(neither)).toBe(false)
+  expect(text(neither)).toContain('pass candidates or writingRules')
+
+  const unconfirmed = await call(mounted.ctx, root, 'personality_apply', {
+    writingRules: { action: 'add', id: 'no-em-dash', text: 'Prefer no em dash.' },
+    confirm: false,
+  })
+  expect(unconfirmed.isError, text(unconfirmed)).toBe(false)
+  expect(text(unconfirmed)).toContain('personality_apply failed (add): confirm must be the literal true')
+  const seeded = await readFile(join(project, 'home', 'personality', 'WRITING_RULES.yaml'), 'utf8')
+  expect(seeded).not.toContain('no-em-dash')
+})
+
+test('personality_apply treats an agent without a declared role as a root', async () => {
+  const mounted = await mount()
+  const root = await createRoot(mounted)
+  const apply = mounted.ctx.tools.get('personality_apply', root)
+  const result = await apply?.execute(
+    { writingRules: { action: 'list' }, confirm: true },
+    { agent: { role: undefined }, signal } as never,
+  )
+  expect(result).toMatchObject({ applied: [], path: writingRulesPath(), writingRules: { action: 'list', ok: true } })
 })
 
 test('accepts the legacy config shape without adding settings metadata', async () => {

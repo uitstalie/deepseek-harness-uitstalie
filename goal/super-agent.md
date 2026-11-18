@@ -261,7 +261,7 @@ super agent 的主体是：**自己的 Source 轮询循环、自己的 SQLite �
 
 ### 6.3 "经验共享"不造新机制
 
-账本已有 `knowledge/<domain>/KB-*.md` + `kb_refs[]` 双向引用 + 来源指纹（machine/os/tool/captured_at/source_sha256）。所以经验共享 = 两个已有动作被编排进流程：**领活前 `jira_kb search`，交付时写/补 KB 并 `kb_refs` 挂回 issue**。这属于 §0.3 的"周级"尺度。
+账本已有 `knowledge/<domain>/KB-*.md` + `kb_refs[]` 双向引用 + 来源指纹（machine/os/tool/captured_at/source_sha256）。所以经验共享 = 两个已有动作被编排进流程：**领活前 `JIRA knowledge tool search`，交付时写/补 KB 并 `kb_refs` 挂回 issue**。这属于 §0.3 的"周级"尺度。
 
 ### 6.4 阶段一的四件东西
 
@@ -296,7 +296,7 @@ pass 扫描 → 候选（只读，不动账本）
 
 **已落地**（DH-512 / DH-513 / DH-514；执行者边界、派遣记录与人类确认于 2026-11-03 按复审补全）：两端都在 `jira-agent` 里，各开各的能力门。
 
-- 执行者端 `issue_work`：授权是**派遣记录绑定**，不是父会话——`[dispatch:session] <session>` 在首个 prompt 之前写进 issue，`issue_work` 要求调用者的 Session 就是最新记录里的那个；`deliver` 一次事务完成"交回复审 + 证据"；`blocked` 只留 `[blocked:person|dependency]` 标记，不造状态。子 agent 与执行者会话都另有三个账本读工具与一段常驻 `jira:executor` 说明；执行者会话被 `describeCaller` 判为 `writable: false, reason: 'executor'`，普通 `jira_issue` 写在 guard 层被拒，turn-end 也不再提案。
+- 执行者端 `executor ledger tool`：授权是**派遣记录绑定**，不是父会话——`[dispatch:session] <session>` 在首个 prompt 之前写进 issue，`executor ledger tool` 要求调用者的 Session 就是最新记录里的那个；`deliver` 一次事务完成"交回复审 + 证据"；`blocked` 只留 `[blocked:person|dependency]` 标记，不造状态。子 agent 与执行者会话都另有三个账本读工具与一段常驻 `jira:executor` 说明；执行者会话被 `describeCaller` 判为 `writable: false, reason: 'executor'`，普通 `JIRA issue tool` 写在 guard 层被拒，turn-end 也不再提案。
 - 调度端 `superagent_scan` / `superagent_claim`：提案是 `[claim-proposal]` 评论；`claim` 要求 issue 的**最新一条评论是人类作者（`human:`）的 `[claim-approved]`**，状态迁移随后花掉这条凭据。`claim` 返回 `dispatch { key, cwd, instruction }`。
 - 派遣记录带生命周期：`starting → started / failed`；记录先于 prompt 落地，写失败就不启动；重启后的 `recover` 以记录里的 Session 与 `running` 状态决定是否重派。
 - `superagent_workspace`：`roster` / `ensure`，`ensure` 返回 canonical path 供派遣当 `cwd`；`workspaceRegistry` 走鸭子类型，缺席时如实拒绝。
@@ -310,7 +310,7 @@ pass 扫描 → 候选（只读，不动账本）
 
 1. **subagent 对账本只读**（决策 89/93/96，由 `ctx.tools.guard` 在工具层拦截）。所以派出去的执行者**不能自己写账本**——父会话是唯一写者。这反而是对的：执行者只产出"代码 + 报告"，记录只由调度器写，不会出现两份账。
 2. **复核可以自动挂靠**：目标 workspace 装了 `jira hooks`、分支名带 key，则每次提交自动绑定 issue，复核就是 `git log --grep <KEY>` + issue 评论，不用人肉对 diff。所以 `workspace_ensure` 应顺带 `jira hooks install`（幂等，会备份并链式调用已有 hook）——但它**改的是用户的仓库**，必须算进门 0 的确认。
-3. **被阻塞的不能进提案**：`is_blocked_by` 未关闭时 `assignee: self` 会被拒（`jira_list` 也把 blocked 单独成组）。扫描阶段就过滤，别让它出现在候选里。
+3. **被阻塞的不能进提案**：`is_blocked_by` 未关闭时 `assignee: self` 会被拒（`JIRA list tool` 也把 blocked 单独成组）。扫描阶段就过滤，别让它出现在候选里。
 
 ### 7.2 唯一待定：确认落在哪
 
@@ -330,22 +330,22 @@ pass 扫描 → 候选（只读，不动账本）
 
 会话启动 + turn-end 各跑一次；**每轮最多一条提案**；当前会话已有未完成的工作就不提案（不打断，对应原型的"默认沉默"）。
 
-## 8. 执行者的表面：一个"解单流程"工具，而不是放宽 `jira_issue`
+## 8. 执行者的表面：一个"解单流程"工具，而不是放宽 `JIRA issue tool`
 
-先纠正一个事实：**账本工具没有"删除 issue"这个动作**。`jira_issue` 的 action 只有 `get / create / update / switch_state / comment / assignee / link / tag_create / close / batch_close`，`WRITE_ACTIONS` 是"除 get 之外的全部"。所以"只读"挡掉的真正风险不是删单，而是 `update`（改别人写的 summary/description）、`close` / `batch_close`（把不该关的关掉）、`create` / `tag_create`（造垃圾单和垃圾 tag）——这三类确实都不该给执行者。
+先纠正一个事实：**账本工具没有"删除 issue"这个动作**。`JIRA issue tool` 的 action 只有 `get / create / update / switch_state / comment / assignee / link / tag_create / close / batch_close`，`WRITE_ACTIONS` 是"除 get 之外的全部"。所以"只读"挡掉的真正风险不是删单，而是 `update`（改别人写的 summary/description）、`close` / `batch_close`（把不该关的关掉）、`create` / `tag_create`（造垃圾单和垃圾 tag）——这三类确实都不该给执行者。
 
-但"只读"把 `comment` 和 `switch_state` 也一起挡了，而这两件恰恰是解单必需的。结论：**不放宽 `jira_issue`，给执行者换一个更窄的工具**。
+但"只读"把 `comment` 和 `switch_state` 也一起挡了，而这两件恰恰是解单必需的。结论：**不放宽 `JIRA issue tool`，给执行者换一个更窄的工具**。
 
 ### 8.1 子代理能不能指定工具：能，两条路
 
 1. **agent preset（收窄"看得见什么"）**：`tool-subagent` 支持 `agent_preset` —— 配置里 `agentPreset` 强制指定，或 `allowedAgentPresets` 暴露给模型选。"The selected preset owns persona and tool composition." 两个限制：**只有 `spawn` provider 支持独立 preset**（`fork` 会直接报 `does not support independent agent preset selection`）；preset 只管可见面。
-2. **工具层授权（收窄"写得了什么"）**：`installWriteGuard` 是**单调拦截点**，只认 `jira_issue`，所以它挡不到一个新工具；新工具的可写面必须由它自己的 scope check 决定，而不是把 `writable: boolean` 扩成能力集。
+2. **工具层授权（收窄"写得了什么"）**：`installWriteGuard` 是**单调拦截点**，只认 `JIRA issue tool`，所以它挡不到一个新工具；新工具的可写面必须由它自己的 scope check 决定，而不是把 `writable: boolean` 扩成能力集。
 
-**实现结果**（DH-512；2026-11-03 复审后修正授权）：只做了第 2 条的 scope check，**没动 guard 的语义边界，也没把执行者做成可写 root**——能力的 scope 由 `root` 改成 `all` 并按 agent 分流：root 拿完整工具，子 agent / 执行者只拿读工具 + `issue_work`。授权 = issue 的最新 `[dispatch:session]` 记录里的 Session 等于调用者的 `SessionHeader`；拒绝复用 `READ_ONLY_SESSION`，`reason` 说清是哪一种。执行者会话的 `writable` 为 false（`reason: 'executor'`），普通写由 guard 拒绝。
+**实现结果**（DH-512；2026-11-03 复审后修正授权）：只做了第 2 条的 scope check，**没动 guard 的语义边界，也没把执行者做成可写 root**——能力的 scope 由 `root` 改成 `all` 并按 agent 分流：root 拿完整工具，子 agent / 执行者只拿读工具 + `executor ledger tool`。授权 = issue 的最新 `[dispatch:session]` 记录里的 Session 等于调用者的 `SessionHeader`；拒绝复用 `READ_ONLY_SESSION`，`reason` 说清是哪一种。执行者会话的 `writable` 为 false（`reason: 'executor'`），普通写由 guard 拒绝。
 
 ### 8.2 解单流程的三个动词
 
-新工具 `issue_work`（能力在子 agent 上只挂这一个工具），动作空间封闭：
+新工具 `executor ledger tool`（能力在子 agent 上只挂这一个工具），动作空间封闭：
 
 | 动词 | 参数 | 账本上发生什么 |
 | --- | --- | --- |
@@ -358,7 +358,7 @@ pass 扫描 → 候选（只读，不动账本）
 三个理由：
 
 - **权限按流程切比按工具切安全**：动作空间封闭在三个动词里，**没有** update/create/close 的能力，也就不需要"维护一张允许清单再防绕过"。
-- **模型看到的工具表就是流程本身**：worker preset 里只有读工具 + `issue_work`（原型正是这么做的：worker 6 个工具 vs router 14 个）。
+- **模型看到的工具表就是流程本身**：worker preset 里只有读工具 + `executor ledger tool`（原型正是这么做的：worker 6 个工具 vs router 14 个）。
 - **结构化在调用处，不在正文里**：`blocked` 的 `waiting_for` 是 schema 参数，不需要父会话从自由文本里猜。原型否掉"从报告自由文本推断在等人"，理由正是这个。
 
 `blocked` 不设状态：账本的约定是"被阻塞不是状态，是 link"，而 link 由父会话决定——执行者只报告事实。执行者也**不能直接找人**：那等于绕过调度器，而"一次只问一个问题"必须由父会话统一持有。
@@ -377,15 +377,15 @@ pass 扫描 → 候选（只读，不动账本）
 
 **阶段一已落地**：
 
-- 独立 dafeiyu 能力 `superagent`（`enabledByDefault: false`），root 六个工具（scan / claim / dispatch / workspace / status / source），子 agent 与执行者只带读工具 + `issue_work`；
-- 认领闭环：提案 → **人类 `[claim-approved]` 评论** → claim → 派遣（真实 Session，`jira-worker` preset）→ 执行者 `issue_work` `deliver` 回 `in_review`；
+- 独立 dafeiyu 能力 `superagent`（`enabledByDefault: false`），root 六个工具（scan / claim / dispatch / workspace / status / source），子 agent 与执行者只带读工具 + `executor ledger tool`；
+- 认领闭环：提案 → **人类 `[claim-approved]` 评论** → claim → 派遣（真实 Session，`jira-worker` preset）→ 执行者 `executor ledger tool` `deliver` 回 `in_review`；
 - **派遣记录**：`[dispatch:session] <session> starting|started|failed` 先于 prompt 落地，recover 按记录与 running 状态决定重派；
 - **turn-end pass**：先恢复丢失的执行者，再以 observe 模式提案第一条 ready 的 issue，只写一条 `[claim-proposal]` 评论，永不自行认领；执行者会话跳过该 pass；
 - **`superagent_status`**：只读汇总 ready / proposed / in-progress / in-review / blocked，并列出需要人确认或复核的条目；`ui-jira` 的 Superagent 面板消费同一份只读数据，并提供唯一的人类动作——确认提案（写与 CLI 相同的 `human:` `[claim-approved]` 评论，DH-713）；
 - **进程级定时 pass**：能力启用时每 5 分钟跑一次；timer 是 unref 的，随 dispose 清除；有 writable 会话时由该会话的 pass 提案（它的提案可由它自己认领），没有会话时交给无会话 daemon（下一条）；
 - **无会话 daemon**（DH-714，默认关闭）：配置 `superagent_daemon` + `superagent_daemon_workspace` 后，定时器在没有 writable 会话时以 `agent:daemon|dsh|<machine>|superagent-daemon` 提案；人类确认后同一身份 claim + dispatch（决策 210 要求提案人 = 认领人），并先 `recover` 自己丢失的执行者。缺少 workspace、worker preset 或 session controller 时完全惰性，不写任何东西；
 - **GitHub 导入**（只读）与 **重启恢复** 均已落地；
-- 测试覆盖纯谓词、工具面与**真实装配**的完整闭环：`packages/jira/tests/superagent-real-loop.spec.ts` 用真实的 `SessionController` 与 AgentLoop 派遣执行者（只有模型是脚本化的），覆盖提案 → 人类确认 → 认领 → 派遣 → 执行者 `issue_work` 交付 → `in_review`，以及执行者身份/工具面、guard 拒写、派遣记录 `starting → started` 与空闲执行者的 `recover`；pass 的"只提一次"等其余语义由单测覆盖。
+- 测试覆盖纯谓词、工具面与**真实装配**的完整闭环：`packages/jira/tests/superagent-real-loop.spec.ts` 用真实的 `SessionController` 与 AgentLoop 派遣执行者（只有模型是脚本化的），覆盖提案 → 人类确认 → 认领 → 派遣 → 执行者 `executor ledger tool` 交付 → `in_review`，以及执行者身份/工具面、guard 拒写、派遣记录 `starting → started` 与空闲执行者的 `recover`；pass 的"只提一次"等其余语义由单测覆盖。
 
 **仍未做（有意后置）**：vendor 原型 `src/core`。多 Source 不做（用户裁定只做 GitHub，决策 207）；无会话 daemon 已落地但默认关闭（DH-714）；这些在闭环价值被验证后再开；不阻塞阶段一验收。
 

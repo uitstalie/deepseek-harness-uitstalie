@@ -9,6 +9,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import type {} from '../src/service.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import {

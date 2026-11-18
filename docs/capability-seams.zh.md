@@ -345,7 +345,6 @@ flowchart LR
   svc_dafeiyu["ctx.dafeiyu<br/>Capability organizer and enable gate"]
   pkg_memory["memory"]
   pkg_personality["personality"]
-  pkg_jira_agent["jira-agent"]
   svc_dafeiyuRemote["ctx.dafeiyuRemote<br/>Capability status Remote"]
   pkg_client_ui_dafeiyu["client-ui-dafeiyu"]
   pkg_tool_dsh_store["tool-dsh-store"]
@@ -356,8 +355,6 @@ flowchart LR
   svc_agentInstructionsApi["ctx.agentInstructionsApi<br/>Instruction baseline API"]
   pkg_workspace_tools["workspace-tools"]
   svc_workspaceTasks["ctx.workspaceTasks<br/>Card-validated dispatch tasks"]
-  pkg_jira_service["jira-service"]
-  svc_jira["ctx.jira<br/>Jira ledger single writer"]
   pkg_models_dev["models-dev"]
   svc_modelsDev["ctx.modelsDev<br/>models.dev catalog service"]
   pkg_experimental_liveshare["experimental-liveshare"]
@@ -454,7 +451,6 @@ flowchart LR
   pkg_host_product_telemetry_otel --> svc_productTelemetry
   pkg_host_webserver --> svc_webServer
   pkg_inspector --> svc_inspector
-  pkg_jira_service --> svc_jira
   pkg_jobs --> svc_jobs
   pkg_jobs_local --> svc_jobs
   pkg_llm --> svc_llm
@@ -589,7 +585,6 @@ flowchart LR
   svc_credentials --> pkg_llm_pi_ai
   svc_cuaAccess --> pkg_cua
   svc_cuaPrograms --> pkg_cua_mcp
-  svc_dafeiyu --> pkg_jira_agent
   svc_dafeiyu --> pkg_memory
   svc_dafeiyu --> pkg_personality
   svc_dafeiyuRemote --> pkg_client_ui_dafeiyu
@@ -612,7 +607,6 @@ flowchart LR
   svc_fs --> pkg_tool_fs
   svc_headlessStartup --> pkg_headless
   svc_hmr --> pkg_app_boot
-  svc_jira --> pkg_jira_agent
   svc_jobs --> pkg_api_job_controller
   svc_jobs --> pkg_tool_bash
   svc_jobs --> pkg_tool_jobs
@@ -733,7 +727,6 @@ flowchart LR
   svc_workingDirectory --> pkg_tool_pwsh
   svc_workspaceRegistry --> pkg_api_session_controller
   svc_workspaceRegistry --> pkg_api_workspace_controller
-  svc_workspaceTasks --> pkg_jira_agent
   svc_worktrees --> pkg_experimental_tool_worktree
   svc_fs -. event gate .-> pkg_fs_observation_policy
 ```
@@ -861,13 +854,12 @@ flowchart LR
 | `ctx.dynamicCordisRunner` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | 拥有内存定义注册表、Host 半的 vm 沙箱和 request-run 往返流程；浏览器页面通过其 Remote 命名空间在线访问同一服务。 |
 | `ctx.cordisInspect` | `core` | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | - | [`tool-cordis`](../packages/extensions/tool-cordis) | - | 注册 Host inspect 提供方、镜像 Client 提供方 manifest，并通过动态 Cordis 传输路由 Client 查询。 |
 | `ctx.agentContextSources` | `service` | [`agent-instructions-plus`](../packages/uitstalie/agent-instructions-plus) | - | - | - | 收集渲染文本会并入原生指令基线的来源；注册顺序和每个来源的摘要即契约。 |
-| `ctx.dafeiyu` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality), [`jira-agent`](../packages/jira/jira-agent) | - | 注册能力提供方、对其 create() 调用设门，并按 agent 分派工具、提示段落与回合结束钩子。 |
+| `ctx.dafeiyu` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality) | - | 注册能力提供方、对其 create() 调用设门，并按 agent 分派工具、提示段落与回合结束钩子。 |
 | `ctx.dafeiyuRemote` | `service` | [`dafeiyu`](../packages/uitstalie/dafeiyu) | - | [`client-ui-dafeiyu`](../packages/uitstalie/ui-dafeiyu) | - | 发布只读的 remote.dafeiyu 状态快照；不能注册、启用或停用能力。 |
 | `ctx.dshStore` | `service` | [`tool-dsh-store`](../packages/uitstalie/tool-dsh-store) | - | [`memory`](../packages/uitstalie/memory), [`personality`](../packages/uitstalie/personality) | - | 负责受路径限制的 .dsh 存储操作与会话级策略门；存储工具和侧栏 Remote 消费它。 |
 | `ctx.systemEnvironment` | `service` | [`system-environment`](../packages/uitstalie/system-environment) | - | - | - | 负责平台事实、路径拼写与比较、环境查询以及用户与 Harness 主目录；分支插件注入它，不再各自判断平台问题。 |
 | `ctx.agentInstructionsApi` | `service` | [`agent-instructions`](../packages/context/agent-instructions) | - | [`agent-instructions-plus`](../packages/uitstalie/agent-instructions-plus) | - | 向分支指令来源暴露原生指令基线状态、项目根发现与配置解析。 |
-| `ctx.workspaceTasks` | `service` | [`workspace-tools`](../packages/uitstalie/workspace-tools) | - | [`jira-agent`](../packages/jira/jira-agent) | - | 通过当前意图卡、覆盖映射和幂等规则创建与取消投递任务记录；模型可见工具与超级 agent 共用它。 |
-| `ctx.jira` | `service` | [`jira-service`](../packages/jira/jira-service) | - | [`jira-agent`](../packages/jira/jira-agent) | - | 负责唯一的账本写入者、读写方法、推送队列和变更通知；浏览器通过 remote.jira 读取。 |
+| `ctx.workspaceTasks` | `service` | [`workspace-tools`](../packages/uitstalie/workspace-tools) | - | - | - | 通过当前意图卡、覆盖映射和幂等规则创建与取消投递任务记录；模型可见工具与调度方共用它。 |
 | `ctx.modelsDev` | `service` | [`models-dev`](../packages/uitstalie/models-dev) | - | - | - | 提供 models.dev provider 与模型目录、路由解析，以及 Harness 形态的模型默认值与额外参数。 |
 | `ctx.liveshareShares` | `service` | [`experimental-liveshare`](../packages/experimental/liveshare) | - | - | - | 以单个 Typert Remote 命名空间发布 owner 分享管理操作，供 owner 客户端面调用；每个方法都委托给同源路由原先使用的同一组操作。 |
 

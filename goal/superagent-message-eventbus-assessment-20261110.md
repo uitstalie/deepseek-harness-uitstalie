@@ -50,7 +50,7 @@
 
 ```
 超管模型（super workspace 里的 root Session）
-  │  superagent_control { action: start|append|prompt, ... }        [tool call]
+  │  super-agent control { action: start|append|prompt, ... }        [tool call]
   ▼
 jira-agent / superagent.ts  runSessionTool
   │  ① recordDispatchReport → <superHome>/.superagent/reports.jsonl  (pending)
@@ -81,7 +81,7 @@ dafeiyu → jira-agent contribution.onTurnEnd → handleTaskTurnEnd
 
 ### 1.2 跳 1：超管发起——工具调用与目标选择
 
-入口是 `superagent_control` 的 `run`：
+入口是 `super-agent control` 的 `run`：
 
 - 工具注册与 action 分发：`packages/jira/jira-agent/src/superagent.ts:526-569`（`runControlTool`）。
 - 真正执行三个动作的是 `runSessionTool`：`superagent.ts:2735-3202`。
@@ -101,7 +101,7 @@ dafeiyu → jira-agent contribution.onTurnEnd → handleTaskTurnEnd
 
 ### 1.3 跳 2：宿主受理——`prompt` 如何变成会话输入
 
-- `superagent_control` 拿到的 `sessionController` 是 Cordis 服务：
+- `super-agent control` 拿到的 `sessionController` 是 Cordis 服务：
   `sessionControllerOf(ctx)` 用 `ctx.get('sessionController')` 读取
   （`superagent.ts:4399-4408`）；接口是鸭子类型 `SessionControllerLike`
   （`superagent.ts:4333-4392`）。`@Remote` 装饰器只**标记**方法供远程 gateway 暴露，
@@ -213,7 +213,7 @@ dafeiyu → jira-agent contribution.onTurnEnd → handleTaskTurnEnd
 
 ### 1.9 三个容易被误认为“消息通道”的东西
 
-- **`superagent_ledger` 不是消息通道。** 它读写 dispatch 业务台账
+- **`super-agent ledger` 不是消息通道。** 它读写 dispatch 业务台账
   （`superagent.ts:3599-3782`）；`report_status`/`retry_report` 只是 journal 的运维入口
   （`3639-3694`）。业务状态和报告投递是两件事：`prepare` 在投递前就把业务结果写进
   journal/domain（`3854-3857`），“报告有没有送到”只由 journal 的 delivery 状态回答。
@@ -226,10 +226,10 @@ dafeiyu → jira-agent contribution.onTurnEnd → handleTaskTurnEnd
   `:253` 追加，折叠在 `:162-183`。把它当成“消息投递确认”会误判现状。
 - **`superagent_dispatch` 是另一条派活路径，不发 `[task-report]`。** 它把 executor
   Session 的 `[dispatch:session]` 记录写进 issue 评论（`superagent.ts:4540-4570`），
-  报告走 Jira 的 `issue_work`/claim 回路；executor 的 turn end 在 `onTurnEnd` 里被
+  报告走 Jira 的 `executor ledger tool`/claim 回路；executor 的 turn end 在 `onTurnEnd` 里被
   `isExecutorSession` 直接跳过（`superagent.ts:5366`），dispatcher 的 turn-end pass 只
   提案/认领（`runSuperagentPass`，`1415-1466`）。本文的 `[task-report]` 链路只属于
-  `superagent_control` 的 `start/append/prompt`。
+  `super-agent control` 的 `start/append/prompt`。
 
 ---
 
@@ -351,7 +351,7 @@ can still duplicate a delivered report”。）
    这条 `turn/end` 的 requestId（`superagent.ts:4181-4214`），旧 pending 不会被匹配。
    `report_status` 只列 `failed`/`delivering`（`superagent-core/src/index.ts:466-470`；
    `superagent.ts:3639-3646`），所以这个状态对模型**不可见**；只有
-   `superagent_ledger list` 可能从业务台账看到 pending。
+   `super-agent ledger list` 可能从业务台账看到 pending。
 【代码；窗口是否真实发生未验证】
 
 **G4（中，未验证）：真实重启没有被端到端验证。**
@@ -528,13 +528,13 @@ journal 也是 undefined（`:4160`），于是 `control` 的 `start/append/promp
 | 持久化面变更 | 新增 message source kind 触发 format/catalog/文档门 | 单独 PR，先跑 persistence/format 相关测试；不和新事件混在一起 |
 | 冷 Session 写入 | 在超管 Session 写 plugin record 需要激活/写权限 | 只用 journal 作为权威；plugin record 仅可选 |
 
-### 4.8 对 `superagent_control` / ledger 的影响
+### 4.8 对 `super-agent control` / ledger 的影响
 
-- **`superagent_control`**：对外 schema 不变；`delivery` 结果可以多一个 `messageId`
+- **`super-agent control`**：对外 schema 不变；`delivery` 结果可以多一个 `messageId`
   （可选字段）；`start/append/prompt` 的行为、拒绝顺序、report 路由都不变。
   若采纳来源 kind，需要先扩展宿主 `prompt` 请求（见 §4.6 第 1 条）；只包一层
   `controller.prompt` 并不能改变 source。
-- **`superagent_ledger`**：业务语义不变；`report_status` 增加 pending/orphaned 行；
+- **`super-agent ledger`**：业务语义不变；`report_status` 增加 pending/orphaned 行；
   `retry_report` 不变。人读 Markdown 投影从“内联调用”变成“订阅者 + 回读”，
   必须幂等（`DispatchStore.resolve` 已经有 `changed()` 判重，`dispatch-store.ts:313-356`）。
 - **`superagent_deliver`**：不受影响（文件复制，不是消息）。
@@ -616,7 +616,7 @@ journal 也是 undefined（`:4160`），于是 `control` 的 `start/append/promp
 
 ## 6. 给用户的 5 行摘要
 
-1. **不是 event bus**：派活是 `superagent_control` 直接调宿主 `controller.prompt`，回流是 `session/event` 的 `turn/end` 事件触发后再直接 prompt；总线只在“触发/观察”这一层。
+1. **不是 event bus**：派活是 `super-agent control` 直接调宿主 `controller.prompt`，回流是 `session/event` 的 `turn/end` 事件触发后再直接 prompt；总线只在“触发/观察”这一层。
 2. **耐久性不在总线**：消息落在会话日志的 `agent/inbox/spliced`，报告状态落在 `.superagent/reports.jsonl`（lease + 恢复 + 重试），这才是现在不丢的原因。
 3. **最危险的不是耦合**：`delivered` 可能先于接收方消息落盘（200 ms 批窗口），以及“pending 无文本”永远不收敛；这两个比“换成总线”更值得先修。
 4. **要改就部分事件化**：保留直接投递，把 journal 当 outbox，补投递回执/启动对账/来源 kind；Cordis 事件只做“状态变了”的通知，不做传输。

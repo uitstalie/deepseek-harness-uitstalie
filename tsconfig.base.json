@@ -472,16 +472,6 @@
       // END uitstalie-k3
       // uitstalie-k3, 2026/09/30, task14, /types 子路径走手写别名：生成器只管根与 invariant；该模块声明 Remote 错误码，必须与消费方解析到同一个模块
       "@deepseek-ai/dsh-tool-dsh-store/types": ["./packages/uitstalie/tool-dsh-store/src/types.ts"],
-      // BEGIN uitstalie-k3, 2026/10/24, DH-13, 迁移后的 jira 包需要按包深路径解析（jira-cli 直接用 jira-core 的原子模块；生成器只产根别名）
-      "@deepseek-ai/dsh-jira-core/*": ["./packages/jira/jira-core/src/*"],
-      // client 包名（dsh-client-ui-*）与目录名 ui-jira 不吻合，生成器无法推断，手写根别名（同 ui-models-dev 的先例）
-      "@deepseek-ai/dsh-client-ui-jira": ["./packages/jira/ui-jira/src"],
-      // jira-service/types 声明 Remote 错误码，客户端必须与宿主解析到同一个模块（同 tool-dsh-store 的先例）
-      "@deepseek-ai/dsh-jira-service/types": ["./packages/jira/jira-service/src/types.ts"],
-      // END uitstalie-k3
-      // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-15, 组合测试运行时按组合清单 import '<pkg>/client'，缺该别名则整组组合规格失败
-      "@deepseek-ai/dsh-client-ui-jira/client": ["./packages/jira/ui-jira/src/client/index.ts"],
-      // END uitstalie-deepseek-flash
       // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-12, 能力总代 client 包（根 + /client 子路径）按包名解析
       "@deepseek-ai/dsh-client-ui-dafeiyu": ["./packages/uitstalie/ui-dafeiyu/src"],
       "@deepseek-ai/dsh-client-ui-dafeiyu/client": ["./packages/uitstalie/ui-dafeiyu/src/client/index.ts"],
@@ -550,10 +540,6 @@
       "@deepseek-ai/dsh-hooks-claude-code": ["./packages/experimental/hooks-claude-code/src"],
       "@deepseek-ai/dsh-hooks-codex": ["./packages/experimental/hooks-codex/src"],
       "@deepseek-ai/dsh-http-proxy": ["./packages/util/http-proxy/src"],
-      "@deepseek-ai/dsh-jira-agent": ["./packages/jira/jira-agent/src"],
-      "@deepseek-ai/dsh-jira-cli": ["./packages/jira/jira-cli/src"],
-      "@deepseek-ai/dsh-jira-core": ["./packages/jira/jira-core/src"],
-      "@deepseek-ai/dsh-jira-service": ["./packages/jira/jira-service/src"],
       "@deepseek-ai/dsh-jobs": ["./packages/jobs/jobs/src"],
       "@deepseek-ai/dsh-jobs-local": ["./packages/jobs/jobs-local/src"],
       "@deepseek-ai/dsh-launch-environment": ["./packages/util/launch-environment/src"],
@@ -660,7 +646,6 @@
       "@deepseek-ai/dsh-subprocess": ["./packages/subprocess/subprocess/src"],
       "@deepseek-ai/dsh-subprocess-local": ["./packages/subprocess/subprocess-local/src"],
       "@deepseek-ai/dsh-subprocess-ssh": ["./packages/ssh/subprocess-ssh/src"],
-      "@deepseek-ai/dsh-superagent-core": ["./packages/superagent/superagent-core/src"],
       "@deepseek-ai/dsh-system-environment": ["./packages/uitstalie/system-environment/src"],
       "@deepseek-ai/dsh-system-prompt": ["./packages/core/system-prompt/src"],
       "@deepseek-ai/dsh-terminal": ["./packages/terminal/terminal/src"],

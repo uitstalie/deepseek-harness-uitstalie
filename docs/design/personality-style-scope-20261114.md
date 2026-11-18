@@ -68,7 +68,7 @@ Do not add a read-only variant. The context saved for a subagent is the two tool
 - Subagent: omit section 690 entirely; keep the existing tool ban. Keep sections 100 and 695 unchanged unless a separate decision says subagents need no profile/writing rules at all.
 - Ordinary root: one clean output-style slot.
 - Super-agent root: a distinct output-style slot containing dispatch/reporting discipline.
-- Do not infer the role from cwd, workspace title, presence of `superagent_control`, or a preset name. Those are mutable/incidental and would make personality depend on jira internals. Add an explicit agent-role signal where the Session is created, or expose a small role service that both capabilities can consult. This is a design prerequisite, not an implementation detail to hide in a path comparison.
+- Do not infer the role from cwd, workspace title, presence of `super-agent control`, or a preset name. Those are mutable/incidental and would make personality depend on jira internals. Add an explicit agent-role signal where the Session is created, or expose a small role service that both capabilities can consult. This is a design prerequisite, not an implementation detail to hide in a path comparison.
 
 A low-churn structure is to keep the section name/order `personality:output-style` at 690 and choose the source by role inside `sectionsFor`: subagent → no section; ordinary → `OUTPUT_STYLE.yaml`; super → a second store such as `SUPERAGENT_OUTPUT_STYLE.yaml`. This gives two slots without a new section number. If the two texts must have different positions in the assembled prompt, a separate order (for example 691) is the alternative, but it changes the order map and all order assertions.
 
@@ -84,7 +84,7 @@ The current 702 text has 31 lines (`packages/jira/jira-agent/src/superagent.ts:1
 |---|---|---|
 | L1 `You are the super ag` | Dispatch/role | Keep 702; moving it would change who the section describes. |
 | L3 `The [superagent works` | Dispatch/context | Keep 702; depends on runtime workspace context. |
-| L4 `` `superagent_control` `` | Dispatch/safety | Keep 702; action ordering and write warnings. |
+| L4 `` `super-agent control` `` | Dispatch/safety | Keep 702; action ordering and write warnings. |
 | L5 `A workspace brief has` | Dispatch | Keep 702; brief-source rule. |
 | L7 `Brief slots (fill ev` | Dispatch template | Keep 702; moving it would split the brief contract. |
 | L13 `Result contract:` | Dispatch contract | Keep 702; it describes the dispatched task's output, not the super agent's prose. |

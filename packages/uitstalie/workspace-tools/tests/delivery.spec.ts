@@ -17,6 +17,7 @@ import {
   mountWorkspaceTools,
   registerWorkspace,
   sha256,
+  textOf,
   valueOf,
 } from './harness.ts'
 import type { WorkspaceToolsHarness } from './harness.ts'
@@ -29,12 +30,24 @@ interface RecordedPrompt {
   readonly text: string
 }
 
+/** One host acknowledgement the recording controller returned. */
+interface DeliveryReply {
+  readonly accepted: boolean
+  readonly error?: string
+}
+
+/** Replacement behavior for the next controller calls; defaults to acceptance. */
+let deliveryBehaviour: () => Promise<DeliveryReply>
+
 let projectA: string
 let projectB: string
 let home: string
 let contexts: Context[]
 let mounted: WorkspaceToolsHarness
+/** Every prompt handed to the controller, including attempts that were refused. */
 let delivered: RecordedPrompt[]
+/** Only the prompts the controller accepted, so a test can prove one admission. */
+let admitted: RecordedPrompt[]
 
 beforeEach(async () => {
   projectA = await mkdtemp(join(tmpdir(), 'dsh-workspace-delivery-a-'))
@@ -44,19 +57,24 @@ beforeEach(async () => {
   await mkdir(join(projectB, '.git'), { recursive: true })
   contexts = []
   delivered = []
+  admitted = []
+  deliveryBehaviour = async () => ({ accepted: true })
   const ctx = new Context()
   contexts.push(ctx)
   mounted = await mountWorkspaceTools(ctx, home)
   // Duck-typed exactly like the toolset reads it: only `prompt` is used.
   mounted.ctx.provide('sessionController' as never, {
     prompt: async (request: { requestId: string; sessionId: string; mode: 'queue' | 'steer'; content: readonly { type: 'text'; text: string }[] }) => {
-      delivered.push({
+      const recorded: RecordedPrompt = {
         requestId: request.requestId,
         sessionId: request.sessionId,
         mode: request.mode,
         text: request.content.flatMap(part => part.type === 'text' ? [part.text] : []).join(''),
-      })
-      return { accepted: true }
+      }
+      delivered.push(recorded)
+      const reply = await deliveryBehaviour()
+      if (reply.accepted) admitted.push(recorded)
+      return reply
     },
   } as never)
 })
@@ -306,4 +324,204 @@ test('publish refuses a path outside the workspace root and a missing file', asy
   })
   expect(missing.isError).toBe(true)
   expect((missing.content[0] as { text?: string }).text).toContain('does not exist')
+})
+
+test('publish and resolve route .dsh paths through the store checks', async () => {
+  const workspace = await registerWorkspace(mounted.registry, projectA, 'artifact-dsh')
+  const root = await createRoot(mounted, 'dsh-publisher', projectA)
+  await workspace.attachSession(root.session.id)
+  await mkdir(join(projectA, '.dsh', 'rules'), { recursive: true })
+  await mkdir(join(projectA, '.dsh', 'memory'), { recursive: true })
+  await writeFile(join(projectA, '.dsh', 'rules', 'tone.md'), 'Do not use codenames.\n')
+  await writeFile(join(projectA, '.dsh', 'memory', 'GLOBAL.md'), 'version: 1\n')
+
+  const published = await callTool(mounted.ctx, root, 'workspace_artifacts', {
+    action: 'publish', path: '.dsh/rules/tone.md', kind: 'rule', requestId: 'dsh-rule-1',
+  })
+  expect(published.isError).toBe(false)
+  const artifact = (valueOf(published) as { artifact: { artifactId: string } }).artifact
+  const resolved = await callTool(mounted.ctx, root, 'workspace_artifacts', {
+    action: 'resolve', artifactId: artifact.artifactId,
+  })
+  expect(resolved.isError).toBe(false)
+  expect((valueOf(resolved) as { resolution: { status: string } }).resolution.status).toBe('ok')
+
+  const memory = await callTool(mounted.ctx, root, 'workspace_artifacts', {
+    action: 'publish', path: '.dsh/memory/GLOBAL.md', kind: 'memory', requestId: 'dsh-memory-1',
+  })
+  expect(memory.isError).toBe(true)
+  expect(textOf(memory)).toContain('managed memory')
+
+  const traversal = await callTool(mounted.ctx, root, 'workspace_artifacts', {
+    action: 'publish', path: '.dsh/../outside.txt', kind: 'report', requestId: 'dsh-traversal-1',
+  })
+  expect(traversal.isError).toBe(true)
+  expect(textOf(traversal)).toContain('refused by the .dsh store')
+})
+
+/** One sent result as the delivery tests inspect it. */
+interface SentDeliveryView {
+  messageId: string
+  status: string
+  error?: string
+  attempts?: number
+}
+
+/** One message as `status` and `read` return it. */
+interface MessageDeliveryView {
+  messageId: string
+  status: string
+  error?: string
+  attempts?: number
+  references: { artifactId: string; version: number; sha256: string }[]
+}
+
+test('a thrown delivery failure is persisted as failed and retry delivers exactly once', async () => {
+  const workspace = await registerWorkspace(mounted.registry, projectA, 'message-thrown-failure')
+  const sender = await createRoot(mounted, 'thrown-sender', projectA)
+  const target = await createRoot(mounted, 'thrown-target', projectA)
+  await workspace.attachSession(sender.session.id)
+  await workspace.attachSession(target.session.id)
+
+  deliveryBehaviour = async () => { throw new Error('target inbox is closed') }
+  const first = await callTool(mounted.ctx, sender, 'workspace_message', {
+    action: 'send',
+    targetSessionId: String(target.id),
+    text: 'conclusion: needs a retry\nnext: deliver it',
+    kind: 'followup',
+    requestId: 'retry-after-thrown-failure',
+  })
+  expect(first.isError).toBe(false)
+  const failed = (valueOf(first) as unknown as { sent: SentDeliveryView }).sent
+  expect(failed.status).toBe('failed')
+  expect(failed.error).toContain('target inbox is closed')
+  expect(failed.attempts).toBe(1)
+
+  const status = await callTool(mounted.ctx, target, 'workspace_message', {
+    action: 'status', messageId: failed.messageId,
+  })
+  expect(status.isError).toBe(false)
+  const failedView = (valueOf(status) as unknown as { message: MessageDeliveryView }).message
+  expect(failedView.messageId).toBe(failed.messageId)
+  expect(failedView.status).toBe('failed')
+  expect(failedView.error).toContain('target inbox is closed')
+  expect(failedView.attempts).toBe(1)
+  expect(failedView.references).toEqual([])
+
+  const latest = await callTool(mounted.ctx, target, 'workspace_message', {
+    action: 'status', targetSessionId: String(target.id),
+  })
+  expect(latest.isError).toBe(false)
+  expect((valueOf(latest) as unknown as { message: MessageDeliveryView }).message.messageId).toBe(failed.messageId)
+
+  const readFailed = await callTool(mounted.ctx, target, 'workspace_message', {
+    action: 'read', messageId: failed.messageId,
+  })
+  expect(readFailed.isError).toBe(false)
+  const visible = (valueOf(readFailed) as unknown as { messages: MessageDeliveryView[] }).messages
+  expect(visible).toHaveLength(1)
+  expect(visible[0]?.status).toBe('failed')
+  expect(visible[0]?.error).toContain('target inbox is closed')
+
+  deliveryBehaviour = async () => ({ accepted: true })
+  const retried = await callTool(mounted.ctx, sender, 'workspace_message', {
+    action: 'retry', messageId: failed.messageId,
+  })
+  expect(retried.isError).toBe(false)
+  const deliveredSent = (valueOf(retried) as unknown as { sent: SentDeliveryView }).sent
+  expect(deliveredSent.messageId).toBe(failed.messageId)
+  expect(deliveredSent.status).toBe('delivered')
+  expect(deliveredSent.attempts).toBe(2)
+  expect(deliveredSent.error).toBeUndefined()
+
+  const deliveredStatus = await callTool(mounted.ctx, target, 'workspace_message', {
+    action: 'status', messageId: failed.messageId,
+  })
+  expect(deliveredStatus.isError).toBe(false)
+  const deliveredView = (valueOf(deliveredStatus) as unknown as { message: MessageDeliveryView }).message
+  expect(deliveredView.status).toBe('delivered')
+  expect(deliveredView.attempts).toBe(2)
+  expect(deliveredView.error).toBeUndefined()
+
+  const requestId = `workspace-message-${failed.messageId}`
+  expect(admitted.filter(prompt => prompt.requestId === requestId)).toHaveLength(1)
+  const hostCalls = delivered.length
+  const repeated = await callTool(mounted.ctx, sender, 'workspace_message', {
+    action: 'retry', messageId: failed.messageId,
+  })
+  expect(repeated.isError).toBe(false)
+  expect((valueOf(repeated) as unknown as { sent: SentDeliveryView }).sent.status).toBe('delivered')
+  expect(delivered).toHaveLength(hostCalls)
+  expect(admitted.filter(prompt => prompt.requestId === requestId)).toHaveLength(1)
+})
+
+test('a declined delivery keeps its reason, advances attempts, and retry then delivers', async () => {
+  const workspace = await registerWorkspace(mounted.registry, projectA, 'message-declined-failure')
+  const sender = await createRoot(mounted, 'declined-sender', projectA)
+  const target = await createRoot(mounted, 'declined-target', projectA)
+  await workspace.attachSession(sender.session.id)
+  await workspace.attachSession(target.session.id)
+
+  deliveryBehaviour = async () => ({ accepted: false, error: 'recipient inbox is full' })
+  const first = await callTool(mounted.ctx, sender, 'workspace_message', {
+    action: 'send',
+    targetSessionId: String(target.id),
+    text: 'one declined delivery',
+    requestId: 'declined-send',
+  })
+  expect(first.isError).toBe(false)
+  const failed = (valueOf(first) as unknown as { sent: SentDeliveryView }).sent
+  expect(failed.status).toBe('failed')
+  expect(failed.error).toContain('recipient inbox is full')
+  expect(failed.attempts).toBe(1)
+
+  // A repeated send with the same requestId returns the failed record instead of delivering again.
+  const repeatedSend = await callTool(mounted.ctx, sender, 'workspace_message', {
+    action: 'send',
+    targetSessionId: String(target.id),
+    text: 'one declined delivery',
+    requestId: 'declined-send',
+  })
+  expect(repeatedSend.isError).toBe(false)
+  expect((valueOf(repeatedSend) as unknown as { sent: SentDeliveryView }).sent.status).toBe('failed')
+  expect(delivered).toHaveLength(1)
+
+  deliveryBehaviour = async () => ({ accepted: false, error: 'recipient inbox is still full' })
+  const stillFailed = await callTool(mounted.ctx, sender, 'workspace_message', {
+    action: 'retry', messageId: failed.messageId,
+  })
+  expect(stillFailed.isError).toBe(false)
+  const stillFailedSent = (valueOf(stillFailed) as unknown as { sent: SentDeliveryView }).sent
+  expect(stillFailedSent.status).toBe('failed')
+  expect(stillFailedSent.error).toContain('recipient inbox is still full')
+  expect(stillFailedSent.attempts).toBe(2)
+
+  const persisted = await callTool(mounted.ctx, target, 'workspace_message', {
+    action: 'status', messageId: failed.messageId,
+  })
+  const persistedView = (valueOf(persisted) as unknown as { message: MessageDeliveryView }).message
+  expect(persistedView.status).toBe('failed')
+  expect(persistedView.error).toContain('recipient inbox is still full')
+  expect(persistedView.attempts).toBe(2)
+
+  const noSelector = await callTool(mounted.ctx, target, 'workspace_message', { action: 'status' })
+  expect(noSelector.isError).toBe(true)
+  expect(textOf(noSelector)).toContain('messageId or targetSessionId')
+
+  const missing = await callTool(mounted.ctx, sender, 'workspace_message', {
+    action: 'retry', messageId: 'message-missing',
+  })
+  expect(missing.isError).toBe(true)
+  expect(textOf(missing)).toContain('holds no message')
+
+  deliveryBehaviour = async () => ({ accepted: true })
+  const retried = await callTool(mounted.ctx, sender, 'workspace_message', {
+    action: 'retry', messageId: failed.messageId,
+  })
+  expect(retried.isError).toBe(false)
+  const deliveredSent = (valueOf(retried) as unknown as { sent: SentDeliveryView }).sent
+  expect(deliveredSent.status).toBe('delivered')
+  expect(deliveredSent.attempts).toBe(3)
+  expect(deliveredSent.error).toBeUndefined()
+  expect(admitted).toHaveLength(1)
 })

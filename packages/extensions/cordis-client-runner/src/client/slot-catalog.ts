@@ -3840,7 +3840,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     ownerPropsReferences: [
       'Branded',
-      'Identity',
     ],
     standardProps: [
       'useRemoteAccess: (action: RemoteEndpoint) => boolean',
@@ -4426,8 +4425,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-ui-settings-account AccountSection id \'account\'',
       'client-ui-settings-general GeneralSection id \'general\'',
       'client-ui-settings-models ModelsSection id \'models\'',
-      'client-ui-jira JiraSection',
-      'client-ui-jira SuperagentSection',
       'client-ui-dafeiyu CapabilitiesSection',
       'client-ui-memory MemorySection',
       'client-ui-models-dev ModelsDevSection id \'models-dev\'',
@@ -4892,7 +4889,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     declaredBy: 'an entry in \'sidebar\' (client-ui-sidebar), so it exists while that entry is mounted',
     occupants: [
       'client-ui-cordis CordisPanel id \'cordis-panel\'',
-      'client-ui-jira SuperagentSetupAction id \'jira-superagent-setup\'',
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.footer.action\', () => ctx.slots.register(\n      { name: \'sidebar.footer.action\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
@@ -6062,7 +6058,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       '/**\n * Owner share of the workspace-row action seat: the row passes the Workspace it\n * shows, so an occupant addresses that workspace\'s own data by identity.\n */\nexport interface WorkspaceRowOwnerProps {\n  /** Identity of the Workspace this row shows. */\n  readonly workspaceId: WorkspaceId\n  /** Display label of the row, for occupant copy such as an accessible name. */\n  readonly label: string\n}',
     ],
     ownerPropsReferences: [
-      'Identity',
       'Workspace',
     ],
     standardProps: [

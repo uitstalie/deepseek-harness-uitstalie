@@ -84,7 +84,7 @@
 - 真实失败：pre-push 的 `pnpm run typecheck` 在 host compiler 报
   `packages/client/file-upload/src/index.ts(9,15): error TS2724: '"@deepseek-ai/dsh-session/types"' has no exported member named 'Session'`；
   `ui-trajectory` 同样报错。`Session` 只由包根导出，`types.ts` 只导出 `SessionId` 等类型。
-- 该失败由上表第 5 行的会话契约拆分引入，不是环境问题；在未改动的 `fix(jira): hide superagent_control from ordinary agent roots [no-issue]` 上 `typecheck` 为 5/5 PASS。
+- 该失败由上表第 5 行的会话契约拆分引入，不是环境问题；在未改动的 `fix(jira): hide super-agent control from ordinary agent roots [no-issue]` 上 `typecheck` 为 5/5 PASS。
 - 修复：`fix(client): restore Session type imports` 改回包根导入；`fix(client): scope session augmentation and restore typecheck` 把 `SessionStore extends ISessions` 扩展移回 session-controller client contract，移除全局 `client-session` typeRoots，并修 `ui-jira` 的类型收敛。
 - 修复后 `pnpm run typecheck` 5/5 PASS，正常 `git push origin cli-desktop`（无 `--no-verify`）成功。
 - 以后不得再用 `--no-verify` 绕过 pre-push；若门禁失败，先修或回滚，再正常 push。

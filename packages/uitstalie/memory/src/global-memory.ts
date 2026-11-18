@@ -664,7 +664,7 @@ export async function writeGlobalEntry(
   if (classification.class === 'persona') {
     throw new GlobalMemoryError(
       `NOT_GLOBAL_MEMORY: this text records persona or writing-style guidance (${classification.reason}). Global memory keeps facts and conventions only. `
-      + 'Persona and style belong to `personality_apply` / `personality_analyze` (or `write_like_human` for the writing rules); a stable instruction belongs in `rules/AGENTS.md`.',
+      + 'Persona and style belong to `personality_apply` (profile and writing rules) / `personality_analyze`; a stable instruction belongs in `rules/AGENTS.md`.',
       'NOT_GLOBAL_MEMORY',
     )
   }

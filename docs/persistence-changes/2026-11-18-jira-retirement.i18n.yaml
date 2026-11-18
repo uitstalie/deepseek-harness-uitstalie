@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-18-jira-retirement.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-18-jira-retirement.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-18-jira-retirement:
+  en: 53bb3bac04621d5a
+  zh: 12ec60a2c8c125c9
+/2026-11-18-jira-retirement/summary:
+  en: 4acb67616e898a0d
+  zh: 489c63fad5e2e210
+/2026-11-18-jira-retirement/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-18-jira-retirement/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-18-jira-retirement/compatibility:
+  en: 299c1f2b86c3938b
+  zh: ee6f6bdb545cffb2
+/2026-11-18-jira-retirement/verification:
+  en: 0c6811b5deb69a1c
+  zh: 787d30be5150240c
+/2026-11-18-jira-retirement/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

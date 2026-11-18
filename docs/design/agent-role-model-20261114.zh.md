@@ -54,13 +54,13 @@
 |---|---|---|---|---|
 | `personality_analyze` | 所有 agent；`personality/index.ts:122` | `subagent`+ | 只读研究 | 无 |
 | `personality_apply` / `write_like_human` | 排除 subagent；`personality/index.ts:122` | `agent`+ | 全局写入 | 无写权限（本来就没有） |
-| `jira_issue` / `jira_list` / `jira_kb` | agent+（新增）；`minRole: agent` | `agent` | 账本身份属于主/workspace Session | 对 subagent 隐藏 |
-| jira `issue_work` | agent+（新增）；`minRole: agent` | `agent` | worker executor 就是一个 agent root | 对 subagent 隐藏 |
+| `JIRA issue tool` / `JIRA list tool` / `JIRA knowledge tool` | agent+（新增）；`minRole: agent` | `agent` | 账本身份属于主/workspace Session | 对 subagent 隐藏 |
+| jira `executor ledger tool` | agent+（新增）；`minRole: agent` | `agent` | worker executor 就是一个 agent root | 对 subagent 隐藏 |
 | `tool-dsh-store` | agent+（新增）；`minRole: agent` | `agent` | 规则/技能管理 | 对 subagent 隐藏 |
 | `memory_write` / `forget` / `resolve` | agent+（新增）；`memory/src/tools.ts` `minRole: agent` | `agent` | 单一写入者 | 无写权限（新近隐藏） |
 | `memory_search` | subagent+（新增）；`memory/src/api.ts:293` scope 为 `all`，工具携带 `minRole: subagent`（`memory/src/tools.ts:100`） | `subagent` | 研究可能需要历史 | 现在可用；无损失 |
 | `workspace_sessions` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+（新增）；`minRole: subagent`（`packages/uitstalie/workspace-tools/src/tools.ts:23-29`） | `subagent` | 只读的工作区状态、任务、消息与 artifact 引用 | 现在可用；无损失 |
-| `superagent_control` / `ledger` / `deliver` / `permission` | super+（新增）；`minRole: super` | `super` | 调度/账本/交付 | 对所有非 super 角色隐藏 |
+| `super-agent control` / `ledger` / `deliver` / `permission` | super+（新增）；`minRole: super` | `super` | 调度/账本/交付 | 对所有非 super 角色隐藏 |
 | `superagent_models` | super（新增）；jira super 分支内 `minRole: super`（`jira-agent/src/superagent.ts:755`、`:5788-5795`）；不在已批准矩阵快照中 | `super` | 供被调度工作使用的模型目录 | 对所有非 super 角色隐藏 |
 | `schedule_create/edit/list/view` | agent+（新增）；`minRole: agent`，保留运行时防护 | `agent` | subagent 无法触达下一次触发 | 对 subagent 隐藏；运行时拒绝仍然存在 |
 | `plugin_manager` | agent+（新增）；`minRole: agent` | `agent` | 全局 profile 管理 | 对 subagent 隐藏 |

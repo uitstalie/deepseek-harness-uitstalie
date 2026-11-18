@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Jira-Dienst",
-    "description": "Der einzige Schreiber des Registers: öffnet den Speicher und verwaltet die Push-Warteschlange."
-  }
-}

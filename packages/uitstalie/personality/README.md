@@ -1,5 +1,5 @@
 ---
-description: "Personality capability provider: the global PERSONALITY.md profile, OUTPUT_STYLE.yaml and WRITING_RULES.yaml, three stable prompt sections, and the read-only personality_analyze plus root-only personality_apply and write_like_human tools."
+description: "Personality capability provider: the global PERSONALITY.md profile, OUTPUT_STYLE.yaml and WRITING_RULES.yaml, three stable prompt sections, and the read-only personality_analyze plus root-only personality_apply tool that owns both global personality files."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-personality` gives every agent a stable, user-owned profile in the harness home. It reads four global files — `PERSONALITY.md`, `OUTPUT_STYLE.yaml`, `SUPERAGENT_OUTPUT_STYLE.yaml`, `WRITING_RULES.yaml` — and contributes three prompt sections: profile at order 100, role-selected output style at 690, enabled writing rules at 695. Subagents receive no 690 and only `personality_analyze`; ordinary and super roots use independent style files. `personality_analyze` scans session records and returns evidence-backed candidates without writing; root agents also get `personality_apply`, which writes the profile only after `confirm: true`, and `write_like_human`, which maintains global writing rules. No workspace overlay, turn-end learning, history file, or settings page.
+`dsh-personality` gives every agent a stable, user-owned profile in the harness home. It reads four global files — `PERSONALITY.md`, `OUTPUT_STYLE.yaml`, `SUPERAGENT_OUTPUT_STYLE.yaml`, `WRITING_RULES.yaml` — and contributes three prompt sections: profile at order 100, role-selected output style at 690, enabled writing rules at 695. Subagents receive no 690 and only `personality_analyze`; ordinary and super roots use independent style files. `personality_analyze` scans session records and returns evidence-backed candidates without writing; root agents also get `personality_apply`, which owns both global files and writes confirmed candidates or one writing-rules action after `confirm: true`. No workspace overlay, turn-end learning, history file, or settings page.
 
 ## Table of Contents
 
@@ -28,7 +28,7 @@ Mount the provider in the same web profile patch layer that mounts the organizer
   name: '@deepseek-ai/dsh-personality'
 ```
 
-The provider takes no configuration: every cap and path is fixed by the design. A role is declared by session/agent options (`agentOptions.role`: `agent`, `super`, or `subagent`); an undeclared root stays `agent`, and child lineage always resolves to `subagent`. It is a hard composition dependency on `ctx.dafeiyu` (the organizer), `ctx.dshStore` (the global scope), `ctx.fs` (the legacy backup move), and `ctx.sessionQuery` (analysis). The organized contribution is `scope: 'all'`, so every agent is wired, but a subagent receives only the profile and writing-rules sections and `personality_analyze`; it receives no 690 and neither `personality_apply` nor `write_like_human`. Normal roots receive 690 from `OUTPUT_STYLE.yaml`; super roots receive it from `SUPERAGENT_OUTPUT_STYLE.yaml`.
+The provider takes no configuration: every cap and path is fixed by the design. A role is declared by session/agent options (`agentOptions.role`: `agent`, `super`, or `subagent`); an undeclared root stays `agent`, and child lineage always resolves to `subagent`. It is a hard composition dependency on `ctx.dafeiyu` (the organizer), `ctx.dshStore` (the global scope), `ctx.fs` (the legacy backup move), and `ctx.sessionQuery` (analysis). The organized contribution is `scope: 'all'`, so every agent is wired, but a subagent receives only the profile and writing-rules sections and `personality_analyze`; it receives no 690 and not `personality_apply`. Normal roots receive 690 from `OUTPUT_STYLE.yaml`; super roots receive it from `SUPERAGENT_OUTPUT_STYLE.yaml`.
 
 All data lives under `<DSH_HOME>/personality/`, where `$DSH_HOME` defaults to `~/.dsh`:
 
@@ -37,24 +37,25 @@ All data lives under `<DSH_HOME>/personality/`, where `$DSH_HOME` defaults to `~
 | `PERSONALITY.md` | understanding / preference / style / identity entries | `personality_apply` after confirmation, or a person |
 | `OUTPUT_STYLE.yaml` | ordinary root style: tone, length, conclusion, lists, dispatch voice | A person; the provider only reads it |
 | `SUPERAGENT_OUTPUT_STYLE.yaml` | super-root style (independent slot) | A person; the provider only reads it |
-| `WRITING_RULES.yaml` | enabled writing constraints | A person; the provider only reads it |
+| `WRITING_RULES.yaml` | enabled writing constraints | `personality_apply` with `writingRules` after confirmation, or a person |
 | `legacy/PERSONALITY.<YYYYMMDDTHHMMSSZ>.md` | read-only backup of the pre-rewrite profile | The first activation, once |
 
 On first activation the provider moves a pre-rewrite `PERSONALITY.md` into `legacy/`, then creates `OUTPUT_STYLE.yaml` and `SUPERAGENT_OUTPUT_STYLE.yaml` with the neutral defaults and an empty `WRITING_RULES.yaml`. It never seeds or creates `PERSONALITY.md`: a missing profile reads as empty, and the first confirmed apply creates it. A workspace `.dsh/memory/PERSONALITY.md` is never read or written; finding one logs one warning per workspace.
 
 ## Understand the implementation
 
-`src/index.ts` is the function plugin: it exports `name`, `inject`, the capability id and labels, and `apply`. It registers exactly one `contractVersion: 2` capability with `id: 'personality'` and wires three prompt sections plus the three tools through the organizer's `tools(agent)` filter. There is no `Config` export and no settings metadata.
+`src/index.ts` is the function plugin: it exports `name`, `inject`, the capability id and labels, and `apply`. It registers exactly one `contractVersion: 2` capability with `id: 'personality'` and wires three prompt sections plus the two tools through the organizer's `tools(agent)` filter. There is no `Config` export and no settings metadata.
 
 - `src/global-store.ts` owns `PERSONALITY.md`: a YAML frontmatter with `version`, `updatedAt`, and an `entries` sequence, followed by no body. Entry ids are `<kind>.<lower-kebab-name>`; `understanding`, `preference`, `style`, and `identity` are accepted. One entry is at most 400 characters and the serialized document at most 32 KiB. Reads through the store atom's `global` scope; writes use `expected: version`, retry once on `FS_STALE_VERSION`, and refuse to overwrite when the retry also conflicts. Identity entries can only be written by a person; the tool path rejects them.
 - `src/global-store.ts` also owns the legacy backup: it moves the old file with `ctx.fs.moveFile`, falls back to read → create-if-absent → hash compare → delete when the backend cannot move, and reports a collision or a differing leftover on the next startup without overwriting either file. A failed migration keeps the capability unavailable and blocks writes.
 - `src/output-style.ts` reads `OUTPUT_STYLE.yaml`, rejects unknown enums, and renders the section. `src/writing-rules.ts` reads `WRITING_RULES.yaml`, enforces 100 rules and 32 KiB of enabled text; only the first 40 enabled rules are injected, with an omission line when more exist, mutates the document for CRUD callers, and renders the enabled rules sorted by `order` then id. Both readers treat a missing file as empty and degrade a malformed file to a warning.
 - `src/analyze.ts` reads session records through `ctx.sessionQuery`: the current session, one named session, or the most recent 1–20 sessions. It groups recurring evidence into candidates with a stable hash id, at least one exact excerpt and seq, an occurrence count, and `high` or `medium` confidence. It writes nothing.
 - `src/apply.ts` validates `confirm: true`, 1–20 candidates, and per-candidate evidence, rejects `identity`, and upserts each accepted entry through the version-guarded store. A per-candidate store failure is reported as a rejection instead of aborting the batch.
-- `src/writing-tool.ts` is the root-only `write_like_human` tool: it validates the action, mutates the document through `writing-rules.ts`, writes through the store's version guard with one stale retry, and returns a readable `ok: false` result instead of throwing. It re-applies the mutation to a fresh read after a stale conflict.
+- `src/agent-tools.ts` defines both model-facing tools. `personality_apply` accepts exactly one of `candidates` or `writingRules`, requires literal `confirm: true`, and is root-only.
+- `src/writing-tool.ts` backs the `writingRules` branch: it validates the action, mutates the document through `writing-rules.ts`, writes through the store's version guard with one stale retry, and returns a readable `ok: false` result instead of throwing. It re-applies the mutation to a fresh read after a stale conflict.
 - `src/defaults.ts` holds the first-activation seed text. `src/profile-prompt.ts` renders the profile section.
 
-Prompt text is cached per agent in a `WeakMap`. `onAgentCreated` loads the four files for that agent; both `personality_apply` and `write_like_human` refresh the calling agent after a successful write. There is no file watcher, so a file edited outside the tools reaches a newly created agent, not a live one.
+Prompt text is cached per agent in a `WeakMap`. `onAgentCreated` loads the four files for that agent; `personality_apply` refreshes the calling agent after a successful write. There is no file watcher, so a file edited outside the tools reaches a newly created agent, not a live one.
 
 ## Model Experience
 
@@ -124,29 +125,15 @@ Prefix-stable while the tool definition is unchanged. Analysis never writes a fi
 
 #### What the model sees
 
-A root agent additionally gets this tool. It takes 1–20 candidates, each with `kind`, `name`, `text`, and at least one evidence reference, plus the required literal `confirm: true`. The description tells the model to call it only after the user explicitly asks to apply reviewed candidates; identity candidates are rejected, and the result lists applied entry ids, rejected names with reasons, the profile path, and the revision.
+A root agent additionally gets this tool; it owns both global files and requires the literal `confirm: true`. Pass exactly one payload: `candidates` (1–20 confirmed profile entries, each with `kind`, `name`, `text`, and at least one evidence reference; identity candidates are rejected; the result lists applied entry ids, rejected names with reasons, the profile path, and the revision) or `writingRules` (one `WRITING_RULES.yaml` action, where `action` is `list`, `add`, `update`, `remove`, `enable`, `disable`, or `preview`; `id` selects a rule for update, remove, enable, and disable; `text` of 1–240 characters is required for add and update; `order` and `enabled` are optional; and `add` derives a lower-kebab id from the text when none is given and appends `-2`, `-3` on collision; its `writingRules` result reports `ok`, the current rules with id, text, enabled state, and order, the file path, and the store version; `preview` also returns the injected text; failures set `ok: false` and a readable `error`, while `applied` and `rejected` stay empty, the path is the writing-rules path, and revision is 0). Passing both payloads, neither payload, or a non-literal `confirm` returns a readable refusal without writing, and a writing-rules change is global and affects every agent.
 
 #### Token effect
 
-The tool schema is a fixed cost, plus one short result line per applied or rejected candidate. The tool never returns the profile body.
+The tool schema is a fixed cost, plus one short result line per applied or rejected candidate, or one line per rule for a writing-rules result. The tool never returns the profile body. The 100-rule count, 240-character text, and 32 KiB enabled-text limits keep both the rules file and section 695 bounded; only the first 40 enabled rules are injected.
 
 #### KV Cache effect
 
-Prefix-stable while the definition and profile are unchanged. A successful apply changes section 100, so the following request invalidates the prefix from that section onward; a refused call writes nothing.
-
-### The `write_like_human` tool
-
-#### What the model sees
-
-A root agent additionally gets this tool. `action` is required and is `list`, `add`, `update`, `remove`, `enable`, `disable`, or `preview`; `id` selects a rule for update, remove, enable, and disable, `text` (1–240 characters) is required for add and update, and `order` and `enabled` are optional. `add` derives a lower-kebab id from the text when none is given and appends `-2`, `-3` on collision. The result reports `ok`, the current rules with id, text, enabled state, and order, the file path, and the store version; `preview` also returns the injected text; failures set `ok: false` and a readable `error`. The description states that the change is global and affects every agent, and that only a root agent may call it.
-
-#### Token effect
-
-The schema is a fixed cost, plus one line per rule in the result. The 100-rule count, 240-character text, and 32 KiB enabled-text limits keep both the file and section 695 bounded; only the first 40 enabled rules are injected.
-
-#### KV Cache effect
-
-Prefix-stable while the rules file is unchanged. A successful write refreshes the calling root agent immediately and invalidates section 695 from that point on; `list` and `preview` do not touch the prompt.
+Prefix-stable while the definition and both files are unchanged. A successful profile write changes section 100, and a successful writing-rules write changes section 695, so the following request invalidates the prefix from that section onward; a refused call, `list`, and `preview` write nothing.
 
 ## Known Limitations and Deferred Work
 

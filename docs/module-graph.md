@@ -375,13 +375,6 @@ flowchart TD
     pkg_user_approval["user-approval"]
     pkg_user_questions["user-questions"]
   end
-  subgraph group_jira["packages/jira"]
-    pkg_client_ui_jira["client-ui-jira"]
-    pkg_jira_agent["jira-agent"]
-    pkg_jira_cli["jira-cli"]
-    pkg_jira_core["jira-core"]
-    pkg_jira_service["jira-service"]
-  end
   subgraph group_jobs["packages/jobs"]
     pkg_jobs["jobs"]
     pkg_jobs_local["jobs-local"]
@@ -478,9 +471,6 @@ flowchart TD
     pkg_subprocess["subprocess"]
     pkg_subprocess_local["subprocess-local"]
     pkg_win32_process["win32-process"]
-  end
-  subgraph group_superagent["packages/superagent"]
-    pkg_superagent_core["superagent-core"]
   end
   subgraph group_team["packages/team"]
     pkg_agent_team["agent-team"]
@@ -612,7 +602,6 @@ flowchart TD
   pkg_settings --> pkg_session
   pkg_subprocess_local --> pkg_subprocess
   pkg_subprocess_local --> pkg_timeout
-  pkg_superagent_core --> pkg_storage_domain
   pkg_otel --> pkg_session
   pkg_remote_mock --> pkg_typert_protocol
   pkg_session_snapshot --> pkg_http_proxy
@@ -1811,11 +1800,6 @@ flowchart TD
 | [`host-directory-picker-native`](../packages/host/directory-picker-native) | `host` | — |
 | [`host-open-in-app`](../packages/host/open-in-app) | `host` | — |
 | [`host-webserver`](../packages/host/webserver) | `host` | — |
-| [`client-ui-jira`](../packages/jira/ui-jira) | `jira` | — |
-| [`jira-agent`](../packages/jira/jira-agent) | `jira` | — |
-| [`jira-cli`](../packages/jira/jira-cli) | `jira` | — |
-| [`jira-core`](../packages/jira/jira-core) | `jira` | — |
-| [`jira-service`](../packages/jira/jira-service) | `jira` | — |
 | [`mcp-account`](../packages/mcp/mcp-account) | `mcp` | — |
 | [`message-quotes`](../packages/session/message-quotes) | `session` | — |
 | [`session-format`](../packages/session/session-format) | `session` | — |
@@ -1883,7 +1867,6 @@ flowchart TD
 | [`session-projection`](../packages/session/session-projection) | `session` | [`session`](../packages/core/session) |
 | [`settings`](../packages/settings/settings) | `settings` | [`brand`](../packages/util/brand), [`session`](../packages/core/session) |
 | [`subprocess-local`](../packages/subprocess/subprocess-local) | `subprocess` | [`subprocess`](../packages/subprocess/subprocess), [`timeout`](../packages/util/timeout) |
-| [`superagent-core`](../packages/superagent/superagent-core) | `superagent` | [`storage-domain`](../packages/storage/storage-domain) |
 | [`otel`](../packages/telemetry/otel) | `telemetry` | [`session`](../packages/core/session) |
 | [`remote-mock`](../packages/test-support/remote-mock) | `test-support` | [`typert-protocol`](../packages/typert/protocol) |
 | [`session-snapshot`](../packages/test-support/session-snapshot) | `test-support` | [`http-proxy`](../packages/util/http-proxy), [`session`](../packages/core/session) |

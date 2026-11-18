@@ -15,8 +15,8 @@ import type { Workspace, WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
 import { realpathNormalize } from '@deepseek-ai/dsh-workspace'
 import { WorkspaceScopeError } from './errors.ts'
 
-/** The registry operations scope resolution reads. */
-export type WorkspaceDirectory = Pick<WorkspaceRegistry, 'list' | 'archivedSessionIds'>
+/** The registry operations scope resolution and Session archiving read. */
+export type WorkspaceDirectory = Pick<WorkspaceRegistry, 'list' | 'archivedSessionIds' | 'archiveSession'>
 
 /** One resolved scope: the workspace a call addresses and whether it is the caller's. */
 export interface WorkspaceScope {

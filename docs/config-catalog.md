@@ -2144,106 +2144,6 @@ export interface TlsConfig {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-host-webserver -->
 
-<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->
-<a id="deepseek-aidsh-jira-agent"></a>
-
-## `@deepseek-ai/dsh-jira-agent`
-
-- `inject`: `jira` · `tools` · `dafeiyu`
-- `source`: [`packages/jira/jira-agent/src/api.ts:75`](../packages/jira/jira-agent/src/api.ts)
-
-```ts config-catalog
-/**
- * The agent row's own configuration: which preset an executor Session joins.
- *
- * Everything about the ledger itself still belongs to the `jira-service` row, and whether a model
- * surface exists at all belongs to dafeiyu's gates. This one field exists because a real executor
- * Session gets a whole composition, and the composition it may join has to be decided here rather
- * than by the model (DH-702): without it a dispatched Session would inherit the dispatcher's tools.
- */
-export type Config = Readonly<{
-  /** The agent preset a `superagent_dispatch` Session joins; unset means dispatch refuses. */
-  superagent_worker_preset?: string
-  /** How many issues one dispatcher may hold in progress at once; defaults to two. */
-  superagent_max_workers?: number
-  /** The single GitHub repository the source polls, as `owner/name`; unset means no source. */
-  superagent_github_repo?: string
-  /** Whether a session-less dispatcher pass may run; defaults to false (DH-714). */
-  superagent_daemon?: boolean
-  /** The checkout a session-less claim is dispatched into; the daemon needs it to run. */
-  superagent_daemon_workspace?: string
-  /**
-   * The directory the super agent lives in (DH-716, DH-718); **required** — unset means no super
-   * agent at all.
-   *
-   * The location is the person's decision, never a default: the path must be absolute, must not be
-   * a filesystem root, and must not live under the harness home, because the super agent owns that
-   * checkout with a write-capable sandbox. Once set, it is registered once at mount, pinned to the
-   * front of the workspace list, and a conversation opened there is the dispatcher.
-   */
-  superagent_home?: string
-  /**
-   * The permission preset the super agent is pinned to; defaults to `workspace-write`.
-   *
-   * Pinned when the agent is wired, so an opened session cannot silently inherit a looser bundle
-   * than the workspace it owns. Unset or blank leaves the host's own default in place.
-   */
-  superagent_permission_preset?: string
-  /**
-   * The preset a workspace Session started by `superagent_control start` joins; unset keeps the
-   * deployment's default composition (DH-719).
-   */
-  superagent_agent_preset?: string
-  /**
-   * Whether the super agent may hand files to every registered workspace through the in-process
-   * filesystem fence (default: true). Only the super agent's own sessions receive the grant, and
-   * shell/terminal confinement is unchanged; set false to keep the stricter single-workspace fence.
-   */
-  superagent_write_registered_workspaces?: boolean
-  /**
-   * Context percentage at which a Session row starts suggesting compaction (default 30). It is
-   * advice for the super agent, never an automatic compaction; the super agent still decides.
-   */
-  superagent_compact_threshold_percent?: number
-  /**
-   * Minutes a running workspace Session may run before the monitor names it (default 10). The
-   * summary is a suggestion for the super agent; nothing is aborted or interrupted automatically.
-   */
-  superagent_long_running_minutes?: number
-}>
-```
-<!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-agent -->
-
-<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-jira-service -->
-<a id="deepseek-aidsh-jira-service"></a>
-
-## `@deepseek-ai/dsh-jira-service`
-
-- `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/jira/jira-service/src/api.ts:91`](../packages/jira/jira-service/src/api.ts)
-
-```ts config-catalog
-/** What a `jira-service` row may configure: where the ledger is, who writes, whether to push. */
-export interface Config {
-  /** Ledger root; absent means resolve through `$JIRA_ROOT`, `$DSH_HOME/jira`, then the profile. */
-  root: Volatile<string | undefined>
-  /** The `owner.host` audit field; absent means this machine's hostname. */
-  host: Volatile<string | undefined>
-  /** Override the machine identity; absent means `$DSH_HOME/dsh-jira/machine-id`. */
-  machine_id: string | undefined
-  /** Git remote to join on load; a local, offline operation that never clones or fetches. */
-  remote: string | undefined
-  /** Push switch and debounce for the queue this service owns. */
-  push: {
-    /** Whether a settle schedules a push. Absent means false: everything stays local. */
-    enabled: Volatile<boolean>
-    /** Debounce window in milliseconds; absent means the core's default. */
-    debounce_ms: number | undefined
-  }
-}
-```
-<!-- END GENERATED config-catalog:@deepseek-ai/dsh-jira-service -->
-
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-jobs-local -->
 <a id="deepseek-aidsh-jobs-local"></a>
 
@@ -5836,7 +5736,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-file-drag` | — | [`packages/client/ui-file-drag/src/index.ts`](../packages/client/ui-file-drag/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-goal` | — | [`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-input-trigger` | — | [`packages/client/ui-input-trigger/src/index.ts`](../packages/client/ui-input-trigger/src/index.ts) |
-| `@deepseek-ai/dsh-client-ui-jira` | — | [`packages/jira/ui-jira/src/index.ts`](../packages/jira/ui-jira/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-jobs` | — | [`packages/client/ui-jobs/src/index.ts`](../packages/client/ui-jobs/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-layout` | — | [`packages/client/ui-layout/src/index.ts`](../packages/client/ui-layout/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-memory` | — | [`packages/uitstalie/ui-memory/src/index.ts`](../packages/uitstalie/ui-memory/src/index.ts) |
@@ -6003,8 +5902,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-home-paths` | — | [`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts) |
 | `@deepseek-ai/dsh-hook-protocol` | — | [`packages/experimental/hook-protocol/src/index.ts`](../packages/experimental/hook-protocol/src/index.ts) |
 | `@deepseek-ai/dsh-http-proxy` | — | [`packages/util/http-proxy/src/index.ts`](../packages/util/http-proxy/src/index.ts) |
-| `@deepseek-ai/dsh-jira-cli` | — | [`packages/jira/jira-cli/src/index.ts`](../packages/jira/jira-cli/src/index.ts) |
-| `@deepseek-ai/dsh-jira-core` | — | [`packages/jira/jira-core/src/index.ts`](../packages/jira/jira-core/src/index.ts) |
 | `@deepseek-ai/dsh-launch-environment` | — | [`packages/util/launch-environment/src/index.ts`](../packages/util/launch-environment/src/index.ts) |
 | `@deepseek-ai/dsh-lazy-require` | — | [`packages/util/lazy-require/src/index.ts`](../packages/util/lazy-require/src/index.ts) |
 | `@deepseek-ai/dsh-llm-deepseek` | — | [`packages/llm/llm-deepseek/src/index.ts`](../packages/llm/llm-deepseek/src/index.ts) |
@@ -6033,7 +5930,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-session-telemetry` | — | [`packages/session/session-telemetry/src/index.ts`](../packages/session/session-telemetry/src/index.ts) |
 | `@deepseek-ai/dsh-session-title-llm` | — | [`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts) |
 | `@deepseek-ai/dsh-ssh-helper-runtime` | — | [`packages/ssh/ssh-helper-runtime/src/index.ts`](../packages/ssh/ssh-helper-runtime/src/index.ts) |
-| `@deepseek-ai/dsh-superagent-core` | — | [`packages/superagent/superagent-core/src/index.ts`](../packages/superagent/superagent-core/src/index.ts) |
 | `@deepseek-ai/dsh-timeout` | — | [`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts) |
 | `@deepseek-ai/dsh-tool-testkit` | — | [`packages/test-support/tool-testkit/src/index.ts`](../packages/test-support/tool-testkit/src/index.ts) |
 | `@deepseek-ai/dsh-typert-generator` | — | [`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts) |

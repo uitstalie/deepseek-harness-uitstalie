@@ -2,15 +2,11 @@
 #
 # 宿主侧：`.dsh` 基础接口（tool-dsh-store）、常驻上下文切面
 # （agent-instructions-plus，原生 instruction loader 仍按自己的行运行）、角色卡
-# （persona-card：能力默认关，`/persona use` 或 row 的 active 才注入）、以及 jira 账本
-# （jira-service 提供服务，jira-agent 把工具/命令/技能/守卫/收尾接到 dafeiyu）。
-# 浏览器侧：models-dev 设置页、rules 按钮、jira 台账设置页、common-view overlay。
+# （persona-card：能力默认关，`/persona use` 或 row 的 active 才注入）。
+# 浏览器侧：models-dev 设置页、rules 按钮、common-view overlay。
 - insert:
     - id: dafeiyu
       name: '@deepseek-ai/dsh-dafeiyu'
-      config:
-        capabilities:
-          jira: { enabled: true }
     - id: memory
       name: '@deepseek-ai/dsh-memory'
     - id: workspace-tools
@@ -29,19 +25,6 @@
       name: '@deepseek-ai/dsh-token-calculator'
     - id: home-backup
       name: '@deepseek-ai/dsh-home-backup'
-    - id: jira-service
-      name: '@deepseek-ai/dsh-jira-service'
-      config:
-        push:
-          enabled: false
-    - id: jira-agent
-      name: '@deepseek-ai/dsh-jira-agent'
-      config:
-        # The executor preset shipped by this same bundle (presets/jira-worker.patch.yml). The
-        # dispatch tool refuses to start an executor Session without it, so the delivered
-        # composition must pair the two; the super agent itself stays opt-in through
-        # `superagent_home`, which a person chooses from the jira settings page.
-        superagent_worker_preset: jira-worker
     - id: agent-instructions-plus
       name: '@deepseek-ai/dsh-agent-instructions-plus'
     - id: ui-models-dev
@@ -50,8 +33,6 @@
       name: '@deepseek-ai/dsh-client-ui-tool-dsh-store'
     - id: ui-dafeiyu
       name: '@deepseek-ai/dsh-client-ui-dafeiyu'
-    - id: jira-ui
-      name: '@deepseek-ai/dsh-client-ui-jira'
     - id: ui-memory
       name: '@deepseek-ai/dsh-client-ui-memory'
     - id: ui-common-view

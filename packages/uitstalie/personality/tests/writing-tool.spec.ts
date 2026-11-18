@@ -1,6 +1,6 @@
 /**
- * `write_like_human` tests: every action, the global write, the readable
- * failure paths, and the one-retry stale guard.
+ * Writing-rules action tests behind `personality_apply`: every action, the
+ * global write, the readable failure paths, and the one-retry stale guard.
  */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -225,7 +225,7 @@ test('renders success, preview, and failure reports', () => {
   expect(renderWritingRulesResult({ action: 'preview', ok: true, rules: [], path: '/rules.yaml', promptSection: '' })).toContain('(empty)')
   expect(renderWritingRulesResult({ action: 'preview', ok: true, rules: [], path: '/rules.yaml', promptSection: '- On.' })).toContain('- On.')
   expect(renderWritingRulesResult({ action: 'add', ok: false, error: 'nope', rules: [], path: '/rules.yaml' }))
-    .toBe('write_like_human failed (add): nope')
+    .toBe('personality_apply failed (add): nope')
   const many = Array.from({ length: 41 }, (_, index) => rule(`r-${String(index)}`, 'On.', index))
   expect(renderWritingRulesResult({ action: 'list', ok: true, rules: many, path: '/rules.yaml' }))
     .toContain('1 rule(s) not injected: resident limit is 40.')

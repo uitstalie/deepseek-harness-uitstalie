@@ -15,8 +15,8 @@
 | batch_close/tag_create 渲染成 ok | 仍存在：`tools.ts:194-201` 对没有 `issue.key` 的 payload 只输出 `ok`；batch 的 `partial` 和 tag 的 `committed` 不可见。 | 做：渲染 closed、partial.failed、tag、committed 及原因。 |
 | 嵌套 properties/items 不递归校验，错误数组成员被吞 | 仍存在：`schema.ts:118-149` 只校验顶层；`asStringList` 将非法数组变成 undefined。 | 做：递归校验对象、数组、oneOf、required 与闭合对象，一次报告完整路径。 |
 | 成功结果丢 rejected/message/partial | 仍存在：`tools.ts:158-167` 成功后不渲染警告；KB mirror.failed 也不可见。 | 做：共享成功渲染出口保留警告、partial 与 mirror 失败。 |
-| jira_issue get 丢评论 | 仍存在：runner 返回 comments，`tools.ts:194-201` 固定传空数组。 | 做：渲染真实 comments，并加正文断言。 |
-| jira_kb get 丢正文 | 仍存在：`tools.ts:245-251` 只渲染元数据。 | 做：复用 core 的完整 KB renderer。 |
+| JIRA issue tool get 丢评论 | 仍存在：runner 返回 comments，`tools.ts:194-201` 固定传空数组。 | 做：渲染真实 comments，并加正文断言。 |
+| JIRA knowledge tool get 丢正文 | 仍存在：`tools.ts:245-251` 只渲染元数据。 | 做：复用 core 的完整 KB renderer。 |
 | Markdown resolve 只查最新 100 条 | 仍存在：`superagent.ts:3455-3458` 先 limit 100 再按 id 找。 | 做：按 id 全量查最新记录；补超过 100 条的回归。 |
 | dispatch list 无 matched/remaining/truncated | 仍存在：domain 与 Markdown 都直接 slice，工具只返回 entries。 | 做：两后端返回同一计数结构，模型可见文本提示 remaining。 |
 | domain 只改 artifacts/decisions 不刷新 Markdown | 仍存在：`dispatch-store.ts:302-308` 只比较 status/outcome。 | 做：完整字段变化触发投影，补 Windows 实跑测试。 |

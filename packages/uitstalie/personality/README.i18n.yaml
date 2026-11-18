@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/uitstalie/personality/README.md
 /:
-  en: 79c3d0a0f23d7882
-  zh: 6a36e9530a5bb60f
+  en: 1f40536d45d12e05
+  zh: 326ae618c268bb30
 /deepseek-ai-dsh-personality:
   en: ad977fbc16ef41cc
   zh: 7bef7af091f1a40e
 /deepseek-ai-dsh-personality/summary:
-  en: 206bd4e0ad2db5fe
-  zh: 1a126cf3c63180fb
+  en: 0ff044fe6a5e4e9b
+  zh: ea7ef54348b4a1ee
 /deepseek-ai-dsh-personality/table-of-contents:
   en: cbfb676bb9a7a2de
   zh: 528864635b577290
 /deepseek-ai-dsh-personality/use-this-package:
-  en: 30497858517e0c6f
-  zh: baf24f5972b725f8
+  en: d906d5b83739d2ba
+  zh: c808d717519b9e93
 /deepseek-ai-dsh-personality/understand-the-implementation:
-  en: b278e1cc183e95fa
-  zh: a10800946f7ef565
+  en: 7891282a18751412
+  zh: a6bfd7ddce061250
 /deepseek-ai-dsh-personality/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -60,26 +60,14 @@
   en: e6eb825dd0534e7c
   zh: 83a82e6cde6c113f
 /deepseek-ai-dsh-personality/model-experience/the-personality-apply-tool/what-the-model-sees:
-  en: 1bfa6f57ee9806f3
-  zh: d653eeca5e5fd509
+  en: 2cb8a565e560557e
+  zh: fea7c6d8429d44e5
 /deepseek-ai-dsh-personality/model-experience/the-personality-apply-tool/token-effect:
-  en: a139cce893ce44f1
-  zh: baac19174ad33ee0
+  en: 4ac92a1194ab5715
+  zh: f6789ae95933f61b
 /deepseek-ai-dsh-personality/model-experience/the-personality-apply-tool/kv-cache-effect:
-  en: 1e472e8151b9f3ec
-  zh: 6d6c8a653a0326e8
-/deepseek-ai-dsh-personality/model-experience/the-write-like-human-tool:
-  en: 3a8a03c26004b19b
-  zh: 4a4e302d9900ab4b
-/deepseek-ai-dsh-personality/model-experience/the-write-like-human-tool/what-the-model-sees:
-  en: 19c70eb2b702994f
-  zh: 6654a6e95ae5201e
-/deepseek-ai-dsh-personality/model-experience/the-write-like-human-tool/token-effect:
-  en: 46b4a0d63c866369
-  zh: 68e72951bac32292
-/deepseek-ai-dsh-personality/model-experience/the-write-like-human-tool/kv-cache-effect:
-  en: 416023a8f9b21240
-  zh: 1860f89188a29cf2
+  en: 84829239191a056a
+  zh: 56705382ac108c2b
 /deepseek-ai-dsh-personality/known-limitations-and-deferred-work:
   en: e0f3d7c0932b8e5c
   zh: 4fbf2cd2f1ba4a44

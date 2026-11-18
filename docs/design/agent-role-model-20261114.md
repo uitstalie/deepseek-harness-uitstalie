@@ -54,13 +54,13 @@ The role field is the shared source; each consumer migrates separately. This rou
 |---|---|---|---|---|
 | `personality_analyze` | all agents; `personality/index.ts:122` | `subagent`+ | Read-only research | Nothing |
 | `personality_apply` / `write_like_human` | subagent excluded; `personality/index.ts:122` | `agent`+ | Global write | No write access (already) |
-| `jira_issue` / `jira_list` / `jira_kb` | agent+ (new); `minRole: agent` | `agent` | Ledger identity belongs to main/workspace Sessions | Hidden from subagent |
-| jira `issue_work` | agent+ (new); `minRole: agent` | `agent` | Worker executor is an agent root | Hidden from subagent |
+| `JIRA issue tool` / `JIRA list tool` / `JIRA knowledge tool` | agent+ (new); `minRole: agent` | `agent` | Ledger identity belongs to main/workspace Sessions | Hidden from subagent |
+| jira `executor ledger tool` | agent+ (new); `minRole: agent` | `agent` | Worker executor is an agent root | Hidden from subagent |
 | `tool-dsh-store` | agent+ (new); `minRole: agent` | `agent` | Rules/skills management | Hidden from subagent |
 | `memory_write` / `forget` / `resolve` | agent+ (new); `memory/src/tools.ts` `minRole: agent` | `agent` | Single writer | No write access (newly hidden) |
 | `memory_search` | subagent+ (new); `memory/src/api.ts:293` scope `all`, the tool carries `minRole: subagent` (`memory/src/tools.ts:100`) | `subagent` | Research may need history | Now available; no loss |
 | `workspace_sessions` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+ (new); `minRole: subagent` (`packages/uitstalie/workspace-tools/src/tools.ts:23-29`) | `subagent` | Read-only workspace status, tasks, messages, and artifact references | Now available; no loss |
-| `superagent_control` / `ledger` / `deliver` / `permission` | super+ (new); `minRole: super` | `super` | Dispatch/ledger/delivery | Hidden from all non-super roles |
+| `super-agent control` / `ledger` / `deliver` / `permission` | super+ (new); `minRole: super` | `super` | Dispatch/ledger/delivery | Hidden from all non-super roles |
 | `superagent_models` | super (new); `minRole: super` in the jira super branch (`jira-agent/src/superagent.ts:755`, `:5788-5795`); not enumerated in the approved-matrix snapshot | `super` | Model catalog for dispatched work | Hidden from all non-super roles |
 | `schedule_create/edit/list/view` | agent+ (new); `minRole: agent`, runtime guard retained | `agent` | Subagent cannot reach next trigger | Hidden from subagent; runtime refusal remains |
 | `plugin_manager` | agent+ (new); `minRole: agent` | `agent` | Global profile management | Hidden from subagent |

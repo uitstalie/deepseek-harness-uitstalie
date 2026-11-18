@@ -7,8 +7,8 @@
 ## 0. 结论先行
 
 1. **Jira 台账与 superagent 已经分成两类事实，但代码没有按这个边界分层。** 通用 issue、评论、KB、机器身份、跨机同步仍适合单人跨机任务追踪；`superagent_session` 的 workspace 路由、报告绑定与去重则已是独立运行机制。后者现在由 `.superagent/reports.jsonl` 负责，不再依赖 issue 状态或 Markdown 台账。剩余问题主要是 dispatch 的语义记录、UI/权限和工具注册仍全部位于 `jira-agent` / `jira-service`。
-2. **本机实际使用中，superagent 的主要动作不是 Jira issue 工作流，而是派 Session、读回报告、再手工补 dispatch 台账。** 22 个排除本次调查树的相关 session 中，17 个没有 `jira_*` 或 `superagent_*` 调用；5 个有调用的 session 共产生 282 次调用，其中 `superagent_session` 96 次、`superagent_ledger` 74 次，而 `jira_issue/list/kb` 共 100 次。Jira issue 写入高度集中于一个长期 dev session，并非每个工作区都在用。
-3. **面向插件重写，应先保留通用任务/知识/审计能力，再把 superagent 控制面迁出，而不是继续扩张同一个插件。** 优先级最高的是让可见工具结果与实际写入一致，并消除多重权威：当前存在“成功后补写被静默忽略”“写 `failed` 仍显示 `returned`”“schema 有嵌套类型但运行时没有递归校验”“警告/正文在渲染时消失”等问题。报告 journal 已完成正确的方向性拆分；还需把 `superagent_ledger`、workspace/session 工具及相关 Remote/UI 从 Jira 包搬出，Jira 只留可选 issue 引用和投递后的人读投影。
+2. **本机实际使用中，superagent 的主要动作不是 Jira issue 工作流，而是派 Session、读回报告、再手工补 dispatch 台账。** 22 个排除本次调查树的相关 session 中，17 个没有 `jira_*` 或 `superagent_*` 调用；5 个有调用的 session 共产生 282 次调用，其中 `superagent_session` 96 次、`super-agent ledger` 74 次，而 `JIRA issue tool/list/kb` 共 100 次。Jira issue 写入高度集中于一个长期 dev session，并非每个工作区都在用。
+3. **面向插件重写，应先保留通用任务/知识/审计能力，再把 superagent 控制面迁出，而不是继续扩张同一个插件。** 优先级最高的是让可见工具结果与实际写入一致，并消除多重权威：当前存在“成功后补写被静默忽略”“写 `failed` 仍显示 `returned`”“schema 有嵌套类型但运行时没有递归校验”“警告/正文在渲染时消失”等问题。报告 journal 已完成正确的方向性拆分；还需把 `super-agent ledger`、workspace/session 工具及相关 Remote/UI 从 Jira 包搬出，Jira 只留可选 issue 引用和投递后的人读投影。
 
 ### 推荐的最终职责
 
@@ -35,13 +35,13 @@
 - super workspace：`/home/uitstalie/桌面/dsh/superagent/.superagent` 与其 `.dsh/memory`。
 - 日志：`/home/uitstalie/.dsh/sessions` 下 dev、superagent、MTool、Rockstar Games 的压缩 JSONL。
 
-为避免混淆，下文将三种东西都写全称：**Jira issue 台账**是共享 git 仓；**dispatch 台账**是 `superagent_ledger` 所读的 dispatch domain/Markdown；**报告 journal**是 `.superagent/reports.jsonl`。`~/.dsh/dsh-jira` 不是当前 issue 仓，只保存机器 id、扫描 watermark 等本机状态；真实 issue 仓位置由 web profile 的 `jira-service.config.root` 指定。
+为避免混淆，下文将三种东西都写全称：**Jira issue 台账**是共享 git 仓；**dispatch 台账**是 `super-agent ledger` 所读的 dispatch domain/Markdown；**报告 journal**是 `.superagent/reports.jsonl`。`~/.dsh/dsh-jira` 不是当前 issue 仓，只保存机器 id、扫描 watermark 等本机状态；真实 issue 仓位置由 web profile 的 `jira-service.config.root` 指定。
 
 ### 1.2 Session 统计口径
 
 只读解压 `session.v4.jsonl.zstd`，仅计真正落盘的 `type:"tool/call"`，不把 prompt、工具目录或 assistant 草稿中的工具名计入。共扫描 27 个相关 JSONL；排除本次调查的父 session 和 4 个调查子 session 后，统计 22 个：dev 13、superagent 6、MTool 1、Rockstar Games 2。
 
-“写”按调用意图分类，不代表调用成功。例如 `jira_issue comment/create/assignee/switch_state`、`superagent_ledger resolve`、`superagent_session append/start` 记写；list/get/search/inspect/roster 记读。错误用 `isError:true` 或模型可见正文以 `error:` / `Error:` 开头双重判断。任务本身报告 `status:"failed"` 不等于工具调用失败。
+“写”按调用意图分类，不代表调用成功。例如 `JIRA issue tool comment/create/assignee/switch_state`、`super-agent ledger resolve`、`superagent_session append/start` 记写；list/get/search/inspect/roster 记读。错误用 `isError:true` 或模型可见正文以 `error:` / `Error:` 开头双重判断。任务本身报告 `status:"failed"` 不等于工具调用失败。
 
 这些数字是本机现有日志的横截面，不是频率基准：一个 session 可跨多天、可多次恢复，旧日志还包含已经修复的实现；因此本文把“真实发生的调用/错误”与“当前源码仍有风险”分开写。
 
@@ -58,10 +58,10 @@
 
 | 工具 | 读 | 写 | 合计 | 动作明细 |
 |---|---:|---:|---:|---|
-| `jira_issue` | 9 | 71 | 80 | get 9；create 15；comment 29；assignee 10；switch_state 17 |
-| `jira_list` | 19 | 0 | 19 | 默认列表查询 |
-| `jira_kb` | 1 | 0 | 1 | 仅 search，没有 create/update |
-| `superagent_ledger` | 26 | 48 | 74 | list 26；resolve 48；无 record |
+| `JIRA issue tool` | 9 | 71 | 80 | get 9；create 15；comment 29；assignee 10；switch_state 17 |
+| `JIRA list tool` | 19 | 0 | 19 | 默认列表查询 |
+| `JIRA knowledge tool` | 1 | 0 | 1 | 仅 search，没有 create/update |
+| `super-agent ledger` | 26 | 48 | 74 | list 26；resolve 48；无 record |
 | `superagent_session` | 31 | 65 | 96 | list 20；inspect 11；start 8；append 56；prompt 1 |
 | `superagent_workspace` | 5 | 1 | 6 | roster 4；orphans 1；ensure 1 |
 | `superagent_models` | 6 | 0 | 6 | 模型/effort 查询 |
@@ -72,17 +72,17 @@
 | Session | 角色与规模 | 相关调用 |
 |---|---|---:|
 | `session-486d5296-3fd8-4158-84c7-fb5abc42257c` | dev，长期跨多次任务；2150 个工具调用 | 95 |
-| `6005a837-6cc0-42f9-89e5-048569442255` | superagent 子会话；只读一次 `jira_list` | 1 |
+| `6005a837-6cc0-42f9-89e5-048569442255` | superagent 子会话；只读一次 `JIRA list tool` | 1 |
 | `session-3f77ab15-21eb-437c-a6e9-942e0a26381e` | superagent；含错挂后的手工修正 | 33 |
 | `session-56e66d2e-dbe6-40ac-98c6-2a4ef3840ea8` | superagent；24 次手工 resolve | 78 |
 | `session-e00351a8-2a4e-48f1-ad6e-e107d926d723` | superagent；20 次手工 resolve | 75 |
 
 关键解读：
 
-- 78 次 `jira_issue` 出现在同一个长期 dev session；它承担建单、登记设计、认领、状态迁移和评论，是本分支“先建 DH issue、用 key 关联原生修改”的工作流。
-- 3 个主要 superagent session 的 `superagent_ledger` 动作全部是 26 次 list 和 48 次 resolve，没有手工 record。自动派发已经覆盖 pending 创建，额外成本主要在回读后补结果。
+- 78 次 `JIRA issue tool` 出现在同一个长期 dev session；它承担建单、登记设计、认领、状态迁移和评论，是本分支“先建 DH issue、用 key 关联原生修改”的工作流。
+- 3 个主要 superagent session 的 `super-agent ledger` 动作全部是 26 次 list 和 48 次 resolve，没有手工 record。自动派发已经覆盖 pending 创建，额外成本主要在回读后补结果。
 - 当前 super workspace 明确禁止从超级会话运行 issue claim loop：`packages/jira/jira-agent/src/superagent.ts:129-131`。旧 issue claim 的 scan/claim/dispatch/source/status 与现在的 workspace Session 派遣是两条不同路径，不能把工具总数当成它们都在被使用。
-- `jira_kb` 仅一次 search，且没有通过工具新增知识；本机现有 KB 的维护并不等于 agent 日常频繁读写 KB。
+- `JIRA knowledge tool` 仅一次 search，且没有通过工具新增知识；本机现有 KB 的维护并不等于 agent 日常频繁读写 KB。
 
 ### 2.2 哪些工作完全不碰台账
 
@@ -129,7 +129,7 @@
 |---|---|---|
 | `jira-core` | 实体、Markdown/frontmatter 编解码、词表、锁、CAS、git、同步、KB、session close-out | 不含 DSH 服务，但含通用任务与本机 IO 的完整实现 |
 | `jira-service` | `ctx.jira`、Store/queue 生命周期、Remote、superagent 状态/确认/setup | 通用服务已直接含 `superagentStatus/Confirm/Triggers/History`（`types.ts:289-315`） |
-| `jira-agent` | 三个 Jira 工具、issue_work、skills、命令、turn-end settle，以及整套 superagent | `superagent.ts` 单文件 5006 行；两个能力共用同一 row（`index.ts:205-239`） |
+| `jira-agent` | 三个 Jira 工具、executor ledger tool、skills、命令、turn-end settle，以及整套 superagent | `superagent.ts` 单文件 5006 行；两个能力共用同一 row（`index.ts:205-239`） |
 | `jira-cli` | 人面 CLI，直接创建 core Store 和 push queue | 不经 `ctx.jira`；与运行中 service 不共享事件/队列 |
 | `ui-jira` | 看板、详情、KB、设置、superagent 面板与侧栏 | 通用 issue/KB 基本只读，但 superagent 确认和 setup 是写操作 |
 
@@ -147,7 +147,7 @@ Tag 有独立注册文件、描述和 aliases；issue 使用未注册 tag 会被
 
 KB 位于 `knowledge/<domain>/KB-<n>.md`，有 runbook/pitfall/howto/concept、tags、机器/OS/工具/捕获时间、可选 source 和 source_sha256、关联 issues 和正文。文件来源必须带 hash；双向引用在 KB 与 issue 间镜像，但不是跨文件事务，部分失败通过 `mirror.failed` 表达。检索是 title/body 的子串扫描，不含向量/RAG，默认 10、最大 50，snippet 200 字并返回文件绝对行号（`kbsearch.ts:19-24,107-167`）。
 
-通用 issue **没有独立 `evidence[]` 或 verification 字段**。验证证据主要写在评论、正文和 git commit；`issue_work deliver` 只强制非空报告评论并进入 in_review。KB 的 source/hash 是来源谱系，不是 issue 验收结构。若重写需要结构化验收，应作为新增领域能力评估，不能声称当前已有。
+通用 issue **没有独立 `evidence[]` 或 verification 字段**。验证证据主要写在评论、正文和 git commit；`executor ledger tool deliver` 只强制非空报告评论并进入 in_review。KB 的 source/hash 是来源谱系，不是 issue 验收结构。若重写需要结构化验收，应作为新增领域能力评估，不能声称当前已有。
 
 ### 3.4 为单人跨机服务的设计
 
@@ -162,7 +162,7 @@ KB 位于 `knowledge/<domain>/KB-<n>.md`，有 runbook/pitfall/howto/concept、t
 
 ### 3.5 Superagent 特有与混杂点
 
-**特有**：`[claim-proposal]`/`[claim-approved]`、worker preset 与 issue_work、dispatch marker、并发槽、daemon、GitHub import、workspace 路由、Session inspect/abort/compact、跨 workspace 文件投递、报告 journal。这些都不应成为通用 Jira core 的隐含依赖。
+**特有**：`[claim-proposal]`/`[claim-approved]`、worker preset 与 executor ledger tool、dispatch marker、并发槽、daemon、GitHub import、workspace 路由、Session inspect/abort/compact、跨 workspace 文件投递、报告 journal。这些都不应成为通用 Jira core 的隐含依赖。
 
 **混杂**：上述功能实际都编译进 `jira-agent`；`jira-service` 的通用 API 和 Remote 直接暴露 superagent 方法；`ui-jira` 同时承担通用看板与 superagent 控制面板；`superagent_home` 也是 Jira agent row 的配置。即使替换底层 issue store，仍必须迁移/重写这些宿主组件，而不只是实现几个 `jira_*` 工具。
 
@@ -181,8 +181,8 @@ KB 位于 `knowledge/<domain>/KB-<n>.md`，有 runbook/pitfall/howto/concept、t
 
 | 严重度 | 问题与证据 | 后果 |
 |---|---|---|
-| P2 | `jira_issue get` runner 返回 comments，renderer 固定传空数组（`toolIssue.ts:216-220`、`tools.ts:194-201`） | 技能声称 get 返回评论，模型可见文本却没有；claim/dispatch marker 也难审阅 |
-| P2 | `jira_kb get` runner 有完整 entry，renderer 只显示 key/type/title/lineage/issues（`tools.ts:245-251`） | 搜索后 get 仍没有知识正文；技能“one entry, whole”不成立 |
+| P2 | `JIRA issue tool get` runner 返回 comments，renderer 固定传空数组（`toolIssue.ts:216-220`、`tools.ts:194-201`） | 技能声称 get 返回评论，模型可见文本却没有；claim/dispatch marker 也难审阅 |
+| P2 | `JIRA knowledge tool get` runner 有完整 entry，renderer 只显示 key/type/title/lineage/issues（`tools.ts:245-251`） | 搜索后 get 仍没有知识正文；技能“one entry, whole”不成立 |
 | P2 | Markdown resolve 只在最新 100 条里找 id（`superagent.ts:3455-3460`），domain 按 id 全表查；list 无 matched/remaining/truncated（`superagent.ts:3366-3377`） | 旧任务可误报 not found；空结果不区分“无匹配”与“默认窗口外还有”；两个后端行为不同 |
 | P2 | domain 更新 artifacts/decisions，却只有 status/outcome 改变才追加 Markdown（`dispatch-store.ts:291-308`） | domain 与人读投影分歧，直到后续 syncProjection 才可能补偿 |
 | P2 | resolve 允许 pending/returned/failed，outcome 可选；描述却称 returned/failed 修正；返回 `ledger.file` 在自动派发是目录、手工 record 是具体文件（`superagent.ts:738-767,965-971`） | 首次终结、补充、回退的语义混乱；同名 file 字段类型含义不同 |
@@ -191,10 +191,10 @@ KB 位于 `knowledge/<domain>/KB-<n>.md`，有 runbook/pitfall/howto/concept、t
 
 ### 4.3 低优先级与参数经验
 
-- `jira_issue create` 的 project 可从 cwd 推断，issue_type 默认 task；`close` 可缺省目标为第一个 closed 状态；这些在参数说明中不清楚。
+- `JIRA issue tool create` 的 project 可从 cwd 推断，issue_type 默认 task；`close` 可缺省目标为第一个 closed 状态；这些在参数说明中不清楚。
 - `expected_revision` 接受 number 而非 integer；无意义的小数/负数会进入服务后失败。
-- `jira_list`/KB 的非正 limit/top_k 回默认值，ledger 则 clamp 为 1；三套无效值行为不同。
-- `jira-board` 主要讲 `/jira`/CLI，未明确指出纯 agent 用 `jira_list`；`jira-triage` 的 `--all` 对应工具 `include_closed:true`。blocked link 关闭后只是不再阻塞，不会自动删除链接。
+- `JIRA list tool`/KB 的非正 limit/top_k 回默认值，ledger 则 clamp 为 1；三套无效值行为不同。
+- `jira-board` 主要讲 `/jira`/CLI，未明确指出纯 agent 用 `JIRA list tool`；`jira-triage` 的 `--all` 对应工具 `include_closed:true`。blocked link 关闭后只是不再阻塞，不会自动删除链接。
 - “every write is a commit”不准确：写盘成功而 commit 失败是显式支持的降级路径。评论不推进 issue revision，但可续租，所以“comment never changes issue”只适用于正文/revision。
 
 ### 4.4 真实错误原文与根因
@@ -203,14 +203,14 @@ KB 位于 `knowledge/<domain>/KB-<n>.md`，有 runbook/pitfall/howto/concept、t
 
 | Session / 事件 / 时间 | 调用 | 原文 | 判断 |
 |---|---|---|---|
-| `session-486d5296…` 行 1645/1646，2026-10-26 22:29:02 | `jira_list` | `error: INVALID_INPUT: the store has no readable config.md vocabulary ({"root":"/home/uitstalie/.dsh/jira","reason":"missing"})` | 默认 root 与后来显式 cloudstore 不同；Windows 复跑必须先固定 root |
-| 同上，行 1839/1840，22:33:18 | `jira_list` | `Error: unknown tool "jira_list"` | 部署/能力未装载，不是数据问题 |
-| 同上，行 4818/4819，2026-10-27 00:46:31 | `jira_issue switch_state` | `error: INVALID_TRANSITION: cannot move from "todo" to "closed" ({"from":"todo","to":"closed","allowed":["in_progress","cancelled"]})` | 状态机拒绝清楚；agent 未先走 in_progress |
-| 同上，行 10262/10263，2026-11-04 22:44:47 | `jira_list` | `Error: unknown tool "jira_list"` | 又一次运行时能力不可见 |
-| `session-56e66d2e…` 行 1223/1224，2026-11-06 22:25:03 | `superagent_ledger resolve` | `error: INVALID_INPUT: resolve needs \`status\` of pending, returned or failed` | 必填只在运行时，schema 不提示；语义又不清楚 |
+| `session-486d5296…` 行 1645/1646，2026-10-26 22:29:02 | `JIRA list tool` | `error: INVALID_INPUT: the store has no readable config.md vocabulary ({"root":"/home/uitstalie/.dsh/jira","reason":"missing"})` | 默认 root 与后来显式 cloudstore 不同；Windows 复跑必须先固定 root |
+| 同上，行 1839/1840，22:33:18 | `JIRA list tool` | `Error: unknown tool "JIRA list tool"` | 部署/能力未装载，不是数据问题 |
+| 同上，行 4818/4819，2026-10-27 00:46:31 | `JIRA issue tool switch_state` | `error: INVALID_TRANSITION: cannot move from "todo" to "closed" ({"from":"todo","to":"closed","allowed":["in_progress","cancelled"]})` | 状态机拒绝清楚；agent 未先走 in_progress |
+| 同上，行 10262/10263，2026-11-04 22:44:47 | `JIRA list tool` | `Error: unknown tool "JIRA list tool"` | 又一次运行时能力不可见 |
+| `session-56e66d2e…` 行 1223/1224，2026-11-06 22:25:03 | `super-agent ledger resolve` | `error: INVALID_INPUT: resolve needs \`status\` of pending, returned or failed` | 必填只在运行时，schema 不提示；语义又不清楚 |
 | 同上，行 2392/2393，2026-11-07 01:39:43 | `superagent_session append compact:true` | `error: INVALID_INPUT: the context was not compacted, so the follow-up was not sent: this deployment has no compaction seam ...` | 能力缺席有明确拒绝；跨机部署需核 composition |
-| `session-e00351a8…` 行 154/156，2026-11-07 21:36:06 | `jira_issue get DH-904` | `error: NOT_FOUND: issue DH-904 not found ({"key":"DH-904","kind":"issue"})` | 本地 ledger 停在前两天而代码/文档已有新 issue；读取陈旧副本 |
-| 同上，行 155/157 | `jira_issue get DH-725` | 同类 `NOT_FOUND` | 同上，不应当作 issue 从未存在 |
+| `session-e00351a8…` 行 154/156，2026-11-07 21:36:06 | `JIRA issue tool get DH-904` | `error: NOT_FOUND: issue DH-904 not found ({"key":"DH-904","kind":"issue"})` | 本地 ledger 停在前两天而代码/文档已有新 issue；读取陈旧副本 |
+| 同上，行 155/157 | `JIRA issue tool get DH-725` | 同类 `NOT_FOUND` | 同上，不应当作 issue 从未存在 |
 | 同上，行 1324/1325，23:02:11 | `superagent_session append` | `error: INVALID_INPUT: "" is not a registered workspace; run superagent_workspace roster first` | 把 append 当 start，未给 workspace；动作必填分散 |
 | 同上，行 1331/1332，23:02:15 | 同上 | `error: INVALID_INPUT: append needs \`text\`: the follow-up instruction` | 仍把正文放在 task；第二次才暴露下一项，增加往返 |
 

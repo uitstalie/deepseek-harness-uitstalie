@@ -290,7 +290,12 @@ export interface IntentIndex {
 export type MessageKind = 'message' | 'followup'
 
 /** Delivery state of one message. */
-export type MessageDeliveryStatus = 'queued' | 'delivered' | 'interrupted' | 'target_archived'
+export type MessageDeliveryStatus = 'queued' | 'delivered' | 'interrupted' | 'target_archived' | 'failed'
+
+/** Every accepted delivery state, in state-machine order. */
+export const MESSAGE_DELIVERY_STATUSES: readonly MessageDeliveryStatus[] = [
+  'queued', 'delivered', 'interrupted', 'target_archived', 'failed',
+]
 
 /** Priority of one message; `urgent` is limited to the three validated cases. */
 export type MessagePriority = 'normal' | 'urgent'
@@ -351,6 +356,10 @@ export interface MessageRecord {
   readonly createdAt: string
   /** ISO-8601 instant the message reached its target. */
   readonly deliveredAt?: string | undefined
+  /** Readable reason the last delivery attempt failed; absent while no attempt failed. */
+  readonly error?: string | undefined
+  /** Delivery attempts made: the initial send counts as one, each retry adds one. Absent on records written before this field existed. */
+  readonly attempts?: number | undefined
   /** Delivery observations in report order. */
   readonly receipts: MessageReceipt[]
 }

@@ -248,7 +248,7 @@ flowchart TD
 | 身份 section | `superagent:dispatcher` 702（`superagent.ts:4261-4263`） | 无 jira section | `jira:executor` 只给 worker；否则无 | `jira:executor` 701（`contribution.ts:41-61`） |
 | persona | preset 的 `deployment:persona-*` 覆盖 | preset persona | 继承父组合或显式 preset | `jira-worker` preset persona |
 | memory | root-only：有 memory 段与工具 | 同左 | 无 section、无工具 | root 身份同样有（memory 是宿主能力，`scope:'root'`） |
-| 工具集 | workspace/session/ledger/models/deliver | jira dispatcher 六件 + 站点工具 | 父 scope 收紧或 preset | 读账本三件 + `issue_work` |
+| 工具集 | workspace/session/ledger/models/deliver | jira dispatcher 六件 + 站点工具 | 父 scope 收紧或 preset | 读账本三件 + `executor ledger tool` |
 | runtime context | working-directory/sandbox/approval/subagent/harness/web + `jira:store` 700 + `superagent:running` 705 | 同左，无 monitor | 加 `subagent:identity`/delegation/depth | worker 的 `jira:store` 为空 |
 | AGENTS.md | 依赖 native loader（默认 Web 不注入，见 §8.3） | 同左 | 同左 | 同左 |
 

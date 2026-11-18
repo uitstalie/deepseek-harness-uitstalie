@@ -1,5 +1,5 @@
 ---
-description: "personality 能力提供者：全局 PERSONALITY.md 档案、OUTPUT_STYLE.yaml 与 WRITING_RULES.yaml、三个稳定系统提示词段，以及只读的 personality_analyze 和仅 root 可用的 personality_apply、write_like_human 工具。"
+description: "personality 能力提供者：全局 PERSONALITY.md 档案、OUTPUT_STYLE.yaml 与 WRITING_RULES.yaml、三个稳定系统提示词段，以及只读的 personality_analyze 和仅 root 可用、同时拥有两个全局文件的 personality_apply 工具。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-personality` 让每个 agent 在 harness home 下拥有一份稳定、由用户拥有的档案。它读取四个全局文件——`PERSONALITY.md`、`OUTPUT_STYLE.yaml`、`SUPERAGENT_OUTPUT_STYLE.yaml`、`WRITING_RULES.yaml`——并贡献三个提示词段：order 100 的档案、690 的按角色选择输出风格、695 的已启用写作规则。subagent 不收到 690，只有 `personality_analyze`；普通 root 与 super root 使用独立的风格文件。`personality_analyze` 扫描会话记录，返回带证据的候选且不写文件；root agent 还会拿到 `personality_apply`（只在 `confirm: true` 后写档案）和 `write_like_human`（维护全局写作规则）。没有工作区覆盖、turn-end 自动学习、历史文件或设置页。
+`dsh-personality` 让每个 agent 在 harness home 下拥有一份稳定、由用户拥有的档案。它读取四个全局文件——`PERSONALITY.md`、`OUTPUT_STYLE.yaml`、`SUPERAGENT_OUTPUT_STYLE.yaml`、`WRITING_RULES.yaml`——并贡献三个提示词段：order 100 的档案、690 的按角色选择输出风格、695 的已启用写作规则。subagent 不收到 690，只有 `personality_analyze`；普通 root 与 super root 使用独立的风格文件。`personality_analyze` 扫描会话记录，返回带证据的候选且不写文件；root agent 还会拿到 `personality_apply`，它拥有两个全局文件，只在 `confirm: true` 后写入已确认的候选或一条写作规则操作。没有工作区覆盖、turn-end 自动学习、历史文件或设置页。
 
 ## 目录
 
@@ -30,7 +30,7 @@ kind: "package-reference"
   name: '@deepseek-ai/dsh-personality'
 ```
 
-提供者不接受配置：所有上限与路径都由设计固定。角色由 session/agent options（`agentOptions.role`：`agent`、`super`、`subagent`）声明；未声明的 root 保持 `agent`，child lineage 始终解析为 `subagent`。它是硬组合依赖，需要 `ctx.dafeiyu`（组织者）、`ctx.dshStore`（全局 scope）、`ctx.fs`（旧档案备份移动）与 `ctx.sessionQuery`（分析）。组织后的贡献是 `scope: 'all'`，但 subagent 只得到 profile/writing-rules 段和 `personality_analyze`；它不收到 690，也没有 `personality_apply`/`write_like_human`。普通 root 从 `OUTPUT_STYLE.yaml` 取 690，super root 从 `SUPERAGENT_OUTPUT_STYLE.yaml` 取。
+提供者不接受配置：所有上限与路径都由设计固定。角色由 session/agent options（`agentOptions.role`：`agent`、`super`、`subagent`）声明；未声明的 root 保持 `agent`，child lineage 始终解析为 `subagent`。它是硬组合依赖，需要 `ctx.dafeiyu`（组织者）、`ctx.dshStore`（全局 scope）、`ctx.fs`（旧档案备份移动）与 `ctx.sessionQuery`（分析）。组织后的贡献是 `scope: 'all'`，但 subagent 只得到 profile/writing-rules 段和 `personality_analyze`；它不收到 690，也没有 `personality_apply`。普通 root 从 `OUTPUT_STYLE.yaml` 取 690，super root 从 `SUPERAGENT_OUTPUT_STYLE.yaml` 取。
 
 所有数据都在 `<DSH_HOME>/personality/` 下，`$DSH_HOME` 默认是 `~/.dsh`：
 
@@ -39,7 +39,7 @@ kind: "package-reference"
 | `PERSONALITY.md` | understanding / preference / style / identity 条目 | 确认后的 `personality_apply`，或人 |
 | `OUTPUT_STYLE.yaml` | 普通 root 风格：tone、length、结论、列表、dispatch voice | 人；提供者只读 |
 | `SUPERAGENT_OUTPUT_STYLE.yaml` | super root 的独立风格槽 | 人；提供者只读 |
-| `WRITING_RULES.yaml` | 已启用的写作约束 | 人；提供者只读 |
+| `WRITING_RULES.yaml` | 已启用的写作约束 | 确认后的 `personality_apply`（`writingRules`），或人 |
 | `legacy/PERSONALITY.<YYYYMMDDTHHMMSSZ>.md` | 重写前档案的只读备份 | 首次激活写一次 |
 
 首次激活时，提供者把重写前的 `PERSONALITY.md` 移到 `legacy/`，然后创建带中性默认值的 `OUTPUT_STYLE.yaml`、`SUPERAGENT_OUTPUT_STYLE.yaml` 和空的 `WRITING_RULES.yaml`。它不会 seed 或创建 `PERSONALITY.md`：档案缺失按空档案读取，第一次确认写入时才创建。工作区 `.dsh/memory/PERSONALITY.md` 从不读取或写入；发现时每个工作区只警告一次。
@@ -48,17 +48,18 @@ kind: "package-reference"
 
 ## 理解实现
 
-`src/index.ts` 是函数插件：导出 `name`、`inject`、能力 id 与标签，以及 `apply`。它只注册一个 `contractVersion: 2`、`id: 'personality'` 的能力，并通过组织者的 `tools(agent)` 过滤接线三个提示词段和三个工具。没有 `Config` 导出，也没有设置元数据。
+`src/index.ts` 是函数插件：导出 `name`、`inject`、能力 id 与标签，以及 `apply`。它只注册一个 `contractVersion: 2`、`id: 'personality'` 的能力，并通过组织者的 `tools(agent)` 过滤接线三个提示词段和两个工具。没有 `Config` 导出，也没有设置元数据。
 
 - `src/global-store.ts` 负责 `PERSONALITY.md`：YAML frontmatter 带 `version`、`updatedAt` 和 `entries` 序列，正文为空。条目 id 是 `<kind>.<lower-kebab-name>`，接受 `understanding`、`preference`、`style`、`identity`。单条最多 400 字符，序列化文档最多 32 KiB。读取走 store atom 的 `global` scope；写入使用 `expected: version`，遇到 `FS_STALE_VERSION` 重试一次，第二次冲突就拒绝覆盖。identity 条目只允许人手写，工具路径拒绝它。
 - 同一个模块负责旧档案备份：优先用 `ctx.fs.moveFile` 移动；后端不能移动时退化为读取 → create-if-absent → 比对哈希 → 删除。命名冲突或残留文件内容不同时，下次启动只报告，不覆盖任一文件。迁移失败时能力保持不可用并阻止写入。
 - `src/output-style.ts` 读取 `OUTPUT_STYLE.yaml`，拒绝未知枚举并渲染该段。`src/writing-rules.ts` 读取 `WRITING_RULES.yaml`，强制 100 条规则 / 32 KiB 已启用文本上限，只注入前 40 条启用规则，超过时给遗漏提示，为 CRUD 调用方修改文档，并按 `order` 再按 id 渲染已启用规则。两个读取器都把缺失文件视为空，把损坏文件降级为警告。
 - `src/analyze.ts` 通过 `ctx.sessionQuery` 读取会话记录：当前会话、指定会话，或最近 1–20 个会话。它把重复证据聚成带稳定哈希 id 的候选，每条至少有精确摘录和 seq、出现次数，以及 `high` 或 `medium` 置信度。它不写任何文件。
 - `src/apply.ts` 校验 `confirm: true`、1–20 个候选和每个候选的证据，拒绝 `identity`，并通过带版本守卫的存储 upsert 每个被接受的条目。单个候选写失败只记为该候选被拒，不会中止整批。
-- `src/writing-tool.ts` 是仅 root 可用的 `write_like_human` 工具：校验 action，经 `writing-rules.ts` 修改文档，通过 store 的版本守卫写入并在 stale 时重试一次；失败返回可读的 `ok: false` 结果而不是抛栈。stale 冲突后会基于新读取的文档重新应用修改。
+- `src/agent-tools.ts` 定义两个模型面工具。`personality_apply` 只接受 `candidates` 或 `writingRules` 其中之一，必须传字面量 `confirm: true`，且仅限 root。
+- `src/writing-tool.ts` 支撑 `writingRules` 分支：校验 action，经 `writing-rules.ts` 修改文档，通过 store 的版本守卫写入并在 stale 时重试一次；失败返回可读的 `ok: false` 结果而不是抛栈。stale 冲突后会基于新读取的文档重新应用修改。
 - `src/defaults.ts` 保存首次激活的 seed 文本。`src/profile-prompt.ts` 渲染档案段。
 
-提示词文本按 agent 缓存在 `WeakMap` 里。`onAgentCreated` 为该 agent 读取四个文件；`personality_apply` 与 `write_like_human` 成功写入后都会刷新调用方。没有文件 watcher，所以在工具之外改文件只会到达之后新建的 agent，不会影响运行中的 agent。
+提示词文本按 agent 缓存在 `WeakMap` 里。`onAgentCreated` 为该 agent 读取四个文件；`personality_apply` 成功写入后刷新调用方。没有文件 watcher，所以在工具之外改文件只会到达之后新建的 agent，不会影响运行中的 agent。
 
 <a id="model-experience"></a>
 
@@ -130,31 +131,17 @@ Status reporting discipline:
 
 #### 模型看到什么
 
-root agent 额外拿到这个工具。它接收 1–20 个候选，每个带 `kind`、`name`、`text` 和至少一条证据引用，外加必填的字面量 `confirm: true`。描述要求模型只在用户明确要求应用已审阅候选后调用；identity 候选会被拒绝，结果列出已应用条目 id、被拒名称与原因、档案路径和 revision。
+root agent 额外拿到这个工具；它拥有两个全局文件，并要求字面量 `confirm: true`。每次调用只传两种负载之一：`candidates`（1–20 个已确认的档案条目，每个带 `kind`、`name`、`text` 和至少一条证据引用；identity 候选会被拒绝；结果列出已应用条目 id、被拒名称与原因、档案路径和 revision），或 `writingRules`（对 `WRITING_RULES.yaml` 的一个操作：`action` 是 `list`、`add`、`update`、`remove`、`enable`、`disable` 或 `preview`；`id` 用于 update、remove、enable、disable 选择规则；`text`（1–240 字符）在 add/update 时必填；`order` 与 `enabled` 可选；未给 id 时 `add` 从文本推导 lower-kebab id，冲突时追加 `-2`、`-3`；其 `writingRules` 结果包含 `ok`、当前规则的 id/text/enabled/order、文件路径和 store 版本；`preview` 还会返回注入文本；失败时 `ok: false` 并给出可读的 `error`，此时 `applied` 与 `rejected` 为空数组，path 使用写作规则路径，revision 为 0）。同时给两种负载、两种都不给，或 `confirm` 不是字面量 true，都会返回可读拒绝且不写文件；写作规则改动是全局的，影响所有 agent。
 
 #### Token 影响
 
-工具 schema 是固定成本，加上每个已应用或被拒候选一行短结果。工具从不返回档案正文。
+工具 schema 是固定成本，加上每个已应用或被拒候选一行短结果，或写作规则结果中每条规则一行。工具从不返回档案正文。100 条上限、单条 240 字符和 32 KiB 已启用文本上限把规则文件和第 695 段都限制住；只有前 40 条启用规则被注入。
 
 #### KV Cache 影响
 
-在定义和档案不变时前缀稳定。一次成功的 apply 会改变第 100 段，所以下一次请求从该段起使前缀失效；被拒调用不写任何文件。
+在工具定义与两个文件不变时前缀稳定。一次成功的档案写入会改变第 100 段，一次成功的写作规则写入会改变第 695 段，所以下一次请求从该段起使前缀失效；被拒调用、`list` 与 `preview` 不写任何文件。
 
 <a id="known-limitations-and-deferred-work"></a>
-
-### `write_like_human` 工具
-
-#### 模型看到什么
-
-root agent 额外拿到这个工具。必填的 `action` 是 `list`、`add`、`update`、`remove`、`enable`、`disable` 或 `preview`；`id` 用于 update、remove、enable、disable 选择规则，`text`（1–240 字符）在 add/update 时必填，`order` 与 `enabled` 可选。未给 id 时，`add` 从文本推导 lower-kebab id，冲突时追加 `-2`、`-3`。结果包含 `ok`、当前规则的 id/text/enabled/order、文件路径和 store 版本；`preview` 还会返回注入文本；失败时 `ok: false` 并给出可读的 `error`。工具描述说明改动是全局的、影响所有 agent，且只有 root agent 可以调用。
-
-#### Token 影响
-
-schema 是固定成本，加上结果中每条规则一行。100 条上限、单条 240 字符和 32 KiB 已启用文本上限把文件和第 695 段都限制住；只有前 40 条启用规则被注入。
-
-#### KV Cache 影响
-
-在规则文件不变时前缀稳定。成功写入会立即刷新调用的 root agent，并从该点起使第 695 段失效；`list` 与 `preview` 不改变提示词。
 
 ## 已知限制与延期工作
 
