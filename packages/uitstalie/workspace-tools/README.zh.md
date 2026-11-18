@@ -42,7 +42,7 @@ kind: "package-reference"
 
 | 工具 | 动作 | 结果 |
 |---|---|---|
-| `workspace_sessions` | `list`、`get` | 会话摘要：状态、当前 turn、当前活动、最新进度与任务 id；`get` 另返回近期进度、待收件箱与产物数量 |
+| `workspace_sessions` | `list`、`get`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact`、`delete` | 会话摘要：状态、当前 turn、当前活动、最新进度与任务 id；`get` 另返回近期进度、待收件箱与产物数量。生命周期动作需要 super agent；`start` 从意图卡或现有任务派发，把任务绑定到新会话，执行者 turn 结束后自动回传 |
 | `workspace_tasks` | `list`、`get`、`create`、`update`、`receipt` | 按状态与 assignee 过滤的任务摘要；`get` 返回任务、其回执、目标会话与产物引用；`create` 要求 active 意图卡与覆盖映射；`update` 推进状态机；`receipt` 追加对齐清单 |
 | `workspace_message` | `send`、`read` | `send` 投递一条消息或追问（可带产物引用），返回消息 id、状态与投递回执；重复 `requestId` 返回第一次的结果。`read` 按 id 读一条消息，或按目标会话分页读消息 |
 | `workspace_artifacts` | `publish`、`reference`、`list`、`resolve` | `publish` 对工作区根内的一个文件计算哈希并记录不可变引用；内容未变时重复发布返回已记录版本。`reference` 把已发布引用挂到消息或任务。`list` 返回每个产物的最新引用；`resolve` 用记录版本比对文件，回答 `ok`、`changed`、`missing` 或 `denied` |
@@ -50,7 +50,9 @@ kind: "package-reference"
 
 `list` 动作用不透明 cursor 分页，默认 20 条、上限 100 条。摘要会限制文本长度；原始 turn 仍由 `session_event_read` 读取，文件正文仍由 `read` 读取。
 
-投递是一次显式工具调用。`workspace_message.send` 校验目标会话、引用的产物版本与调用者作用域，再把受限正文（600 字符）交给宿主会话控制器。一个 turn 不调用 send 就什么都不投递；没有回合结束兜底。跨工作区发送需要 super agent 与目标工作区 id；普通 agent 只能给本工作区的会话发消息。`priority: "urgent"` 必须给出三种已校验 `urgentReason` 之一（目标正在执行错误结论、危险操作停止令、用户指令变更），并 steer 目标当前步骤；目标空闲时回退为排队。
+投递是一次显式工具调用。`workspace_message.send` 校验目标会话、引用的产物版本与调用者作用域，再把受限正文（600 字符）交给宿主会话控制器。跨工作区发送需要 super agent 与目标工作区 id；普通 agent 只能给本工作区的会话发消息。
+
+唯一的自动投递是绑定任务的完成回传。被派发的会话结束一个 turn 时，工具集读取 `targetSessionId` 指向该会话的任务，向任务的 `dispatcherSessionId` 发送一条 `[task-report]`（任务 id、执行者会话、状态、结论与证据指针），并追加一条自动回执，把任务从 `pending`/`in_progress` 推进到 `waiting_review` 或 `blocked`。执行者不能用 `workspace_message.send` 完成这个跨工作区地址；该例外只存在于对已记录绑定的可信 turn hook 中。重复的 `turn/end` 复用消息 request id 与回执 request id，因此重放既不会多一条消息，也不会多一条回执。`priority: "urgent"` 必须给出三种已校验 `urgentReason` 之一（目标正在执行错误结论、危险操作停止令、用户指令变更），并 steer 目标当前步骤；目标空闲时回退为排队。
 
 产物引用在发布时不可变：`{ artifactId, workspaceId, path, sha256, size, version, kind, sessionId, taskId?, createdAt }`。产物 id 按 `workspace|path|kind` 稳定；文件变化后再发布追加一个版本。消息或任务保存被引用的 `artifactId`、`version` 与 `sha256`；之后文件变化不会改写引用，`resolve` 报 `changed` 或 `missing`，不会静默跟随新内容。
 
@@ -82,11 +84,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-工作区里的每个 agent 都看到这五个工具的固定 schema，以及一个名为 `workspace-directory` 的静态系统提示词段（order 700），按 `- <title> (<id>) · <directory>` 列出已注册工作区。清单对每个会话相同，不含状态、任务或记忆数据，因此提示词前缀保持稳定。结果是受限摘要：一页最多 100 条，活动与进度都是一行字符串，且不返回文件正文或对话记录。`workspace_sessions` 的 `action: 'get'` 回答“上一回合做了什么”：它从会话自己的日志返回近期进度与当前活动，因此模型查询会话存储，而不依赖 memory 通知。`workspace_message.send` 与 `workspace_artifacts.publish` 是仅有的投递路径：消息携带引用，已发布引用挂到消息或任务时不复制文件。`workspace_intents.get` 返回卡版本，并为每个条目给出稳定 point id，因此 `create` 与 `receipt` 能直接指名某个点而不用重复其文本。`proposed` 版本返回它的确认请求；在版本变 active 之前，任务无法派发。`workspace_tasks.get` 返回每条回执记录的对齐清单，因此漂移会以列表形式出现。
+工作区里的每个 agent 都看到这五个工具的固定 schema，以及一个名为 `workspace-directory` 的静态系统提示词段（order 700），按 `- <title> (<id>) · <directory>` 列出已注册工作区。super agent 还会收到 `workspace-dispatch`（order 702），其中写明派发顺序、卡版本规则与完成回传路径；普通 agent 永远看不到它。清单对每个会话相同，不含状态、任务或记忆数据，因此提示词前缀保持稳定。结果是受限摘要：一页最多 100 条，活动与进度都是一行字符串，且不返回文件正文或对话记录。`workspace_sessions` 的 `action: 'get'` 回答“上一回合做了什么”：它从会话自己的日志返回近期进度与当前活动，因此模型查询会话存储，而不依赖 memory 通知。`workspace_message.send` 与 `workspace_artifacts.publish` 是仅有的投递路径：消息携带引用，已发布引用挂到消息或任务时不复制文件。`workspace_intents.get` 返回卡版本，并为每个条目给出稳定 point id，因此 `create` 与 `receipt` 能直接指名某个点而不用重复其文本。`proposed` 版本返回它的确认请求；在版本变 active 之前，任务无法派发。`workspace_tasks.get` 返回每条回执记录的对齐清单，因此漂移会以列表形式出现。被派发会话的 turn 结束会把 `[task-report]` 作为新的用户消息投递给派发者，因此派发者无需轮询即可读到结果；自动回执记录投递是否成功。
 
 #### Token 影响
 
-agent 可见这些工具时，每次请求的固定 schema 成本，加上每次调用的受限结果与静态 `workspace-directory` 段（每个已注册工作区一行）。五个 schema 携带 action 枚举、过滤器、卡条目、覆盖与对齐，是这项贡献中最大的固定部分。
+agent 可见这些工具时，每次请求的固定 schema 成本，加上每次调用的受限结果、静态 `workspace-directory` 段（每个已注册工作区一行），以及 super agent 的 `workspace-dispatch` 段。五个 schema 携带 action 枚举、过滤器、卡条目、覆盖与对齐，是这项贡献中最大的固定部分。
 
 #### KV 缓存影响
 

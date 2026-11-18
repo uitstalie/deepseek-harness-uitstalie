@@ -138,6 +138,7 @@ test('only the super agent receives the dispatch instructions', async () => {
   expect(dispatch?.text).toContain('workspace_intents')
   expect(dispatch?.text).toContain('coverage')
   expect(dispatch?.text).toContain('workspace_tasks')
+  expect(dispatch?.text).toContain('[task-report]')
 })
 
 test('list results are bounded by limit and walkable with the returned cursor', async () => {

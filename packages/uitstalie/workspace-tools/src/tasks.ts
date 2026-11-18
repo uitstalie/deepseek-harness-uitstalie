@@ -43,6 +43,7 @@ import type {
   TaskAlignment,
   TaskCoverage,
   TaskNonCoverage,
+  TaskReceipt,
   TaskRecord,
   TaskStatus,
   TaskType,
@@ -90,6 +91,8 @@ export interface TaskView {
   readonly assignee?: string
   /** Session expected to execute the task. */
   readonly targetSessionId?: string
+  /** Session that dispatched the task and receives its automatic completion report. */
+  readonly dispatcherSessionId?: string
   /** Intent card this task was dispatched against. */
   readonly intentId?: string
   /** Intent card version this task was dispatched against. */
@@ -174,8 +177,11 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
       + 'it reads the card first, so a missing, proposed, or stale card refuses the dispatch. `update` moves the '
       + 'task state and `receipt` appends the executor\'s alignment against the same card version. A receipt with '
       + 'an unsatisfied acceptance point or a violated boundary cannot move the task to `done`; it becomes '
-      + '`waiting_review` or `blocked` with the checklist. Reads are open to every agent; mutations require the '
-      + 'dispatcher role, and the target session may update its own task and append its own receipt.',
+      + '`waiting_review` or `blocked` with the checklist. The executor\'s turn end appends an automatic turn '
+      + 'receipt and moves the task from `pending`/`in_progress` to `waiting_review` (or `blocked` when the turn '
+      + 'failed), and delivers the bound `[task-report]` to the dispatching Session. Reads are open to every '
+      + 'agent; mutations require the dispatcher role, and the target session may update its own task and append '
+      + 'its own receipt.',
     parameters: {
       action: {
         type: 'string',
@@ -363,6 +369,7 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
               status: { type: 'string', required: true, enum: [...TASK_STATUSES] },
               assignee: { type: 'string' },
               targetSessionId: { type: 'string' },
+              dispatcherSessionId: { type: 'string' },
               intentId: { type: 'string' },
               intentVersion: { type: 'integer' },
               coverage: { type: 'array', items: coverageSchema },
@@ -722,6 +729,17 @@ export async function createDispatchTask(
   const taskId = taskIdFor(workspaceId, requestId)
   const existing = await readTask(ctx, workspaceId, taskId, options.signal)
   if (existing !== undefined) {
+    if (existing.task.dispatcherSessionId === undefined && options.session !== undefined) {
+      const patched: TaskRecord = {
+        ...existing.task,
+        dispatcherSessionId: String(options.session.id),
+        updatedAt: new Date().toISOString(),
+      }
+      await writeTask(ctx, workspaceId, patched, {
+        ...existing.version === undefined ? {} : { expected: existing.version },
+        session: options.session,
+      })
+    }
     return {
       workspace: workspaceId,
       taskId: existing.task.taskId,
@@ -762,6 +780,7 @@ export async function createDispatchTask(
     ...outputForm.length === 0 ? {} : { outputForm },
     status: 'pending',
     ...input.targetSessionId === undefined ? {} : { targetSessionId: input.targetSessionId },
+    ...options.session === undefined ? {} : { dispatcherSessionId: String(options.session.id) },
     intentId,
     intentVersion,
     ...coverage === undefined ? {} : { coverage },
@@ -845,10 +864,14 @@ export async function attachDispatchTaskSession(
       'WORKSPACE_TASK_TRANSITION',
     )
   }
-  if (stored.task.targetSessionId === input.sessionId) return stored.task
+  const dispatcherSessionId = stored.task.dispatcherSessionId
+    ?? (options.session === undefined ? undefined : String(options.session.id))
+  if (stored.task.targetSessionId === input.sessionId
+    && stored.task.dispatcherSessionId === dispatcherSessionId) return stored.task
   const task: TaskRecord = {
     ...stored.task,
     targetSessionId: input.sessionId,
+    ...dispatcherSessionId === undefined ? {} : { dispatcherSessionId },
     updatedAt: new Date().toISOString(),
   }
   await writeTask(ctx, input.workspaceId, task, {
@@ -856,6 +879,92 @@ export async function attachDispatchTaskSession(
     ...options.session === undefined ? {} : { session: options.session },
   })
   return task
+}
+
+/** Statuses an executor turn can report automatically. */
+export type TurnReportStatus = 'waiting_review' | 'blocked'
+
+/** One automatic completion report to apply to a task. */
+export interface TurnCompletionInput {
+  /** Workspace that owns the task. */
+  readonly workspaceId: string
+  /** Task whose executor turn ended. */
+  readonly taskId: string
+  /** State the ending reports: review for a completed turn, blocked for a failed one. */
+  readonly status: TurnReportStatus
+  /** One-line outcome and delivery note recorded on the receipt. */
+  readonly note: string
+  /** Stable idempotency key, derived from the task and turn. */
+  readonly requestId: string
+}
+
+/** Result of applying one automatic completion report. */
+export interface TurnCompletionResult {
+  /** Task record after the attempt. */
+  readonly task: TaskRecord
+  /** Receipt written by this call, absent on a replay. */
+  readonly receipt?: TaskReceipt
+  /** Whether this call wrote the receipt; false when the task was absent, terminal, or replayed. */
+  readonly applied: boolean
+}
+
+/**
+ * Apply one executor turn completion to its task: move a pending task to
+ * `in_progress`, append the automatic receipt, and stop at `waiting_review` or
+ * `blocked`.
+ *
+ * The receipt's `requestId` is the replay guard: a repeated turn end returns the
+ * stored receipt without appending a second one. A task that already left
+ * `pending`/`in_progress` is left untouched, so a late replay cannot regress a
+ * reviewed task.
+ * @param ctx - context carrying the store.
+ * @param input - workspace, task, state, note, and stable request id.
+ * @param signal - cancellation for the store reads and writes.
+ * @param session - Session writing the record, for the store policy.
+ * @returns the task outcome, or undefined when the task no longer exists.
+ */
+export async function recordTurnCompletion(
+  ctx: Context,
+  input: TurnCompletionInput,
+  signal?: AbortSignal,
+  session?: Session,
+): Promise<TurnCompletionResult | undefined> {
+  const stored = await readTask(ctx, input.workspaceId, input.taskId, signal)
+  if (stored === undefined) return undefined
+  const replayed = stored.task.receipts.find(receipt => receipt.requestId === input.requestId)
+  if (replayed !== undefined) return { task: stored.task, receipt: replayed, applied: false }
+  if (stored.task.status !== 'pending' && stored.task.status !== 'in_progress') {
+    return { task: stored.task, applied: false }
+  }
+  let current = stored
+  if (current.task.status === 'pending') {
+    const moved: TaskRecord = { ...current.task, status: 'in_progress', updatedAt: new Date().toISOString() }
+    const written = await writeTask(ctx, input.workspaceId, moved, {
+      ...current.version === undefined ? {} : { expected: current.version },
+      ...session === undefined ? {} : { session },
+    })
+    current = { task: moved, ...written.version === undefined ? {} : { version: written.version } }
+  }
+  assertTransition(current.task.status, input.status)
+  const now = new Date().toISOString()
+  const receipt: TaskReceipt = {
+    receiptId: receiptIdFor(input.taskId, input.requestId),
+    at: now,
+    status: input.status,
+    note: input.note,
+    requestId: input.requestId,
+  }
+  const next: TaskRecord = {
+    ...current.task,
+    status: input.status,
+    updatedAt: now,
+    receipts: [...current.task.receipts, receipt],
+  }
+  await writeTask(ctx, input.workspaceId, next, {
+    ...current.version === undefined ? {} : { expected: current.version },
+    ...session === undefined ? {} : { session },
+  })
+  return { task: next, receipt, applied: true }
 }
 
 /**
@@ -1420,6 +1529,7 @@ function taskView(task: TaskRecord): TaskView {
     status: task.status,
     ...task.assignee === undefined ? {} : { assignee: task.assignee },
     ...task.targetSessionId === undefined ? {} : { targetSessionId: task.targetSessionId },
+    ...task.dispatcherSessionId === undefined ? {} : { dispatcherSessionId: task.dispatcherSessionId },
     ...task.intentId === undefined ? {} : { intentId: task.intentId },
     ...task.intentVersion === undefined ? {} : { intentVersion: task.intentVersion },
     ...task.coverage === undefined ? {} : { coverage: task.coverage.map(entry => ({
