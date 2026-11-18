@@ -141,10 +141,9 @@ export function apply(ctx: Context, config: Config): void {
     })
   }
 
-  // The native loader registers its own listener on its own row; this listener
-  // must be the OUTER waterfall layer so `next()` reaches the native decision and
-  // the source segment can be appended to it. Registration order follows the
-  // profile composition, so prepend instead of relying on mount order.
+  // The native loader registers its own listener on its preset row; this
+  // listener wraps whichever decision comes out of the chain and only adds the
+  // source segment, so the AGENTS portion stays byte-identical to native.
   ctx.on('agent/pre-step', async ({ agent, messages, signal }, next): Promise<PreStepDecision> => {
     const decision = await next()
     if (decision.kind !== 'enter') return decision
@@ -186,5 +185,5 @@ export function apply(ctx: Context, config: Config): void {
       ...decision,
       messages: decision.messages.toSpliced(lastClaimedIndex + 1, 0, replacement),
     }
-  }, { prepend: true })
+  })
 }

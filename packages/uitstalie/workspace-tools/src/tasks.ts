@@ -814,51 +814,6 @@ export async function cancelDispatchTask(
 }
 
 /**
- * Bind one dispatch task to the Session that will execute it.
- *
- * A task is created before its Session (the card and coverage checks must run
- * first), so the Session identity is attached immediately before the first
- * prompt. A task already bound to a different Session is a dispatch conflict,
- * not a silent rebind.
- * @param ctx - context carrying the store.
- * @param input - workspace, task, and the Session that will execute it.
- * @param options - calling session for the store policy, and cancellation.
- * @returns the bound task record.
- * @throws WorkspaceRecordError `WORKSPACE_RECORD_NOT_FOUND` when the task does not exist.
- * @throws WorkspaceTaskError `WORKSPACE_TASK_TRANSITION` when the task is not dispatchable or is bound elsewhere.
- */
-export async function attachDispatchTaskSession(
-  ctx: Context,
-  input: { readonly workspaceId: string; readonly taskId: string; readonly sessionId: string },
-  options: { readonly session?: Session; readonly signal?: AbortSignal } = {},
-): Promise<TaskRecord> {
-  const stored = await readTask(ctx, input.workspaceId, input.taskId, options.signal)
-  if (stored === undefined) {
-    throw new WorkspaceRecordError(
-      `workspace ${input.workspaceId} holds no task ${JSON.stringify(input.taskId)}`,
-      'WORKSPACE_RECORD_NOT_FOUND',
-    )
-  }
-  if (stored.task.targetSessionId !== undefined && stored.task.targetSessionId !== input.sessionId) {
-    throw new WorkspaceTaskError(
-      `task ${input.taskId} is already dispatched to Session ${stored.task.targetSessionId}; a task is executed by one Session`,
-      'WORKSPACE_TASK_TRANSITION',
-    )
-  }
-  if (stored.task.targetSessionId === input.sessionId) return stored.task
-  const task: TaskRecord = {
-    ...stored.task,
-    targetSessionId: input.sessionId,
-    updatedAt: new Date().toISOString(),
-  }
-  await writeTask(ctx, input.workspaceId, task, {
-    ...stored.version === undefined ? {} : { expected: stored.version },
-    ...options.session === undefined ? {} : { session: options.session },
-  })
-  return task
-}
-
-/**
  * Resolve the card version a dispatch references.
  *
  * A card outside the task's workspace is distinguished from a missing one, so

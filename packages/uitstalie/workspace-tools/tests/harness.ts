@@ -222,49 +222,6 @@ export async function registerWorkspace(
 }
 
 /**
- * Build the card reference and coverage map `workspace_sessions.start` now needs.
- *
- * One active card records the brief as its goal; the single goal point is
- * covered by the same brief text. Tests that are not about card rules use this
- * to reach the Session lifecycle instead of repeating the card setup.
- * @param mounted - mounted composition.
- * @param superAgent - super agent creating the card.
- * @param workspace - workspace the card and dispatch belong to.
- * @param task - brief text, also the card's goal and the coverage item.
- * @param requestId - idempotency key for the card create.
- * @returns the start arguments that reference the active card.
- */
-export async function startDispatchArgs(
-  mounted: WorkspaceToolsHarness,
-  superAgent: Agent,
-  workspace: TestWorkspace,
-  task: string,
-  requestId: string,
-): Promise<Record<string, unknown>> {
-  const created = await callTool(mounted.ctx, superAgent, 'workspace_intents', {
-    action: 'create',
-    workspace: String(workspace.id),
-    requestId: `card-${requestId}`,
-    rawUserText: task,
-    items: {
-      goal: [{ text: task, source: 'user-verbatim' }],
-      acceptance: [],
-      boundaries: [],
-      outputForm: [],
-    },
-  })
-  const card = valueOf(created) as { intentId: string; intent: { version: number } }
-  return {
-    intentId: card.intentId,
-    intentVersion: card.intent.version,
-    acceptance: [],
-    boundaries: [],
-    taskType: 'other',
-    coverage: [{ point: 'goal[0]', brief: task }],
-  }
-}
-
-/**
  * Create one root agent in a workspace directory.
  * @param mounted - mounted composition.
  * @param id - session id.
@@ -319,7 +276,6 @@ export function valueOf(result: ToolExecutionResult): ToolExecutionSuccess['valu
  * @returns the same object with the caller's result type.
  * @throws Error when the value is not a non-array object.
  */
-// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- the generic is the helper's API: callers name the result shape.
 export function objectValue<T extends object>(value: ToolExecutionSuccess['value']): T {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error(`tool value must be an object, got ${typeof value}`)

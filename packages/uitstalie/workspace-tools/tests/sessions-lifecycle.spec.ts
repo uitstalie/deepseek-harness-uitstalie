@@ -19,7 +19,6 @@ import {
   createRoot,
   mountWorkspaceTools,
   registerWorkspace,
-  startDispatchArgs,
   textOf,
   valueOf,
 } from './harness.ts'
@@ -289,7 +288,6 @@ test('start opens a Session in another workspace and append/prompt deliver into 
     workspace: String(workspaceB.id),
     task: 'review the branch',
     title: 'code review',
-    ...await startDispatchArgs(mounted, superAgent, workspaceB, 'review the branch', 'start-review'),
     provider: 'stub',
     model: 'stub-1',
     reasoning_effort: 'high',
@@ -369,11 +367,9 @@ test('append refuses to guess when the workspace has more than one Session', asy
   installController(mounted)
   const first = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'start', workspace: String(workspaceB.id), task: 'first task', title: 'first',
-    ...await startDispatchArgs(mounted, superAgent, workspaceB, 'first task', 'start-first'),
   })
   const second = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'start', workspace: String(workspaceB.id), task: 'second task', title: 'second',
-    ...await startDispatchArgs(mounted, superAgent, workspaceB, 'second task', 'start-second'),
   })
   expect(first.isError).toBe(false)
   expect(second.isError).toBe(false)
@@ -390,7 +386,6 @@ test('stop cancels a running turn and admits no text', async () => {
   const controller = installController(mounted)
   const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'start', workspace: String(workspaceB.id), task: 'long task', title: 'long task',
-    ...await startDispatchArgs(mounted, superAgent, workspaceB, 'long task', 'start-long'),
   })
   const sessionId = (valueOf(started) as { started: { sessionId: string } }).started.sessionId
   expect(controller.prompts).toHaveLength(1)
@@ -421,7 +416,6 @@ test('abort cancels the running turn and then delivers the follow-up text', asyn
   const controller = installController(mounted)
   const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'start', workspace: String(workspaceB.id), task: 'start the work', title: 'abort target',
-    ...await startDispatchArgs(mounted, superAgent, workspaceB, 'start the work', 'start-abort'),
   })
   const sessionId = (valueOf(started) as { started: { sessionId: string } }).started.sessionId
 
@@ -460,7 +454,6 @@ test('fork, archive, compact, and delete each run through the host', async () =>
   installCompaction(mounted, pressure)
   const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'start', workspace: String(workspaceB.id), task: 'branch me', title: 'branch source',
-    ...await startDispatchArgs(mounted, superAgent, workspaceB, 'branch me', 'start-branch'),
   })
   const sessionId = (valueOf(started) as { started: { sessionId: string } }).started.sessionId
 
@@ -521,7 +514,6 @@ test('delete refuses a mismatched confirm and a host without a delete API', asyn
   const controller = installController(mounted)
   const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'start', workspace: String(workspaceB.id), task: 'keep me', title: 'keep me',
-    ...await startDispatchArgs(mounted, superAgent, workspaceB, 'keep me', 'start-keep'),
   })
   const sessionId = (valueOf(started) as { started: { sessionId: string } }).started.sessionId
 
@@ -539,90 +531,10 @@ test('delete refuses a mismatched confirm and a host without a delete API', asyn
   expect(controller.deleted).toEqual([])
 })
 
-test('start refuses without an intent card or an existing task', async () => {
-  const controller = installController(mounted)
-  const refused = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
-    action: 'start', workspace: String(workspaceB.id), task: 'uncarded work', title: 'uncarded',
-  })
-  expect(refused.isError).toBe(true)
-  expect(textOf(refused)).toContain('intent card')
-  expect(textOf(refused)).toContain('workspace_intents')
-  expect(textOf(refused)).toContain('taskId')
-  expect(controller.created).toEqual([])
-  expect(controller.prompts).toEqual([])
-})
-
-test('start from an existing task binds it to the new Session before the prompt', async () => {
-  const controller = installController(mounted)
-  const task = 'work from an existing task'
-  const card = await startDispatchArgs(mounted, superAgent, workspaceB, task, 'task-ref')
-  const createdTask = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
-    action: 'create',
-    workspace: String(workspaceB.id),
-    requestId: 'task-ref-create',
-    goal: task,
-    ...card,
-  })
-  const taskId = (valueOf(createdTask) as { taskId: string }).taskId
-
-  const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
-    action: 'start', workspace: String(workspaceB.id), task, title: 'from task', taskId,
-  })
-  expect(started.isError).toBe(false)
-  const start = (valueOf(started) as { started: { sessionId: string; taskId: string } }).started
-  expect(start.taskId).toBe(taskId)
-
-  const read = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
-    action: 'get', workspace: String(workspaceB.id), taskId,
-  })
-  expect((valueOf(read) as { task: { targetSessionId?: string } }).task.targetSessionId).toBe(start.sessionId)
-  expect(controller.prompts).toHaveLength(1)
-
-  // One task runs in one Session; a second dispatch refuses instead of rebinding.
-  const again = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
-    action: 'start', workspace: String(workspaceB.id), task, title: 'again', taskId,
-  })
-  expect(again.isError).toBe(true)
-  expect(textOf(again)).toContain('already dispatched')
-  expect(controller.created).toHaveLength(1)
-})
-
-test('append and prompt associate their delivery with a named task', async () => {
-  const controller = installController(mounted)
-  const task = 'associate the follow-up'
-  const card = await startDispatchArgs(mounted, superAgent, workspaceB, task, 'associate')
-  const createdTask = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
-    action: 'create',
-    workspace: String(workspaceB.id),
-    requestId: 'associate-create',
-    goal: task,
-    ...card,
-  })
-  const taskId = (valueOf(createdTask) as { taskId: string }).taskId
-  const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
-    action: 'start', workspace: String(workspaceB.id), task, title: 'associated', taskId,
-  })
-  const sessionId = (valueOf(started) as { started: { sessionId: string } }).started.sessionId
-
-  const appended = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
-    action: 'append', workspace: String(workspaceB.id), session: sessionId, text: 'next step', taskId,
-  })
-  expect(appended.isError).toBe(false)
-  expect((valueOf(appended) as { delivery: { taskId?: string } }).delivery.taskId).toBe(taskId)
-
-  const prompted = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
-    action: 'prompt', workspace: String(workspaceB.id), sessionId, text: 'clarify', taskId,
-  })
-  expect(prompted.isError).toBe(false)
-  expect((valueOf(prompted) as { delivery: { taskId?: string } }).delivery.taskId).toBe(taskId)
-  expect(controller.prompts).toHaveLength(3)
-})
-
 test('an ordinary agent may list and read but every lifecycle action is refused', async () => {
   const controller = installController(mounted)
   const start = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'start', workspace: String(workspaceB.id), task: 'started by the super agent', title: 'super session',
-    ...await startDispatchArgs(mounted, superAgent, workspaceB, 'started by the super agent', 'start-super'),
   })
   const sessionId = (valueOf(start) as { started: { sessionId: string } }).started.sessionId
 

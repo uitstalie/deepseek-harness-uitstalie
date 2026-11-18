@@ -38,13 +38,6 @@
     - id: ui-common-view
       name: '@deepseek-ai/dsh-client-common-view'
 
-# The web patch disables the profile-level native loader because the shipped presets
-# used to mount it per agent; DH-5 moved every instruction row out of the presets and
-# left this one disabled, so no baseline was produced at all. The plus seam decorates
-# this profile-level baseline, so restore the row it wraps.
-- id: agent-instructions
-  disabled: false
-
 - id: session-query-sqlite
   config:
     path: ':memory:'

@@ -1,11 +1,12 @@
 /**
- * The static prompt sections the workspace toolset contributes.
+ * The static workspace directory the workspace toolset contributes to every
+ * agent's system prompt.
  *
- * The workspace directory lists registry identity only — title, id, and
- * directory — so every agent sees the same cacheable list. The dispatch
- * section is the super agent's own: it states the order (read the card, build
- * the task and its coverage list, then start the Session) and how results are
- * reported. An ordinary agent never receives it.
+ * It lists registry identity only: title, id, and directory. No status, no
+ * memory, and no task data appears, so the text is the same on every request
+ * and the prompt prefix stays cacheable. The same list is registered for every
+ * agent, ordinary or super: a query still has to name a workspace explicitly to
+ * leave the caller's own scope.
  * @module @deepseek-ai/dsh-workspace-tools/prompt
  */
 
@@ -41,32 +42,3 @@ export function workspaceDirectoryText(ctx: Context): string {
   return `${WORKSPACE_DIRECTORY_TITLE}\n`
     + rows.map(workspace => `- ${workspace.title} (${String(workspace.id)}) · ${workspace.path}`).join('\n')
 }
-
-/** Registry name of the super agent's dispatch section. */
-export const WORKSPACE_DISPATCH_SECTION_NAME = 'workspace-dispatch'
-
-/** Section order: one step after the workspace directory, before the branch's later sections. */
-export const WORKSPACE_DISPATCH_SECTION_ORDER = 702
-
-/**
- * The super agent's dispatch instructions.
- *
- * Static and short: the constraints themselves live in the tool schema and the
- * card/coverage checks, so this section only fixes the order and the reporting
- * path. Inserted text is stable across requests so the prompt prefix stays
- * cacheable.
- */
-export const WORKSPACE_DISPATCH_TEXT = 'You dispatch work to workspace Sessions. The order is fixed:\n'
-  + '1. Read the intent card with `workspace_intents` (`get`; use `history` when it changed). A `proposed` '
-  + 'version needs the person\'s confirmation with `confirm` before dispatch; a version that is not the latest '
-  + 'active one is stale, so re-read it.\n'
-  + '2. Build the task brief and its coverage list. Every card point gets one `coverage` entry naming the brief '
-  + 'item that covers it, or an explicit `nonCoverage` reason; there is no default pass.\n'
-  + '3. Dispatch with `workspace_sessions` `start`: `workspace`, `title`, `task`, `intentId`, `intentVersion`, '
-  + '`acceptance`, `boundaries`, `taskType`, and the `coverage` list (or `nonCoverage`). The task record is '
-  + 'created before the Session is prompted; when the task already exists, pass its `taskId` instead.\n'
-  + '4. Continue work with `append` or `prompt` and, when one applies, the task\'s `taskId`.\n'
-  + 'Report with `workspace_tasks` `receipt`: check every card point with evidence, then move the task with '
-  + '`update`. A receipt with a `not_satisfied` acceptance item or a `violated` boundary cannot be `done`; it '
-  + 'lands in `waiting_review` or `blocked`. Tell the person what was sent where and what is still owed; do '
-  + 'not paste the whole report.'
