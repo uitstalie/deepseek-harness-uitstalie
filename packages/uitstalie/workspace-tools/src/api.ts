@@ -28,7 +28,6 @@ import {
   WORKSPACE_DISPATCH_TEXT,
   workspaceDirectoryText,
 } from './prompt.ts'
-import { createAssistantTextTracker, reportTurnEnd } from './report.ts'
 import { workspaceTools } from './tools.ts'
 
 export const name = 'workspace-tools'
@@ -64,29 +63,24 @@ export function apply(ctx: Context): void {
     label: WORKSPACE_TOOLSET_LABEL,
     description: WORKSPACE_TOOLSET_DESCRIPTION,
     config: {},
-    create: (_runtime: CapabilityRuntime): CapabilityContribution => {
-      const assistantText = createAssistantTextTracker(ctx)
-      return {
-        scope: 'all',
-        tools: () => workspaceTools(ctx),
-        onTurnEnd: input => reportTurnEnd(ctx, input, assistantText.last(input.session)),
-        promptSections: (agent: Agent) => [
-          {
-            name: WORKSPACE_DIRECTORY_SECTION_NAME,
-            order: WORKSPACE_DIRECTORY_SECTION_ORDER,
-            text: () => workspaceDirectoryText(ctx),
-          },
-          ...agent.role === 'super'
-            ? [{
-              name: WORKSPACE_DISPATCH_SECTION_NAME,
-              order: WORKSPACE_DISPATCH_SECTION_ORDER,
-              text: (): string => WORKSPACE_DISPATCH_TEXT,
-            }]
-            : [],
-        ],
-        dispose: () => { assistantText.dispose() },
-      }
-    },
+    create: (_runtime: CapabilityRuntime): CapabilityContribution => ({
+      scope: 'all',
+      tools: () => workspaceTools(ctx),
+      promptSections: (agent: Agent) => [
+        {
+          name: WORKSPACE_DIRECTORY_SECTION_NAME,
+          order: WORKSPACE_DIRECTORY_SECTION_ORDER,
+          text: () => workspaceDirectoryText(ctx),
+        },
+        ...agent.role === 'super'
+          ? [{
+            name: WORKSPACE_DISPATCH_SECTION_NAME,
+            order: WORKSPACE_DISPATCH_SECTION_ORDER,
+            text: (): string => WORKSPACE_DISPATCH_TEXT,
+          }]
+          : [],
+      ],
+    }),
   })
   ctx.effect(() => registration, 'workspace-tools.register()')
 }

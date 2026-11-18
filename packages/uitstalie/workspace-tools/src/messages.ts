@@ -122,9 +122,7 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       + 'or read messages a workspace delivered and their receipts. '
       + '`send` requires `targetSessionId`, `text` (at most 600 characters: conclusion, evidence, next step), and '
       + '`requestId`; a repeated `requestId` returns the first result. Same-workspace sends are allowed; a '
-      + 'cross-workspace send requires the super agent and the target workspace id. The one automatic '
-      + 'cross-workspace delivery is the task-bound `[task-report]` sent at the executor\'s turn end to its '
-      + 'dispatcher; this action never bypasses the rule. A delivery the host rejects is '
+      + 'cross-workspace send requires the super agent and the target workspace id. A delivery the host rejects is '
       + 'recorded as `failed` with its reason and attempt count instead of being lost. `status` returns one message '
       + 'by `messageId` (or the newest message for `targetSessionId`) with its delivery state, failure reason, '
       + 'attempts, receipts, and references. `retry` re-delivers one `failed` message under its original identity; '
@@ -473,72 +471,10 @@ async function sendMessage(
     )
   }
   const references = await resolveCitations(ctx, workspace, request.references, signal)
-  const message = await recordMessage(ctx, workspace, {
-    sourceSessionId: String(session.id),
-    targetSessionId,
-    text,
-    requestId,
-    references,
-    kind: request.kind ?? 'message',
-    priority,
-    ...request.urgentReason === undefined ? {} : { urgentReason: request.urgentReason },
-    ...request.replyTo === undefined ? {} : { replyTo: request.replyTo },
-    ...request.taskId === undefined ? {} : { taskId: request.taskId },
-  }, signal, session)
-  return sentOf(message)
-}
-
-/** Fields shared by one recorded message delivery. */
-interface RecordMessageInput {
-  /** Session that sent the message. */
-  readonly sourceSessionId: string
-  /** Session the message addresses. */
-  readonly targetSessionId: string
-  /** Message body. */
-  readonly text: string
-  /** Stable idempotency key. */
-  readonly requestId: string
-  /** Message or follow-up. */
-  readonly kind: MessageKind
-  /** Effective priority. */
-  readonly priority: MessagePriority
-  /** Which urgent case applies. */
-  readonly urgentReason?: UrgentReason
-  /** Message being answered. */
-  readonly replyTo?: string
-  /** Task the message reports on. */
-  readonly taskId?: string
-  /** Citations captured at send time. */
-  readonly references: ArtifactCitation[]
-}
-
-/**
- * Record one message and attempt delivery, reusing an existing record with the
- * same request identity. The caller owns target validation: the tool path
- * requires membership in the workspace, while the automatic task report path
- * addresses the task's bound dispatcher outside it.
- * @param ctx - context carrying the store and controller.
- * @param workspace - workspace that owns the message.
- * @param input - identity, target, body, and citations.
- * @param signal - cancellation for the store reads and delivery.
- * @param session - Session writing the record, when the caller has one.
- * @returns the durable message record.
- */
-async function recordMessage(
-  ctx: Context,
-  workspace: Workspace,
-  input: RecordMessageInput,
-  signal: AbortSignal | undefined,
-  session?: Session,
-): Promise<MessageRecord> {
-  const existing = (await listMessages(ctx, workspace.id, signal))
-    .find(message => message.requestId === input.requestId
-      && message.sourceSessionId === input.sourceSessionId
-      && message.targetSessionId === input.targetSessionId)
-  if (existing !== undefined) return existing
   const createdAt = new Date().toISOString()
   const messageId = `message-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
-  const archived = isArchivedSession(ctx, input.targetSessionId)
+  const kind = request.kind ?? 'message'
+  const archived = isArchivedSession(ctx, targetSessionId)
   let status: MessageDeliveryStatus = 'queued'
   let deliveredAt: string | undefined
   let error: string | undefined
@@ -547,7 +483,7 @@ async function recordMessage(
   } else {
     const delivery = messageDeliveryController(ctx)
     if (delivery !== undefined) {
-      const outcome = await admit(ctx, delivery, messageId, input.targetSessionId, input.priority, input.text, signal)
+      const outcome = await admit(ctx, delivery, messageId, targetSessionId, priority, text, signal)
       if (outcome.accepted) {
         status = 'delivered'
         deliveredAt = new Date().toISOString()
@@ -560,16 +496,16 @@ async function recordMessage(
   const message: MessageRecord = {
     messageId,
     workspaceId: String(workspace.id),
-    targetSessionId: input.targetSessionId,
-    sourceSessionId: input.sourceSessionId,
-    text: input.text,
-    kind: input.kind,
-    priority: input.priority,
-    ...input.urgentReason === undefined ? {} : { urgentReason: input.urgentReason },
-    ...input.replyTo === undefined ? {} : { replyTo: input.replyTo },
-    references: input.references,
-    ...input.taskId === undefined ? {} : { taskId: input.taskId },
-    requestId: input.requestId,
+    targetSessionId,
+    sourceSessionId: String(session.id),
+    text,
+    kind,
+    priority,
+    ...request.urgentReason === undefined ? {} : { urgentReason: request.urgentReason },
+    ...request.replyTo === undefined ? {} : { replyTo: request.replyTo },
+    references,
+    ...request.taskId === undefined ? {} : { taskId: request.taskId },
+    requestId,
     status,
     createdAt,
     ...deliveredAt === undefined ? {} : { deliveredAt },
@@ -577,53 +513,7 @@ async function recordMessage(
     attempts: 1,
     receipts: [{ at: deliveredAt ?? createdAt, status }],
   }
-  await writeMessage(ctx, workspace.id, message, { ...session === undefined ? {} : { session } })
-  return message
-}
-
-/** One automatic task report to deliver to the task's bound dispatcher. */
-export interface TaskReportMessage {
-  /** Executor Session that finished its turn. */
-  readonly sourceSessionId: string
-  /** Dispatcher Session the task is bound to. */
-  readonly targetSessionId: string
-  /** Task whose turn ended. */
-  readonly taskId: string
-  /** Bounded report text. */
-  readonly text: string
-  /** Stable idempotency key derived from the task and turn. */
-  readonly requestId: string
-}
-
-/**
- * Record and deliver one automatic, task-bound completion report.
- *
- * This is the only message path that may address a Session outside the
- * workspace: the turn-end hook passes the task's bound dispatcher, and the
- * binding is checked by the caller before it gets here. It is not a tool
- * action, so an ordinary executor cannot reach it with an arbitrary target.
- * @param ctx - context carrying the store and controller.
- * @param workspace - workspace that owns the task and the report.
- * @param input - executor, bound dispatcher, task, body, and request id.
- * @param signal - cancellation for the store reads and delivery.
- * @returns the recorded delivery state.
- */
-export async function deliverTaskReport(
-  ctx: Context,
-  workspace: Workspace,
-  input: TaskReportMessage,
-  signal: AbortSignal | undefined,
-): Promise<SentMessage> {
-  const message = await recordMessage(ctx, workspace, {
-    sourceSessionId: input.sourceSessionId,
-    targetSessionId: input.targetSessionId,
-    text: input.text,
-    requestId: input.requestId,
-    kind: 'message',
-    priority: 'normal',
-    taskId: input.taskId,
-    references: [],
-  }, signal)
+  await writeMessage(ctx, workspace.id, message, { session })
   return sentOf(message)
 }
 

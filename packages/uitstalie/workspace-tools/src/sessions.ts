@@ -469,10 +469,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       + 'at an optional `atSeq`; `archive` hides it; `compact` compresses its history; `delete` erases a stored '
       + 'Session only when the host exposes a real delete API — otherwise it refuses, because an archive is not '
       + 'a deletion. `delivery` is queue (default) or interrupt for `append` and `prompt`; trust `get` before '
-      + 'addressing a Session. The dispatched task stays bound to the dispatching Session: the executor\'s turn '
-      + 'end delivers one `[task-report]` to that Session (task id, executor session, state, conclusion and '
-      + 'evidence pointers) and appends an automatic receipt that moves the task to `waiting_review`, or to '
-      + '`blocked` when the turn failed. The dispatcher does not poll.',
+      + 'addressing a Session.',
     parameters: {
       action: {
         type: 'string',

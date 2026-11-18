@@ -120,8 +120,6 @@ export interface TaskRecord {
   readonly assignee?: string | undefined
   /** Session expected to execute the task. */
   readonly targetSessionId?: string | undefined
-  /** Session that dispatched the task and receives its automatic completion report. */
-  readonly dispatcherSessionId?: string | undefined
   /** Intent card this task was dispatched against. */
   readonly intentId?: string | undefined
   /** Intent card version this task was dispatched against. */

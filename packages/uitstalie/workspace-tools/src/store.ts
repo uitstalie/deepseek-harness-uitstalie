@@ -37,7 +37,6 @@ const taskSchema = z.strictObject({
   status: z.enum(['pending', 'in_progress', 'waiting_review', 'done', 'blocked', 'cancelled']),
   assignee: z.string().optional(),
   targetSessionId: z.string().optional(),
-  dispatcherSessionId: z.string().optional(),
   intentId: z.string().optional(),
   intentVersion: z.number().int().positive().optional(),
   coverage: z.array(z.strictObject({
