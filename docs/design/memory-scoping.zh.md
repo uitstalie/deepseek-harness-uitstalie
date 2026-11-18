@@ -377,7 +377,7 @@ ArtifactRef = { artifactId, workspaceId, path, sha256, size, version,
 
 写动作门控（已实现）：本工作区内的写动作对任何 agent 开放——`workspace_tasks.create`/`update`/`receipt`、`workspace_intents.create`/`confirm`/`correct` 与 `workspace_sessions` 的生命周期写动作都只要求调用者在目标工作区内；跨工作区写仍要求 super agent。跨工作区发送不按角色放行，只按下一段的回传契约放行。
 
-回传契约（已实现）：`workspace_tasks.create` 把调用者会话 id 记入任务的 `dispatcherSessionId`；执行者用 `workspace_message.send` 带 `taskId` 回传给发起该任务的会话，消息记录保存 `taskId`、`requestId` 与产物引用，`requestId` 幂等，重复调用返回第一次的结果。跨工作区发送只在任务绑定时放行：任务在调用者工作区，`targetSessionId` 是调用者，`dispatcherSessionId` 是发送目标；给出 `taskId` 时按它定位任务，未给出时按 caller=`targetSessionId` 查找绑定任务。同工作区发送不受此限制。`status` 报告投递状态、失败原因与尝试次数；`retry` 用同一身份重发 `failed` 消息；任务状态只经 `workspace_tasks` 的 `update` 与 `receipt`，消息投递不改变任务状态。
+回传契约（已实现）：`workspace_tasks.create` 把调用者会话 id 记入任务的 `dispatcherSessionId`；执行者用 `workspace_message.send` 带 `taskId` 回传给发起该任务的会话，消息记录保存 `taskId`、`requestId` 与产物引用，`requestId` 幂等，重复调用返回第一次的结果。跨工作区发送只在任务绑定时放行：任务在调用者工作区，`targetSessionId` 是调用者，`dispatcherSessionId` 是发送目标；给出 `taskId` 时按它定位任务，未给出时按 caller=`targetSessionId` 查找绑定任务。同工作区发送不受此限制。`status` 报告投递状态、失败原因与尝试次数；`retry` 用同一身份重发 `failed` 消息，跨工作区 `retry` 与 `send` 使用同一任务绑定；任务状态只经 `workspace_tasks` 的 `update` 与 `receipt`，消息投递不改变任务状态。
 
 工具调用失败时，模型用同一个 `requestId` 重试或报告失败；它不能假设有自动投递。回复要短：结论、依据、下一步；文件用引用；不写报告式长文。挂引用就是推路径；检查点见 6.6 节。
 

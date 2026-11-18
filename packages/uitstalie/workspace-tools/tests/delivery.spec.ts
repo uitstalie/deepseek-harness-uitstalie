@@ -17,6 +17,7 @@ import {
   mountWorkspaceTools,
   objectValue,
   registerWorkspace,
+  seedRecord,
   sha256,
   textOf,
   valueOf,
@@ -314,6 +315,78 @@ test('a cross-workspace send is allowed only as a task-bound return', async () =
   const records = (valueOf(page) as { messages: { text: string; taskId?: string }[] }).messages
   expect(records.find(record => record.text === 'task-bound return')?.taskId).toBe(taskId)
   expect(records.find(record => record.text === 'task-bound return without taskId')?.taskId).toBe(taskId)
+
+  deliveryBehaviour = async () => ({ accepted: false, error: 'inbox closed for the bound retry' })
+  const failedBound = await callTool(mounted.ctx, executor, 'workspace_message', {
+    action: 'send',
+    workspace: String(b.id),
+    targetSessionId: String(dispatcher.session.id),
+    taskId,
+    text: 'bound send that fails',
+    requestId: 'cross-bound-failed',
+  })
+  expect(failedBound.isError).toBe(false)
+  expect((valueOf(failedBound) as { sent: { status: string } }).sent.status).toBe('failed')
+  deliveryBehaviour = async () => ({ accepted: true })
+  const failedMessageId = (valueOf(failedBound) as { sent: { messageId: string } }).sent.messageId
+  const retried = await callTool(mounted.ctx, executor, 'workspace_message', {
+    action: 'retry',
+    workspace: String(b.id),
+    messageId: failedMessageId,
+  })
+  expect(retried.isError).toBe(false)
+  expect((valueOf(retried) as { sent: { status: string } }).sent.status).toBe('delivered')
+  expect(delivered.at(-1)?.text).toContain('bound send that fails')
+
+  const seededAt = new Date().toISOString()
+  const seededUnbound = 'message-seeded-unbound'
+  await seedRecord(mounted, `workspaces/${String(b.id)}/messages/${seededUnbound}.json`, {
+    messageId: seededUnbound,
+    workspaceId: String(b.id),
+    targetSessionId: String(dispatcher.session.id),
+    sourceSessionId: String(bystander.session.id),
+    text: 'seeded unbound message',
+    kind: 'message',
+    priority: 'normal',
+    references: [],
+    requestId: 'seeded-unbound',
+    status: 'failed',
+    createdAt: seededAt,
+    error: 'seeded failure',
+    attempts: 1,
+    receipts: [{ at: seededAt, status: 'failed' }],
+  })
+  const retryUnbound = await callTool(mounted.ctx, bystander, 'workspace_message', {
+    action: 'retry',
+    workspace: String(b.id),
+    messageId: seededUnbound,
+  })
+  expect(retryUnbound.isError).toBe(true)
+  expect(textOf(retryUnbound)).toContain('task')
+
+  const seededSuper = 'message-seeded-super'
+  await seedRecord(mounted, `workspaces/${String(a.id)}/messages/${seededSuper}.json`, {
+    messageId: seededSuper,
+    workspaceId: String(a.id),
+    targetSessionId: String(executor.session.id),
+    sourceSessionId: String(dispatcher.session.id),
+    text: 'seeded super message',
+    kind: 'message',
+    priority: 'normal',
+    references: [],
+    requestId: 'seeded-super',
+    status: 'failed',
+    createdAt: seededAt,
+    error: 'seeded failure',
+    attempts: 1,
+    receipts: [{ at: seededAt, status: 'failed' }],
+  })
+  const retrySuper = await callTool(mounted.ctx, dispatcher, 'workspace_message', {
+    action: 'retry',
+    workspace: String(a.id),
+    messageId: seededSuper,
+  })
+  expect(retrySuper.isError).toBe(true)
 
   const unboundBystander = await callTool(mounted.ctx, bystander, 'workspace_message', {
     action: 'send',

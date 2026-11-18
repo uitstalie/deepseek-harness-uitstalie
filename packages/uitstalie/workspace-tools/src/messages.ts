@@ -125,7 +125,8 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       + '`requestId`; a repeated `requestId` returns the first result. Same-workspace sends are allowed. A '
       + 'cross-workspace send is allowed only as a task-bound return: the caller must be the task\'s '
       + '`targetSessionId`, the target Session must be the task\'s `dispatcherSessionId`, and the task must live in '
-      + 'the caller\'s workspace. A delivery the host rejects is '
+      + 'the caller\'s workspace; `retry` applies the same task-binding rule when the message crosses '
+      + 'workspaces. A delivery the host rejects is '
       + 'recorded as `failed` with its reason and attempt count instead of being lost. `status` returns one message '
       + 'by `messageId` (or the newest message for `targetSessionId`) with its delivery state, failure reason, '
       + 'attempts, receipts, and references. `retry` re-delivers one `failed` message under its original identity; '
@@ -346,11 +347,21 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       if (args.action === 'send' || args.action === 'retry') {
         const scope = await resolveWorkspace(ctx, session, `message.${args.action}`, args.workspace)
         if (args.action === 'retry') {
-          if (scope.crossWorkspace && exec.agent?.role !== 'super') {
-            throw new WorkspaceMessageError(
-              'a cross-workspace retry requires the super agent',
-              'WORKSPACE_MESSAGE_FORBIDDEN',
-            )
+          if (scope.crossWorkspace) {
+            const messageId = args.messageId?.trim() ?? ''
+            if (messageId !== '') {
+              const stored = await readMessage(ctx, scope.workspace.id, messageId, exec.signal)
+              if (stored !== undefined) {
+                await boundTaskOf(
+                  ctx,
+                  session,
+                  stored.message.targetSessionId,
+                  stored.message.taskId,
+                  'retry',
+                  exec.signal,
+                )
+              }
+            }
           }
           return {
             workspace: String(scope.workspace.id),
@@ -359,7 +370,7 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
         }
         const targetSessionId = args.targetSessionId?.trim() ?? ''
         const binding = scope.crossWorkspace && targetSessionId !== ''
-          ? await boundTaskOf(ctx, session, targetSessionId, args.taskId, exec.signal)
+          ? await boundTaskOf(ctx, session, targetSessionId, args.taskId, 'send', exec.signal)
           : undefined
         return {
           workspace: String(scope.workspace.id),
@@ -411,17 +422,19 @@ interface SendRequest {
  * the task; without it the one task that binds this caller and target is used.
  * @param ctx - context carrying the store and registry.
  * @param session - sending Session.
- * @param targetSessionId - target Session of the send.
- * @param taskId - caller-named task, when one was supplied.
+ * @param targetSessionId - target Session of the send or retry.
+ * @param taskId - caller-named or message-recorded task, when one was supplied.
+ * @param action - `send` or `retry`, for the refusal message.
  * @param signal - cancellation for the store reads.
  * @returns the binding task.
- * @throws WorkspaceMessageError `WORKSPACE_MESSAGE_FORBIDDEN` when no task binds this send.
+ * @throws WorkspaceMessageError `WORKSPACE_MESSAGE_FORBIDDEN` when no task binds this cross-workspace delivery.
  */
 async function boundTaskOf(
   ctx: Context,
   session: Session,
   targetSessionId: string,
   taskId: string | undefined,
+  action: 'send' | 'retry',
   signal: AbortSignal | undefined,
 ): Promise<TaskRecord> {
   const caller = await resolveWorkspace(ctx, session, 'message.send')
@@ -436,8 +449,8 @@ async function boundTaskOf(
     || task.dispatcherSessionId !== targetSessionId) {
     throw new WorkspaceMessageError(
       taskId === undefined
-        ? `a cross-workspace send from session ${callerSessionId} to session ${targetSessionId} requires a task in `
-          + 'the caller\'s workspace whose targetSessionId is the caller and whose dispatcherSessionId is the target'
+        ? `a cross-workspace ${action} from session ${callerSessionId} to session ${targetSessionId} requires a task `
+          + 'in the caller\'s workspace whose targetSessionId is the caller and whose dispatcherSessionId is the target'
         : `task ${JSON.stringify(taskId)} does not bind session ${callerSessionId} to session ${targetSessionId}: `
           + 'the task must live in the caller\'s workspace, with targetSessionId the caller and '
           + 'dispatcherSessionId the target',
