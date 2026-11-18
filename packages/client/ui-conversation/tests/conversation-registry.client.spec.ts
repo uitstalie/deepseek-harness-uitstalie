@@ -111,7 +111,7 @@ function fakeSessions(ctx: Context): {
     refreshProjections: () => Promise.reject(new Error('unused fake Sessions operation')),
     refresh: () => Promise.reject(new Error('unused fake Sessions operation')),
     search: () => Promise.reject(new Error('unused fake Sessions operation')),
-    forkSession: () => Promise.reject(new Error('unused fake Sessions operation')),
+    fork: () => Promise.reject(new Error('unused fake Sessions operation')),
     scope: id => id === SESSION_ID ? binding.ctx : undefined,
     scopeOf: candidate => candidate === binding.ctx ? SESSION_ID : undefined,
     sessionOf: candidate => candidate === binding.ctx ? binding.session : undefined,

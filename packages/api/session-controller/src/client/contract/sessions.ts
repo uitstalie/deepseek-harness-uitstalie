@@ -151,7 +151,7 @@ export interface ISessions {
    * @returns the child session id.
    * @throws when the fork fails, or when a requested child-title rename fails after creation.
    */
-  forkSession(opts: {
+  fork(opts: {
     sessionId: SessionId
     atSeq?: number
     increaseTitle?: boolean
@@ -184,9 +184,4 @@ export interface ISessions {
    * @returns the live binding, or undefined without a retained generation.
    */
   binding(id: SessionId): SessionBinding | undefined
-}
-
-/** In the client program the one sessions service carries both the Host store surface and this client face. */
-declare module '@deepseek-ai/dsh-session' {
-  interface SessionStore extends ISessions {}
 }

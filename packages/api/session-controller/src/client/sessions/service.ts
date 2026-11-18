@@ -479,7 +479,7 @@ export class ClientSessions implements ISessions {
    * @throws {SessionForkError} with the source id.
    * @throws {Error} when a requested child-title rename fails after creation.
    */
-  async forkSession(opts: {
+  async fork(opts: {
     sessionId: SessionId
     atSeq?: number
     increaseTitle?: boolean

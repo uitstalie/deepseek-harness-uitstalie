@@ -99,7 +99,7 @@ export type SessionRetainFacet = Extract<keyof SessionRetainFacetMap, string>
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Client Session object layer and Agent scope owner. */
-    sessions: import('@deepseek-ai/dsh-session').SessionStore
+    sessions: import('./contract/sessions.ts').ISessions
   }
 }
 

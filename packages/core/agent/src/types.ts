@@ -4,9 +4,6 @@
  * @module @deepseek-ai/dsh-agent/types
  */
 
-// BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, Agent 角色按持久 Workspace 归属解析
-import type { AgentRole } from './runtime-types.ts'
-export type { AgentRole } from './runtime-types.ts'
 import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm/types'
 import type { UserMessage } from '@deepseek-ai/dsh-llm/types'
 // Type-only: the Workspace registry's archive-admission family map this registry merges `turn` into.
@@ -15,13 +12,17 @@ import type { OptionalSessionSeq, SessionId, SessionSeq } from '@deepseek-ai/dsh
 import type { TypertContext, TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
+// BEGIN uitstalie-deepseek-flash, 2026/11/16, DH-311, Agent 角色按持久 Workspace 归属解析
+/** Agent roles, ordered from least to most privileged for tool and prompt gating. */
+export type AgentRole = 'subagent' | 'agent' | 'super'
+// END uitstalie-deepseek-flash
+
 /** Public live-agent handle; the runtime face augments its live capabilities. */
 export interface Agent {
   /** Session-backed Agent identity. */
   readonly id: SessionId
   /** Effective role of this Agent; live registries always set it, minimal test faces may omit it. */
   readonly role?: AgentRole
-  // END uitstalie-deepseek-flash
 }
 
 declare module '@deepseek-ai/dsh-workspace/types' {

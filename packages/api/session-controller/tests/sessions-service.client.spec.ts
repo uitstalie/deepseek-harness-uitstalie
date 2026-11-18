@@ -940,7 +940,7 @@ describe('fork', () => {
     const source = sid('source')
     const permission = allowMigration === undefined ? {} : { allowMigration }
 
-    await expect(b.svc.forkSession({ sessionId: source, atSeq: 7, ...permission })).resolves.toBe(sid('child'))
+    await expect(b.svc.fork({ sessionId: source, atSeq: 7, ...permission })).resolves.toBe(sid('child'))
 
     expect(b.mock.remote.session.fork).toHaveBeenCalledExactlyOnceWith({ sessionId: source, atSeq: 7, ...permission })
     expect(b.svc.binding(source)).toBeUndefined()
@@ -954,7 +954,7 @@ describe('fork', () => {
     const onCreated = vi.fn<(childId: SessionId) => void>()
     b.mock.remote.session.fork.mockResolvedValueOnce(err(error))
 
-    const failure = await b.svc.forkSession({ sessionId: source, allowMigration: false, onCreated })
+    const failure = await b.svc.fork({ sessionId: source, allowMigration: false, onCreated })
       .catch((cause: unknown) => cause)
 
     expect(failure).toBeInstanceOf(SessionForkError)
@@ -970,7 +970,7 @@ describe('fork', () => {
     const b = bench()
     const error = new RemoteError('session/not-found', 'source missing', { sessionId: sid('source') })
     b.mock.remote.session.fork.mockResolvedValue(err(error))
-    const failure = await b.svc.forkSession({ sessionId: sid('source') }).catch((cause: unknown) => cause)
+    const failure = await b.svc.fork({ sessionId: sid('source') }).catch((cause: unknown) => cause)
     expect(failure).toBeInstanceOf(SessionForkError)
     expect(failure).toMatchObject({ sourceSessionId: 'source', rpcError: error })
     expect(b.svc.list.getSnapshot().ids).toEqual([])
@@ -994,7 +994,7 @@ describe('fork', () => {
       return Promise.resolve(ok({ title, seq: 3 }))
     })
 
-    await expect(b.svc.forkSession({
+    await expect(b.svc.fork({
       sessionId: sid('source'), atSeq: 7, increaseTitle: true,
     })).resolves.toBe('child')
 
@@ -1024,7 +1024,7 @@ describe('fork', () => {
 
     for (const child of ['child-1', 'child-2']) {
       b.mock.remote.session.fork.mockResolvedValueOnce(ok({ sessionId: sid(child) }))
-      await b.svc.forkSession({ sessionId: sid('source'), increaseTitle: true })
+      await b.svc.fork({ sessionId: sid('source'), increaseTitle: true })
     }
 
     expect(b.mock.remote.session.rename.mock.calls).toEqual([
@@ -1039,7 +1039,7 @@ describe('fork', () => {
     await feedList(b, [{ id: 'source', cwd: '/work' }])
     b.mock.remote.session.fork.mockResolvedValue(ok({ sessionId: sid('child') }))
 
-    await expect(b.svc.forkSession({ sessionId: sid('source'), atSeq: 41 })).resolves.toBe('child')
+    await expect(b.svc.fork({ sessionId: sid('source'), atSeq: 41 })).resolves.toBe('child')
 
     expect(b.mock.remote.session.fork).toHaveBeenCalledExactlyOnceWith({ sessionId: 'source', atSeq: 41 })
   })
@@ -1048,11 +1048,11 @@ describe('fork', () => {
     const b = bench()
     await feedList(b, [{ id: 'source', cwd: '/work' }])
     b.mock.remote.session.fork.mockResolvedValue(ok({ sessionId: sid('child') }))
-    await expect(b.svc.forkSession({ sessionId: sid('source'), increaseTitle: true })).resolves.toBe('child')
+    await expect(b.svc.fork({ sessionId: sid('source'), increaseTitle: true })).resolves.toBe('child')
     expect(b.mock.remote.session.rename).not.toHaveBeenCalled()
 
     b.mock.remote.session.fork.mockResolvedValue(ok({ sessionId: sid('child-2') }))
-    await expect(b.svc.forkSession({ sessionId: sid('source') })).resolves.toBe('child-2')
+    await expect(b.svc.fork({ sessionId: sid('source') })).resolves.toBe('child-2')
     expect(b.mock.remote.session.rename).not.toHaveBeenCalled()
   })
 
@@ -1066,7 +1066,7 @@ describe('fork', () => {
     b.mock.remote.session.rename.mockResolvedValue(err(new RemoteError('session/title-invalid', 'rejected', { sessionId: sid('child') })))
 
     const onCreated = vi.fn()
-    await expect(b.svc.forkSession({ sessionId: sid('source'), increaseTitle: true, onCreated }))
+    await expect(b.svc.fork({ sessionId: sid('source'), increaseTitle: true, onCreated }))
       .rejects.toThrow('fork child rename failed: session/title-invalid: rejected')
     expect(onCreated).toHaveBeenCalledExactlyOnceWith('child')
     expect(b.svc.list.getSnapshot().byId[sid('child')]).toBeDefined()

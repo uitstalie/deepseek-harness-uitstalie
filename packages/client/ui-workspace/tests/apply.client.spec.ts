@@ -120,7 +120,7 @@ async function bench(access: 'fake' | 'static' = 'fake') {
     _options: unknown,
     operation: (reference: SessionReference) => unknown,
   ) => await operation(retain(target)))
-  const fork = vi.fn<ISessions['forkSession']>(async () => sid('forked'))
+  const fork = vi.fn<ISessions['fork']>(async () => sid('forked'))
   const pinSession = vi.fn(async () => undefined)
   const unpinSession = vi.fn(async () => undefined)
   // The Host snapshots the injected hooks derive from and a pin's order write
@@ -156,7 +156,7 @@ async function bench(access: 'fake' | 'static' = 'fake') {
     sessionOf,
     subagentAddress: vi.fn(() => undefined),
     refreshProjections: vi.fn(() => Promise.resolve()),
-    forkSession: fork,
+    fork: fork,
   } as never)
   const pickDirectory = vi.fn(() => Promise.resolve({ ok: true as const, value: '/projects/picked' }))
   const directoryPicker = { pick: pickDirectory }

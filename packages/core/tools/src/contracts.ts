@@ -2,7 +2,7 @@
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { TOOL_CONTEXT_UNAVAILABLE } from './error-codes.ts'
 import type { ToolCallId, ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm'
-import type { Agent, AgentRole, ModelSelection } from '@deepseek-ai/dsh-agent/types'
+import type { Agent, AgentRole, ModelSelection } from '@deepseek-ai/dsh-agent'
 import type { ScopeKey } from '@deepseek-ai/dsh-scope'
 import type { UserMessage } from '@deepseek-ai/dsh-llm/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'

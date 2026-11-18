@@ -12,8 +12,8 @@ import type {
 } from '@deepseek-ai/dsh-llm'
 import type { AgentCancelCause, Session, SessionSeq, UserMessage } from '@deepseek-ai/dsh-session'
 export type { AgentCancelCause } from '@deepseek-ai/dsh-session'
-import type { Agent, InboxTarget, ModelSelection } from './types.ts'
-export type { Agent } from './types.ts'
+import type { Agent, AgentRole, InboxTarget, ModelSelection } from './types.ts'
+export type { Agent, AgentRole } from './types.ts'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 declare module '@deepseek-ai/dsh-system-prompt' {
   interface AssembleContext {
@@ -23,9 +23,6 @@ declare module '@deepseek-ai/dsh-system-prompt' {
     modelSelection?: Readonly<ModelSelection>
   }
 }
-
-/** Agent roles, ordered from least to most privileged for tool and prompt gating. */
-export type AgentRole = 'subagent' | 'agent' | 'super'
 
 /**
  * Merge-extensible agent options. Route fields may be live accessors until the

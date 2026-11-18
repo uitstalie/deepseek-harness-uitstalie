@@ -70,7 +70,7 @@ export interface UiWorkspace {
   forkSession(
     sessionId: SessionId,
     onCreated?: (childId: SessionId) => void,
-    options?: Pick<Parameters<ISessions['forkSession']>[0], 'allowMigration'>,
+    options?: Pick<Parameters<ISessions['fork']>[0], 'allowMigration'>,
   ): Promise<SessionId>
   /**
    * Resolve the Session for a new conversation in a Workspace: navigation names the first reusable
@@ -333,9 +333,9 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   async forkSession(
     sessionId: SessionId,
     onCreated?: (childId: SessionId) => void,
-    options?: Pick<Parameters<ISessions['forkSession']>[0], 'allowMigration'>,
+    options?: Pick<Parameters<ISessions['fork']>[0], 'allowMigration'>,
   ): Promise<SessionId> {
-    return this.sessions.forkSession({
+    return this.sessions.fork({
       sessionId,
       increaseTitle: true,
       ...onCreated === undefined ? {} : { onCreated },

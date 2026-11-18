@@ -266,7 +266,7 @@ describe('Chat inject API', () => {
 
     const track = vi.fn()
     b.runtime.ctx.provide('productAnalytics', { track } as never)
-    const forkCreated = vi.spyOn(b.runtime.sessions, 'forkSession').mockImplementation(async (input) => { input.onCreated?.(ROOT); return ROOT })
+    const forkCreated = vi.spyOn(b.runtime.sessions, 'fork').mockImplementation(async (input) => { input.onCreated?.(ROOT); return ROOT })
     injected.forkAt(17)
     expect(track).toHaveBeenCalledWith('branch_session_click', { session_id: ROOT, parent_session_id: ROOT, click_position: 'footer' })
     await b.runtime.sessions.replaceEvents(ROOT, [
@@ -288,7 +288,7 @@ describe('Chat inject API', () => {
       method: 'fork', args: [{ sessionId: ROOT, atSeq: 17, increaseTitle: true, onCreated: expect.any(Function) as (childId: SessionId) => void }],
     })
 
-    const fork = vi.spyOn(b.runtime.sessions, 'forkSession').mockRejectedValueOnce(new Error('fork failed'))
+    const fork = vi.spyOn(b.runtime.sessions, 'fork').mockRejectedValueOnce(new Error('fork failed'))
     injected.forkAt(18)
     await vi.waitFor(() => {
       expect(fork).toHaveBeenCalledWith({

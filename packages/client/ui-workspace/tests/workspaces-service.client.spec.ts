@@ -140,7 +140,7 @@ interface RetainedSession {
 class FakeSessions implements ISessions {
   readonly list: MutableSource<SessionListState>
   readonly createSession: ReturnType<typeof vi.fn<ISessions['createSession']>>
-  readonly forkSession = vi.fn<ISessions['forkSession']>(async () => sid('forked'))
+  readonly fork = vi.fn<ISessions['fork']>(async () => sid('forked'))
   readonly retained: RetainedSession[] = []
   readonly refreshProjections = vi.fn<ISessions['refreshProjections']>(() => Promise.resolve())
   readonly retain = vi.fn<ISessions['retain']>((target) => {
@@ -585,7 +585,7 @@ describe('UiWorkspaceService', () => {
       const b = bench({ workspaces: workspaceState([workspace('a')]) })
       const created = Promise.withResolvers<SessionId>()
       b.sessions.createSession.mockReturnValueOnce(created.promise)
-      b.sessions.forkSession.mockReturnValueOnce(created.promise)
+      b.sessions.fork.mockReturnValueOnce(created.promise)
       const pending = kind === 'workspace' ? b.uiWorkspace.openWorkspace(wid('a')) : b.uiWorkspace.forkSession(sid('source'))
       await b.ctx.fiber.dispose()
       created.resolve(sid('late'))
@@ -641,9 +641,9 @@ describe('UiWorkspaceService', () => {
     b.sessions.retain.mockClear()
     b.selectPanel.mockClear()
     await b.uiWorkspace.forkSession(sid('source'))
-    expect(b.sessions.forkSession).toHaveBeenCalledWith({ sessionId: sid('source'), increaseTitle: true })
+    expect(b.sessions.fork).toHaveBeenCalledWith({ sessionId: sid('source'), increaseTitle: true })
     expect(b.sessions.retain).not.toHaveBeenCalled()
-    b.sessions.forkSession.mockRejectedValueOnce(new Error('fork failed'))
+    b.sessions.fork.mockRejectedValueOnce(new Error('fork failed'))
     await expect(b.uiWorkspace.forkSession(sid('source'))).rejects.toThrow('fork failed')
     expect(b.sessions.retain).not.toHaveBeenCalled()
     expect(b.selectPanel).not.toHaveBeenCalled()
@@ -653,7 +653,7 @@ describe('UiWorkspaceService', () => {
   it.each([undefined, false, true])('forwards migration permission %s without retaining or selecting a Session', async (allowMigration) => {
     const b = bench()
     const onCreated = vi.fn<(childId: SessionId) => void>()
-    b.sessions.forkSession.mockImplementationOnce(async (options) => {
+    b.sessions.fork.mockImplementationOnce(async (options) => {
       options.onCreated?.(sid('forked'))
       return sid('forked')
     })
@@ -661,7 +661,7 @@ describe('UiWorkspaceService', () => {
 
     await expect(b.uiWorkspace.forkSession(sid('source'), onCreated, options)).resolves.toBe(sid('forked'))
 
-    expect(b.sessions.forkSession).toHaveBeenCalledExactlyOnceWith({
+    expect(b.sessions.fork).toHaveBeenCalledExactlyOnceWith({
       sessionId: sid('source'), increaseTitle: true, onCreated,
       ...allowMigration === undefined ? {} : { allowMigration },
     })
