@@ -2,7 +2,7 @@
 
 [English](memory-scoping.md) | 中文
 
-状态：评审稿；第 0–4 步已实现。第 0 步（超上限归档修复，`3cb8eeaf3d`）、第 1 步（读侧工作区工具集，`cb4cc58385`）、第 2 步（意图卡与任务创建，`5288d3cd92`，派发记录在 `9218cf1c73`）、第 3 步（投递改成工具调用、删除每轮记忆注入，`548dc157ba`）与第 4 步（只留 global 记忆并迁移，`e31a5a6af5`）已在 `cli-desktop` 上。JIRA 自己的回合结束报告投递仍在，因为 JIRA 本身仍启用；10.3 节把它记为未收口缺口，而不是已完成。旧的按工作区记忆读取器、它的清理与窗口模块，以及 `memory` 设置行作为迁移兼容面保留；它们不是活的写入或注入路径，12.1 节记录这一点。篇幅：不受 12 页上限约束，以内容完整为准。
+状态：评审稿；第 0–4 步已实现。第 0 步（超上限归档修复）、第 1 步（读侧工作区工具集）、第 2 步（意图卡与任务创建，含派发记录）、第 3 步（投递改成工具调用、删除每轮记忆注入）与第 4 步（只留 global 记忆并迁移）已在 `cli-desktop` 上。JIRA 自己的回合结束报告投递仍在，因为 JIRA 本身仍启用；10.3 节把它记为未收口缺口，而不是已完成。旧的按工作区记忆读取器、它的清理与窗口模块，以及 `memory` 设置行作为迁移兼容面保留；它们不是活的写入或注入路径，12.1 节记录这一点。篇幅：不受 12 页上限约束，以内容完整为准。
 
 ## 1. 背景与问题
 
@@ -38,7 +38,7 @@
 
 ### 1.6 丢数据缺陷：超上限的条目曾被直接丢弃，不写归档
 
-`pruneSessionEntries`（`memory-file.ts:2857-2928`）用“丢弃最旧的整段 section + 丢弃完全重复文本”来执行每会话 40 条上限。事故发生时，它返回的是计数，不是归档记录；`retainDocument`（`memory-file.ts:2591`）把这个计数丢掉；写入路径只归档字节预算与清理产生的删除（`memory-file.ts:1358-1374`）。因此被丢的条目没有留下任何痕迹。Step 0（`3cb8eeaf3d`）已修复：每次超上限删除与完全重复删除都会产生归档记录，附 `over-cap` 或 `duplicate` 原因，并在所有写入路径上先于活动文件写入。
+`pruneSessionEntries`（`memory-file.ts:2857-2928`）用“丢弃最旧的整段 section + 丢弃完全重复文本”来执行每会话 40 条上限。事故发生时，它返回的是计数，不是归档记录；`retainDocument`（`memory-file.ts:2591`）把这个计数丢掉；写入路径只归档字节预算与清理产生的删除（`memory-file.ts:1358-1374`）。因此被丢的条目没有留下任何痕迹。Step 0（超上限归档修复）已修复：每次超上限删除与完全重复删除都会产生归档记录，附 `over-cap` 或 `duplicate` 原因，并在所有写入路径上先于活动文件写入。
 
 一个直接观察到的实例：
 
@@ -305,7 +305,7 @@ ask user 与用户批准是独立的可靠性设计项，见 7.5。
 | `read`、`glob`、`grep` | 读工作区内容 | 内容工具 | 保留 |
 | `tool-dsh-store` | 读 `.dsh` 内容 | 存储工具 | 不在本文范围；不改（见 2.3） |
 
-`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。第 4 步之后的当前状态：`workspace_sessions`、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message`（`send`/`read`）与 `workspace_artifacts`（`publish`/`reference`/`list`/`resolve`）已交付，静态 `workspace-directory` 提示词段已接到每个 agent。`memory_read` 已删除（`cb4cc58385`），`memory_resolve` 随 dispatch 命名空间在 `e31a5a6af5` 中删除；memory 工具面只剩 `memory_write`、`memory_forget` 与 `memory_search`。产物的 `request`/`grant` 未实现，因此 `pending` 与 `expired` 仍不可达。JIRA 与 `superagent_*` 工具仍启用（`packages/bundle/web-app/cordis.patch.uitstalie.yml` 中 `jira: { enabled: true }`），其回合结束报告投递没有被第 3 步删除。移除 JIRA 仍是待决策项，不是已发布的改动。
+`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已废弃，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。第 4 步之后的当前状态：`workspace_sessions`、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message`（`send`/`read`）与 `workspace_artifacts`（`publish`/`reference`/`list`/`resolve`）已交付，静态 `workspace-directory` 提示词段已接到每个 agent。`memory_read` 已删除（第 1 步），`memory_resolve` 随 dispatch 命名空间在第 4 步删除；memory 工具面只剩 `memory_write`、`memory_forget` 与 `memory_search`。产物的 `request`/`grant` 未实现，因此 `pending` 与 `expired` 仍不可达。JIRA 与 `superagent_*` 工具仍启用（`packages/bundle/web-app/cordis.patch.uitstalie.yml` 中 `jira: { enabled: true }`），其回合结束报告投递没有被第 3 步删除。移除 JIRA 仍是待决策项，不是已发布的改动。
 
 ### 6.3 投递改成工具调用
 
@@ -411,7 +411,7 @@ ArtifactRef = { artifactId, workspaceId, path, sha256, size, version,
 ### 7.2 提示词与注入规则
 
 - 提示词只有一段静态 `workspace-directory`。它不按轮次重写，不含状态、不含记忆、不含任务。
-- 记忆快照模块、`memory-state` 提示词段、`appendMemoryUpdate` 通知与跨会话索引都不再存在；`548dc157ba` 删除了它们。
+- 记忆快照模块、`memory-state` 提示词段、`appendMemoryUpdate` 通知与跨会话索引都不再存在；第 3 步删除了它们。
 - 会话发生 compaction 时，仍可用摘要替换旧 turn。那是 compaction 行为：它不追加每轮记忆消息，也不在会话启动时注入。
 - 回复契约（结论、依据、下一步，最多 600 字符）写在 `workspace_message.send` 的工具描述与 `text` 参数里，不在系统提示词段里。
 - 三种紧急情况写在 `workspace_message.send` 的参数说明里；没有单独的提示词段承载它们。
@@ -460,7 +460,7 @@ worker 不自己弹确认。它说明缺什么信息然后停下。super agent�
 
 ### 8.1 止血修复：先合，独立于本设计
 
-Step 0 已在 `3cb8eeaf3d` 合并，独立于本设计的其余部分。`pruneSessionEntries` 现在为每一次超上限删除与完全重复删除返回归档记录，新增 `over-cap` 与 `duplicate` 两种移除原因；`retainDocument` 收集这些记录；所有写入路径在写活动文件之前先归档；归档失败时保留条目，而不是丢弃。
+Step 0 已独立于本设计的其余部分合并。`pruneSessionEntries` 现在为每一次超上限删除与完全重复删除返回归档记录，新增 `over-cap` 与 `duplicate` 两种移除原因；`retainDocument` 收集这些记录；所有写入路径在写活动文件之前先归档；归档失败时保留条目，而不是丢弃。
 
 验收：把上限降到 3 条、再写第 4 轮，每一条被丢条目都必须有归档记录；归档失败时条目仍在；版本冲突重试不会产生重复归档。
 
@@ -668,7 +668,7 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 | TTL 与过期 | `open`/`files` 3/14 天过期 | 不要 | 随 dispatch 命名空间删除 | 删除：没有活的路径；旧读取器只为解析旧文件保留该规则 |
 | 快照注入 | 每轮记忆快照 | 不要 | 静态提示词 + 工具查询 | 已实现：已删除；注入面为空 |
 | 摘要生成 | 写每轮业务条目 | 不写记忆条目 | 只做 compaction 摘要，不做记忆 | 已实现：每轮摘要作业已移除 |
-| 跨会话索引 | “Recent sessions” 概要 | 不要 | `workspace_sessions` | 已实现：随快照在 `548dc157ba` 中删除 |
+| 跨会话索引 | “Recent sessions” 概要 | 不要 | `workspace_sessions` | 已实现：随快照在第 3 步删除 |
 | 全局与个人偏好共享 | 把跨工作区事实与画像/风格混在一起 | 拆开 | 全局记忆放事实；personality 放画像与风格 | 已实现：画像与风格归 `personality_apply` / `write_like_human` |
 
 意图卡不是记忆能力；它是工作区记录，永不进入全局记忆存储。

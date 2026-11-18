@@ -2,7 +2,7 @@
 
 English | [中文](memory-scoping.zh.md)
 
-Status: draft for review; Steps 0–4 are implemented. Step 0 (the over-cap archive fix, `3cb8eeaf3d`), Step 1 (the read-side workspace toolset, `cb4cc58385`), Step 2 (intent cards and task creation, `5288d3cd92`, with dispatch recording in `9218cf1c73`), Step 3 (delivery as a tool call and the removal of per-turn memory injection, `548dc157ba`), and Step 4 (global-only memory and migration, `e31a5a6af5`) are on `cli-desktop`. The JIRA-owned turn-end report delivery is still present because JIRA itself is still enabled; section 10.3 records that as an open gap, not as done. The legacy per-workspace memory reader, its cleanup and window modules, and the `memory` settings row remain as compatibility surfaces for the migration; they are not a live write or injection path, and section 12.1 records that. Length: not bound by the 12-page cap; content completeness takes precedence.
+Status: draft for review; Steps 0–4 are implemented. Step 0 (the over-cap archive fix), Step 1 (the read-side workspace toolset), Step 2 (intent cards and task creation, with dispatch recording), Step 3 (delivery as a tool call and the removal of per-turn memory injection), and Step 4 (global-only memory and migration) are on `cli-desktop`. The JIRA-owned turn-end report delivery is still present because JIRA itself is still enabled; section 10.3 records that as an open gap, not as done. The legacy per-workspace memory reader, its cleanup and window modules, and the `memory` settings row remain as compatibility surfaces for the migration; they are not a live write or injection path, and section 12.1 records that. Length: not bound by the 12-page cap; content completeness takes precedence.
 
 ## 1. Background and the problem
 
@@ -38,7 +38,7 @@ Every summary pass appended a snapshot, and every explicit write appended an upd
 
 ### 1.6 The data-loss defect: over-cap entries were dropped without an archive record
 
-`pruneSessionEntries` (`memory-file.ts:2857-2928`) enforces the 40-entry-per-session cap by dropping whole oldest sections and exact-text duplicates. At the time of the incident it returned counts, not archive records; `retainDocument` (`memory-file.ts:2591`) discarded those counts; the write paths archived only byte-budget and cleanup removals (`memory-file.ts:1358-1374`). A dropped entry therefore left no trace. Step 0 (`3cb8eeaf3d`) fixed this: every over-cap and exact-duplicate removal now produces an archive record with an `over-cap` or `duplicate` reason, written before the active file on every write path.
+`pruneSessionEntries` (`memory-file.ts:2857-2928`) enforces the 40-entry-per-session cap by dropping whole oldest sections and exact-text duplicates. At the time of the incident it returned counts, not archive records; `retainDocument` (`memory-file.ts:2591`) discarded those counts; the write paths archived only byte-budget and cleanup removals (`memory-file.ts:1358-1374`). A dropped entry therefore left no trace. Step 0 (the over-cap archive fix) fixed this: every over-cap and exact-duplicate removal now produces an archive record with an `over-cap` or `duplicate` reason, written before the active file on every write path.
 
 One instance, observed directly in the live workspace file:
 
@@ -305,7 +305,7 @@ The target ownership is one workspace toolset for sessions, tasks, messages, art
 | `read`, `glob`, `grep` | Reads workspace content | Content tools | Keep |
 | `tool-dsh-store` | Reads `.dsh` content | Store tool | Out of scope here; unchanged (section 2.3) |
 
-`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The workspace toolset has five members: `workspace_sessions`, `workspace_intents`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary. Current state after Step 4: `workspace_sessions`, `workspace_intents`, `workspace_tasks` (`list`/`get`/`create`/`update`/`receipt`), `workspace_message` (`send`/`read`), and `workspace_artifacts` (`publish`/`reference`/`list`/`resolve`) are shipped, and the static `workspace-directory` prompt section is wired for every agent. `memory_read` is deleted (`cb4cc58385`), and `memory_resolve` is deleted with the dispatch namespace in `e31a5a6af5`; the memory tool surface is `memory_write`, `memory_forget`, and `memory_search`. Artifact `request`/`grant` are not implemented, so `pending` and `expired` remain unreachable. JIRA and the `superagent_*` tools are still enabled (`jira: { enabled: true }` in `packages/bundle/web-app/cordis.patch.uitstalie.yml`), and their turn-end report delivery is not removed by Step 3. Removing JIRA remains an open decision, not a shipped change.
+`workspace_tasks` does not carry a JIRA compatibility field. JIRA is deprecated, so any `jiraKey` or ledger delegation is dropped, not bridged; `superagent_status` is not kept as a JIRA aggregate. The workspace toolset has five members: `workspace_sessions`, `workspace_intents`, `workspace_tasks`, `workspace_message`, and `workspace_artifacts`. The `.dsh` row remains a dependency, not a decision; section 2.3 owns that boundary. Current state after Step 4: `workspace_sessions`, `workspace_intents`, `workspace_tasks` (`list`/`get`/`create`/`update`/`receipt`), `workspace_message` (`send`/`read`), and `workspace_artifacts` (`publish`/`reference`/`list`/`resolve`) are shipped, and the static `workspace-directory` prompt section is wired for every agent. `memory_read` is deleted (Step 1), and `memory_resolve` is deleted with the dispatch namespace in Step 4; the memory tool surface is `memory_write`, `memory_forget`, and `memory_search`. Artifact `request`/`grant` are not implemented, so `pending` and `expired` remain unreachable. JIRA and the `superagent_*` tools are still enabled (`jira: { enabled: true }` in `packages/bundle/web-app/cordis.patch.uitstalie.yml`), and their turn-end report delivery is not removed by Step 3. Removing JIRA remains an open decision, not a shipped change.
 
 ### 6.3 Delivery as a tool call
 
@@ -411,7 +411,7 @@ Who initiates changes the order: a pull checks the receiver's access before exis
 ### 7.2 Prompt and injection rules
 
 - The prompt has one static `workspace-directory` section. It is not rewritten per turn, and it contains no status, no memory, and no tasks.
-- The memory snapshot module, the `memory-state` prompt section, the `appendMemoryUpdate` notices, and the cross-session index no longer exist; `548dc157ba` removed them.
+- The memory snapshot module, the `memory-state` prompt section, the `appendMemoryUpdate` notices, and the cross-session index no longer exist; Step 3 removed them.
 - Transcript compression, when the session is compacted, may still replace old turns with a summary. That is a compaction behavior: it does not append a memory message per turn, and it is not injected at session start.
 - The reply contract (conclusion, evidence, next step; at most 600 characters) is stated in the `workspace_message.send` tool description and its `text` parameter, not in a system-prompt section.
 - The three urgent cases are stated in the `workspace_message.send` parameter descriptions; no separate prompt section carries them.
@@ -460,7 +460,7 @@ The old path is removed in the same release; there is no dual path and no data m
 
 ### 8.1 Stop-the-bleeding fix: ship first, independent of this design
 
-Step 0 shipped in `3cb8eeaf3d`, independent of the rest of this design. `pruneSessionEntries` now returns archive records for every over-cap and exact-duplicate removal, with `over-cap` and `duplicate` removal reasons; `retainDocument` collects those records; every write path archives them before writing the active file; and a failed archive keeps the entries instead of dropping them.
+Step 0 shipped independently of the rest of this design. `pruneSessionEntries` now returns archive records for every over-cap and exact-duplicate removal, with `over-cap` and `duplicate` removal reasons; `retainDocument` collects those records; every write path archives them before writing the active file; and a failed archive keeps the entries instead of dropping them.
 
 Acceptance: lowering the cap to three entries and writing a fourth turn always leaves an archive record for each dropped entry; a failed archive keeps the entry; a stale-version retry never duplicates an archive record.
 
@@ -668,7 +668,7 @@ This section lists what the two surfaces do today, whether the new design keeps 
 | TTL and expiry | Expires `open` and `files` after 3 and 14 days | No | Removed with the dispatch namespace | Delete: no live path; the legacy reader keeps the rule only to parse old files |
 | Snapshot injection | Per-turn memory snapshot | No | Static prompt plus tool queries | Implemented: removed; the injection surface is empty |
 | Summary generation | Writes per-turn business entries | No memory entries | Compaction summary only, not memory | Implemented: the per-turn summary job is removed |
-| Cross-session index | "Recent sessions" outline | No | `workspace_sessions` | Implemented: removed with the snapshot in `548dc157ba` |
+| Cross-session index | "Recent sessions" outline | No | `workspace_sessions` | Implemented: removed with the snapshot in Step 3 |
 | Global and personal preference sharing | Mixes cross-workspace facts with persona and style | Split | Global memory for facts; personality for persona and style | Implemented: persona and style belong to `personality_apply` / `write_like_human` |
 
 Intent cards are not a memory capability; they are workspace records and never enter the global memory store.

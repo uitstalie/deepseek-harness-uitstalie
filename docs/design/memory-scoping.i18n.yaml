@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/memory-scoping.md
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory:
-  en: 0b3921ed982e7417
-  zh: 62dca964e74d0fe2
+  en: a5c44feffb9f34c6
+  zh: 2ae6ff7fd356241c
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/1-background-and-the-problem:
   en: 5e818a6a13f3dd2a
   zh: bda69e9e5fbf5222
@@ -24,8 +24,8 @@
   en: fb675e07ee7cf366
   zh: 1b1e18b9671e430e
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/1-background-and-the-problem/1-6-the-data-loss-defect-over-cap-entries-were-dropped-without-an-archive-record:
-  en: 403227a5cd91d17e
-  zh: ff157159a84a1081
+  en: 41deff173247b818
+  zh: 7209a8e43be5cfc4
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/2-goals-and-non-goals:
   en: f8d669f0755c73a7
   zh: 53905f1c494344f9
@@ -99,8 +99,8 @@
   en: e1dec6bba77a0d05
   zh: 8ac48b96675094eb
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-2-existing-tool-to-new-home:
-  en: cacb9d1cac355eef
-  zh: 241f29fc5d91ae2c
+  en: 7cb9f0ea0737cc3c
+  zh: 9b6d71a0e9727eb2
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-3-delivery-as-a-tool-call:
   en: d94c2b2ec7038db0
   zh: fd0aaf8cf173311d
@@ -126,8 +126,8 @@
   en: b798754859e2d851
   zh: 997e6aa1320f13e4
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/7-prompt-write-and-injection-rules/7-2-prompt-and-injection-rules:
-  en: e6f9e6bc69c28c6f
-  zh: 7e800e7d256524cb
+  en: 4340464c5c14febf
+  zh: 5f812633f11527b4
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/7-prompt-write-and-injection-rules/7-3-search-and-read-rules:
   en: ee479a5560f1cd88
   zh: 4f8c2d3338913921
@@ -141,8 +141,8 @@
   en: 206def409429fa1f
   zh: 547e1e4bb4b50f61
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/8-migration-and-the-stop-the-bleeding-fix/8-1-stop-the-bleeding-fix-ship-first-independent-of-this-design:
-  en: 2718f5bec26f1ff1
-  zh: 306187e04b49a9c1
+  en: 44ffb3cce7a3b770
+  zh: 1d1204a1a076cbe6
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/8-migration-and-the-stop-the-bleeding-fix/8-2-migration-rules:
   en: 82de7f230907a045
   zh: 0729492a58c8fde8
@@ -201,8 +201,8 @@
   en: defafc9bfc7d21f6
   zh: e128306721e2d08c
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/12-capability-inventory-memory-and-super-agent/12-1-memory-capabilities:
-  en: ea6020d242e3e8de
-  zh: 68ced3cb3c2268a2
+  en: fca5625efcd1e7ce
+  zh: 3f9b30b947ecc39c
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/12-capability-inventory-memory-and-super-agent/12-2-super-agent-capabilities:
   en: b8eb848b9823bbd0
   zh: 5671da0091ad555d
