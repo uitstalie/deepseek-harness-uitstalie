@@ -29,7 +29,7 @@ async function mountCatalog(ctx: Context) {
       },
     },
   })
-  const catalog = ctx.root.modelsDev
+  const catalog = ctx[Context.root].modelsDev
   await catalog.whenReady()
   return catalog
 }
@@ -96,7 +96,7 @@ test('injects configured body fields into DeepSeek requests via the api-extensio
   await ctx.plugin(DeepSeekLlmApiExtensionRegistry)
   await ctx.plugin(extraParams)
 
-  const prepared = await ctx.root.deepseekLlmApiExtensions.prepare({
+  const prepared = await ctx[Context.root].deepseekLlmApiExtensions.prepare({
     body: { model: 'deepseek-v4-flash', messages: [] },
     signal: new AbortController().signal,
   })
@@ -108,7 +108,7 @@ test('injects configured body fields into DeepSeek requests via the api-extensio
 
   // 未知模型只拿 provider 级字段（provider 级配置对该 provider 所有模型生效），
   // 不含 flash 的 model 级字段
-  const unknown = await ctx.root.deepseekLlmApiExtensions.prepare({
+  const unknown = await ctx[Context.root].deepseekLlmApiExtensions.prepare({
     body: { model: 'good-model', messages: [] },
     signal: new AbortController().signal,
   })
@@ -120,7 +120,7 @@ test('catalog service is removed with its fiber', async () => {
   const fiber = ctx.plugin(ModelsDevCatalog, { sourceUrl: FIXTURE_URL })
   await fiber
   await fiber.dispose()
-  expect(ctx.root.get('modelsDev', false)).toBeUndefined()
+  expect(ctx[Context.root].get('modelsDev', false)).toBeUndefined()
 })
 
 test('@Remote catalog queries serve provider and model summaries for the settings page', async () => {

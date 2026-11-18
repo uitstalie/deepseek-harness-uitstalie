@@ -16,7 +16,8 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import Dafeiyu from '@deepseek-ai/dsh-dafeiyu'
@@ -70,6 +71,17 @@ class TestWorkspace implements Workspace {
 
   /** Move one Session; the stand-in keeps insertion order. */
   async insertSessionBefore(): Promise<void> {}
+
+  /** Stored headers for the accounted Sessions, one per id. */
+  getSessionHeaders(): readonly SessionHeader[] {
+    const createdAt = Date.parse(this.createdAt)
+    return this.sessionIds.map(id => ({
+      version: SESSION_FORMAT_VERSION,
+      id,
+      createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+      isSeeded: false,
+    }))
+  }
 
   /** Drop one accounted Session. */
   async detachSession(sessionId: SessionId): Promise<void> {

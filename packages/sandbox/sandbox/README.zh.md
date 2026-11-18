@@ -64,7 +64,7 @@ kind: "package-reference"
 
 ### 被拒绝的调用与升权
 
-受限调用被拒绝时，操作会报告指明模式的拒绝标记——`[sandbox: file access denied under <mode> mode]`——组合声明升权能力时还会给出升权提示。模型可以用 `sandbox_permissions`（足以放行的最窄更宽模式）加 `justification` 重试一次完全相同的调用；审批服务为操作取得同意。请求保留审计原因，同时从 `src/locales.ts` 提供英文、中文和日文展示文案，模型给出的理由保持原样。缺失的译文遵循语言服务的回退链，最终回退到英文；请求方负责自己的展示译文。更宽的模式需要审批，且只作用于该次调用。重复指定调用的生效模式无需审批即可成功；更窄的目标仍然无效。未取得授权的升权会在任何命令运行前抛出 `SandboxEscalationError`：字段未配对、理由为空或目标并非严格更宽时为 `SANDBOX_ESCALATION_INVALID_ARGUMENT`；组合中没有受限执行器、审批服务、调用方 Agent 或审批通道时为 `SANDBOX_ESCALATION_UNAVAILABLE`；用户拒绝时为 `SANDBOX_ESCALATION_REJECTED`；审批请求未作决定即结束时为 `SANDBOX_ESCALATION_CANCELLED`。若调用本身已被取消，则改为传播该调用的取消。
+受限调用被拒绝时，操作会报告指明模式的拒绝标记——`[sandbox: file access denied under <mode> mode]`——组合声明升权能力时还会给出升权提示。模型可以用 `sandbox_permissions`（足以放行的最窄更宽模式）加 `justification` 重试一次完全相同的调用；审批服务为操作取得同意。请求保留审计原因，同时从 `src/locales.ts` 提供英文、中文和日文展示文案，模型给出的理由保持原样。缺失的译文遵循语言服务的回退链，最终回退到英文；请求方负责自己的展示译文。更宽的模式需要审批，且只作用于该次调用。重复指定调用的生效模式无需审批即可成功；更窄的目标仍然无效。未取得授权的升权会在任何命令运行前抛出 `SandboxEscalationError`：字段未配对、理由为空或目标并非严格更宽时为 `SANDBOX_ESCALATION_INVALID_ARGUMENT`；组合中没有审批服务、调用方 Agent 或审批通道时为 `SANDBOX_ESCALATION_UNAVAILABLE`；用户拒绝时为 `SANDBOX_ESCALATION_REJECTED`；审批请求未作决定即结束时为 `SANDBOX_ESCALATION_CANCELLED`。若调用本身已被取消，则改为传播该调用的取消。
 
 <!-- BEGIN uitstalie-k3, 2026/10/12, task26, 追溯补标记：原 task12 增补“短语之外还需路径证据”的判定段落 -->
 拒绝是从受限子进程自身的 stderr 推断的，仅命中短语并不足够：`classifyDenial` 还要求该行指出一个不被本次调用可写根目录覆盖的绝对路径。这些短语也是无关工具会打印的普通文件系统消息，而任何受限模式都不可能拒绝它自己已授予的路径，因此缺少这项证据时，无关的失败——工具无权使用的密钥、工作区内文件自身的权限——都会被当作沙盒拒绝送达模型，并附带升权邀请。`read-only` 下没有任何路径与短语相矛盾，因此该模式仍由短语单独判定。

@@ -1,57 +1,13 @@
-/** Test-owned Remote face: `$on` subscriptions and one-generation `$stream` opening. */
+/** Test-owned Remote face: `$on` subscriptions with an explicit test event driver, and reconnecting streams. */
 import type { Context } from '@deepseek-ai/cordis'
-import { RemoteStream } from '@deepseek-ai/dsh-api-gateway/client' // uitstalie-deepseek-flash, 2026/11/01, DH-508, 替身子类需要该类的值
-import type { RemoteStreamItem, RemoteStreamOptions } from '@deepseek-ai/dsh-api-gateway/client'
+import { RemoteStream, type RemoteStreamOptions } from '@deepseek-ai/dsh-api-gateway/client'
+import type { ConnectionGeneration, ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 
 // Value re-export for spec-side failure construction: the api-remotes facade
 // cannot carry it — its src top-level imports owner /remote lib artifacts, so a
 // value import from a spec would load the unbuilt assembly chain.
 export { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
-
-// BEGIN uitstalie-deepseek-flash, 2026/11/01, DH-508, 单代 logical stream 替身改为 RemoteStream 的真实子类（去掉 as unknown）
-/**
- * One-generation `RemoteStream` double: the scripted opener's items, then the domain end error.
- *
- * It extends the production class so consumers keep the exact type; the inherited reconnect
- * machinery is overridden away, because this double neither reconnects nor restarts.
- */
-class ScriptedRemoteStream<Item> extends RemoteStream<Item> {
-  private readonly scriptedLifetime = new AbortController()
-  private readonly scriptedOptions: RemoteStreamOptions<Item>
-
-  constructor(options: RemoteStreamOptions<Item>) {
-    // The base class only stores this connection; every public member that would read it is overridden.
-    super({ generation: { getSnapshot: () => undefined, subscribe: () => () => {} } }, options)
-    this.scriptedOptions = options
-  }
-
-  /** @inheritdoc */
-  override get signal(): AbortSignal {
-    return this.scriptedLifetime.signal
-  }
-
-  /** @inheritdoc */
-  override restart(): void {
-    // One generation in this double.
-  }
-
-  /** @inheritdoc */
-  override dispose(): Promise<void> {
-    this.scriptedLifetime.abort()
-    return Promise.resolve()
-  }
-
-  /** @inheritdoc */
-  override async *[Symbol.asyncIterator](): AsyncGenerator<RemoteStreamItem<Item>> {
-    let generation = 0
-    for await (const value of this.scriptedOptions.open(this.scriptedLifetime.signal)) {
-      generation += 1
-      yield { generation, value, signal: this.scriptedLifetime.signal, accept: (): void => {} }
-    }
-    throw this.scriptedOptions.ended(true)
-  }
-}
-// END uitstalie-deepseek-flash
 
 /**
  * Remote service test double for the forwarded-event path. Feature specs need
@@ -60,6 +16,8 @@ class ScriptedRemoteStream<Item> extends RemoteStream<Item> {
  * implements subscription plus an explicit `emit` driver available only on the
  * concrete test object. A spec that also calls one namespace scripts it through
  * the constructor rather than reaching the real Client Remote service.
+ * `$stream` wraps a scripted stream method in the production `RemoteStream`
+ * over one Host generation that never changes.
  *
  * `$mount` rejects: a spec that needs a real generated contribution installed —
  * codecs, descriptors, and the wire — has outgrown this double and needs the
@@ -72,6 +30,10 @@ class ScriptedRemoteStream<Item> extends RemoteStream<Item> {
  */
 export class TestRemote {
   private readonly subscriptions = new Map<string, Set<(...args: never[]) => void>>()
+  /** One always-available Host generation; the double never loses or replaces its carrier. */
+  private readonly connection: Pick<ConnectionHandle, 'generation'> = {
+    generation: createSnapshotStore<ConnectionGeneration | undefined>({ id: 1, host: { home: '/home/fixture' } }),
+  }
 
   /**
    * Fixed Host facts mirrored from the production `ctx.remote.$host`. Plain
@@ -140,20 +102,15 @@ export class TestRemote {
     return () => { listeners.delete(listener) }
   }
 
-  // BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-307, 打开看板/详情需要一代 logical stream，测试替身补 $stream
   /**
-   * Open one logical stream over the scripted namespace, without carrier generations.
-   *
-   * A spec scripts the namespace's own stream method (for example `watch`) and drives the items;
-   * this double wraps that iterable so the consumer sees the production item shape. It does not
-   * reopen across connections or model `restart`: a spec that needs either has outgrown the double.
-   * @param options - the domain opener the consumer passes to the real Client Remote.
-   * @returns the logical stream, opened on first iteration.
+   * Open one production `RemoteStream` over the double's always-available Host generation, so a plugin's stream
+   * lifecycle runs against a scripted namespace method.
+   * @param options - domain stream opener, end classification, and diagnostics.
+   * @returns the single-consumer reconnecting stream.
    */
   $stream<Item>(options: RemoteStreamOptions<Item>): RemoteStream<Item> {
-    return new ScriptedRemoteStream<Item>(options)
+    return new RemoteStream(this.connection, options)
   }
-  // END uitstalie-deepseek-flash
 
   /**
    * Generated-namespace mount, unsupported by this double.

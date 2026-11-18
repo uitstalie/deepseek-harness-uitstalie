@@ -69,7 +69,7 @@ afterEach(() => {
 async function mount(options?: { withCatalog?: boolean }): Promise<Context> {
   const ctx = new Context()
   // 凭据 stub：credentials seam 是本插件的唯一凭据路径（不读 process.env）
-  ctx.root.provide('credentials', {
+  ctx[Context.root].provide('credentials', {
     resolve: (ref: string) => Promise.resolve({ value: `key-for-${ref}`, source: 'test' }),
   })
   await ctx.plugin(LlmRuntime)
@@ -98,7 +98,7 @@ async function mount(options?: { withCatalog?: boolean }): Promise<Context> {
 /** 收集一次 stream 的全部 chunk。 */
 async function collect(ctx: Context, options: GenerateOptions): Promise<StreamChunk[]> {
   const chunks: StreamChunk[] = []
-  for await (const chunk of ctx.root.llm.stream(options)) chunks.push(chunk)
+  for await (const chunk of ctx[Context.root].llm.stream(options)) chunks.push(chunk)
   return chunks
 }
 
@@ -361,9 +361,9 @@ test('extra params: catalog-level body merges into the request natively', async 
   expect(lastFetch!.body.thinking).toEqual({ type: 'enabled' })
 
   // 目录数据驱动 listModels
-  const models = await ctx.root.llm.listModels('ds-plus')
+  const models = await ctx[Context.root].llm.listModels('ds-plus')
   expect(models.map(model => model.id).sort()).toEqual(['deepseek-v4-flash', 'deepseek-v4-pro'])
-  const resolved = await ctx.root.llm.resolveModelInfo('ds-plus', 'deepseek-v4-flash')
+  const resolved = await ctx[Context.root].llm.resolveModelInfo('ds-plus', 'deepseek-v4-flash')
   expect(resolved.context?.contextWindow).toBe(1_000_000)
   expect(resolved.reasoning?.efforts.map(effort => effort.id)).toEqual(['low', 'high', 'max'])
 })
@@ -379,7 +379,7 @@ test('HTTP errors become LlmError with status-based classification', async () =>
 test('missing credential fails with actionable AUTH error, never reading process.env', async () => {
   const ctx = new Context()
   // 凭据 stub 返回 undefined（未配置）
-  ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+  ctx[Context.root].provide('credentials', { resolve: () => Promise.resolve(undefined) })
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(llmPlus, {
     routes: { 'no-key': { protocol: 'openai-completions', baseURL: 'http://test.local', apiKeyRef: 'MISSING_KEY' } },
@@ -393,7 +393,7 @@ test('missing credential fails with actionable AUTH error, never reading process
 
 test('invalid route config fails loud at activation', async () => {
   const ctx = new Context()
-  ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+  ctx[Context.root].provide('credentials', { resolve: () => Promise.resolve(undefined) })
   await ctx.plugin(LlmRuntime)
   const fiber = ctx.plugin(llmPlus, { routes: { bad: { protocol: 'no-such-protocol' as never } } })
   // 结构化 schema 在写入点先拒绝（错误精确到配置路径），手工校验在其后兜底
@@ -403,16 +403,16 @@ test('invalid route config fails loud at activation', async () => {
 test('adapter routes are removed with the plugin fiber', async () => {
   const ctx = await mount()
   // listProviders 返回 LlmProviderInfo[]（{id, name}），按 id 断言
-  expect(ctx.root.llm.listProviders().map(provider => provider.id)).toContain('ds-plus')
+  expect(ctx[Context.root].llm.listProviders().map(provider => provider.id)).toContain('ds-plus')
   // registry.delete 返回 thenable：必须等它摘完，否则下面的断言会看到旧注册。
   // oxlint-disable-next-line typescript/await-thenable -- 该规则未识别 registry.delete 的 thenable 返回
-  await ctx.root.registry.delete(llmPlus)
-  expect(ctx.root.llm.listProviders().map(provider => provider.id)).not.toContain('ds-plus')
+  await ctx[Context.root].registry.delete(llmPlus)
+  expect(ctx[Context.root].llm.listProviders().map(provider => provider.id)).not.toContain('ds-plus')
 })
 
 test('every route registers a configurable-provider directory entry, removed with the fiber', async () => {
   const ctx = await mount()
-  const entries = ctx.root.llm.listConfigurableProviders()
+  const entries = ctx[Context.root].llm.listConfigurableProviders()
   // 每条路由一条目录条目：settingsNs/settingsPath 指向 llm-plus 命名空间的路由对象
   const dsPlus = entries.find(entry => entry.provider === 'ds-plus')
   expect(dsPlus).toMatchObject({
@@ -426,14 +426,14 @@ test('every route registers a configurable-provider directory entry, removed wit
 
   // registry.delete 返回 thenable：必须等它摘完，否则下面的断言会看到旧注册。
   // oxlint-disable-next-line typescript/await-thenable -- 该规则未识别 registry.delete 的 thenable 返回
-  await ctx.root.registry.delete(llmPlus)
-  expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.settingsNs === 'llm-plus')).toBe(false)
+  await ctx[Context.root].registry.delete(llmPlus)
+  expect(ctx[Context.root].llm.listConfigurableProviders().some(entry => entry.settingsNs === 'llm-plus')).toBe(false)
 })
 
 test('model discovery answers from adapter knowledge for an existing route, zero network', async () => {
   const ctx = await mount({ withCatalog: true })
   // request.provider 指名已有路由：目录数据直接作答，不发任何 HTTP
-  const models = await ctx.root.llm.discoverModels('llm-plus', { provider: 'ds-plus' })
+  const models = await ctx[Context.root].llm.discoverModels('llm-plus', { provider: 'ds-plus' })
   expect(models.map(model => model.id).sort()).toEqual(['deepseek-v4-flash', 'deepseek-v4-pro'])
   expect(lastFetch).toBeUndefined()
 })
@@ -441,7 +441,7 @@ test('model discovery answers from adapter knowledge for an existing route, zero
 test('model discovery interrogates the draft endpoint with the one-shot credential', async () => {
   const ctx = await mount()
   sseByUrl = [['http://test.local/v1/models', '{"data":[{"id":"m1"},{"id":"m2"}]}']]
-  const models = await ctx.root.llm.discoverModels('llm-plus', {
+  const models = await ctx[Context.root].llm.discoverModels('llm-plus', {
     baseURL: 'http://test.local/v1',
     api: 'openai-completions',
     apiKey: 'draft-key',
@@ -453,13 +453,13 @@ test('model discovery interrogates the draft endpoint with the one-shot credenti
 
 test('model discovery rejects an unknown draft protocol', async () => {
   const ctx = await mount()
-  await expect(ctx.root.llm.discoverModels('llm-plus', { baseURL: 'http://x', api: 'nope' }))
+  await expect(ctx[Context.root].llm.discoverModels('llm-plus', { baseURL: 'http://x', api: 'nope' }))
     .rejects.toThrow(/unknown discovery protocol/)
 })
 
 test('route-level retryPolicy is resolved at activation and captured at registration', async () => {
   const ctx = new Context()
-  ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+  ctx[Context.root].provide('credentials', { resolve: () => Promise.resolve(undefined) })
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(llmPlus, {
     routes: {
@@ -472,19 +472,19 @@ test('route-level retryPolicy is resolved at activation and captured at registra
     },
   })
   // 配置的策略被解析并被 registry 捕获（llm-retry 读的就是这里）
-  expect(ctx.root.llm.providerRetryPolicy('retry-plus')).toMatchObject({ mode: 'normal', maxRetries: 2, retryableCodes: ['RATE_LIMIT'] })
+  expect(ctx[Context.root].llm.providerRetryPolicy('retry-plus')).toMatchObject({ mode: 'normal', maxRetries: 2, retryableCodes: ['RATE_LIMIT'] })
   // 未配置的路由回落到全局默认策略（normal 模式的默认 maxRetries 不是 2）
-  const fallback = ctx.root.llm.providerRetryPolicy('default-plus')
+  const fallback = ctx[Context.root].llm.providerRetryPolicy('default-plus')
   expect(fallback.mode === 'normal' && fallback.maxRetries !== 2).toBe(true)
 })
 
 test('route requestImagePolicy projects images through the attachment seam', async () => {
   const ctx = new Context()
-  ctx.root.provide('credentials', { resolve: (ref: string) => Promise.resolve({ value: `key-for-${ref}`, source: 'test' }) })
+  ctx[Context.root].provide('credentials', { resolve: (ref: string) => Promise.resolve({ value: `key-for-${ref}`, source: 'test' }) })
   // attachments stub：readImageRequest 返回投影后的固定字节；readImage 若被调用即记证
   const calls: string[] = []
   const ref = { attachmentId: 'att-1', mediaType: 'image/png', bytes: 9, width: 3, height: 3 } as never
-  ctx.root.provide('attachments', {
+  ctx[Context.root].provide('attachments', {
     readImage: () => { calls.push('readImage'); return Promise.resolve({ ref, data: new Uint8Array([9, 9, 9]) }) },
     readImageRequest: (r: never, target: { width: number; height: number; maxBytes: number }) => {
       calls.push(`readImageRequest:${target.width}x${target.height}/${target.maxBytes}`)
@@ -628,7 +628,7 @@ test('oauth route resolves the stored grant as Bearer, refreshing when near expi
     payload: { type: 'oauth', access: 'kimi-access-1', refresh: 'kimi-refresh', expires: Date.now() + 60_000 }, // 1 分钟后过期 → 触发刷新
   }
   let refreshed = 0
-  ctx.root.provide('credentials', {
+  ctx[Context.root].provide('credentials', {
     resolve: () => Promise.resolve(undefined),
     readRecord: () => Promise.resolve(record),
     modifyRecord: (_key: unknown, mutate: (current: unknown) => Promise<typeof record>) => {
@@ -672,7 +672,7 @@ test('oauth route resolves the stored grant as Bearer, refreshing when near expi
 
 test('oauth route without a stored grant fails with an actionable AUTH error, never sending the request', async () => {
   const ctx = new Context()
-  ctx.root.provide('credentials', {
+  ctx[Context.root].provide('credentials', {
     resolve: () => Promise.resolve(undefined),
     readRecord: () => Promise.resolve(undefined),
     modifyRecord: () => Promise.resolve(undefined),
@@ -690,7 +690,7 @@ test('oauth route without a stored grant fails with an actionable AUTH error, ne
 
 test('oauth route with availableModelIds lists the account-enabled set enriched from the catalog', async () => {
   const ctx = new Context()
-  ctx.root.provide('credentials', {
+  ctx[Context.root].provide('credentials', {
     resolve: () => Promise.resolve(undefined),
     readRecord: () => Promise.resolve({
       kind: 'grant',
@@ -709,7 +709,7 @@ test('oauth route with availableModelIds lists the account-enabled set enriched 
       },
     },
   })
-  const models = await ctx.root.llm.listModels('copilot-plus')
+  const models = await ctx[Context.root].llm.listModels('copilot-plus')
   // 账号可用集是权威过滤（28 个目录模型只出可用那 2 个）；目录命中的富化显示名
   expect(models.map(model => model.id)).toEqual(['deepseek-v4-flash', 'account-only-model'])
   expect(models[0]!.name).toBe('DeepSeek V4 Flash')
@@ -718,9 +718,9 @@ test('oauth route with availableModelIds lists the account-enabled set enriched 
 
 test('oauth flows register with the authorization seam and leave with the fiber', async () => {
   const ctx = new Context()
-  ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+  ctx[Context.root].provide('credentials', { resolve: () => Promise.resolve(undefined) })
   const flows = new Map<string, unknown>()
-  ctx.root.provide('authorization', {
+  ctx[Context.root].provide('authorization', {
     registerFlow: (flow: { key: unknown }) => {
       flows.set(String(flow.key), flow)
       return () => { flows.delete(String(flow.key)) }
@@ -744,7 +744,7 @@ test('oauth flow for a route added by a live profile edit survives the seam moun
   // 竞态回归：路由从活配置到达 早于 authorization 缝激活——
   // 曾经的实现在缝激活时只同步初始集，后到路由永远没有 flow
   const ctx = new Context()
-  ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+  ctx[Context.root].provide('credentials', { resolve: () => Promise.resolve(undefined) })
   await ctx.plugin(LlmRuntime)
   const live = await liveConfig(ctx, llmPlus, {
     routes: { 'ds-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', apiKeyRef: 'DEEPSEEK_TEST' } },
@@ -753,10 +753,10 @@ test('oauth flow for a route added by a live profile edit survives the seam moun
   await live.update({
     routes: { 'kimi-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local/kimi/v1', oauth: 'kimi-coding' } },
   })
-  expect(ctx.root.llm.listProviders().map(provider => provider.id).sort()).toEqual(['ds-plus', 'kimi-plus'])
+  expect(ctx[Context.root].llm.listProviders().map(provider => provider.id).sort()).toEqual(['ds-plus', 'kimi-plus'])
   // 缝后到
   const flows = new Map<string, unknown>()
-  ctx.root.provide('authorization', {
+  ctx[Context.root].provide('authorization', {
     registerFlow: (flow: { key: unknown }) => {
       flows.set(String(flow.key), flow)
       return () => { flows.delete(String(flow.key)) }
@@ -772,17 +772,17 @@ test('zero-route composition mounts dormant; the first profile route registers t
   // 纯页面驱动的起点（base 零路由）：registerAdapter 的空初始集会抛、
   // registerConfigurableProviders 同——两个注册都必须惰性到首个路由
   const ctx = new Context()
-  ctx.root.provide('credentials', { resolve: () => Promise.resolve(undefined) })
+  ctx[Context.root].provide('credentials', { resolve: () => Promise.resolve(undefined) })
   await ctx.plugin(LlmRuntime)
   const live = await liveConfig(ctx, llmPlus, { routes: {} })
-  expect(ctx.root.llm.listProviders()).toEqual([])
-  expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.settingsNs === 'llm-plus')).toBe(false)
+  expect(ctx[Context.root].llm.listProviders()).toEqual([])
+  expect(ctx[Context.root].llm.listConfigurableProviders().some(entry => entry.settingsNs === 'llm-plus')).toBe(false)
 
   await live.update({
     routes: { 'kimi-plus': { protocol: 'anthropic-messages', baseURL: 'http://test.local/kimi/v1', apiKeyRef: 'KIMI' } },
   })
-  expect(ctx.root.llm.listProviders().map(provider => provider.id)).toEqual(['kimi-plus'])
-  expect(ctx.root.llm.listConfigurableProviders().some(entry => entry.provider === 'kimi-plus')).toBe(true)
+  expect(ctx[Context.root].llm.listProviders().map(provider => provider.id)).toEqual(['kimi-plus'])
+  expect(ctx[Context.root].llm.listConfigurableProviders().some(entry => entry.provider === 'kimi-plus')).toBe(true)
   await ctx.fiber.dispose()
 })
 
@@ -790,12 +790,12 @@ test('profile route additions take effect without a restart', async () => {
   // 真实动态组合：Loader 提交 volatile 引用（设置页写的就是这条路径），
   // 实例保持存活，注册随引用替换
   const ctx = new Context()
-  ctx.root.provide('credentials', { resolve: (ref: string) => Promise.resolve({ value: `key-for-${ref}`, source: 'test' }) })
+  ctx[Context.root].provide('credentials', { resolve: (ref: string) => Promise.resolve({ value: `key-for-${ref}`, source: 'test' }) })
   await ctx.plugin(LlmRuntime)
   const live = await liveConfig(ctx, llmPlus, {
     routes: { 'ds-plus': { protocol: 'openai-completions', baseURL: 'http://test.local/v1', apiKeyRef: 'DEEPSEEK_TEST' } },
   })
-  expect(ctx.root.llm.listProviders().map(provider => provider.id)).toEqual(['ds-plus'])
+  expect(ctx[Context.root].llm.listProviders().map(provider => provider.id)).toEqual(['ds-plus'])
   // volatile 提交不重挂实例：uid 相同即适配器实例与其注册句柄都还在
   const uid = live.fiber.uid
 
@@ -817,8 +817,8 @@ test('profile route additions take effect without a restart', async () => {
   // 不重启：profile 的 config 是整表替换 + 逐键合并（liveConfig 的 merge），
   // base 的 ds-plus 不被用户层抹掉；实例本身没有被重挂
   expect(live.entry.fiber?.uid).toBe(uid)
-  expect(ctx.root.llm.listProviders().map(provider => provider.id).sort()).toEqual(['ds-plus', 'kimi-for-coding'])
-  const kimi = ctx.root.llm.listConfigurableProviders().find(entry => entry.provider === 'kimi-for-coding')
+  expect(ctx[Context.root].llm.listProviders().map(provider => provider.id).sort()).toEqual(['ds-plus', 'kimi-for-coding'])
+  const kimi = ctx[Context.root].llm.listConfigurableProviders().find(entry => entry.provider === 'kimi-for-coding')
   expect(kimi).toMatchObject({
     displayName: 'Kimi For Coding',
     settingsNs: 'llm-plus',
@@ -826,7 +826,7 @@ test('profile route additions take effect without a restart', async () => {
   })
   // 模型目录的组标题取 providerInfo().name：displayName 必须穿过它，而不是
   // 落回基类的 "id 即 name"（选择器里的展示名全靠这一条路径）
-  expect(ctx.root.llm.listProviders().find(provider => provider.id === 'kimi-for-coding')?.name).toBe('Kimi For Coding')
-  expect(ctx.root.llm.listProviders().find(provider => provider.id === 'ds-plus')?.name).toBe('ds-plus')
+  expect(ctx[Context.root].llm.listProviders().find(provider => provider.id === 'kimi-for-coding')?.name).toBe('Kimi For Coding')
+  expect(ctx[Context.root].llm.listProviders().find(provider => provider.id === 'ds-plus')?.name).toBe('ds-plus')
   await ctx.fiber.dispose()
 })

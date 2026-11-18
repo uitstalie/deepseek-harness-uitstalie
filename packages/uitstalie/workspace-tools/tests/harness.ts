@@ -15,7 +15,8 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import type { Agent, AgentRole } from '@deepseek-ai/dsh-agent'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import type { SessionId as SessionIdValue } from '@deepseek-ai/dsh-session'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionQueryEngine from '@deepseek-ai/dsh-session-query'
@@ -108,6 +109,17 @@ export class TestWorkspace implements Workspace {
 
   /** Move one accounted session; the fake keeps insertion order. */
   async insertSessionBefore(_sessionId: SessionIdValue, _beforeSessionId?: SessionIdValue): Promise<void> {}
+
+  /** Stored headers for the accounted sessions, one per id. */
+  getSessionHeaders(): readonly SessionHeader[] {
+    const createdAt = Date.parse(this.createdAt)
+    return this.sessionIds.map(id => ({
+      version: SESSION_FORMAT_VERSION,
+      id,
+      createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+      isSeeded: false,
+    }))
+  }
 
   /** Remove one session from the account. */
   async detachSession(sessionId: SessionIdValue): Promise<void> {

@@ -44,6 +44,7 @@ function navIcon(id: string) {
 type PanelProps = {
   rows: readonly SettingsSectionRow[]
   renderSlot: SettingsRootComponentProps['renderSlot']
+  renderFactorySlot: SettingsRootComponentProps['renderFactorySlot']
   activeId: string | undefined
   onSelect: (id: string) => void
   onClose: () => void
@@ -59,7 +60,9 @@ type PanelProps = {
  * open, so the listener lifetime is the panel's).
  */
 // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-14, 设置段可跳到兄弟段
-function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose, onOpenSection }: PanelProps) {
+function SettingsPanel({
+  rows, renderSlot, renderFactorySlot, activeId, onSelect, onClose, onOpenSection,
+}: PanelProps) {
 // END uitstalie-deepseek-flash
   // Entries can unmount underneath the requested id, so the render-time
   // projection falls back to the first row when the id is gone.
@@ -113,10 +116,9 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose, onOpenSe
         </div>
         <div className={css.options}>
           {/* BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-14, 设置段可跳到兄弟段 */}
-          {active !== undefined && renderSlot(
-            'settings.section',
-            { close: onClose, openSection: onOpenSection },
-            { only: active },
+          {active !== undefined && renderFactorySlot(
+            'settings.section.view',
+            { id: active, close: onClose, openSection: onOpenSection },
           )}
           {/* END uitstalie-deepseek-flash */}
         </div>
@@ -132,7 +134,7 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose, onOpenSe
  */
 export function SettingsRoot(props: SettingsRootComponentProps) {
   const {
-    wide, reconnect, useConnectionState, useSections, useOnboardingSteps, useSessions, renderSlot, t,
+    wide, reconnect, useConnectionState, useSections, useOnboardingSteps, useSessions, renderSlot, renderFactorySlot, t,
     useDesktopUpdate, openDesktopUpdate, useStore, actions, useShortcuts,
   } = props
   const { open, activeId } = useStore(state => state)
@@ -232,14 +234,17 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
     connectionIndicator = 'recovered'
   }
 
+  const openSettings = (sectionId?: string): void => {
+    if (sectionId === undefined) actions.open()
+    else actions.openSection(sectionId)
+  }
+
   return (
     <>
+      <div className={css.noticeRow} hidden={!wide}><div className={css.notice}>{renderSlot('settings.notice', { openSettings })}</div></div>
       <div className={clsx(css.triggerRow, !wide && css.railRow)}>
         {renderSlot('settings.launcher', {
-          wide, settingsOpen: open, openSettings: (sectionId) => {
-            if (sectionId === undefined) actions.open()
-            else actions.openSection(sectionId)
-          },
+          wide, settingsOpen: open, openSettings,
           ...(shortcut?.keys.length ? { settingsShortcut: { keys: shortcut.keys, aria: shortcut.aria } } : {}),
           openOnboarding: (id) => { close(); setRequestedOnboarding(id) },
         }, { fallback: <Tooltip disabled={open} label={t('trigger')} shortcutKeys={shortcut?.keys}>
@@ -272,6 +277,7 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
         <SettingsPanel
           rows={rows}
           renderSlot={renderSlot}
+          renderFactorySlot={renderFactorySlot}
           activeId={activeId}
           onSelect={actions.select}
           onClose={close}

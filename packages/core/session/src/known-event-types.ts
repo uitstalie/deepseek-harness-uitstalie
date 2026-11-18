@@ -83,6 +83,7 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'user/message',
   'web/deepseek-search-llm-request',
   'working-directory/change',
+  'workspace-root/change',
   'workspace/changes',
 ])
 
