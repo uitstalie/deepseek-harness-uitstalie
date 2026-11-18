@@ -16,6 +16,7 @@ import {
   callTool,
   createRoot,
   mountWorkspaceTools,
+  objectValue,
   registerWorkspace,
   textOf,
   valueOf,
@@ -106,12 +107,12 @@ function expectCode(result: ToolExecutionResult, code: string): string {
 
 /** Read the returned card version. */
 function cardOf(result: ToolExecutionResult): CardValue {
-  return (valueOf(result) as unknown as { intent: CardValue }).intent
+  return objectValue<{ intent: CardValue }>(valueOf(result)).intent
 }
 
 /** Read the returned task identity. */
 function taskOf(result: ToolExecutionResult): TaskIdentity {
-  return valueOf(result) as unknown as TaskIdentity
+  return objectValue<TaskIdentity>(valueOf(result))
 }
 
 const RAW_TRACEABLE = 'Add a small helper. Keep the build green. Do not touch the README. Return a patch.'

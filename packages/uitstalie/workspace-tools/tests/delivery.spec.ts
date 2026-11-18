@@ -15,6 +15,7 @@ import {
   callTool,
   createRoot,
   mountWorkspaceTools,
+  objectValue,
   registerWorkspace,
   sha256,
   textOf,
@@ -392,7 +393,7 @@ test('a thrown delivery failure is persisted as failed and retry delivers exactl
     requestId: 'retry-after-thrown-failure',
   })
   expect(first.isError).toBe(false)
-  const failed = (valueOf(first) as unknown as { sent: SentDeliveryView }).sent
+  const failed = objectValue<{ sent: SentDeliveryView }>(valueOf(first)).sent
   expect(failed.status).toBe('failed')
   expect(failed.error).toContain('target inbox is closed')
   expect(failed.attempts).toBe(1)
@@ -401,7 +402,7 @@ test('a thrown delivery failure is persisted as failed and retry delivers exactl
     action: 'status', messageId: failed.messageId,
   })
   expect(status.isError).toBe(false)
-  const failedView = (valueOf(status) as unknown as { message: MessageDeliveryView }).message
+  const failedView = objectValue<{ message: MessageDeliveryView }>(valueOf(status)).message
   expect(failedView.messageId).toBe(failed.messageId)
   expect(failedView.status).toBe('failed')
   expect(failedView.error).toContain('target inbox is closed')
@@ -412,13 +413,13 @@ test('a thrown delivery failure is persisted as failed and retry delivers exactl
     action: 'status', targetSessionId: String(target.id),
   })
   expect(latest.isError).toBe(false)
-  expect((valueOf(latest) as unknown as { message: MessageDeliveryView }).message.messageId).toBe(failed.messageId)
+  expect(objectValue<{ message: MessageDeliveryView }>(valueOf(latest)).message.messageId).toBe(failed.messageId)
 
   const readFailed = await callTool(mounted.ctx, target, 'workspace_message', {
     action: 'read', messageId: failed.messageId,
   })
   expect(readFailed.isError).toBe(false)
-  const visible = (valueOf(readFailed) as unknown as { messages: MessageDeliveryView[] }).messages
+  const visible = objectValue<{ messages: MessageDeliveryView[] }>(valueOf(readFailed)).messages
   expect(visible).toHaveLength(1)
   expect(visible[0]?.status).toBe('failed')
   expect(visible[0]?.error).toContain('target inbox is closed')
@@ -428,7 +429,7 @@ test('a thrown delivery failure is persisted as failed and retry delivers exactl
     action: 'retry', messageId: failed.messageId,
   })
   expect(retried.isError).toBe(false)
-  const deliveredSent = (valueOf(retried) as unknown as { sent: SentDeliveryView }).sent
+  const deliveredSent = objectValue<{ sent: SentDeliveryView }>(valueOf(retried)).sent
   expect(deliveredSent.messageId).toBe(failed.messageId)
   expect(deliveredSent.status).toBe('delivered')
   expect(deliveredSent.attempts).toBe(2)
@@ -438,7 +439,7 @@ test('a thrown delivery failure is persisted as failed and retry delivers exactl
     action: 'status', messageId: failed.messageId,
   })
   expect(deliveredStatus.isError).toBe(false)
-  const deliveredView = (valueOf(deliveredStatus) as unknown as { message: MessageDeliveryView }).message
+  const deliveredView = objectValue<{ message: MessageDeliveryView }>(valueOf(deliveredStatus)).message
   expect(deliveredView.status).toBe('delivered')
   expect(deliveredView.attempts).toBe(2)
   expect(deliveredView.error).toBeUndefined()
@@ -450,7 +451,7 @@ test('a thrown delivery failure is persisted as failed and retry delivers exactl
     action: 'retry', messageId: failed.messageId,
   })
   expect(repeated.isError).toBe(false)
-  expect((valueOf(repeated) as unknown as { sent: SentDeliveryView }).sent.status).toBe('delivered')
+  expect(objectValue<{ sent: SentDeliveryView }>(valueOf(repeated)).sent.status).toBe('delivered')
   expect(delivered).toHaveLength(hostCalls)
   expect(admitted.filter(prompt => prompt.requestId === requestId)).toHaveLength(1)
 })
@@ -470,7 +471,7 @@ test('a declined delivery keeps its reason, advances attempts, and retry then de
     requestId: 'declined-send',
   })
   expect(first.isError).toBe(false)
-  const failed = (valueOf(first) as unknown as { sent: SentDeliveryView }).sent
+  const failed = objectValue<{ sent: SentDeliveryView }>(valueOf(first)).sent
   expect(failed.status).toBe('failed')
   expect(failed.error).toContain('recipient inbox is full')
   expect(failed.attempts).toBe(1)
@@ -483,7 +484,7 @@ test('a declined delivery keeps its reason, advances attempts, and retry then de
     requestId: 'declined-send',
   })
   expect(repeatedSend.isError).toBe(false)
-  expect((valueOf(repeatedSend) as unknown as { sent: SentDeliveryView }).sent.status).toBe('failed')
+  expect(objectValue<{ sent: SentDeliveryView }>(valueOf(repeatedSend)).sent.status).toBe('failed')
   expect(delivered).toHaveLength(1)
 
   deliveryBehaviour = async () => ({ accepted: false, error: 'recipient inbox is still full' })
@@ -491,7 +492,7 @@ test('a declined delivery keeps its reason, advances attempts, and retry then de
     action: 'retry', messageId: failed.messageId,
   })
   expect(stillFailed.isError).toBe(false)
-  const stillFailedSent = (valueOf(stillFailed) as unknown as { sent: SentDeliveryView }).sent
+  const stillFailedSent = objectValue<{ sent: SentDeliveryView }>(valueOf(stillFailed)).sent
   expect(stillFailedSent.status).toBe('failed')
   expect(stillFailedSent.error).toContain('recipient inbox is still full')
   expect(stillFailedSent.attempts).toBe(2)
@@ -499,7 +500,7 @@ test('a declined delivery keeps its reason, advances attempts, and retry then de
   const persisted = await callTool(mounted.ctx, target, 'workspace_message', {
     action: 'status', messageId: failed.messageId,
   })
-  const persistedView = (valueOf(persisted) as unknown as { message: MessageDeliveryView }).message
+  const persistedView = objectValue<{ message: MessageDeliveryView }>(valueOf(persisted)).message
   expect(persistedView.status).toBe('failed')
   expect(persistedView.error).toContain('recipient inbox is still full')
   expect(persistedView.attempts).toBe(2)
@@ -519,7 +520,7 @@ test('a declined delivery keeps its reason, advances attempts, and retry then de
     action: 'retry', messageId: failed.messageId,
   })
   expect(retried.isError).toBe(false)
-  const deliveredSent = (valueOf(retried) as unknown as { sent: SentDeliveryView }).sent
+  const deliveredSent = objectValue<{ sent: SentDeliveryView }>(valueOf(retried)).sent
   expect(deliveredSent.status).toBe('delivered')
   expect(deliveredSent.attempts).toBe(3)
   expect(deliveredSent.error).toBeUndefined()

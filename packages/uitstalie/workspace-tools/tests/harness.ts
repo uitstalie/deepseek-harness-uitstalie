@@ -267,6 +267,22 @@ export function valueOf(result: ToolExecutionResult): ToolExecutionSuccess['valu
   return result.value
 }
 
+/**
+ * Read one successful tool value as an object of a caller-named result type.
+ *
+ * The tool runtime returns JSON, so the test narrows the value to an object
+ * once here instead of repeating a double assertion at every read.
+ * @param value - the canonical value of a successful tool result.
+ * @returns the same object with the caller's result type.
+ * @throws Error when the value is not a non-array object.
+ */
+export function objectValue<T extends object>(value: ToolExecutionSuccess['value']): T {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`tool value must be an object, got ${typeof value}`)
+  }
+  return value as T
+}
+
 /** Text blocks of one tool result. */
 export function textOf(result: { readonly content: readonly { readonly type: string; readonly text?: string }[] }): string {
   return result.content.filter(block => block.type === 'text').map(block => block.text).join('')
