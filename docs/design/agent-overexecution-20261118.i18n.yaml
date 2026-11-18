@@ -1,0 +1,70 @@
+# Bilingual-pair consistency record for agent-overexecution-20261118.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/design/agent-overexecution-20261118.md
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations:
+  en: daaa98a6d21f8571
+  zh: 0b5c58d7f5075eda
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/1-the-experience:
+  en: ab6aa5d42ed81598
+  zh: cdd7adf07c328ed9
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/2-where-it-went-off-the-rails-verbatim-evidence:
+  en: fb30161ba43934c6
+  zh: 9671f932e1e1f597
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/2-where-it-went-off-the-rails-verbatim-evidence/2-1-the-429-question:
+  en: 3bc480b1dc7fe336
+  zh: 4934099f84d2ea23
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/2-where-it-went-off-the-rails-verbatim-evidence/2-2-the-ssh-password:
+  en: 2ae320008513e582
+  zh: f30b3b585acbba23
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/3-attribution-layers:
+  en: 62f57ac75b1a19bc
+  zh: cfdbdc7c73d9115c
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/3-attribution-layers/3-1-dispatch-contract-the-brief-s-acceptance-items-were-too-wide:
+  en: 97c0b03e8c88d518
+  zh: bdbe176f87f15849
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/3-attribution-layers/3-2-prompt-layer-no-answer-only-what-was-asked-constraint:
+  en: 80f97051fa00f096
+  zh: 373aec1b1c65d761
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/3-attribution-layers/3-3-tool-layer-investigation-has-no-cost-signal:
+  en: 1bc4e290c2f9fcad
+  zh: 8ccb84a4f9ded0f4
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/3-attribution-layers/3-4-acceptance-layer-verifiable-was-read-as-must-investigate-everything:
+  en: baed778174cf6c69
+  zh: 507379ee2b4e8143
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/3-attribution-layers/3-5-credential-availability-a-given-credential-is-treated-as-a-clue-not-an-answer:
+  en: ba0589b27a30fd67
+  zh: cf8b4f7e61f7b666
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/4-goals-and-non-goals:
+  en: be99f4bba6fa671a
+  zh: fa1ab485bae69462
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/5-mechanism-candidates-and-tradeoffs:
+  en: 93a649c6b3d12c23
+  zh: 84f557fd5bca1eb1
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/5-mechanism-candidates-and-tradeoffs/a-a-minimum-answer-field-in-the-dispatch-brief:
+  en: f5a711e6fb225a21
+  zh: 8843e4fbfc96a227
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/5-mechanism-candidates-and-tradeoffs/b-answer-order-conclusion-first-evidence-second-evidence-must-map-back:
+  en: 5c10e73a733857a4
+  zh: bd426c6266797486
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/5-mechanism-candidates-and-tradeoffs/c-escalation-needs-explicit-confirmation:
+  en: 9b4a64ac95371bac
+  zh: 32a2e39a7830973b
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/5-mechanism-candidates-and-tradeoffs/d-cost-hints-at-the-tool-layer:
+  en: 3fa46c7ec645fe0c
+  zh: e70e66c6e5cfed97
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/5-mechanism-candidates-and-tradeoffs/e-given-means-use-rule:
+  en: 3aa37459b0218f57
+  zh: cd10dd8b0d272802
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/6-acceptance-regression-checklist:
+  en: 62151346672e281e
+  zh: c0c445ca3f7f161b
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/7-phased-recommendations:
+  en: 852e39cfa66af9d5
+  zh: a2e86f8c462bd393
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/8-what-this-document-does-not-change:
+  en: c3274b8d04fe2fcd
+  zh: adaaa0af9ac7c5cb
+/agent-over-execution-answer-the-question-that-was-asked-do-not-run-unrequested-investigations/9-evidence-exports:
+  en: 4c6bbdb2529f49fe
+  zh: 91925ca279110dea
