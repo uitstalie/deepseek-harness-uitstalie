@@ -37,7 +37,7 @@ P0-1 的范围是单 Host journal 及其每任务租约，不承诺分布式 exa
 主要行为命令为：
 
 ```sh
-pnpm exec tsx --test --test-isolation=none packages/jira/jira-agent/src/schema.test.ts packages/jira/jira-agent/src/index.test.ts packages/jira/jira-agent/src/dispatch-reports.test.ts packages/superagent/superagent-core/src/dispatch-store.test.ts packages/jira/jira-agent/src/superagent.test.ts packages/superagent/superagent-core/src/index.test.ts
+pnpm exec tsx --test --test-isolation=none packages/jira/jira-agent/tests/schema.test.ts packages/jira/jira-agent/tests/index.test.ts packages/jira/jira-agent/tests/dispatch-reports.test.ts packages/superagent/superagent-core/tests/dispatch-store.test.ts packages/jira/jira-agent/tests/superagent.test.ts packages/superagent/superagent-core/tests/index.test.ts
 ```
 
 该命令通过 **206 tests、0 failed、0 skipped**，包含下文引用的具名测试。迁移后的 dispatch-store 路径取代旧 Jira 路径。另一次包级运行曾在 `creates a tag through the tool, then tags an issue with it` 遇到临时 Git `index.lock` 失败；测试 teardown 删除了临时目录，同一用例在上述 206 项运行中通过。这不是 dispatch 变更的证据，也没有修改 fixture 或断言。

@@ -35,7 +35,7 @@ The evidence was collected from the source checked out on 2026-11-10 after the r
 The main behavior command was:
 
 ```sh
-pnpm exec tsx --test --test-isolation=none packages/jira/jira-agent/src/schema.test.ts packages/jira/jira-agent/src/index.test.ts packages/jira/jira-agent/src/dispatch-reports.test.ts packages/superagent/superagent-core/src/dispatch-store.test.ts packages/jira/jira-agent/src/superagent.test.ts packages/superagent/superagent-core/src/index.test.ts
+pnpm exec tsx --test --test-isolation=none packages/jira/jira-agent/tests/schema.test.ts packages/jira/jira-agent/tests/index.test.ts packages/jira/jira-agent/tests/dispatch-reports.test.ts packages/superagent/superagent-core/tests/dispatch-store.test.ts packages/jira/jira-agent/tests/superagent.test.ts packages/superagent/superagent-core/tests/index.test.ts
 ```
 
 It passed **206 tests, 0 failed, 0 skipped**, including the named tests cited below. The moved dispatch-store path replaces the obsolete Jira path. A separately reported package-wide run had one temporary Git `index.lock` failure in `creates a tag through the tool, then tags an issue with it`; its temporary directory was removed by the test teardown, and the same case passed in the cited 206-test run. It is not evidence of a dispatch change, and no fixture or assertion was modified.

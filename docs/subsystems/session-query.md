@@ -194,6 +194,8 @@ interface SessionSearchPage<T> {
   items: readonly T[]
   /** Opaque continuation cursor, absent on the final page. */
   nextCursor?: SessionSearchCursor
+  /** Sources skipped while producing this page, when any failed. */
+  warnings?: readonly SessionSearchWarning[]
 }
 ```
 

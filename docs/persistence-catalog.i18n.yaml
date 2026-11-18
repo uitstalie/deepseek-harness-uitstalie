@@ -21,8 +21,8 @@
   en: 9188862058c6986b
   zh: 9188862058c6986b
 /session-persistence-event-catalog/events/agent/agent-inbox-spliced-log-only:
-  en: e910725cd03f7de1
-  zh: b9999afe1e436d21
+  en: b0b74e38558e8574
+  zh: 7cb0625c10aef340
 /session-persistence-event-catalog/events/agent/agent-tool-pair-repair-log-only:
   en: f43e187dc4509694
   zh: 909e4786a66b0b42
@@ -144,8 +144,8 @@
   en: 9edf4ef31e60e880
   zh: 9edf4ef31e60e880
 /session-persistence-event-catalog/events/model/model-selection-log-only:
-  en: 872c2f8b5d748fe0
-  zh: c54ddb946fe8cdfc
+  en: cb835f53867d0220
+  zh: 8b2bb62255294515
 /session-persistence-event-catalog/events/permission:
   en: 19917bc5438e60af
   zh: 19917bc5438e60af
@@ -1143,8 +1143,8 @@
   en: a3087ab7bebe9371
   zh: abf6afc2f9f5b692
 /session-persistence-event-catalog/resolved-persistence-types/inboxtarget:
-  en: 9ce3c0ecd6998043
-  zh: e2ef6a60bb1ce61f
+  en: f17ed3bd806e279f
+  zh: 72920ace94922d45
 /session-persistence-event-catalog/resolved-persistence-types/jobregistereddata:
   en: f604eebb973fe2cf
   zh: 0c0aba1e17ecf66e
@@ -1224,8 +1224,8 @@
   en: 65a618e2ec94bbc4
   zh: 622197f4b127068b
 /session-persistence-event-catalog/resolved-persistence-types/modelselection:
-  en: 9ca981f18a606ba8
-  zh: c4c6468be5788327
+  en: 970930c4a8b1bad8
+  zh: 6c596aba5e3c5020
 /session-persistence-event-catalog/resolved-persistence-types/oneshotscheduledispatchchange:
   en: c1eb536fc54d2f9a
   zh: 50f6b4ce47c8482a
@@ -1635,8 +1635,8 @@
   en: 574fcd46fe32bd23
   zh: d7558452a0eee452
 /session-persistence-event-catalog/resolved-persistence-types/inserted-outcome-removedcount-start:
-  en: ff5d83d47b558196
-  zh: a59a268343a4230b
+  en: 7aa78ccc522a38e7
+  zh: 9cba64ee443169a8
 /session-persistence-event-catalog/resolved-persistence-types/interrupted-message-step-stream:
   en: 35e45d462a41e963
   zh: 89953d22ddada652

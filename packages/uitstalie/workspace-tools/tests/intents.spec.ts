@@ -117,7 +117,7 @@ const RAW_TRACEABLE = 'Add a small helper. Keep the build green. Do not touch th
 const TRACEABLE_ITEMS: ItemsInput = {
   goal: [{ text: 'Add a small helper', source: 'user-verbatim' }],
   acceptance: [{ text: 'Keep the build green', source: 'user-verbatim' }],
-  boundaries: [{ text: 'Do not touch the README', source: 'user-anchor', anchor: { path: 'docs/README.md', heading: 'Scope' } }],
+  boundaries: [{ text: 'Do not touch the README', source: 'user-anchor', anchor: { path: 'docs/subsystems/workspace.md', heading: 'Scope' } }],
   outputForm: [{ text: 'Return a patch', source: 'user-verbatim' }],
 }
 const TRACEABLE_BRIEF = {
@@ -522,7 +522,7 @@ test('§11.10(6) a receipt with a deviation cannot move the task to done', async
     requestId: 'receipt-violated',
     alignment: alignmentOf(card,
       [{ point: 'acceptance[0]', status: 'satisfied', evidence: 'the suite passes' }],
-      [{ point: 'boundaries[0]', status: 'violated', evidence: 'docs/README.md changed' }]),
+      [{ point: 'boundaries[0]', status: 'violated', evidence: 'docs/subsystems/workspace.md changed' }]),
   })
   expect(violated.isError).toBe(false)
   expect(valueOf(violated)).toMatchObject({ status: 'blocked' })
@@ -649,7 +649,7 @@ test('mutations are idempotent per requestId and history pages with a cursor', a
     items: {
       ...TRACEABLE_ITEMS,
       acceptance: [{ text: 'build green', source: 'user-verbatim' }],
-      boundaries: [{ text: 'Do not touch the README', source: 'user-anchor', anchor: { path: 'docs/README.md' } }],
+      boundaries: [{ text: 'Do not touch the README', source: 'user-anchor', anchor: { path: 'docs/subsystems/workspace.md' } }],
     },
   })
   expect(correctedAgain.isError).toBe(false)
@@ -662,7 +662,7 @@ test('mutations are idempotent per requestId and history pages with a cursor', a
     items: {
       ...TRACEABLE_ITEMS,
       acceptance: [{ text: 'the build green', source: 'user-verbatim' }],
-      boundaries: [{ text: 'Do not touch the README', source: 'user-anchor', anchor: { path: 'docs/README.md' } }],
+      boundaries: [{ text: 'Do not touch the README', source: 'user-anchor', anchor: { path: 'docs/subsystems/workspace.md' } }],
     },
   })
   expect(correctedThrice.isError).toBe(false)

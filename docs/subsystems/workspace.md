@@ -44,6 +44,9 @@ interface Workspace {
   /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
   readonly title: string
 
+  /** Workspace role resolved from the durable record; unknown values are agent. */
+  readonly role: 'agent' | 'super'
+
   /** ISO-8601 creation instant, stamped at create and never rewritten. */
   readonly createdAt: string
 
@@ -75,6 +78,9 @@ interface Workspace {
    * @returns resolution after durability.
    */
   setTitle(title: string): Promise<void>
+
+  /** Replace the workspace role durably; only host-side management calls this. */
+  setRole(role: 'agent' | 'super'): Promise<void>
 
   /**
    * Prepend a session to this workspace's candidate account. An already

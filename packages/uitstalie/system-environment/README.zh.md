@@ -32,7 +32,7 @@ kind: "package-reference"
 插件声明 `inject: ['systemEnvironment']`，然后问服务，而不是重新推导：
 
 ```ts
-import { createSystemEnvironment } from '@deepseek-ai/dsh-system-environment'
+import { createSystemEnvironment } from '@deepseek-ai/dsh-system-environment/src/api.ts'
 
 const ctx = { systemEnvironment: createSystemEnvironment() }
 const workspaceRoot = '/workspace'

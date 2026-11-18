@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 `dsh-workspace-tools` 提供工作区信息工具集。它向 `dafeiyu` 组织者注册一个能力，由组织者把工具接到每个 agent 上，因此普通工作区会话与 super agent 共用同一套契约。工具集不持有任何已有归属的事实：会话来自 `ctx.sessionQuery`，工作区及其会话账目来自 `ctx.workspaceRegistry`，产物内容来自工作区目录。它只在 `$DSH_HOME/workspaces/<workspace-id>/` 下保存派发任务及其回执、意图卡及其版本、消息与产物引用。
 
@@ -19,7 +19,7 @@ kind: "package-reference"
 - [存储](#storage)
 - [模型体验](#model-experience)
 - [已知限制与后续工作](#known-limitations-and-deferred-work)
-- [开发说明](#dev-note)
+- [开发备注](#dev-note)
 
 <a id="use-this-package"></a>
 
@@ -103,7 +103,7 @@ agent 可见这些工具时，每次请求的固定 schema 成本，加上每次
 
 <a id="dev-note"></a>
 
-### 开发说明
+### 开发备注
 
 - `src/api.ts` 注册能力；`src/tools.ts` 固定注册顺序。
 - `src/scope.ts` 负责工作区解析与跨工作区记录；`src/delivery.ts` 负责 `workspace_message.send` 的会话控制器接缝；`src/prompt.ts` 渲染静态工作区目录；`src/store.ts` 负责任务、消息与产物目录及其读取校验；`src/intent-store.ts` 负责追加式意图卡；`src/intent-rules.ts` 负责来源规则、point id、覆盖与对齐；`src/paging.ts` 负责 cursor。

@@ -9,17 +9,8 @@
   en: 1a3a1d2271314f17
   zh: 7a5f702a2ee5b886
 /memory-eviction-explicit-forget-and-search-containment/change:
-  en: 10c71da94fbd1185
-  zh: 568484a4e9fc21bb
-/memory-eviction-explicit-forget-and-search-containment/automatic-cleanup:
-  en: 5f7e77520f8ec138
-  zh: 6a0df8e0774c01ac
-/memory-eviction-explicit-forget-and-search-containment/summary-call-interval:
-  en: e7cc7a8ca6f9745e
-  zh: 9c64d09e055e4e8c
+  en: bf44823b47df34f9
+  zh: 32d878f14f946445
 /memory-eviction-explicit-forget-and-search-containment/migration:
-  en: 0b9e525ed5540c0b
-  zh: 4e7291dd67e38c61
-/memory-eviction-explicit-forget-and-search-containment/rollback:
-  en: 171fde15bd4675f1
-  zh: 2921c8e74204b903
+  en: 6b198c5ed58b8226
+  zh: 3ca528f3503e6a8a

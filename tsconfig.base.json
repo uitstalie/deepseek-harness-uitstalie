@@ -453,6 +453,8 @@
       "@deepseek-ai/dsh-ptc-runtime-node/configuration": ["./packages/ptc-runtime/ptc-runtime-node/src/configuration.ts"],
       // BEGIN uitstalie-k3, 2026/08/28, task5, 新增 models-dev 包的 deepseek-extra-params 子路径别名（生成器只管根与 invariant，子路径走手写区）
       "@deepseek-ai/dsh-models-dev/deepseek-extra-params": ["./packages/uitstalie/models-dev/src/deepseek-extra-params.ts"],
+      "@deepseek-ai/dsh-persona-card/src/*": ["./packages/uitstalie/persona-card/src/*"],
+      "@deepseek-ai/dsh-system-environment/src/*": ["./packages/uitstalie/system-environment/src/*"],
       // END uitstalie-k3
       // BEGIN uitstalie-k3, 2026/08/31, task8, client 包命名（dsh-client-ui-*）与 uitstalie 目录前缀不吻合，生成器无法推断，手写根别名
       "@deepseek-ai/dsh-client-ui-models-dev": ["./packages/uitstalie/ui-models-dev/src"],

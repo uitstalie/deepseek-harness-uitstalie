@@ -25,7 +25,8 @@ kind: "package-reference"
 解析不可信的 `persona/v1` 对象、渲染，或导入 SillyTavern 风格的卡：
 
 ```ts
-import { importCharacterCard, parsePersonaCard, renderPersonaText } from '@deepseek-ai/dsh-persona-card'
+import { parsePersonaCard, renderPersonaText } from '@deepseek-ai/dsh-persona-card/src/card.ts'
+import { importCharacterCard } from '@deepseek-ai/dsh-persona-card/src/import.ts'
 
 const candidate: unknown = { schema: 'persona/v1', name: '小鲸鱼' }
 const cardJson: unknown = { spec: 'chara_card_v2', data: { name: '小鲸鱼' } }

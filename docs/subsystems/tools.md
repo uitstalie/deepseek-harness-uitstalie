@@ -25,6 +25,8 @@ interface ToolOutputDefinition {
 ```ts type-equiv
 /** A registered tool: its schema plus the execution function. */
 interface ToolDefinition extends ToolSchema {
+  /** Minimum Agent role that may see and call this tool; absent means every role. */
+  readonly minRole?: AgentRole
   /** Mandatory canonical output declaration. */
   readonly output: ToolOutputDefinition
   /**

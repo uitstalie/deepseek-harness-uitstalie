@@ -184,7 +184,7 @@ Sources: [`packages/core/session/src/types.ts:443`](../packages/core/session/src
 }
 ```
 
-Source: [`packages/core/agent/src/types.ts:116`](../packages/core/agent/src/types.ts)
+Source: [`packages/core/agent/src/types.ts:117`](../packages/core/agent/src/types.ts)
 
 <a id="agenttool-pair-repair--log-only"></a>
 
@@ -724,7 +724,7 @@ Source: [`packages/llm/llm-retry/src/types.ts:11`](../packages/llm/llm-retry/src
 'model/selection': ModelSelection
 ```
 
-Source: [`packages/core/agent/src/types.ts:127`](../packages/core/agent/src/types.ts)
+Source: [`packages/core/agent/src/types.ts:128`](../packages/core/agent/src/types.ts)
 
 ### `permission/*`
 
@@ -4012,7 +4012,7 @@ Array of [`ImageOffloadTarget`](#persistence-type-sha256-1cde1bedde79c5e8a56aee9
 
 SHA-256: `96f4a9c81fc0f940ef71528a8cc66731ae4cf1f40d79680c5fe3c39f96d7723c`
 
-Sources: [`packages/core/agent/src/types.ts:46`](../packages/core/agent/src/types.ts)
+Sources: [`packages/core/agent/src/types.ts:47`](../packages/core/agent/src/types.ts)
 
 One of:
 
@@ -4634,7 +4634,7 @@ Sources: [`packages/llm/llm/src/message.ts:23`](../packages/llm/llm/src/message.
 
 SHA-256: `f09e5e7acf5ff5ccd193ff2eeec015fa2ff7c29d98bc465f8c3302058d47e29b`
 
-Sources: [`packages/core/agent/src/types.ts:85`](../packages/core/agent/src/types.ts)
+Sources: [`packages/core/agent/src/types.ts:86`](../packages/core/agent/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|
@@ -6825,7 +6825,7 @@ Sources: [`packages/core/session/src/types.ts:439`](../packages/core/session/src
 
 SHA-256: `15215b00d784715619e77518fb362e035d318a5d31409e8bd04a14f1a4047115`
 
-Sources: [`packages/core/agent/src/types.ts:116`](../packages/core/agent/src/types.ts)
+Sources: [`packages/core/agent/src/types.ts:117`](../packages/core/agent/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|

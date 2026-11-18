@@ -32,7 +32,7 @@ Mount the row once, before any consumer of `ctx.systemEnvironment`:
 A plugin then declares `inject: ['systemEnvironment']` and asks the service instead of re-deriving:
 
 ```ts
-import { createSystemEnvironment } from '@deepseek-ai/dsh-system-environment'
+import { createSystemEnvironment } from '@deepseek-ai/dsh-system-environment/src/api.ts'
 
 const ctx = { systemEnvironment: createSystemEnvironment() }
 const workspaceRoot = '/workspace'

@@ -97,7 +97,7 @@ DSH 已有的能力，决定了本插件不该重复造什么：
 
 ### 2.6 重要：上游已有一个实验性的"任务板" —— `agent-team`
 
-`packages/experimental/agent-team` 已经实现了相当接近 mini-Jira 的东西：
+`packages/client/ui-agent-team` 已经实现了相当接近 mini-Jira 的东西：
 
 - 实体 `TeamTaskSnapshot { id(task-<n>), revision, subject, description, status, ownerId?, blockedBy[], writeScopes[] }`
 - 工具 `team_task_create / get / list / update`，`update` 用动词枚举 `claim|release|edit|set_dependencies|complete|reopen|reassign|delete`（`docs/tool-catalog.md:2323-2488`）

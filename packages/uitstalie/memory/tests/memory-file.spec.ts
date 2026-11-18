@@ -737,9 +737,9 @@ test('same-turn files entries with the same lone path are duplicates; different 
     sections: [{
       sessionId: 'session-a', startTurn: 1, endTurn: 1, tier: 'detail',
       entries: [
-        { kind: 'files', text: 'packages/uitstalie/memory/src/a.ts changed', turn: 1 },
-        { kind: 'files', text: 'packages/uitstalie/memory/src/a.ts also changed', turn: 1 },
-        { kind: 'files', text: 'packages/uitstalie/memory/src/b.ts changed', turn: 1 },
+        { kind: 'files', text: 'memory/src/a.ts changed', turn: 1 },
+        { kind: 'files', text: 'memory/src/a.ts also changed', turn: 1 },
+        { kind: 'files', text: 'memory/src/b.ts changed', turn: 1 },
       ],
     }],
   }
@@ -752,7 +752,7 @@ test('same-turn files entries with the same lone path are duplicates; different 
     .flatMap(section => section.entries).map(entry => entry.text)
   expect(texts).toHaveLength(3)
   expect(texts.filter(text => text.includes('src/a.ts'))).toHaveLength(1)
-  expect(texts).toContain('packages/uitstalie/memory/src/b.ts changed')
+  expect(texts).toContain('memory/src/b.ts changed')
 })
 
 test('resolve supports a tag filter and an explicit all filter', async () => {

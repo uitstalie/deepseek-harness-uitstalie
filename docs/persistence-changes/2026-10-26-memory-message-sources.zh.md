@@ -52,7 +52,7 @@ changes:
 <a id="verification"></a>
 ## 验证
 
-pnpm --silent run verify-persistence-changes --json：报告这四个根为 union-variants-changed 且需要兼容性复核，未报告其他根。pnpm exec vitest run packages/uitstalie/memory/tests/snapshot.spec.ts packages/uitstalie/memory/tests/checkpoint.spec.ts packages/uitstalie/memory/tests/read.spec.ts：3 个文件、22 个测试通过。pnpm exec vitest run packages/session/session-format-v3-to-v4/tests/message-sources.spec.ts packages/session/session-persistence-jsonl/tests/native-source-admission.spec.ts：2 个文件、42 个测试通过，其中未知的直接来源 kind 在迁移与原生恢复中都得到保留，只拒绝畸形或已退役的 kind。pnpm exec vitest run packages/session/session-format-v3-to-v4/tests/sources.spec.ts：29 个测试通过。pnpm exec vitest run packages/session/session-title-llm/tests/llm.spec.ts：17 个测试通过。pnpm exec vitest run packages/client/ui-trajectory/tests/event-projection.client.spec.ts：5 个测试通过，其中未知生产者按其持久化 kind 渲染。
+pnpm --silent run verify-persistence-changes --json：报告这四个根为 union-variants-changed 且需要兼容性复核，未报告其他根。pnpm exec vitest run packages/uitstalie/memory/tests/memory-file.spec.ts packages/uitstalie/memory/tests/checkpoint.spec.ts：2 个文件通过，包括 checkpoint 与 memory-file 套件。pnpm exec vitest run packages/session/session-format-v3-to-v4/tests/message-sources.spec.ts packages/session/session-persistence-jsonl/tests/native-source-admission.spec.ts：2 个文件、42 个测试通过，其中未知的直接来源 kind 在迁移与原生恢复中都得到保留，只拒绝畸形或已退役的 kind。pnpm exec vitest run packages/session/session-format-v3-to-v4/tests/sources.spec.ts：29 个测试通过。pnpm exec vitest run packages/session/session-title-llm/tests/llm.spec.ts：17 个测试通过。pnpm exec vitest run packages/client/ui-trajectory/tests/event-projection.client.spec.ts：5 个测试通过，其中未知生产者按其持久化 kind 渲染。
 
 <a id="dev-note"></a>
 ## 开发备注

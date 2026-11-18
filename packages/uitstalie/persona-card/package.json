@@ -11,6 +11,7 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./src/*": "./src/*",
     "./locale/*.json": "./locale/*.json"
   },
   "files": [

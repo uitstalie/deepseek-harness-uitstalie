@@ -186,7 +186,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/core/agent/src/types.ts:116`](../packages/core/agent/src/types.ts)
+来源：[`packages/core/agent/src/types.ts:117`](../packages/core/agent/src/types.ts)
 
 <a id="agenttool-pair-repair--log-only"></a>
 
@@ -726,7 +726,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'model/selection': ModelSelection
 ```
 
-来源：[`packages/core/agent/src/types.ts:127`](../packages/core/agent/src/types.ts)
+来源：[`packages/core/agent/src/types.ts:128`](../packages/core/agent/src/types.ts)
 
 ### `permission/*`
 
@@ -4014,7 +4014,7 @@ SHA-256: `9e2c06d8653585b33d72d5c1a80da79c8a24a88c284409bca15cc0f0ead5ebfb`
 
 SHA-256: `96f4a9c81fc0f940ef71528a8cc66731ae4cf1f40d79680c5fe3c39f96d7723c`
 
-来源：[`packages/core/agent/src/types.ts:46`](../packages/core/agent/src/types.ts)
+来源：[`packages/core/agent/src/types.ts:47`](../packages/core/agent/src/types.ts)
 
 以下类型之一：
 
@@ -4636,7 +4636,7 @@ SHA-256: `719c51f67074f97034a6c94297fe1f4b5d3c8d392c57586dab732aa5398c7a91`
 
 SHA-256: `f09e5e7acf5ff5ccd193ff2eeec015fa2ff7c29d98bc465f8c3302058d47e29b`
 
-来源：[`packages/core/agent/src/types.ts:85`](../packages/core/agent/src/types.ts)
+来源：[`packages/core/agent/src/types.ts:86`](../packages/core/agent/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -6827,7 +6827,7 @@ SHA-256: `17d1afb770d9941936130996da00dc86782cfef731d8d6526162c301256a4ac3`
 
 SHA-256: `15215b00d784715619e77518fb362e035d318a5d31409e8bd04a14f1a4047115`
 
-来源：[`packages/core/agent/src/types.ts:116`](../packages/core/agent/src/types.ts)
+来源：[`packages/core/agent/src/types.ts:117`](../packages/core/agent/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|

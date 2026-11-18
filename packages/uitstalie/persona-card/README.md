@@ -25,7 +25,8 @@ It is not the deployment persona. `@deepseek-ai/dsh-persona` (under `packages/pr
 Parse an untrusted `persona/v1` object, render it, or import a SillyTavern-style card:
 
 ```ts
-import { importCharacterCard, parsePersonaCard, renderPersonaText } from '@deepseek-ai/dsh-persona-card'
+import { parsePersonaCard, renderPersonaText } from '@deepseek-ai/dsh-persona-card/src/card.ts'
+import { importCharacterCard } from '@deepseek-ai/dsh-persona-card/src/import.ts'
 
 const candidate: unknown = { schema: 'persona/v1', name: '小鲸鱼' }
 const cardJson: unknown = { spec: 'chara_card_v2', data: { name: '小鲸鱼' } }

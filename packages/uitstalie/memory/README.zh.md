@@ -7,17 +7,17 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## Summary
+## 概述
 
 `dsh-memory` 是只留全局的记忆能力提供者。它向 `dafeiyu` 注册一个能力，由组织器把固定系统提示词段和三件工具——`memory_write`、`memory_forget`、`memory_search`——接到根 agent 上。条目存在 `$DSH_HOME/memory/GLOBAL.md`，每个封闭的全局主题最多一条活动条目，被移除的条目存在 `GLOBAL.archive.md`。业务、派发或 persona 写入会被拒绝，并指向真正拥有它的工具。记忆不会按轮注入，回合结束也不写记忆条目。一次性命令通过 dry-run 报告、报告哈希、备份与回滚来迁移旧的按工作区 `.dsh/memory/sessions/MEMORY.md` 文件。
 
-## Table of Contents
+## 目录
 
 - [Use this package](#use-this-package)
 - [Understand the implementation](#understand-the-implementation)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
-- [Dev Note](#dev-note)
+- [开发备注](#dev-note)
 
 <a id="use-this-package"></a>
 
@@ -125,7 +125,7 @@ Memory is global-only: it holds cross-workspace facts and conventions, such as a
 
 <a id="dev-note"></a>
 
-### Dev Note
+### 开发备注
 
 <details>
 <summary>Working context for maintainers — click to expand</summary>
