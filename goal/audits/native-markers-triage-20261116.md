@@ -1,6 +1,6 @@
 # 原生标记候选分流（2026-11-16）
 
-依据：`goal/audits/code-conventions-20261116-native-markers.txt`，基线 `639ed015397290b3745d163aafe02ffee4aa3f84`。
+依据：`goal/audits/code-conventions-20261116-native-markers.txt`；基线为审计当日（2026-11-16）的分支顶端。按仓库引用规则不保存提交标识，需要时以当日运行 `git rev-parse HEAD` 的输出为准。
 
 - A 需补：1
 - B 不需补：103

@@ -4,6 +4,7 @@
  * refusal of business, dispatch, and persona text.
  */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,6 +27,9 @@ import {
   writeGlobalEntry,
 } from '../src/global-memory.ts'
 import type { GlobalMemoryEntry } from '../src/global-memory.ts'
+
+/** A commit-shaped token built at runtime; maintained test sources carry no commit identifier. */
+const COMMIT_LIKE = createHash('sha256').update('memory-test-fixture').digest('hex').slice(0, 10)
 
 let root: string
 let ctx: Context
@@ -96,7 +100,7 @@ test('a newer entry with the same topic archives the previous one', async () => 
 test('business, dispatch, and persona writes are refused with the owning tool', async () => {
   const business = await writeGlobalEntry(ctx, {
     topic: 'global-tooling',
-    text: 'The commit 548dc157ba changed the workspace layout.',
+    text: `The commit ${COMMIT_LIKE} changed the workspace layout.`,
     sourceSessionId: 's1',
   }).catch((error: unknown) => error)
   expect(business).toBeInstanceOf(GlobalMemoryError)

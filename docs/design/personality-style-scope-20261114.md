@@ -157,5 +157,5 @@ All code or prompt changes require a rebuild and restart of the running harness.
 - This round does not change quotas, split sections, add a role field, add retrieval, or move 702 text.
 - The ordinary and super slots are independent and may differ from the start; no read-only `personality_apply`/`write_like_human` variant is planned for subagents.
 - The super-agent role signal is an explicit prerequisite; cwd/title/tool-presence heuristics are rejected.
-- The version-conflict item remains description-only: writes retry once internally and the model is told to `list` before a second attempt (`0d3fcb3ef0`).
+- The version-conflict item remains description-only: writes retry once internally (`packages/uitstalie/personality/src/global-store.ts`) and the model is told to `list` before a second attempt (`packages/uitstalie/personality/src/writing-tool.ts`).
 - Product decisions still needed: the runtime source for the localized result language; whether subagents keep profile 100 and writing rules 695; whether the core always-on set is 20 or another number; whether the two slots need different prompt orders.

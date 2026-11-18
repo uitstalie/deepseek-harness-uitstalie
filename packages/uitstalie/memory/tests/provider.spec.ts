@@ -5,6 +5,7 @@
  * tool hints, global search, and the absence of any per-turn memory write.
  */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -35,6 +36,9 @@ import {
   settle,
 } from './harness.ts'
 import type { MemoryTestHarness } from './harness.ts'
+
+/** A commit-shaped token built at runtime; maintained test sources carry no commit identifier. */
+const COMMIT_LIKE = createHash('sha256').update('memory-test-fixture').digest('hex').slice(0, 10)
 
 let project: string
 let contexts: Context[]
@@ -153,7 +157,7 @@ test('a business write is refused with the workspace tool hints', async () => {
 
   const result = await callTool(mounted.ctx, root, 'memory_write', {
     topic: 'global-tooling',
-    text: 'The commit 548dc157ba changed the workspace layout.',
+    text: `The commit ${COMMIT_LIKE} changed the workspace layout.`,
   })
   expect(result.isError).toBe(true)
   expect(textOf(result)).toContain('NOT_GLOBAL_MEMORY')

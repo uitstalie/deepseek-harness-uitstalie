@@ -5,6 +5,7 @@
  * rollback that makes the next dry run reproduce the first report.
  */
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -25,6 +26,9 @@ import {
   dryRunMemoryMigration,
   rollbackMemoryMigration,
 } from '../src/migration.ts'
+
+/** A commit-shaped token built at runtime; maintained test sources carry no commit identifier. */
+const COMMIT_LIKE = createHash('sha256').update('memory-test-fixture').digest('hex').slice(0, 10)
 
 let root: string
 let first: string
@@ -82,7 +86,7 @@ async function seedFixtures(): Promise<void> {
   await seedActive(activeOne, [section('session-one', [
     entry('decision', 'The shared build server is reachable as server alpha.', 3),
     entry('decision', 'Always run the type check before pushing a change.', 4),
-    entry('decision', 'The commit 548dc157ba fixed the workspace layout.', 5),
+    entry('decision', `The commit ${COMMIT_LIKE} fixed the workspace layout.`, 5),
     entry('open', 'Dispatched the task to session memory-worker; waiting for the receipt.', 6),
     entry('preference', 'The user prefers a calm tone of voice.', 7),
     entry('files', 'Blue is a pleasing colour.', 8),
@@ -179,7 +183,7 @@ test('apply migrates only confirmed global entries, backs up every changed file,
     'Always run the type check before pushing a change.',
     'The shared build server is reachable as server alpha.',
   ])
-  expect(globalText).not.toContain('The commit 548dc157ba')
+  expect(globalText).not.toContain(`The commit ${COMMIT_LIKE}`)
   expect(globalText).not.toContain('Dispatched the task')
   expect(globalText).not.toContain('calm tone of voice')
   expect(globalText).not.toContain('Blue is a pleasing colour')
@@ -212,7 +216,7 @@ test('apply migrates only confirmed global entries, backs up every changed file,
 
   // Discarded entries are archived with the migration reason before the active file is rewritten.
   const rewrittenArchive = await readFile(archiveOne, 'utf8')
-  expect(rewrittenArchive).toContain('The commit 548dc157ba')
+  expect(rewrittenArchive).toContain(`The commit ${COMMIT_LIKE}`)
   expect(rewrittenArchive).toContain('"reason":"migration"')
   expect(rewrittenArchive).toContain('The shared build server')
 

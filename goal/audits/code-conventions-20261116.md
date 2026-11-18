@@ -12,8 +12,8 @@
 
 ### 1.1 基线与范围判定
 
-- 工作区分支 `cli-desktop`，HEAD `00879e10d86afb0aeeada360b7b342e53ed026a6`。
-- `upstream = git@github.com:deepseek-ai/deepseek-harness.git`；`upstream/master = 39163dd30f703a79079e2d2446545cff3c453738`，merge-base `e8f7b93a344964de3dca1ace9e72b6e4d6de87cb`。
+- 工作区分支 `cli-desktop`，HEAD 为审计执行当日（2026-11-16）的分支顶端。按仓库引用规则本文件不保存提交标识；需要复核时以该日运行 `git rev-parse HEAD` 的输出为准。
+- `upstream = git@github.com:deepseek-ai/deepseek-harness.git`；`upstream/master` 为审计当日上游 `master` 顶端，merge-base 由当日运行 `git merge-base upstream/master HEAD` 计算得到。同样不保存提交标识，按当日命令输出复核。
 - `git log upstream/master..HEAD --oneline` 返回本分支提交；`git diff upstream/master...HEAD --stat` 为 **1258 文件、140206 行新增、5174 行删除**。运行了 `pnpm run change-scope --base upstream/master --head HEAD` 交叉核对路径；未把 `goal/native-change-inventory.md` 的旧数量当当前事实。
 - `git diff upstream/master...HEAD --name-only --diff-filter=A -- 'packages/*/*/package.json'` 返回 **24 个新增包**。`packages/uitstalie/**`、`packages/jira/**`、`packages/superagent/**`、`packages/interaction/tool-policy/**` 在 merge-base 没有对应包，因此归为“我们自研”。其中自研 TS/TSX 446 个文件；测试文件 147 个。
 - 其余上游已有包只审 `git diff upstream/master...HEAD` 的新增、修改、删除行，归为“插入原生 DSH 的改动”；不改动的上下文仅用于理解。原生路径含 `apps/`、`scripts/`、组合配置、原生包源码/测试/README/清单及生成物。按启发式（新增非空源码/配置行、排除新自研包、排除生成文档等见下）有 **146/223 个文件**带新增行但无 `uitstalie-` 标记；该数包含新生成物及原生侧新增文件，不能直接当违规数。

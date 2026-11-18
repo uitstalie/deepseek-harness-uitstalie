@@ -157,5 +157,5 @@ Section 690 对 `subagent` 不注入，只注册给普通 root 与 super root：
 - 本轮不修改额度、不拆分 section、不新增角色字段、不新增检索，也不移动 702 文本。
 - 普通与 super 槽位相互独立，且可以从一开始就不同；不计划为 subagent 提供只读的 `personality_apply`/`write_like_human` 变体。
 - super agent 角色信号是明确的前提；基于 cwd/标题/工具是否存在的启发式被否决。
-- The version-conflict item remains description-only: writes retry once internally and the model is told to `list` before a second attempt (`0d3fcb3ef0`).
+- 版本冲突项仍只写说明：写入在内部重试一次（`packages/uitstalie/personality/src/global-store.ts`），工具描述要求模型在第二次尝试前先 `list`（`packages/uitstalie/personality/src/writing-tool.ts`）。
 - 仍需产品决策：本地化结果语言的运行时来源；subagent 是否保留 profile 100 与 writing rules 695；始终在线的核心集合是 20 还是其他数字；两个槽位是否需要不同的提示词 order。
