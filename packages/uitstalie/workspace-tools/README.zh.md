@@ -42,10 +42,10 @@ kind: "package-reference"
 
 | 工具 | 动作 | 结果 |
 |---|---|---|
-| `workspace_sessions` | `list`、`get` | 会话摘要：状态、当前 turn、当前活动、最新进度与任务 id；`get` 另返回近期进度、待收件箱与产物数量 |
-| `workspace_tasks` | `list`、`get`、`create`、`update`、`receipt` | 按状态与 assignee 过滤的任务摘要；`get` 返回任务、其回执、目标会话与产物引用；`create` 要求 active 意图卡与覆盖映射；`update` 推进状态机；`receipt` 追加对齐清单 |
-| `workspace_message` | `send`、`read` | `send` 投递一条消息或追问（可带产物引用），返回消息 id、状态与投递回执；重复 `requestId` 返回第一次的结果。`read` 按 id 读一条消息，或按目标会话分页读消息 |
-| `workspace_artifacts` | `publish`、`reference`、`list`、`resolve` | `publish` 对工作区根内的一个文件计算哈希并记录不可变引用；内容未变时重复发布返回已记录版本。`reference` 把已发布引用挂到消息或任务。`list` 返回每个产物的最新引用；`resolve` 用记录版本比对文件，回答 `ok`、`changed`、`missing` 或 `denied` |
+| `workspace_sessions` | `list`、`get`、`run`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact`、`delete` | 会话摘要：状态、当前 turn、当前活动、最新进度与任务 id；`get` 另返回近期进度、排队收件箱数量、产物数量、名册的创建者与归档者戳，以及 live 会话的 `contextUsage`。`run` 把一段文本投给指定会话；省略 `sessionId` 时投给最近更新的那条；只有工作区里没有会话时才新开。`new_session: true` 与 `start` 强制新开会话。`stop`、`abort`、`fork`、`archive`、`compact` 控制会话；宿主没有会话删除 API 时 `delete` 直接拒绝 |
+| `workspace_tasks` | `list`、`get`、`create`、`update`、`receipt` | 按状态与 assignee 过滤的任务摘要；`get` 返回任务、其回执、目标会话与产物引用；`create` 只要求 `workspace` 与 `goal`，`acceptance`、`boundaries` 与 `taskType` 有缺省值，给出 `intentId` 与 `intentVersion` 才启用卡片门；`update` 推进状态机；`receipt` 追加对齐清单 |
+| `workspace_message` | `send`、`read`、`status`、`retry` | `send` 投递一条消息或追问（可带产物引用），返回消息 id、状态与投递回执；重复 `requestId` 返回第一次的结果。`read` 按 id 读一条消息，或按目标会话分页读消息；`status` 报告投递状态、失败原因与尝试次数；`retry` 用同一身份重发一条 `failed` 消息 |
+| `workspace_artifacts` | `publish`、`reference`、`request`、`requests`、`grant`、`list`、`resolve` | `publish` 对工作区根内的一个文件计算哈希并记录不可变引用；内容未变时重复发布返回已记录版本。`reference` 把已发布引用挂到消息或任务。`request` 在调用者自己的工作区里立即解析，跨工作区时在持有方决定前回答 `pending`；`requests` 列出本工作区持有的待处理跨工作区请求，`grant` 记录持有方按版本限定的授权或拒绝及其有效期。`list` 返回每个产物的最新引用；`resolve` 用记录版本比对文件，回答 `ok`、`changed`、`missing` 或 `denied` |
 | `workspace_intents` | `create`、`get`、`confirm`、`correct`、`history`、`metrics` | 一个意图卡版本，含带来源标注的目标、验收、边界与产出形式条目；`confirm` 与 `correct` 追加状态；`history` 分页版本；`metrics` 汇总派发对齐 |
 
 `list` 动作用不透明 cursor 分页，默认 20 条、上限 100 条。摘要会限制文本长度；原始 turn 仍由 `session_event_read` 读取，文件正文仍由 `read` 读取。
@@ -54,7 +54,7 @@ kind: "package-reference"
 
 产物引用在发布时不可变：`{ artifactId, workspaceId, path, sha256, size, version, kind, sessionId, taskId?, createdAt }`。产物 id 按 `workspace|path|kind` 稳定；文件变化后再发布追加一个版本。消息或任务保存被引用的 `artifactId`、`version` 与 `sha256`；之后文件变化不会改写引用，`resolve` 报 `changed` 或 `missing`，不会静默跟随新内容。
 
-`workspace_tasks.create` 必须带 `intentId`、`intentVersion`、`workspace`、`acceptance`、`boundaries` 与六类 `taskType`。缺字段或缺卡返回 `INTENT_INCOMPLETE`，`proposed` 版本返回 `INTENT_UNCONFIRMED`，被 supersede 或非当前版本返回 `INTENT_STALE`，跨工作区的卡返回 `INTENT_SCOPE_MISMATCH`，未覆盖的卡点返回 `INTENT_COVERAGE_MISSING`。覆盖没有默认通过：卡里每个点都需要一条覆盖条目或一条显式 `nonCoverage` 理由。`receipt` 为卡里每个点追加一条带证据的对齐条目；`not_satisfied` 的验收点或 `violated` 的边界会把任务转入 `waiting_review` 或 `blocked`，绝不进入 `done`。
+`workspace_tasks.create` 只要求 `workspace` 与 `goal`；`acceptance`、`boundaries` 与六类 `taskType` 分别缺省为空列表、空列表与 `other`。意图卡是可选的：给出 `intentId` 与 `intentVersion` 才应用卡片门——缺字段或缺卡返回 `INTENT_INCOMPLETE`，`proposed` 版本返回 `INTENT_UNCONFIRMED`，被 supersede 或非当前版本返回 `INTENT_STALE`，跨工作区的卡返回 `INTENT_SCOPE_MISMATCH`，未覆盖的卡点返回 `INTENT_COVERAGE_MISSING`。覆盖没有默认通过：卡里每个点都需要一条覆盖条目或一条显式 `nonCoverage` 理由。`receipt` 为卡里每个点追加一条带证据的对齐条目；`not_satisfied` 的验收点或 `violated` 的边界会把任务转入 `waiting_review` 或 `blocked`，绝不进入 `done`。
 
 <a id="scope"></a>
 
@@ -64,13 +64,13 @@ kind: "package-reference"
 
 `workspace_intents` 遵循同一作用域。一张卡只属于一个工作区；跨工作区请求会在每个目标工作区各建一张卡，且每张卡逐字保留用户原话。读取其他工作区的卡需要显式 id，并会被记录。任务引用别的工作区的卡时以 `INTENT_SCOPE_MISMATCH` 拒绝。
 
-意图卡的 `create`、`confirm` 与 `correct` 需要 super agent 角色或用户；普通 agent 只读卡。在卡片 UI 出现之前，用户决定经由 super agent 进入存储。任务创建、任务状态变更与派发者记录的 assignee 需要 super agent；被指定为任务目标会话的会话可以更新该任务并追加自己的回执。每次变更都带 request id，因此重试不会重复写入卡版本、任务或回执。
+意图卡的 `create`、`confirm` 与 `correct` 对工作区内任何 agent 开放，直到卡片 UI 出现；跨工作区写要求 super agent。任务创建与每次任务状态变更对工作区内 agent 开放；被指定为任务目标会话的会话可以更新该任务并追加自己的回执。`requestId` 全部可选：省略时工具自动生成，给出时重试幂等。
 
 <a id="storage"></a>
 
 ## 存储
 
-记录位于 `$DSH_HOME/workspaces/<workspace-id>/` 下：`tasks/<taskId>.json`、`messages/<messageId>.json`、`artifacts/<artifactId>.json`，以及 `intents/<intentId>/` 下的 `index.json` 与 `versions/<n>.json`。读取时逐文件校验，因为持久记录是不可信边界；与 schema 不符的记录以 `WORKSPACE_RECORD_CORRUPT` 失败，而不是被跳过。产物记录保存每个已发布版本，`resolve` 用所选版本的 SHA-256 与工作区根内的文件比对。
+记录位于 `$DSH_HOME/workspaces/<workspace-id>/` 下：`tasks/<taskId>.json`、`messages/<messageId>.json`、`artifacts/<artifactId>.json`、`grants/<artifactId>-v<version>.json`、`requests/<requestId>.json`、名册用的 `sessions/<sessionId>.json`，以及 `intents/<intentId>/` 下的 `index.json` 与 `versions/<n>.json`。读取时逐文件校验，因为持久记录是不可信边界；与 schema 不符的记录以 `WORKSPACE_RECORD_CORRUPT` 失败，而不是被跳过。产物记录保存每个已发布版本，`resolve` 用所选版本的 SHA-256 与工作区根内的文件比对。
 
 卡索引保存每个版本的当前状态、最新 active 版本、逐条确认时间与版本列表；每个版本文件保存不可变的卡内容，从不重写。纠正追加一个版本，并让被 supersede 的旧版本仍可读；确认只改索引。`proposed` 版本携带一个带稳定 id 的汇总确认请求。意图 id 由工作区与其幂等键推导，因此重试的 create 返回它已经写过的版本。
 
@@ -96,8 +96,9 @@ agent 可见这些工具时，每次请求的固定 schema 成本，加上每次
 
 ## 已知限制与后续工作
 
-- **本步没有卡片 UI** —— `confirm` 与 `correct` 是模型可调用的，且需要 super agent，由它记录对话送达的用户决定。没有 super agent 或卡片 UI 时，`proposed` 版本无法激活。
-- **尚无授权模型** —— `publish` 之后同工作区的 `read` 被允许，`resolve` 对匹配的同工作区引用回答 `ok`，对工作区根外路径回答 `denied`；产物的 `request`/`grant` 与 `pending`/`expired` 状态仍是该设计的后续里程碑，因此跨工作区读取需要那条路径将来提供的显式 holder grant。
+- **本步没有卡片 UI** —— `confirm` 与 `correct` 是模型可调用的，由工作区内任何 agent 驱动；用户决定仍经由 super agent 进入存储。没有卡片 UI 时，`proposed` 版本仍由 agent 而不是人来激活。
+- **`delete` 需要宿主 API** —— 宿主 `SessionController` 没有删除方法时 `workspace_sessions.delete` 直接拒绝；目前 `archive` 是唯一隐藏方式，会话日志仍留在磁盘上。
+- **产物待处理请求只能拉取** —— 跨工作区 `request` 在 `<workspace>/requests` 下按请求会话与版本各排一条待处理请求；没有推送通知，持有方必须自己读 `workspace_artifacts.requests` 才知道谁在等。
 - **状态是推导的，不是存储的** —— `running` 来自 live agent，`done` 来自注册表归档集合，`blocked` 来自最近一次 `turn/end` 原因，其余会话报 `idle`。
 - **工作区会话扫描会读每个账目日志** —— `workspace_sessions` 在分页前对账目中每个会话折叠状态，因此会话较多的工作区每次 list 都要为每个日志付费。
 

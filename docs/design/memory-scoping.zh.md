@@ -328,11 +328,11 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 | `superagent_deliver` | 把文件复制到另一个工作区 | `workspace_artifacts` 发布引用，`workspace_message.send` 携带它 | 移除；引用取代复制 |
 | `superagent_permission` | 切换调用方会话的权限预设 | 权限预设服务与 Host 设置拥有预设 | 移除；不留别名 |
 | `superagent_models` | 列出 provider、模型与推理档位 | 模型设置拥有模型路由 | 移除；不留别名 |
-| `workspace_sessions` | 列出、读取并控制会话：`list`、`get`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact`、`delete` | 工作区工具集 | 新增；生命周期取代退场的会话控制工具 |
+| `workspace_sessions` | 列出、读取并控制会话：`list`、`get`、`run`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact`、`delete` | 工作区工具集 | 新增；生命周期取代退场的会话控制工具 |
 | `workspace_intents` | 创建、读取、确认、纠正、版本化工作区意图卡 | 工作区工具集 | 新增 |
 | `workspace_tasks` | 通用派发任务与回执 | 工作区工具集 | 新增 |
 | `workspace_message` | 发消息、追问、引用；读回执；`status` 报告投递失败，`retry` 重发 | 工作区工具集 | 新增；投递状态取代退场的账本报告动作 |
-| `workspace_artifacts` | 发布、引用、解析产物；`.dsh` 路径走 store 检查 | 工作区工具集 | 新增 |
+| `workspace_artifacts` | 发布、引用、请求、列出待处理请求、授权、解析产物；`.dsh` 路径走 store 检查 | 工作区工具集 | 新增 |
 | `send_message`、`wait_agent` | 子代理树内消息 | 子代理树 | 保留；不在本轮范围 |
 | 回合结束投递 | 回合结束后隐式发出消息 | 删除；不留兜底 | 删除 |
 | `read`、`glob`、`grep` | 读工作区内容 | 内容工具 | 保留 |
@@ -342,7 +342,7 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 | JIRA 本地账本 `$DSH_HOME/jira` | 单据与知识存储 | 已删除；没有工具读取它 | 删除；不可恢复 |
 | 派发账本 `.superagent/ledger` | 派发历史的投影 | `workspace_tasks` 从新开始 | 丢弃；不迁移、不导入 |
 
-`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已移除，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。工具面改动后的当前状态：`workspace_sessions`（`list`/`get`/`run`/`start`/`append`/`prompt`/`stop`/`abort`/`fork`/`archive`/`compact`/`delete`）、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message`（`send`/`read`/`status`/`retry`）与 `workspace_artifacts`（`publish`/`reference`/`request`/`grant`/`list`/`resolve`）已交付，静态 `workspace-directory` 提示词段已接到每个 agent。`memory_read` 已删除（第 1 步），`memory_resolve` 随 dispatch 命名空间在第 4 步删除；memory 工具面只剩 `memory_write`、`memory_forget` 与 `memory_search`。JIRA 模型工具、执行器账本工具、认领/派发工具、super agent 控制与账本工具、三个 JIRA 技能、面板与 CLI 已移除；会话生命周期与投递状态分别归 `workspace_sessions` 与 `workspace_message`。本地 JIRA 账本与派发账本已删除；`workspace_tasks` 从空白开始。JIRA 只保留云端数据仓，按数据原样，不接入工具或流程。不再有 JIRA 包。
+`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已移除，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。工具面改动后的当前状态：`workspace_sessions`（`list`/`get`/`run`/`start`/`append`/`prompt`/`stop`/`abort`/`fork`/`archive`/`compact`/`delete`）、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message`（`send`/`read`/`status`/`retry`）与 `workspace_artifacts`（`publish`/`reference`/`request`/`requests`/`grant`/`list`/`resolve`）已交付，静态 `workspace-directory` 提示词段已接到每个 agent。`memory_read` 已删除（第 1 步），`memory_resolve` 随 dispatch 命名空间在第 4 步删除；memory 工具面只剩 `memory_write`、`memory_forget` 与 `memory_search`。JIRA 模型工具、执行器账本工具、认领/派发工具、super agent 控制与账本工具、三个 JIRA 技能、面板与 CLI 已移除；会话生命周期与投递状态分别归 `workspace_sessions` 与 `workspace_message`。本地 JIRA 账本与派发账本已删除；`workspace_tasks` 从空白开始。JIRA 只保留云端数据仓，按数据原样，不接入工具或流程。不再有 JIRA 包。
 
 ### 6.3 投递改成工具调用
 
