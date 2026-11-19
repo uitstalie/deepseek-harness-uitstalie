@@ -57,7 +57,7 @@
 
 ### 2.2 非目标
 
-- 本次不做看板或卡片界面。
+- 本次不做看板或卡片界面；看板与意图卡界面暂不排期。
 - 不做记忆卡片流，也不做记忆的事件日志存储。
 - 不做工作区业务记忆模型，不加工作区记忆字段，不建工作区主题库。
 - 不把业务或派发事实迁进记忆；这些事实留在各自的工具与存储里。
@@ -192,7 +192,7 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 - `run` 是一次调用完成交付：把 `text` 投给目标会话——给 `sessionId` 就投给指定会话，不给就继续最近更新的会话——只有工作区里没有会话时才新开。给 `new_session: true` 则无论是否已有会话都强制新开；人明确要求新会话或独立对话时用它，同时给 `sessionId` 会被拒绝，因为新会话还没有目标。新开时 `task` 可选（缺省用 `text`），`title` 也可选（缺省从首个任务派生）。派发方优先用这个动作；`start`、`append`、`prompt` 仍保留给需要强制指定生命周期的调用方。
 - `start` 在指定的已注册工作区新开一个 Session，接收首个任务文本与可选标题（缺省时派生）；它不检查意图卡，需要正式任务记录时卡校验在 `workspace_tasks.create`（6.5 节）。普通请求不需要先建任务。
 - `append` 继续 `sessionId`，不给就继续最近更新的会话；`prompt` 只面向明确的 Session id；`delivery` 取 `queue` 或 `interrupt`。
-- `stop` 切断运行中的 turn 且不投递文本；`abort` 切断后再投递后续文本；`fork`、`archive`、`compact` 与 `delete` 保留 Host 生命周期语义，`delete` 要求精确重复 Session id。
+- `stop` 切断运行中的 turn 且不投递文本；`abort` 切断后再投递后续文本；`fork`、`archive`、`compact` 与 `delete` 保留 Host 生命周期语义，`delete` 要求精确重复 Session id。`delete` 目前空转：宿主 `SessionController` 没有删除方法时直接拒绝并说明原因，等上游提供删除 API 后再接。
 - 生命周期写动作对工作区内任何 agent 开放；跨工作区写要求 super agent。`list` 与 `get` 对工作区内任何 agent 开放。
 
 范围：只返回与解析后范围匹配的工作区会话。`status` 取 `running`、`idle`、`blocked`、`done`。`currentActivity` 是从当前 turn 派生的有界一行摘要，不是完整转录。

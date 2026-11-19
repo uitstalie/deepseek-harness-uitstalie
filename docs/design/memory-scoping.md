@@ -57,7 +57,7 @@ This was not retention pressure with a record. It was silent loss of the most re
 
 ### 2.2 Non-goals
 
-- No kanban or card UI in this change.
+- No kanban or card UI in this change; both stay unscheduled.
 - No memory card stream and no event-log store for memory.
 - No per-workspace business memory, no workspace memory fields, and no workspace topic library.
 - No migration of business or dispatch facts into memory; those facts stay in their tools and stores.
@@ -192,7 +192,7 @@ A `run`, `start`, `append`, `prompt`, or `abort` delivery to another Session sta
 - `run` is the one-call dispatch: it delivers `text` to the target Session — `sessionId` names it, and omitting `sessionId` continues the most recently updated Session — and starts a new Session only when the workspace has none. Pass `new_session: true` to force a fresh Session even when one exists; that is the action when the person explicitly asks for a new or isolated conversation, and it rejects a `sessionId` because a fresh Session has no target yet. For that new Session, `task` is optional (it defaults to `text`) and `title` is optional (it is derived from the first task). This is the action a dispatcher should reach for; `start`, `append`, and `prompt` remain for callers that want to force a specific lifecycle.
 - `start` opens a new Session in a named registered workspace with the first task text and an optional title (derived when omitted); it does not check an intent card, which is checked at `workspace_tasks.create` when a formal task record is needed (section 6.5). A simple request needs no task first.
 - `append` continues `sessionId`, or the most recently updated Session when it is omitted; `prompt` addresses one explicit Session id; `delivery` is `queue` or `interrupt`.
-- `stop` cuts off the running turn without text; `abort` cuts it off and then sends the follow-up text; `fork`, `archive`, `compact`, and `delete` keep the Host lifecycle semantics, and `delete` requires the exact repeated Session id.
+- `stop` cuts off the running turn without text; `abort` cuts it off and then sends the follow-up text; `fork`, `archive`, `compact`, and `delete` keep the Host lifecycle semantics, and `delete` requires the exact repeated Session id. `delete` stands idle: while the host `SessionController` exposes no delete method it refuses with that reason, and it is wired once upstream adds one.
 - The lifecycle write actions are open to any agent in the workspace; a cross-workspace write requires the super agent. `list` and `get` are open to every agent in the workspace.
 
 Scope: sessions whose workspace matches the resolved scope. `status` is one of `running`, `idle`, `blocked`, `done`. `currentActivity` is a bounded one-line summary derived from the live turn, not a full transcript.
