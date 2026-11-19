@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for dispatch-completion-notice.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/design/dispatch-completion-notice.md
+/dispatch-completion-notices-waking-the-dispatcher:
+  en: 86daafd5f47119c7
+  zh: cf6f5292bae0ebb1
+/dispatch-completion-notices-waking-the-dispatcher/1-background-and-goals:
+  en: f7f62959911cdd05
+  zh: 8728fa2643c41630
+/dispatch-completion-notices-waking-the-dispatcher/2-trigger-points:
+  en: 81371ef63d02ea4f
+  zh: d30c09705b3d0c14
+/dispatch-completion-notices-waking-the-dispatcher/3-delivery-form-and-turn-boundary:
+  en: a45c5108f26491fc
+  zh: 8e061de8ca54b6e5
+/dispatch-completion-notices-waking-the-dispatcher/4-idempotency-and-anti-self-excitation:
+  en: b7ba8be551a12505
+  zh: 9beb2339c2998b9a
+/dispatch-completion-notices-waking-the-dispatcher/5-relation-to-existing-notification-mechanisms:
+  en: 921802e118d01620
+  zh: 14e42a6a8baf2286
+/dispatch-completion-notices-waking-the-dispatcher/6-switch-rollback-and-failure-degradation:
+  en: 10f8982383a6c522
+  zh: e827699ccd236c83
+/dispatch-completion-notices-waking-the-dispatcher/7-test-plan:
+  en: b499453a7983b0b4
+  zh: 209135ec56782b0a
+/dispatch-completion-notices-waking-the-dispatcher/8-non-goals-and-open-questions:
+  en: a57ba0774cea3e1a
+  zh: 9ff09f2124a84f5b
