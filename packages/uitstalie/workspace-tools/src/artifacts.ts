@@ -25,15 +25,26 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { WorkspaceArtifactError, WorkspaceRecordError } from './errors.ts'
 import { pageOf } from './paging.ts'
-import type { ArtifactCitation, ArtifactGrant, ArtifactReference, ArtifactResolution, ArtifactResolutionStatus, ArtifactRecord } from './records.ts'
+import type {
+  ArtifactAccessRequest,
+  ArtifactCitation,
+  ArtifactGrant,
+  ArtifactReference,
+  ArtifactResolution,
+  ArtifactResolutionStatus,
+  ArtifactRecord,
+} from './records.ts'
 import { resolveWorkspace } from './scope.ts'
 import {
   artifactVersion,
+  listAccessRequests,
   listArtifacts,
+  readAccessRequest,
   readArtifact,
   readGrant,
   readMessage,
   readTask,
+  writeAccessRequest,
   writeArtifact,
   writeGrant,
   writeMessage,
@@ -150,8 +161,28 @@ export interface WorkspaceArtifactsValue {
   readonly attachedTo?: { readonly messageId?: string; readonly taskId?: string }
   /** The grant one `grant` call recorded. */
   readonly grant?: ArtifactGrantView
+  /** Pending cross-workspace requests one `requests` call returned. */
+  readonly requests?: ArtifactAccessRequestView[]
   /** Cursor of the next page. */
   readonly nextCursor?: string
+}
+
+/** One pending artifact-access request as the tool returns it. */
+export interface ArtifactAccessRequestView {
+  /** Stable request id. */
+  readonly requestId: string
+  /** Artifact the request addresses. */
+  readonly artifactId: string
+  /** Version the request addresses. */
+  readonly version: number
+  /** Session that asked for access. */
+  readonly requesterSessionId: string
+  /** Role the requester held, when known. */
+  readonly requesterRole?: string
+  /** ISO-8601 request instant. */
+  readonly requestedAt: string
+  /** Current state; the list returns pending requests. */
+  readonly status: 'pending' | 'granted' | 'denied'
 }
 
 /** One recorded artifact grant as the tool returns it. */
@@ -184,8 +215,10 @@ export function workspaceArtifactsTool(ctx: Context): ToolDefinition {
       + 'the file. `reference` attaches an existing reference to a message or task without copying it. `request` asks '
       + 'for one recorded version: in the caller\'s own workspace it resolves immediately; across workspaces it stays '
       + '`pending` until the holder runs `grant` (a version-scoped decision with an expiry), and `denied` or '
-      + '`expired` never reveal a decision the holder did not make. `grant` records that decision; it is open to an '
-      + 'agent in the artifact\'s workspace and to the super agent. `list` returns the latest reference per '
+      + '`expired` never reveal a decision the holder did not make. `requests` lists the pending cross-workspace '
+      + 'requests this workspace holds, so the holder can see who asked before deciding. `grant` records that '
+      + 'decision; it is open to an agent in the artifact\'s workspace and to the super agent. `list` returns the '
+      + 'latest reference per '
       + 'artifact, filtered by session, task, kind, or path prefix; `resolve` reports whether one recorded version '
       + 'still matches the file as `ok`, `changed`, `missing`, or `denied`, without returning content. Use `read` '
       + 'for the content. The caller\'s workspace is the default scope.',
@@ -193,9 +226,9 @@ export function workspaceArtifactsTool(ctx: Context): ToolDefinition {
       action: {
         type: 'string',
         required: true,
-        enum: ['publish', 'reference', 'request', 'grant', 'list', 'resolve'],
+        enum: ['publish', 'reference', 'request', 'requests', 'grant', 'list', 'resolve'],
         description: '`publish` registers a file; `reference` cites it on a message or task; `request` asks for a version; '
-          + '`grant` records the holder\'s decision; `list` and `resolve` read.',
+          + '`requests` lists pending cross-workspace requests; `grant` records the holder\'s decision; `list` and `resolve` read.',
       },
       workspace: {
         type: 'string',
@@ -333,6 +366,22 @@ export function workspaceArtifactsTool(ctx: Context): ToolDefinition {
               expiresAt: { type: 'string' },
             },
           },
+          requests: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                requestId: { type: 'string', required: true },
+                artifactId: { type: 'string', required: true },
+                version: { type: 'integer', required: true },
+                requesterSessionId: { type: 'string', required: true },
+                requesterRole: { type: 'string' },
+                requestedAt: { type: 'string', required: true },
+                status: { type: 'string', required: true, enum: ['pending', 'granted', 'denied'] },
+              },
+            },
+          },
           nextCursor: { type: 'string' },
         },
       },
@@ -356,7 +405,13 @@ export function workspaceArtifactsTool(ctx: Context): ToolDefinition {
       if (args.action === 'request') {
         return {
           workspace: String(scope.workspace.id),
-          resolution: await requestArtifact(ctx, scope.workspace, scope.crossWorkspace, args, exec.signal),
+          resolution: await requestArtifact(ctx, scope.workspace, scope.crossWorkspace, session, exec.agent?.role, args, exec.signal),
+        }
+      }
+      if (args.action === 'requests') {
+        return {
+          workspace: String(scope.workspace.id),
+          requests: await pendingRequests(ctx, scope.workspace, exec.signal),
         }
       }
       if (args.action === 'grant') {
@@ -669,6 +724,8 @@ async function requestArtifact(
   ctx: Context,
   workspace: Workspace,
   crossWorkspace: boolean,
+  session: Session,
+  role: string | undefined,
   request: { readonly artifactId?: string; readonly version?: number },
   signal: AbortSignal | undefined,
 ): Promise<ArtifactResolution> {
@@ -693,11 +750,137 @@ async function requestArtifact(
     status: 'pending',
   }
   const stored = await readGrant(ctx, workspace.id, artifactId, reference.version, signal)
-  if (stored === undefined || stored.grant.sha256 !== reference.sha256) return base
-  const grant = stored.grant
-  if (grant.status === 'denied') return { ...base, status: 'denied' }
-  if (grant.expiresAt !== undefined && Date.parse(grant.expiresAt) <= Date.now()) return { ...base, status: 'expired' }
-  return await resolveReference(ctx, workspace, artifactId, reference.version, signal)
+  if (stored !== undefined && stored.grant.sha256 === reference.sha256) {
+    const grant = stored.grant
+    if (grant.status === 'denied') return { ...base, status: 'denied' }
+    if (grant.expiresAt === undefined || Date.parse(grant.expiresAt) > Date.now()) {
+      await recordRequestDecision(ctx, workspace, artifactId, reference.version, 'granted', session, signal)
+      return await resolveReference(ctx, workspace, artifactId, reference.version, signal)
+    }
+    // The version was granted before but that grant has expired: queue the request again and
+    // report the expiry, so the holder can decide it afresh.
+    await queueAccessRequest(ctx, workspace, reference, session, role, signal)
+    return { ...base, status: 'expired' }
+  }
+  await queueAccessRequest(ctx, workspace, reference, session, role, signal)
+  return base
+}
+
+/**
+ * Record one pending access request, deduplicating a repeat from the same Session.
+ * @param ctx - context carrying the store.
+ * @param workspace - workspace that holds the request.
+ * @param reference - requested artifact version.
+ * @param session - requesting Session.
+ * @param role - requesting role, when known.
+ * @param signal - cancellation for the store reads and writes.
+ */
+async function queueAccessRequest(
+  ctx: Context,
+  workspace: Workspace,
+  reference: ArtifactReference,
+  session: Session,
+  role: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  const requestId = accessRequestId(workspace, reference, String(session.id))
+  const existing = await readAccessRequest(ctx, workspace.id, requestId, signal)
+  if (existing?.request.status === 'pending') return
+  const request: ArtifactAccessRequest = {
+    requestId,
+    workspaceId: String(workspace.id),
+    artifactId: reference.artifactId,
+    version: reference.version,
+    sha256: reference.sha256,
+    requesterSessionId: String(session.id),
+    ...role === undefined ? {} : { requesterRole: role },
+    requestedAt: new Date().toISOString(),
+    status: 'pending',
+  }
+  await writeAccessRequest(ctx, workspace.id, request, {
+    session,
+    ...existing?.version === undefined ? {} : { expected: existing.version },
+  })
+}
+
+/**
+ * Close every pending request for one version after the holder decided it.
+ * @param ctx - context carrying the store.
+ * @param workspace - workspace that holds the requests.
+ * @param artifactId - artifact the decision covers.
+ * @param version - version the decision covers.
+ * @param status - decision to record on each pending request.
+ * @param session - Session recording the decision.
+ * @param signal - cancellation for the store reads and writes.
+ */
+async function recordRequestDecision(
+  ctx: Context,
+  workspace: Workspace,
+  artifactId: string,
+  version: number,
+  status: 'granted' | 'denied',
+  session: Session,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  const at = new Date().toISOString()
+  const pending = (await listAccessRequests(ctx, workspace.id, signal))
+    .filter(request => request.artifactId === artifactId && request.version === version && request.status === 'pending')
+  for (const request of pending) {
+    await writeAccessRequest(ctx, workspace.id, {
+      ...request,
+      status,
+      decidedAt: at,
+      decidedBy: String(session.id),
+    }, { session })
+  }
+}
+
+/**
+ * Derive the stable identity of one request from the version and the requester.
+ * @param workspace - workspace that owns the artifact.
+ * @param reference - requested version.
+ * @param requesterSessionId - requesting Session.
+ * @returns the request id.
+ */
+function accessRequestId(workspace: Workspace, reference: ArtifactReference, requesterSessionId: string): string {
+  const digest = createHash('sha256')
+    .update(`${String(workspace.id)}|${reference.artifactId}|${String(reference.version)}|${requesterSessionId}`)
+    .digest('hex')
+  return `request-${digest.slice(0, 16)}`
+}
+
+/**
+ * List the pending cross-workspace requests one workspace holds.
+ * @param ctx - context carrying the store.
+ * @param workspace - workspace that holds the requests.
+ * @param signal - cancellation for the store reads.
+ * @returns the pending requests, newest first.
+ */
+async function pendingRequests(
+  ctx: Context,
+  workspace: Workspace,
+  signal: AbortSignal | undefined,
+): Promise<ArtifactAccessRequestView[]> {
+  return (await listAccessRequests(ctx, workspace.id, signal))
+    .filter(request => request.status === 'pending')
+    .map(requestView)
+}
+
+/**
+ * Project one durable access request into the tool's view.
+ * @param request - the durable request.
+ * @returns the view.
+ */
+function requestView(request: ArtifactAccessRequest): ArtifactAccessRequestView {
+  return {
+    requestId: request.requestId,
+    artifactId: request.artifactId,
+    version: request.version,
+    requesterSessionId: request.requesterSessionId,
+    ...request.requesterRole === undefined ? {} : { requesterRole: request.requesterRole },
+    requestedAt: request.requestedAt,
+    status: request.status,
+  }
 }
 
 /**
@@ -781,6 +964,7 @@ async function grantArtifact(
     session,
     ...existing?.version === undefined ? {} : { expected: existing.version },
   })
+  await recordRequestDecision(ctx, workspace, artifactId, reference.version, decision, session, signal)
   return grantView(grant)
 }
 
@@ -887,6 +1071,14 @@ async function readArtifactRecord(
  * @returns the model-facing text.
  */
 function renderArtifacts(value: WorkspaceArtifactsValue): string {
+  const requests = value.requests
+  if (requests !== undefined) {
+    if (requests.length === 0) return `No pending artifact requests in workspace ${value.workspace}.`
+    return requests.map(request =>
+      `- ${request.artifactId} v${String(request.version)} · from session ${request.requesterSessionId}`
+      + (request.requesterRole === undefined ? '' : ` (${request.requesterRole})`)
+      + ` · ${request.requestedAt}`).join('\n')
+  }
   const grant = value.grant
   if (grant !== undefined) {
     return `${grant.status === 'granted' ? 'Granted' : 'Denied'} ${grant.artifactId} v${String(grant.version)}`

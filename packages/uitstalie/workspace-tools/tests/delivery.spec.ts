@@ -728,6 +728,15 @@ test('a same-workspace artifact request resolves, and a cross-workspace one need
   expect(pending.isError).toBe(false)
   expect(objectValue<{ resolution: { status: string } }>(valueOf(pending)).resolution.status).toBe('pending')
 
+  // The holder sees the pending request, then grants it; the queue drains.
+  const queue = await callTool(mounted.ctx, holder, 'workspace_artifacts', {
+    action: 'requests', workspace: String(workspaceB.id),
+  })
+  expect(queue.isError, textOf(queue)).toBe(false)
+  const pendingRows = objectValue<{ requests: { artifactId: string; requesterSessionId: string }[] }>(valueOf(queue)).requests
+  expect(pendingRows).toHaveLength(1)
+  expect(pendingRows[0]).toMatchObject({ artifactId, requesterSessionId: String(requester.session.id) })
+
   // A non-super caller cannot grant another workspace's artifact.
   const refused = await callTool(mounted.ctx, requester, 'workspace_artifacts', {
     action: 'grant', workspace: String(workspaceB.id), artifactId, decision: 'granted',
@@ -739,6 +748,10 @@ test('a same-workspace artifact request resolves, and a cross-workspace one need
     action: 'grant', artifactId, decision: 'granted',
   })
   expect(granted.isError, textOf(granted)).toBe(false)
+  const drained = await callTool(mounted.ctx, holder, 'workspace_artifacts', {
+    action: 'requests', workspace: String(workspaceB.id),
+  })
+  expect(objectValue<{ requests: unknown[] }>(valueOf(drained)).requests).toHaveLength(0)
   const afterGrant = await callTool(mounted.ctx, requester, 'workspace_artifacts', {
     action: 'request', workspace: String(workspaceB.id), artifactId,
   })

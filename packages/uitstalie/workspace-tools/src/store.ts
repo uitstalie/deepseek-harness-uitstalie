@@ -14,6 +14,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { z } from 'zod'
 import type {
+  ArtifactAccessRequest,
   ArtifactGrant,
   ArtifactRecord,
   ArtifactReference,
@@ -169,6 +170,21 @@ const artifactGrantSchema = z.strictObject({
   expiresAt: z.string().optional(),
 }) satisfies z.ZodType<ArtifactGrant>
 
+/** Durable artifact-access-request schema. */
+const artifactAccessRequestSchema = z.strictObject({
+  requestId: z.string().min(1),
+  workspaceId: z.string().min(1),
+  artifactId: z.string().min(1),
+  version: z.number().int().positive(),
+  sha256: z.string().min(1),
+  requesterSessionId: z.string().min(1),
+  requesterRole: z.string().optional(),
+  requestedAt: z.string(),
+  status: z.enum(['pending', 'granted', 'denied']),
+  decidedAt: z.string().optional(),
+  decidedBy: z.string().optional(),
+}) satisfies z.ZodType<ArtifactAccessRequest>
+
 /** Relative directory of one workspace's dispatch tasks. */
 export function tasksDirectory(workspaceId: WorkspaceId | string): string {
   return `${WORKSPACE_STATE_ROOT}/${String(workspaceId)}/tasks`
@@ -194,6 +210,11 @@ export function grantsDirectory(workspaceId: WorkspaceId | string): string {
   return `${WORKSPACE_STATE_ROOT}/${String(workspaceId)}/grants`
 }
 
+/** Relative directory of one workspace's pending artifact-access requests. */
+export function requestsDirectory(workspaceId: WorkspaceId | string): string {
+  return `${WORKSPACE_STATE_ROOT}/${String(workspaceId)}/requests`
+}
+
 /** Relative path of one task record. */
 export function taskPath(workspaceId: WorkspaceId | string, taskId: string): string {
   return `${tasksDirectory(workspaceId)}/${safeSegment(taskId)}.json`
@@ -217,6 +238,11 @@ export function rosterPath(workspaceId: WorkspaceId | string, sessionId: string)
 /** Relative path of one artifact grant. */
 export function grantPath(workspaceId: WorkspaceId | string, artifactId: string, version: number): string {
   return `${grantsDirectory(workspaceId)}/${safeSegment(`${artifactId}-v${String(version)}`)}.json`
+}
+
+/** Relative path of one artifact-access request. */
+export function requestPath(workspaceId: WorkspaceId | string, requestId: string): string {
+  return `${requestsDirectory(workspaceId)}/${safeSegment(requestId)}.json`
 }
 
 /**
@@ -483,6 +509,67 @@ export async function writeGrant(
     },
   )
   return written.version === undefined ? {} : { version: written.version }
+}
+
+/**
+ * Read one artifact-access request.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that holds the request.
+ * @param requestId - access-request identity.
+ * @param signal - cancellation for the store read.
+ * @returns the request and its store version, or undefined when none exists.
+ */
+export async function readAccessRequest(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  requestId: string,
+  signal?: AbortSignal,
+): Promise<{ readonly request: ArtifactAccessRequest; readonly version?: string } | undefined> {
+  const stored = await readJson(ctx, requestPath(workspaceId, requestId), artifactAccessRequestSchema, signal)
+  return stored === undefined ? undefined : { request: stored.value, ...stored.version === undefined ? {} : { version: stored.version } }
+}
+
+/**
+ * Write one artifact-access request with an optional version guard.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that holds the request.
+ * @param request - complete request to persist.
+ * @param options - expected store version for a guarded update.
+ * @returns the store version after the write.
+ */
+export async function writeAccessRequest(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  request: ArtifactAccessRequest,
+  options: { readonly expected?: string; readonly session?: Session } = {},
+): Promise<{ readonly version?: string }> {
+  const written = await ctx.dshStore.writeFile(
+    options.session,
+    requestPath(workspaceId, request.requestId),
+    `${JSON.stringify(request, undefined, 2)}\n`,
+    {
+      scope: 'global',
+      ...options.expected === undefined ? {} : { expected: options.expected },
+    },
+  )
+  return written.version === undefined ? {} : { version: written.version }
+}
+
+/**
+ * List every artifact-access request one workspace holds, newest first.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace whose requests are listed.
+ * @param signal - cancellation for the store reads.
+ * @returns the requests, most recently requested first.
+ */
+export async function listAccessRequests(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  signal?: AbortSignal,
+): Promise<ArtifactAccessRequest[]> {
+  const requests = await listJson(ctx, requestsDirectory(workspaceId), artifactAccessRequestSchema, signal)
+  return requests.sort((left, right) => right.requestedAt.localeCompare(left.requestedAt)
+    || left.requestId.localeCompare(right.requestId))
 }
 
 /**

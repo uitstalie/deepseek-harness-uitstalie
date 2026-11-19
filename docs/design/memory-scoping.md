@@ -256,14 +256,15 @@ Publishes, references, requests, grants, lists, and resolves the files and repor
 Input:
 
 ```
-{ action: 'publish' | 'reference' | 'request' | 'grant' | 'list' | 'resolve',
+{ action: 'publish' | 'reference' | 'request' | 'requests' | 'grant' | 'list' | 'resolve',
   workspace?, path?, sessionId?, taskId?, artifactId?, version?, messageId?,
   kind?, summary?, pathPrefix?, requestId?, decision?, expiresInSeconds?, cursor?, limit? }
 ```
 
 - `publish` registers a file and returns an artifact reference; it does not copy the file. It takes `path`, `kind`, and optional `summary`/`taskId`; `requestId` is optional and a repeated one is idempotent.
 - `reference` attaches an existing artifact reference to a message or task without copying it; it takes `artifactId`, optional `version`, and `messageId` or `taskId`; `requestId` is optional.
-- `request` asks for one recorded version. In the caller's own workspace it resolves immediately; a cross-workspace request returns `pending` until the holder records a `grant`, then resolves `ok`, `changed`, `missing`, `denied`, or `expired`.
+- `request` asks for one recorded version. In the caller's own workspace it resolves immediately; a cross-workspace request returns `pending`, queues one pending request per requesting Session and version, and resolves `ok`, `changed`, `missing`, `denied`, or `expired` once the holder decides.
+- `requests` lists the pending cross-workspace requests the workspace holds: artifact, version, requesting Session and role, and when it was asked. The queue is what a holder reads before deciding; a `grant` drains the matching requests.
 - `grant` records the holder's decision for one version: `decision` is `granted` or `denied`, and `expiresInSeconds` defaults to 86400 with a minimum of 60. A grant is bound to the version's hash, so a new version needs a new grant. An agent in the artifact's workspace may grant; a cross-workspace grant requires the super agent.
 - `resolve` reports whether the recorded reference still matches the file and returns no content; the attachment itself is the grant on the push path, so `resolve` does not consult the grant record.
 - `list` returns references only; a task with no recorded artifact returns an empty list, not a guess.
@@ -290,6 +291,7 @@ Scope: paths must resolve inside the workspace root. The tool returns references
 | Did the target receive it? | `workspace_message` with `action: 'read'` |
 | Where is the report or file this session or task produced? | `workspace_artifacts` with `action: 'list'` or `'resolve'` |
 | Read a version this workspace did not produce | `workspace_artifacts` with `action: 'request'`; the holder records `grant` |
+| See who is waiting for a cross-workspace artifact | `workspace_artifacts` with `action: 'requests'` |
 | What exactly did the session say in a turn? | `session_event_read` |
 | Find an older session by content | `session_search` |
 | What is the shared server address or default model? | Memory `global` entries |
@@ -412,7 +414,7 @@ Artifact access has two modes, chosen by which tool runs first. Pull is implemen
 
 1. The requester's access to the target workspace, by membership and role.
 2. The artifact's existence and version, checked only after access. A cross-workspace caller that fails access gets `denied`, never `missing`, so artifact existence does not leak.
-3. The holder's grant or the workspace policy. Same-workspace policy may auto-grant; a cross-workspace request defaults to `pending` until the holder grants.
+3. The holder's grant or the workspace policy. Same-workspace policy auto-grants; a cross-workspace request without a valid grant queues a pending request (listed by the holder with `workspace_artifacts.requests`) and returns `pending` until the holder grants.
 4. The read: the grant is still valid and the version and hash match.
 
 Failures: `denied` (no access or refused), `pending` (no decision yet), `expired` (deadline passed), `missing` (no file), `changed` (hash or version moved).

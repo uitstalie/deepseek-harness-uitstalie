@@ -447,6 +447,32 @@ export interface ArtifactGrant {
   readonly expiresAt?: string | undefined
 }
 
+/** One cross-workspace access request waiting for the holder's decision. */
+export interface ArtifactAccessRequest {
+  /** Stable id derived from the artifact version and the requesting Session. */
+  readonly requestId: string
+  /** Workspace that owns the artifact and holds the request. */
+  readonly workspaceId: string
+  /** Artifact the request addresses. */
+  readonly artifactId: string
+  /** Version the request addresses. */
+  readonly version: number
+  /** Hash of the requested version. */
+  readonly sha256: string
+  /** Session that asked for access. */
+  readonly requesterSessionId: string
+  /** Role the requester held, when known. */
+  readonly requesterRole?: string | undefined
+  /** ISO-8601 request instant. */
+  readonly requestedAt: string
+  /** Current state of the request. */
+  readonly status: 'pending' | 'granted' | 'denied'
+  /** ISO-8601 instant the holder decided. */
+  readonly decidedAt?: string | undefined
+  /** Session that recorded the decision. */
+  readonly decidedBy?: string | undefined
+}
+
 /** Result of one artifact resolution. */
 export interface ArtifactResolution {
   /** Resolved artifact id. */

@@ -256,14 +256,15 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 输入：
 
 ```
-{ action: 'publish' | 'reference' | 'request' | 'grant' | 'list' | 'resolve',
+{ action: 'publish' | 'reference' | 'request' | 'requests' | 'grant' | 'list' | 'resolve',
   workspace?, path?, sessionId?, taskId?, artifactId?, version?, messageId?,
   kind?, summary?, pathPrefix?, requestId?, decision?, expiresInSeconds?, cursor?, limit? }
 ```
 
 - `publish` 登记一个文件并返回产物引用；不复制文件。它接收 `path`、`kind` 与可选的 `summary`/`taskId`；`requestId` 可选，给出时幂等。
 - `reference` 把已有产物引用挂到消息或任务上；不复制文件。它接收 `artifactId`、可选 `version`，以及 `messageId` 或 `taskId`；`requestId` 可选。
-- `request` 请求一个已记录的版本。在调用者自己的工作区里立即解析；跨工作区请求先返回 `pending`，等持有方 `grant` 后再解析为 `ok`、`changed`、`missing`、`denied` 或 `expired`。
+- `request` 请求一个已记录的版本。在调用者自己的工作区里立即解析；跨工作区请求先返回 `pending`，为每个请求会话与版本各排队一条待处理请求，等持有方决定后再解析为 `ok`、`changed`、`missing`、`denied` 或 `expired`。
+- `requests` 列出本工作区持有的待处理跨工作区请求：产物、版本、请求会话与角色、请求时间。持有方先读这个队列再决定；`grant` 会清掉匹配的请求。
 - `grant` 记录持有方对一个版本的决定：`decision` 取 `granted` 或 `denied`，`expiresInSeconds` 缺省 86400、最少 60。授权绑定该版本的哈希，所以新版本需要新授权。产物所在工作区的任何 agent 都可以授权；跨工作区授权要求 super agent。
 - `resolve` 报告记录引用是否仍与文件匹配，不返回内容；推路径上的附件本身就是授权，所以 `resolve` 不查授权记录。
 - `list` 只返回引用；没有记录产物的任务返回空列表，不做猜测。
@@ -290,6 +291,7 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 | 对方收到了吗？ | `workspace_message`，`action: 'read'` |
 | 这个会话或任务产出的报告/文件在哪里？ | `workspace_artifacts`，`action: 'list'` 或 `'resolve'` |
 | 读一个不是本工作区产出的版本 | `workspace_artifacts`，`action: 'request'`；由持有方 `grant` |
+| 看谁在等一个跨工作区产物 | `workspace_artifacts`，`action: 'requests'` |
 | 这个会话在某一轮到底说了什么？ | `session_event_read` |
 | 按内容找更早的会话 | `session_search` |
 | 共享服务器地址、默认模型是什么？ | 记忆里的 `global` 条目 |
@@ -412,7 +414,7 @@ agent 间请求不形成循环（已实现）。执行方对一条请求最多�
 
 1. 需求方对目标工作区的访问权（成员与角色）。
 2. 产物是否存在、版本号；只在访问通过后检查。跨工作区调用方访问不通过时返回 `denied`，绝不返回 `missing`，避免泄漏产物是否存在。
-3. 持有方授权或工作区策略。同工作区策略可以自动授权；跨工作区请求默认 `pending`，等持有方授权。
+3. 持有方授权或工作区策略。同工作区策略自动授权；没有有效授权的跨工作区请求会排队一条待处理请求（持有方用 `workspace_artifacts.requests` 查看），返回 `pending`，直到持有方授权。
 4. 读取：授权仍有效，版本与哈希一致。
 
 失败表现：`denied`（无权限或被拒）、`pending`（还没有决定）、`expired`（截止时间已过）、`missing`（文件没了）、`changed`（哈希或版本变了）。
