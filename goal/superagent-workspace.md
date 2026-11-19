@@ -1,5 +1,7 @@
 # Super workspace: definition, dispatch ledger, memory (DH-802)
 
+> 状态（2026-11）：本文件记录的设计已被取代，仅作历史参考。JIRA 整体退场后，`superagent_session`、`superagent_claim`、`superagent_home`、`ensureSuperWorkspace`、`super-agent ledger` 与 `.superagent/ledger/` 都已从代码中删除。当前实现：超级工作区就是 workspace registry 中 `role: super` 的工作区；派发走 `workspace_tasks.create` + `workspace_sessions.start`/`append`/`prompt`；回传只按任务绑定走 `workspace_message.send`；会话名册与上下文占用由 `workspace_sessions.list`/`get` 返回。目标形态见 `goal/super-agent.md`，派发契约见 `docs/design/memory-scoping.md` 6.5 节。
+
 ## 要解决的问题
 
 Super agent 的对话一被压缩/重开，`superagent_session` 的派发与回来的 task-report 就只剩上下文记忆。人需要能按工作区回答：

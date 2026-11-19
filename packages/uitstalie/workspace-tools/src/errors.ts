@@ -118,6 +118,21 @@ export class WorkspaceSessionError extends HarnessError {
   }
 }
 
+/** Code of a question-routing refusal. */
+export type WorkspaceQuestionCode = 'WORKSPACE_QUESTION_FORWARDED' | 'WORKSPACE_QUESTION_UNAVAILABLE'
+
+/** A question could not be asked because the turn came from another agent or no host service is mounted. */
+export class WorkspaceQuestionError extends HarnessError {
+  /**
+   * @param message - the Session to route to, or the missing host service.
+   * @param code - which question rule refused the call.
+   */
+  constructor(message: string, code: WorkspaceQuestionCode) {
+    super(message, code)
+    this.name = 'WorkspaceQuestionError'
+  }
+}
+
 /** Code of a task-mutation refusal that is not a missing record. */
 export type WorkspaceTaskCode = 'WORKSPACE_TASK_FORBIDDEN' | 'WORKSPACE_TASK_TRANSITION'
 

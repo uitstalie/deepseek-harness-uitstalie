@@ -123,6 +123,8 @@ test('a message round-trips with its artifact reference', async () => {
   expect(delivered).toHaveLength(1)
   expect(delivered[0]?.sessionId).toBe('target')
   expect(delivered[0]?.requestId).toBe(`workspace-message-${sentValue.messageId}`)
+  // The delivered text names the sender, its role, and where to reply before the body.
+  expect(delivered[0]?.text).toMatch(/^\[workspace_message\] from agent sender in /)
 
   const read = await callTool(mounted.ctx, target, 'workspace_message', { action: 'read', messageId: sentValue.messageId })
   expect(read.isError).toBe(false)
@@ -131,6 +133,27 @@ test('a message round-trips with its artifact reference', async () => {
   expect(messages[0]?.text).toContain('report is ready')
   expect(messages[0]?.status).toBe('delivered')
   expect(messages[0]?.references).toHaveLength(1)
+})
+
+test('a send without requestId delivers and each call is a new message', async () => {
+  const workspace = await registerWorkspace(mounted.registry, projectB, 'send-without-request')
+  const sender = await createRoot(mounted, 'no-request-sender', projectB)
+  const target = await createRoot(mounted, 'no-request-target', projectB)
+  await workspace.attachSession(sender.session.id)
+  await workspace.attachSession(target.session.id)
+
+  const first = await callTool(mounted.ctx, sender, 'workspace_message', {
+    action: 'send', targetSessionId: String(target.id), text: 'first message',
+  })
+  const second = await callTool(mounted.ctx, sender, 'workspace_message', {
+    action: 'send', targetSessionId: String(target.id), text: 'second message',
+  })
+  expect(first.isError).toBe(false)
+  expect(second.isError).toBe(false)
+  const firstId = (valueOf(first) as { sent: { messageId: string } }).sent.messageId
+  const secondId = (valueOf(second) as { sent: { messageId: string } }).sent.messageId
+  expect(firstId).not.toBe(secondId)
+  expect(delivered).toHaveLength(2)
 })
 
 test('"what did I do last turn" is answered by workspace_sessions', async () => {

@@ -12,6 +12,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { workspaceArtifactsTool } from './artifacts.ts'
+import { askUserQuestionPlusTool } from './ask.ts'
 import { workspaceIntentsTool } from './intents.ts'
 import { workspaceMessageTool } from './messages.ts'
 import { workspaceSessionsTool } from './sessions.ts'
@@ -29,5 +30,6 @@ export function workspaceTools(ctx: Context): readonly ToolDefinition[] {
     { ...workspaceMessageTool(ctx), minRole: 'subagent' },
     { ...workspaceArtifactsTool(ctx), minRole: 'subagent' },
     { ...workspaceIntentsTool(ctx), minRole: 'subagent' },
+    { ...askUserQuestionPlusTool(ctx), minRole: 'subagent' },
   ]
 }

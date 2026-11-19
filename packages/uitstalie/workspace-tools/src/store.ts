@@ -17,6 +17,7 @@ import type {
   ArtifactRecord,
   ArtifactReference,
   MessageRecord,
+  SessionRosterEntry,
   TaskRecord,
 } from './records.ts'
 import { MESSAGE_DELIVERY_STATUSES } from './records.ts'
@@ -102,6 +103,7 @@ const messageSchema = z.strictObject({
   workspaceId: z.string().min(1),
   targetSessionId: z.string().min(1),
   sourceSessionId: z.string().min(1),
+  sourceRole: z.enum(['subagent', 'agent', 'super']).optional(),
   text: z.string(),
   kind: z.enum(['message', 'followup']),
   priority: z.enum(['normal', 'urgent']),
@@ -121,9 +123,20 @@ const messageSchema = z.strictObject({
   })),
 }) satisfies z.ZodType<MessageRecord>
 
+/** Durable session-roster schema. */
+const rosterSchema = z.strictObject({
+  sessionId: z.string().min(1),
+  workspaceId: z.string().min(1),
+  createdBy: z.string().min(1).optional(),
+  createdAt: z.string().optional(),
+  forkedFrom: z.string().min(1).optional(),
+  archivedBy: z.string().min(1).optional(),
+  archivedAt: z.string().optional(),
+  observedAt: z.string(),
+}) satisfies z.ZodType<SessionRosterEntry>
+
 /** Durable artifact reference schema. */
-const artifactReferenceSchema = z.strictObject({
-  artifactId: z.string().min(1),
+const artifactReferenceSchema = z.strictObject({  artifactId: z.string().min(1),
   workspaceId: z.string().min(1),
   path: z.string().min(1),
   sha256: z.string().min(1),
@@ -158,6 +171,11 @@ export function artifactsDirectory(workspaceId: WorkspaceId | string): string {
   return `${WORKSPACE_STATE_ROOT}/${String(workspaceId)}/artifacts`
 }
 
+/** Relative directory of one workspace's session-roster entries. */
+export function rosterDirectory(workspaceId: WorkspaceId | string): string {
+  return `${WORKSPACE_STATE_ROOT}/${String(workspaceId)}/sessions`
+}
+
 /** Relative path of one task record. */
 export function taskPath(workspaceId: WorkspaceId | string, taskId: string): string {
   return `${tasksDirectory(workspaceId)}/${safeSegment(taskId)}.json`
@@ -171,6 +189,11 @@ export function messagePath(workspaceId: WorkspaceId | string, messageId: string
 /** Relative path of one artifact record. */
 export function artifactPath(workspaceId: WorkspaceId | string, artifactId: string): string {
   return `${artifactsDirectory(workspaceId)}/${safeSegment(artifactId)}.json`
+}
+
+/** Relative path of one session-roster entry. */
+export function rosterPath(workspaceId: WorkspaceId | string, sessionId: string): string {
+  return `${rosterDirectory(workspaceId)}/${safeSegment(sessionId)}.json`
 }
 
 /**
@@ -336,6 +359,61 @@ export async function listArtifacts(
 ): Promise<ArtifactRecord[]> {
   const artifacts = await listJson(ctx, artifactsDirectory(workspaceId), artifactSchema, signal)
   return artifacts.sort((left, right) => left.artifactId.localeCompare(right.artifactId))
+}
+
+/**
+ * Read one session-roster entry.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that accounts for the session.
+ * @param sessionId - session identity.
+ * @param signal - cancellation for the store read.
+ * @returns the entry and its store version, or undefined when none exists.
+ */
+export async function readRoster(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<{ readonly entry: SessionRosterEntry; readonly version?: string } | undefined> {
+  const stored = await readJson(ctx, rosterPath(workspaceId, sessionId), rosterSchema, signal)
+  return stored === undefined ? undefined : { entry: stored.value, ...stored.version === undefined ? {} : { version: stored.version } }
+}
+
+/**
+ * Write one session-roster entry with an optional version guard.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that accounts for the session.
+ * @param entry - complete entry to persist.
+ * @param options - expected store version for a guarded update.
+ * @returns the store version after the write.
+ */
+export async function writeRoster(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  entry: SessionRosterEntry,
+  options: { readonly expected?: string; readonly session?: Session } = {},
+): Promise<{ readonly version?: string }> {
+  const written = await ctx.dshStore.writeFile(options.session, rosterPath(workspaceId, entry.sessionId), `${JSON.stringify(entry, undefined, 2)}\n`, {
+    scope: 'global',
+    ...options.expected === undefined ? {} : { expected: options.expected },
+  })
+  return written.version === undefined ? {} : { version: written.version }
+}
+
+/**
+ * List every session-roster entry of one workspace.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace whose roster is listed.
+ * @param signal - cancellation for the store reads.
+ * @returns the entries in session-id order.
+ */
+export async function listRoster(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  signal?: AbortSignal,
+): Promise<SessionRosterEntry[]> {
+  const entries = await listJson(ctx, rosterDirectory(workspaceId), rosterSchema, signal)
+  return entries.sort((left, right) => left.sessionId.localeCompare(right.sessionId))
 }
 
 /**

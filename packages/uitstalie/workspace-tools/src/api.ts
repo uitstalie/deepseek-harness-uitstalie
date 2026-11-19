@@ -3,7 +3,8 @@
  *
  * The provider registers one capability with the dafeiyu organizer, which wires
  * its tools onto every agent, and provides the `ctx.workspaceTasks` service so
- * a trusted in-process caller records the same card-validated task instead of a
+ * a trusted in-process caller records the same task, validated against its
+ * intent card when the task references one, instead of a
  * second list. It owns no records of its
  * own beyond the task, message, intent, and artifact state under
  * `$DSH_HOME/workspaces/`; sessions come from the session store, workspaces
@@ -22,7 +23,10 @@ import { createWorkspaceTasksService } from './service.ts'
 import {
   WORKSPACE_DIRECTORY_SECTION_NAME,
   WORKSPACE_DIRECTORY_SECTION_ORDER,
+  WORKSPACE_ROUTING_SECTION_NAME,
+  WORKSPACE_ROUTING_SECTION_ORDER,
   workspaceDirectoryText,
+  workspaceRoutingText,
 } from './prompt.ts'
 import { workspaceTools } from './tools.ts'
 
@@ -41,7 +45,7 @@ export const WORKSPACE_TOOLSET_CONTRACT_VERSION = 2
 export const WORKSPACE_TOOLSET_LABEL = 'Workspace information'
 
 /** One-sentence capability-list description. */
-export const WORKSPACE_TOOLSET_DESCRIPTION = 'Sessions, dispatch tasks, intent cards, messages, and artifact references for the workspace'
+export const WORKSPACE_TOOLSET_DESCRIPTION = 'Sessions, dispatch tasks, intent cards, messages, artifact references, and question routing for the workspace'
 
 /**
  * Register the workspace toolset with the organizer.
@@ -66,6 +70,10 @@ export function apply(ctx: Context): void {
         name: WORKSPACE_DIRECTORY_SECTION_NAME,
         order: WORKSPACE_DIRECTORY_SECTION_ORDER,
         text: () => workspaceDirectoryText(ctx),
+      }, {
+        name: WORKSPACE_ROUTING_SECTION_NAME,
+        order: WORKSPACE_ROUTING_SECTION_ORDER,
+        text: () => workspaceRoutingText(),
       }],
     }),
   })

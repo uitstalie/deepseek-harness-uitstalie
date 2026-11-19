@@ -9,7 +9,7 @@
  * fallback rules asserted here.
  */
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -311,17 +311,15 @@ test('start opens a Session in another workspace and append/prompt deliver into 
     reasoningEffort: 'high',
   }])
   expect(controller.prompts).toHaveLength(1)
-  expect(controller.prompts[0]).toMatchObject({
-    sessionId: start.sessionId,
-    mode: 'queue',
-    text: 'review the branch',
-  })
+  expect(controller.prompts[0]).toMatchObject({ sessionId: start.sessionId, mode: 'queue' })
+  expect(controller.prompts[0]?.text).toMatch(/^\[workspace_session\] from super lifecycle-super in lifecycle-b/)
+  expect(controller.prompts[0]?.text).toContain('review the branch')
   expect(String(workspaceB.sessionIds.at(-1))).toBe(start.sessionId)
 
   const appended = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'append',
     workspace: String(workspaceB.id),
-    session: start.sessionId,
+    sessionId: start.sessionId,
     text: 'also check the tests',
     delivery: 'interrupt',
   })
@@ -336,7 +334,8 @@ test('start opens a Session in another workspace and append/prompt deliver into 
     accepted: true,
     wasRunning: true,
   })
-  expect(controller.prompts[1]).toMatchObject({ sessionId: start.sessionId, mode: 'steer', text: 'also check the tests' })
+  expect(controller.prompts[1]).toMatchObject({ sessionId: start.sessionId, mode: 'steer' })
+  expect(controller.prompts[1]?.text).toContain('also check the tests')
 
   const prompted = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'prompt',
@@ -355,7 +354,7 @@ test('start opens a Session in another workspace and append/prompt deliver into 
   const latest = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'append',
     workspace: String(workspaceB.id),
-    session: 'latest',
+    sessionId: 'latest',
     text: 'continue from the latest Session',
   })
   expect(latest.isError).toBe(false)
@@ -363,7 +362,7 @@ test('start opens a Session in another workspace and append/prompt deliver into 
   expect(controller.prompts).toHaveLength(4)
 })
 
-test('append refuses to guess when the workspace has more than one Session', async () => {
+test('append without sessionId continues the latest Session', async () => {
   installController(mounted)
   const first = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'start', workspace: String(workspaceB.id), task: 'first task', title: 'first',
@@ -373,13 +372,13 @@ test('append refuses to guess when the workspace has more than one Session', asy
   })
   expect(first.isError).toBe(false)
   expect(second.isError).toBe(false)
+  const latestId = (valueOf(second) as { started: { sessionId: string } }).started.sessionId
 
-  const ambiguous = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
-    action: 'append', workspace: String(workspaceB.id), text: 'which one?',
+  const appended = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'append', workspace: String(workspaceB.id), text: 'continue the latest',
   })
-  expect(ambiguous.isError).toBe(true)
-  expect(textOf(ambiguous)).toContain('requires session')
-  expect(textOf(ambiguous)).toContain('latest')
+  expect(appended.isError, textOf(appended)).toBe(false)
+  expect((valueOf(appended) as { delivery: { sessionId: string } }).delivery.sessionId).toBe(latestId)
 })
 
 test('stop cancels a running turn and admits no text', async () => {
@@ -438,7 +437,8 @@ test('abort cancels the running turn and then delivers the follow-up text', asyn
   })
   expect(controller.cancelled).toEqual([sessionId])
   expect(controller.prompts).toHaveLength(2)
-  expect(controller.prompts[1]).toMatchObject({ sessionId, mode: 'queue', text: 'change direction' })
+  expect(controller.prompts[1]).toMatchObject({ sessionId, mode: 'queue' })
+  expect(controller.prompts[1]?.text).toContain('change direction')
 
   const idle = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'abort', workspace: String(workspaceB.id), sessionId, text: 'too late',
@@ -540,7 +540,7 @@ test('an ordinary agent writes Sessions in its own workspace but not in another 
 
   const attempts: Record<string, Record<string, unknown>> = {
     start: { action: 'start', workspace: String(workspaceB.id), task: 'task', title: 'title' },
-    append: { action: 'append', workspace: String(workspaceB.id), session: sessionId, text: 'text' },
+    append: { action: 'append', workspace: String(workspaceB.id), sessionId, text: 'text' },
     prompt: { action: 'prompt', workspace: String(workspaceB.id), sessionId, text: 'text' },
     stop: { action: 'stop', workspace: String(workspaceB.id), sessionId },
     abort: { action: 'abort', workspace: String(workspaceB.id), sessionId, text: 'text' },
@@ -593,4 +593,148 @@ test('an ordinary agent may start, prompt, and stop a Session in its own workspa
   const stopped = await callTool(mounted.ctx, ordinaryAgent, 'workspace_sessions', { action: 'stop', sessionId })
   expect(stopped.isError).toBe(false)
   expect(controller.cancelled).toHaveLength(1)
+})
+
+test('the roster attributes a UI-created Session to the user and reflects a manual archive', async () => {
+  const uiSession = await createRoot(mounted, 'roster-ui', projectA)
+  await workspaceA.attachSession(uiSession.session.id)
+
+  type Row = {
+    sessionId: string
+    createdBy?: string
+    role?: string
+    workspaceTitle?: string
+    archived?: boolean
+    archivedBy?: string
+    archivedAt?: string
+  }
+  const listOf = async (): Promise<Row[]> => {
+    const result = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+      action: 'list', workspace: String(workspaceA.id),
+    })
+    expect(result.isError).toBe(false)
+    return (valueOf(result) as { items: Row[] }).items
+  }
+
+  const row = (await listOf()).find(item => item.sessionId === 'roster-ui')
+  expect(row).toMatchObject({ createdBy: 'user', role: 'agent', archived: false, workspaceTitle: 'lifecycle-a' })
+
+  // The person archives from the UI: the registry updates, no tool call runs.
+  await mounted.registry.archiveSession(uiSession.session.id)
+
+  const archivedRow = (await listOf()).find(item => item.sessionId === 'roster-ui')
+  expect(archivedRow?.archived).toBe(true)
+  expect(archivedRow?.archivedBy).toBe('user')
+  expect(archivedRow?.archivedAt).toBeTypeOf('string')
+})
+
+test('a tool archive records the calling agent as the archiver', async () => {
+  installController(mounted)
+  const victim = await createRoot(mounted, 'roster-victim', projectA)
+  await workspaceA.attachSession(victim.session.id)
+  // A read first records the entry as user-created; the tool archive then stamps the actor.
+  await callTool(mounted.ctx, superAgent, 'workspace_sessions', { action: 'list', workspace: String(workspaceA.id) })
+
+  const archived = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'archive', workspace: String(workspaceA.id), sessionId: 'roster-victim',
+  })
+  expect(archived.isError, textOf(archived)).toBe(false)
+
+  const read = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'get', workspace: String(workspaceA.id), sessionId: 'roster-victim',
+  })
+  expect(read.isError).toBe(false)
+  expect((valueOf(read) as { session: { archived: boolean; archivedBy?: string } }).session)
+    .toMatchObject({ archived: true, archivedBy: 'agent:lifecycle-super' })
+})
+
+test('start derives a title when none is given', async () => {
+  installController(mounted)
+  const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'start', workspace: String(workspaceB.id), task: 'implement the parser',
+  })
+  expect(started.isError).toBe(false)
+  expect((valueOf(started) as { started: { title: string } }).started.title).toContain('implement the parser')
+})
+
+test('run starts when the workspace has no Session, then continues it', async () => {
+  const controller = installController(mounted)
+  const first = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'run', workspace: String(workspaceB.id), text: 'first dispatch',
+  })
+  expect(first.isError, textOf(first)).toBe(false)
+  const started = (valueOf(first) as { started: { sessionId: string; title: string } }).started
+  expect(started.sessionId).toBe('session-1')
+  expect(started.title).toContain('first dispatch')
+  expect(controller.created).toHaveLength(1)
+
+  const second = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'run', workspace: String(workspaceB.id), text: 'second dispatch',
+  })
+  expect(second.isError, textOf(second)).toBe(false)
+  expect(controller.created).toHaveLength(1)
+  expect((valueOf(second) as { delivery: { sessionId: string } }).delivery.sessionId).toBe('session-1')
+  expect(controller.prompts.at(-1)?.text).toContain('second dispatch')
+})
+
+test('run with an explicit sessionId prompts that Session', async () => {
+  const controller = installController(mounted)
+  const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'start', workspace: String(workspaceB.id), task: 'explicit target', title: 'explicit target',
+  })
+  const sessionId = (valueOf(started) as { started: { sessionId: string } }).started.sessionId
+
+  const followUp = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'run', workspace: String(workspaceB.id), sessionId, text: 'follow up',
+  })
+  expect(followUp.isError, textOf(followUp)).toBe(false)
+  expect(controller.created).toHaveLength(1)
+  expect(controller.prompts.at(-1)?.sessionId).toBe(sessionId)
+  expect(controller.prompts.at(-1)?.text).toContain('follow up')
+})
+
+test('run with new_session: true starts a fresh Session even when one exists', async () => {
+  const controller = installController(mounted)
+  const first = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'run', workspace: String(workspaceB.id), text: 'first dispatch',
+  })
+  const firstId = (valueOf(first) as { started: { sessionId: string } }).started.sessionId
+
+  const fresh = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'run', workspace: String(workspaceB.id), text: 'isolated dispatch', new_session: true,
+  })
+  expect(fresh.isError, textOf(fresh)).toBe(false)
+  const freshId = (valueOf(fresh) as { started: { sessionId: string } }).started.sessionId
+  expect(freshId).not.toBe(firstId)
+  expect(controller.created).toHaveLength(2)
+  expect(controller.prompts.at(-1)?.sessionId).toBe(freshId)
+})
+
+test('run refuses new_session: true together with an explicit target', async () => {
+  const controller = installController(mounted)
+  const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'start', workspace: String(workspaceB.id), task: 'explicit target', title: 'explicit target',
+  })
+  const sessionId = (valueOf(started) as { started: { sessionId: string } }).started.sessionId
+
+  const refused = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'run', workspace: String(workspaceB.id), text: 'ambiguous', new_session: true, sessionId,
+  })
+  expect(refused.isError).toBe(true)
+  expect(textOf(refused)).toContain('omit sessionId')
+  expect(controller.created).toHaveLength(1)
+})
+
+test('start records the calling agent as the creator in the roster sidecar', async () => {
+  installController(mounted)
+  const started = await callTool(mounted.ctx, ordinaryAgent, 'workspace_sessions', {
+    action: 'start', workspace: String(workspaceA.id), task: 'roster task', title: 'Roster started',
+  })
+  expect(started.isError).toBe(false)
+  const sessionId = (valueOf(started) as { started: { sessionId: string } }).started.sessionId
+  const entry = JSON.parse(await readFile(
+    join(home, 'workspaces', String(workspaceA.id), 'sessions', `${sessionId}.json`),
+    'utf8',
+  )) as { createdBy?: string; workspaceId?: string }
+  expect(entry).toMatchObject({ createdBy: 'agent:lifecycle-ordinary', workspaceId: String(workspaceA.id) })
 })

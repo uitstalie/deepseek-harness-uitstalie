@@ -13,6 +13,7 @@ import { SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 import { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
 import * as AgentInstructions from '@deepseek-ai/dsh-agent-instructions'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
+import * as StoreAtom from '@deepseek-ai/dsh-store-atom'
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,
@@ -54,6 +55,7 @@ async function mountLoader(
   await mountAgentLoopTestDependencies(ctx)
   provideWorkingDirectoryFixture(ctx, project)
   await ctx.plugin(LocalFileSystem, { cwd: project })
+  await ctx.plugin(StoreAtom, { ensureRoot: false })
   const harness = await mountAgentLoopTestHarness(ctx)
   // Plus registers its decorator first, so its listener wraps the native one.
   if (plugin !== undefined) await ctx.plugin(plugin, config)

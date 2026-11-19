@@ -1,17 +1,17 @@
 /**
- * `workspace_tasks`: dispatch tasks, the active intent card a task must
- * reference, and the alignment checklist its receipt carries.
+ * `workspace_tasks`: dispatch tasks, the optional intent card a task may
+ * reference, and the alignment checklist its receipt may carry.
  *
- * A task belongs to exactly one workspace. `create` requires an active card
- * version in the task's workspace and a coverage mapping for every card point,
- * or an explicit non-coverage reason, so a model that forgets the card cannot
- * dispatch. `receipt` appends the post-execution alignment, and the state
- * machine refuses `done` while any acceptance point is `not_satisfied` or any
- * boundary is `violated`.
+ * A task belongs to exactly one workspace. `create` records the brief directly,
+ * or, when the caller supplies an active card version in the task's workspace,
+ * validates it and requires a coverage mapping for every card point (or an
+ * explicit non-coverage reason). `receipt` appends the post-execution alignment
+ * when the task references a card, and the state machine refuses `done` while
+ * any acceptance point is `not_satisfied` or any boundary is `violated`.
  * @module @deepseek-ai/dsh-workspace-tools/tasks
  */
 
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent'
@@ -175,15 +175,19 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
   return defineTool({
     name: 'workspace_tasks',
     description:
-      'Create, read, and update dispatch tasks and their receipts. `create` requires an active intent card version '
-      + 'in the task\'s workspace plus a coverage mapping for every card point (or an explicit non-coverage reason); '
-      + 'it reads the card first, so a missing, proposed, or stale card refuses the dispatch. `update` moves the '
-      + 'task state and `receipt` appends the executor\'s alignment against the same card version. A receipt with '
-      + 'an unsatisfied acceptance point or a violated boundary cannot move the task to `done`; it becomes '
-      + '`waiting_review` or `blocked` with the checklist. Reads are open to every agent. Mutations are open to '
-      + 'an agent in the task\'s workspace; a cross-workspace mutation requires the super agent. `create` records '
-      + 'the calling session as `dispatcherSessionId`, and a task-bound cross-workspace return from the target '
-      + 'session to that dispatcher is the only cross-workspace message a task authorizes.',
+      'Create, read, and update dispatch tasks and their receipts. `create` needs only `workspace` and `goal`; '
+      + '`acceptance`, `boundaries`, `taskType`, and `requestId` are optional — `taskType` defaults to `other`, an '
+      + 'omitted `requestId` is generated (so omit it to create a new task per call, supply it to make a retry '
+      + 'idempotent). When the caller supplies an active intent card version in the task\'s workspace, `create` also '
+      + 'requires a coverage mapping for every card point (or an explicit non-coverage reason) and refuses a missing, '
+      + 'proposed, or stale card. The card is optional: omit `intentId`/`intentVersion` to create a task without one. '
+      + '`update` moves the task state and `receipt` appends the executor\'s alignment against the referenced card '
+      + 'version, when the task has one. A receipt with an unsatisfied acceptance point or a violated boundary cannot '
+      + 'move the task to `done`; it becomes `waiting_review` or `blocked` with the checklist. Reads are open to every '
+      + 'agent. Mutations are open to an agent in the task\'s workspace; a cross-workspace mutation requires the '
+      + 'super agent. `create` records the calling session as `dispatcherSessionId`, and a task-bound '
+      + 'cross-workspace return from the target session to that dispatcher is the only cross-workspace message a '
+      + 'task authorizes.',
     parameters: {
       action: {
         type: 'string',
@@ -219,12 +223,12 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
       acceptance: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Checkable acceptance points; required by `create` and mirrored by the coverage list.',
+        description: 'Checkable acceptance points; optional, defaults to none. Mirrored by the coverage list when a card is used.',
       },
       boundaries: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Boundaries the executor must respect; required by `create`.',
+        description: 'Boundaries the executor must respect; optional, defaults to none.',
       },
       outputForm: {
         type: 'array',
@@ -233,15 +237,15 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
       },
       intentId: {
         type: 'string',
-        description: 'Active card the task is dispatched against; required by `create`.',
+        description: 'Active card the task is optionally dispatched against; supply it together with `intentVersion`, or omit both.',
       },
       intentVersion: {
         type: 'integer',
-        description: 'Card version the task is dispatched against; required by `create`.',
+        description: 'Card version the task is optionally dispatched against; required when `intentId` is supplied.',
       },
       coverage: {
         type: 'array',
-        description: 'One mapping per card point: the point and the task-brief item that covers it. Required for every card point unless `nonCoverage` waives it.',
+        description: 'When the task references a card, one mapping per card point: the point and the task-brief item that covers it. Required for every card point unless `nonCoverage` waives it.',
         items: {
           type: 'object',
           additionalProperties: false,
@@ -312,7 +316,7 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
       taskType: {
         type: 'string',
         enum: [...TASK_TYPES],
-        description: 'Six-category task type; required by `create`.',
+        description: 'Six-category task type; optional, defaults to `other`.',
       },
       targetSessionId: {
         type: 'string',
@@ -324,7 +328,7 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
       },
       requestId: {
         type: 'string',
-        description: 'Idempotency key; required by `create` and `receipt`. A retry returns the first result.',
+        description: 'Idempotency key; optional for `create` (a generated one makes each call a new task) and required by `receipt`. A repeated key returns the first result.',
       },
       cursor: {
         type: 'string',
@@ -571,7 +575,7 @@ interface CreateTaskInput {
 }
 
 /**
- * One dispatch task to create against a workspace's active intent card.
+ * One dispatch task to create, optionally against a workspace's active intent card.
  *
  * This is the programmatic half of `workspace_tasks.create`: the tool supplies
  * the same fields, and a trusted in-process caller creates the task through the
@@ -584,27 +588,27 @@ export interface DispatchTaskInput {
   readonly goal?: string
   /** Short task title; defaults to the goal's first line. */
   readonly title?: string
-  /** Checkable acceptance points; required. */
+  /** Checkable acceptance points; optional, defaults to none. */
   readonly acceptance?: readonly string[]
-  /** Boundaries the executor must respect; required. */
+  /** Boundaries the executor must respect; optional, defaults to none. */
   readonly boundaries?: readonly string[]
   /** Expected deliverable items the card's output form requires. */
   readonly outputForm?: readonly string[]
-  /** Active card the task is dispatched against; required. */
+  /** Active card the task is optionally dispatched against; supply it with `intentVersion` or omit both. */
   readonly intentId?: string
-  /** Card version the task is dispatched against; required. */
+  /** Card version the task is optionally dispatched against; required when `intentId` is supplied. */
   readonly intentVersion?: number
-  /** One mapping per card point; required unless `nonCoverage` waives it. */
+  /** One mapping per card point; required when the task references a card, unless `nonCoverage` waives it. */
   readonly coverage?: readonly TaskCoverage[]
   /** Explicit non-coverage for a card point, with the reason. */
   readonly nonCoverage?: readonly TaskNonCoverage[]
-  /** Six-category task type; required. */
+  /** Six-category task type; optional, defaults to `other`. */
   readonly taskType?: TaskType
   /** Session expected to execute the task. */
   readonly targetSessionId?: string
   /** One-line note. */
   readonly note?: string
-  /** Idempotency key; required. A retry returns the first task. */
+  /** Idempotency key; optional. Omit to create a new task, supply it to make a retry idempotent. */
   readonly requestId?: string
 }
 
@@ -641,7 +645,7 @@ interface ReceiptInput {
 }
 
 /**
- * Create one task against an active card version with an enforced coverage map.
+ * Create one task; the active card version and coverage map are optional.
  * @param ctx - context carrying the store and registry.
  * @param workspace - workspace that owns the task.
  * @param args - create arguments.
@@ -681,8 +685,12 @@ async function createTask(
 }
 
 /**
- * Create one dispatch task through the same card, coverage, and idempotency
- * rules the `workspace_tasks.create` tool applies.
+ * Create one dispatch task through the same optional-card, coverage, and
+ * idempotency rules the `workspace_tasks.create` tool applies.
+ *
+ * A task may reference an active card version, in which case the card and the
+ * coverage map are validated exactly as before; without one, the brief is
+ * recorded as supplied and the card-specific checks are skipped.
  *
  * Authorization is a parameter rather than an Agent verdict: the tool computes
  * it from the caller's workspace and role, and a trusted in-process caller
@@ -712,13 +720,7 @@ export async function createDispatchTask(
   }
   const missing = [
     options.workspaceNamed === false || input.workspaceId === '' ? 'workspace' : undefined,
-    input.intentId === undefined ? 'intentId' : undefined,
-    input.intentVersion === undefined ? 'intentVersion' : undefined,
-    input.acceptance === undefined ? 'acceptance' : undefined,
-    input.boundaries === undefined ? 'boundaries' : undefined,
-    input.taskType === undefined ? 'taskType' : undefined,
     input.goal === undefined ? 'goal' : undefined,
-    input.requestId === undefined ? 'requestId' : undefined,
   ].filter((field): field is string => field !== undefined)
   if (missing.length > 0) {
     throw new WorkspaceIntentError(
@@ -726,10 +728,23 @@ export async function createDispatchTask(
       'INTENT_INCOMPLETE',
     )
   }
+  const carded = input.intentId !== undefined || input.intentVersion !== undefined
+  if (carded && (input.intentId === undefined || input.intentVersion === undefined)) {
+    throw new WorkspaceIntentError(
+      'workspace_tasks.create needs intentId and intentVersion together, or neither',
+      'INTENT_INCOMPLETE',
+    )
+  }
+  if (!carded && (input.coverage !== undefined || input.nonCoverage !== undefined)) {
+    throw new WorkspaceIntentError(
+      'workspace_tasks.create accepts coverage only when the task references an intent card',
+      'INTENT_INCOMPLETE',
+    )
+  }
   const workspaceId = input.workspaceId
-  const intentId = input.intentId as string
-  const intentVersion = input.intentVersion as number
-  const requestId = input.requestId as string
+  const intentId = carded ? input.intentId as string : undefined
+  const intentVersion = carded ? input.intentVersion as number : undefined
+  const requestId = input.requestId?.trim() || randomUUID()
   const taskId = taskIdFor(workspaceId, requestId)
   const existing = await readTask(ctx, workspaceId, taskId, options.signal)
   if (existing !== undefined) {
@@ -741,26 +756,28 @@ export async function createDispatchTask(
       replayed: true,
     }
   }
-  const card = await dispatchCard(ctx, workspaceId, intentId, intentVersion, options.signal)
-  const acceptance = [...input.acceptance as readonly string[]]
-  const boundaries = [...input.boundaries as readonly string[]]
+  const acceptance = [...input.acceptance ?? []]
+  const boundaries = [...input.boundaries ?? []]
   const outputForm = [...input.outputForm ?? []]
   const brief = [input.goal as string, ...acceptance, ...boundaries, ...outputForm]
   const coverage = input.coverage === undefined ? undefined : [...input.coverage]
   const nonCoverage = input.nonCoverage === undefined ? undefined : [...input.nonCoverage]
-  const checked = checkCoverage(card.record.items, brief, coverage, nonCoverage)
-  if (checked.unknown.length > 0) {
-    throw new WorkspaceIntentError(
-      `coverage names card point${checked.unknown.length > 1 ? 's' : ''} ${checked.unknown.map(point => JSON.stringify(point)).join(', ')} that ${intentId} v${String(intentVersion)} does not have`,
-      'INTENT_INVALID',
-    )
-  }
-  if (checked.missing.length > 0) {
-    throw new WorkspaceIntentError(
-      `dispatch does not cover card point${checked.missing.length > 1 ? 's' : ''}: ${checked.missing.map(entry =>
-        `${entry.point} (${entry.reason})`).join('; ')}. Add the point to the task brief or an explicit non-coverage reason; there is no default pass.`,
-      'INTENT_COVERAGE_MISSING',
-    )
+  if (carded) {
+    const card = await dispatchCard(ctx, workspaceId, intentId as string, intentVersion as number, options.signal)
+    const checked = checkCoverage(card.record.items, brief, coverage, nonCoverage)
+    if (checked.unknown.length > 0) {
+      throw new WorkspaceIntentError(
+        `coverage names card point${checked.unknown.length > 1 ? 's' : ''} ${checked.unknown.map(point => JSON.stringify(point)).join(', ')} that ${intentId} v${String(intentVersion)} does not have`,
+        'INTENT_INVALID',
+      )
+    }
+    if (checked.missing.length > 0) {
+      throw new WorkspaceIntentError(
+        `dispatch does not cover card point${checked.missing.length > 1 ? 's' : ''}: ${checked.missing.map(entry =>
+          `${entry.point} (${entry.reason})`).join('; ')}. Add the point to the task brief or an explicit non-coverage reason; there is no default pass.`,
+        'INTENT_COVERAGE_MISSING',
+      )
+    }
   }
   const now = new Date().toISOString()
   const task: TaskRecord = {
@@ -774,11 +791,11 @@ export async function createDispatchTask(
     status: 'pending',
     ...input.targetSessionId === undefined ? {} : { targetSessionId: input.targetSessionId },
     ...options.session === undefined ? {} : { dispatcherSessionId: String(options.session.id) },
-    intentId,
-    intentVersion,
+    ...intentId === undefined ? {} : { intentId },
+    ...intentVersion === undefined ? {} : { intentVersion },
     ...coverage === undefined ? {} : { coverage },
     ...nonCoverage === undefined ? {} : { nonCoverage },
-    taskType: input.taskType,
+    taskType: input.taskType ?? 'other',
     createdAt: now,
     updatedAt: now,
     requestId,

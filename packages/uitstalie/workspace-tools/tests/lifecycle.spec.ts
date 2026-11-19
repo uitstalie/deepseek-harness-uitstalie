@@ -141,10 +141,12 @@ test('the super agent starts, continues, stops, aborts, forks, archives, compact
   expect(startValue.started.admitted).toBe(true)
   const sessionId = startValue.started.sessionId
   await workspaceB.attachSession(sessionId as never)
-  expect(controller.prompts).toEqual([{ sessionId, text: 'do the work' }])
+  expect(controller.prompts).toHaveLength(1)
+  expect(controller.prompts[0]?.text).toMatch(/^\[workspace_session\] from super lifecycle-super in lifecycle-target/)
+  expect(controller.prompts[0]?.text).toContain('do the work')
 
   const appended = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
-    action: 'append', workspace: String(workspaceB.id), session: sessionId, text: 'second step', delivery: 'interrupt',
+    action: 'append', workspace: String(workspaceB.id), sessionId, text: 'second step', delivery: 'interrupt',
   })
   expect(appended.isError).toBe(false)
   expect(textOf(appended)).toContain('interrupt')

@@ -624,7 +624,7 @@ test('an agent in the workspace may write cards and tasks; a cross-workspace wri
     requestId: 'task-incomplete',
     goal: 'Add a small helper',
   })
-  expect(expectCode(incomplete, 'INTENT_INCOMPLETE')).toContain('intentId')
+  expect(expectCode(incomplete, 'INTENT_INCOMPLETE')).toContain('workspace')
 
   const unknownCard = await createTask(workspaceA, 'task-unknown-card', { intentId: 'intent-missing', version: 1 }, TRACEABLE_BRIEF, { coverage: TRACEABLE_COVERAGE })
   expectCode(unknownCard, 'INTENT_INCOMPLETE')
@@ -637,6 +637,100 @@ test('an agent in the workspace may write cards and tasks; a cross-workspace wri
     items: TRACEABLE_ITEMS,
   })
   expectCode(unregistered, 'WORKSPACE_NOT_REGISTERED')
+})
+
+test('a task with only a goal gets defaults and a generated request id', async () => {
+  const created = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'create',
+    workspace: String(workspaceA.id),
+    goal: 'Only the goal is required',
+  })
+  expect(created.isError).toBe(false)
+  const firstId = (valueOf(created) as { taskId: string }).taskId
+
+  const again = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'create',
+    workspace: String(workspaceA.id),
+    goal: 'Only the goal is required',
+  })
+  expect(again.isError).toBe(false)
+  const secondId = (valueOf(again) as { taskId: string }).taskId
+  expect(secondId).not.toBe(firstId)
+
+  const read = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'get', workspace: String(workspaceA.id), taskId: firstId,
+  })
+  const task = (valueOf(read) as {
+    task: { acceptance: string[]; boundaries: string[]; taskType?: string; requestId?: string }
+  }).task
+  expect(task.acceptance).toEqual([])
+  expect(task.boundaries).toEqual([])
+  expect(task.taskType).toBe('other')
+  expect(task.requestId).toBeTypeOf('string')
+  expect(task.requestId).not.toBe('')
+
+  const secondRead = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'get', workspace: String(workspaceA.id), taskId: secondId,
+  })
+  const secondRequestId = (valueOf(secondRead) as { task: { requestId: string } }).task.requestId
+  expect(secondRequestId).not.toBe(task.requestId)
+})
+
+test('a task without an intent card records and completes without an alignment checklist', async () => {
+  const created = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'create',
+    workspace: String(workspaceA.id),
+    requestId: 'task-cardless',
+    taskType: 'fix',
+    goal: 'Fix the flaky test',
+    acceptance: ['the suite is stable'],
+    boundaries: ['do not touch docs'],
+  })
+  expect(created.isError).toBe(false)
+  const taskId = taskOf(created).taskId
+  await startTask(workspaceA, taskId)
+
+  const done = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'receipt',
+    workspace: String(workspaceA.id),
+    taskId,
+    status: 'done',
+    requestId: 'receipt-cardless',
+  })
+  expect(done.isError).toBe(false)
+  expect(valueOf(done)).toMatchObject({ status: 'done' })
+
+  const read = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'get', workspace: String(workspaceA.id), taskId,
+  })
+  const task = (valueOf(read) as { task: { intentId?: string; intentVersion?: number; status: string } }).task
+  expect(task.intentId).toBeUndefined()
+  expect(task.intentVersion).toBeUndefined()
+  expect(task.status).toBe('done')
+
+  const partial = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'create',
+    workspace: String(workspaceA.id),
+    requestId: 'task-partial-card',
+    intentId: 'intent-anything',
+    taskType: 'fix',
+    goal: 'Fix the flaky test',
+    acceptance: ['the suite is stable'],
+    boundaries: ['do not touch docs'],
+  })
+  expectCode(partial, 'INTENT_INCOMPLETE')
+
+  const coverageOnly = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'create',
+    workspace: String(workspaceA.id),
+    requestId: 'task-coverage-only',
+    taskType: 'fix',
+    goal: 'Fix the flaky test',
+    acceptance: ['the suite is stable'],
+    boundaries: ['do not touch docs'],
+    coverage: [{ point: 'goal[0]', brief: 'Fix the flaky test' }],
+  })
+  expectCode(coverageOnly, 'INTENT_INCOMPLETE')
 })
 
 test('mutations are idempotent per requestId and history pages with a cursor', async () => {
@@ -763,9 +857,18 @@ test('the dispatcher service records the same card-validated task and cancels a 
     reason: 'a terminal task must not change',
   })).toBe(false)
 
-  await expect(mounted.ctx.workspaceTasks.createDispatchTask({
+  const serviceTask = await mounted.ctx.workspaceTasks.createDispatchTask({
     workspaceId: String(workspaceA.id),
     requestId: 'service-task-2',
     goal: 'no card reference',
-  })).rejects.toMatchObject({ code: 'INTENT_INCOMPLETE' })
+  })
+  expect(serviceTask.status).toBe('pending')
+  const serviceRead = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'get',
+    workspace: String(workspaceA.id),
+    taskId: serviceTask.taskId,
+  })
+  expect((valueOf(serviceRead) as { task: { intentId?: string; taskType?: string } }).task)
+    .toMatchObject({ taskType: 'other' })
+  expect((valueOf(serviceRead) as { task: { intentId?: string } }).task.intentId).toBeUndefined()
 })

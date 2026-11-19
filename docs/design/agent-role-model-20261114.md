@@ -10,7 +10,7 @@ Status: **role field, section gating, and the approved tool gates are implemente
 |---|---|
 | `subagent` | A delegated child, or any Session with child lineage; least privilege. |
 | `agent` | A normal root/workspace Session; ordinary work. |
-| `super` | The super-agent root; most privilege, and the role gate for cross-workspace writes. |
+| `super` | The super-agent root that dispatches work from the super workspace; most privilege, and the role gate for cross-workspace writes. |
 
 The role type and reader live in `packages/core/agent/src/runtime-types.ts` and `packages/core/agent/src/role.ts`: `AgentRole`, `agentRoleOf`. Feature packages declare a tool gate through `@deepseek-ai/dsh-tools` (`withMinRole` / `toolMinRole`); no feature package imports dafeiyu for role. The organizer attaches tools to agents; the tool registry performs the role filter.
 

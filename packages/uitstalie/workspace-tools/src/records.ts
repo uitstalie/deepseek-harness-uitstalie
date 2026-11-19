@@ -336,6 +336,8 @@ export interface MessageRecord {
   readonly targetSessionId: string
   /** Session that sent the message. */
   readonly sourceSessionId: string
+  /** Role the sender held when it sent; absent on records written before this field existed. */
+  readonly sourceRole?: 'subagent' | 'agent' | 'super' | undefined
   /** Bounded message body. */
   readonly text: string
   /** Whether this is a message or a follow-up. */
@@ -364,6 +366,26 @@ export interface MessageRecord {
   readonly attempts?: number | undefined
   /** Delivery observations in report order. */
   readonly receipts: MessageReceipt[]
+}
+
+/** One session's roster entry: who created it, who archived it, and when. */
+export interface SessionRosterEntry {
+  /** Session identity. */
+  readonly sessionId: string
+  /** Workspace that accounts for the session. */
+  readonly workspaceId: string
+  /** Identity that created the session: `user` or `agent:<sessionId>`. */
+  readonly createdBy?: string | undefined
+  /** ISO-8601 instant the session was created, when known. */
+  readonly createdAt?: string | undefined
+  /** Session this one was forked from, when it was branched. */
+  readonly forkedFrom?: string | undefined
+  /** Identity that archived the session: `user` or `agent:<sessionId>`. */
+  readonly archivedBy?: string | undefined
+  /** ISO-8601 instant the session was archived. */
+  readonly archivedAt?: string | undefined
+  /** ISO-8601 instant the roster last reconciled this entry with the registry. */
+  readonly observedAt: string
 }
 
 /** One immutable artifact reference. */

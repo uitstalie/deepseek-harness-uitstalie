@@ -15,10 +15,10 @@
 
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentRole } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineTool, ToolArgsError } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
@@ -27,7 +27,8 @@ import { pageOf } from './paging.ts'
 import { WorkspaceRecordError, WorkspaceSessionError } from './errors.ts'
 import { resolveWorkspace, workspaceDirectory } from './scope.ts'
 import { listArtifacts, listMessages, listTasks } from './store.ts'
-import type { TaskRecord } from './records.ts'
+import type { SessionRosterEntry, TaskRecord } from './records.ts'
+import { actorOf, noteRosterArchive, noteRosterFork, noteRosterStart, reconcileRoster } from './roster.ts'
 import { oneLine, requireCallerSession } from './tooling.ts'
 
 /** One derived status of a workspace session. */
@@ -41,7 +42,7 @@ export const WORKSPACE_SESSION_READ_ACTIONS = ['list', 'get'] as const
 
 /** Actions that create or change a real Session; a cross-workspace write requires the super agent. */
 export const WORKSPACE_SESSION_LIFECYCLE_ACTIONS = [
-  'start', 'append', 'prompt', 'stop', 'abort', 'fork', 'archive', 'compact', 'delete',
+  'run', 'start', 'append', 'prompt', 'stop', 'abort', 'fork', 'archive', 'compact', 'delete',
 ] as const
 
 /** Every accepted `workspace_sessions` action. */
@@ -81,12 +82,22 @@ export interface SessionFacts {
   readonly latestProgress?: string
   /** Recent assistant progress lines, oldest first. */
   readonly recentProgress: ProgressEntry[]
+  /** ISO-8601 instant of the latest recorded event. */
+  readonly updatedAt?: string
+  /** Role of the live Agent, when the session is live. */
+  readonly role?: AgentRole
 }
 
 /** Session summary as the list action returns it. */
 export interface SessionSummary {
   /** Session identity. */
   readonly sessionId: string
+  /** Workspace that accounts for the session. */
+  readonly workspaceId?: string
+  /** Title of that workspace. */
+  readonly workspaceTitle?: string
+  /** Role of the live Agent, or the workspace's durable role when not live. */
+  readonly role?: string
   /** Latest log-backed title, when the session has one. */
   readonly title?: string
   /** Effective status. */
@@ -99,8 +110,24 @@ export interface SessionSummary {
   readonly lastProgressAt?: string
   /** Latest assistant progress line. */
   readonly latestProgress?: string
+  /** ISO-8601 instant of the latest recorded event. */
+  readonly updatedAt?: string
   /** Task the session is executing, when one targets it. */
   readonly taskId?: string
+  /** Identity that created the session: `user` or `agent:<sessionId>`. */
+  readonly createdBy?: string
+  /** ISO-8601 creation instant. */
+  readonly createdAt?: string
+  /** Session this one was forked from. */
+  readonly forkedFrom?: string
+  /** Identity that archived the session: `user` or `agent:<sessionId>`. */
+  readonly archivedBy?: string
+  /** ISO-8601 archive instant. */
+  readonly archivedAt?: string
+  /** Whether the registry counts the session as archived. */
+  readonly archived?: boolean
+  /** Context pressure of the live Agent, when the host can measure it. */
+  readonly contextUsage?: SessionContextUsage
 }
 
 /** One Session created by `start`. */
@@ -356,9 +383,7 @@ interface LifecycleArguments {
   readonly title?: string
   /** Follow-up text for `append`, `prompt`, or `abort`. */
   readonly text?: string
-  /** Target Session for `append`; an id or `latest`. */
-  readonly session?: string
-  /** Target Session for every other lifecycle action. */
+  /** Target Session for `run`, `append`, `get`, `prompt`, and the rest; `run`/`append` use the latest when omitted. */
   readonly sessionId?: string
   /** Exact Session id the caller repeated for `delete`. */
   readonly confirm?: string
@@ -366,6 +391,8 @@ interface LifecycleArguments {
   readonly delivery?: SessionDeliveryMode
   /** Exact fork boundary for `fork`. */
   readonly atSeq?: number
+  /** Force `run` to start a new Session instead of reusing one. */
+  readonly new_session?: boolean
   /** Optional LLM provider id. */
   readonly provider?: string
   /** Optional model id. */
@@ -418,6 +445,37 @@ interface CompactionOutcome {
   readonly shadowedTokens?: number
 }
 
+/** Output schema shared by the `list` rows and the `get` session view. */
+const sessionSummarySchema = {
+  sessionId: { type: 'string', required: true },
+  workspaceId: { type: 'string' },
+  workspaceTitle: { type: 'string' },
+  role: { type: 'string' },
+  title: { type: 'string' },
+  status: { type: 'string', required: true, enum: [...WORKSPACE_SESSION_STATUSES] },
+  currentTurn: { type: 'integer', required: true },
+  currentActivity: { type: 'string' },
+  lastProgressAt: { type: 'string' },
+  latestProgress: { type: 'string' },
+  updatedAt: { type: 'string' },
+  taskId: { type: 'string' },
+  createdBy: { type: 'string' },
+  createdAt: { type: 'string' },
+  forkedFrom: { type: 'string' },
+  archivedBy: { type: 'string' },
+  archivedAt: { type: 'string' },
+  archived: { type: 'boolean' },
+  contextUsage: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      tokens: { type: 'integer' },
+      window: { type: 'integer' },
+      percent: { type: 'integer' },
+    },
+  },
+} as const
+
 /**
  * Build `workspace_sessions`.
  * @param ctx - context carrying session-query, the store, and the registries.
@@ -431,20 +489,24 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       + 'lifecycle of a real Session in a registered workspace. `list` and `get` are open to every agent and '
       + 'return the caller\'s workspace by default; a cross-workspace read needs the registered workspace id. '
       + 'The lifecycle actions are open to an agent in the Session\'s workspace, and a cross-workspace action '
-      + 'requires the super agent: `start` opens a new Session in a workspace with a first '
-      + 'task and a durable purpose title (no intent card is involved); `append` continues one of the '
-      + 'workspace\'s Sessions and needs `session` (an id, or "latest"); `prompt` sends text to an explicit '
-      + 'sessionId; `stop` cuts off the running turn and admits nothing; `abort` cuts it off and then sends '
-      + '`text`; `fork` branches a Session at an optional `atSeq`; `archive` hides it; `compact` compresses its '
-      + 'history; `delete` erases a stored Session only when the host exposes a real delete API — otherwise it '
-      + 'refuses, because an archive is not a deletion. `delivery` is queue (default) or interrupt for `append` '
-      + 'and `prompt`; trust `get` before addressing a Session.',
+      + 'requires the super agent. `run` is the one-call dispatch: it delivers `text` to the target Session '
+      + '(`sessionId` for an explicit one, otherwise the most recently updated Session) '
+      + 'and starts a new Session only when the workspace has none; pass `new_session: true` to force a fresh '
+      + 'Session even when one exists, when the person asked for a new or isolated conversation. `task` and `title` '
+      + 'are optional for that new Session, and the title is derived from the task when omitted. `start` forces a new Session with a first '
+      + '`task` and an optional `title` (no intent card is involved); `append` continues `sessionId`, or the latest '
+      + 'Session when omitted; `prompt` sends text to an explicit sessionId; `stop` '
+      + 'cuts off the running turn and admits nothing; `abort` cuts it off and then sends `text`; `fork` branches '
+      + 'a Session at an optional `atSeq`; `archive` hides it; `compact` compresses its history; `delete` erases '
+      + 'a stored Session only when the host exposes a real delete API — otherwise it refuses, because an archive '
+      + 'is not a deletion. `delivery` is queue (default) or interrupt for `run`, `append`, and `prompt`; trust '
+      + '`get` before addressing a Session.',
     parameters: {
       action: {
         type: 'string',
         required: true,
         enum: [...WORKSPACE_SESSION_ACTIONS],
-        description: '`list`/`get` read a workspace. `start`, `append`, `prompt`, `stop`, `abort`, `fork`, '
+        description: '`list`/`get` read a workspace. `run`, `start`, `append`, `prompt`, `stop`, `abort`, `fork`, '
           + '`archive`, `compact`, and `delete` change a real Session; a cross-workspace action requires the '
           + 'super agent.',
       },
@@ -455,32 +517,27 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       },
       sessionId: {
         type: 'string',
-        description: 'Target Session for `get`, `prompt`, `stop`, `abort`, `fork`, `archive`, `compact`, and '
-          + '`delete`; required there and unused by `list` and `append`.',
-      },
-      session: {
-        type: 'string',
-        description: '`append`: the Session to continue, as an id or "latest" for the workspace\'s most '
-          + 'recently updated Session. `append` refuses without it rather than guessing.',
+        description: 'Target Session for `run`, `append`, `get`, `prompt`, `stop`, `abort`, `fork`, `archive`, '
+          + '`compact`, and `delete`. `run` and `append` continue this Session, or the most recently updated one '
+          + 'when it is omitted; `prompt` and the rest require it.',
       },
       task: {
         type: 'string',
-        description: '`start`: the self-contained first task for the new Session.',
+        description: '`start`/`run`: the self-contained first task for a new Session; `run` uses `text` when omitted.',
       },
       title: {
         type: 'string',
-        description: '`start`: the new Session\'s durable purpose title, so a later `list` tells the '
-          + 'conversations apart.',
+        description: '`start`/`run`: the new Session\'s durable purpose title; optional, derived from the task when omitted.',
       },
       text: {
         type: 'string',
-        description: '`append`/`prompt`: the instruction to deliver. `abort`: the instruction to run after '
+        description: '`run`/`append`/`prompt`: the instruction to deliver. `abort`: the instruction to run after '
           + 'the running turn is cancelled.',
       },
       delivery: {
         type: 'string',
         enum: ['queue', 'interrupt'],
-        description: '`append`/`prompt`: queue (default) waits for the running turn to end; interrupt steers '
+        description: '`run`/`append`/`prompt`: queue (default) waits for the running turn to end; interrupt steers '
           + 'the text into the running turn and queues instead when the Session is idle.',
       },
       atSeq: {
@@ -490,6 +547,11 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       confirm: {
         type: 'string',
         description: '`delete`: required; repeat the target Session id exactly. Deletion is irreversible.',
+      },
+      new_session: {
+        type: 'boolean',
+        description: '`run`: true starts a new Session even when the workspace already has one. Use it when the '
+          + 'person explicitly asks for a new or isolated conversation; omit sessionId and session with it.',
       },
       provider: {
         type: 'string',
@@ -529,30 +591,14 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
             items: {
               type: 'object',
               additionalProperties: false,
-              properties: {
-                sessionId: { type: 'string', required: true },
-                title: { type: 'string' },
-                status: { type: 'string', required: true, enum: [...WORKSPACE_SESSION_STATUSES] },
-                currentTurn: { type: 'integer', required: true },
-                currentActivity: { type: 'string' },
-                lastProgressAt: { type: 'string' },
-                latestProgress: { type: 'string' },
-                taskId: { type: 'string' },
-              },
+              properties: sessionSummarySchema,
             },
           },
           session: {
             type: 'object',
             additionalProperties: false,
             properties: {
-              sessionId: { type: 'string', required: true },
-              title: { type: 'string' },
-              status: { type: 'string', required: true, enum: [...WORKSPACE_SESSION_STATUSES] },
-              currentTurn: { type: 'integer', required: true },
-              currentActivity: { type: 'string' },
-              lastProgressAt: { type: 'string' },
-              latestProgress: { type: 'string' },
-              taskId: { type: 'string' },
+              ...sessionSummarySchema,
               recentProgress: {
                 type: 'array',
                 required: true,
@@ -702,67 +748,59 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       const requestedDelivery: SessionDeliveryMode = args.delivery === 'interrupt' ? 'interrupt' : 'queue'
 
       if (action === 'start') {
-        const task = requiredText(args.task, 'task', action)
-        const title = requiredText(args.title, 'title', action).trim()
         const model = modelChoiceOf(args)
-        let created: { readonly sessionId: unknown }
-        try {
-          created = await controller.create({ workspaceId: String(workspace.id) })
-        } catch (error: unknown) {
-          throw new WorkspaceSessionError(
-            `workspace ${String(workspace.id)} could not create a Session: ${messageOf(error)}`,
-            'WORKSPACE_SESSION_INVALID',
-          )
-        }
-        const sessionId = String(created.sessionId)
-        let titleRecorded = false
-        if (typeof controller.rename === 'function') {
+        const started = await startWorkspaceSession(ctx, controller, workspace, session, {
+          task: requiredText(args.task, 'task', action),
+          ...args.title === undefined ? {} : { title: args.title },
+          role: exec.agent?.role ?? 'agent',
+          ...model === undefined ? {} : { model },
+          signal,
+        })
+        return { workspace: String(workspace.id), started }
+      }
+
+      if (action === 'run') {
+        const text = (args.text?.trim() ?? '') || (args.task?.trim() ?? '')
+        const model = modelChoiceOf(args)
+        const forceNew = args.new_session === true
+        let target: SessionSummaryLike | undefined
+        if (forceNew) {
+          target = undefined
+        } else {
           try {
-            await controller.rename({ sessionId, title })
-            titleRecorded = true
+            target = await appendTargetOf(controller, workspace, args.sessionId, signal)
           } catch (error: unknown) {
-            throw new WorkspaceSessionError(
-              `Session ${sessionId} was created but its title could not be recorded: ${messageOf(error)}; no task was sent`,
-              'WORKSPACE_SESSION_INVALID',
-            )
+            if (!(error instanceof WorkspaceRecordError) || error.code !== 'WORKSPACE_RECORD_NOT_FOUND') throw error
           }
         }
-        await applySessionModel(controller, sessionId, model)
-        let admitted: { readonly accepted: boolean }
-        try {
-          admitted = await controller.prompt({
-            requestId: `workspace-session-start-${randomUUID()}`,
-            sessionId,
-            mode: 'queue',
-            content: [{ type: 'text', text: task }],
-          }, signal)
-        } catch (error: unknown) {
-          throw new WorkspaceSessionError(
-            `Session ${sessionId} was created in workspace ${String(workspace.id)} but its first task was not admitted: ${messageOf(error)}`,
-            'WORKSPACE_SESSION_INVALID',
-          )
+        if (target === undefined) {
+          const started = await startWorkspaceSession(ctx, controller, workspace, session, {
+            task: text,
+            ...args.title === undefined ? {} : { title: args.title },
+            role: exec.agent?.role ?? 'agent',
+            ...model === undefined ? {} : { model },
+            signal,
+          })
+          return { workspace: String(workspace.id), started }
         }
+        const sessionId = String(target.sessionId)
+        await applySessionModel(controller, sessionId, model)
+        const delivery = decideDelivery(requestedDelivery, target.running)
+        const admitted = await admit(controller, sessionId, delivery.used, text, action, deliveryHeader(workspace, exec.agent?.role ?? 'agent', String(session.id)), signal)
         return {
           workspace: String(workspace.id),
-          started: {
-            sessionId,
-            workspace: String(workspace.id),
-            cwd: workspace.path,
-            title,
-            titleRecorded,
-            admitted: admitted.accepted,
-          },
+          delivery: deliveryOf(sessionId, requestedDelivery, delivery, target.running, admitted),
         }
       }
 
       if (action === 'append') {
         const text = requiredText(args.text, 'text', action)
-        const target = await appendTargetOf(controller, workspace, args.session, signal)
+        const target = await appendTargetOf(controller, workspace, args.sessionId, signal)
         const sessionId = String(target.sessionId)
         const model = modelChoiceOf(args)
         await applySessionModel(controller, sessionId, model)
         const delivery = decideDelivery(requestedDelivery, target.running)
-        const admitted = await admit(controller, sessionId, delivery.used, text, action, signal)
+        const admitted = await admit(controller, sessionId, delivery.used, text, action, deliveryHeader(workspace, exec.agent?.role ?? 'agent', String(session.id)), signal)
         return {
           workspace: String(workspace.id),
           delivery: deliveryOf(sessionId, requestedDelivery, delivery, target.running, admitted),
@@ -776,7 +814,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         const model = modelChoiceOf(args)
         await applySessionModel(controller, sessionId, model)
         const delivery = decideDelivery(requestedDelivery, target.running)
-        const admitted = await admit(controller, sessionId, delivery.used, text, action, signal)
+        const admitted = await admit(controller, sessionId, delivery.used, text, action, deliveryHeader(workspace, exec.agent?.role ?? 'agent', String(session.id)), signal)
         return {
           workspace: String(workspace.id),
           delivery: deliveryOf(sessionId, requestedDelivery, delivery, target.running, admitted),
@@ -811,7 +849,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         }
         await cancelSession(controller, sessionId, 'abort')
         const delivery = decideDelivery('queue', false)
-        const admitted = await admit(controller, sessionId, delivery.used, text, action, signal)
+        const admitted = await admit(controller, sessionId, delivery.used, text, action, deliveryHeader(workspace, exec.agent?.role ?? 'agent', String(session.id)), signal)
         return {
           workspace: String(workspace.id),
           aborted: { sessionId, accepted: true, resumed: admitted },
@@ -834,10 +872,12 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         } catch (error: unknown) {
           throw new WorkspaceSessionError(`Session ${sessionId} could not be branched: ${messageOf(error)}`, 'WORKSPACE_SESSION_INVALID')
         }
+        const forkedId = String(forked.sessionId)
+        await noteRosterFork(ctx, workspace, forkedId, sessionId, actorOf(String(session.id)), new Date().toISOString())
         return {
           workspace: String(workspace.id),
           forked: {
-            sessionId: String(forked.sessionId),
+            sessionId: forkedId,
             forkedFrom: sessionId,
             ...(args.atSeq === undefined ? {} : { atSeq: args.atSeq }),
           },
@@ -856,6 +896,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         } catch (error: unknown) {
           throw new WorkspaceSessionError(`Session ${sessionId} could not be archived: ${messageOf(error)}`, 'WORKSPACE_SESSION_INVALID')
         }
+        await noteRosterArchive(ctx, workspace, sessionId, actorOf(String(session.id)))
         return { workspace: String(workspace.id), archived: { sessionId, archived: true } }
       }
 
@@ -965,7 +1006,13 @@ function validateLifecycleArguments(action: WorkspaceSessionAction, args: Lifecy
   switch (action) {
     case 'start':
       require('task', args.task)
-      require('title', args.title)
+      break
+    case 'run':
+      // `run` starts when the workspace has no Session, so either `text` or `task` can carry the instruction.
+      if ((args.text === undefined || args.text.trim() === '')
+        && (args.task === undefined || args.task.trim() === '')) {
+        violations.push('workspace_sessions with action "run" requires text (or task for a new Session)')
+      }
       break
     case 'append':
       // The selector is checked after the candidate list is read, so the refusal can name
@@ -990,15 +1037,21 @@ function validateLifecycleArguments(action: WorkspaceSessionAction, args: Lifecy
     default:
       break
   }
-  if (args.delivery !== undefined && action !== 'append' && action !== 'prompt') {
-    violations.push('delivery is accepted only by append and prompt')
+  if (args.delivery !== undefined && action !== 'append' && action !== 'prompt' && action !== 'run') {
+    violations.push('delivery is accepted only by append, prompt, and run')
   }
   if (args.atSeq !== undefined && action !== 'fork') {
     violations.push('atSeq is accepted only by fork')
   }
+  if (args.new_session !== undefined && action !== 'run') {
+    violations.push('new_session is accepted only by run')
+  }
+  if (action === 'run' && args.new_session === true && (args.sessionId?.trim() ?? '') !== '') {
+    violations.push('run with new_session: true starts a fresh Session; omit sessionId')
+  }
   if (args.provider !== undefined || args.model !== undefined || args.reasoning_effort !== undefined) {
-    if (action !== 'start' && action !== 'append' && action !== 'prompt') {
-      violations.push('provider, model, and reasoning_effort are accepted only by start, append, and prompt')
+    if (action !== 'start' && action !== 'append' && action !== 'prompt' && action !== 'run') {
+      violations.push('provider, model, and reasoning_effort are accepted only by run, start, append, and prompt')
     }
   }
   if (violations.length > 0) throw new ToolArgsError(violations)
@@ -1139,6 +1192,7 @@ async function admit(
   used: SessionDeliveryMode,
   text: string,
   action: WorkspaceSessionAction,
+  header: string,
   signal: AbortSignal,
 ): Promise<boolean> {
   try {
@@ -1146,12 +1200,24 @@ async function admit(
       requestId: `workspace-session-${action}-${randomUUID()}`,
       sessionId,
       mode: used === 'interrupt' ? 'steer' : 'queue',
-      content: [{ type: 'text', text }],
+      content: [{ type: 'text', text: header }, { type: 'text', text }],
     }, signal)
     return admitted.accepted
   } catch (error: unknown) {
     throw new WorkspaceSessionError(`the instruction could not be admitted to Session ${sessionId}: ${messageOf(error)}`, 'WORKSPACE_SESSION_INVALID')
   }
+}
+
+/**
+ * Render the sender header a `workspace_sessions` delivery starts with.
+ * @param workspace - workspace the delivery was made from.
+ * @param role - sender's role.
+ * @param sourceSessionId - dispatcher Session.
+ * @returns the header line.
+ */
+function deliveryHeader(workspace: Workspace, role: AgentRole, sourceSessionId: string): string {
+  return `[workspace_session] from ${role} ${sourceSessionId} in ${workspace.title} (${String(workspace.id)})\n`
+    + `reply to ${sourceSessionId} with workspace_message.send`
 }
 
 /**
@@ -1239,15 +1305,15 @@ async function listedSessionOf(
 }
 
 /**
- * Choose the Session an `append` continues. Without an explicit id or
- * `latest` the call refuses and names the candidates instead of guessing.
+ * Choose the Session an `append` or `run` continues. An omitted selector, or
+ * `latest`, continues the most recently updated Session; any other value must
+ * name one of the workspace's candidate Sessions.
  * @param controller - host Session controller.
  * @param workspace - resolved workspace.
- * @param selector - the caller's `session` argument.
+ * @param selector - the caller's `sessionId` argument.
  * @param signal - cancellation for the list read.
  * @returns the chosen Session row.
- * @throws ToolArgsError when the selector is missing.
- * @throws WorkspaceRecordError when the workspace has no matching Session.
+ * @throws WorkspaceRecordError when the workspace has no Session or no matching one.
  */
 async function appendTargetOf(
   controller: SessionControllerLike,
@@ -1269,13 +1335,7 @@ async function appendTargetOf(
     )
   }
   const value = selector?.trim()
-  if (value === undefined || value === '') {
-    throw new ToolArgsError([
-      'workspace_sessions with action "append" requires session: an id, or "latest"; candidates: '
-      + candidates.map(item => String(item.sessionId)).join(', '),
-    ])
-  }
-  if (value === 'latest') return first
+  if (value === undefined || value === '' || value === 'latest') return first
   const target = candidates.find(item => String(item.sessionId) === value)
   if (target === undefined) {
     throw new WorkspaceRecordError(
@@ -1285,6 +1345,90 @@ async function appendTargetOf(
     )
   }
   return target
+}
+
+/**
+ * Start one Session in a workspace and admit its first task.
+ * @param ctx - context carrying the store.
+ * @param controller - host Session controller.
+ * @param workspace - workspace the Session belongs to.
+ * @param caller - dispatching Session, named in the delivery header.
+ * @param input - first task, optional title, caller role, model route, and cancellation.
+ * @returns the started Session.
+ */
+async function startWorkspaceSession(
+  ctx: Context,
+  controller: SessionControllerLike,
+  workspace: Workspace,
+  caller: Session,
+  input: {
+    readonly task: string
+    readonly title?: string
+    readonly role: AgentRole
+    readonly model?: SessionModelChoice
+    readonly signal: AbortSignal
+  },
+): Promise<StartedSession> {
+  const title = input.title?.trim() || derivedTitle(input.task)
+  let created: { readonly sessionId: unknown }
+  try {
+    created = await controller.create({ workspaceId: String(workspace.id) })
+  } catch (error: unknown) {
+    throw new WorkspaceSessionError(
+      `workspace ${String(workspace.id)} could not create a Session: ${messageOf(error)}`,
+      'WORKSPACE_SESSION_INVALID',
+    )
+  }
+  const sessionId = String(created.sessionId)
+  await noteRosterStart(ctx, workspace, sessionId, actorOf(String(caller.id)), new Date().toISOString())
+  let titleRecorded = false
+  if (typeof controller.rename === 'function') {
+    try {
+      await controller.rename({ sessionId, title })
+      titleRecorded = true
+    } catch (error: unknown) {
+      throw new WorkspaceSessionError(
+        `Session ${sessionId} was created but its title could not be recorded: ${messageOf(error)}; no task was sent`,
+        'WORKSPACE_SESSION_INVALID',
+      )
+    }
+  }
+  await applySessionModel(controller, sessionId, input.model)
+  let admitted: { readonly accepted: boolean }
+  try {
+    admitted = await controller.prompt({
+      requestId: `workspace-session-start-${randomUUID()}`,
+      sessionId,
+      mode: 'queue',
+      content: [
+        { type: 'text', text: deliveryHeader(workspace, input.role, String(caller.id)) },
+        { type: 'text', text: input.task },
+      ],
+    }, input.signal)
+  } catch (error: unknown) {
+    throw new WorkspaceSessionError(
+      `Session ${sessionId} was created in workspace ${String(workspace.id)} but its first task was not admitted: ${messageOf(error)}`,
+      'WORKSPACE_SESSION_INVALID',
+    )
+  }
+  return {
+    sessionId,
+    workspace: String(workspace.id),
+    cwd: workspace.path,
+    title,
+    titleRecorded,
+    admitted: admitted.accepted,
+  }
+}
+
+/**
+ * Derive a durable Session title from the first task text.
+ * @param task - first task text.
+ * @returns a bounded one-line title.
+ */
+function derivedTitle(task: string): string {
+  const line = oneLine(task, 120).trim()
+  return line.length === 0 ? 'Workspace session' : line
 }
 
 /**
@@ -1467,6 +1611,9 @@ async function listWorkspaceSessions(
     || String(left.header.id).localeCompare(String(right.header.id)))
   const taskOf = activeTaskBySession(await listTasks(ctx, workspace.id, signal))
   const archived = new Set(workspaceDirectory(ctx).archivedSessionIds.map(id => String(id)))
+  const known = new Map(records.map(record => [String(record.header.id), new Date(record.header.createdAt).toISOString()]))
+  const roster = await reconcileRoster(ctx, workspace, known, archived, signal)
+  const meter = tokenMeterOf(ctx)
   const summaries: SessionSummary[] = []
   for (const record of records) {
     const id = String(record.header.id)
@@ -1475,11 +1622,15 @@ async function listWorkspaceSessions(
     const taskId = taskOf.get(id)
     summaries.push({
       sessionId: id,
+      workspaceId: String(workspace.id),
+      workspaceTitle: workspace.title,
+      ...rosterSummaryOf(id, roster.get(id), facts, archived.has(id), workspace.role, meter, ctx),
       status: facts.status,
       currentTurn: facts.currentTurn,
       ...facts.currentActivity === undefined ? {} : { currentActivity: facts.currentActivity },
       ...facts.lastProgressAt === undefined ? {} : { lastProgressAt: facts.lastProgressAt },
       ...facts.latestProgress === undefined ? {} : { latestProgress: facts.latestProgress },
+      ...facts.updatedAt === undefined ? {} : { updatedAt: facts.updatedAt },
       ...taskId === undefined ? {} : { taskId },
     })
   }
@@ -1517,6 +1668,9 @@ async function describeSession(
   }
   const archived = workspaceDirectory(ctx).archivedSessionIds.map(id => String(id)).includes(sessionId)
   const facts = await readSessionFacts(ctx, sessionId, archived, signal)
+  const created = await ctx.sessionQuery.filterSessions([{ kind: 'id', values: [SessionId(sessionId)] }], signal)
+  const known = new Map(created.map(record => [String(record.header.id), new Date(record.header.createdAt).toISOString()]))
+  const roster = await reconcileRoster(ctx, workspace, known, new Set(archived ? [sessionId] : []), signal)
   const title = (await sessionTitles(ctx, [sessionId], signal)).get(sessionId)
   const taskId = activeTaskBySession(await listTasks(ctx, workspace.id, signal)).get(sessionId)
   const messages = await listMessages(ctx, workspace.id, signal)
@@ -1525,16 +1679,55 @@ async function describeSession(
   const artifactCount = artifacts.filter(record => record.versions.some(reference => reference.sessionId === sessionId)).length
   return {
     sessionId,
+    workspaceId: String(workspace.id),
+    workspaceTitle: workspace.title,
+    ...rosterSummaryOf(sessionId, roster.get(sessionId), facts, archived, workspace.role, tokenMeterOf(ctx), ctx),
     ...title === undefined ? {} : { title },
     status: facts.status,
     currentTurn: facts.currentTurn,
     ...facts.currentActivity === undefined ? {} : { currentActivity: facts.currentActivity },
     ...facts.lastProgressAt === undefined ? {} : { lastProgressAt: facts.lastProgressAt },
     ...facts.latestProgress === undefined ? {} : { latestProgress: facts.latestProgress },
+    ...facts.updatedAt === undefined ? {} : { updatedAt: facts.updatedAt },
     ...taskId === undefined ? {} : { taskId },
     recentProgress: facts.recentProgress,
     pendingInbox,
     artifactCount,
+  }
+}
+
+/**
+ * Project the roster and live-Agent facts shared by `list` and `get`.
+ * @param sessionId - Session the projection describes.
+ * @param entry - roster entry, when one exists.
+ * @param facts - folded Session facts.
+ * @param archived - whether the registry counts the Session as archived.
+ * @param workspaceRole - durable role of the workspace.
+ * @param meter - host token meter, when mounted.
+ * @param ctx - context carrying the Agent registry.
+ * @returns the role, actor, archive, fork, and context-usage fields.
+ */
+function rosterSummaryOf(
+  sessionId: string,
+  entry: SessionRosterEntry | undefined,
+  facts: SessionFacts,
+  archived: boolean,
+  workspaceRole: 'agent' | 'super',
+  meter: TokenMeterLike | undefined,
+  ctx: Context,
+): Pick<SessionSummary, 'role' | 'createdBy' | 'createdAt' | 'forkedFrom' | 'archivedBy' | 'archivedAt' | 'archived' | 'contextUsage'> {
+  const live = ctx.get('agents')?.get(SessionId(sessionId))
+  const liveMeter = live === undefined ? meter : tokenMeterOf(live.ctx) ?? meter
+  const contextUsage = contextUsageOf(liveMeter, live?.session)
+  return {
+    role: facts.role ?? workspaceRole,
+    ...entry?.createdBy === undefined ? {} : { createdBy: entry.createdBy },
+    ...entry?.createdAt === undefined ? {} : { createdAt: entry.createdAt },
+    ...entry?.forkedFrom === undefined ? {} : { forkedFrom: entry.forkedFrom },
+    ...entry?.archivedBy === undefined ? {} : { archivedBy: entry.archivedBy },
+    ...entry?.archivedAt === undefined ? {} : { archivedAt: entry.archivedAt },
+    archived,
+    ...contextUsage === undefined ? {} : { contextUsage },
   }
 }
 
@@ -1559,12 +1752,15 @@ async function readSessionFacts(
   })
   const folded = foldLog(observation.events)
   const live = ctx.get('agents')?.get(id)
+  const latest = observation.events.at(-1)
   return {
     status: archived ? 'done' : statusOf(live?.status, folded.lastEndReason),
     currentTurn: folded.currentTurn,
     ...folded.currentActivity === undefined ? {} : { currentActivity: folded.currentActivity },
     ...folded.lastProgressAt === undefined ? {} : { lastProgressAt: folded.lastProgressAt },
     ...folded.latestProgress === undefined ? {} : { latestProgress: folded.latestProgress },
+    ...latest === undefined ? {} : { updatedAt: new Date(latest.time).toISOString() },
+    ...live?.role === undefined ? {} : { role: live.role },
     recentProgress: folded.recentProgress,
   }
 }
@@ -1726,6 +1922,10 @@ function renderSessions(value: WorkspaceSessionsValue): string {
     const lines = [
       (details.title === undefined ? details.sessionId : `${details.title} (${details.sessionId})`)
       + ` · ${details.status} · turn ${String(details.currentTurn)}`
+      + (details.role === undefined ? '' : ` · ${details.role}`)
+      + (details.createdBy === undefined ? '' : ` · by ${details.createdBy}`)
+      + (details.archivedBy === undefined ? '' : ` · archived by ${details.archivedBy}`)
+      + (details.contextUsage?.percent === undefined ? '' : ` · ctx ${String(details.contextUsage.percent)}%`)
       + (details.taskId === undefined ? '' : ` · task ${details.taskId}`)
       + ` · ${String(details.pendingInbox)} queued · ${String(details.artifactCount)} artifacts`,
       `Current: ${details.currentActivity ?? 'no activity recorded'}${details.lastProgressAt === undefined ? '' : ` (${details.lastProgressAt})`}`,
@@ -1741,6 +1941,10 @@ function renderSessions(value: WorkspaceSessionsValue): string {
   const lines = items.map(item =>
     `- ${item.title === undefined ? item.sessionId : `${item.title} (${item.sessionId})`}`
     + ` · ${item.status} · turn ${String(item.currentTurn)}`
+    + (item.role === undefined ? '' : ` · ${item.role}`)
+    + (item.createdBy === undefined ? '' : ` · by ${item.createdBy}`)
+    + (item.archivedBy === undefined ? '' : ` · archived by ${item.archivedBy}`)
+    + (item.contextUsage?.percent === undefined ? '' : ` · ctx ${String(item.contextUsage.percent)}%`)
     + (item.currentActivity === undefined ? '' : ` · ${item.currentActivity}`)
     + (item.taskId === undefined ? '' : ` · task ${item.taskId}`))
   if (value.nextCursor !== undefined) lines.push(`(more sessions: pass cursor ${value.nextCursor})`)

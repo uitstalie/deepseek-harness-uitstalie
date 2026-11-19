@@ -26,10 +26,11 @@ Who observes the removal: prompts, skills, and evaluation sets that expected the
 
 ## 3. Session lifecycle and delivery state move into `workspace_*`
 
-`workspace_sessions` is the single Session-lifecycle entry. Its actions are `list`, `get`, `start`, `append`, `prompt`, `stop`, `abort`, `fork`, `archive`, `compact`, and `delete`.
+`workspace_sessions` is the single Session-lifecycle entry. Its actions are `list`, `get`, `run`, `start`, `append`, `prompt`, `stop`, `abort`, `fork`, `archive`, `compact`, and `delete`.
 
 - `list` and `get` keep the existing read semantics: workspace sessions, status, current activity, recent progress, pending inbox, and artifact count.
-- `start` creates a Session in a named registered workspace and only receives and sends its first task text and durable title; it does not check an intent card. Workspace requests are a general capability: any agent can send a request to another agent or Session through `workspace_message` or `workspace_sessions`; intent cards and `workspace_tasks` are used only when a formal task record is needed, and the details are in the [memory and workspace design](memory-scoping.md) section 6.5.
+- `run` is the one-call dispatch: it continues the target Session (`sessionId`, or the most recently updated one when omitted) and starts a new Session only when the workspace has none; `new_session: true` forces a fresh Session when the person asks for one, the first task defaults to `text`, and the title is derived when omitted.
+- `start` creates a Session in a named registered workspace and only receives and sends its first task text and optional (derived) title; it does not check an intent card. Workspace requests are a general capability: any agent can send a request to another agent or Session through `workspace_message` or `workspace_sessions`, and the super workspace dispatches and receives through the same tool calls; intent cards and `workspace_tasks` are used only when a formal task record is needed, and the details are in the [memory and workspace design](memory-scoping.md) section 6.5.
 - `append` continues a named Session or the most recently updated one; `prompt` addresses one explicit Session id.
 - `stop` cuts off the running turn without text; `abort` cuts it off and then sends the follow-up text.
 - `fork`, `archive`, `compact`, and `delete` keep the Host lifecycle semantics. `delete` requires the exact Session id as confirmation and refuses when the Host exposes no real delete API.
@@ -53,6 +54,7 @@ Workspace requests and the return contract belong to the memory and workspace de
 | Namespace | Owner | Members |
 |---|---|---|
 | `workspace_*` | Workspace information design | `workspace_sessions`, `workspace_intents`, `workspace_tasks`, `workspace_message`, `workspace_artifacts` |
+| `ask_user_question_plus` | Workspace information design | Refuses a non-super interactive ask inside a request from another agent and names the dispatcher; a person-started or super-agent turn delegates to the host `userQuestions` service |
 | `memory_*` | Memory design | `memory_write`, `memory_forget`, `memory_search` |
 | `personality_*` | This change | `personality_analyze`, `personality_apply` |
 | `tool-dsh-store` | This change | The only validated `.dsh` entry |

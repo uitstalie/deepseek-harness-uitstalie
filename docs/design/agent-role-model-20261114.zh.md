@@ -10,7 +10,7 @@
 |---|---|
 | `subagent` | 被委派的子级，或任何具有子级血缘的 Session；权限最小。 |
 | `agent` | 普通的 root/workspace Session；承担常规工作。 |
-| `super` | super-agent 根；权限最大，承担跨工作区写的角色门控。 |
+| `super` | 从超级工作区派发工作的 super-agent 根；权限最大，承担跨工作区写的角色门控。 |
 
 角色类型与读取函数位于 `packages/core/agent/src/runtime-types.ts` 和 `packages/core/agent/src/role.ts`：`AgentRole`、`agentRoleOf`。feature 包通过 `@deepseek-ai/dsh-tools`（`withMinRole` / `toolMinRole`）声明工具门槛；没有任何 feature 包为角色而 import dafeiyu。organizer 只负责把工具挂到 agent 上，角色过滤由工具注册表执行。
 

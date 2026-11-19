@@ -5679,8 +5679,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'workspaceTasks',
-    summary: 'The dispatcher-only task path, provided as `ctx.workspaceTasks`.',
-    description: 'The dispatcher-only task path, provided as `ctx.workspaceTasks`.',
+    summary: 'The task-record path provided as `ctx.workspaceTasks`.',
+    description: 'The task-record path provided as `ctx.workspaceTasks`.',
     methods: [
       {
         signature: 'createDispatchTask(input: DispatchTaskInput, signal?: AbortSignal, session?: Session): Promise<DispatchTaskIdentity>',

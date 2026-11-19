@@ -20,6 +20,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { Session } from '@deepseek-ai/dsh-session'
+import type { AgentRole } from '@deepseek-ai/dsh-agent'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { WorkspaceMessageError, WorkspaceRecordError } from './errors.ts'
 import { DELIVERY_ERROR_MAX_CHARS, isArchivedSession, messageDeliveryController, requestDelivery } from './delivery.ts'
@@ -50,6 +51,8 @@ export interface MessageView {
   readonly targetSessionId: string
   /** Session that sent the message. */
   readonly sourceSessionId: string
+  /** Role the sender held when it sent. */
+  readonly sourceRole?: AgentRole
   /** Message body. */
   readonly text: string
   /** Whether this is a message or a follow-up. */
@@ -121,8 +124,9 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
     description:
       'Send a message or follow-up to one Session, retry a failed delivery, inspect one message\'s delivery status, '
       + 'or read messages a workspace delivered and their receipts. '
-      + '`send` requires `targetSessionId`, `text` (at most 600 characters: conclusion, evidence, next step), and '
-      + '`requestId`; a repeated `requestId` returns the first result. Same-workspace sends are allowed. A '
+      + '`send` requires `targetSessionId` and `text` (at most 600 characters: conclusion, evidence, next step); '
+      + '`requestId` is optional — omit it to send a new message, supply it so a retry returns the first result. '
+      + 'Same-workspace sends are allowed. A '
       + 'cross-workspace send is allowed only as a task-bound return: the caller must be the task\'s '
       + '`targetSessionId`, the target Session must be the task\'s `dispatcherSessionId`, and the task must live in '
       + 'the caller\'s workspace; `retry` applies the same task-binding rule when the message crosses '
@@ -134,6 +138,9 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       + '`priority: "urgent"` is limited '
       + 'to an urgentReason: a wrong conclusion being acted on, a stop order for a dangerous operation, or a user '
       + 'instruction change. Attach files with `references` (artifact ids), never pasted content. '
+      + 'A delivered message starts with a `[workspace_message]` header naming the sender\'s role, Session, workspace, '
+      + 'and task, so the receiver replies to that Session with `workspace_message.send`; a dispatched Session never '
+      + 'asks the user directly. '
       + '`read` returns one message by id or a page filtered by target session. '
       + 'The caller\'s workspace is the default scope.',
     parameters: {
@@ -202,7 +209,7 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       },
       requestId: {
         type: 'string',
-        description: 'Idempotency key for `send`; a retry with the same key returns the first result.',
+        description: 'Idempotency key for `send`; optional. Omit to send a new message each call, supply it so a retry returns the first result.',
       },
       cursor: {
         type: 'string',
@@ -228,6 +235,7 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
                 messageId: { type: 'string', required: true },
                 targetSessionId: { type: 'string', required: true },
                 sourceSessionId: { type: 'string', required: true },
+                sourceRole: { type: 'string', enum: ['subagent', 'agent', 'super'] },
                 text: { type: 'string', required: true },
                 kind: { type: 'string', required: true, enum: ['message', 'followup'] },
                 priority: { type: 'string', required: true, enum: ['normal', 'urgent'] },
@@ -274,6 +282,7 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
               messageId: { type: 'string', required: true },
               targetSessionId: { type: 'string', required: true },
               sourceSessionId: { type: 'string', required: true },
+              sourceRole: { type: 'string', enum: ['subagent', 'agent', 'super'] },
               text: { type: 'string', required: true },
               kind: { type: 'string', required: true, enum: ['message', 'followup'] },
               priority: { type: 'string', required: true, enum: ['normal', 'urgent'] },
@@ -374,7 +383,7 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
           : undefined
         return {
           workspace: String(scope.workspace.id),
-          sent: await sendMessage(ctx, scope.workspace, session, args, binding, exec.signal),
+          sent: await sendMessage(ctx, scope.workspace, session, args, binding, exec.agent?.role ?? 'agent', exec.signal),
         }
       }
       const scope = await resolveWorkspace(ctx, session, 'message.read', args.workspace)
@@ -473,6 +482,7 @@ async function boundTaskOf(
  * @param session - sending Session.
  * @param request - validated send fields.
  * @param binding - task that authorizes a cross-workspace return, when this send crosses workspaces.
+ * @param role - role of the sending Agent, recorded and rendered in the delivery header.
  * @param signal - cancellation for the store and delivery operations.
  * @returns the send result.
  * @throws WorkspaceMessageError when a required field is missing or an urgent case is invalid.
@@ -484,6 +494,7 @@ async function sendMessage(
   session: Session,
   request: SendRequest,
   binding: TaskRecord | undefined,
+  role: AgentRole,
   signal: AbortSignal | undefined,
 ): Promise<SentMessage> {
   const targetSessionId = request.targetSessionId?.trim() ?? ''
@@ -500,13 +511,7 @@ async function sendMessage(
       'WORKSPACE_MESSAGE_INVALID',
     )
   }
-  const requestId = request.requestId?.trim() ?? ''
-  if (requestId === '') {
-    throw new WorkspaceMessageError(
-      'workspace_message with action "send" requires requestId so a retry cannot deliver twice',
-      'WORKSPACE_MESSAGE_INVALID',
-    )
-  }
+  const requestId = request.requestId?.trim() || randomUUID()
   const priority = request.priority ?? 'normal'
   if (priority === 'urgent' && request.urgentReason === undefined) {
     throw new WorkspaceMessageError(
@@ -555,6 +560,7 @@ async function sendMessage(
   const messageId = `message-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
   const kind = request.kind ?? 'message'
   const archived = isArchivedSession(ctx, targetSessionId)
+  const header = deliveryHeader(workspace, role, String(session.id), taskId)
   let status: MessageDeliveryStatus = 'queued'
   let deliveredAt: string | undefined
   let error: string | undefined
@@ -563,7 +569,7 @@ async function sendMessage(
   } else {
     const delivery = messageDeliveryController(ctx)
     if (delivery !== undefined) {
-      const outcome = await admit(ctx, delivery, messageId, targetSessionId, priority, text, signal)
+      const outcome = await admit(ctx, delivery, messageId, targetSessionId, priority, header, text, signal)
       if (outcome.accepted) {
         status = 'delivered'
         deliveredAt = new Date().toISOString()
@@ -578,6 +584,7 @@ async function sendMessage(
     workspaceId: String(workspace.id),
     targetSessionId,
     sourceSessionId: String(session.id),
+    sourceRole: role,
     text,
     kind,
     priority,
@@ -657,7 +664,16 @@ async function retryMessage(
       'the host session controller is not mounted, so the message cannot be re-delivered',
     )
   }
-  const outcome = await admit(ctx, delivery, record.messageId, record.targetSessionId, record.priority, record.text, signal)
+  const outcome = await admit(
+    ctx,
+    delivery,
+    record.messageId,
+    record.targetSessionId,
+    record.priority,
+    deliveryHeader(workspace, record.sourceRole ?? 'agent', record.sourceSessionId, record.taskId),
+    record.text,
+    signal,
+  )
   if (!outcome.accepted) {
     return await persistedRetryFailure(
       ctx, workspace, record, session, stored.version, attempts,
@@ -768,6 +784,7 @@ async function statusMessage(
  * @param messageId - stable message id the request identity derives from.
  * @param targetSessionId - receiving Session.
  * @param priority - normal or urgent.
+ * @param header - sender header naming the sender, its role, and where to reply.
  * @param text - message body.
  * @param signal - cancellation for the admission.
  * @returns whether the controller accepted the message, with the failure reason when it did not.
@@ -778,11 +795,12 @@ async function admit(
   messageId: string,
   targetSessionId: string,
   priority: MessagePriority,
+  header: string,
   text: string,
   signal: AbortSignal | undefined,
 ): Promise<DeliveryOutcome> {
   const requestId = `workspace-message-${messageId}`
-  const content = [{ type: 'text' as const, text }]
+  const content = [{ type: 'text' as const, text: header }, { type: 'text' as const, text }]
   const admission = signal ?? new AbortController().signal
   if (priority === 'normal') {
     return await requestDelivery(delivery, { requestId, sessionId: targetSessionId, mode: 'queue', content }, admission)
@@ -916,6 +934,7 @@ function messageView(message: MessageRecord): MessageView {
     messageId: message.messageId,
     targetSessionId: message.targetSessionId,
     sourceSessionId: message.sourceSessionId,
+    ...message.sourceRole === undefined ? {} : { sourceRole: message.sourceRole },
     text: message.text,
     kind: message.kind,
     priority: message.priority,
@@ -934,6 +953,30 @@ function messageView(message: MessageRecord): MessageView {
       sha256: reference.sha256,
     })),
   }
+}
+
+/**
+ * Render the sender header a delivered message starts with.
+ *
+ * The receiving agent must know who sent the request, which workspace it came
+ * from, and where to reply without inferring any of it from the body. A
+ * cross-workspace return names its task; a taskless request names the sending
+ * Session, which is the dispatcher to route a question back to.
+ * @param workspace - workspace the message was sent from.
+ * @param role - sender's role.
+ * @param sourceSessionId - sender Session.
+ * @param taskId - task the message reports on, when one is bound.
+ * @returns the header line.
+ */
+function deliveryHeader(
+  workspace: Workspace,
+  role: AgentRole,
+  sourceSessionId: string,
+  taskId: string | undefined,
+): string {
+  return `[workspace_message] from ${role} ${sourceSessionId} in ${workspace.title} (${String(workspace.id)})\n`
+    + (taskId === undefined ? 'No task bound' : `Task ${taskId}`)
+    + ` · reply to ${sourceSessionId} with workspace_message.send`
 }
 
 /**

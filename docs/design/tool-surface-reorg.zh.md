@@ -26,10 +26,11 @@ JIRA 只保留云端数据仓：GitHub 上的 cloudstore 仓库及其内容与�
 
 ## 3. 会话生命周期与投递状态搬进 `workspace_*`
 
-`workspace_sessions` 是唯一的会话生命周期入口。动作是 `list`、`get`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact` 与 `delete`。
+`workspace_sessions` 是唯一的会话生命周期入口。动作是 `list`、`get`、`run`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact` 与 `delete`。
 
 - `list` 与 `get` 保持既有读语义：工作区会话、状态、当前活动、最近进展、待处理收件箱与产物计数。
-- `start` 在指定的已注册工作区创建 Session，只接收并发送首个任务文本与持久标题；它不检查意图卡。工作区请求是通用能力：任意 agent 可经 `workspace_message` 或 `workspace_sessions` 向其他 agent/session 发起请求；意图卡与 `workspace_tasks` 只在需要正式任务记录时使用，细节归[记忆/工作区设计](memory-scoping.zh.md) 6.5 节。
+- `run` 是一次调用完成交付：继续目标会话（`sessionId`，不给就继续最近更新的那条），只有工作区里没有会话时才新开；`new_session: true` 在人要求新会话时强制新开，首个任务缺省用 `text`，标题缺省时派生。
+- `start` 在指定的已注册工作区创建 Session，只接收并发送首个任务文本与可选（缺省派生的）标题；它不检查意图卡。工作区请求是通用能力：任意 agent 可经 `workspace_message` 或 `workspace_sessions` 向其他 agent/session 发起请求，超级工作区也用同一套工具调用派发和接收；意图卡与 `workspace_tasks` 只在需要正式任务记录时使用，细节归[记忆/工作区设计](memory-scoping.zh.md) 6.5 节。
 - `append` 继续指定 Session 或最近更新的 Session；`prompt` 只面向明确的 Session id。
 - `stop` 切断运行中的 turn、不投递文本；`abort` 切断后再投递后续文本。
 - `fork`、`archive`、`compact` 与 `delete` 保留 Host 生命周期语义。`delete` 要求精确重复 Session id 作为确认；Host 没有真实删除 API 时明确拒绝。
@@ -53,6 +54,7 @@ JIRA 只保留云端数据仓：GitHub 上的 cloudstore 仓库及其内容与�
 | 命名空间 | 所有者 | 成员 |
 |---|---|---|
 | `workspace_*` | 工作区信息设计 | `workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts` |
+| `ask_user_question_plus` | 工作区信息设计 | 拒绝非 super 会话在别的 agent 发来的请求里的交互提问，并给出派发方；人自己发起的或 super agent 的 turn 原样转给宿主 `userQuestions` 服务 |
 | `memory_*` | 记忆设计 | `memory_write`、`memory_forget`、`memory_search` |
 | `personality_*` | 本次改动 | `personality_analyze`、`personality_apply` |
 | `tool-dsh-store` | 本次改动 | 唯一经校验的 `.dsh` 入口 |

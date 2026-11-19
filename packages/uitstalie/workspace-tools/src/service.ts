@@ -2,10 +2,11 @@
  * The dispatch-task service the workspace toolset provides as `ctx.workspaceTasks`.
  *
  * The model-facing `workspace_tasks` tool is the surface an agent calls, and a
- * trusted in-process caller may use this service to record the same
- * card-validated task. Exposing the creation and cancellation rules as a
- * service keeps one implementation of the card, coverage, and idempotency
- * checks instead of a second copy in another caller.
+ * trusted in-process caller may use this service to record the same task,
+ * validated against its intent card when the task references one. Exposing the
+ * creation and cancellation rules as a service keeps one implementation of the
+ * card, coverage, and idempotency checks instead of a second copy in another
+ * caller.
  *
  * The service is not a model surface and carries no role check of its own: the
  * `workspace_tasks.create` tool computes caller authorization, and this service
