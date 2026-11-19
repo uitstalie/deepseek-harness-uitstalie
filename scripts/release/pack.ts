@@ -26,12 +26,14 @@ const DEFAULT_OUTPUT = 'dist/npm'
  * @param destination - absolute output directory.
  * @returns The tarball filename.
  */
-function validatePackedMember(family: ReleaseFamily, member: ReleaseMember, destination: string): string {
+function validatePackedMember(
+  family: ReleaseFamily, member: ReleaseMember, destination: string, validateManifest = true,
+): string {
   const filename = tarballName(member)
   const tarball = join(destination, filename)
   if (!existsSync(tarball)) throw new Error(`${member.name} produced no tarball at ${tarball}`)
   family.validatePayload(member, tarballFiles(tarball))
-  family.validatePackedManifest(member, packedManifest(tarball))
+  if (validateManifest) family.validatePackedManifest(member, packedManifest(tarball))
   return filename
 }
 
@@ -45,13 +47,14 @@ function validatePackedMember(family: ReleaseFamily, member: ReleaseMember, dest
  */
 async function packMembers(
   family: ReleaseFamily, members: readonly ReleaseMember[], destination: string, concurrency: number,
+  validateManifest = true,
 ): Promise<string[]> {
   if (concurrency === 1) {
     const order: string[] = []
     for (const member of members) {
       const invocation = pnpmInvocation(['--dir', member.directory, 'pack', '--pack-destination', destination])
       await runConcurrent(invocation.command, invocation.args)
-      order.push(validatePackedMember(family, member, destination))
+      order.push(validatePackedMember(family, member, destination, validateManifest))
     }
     return order
   }
@@ -64,7 +67,7 @@ async function packMembers(
     '--pack-destination', destination,
   ])
   await runConcurrent(invocation.command, invocation.args)
-  return members.map(member => validatePackedMember(family, member, destination))
+  return members.map(member => validatePackedMember(family, member, destination, validateManifest))
 }
 
 /**
@@ -93,12 +96,13 @@ export function parsePackConcurrency(raw: string | undefined): number {
  */
 export async function packFamilyMembers(
   root: string, family: ReleaseFamily, destination: string, concurrency: number,
+  options: { readonly verifyVersions?: boolean; readonly validateManifests?: boolean } = {},
 ): Promise<string[]> {
   const members = family.publishOrder(family.members(root)).order
-  family.verifyVersions(members)
+  if (options.verifyVersions !== false) family.verifyVersions(members)
   rmSync(destination, { recursive: true, force: true })
   mkdirSync(destination, { recursive: true })
-  return packMembers(family, members, destination, concurrency)
+  return packMembers(family, members, destination, concurrency, options.validateManifests !== false)
 }
 
 /** Pack the family named by `--family` into `--out`. */

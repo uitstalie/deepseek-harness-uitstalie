@@ -21,6 +21,19 @@ const MACOS_SETTING = /^(?:DSH_DESKTOP_MACOS_(?:SIGNING_IDENTITY|TEAM_ID|SIGNATU
 const AMBIENT_RELEASE_SETTING = /^(?:DSH_DESKTOP_(?:APP_ID|AUTO_UPDATE_ENV|MANDATORY_UPDATE_.*|WINDOWS_.*|MACOS_.*)|APPLE_.*|(?:WIN_)?CSC_.*|DOWNLOAD_(?:TEST|PROD)_.*)$/iu
 
 /**
+ * Select local Linux test defaults without reading dotenv files or inheriting release settings.
+ * @param {NodeJS.ProcessEnv} environment Parent environment, retained for build tools and networking.
+ * @returns {NodeJS.ProcessEnv} Unsigned build environment with the standard application identifier and no update policy.
+ */
+export function localLinuxPackageEnvironment(environment = process.env) {
+  return {
+    ...Object.fromEntries(Object.entries(environment).filter(([name]) => !AMBIENT_RELEASE_SETTING.test(name))),
+    DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
+    DSH_DESKTOP_UNSIGNED: '1',
+  }
+}
+
+/**
  * Select local macOS test defaults without reading dotenv files or inheriting release settings.
  * @param {NodeJS.ProcessEnv} environment Parent environment, retained for build tools and networking.
  * @returns {NodeJS.ProcessEnv} Unsigned build environment with the standard application identifier and no update policy.
@@ -39,13 +52,17 @@ export function localMacOSPackageEnvironment(environment = process.env) {
  * Any defined Mac ZIP override rejects Windows, including an empty value; nonempty Windows overrides reject macOS.
  * PACKAGE_TEST_RELEASE_ID overrides the test preset only; blank retains its configured ID.
  * PACKAGE_WINDOWS_COMPRESSION_LEVEL selects 3 or 7 for Windows workflow builds; blank retains the file setting.
- * @param {'win32' | 'darwin'} platform Target platform.
+ * @param {'win32' | 'darwin' | 'linux'} platform Target platform.
  * @param {NodeJS.ProcessEnv} environment Parent environment, retained only for unrelated build tools.
  * @param {string} appRoot Desktop application directory; relative credential paths resolve here.
  * @param {{ unsigned?: boolean, prepareOnly?: boolean }} options Unsigned presets and Windows preparation-only presets never read signing credentials.
  * @returns {NodeJS.ProcessEnv} Isolated environment with file-owned release settings.
  */
 export function loadDesktopPackageEnvironment(platform, environment = process.env, appRoot = APP_ROOT, options = {}) {
+  if (platform === 'linux') {
+    if (!options.unsigned) throw new Error('desktop package: linux-x64 supports unsigned local packaging only')
+    return localLinuxPackageEnvironment(environment)
+  }
   const compression = environment.PACKAGE_WINDOWS_COMPRESSION_LEVEL
   if (compression !== undefined && compression !== '') {
     if (platform !== 'win32' || !['3', '7'].includes(compression)) {
@@ -113,7 +130,7 @@ function requireReadableFile(environment, name) {
 /**
  * Validate the packaging mode before preparation without invoking a token or Apple's services.
  * @param {NodeJS.ProcessEnv} environment Selected local defaults or file-owned release settings.
- * @param {{ platform: 'win32' | 'darwin', arch: string }} target Selected release target.
+ * @param {{ platform: 'win32' | 'darwin' | 'linux', arch: string }} target Selected release target.
  * @param {{ unsigned?: boolean, prepareOnly?: boolean, skipNotarization?: boolean }} options Explicit packaging mode.
  * @returns {void}
  */
@@ -121,9 +138,11 @@ export function validateDesktopPackageEnvironment(environment, target, options =
   resolveDesktopTargetBuildPaths(environment, target.platform, target.arch)
   resolveDesktopAppId(environment)
   resolveNpmRegistry(environment)
-  if (target.platform !== 'darwin' || !options.unsigned) resolveDesktopPolicyEnvironment(environment)
+  if (!(options.unsigned && (target.platform === 'darwin' || target.platform === 'linux'))) {
+    resolveDesktopPolicyEnvironment(environment)
+  }
   if (target.platform === 'darwin') resolveMacOSPackageSettings(environment)
-  else resolveWindowsPackageSettings(environment)
+  else if (target.platform === 'win32') resolveWindowsPackageSettings(environment)
   if (options.unsigned) return
   if (!options.prepareOnly) resolveDesktopAutoUpdateConfig(environment, target.platform, target.arch)
   if (target.platform === 'win32') {

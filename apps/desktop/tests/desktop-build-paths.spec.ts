@@ -73,13 +73,16 @@ describe('desktop build paths', () => {
       .toContain(join('targets', 'mac-x64', 'runtime', 'primary-runtime'))
     expect(developmentRuntimeDirectory({}, 'win32', 'arm64'))
       .toContain(join('targets', 'win-x64', 'runtime', 'primary-runtime'))
+    expect(developmentRuntimeDirectory({}, 'linux', 'x64'))
+      .toContain(join('targets', 'linux-x64', 'runtime', 'primary-runtime'))
   })
 
   it('maps every target to the platform and architecture of the payload it prepares', () => {
     expect(desktopTargetPlatform('mac-arm64')).toEqual({ platform: 'darwin', arch: 'arm64' })
     expect(desktopTargetPlatform('mac-x64')).toEqual({ platform: 'darwin', arch: 'x64' })
     expect(desktopTargetPlatform('win-x64')).toEqual({ platform: 'win32', arch: 'x64' })
-    expect(() => desktopTargetPlatform('linux-x64' as 'mac-x64')).toThrow(/unsupported target/u)
+    expect(desktopTargetPlatform('linux-x64')).toEqual({ platform: 'linux', arch: 'x64' })
+    expect(() => desktopTargetPlatform('linux-arm64' as 'mac-x64')).toThrow(/unsupported target/u)
   })
 
   it('resolves environment overrides and rejects unsupported targets', () => {
@@ -88,7 +91,9 @@ describe('desktop build paths', () => {
       DSH_DESKTOP_TARGET_ARCH: 'x64',
     }, 'darwin', 'arm64')).toBe('mac-x64')
     expect(resolveDesktopBuildTarget({}, 'win32', 'x64')).toBe('win-x64')
-    expect(() => resolveDesktopBuildTarget({}, 'linux', 'x64')).toThrow(/unsupported target/u)
-    expect(() => desktopTargetBuildPaths('linux-x64' as 'mac-x64')).toThrow(/unsupported target/u)
+    expect(resolveDesktopBuildTarget({}, 'linux', 'x64')).toBe('linux-x64')
+    expect(desktopTargetBuildPaths('linux-x64').root).toContain(join('targets', 'linux-x64'))
+    expect(() => resolveDesktopBuildTarget({}, 'linux', 'arm64')).toThrow(/unsupported target/u)
+    expect(() => desktopTargetBuildPaths('linux-arm64' as 'mac-x64')).toThrow(/unsupported target/u)
   })
 })
