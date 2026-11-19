@@ -368,6 +368,31 @@ export interface MessageRecord {
   readonly receipts: MessageReceipt[]
 }
 
+/**
+ * One cross-workspace delivery, recorded in the receiving workspace so the
+ * receiving Session can reply to its sender after any reload without a task.
+ */
+export interface DispatchRelation {
+  /** Workspace that received the delivery and owns this record. */
+  readonly workspaceId: string
+  /** Session that sent the delivery; its reply address. */
+  readonly sourceSessionId: string
+  /** Session the delivery reached; the session allowed to reply. */
+  readonly targetSessionId: string
+  /** Workspace that sent the delivery, when the registry accounts for it. */
+  readonly sourceWorkspaceId?: string | undefined
+  /** Role the sender held when it delivered. */
+  readonly sourceRole?: 'subagent' | 'agent' | 'super' | undefined
+  /** Lifecycle action or message action that recorded the latest delivery. */
+  readonly lastAction: string
+  /** ISO-8601 instant of the first recorded delivery. */
+  readonly firstAt: string
+  /** ISO-8601 instant of the most recent recorded delivery. */
+  readonly lastAt: string
+  /** Deliveries recorded for this relation. */
+  readonly deliveries: number
+}
+
 /** One session's roster entry: who created it, who archived it, and when. */
 export interface SessionRosterEntry {
   /** Session identity. */

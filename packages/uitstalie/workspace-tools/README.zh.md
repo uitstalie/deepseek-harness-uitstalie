@@ -50,7 +50,7 @@ kind: "package-reference"
 
 `list` 动作用不透明 cursor 分页，默认 20 条、上限 100 条。摘要会限制文本长度；原始 turn 仍由 `session_event_read` 读取，文件正文仍由 `read` 读取。
 
-投递是一次显式工具调用。`workspace_message.send` 校验目标会话、引用的产物版本与调用者作用域，再把受限正文（600 字符）交给宿主会话控制器。一个 turn 不调用 send 就什么都不投递；没有回合结束兜底。跨工作区发送需要 super agent 与目标工作区 id；普通 agent 只能给本工作区的会话发消息。`priority: "urgent"` 必须给出三种已校验 `urgentReason` 之一（目标正在执行错误结论、危险操作停止令、用户指令变更），并 steer 目标当前步骤；目标空闲时回退为排队。
+投递是一次显式工具调用。`workspace_message.send` 校验目标会话、引用的产物版本与调用者作用域，再把受限正文（600 字符）交给宿主会话控制器。一个 turn 不调用 send 就什么都不投递；没有回合结束兜底。同工作区发送始终允许。跨工作区发送有三种授权：调用者工作区里的任务绑定（`targetSessionId` 是调用者、`dispatcherSessionId` 是目标）；super agent 主动发起投递；或回复一个已经向调用者工作区投递过的会话。每次跨工作区投递都会在接收方工作区记录一条派发关系，因此接收方只凭 `targetSessionId` 就能回复，不需要任务，也不怕重载。`priority: "urgent"` 必须给出三种已校验 `urgentReason` 之一（目标正在执行错误结论、危险操作停止令、用户指令变更），并 steer 目标当前步骤；目标空闲时回退为排队。
 
 产物引用在发布时不可变：`{ artifactId, workspaceId, path, sha256, size, version, kind, sessionId, taskId?, createdAt }`。产物 id 按 `workspace|path|kind` 稳定；文件变化后再发布追加一个版本。消息或任务保存被引用的 `artifactId`、`version` 与 `sha256`；之后文件变化不会改写引用，`resolve` 报 `changed` 或 `missing`，不会静默跟随新内容。
 
@@ -72,7 +72,7 @@ kind: "package-reference"
 
 ## 作用域
 
-调用会话的工作区，是注册表中列出该会话的那条账目，或规范路径等于该会话规范 cwd 的已注册工作区。调用只有在给出已注册 id 时才能访问其他工作区，且该读取会写入宿主日志。目录路径、未注册 id 与已注册工作区的子目录都得到同一个拒绝：先把该目录注册为工作区。id 不在已解析工作区账目上的会话在工作区里不可见，因此跨工作区问题不会被隐式回答。`workspace_message.send` 只有经 super agent 才能访问别的工作区：普通 agent 的跨工作区发送会被拒绝，super agent 则显式给出目标工作区 id，且该调用会被记录。
+调用会话的工作区，是注册表中列出该会话的那条账目，或规范路径等于该会话规范 cwd 的已注册工作区。调用只有在给出已注册 id 时才能访问其他工作区，且该读取会写入宿主日志。目录路径、未注册 id 与已注册工作区的子目录都得到同一个拒绝：先把该目录注册为工作区。id 不在已解析工作区账目上的会话在工作区里不可见，因此跨工作区问题不会被隐式回答。`workspace_message.send` 可以用已注册 id 访问别的工作区，也可以直接按目标会话自身的注册解析：super agent 可以主动发起跨工作区投递，任务绑定可以授权一次回传，任何会话都可以回复一个已经向调用者工作区投递过的会话。每次跨工作区投递都会记录在接收方工作区。
 
 `workspace_intents` 遵循同一作用域。一张卡只属于一个工作区；跨工作区请求会在每个目标工作区各建一张卡，且每张卡逐字保留用户原话。读取其他工作区的卡需要显式 id，并会被记录。任务引用别的工作区的卡时以 `INTENT_SCOPE_MISMATCH` 拒绝。
 
@@ -82,7 +82,7 @@ kind: "package-reference"
 
 ## 存储
 
-记录位于 `$DSH_HOME/workspaces/<workspace-id>/` 下：`tasks/<taskId>.json`、`messages/<messageId>.json`、`artifacts/<artifactId>.json`、`grants/<artifactId>-v<version>.json`、`requests/<requestId>.json`、名册用的 `sessions/<sessionId>.json`，以及 `intents/<intentId>/` 下的 `index.json` 与 `versions/<n>.json`。读取时逐文件校验，因为持久记录是不可信边界；与 schema 不符的记录以 `WORKSPACE_RECORD_CORRUPT` 失败，而不是被跳过。产物记录保存每个已发布版本，`resolve` 用所选版本的 SHA-256 与工作区根内的文件比对。
+记录位于 `$DSH_HOME/workspaces/<workspace-id>/` 下：`tasks/<taskId>.json`、`messages/<messageId>.json`、回复关系用的 `dispatches/<sourceSessionId>~<targetSessionId>.json`、`artifacts/<artifactId>.json`、`grants/<artifactId>-v<version>.json`、`requests/<requestId>.json`、名册用的 `sessions/<sessionId>.json`，以及 `intents/<intentId>/` 下的 `index.json` 与 `versions/<n>.json`。读取时逐文件校验，因为持久记录是不可信边界；与 schema 不符的记录以 `WORKSPACE_RECORD_CORRUPT` 失败，而不是被跳过。产物记录保存每个已发布版本，`resolve` 用所选版本的 SHA-256 与工作区根内的文件比对。
 
 卡索引保存每个版本的当前状态、最新 active 版本、逐条确认时间与版本列表；每个版本文件保存不可变的卡内容，从不重写。纠正追加一个版本，并让被 supersede 的旧版本仍可读；确认只改索引。`proposed` 版本携带一个带稳定 id 的汇总确认请求。意图 id 由工作区与其幂等键推导，因此重试的 create 返回它已经写过的版本。
 

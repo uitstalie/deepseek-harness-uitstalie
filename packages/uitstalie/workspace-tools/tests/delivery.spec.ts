@@ -11,6 +11,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import { readDispatchRelation } from '../src/store.ts'
 import {
   callTool,
   createRoot,
@@ -51,6 +53,50 @@ let delivered: RecordedPrompt[]
 /** Only the prompts the controller accepted, so a test can prove one admission. */
 let admitted: RecordedPrompt[]
 
+/**
+ * Provide the duck-typed host Session controller. `create` and `list` serve
+ * `workspace_sessions.run` as well, so one spec can dispatch from another
+ * workspace and then reply from the receiving Session.
+ * @param ctx - context that receives the controller.
+ * @param registry - workspace registry whose accounted Sessions are listed.
+ * @param counter - Session-id counter for controller-created Sessions.
+ */
+function provideRecordingController(
+  ctx: Context,
+  registry: WorkspaceToolsHarness['registry'],
+  counter: { value: number },
+): void {
+  ctx.provide('sessionController' as never, {
+    prompt: async (request: { requestId: string; sessionId: string; mode: 'queue' | 'steer'; content: readonly { type: 'text'; text: string }[] }) => {
+      const recorded: RecordedPrompt = {
+        requestId: request.requestId,
+        sessionId: request.sessionId,
+        mode: request.mode,
+        text: request.content.flatMap(part => part.type === 'text' ? [part.text] : []).join(''),
+      }
+      delivered.push(recorded)
+      const reply = await deliveryBehaviour()
+      if (reply.accepted) admitted.push(recorded)
+      return reply
+    },
+    list: async () => ({
+      items: registry.list().flatMap(workspace => workspace.sessionIds.map(id => ({
+        sessionId: String(id),
+        running: false,
+        cwd: workspace.path,
+        updatedAt: 1,
+      }))),
+    }),
+    create: async (request: { readonly workspaceId?: string }): Promise<{ readonly sessionId: string }> => {
+      counter.value += 1
+      const sessionId = `session-controller-${String(counter.value)}`
+      const workspace = registry.list().find(candidate => String(candidate.id) === request.workspaceId)
+      if (workspace !== undefined) await workspace.attachSession(SessionId(sessionId))
+      return { sessionId }
+    },
+  } as never)
+}
+
 beforeEach(async () => {
   projectA = await mkdtemp(join(tmpdir(), 'dsh-workspace-delivery-a-'))
   projectB = await mkdtemp(join(tmpdir(), 'dsh-workspace-delivery-b-'))
@@ -64,21 +110,9 @@ beforeEach(async () => {
   const ctx = new Context()
   contexts.push(ctx)
   mounted = await mountWorkspaceTools(ctx, home)
-  // Duck-typed exactly like the toolset reads it: only `prompt` is used.
-  mounted.ctx.provide('sessionController' as never, {
-    prompt: async (request: { requestId: string; sessionId: string; mode: 'queue' | 'steer'; content: readonly { type: 'text'; text: string }[] }) => {
-      const recorded: RecordedPrompt = {
-        requestId: request.requestId,
-        sessionId: request.sessionId,
-        mode: request.mode,
-        text: request.content.flatMap(part => part.type === 'text' ? [part.text] : []).join(''),
-      }
-      delivered.push(recorded)
-      const reply = await deliveryBehaviour()
-      if (reply.accepted) admitted.push(recorded)
-      return reply
-    },
-  } as never)
+  // Duck-typed exactly like the toolset reads it: only `prompt` is used for
+  // messages, while `run` also needs `list` and `create`.
+  provideRecordingController(mounted.ctx, mounted.registry, { value: 0 })
 })
 
 afterEach(async () => {
@@ -238,7 +272,7 @@ test('a turn with no send delivers nothing', async () => {
   expect((valueOf(read) as { messages: unknown[] }).messages).toEqual([])
 })
 
-test('a cross-workspace send is allowed only as a task-bound return', async () => {
+test('a cross-workspace send needs a task, the super role, or a recorded delivery', async () => {
   const a = await registerWorkspace(mounted.registry, projectA, 'scope-a')
   const b = await registerWorkspace(mounted.registry, projectB, 'scope-b')
   const executor = await createRoot(mounted, 'scope-executor', projectA)
@@ -260,7 +294,8 @@ test('a cross-workspace send is allowed only as a task-bound return', async () =
   expect(unboundOrdinary.isError).toBe(true)
   expect(textOf(unboundOrdinary)).toContain('task')
 
-  // A super-agent caller is no longer enough on its own.
+  // The super agent may open a cross-workspace delivery without a task; the
+  // receiving workspace records it so the receiver can reply.
   const unboundSuper = await callTool(mounted.ctx, dispatcher, 'workspace_message', {
     action: 'send',
     workspace: String(a.id),
@@ -268,7 +303,10 @@ test('a cross-workspace send is allowed only as a task-bound return', async () =
     text: 'unbound from the super agent',
     requestId: 'cross-unbound-2',
   })
-  expect(unboundSuper.isError).toBe(true)
+  expect(unboundSuper.isError).toBe(false)
+  expect((valueOf(unboundSuper) as { sent: { status: string } }).sent.status).toBe('delivered')
+  expect(await readDispatchRelation(mounted.ctx, a.id, String(dispatcher.session.id), String(executor.session.id)))
+    .toMatchObject({ lastAction: 'send', sourceRole: 'super', deliveries: 1 })
 
   const cardResult = await callTool(mounted.ctx, dispatcher, 'workspace_intents', {
     action: 'create',
@@ -409,7 +447,9 @@ test('a cross-workspace send is allowed only as a task-bound return', async () =
     workspace: String(a.id),
     messageId: seededSuper,
   })
-  expect(retrySuper.isError).toBe(true)
+  // The super agent retries its own cross-workspace delivery without a task.
+  expect(retrySuper.isError).toBe(false)
+  expect((valueOf(retrySuper) as { sent: { status: string } }).sent.status).toBe('delivered')
 
   const unboundBystander = await callTool(mounted.ctx, bystander, 'workspace_message', {
     action: 'send',
@@ -419,6 +459,91 @@ test('a cross-workspace send is allowed only as a task-bound return', async () =
     requestId: 'cross-unbound-3',
   })
   expect(unboundBystander.isError).toBe(true)
+})
+
+test('a recorded dispatch authorizes the receiver to reply without a task', async () => {
+  const a = await registerWorkspace(mounted.registry, projectA, 'reply-a')
+  const b = await registerWorkspace(mounted.registry, projectB, 'reply-b')
+  const executor = await createRoot(mounted, 'reply-executor', projectA)
+  const dispatcher = await createRoot(mounted, 'reply-dispatcher', projectB, 'super')
+  await a.attachSession(executor.session.id)
+  await b.attachSession(dispatcher.session.id)
+
+  // The super agent dispatches into the executor's workspace; the header names
+  // the dispatcher and the delivery records the relation in that workspace.
+  const dispatched = await callTool(mounted.ctx, dispatcher, 'workspace_sessions', {
+    action: 'run',
+    workspace: String(a.id),
+    sessionId: String(executor.session.id),
+    text: 'please acknowledge',
+  })
+  expect(dispatched.isError).toBe(false)
+  expect(delivered).toHaveLength(1)
+  expect(delivered[0]?.sessionId).toBe(String(executor.session.id))
+  expect(delivered[0]?.text).toMatch(/^\[workspace_session\] from super reply-dispatcher in reply-a \(ws-reply-a\)/)
+  expect(delivered[0]?.text).toContain(`reply to ${String(dispatcher.session.id)} with workspace_message.send`)
+
+  // The receiver answers by session id alone: no task, no workspace argument.
+  const reply = await callTool(mounted.ctx, executor, 'workspace_message', {
+    action: 'send',
+    targetSessionId: String(dispatcher.session.id),
+    text: 'acknowledged',
+  })
+  expect(reply.isError).toBe(false)
+  expect((valueOf(reply) as { sent: { status: string } }).sent.status).toBe('delivered')
+  expect(delivered).toHaveLength(2)
+  expect(delivered[1]?.sessionId).toBe(String(dispatcher.session.id))
+  expect(delivered[1]?.text).toContain('acknowledged')
+
+  // The reply is recorded in the dispatcher's workspace, so the record exists
+  // in both directions and the thread can continue.
+  expect(await readDispatchRelation(mounted.ctx, a.id, String(dispatcher.session.id), String(executor.session.id)))
+    .toMatchObject({ lastAction: 'run', sourceRole: 'super', deliveries: 1 })
+  expect(await readDispatchRelation(mounted.ctx, b.id, String(executor.session.id), String(dispatcher.session.id)))
+    .toMatchObject({ lastAction: 'send', sourceRole: 'agent', deliveries: 1 })
+  const page = await callTool(mounted.ctx, dispatcher, 'workspace_message', { action: 'read' })
+  expect(page.isError).toBe(false)
+  const records = (valueOf(page) as { messages: { text: string; sourceSessionId: string }[] }).messages
+  expect(records.find(record => record.text === 'acknowledged')?.sourceSessionId).toBe(String(executor.session.id))
+})
+
+test('a recorded dispatch survives a reload', async () => {
+  const a = await registerWorkspace(mounted.registry, projectA, 'reload-a')
+  const b = await registerWorkspace(mounted.registry, projectB, 'reload-b')
+  const executor = await createRoot(mounted, 'reload-executor', projectA)
+  const dispatcher = await createRoot(mounted, 'reload-dispatcher', projectB, 'super')
+  await a.attachSession(executor.session.id)
+  await b.attachSession(dispatcher.session.id)
+  const dispatched = await callTool(mounted.ctx, dispatcher, 'workspace_sessions', {
+    action: 'run',
+    workspace: String(a.id),
+    sessionId: String(executor.session.id),
+    text: 'before the reload',
+  })
+  expect(dispatched.isError).toBe(false)
+
+  // A fresh composition over the same home is the reload: the reply rule reads
+  // only the durable relation, never process memory.
+  const ctx = new Context()
+  contexts.push(ctx)
+  const reloaded = await mountWorkspaceTools(ctx, home)
+  provideRecordingController(reloaded.ctx, reloaded.registry, { value: 0 })
+  const a2 = await registerWorkspace(reloaded.registry, projectA, 'reload-a')
+  const b2 = await registerWorkspace(reloaded.registry, projectB, 'reload-b')
+  const executor2 = await createRoot(reloaded, 'reload-executor', projectA)
+  const dispatcher2 = await createRoot(reloaded, 'reload-dispatcher', projectB, 'super')
+  await a2.attachSession(executor2.session.id)
+  await b2.attachSession(dispatcher2.session.id)
+  delivered.length = 0
+
+  const reply = await callTool(reloaded.ctx, executor2, 'workspace_message', {
+    action: 'send',
+    targetSessionId: String(dispatcher2.session.id),
+    text: 'acknowledged after the reload',
+  })
+  expect(reply.isError).toBe(false)
+  expect((valueOf(reply) as { sent: { status: string } }).sent.status).toBe('delivered')
+  expect(delivered.at(-1)?.text).toContain('acknowledged after the reload')
 })
 
 test('publish is idempotent for unchanged content and versions a changed file', async () => {

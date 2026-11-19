@@ -38,6 +38,8 @@ import type {
 import { MESSAGE_DELIVERY_STATUSES, URGENT_REASONS } from './records.ts'
 import { artifactVersion, listMessages, listTasks, readArtifact, readMessage, readTask, writeMessage } from './store.ts'
 import { resolveWorkspace } from './scope.ts'
+import type { WorkspaceScope } from './scope.ts'
+import { hasInboundDelivery, noteDispatch, workspaceOfSession } from './dispatch.ts'
 import { oneLine, requireCallerSession } from './tooling.ts'
 
 /** Longest accepted message body, in characters. */
@@ -126,11 +128,11 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       + 'or read messages a workspace delivered and their receipts. '
       + '`send` requires `targetSessionId` and `text` (at most 600 characters: conclusion, evidence, next step); '
       + '`requestId` is optional — omit it to send a new message, supply it so a retry returns the first result. '
-      + 'Same-workspace sends are allowed. A '
-      + 'cross-workspace send is allowed only as a task-bound return: the caller must be the task\'s '
-      + '`targetSessionId`, the target Session must be the task\'s `dispatcherSessionId`, and the task must live in '
-      + 'the caller\'s workspace; `retry` applies the same task-binding rule when the message crosses '
-      + 'workspaces. A delivery the host rejects is '
+      + 'Same-workspace sends are allowed, and `targetSessionId` alone is enough to reply across workspaces. '
+      + 'A cross-workspace send is allowed when a task binds it (the caller is the task\'s `targetSessionId`, the '
+      + 'target is the task\'s `dispatcherSessionId`, and the task lives in the caller\'s workspace), when the caller '
+      + 'is the super agent, or as a reply: every cross-workspace delivery is recorded, so a Session that received '
+      + 'one may answer its sender without a task. `retry` applies the same rules. A delivery the host rejects is '
       + 'recorded as `failed` with its reason and attempt count instead of being lost. `status` returns one message '
       + 'by `messageId` (or the newest message for `targetSessionId`) with its delivery state, failure reason, '
       + 'attempts, receipts, and references. `retry` re-delivers one `failed` message under its original identity; '
@@ -154,7 +156,7 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       },
       workspace: {
         type: 'string',
-        description: 'Registered workspace id to address; defaults to the caller\'s workspace.',
+        description: 'Registered workspace id to address; defaults to the caller\'s workspace, or to the target Session\'s workspace for a reply.',
       },
       targetSessionId: {
         type: 'string',
@@ -353,38 +355,71 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
     },
     async execute(args, exec) {
       const session = requireCallerSession(exec.agent?.session, 'workspace_message')
+      const role = exec.agent?.role ?? 'agent'
       if (args.action === 'send' || args.action === 'retry') {
-        const scope = await resolveWorkspace(ctx, session, `message.${args.action}`, args.workspace)
+        const callerScope = await resolveWorkspace(ctx, session, `message.${args.action}`)
         if (args.action === 'retry') {
+          const scope = args.workspace === undefined || args.workspace.trim() === ''
+            ? callerScope
+            : await resolveWorkspace(ctx, session, 'message.retry', args.workspace)
+          let retriedTarget: string | undefined
           if (scope.crossWorkspace) {
             const messageId = args.messageId?.trim() ?? ''
             if (messageId !== '') {
               const stored = await readMessage(ctx, scope.workspace.id, messageId, exec.signal)
               if (stored !== undefined) {
-                await boundTaskOf(
+                await crossWorkspaceAuthority(
                   ctx,
+                  callerScope.workspace,
                   session,
                   stored.message.targetSessionId,
                   stored.message.taskId,
+                  role,
                   'retry',
                   exec.signal,
                 )
+                retriedTarget = stored.message.targetSessionId
               }
             }
           }
-          return {
-            workspace: String(scope.workspace.id),
-            sent: await retryMessage(ctx, scope.workspace, session, args.messageId, exec.signal),
+          const sent = await retryMessage(ctx, scope.workspace, session, args.messageId, exec.signal)
+          if (scope.crossWorkspace && retriedTarget !== undefined) {
+            await noteDispatch(ctx, scope.workspace, {
+              sourceSessionId: String(session.id),
+              targetSessionId: retriedTarget,
+              action: 'retry',
+              sourceRole: role,
+            }, exec.signal)
           }
+          return { workspace: String(scope.workspace.id), sent }
         }
         const targetSessionId = args.targetSessionId?.trim() ?? ''
-        const binding = scope.crossWorkspace && targetSessionId !== ''
-          ? await boundTaskOf(ctx, session, targetSessionId, args.taskId, 'send', exec.signal)
-          : undefined
-        return {
-          workspace: String(scope.workspace.id),
-          sent: await sendMessage(ctx, scope.workspace, session, args, binding, exec.agent?.role ?? 'agent', exec.signal),
+        const scope = targetSessionId === ''
+          ? callerScope
+          : await sendTargetScope(ctx, session, callerScope, targetSessionId, args.workspace)
+        let binding: TaskRecord | undefined
+        if (scope.crossWorkspace) {
+          binding = await crossWorkspaceAuthority(
+            ctx,
+            callerScope.workspace,
+            session,
+            targetSessionId,
+            args.taskId,
+            role,
+            'send',
+            exec.signal,
+          )
         }
+        const sent = await sendMessage(ctx, scope.workspace, session, args, binding, role, exec.signal)
+        if (scope.crossWorkspace) {
+          await noteDispatch(ctx, scope.workspace, {
+            sourceSessionId: String(session.id),
+            targetSessionId,
+            action: 'send',
+            sourceRole: role,
+          }, exec.signal)
+        }
+        return { workspace: String(scope.workspace.id), sent }
       }
       const scope = await resolveWorkspace(ctx, session, 'message.read', args.workspace)
       if (args.action === 'status') {
@@ -423,50 +458,137 @@ interface SendRequest {
 }
 
 /**
- * Resolve the task that authorizes one cross-workspace send.
+ * Resolve the workspace one send addresses.
  *
- * A cross-workspace send is allowed only as a task-bound return: the task lives
- * in the caller's workspace, its `targetSessionId` is the caller, and its
+ * A named workspace is used as before. Without one, the target Session's own
+ * registration is used, so a reply needs only the Session id its delivery
+ * header named; a target in the caller's workspace stays in that scope.
+ * @param ctx - context carrying the workspace registry.
+ * @param session - sending Session.
+ * @param callerScope - the caller's own workspace scope.
+ * @param targetSessionId - Session the send addresses.
+ * @param requested - workspace id the caller named, when it named one.
+ * @returns the workspace scope the delivery addresses.
+ */
+async function sendTargetScope(
+  ctx: Context,
+  session: Session,
+  callerScope: WorkspaceScope,
+  targetSessionId: string,
+  requested: string | undefined,
+): Promise<WorkspaceScope> {
+  const requestedId = requested?.trim()
+  if (requestedId !== undefined && requestedId.length > 0) {
+    return await resolveWorkspace(ctx, session, 'message.send', requestedId)
+  }
+  const owner = workspaceOfSession(ctx, targetSessionId)
+  if (owner === undefined || String(owner.id) === String(callerScope.workspace.id)) return callerScope
+  ctx.logger.info(
+    'workspace-tools: cross-workspace message.send from session %s into workspace %s',
+    String(session.id),
+    String(owner.id),
+  )
+  return { workspace: owner, crossWorkspace: true }
+}
+
+/**
+ * Find the task that binds one cross-workspace caller to its target.
+ *
+ * A task-bound return keeps working exactly as before: the task lives in the
+ * caller's workspace, its `targetSessionId` is the caller, and its
  * `dispatcherSessionId` is the target Session. With `taskId` the caller names
  * the task; without it the one task that binds this caller and target is used.
- * @param ctx - context carrying the store and registry.
- * @param session - sending Session.
+ * @param ctx - context carrying the store.
+ * @param callerWorkspace - workspace that accounts for the caller.
+ * @param callerSessionId - session doing the send or retry.
  * @param targetSessionId - target Session of the send or retry.
  * @param taskId - caller-named or message-recorded task, when one was supplied.
- * @param action - `send` or `retry`, for the refusal message.
  * @param signal - cancellation for the store reads.
- * @returns the binding task.
- * @throws WorkspaceMessageError `WORKSPACE_MESSAGE_FORBIDDEN` when no task binds this cross-workspace delivery.
+ * @returns the binding task, or undefined when none binds this pair.
  */
-async function boundTaskOf(
+async function boundTask(
   ctx: Context,
+  callerWorkspace: Workspace,
+  callerSessionId: string,
+  targetSessionId: string,
+  taskId: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<TaskRecord | undefined> {
+  if (taskId === undefined) {
+    return (await listTasks(ctx, callerWorkspace.id, signal)).find(candidate =>
+      candidate.targetSessionId === callerSessionId
+        && candidate.dispatcherSessionId === targetSessionId)
+  }
+  const task = (await readTask(ctx, callerWorkspace.id, taskId, signal))?.task
+  if (task === undefined) return undefined
+  return task.targetSessionId === callerSessionId && task.dispatcherSessionId === targetSessionId
+    ? task
+    : undefined
+}
+
+/**
+ * The refusal for a cross-workspace send with neither a task nor a recorded delivery.
+ * @param callerSessionId - session doing the send or retry.
+ * @param targetSessionId - target Session of the send or retry.
+ * @param action - `send` or `retry`.
+ * @param taskId - the task the caller named, when it named one.
+ * @returns the refusal to throw.
+ */
+function crossWorkspaceRefusal(
+  callerSessionId: string,
+  targetSessionId: string,
+  action: 'send' | 'retry',
+  taskId: string | undefined,
+): WorkspaceMessageError {
+  return new WorkspaceMessageError(
+    taskId === undefined
+      ? `a cross-workspace ${action} from session ${callerSessionId} to session ${targetSessionId} requires a task `
+        + 'in the caller\'s workspace whose targetSessionId is the caller and whose dispatcherSessionId is the target, '
+        + 'or a recorded delivery from the target Session to the caller'
+      : `task ${JSON.stringify(taskId)} does not bind session ${callerSessionId} to session ${targetSessionId}: `
+        + 'the task must live in the caller\'s workspace, with targetSessionId the caller and '
+        + 'dispatcherSessionId the target',
+    'WORKSPACE_MESSAGE_FORBIDDEN',
+  )
+}
+
+/**
+ * Authorize one cross-workspace send or retry and return its binding task.
+ *
+ * A task binding wins and is recorded on the message; otherwise the super agent
+ * may open a cross-workspace delivery, and any Session may reply to one that a
+ * target Session already delivered to it. The recorded-delivery right is
+ * durable, so a Session reload does not close the reply path.
+ * @param ctx - context carrying the store and registry.
+ * @param callerWorkspace - workspace that accounts for the caller.
+ * @param session - session doing the send or retry.
+ * @param targetSessionId - target Session.
+ * @param taskId - task the caller named, when it named one.
+ * @param role - the caller's role.
+ * @param action - `send` or `retry`.
+ * @param signal - cancellation for the store reads.
+ * @returns the binding task, when one authorized this delivery.
+ * @throws WorkspaceMessageError `WORKSPACE_MESSAGE_FORBIDDEN` when nothing authorizes the delivery.
+ */
+async function crossWorkspaceAuthority(
+  ctx: Context,
+  callerWorkspace: Workspace,
   session: Session,
   targetSessionId: string,
   taskId: string | undefined,
+  role: AgentRole,
   action: 'send' | 'retry',
   signal: AbortSignal | undefined,
-): Promise<TaskRecord> {
-  const caller = await resolveWorkspace(ctx, session, 'message.send')
+): Promise<TaskRecord | undefined> {
   const callerSessionId = String(session.id)
-  const task = taskId === undefined
-    ? (await listTasks(ctx, caller.workspace.id, signal)).find(candidate =>
-      candidate.targetSessionId === callerSessionId
-        && candidate.dispatcherSessionId === targetSessionId)
-    : (await readTask(ctx, caller.workspace.id, taskId, signal))?.task
-  if (task === undefined
-    || task.targetSessionId !== callerSessionId
-    || task.dispatcherSessionId !== targetSessionId) {
-    throw new WorkspaceMessageError(
-      taskId === undefined
-        ? `a cross-workspace ${action} from session ${callerSessionId} to session ${targetSessionId} requires a task `
-          + 'in the caller\'s workspace whose targetSessionId is the caller and whose dispatcherSessionId is the target'
-        : `task ${JSON.stringify(taskId)} does not bind session ${callerSessionId} to session ${targetSessionId}: `
-          + 'the task must live in the caller\'s workspace, with targetSessionId the caller and '
-          + 'dispatcherSessionId the target',
-      'WORKSPACE_MESSAGE_FORBIDDEN',
-    )
+  const binding = await boundTask(ctx, callerWorkspace, callerSessionId, targetSessionId, taskId, signal)
+  if (taskId !== undefined && binding === undefined) {
+    throw crossWorkspaceRefusal(callerSessionId, targetSessionId, action, taskId)
   }
-  return task
+  if (binding !== undefined) return binding
+  if (role === 'super') return undefined
+  if (await hasInboundDelivery(ctx, callerWorkspace, callerSessionId, targetSessionId, signal)) return undefined
+  throw crossWorkspaceRefusal(callerSessionId, targetSessionId, action, undefined)
 }
 
 /**

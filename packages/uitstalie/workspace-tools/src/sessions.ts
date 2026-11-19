@@ -29,6 +29,7 @@ import { resolveWorkspace, workspaceDirectory } from './scope.ts'
 import { listArtifacts, listMessages, listTasks } from './store.ts'
 import type { SessionRosterEntry, TaskRecord } from './records.ts'
 import { actorOf, noteRosterArchive, noteRosterFork, noteRosterStart, reconcileRoster } from './roster.ts'
+import { noteDispatch } from './dispatch.ts'
 import { oneLine, requireCallerSession } from './tooling.ts'
 
 /** One derived status of a workspace session. */
@@ -756,6 +757,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
           ...model === undefined ? {} : { model },
           signal,
         })
+        if (started.admitted) await noteSessionDispatch(ctx, workspace, session, started.sessionId, exec.agent?.role, action)
         return { workspace: String(workspace.id), started }
       }
 
@@ -781,12 +783,14 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
             ...model === undefined ? {} : { model },
             signal,
           })
+          if (started.admitted) await noteSessionDispatch(ctx, workspace, session, started.sessionId, exec.agent?.role, action)
           return { workspace: String(workspace.id), started }
         }
         const sessionId = String(target.sessionId)
         await applySessionModel(controller, sessionId, model)
         const delivery = decideDelivery(requestedDelivery, target.running)
         const admitted = await admit(controller, sessionId, delivery.used, text, action, deliveryHeader(workspace, exec.agent?.role ?? 'agent', String(session.id)), signal)
+        if (admitted) await noteSessionDispatch(ctx, workspace, session, sessionId, exec.agent?.role, action)
         return {
           workspace: String(workspace.id),
           delivery: deliveryOf(sessionId, requestedDelivery, delivery, target.running, admitted),
@@ -801,6 +805,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         await applySessionModel(controller, sessionId, model)
         const delivery = decideDelivery(requestedDelivery, target.running)
         const admitted = await admit(controller, sessionId, delivery.used, text, action, deliveryHeader(workspace, exec.agent?.role ?? 'agent', String(session.id)), signal)
+        if (admitted) await noteSessionDispatch(ctx, workspace, session, sessionId, exec.agent?.role, action)
         return {
           workspace: String(workspace.id),
           delivery: deliveryOf(sessionId, requestedDelivery, delivery, target.running, admitted),
@@ -815,6 +820,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         await applySessionModel(controller, sessionId, model)
         const delivery = decideDelivery(requestedDelivery, target.running)
         const admitted = await admit(controller, sessionId, delivery.used, text, action, deliveryHeader(workspace, exec.agent?.role ?? 'agent', String(session.id)), signal)
+        if (admitted) await noteSessionDispatch(ctx, workspace, session, sessionId, exec.agent?.role, action)
         return {
           workspace: String(workspace.id),
           delivery: deliveryOf(sessionId, requestedDelivery, delivery, target.running, admitted),
@@ -850,6 +856,7 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
         await cancelSession(controller, sessionId, 'abort')
         const delivery = decideDelivery('queue', false)
         const admitted = await admit(controller, sessionId, delivery.used, text, action, deliveryHeader(workspace, exec.agent?.role ?? 'agent', String(session.id)), signal)
+        if (admitted) await noteSessionDispatch(ctx, workspace, session, sessionId, exec.agent?.role, action)
         return {
           workspace: String(workspace.id),
           aborted: { sessionId, accepted: true, resumed: admitted },
@@ -1218,6 +1225,33 @@ async function admit(
 function deliveryHeader(workspace: Workspace, role: AgentRole, sourceSessionId: string): string {
   return `[workspace_session] from ${role} ${sourceSessionId} in ${workspace.title} (${String(workspace.id)})\n`
     + `reply to ${sourceSessionId} with workspace_message.send`
+}
+
+/**
+ * Record one admitted delivery's cross-workspace relation, so the receiving
+ * Session can reply through the header without a pre-created task. A
+ * same-workspace delivery records nothing because it is always replyable.
+ * @param ctx - context carrying the store and registry.
+ * @param targetWorkspace - workspace that received the delivery.
+ * @param caller - Session that dispatched.
+ * @param targetSessionId - Session the delivery reached.
+ * @param role - sender's role, when known.
+ * @param action - lifecycle action that delivered.
+ */
+async function noteSessionDispatch(
+  ctx: Context,
+  targetWorkspace: Workspace,
+  caller: Session,
+  targetSessionId: string,
+  role: AgentRole | undefined,
+  action: WorkspaceSessionAction,
+): Promise<void> {
+  await noteDispatch(ctx, targetWorkspace, {
+    sourceSessionId: String(caller.id),
+    targetSessionId,
+    action,
+    ...role === undefined ? {} : { sourceRole: role },
+  })
 }
 
 /**

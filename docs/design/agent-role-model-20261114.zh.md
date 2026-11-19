@@ -54,7 +54,7 @@
 | `tool-dsh-store` | agent+（新增）；`minRole: agent` | `agent` | 规则/技能管理 | 对 subagent 隐藏 |
 | `memory_write` / `memory_forget` | agent+（新增）；`memory/src/tools.ts:42-43` `minRole: agent` | `agent` | 单一写入者 | 无写权限（新近隐藏） |
 | `memory_search` | subagent+（新增）；`memory/src/api.ts:273` scope 为 `all`，工具携带 `minRole: subagent`（`memory/src/tools.ts:44`） | `subagent` | 研究可能需要历史 | 现在可用；无损失 |
-| `workspace_sessions` / `workspace_intents` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+（新增）；`minRole: subagent`（`packages/uitstalie/workspace-tools/src/tools.ts:27-31`），动作级角色检查在各工具内 | `subagent` | 读对工作区内所有 agent 开放；写动作对工作区内任何 agent 开放：生命周期、卡写入与任务 create/update/receipt 均可用，跨工作区写要求 super；跨工作区发送只按任务绑定放行 | 现在可用；本工作区可写，跨工作区写受门控 |
+| `workspace_sessions` / `workspace_intents` / `workspace_tasks` / `workspace_message` / `workspace_artifacts` | subagent+（新增）；`minRole: subagent`（`packages/uitstalie/workspace-tools/src/tools.ts:27-31`），动作级角色检查在各工具内 | `subagent` | 读对工作区内所有 agent 开放；写动作对工作区内任何 agent 开放：生命周期、卡写入与任务 create/update/receipt 均可用，跨工作区写要求 super；跨工作区发送由任务绑定、super 角色或回复一条已记录的投递放行 | 现在可用；本工作区可写，跨工作区写受门控 |
 | `schedule_create/edit/list/view` | agent+（新增）；`minRole: agent`，保留运行时防护 | `agent` | subagent 无法触达下一次触发 | 对 subagent 隐藏；运行时拒绝仍然存在 |
 | `plugin_manager` | agent+（新增）；`minRole: agent` | `agent` | 全局 profile 管理 | 对 subagent 隐藏 |
 | `subagent` / `subagent_fork` / `workflow` | agent+（新增）；`minRole: agent` | `agent` | 不支持嵌套扇出 | 对 subagent 隐藏；深度防护仍然存在 |

@@ -18,6 +18,7 @@ import type {
   ArtifactGrant,
   ArtifactRecord,
   ArtifactReference,
+  DispatchRelation,
   MessageRecord,
   SessionRosterEntry,
   TaskRecord,
@@ -125,6 +126,19 @@ const messageSchema = z.strictObject({
   })),
 }) satisfies z.ZodType<MessageRecord>
 
+/** Durable dispatch-relation schema. */
+const dispatchRelationSchema = z.strictObject({
+  workspaceId: z.string().min(1),
+  sourceSessionId: z.string().min(1),
+  targetSessionId: z.string().min(1),
+  sourceWorkspaceId: z.string().min(1).optional(),
+  sourceRole: z.enum(['subagent', 'agent', 'super']).optional(),
+  lastAction: z.string().min(1),
+  firstAt: z.string(),
+  lastAt: z.string(),
+  deliveries: z.number().int().positive(),
+}) satisfies z.ZodType<DispatchRelation>
+
 /** Durable session-roster schema. */
 const rosterSchema = z.strictObject({
   sessionId: z.string().min(1),
@@ -215,6 +229,11 @@ export function requestsDirectory(workspaceId: WorkspaceId | string): string {
   return `${WORKSPACE_STATE_ROOT}/${String(workspaceId)}/requests`
 }
 
+/** Relative directory of one workspace's recorded dispatch relations. */
+export function dispatchesDirectory(workspaceId: WorkspaceId | string): string {
+  return `${WORKSPACE_STATE_ROOT}/${String(workspaceId)}/dispatches`
+}
+
 /** Relative path of one task record. */
 export function taskPath(workspaceId: WorkspaceId | string, taskId: string): string {
   return `${tasksDirectory(workspaceId)}/${safeSegment(taskId)}.json`
@@ -243,6 +262,11 @@ export function grantPath(workspaceId: WorkspaceId | string, artifactId: string,
 /** Relative path of one artifact-access request. */
 export function requestPath(workspaceId: WorkspaceId | string, requestId: string): string {
   return `${requestsDirectory(workspaceId)}/${safeSegment(requestId)}.json`
+}
+
+/** Relative path of one dispatch relation. */
+export function dispatchPath(workspaceId: WorkspaceId | string, sourceSessionId: string, targetSessionId: string): string {
+  return `${dispatchesDirectory(workspaceId)}/${safeSegment(`${sourceSessionId}~${targetSessionId}`)}.json`
 }
 
 /**
@@ -353,6 +377,93 @@ export async function listMessages(
 ): Promise<MessageRecord[]> {
   const messages = await listJson(ctx, messagesDirectory(workspaceId), messageSchema, signal)
   return messages.sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.messageId.localeCompare(right.messageId))
+}
+
+/**
+ * Read one dispatch relation the receiving workspace recorded.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that received the delivery.
+ * @param sourceSessionId - Session that delivered.
+ * @param targetSessionId - Session the delivery reached.
+ * @param signal - cancellation for the store read.
+ * @returns the relation, or undefined when the delivery was never recorded.
+ */
+export async function readDispatchRelation(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  sourceSessionId: string,
+  targetSessionId: string,
+  signal?: AbortSignal,
+): Promise<DispatchRelation | undefined> {
+  const stored = await readJson(ctx, dispatchPath(workspaceId, sourceSessionId, targetSessionId), dispatchRelationSchema, signal)
+  return stored?.value
+}
+
+/** One delivery to record, before the relation's own counters are merged. */
+export interface DispatchDelivery {
+  /** Session that sent the delivery. */
+  readonly sourceSessionId: string
+  /** Session the delivery reached. */
+  readonly targetSessionId: string
+  /** Workspace that sent the delivery, when known. */
+  readonly sourceWorkspaceId?: string | undefined
+  /** Role the sender held. */
+  readonly sourceRole?: 'subagent' | 'agent' | 'super' | undefined
+  /** Action that recorded the delivery. */
+  readonly lastAction: string
+  /** ISO-8601 delivery instant; defaults to now. */
+  readonly at?: string | undefined
+}
+
+/**
+ * Record or refresh one dispatch relation in the receiving workspace.
+ *
+ * The relation is the receiver's reply authority: it survives a host restart
+ * and a Session reload because it is one durable file, keyed by the sending and
+ * receiving Session ids.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that received the delivery.
+ * @param delivery - the delivery to record.
+ * @param options - Session for the store write and cancellation for the read.
+ * @returns the merged relation.
+ */
+export async function recordDispatchRelation(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  delivery: DispatchDelivery,
+  options: { readonly session?: Session; readonly signal?: AbortSignal } = {},
+): Promise<DispatchRelation> {
+  const existing = await readDispatchRelation(
+    ctx, workspaceId, delivery.sourceSessionId, delivery.targetSessionId, options.signal,
+  )
+  const at = delivery.at ?? new Date().toISOString()
+  const relation: DispatchRelation = existing === undefined
+    ? {
+      workspaceId: String(workspaceId),
+      sourceSessionId: delivery.sourceSessionId,
+      targetSessionId: delivery.targetSessionId,
+      ...delivery.sourceWorkspaceId === undefined ? {} : { sourceWorkspaceId: delivery.sourceWorkspaceId },
+      ...delivery.sourceRole === undefined ? {} : { sourceRole: delivery.sourceRole },
+      lastAction: delivery.lastAction,
+      firstAt: at,
+      lastAt: at,
+      deliveries: 1,
+    }
+    : {
+      ...existing,
+      ...delivery.sourceWorkspaceId === undefined ? {} : { sourceWorkspaceId: delivery.sourceWorkspaceId },
+      ...delivery.sourceRole === undefined ? {} : { sourceRole: delivery.sourceRole },
+      lastAction: delivery.lastAction,
+      lastAt: at,
+      deliveries: existing.deliveries + 1,
+    }
+  await ctx.dshStore.writeFile(
+    options.session,
+    dispatchPath(workspaceId, delivery.sourceSessionId, delivery.targetSessionId),
+    `${JSON.stringify(relation, undefined, 2)}\n`,
+    { scope: 'global' },
+  )
+  return relation
 }
 
 /**

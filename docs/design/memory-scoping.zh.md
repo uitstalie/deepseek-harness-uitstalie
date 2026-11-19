@@ -235,7 +235,7 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 - `read` 返回消息及其回执：`{ messageId, targetSessionId, sourceSessionId, sourceRole, text, references, receipts: [{ at, status }], nextCursor? }`。`text` 是发送方写的正文；实际投递的文本前面还有来源头。
 - `priority` 默认 `normal`；`urgent` 只限下面三种情况。
 - `replyTo` 把回复挂到它回答的消息上。
-- 范围：同一工作区的会话可以互发（任何 agent）；跨工作区发送只按任务绑定放行：任务在调用者工作区、`targetSessionId` 是调用者、`dispatcherSessionId` 是发送目标（已实现，6.5 节）。目标必须是该工作区里的会话；不支持广播；正文限制在一屏内。
+- 范围：同一工作区的会话可以互发（任何 agent）；跨工作区发送由任务绑定（任务在调用者工作区、`targetSessionId` 是调用者、`dispatcherSessionId` 是发送目标）、super agent，或回复一个已向调用者工作区投递过的会话来放行；每次跨工作区投递都会留痕（已实现，6.5 节）。目标必须是该工作区里的会话；不支持广播；正文限制在一屏内。
 
 来源由工具负责。投递的消息是两个文本块：先是头 `[workspace_message] from <role> <sessionId> in <工作区标题> (<workspaceId>)`，接着 `Task <taskId> · reply to <sessionId> with workspace_message.send`（没有任务时写 `No task bound`），最后是正文。发送方把 `sourceRole` 记在记录上，所以 `retry` 会重建同一个头，目标不用猜谁发的、回哪里。
 
@@ -348,7 +348,7 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 
 `workspace_message.send` 是主投递路径：
 
-输入：`{ workspace?, targetSessionId, kind: 'message' | 'followup', text, priority?: 'normal' | 'urgent', urgentReason?, replyTo?, references?, taskId?, requestId }`。urgent 消息必须用 `urgentReason` 给出 5.4 节三种情况之一，这是工具对三种情况的机器可校验实现。`workspace` 指定别的工作区目标时按任务绑定放行（6.5 节）；省略时用调用者自己的工作区。
+输入：`{ workspace?, targetSessionId, kind: 'message' | 'followup', text, priority?: 'normal' | 'urgent', urgentReason?, replyTo?, references?, taskId?, requestId }`。urgent 消息必须用 `urgentReason` 给出 5.4 节三种情况之一，这是工具对三种情况的机器可校验实现。`workspace` 指定别的工作区目标时，只有任务绑定、super 角色或已记录的投递授权时才放行（6.5 节）；省略时用调用者自己的工作区，回信时按目标会话自身的注册解析。
 
 - `text` 限制在一屏内。schema 上限 600 字符，工具描述要求三段：结论、依据、下一步，最多六行。
 - `references` 是产物引用列表。消息体里永远不放文件内容。
@@ -394,11 +394,11 @@ ArtifactRef = { artifactId, workspaceId, path, sha256, size, version,
 
 工作区请求是通用能力，不是某个角色的专属流程。任意 agent 都可以经 `workspace_message`（`send`/`read`/`status`/`retry`）向同一工作区的其他 agent/session 发起请求，也可以经 `workspace_sessions` 的 `run`/`start`/`append`/`prompt` 启动或继续会话。意图卡与 `workspace_tasks` 只在需要正式任务记录、需要规范 session 信息沟通与管理时使用；简单的或明确的动作直接执行或直接发请求，不需要单独发卡，也不存在所有动作都必须经过的固定顺序。`run`、`append`、`prompt` 与 `abort` 继续已有会话，不创建第二条任务。不确定的范围先向人确认（全局人设提示词规则）。
 
-两条路径并存。超级工作区（派发方）用同一套工具调用派发：super agent 用 `workspace_tasks.create` 建正式任务，用 `workspace_sessions.start`/`prompt` 启动或继续执行会话，用 `workspace_message.read`/`status` 读取执行方回传；跨工作区回传只按任务绑定放行。这不收窄通用能力：任何 agent 仍可经 `workspace_message` 发同工作区请求、经 `workspace_sessions` 启动或继续会话。
+两条路径并存。超级工作区（派发方）用同一套工具调用派发：super agent 用 `workspace_tasks.create` 建正式任务，用 `workspace_sessions.start`/`prompt` 启动或继续执行会话，用 `workspace_message.read`/`status` 读取执行方回传；跨工作区回传由任务绑定或投递本身记录的派发关系放行。这不收窄通用能力：任何 agent 仍可经 `workspace_message` 发同工作区请求、经 `workspace_sessions` 启动或继续会话。
 
 写动作门控（已实现）：本工作区内的写动作对任何 agent 开放——`workspace_tasks.create`/`update`/`receipt`、`workspace_intents.create`/`confirm`/`correct` 与 `workspace_sessions` 的生命周期写动作都只要求调用者在目标工作区内；跨工作区写仍要求 super agent。跨工作区发送不按角色放行，只按下一段的回传契约放行。
 
-回传契约（已实现）：`workspace_tasks.create` 把调用者会话 id 记入任务的 `dispatcherSessionId`；执行者用 `workspace_message.send` 带 `taskId` 回传给发起该任务的会话，消息记录保存 `taskId`、`requestId` 与产物引用，`requestId` 幂等，重复调用返回第一次的结果。跨工作区发送只在任务绑定时放行：任务在调用者工作区，`targetSessionId` 是调用者，`dispatcherSessionId` 是发送目标；给出 `taskId` 时按它定位任务，未给出时按 caller=`targetSessionId` 查找绑定任务。同工作区发送不受此限制。`status` 报告投递状态、失败原因与尝试次数；`retry` 用同一身份重发 `failed` 消息，跨工作区 `retry` 与 `send` 使用同一任务绑定；任务状态只经 `workspace_tasks` 的 `update` 与 `receipt`，消息投递不改变任务状态。
+回传契约（已实现）：`workspace_tasks.create` 把调用者会话 id 记入任务的 `dispatcherSessionId`；执行者用 `workspace_message.send` 带 `taskId` 回传给发起该任务的会话，消息记录保存 `taskId`、`requestId` 与产物引用，`requestId` 幂等，重复调用返回第一次的结果。跨工作区发送由任务绑定（任务在调用者工作区，`targetSessionId` 是调用者，`dispatcherSessionId` 是发送目标）、super agent 或来自目标的已记录投递放行；给出 `taskId` 时按它定位任务，未给出时按 caller=`targetSessionId` 查找绑定任务。同工作区发送不受此限制。`status` 报告投递状态、失败原因与尝试次数；`retry` 用同一身份重发 `failed` 消息，跨工作区 `retry` 与 `send` 使用同一授权；任务状态只经 `workspace_tasks` 的 `update` 与 `receipt`，消息投递不改变任务状态。
 
 派发先复用再新开（已实现）。`run` 是一次调用完成派发：继续目标会话（`sessionId`，不给就继续最近更新的那条），只有工作区里没有会话时才新开；`run` 加 `new_session: true` 会强制新开，`start` 也能在给首个任务时强制新开。派发前，派发方读 `workspace_sessions.get`，它的名册字段在 live 目标上带 `contextUsage: { tokens, window, percent }`；目标上下文超过阈值时先调 `compact`，让执行方带着余量接活。
 
@@ -549,18 +549,18 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 - 一个任务一个主人：任务记录只由 `workspace_tasks` 写。需要正式任务记录时，顺序是可选的 active 意图卡 → `workspace_tasks.create` → 可选的 `workspace_sessions.start`/`prompt`；简单或明确的动作不建卡、不建任务。没有派发历史副本，也没有第二份任务列表。回传只经 `workspace_message.send`，任务状态只经 `workspace_tasks`。
 - 消息优先级：紧急消息可以中断一个步骤。`workspace_message.send` 在标记 urgent 时要求给出 `urgentReason`（三种已命名情况之一），目标在运行时 steer 当前步骤，目标空闲时回退为排队。三种紧急情况很窄，普通消息永远不紧急；误判紧急是缺陷，要评审。
 - 引用失效：`publish`/`reference`/`send` 已交付，changed、missing、denied 可达且分开；引用在发送时固定，新版本需要新的引用。`request`/`grant` 已交付，所以 `pending` 与 `expired` 可达；授权按版本绑定、到期失效，且不会泄漏持有方没有做过的决定。跨工作区拒绝不泄漏产物是否存在。
-- 跨工作区授权：显式工作区 id、注册表成员校验、调用留痕。跨工作区发送只按任务绑定放行；没有绑定时，任何角色的调用都被拒绝。拉先查接收方，推先查发送方；不做隐式聚合。
+- 跨工作区授权：显式工作区 id、注册表成员校验、调用留痕。跨工作区发送由任务绑定、super agent 主动发起，或回复一个已向调用者工作区投递过的会话来放行；每次跨工作区投递都会留痕，因此回信权是持久的。拉先查接收方，推先查发送方；不做隐式聚合。
 - 丢失上下文压缩：compaction 预置太激进会丢上下文；把它做成可配置，用长会话测试，并保留上一版值以便回滚。
 - 确认通道：不确定的范围先向人确认（全局人设提示词规则）；确认请求有截止时间与可见状态，链路断开标为 `failed`，不静默挂起。
 - 迁移误分类：dry-run 逐条列出候选的类别、原因、主题、字节数与目标；apply 拒绝过期的报告哈希；备份让错误迁移可逆，日志让重复 dry-run 收敛。被误归档的 global 事实可以重新加回，代码回滚后仍能解析重写过的版本 1 文件。
 - 旧记忆外壳：按工作区的 `MEMORY.md` 读取器（`memory-file.ts`）、它的清理、窗口与 checkpoint 模块，以及 `memory` 设置行作为旧文件与迁移的兼容代码保留。它们没有活的写入或注入路径；等迁移在部署数据上跑过再删除。
 - 所有会话的爆炸半径：提示词或工具集的缺陷现在会波及普通会话。第 3 步按“先工具集、再切静态提示词与删注入”的顺序上线，并保留上一版提示词作为一版构建期回滚。零注入回归测试就是门禁：只要有一轮记忆消息被追加，构建自己的测试就会红。
-- 回传的任务绑定已实现：跨工作区发送要求任务在调用者工作区、`targetSessionId` 是调用者、`dispatcherSessionId` 是目标；`task.dispatcherSessionId` 由 `create` 写入。没有绑定的跨工作区发送（包括 super agent）一律拒绝。
+- 回传已实现两种形式：调用者工作区里的任务（`targetSessionId` 是调用者、`dispatcherSessionId` 是目标，`create` 据此写入 `task.dispatcherSessionId`），以及每次跨工作区投递都会写入的派发关系。两者都没有的普通 agent 仍被拒绝。
 
 ### 10.4 本轮确认
 
 - 任务状态：只用新词表；旧任务数据不迁移；以后需要时用一次性脚本。
-- 发消息：同工作区可互发（任何 agent）；跨工作区只按任务绑定回传放行（已实现）；发送方（任何 agent）标紧急，工具按三种情况校验；提示词教短回复。
+- 发消息：同工作区可互发（任何 agent）；跨工作区发送由任务绑定、super 角色或来自目标的已记录投递放行（已实现）；发送方（任何 agent）标紧急，工具按三种情况校验；提示词教短回复。
 - 回复格式：结论、依据、下一步；最多 6 行或 600 字符；文件用引用。
 - 任务类型：分析定位、修复、测试验证、迁移部署、设计文档、其他；封闭清单，只由评审改动。
 - 产物访问：拉用 `request`/`grant`，推用消息引用；由工具先执行哪个决定；同工作区策略可自动授权；跨工作区读取需要显式授权；denied、pending、expired、missing、changed 分开。
@@ -747,13 +747,13 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 - [ ] 消息与产物引用能往返。CI：`a message round-trips with its artifact reference`。Deploy：从 super agent 发给工作区会话并读回。
 - [ ] 用同一个 `requestId` 重试发送，返回第一条消息且不追加第二条。CI：`a repeated requestId returns the first message without a second delivery`。Deploy：重复调用并比较 id。
 - [ ] `workspace_sessions` 能回答“上一轮做了什么”。CI：`"what did I do last turn" is answered by workspace_sessions`。Deploy：在一个真实 turn 之后提问，确认答案是会话自己的进度，而不是记忆通知。
-- [ ] 跨工作区发送只在任务绑定时放行：非绑定发送（普通 agent 或 super agent）被拒绝，绑定发送成功且调用留痕。CI：`a cross-workspace send is allowed only as a task-bound return`。Deploy：两种都试一次。
+- [ ] 跨工作区发送有三种授权：任务绑定回传、super agent 主动发起、以及任何会话回复一个已向其工作区投递过的会话；两者皆无的普通 agent 被拒绝，回信权经重载仍在。CI：`a cross-workspace send needs a task, the super role, or a recorded delivery`、`a recorded dispatch authorizes the receiver to reply without a task` 与 `a recorded dispatch survives a reload`。Deploy：从超级工作区派发，接收会话免任务回信，然后重启宿主再回一次。
 - [ ] 发布工作区根外的路径被拒绝。CI：`publish refuses a path outside the workspace root and a missing file`。Deploy：用相对 `..` 路径重复一次。
 - [ ] 静态 `workspace-directory` 提示词段列出已注册工作区，且不含状态、任务或记忆数据。CI：`every session gets the same static workspace directory section`。Deploy：比较两个会话与 super agent 的提示词。
 
 ### 14.3 已验证：任务绑定的跨工作区回传
 
-- [ ] 执行者用 `workspace_message.send` 带 `taskId` 回传给发起会话；`workspace_tasks.create` 已写入 `dispatcherSessionId`，跨工作区发送只在任务绑定时放行（`targetSessionId` 是调用者、`dispatcherSessionId` 是目标）。CI：`a cross-workspace send is allowed only as a task-bound return` 覆盖绑定成功、非绑定拒绝与 `dispatcherSessionId` 回读；`delivery.spec.ts` 同时覆盖同工作区回传。Deploy：在真实派发上确认回传只走 `workspace_message.send`，不出现任何回合结束投递。
+- [ ] 执行者用 `workspace_message.send` 回传给发起会话；`workspace_tasks.create` 已写入 `dispatcherSessionId`，跨工作区发送由任务绑定（`targetSessionId` 是调用者、`dispatcherSessionId` 是目标）或任务投递记录的派发关系放行。CI：`a cross-workspace send needs a task, the super role, or a recorded delivery` 覆盖绑定成功、非绑定拒绝与 `dispatcherSessionId` 回读；`delivery.spec.ts` 同时覆盖同工作区回传。Deploy：在真实派发上确认回传只走 `workspace_message.send`，不出现任何回合结束投递。
 
 ### 14.4 第 4 步：只留 global 记忆并迁移
 
