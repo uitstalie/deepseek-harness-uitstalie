@@ -3,7 +3,7 @@ import { allowAllAccess, contextMenuHook, makeTranslate } from '@deepseek-ai/dsh
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { WorkspaceId, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { GlobalStandardProps, PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspacePickerInput } from '@deepseek-ai/dsh-client-ui-workspace/client'
@@ -23,8 +23,8 @@ function hook<T>(snapshot: T) {
   return function select<S>(selector: (state: T) => S): S { return selector(snapshot) }
 }
 
-const view = (id: string, title: string, sessionIds: SessionId[]) => ({
-  workspaceId: id as WorkspaceId, title, path: `/home/a/${title}`, sessionIds,
+const view = (id: string, title: string, sessionIds: SessionId[]): WorkspaceView => ({
+  workspaceId: id as WorkspaceId, title, path: `/home/a/${title}`, role: 'agent', sessionIds,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const workspaces: WorkspaceSnapshot = {

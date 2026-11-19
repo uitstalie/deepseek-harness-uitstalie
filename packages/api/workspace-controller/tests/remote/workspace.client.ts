@@ -54,6 +54,7 @@ export function workspace(id: string, overrides: Partial<WorkspaceView> = {}): W
     workspaceId: id as WorkspaceId,
     path: `/work/${id}`,
     title: id,
+    role: 'agent',
     sessionIds: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

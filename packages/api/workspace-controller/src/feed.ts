@@ -9,6 +9,7 @@ import type { Workspace, WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
 import {
   workspaceDomainState,
   workspaceRecord,
+  workspaceRoleOf,
 } from '@deepseek-ai/dsh-workspace'
 import type {
   WorkspaceBaseline,
@@ -29,6 +30,7 @@ export function workspaceView(workspace: Workspace): WorkspaceView {
     workspaceId: workspace.id,
     path: workspace.path,
     title: workspace.title,
+    role: workspace.role,
     sessionIds: [...workspace.sessionIds],
     createdAt: workspace.createdAt,
     updatedAt: workspace.updatedAt,
@@ -41,6 +43,7 @@ function changedWorkspaceView(workspaceId: string, value: unknown): WorkspaceVie
     workspaceId: brandString<WorkspaceId>(workspaceId),
     path: record.path,
     title: record.title,
+    role: workspaceRoleOf(record.role),
     sessionIds: [...record.sessionIds],
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

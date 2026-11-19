@@ -84,7 +84,7 @@ const branchedList = (
   }
 }
 const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView => ({
-  workspaceId: wid(id), path: `/projects/${id}`, title,
+  workspaceId: wid(id), path: `/projects/${id}`, title, role: 'agent',
   sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const view = (expandedGroups: readonly string[] = [], ungroupedOrder?: readonly string[]) => ({

@@ -43,8 +43,11 @@ const sessionState = (items: readonly SessionSummary[]): SessionListState => ({
   projectionsBySession: {},
 })
 const workspace = (id: string, sessionIds: readonly string[]): WorkspaceView => ({
-  workspaceId: id as WorkspaceId, path: `/projects/${id}`, title: id,
+  workspaceId: id as WorkspaceId, path: `/projects/${id}`, title: id, role: 'agent',
   sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+})
+const superWorkspace = (id: string, sessionIds: readonly string[] = []): WorkspaceView => ({
+  ...workspace(id, sessionIds), role: 'super',
 })
 const workspaceState = (
   items: readonly WorkspaceView[],
@@ -129,7 +132,11 @@ async function bench(access: 'fake' | 'static' = 'fake') {
   let workspaceSnapshot = workspaceState([])
   let sessionSnapshot = sessionState([])
   const subscribe = () => () => {}
-  const workspacesSubscribe = vi.fn(subscribe)
+  const workspaceListeners = new Set<() => void>()
+  const workspacesSubscribe = vi.fn((listener: () => void) => {
+    workspaceListeners.add(listener)
+    return () => { workspaceListeners.delete(listener) }
+  })
   const initializeDefault = vi.fn(async (): Promise<WorkspaceView | undefined> => undefined)
   ctx.provide('workspaces', {
     list: { getSnapshot: () => workspaceSnapshot, subscribe: workspacesSubscribe },
@@ -174,6 +181,7 @@ async function bench(access: 'fake' | 'static' = 'fake') {
     retain, using, selectPanel, search, renameSession, binding, fork, pickDirectory, pinSession, unpinSession,
     workspacesSubscribe, initializeDefault, history, scope, sessionOf,
     setWorkspaces: (snapshot: WorkspaceSnapshot): void => { workspaceSnapshot = snapshot },
+    notifyWorkspaces: (): void => { for (const listener of workspaceListeners) listener() },
     setSessions: (snapshot: SessionListState): void => { sessionSnapshot = snapshot },
   }
 }
@@ -243,6 +251,27 @@ describe('ui-workspace apply', () => {
       'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts', 'remoteAccess',
       'uiSession', 'uiSession.sessionStatus',
     ])
+  })
+
+  it('lifts the durable super workspace into its own sidebar section and follows the Workspace list', async () => {
+    const b = await bench()
+    onTestFinished(() => b.ctx.fiber.dispose())
+    b.setWorkspaces(workspaceState([superWorkspace('super-home', ['dispatcher']), workspace('alpha', [])]))
+    await b.ctx.plugin({ inject: [...inject], apply }, syncedConfig({ recentViewLimit: 10 })).await()
+    expect(b.ctx.workspaceGroups.list()).toMatchObject([{ id: 'super', workspaceId: 'super-home' }])
+    // The heading copy is read at render time, from the bound locale.
+    expect(b.ctx.workspaceGroups.list()[0]!.label()).toBe('超级工作区')
+
+    // Losing the role (or the Workspace) removes the section: an ordinary
+    // checkout never renders one.
+    b.setWorkspaces(workspaceState([workspace('alpha', [])]))
+    b.notifyWorkspaces()
+    expect(b.ctx.workspaceGroups.list()).toEqual([])
+
+    // A late baseline that marks the home registers it without a reload.
+    b.setWorkspaces(workspaceState([superWorkspace('super-again')]))
+    b.notifyWorkspaces()
+    expect(b.ctx.workspaceGroups.list()).toMatchObject([{ id: 'super', workspaceId: 'super-again' }])
   })
 
   it('publishes the Workspace access Hook over the remoteAccess service', async () => {

@@ -171,6 +171,34 @@ export function apply(ctx: Context, config: SyncedConfig<WorkspaceNavigationConf
   )
   // Special Workspaces (the super agent's home) register here and render in their own section.
   const workspaceGroups = new WorkspaceGroupRegistry(ctx)
+  // The durable Workspace record marks at most one Workspace as the super
+  // agent's home. The browser lifts that Workspace into its own labelled
+  // section above the ordinary checkouts, so the role is visible where the
+  // Workspaces are listed; an ordinary checkout never renders the section.
+  const t = ctx.locale.bind(NS)
+  let shownSuperId: string | undefined
+  let disposeSuperGroup: (() => void) | undefined
+  const syncSuperGroup = (): void => {
+    const superWorkspace = workspaces.list.getSnapshot().items.find(view => view.role === 'super')
+    const nextId = superWorkspace === undefined ? undefined : String(superWorkspace.workspaceId)
+    if (nextId === shownSuperId) return
+    shownSuperId = nextId
+    disposeSuperGroup?.()
+    disposeSuperGroup = superWorkspace === undefined ? undefined : workspaceGroups.register({
+      id: 'super',
+      label: () => t('section.superWorkspace'),
+      workspaceId: superWorkspace.workspaceId,
+    })
+  }
+  ctx.effect(() => {
+    syncSuperGroup()
+    const stop = workspaces.list.subscribe(syncSuperGroup)
+    return () => {
+      stop()
+      disposeSuperGroup?.()
+      disposeSuperGroup = undefined
+    }
+  }, 'ui-workspace: super workspace section')
   ctx.slots.provideRoot({
     hooks: { workspaces: workspaces.list },
     keyedHooks: {

@@ -59,6 +59,7 @@ function workspace(
     workspaceId: wid(id),
     path: `/w/${id}`,
     title: id,
+    role: 'agent',
     sessionIds,
     createdAt,
     updatedAt: createdAt,

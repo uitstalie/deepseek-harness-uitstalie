@@ -357,6 +357,27 @@ describe('WorkspaceController follow', () => {
     }).toThrow('references missing Workspace "missing"')
   })
 
+  it('projects the durable Workspace role in the baseline and in later role changes', async () => {
+    const { ctx, root } = await harness()
+    const ordinary = await ctx.workspaceRegistry.create(stageDir(root, 'ordinary'))
+    const home = await ctx.workspaceRegistry.create(stageDir(root, 'super-home'), undefined, 'super')
+    const feed = new WorkspaceFeed(ctx)
+    const items = feed.baseline().items
+    expect(items.find(item => item.workspaceId === ordinary.id)?.role).toBe('agent')
+    expect(items.find(item => item.workspaceId === home.id)?.role).toBe('super')
+
+    const abort = new AbortController()
+    const iterator = feed.follow(abort.signal)[Symbol.asyncIterator]()
+    try {
+      await expect(nextFrame(iterator)).resolves.toMatchObject({ type: 'baseline' })
+      await home.setRole('agent')
+      await expect(nextFrame(iterator)).resolves.toMatchObject({ type: 'upsert', workspace: { role: 'agent' } })
+    } finally {
+      abort.abort()
+      await iterator.return?.()
+    }
+  })
+
   it('starts a fresh feed with existing pins and follows their removal', async () => {
     const { controller, ctx, root } = await harness()
     const session = ctx.sessions.create(brandString<SessionId>('already-pinned'), { meta: { cwd: root } })

@@ -21,6 +21,11 @@ export interface WorkspaceView {
   readonly path: string
   /** User-visible title. */
   readonly title: string
+  /**
+   * Durable role of the Workspace, resolved from its stored record: `super`
+   * for the super agent's home, `agent` for every ordinary checkout.
+   */
+  readonly role: 'agent' | 'super'
   /** Sessions accounted to this Workspace in manual order. */
   readonly sessionIds: readonly SessionId[]
   /** ISO-8601 creation instant. */

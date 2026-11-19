@@ -92,7 +92,7 @@ async function bench(): Promise<SlotTestRuntime> {
   runtime.sessions.stubCreate(() => new Promise<SessionId>(() => {}))
   await runtime.workspaces.update((draft) => {
     draft.items = [{
-      workspaceId: ALPHA, title: 'Alpha', path: '/projects/alpha',
+      workspaceId: ALPHA, title: 'Alpha', path: '/projects/alpha', role: 'agent',
       sessionIds: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     }] as never
   })
@@ -142,7 +142,7 @@ describe('workspace.picker Factory', () => {
       expect(screen.getByRole('status').textContent).toBe('none')
       await act(async () => {
         resolve({
-          workspaceId: 'w-project' as WorkspaceId, title: 'project', path: '/tmp/project',
+          workspaceId: 'w-project' as WorkspaceId, title: 'project', path: '/tmp/project', role: 'agent',
           sessionIds: [], createdAt: '0', updatedAt: '0',
         })
       })

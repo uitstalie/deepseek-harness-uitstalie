@@ -68,7 +68,7 @@ const sessionState = (
   }
 }
 const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView => ({
-  workspaceId: wid(id), path: `/projects/${id}`, title,
+  workspaceId: wid(id), path: `/projects/${id}`, title, role: 'agent',
   sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const workspaceState = (
@@ -190,6 +190,35 @@ describe('WorkspaceBrowser', () => {
         label: '工作区“alpha”的操作', className: rowCss.iconButton,
       })
     }
+  })
+
+  it('renders a registered special Workspace in its own section above the ordinary list', () => {
+    const superWorkspaceId = wid('super-home')
+    // The registry keeps one stable snapshot per change; `useSyncExternalStore`
+    // requires the same identity between renders.
+    const groups = [{ id: 'super', label: () => '超级工作区', workspaceId: superWorkspaceId }]
+    mount({
+      useWorkspaces: hook(workspaceState([
+        { ...workspace('super-home', ['dispatcher'], 'Super agent'), role: 'super' },
+        workspace('alpha', []),
+        workspace('beta', []),
+      ])),
+      workspaceGroups: { list: () => groups, subscribe: () => () => {} },
+    })
+    // The super agent's home leads under its own heading; every other
+    // Workspace stays in the ordinary group.
+    const headings = screen.getAllByRole('heading').map(node => node.textContent)
+    expect(headings).toEqual(['超级工作区', '普通工作区'])
+    const workspaceTitles = screen.getAllByRole('treeitem')
+      .filter(row => row.getAttribute('aria-expanded') !== null)
+      .map(row => row.textContent)
+    expect(workspaceTitles).toEqual(['Super agent', 'alpha', 'beta'])
+  })
+
+  it('renders no special section without a registered group', () => {
+    mount({ useWorkspaces: hook(workspaceState([workspace('alpha', [])])) })
+    expect(screen.queryByText('普通工作区')).toBeNull()
+    expect(screen.queryByText('超级工作区')).toBeNull()
   })
 
   it('binds the list area as the section scroller only while the sidebar is wide', () => {
