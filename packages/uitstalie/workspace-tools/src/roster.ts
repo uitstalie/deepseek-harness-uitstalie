@@ -57,7 +57,23 @@ export async function reconcileRoster(
       entries.set(sessionId, entry)
       continue
     }
-    if (!archived.has(sessionId) || existing.archivedAt !== undefined) continue
+    if (!archived.has(sessionId)) {
+      // An unarchive in the UI clears the current archive stamp; the roster is current state,
+      // not an audit log, so it must not keep claiming the Session is archived.
+      if (existing.archivedAt === undefined && existing.archivedBy === undefined) continue
+      const next: SessionRosterEntry = {
+        sessionId: existing.sessionId,
+        workspaceId: existing.workspaceId,
+        ...existing.createdBy === undefined ? {} : { createdBy: existing.createdBy },
+        ...existing.createdAt === undefined ? {} : { createdAt: existing.createdAt },
+        ...existing.forkedFrom === undefined ? {} : { forkedFrom: existing.forkedFrom },
+        observedAt: now,
+      }
+      await writeRoster(ctx, workspace.id, next)
+      entries.set(sessionId, next)
+      continue
+    }
+    if (existing.archivedAt !== undefined) continue
     const next: SessionRosterEntry = {
       ...existing,
       archivedBy: 'user',

@@ -626,6 +626,14 @@ test('the roster attributes a UI-created Session to the user and reflects a manu
   expect(archivedRow?.archived).toBe(true)
   expect(archivedRow?.archivedBy).toBe('user')
   expect(archivedRow?.archivedAt).toBeTypeOf('string')
+
+  // A manual unarchive clears the archive stamp; the roster reflects current state.
+  mounted.registry.archivedSessionIds = mounted.registry.archivedSessionIds
+    .filter(id => String(id) !== 'roster-ui')
+  const unarchivedRow = (await listOf()).find(item => item.sessionId === 'roster-ui')
+  expect(unarchivedRow?.archived).toBe(false)
+  expect(unarchivedRow?.archivedBy).toBeUndefined()
+  expect(unarchivedRow?.archivedAt).toBeUndefined()
 })
 
 test('a tool archive records the calling agent as the archiver', async () => {

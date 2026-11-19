@@ -185,7 +185,7 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 
 输出（`get`）：同样的字段，外加 `recentProgress: [{ at, summary }]`、`pendingInbox`、`artifactCount`。
 
-名册字段来自工作区自己的会话名册记录。`createdBy` 与 `archivedBy` 取 `user` 或 `agent:<sessionId>`；`archived` 来自工作区注册表的归档集合；`contextUsage` 是 live Agent 上测得的 `{ tokens, window, percent }`。每次 `list` 与 `get` 先做一次名册与 session store、注册表的对账：工具没记录过的 Session 归给 `user`（人在界面上建的），已归档但没有归档戳的 Session 也归给 `user`（人在界面上归档的）。工具自己创建或归档的 Session 已带 `agent:<sessionId>`，对账不改它。因此在界面上建或归档会话不需要额外工具调用，下一次读取就会体现。
+名册字段来自工作区自己的会话名册记录。`createdBy` 与 `archivedBy` 取 `user` 或 `agent:<sessionId>`；`archived` 来自工作区注册表的归档集合；`contextUsage` 是 live Agent 上测得的 `{ tokens, window, percent }`。每次 `list` 与 `get` 先做一次名册与 session store、注册表的对账：工具没记录过的 Session 归给 `user`（人在界面上建的），已归档但没有归档戳的 Session 也归给 `user`（人在界面上归档的）。工具自己创建或归档的 Session 已带 `agent:<sessionId>`，对账不改它。取消归档会清掉归档戳，因为名册是当前状态，不是审计日志。因此在界面上建、归档或取消归档会话都不需要额外工具调用，下一次读取就会体现。
 
 `run`、`start`、`append`、`prompt` 或 `abort` 向另一个 Session 投递时，文本以 `[workspace_session]` 头开始，写明发送方角色、Session、工作区，以及回哪条 Session，执行方不需要从任务正文里猜派发方。
 
