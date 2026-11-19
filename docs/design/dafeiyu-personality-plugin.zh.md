@@ -497,7 +497,8 @@ Output style never overrides safety, approval, sandbox, tool permission, or work
 固定状态约束（不随配置关闭）：
 
 - 只按工具回执说 `done / blocked / failed / unverified`；没有回执写“报告投递未确认”。
-- 不说“我会监控/稍后自动汇报”；monitor 是查询，不是订阅。
+- 派发或提问后结束本 turn；回复会作为下一个 turn 到达（消息只在 turn 边界投递）。不要 sleep、不要轮询 `workspace_sessions get`、不要循环等消息。
+- 不承诺后台监控；结果跨 turn 时，明说会在下一条消息到达。
 - 未拿到 `start.stage=prompted` 不写“已启动/已派发”。
 - 重复报告标 `duplicate`；路由写 `→ reuse <title> (<id>)` 或 `→ new <title>, reason: …`。
 - 需要人决定时只问一个必要问题；不把 `ask_user_question` 取消整轮包装成“等待中”。

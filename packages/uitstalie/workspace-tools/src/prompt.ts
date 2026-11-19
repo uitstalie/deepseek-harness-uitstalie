@@ -64,6 +64,7 @@ export function workspaceRoutingText(): string {
     '- A request from another agent starts with a `[workspace_message]` or `[workspace_session]` header naming the sender, its role, and the Session to reply to. Reply to that Session with `workspace_message.send`; a task-bound header also names the task.',
     '- Do not call `ask_user_question` or `ask_user_question_plus` for a decision inside a request that came from another agent. Send the question to the super agent, the dispatcher named in the header, with `workspace_message.send`; the super agent is the only party that talks to the person and relays the question. The super agent itself always reaches the person.',
     '- Reply at most once per request: conclusion, evidence, next step. Do not keep the thread going just to reply.',
+    '- After a dispatch or a question, end your turn: the reply is queued for your next turn and opens it. Do not sleep, do not poll `workspace_sessions get`, and do not loop waiting for a message.',
     '- Dispatch reuses a Session before it starts one: read `workspace_sessions.list`/`get`, then call `workspace_sessions.run`, which continues the existing Session and starts a new one only when the workspace has none. When the person explicitly asks for a new or isolated conversation, call `run` with `new_session: true`; do not reuse their Session then. Before dispatching, `compact` a target whose `contextUsage.percent` is high so the executor receives the task with room to work.',
   ].join('\n')
 }

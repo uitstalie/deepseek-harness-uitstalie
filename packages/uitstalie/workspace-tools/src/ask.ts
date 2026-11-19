@@ -136,8 +136,8 @@ export function askUserQuestionPlusTool(ctx: Context): ToolDefinition {
       if (dispatcher !== undefined) {
         throw new WorkspaceQuestionError(
           `this turn was started by a workspace request from Session ${dispatcher}; do not ask the user directly. `
-          + `Send the question to ${dispatcher} with workspace_message.send and wait for the reply; the super agent `
-          + 'is the only party that talks to the person.',
+          + `Send the question to ${dispatcher} with workspace_message.send, then end your turn; the reply arrives `
+          + 'as your next turn. Do not sleep or poll for it; the super agent is the only party that talks to the person.',
           'WORKSPACE_QUESTION_FORWARDED',
         )
       }

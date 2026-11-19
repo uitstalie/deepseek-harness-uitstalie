@@ -19,7 +19,7 @@ Every fenced code block in this page is copied verbatim from the source; it is n
 | `write_like_human` description | `packages/uitstalie/personality/src/writing-tool.ts:58` | 525 characters / 1 line |
 | `write_like_human` parameter schema | same as above, after compilation | 1,051 characters / 37 lines |
 | section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`; registered at `packages/uitstalie/personality/src/api.ts:142-146` | preamble 391 characters; empty when there are no entries |
-| section 690 `personality:output-style` | `src/output-style.ts:145-180`; defaults `src/defaults.ts:27-33` | default rendering 836 characters / 15 lines |
+| section 690 `personality:output-style` | `src/output-style.ts:145-180`; defaults `src/defaults.ts:27-33` | default rendering 1,094 characters / 16 lines |
 | section 695 `personality:writing-rules` | `packages/uitstalie/personality/src/writing-rules.ts:283-296`; registered at `packages/uitstalie/personality/src/api.ts:152-156` | empty document by default is 0 characters |
 | section 702 `superagent:dispatcher` (retired) | the former `jira-agent` package; deleted with the JIRA retirement | no longer a live section; a historical record only |
 | Order constants | `packages/core/system-prompt/src/index.ts:139-144` | 100 / 690 / 695 |
@@ -252,7 +252,7 @@ The `text` of an entry has consecutive whitespace collapsed and is trimmed; the 
 
 ### section 690 `personality:output-style`
 
-Registered as `name: 'personality:output-style'`, with the order constant `PERSONALITY_OUTPUT_STYLE = 690` (`src/output-style.ts:23`; `src/api.ts:147-151`; `packages/core/system-prompt/src/index.ts:143`). The ordinary default rendering (`DEFAULT_OUTPUT_STYLE`) is verbatim as follows, 836 characters / 15 lines. The super slot uses its own `SUPERAGENT_OUTPUT_STYLE.yaml` with the same defaults; a subagent receives no section 690.
+Registered as `name: 'personality:output-style'`, with the order constant `PERSONALITY_OUTPUT_STYLE = 690` (`src/output-style.ts:23`; `src/api.ts:147-151`; `packages/core/system-prompt/src/index.ts:143`). The ordinary default rendering (`DEFAULT_OUTPUT_STYLE`) is verbatim as follows, 1,094 characters / 16 lines. The super slot uses its own `SUPERAGENT_OUTPUT_STYLE.yaml` with the same defaults; a subagent receives no section 690.
 
 ```text
 Output style defaults:
@@ -266,13 +266,14 @@ Output style never overrides safety, approval, sandbox, tool permission, or work
 
 Status reporting discipline:
 - State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
-- Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.
+- After a dispatch or a question, end your turn: the reply is queued for your next turn and opens it. Do not sleep in a shell command, do not poll `workspace_sessions get`, and do not loop waiting for a message; a message is delivered only at a turn boundary.
+- Do not promise background monitoring; when a result spans turns, say it will arrive as a new turn.
 - Without start.stage=prompted, do not write "started/dispatched".
 - Mark repeated reports as duplicate; write routing as "→ reuse <title> (<id>)" or "→ new <title>, reason: …".
 - When a person's decision is needed, ask only one necessary question; do not package an ask_user_question whole-turn cancellation as "waiting".
 ```
 
-The super-agent rendering adds `- Dispatch voice: terse.` and is otherwise identical; it is 861 characters / 16 lines, verbatim:
+The super-agent rendering adds `- Dispatch voice: terse.` and is otherwise identical; it is 1,119 characters / 17 lines, verbatim:
 
 ```text
 Output style defaults:
@@ -287,7 +288,8 @@ Output style never overrides safety, approval, sandbox, tool permission, or work
 
 Status reporting discipline:
 - State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
-- Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.
+- After a dispatch or a question, end your turn: the reply is queued for your next turn and opens it. Do not sleep in a shell command, do not poll `workspace_sessions get`, and do not loop waiting for a message; a message is delivered only at a turn boundary.
+- Do not promise background monitoring; when a result spans turns, say it will arrive as a new turn.
 - Without start.stage=prompted, do not write "started/dispatched".
 - Mark repeated reports as duplicate; write routing as "→ reuse <title> (<id>)" or "→ new <title>, reason: …".
 - When a person's decision is needed, ask only one necessary question; do not package an ask_user_question whole-turn cancellation as "waiting".

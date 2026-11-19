@@ -128,6 +128,9 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       + 'or read messages a workspace delivered and their receipts. '
       + '`send` requires `targetSessionId` and `text` (at most 600 characters: conclusion, evidence, next step); '
       + '`requestId` is optional — omit it to send a new message, supply it so a retry returns the first result. '
+      + 'A normal message is admitted at the target\'s next turn boundary, so the recipient sees it after its '
+      + 'current turn ends. After sending a request or a question, end your turn: the reply is queued for your next '
+      + 'turn and opens it; do not sleep or poll for it. '
       + 'Same-workspace sends are allowed, and `targetSessionId` alone is enough to reply across workspaces. '
       + 'A cross-workspace send is allowed when a task binds it (the caller is the task\'s `targetSessionId`, the '
       + 'target is the task\'s `dispatcherSessionId`, and the task lives in the caller\'s workspace), when the caller '
@@ -181,7 +184,7 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       priority: {
         type: 'string',
         enum: ['normal', 'urgent'],
-        description: '`normal` (default) queues for the next turn boundary; `urgent` steers the current step.',
+        description: '`normal` (default) queues for the target\'s next turn boundary; `urgent` steers the target\'s running step.',
       },
       urgentReason: {
         type: 'string',

@@ -19,7 +19,7 @@
 | `write_like_human` description | `packages/uitstalie/personality/src/writing-tool.ts:58` | 525 字符 / 1 行 |
 | `write_like_human` 参数 schema | 同上，编译后 | 1,051 字符 / 37 行 |
 | section 100 `personality` | `packages/uitstalie/personality/src/profile-prompt.ts:18`；注册 `packages/uitstalie/personality/src/api.ts:142-146` | preamble 391 字符；无条目时为空 |
-| section 690 `personality:output-style` | `src/output-style.ts:145-180`；默认 `src/defaults.ts:27-33` | 默认渲染 836 字符 / 15 行 |
+| section 690 `personality:output-style` | `src/output-style.ts:145-180`；默认 `src/defaults.ts:27-33` | 默认渲染 1,094 字符 / 16 行 |
 | section 695 `personality:writing-rules` | `packages/uitstalie/personality/src/writing-rules.ts:283-296`；注册 `packages/uitstalie/personality/src/api.ts:152-156` | 默认空文档为 0 字符；前 40 条启用规则常驻 |
 | section 702 `superagent:dispatcher`（已退场） | 原 `jira-agent` 包；随 JIRA 退场删除 | 不再是现役 section，只保留历史记录 |
 | 顺序常量 | `packages/core/system-prompt/src/index.ts:139-144` | 100 / 690 / 695 |
@@ -252,7 +252,7 @@ How to respond (preference, style):
 
 ### section 690 `personality:output-style`
 
-注册为 `name: 'personality:output-style'`，顺序常量 `PERSONALITY_OUTPUT_STYLE = 690`（`src/output-style.ts:23`；`src/api.ts:147-151`；`packages/core/system-prompt/src/index.ts:143`）。普通槽的默认渲染（`DEFAULT_OUTPUT_STYLE`）逐字如下，836 字符 / 15 行。super 槽使用独立的 `SUPERAGENT_OUTPUT_STYLE.yaml`，默认内容相同；subagent 不收到 section 690。
+注册为 `name: 'personality:output-style'`，顺序常量 `PERSONALITY_OUTPUT_STYLE = 690`（`src/output-style.ts:23`；`src/api.ts:147-151`；`packages/core/system-prompt/src/index.ts:143`）。普通槽的默认渲染（`DEFAULT_OUTPUT_STYLE`）逐字如下，1,094 字符 / 16 行。super 槽使用独立的 `SUPERAGENT_OUTPUT_STYLE.yaml`，默认内容相同；subagent 不收到 section 690。
 
 ```text
 Output style defaults:
@@ -266,13 +266,14 @@ Output style never overrides safety, approval, sandbox, tool permission, or work
 
 Status reporting discipline:
 - State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
-- Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.
+- After a dispatch or a question, end your turn: the reply is queued for your next turn and opens it. Do not sleep in a shell command, do not poll `workspace_sessions get`, and do not loop waiting for a message; a message is delivered only at a turn boundary.
+- Do not promise background monitoring; when a result spans turns, say it will arrive as a new turn.
 - Without start.stage=prompted, do not write "started/dispatched".
 - Mark repeated reports as duplicate; write routing as "→ reuse <title> (<id>)" or "→ new <title>, reason: …".
 - When a person's decision is needed, ask only one necessary question; do not package an ask_user_question whole-turn cancellation as "waiting".
 ```
 
-super agent 的渲染多一行 `- Dispatch voice: terse.`，其余相同；完整渲染逐字如下，861 字符 / 16 行：
+super agent 的渲染多一行 `- Dispatch voice: terse.`，其余相同；完整渲染逐字如下，1,119 字符 / 17 行：
 
 ```text
 Output style defaults:
@@ -287,7 +288,8 @@ Output style never overrides safety, approval, sandbox, tool permission, or work
 
 Status reporting discipline:
 - State done / blocked / failed / unverified only from tool receipts; without a receipt, write "report delivery unconfirmed".
-- Do not say "I will monitor/report back later automatically"; monitor is a query, not a subscription.
+- After a dispatch or a question, end your turn: the reply is queued for your next turn and opens it. Do not sleep in a shell command, do not poll `workspace_sessions get`, and do not loop waiting for a message; a message is delivered only at a turn boundary.
+- Do not promise background monitoring; when a result spans turns, say it will arrive as a new turn.
 - Without start.stage=prompted, do not write "started/dispatched".
 - Mark repeated reports as duplicate; write routing as "→ reuse <title> (<id>)" or "→ new <title>, reason: …".
 - When a person's decision is needed, ask only one necessary question; do not package an ask_user_question whole-turn cancellation as "waiting".

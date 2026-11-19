@@ -557,7 +557,9 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       + 'a Session at an optional `atSeq`; `archive` hides it; `compact` compresses its history; `delete` erases '
       + 'a stored Session only when the host exposes a real delete API — otherwise it refuses, because an archive '
       + 'is not a deletion. `delivery` is queue (default) or interrupt for `run`, `append`, and `prompt`; trust '
-      + '`get` before addressing a Session.',
+      + '`get` before addressing a Session. A normal delivery is admitted at the target\'s next turn boundary, '
+      + 'and `get` reports a snapshot rather than waiting. After dispatching, end your turn: a reply is queued for '
+      + 'your next turn and opens it; do not sleep or poll for it.',
     parameters: {
       action: {
         type: 'string',
@@ -594,8 +596,8 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       delivery: {
         type: 'string',
         enum: ['queue', 'interrupt'],
-        description: '`run`/`append`/`prompt`: queue (default) waits for the running turn to end; interrupt steers '
-          + 'the text into the running turn and queues instead when the Session is idle.',
+        description: '`run`/`append`/`prompt`: queue (default) admits at the target\'s next turn boundary; '
+          + 'interrupt steers the target\'s running step and queues instead when the Session is idle.',
       },
       atSeq: {
         type: 'integer',
