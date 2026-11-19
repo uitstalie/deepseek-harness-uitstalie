@@ -12,7 +12,7 @@
             name: '@deepseek-ai/dsh-persona'
             config:
               prefix: You are a coding agent powered by the {{model}} model.
-          # BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-5, agent-instructions-plus 在分支层提供基线，preset 不再重复挂载原生 agent-instructions
+          # BEGIN uitstalie-deepseek-flash, 2026/10/28, DH-5, 原生 agent-instructions 由宿主层挂载（分支层的 plus 只装饰它），preset 不重复挂载，避免双基线
           # END uitstalie-deepseek-flash
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'

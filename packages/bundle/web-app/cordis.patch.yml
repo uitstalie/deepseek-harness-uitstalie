@@ -613,8 +613,11 @@
 - id: tool-workflow
   disabled: true
 
-- id: agent-instructions
-  disabled: true
+# `agent-instructions` STAYS enabled. It is a host-plane row and the only
+# provider of `agentInstructionsApi`; the branch layer's
+# `agent-instructions-plus` row injects that service and decorates the native
+# baseline with the workspace `.dsh/rules`. Presets mount neither row, so this
+# one row keeps a single injected baseline per Session.
 
 - id: tool-todo
   disabled: true

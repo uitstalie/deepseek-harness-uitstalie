@@ -1,7 +1,8 @@
 /**
  * Real Loader composition: a test-only `cordis.yml` boots the plus row exactly
- * as a preset does, and the production Agent created by that composition
- * receives one instruction message carrying the native chain plus the rules.
+ * as the branch layer mounts it, and the production Agent created by that
+ * composition receives one instruction message carrying the native chain plus
+ * the rules.
  */
 import { afterEach, expect, test } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -105,7 +106,7 @@ test('the composed row delivers the native chain and the rules in one message', 
   expect(text).toContain('Always document public APIs.')
 })
 
-test('the branch layer mounts the plus row and the presets stay native', async () => {
+test('the branch layer mounts the plus row and the presets mount no instruction row', async () => {
   for (const preset of ['standard', 'ptc', 'cordis']) {
     const text = await readFile(new URL(`../../../bundle/web-app/presets/${preset}.patch.yml`, import.meta.url), 'utf8')
     // The presets carry `uitstalie-` marker comments (the per-change labels every
@@ -117,4 +118,59 @@ test('the branch layer mounts the plus row and the presets stay native', async (
   const layer = await readFile(new URL('../../../bundle/web-app/cordis.patch.uitstalie.yml', import.meta.url), 'utf8')
   expect(layer).toContain("name: '@deepseek-ai/dsh-agent-instructions-plus'")
   expect(layer).toContain("name: '@deepseek-ai/dsh-tool-dsh-store'")
+})
+
+/** Top-level ids one bundle patch disables. */
+function disabledIds(patch: string): string[] {
+  const disabled: string[] = []
+  const lines = patch.split('\n')
+  for (const [index, line] of lines.entries()) {
+    const id = /^- id:\s*(\S+)\s*$/.exec(line)
+    if (id === null) continue
+    if (/^\s+disabled:\s*true\s*$/.test(lines[index + 1] ?? '')) disabled.push(id[1]!)
+  }
+  return disabled
+}
+
+/** A patch file without its comment lines, so only executable rows remain. */
+function executableRows(patch: string): string {
+  return patch.split('\n').filter(line => !line.trimStart().startsWith('#')).join('\n')
+}
+
+test('the shipped web composition keeps the native loader enabled under the plus decoration', async () => {
+  // The web bundle used to disable the only `agentInstructionsApi` provider,
+  // which left the host-plane plus row pending forever: no Session received
+  // AGENTS.md or `.dsh/rules`. The shipped composition must keep that row
+  // enabled, and no preset may mount a second baseline.
+  const webPatch = await readFile(new URL('../../../bundle/web-app/cordis.patch.yml', import.meta.url), 'utf8')
+  expect(disabledIds(webPatch)).not.toContain('agent-instructions')
+  const branchLayer = await readFile(new URL('../../../bundle/web-app/cordis.patch.uitstalie.yml', import.meta.url), 'utf8')
+  expect(branchLayer).toContain("name: '@deepseek-ai/dsh-agent-instructions-plus'")
+  for (const preset of ['standard', 'ptc', 'minimal', 'cordis']) {
+    const rows = executableRows(await readFile(new URL(`../../../bundle/web-app/presets/${preset}.patch.yml`, import.meta.url), 'utf8'))
+    expect(rows, preset).not.toContain('@deepseek-ai/dsh-agent-instructions')
+  }
+
+  // Boot the same two host rows the shipped composition declares and assert
+  // the first Agent step carries both instruction sections in one message.
+  root = await mkdtemp(join(tmpdir(), 'plus-bundle-'))
+  const project = root
+  await mkdir(join(project, '.dsh', 'rules'), { recursive: true })
+  await writeFile(join(project, 'AGENTS.md'), '# Repo rules\n\nBe careful.')
+  await writeFile(join(project, '.dsh', 'rules', 'api.md'), 'Always document public APIs.')
+  const ctx = await boot(project)
+
+  const agent: Agent = await ctx.agentLoop.create(SessionId('plus-bundle-1'), {}, { cwd: project })
+  await agentEvents(ctx, agent).waterfall(
+    'agent/pre-step',
+    { messages: [], turn: 1, step: 1, signal: new AbortController().signal, modelSelection: { provider: 'test', model: 'test' } },
+    async () => ({ kind: 'enter' as const, messages: [] }),
+  )
+
+  const pending = agent.inbox.nextStep.filter(message => message.source.kind === 'agent-instructions')
+  expect(pending).toHaveLength(1)
+  const text = messageText(pending[0]!)
+  expect(text).toContain('Instructions from: AGENTS.md')
+  expect(text).toContain('Instructions from: .dsh/rules/api.md')
+  expect(text).toContain('Always document public APIs.')
 })
