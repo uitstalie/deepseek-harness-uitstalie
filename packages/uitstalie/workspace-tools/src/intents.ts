@@ -12,7 +12,7 @@
  * @module @deepseek-ai/dsh-workspace-tools/intents
  */
 
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent'
@@ -236,7 +236,7 @@ export function workspaceIntentsTool(ctx: Context): ToolDefinition {
       },
       requestId: {
         type: 'string',
-        description: 'Idempotency key; required by `create`, `confirm`, and `correct`. A retry returns the first result.',
+        description: 'Idempotency key; optional. Omit to perform a new operation, supply it so a retry returns the first result.',
       },
       rawUserText: {
         type: 'string',
@@ -610,7 +610,7 @@ async function createIntent(
   signal: AbortSignal | undefined,
 ): Promise<WorkspaceIntentsValue> {
   requireIntentWrite(agent, 'create', crossWorkspace)
-  const requestId = requiredText(args.requestId, 'requestId', 'create')
+  const requestId = args.requestId?.trim() || randomUUID()
   const rawUserText = requiredText(args.rawUserText, 'rawUserText', 'create')
   if (args.items === undefined) {
     throw new WorkspaceIntentError('workspace_intents.create requires items', 'INTENT_INVALID')
@@ -716,7 +716,6 @@ async function confirmIntent(
   if (decision !== 'confirm' && decision !== 'reject') {
     throw new WorkspaceIntentError('workspace_intents.confirm requires decision "confirm" or "reject"', 'INTENT_INVALID')
   }
-  requiredText(args.requestId, 'requestId', 'confirm')
   const stored = await readIntentIndex(ctx, workspace.id, intentId, signal)
   if (stored === undefined) {
     throw new WorkspaceRecordError(
@@ -801,7 +800,7 @@ async function correctIntent(
 ): Promise<WorkspaceIntentsValue> {
   requireIntentWrite(agent, 'correct', crossWorkspace)
   const intentId = requiredText(args.intentId, 'intentId', 'correct')
-  const requestId = requiredText(args.requestId, 'requestId', 'correct')
+  const requestId = args.requestId?.trim() || randomUUID()
   const reason = requiredText(args.reason, 'reason', 'correct')
   if (args.items === undefined) {
     throw new WorkspaceIntentError('workspace_intents.correct requires items', 'INTENT_INVALID')

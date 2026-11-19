@@ -14,6 +14,7 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { z } from 'zod'
 import type {
+  ArtifactGrant,
   ArtifactRecord,
   ArtifactReference,
   MessageRecord,
@@ -156,6 +157,18 @@ const artifactSchema = z.strictObject({
   versions: z.array(artifactReferenceSchema).min(1),
 }) satisfies z.ZodType<ArtifactRecord>
 
+/** Durable artifact-grant schema. */
+const artifactGrantSchema = z.strictObject({
+  workspaceId: z.string().min(1),
+  artifactId: z.string().min(1),
+  version: z.number().int().positive(),
+  sha256: z.string().min(1),
+  status: z.enum(['granted', 'denied']),
+  decidedBy: z.string().min(1),
+  decidedAt: z.string(),
+  expiresAt: z.string().optional(),
+}) satisfies z.ZodType<ArtifactGrant>
+
 /** Relative directory of one workspace's dispatch tasks. */
 export function tasksDirectory(workspaceId: WorkspaceId | string): string {
   return `${WORKSPACE_STATE_ROOT}/${String(workspaceId)}/tasks`
@@ -176,6 +189,11 @@ export function rosterDirectory(workspaceId: WorkspaceId | string): string {
   return `${WORKSPACE_STATE_ROOT}/${String(workspaceId)}/sessions`
 }
 
+/** Relative directory of one workspace's artifact grants. */
+export function grantsDirectory(workspaceId: WorkspaceId | string): string {
+  return `${WORKSPACE_STATE_ROOT}/${String(workspaceId)}/grants`
+}
+
 /** Relative path of one task record. */
 export function taskPath(workspaceId: WorkspaceId | string, taskId: string): string {
   return `${tasksDirectory(workspaceId)}/${safeSegment(taskId)}.json`
@@ -194,6 +212,11 @@ export function artifactPath(workspaceId: WorkspaceId | string, artifactId: stri
 /** Relative path of one session-roster entry. */
 export function rosterPath(workspaceId: WorkspaceId | string, sessionId: string): string {
   return `${rosterDirectory(workspaceId)}/${safeSegment(sessionId)}.json`
+}
+
+/** Relative path of one artifact grant. */
+export function grantPath(workspaceId: WorkspaceId | string, artifactId: string, version: number): string {
+  return `${grantsDirectory(workspaceId)}/${safeSegment(`${artifactId}-v${String(version)}`)}.json`
 }
 
 /**
@@ -414,6 +437,52 @@ export async function listRoster(
 ): Promise<SessionRosterEntry[]> {
   const entries = await listJson(ctx, rosterDirectory(workspaceId), rosterSchema, signal)
   return entries.sort((left, right) => left.sessionId.localeCompare(right.sessionId))
+}
+
+/**
+ * Read one artifact grant.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that owns the artifact.
+ * @param artifactId - artifact identity.
+ * @param version - artifact version the grant is scoped to.
+ * @param signal - cancellation for the store read.
+ * @returns the grant and its store version, or undefined when none exists.
+ */
+export async function readGrant(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  artifactId: string,
+  version: number,
+  signal?: AbortSignal,
+): Promise<{ readonly grant: ArtifactGrant; readonly version?: string } | undefined> {
+  const stored = await readJson(ctx, grantPath(workspaceId, artifactId, version), artifactGrantSchema, signal)
+  return stored === undefined ? undefined : { grant: stored.value, ...stored.version === undefined ? {} : { version: stored.version } }
+}
+
+/**
+ * Write one artifact grant with an optional version guard.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that owns the artifact.
+ * @param grant - complete grant to persist.
+ * @param options - expected store version for a guarded update.
+ * @returns the store version after the write.
+ */
+export async function writeGrant(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  grant: ArtifactGrant,
+  options: { readonly expected?: string; readonly session?: Session } = {},
+): Promise<{ readonly version?: string }> {
+  const written = await ctx.dshStore.writeFile(
+    options.session,
+    grantPath(workspaceId, grant.artifactId, grant.version),
+    `${JSON.stringify(grant, undefined, 2)}\n`,
+    {
+      scope: 'global',
+      ...options.expected === undefined ? {} : { expected: options.expected },
+    },
+  )
+  return written.version === undefined ? {} : { version: written.version }
 }
 
 /**

@@ -43,7 +43,7 @@ export class WorkspaceRecordError extends HarnessError {
 }
 
 /** Code of an artifact refusal that is not one of the resolution statuses. */
-export type WorkspaceArtifactCode = 'ARTIFACT_TOO_LARGE' | 'ARTIFACT_PATH_OUTSIDE' | 'ARTIFACT_NOT_A_FILE' | 'ARTIFACT_INVALID'
+export type WorkspaceArtifactCode = 'ARTIFACT_TOO_LARGE' | 'ARTIFACT_PATH_OUTSIDE' | 'ARTIFACT_NOT_A_FILE' | 'ARTIFACT_INVALID' | 'ARTIFACT_FORBIDDEN'
 
 /** The referenced file cannot be hashed inside the tool's resource bound. */
 export class WorkspaceArtifactError extends HarnessError {

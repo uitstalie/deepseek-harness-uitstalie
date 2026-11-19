@@ -674,6 +674,24 @@ test('a task with only a goal gets defaults and a generated request id', async (
   })
   const secondRequestId = (valueOf(secondRead) as { task: { requestId: string } }).task.requestId
   expect(secondRequestId).not.toBe(task.requestId)
+
+  // A receipt without requestId still completes a cardless task.
+  await startTask(workspaceA, firstId)
+  const receipt = await callTool(mounted.ctx, superAgent, 'workspace_tasks', {
+    action: 'receipt', workspace: String(workspaceA.id), taskId: firstId, status: 'done',
+  })
+  expect(receipt.isError, textOf(receipt)).toBe(false)
+})
+
+test('an intent card create without requestId works', async () => {
+  const created = await callTool(mounted.ctx, superAgent, 'workspace_intents', {
+    action: 'create',
+    workspace: String(workspaceA.id),
+    rawUserText: RAW_TRACEABLE,
+    items: TRACEABLE_ITEMS,
+  })
+  expect(created.isError, textOf(created)).toBe(false)
+  expect((valueOf(created) as { intent: { intentId: string } }).intent.intentId).toBeTypeOf('string')
 })
 
 test('a task without an intent card records and completes without an alignment checklist', async () => {

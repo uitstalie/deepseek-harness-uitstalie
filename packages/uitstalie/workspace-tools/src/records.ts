@@ -427,6 +427,26 @@ export interface ArtifactRecord {
 /** How one artifact reference resolves against the current file. */
 export type ArtifactResolutionStatus = 'ok' | 'changed' | 'missing' | 'denied' | 'pending' | 'expired'
 
+/** One holder decision on a version-scoped artifact request. */
+export interface ArtifactGrant {
+  /** Workspace that owns the artifact. */
+  readonly workspaceId: string
+  /** Artifact the grant covers. */
+  readonly artifactId: string
+  /** Version the grant is scoped to; a new version needs a new grant. */
+  readonly version: number
+  /** Hash of the version at decision time. */
+  readonly sha256: string
+  /** Holder's decision. */
+  readonly status: 'granted' | 'denied'
+  /** Session that recorded the decision. */
+  readonly decidedBy: string
+  /** ISO-8601 decision instant. */
+  readonly decidedAt: string
+  /** ISO-8601 instant the grant stops being valid; absent for a denial. */
+  readonly expiresAt?: string | undefined
+}
+
 /** Result of one artifact resolution. */
 export interface ArtifactResolution {
   /** Resolved artifact id. */

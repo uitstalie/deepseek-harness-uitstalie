@@ -147,7 +147,7 @@
 | 消息 | 消息 id、目标会话、来源会话与角色、正文、类型（消息或追问）、投递状态、回执、产物引用 | 会话 inbox 与消息日志 |
 | 产物引用 | 产物 id、工作区、路径、sha256、大小、版本、类型、会话 id、任务 id、创建时间、摘要 | 工作区产物索引 |
 
-工具集不得复制会话存储或工作区文件已经持有的事实。它只做聚合与变更。第 4 步之后的当前状态：记忆就是 4.1 节的全局存储——`$DSH_HOME/memory/GLOBAL.md`、它的 `GLOBAL.archive.md`，除此之外没有别的。没有工作区记忆条目被写入或注入：每轮摘要作业已移除，旧的按工作区文件只由一次性迁移与旧文件读取器读取。工作区工具集在 `$DSH_HOME/workspaces/<workspace-id>/` 下写任务、回执、消息、产物引用、意图卡与会话名册；`workspace_message.send` 是它唯一的出站投递路径，`workspace_artifacts.publish`/`reference` 是它唯一的引用路径。消息或任务引用在发送时保存产物 id、版本与 SHA-256；文件本身仍在工作区里。任务只有一个主人：`workspace_tasks`。任务记录只在需要正式任务记录时创建：可选的 active 意图卡 → `workspace_tasks.create` → 可选的 `workspace_sessions.start`/`prompt` 交付；简单的或明确的动作不建卡、不建任务，直接执行或直接发请求。没有派发历史副本，也没有第二份任务列表。任务引用了卡时，卡缺失、proposed、stale、属于别的工作区，或 brief 漏掉卡上的点，都在 `workspace_tasks.create` 被拒绝；没有卡时直接记录 brief。`workspace_sessions.start` 只接收首个任务文本与标题，不检查意图卡。工作区请求的通用能力、写动作门控与回传契约在 6.5 节。
+工具集不得复制会话存储或工作区文件已经持有的事实。它只做聚合与变更。第 4 步之后的当前状态：记忆就是 4.1 节的全局存储——`$DSH_HOME/memory/GLOBAL.md`、它的 `GLOBAL.archive.md`，除此之外没有别的。没有工作区记忆条目被写入或注入：每轮摘要作业已移除，旧的按工作区文件只由一次性迁移与旧文件读取器读取。工作区工具集在 `$DSH_HOME/workspaces/<workspace-id>/` 下写任务、回执、消息、产物引用、意图卡、会话名册与产物授权；`workspace_message.send` 是它唯一的出站投递路径，`workspace_artifacts.publish`/`reference` 是它的引用路径，`workspace_artifacts.request`/`grant` 是它的访问决定路径。消息或任务引用在发送时保存产物 id、版本与 SHA-256；文件本身仍在工作区里。任务只有一个主人：`workspace_tasks`。任务记录只在需要正式任务记录时创建：可选的 active 意图卡 → `workspace_tasks.create` → 可选的 `workspace_sessions.run`/`start`/`prompt` 交付；简单的或明确的动作不建卡、不建任务，直接执行或直接发请求。没有派发历史副本，也没有第二份任务列表。任务引用了卡时，卡缺失、proposed、stale、属于别的工作区，或 brief 漏掉卡上的点，都在 `workspace_tasks.create` 被拒绝；没有卡时直接记录 brief。`workspace_sessions.start` 只接收首个任务文本与标题，不检查意图卡。工作区请求的通用能力、写动作门控与回传契约在 6.5 节。
 
 意图卡是工作区记录，不是记忆条目。一张卡只属于一个工作区。跨工作区请求会在每个目标工作区各建一张卡，每张卡都逐字保留用户原话。派发方为每个工作区各调用一次 `workspace_intents.create` 建卡：工具只接受单个 `workspace`，没有多工作区清单。卡 id 由工作区与原话派生，因此同一工作区重复 create 会复用该卡。卡随工作区工具集状态存放：`$DSH_HOME/workspaces/<workspace-id>/intents/<intentId>/`（`index.json`、`versions/<n>.json`），不在宿主全局意图存储里。版本文件不可变；`index.json` 记录每个版本的当前状态、确认与拒绝元数据，所以旧版本被 supersede 后仍可读。
 
@@ -165,7 +165,7 @@
 - 查询只返回属于指定工作区的记录。不做隐式的跨工作区聚合；跨工作区视图必须显式列出工作区 id。
 - 结果都是有界摘要：不返回文件内容，不返回完整转录，并带游标分页。原始内容仍走 `read`、`session_event_read`，以及第 6 节的产物引用解析。
 - 读取对工作区内任何 agent 开放。创建任务与修改状态对工作区内任何 agent 开放，跨工作区写要求 super agent；被指定的目标会话可以更新自己的任务、追加自己的回执。
-- 每个变更都带请求 id，重试不会重复创建任务、消息或回执。
+- 每个变更都接受请求 id；省略时工具自动生成，给出时重试不会重复创建任务、消息或回执。
 
 super 工作区是 super 角色的来源。工作区注册表为每个工作区记录角色（`agent` 或 `super`；缺失或未知值都解析为 `agent`），被记录为 `super` 的工作区就是 super 工作区，也是人的对话与派发入口。根会话的规范 cwd 恰好等于该目录时解析为 super 角色；子目录不继承该角色；会话恢复时重新解析这条持久记录（`<DSH_HOME>/storages/workspace.json`，表 `workspaces`，字段 `role`）。本设计中所有跨工作区门控都使用该角色；完整解析规则见 agent 角色模型。
 
@@ -217,7 +217,7 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 - `get` 返回任务（含 `coverage` 与 `nonCoverage`）、带对齐清单的回执、目标会话与产物引用。
 - `list` 按工作区、状态、负责人过滤。
 
-范围：一个任务只属于一个工作区。创建或变更任务对工作区内任何 agent 开放，跨工作区写要求 super agent；被指定为任务目标会话的会话可以更新该任务并追加自己的回执。每次变更都带 `requestId`，因此重试不会重复创建任务或回执。跨工作区列任务必须显式给工作区 id。
+范围：一个任务只属于一个工作区。创建或变更任务对工作区内任何 agent 开放，跨工作区写要求 super agent；被指定为任务目标会话的会话可以更新该任务并追加自己的回执。变更接受 `requestId`；省略时工具自动生成，给出时重试幂等。跨工作区列任务必须显式给工作区 id。
 
 ### 5.4 `workspace_message`
 
@@ -251,23 +251,24 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 
 ### 5.5 `workspace_artifacts`
 
-发布、引用、列出并解析某个会话或任务产出的文件与报告。拉路径（`request`/`grant`）尚未实现。
+发布、引用、请求、授权、列出并解析某个会话或任务产出的文件与报告。
 
 输入：
 
 ```
-{ action: 'publish' | 'reference' | 'list' | 'resolve',
+{ action: 'publish' | 'reference' | 'request' | 'grant' | 'list' | 'resolve',
   workspace?, path?, sessionId?, taskId?, artifactId?, version?, messageId?,
-  kind?, summary?, pathPrefix?, requestId?, cursor?, limit? }
+  kind?, summary?, pathPrefix?, requestId?, decision?, expiresInSeconds?, cursor?, limit? }
 ```
 
-- `publish` 登记一个文件并返回产物引用；不复制文件。它接收 `path`、`kind` 与可选的 `summary`/`taskId`；同一 `requestId` 幂等。
-- `reference` 把已有产物引用挂到消息或任务上；不复制文件。它接收 `artifactId`、可选 `version`，以及 `messageId` 或 `taskId`。
-- `request` 与 `grant` 未实现：action 枚举只接受 `publish`、`reference`、`list`、`resolve`。下面的拉契约是后续改动的目标；`pending` 与 `expired` 当前不可达。
-- `resolve` 报告记录引用是否仍与文件匹配，不返回内容；它不检查授权（当前访问限制见 6.4 节）。
+- `publish` 登记一个文件并返回产物引用；不复制文件。它接收 `path`、`kind` 与可选的 `summary`/`taskId`；`requestId` 可选，给出时幂等。
+- `reference` 把已有产物引用挂到消息或任务上；不复制文件。它接收 `artifactId`、可选 `version`，以及 `messageId` 或 `taskId`；`requestId` 可选。
+- `request` 请求一个已记录的版本。在调用者自己的工作区里立即解析；跨工作区请求先返回 `pending`，等持有方 `grant` 后再解析为 `ok`、`changed`、`missing`、`denied` 或 `expired`。
+- `grant` 记录持有方对一个版本的决定：`decision` 取 `granted` 或 `denied`，`expiresInSeconds` 缺省 86400、最少 60。授权绑定该版本的哈希，所以新版本需要新授权。产物所在工作区的任何 agent 都可以授权；跨工作区授权要求 super agent。
+- `resolve` 报告记录引用是否仍与文件匹配，不返回内容；推路径上的附件本身就是授权，所以 `resolve` 不查授权记录。
 - `list` 只返回引用；没有记录产物的任务返回空列表，不做猜测。
 
-范围：路径必须落在工作区根内。工具只返回引用，不返回内容。产物的跨工作区读取不做成员或角色检查：只要显式给工作区 id（并留痕）即可；角色模型本身由[agent 角色模型](agent-role-model-20261114.zh.md)定义，产物访问不在其中。`denied` 现在的含义是记录路径解析到工作区根之外，或目标不是普通文件。引用模型在 6.4 节；拉与推的检查点在 6.6 节。
+范围：路径必须落在工作区根内。工具只返回引用，不返回内容。同工作区请求不需要授权；跨工作区读取必须显式给工作区 id 并持有有效的版本授权。角色模型本身由[agent 角色模型](agent-role-model-20261114.zh.md)定义。`denied` 的含义是记录路径解析到工作区根之外、目标不是普通文件，或持有方拒绝该版本。引用模型在 6.4 节；拉与推的检查点在 6.6 节。
 
 ### 5.6 什么时候调哪个
 
@@ -288,6 +289,7 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 | 带引用发一条消息或追问 | `workspace_message`，`action: 'send'` |
 | 对方收到了吗？ | `workspace_message`，`action: 'read'` |
 | 这个会话或任务产出的报告/文件在哪里？ | `workspace_artifacts`，`action: 'list'` 或 `'resolve'` |
+| 读一个不是本工作区产出的版本 | `workspace_artifacts`，`action: 'request'`；由持有方 `grant` |
 | 这个会话在某一轮到底说了什么？ | `session_event_read` |
 | 按内容找更早的会话 | `session_search` |
 | 共享服务器地址、默认模型是什么？ | 记忆里的 `global` 条目 |
@@ -338,7 +340,7 @@ super 工作区是 super 角色的来源。工作区注册表为每个工作区�
 | JIRA 本地账本 `$DSH_HOME/jira` | 单据与知识存储 | 已删除；没有工具读取它 | 删除；不可恢复 |
 | 派发账本 `.superagent/ledger` | 派发历史的投影 | `workspace_tasks` 从新开始 | 丢弃；不迁移、不导入 |
 
-`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已移除，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。工具面改动后的当前状态：`workspace_sessions`（`list`/`get`/`start`/`append`/`prompt`/`stop`/`abort`/`fork`/`archive`/`compact`/`delete`）、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message`（`send`/`read`/`status`/`retry`）与 `workspace_artifacts`（`publish`/`reference`/`list`/`resolve`）已交付，静态 `workspace-directory` 提示词段已接到每个 agent。`memory_read` 已删除（第 1 步），`memory_resolve` 随 dispatch 命名空间在第 4 步删除；memory 工具面只剩 `memory_write`、`memory_forget` 与 `memory_search`。产物的 `request`/`grant` 未实现，因此 `pending` 与 `expired` 仍不可达。JIRA 模型工具、执行器账本工具、认领/派发工具、super agent 控制与账本工具、三个 JIRA 技能、面板与 CLI 已移除；会话生命周期与投递状态分别归 `workspace_sessions` 与 `workspace_message`。本地 JIRA 账本与派发账本已删除；`workspace_tasks` 从空白开始。JIRA 只保留云端数据仓，按数据原样，不接入工具或流程。不再有 JIRA 包。
+`workspace_tasks` 不带 JIRA 兼容字段。JIRA 已移除，任何 `jiraKey` 或账本委托都直接去掉，不做桥接；`superagent_status` 不再作为 JIRA 汇总保留。工作区工具集有五个成员：`workspace_sessions`、`workspace_intents`、`workspace_tasks`、`workspace_message`、`workspace_artifacts`。`.dsh` 这一行是依赖，不是决定；边界归 2.3。工具面改动后的当前状态：`workspace_sessions`（`list`/`get`/`run`/`start`/`append`/`prompt`/`stop`/`abort`/`fork`/`archive`/`compact`/`delete`）、`workspace_intents`、`workspace_tasks`（`list`/`get`/`create`/`update`/`receipt`）、`workspace_message`（`send`/`read`/`status`/`retry`）与 `workspace_artifacts`（`publish`/`reference`/`request`/`grant`/`list`/`resolve`）已交付，静态 `workspace-directory` 提示词段已接到每个 agent。`memory_read` 已删除（第 1 步），`memory_resolve` 随 dispatch 命名空间在第 4 步删除；memory 工具面只剩 `memory_write`、`memory_forget` 与 `memory_search`。JIRA 模型工具、执行器账本工具、认领/派发工具、super agent 控制与账本工具、三个 JIRA 技能、面板与 CLI 已移除；会话生命周期与投递状态分别归 `workspace_sessions` 与 `workspace_message`。本地 JIRA 账本与派发账本已删除；`workspace_tasks` 从空白开始。JIRA 只保留云端数据仓，按数据原样，不接入工具或流程。不再有 JIRA 包。
 
 ### 6.3 投递改成工具调用
 
@@ -378,7 +380,7 @@ ArtifactRef = { artifactId, workspaceId, path, sha256, size, version,
   - `denied`：调用方无权读该工作区或该产物，或持有方拒绝。
   - `pending`：拉请求存在，但还没有授权或拒绝。
   - `expired`：授权窗口已过。
-- 第 4 步之后的当前状态：`resolve` 已实现 `ok`、`changed`、`missing` 与 `denied`；`pending` 与 `expired` 虽然声明，但在 `workspace_artifacts.request`/`grant` 交付之前不可达。产物的跨工作区 `resolve` 不做成员或角色检查：只要显式给工作区 id（并留痕）即可，`denied` 现在的含义是记录路径解析到工作区根之外，或目标不是普通文件。下面的授权规则是目标契约，不是已交付行为。
+- 第 4 步之后的当前状态：`resolve` 已实现 `ok`、`changed`、`missing` 与 `denied`；`pending` 与 `expired` 通过 `workspace_artifacts.request`/`grant` 可达。同工作区请求无需授权即可解析；跨工作区请求读取版本授权记录，因此被拒绝或过期时无需读取文件即可报告。推路径上的 `resolve` 不查该记录：附件本身就是授权。产物的跨工作区 `resolve` 不做成员或角色检查：只要显式给工作区 id（并留痕）即可，`denied` 的含义是记录路径解析到工作区根之外、目标不是普通文件，或持有方拒绝该版本。
 - 授权按“一个产物版本 + 一个请求方”限定，并且会过期。推附件只对目标会话有效。新版本需要新授权；旧授权不会跟随新内容。
 - 跨会话引用默认在同一工作区内解析。来自别的工作区的引用必须显式给 `workspace` id；无权限时返回 `denied`，绝不返回 `missing`。
 - 删除文件不会删除产物索引条目；`resolve` 返回 `missing`，引用保留以便审计。同一路径重新发布会生成新版本；旧引用解析为 `changed`，不会静默跟随新内容。
@@ -388,7 +390,7 @@ ArtifactRef = { artifactId, workspaceId, path, sha256, size, version,
 
 工作区工具集没有回合结束投递路径。它的每条出站消息都是显式的 `workspace_message.send`；一个 turn 不发就什么都不投递。JIRA 的回合结束投递已随 JIRA 退场删除，不存在任何角色、任何部署配置下的隐式出站路径。`requestId` 仍然去重重试；同一内容不可能通过它投两次，“新问题”也不会被误当成“旧问题”。
 
-工作区请求是通用能力，不是某个角色的专属流程。任意 agent 都可以经 `workspace_message`（`send`/`read`/`status`/`retry`）向同一工作区的其他 agent/session 发起请求，也可以经 `workspace_sessions` 的 `start`/`append`/`prompt` 启动或继续会话。意图卡与 `workspace_tasks` 只在需要正式任务记录、需要规范 session 信息沟通与管理时使用；简单的或明确的动作直接执行或直接发请求，不需要单独发卡，也不存在所有动作都必须经过的固定顺序。`append`、`prompt` 与 `abort` 继续已有会话，不创建第二条任务。不确定的范围先向人确认（全局人设提示词规则）。
+工作区请求是通用能力，不是某个角色的专属流程。任意 agent 都可以经 `workspace_message`（`send`/`read`/`status`/`retry`）向同一工作区的其他 agent/session 发起请求，也可以经 `workspace_sessions` 的 `run`/`start`/`append`/`prompt` 启动或继续会话。意图卡与 `workspace_tasks` 只在需要正式任务记录、需要规范 session 信息沟通与管理时使用；简单的或明确的动作直接执行或直接发请求，不需要单独发卡，也不存在所有动作都必须经过的固定顺序。`run`、`append`、`prompt` 与 `abort` 继续已有会话，不创建第二条任务。不确定的范围先向人确认（全局人设提示词规则）。
 
 两条路径并存。超级工作区（派发方）用同一套工具调用派发：super agent 用 `workspace_tasks.create` 建正式任务，用 `workspace_sessions.start`/`prompt` 启动或继续执行会话，用 `workspace_message.read`/`status` 读取执行方回传；跨工作区回传只按任务绑定放行。这不收窄通用能力：任何 agent 仍可经 `workspace_message` 发同工作区请求、经 `workspace_sessions` 启动或继续会话。
 
@@ -404,7 +406,7 @@ agent 间请求不形成循环（已实现）。执行方对一条请求最多�
 
 ### 6.6 产物访问：拉与推
 
-产物访问有两种模式，由先执行哪个工具决定。拉尚未实现：`workspace_artifacts.request` 与 `grant` 不存在，所以下面的拉检查点是目标契约；经 `workspace_message.send` 引用的推路径已交付。
+产物访问有两种模式，由先执行哪个工具决定。拉已实现：`workspace_artifacts.request` 与 `grant` 已交付；经 `workspace_message.send` 引用的推路径也已交付。
 
 **拉。** 需求方调用 `workspace_artifacts.request`。检查点按顺序：
 
@@ -516,7 +518,7 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 | 3 | 投递改成工具调用，并在同一版本删除洪水：`workspace_message.send`、产物发布/引用、静态提示词，且不再有快照、更新通知、跨会话索引、回合结束投递 | 消息与引用能往返；重试不重复；一个 turn 不发就什么都不投递；普通会话每轮记忆消息数为 0、字节数为 0；“上一轮做了什么”由 `workspace_sessions` 回答 |
 | 4 | 记忆变为只留 global，并迁移旧条目 | 业务或派发写入被拒并给出工具提示；产出 dry-run 报告；只有确认过的 global 条目仍被注入；备份与回滚已验证 |
 
-已完成：第 0–4 步。第 3 步交付了 `workspace_message.send`、产物 `publish`/`reference`、静态工作区目录，并删除了记忆快照、`memory-state` 段、“Memory updated”通知与跨会话索引。一个不发 send 的 turn 不会经工作区工具集投递任何东西：唯一会调用宿主会话控制器的路径是 `workspace_message.send`。第 4 步交付了只留全局的存储（`$DSH_HOME/memory/GLOBAL.md` 与 `GLOBAL.archive.md`）、三件工具（`memory_write`、`memory_forget`、`memory_search`）、带工具指针的 `NOT_GLOBAL_MEMORY` 拒绝、每轮摘要作业的移除，以及带备份、日志与回滚的报告哈希迁移。`memory_resolve`、工作区摘要类命令、实时 TTL 清理与跨会话索引都已从模型面与人类面消失。已完成：任务绑定的跨工作区回传与 `task.dispatcherSessionId`（见 6.5 节）。未开始：产物的 `request`/`grant`。
+已完成：第 0–4 步。第 3 步交付了 `workspace_message.send`、产物 `publish`/`reference`、静态工作区目录，并删除了记忆快照、`memory-state` 段、“Memory updated”通知与跨会话索引。一个不发 send 的 turn 不会经工作区工具集投递任何东西：唯一会调用宿主会话控制器的路径是 `workspace_message.send`。第 4 步交付了只留全局的存储（`$DSH_HOME/memory/GLOBAL.md` 与 `GLOBAL.archive.md`）、三件工具（`memory_write`、`memory_forget`、`memory_search`）、带工具指针的 `NOT_GLOBAL_MEMORY` 拒绝、每轮摘要作业的移除，以及带备份、日志与回滚的报告哈希迁移。`memory_resolve`、工作区摘要类命令、实时 TTL 清理与跨会话索引都已从模型面与人类面消失。已完成：任务绑定的跨工作区回传与 `task.dispatcherSessionId`（见 6.5 节）；产物的 `request`/`grant` 也已交付。
 
 每一步都可独立上线、可回滚。第 0 步先合。第 1 到 4 步不依赖看板方向。
 
@@ -544,7 +546,7 @@ dry-run 报告逐文件逐条列出：类别、建议的 global 主题、原因�
 - 工具调用延迟与成本：结果保持有界，并在提示词里放一张简短的“去哪里查”地图。
 - 一个任务一个主人：任务记录只由 `workspace_tasks` 写。需要正式任务记录时，顺序是可选的 active 意图卡 → `workspace_tasks.create` → 可选的 `workspace_sessions.start`/`prompt`；简单或明确的动作不建卡、不建任务。没有派发历史副本，也没有第二份任务列表。回传只经 `workspace_message.send`，任务状态只经 `workspace_tasks`。
 - 消息优先级：紧急消息可以中断一个步骤。`workspace_message.send` 在标记 urgent 时要求给出 `urgentReason`（三种已命名情况之一），目标在运行时 steer 当前步骤，目标空闲时回退为排队。三种紧急情况很窄，普通消息永远不紧急；误判紧急是缺陷，要评审。
-- 引用失效：`publish`/`reference`/`send` 已交付，changed、missing、denied 可达且分开；引用在发送时固定，新版本需要新的引用。产物的 `request`/`grant` 交付之前，`pending` 与 `expired` 不可达；跨工作区拒绝不泄漏产物是否存在。
+- 引用失效：`publish`/`reference`/`send` 已交付，changed、missing、denied 可达且分开；引用在发送时固定，新版本需要新的引用。`request`/`grant` 已交付，所以 `pending` 与 `expired` 可达；授权按版本绑定、到期失效，且不会泄漏持有方没有做过的决定。跨工作区拒绝不泄漏产物是否存在。
 - 跨工作区授权：显式工作区 id、注册表成员校验、调用留痕。跨工作区发送只按任务绑定放行；没有绑定时，任何角色的调用都被拒绝。拉先查接收方，推先查发送方；不做隐式聚合。
 - 丢失上下文压缩：compaction 预置太激进会丢上下文；把它做成可配置，用长会话测试，并保留上一版值以便回滚。
 - 确认通道：不确定的范围先向人确认（全局人设提示词规则）；确认请求有截止时间与可见状态，链路断开标为 `failed`，不静默挂起。
@@ -659,7 +661,7 @@ schema 与服务强制这件事；提示词只说顺序：先读卡，再读任�
 
 正式任务入口是 `workspace_tasks.create`，需要交付会话时再调用 `workspace_sessions.start`/`prompt`：引用了卡时按 active 卡版本建任务（卡引用、brief 的验收与边界、任务类型、覆盖映射、`requestId`），没有卡时只带 brief，任务落盘之后启动会话，首个任务文本就是这条任务的工作内容；`start` 本身不检查卡。简单或明确的动作不建卡，直接执行或经 `workspace_message` 发请求。`append`、`prompt`、`abort` 只是继续一个已启动的会话，不创建第二条任务。工作区工具集挂在同一组合里，因此 `workspace_intents` 与 `workspace_tasks` 在每个 agent 上；写动作对每个 agent 的工作区开放，跨工作区写要求 super agent。卡校验、覆盖检查与幂等规则只实现一次，同一实现经 `ctx.workspaceTasks` 服务暴露给派发方；该服务不是模型面，也不自己做角色检查。
 
-第 4 步之后的当前状态：工具已经强制任务拒绝码、覆盖检查、回执门、静态工作区目录、消息作用域与幂等规则，以及产物发布/引用。`workspace_message.send` 与 `workspace_artifacts.publish`/`reference` 已交付；产物的 `request`/`grant` 尚未。卡片 UI 出现之前，`create`、`confirm` 与 `correct` 对工作区内任何 agent 开放；跨工作区写要求 super agent。`nonCoverage` 条目是派发确认的显式豁免，连同理由记录在任务上；它不是默认通过。
+第 4 步之后的当前状态：工具已经强制任务拒绝码、覆盖检查、回执门、静态工作区目录、消息作用域与幂等规则，以及产物发布/引用/请求/授权。`workspace_message.send` 与 `workspace_artifacts.publish`/`reference`/`request`/`grant` 已交付。卡片 UI 出现之前，`create`、`confirm` 与 `correct` 对工作区内任何 agent 开放；跨工作区写要求 super agent。`nonCoverage` 条目是派发确认的显式豁免，连同理由记录在任务上；它不是默认通过。
 
 ### 11.9 不做什么
 

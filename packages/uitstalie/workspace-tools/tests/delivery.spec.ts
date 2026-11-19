@@ -701,3 +701,115 @@ test('a declined delivery keeps its reason, advances attempts, and retry then de
   expect(deliveredSent.error).toBeUndefined()
   expect(admitted).toHaveLength(1)
 })
+
+test('a same-workspace artifact request resolves, and a cross-workspace one needs a grant', async () => {
+  const workspaceA = await registerWorkspace(mounted.registry, projectA, 'request-a')
+  const workspaceB = await registerWorkspace(mounted.registry, projectB, 'request-b')
+  const requester = await createRoot(mounted, 'request-requester', projectA)
+  const holder = await createRoot(mounted, 'request-holder', projectB)
+  await workspaceA.attachSession(requester.session.id)
+  await workspaceB.attachSession(holder.session.id)
+  await writeFile(join(projectB, 'report.md'), '# report\n')
+
+  // requestId is optional for publish now.
+  const published = await callTool(mounted.ctx, holder, 'workspace_artifacts', {
+    action: 'publish', path: 'report.md', kind: 'report',
+  })
+  expect(published.isError).toBe(false)
+  const artifactId = objectValue<{ artifact: { artifactId: string } }>(valueOf(published)).artifact.artifactId
+
+  const local = await callTool(mounted.ctx, holder, 'workspace_artifacts', { action: 'request', artifactId })
+  expect(local.isError).toBe(false)
+  expect(objectValue<{ resolution: { status: string } }>(valueOf(local)).resolution.status).toBe('ok')
+
+  const pending = await callTool(mounted.ctx, requester, 'workspace_artifacts', {
+    action: 'request', workspace: String(workspaceB.id), artifactId,
+  })
+  expect(pending.isError).toBe(false)
+  expect(objectValue<{ resolution: { status: string } }>(valueOf(pending)).resolution.status).toBe('pending')
+
+  // A non-super caller cannot grant another workspace's artifact.
+  const refused = await callTool(mounted.ctx, requester, 'workspace_artifacts', {
+    action: 'grant', workspace: String(workspaceB.id), artifactId, decision: 'granted',
+  })
+  expect(refused.isError).toBe(true)
+  expect(textOf(refused)).toContain('super agent')
+
+  const granted = await callTool(mounted.ctx, holder, 'workspace_artifacts', {
+    action: 'grant', artifactId, decision: 'granted',
+  })
+  expect(granted.isError, textOf(granted)).toBe(false)
+  const afterGrant = await callTool(mounted.ctx, requester, 'workspace_artifacts', {
+    action: 'request', workspace: String(workspaceB.id), artifactId,
+  })
+  expect(objectValue<{ resolution: { status: string } }>(valueOf(afterGrant)).resolution.status).toBe('ok')
+
+  const denied = await callTool(mounted.ctx, holder, 'workspace_artifacts', {
+    action: 'grant', artifactId, decision: 'denied',
+  })
+  expect(denied.isError).toBe(false)
+  const afterDenial = await callTool(mounted.ctx, requester, 'workspace_artifacts', {
+    action: 'request', workspace: String(workspaceB.id), artifactId,
+  })
+  expect(objectValue<{ resolution: { status: string } }>(valueOf(afterDenial)).resolution.status).toBe('denied')
+
+  // A new version needs a new grant: the version-scoped grant does not carry over.
+  await writeFile(join(projectB, 'report.md'), '# report v2\n')
+  const republished = await callTool(mounted.ctx, holder, 'workspace_artifacts', {
+    action: 'publish', path: 'report.md', kind: 'report',
+  })
+  expect(republished.isError).toBe(false)
+  const afterPublish = await callTool(mounted.ctx, requester, 'workspace_artifacts', {
+    action: 'request', workspace: String(workspaceB.id), artifactId,
+  })
+  expect(objectValue<{ resolution: { status: string } }>(valueOf(afterPublish)).resolution.status).toBe('pending')
+})
+
+test('an expired grant reports expired, and a fresh grant reopens the version', async () => {
+  const workspaceB = await registerWorkspace(mounted.registry, projectB, 'expiry-b')
+  const requester = await createRoot(mounted, 'expiry-requester', projectA)
+  const holder = await createRoot(mounted, 'expiry-holder', projectB)
+  await workspaceB.attachSession(holder.session.id)
+  await writeFile(join(projectB, 'report.md'), '# expiry report\n')
+
+  const published = await callTool(mounted.ctx, holder, 'workspace_artifacts', {
+    action: 'publish', path: 'report.md', kind: 'report',
+  })
+  const artifactId = objectValue<{ artifact: { artifactId: string } }>(valueOf(published)).artifact.artifactId
+  const granted = await callTool(mounted.ctx, holder, 'workspace_artifacts', {
+    action: 'grant', artifactId, decision: 'granted',
+  })
+  expect(granted.isError).toBe(false)
+
+  await seedRecord(mounted, `workspaces/${String(workspaceB.id)}/grants/${artifactId}-v1.json`, {
+    workspaceId: String(workspaceB.id),
+    artifactId,
+    version: 1,
+    sha256: sha256(new Uint8Array(Buffer.from('# expiry report\n'))),
+    status: 'granted',
+    decidedBy: String(holder.session.id),
+    decidedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() - 60_000).toISOString(),
+  })
+  const expired = await callTool(mounted.ctx, requester, 'workspace_artifacts', {
+    action: 'request', workspace: String(workspaceB.id), artifactId,
+  })
+  expect(objectValue<{ resolution: { status: string } }>(valueOf(expired)).resolution.status).toBe('expired')
+
+  const reopened = await callTool(mounted.ctx, holder, 'workspace_artifacts', {
+    action: 'grant', artifactId, decision: 'granted',
+  })
+  expect(reopened.isError).toBe(false)
+  const after = await callTool(mounted.ctx, requester, 'workspace_artifacts', {
+    action: 'request', workspace: String(workspaceB.id), artifactId,
+  })
+  expect(objectValue<{ resolution: { status: string } }>(valueOf(after)).resolution.status).toBe('ok')
+})
+
+test('a cross-workspace request for an unregistered workspace is refused', async () => {
+  const agent = await createRoot(mounted, 'unregistered-requester', projectA)
+  const refused = await callTool(mounted.ctx, agent, 'workspace_artifacts', {
+    action: 'request', workspace: 'ws-missing', artifactId: 'artifact-missing',
+  })
+  expect(refused.isError).toBe(true)
+})

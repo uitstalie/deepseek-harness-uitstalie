@@ -63,8 +63,8 @@
   en: 729455b51af9f462
   zh: 42c78df64b251864
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/4-data-model/4-2-toolset-records:
-  en: 48d8e9bf6d68ffa1
-  zh: 8b584b6d9ab4c4b5
+  en: 400cb127939cd5f3
+  zh: c9793284b8d73b7c
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/4-data-model/4-3-prompt-data:
   en: f8854a46e907a570
   zh: 62b0bb610139ed04
@@ -72,23 +72,23 @@
   en: 324006c9e3c5b7cf
   zh: 36478bec72aac956
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/5-the-workspace-information-toolset/5-1-common-scope-rules:
-  en: 55c5a11fe02995e2
-  zh: b64e61d76a845f9f
+  en: afa51809bc099381
+  zh: ed3c0563909402bc
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/5-the-workspace-information-toolset/5-2-workspace-sessions:
   en: 5224875732b39b25
   zh: 26b46def1e4b0b72
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/5-the-workspace-information-toolset/5-3-workspace-tasks:
-  en: 095a8cc6eb31cb36
-  zh: 430a72fb097abe47
+  en: 6f25f648a5dd8965
+  zh: c0ea7d287c1af0a9
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/5-the-workspace-information-toolset/5-4-workspace-message:
   en: 3c8d71871575c8a2
   zh: 0a3a8fd046e2a1aa
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/5-the-workspace-information-toolset/5-5-workspace-artifacts:
-  en: 184302dfa44b9d55
-  zh: 4bd5f521d6ad4c4e
+  en: 74344dd8821787a6
+  zh: d1f5c474a4744a4a
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/5-the-workspace-information-toolset/5-6-when-to-call-which:
-  en: e1f1cf1fd1d03d7d
-  zh: 839502fdaf7f1eb8
+  en: 00fbcc25b7c97dd2
+  zh: c4245e006fb17631
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/5-the-workspace-information-toolset/5-7-the-board-reads-the-same-toolset:
   en: 15adc92db8d46251
   zh: bac3c290e8912eaa
@@ -99,20 +99,20 @@
   en: ab7f95831d99e72a
   zh: 3ed57e3eeeaf2755
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-2-existing-tool-to-new-home:
-  en: 4a1ae486bd2b1d76
-  zh: 8fb9833f41f7738e
+  en: 5ad2a6b5b8ed5d05
+  zh: 38a3b7f92c9501a3
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-3-delivery-as-a-tool-call:
   en: f73f8f42894490d6
   zh: e503cfe453abe26a
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-4-reference-model:
-  en: dd51b9d126f07b4b
-  zh: 8504981b5779f739
+  en: c81d94bc8145a6a3
+  zh: 1999032243310e72
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-5-no-turn-end-fallback-workspace-requests-and-return-contract:
   en: 46408b6449eb1905
-  zh: 89d2f08332269611
+  zh: 00fab5591d27f651
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-6-artifact-access-pull-and-push:
-  en: f9151132c204bdde
-  zh: c4c3a7830f77180e
+  en: 7ee6a90fa81ff7b5
+  zh: fa07640c1ae7f529
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/6-tool-consolidation-and-tool-based-delivery/6-7-memory-tools-after-the-split:
   en: 4f7809aca68852e7
   zh: 2516e13090d17f3c
@@ -145,7 +145,7 @@
   zh: d189938776919b10
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/9-milestones:
   en: 08bfa4d11f3905c2
-  zh: c0521b036dffdab5
+  zh: 6db33f59520c5c49
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions:
   en: ac347e271643ae3f
   zh: 0e4690809fb27331
@@ -156,8 +156,8 @@
   en: 9c7479b056deea5e
   zh: 00099da39b680361
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions/10-3-risks:
-  en: e7db9d97f33984d8
-  zh: 8f03663457f8661e
+  en: c1358e26556be760
+  zh: 2162125407cf2f76
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/10-risks-and-open-questions/10-4-confirmed-in-this-round:
   en: 942fdf14fac71fb2
   zh: 3e7a2bf723cdb3ed
@@ -186,8 +186,8 @@
   en: 2497caf00efb9804
   zh: 7a1acf51edd15a12
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/11-intent-cards-dispatch-alignment/11-8-tool-surface:
-  en: 2ff9a9767dd02920
-  zh: db02c30005780301
+  en: 750f9976a960162d
+  zh: 968d581c1ee67a1e
 /memory-and-workspace-information-for-every-session-a-static-prompt-one-toolset-and-global-memory/11-intent-cards-dispatch-alignment/11-9-what-this-does-not-do:
   en: a45123cdaaf43a2c
   zh: 838f9735d3d64e02

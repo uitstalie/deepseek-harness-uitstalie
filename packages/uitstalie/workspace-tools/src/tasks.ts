@@ -328,7 +328,7 @@ export function workspaceTasksTool(ctx: Context): ToolDefinition {
       },
       requestId: {
         type: 'string',
-        description: 'Idempotency key; optional for `create` (a generated one makes each call a new task) and required by `receipt`. A repeated key returns the first result.',
+        description: 'Idempotency key; optional for `create`, `update`, and `receipt` (a generated one makes each call a new operation). A repeated key returns the first result.',
       },
       cursor: {
         type: 'string',
@@ -1038,10 +1038,7 @@ async function appendReceipt(
   signal: AbortSignal | undefined,
 ): Promise<WorkspaceTasksValue> {
   const taskId = requireTaskId(args.taskId, 'receipt')
-  const requestId = args.requestId
-  if (requestId === undefined || requestId.length === 0) {
-    throw new WorkspaceTaskError('workspace_tasks.receipt requires requestId', 'WORKSPACE_TASK_TRANSITION')
-  }
+  const requestId = args.requestId?.trim() || randomUUID()
   const status = args.status
   if (status === undefined) {
     throw new WorkspaceTaskError('workspace_tasks.receipt requires status', 'WORKSPACE_TASK_TRANSITION')

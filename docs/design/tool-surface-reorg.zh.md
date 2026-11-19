@@ -47,7 +47,7 @@ JIRA 只保留云端数据仓：GitHub 上的 cloudstore 仓库及其内容与�
 
 ## 5. `.dsh`
 
-`tool-dsh-store` 仍是 `.dsh` 内容唯一的模型面入口。`workspace_artifacts` 发布与解析引用；对 `.dsh` 路径调用 store 的路径归一化与命名空间检查，并拒绝 `.dsh/memory`。它不会成为第二个 store 写入者。
+`tool-dsh-store` 仍是 `.dsh` 内容唯一的模型面入口。`workspace_artifacts` 发布、引用、请求、授权与解析引用；对 `.dsh` 路径调用 store 的路径归一化与命名空间检查，并拒绝 `.dsh/memory`。它不会成为第二个 store 写入者。
 
 ## 6. 最终工具面
 

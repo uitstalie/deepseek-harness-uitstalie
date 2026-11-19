@@ -47,7 +47,7 @@ Workspace requests and the return contract belong to the memory and workspace de
 
 ## 5. `.dsh`
 
-`tool-dsh-store` remains the only model-facing entry for `.dsh` content. `workspace_artifacts` publishes and resolves references; for a `.dsh` path it calls the store's path normalization and namespace check and refuses `.dsh/memory`. It never becomes a second store writer.
+`tool-dsh-store` remains the only model-facing entry for `.dsh` content. `workspace_artifacts` publishes, references, requests, grants, and resolves references; for a `.dsh` path it calls the store's path normalization and namespace check and refuses `.dsh/memory`. It never becomes a second store writer.
 
 ## 6. Final tool surface
 

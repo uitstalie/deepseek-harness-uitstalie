@@ -1,14 +1,17 @@
 /**
- * `workspace_artifacts`: publish, reference, and resolve the files a workspace
- * produced.
+ * `workspace_artifacts`: publish, reference, request, grant, and resolve the
+ * files a workspace produced.
  *
  * `publish` hashes one file inside the workspace root and records an immutable
  * reference; it never copies the file. `reference` attaches an existing
- * reference to a message or a task. `list` reports the latest published version
- * of each artifact in the workspace; `resolve` compares one recorded version
- * with the file on disk and reports `ok`, `changed`, or `missing` without
- * exposing content. A path outside the workspace root is `denied`, so the
- * reference never escapes the workspace it belongs to.
+ * reference to a message or a task. `request` asks for one version: in the
+ * caller's own workspace it resolves immediately, while a cross-workspace
+ * request waits for the holder's version-scoped `grant`, which expires. `list`
+ * reports the latest published version of each artifact in the workspace;
+ * `resolve` compares one recorded version with the file on disk and reports
+ * `ok`, `changed`, or `missing` without exposing content. A path outside the
+ * workspace root is `denied`, so the reference never escapes the workspace it
+ * belongs to.
  * @module @deepseek-ai/dsh-workspace-tools/artifacts
  */
 
@@ -22,15 +25,17 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { WorkspaceArtifactError, WorkspaceRecordError } from './errors.ts'
 import { pageOf } from './paging.ts'
-import type { ArtifactCitation, ArtifactReference, ArtifactResolution, ArtifactResolutionStatus, ArtifactRecord } from './records.ts'
+import type { ArtifactCitation, ArtifactGrant, ArtifactReference, ArtifactResolution, ArtifactResolutionStatus, ArtifactRecord } from './records.ts'
 import { resolveWorkspace } from './scope.ts'
 import {
   artifactVersion,
   listArtifacts,
   readArtifact,
+  readGrant,
   readMessage,
   readTask,
   writeArtifact,
+  writeGrant,
   writeMessage,
   writeTask,
 } from './store.ts'
@@ -143,8 +148,26 @@ export interface WorkspaceArtifactsValue {
   readonly artifact?: ArtifactView
   /** Message or task one `reference` call attached the citation to. */
   readonly attachedTo?: { readonly messageId?: string; readonly taskId?: string }
+  /** The grant one `grant` call recorded. */
+  readonly grant?: ArtifactGrantView
   /** Cursor of the next page. */
   readonly nextCursor?: string
+}
+
+/** One recorded artifact grant as the tool returns it. */
+export interface ArtifactGrantView {
+  /** Artifact the grant covers. */
+  readonly artifactId: string
+  /** Version the grant is scoped to. */
+  readonly version: number
+  /** Holder's decision. */
+  readonly status: 'granted' | 'denied'
+  /** Session that recorded the decision. */
+  readonly decidedBy: string
+  /** ISO-8601 decision instant. */
+  readonly decidedAt: string
+  /** ISO-8601 instant the grant stops being valid; absent for a denial. */
+  readonly expiresAt?: string
 }
 
 /**
@@ -156,18 +179,23 @@ export function workspaceArtifactsTool(ctx: Context): ToolDefinition {
   return defineTool({
     name: 'workspace_artifacts',
     description:
-      'Publish, reference, and read artifact references in a workspace. `publish` registers one file inside the '
-      + 'workspace root and returns an immutable reference (path, version, sha256, size); it never copies the file. '
-      + '`reference` attaches an existing reference to a message or task without copying it. `list` returns the '
-      + 'latest reference per artifact, filtered by session, task, kind, or path prefix; `resolve` reports whether '
-      + 'one recorded version still matches the file as `ok`, `changed`, `missing`, or `denied`, without returning '
-      + 'content. Use `read` for the content. The caller\'s workspace is the default scope.',
+      'Publish, reference, request, grant, and read artifact references in a workspace. `publish` registers one file '
+      + 'inside the workspace root and returns an immutable reference (path, version, sha256, size); it never copies '
+      + 'the file. `reference` attaches an existing reference to a message or task without copying it. `request` asks '
+      + 'for one recorded version: in the caller\'s own workspace it resolves immediately; across workspaces it stays '
+      + '`pending` until the holder runs `grant` (a version-scoped decision with an expiry), and `denied` or '
+      + '`expired` never reveal a decision the holder did not make. `grant` records that decision; it is open to an '
+      + 'agent in the artifact\'s workspace and to the super agent. `list` returns the latest reference per '
+      + 'artifact, filtered by session, task, kind, or path prefix; `resolve` reports whether one recorded version '
+      + 'still matches the file as `ok`, `changed`, `missing`, or `denied`, without returning content. Use `read` '
+      + 'for the content. The caller\'s workspace is the default scope.',
     parameters: {
       action: {
         type: 'string',
         required: true,
-        enum: ['publish', 'reference', 'list', 'resolve'],
-        description: '`publish` registers a file; `reference` cites it on a message or task; `list` and `resolve` read.',
+        enum: ['publish', 'reference', 'request', 'grant', 'list', 'resolve'],
+        description: '`publish` registers a file; `reference` cites it on a message or task; `request` asks for a version; '
+          + '`grant` records the holder\'s decision; `list` and `resolve` read.',
       },
       workspace: {
         type: 'string',
@@ -187,11 +215,11 @@ export function workspaceArtifactsTool(ctx: Context): ToolDefinition {
       },
       artifactId: {
         type: 'string',
-        description: 'Artifact to `reference` or `resolve`.',
+        description: 'Artifact to `reference`, `request`, `grant`, or `resolve`.',
       },
       version: {
         type: 'integer',
-        description: 'Version to `reference` or `resolve`; defaults to the latest published version.',
+        description: 'Version to `reference`, `request`, `grant`, or `resolve`; defaults to the latest published version.',
       },
       messageId: {
         type: 'string',
@@ -211,7 +239,16 @@ export function workspaceArtifactsTool(ctx: Context): ToolDefinition {
       },
       requestId: {
         type: 'string',
-        description: 'Idempotency key for `publish` and `reference`; a retry with the same key returns the first result.',
+        description: 'Idempotency key for `publish` and `reference`; optional. Omit to perform a new operation, supply it so a retry returns the first result.',
+      },
+      decision: {
+        type: 'string',
+        enum: ['granted', 'denied'],
+        description: '`grant`: the holder\'s decision for the requested version. Required there.',
+      },
+      expiresInSeconds: {
+        type: 'integer',
+        description: '`grant`: how long a granted decision stays valid; defaults to 86400 (24 hours), minimum 60.',
       },
       cursor: {
         type: 'string',
@@ -284,6 +321,18 @@ export function workspaceArtifactsTool(ctx: Context): ToolDefinition {
               taskId: { type: 'string' },
             },
           },
+          grant: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              artifactId: { type: 'string', required: true },
+              version: { type: 'integer', required: true },
+              status: { type: 'string', required: true, enum: ['granted', 'denied'] },
+              decidedBy: { type: 'string', required: true },
+              decidedAt: { type: 'string', required: true },
+              expiresAt: { type: 'string' },
+            },
+          },
           nextCursor: { type: 'string' },
         },
       },
@@ -302,6 +351,18 @@ export function workspaceArtifactsTool(ctx: Context): ToolDefinition {
         return {
           workspace: String(scope.workspace.id),
           ...await referenceArtifact(ctx, scope.workspace, args, exec.signal),
+        }
+      }
+      if (args.action === 'request') {
+        return {
+          workspace: String(scope.workspace.id),
+          resolution: await requestArtifact(ctx, scope.workspace, scope.crossWorkspace, args, exec.signal),
+        }
+      }
+      if (args.action === 'grant') {
+        return {
+          workspace: String(scope.workspace.id),
+          grant: await grantArtifact(ctx, scope.workspace, scope.crossWorkspace, exec.agent?.role, session, args, exec.signal),
         }
       }
       if (args.action === 'resolve') {
@@ -355,12 +416,6 @@ async function publishArtifact(
   request: PublishRequest,
   signal: AbortSignal | undefined,
 ): Promise<ArtifactView> {
-  if ((request.requestId ?? '').trim() === '') {
-    throw new WorkspaceArtifactError(
-      'workspace_artifacts with action "publish" requires requestId so a retry cannot publish twice',
-      'ARTIFACT_INVALID',
-    )
-  }
   const requested = request.path?.trim() ?? ''
   const kind = request.kind?.trim() ?? ''
   if (requested === '') {
@@ -475,12 +530,6 @@ async function referenceArtifact(
   },
   signal: AbortSignal | undefined,
 ): Promise<{ readonly artifact: ArtifactView; readonly attachedTo?: { readonly messageId?: string; readonly taskId?: string } }> {
-  if ((request.requestId ?? '').trim() === '') {
-    throw new WorkspaceArtifactError(
-      'workspace_artifacts with action "reference" requires requestId so a retry cannot attach twice',
-      'ARTIFACT_INVALID',
-    )
-  }
   const artifactId = request.artifactId?.trim() ?? ''
   if (artifactId === '') {
     throw new WorkspaceRecordError('workspace_artifacts with action "reference" requires artifactId', 'WORKSPACE_RECORD_NOT_FOUND')
@@ -602,6 +651,156 @@ export function artifactView(reference: ArtifactReference): ArtifactView {
 }
 
 /**
+ * Request one recorded artifact version.
+ *
+ * In the caller's own workspace the request resolves immediately. Across
+ * workspaces it needs a version-scoped grant: without one, or when the grant
+ * names a different hash, the result is `pending`; a denial is `denied`; a
+ * passed deadline is `expired`. Only after a valid grant is the file read.
+ * @param ctx - context carrying the store and filesystem.
+ * @param workspace - workspace that owns the artifact.
+ * @param crossWorkspace - whether the caller named another workspace.
+ * @param request - artifact id and optional version.
+ * @param signal - cancellation for the store and filesystem reads.
+ * @returns the resolution.
+ * @throws WorkspaceRecordError when the workspace holds no such artifact or version.
+ */
+async function requestArtifact(
+  ctx: Context,
+  workspace: Workspace,
+  crossWorkspace: boolean,
+  request: { readonly artifactId?: string; readonly version?: number },
+  signal: AbortSignal | undefined,
+): Promise<ArtifactResolution> {
+  const artifactId = request.artifactId?.trim() ?? ''
+  if (artifactId === '') {
+    throw new WorkspaceRecordError('workspace_artifacts with action "request" requires artifactId', 'WORKSPACE_RECORD_NOT_FOUND')
+  }
+  const record = await readArtifactRecord(ctx, workspace, artifactId, signal)
+  const reference = artifactVersion(record, request.version)
+  if (reference === undefined) {
+    throw new WorkspaceRecordError(
+      `artifact ${JSON.stringify(artifactId)} has no recorded version ${String(request.version)}`,
+      'WORKSPACE_RECORD_NOT_FOUND',
+    )
+  }
+  if (!crossWorkspace) return await resolveReference(ctx, workspace, artifactId, reference.version, signal)
+  const base: ArtifactResolution = {
+    artifactId: reference.artifactId,
+    version: reference.version,
+    path: reference.path,
+    sha256: reference.sha256,
+    status: 'pending',
+  }
+  const stored = await readGrant(ctx, workspace.id, artifactId, reference.version, signal)
+  if (stored === undefined || stored.grant.sha256 !== reference.sha256) return base
+  const grant = stored.grant
+  if (grant.status === 'denied') return { ...base, status: 'denied' }
+  if (grant.expiresAt !== undefined && Date.parse(grant.expiresAt) <= Date.now()) return { ...base, status: 'expired' }
+  return await resolveReference(ctx, workspace, artifactId, reference.version, signal)
+}
+
+/**
+ * Record the holder's version-scoped decision on one artifact version.
+ *
+ * A grant is bound to the version's hash, so a new published version needs a
+ * new grant. Within the artifact's workspace any agent may decide; a
+ * cross-workspace grant requires the super agent.
+ * @param ctx - context carrying the store.
+ * @param workspace - workspace that owns the artifact.
+ * @param crossWorkspace - whether the caller named another workspace.
+ * @param role - caller's role, when the call has an Agent.
+ * @param session - Session recording the decision.
+ * @param request - artifact id, optional version, decision, and optional lifetime.
+ * @param signal - cancellation for the store reads and writes.
+ * @returns the recorded grant.
+ * @throws WorkspaceArtifactError when the caller may not grant or the lifetime is invalid.
+ * @throws WorkspaceRecordError when the workspace holds no such artifact or version.
+ */
+async function grantArtifact(
+  ctx: Context,
+  workspace: Workspace,
+  crossWorkspace: boolean,
+  role: string | undefined,
+  session: Session,
+  request: {
+    readonly artifactId?: string
+    readonly version?: number
+    readonly decision?: string
+    readonly expiresInSeconds?: number
+  },
+  signal: AbortSignal | undefined,
+): Promise<ArtifactGrantView> {
+  if (crossWorkspace && role !== 'super') {
+    throw new WorkspaceArtifactError(
+      'granting an artifact in another workspace requires the super agent',
+      'ARTIFACT_FORBIDDEN',
+    )
+  }
+  const artifactId = request.artifactId?.trim() ?? ''
+  if (artifactId === '') {
+    throw new WorkspaceRecordError('workspace_artifacts with action "grant" requires artifactId', 'WORKSPACE_RECORD_NOT_FOUND')
+  }
+  const decision = request.decision
+  if (decision !== 'granted' && decision !== 'denied') {
+    throw new WorkspaceArtifactError(
+      'workspace_artifacts with action "grant" requires decision "granted" or "denied"',
+      'ARTIFACT_INVALID',
+    )
+  }
+  const seconds = request.expiresInSeconds ?? 86_400
+  if (!Number.isInteger(seconds) || seconds < 60) {
+    throw new WorkspaceArtifactError(
+      'expiresInSeconds must be an integer of at least 60 seconds',
+      'ARTIFACT_INVALID',
+    )
+  }
+  const record = await readArtifactRecord(ctx, workspace, artifactId, signal)
+  const reference = artifactVersion(record, request.version)
+  if (reference === undefined) {
+    throw new WorkspaceRecordError(
+      `artifact ${JSON.stringify(artifactId)} has no recorded version ${String(request.version)}`,
+      'WORKSPACE_RECORD_NOT_FOUND',
+    )
+  }
+  const existing = await readGrant(ctx, workspace.id, artifactId, reference.version, signal)
+  const now = new Date()
+  const grant: ArtifactGrant = {
+    workspaceId: String(workspace.id),
+    artifactId,
+    version: reference.version,
+    sha256: reference.sha256,
+    status: decision,
+    decidedBy: String(session.id),
+    decidedAt: now.toISOString(),
+    ...decision === 'granted'
+      ? { expiresAt: new Date(now.getTime() + seconds * 1000).toISOString() }
+      : {},
+  }
+  await writeGrant(ctx, workspace.id, grant, {
+    session,
+    ...existing?.version === undefined ? {} : { expected: existing.version },
+  })
+  return grantView(grant)
+}
+
+/**
+ * Project one durable grant into the tool's view.
+ * @param grant - the durable grant.
+ * @returns the view, with an absent expiry omitted.
+ */
+function grantView(grant: ArtifactGrant): ArtifactGrantView {
+  return {
+    artifactId: grant.artifactId,
+    version: grant.version,
+    status: grant.status,
+    decidedBy: grant.decidedBy,
+    decidedAt: grant.decidedAt,
+    ...grant.expiresAt === undefined ? {} : { expiresAt: grant.expiresAt },
+  }
+}
+
+/**
  * Resolve one recorded artifact version against the current file.
  * @param ctx - context carrying the store and the filesystem.
  * @param workspace - workspace that owns the artifact.
@@ -688,6 +887,12 @@ async function readArtifactRecord(
  * @returns the model-facing text.
  */
 function renderArtifacts(value: WorkspaceArtifactsValue): string {
+  const grant = value.grant
+  if (grant !== undefined) {
+    return `${grant.status === 'granted' ? 'Granted' : 'Denied'} ${grant.artifactId} v${String(grant.version)}`
+      + ` · decided by ${grant.decidedBy} at ${grant.decidedAt}`
+      + (grant.expiresAt === undefined ? '' : ` · expires ${grant.expiresAt}`)
+  }
   const artifact = value.artifact
   if (artifact !== undefined) {
     const attached = value.attachedTo === undefined
