@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/dispatch-completion-notice.md
 /dispatch-completion-notices-waking-the-dispatcher:
-  en: 86daafd5f47119c7
-  zh: cf6f5292bae0ebb1
+  en: 6386808bddbb984e
+  zh: edf5bfaf944483e5
 /dispatch-completion-notices-waking-the-dispatcher/1-background-and-goals:
   en: f7f62959911cdd05
   zh: 8728fa2643c41630
@@ -21,8 +21,8 @@
   en: 921802e118d01620
   zh: 14e42a6a8baf2286
 /dispatch-completion-notices-waking-the-dispatcher/6-switch-rollback-and-failure-degradation:
-  en: 10f8982383a6c522
-  zh: e827699ccd236c83
+  en: a7858aed5eb0bfa1
+  zh: 3bd2bd9494f6f194
 /dispatch-completion-notices-waking-the-dispatcher/7-test-plan:
   en: b499453a7983b0b4
   zh: 209135ec56782b0a

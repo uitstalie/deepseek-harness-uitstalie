@@ -2,7 +2,7 @@
 
 [English](dispatch-completion-notice.md) | 中文
 
-状态：设计稿；未实现。提示层修正已单独落地；本文件只定义 C（任务绑定的完成通知）的运行时设计，不含代码。
+状态：已实现（首版）。实现位于 `packages/uitstalie/workspace-tools/src/completion.ts`，由 `workspace-tools` 插件在 `completionNotice` 打开时挂载；测试位于 `tests/completion-notice.spec.ts`。
 
 ## 1. 背景与目标
 
@@ -62,7 +62,7 @@
 
 ## 6. 开关、回滚与失败降级
 
-- 开关：配置项 `completionNotice: 'off' | 'task-bound'`；首版默认 `off`，灰度验证后切 `task-bound`。
+- 开关：配置项 `completionNotice: 'off' | 'task-bound'`；首版默认 `off`，由 `workspace-tools` 插件行配置；灰度验证后切 `task-bound`。同名的 `noticeMaxPerTask`（默认 32）与 `noticeTtlMs`（默认一天）控制每任务上限与窗口。
 - 回滚：关开关即恢复旧行为；通知是普通用户消息，不需要改 session 格式。
 - 失败降级：宿主控制器缺失或拒绝时记录失败与原因，不让执行方 turn 失败；不无限重试，派发方仍可用 `workspace_tasks get` 自查。
 - 兼容：不绑定任务的历史派发不生成通知；旧版本读到通知消息只当作普通用户文本。

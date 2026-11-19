@@ -52,7 +52,9 @@ kind: "package-reference"
 
 `start`，以及 `run` 新开会话时，会把派发者的权限策略以 `source: 'delegation'` 事件写进新会话的日志：`auto` 或 `danger-full-access` 预设、派发者的有效 sandbox 模式，以及固定的 `never` 审批策略（被派发的会话不直接询问用户，而由派发者转达问题）。组合里没有预设、sandbox 策略或审批服务时，对应事件省略，派发照常进行。
 
-投递是一次显式工具调用。`workspace_message.send` 校验目标会话、引用的产物版本与调用者作用域，再把受限正文（600 字符）交给宿主会话控制器。一个 turn 不调用 send 就什么都不投递；没有回合结束兜底。同工作区发送始终允许。跨工作区发送有三种授权：调用者工作区里的任务绑定（`targetSessionId` 是调用者、`dispatcherSessionId` 是目标）；super agent 主动发起投递；或回复一个已经向调用者工作区投递过的会话。每次跨工作区投递都会在接收方工作区记录一条派发关系，因此接收方只凭 `targetSessionId` 就能回复，不需要任务，也不怕重载。`priority: "urgent"` 必须给出三种已校验 `urgentReason` 之一（目标正在执行错误结论、危险操作停止令、用户指令变更），并 steer 目标当前步骤；目标空闲时回退为排队。
+任务绑定的完成通知是一条独立、只负责通知的路径。`completionNotice: task-bound`（默认 `off`）打开后，一个在被任务记为 `targetSessionId` 的会话里结束的 turn，会向该任务的 `dispatcherSessionId` 发一条排队的用户消息，首行以 `[workspace-task-settled]` 开头；空闲的派发方会被唤醒开新 turn，运行中的派发方则在当前 turn 结束后处理。该 turn 已经发过带任务的消息时不再通知，由通知开启的 turn 也不产生通知，因此不会成链。`done` 与 `cancelled` 任务停止通知；一个任务在 `noticeTtlMs`（默认一天）内最多收到 `noticeMaxPerTask` 条（默认 32）。投递失败、没有控制器或派发方已归档时只记日志，绝不让执行方的 turn 失败。在 `workspace-tools` 行上配置 `completionNotice: task-bound` 即可启用。
+
+投递是一次显式工具调用。`workspace_message.send` 校验目标会话、引用的产物版本与调用者作用域，再把受限正文（600 字符）交给宿主会话控制器。一个 turn 不调用 send 就不投递消息；唯一的回合结束投递就是上面的任务绑定完成通知。同工作区发送始终允许。跨工作区发送有三种授权：调用者工作区里的任务绑定（`targetSessionId` 是调用者、`dispatcherSessionId` 是目标）；super agent 主动发起投递；或回复一个已经向调用者工作区投递过的会话。每次跨工作区投递都会在接收方工作区记录一条派发关系，因此接收方只凭 `targetSessionId` 就能回复，不需要任务，也不怕重载。`priority: "urgent"` 必须给出三种已校验 `urgentReason` 之一（目标正在执行错误结论、危险操作停止令、用户指令变更），并 steer 目标当前步骤；目标空闲时回退为排队。
 
 产物引用在发布时不可变：`{ artifactId, workspaceId, path, sha256, size, version, kind, sessionId, taskId?, createdAt }`。产物 id 按 `workspace|path|kind` 稳定；文件变化后再发布追加一个版本。消息或任务保存被引用的 `artifactId`、`version` 与 `sha256`；之后文件变化不会改写引用，`resolve` 报 `changed` 或 `missing`，不会静默跟随新内容。
 

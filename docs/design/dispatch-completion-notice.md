@@ -2,7 +2,7 @@
 
 English | [中文](dispatch-completion-notice.zh.md)
 
-Status: design draft; not implemented. The prompt-layer correction shipped separately; this file defines only the runtime design for C (task-bound completion notices) and contains no code.
+Status: implemented (first version). The implementation is `packages/uitstalie/workspace-tools/src/completion.ts`, mounted by the `workspace-tools` plugin when `completionNotice` is on; tests are in `tests/completion-notice.spec.ts`.
 
 ## 1. Background and goals
 
@@ -62,7 +62,7 @@ The notice is delivered with `agent.followup`, the same mechanism as subagent se
 
 ## 6. Switch, rollback, and failure degradation
 
-- Switch: config `completionNotice: 'off' | 'task-bound'`; the first version defaults to `off`, flipped after a staged rollout.
+- Switch: config `completionNotice: 'off' | 'task-bound'`; the first version defaults to `off` and is configured on the `workspace-tools` row, flipped to `task-bound` after a staged rollout; `noticeMaxPerTask` (default 32) and `noticeTtlMs` (default one day) bound one task's notices.
 - Rollback: turning the switch off restores the old behavior; the notice is a normal user message, so no Session-format change is needed.
 - Failure degradation: when the host controller is missing or declines, record the failure and reason without failing the executor turn; do not retry without bound, and the dispatcher can still self-check with `workspace_tasks get`.
 - Compatibility: historical dispatches with no bound task produce no notice; an older version reads the notice as ordinary user text.

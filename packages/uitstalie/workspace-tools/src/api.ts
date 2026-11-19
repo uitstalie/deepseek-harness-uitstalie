@@ -36,6 +36,12 @@ import {
   workspaceRoutingText,
 } from './prompt.ts'
 import { workspaceTools } from './tools.ts'
+import {
+  DEFAULT_NOTICE_MAX_PER_TASK,
+  DEFAULT_NOTICE_TTL_MS,
+  mountCompletionNotices,
+} from './completion.ts'
+import type { CompletionNoticeMode } from './completion.ts'
 
 export const name = 'workspace-tools'
 
@@ -62,6 +68,12 @@ export interface Config {
   idleMs?: number
   /** Hard cap on one lease's life, in milliseconds. */
   maxMs?: number
+  /** Deliver a task-bound completion notice to a dispatcher when its executor turn ends. */
+  completionNotice?: CompletionNoticeMode
+  /** Most notices one task may receive inside `noticeTtlMs`. */
+  noticeMaxPerTask?: number
+  /** Window for the per-task notice cap and duplicate guard, in milliseconds. */
+  noticeTtlMs?: number
 }
 
 /** Validated lease schema; the minimums keep a typo from turning the idle window into no lease at all. */
@@ -69,6 +81,9 @@ export const Config: z<Config> = z.object({
   mode: z.union([z.const('enforce'), z.const('observe')]).default('enforce'),
   idleMs: z.number().step(1).min(60_000).default(LEASE_IDLE_MS),
   maxMs: z.number().step(1).min(60_000).default(LEASE_MAX_MS),
+  completionNotice: z.union([z.const('off'), z.const('task-bound')]).default('off'),
+  noticeMaxPerTask: z.number().step(1).min(1).default(DEFAULT_NOTICE_MAX_PER_TASK),
+  noticeTtlMs: z.number().step(1).min(1).default(DEFAULT_NOTICE_TTL_MS),
 })
 
 /**
@@ -78,7 +93,7 @@ export const Config: z<Config> = z.object({
  * it provides. Tools capture this plugin's context, whose `inject` declaration
  * admits the services they read.
  * @param ctx - plugin context carrying the organizer and the read services.
- * @param config - write-lease mode and windows.
+ * @param config - write-lease mode and windows, and the completion-notice switch and limits.
  */
 export function apply(ctx: Context, config: Config = {}): void {
   ctx.provide('workspaceTasks', createWorkspaceTasksService(ctx))
@@ -87,6 +102,11 @@ export function apply(ctx: Context, config: Config = {}): void {
     mode: config.mode ?? 'enforce',
     idleMs: config.idleMs ?? LEASE_IDLE_MS,
     maxMs: config.maxMs ?? LEASE_MAX_MS,
+  })
+  mountCompletionNotices(ctx, {
+    mode: config.completionNotice ?? 'off',
+    maxPerTask: config.noticeMaxPerTask ?? DEFAULT_NOTICE_MAX_PER_TASK,
+    ttlMs: config.noticeTtlMs ?? DEFAULT_NOTICE_TTL_MS,
   })
   const registration = ctx.dafeiyu.register({
     id: WORKSPACE_TOOLSET_CAPABILITY_ID,

@@ -178,13 +178,24 @@ export interface WorkspaceToolsHarness {
   readonly fiber: Fiber
 }
 
+/** Mount options for the workspace toolset composition. */
+export interface WorkspaceToolsMountOptions {
+  /** Plugin configuration; omitted fields take the schema defaults. */
+  readonly config?: Partial<WorkspaceTools.Config>
+}
+
 /**
  * Mount the real services and the workspace toolset into a caller-owned context.
  * @param ctx - caller-owned context that will own every mounted service.
  * @param home - fixture `$DSH_HOME` directory.
+ * @param options - plugin configuration for the mounted toolset.
  * @returns the mounted services and registry.
  */
-export async function mountWorkspaceTools(ctx: Context, home: string): Promise<WorkspaceToolsHarness> {
+export async function mountWorkspaceTools(
+  ctx: Context,
+  home: string,
+  options: WorkspaceToolsMountOptions = {},
+): Promise<WorkspaceToolsHarness> {
   process.env['DSH_HOME'] = home
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(LocalFileSystem, { cwd: home })
@@ -197,7 +208,7 @@ export async function mountWorkspaceTools(ctx: Context, home: string): Promise<W
     name: WorkspaceTools.name,
     inject: WorkspaceTools.inject,
     apply(pluginCtx: Context) {
-      WorkspaceTools.apply(pluginCtx)
+      WorkspaceTools.apply(pluginCtx, options.config)
     },
   }
   const fiber = await ctx.plugin(plugin as never, {} as never)
@@ -276,6 +287,7 @@ export function valueOf(result: ToolExecutionResult): ToolExecutionSuccess['valu
  * @returns the same object with the caller's result type.
  * @throws Error when the value is not a non-array object.
  */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- callers name the result view type.
 export function objectValue<T extends object>(value: ToolExecutionSuccess['value']): T {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error(`tool value must be an object, got ${typeof value}`)
