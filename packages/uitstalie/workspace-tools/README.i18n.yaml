@@ -19,7 +19,10 @@
   zh: e30e027f004c712f
 /deepseek-ai-dsh-workspace-tools/tools:
   en: 499667767ccddfdd
-  zh: a08e7c94e2289d89
+  zh: 5d73d4ab726d7596
+/deepseek-ai-dsh-workspace-tools/write-lease:
+  en: 2c8ce5826cfceef5
+  zh: 2a4800ce56daf8fd
 /deepseek-ai-dsh-workspace-tools/scope:
   en: 24924c12e1adcc54
   zh: 72a0a425d7d84417
@@ -42,8 +45,8 @@
   en: d939f14b34513625
   zh: 3799bbd3b7a63966
 /deepseek-ai-dsh-workspace-tools/known-limitations-and-deferred-work:
-  en: 9ef41566506a1dc5
-  zh: 9626ffe3ce879535
+  en: d5f5ddb28b94d3e4
+  zh: 2257651f40c29d96
 /deepseek-ai-dsh-workspace-tools/known-limitations-and-deferred-work/dev-note:
   en: 81aa8317b87acb3d
   zh: d064e77cb7b43173

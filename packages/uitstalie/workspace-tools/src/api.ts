@@ -14,12 +14,19 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import type { CapabilityContribution, CapabilityRuntime } from '@deepseek-ai/dsh-dafeiyu'
 import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-store-atom'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { createWorkspaceTasksService } from './service.ts'
+import {
+  LEASE_IDLE_MS,
+  LEASE_MAX_MS,
+  defaultLeaseHome,
+  mountWorkspaceLease,
+} from './lease.ts'
 import {
   WORKSPACE_DIRECTORY_SECTION_NAME,
   WORKSPACE_DIRECTORY_SECTION_ORDER,
@@ -47,6 +54,23 @@ export const WORKSPACE_TOOLSET_LABEL = 'Workspace information'
 /** One-sentence capability-list description. */
 export const WORKSPACE_TOOLSET_DESCRIPTION = 'Sessions, dispatch tasks, intent cards, messages, artifact references, and question routing for the workspace'
 
+/** Plugin configuration; every field is optional and the schema supplies the default. */
+export interface Config {
+  /** Workspace write lease: `enforce` refuses a conflicting write, `observe` only audits it. */
+  mode?: 'enforce' | 'observe'
+  /** Idle window after which an unrenewed lease may be reclaimed, in milliseconds. */
+  idleMs?: number
+  /** Hard cap on one lease's life, in milliseconds. */
+  maxMs?: number
+}
+
+/** Validated lease schema; the minimums keep a typo from turning the idle window into no lease at all. */
+export const Config: z<Config> = z.object({
+  mode: z.union([z.const('enforce'), z.const('observe')]).default('enforce'),
+  idleMs: z.number().step(1).min(60_000).default(LEASE_IDLE_MS),
+  maxMs: z.number().step(1).min(60_000).default(LEASE_MAX_MS),
+})
+
 /**
  * Register the workspace toolset with the organizer.
  *
@@ -54,9 +78,16 @@ export const WORKSPACE_TOOLSET_DESCRIPTION = 'Sessions, dispatch tasks, intent c
  * it provides. Tools capture this plugin's context, whose `inject` declaration
  * admits the services they read.
  * @param ctx - plugin context carrying the organizer and the read services.
+ * @param config - write-lease mode and windows.
  */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, config: Config = {}): void {
   ctx.provide('workspaceTasks', createWorkspaceTasksService(ctx))
+  mountWorkspaceLease(ctx, {
+    home: defaultLeaseHome(),
+    mode: config.mode ?? 'enforce',
+    idleMs: config.idleMs ?? LEASE_IDLE_MS,
+    maxMs: config.maxMs ?? LEASE_MAX_MS,
+  })
   const registration = ctx.dafeiyu.register({
     id: WORKSPACE_TOOLSET_CAPABILITY_ID,
     contractVersion: WORKSPACE_TOOLSET_CONTRACT_VERSION,

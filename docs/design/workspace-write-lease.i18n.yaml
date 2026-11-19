@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/design/workspace-write-lease.md
 /workspace-write-lease:
-  en: 8b0fbe17ef9baf01
-  zh: 5895409e8df5b2e2
+  en: 53ef75fbd9b9763d
+  zh: 3161e37592e38ed2
 /workspace-write-lease/1-background-and-the-incident:
   en: afc6da9e186058d9
   zh: 1e7a22b71d5e812c

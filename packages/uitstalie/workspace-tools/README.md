@@ -54,6 +54,15 @@ An artifact reference is immutable at publish time: `{ artifactId, workspaceId, 
 
 `workspace_tasks.create` requires `workspace` and `goal`; `acceptance`, `boundaries`, and a six-category `taskType` default to empty lists and `other`. A card is optional: naming an `intentId` with its `intentVersion` applies the card gates — a missing field or card refuses with `INTENT_INCOMPLETE`, a proposed version with `INTENT_UNCONFIRMED`, a superseded or non-current version with `INTENT_STALE`, a card from another workspace with `INTENT_SCOPE_MISMATCH`, and an uncovered card point with `INTENT_COVERAGE_MISSING`. There is no default coverage pass: every card point needs a coverage entry or an explicit `nonCoverage` reason. `receipt` appends one alignment entry per card point with evidence; a `not_satisfied` acceptance point or a `violated` boundary moves the task to `waiting_review` or `blocked`, never `done`.
 
+## Write lease
+
+One checkout has one writer. The plugin wraps `tools/execute`: the first write-class call of a Session acquires the workspace write lease before dispatch, every later write-class call renews it, and a Session that already holds it is not reacquired per call. Read-class and exempt calls never acquire, and an unknown tool is a write. The record lives at `$DSH_HOME/workspaces/<key>/lease.json`, where the key is the registered workspace id or a hash of the canonical checkout, and each acquisition, refusal, reclaim, release, and loss appends one JSON line to `$DSH_HOME/logs/workspace-lease.jsonl`.
+
+- A conflicting write is refused with `WORKSPACE_LEASE_HELD` and the holder's Session id, acquisition time, last operation, and both expiries. A writer whose lease another Session reclaimed is refused with `WORKSPACE_LEASE_LOST`.
+- A lease expires after ten idle minutes or eight hours of total life, whichever comes first. The next writer reclaims an expired record and bumps its fencing generation.
+- `read`, `glob`, `grep`, session and memory reads, and the question, todo, present, skill, and subagent-inspection tools are `read`. `workspace_*` records, memory writes, subagent and workflow control, schedules, and `workspace_sessions` lifecycle actions are `exempt`. Everything else, including shell and `tool-dsh-store`, is `write`.
+- Configuration: `mode` (`enforce` by default; `observe` audits the conflict without refusing it), `idleMs`, and `maxMs`.
+
 
 ## Scope
 
@@ -93,6 +102,9 @@ Prefix-stable while the tool definitions and their visibility are unchanged. Eve
 - **No card UI in this step** — `confirm` and `correct` are model-facing; any agent in the workspace drives them, and a user decision reaches the store through the super agent. Without a card UI, a proposed version is still activated by an agent, not by a person.
 - **`delete` needs a host API** — `workspace_sessions.delete` refuses while the host `SessionController` exposes no delete method; `archive` is the only hide path today, and the Session log stays on disk.
 - **Pending artifact requests are pull-only** — a cross-workspace `request` queues one pending entry per requester Session and version under `<workspace>/requests`; nothing pushes a notice, so the holder has to read `workspace_artifacts.requests` to see who is waiting.
+- **No write-lease queue or holder badge** — a refused Session is not queued behind the holder, and the Session list shows no write badge.
+- **A subagent acquires its own lease** — a dispatched child does not inherit its parent Session's lease, so it can be refused while the parent holds the checkout.
+- **Every shell call is a write** — the design's shell read whitelist is not implemented; `pwsh` and any terminal tool always acquire.
 - **Status is derived, not stored** — `running` comes from the live agent, `done` from the registry archive set, `blocked` from the last `turn/end` reason, and every other session reports `idle`.
 - **A workspace's session scan reads every accounted log** — `workspace_sessions` folds status from each session in the account before paging, so a workspace with many sessions pays for each log read on every list call.
 

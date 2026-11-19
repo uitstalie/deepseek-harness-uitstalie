@@ -2,7 +2,7 @@
 
 English | [中文](workspace-write-lease.zh.md)
 
-Status: draft for review. Length budget: 10 pages / 4,000 words; this draft is about 2,970 words (about 7 pages).
+Status: implemented — one writer per checkout, `WORKSPACE_LEASE_HELD` and `WORKSPACE_LEASE_LOST`, idle and maximum life, reclaim, fencing, and the audit log ship in the workspace toolset. The optional queue, the UI badge, and subagent lease inheritance are not implemented. Length budget: 10 pages / 4,000 words; this draft is about 2,970 words (about 7 pages).
 
 ## 1. Background and the incident
 

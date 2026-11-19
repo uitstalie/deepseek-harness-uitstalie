@@ -30,6 +30,9 @@
       "path": "../../util/error"
     },
     {
+      "path": "../../util/home-paths"
+    },
+    {
       "path": "../../workspace/workspace"
     },
     {

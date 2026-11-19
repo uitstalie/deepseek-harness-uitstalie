@@ -27,6 +27,7 @@
     "@deepseek-ai/dsh-dafeiyu": "workspace:*",
     "@deepseek-ai/dsh-error": "workspace:*",
     "@deepseek-ai/dsh-fs": "workspace:*",
+    "@deepseek-ai/dsh-home-paths": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-session-query": "workspace:*",
     "@deepseek-ai/dsh-store-atom": "workspace:*",

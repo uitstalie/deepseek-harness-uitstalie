@@ -56,6 +56,18 @@ kind: "package-reference"
 
 `workspace_tasks.create` 只要求 `workspace` 与 `goal`；`acceptance`、`boundaries` 与六类 `taskType` 分别缺省为空列表、空列表与 `other`。意图卡是可选的：给出 `intentId` 与 `intentVersion` 才应用卡片门——缺字段或缺卡返回 `INTENT_INCOMPLETE`，`proposed` 版本返回 `INTENT_UNCONFIRMED`，被 supersede 或非当前版本返回 `INTENT_STALE`，跨工作区的卡返回 `INTENT_SCOPE_MISMATCH`，未覆盖的卡点返回 `INTENT_COVERAGE_MISSING`。覆盖没有默认通过：卡里每个点都需要一条覆盖条目或一条显式 `nonCoverage` 理由。`receipt` 为卡里每个点追加一条带证据的对齐条目；`not_satisfied` 的验收点或 `violated` 的边界会把任务转入 `waiting_review` 或 `blocked`，绝不进入 `done`。
 
+<a id="write-lease"></a>
+
+## 写租约
+
+一个 checkout 同一时刻只有一个写者。插件包住 `tools/execute`：会话的第一次写类调用在派发前获取工作区写租约，之后的每次写类调用续期，已经持有的会话不会按调用重新获取。读类与豁免类调用永不获取；未知工具按写处理。租约记录在 `$DSH_HOME/workspaces/<key>/lease.json`，键是已注册工作区 id 或规范 checkout 的哈希；每次获取、拒绝、回收、释放与丢失都向 `$DSH_HOME/logs/workspace-lease.jsonl` 追加一行 JSON。
+
+- 冲突的写入以 `WORKSPACE_LEASE_HELD` 拒绝，并给出持有者会话 id、获取时间、最后一次操作与两个到期时间。租约被别的会话回收后，旧持有者的写入以 `WORKSPACE_LEASE_LOST` 拒绝。
+- 租约在空闲十分钟或总生存时间八小时后过期，以先到者为准。下一个写者回收过期记录，并把该记录的 fencing 代数加一。
+- `read`、`glob`、`grep`、会话与记忆读取，以及提问、待办、展示、技能与子代理查询工具属于 `read`。`workspace_*` 记录、记忆写入、子代理与 workflow 控制、定时任务，以及 `workspace_sessions` 的生命周期动作属于 `exempt`。其余工具，包括 shell 与 `tool-dsh-store`，都是 `write`。
+- 配置：`mode`（默认 `enforce`；`observe` 只审计冲突、不拒绝）、`idleMs` 与 `maxMs`。
+
+
 <a id="scope"></a>
 
 ## 作用域
@@ -99,6 +111,9 @@ agent 可见这些工具时，每次请求的固定 schema 成本，加上每次
 - **本步没有卡片 UI** —— `confirm` 与 `correct` 是模型可调用的，由工作区内任何 agent 驱动；用户决定仍经由 super agent 进入存储。没有卡片 UI 时，`proposed` 版本仍由 agent 而不是人来激活。
 - **`delete` 需要宿主 API** —— 宿主 `SessionController` 没有删除方法时 `workspace_sessions.delete` 直接拒绝；目前 `archive` 是唯一隐藏方式，会话日志仍留在磁盘上。
 - **产物待处理请求只能拉取** —— 跨工作区 `request` 在 `<workspace>/requests` 下按请求会话与版本各排一条待处理请求；没有推送通知，持有方必须自己读 `workspace_artifacts.requests` 才知道谁在等。
+- **写租约没有排队，也没有持有者徽标** —— 被拒绝的会话不会排在持有者后面，会话列表也不显示写入徽标。
+- **子代理获取自己的租约** —— 被派发的子会话不继承父会话的租约，因此父会话持有时它也可能被拒绝。
+- **每次 shell 调用都是写** —— 设计里的 shell 只读白名单未实现；`pwsh` 与任何终端工具都会获取租约。
 - **状态是推导的，不是存储的** —— `running` 来自 live agent，`done` 来自注册表归档集合，`blocked` 来自最近一次 `turn/end` 原因，其余会话报 `idle`。
 - **工作区会话扫描会读每个账目日志** —— `workspace_sessions` 在分页前对账目中每个会话折叠状态，因此会话较多的工作区每次 list 都要为每个日志付费。
 

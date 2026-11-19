@@ -3,7 +3,9 @@
  * @module @deepseek-ai/dsh-workspace-tools/index
  */
 
-export { apply, inject, name, WORKSPACE_TOOLSET_CAPABILITY_ID } from './api.ts'
+export { apply, Config, inject, name, WORKSPACE_TOOLSET_CAPABILITY_ID } from './api.ts'
+export { LEASE_IDLE_MS, LEASE_MAX_MS, WORKSPACE_LEASE_HELD, WORKSPACE_LEASE_LOST, classifyLeaseTool } from './lease.ts'
+export type { LeaseClass, LeaseGuardOptions, WorkspaceLeaseGuard } from './lease.ts'
 export type * from './api.ts'
 export type * from './records.ts'
 export { INTENT_ITEM_KINDS, INTENT_ITEM_SOURCES, INTENT_STATUSES, TASK_STATUSES, TASK_TYPES } from './records.ts'
