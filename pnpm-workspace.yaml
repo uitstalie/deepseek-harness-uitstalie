@@ -18,6 +18,14 @@ overrides:
   'extract-zip>yauzl': '3.4.0'
   '@deepseek-ai/cosmokit': 'link:vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:vendor/schemastery'
+  # 3.35.0 was deprecated for a custom-logger redaction bug (aws-sdk-js-v3#8393).
+  # The AWS SDK v3 clients accept ^3.33.3, so stay inside the reviewed 3.41 line
+  # instead of following a major jump.
+  '@smithy/core': '>=3.41.0 <3.42.0'
+  # ExcelJS 4.4.0 is the latest release and pins unzipper ^0.10, which drags in
+  # fstream and rimraf@2. Its read path uses the stable Open/stream API, so cap
+  # this scoped override just above the reviewed 0.12 line until ExcelJS moves.
+  'exceljs>unzipper': '>=0.12.5 <0.13.0'
 
 peerDependencyRules:
   allowedVersions:
