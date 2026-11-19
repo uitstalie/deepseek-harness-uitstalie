@@ -21,6 +21,11 @@ export interface PreparedRuntimePatches {
   workspaceOnly: string[]
 }
 
+/** pnpm 12 writes a leading package-manager document before the lockfile body. */
+function loadLockfile(path: string): Record<string, unknown> {
+  return Object.assign({}, ...yaml.loadAll(readFileSync(path, 'utf8')).filter((document): document is object => document !== null && typeof document === 'object'))
+}
+
 function patchIdentity(spec: string): { name: string; version: string } {
   const separator = spec.lastIndexOf('@')
   const name = spec.slice(0, separator)
@@ -51,7 +56,7 @@ export function prepareRuntimePatches(
   const source = yaml.load(readFileSync(join(repositoryRoot, 'pnpm-workspace.yaml'), 'utf8')) as {
     patchedDependencies: Record<string, string>
   }
-  const sourceLock = yaml.load(readFileSync(join(repositoryRoot, 'pnpm-lock.yaml'), 'utf8')) as {
+  const sourceLock = loadLockfile(join(repositoryRoot, 'pnpm-lock.yaml')) as {
     patchedDependencies: Record<string, string>
   }
   for (const spec of Object.keys(source.patchedDependencies)) {
@@ -97,7 +102,7 @@ export function prepareRuntimePatches(
  * @param plan Expected identities and exclusions returned by patch preparation.
  */
 export function verifyRuntimePatches(projectRoot: string, plan: PreparedRuntimePatches): void {
-  const lock = yaml.load(readFileSync(join(projectRoot, 'pnpm-lock.yaml'), 'utf8')) as {
+  const lock = loadLockfile(join(projectRoot, 'pnpm-lock.yaml')) as {
     patchedDependencies?: Record<string, string>
     packages?: Record<string, { version?: string }>
   }
