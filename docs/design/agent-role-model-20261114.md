@@ -82,3 +82,16 @@ An undeclared root defaults to `agent`, not `subagent`: a root is a normal works
 - Existing tests: `role-visibility.spec.ts` asserts the 18/30/30 approved matrix; the personality, tool-dsh-store, and workspace-tools suites pass; typecheck passes.
 - Tool visibility now changes exactly for the rows marked “new”: memory read/write split, communication retained, and schedule/plugin/delegation/.dsh hidden from subagents; no super-only tool row remains.
 - Not in this round: 702 extraction, localization, or any quota change.
+
+## 10. Deployment acceptance: the super workspace in the sidebar
+
+The durable role now reaches the browser, and the sidebar renders the `super` Workspace in its own section above the ordinary checkouts. **CI** means the branch's automated suite covers the item; **Deploy** means the running GUI or the real `<DSH_HOME>` is required and the suite cannot prove it. Do not tick a **Deploy** item from the suite alone. This section accepts the sidebar change only; the model-facing rows of section 6 keep their own coverage.
+
+- [ ] `WorkspaceView` carries the durable role in the follow baseline and in every later role change, and a record without `role` projects as `agent`. CI: `projects the durable Workspace role in the baseline and in later role changes` (`packages/api/workspace-controller/tests/workspace-controller.host.spec.ts`). Deploy: read the feed row of a Workspace whose record has no `role`.
+- [ ] The client registers one `super` group from the Workspace snapshot, removes it when the role disappears or the Workspace does, and registers nothing for an ordinary snapshot. CI: `lifts the durable super workspace into its own sidebar section and follows the Workspace list` (`packages/client/ui-workspace/tests/apply.client.spec.ts`). Deploy: confirm `<DSH_HOME>/storages/workspace.json` names one `role: super` record and the sidebar shows one special section.
+- [ ] The browser puts the registered Workspace under its own heading above the ordinary list, and draws no special heading without a registration. CI: `renders a registered special Workspace in its own section above the ordinary list` and `renders no special section without a registered group` (`packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx`). Deploy: the default grouped view shows "Super workspace" above "Other workspaces".
+- [ ] The section follows the record, not the title: a Workspace named like the home but stored `agent` stays in the ordinary section, and a `super` Workspace renders in the special one whatever its title. Deploy: rename the super Workspace, restart the host, and confirm the section is unchanged.
+- [ ] Clearing the durable role moves the Workspace back to the ordinary section, and its next Session becomes `agent`. Deploy: remove `role` from that record in `<DSH_HOME>/storages/workspace.json`, restart the host, and confirm the split disappears.
+- [ ] The split is a grouped-view feature: the flat "In one list" view has no Workspace rows and no headings, and switching back restores the split. Deploy: toggle both views in the GUI.
+
+The person confirmed the split on the deployed 3080 host on 2026-11-19; the remaining **Deploy** items stay unchecked until they are walked on that host.

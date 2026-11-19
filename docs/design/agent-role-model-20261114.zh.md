@@ -82,3 +82,16 @@ tools(agent) -> ToolDefinition[] // each may carry minRole; the organizer filter
 - 现有测试：`role-visibility.spec.ts` 断言 18/30/30 的已批准矩阵；personality、tool-dsh-store 与 workspace-tools 套件通过；typecheck 通过。
 - 工具可见性现在恰好对标记为“新增”的行发生变化：memory 读写拆分、通信保留，schedule/plugin/delegation/.dsh 对 subagent 隐藏；没有 super 专用工具行。
 - 本轮不包括：702 抽取、本地化，以及任何配额变更。
+
+## 10. 部署验收：侧边栏里的超级工作区
+
+持久角色现在会到达浏览器，侧边栏把 `super` 工作区渲染在普通 checkout 之上的独立分组里。**CI** 表示分支的自动化套件已覆盖该项；**Deploy** 表示需要运行中的 GUI 或真实 `<DSH_HOME>`，套件无法证明。不要只凭套件勾选 **Deploy** 项。本节只验收侧边栏改动；第 6 节面向模型的行保持各自的覆盖。
+
+- [ ] `WorkspaceView` 在 follow 基线与之后每次角色变更里都携带持久角色，没有 `role` 的记录投影为 `agent`。CI：`projects the durable Workspace role in the baseline and in later role changes`（`packages/api/workspace-controller/tests/workspace-controller.host.spec.ts`）。Deploy：读取一条没有 `role` 记录的工作区 feed 行。
+- [ ] 客户端从工作区快照注册一个 `super` 分组，角色消失或工作区消失时移除它，普通快照不注册任何分组。CI：`lifts the durable super workspace into its own sidebar section and follows the Workspace list`（`packages/client/ui-workspace/tests/apply.client.spec.ts`）。Deploy：确认 `<DSH_HOME>/storages/workspace.json` 只有一条 `role: super` 记录，且侧边栏只有一个特殊分组。
+- [ ] 浏览器把注册的工作区放在普通列表之上的独立标题下，没有注册时不画特殊标题。CI：`renders a registered special Workspace in its own section above the ordinary list` 与 `renders no special section without a registered group`（`packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx`）。Deploy：默认的分组视图里「超级工作区」在「普通工作区」之上。
+- [ ] 分组跟随记录而不是标题：标题像家的、但记录为 `agent` 的工作区留在普通分组；`super` 记录的工作区无论标题是什么都进特殊分组。Deploy：重命名超级工作区、重启宿主，确认分组不变。
+- [ ] 清掉持久角色后工作区回到普通分组，新会话的角色变成 `agent`。Deploy：从 `<DSH_HOME>/storages/workspace.json` 该记录里删掉 `role`、重启宿主，确认分组消失。
+- [ ] 分节只属于分组视图：单列表视图没有工作区行，也不画标题；切回去分组恢复。Deploy：在 GUI 里来回切换两种视图。
+
+人在 2026-11-19 的 3080 宿主上确认过分节；其余 **Deploy** 项在该宿主上逐条走过之前保持未勾选。
