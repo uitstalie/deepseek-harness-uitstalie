@@ -412,6 +412,59 @@ interface TokenMeterLike {
   contextPressure(session: unknown): { readonly pressureTokens?: number; readonly contextWindow?: number }
 }
 
+/** The permission-preset registry seam a dispatched Session inherits its preset from. */
+interface PermissionPresetsLike {
+  /**
+   * Read the preset the Session currently runs under.
+   * @param session - Session whose preset is read.
+   * @returns the preset name.
+   */
+  current(session: Session): string
+}
+
+/** The sandbox-policy seam that resolves the dispatcher's effective sandbox mode. */
+interface SandboxPolicyLike {
+  /**
+   * Resolve the policy one call runs under.
+   * @param request - Session whose effective policy is resolved.
+   * @returns the effective policy, including its mode.
+   */
+  resolve(request: { readonly session: Session }): { readonly mode?: string } | undefined
+}
+
+/** The Session-store append seam delegation events are written through. */
+interface DelegationSessionLike {
+  /**
+   * Append one Session event.
+   * @param type - event type.
+   * @param data - event payload.
+   */
+  append(type: string, data: Readonly<Record<string, unknown>>): unknown
+}
+
+/** The Session-store lookup a delegation seed resolves its new Session through. */
+interface SessionStoreLike {
+  /**
+   * Resolve one live Session.
+   * @param id - Session identity.
+   * @returns the Session, when the store holds it.
+   */
+  get(id: SessionId): DelegationSessionLike | undefined
+}
+
+/** A sandbox mode a dispatched Session may inherit. */
+type DelegatedSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+
+/** The dispatcher permission state seeded onto a dispatched Session's log. */
+interface DelegatedPermissionPolicy {
+  /** Dispatcher preset, when it runs in Auto or Full access. */
+  readonly preset: 'auto' | 'danger-full-access' | undefined
+  /** Dispatcher's effective sandbox mode. */
+  readonly mode: DelegatedSandboxMode | undefined
+  /** `'never'` whenever the approval capability is composed. */
+  readonly approval: 'never' | undefined
+}
+
 /** The slice of the host manual-compaction seam this tool drives. */
 interface CompactionLike {
   /**
@@ -494,7 +547,10 @@ export function workspaceSessionsTool(ctx: Context): ToolDefinition {
       + '(`sessionId` for an explicit one, otherwise the most recently updated Session) '
       + 'and starts a new Session only when the workspace has none; pass `new_session: true` to force a fresh '
       + 'Session even when one exists, when the person asked for a new or isolated conversation. `task` and `title` '
-      + 'are optional for that new Session, and the title is derived from the task when omitted. `start` forces a new Session with a first '
+      + 'are optional for that new Session, and the title is derived from the task when omitted. A Session started '
+      + 'here inherits the dispatcher\'s permission policy as delegation events on its own log: the Auto or Full-access '
+      + 'preset, the effective sandbox mode, and the `never` approval policy (a dispatched Session asks the person '
+      + 'nothing directly; the dispatcher relays questions). `start` forces a new Session with a first '
       + '`task` and an optional `title` (no intent card is involved); `append` continues `sessionId`, or the latest '
       + 'Session when omitted; `prompt` sends text to an explicit sessionId; `stop` '
       + 'cuts off the running turn and admits nothing; `abort` cuts it off and then sends `text`; `fork` branches '
@@ -1382,6 +1438,46 @@ async function appendTargetOf(
 }
 
 /**
+ * Capture the dispatcher permission state to seed into a Session it dispatches.
+ * Read through duck-typed host services: a composition without them keeps
+ * dispatching, just without an inherited policy. Call before the first await, so
+ * a later switch belongs to the dispatcher's future rather than this dispatch.
+ * @param ctx - context carrying the optional policy services.
+ * @param caller - Session dispatching the new one.
+ * @returns the policy to append to the new Session's log.
+ */
+function captureDelegatedPermissionPolicy(ctx: Context, caller: Session): DelegatedPermissionPolicy {
+  const preset = lookup<PermissionPresetsLike>(ctx, 'permissionPresets')?.current(caller)
+  const mode = lookup<SandboxPolicyLike>(ctx, 'sandboxPolicy')?.resolve({ session: caller })?.mode
+  return {
+    preset: preset === 'auto' || preset === 'danger-full-access' ? preset : undefined,
+    mode: mode === 'read-only' || mode === 'workspace-write' || mode === 'danger-full-access' ? mode : undefined,
+    approval: lookup<unknown>(ctx, 'approval') === undefined ? undefined : 'never',
+  }
+}
+
+/**
+ * Append a captured policy to a dispatched Session's log as
+ * `source: 'delegation'` events, so its effective policy is reconstructable from
+ * its own log. An absent store, or one that no longer holds the Session, is
+ * skipped: the dispatch itself already succeeded.
+ * @param ctx - context carrying the optional Session store.
+ * @param sessionId - Session the policy is seeded into.
+ * @param policy - policy captured at delegation.
+ */
+function appendDelegatedPermissionPolicy(
+  ctx: Context,
+  sessionId: string,
+  policy: DelegatedPermissionPolicy,
+): void {
+  const target = lookup<SessionStoreLike>(ctx, 'sessions')?.get(SessionId(sessionId))
+  if (target === undefined || typeof target.append !== 'function') return
+  if (policy.mode !== undefined) target.append('sandbox/mode', { mode: policy.mode, source: 'delegation' })
+  if (policy.approval !== undefined) target.append('approval/policy', { policy: policy.approval, source: 'delegation' })
+  if (policy.preset !== undefined) target.append('permission/preset', { preset: policy.preset })
+}
+
+/**
  * Start one Session in a workspace and admit its first task.
  * @param ctx - context carrying the store.
  * @param controller - host Session controller.
@@ -1404,6 +1500,7 @@ async function startWorkspaceSession(
   },
 ): Promise<StartedSession> {
   const title = input.title?.trim() || derivedTitle(input.task)
+  const delegatedPolicy = captureDelegatedPermissionPolicy(ctx, caller)
   let created: { readonly sessionId: unknown }
   try {
     created = await controller.create({ workspaceId: String(workspace.id) })
@@ -1414,6 +1511,7 @@ async function startWorkspaceSession(
     )
   }
   const sessionId = String(created.sessionId)
+  appendDelegatedPermissionPolicy(ctx, sessionId, delegatedPolicy)
   await noteRosterStart(ctx, workspace, sessionId, actorOf(String(caller.id)), new Date().toISOString())
   let titleRecorded = false
   if (typeof controller.rename === 'function') {

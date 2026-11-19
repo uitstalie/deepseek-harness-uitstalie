@@ -284,7 +284,7 @@ export class ToolExecutionPipeline {
         : result
     } catch (error: unknown) {
       return isAborted(signal) && isUnclassifiedCancellation(error, signal)
-        ? toolErrorResult(error, { name: 'AbortError', code: TOOL_ABORTED })
+        ? toolErrorResult(readableCancellationReason(error), { name: 'AbortError', code: TOOL_ABORTED })
         : toolErrorResult(error)
     } finally {
       fused.dispose()
@@ -341,7 +341,10 @@ export class ToolExecutionPipeline {
     /* v8 ignore next -- only registry-minted executions reach the staged scheduler methods */
     if (state === undefined) throw new Error('tool registry scheduler invariant violated: missing cancellation state')
     if (!isAborted(state.callerSignal) || !isUnclassifiedCancellation(error, state.callerSignal)) return toolErrorResult(error)
-    return toolErrorResult(error, { name: 'AbortError', code: state.bodyInvoked ? TOOL_ABORTED : TOOL_ABORTED_BEFORE_DISPATCH })
+    return toolErrorResult(
+      readableCancellationReason(error),
+      { name: 'AbortError', code: state.bodyInvoked ? TOOL_ABORTED : TOOL_ABORTED_BEFORE_DISPATCH },
+    )
   }
 
   /**
@@ -711,6 +714,19 @@ function errorInfo(error: unknown): ToolErrorInfo | undefined {
 /** Materialize a non-granting approval outcome as a denial with routable `ApprovalError` identity. */
 function approvalDenial(reason: string, code: ApprovalErrorCode): Extract<PreToolDecision, { kind: 'deny' }> {
   return { kind: 'deny', reason, info: { name: APPROVAL_ERROR_NAME, code } }
+}
+
+/**
+ * Keep a cancellation reason's own readable message; substitute the canonical
+ * abort text when it has none (a plain object stringifies to `[object Object]`
+ * and an empty string renders nothing). The `AbortError` identity is supplied
+ * by the caller, so the rendered failure stays attributable to the abort.
+ * @param error - the value a cancelled body or wrapper threw.
+ * @returns the thrown reason, or a readable stand-in.
+ */
+function readableCancellationReason(error: unknown): unknown {
+  const message = toolErrorMessage(error).trim()
+  return message === '' || message === '[object Object]' ? new Error('tool call aborted') : error
 }
 
 /** Whether a value thrown after cancellation is that cancellation and carries no identity of its own. */

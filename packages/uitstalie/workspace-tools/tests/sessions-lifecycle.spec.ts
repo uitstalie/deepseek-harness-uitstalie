@@ -362,6 +362,92 @@ test('start opens a Session in another workspace and append/prompt deliver into 
   expect(controller.prompts).toHaveLength(4)
 })
 
+test('a dispatched Session inherits the dispatcher permission policy', async () => {
+  mounted.ctx.provide('permissionPresets' as never, { current: () => 'danger-full-access' } as never)
+  mounted.ctx.provide('sandboxPolicy' as never, {
+    resolve: () => ({ mode: 'danger-full-access' }),
+    overrideOf: () => 'danger-full-access',
+  } as never)
+  mounted.ctx.provide('approval' as never, {} as never)
+  let created = 0
+  mounted.ctx.provide('sessionController' as never, {
+    async create(): Promise<{ readonly sessionId: string }> {
+      created += 1
+      const sessionId = SessionId('inherited')
+      mounted.ctx.sessions.create(sessionId, { meta: { cwd: workspaceB.path } })
+      await workspaceB.attachSession(sessionId)
+      return { sessionId }
+    },
+    async prompt(): Promise<{ readonly accepted: boolean }> {
+      return { accepted: true }
+    },
+    async list(): Promise<{ readonly items: readonly never[] }> {
+      return { items: [] }
+    },
+    async rename(request: { readonly title: string }): Promise<{ readonly title: string }> {
+      return { title: request.title }
+    },
+  } as never)
+
+  const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'start',
+    workspace: String(workspaceB.id),
+    task: 'run under the inherited policy',
+  })
+  expect(started.isError, textOf(started)).toBe(false)
+  expect((valueOf(started) as { started: { sessionId: string } }).started.sessionId).toBe('inherited')
+  expect(created).toBe(1)
+
+  const inherited = mounted.ctx.sessions.get(SessionId('inherited'))
+  expect(inherited).toBeDefined()
+  const delegationEvents = inherited!.snapshotEvents().filter(event =>
+    event.type === 'permission/preset' || event.type === 'sandbox/mode' || event.type === 'approval/policy')
+  expect(delegationEvents).toMatchObject([
+    { type: 'sandbox/mode', data: { mode: 'danger-full-access', source: 'delegation' } },
+    { type: 'approval/policy', data: { policy: 'never', source: 'delegation' } },
+    { type: 'permission/preset', data: { preset: 'danger-full-access' } },
+  ])
+})
+
+test('a dispatched Session inherits the effective sandbox mode, not only an explicit override', async () => {
+  mounted.ctx.provide('sandboxPolicy' as never, {
+    resolve: () => ({ mode: 'read-only' }),
+    overrideOf: () => undefined,
+  } as never)
+  mounted.ctx.provide('sessionController' as never, {
+    async create(): Promise<{ readonly sessionId: string }> {
+      const sessionId = SessionId('inherited-effective')
+      mounted.ctx.sessions.create(sessionId, { meta: { cwd: workspaceB.path } })
+      await workspaceB.attachSession(sessionId)
+      return { sessionId }
+    },
+    async prompt(): Promise<{ readonly accepted: boolean }> {
+      return { accepted: true }
+    },
+    async list(): Promise<{ readonly items: readonly never[] }> {
+      return { items: [] }
+    },
+  } as never)
+
+  const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
+    action: 'run',
+    workspace: String(workspaceB.id),
+    text: 'run under the effective mode',
+    new_session: true,
+  })
+  expect(started.isError, textOf(started)).toBe(false)
+
+  const inherited = mounted.ctx.sessions.get(SessionId('inherited-effective'))
+  expect(inherited).toBeDefined()
+  const events = inherited!.snapshotEvents()
+  expect(events.filter(event => event.type === 'sandbox/mode')).toMatchObject([
+    { type: 'sandbox/mode', data: { mode: 'read-only', source: 'delegation' } },
+  ])
+  // Absent services contribute no event; the dispatch still succeeds.
+  expect(events.some(event => event.type === 'approval/policy')).toBe(false)
+  expect(events.some(event => event.type === 'permission/preset')).toBe(false)
+})
+
 test('append without sessionId continues the latest Session', async () => {
   installController(mounted)
   const first = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {

@@ -1803,6 +1803,35 @@ describe('ToolRuntime', () => {
     })
   })
 
+  it('renders a plain-object abort reason as the canonical abort text', async () => {
+    const ctx = await setup()
+    const entered = Promise.withResolvers<undefined>()
+    const reason = { kind: 'plain reason' }
+    ctx.tools.register({
+      ...echoTool,
+      name: 'plain-reason-abort',
+      async execute(_args, exec) {
+        entered.resolve(undefined)
+        await new Promise<void>((resolve) => {
+          exec.signal.addEventListener('abort', () => { resolve() }, { once: true })
+        })
+        throw exec.signal.reason
+      },
+    })
+    const controller = new AbortController()
+    const pending = executeToolFixture(ctx, {
+      callId: brandString<ToolCallId>('plain-reason-abort'), name: 'plain-reason-abort', arguments: {}, signal: controller.signal,
+    })
+    await entered.promise
+    controller.abort(reason)
+
+    await expect(pending).resolves.toMatchObject({
+      content: [{ type: 'text', text: 'Error: tool call aborted' }],
+      isError: true,
+      error: { message: 'tool call aborted', info: { name: 'AbortError', code: TOOL_ABORTED } },
+    })
+  })
+
   it('keeps a HarnessError thrown after cancellation', async () => {
     const ctx = await setup()
     const entered = Promise.withResolvers<undefined>()
