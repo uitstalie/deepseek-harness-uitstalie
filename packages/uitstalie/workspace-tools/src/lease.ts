@@ -13,8 +13,9 @@
  * edit does not reacquire. It expires after ten idle minutes or eight hours of
  * total life, whichever comes first; an expired or stale record is reclaimed by
  * the next writer. Every acquisition and reclaim bumps a fencing generation,
- * and a holder whose generation moved on is refused instead of writing under a
- * lease that another Session now owns.
+ * and a holder whose generation moved on is refused while another Session owns
+ * the lease; once that record is gone, expired, or its process is dead, the
+ * fenced holder reclaims it and continues.
  *
  * @module @deepseek-ai/dsh-workspace-tools/lease
  */
@@ -272,18 +273,34 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
     const current = await readRecord(key)
     const mine = held.get(sessionId)
 
-    // Fencing runs before the conflict branch: a Session that still remembers
-    // holding the lease and finds it gone or regenerated has lost it, even when
-    // the new holder is fresh.
+    // A Session that still remembers holding the lease and finds the record
+    // gone or regenerated is fenced. It recovers by reclaiming whenever no
+    // active writer withdrew it — the record is missing, its lease expired, or
+    // its process died; an active foreign holder still refuses the write.
     if (mine !== undefined && (current === undefined
       || current.sessionId !== sessionId || current.generation !== mine.generation)) {
-      await audit({ event: 'lost', workspace: root, sessionId, operation: exec.name, generation: mine.generation })
-      if (mode === 'observe') return undefined
-      return refusal(
-        WORKSPACE_LEASE_LOST,
-        `WORKSPACE_LEASE_LOST\nworkspace:  ${root}\nlease generation ${String(current?.generation ?? 0)} replaced `
-        + `${String(mine.generation)}; another Session now holds the write lease. Report the conflict; do not write.`,
-      )
+      const activeForeignHolder = current !== undefined
+        && current.sessionId !== sessionId
+        && !expired(current)
+        && !deadProcess(current)
+      if (activeForeignHolder) {
+        await audit({ event: 'lost', workspace: root, sessionId, operation: exec.name, generation: mine.generation })
+        if (mode === 'observe') return undefined
+        return refusal(
+          WORKSPACE_LEASE_LOST,
+          `WORKSPACE_LEASE_LOST\nworkspace:  ${root}\nlease generation ${String(current?.generation ?? 0)} replaced `
+          + `${String(mine.generation)}; another Session now holds the write lease. Report the conflict; do not write.`,
+        )
+      }
+      const generation = (current?.generation ?? mine.generation) + 1
+      await writeRecord(key, recordFor(root, sessionId, generation, exec.name))
+      held.set(sessionId, { key, generation })
+      await audit({
+        event: 'reclaimed', workspace: root, sessionId, operation: exec.name,
+        holder: current?.sessionId ?? 'unknown', generation,
+      })
+      await audit({ event: 'acquired', workspace: root, sessionId, operation: exec.name, generation })
+      return undefined
     }
 
     if (current !== undefined && current.sessionId !== sessionId) {

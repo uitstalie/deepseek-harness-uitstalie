@@ -54,11 +54,11 @@
   en: 33879d6b01493479
   zh: fb1956bd14a871d5
 /workspace-write-lease/6-release-renewal-expiry-and-crash-recovery/6-3-crash-cancellation-and-host-restart:
-  en: db520fe595d4e5b6
-  zh: c063fd5d35509281
+  en: 779a8ab38efd3e07
+  zh: 6dd0b7b131378fe8
 /workspace-write-lease/6-release-renewal-expiry-and-crash-recovery/6-4-fencing:
-  en: d779cdb043f2eb39
-  zh: 463aa747bf7d644b
+  en: e93c9fb8a681c5b6
+  zh: cd7417da29803bae
 /workspace-write-lease/6-release-renewal-expiry-and-crash-recovery/6-5-deadlock-freedom:
   en: c341209c3e756515
   zh: bfd004fed6fb1b50
@@ -87,8 +87,8 @@
   en: f2acc94c3a783ece
   zh: 113d049b9bc9daf9
 /workspace-write-lease/9-testing:
-  en: 51d72205b66ccf39
-  zh: a287a0523a1c911f
+  en: 9bd317f194e45329
+  zh: baac79d0b174d6c5
 /workspace-write-lease/10-rollout-and-risks:
   en: 894d2d50f0606db4
   zh: ff2f2068afdda78d

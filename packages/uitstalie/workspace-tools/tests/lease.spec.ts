@@ -4,6 +4,7 @@
  * owns a temporary harness home and a temporary checkout directory, so no test
  * writes into the real `$DSH_HOME`.
  */
+import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -95,6 +96,29 @@ async function auditLines(): Promise<Record<string, unknown>[]> {
   return text.trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)
 }
 
+/**
+ * A process id whose process has exited, so the guard's `process.kill(pid, 0)`
+ * probe reports ESRCH. A freed pid can be reused immediately, so verify it and
+ * try another exited child instead.
+ */
+async function exitedPid(): Promise<number> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const child = spawn(process.execPath, ['-e', ''], { stdio: 'ignore' })
+    await new Promise<void>((resolve, reject) => {
+      child.once('error', reject)
+      child.once('exit', () => { resolve() })
+    })
+    const pid = child.pid
+    if (pid === undefined) continue
+    try {
+      process.kill(pid, 0)
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return pid
+    }
+  }
+  throw new Error('could not obtain an exited process id')
+}
+
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), 'dsh-lease-home-'))
   project = await mkdtemp(join(tmpdir(), 'dsh-lease-project-'))
@@ -174,6 +198,80 @@ describe('expiry, reclaim, fencing, and release', () => {
     const events = (await auditLines()).map(line => line.event)
     expect(events).toContain('reclaimed')
     expect(events).toContain('lost')
+  })
+
+  it('recovers a fenced Session after the new holder releases', async () => {
+    await mount()
+    await run('write', agentOf('s1'))
+    clock += LEASE_IDLE_MS + 1
+    await run('write', agentOf('s2'), 'c2')
+    expect((await run('write', agentOf('s1'), 'c3')).error?.info?.code).toBe(WORKSPACE_LEASE_LOST)
+
+    expect(await guard.release('s2')).toBe(true)
+    expect((await run('write', agentOf('s1'), 'c4')).isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's1', generation: 2 })
+    const reclaimed = (await auditLines()).filter(line => line.event === 'reclaimed').at(-1)
+    expect(reclaimed).toMatchObject({ sessionId: 's1', holder: 'unknown', generation: 2 })
+    expect(writes).toEqual(['s1', 's2', 's1'])
+  })
+
+  it('recovers a fenced Session after the new holder idle-expires', async () => {
+    await mount()
+    await run('write', agentOf('s1'))
+    clock += LEASE_IDLE_MS + 1
+    await run('write', agentOf('s2'), 'c2')
+    expect((await run('write', agentOf('s1'), 'c3')).error?.info?.code).toBe(WORKSPACE_LEASE_LOST)
+
+    clock += LEASE_IDLE_MS + 1
+    expect((await run('write', agentOf('s1'), 'c4')).isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's1', generation: 3 })
+    const reclaimed = (await auditLines()).filter(line => line.event === 'reclaimed').at(-1)
+    expect(reclaimed).toMatchObject({ sessionId: 's1', holder: 's2', generation: 3 })
+  })
+
+  it('recovers a fenced Session after the holding process dies', async () => {
+    const deadPid = await exitedPid()
+    await mount()
+    await run('write', agentOf('s1'))
+    clock += LEASE_IDLE_MS + 1
+    const foreign = createWorkspaceLeaseGuard(ctx, {
+      home, now: () => clock, hostId: 'test-host', pid: deadPid, idleMs: LEASE_IDLE_MS,
+    })
+    expect(await foreign.beforeTool({ name: 'write', arguments: {}, agent: agentOf('s2') })).toBeUndefined()
+    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2, pid: deadPid, hostId: 'test-host' })
+
+    expect((await run('write', agentOf('s1'), 'c2')).isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's1', generation: 3 })
+    const reclaimed = (await auditLines()).filter(line => line.event === 'reclaimed').at(-1)
+    expect(reclaimed).toMatchObject({ sessionId: 's1', holder: 's2', generation: 3 })
+  })
+
+  it('still refuses a fenced Session while the new holder is active', async () => {
+    await mount()
+    await run('write', agentOf('s1'))
+    clock += LEASE_IDLE_MS + 1
+    await run('write', agentOf('s2'), 'c2')
+    const before = await record()
+
+    const refused = await run('write', agentOf('s1'), 'c3')
+    expect(refused.isError).toBe(true)
+    expect(refused.error?.info?.code).toBe(WORKSPACE_LEASE_LOST)
+    expect(writes).toEqual(['s1', 's2'])
+    expect(await record()).toEqual(before)
+    const lost = (await auditLines()).filter(line => line.event === 'lost')
+    expect(lost.at(-1)).toMatchObject({ sessionId: 's1', generation: 1 })
+  })
+
+  it('observe mode recovers a fenced Session without refusing and reclaims the stale record', async () => {
+    await mount({ mode: 'observe' })
+    await run('write', agentOf('s1'))
+    clock += LEASE_IDLE_MS + 1
+    await run('write', agentOf('s2'), 'c2')
+    clock += LEASE_IDLE_MS + 1
+    expect((await run('write', agentOf('s1'), 'c3')).isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's1', generation: 3 })
+    const reclaimed = (await auditLines()).filter(line => line.event === 'reclaimed').at(-1)
+    expect(reclaimed).toMatchObject({ sessionId: 's1', holder: 's2', generation: 3 })
   })
 
   it('releases a disposed Session lease so another Session can acquire', async () => {

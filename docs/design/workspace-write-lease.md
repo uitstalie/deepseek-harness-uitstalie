@@ -117,11 +117,11 @@ The lease record lives outside the checkout, under `$DSH_HOME/workspaces/<hash-o
 
 - On host startup, scan the lease directory. A lease whose host and process are gone, or whose expiry has passed, is reclaimed and an audit entry is written.
 - A lease whose process is alive but whose session no longer exists is reclaimed after the idle expiry, not immediately, so a slow tool call is not cut off.
-- A lease that expires while its holder is still alive is reclaimed; the holder's next write fails with `WORKSPACE_LEASE_LOST` because its fencing generation is stale.
+- A lease that expires while its holder is still alive is reclaimed; the holder's next write fails with `WORKSPACE_LEASE_LOST` because its fencing generation is stale. That failure lasts only while the reclaiming writer is active: once the record is removed, expires, or its process dies, the fenced writer reclaims the lease and continues (see fencing below).
 
 ### 6.4 Fencing
 
-Every acquisition and reclaim increments a fencing generation stored in the lease record. The holder keeps the generation it acquired. Before each write, the guard re-reads the lease and compares; a mismatch means the lease was reclaimed, and the write is rejected. This prevents a stale holder from writing after a new holder acquires.
+Every acquisition and reclaim increments a fencing generation stored in the lease record. The holder keeps the generation it acquired. Before each write, the guard re-reads the lease and compares; a mismatch means the lease was reclaimed, and the write is rejected while the new holder is active. This prevents a stale holder from writing after a new holder acquires. Recovery is not a steal: when the current record is missing, its lease expired, or its process is dead, the fenced holder's next write reclaims the lease with generation `(current?.generation ?? mine.generation) + 1`, appends `reclaimed` and `acquired`, updates its held generation, and proceeds. An active foreign holder is still refused with `WORKSPACE_LEASE_LOST`. Observe mode never refuses: it reclaims the same stale record, or lets the call proceed without rewriting the record while an active holder remains.
 
 The residual gap is a shell command already running when the lease is reclaimed: it can still write, because the OS process is not stopped. The design bounds this by choosing a maximum lifetime longer than any expected command, logging the reclaim, and warning the new holder; killing the old process is out of scope.
 
@@ -179,7 +179,7 @@ The lease does not grant or deny permissions. A session without write permission
 | Two sessions, same checkout, both write | One acquires; the other gets `WORKSPACE_LEASE_HELD` with the holder; no file is written by the loser |
 | Queue enabled, second waits | Second acquires after the first releases; a timeout returns `WORKSPACE_LEASE_TIMEOUT` and the second never writes |
 | Two readers while a writer holds | Both readers succeed; neither acquires |
-| Crash of the holder | After the expiry, a new session reclaims; audit has `reclaimed`; the old session's next write gets `WORKSPACE_LEASE_LOST` |
+| Crash of the holder | After the expiry, a new session reclaims; audit has `reclaimed`; the old session's next write gets `WORKSPACE_LEASE_LOST` while the new holder is active, then recovers with `reclaimed` + `acquired` and generation `mine + 1` (record gone) or the record's generation `+ 1` (expired/dead) after that holder releases, expires, or dies |
 | Host restart | Startup scan reclaims stale leases; a fresh session acquires |
 | Subagent write | Inherits the parent's lease; no second acquisition |
 | Fork write while parent holds | Denied with the holder report |
