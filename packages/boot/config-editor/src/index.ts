@@ -21,6 +21,42 @@ function flatten(rows: EntryOptions[]): EntryOptions[] {
   return rows.flatMap(row => [row, ...row.group && Array.isArray(row.config) ? flatten(row.config as EntryOptions[]) : []])
 }
 
+/**
+ * Top-level row ids of one profile patch document, in file order.
+ *
+ * Only patch rows count: a row carrying `insert` adds entries and has no editable identity.
+ * @param text - the profile patch file contents.
+ * @returns row ids in order, or an empty list when the document is not a patch sequence.
+ */
+export function patchRowIds(text: string): string[] {
+  const document = parseDocument(text, {
+    customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }],
+  })
+  if (document.errors[0] !== undefined || !isSeq(document.contents)) return []
+  const ids: string[] = []
+  document.contents.items.forEach((_item, index) => {
+    const row: unknown = document.getIn([index])
+    if (!isMap(row) || row.has('insert')) return
+    const id: unknown = document.getIn([index, 'id'])
+    if (typeof id === 'string') ids.push(id)
+  })
+  return ids
+}
+
+/**
+ * Row ids a patch rewrite would drop.
+ *
+ * A settings write owns one row; every other row in the file is user configuration that write never
+ * read. Rewriting the document from a composed model drops those rows silently, which is how a
+ * profile lost its `llm-plus`, `jira-service` and `jira-agent` rows. Callers reject a non-empty result.
+ * @param before - patch contents read before the change.
+ * @param after - patch contents about to be written.
+ * @returns ids present before and absent after, in before order.
+ */
+export function droppedPatchRows(before: string, after: string): string[] {
+  const kept = new Set(patchRowIds(after))
+  return patchRowIds(before).filter(id => !kept.has(id))
+}
 /** Persist complete raw configs and apply them through the normal Loader path. */
 export class ConfigEditor extends Service {
   static inject = ['loader', 'profileContext']
@@ -137,7 +173,15 @@ export class ConfigEditor extends Service {
         if (!isDeepStrictEqual(effective?.config ?? {}, next)) {
           throw new Error(`Configuration for "${entry.options.id}" is overridden by a home patch or command-line overlay`)
         }
-        await writeFileAtomic(path, String(document), { mode: 0o600 })
+        const nextText = String(document)
+        const dropped = droppedPatchRows(before, nextText).filter(id => id !== entry.options.id)
+        if (dropped.length > 0) {
+          throw new Error(`Configuration write for "${entry.options.id}" would drop profile rows ${dropped.join(', ')}; refusing to overwrite user configuration`)
+        }
+        // Every rewrite leaves the previous bytes beside the file: a dropped row stays recoverable.
+        const backup = `${path}.bak-${String(Date.now())}`
+        await writeFileAtomic(backup, before, { mode: 0o600 })
+        await writeFileAtomic(path, nextText, { mode: 0o600 })
         try {
           await reconcileProfilePatches(this.ownerContext[Context.root], patches, 'dsh', [entry.options.id])
         } catch (error) {

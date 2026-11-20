@@ -1,0 +1,41 @@
+# desk patch restored
+- id: ui-settings-general
+  name: "@deepseek-ai/ui-settings-general"
+  config:
+    marker: "ui-settings-general"
+- id: jira-service
+  name: "@deepseek-ai/jira-service"
+  config:
+    marker: "jira-service"
+- id: agent-preset-registry
+  name: "@deepseek-ai/agent-preset-registry"
+  config:
+    marker: "agent-preset-registry"
+- id: llm-plus
+  name: "@deepseek-ai/llm-plus"
+  config:
+    marker: "llm-plus"
+- id: dafeiyu
+  name: "@deepseek-ai/dafeiyu"
+  config:
+    marker: "dafeiyu"
+- id: jira-agent
+  name: "@deepseek-ai/jira-agent"
+  config:
+    marker: "jira-agent"
+- id: ui-settings-account
+  name: "@deepseek-ai/ui-settings-account"
+  config:
+    marker: "ui-settings-account"
+- id: ui-chat
+  name: "@deepseek-ai/ui-chat"
+  config:
+    marker: "ui-chat"
+- id: ui-settings
+  name: "@deepseek-ai/ui-settings"
+  config:
+    marker: "ui-settings"
+- id: agent-default-model
+  name: "@deepseek-ai/agent-default-model"
+  config:
+    marker: "agent-default-model"
