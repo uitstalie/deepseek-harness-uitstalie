@@ -111,6 +111,49 @@ export interface SkippedBundle {
  * @param binName - the diagnostic prefix.
  * @param profile - the loaded profile.
  */
+/** One profile patch row that targets no composed entry. */
+export interface MissingPatchTarget {
+  /** Row id the patch addressed. */
+  readonly id: string
+  /** Plugin name the row declared, when it declared one. */
+  readonly name?: string
+}
+
+/** Collect every id in one composed entry list, nested groups included. */
+function composedIds(entries: readonly EntryOptions[]): Set<string> {
+  const ids = new Set<string>()
+  const walk = (list: readonly EntryOptions[]): void => {
+    for (const entry of list) {
+      if (typeof entry.id === 'string') ids.add(entry.id)
+      if (entry.group === true && Array.isArray(entry.config)) walk(entry.config as EntryOptions[])
+    }
+  }
+  walk(entries)
+  return ids
+}
+
+/**
+ * Find patch rows that address no composed entry.
+ *
+ * A top-level `- id:` row patches an existing entry; the application pass only warns
+ * (`patch: entry %C not found`) and continues, so a row for a retired or never-declared plugin
+ * silently contributes nothing while the profile still looks configured. Callers report these
+ * rows instead of leaving the configuration page to imply they are in force.
+ * @param patches - the profile patch rows in application order.
+ * @param entries - the composed entry list those patches address.
+ * @returns rows with a target id absent from `entries`, in patch order; insert rows never count.
+ */
+export function missingPatchTargets(
+  patches: readonly PatchOptions[], entries: readonly EntryOptions[],
+): MissingPatchTarget[] {
+  const ids = composedIds(entries)
+  const missing: MissingPatchTarget[] = []
+  for (const patch of patches) {
+    if (patch.insert !== undefined || typeof patch.id !== 'string' || ids.has(patch.id)) continue
+    missing.push({ id: patch.id, ...typeof patch.name === 'string' ? { name: patch.name } : {} })
+  }
+  return missing
+}
 export function reportSkippedBundles(binName: string, profile: Pick<Profile, 'skippedBundles'>): void {
   for (const { packageName, reason } of profile.skippedBundles) {
     process.stderr.write(`${binName}: skipping profile bundle ${JSON.stringify(packageName)}: ${reason}\n`)

@@ -70,6 +70,8 @@ export {
   removeLinkProjections,
   loadProfile,
   loadProfileDirectory,
+  missingPatchTargets,
+  type MissingPatchTarget,
   PROFILE_PATCH_FILENAME,
   PROFILES_DIR,
   readProfileManifest,

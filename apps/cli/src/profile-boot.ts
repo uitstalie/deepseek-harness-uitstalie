@@ -21,6 +21,8 @@ import {
   initProfile,
   installFailLoud,
   loadProfile,
+  composeEntries,
+  missingPatchTargets,
   reportSkippedBundles,
   PluginPackages,
   PROFILE_PATCH_FILENAME,
@@ -189,9 +191,26 @@ export function initializeProfileFromDefault(
  * @returns the loaded profile.
  * @throws when explicit initialization names an unknown template or a shipped target.
  */
+/**
+ * Report profile patch rows that target no composed entry as one startup warning.
+ *
+ * The patch application pass only warns per row and continues, so a row naming a retired or
+ * never-declared plugin stays invisible in the running tree while the profile still reads as
+ * configured. One summary line at boot keeps that gap visible.
+ * @param profile - loaded profile whose patch rows and bundle layers are composed.
+ */
+function reportMissingPatchTargets(profile: Profile): void {
+  const composed = composeEntries([...profile.layers.map(layer => layer.patches), profile.patches])
+  const missing = missingPatchTargets(profile.patches, composed)
+  if (missing.length === 0) return
+  const rows = missing.map(row => row.name === undefined ? row.id : `${row.id} (${row.name})`)
+  console.warn(`dsh: ${String(missing.length)} profile patch row(s) target no entry and do nothing: ${rows.join(', ')}`)
+}
+
 export function prepareProfile(name: string, userLayer = true, fromDefaultProfile?: string): Profile {
   if (fromDefaultProfile !== undefined) initializeProfileFromDefault(name, fromDefaultProfile)
   const profile = loadProfile(NAME, name, INSTALL_ANCHOR, undefined, { userLayer })
+  reportMissingPatchTargets(profile)
   reportSkippedBundles(NAME, profile)
   writeFileSync(join(profile.dir, PROFILE_ROOT_FILENAME), PROFILE_ROOT_CONFIG)
   return profile

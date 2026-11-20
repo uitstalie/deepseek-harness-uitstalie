@@ -3,7 +3,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Entry } from '@deepseek-ai/cordis-plugin-loader'
 // Declares `Context.pluginPackages`, the profile package lookup that resolves an entry's package directory.
-import { createConfigProjector, isNativeConfigSchema, LOADER_EXPRESSION_SCHEMA, type NativeConfigSchema } from '@deepseek-ai/dsh-app-boot'
+import { createConfigProjector, isNativeConfigSchema, LOADER_EXPRESSION_SCHEMA, readProfilePatches, type NativeConfigSchema } from '@deepseek-ai/dsh-app-boot'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { InspectError } from '@deepseek-ai/dsh-cordis-host-runner'
 import { ToolArgsError, ToolContextUnavailableError } from '@deepseek-ai/dsh-tools'
@@ -15,7 +15,7 @@ import { ToolArgsError, ToolContextUnavailableError } from '@deepseek-ai/dsh-too
  * disabled, was never imported, or its fiber has been disposed, so no Config is read. A plugin whose
  * `apply` failed keeps its fiber and still reports its Config.
  */
-type ConfigStatus = 'schema' | 'absent' | 'unsupported' | 'tree' | 'inactive'
+type ConfigStatus = 'schema' | 'absent' | 'unsupported' | 'tree' | 'inactive' | 'missing'
 
 interface LiveConfig {
   /** Loader entry id, unique across nested include trees (`parent:child`). */
@@ -106,6 +106,20 @@ export async function queryLiveConfig(ctx: Context, input: JsonValue | undefined
   }
   const query = parseQuery(input)
   const entries = [...loader.entries()].map(liveConfig)
+  // Rows the profile patch addresses but no entry carries: report them instead of letting the
+  // directory imply the row is in force (the Loader only warns and skips them).
+  const profileContext = ctx.get('profileContext')
+  if (profileContext !== undefined) {
+    try {
+      for (const patch of readProfilePatches('dsh', profileContext)) {
+        if (patch.insert !== undefined || typeof patch.id !== 'string') continue
+        if (entries.some(entry => entry.patchId === patch.id)) continue
+        entries.push({ id: `profile:${patch.id}`, patchId: patch.id, name: typeof patch.name === 'string' ? patch.name : '', status: 'missing' })
+      }
+    } catch (_unreadableProfilePatch) {
+      // A broken or absent profile patch is the boot’s failure to report, not this query’s.
+    }
+  }
   if (query.entry === undefined) {
     const matching = query.name === undefined ? entries : entries.filter(candidate => candidate.name === query.name)
     const page = matching.slice(query.offset, query.offset + query.limit).map(listing)

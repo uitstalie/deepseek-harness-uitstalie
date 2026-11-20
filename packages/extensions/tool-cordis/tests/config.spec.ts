@@ -132,4 +132,21 @@ describe('the Config inspect provider', () => {
       name: 'ToolContextUnavailableError', code: 'TOOL_CONTEXT_UNAVAILABLE',
     })
   })
+
+  it('lists a profile patch row whose target entry does not exist as missing', async () => {
+    const { ctx } = await loaded()
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-tool-cordis-missing-'))
+    onTestFinished(() => { rmSync(dir, { recursive: true, force: true }) })
+    writeFileSync(join(dir, 'package.json'), '{"name":"probe-profile","private":true,"dsh":{"profile":{"bundles":[]}}}\n')
+    const patchPath = join(dir, 'cordis.patch.yml')
+    writeFileSync(patchPath, '- id: ghost\n  name: ghost-plugin\n  config:\n    enabled: true\n')
+    ctx.provide('profileContext', {
+      name: 'probe', dir, patchPath, installAnchor: join(dir, 'package.json'), cwd: dir, home: dir,
+      startedBundles: [], overlayPaths: [], telemetryDisabledEnv: undefined,
+    } as never)
+    const listed = await directory(ctx)
+    expect(listed['profile:ghost']).toEqual({ id: 'profile:ghost', patchId: 'ghost', name: 'ghost-plugin', status: 'missing' })
+    await ctx.fiber.dispose()
+  })
+
 })
