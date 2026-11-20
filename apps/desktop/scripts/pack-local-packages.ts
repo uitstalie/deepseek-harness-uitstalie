@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process'
 import { globSync } from 'node:fs'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import {
   readClientBuildRecord,
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     .map(path => ({ path, manifest: JSON.parse(readFileSync(resolve(root, path), 'utf8')) as { name?: string; version?: string; private?: boolean } }))
     .filter(entry => entry.manifest.private === true && entry.manifest.name?.startsWith('@deepseek-ai/') === true && typeof entry.manifest.version === 'string')
   for (const entry of privateManifests) {
-    const invocation = pnpmInvocation(['--dir', entry.path.replace(/\/package\.json$/u, ''), 'pack', '--pack-destination', destination])
+    const invocation = pnpmInvocation(['--dir', dirname(resolve(root, entry.path)), 'pack', '--pack-destination', destination])
     execFileSync(invocation.command, invocation.args, { cwd: root, stdio: 'inherit' })
   }
   console.log(`desktop local pack: ${String(packed.length)} public and ${String(privateManifests.length)} private tarball(s) in ${destination}`)
