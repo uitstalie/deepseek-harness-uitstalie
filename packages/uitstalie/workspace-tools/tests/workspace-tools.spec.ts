@@ -120,11 +120,16 @@ test('every session gets the same static workspace directory section', async () 
   expect(freshAssembly.sections.find(section => section.name === 'workspace-directory')?.text)
     .toBe(ordinarySection?.text)
 
-  // The routing rules are static and name the header and the ask refusal.
+  // The routing rules are static and name the header, the ask refusal, and the
+  // 30% compaction threshold before delivery.
   const routing = ordinaryAssembly.sections.find(section => section.name === 'workspace-routing')
   expect(routing?.text).toContain('[workspace_message]')
   expect(routing?.text).toContain('ask_user_question_plus')
   expect(routing?.text).toContain('Reply at most once per request')
+  expect(routing?.text).toContain('`contextUsage.percent` is 30% or more')
+  expect(routing?.text).toContain('wait for that turn to end')
+  expect(freshAssembly.sections.find(section => section.name === 'workspace-routing')?.text)
+    .toBe(routing?.text)
 })
 
 test('list results are bounded by limit and walkable with the returned cursor', async () => {
