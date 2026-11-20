@@ -7,7 +7,8 @@ import { DesktopUpdateSettings } from './update-settings.ts'
 import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
-import { access, readFile, writeFile } from 'node:fs/promises'
+import { access, appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -19,6 +20,7 @@ import {
   Menu,
   powerMonitor,
   nativeImage,
+  Notification,
   nativeTheme,
   protocol,
   session,
@@ -71,6 +73,61 @@ import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
+import { hasPackagedUpdateSource, updateEntryVisible, updateSourceArgument } from './update-entry.ts'
+import { gpuFallbackArguments, isGpuFallbackLaunch, observeGpuCrash, type GpuFallbackMemory } from './gpu-fallback.ts'
+
+const gpuFallbackMarker = join(app.getPath('userData'), 'gpu-fallback')
+const gpuRequested = process.argv.includes('--enable-gpu')
+if (gpuRequested) {
+  try { unlinkSync(gpuFallbackMarker) } catch (_error) { /* No fallback marker to clear. */ }
+}
+const gpuFallbackLaunch = isGpuFallbackLaunch(process.argv) || (!gpuRequested && existsSync(gpuFallbackMarker))
+if (gpuFallbackLaunch) console.info('dsh desktop: GPU fallback active; hardware acceleration is disabled')
+// Hardware acceleration must be off before Electron creates its first GPU process.
+if (gpuFallbackLaunch) app.disableHardwareAcceleration()
+const packagedUpdateSource = app.isPackaged && hasPackagedUpdateSource(process.resourcesPath)
+const updateEntry = !app.isPackaged || updateEntryVisible(process.platform, packagedUpdateSource)
+if (app.isPackaged && process.platform === 'linux' && !updateEntry) {
+  console.info('dsh desktop: Linux update entry hidden because this package has no update source')
+}
+
+/** Writes one bounded GPU fallback line under the shell log directory. */
+async function writeGpuFallbackLog(line: string): Promise<void> {
+  try {
+    const directory = app.getPath('logs')
+    await mkdir(directory, { recursive: true })
+    await appendFile(join(directory, 'gpu-fallback.log'), `${new Date().toISOString()} ${line}\n`, { mode: 0o600 })
+  } catch (error) { console.warn('dsh desktop: GPU fallback log unavailable', error) }
+}
+
+let gpuMemory: GpuFallbackMemory = { crashes: 0 }
+let gpuRelaunching = false
+app.on('child-process-gone', (_event, details) => {
+  if (details.type !== 'GPU') return
+  const detail = `GPU process gone: reason=${details.reason} exitCode=${String(details.exitCode)}`
+  console.warn(`dsh desktop: ${detail}`)
+  void writeGpuFallbackLog(detail)
+  // macOS and Windows retain their existing process lifecycle; the Linux Wayland path owns this fallback.
+  if (process.platform !== 'linux') return
+  const observation = observeGpuCrash(gpuMemory, Date.now())
+  gpuMemory = observation.memory
+  if (!observation.relaunch || gpuRelaunching || gpuFallbackLaunch) {
+    if (gpuFallbackLaunch) void writeGpuFallbackLog('GPU fallback launch is already active; not restarting again')
+    return
+  }
+  gpuRelaunching = true
+  const args = gpuFallbackArguments(process.argv.slice(1))
+  try {
+    mkdirSync(app.getPath('userData'), { recursive: true })
+    writeFileSync(gpuFallbackMarker, `${new Date().toISOString()} ${detail}\n`, { mode: 0o600 })
+  } catch (error) { console.warn('dsh desktop: GPU fallback marker unavailable', error) }
+  console.warn('dsh desktop: repeated GPU crashes; restarting with hardware acceleration disabled')
+  void writeGpuFallbackLog(`restarting with ${args.join(' ')}`)
+  setTimeout(() => {
+    app.relaunch({ args })
+    app.exit(0)
+  }, 500).unref()
+})
 
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => { await stopOperationReports() }
@@ -301,6 +358,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
       webSecurity: true,
       webviewTag: primary,
       devTools: true,
+      additionalArguments: [updateSourceArgument(updateEntry)],
     },
   })
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -549,6 +607,21 @@ async function main(): Promise<void> {
           segmentBytes: 256 * 1024, recordBytes: 4096, queuedBytes: 64 * 1024,
         })
         operationJournal.enqueue(JSON.stringify(record))
+      }, (result) => {
+        if (result.status === 'degraded') {
+          console.warn('dsh desktop: host startup self-check degraded', result.logPath ?? '', result.items
+            .filter(item => item.status === 'failed').map(item => `${item.name}: ${item.detail ?? 'failed'}`).join('; '))
+          if (Notification.isSupported()) {
+            const notification = new Notification({
+              title: currentDesktopLocale().messages.selfCheckDegradedTitle,
+              body: `${currentDesktopLocale().messages.selfCheckDegraded}${result.logPath === undefined ? '' : ` ${result.logPath}`}`,
+              silent: true,
+            })
+            const logPath = result.logPath
+            if (logPath !== undefined) notification.once('click', () => { shell.showItemInFolder(logPath) })
+            notification.show()
+          }
+        }
       })
     return {
       start: async () => {
@@ -968,6 +1041,7 @@ async function main(): Promise<void> {
   })
   ipcMain.handle(DESKTOP_IPC.updatesOpen, async (event) => {
     assertProductSender(event)
+    if (!updateEntry) return
     await openUpdatePrompt()
   })
 
@@ -1216,7 +1290,9 @@ async function main(): Promise<void> {
         click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } }
       : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
     { type: 'separator' },
-    { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
+    ...(updateEntry
+      ? [{ label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } }]
+      : []),
     ...process.platform === 'darwin' || process.platform === 'win32'
       ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }] : [],
     { type: 'separator' },
@@ -1369,6 +1445,8 @@ async function main(): Promise<void> {
     })
     window.webContents.on('render-process-gone', (_event, details) => {
       navigation = undefined
+      console.warn(`dsh desktop: renderer process gone: reason=${details.reason} exitCode=${String(details.exitCode)}`)
+      void writeGpuFallbackLog(`renderer process gone: reason=${details.reason} exitCode=${String(details.exitCode)}`)
       if (!quitting && !window.isDestroyed() && details.reason !== 'clean-exit') {
         reportFatal(new Error(`Desktop renderer exited: ${details.reason}`), 'renderer')
       }

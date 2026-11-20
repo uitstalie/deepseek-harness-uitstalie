@@ -102,7 +102,7 @@ export interface DshDesktopProductApi {
    * @returns `name=value` fields separated by `; `, with no hostname, user name, or serial number.
    */
   deviceInfo(): Promise<string>
-  readonly updates: {
+  readonly updates?: {
     readonly channels: DesktopChannelBridge
     status(): Promise<DesktopUpdatePresentation>
     open(): Promise<void>

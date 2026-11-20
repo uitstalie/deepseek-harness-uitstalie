@@ -1,6 +1,7 @@
 /** Launch the Desktop profile through the Web application and report its URL to Electron. */
 
 import { delimiter, join } from 'node:path'
+import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
 import type { PluginOperationRunId } from '@deepseek-ai/dsh-plugin-manager/diagnostic'
 import { formatFatalDiagnostic } from './fatal-diagnostic.ts'
@@ -15,6 +16,7 @@ import { installDesktopUpdateTaskControl } from './update-tasks.ts'
 import { installDesktopQuitInspection } from './quit-inspection.ts'
 import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOperationDiagnostics } from './operation-diagnostics.ts'
+import { runStartupSelfCheck } from './startup-self-check.ts'
 import { DesktopAuthenticationEnd, receiveDesktopSecret } from './authentication.ts'
 import * as DesktopAuthentication from '@deepseek-ai/dsh-host-authentication-desktop'
 
@@ -41,10 +43,28 @@ async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
   const projectDir = process.argv[3] as string
   // Set before the launch-environment snapshot and profile evaluation; empty means the payload sits beside the runtime directory.
-  process.env.DSH_PRIMARY_RUNTIME = process.argv[4] || join(runtimeDir, '..', 'runtime', 'primary-runtime')
+  const primaryRuntime = process.argv[4] || join(runtimeDir, '..', 'runtime', 'primary-runtime')
+  process.env.DSH_PRIMARY_RUNTIME = primaryRuntime
   const installAnchor = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'package.json')
   const profile = loadProfileDirectory('dsh', projectDir, installAnchor)
   reportSkippedBundles('dsh', profile)
+  const runtimeRequire = createRequire(join(runtimeDir, 'package.json'))
+  // Defer the potentially native-module-loading probe until profile boot has begun; it never gates readiness.
+  setImmediate(() => {
+    void runStartupSelfCheck({
+      execPath: process.execPath,
+      ...(process.platform === 'linux'
+        ? { expectedNode: join(primaryRuntime, 'dependencies', 'node', 'bin', 'node') }
+        : {}),
+      loadModule: name => runtimeRequire(name) as unknown,
+    }).then((result) => {
+      if (result.status === 'degraded') {
+        console.warn(`dsh desktop: startup self-check degraded (${result.logPath ?? 'log unavailable'}): `
+          + result.items.filter(item => item.status === 'failed').map(item => `${item.name}: ${item.detail ?? 'failed'}`).join('; '))
+      }
+      if (process.connected) process.send?.({ type: 'self-check', result })
+    }).catch((error: unknown) => { console.warn('dsh desktop: startup self-check failed', error) })
+  })
   const application = runProfile({
     environment: loadLayeredEnv('dsh'),
     profile: 'desktop',

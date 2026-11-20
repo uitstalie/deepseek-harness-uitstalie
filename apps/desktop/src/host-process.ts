@@ -21,12 +21,23 @@ interface FatalEvent {
   readonly diagnostic?: string
 }
 
+export interface DesktopHostSelfCheckResult {
+  readonly status: 'ok' | 'degraded'
+  readonly items: readonly { readonly name: string; readonly status: string; readonly detail?: string }[]
+  readonly logPath?: string
+}
+
+interface SelfCheckEvent {
+  readonly type: 'self-check'
+  readonly result: DesktopHostSelfCheckResult
+}
+
 interface PlatformSessionEvent {
   readonly type: 'platform-session'
   readonly session: PlatformSession | null
 }
 
-type DesktopHostEvent = ReadyEvent | FatalEvent | PlatformSessionEvent | {
+type DesktopHostEvent = ReadyEvent | FatalEvent | SelfCheckEvent | PlatformSessionEvent | {
   readonly type: 'starting'
   readonly runId: PluginOperationRunId
 } | { readonly type: 'shutdown-complete' } | {
@@ -105,6 +116,12 @@ function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
     }
     case 'fatal':
       return typeof candidate.message === 'string' && (candidate.diagnostic === undefined || typeof candidate.diagnostic === 'string')
+    case 'self-check': {
+      const result = candidate.result
+      return typeof result === 'object' && result !== null && 'status' in result
+        && (result.status === 'ok' || result.status === 'degraded')
+        && 'items' in result && Array.isArray(result.items)
+    }
     case 'update-tasks':
       return Number.isSafeInteger(candidate.requestId) && typeof candidate.active === 'boolean'
         && (candidate.error === undefined || typeof candidate.error === 'string')
@@ -215,6 +232,7 @@ export class DesktopHostProcess {
 
     private readonly onPlatformSession?: (session: PlatformSession | null) => void,
     private readonly onPluginOperation?: (record: PluginOperationRecord) => void,
+    private readonly onSelfCheck?: (result: DesktopHostSelfCheckResult) => void,
   ) {}
 
   /**
@@ -276,6 +294,10 @@ export class DesktopHostProcess {
           this.fail(error instanceof Error ? error : new Error(String(error)))
           child.kill('SIGTERM')
         })
+      }
+      else if (message.type === 'self-check') {
+        try { this.onSelfCheck?.(message.result) }
+        catch (_error) { console.warn('desktop self-check diagnostic sink failed') }
       }
       else if (message.type === 'platform-session') this.onPlatformSession?.(message.session)
       else if (message.type === 'shutdown-complete') {

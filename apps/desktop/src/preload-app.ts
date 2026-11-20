@@ -14,6 +14,7 @@ import { createDesktopBrowserBridge } from './preload-browser.ts'
 import type { FileDragHandle } from '@deepseek-ai/dsh-util-file-drag'
 
 function createProductApi(): DshDesktopProductApi {
+  const updatesVisible = process.platform !== 'linux' || process.argv.includes('--dsh-update-source=1')
   return {
     protocolVersion: 1,
     fileActions: {
@@ -65,7 +66,7 @@ function createProductApi(): DshDesktopProductApi {
         return () => { ipcRenderer.off(DESKTOP_IPC.shortcutsChanged, handle) }
       },
     },
-    updates: {
+    ...(updatesVisible ? { updates: {
       channels: {
         get: () => ipcRenderer.invoke(DESKTOP_IPC.updatesChannelGet) as Promise<DesktopChannelState>,
         set: channel => ipcRenderer.invoke(DESKTOP_IPC.updatesChannelSet, channel) as Promise<DesktopChannelChangeResult>,
@@ -82,7 +83,7 @@ function createProductApi(): DshDesktopProductApi {
         ipcRenderer.on(DESKTOP_IPC.updatesPresentation, handle)
         return () => { ipcRenderer.off(DESKTOP_IPC.updatesPresentation, handle) }
       },
-    },
+    } } : {}),
   }
 }
 
