@@ -38,7 +38,8 @@ def check_interpreters():
             "subprocess.run([sys.executable, '-I', '-B', '-c', 'import ssl, sqlite3, ctypes'], check=True, timeout=30)",
             str(interpreter),
         ], check=True, timeout=60)
-    with tempfile.TemporaryDirectory(prefix="dsh python venv ") as directory:
+    # Windows can hold a freshly created venv file (an indexer or scanner) past the last child exit; a cleanup failure is residue in TMP, not a failed check.
+    with tempfile.TemporaryDirectory(prefix="dsh python venv ", ignore_cleanup_errors=True) as directory:
         environment = Path(directory) / "environment"
         subprocess.run([str(executable.with_name(names[0])), "-I", "-B", "-m", "venv", str(environment)], check=True, timeout=60)
         python = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
