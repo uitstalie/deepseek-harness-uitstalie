@@ -4,11 +4,11 @@ import { expect, it } from 'vitest'
 import { droppedPatchRows, patchRowIds } from '../src/index.ts'
 
 const fixture = readFileSync(new URL('./patch-rows.fixture.yml', import.meta.url), 'utf8')
-const USER_ROWS = ['ui-settings-general', 'jira-service', 'agent-preset-registry', 'llm-plus', 'dafeiyu', 'jira-agent']
+const USER_ROWS = ['ui-settings-general', 'tool-dsh-store', 'agent-preset-registry', 'llm-plus', 'dafeiyu', 'memory']
 
 it('reads every top-level row id in file order', () => {
   expect(patchRowIds(fixture)).toEqual([
-    'ui-settings-general', 'jira-service', 'agent-preset-registry', 'llm-plus', 'dafeiyu', 'jira-agent',
+    'ui-settings-general', 'tool-dsh-store', 'agent-preset-registry', 'llm-plus', 'dafeiyu', 'memory',
     'ui-settings-account', 'ui-chat', 'ui-settings', 'agent-default-model',
   ])
 })

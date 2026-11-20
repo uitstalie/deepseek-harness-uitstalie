@@ -33,7 +33,7 @@ async function seededHome(): Promise<{ home: string; destination: string }> {
   await writeFile(join(home, 'storages', 'workspace.json'), '{}')
   await mkdir(join(home, 'memory'), { recursive: true })
   await writeFile(join(home, 'memory', 'GLOBAL.md'), 'remembered')
-  await mkdir(join(home, 'dsh-jira'), { recursive: true })
+  await mkdir(join(home, 'attachments'), { recursive: true })
   return { home, destination }
 }
 
@@ -48,7 +48,7 @@ describe('home inventory', () => {
     const manifest: unknown = JSON.parse(await readFile(join(result.snapshot.directory, MANIFEST_FILENAME), 'utf8'))
     const inventory = (manifest as { inventory: { name: string; covered: boolean }[] }).inventory
     expect(inventory).toEqual([
-      { name: 'dsh-jira', covered: false },
+      { name: 'attachments', covered: false },
       { name: 'memory', covered: false },
       { name: 'sessions', covered: true },
       { name: 'storages', covered: true },

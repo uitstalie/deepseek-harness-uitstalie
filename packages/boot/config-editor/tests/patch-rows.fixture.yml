@@ -3,10 +3,10 @@
   name: "@deepseek-ai/ui-settings-general"
   config:
     marker: "ui-settings-general"
-- id: jira-service
-  name: "@deepseek-ai/jira-service"
+- id: tool-dsh-store
+  name: "@deepseek-ai/tool-dsh-store"
   config:
-    marker: "jira-service"
+    marker: "tool-dsh-store"
 - id: agent-preset-registry
   name: "@deepseek-ai/agent-preset-registry"
   config:
@@ -19,10 +19,10 @@
   name: "@deepseek-ai/dafeiyu"
   config:
     marker: "dafeiyu"
-- id: jira-agent
-  name: "@deepseek-ai/jira-agent"
+- id: memory
+  name: "@deepseek-ai/memory"
   config:
-    marker: "jira-agent"
+    marker: "memory"
 - id: ui-settings-account
   name: "@deepseek-ai/ui-settings-account"
   config:

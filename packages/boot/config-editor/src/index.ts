@@ -48,7 +48,7 @@ export function patchRowIds(text: string): string[] {
  *
  * A settings write owns one row; every other row in the file is user configuration that write never
  * read. Rewriting the document from a composed model drops those rows silently, which is how a
- * profile lost its `llm-plus`, `jira-service` and `jira-agent` rows. Callers reject a non-empty result.
+ * profile lost its `llm-plus`, `dafeiyu` and `tool-dsh-store` rows. Callers reject a non-empty result.
  * @param before - patch contents read before the change.
  * @param after - patch contents about to be written.
  * @returns ids present before and absent after, in before order.
