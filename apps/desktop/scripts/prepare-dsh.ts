@@ -173,17 +173,17 @@ async function main(): Promise<void> {
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:manifests', () => prepareRuntimeManifests(DSH_OUTPUT_ROOT))
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:primary-smoke', async () => smokePrimaryRuntime(join(RUNTIME_ROOT, 'primary-runtime')))
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:write-descriptor', async () => {
+      // Packaging materializes `workspace:*` peers to each target package's own version, which lands
+      // private packages on 0.0.0 and any lagging package on its older release. The compatibility
+      // preflight compares every DSH peer range with this runtime version and disables the whole row
+      // when they differ, so normalize before the descriptor seals the staged bytes.
+      const normalizedPeers = normalizeDshPeerVersions(DSH_OUTPUT_ROOT, release.version)
+      if (normalizedPeers.length > 0) {
+        console.log(`desktop runtime: normalized DSH peers on ${String(normalizedPeers.length)} package(s): ${normalizedPeers.join(', ')}`)
+      }
       const writeRuntime = target.platform === 'win32' ? writeDesktopRuntimeAsync : writeDesktopRuntime
       return writeRuntime(DSH_OUTPUT_ROOT, release, packageSet.packages.map(entry => entry.name), target)
     })
-    // Packaging materializes `workspace:*` peers to each target package's own version, which lands
-    // private packages on 0.0.0 and any lagging package on its older release. The runtime compatibility
-    // preflight compares every DSH peer range with this runtime version and disables the whole row when
-    // they differ, so normalize the staged manifests before verification rejects the mismatch.
-    const normalizedPeers = normalizeDshPeerVersions(DSH_OUTPUT_ROOT, release.version)
-    if (normalizedPeers.length > 0) {
-      console.log(`desktop runtime: normalized DSH peers on ${String(normalizedPeers.length)} package(s): ${normalizedPeers.join(', ')}`)
-    }
     const descriptor = await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:verify-before-smoke', () => verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target))
     if (!process.argv.includes('--defer-runtime-smoke')) {
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:smoke', () => smokePreparedRuntime(DSH_OUTPUT_ROOT, NODE, RUNTIME_ROOT, descriptor))
