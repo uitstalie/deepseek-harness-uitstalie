@@ -3672,6 +3672,9 @@ importers:
       '@deepseek-ai/dsh-time-context':
         specifier: workspace:*
         version: link:../../context/time-context
+      '@deepseek-ai/dsh-token-calculator':
+        specifier: workspace:*
+        version: link:../../uitstalie/token-calculator
       '@deepseek-ai/dsh-tool-ask-user':
         specifier: workspace:*
         version: link:../../interaction/tool-ask-user
