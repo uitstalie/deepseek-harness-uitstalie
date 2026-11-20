@@ -31,7 +31,7 @@ import type {
   TokenMeterConfig,
 } from './types.ts'
 import { contextBreakdownProjectionDefinition } from './breakdown-projection.ts'
-import { contextPressureProjectionDefinition, tokenUsageProjectionDefinition } from './usage-projection.ts'
+import { contextPressureProjectionDefinition, projectedTokensOf, tokenUsageProjectionDefinition } from './usage-projection.ts'
 import type { ContextPressureState } from './usage-projection.ts'
 import { estimateMessage, estimateToolsTokens } from './estimate.ts'
 import { advanceMeasurement, measurementProjectionDefinition } from './measurement-projection.ts'
@@ -115,14 +115,22 @@ export class TokenMeter extends Service {
   }
 
   /**
-   * Read the latest logged provider prompt size and route capacity.
-   * @param session - Session whose committed usage and request capacity are read.
+   * Read the latest provider-reported prompt size, the occupancy the next
+   * request would carry, and route capacity.
+   *
+   * `projectedTokens` is the figure to divide by `contextWindow` for a current
+   * occupancy: `pressureTokens` is the last completed request's prompt and
+   * cannot see a compaction, which reports no usage of its own.
+   * @param session - Session whose committed usage, surface movement, and request capacity are read.
    * @returns context pressure; fields remain absent until their source events are recorded.
    */
-  contextPressure(session: Session): Pick<ContextPressureProjection, 'pressureTokens' | 'contextWindow'> {
-    const { pressureTokens, contextWindow } = this.contextPressureProjectionHandle.stateOf(session)
+  contextPressure(session: Session): Pick<ContextPressureProjection, 'pressureTokens' | 'projectedTokens' | 'contextWindow'> {
+    const state = this.contextPressureProjectionHandle.stateOf(session)
+    const { pressureTokens, contextWindow } = state
+    const projectedTokens = projectedTokensOf(state)
     return {
       ...pressureTokens === undefined ? {} : { pressureTokens },
+      ...projectedTokens === undefined ? {} : { projectedTokens },
       ...contextWindow === undefined ? {} : { contextWindow },
     }
   }

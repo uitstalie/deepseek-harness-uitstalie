@@ -4928,9 +4928,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Replay owner for one service-wide estimator and isolated per-session folds.',
     methods: [
       {
-        signature: 'contextPressure(session: Session): Pick<ContextPressureProjection, \'pressureTokens\' | \'contextWindow\'>',
-        description: 'Read the latest logged provider prompt size and route capacity.',
-        parameters: [{ name: 'session', description: 'Session whose committed usage and request capacity are read.' }],
+        signature: 'contextPressure(session: Session): Pick<ContextPressureProjection, \'pressureTokens\' | \'projectedTokens\' | \'contextWindow\'>',
+        description: 'Read the latest provider-reported prompt size, the occupancy the next request would carry, and route capacity.\n\n`projectedTokens` is the figure to divide by `contextWindow` for a current occupancy: `pressureTokens` is the last completed request\'s prompt and cannot see a compaction, which reports no usage of its own.',
+        parameters: [{ name: 'session', description: 'Session whose committed usage, surface movement, and request capacity are read.' }],
         returns: 'context pressure; fields remain absent until their source events are recorded.',
       },
       {

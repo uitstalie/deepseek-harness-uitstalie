@@ -232,14 +232,18 @@ function installController(
   return controller
 }
 
-/** Expose a manual compaction engine that reports 12 shadowed tokens. */
-function installCompaction(mounted: WorkspaceToolsHarness, pressure: { value: number }): void {
+/**
+ * Expose a manual compaction engine whose shadow price drops the projected
+ * occupancy while the provider sample stays put, as a real compaction does:
+ * it reports no usage of its own.
+ */
+function installCompaction(mounted: WorkspaceToolsHarness, projected: { value: number }): void {
   mounted.ctx.provide('tokenMeter' as never, {
-    contextPressure: () => ({ pressureTokens: pressure.value, contextWindow: 1000 }),
+    contextPressure: () => ({ pressureTokens: 700, projectedTokens: projected.value, contextWindow: 1000 }),
   } as never)
   mounted.ctx.provide('compaction' as never, {
     compactNow: async () => {
-      pressure.value = 100
+      projected.value = 100
       return { shadowedTokenCount: 12 }
     },
   } as never)
@@ -536,8 +540,8 @@ test('abort cancels the running turn and then delivers the follow-up text', asyn
 
 test('fork, archive, compact, and delete each run through the host', async () => {
   const controller = installController(mounted, { deleteApi: true })
-  const pressure = { value: 300 }
-  installCompaction(mounted, pressure)
+  const projected = { value: 300 }
+  installCompaction(mounted, projected)
   const started = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {
     action: 'start', workspace: String(workspaceB.id), task: 'branch me', title: 'branch source',
   })
@@ -573,16 +577,18 @@ test('fork, archive, compact, and delete each run through the host', async () =>
       sessionId: string
       compacted: boolean
       shadowedTokens?: number
-      before?: { percent?: number }
-      after?: { percent?: number }
+      before?: { tokens?: number; percent?: number }
+      after?: { tokens?: number; percent?: number }
     }
   }
+  // The provider sample stays at 700 of 1000 tokens (70%) across the
+  // compaction; reading it would report no change at all.
   expect((valueOf(compacted) as CompactView).compacted).toMatchObject({
     sessionId,
     compacted: true,
     shadowedTokens: 12,
-    before: { percent: 30 },
-    after: { percent: 10 },
+    before: { tokens: 300, percent: 30 },
+    after: { tokens: 100, percent: 10 },
   })
 
   const deleted = await callTool(mounted.ctx, superAgent, 'workspace_sessions', {

@@ -207,11 +207,11 @@ export interface ArchivedSession {
 
 /** One Session's context pressure as a percentage of its window. */
 export interface SessionContextUsage {
-  /** Measured pressure tokens. */
+  /** Occupancy the next request would carry, in tokens. */
   readonly tokens?: number
   /** Routed context window in tokens. */
   readonly window?: number
-  /** Rounded pressure percentage. */
+  /** Rounded occupancy percentage. */
   readonly percent?: number
 }
 
@@ -407,9 +407,13 @@ interface TokenMeterLike {
   /**
    * Measure one Session's context pressure.
    * @param session - live Session.
-   * @returns pressure tokens and the routed window.
+   * @returns the newest provider sample, the projected next-request occupancy, and the routed window.
    */
-  contextPressure(session: unknown): { readonly pressureTokens?: number; readonly contextWindow?: number }
+  contextPressure(session: unknown): {
+    readonly pressureTokens?: number
+    readonly projectedTokens?: number
+    readonly contextWindow?: number
+  }
 }
 
 /** The permission-preset registry seam a dispatched Session inherits its preset from. */
@@ -1631,20 +1635,26 @@ function lookup<T>(ctx: unknown, key: string): T | undefined {
 }
 
 /**
- * Read one Session's context usage. An absent field stays absent, because a
- * percentage without both measurements would be a misleading suggestion.
+ * Read one Session's context usage from the occupancy the next request would
+ * carry, falling back to the last sample.
+ *
+ * The provider sample alone cannot answer this: compaction reports no usage of
+ * its own, so a compacted Session keeps its old sample until the next request.
+ * The meter's projected figure adds the surface movement since that sample and
+ * is what the client occupancy display divides by the window.
  * @param meter - host token meter, when mounted.
  * @param session - the Session to measure.
  * @returns the usage, or undefined when the host cannot measure it.
  */
 function contextUsageOf(meter: TokenMeterLike | undefined, session: unknown): SessionContextUsage | undefined {
   if (meter === undefined || session === undefined) return undefined
-  const { pressureTokens, contextWindow } = meter.contextPressure(session)
-  if (pressureTokens === undefined || contextWindow === undefined || contextWindow <= 0) return undefined
+  const { pressureTokens, projectedTokens, contextWindow } = meter.contextPressure(session)
+  const tokens = projectedTokens ?? pressureTokens
+  if (tokens === undefined || contextWindow === undefined || contextWindow <= 0) return undefined
   return {
-    tokens: pressureTokens,
+    tokens,
     window: contextWindow,
-    percent: Math.min(100, Math.round(pressureTokens / contextWindow * 100)),
+    percent: Math.min(100, Math.round(tokens / contextWindow * 100)),
   }
 }
 

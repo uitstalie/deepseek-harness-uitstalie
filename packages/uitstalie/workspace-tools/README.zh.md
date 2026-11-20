@@ -42,7 +42,7 @@ kind: "package-reference"
 
 | 工具 | 动作 | 结果 |
 |---|---|---|
-| `workspace_sessions` | `list`、`get`、`run`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact`、`delete` | 会话摘要：状态、当前 turn、当前活动、最新进度与任务 id；`get` 另返回近期进度、排队收件箱数量、产物数量、名册的创建者与归档者戳，以及 live 会话的 `contextUsage`。`run` 把一段文本投给指定会话；省略 `sessionId` 时投给最近更新的那条；只有工作区里没有会话时才新开。`new_session: true` 与 `start` 强制新开会话。`stop`、`abort`、`fork`、`archive`、`compact` 控制会话；宿主没有会话删除 API 时 `delete` 直接拒绝 |
+| `workspace_sessions` | `list`、`get`、`run`、`start`、`append`、`prompt`、`stop`、`abort`、`fork`、`archive`、`compact`、`delete` | 会话摘要：状态、当前 turn、当前活动、最新进度与任务 id；`get` 另返回近期进度、排队收件箱数量、产物数量、名册的创建者与归档者戳，以及 live 会话的 `contextUsage`——下一条请求的预计占用除以目标路由的窗口。`run` 把一段文本投给指定会话；省略 `sessionId` 时投给最近更新的那条；只有工作区里没有会话时才新开。`new_session: true` 与 `start` 强制新开会话。`stop`、`abort`、`fork`、`archive`、`compact` 控制会话；宿主没有会话删除 API 时 `delete` 直接拒绝 |
 | `workspace_tasks` | `list`、`get`、`create`、`update`、`receipt` | 按状态与 assignee 过滤的任务摘要；`get` 返回任务、其回执、目标会话与产物引用；`create` 只要求 `workspace` 与 `goal`，`acceptance`、`boundaries` 与 `taskType` 有缺省值，给出 `intentId` 与 `intentVersion` 才启用卡片门；`update` 推进状态机；`receipt` 追加对齐清单 |
 | `workspace_message` | `send`、`read`、`status`、`retry` | `send` 投递一条消息或追问（可带产物引用），返回消息 id、状态与投递回执；重复 `requestId` 返回第一次的结果。`read` 按 id 读一条消息，或按目标会话分页读消息；`status` 报告投递状态、失败原因与尝试次数；`retry` 用同一身份重发一条 `failed` 消息 |
 | `workspace_artifacts` | `publish`、`reference`、`request`、`requests`、`grant`、`list`、`resolve` | `publish` 对工作区根内的一个文件计算哈希并记录不可变引用；内容未变时重复发布返回已记录版本。`reference` 把已发布引用挂到消息或任务。`request` 在调用者自己的工作区里立即解析，跨工作区时在持有方决定前回答 `pending`；`requests` 列出本工作区持有的待处理跨工作区请求，`grant` 记录持有方按版本限定的授权或拒绝及其有效期。`list` 返回每个产物的最新引用；`resolve` 用记录版本比对文件，回答 `ok`、`changed`、`missing` 或 `denied` |

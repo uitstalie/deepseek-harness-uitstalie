@@ -400,7 +400,7 @@ ArtifactRef = { artifactId, workspaceId, path, sha256, size, version,
 
 回传契约（已实现）：`workspace_tasks.create` 把调用者会话 id 记入任务的 `dispatcherSessionId`；执行者用 `workspace_message.send` 带 `taskId` 回传给发起该任务的会话，消息记录保存 `taskId`、`requestId` 与产物引用，`requestId` 幂等，重复调用返回第一次的结果。跨工作区发送由任务绑定（任务在调用者工作区，`targetSessionId` 是调用者，`dispatcherSessionId` 是发送目标）、super agent 或来自目标的已记录投递放行；给出 `taskId` 时按它定位任务，未给出时按 caller=`targetSessionId` 查找绑定任务。同工作区发送不受此限制。`status` 报告投递状态、失败原因与尝试次数；`retry` 用同一身份重发 `failed` 消息，跨工作区 `retry` 与 `send` 使用同一授权；任务状态只经 `workspace_tasks` 的 `update` 与 `receipt`，消息投递不改变任务状态。
 
-派发先复用再新开（已实现）。`run` 是一次调用完成派发：继续目标会话（`sessionId`，不给就继续最近更新的那条），只有工作区里没有会话时才新开；`run` 加 `new_session: true` 会强制新开，`start` 也能在给首个任务时强制新开。派发前，派发方读 `workspace_sessions.get`，它的名册字段在 live 目标上带 `contextUsage: { tokens, window, percent }`；目标上下文超过阈值时先调 `compact`，让执行方带着余量接活。
+派发先复用再新开（已实现）。`run` 是一次调用完成派发：继续目标会话（`sessionId`，不给就继续最近更新的那条），只有工作区里没有会话时才新开；`run` 加 `new_session: true` 会强制新开，`start` 也能在给首个任务时强制新开。派发前，派发方读 `workspace_sessions.get`，它的名册字段在 live 目标上带 `contextUsage: { tokens, window, percent }`，其中 `percent` 是下一条请求的预计占用，让执行方带着余量接活。
 
 agent 间请求不形成循环（已实现）。执行方对一条请求最多回一条消息；当它需要人的决定——提问或批准——就用 `workspace_message.send` 把请求发给 super agent，而不是调 `ask_user_question`。super agent 是唯一对人说话的一方，所以被派发的会话不直接问用户，也不为了回复而把线程来回拉长。派发方是任务的 `dispatcherSessionId`；没有任务时，投递的请求在来源头里带上派发会话 id，执行方据此把问题送回去。`ask_user_question_plus` 检查当前 turn 的最后一条用户消息是否带这个头：非 super 的会话由 `workspace_message` 或 `workspace_sessions` 发起的 turn 被拒绝并给出派发会话，人自己发起的 turn 与 super agent 的 turn 都原样转给宿主 `userQuestions` 服务。super agent 的例外是必要的：它收到的执行方提问同样带着头，但它仍必须去问人。
 

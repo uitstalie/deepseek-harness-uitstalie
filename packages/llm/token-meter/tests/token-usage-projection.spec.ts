@@ -383,7 +383,7 @@ describe('contextPressure session projection', () => {
     }, 1, 1)
     // Output is deliberately absent: occupancy describes the prompt that was
     // sent, so it holds still while the response streams.
-    expect(ctx.tokenMeter.contextPressure(session)).toEqual({ pressureTokens: 125 })
+    expect(ctx.tokenMeter.contextPressure(session)).toEqual({ pressureTokens: 125, projectedTokens: 125 })
     expect(pressure(ctx, session)).toEqual({ pressureTokens: 125, projectedTokens: 125 })
   })
 
@@ -493,6 +493,13 @@ describe('contextPressure session projection', () => {
     const compacted = pressure(ctx, session)
     expect(compacted.pressureTokens).toBe(900)
     expect(compacted.projectedTokens).toBeLessThan(beforeCompaction!)
+    // The service reader serves the projected figure beside the stale sample,
+    // so a consumer dividing by the window reports current occupancy.
+    expect(ctx.tokenMeter.contextPressure(session)).toEqual({
+      pressureTokens: 900,
+      projectedTokens: compacted.projectedTokens,
+      contextWindow: 128_000,
+    })
   })
 
   it.each(['start', 'end'] as const)('rejects a shadow claim with a mismatched %s endpoint', async (endpoint) => {

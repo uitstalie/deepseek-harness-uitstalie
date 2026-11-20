@@ -107,11 +107,16 @@ Replay owner for one service-wide estimator and isolated per-session folds.
 
 ```ts cordis-catalog
 /**
- * Read the latest logged provider prompt size and route capacity.
- * @param session - Session whose committed usage and request capacity are read.
+ * Read the latest provider-reported prompt size, the occupancy the next
+ * request would carry, and route capacity.
+ *
+ * `projectedTokens` is the figure to divide by `contextWindow` for a current
+ * occupancy: `pressureTokens` is the last completed request's prompt and
+ * cannot see a compaction, which reports no usage of its own.
+ * @param session - Session whose committed usage, surface movement, and request capacity are read.
  * @returns context pressure; fields remain absent until their source events are recorded.
  */
-contextPressure(session: Session): Pick<ContextPressureProjection, 'pressureTokens' | 'contextWindow'>
+contextPressure(session: Session): Pick<ContextPressureProjection, 'pressureTokens' | 'projectedTokens' | 'contextWindow'>
 
 /**
  * Measure current request pressure and surface through the durable tail.

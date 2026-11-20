@@ -102,6 +102,17 @@ const contextPressureStateSchema = z.object({
 export type ContextPressureState = z.infer<typeof contextPressureStateSchema>
 
 /**
+ * Occupancy of the surface the next request will carry: the newest provider
+ * sample plus the surface's signed movement since that sample was taken.
+ * @param state - context-pressure fold state.
+ * @returns the projected prompt size, or undefined until a provider reports usage.
+ */
+export function projectedTokensOf(state: ContextPressureState): number | undefined {
+  if (state.pressureTokens === undefined || state.sampledSurfaceTokens === undefined) return undefined
+  return Math.max(0, state.pressureTokens + state.surfaceTokens - state.sampledSurfaceTokens)
+}
+
+/**
  * Token-meter's session projection unit.
  *
  * Each v2 Assistant settlement contributes the last usage sample embedded in
@@ -201,13 +212,15 @@ export const contextPressureProjectionDefinition = {
   },
   wire: {
     viewSchema: pressureSchema,
-    view: ({ contextWindow, pressureTokens, surfaceTokens, sampledSurfaceTokens }) => ({
-      ...contextWindow === undefined ? {} : { contextWindow },
-      ...pressureTokens === undefined ? {} : { pressureTokens },
-      ...pressureTokens === undefined || sampledSurfaceTokens === undefined
-        ? {}
-        : { projectedTokens: Math.max(0, pressureTokens + surfaceTokens - sampledSurfaceTokens) },
-    }),
+    view: (state) => {
+      const { contextWindow, pressureTokens } = state
+      const projectedTokens = projectedTokensOf(state)
+      return {
+        ...contextWindow === undefined ? {} : { contextWindow },
+        ...pressureTokens === undefined ? {} : { pressureTokens },
+        ...projectedTokens === undefined ? {} : { projectedTokens },
+      }
+    },
     summary: false,
   },
 } satisfies ProjectionDefinition<'contextPressure', ContextPressureState>
