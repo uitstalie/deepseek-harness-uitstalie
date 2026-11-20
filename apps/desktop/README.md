@@ -246,7 +246,7 @@ The welcome window follows system appearance with the design’s Platform light/
 
 Use the dedicated guides for build and release operations. Shared Windows runners have accepted credential and device isolation limits; read them before signing or executing branch code.
 
-Linux x64 is an unsigned local target: `pnpm run package:linux:x64:dir` writes an unpacked directory and `pnpm run package:linux:x64` builds AppImage and deb artifacts on a Linux x64 host. Neither signs, publishes, or enables updates. The packaged-runtime smoke check decodes an image through sharp, and that decode currently segfaults under Electron 44 on Linux, so the release pipeline stops at the runtime smoke stage until the native module is compatible; the unpackaged launcher still boots the application.
+Linux x64 is an unsigned local target: `pnpm run package:linux:x64:dir` writes an unpacked directory and `pnpm run package:linux:x64` builds RPM and AppImage artifacts on a Linux x64 host. Neither signs, publishes, or enables updates. The Linux Host runs on the bundled standalone Node instead of Electron's Node: Electron loads system GLib before sharp's libvips, which statically embeds its own GLib and would be interposed, so the Host process stays out of that runtime. Its dsh tree is shipped outside the ASAR archive for the same Node reader. The packaged-runtime smoke check and the Host both decode images through the standalone Node.
 
 - [Desktop packaging](packaging/README.md): local and Actions builds, versions, deployment settings, artifacts, logs and verification.
 - [Windows signing and runner operations](windows-signing/README.md): machine setup, accepted isolation risks, signing credentials, token failures and cache maintenance.

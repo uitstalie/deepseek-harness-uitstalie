@@ -9,11 +9,11 @@ import { delimiter, join } from 'node:path'
 
 /**
  * Exercise offline installation and package scripts without a system pnpm or Node installation.
+ * Runs under Electron Node on macOS/Windows and under the bundled standalone Node on Linux.
  * @param {string} resourcesRuntime - Packaged runtime directory outside ASAR.
  * @returns {Promise<void>} Resolves after execution and removal of the private installation.
  */
 export async function checkPnpm(resourcesRuntime) {
-  assert.ok(process.versions.electron, 'Run the package-manager smoke with Electron Node mode')
   assert.equal(existsSync(join(resourcesRuntime, 'pnpm')), false, 'Desktop must ship only primary-runtime pnpm')
   const primary = join(resourcesRuntime, 'primary-runtime')
   const pnpm = join(primary, 'dependencies', 'pnpm', 'bin', 'pnpm.mjs')
@@ -36,7 +36,6 @@ export async function checkPnpm(resourcesRuntime) {
 const assert = require('node:assert/strict')
 assert.equal(require('desktop-pnpm-smoke-dependency').answer, 42)
 assert.equal(process.execPath, ${JSON.stringify(process.execPath)})
-assert.ok(process.versions.electron)
 assert.ok(process.execArgv.includes('--expose-internals'))
 assert.equal(typeof require('internal/modules/esm/loader').getOrInitializeCascadedLoader, 'function')
 console.log('desktop-node-script-ok')

@@ -246,7 +246,7 @@ Desktop 在 Host 启动后、打开工作区前检查模型 API Key 引用是否
 
 构建与发布操作请使用独立指南。共享 Windows runner 存在已接受的凭据和设备隔离限制；签名或执行分支代码前必须阅读。
 
-Linux x64 是本地、不签名的目标：`pnpm run package:linux:x64:dir` 在 Linux x64 主机上输出未打包目录，`pnpm run package:linux:x64` 构建 AppImage 与 deb；两者都不签名、不发布、不启用更新。运行时冒烟检查会用 sharp 解码一张图片，而该解码目前在 Linux 的 Electron 44 下会段错误，因此发布流水线停在运行时冒烟阶段，直到原生模块兼容；未打包启动器仍可启动应用。
+Linux x64 是本地、不签名的目标：`pnpm run package:linux:x64:dir` 在 Linux x64 主机上输出未打包目录，`pnpm run package:linux:x64` 构建 RPM 与 AppImage；两者都不签名、不发布、不启用更新。Linux 的 Host 运行在随包的 standalone Node 上，而不是 Electron 的 Node：Electron 会先加载系统 GLib，而 sharp 的 libvips 静态内嵌了自己的 GLib，二者会被符号抢占，因此 Host 进程避开该运行时；其 dsh 目录也为了同一个 standalone Node 读取器放在 ASAR 之外。运行时冒烟检查与 Host 都通过 standalone Node 解码图片。
 
 - [Desktop 打包](packaging/README.zh.md)：本地与 Actions 构建、版本、部署配置、产物、日志和验收。
 - [Windows 签名与 runner 运维](windows-signing/README.zh.md)：机器部署、已接受的隔离风险、签名凭据、Token 失败与缓存维护。

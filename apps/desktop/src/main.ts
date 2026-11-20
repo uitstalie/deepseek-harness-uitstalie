@@ -207,13 +207,21 @@ interface RuntimeResources {
 
 function runtimeResources(): RuntimeResources {
   const development = !app.isPackaged
-  const node = process.execPath
+  const primaryRuntime = (development ? process.env.DSH_DESKTOP_PRIMARY_RUNTIME_DIR : undefined)
+    ?? (development ? undefined : join(process.resourcesPath, 'runtime', 'primary-runtime'))
+  // Linux hosts run on the bundled standalone Node: Electron loads system GLib before sharp's
+  // statically linked libvips symbols and would interpose them, so the Host stays out of that process.
+  const node = process.platform === 'linux' && primaryRuntime !== undefined && primaryRuntime !== ''
+    ? join(primaryRuntime, 'dependencies', 'node', 'bin', 'node')
+    : process.execPath
   const nodeBin = development ? join(app.getAppPath(), 'scripts', 'node-bin') : join(process.resourcesPath, 'runtime', 'bin')
   const pnpm = (development ? process.env.DSH_DESKTOP_PNPM_ENTRY : undefined)
     ?? (development ? join(app.getAppPath(), 'node_modules', 'pnpm', 'bin', 'pnpm.mjs')
       : join(process.resourcesPath, 'runtime', 'primary-runtime', 'dependencies', 'pnpm', 'bin', 'pnpm.mjs'))
   const dsh = (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined)
-    ?? (development ? join(app.getAppPath(), '.desktop-build', 'development', 'project') : join(app.getAppPath(), 'dsh'))
+    ?? (development
+      ? join(app.getAppPath(), '.desktop-build', 'development', 'project')
+      : process.platform === 'linux' ? join(process.resourcesPath, 'dsh') : join(app.getAppPath(), 'dsh'))
   return { node, nodeBin, pnpm, dsh }
 }
 

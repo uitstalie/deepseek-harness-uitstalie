@@ -152,13 +152,20 @@ export function createElectronBuilderConfig(
       'package.json',
       '!node_modules/**/*.{js,cjs,mjs,ts,cts,mts,css}.map',
       '!node_modules/**/*.tsbuildinfo',
-      { from: buildPaths.dsh, to: 'dsh', filter: ['**/*'] },
-      // electron-builder excludes a source directory's root node_modules.
-      { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] },
+      ...(resolvedPlatform === 'linux' ? [] : [
+        { from: buildPaths.dsh, to: 'dsh', filter: ['**/*'] },
+        // electron-builder excludes a source directory's root node_modules.
+        { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] },
+      ]),
     ],
     asarUnpack: unpack,
     extraResources: [
       { from: buildPaths.runtime, to: 'runtime' },
+      // Linux runs the Host on standalone Node, which cannot read ASAR; keep its dsh tree beside the archive.
+      ...(resolvedPlatform === 'linux' ? [
+        { from: buildPaths.dsh, to: 'dsh', filter: ['**/*'] },
+        { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] },
+      ] : []),
       { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
       // Windows tray bitmaps; macOS keeps the Dock and ships no menu bar icon.
       ...(packagesWindows ? [{ from: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)), to: 'tray.ico' }] : []),
@@ -259,7 +266,10 @@ export function createElectronBuilderConfig(
       category: 'Development',
       executableName: 'deepseek-harness',
       maintainer: 'DeepSeek Harness <deepseek-harness@deepseek.com>',
-      target: ['AppImage', 'deb'],
+      target: ['rpm', 'AppImage'],
+    },
+    rpm: {
+      packageName: 'deepseek-harness',
     },
     nsis: {
       uninstallDisplayName: '${productName}',
