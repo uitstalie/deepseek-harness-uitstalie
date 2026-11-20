@@ -70,3 +70,7 @@ This Dev Note is non-authoritative working context: open questions and direction
 - **The destination is user configuration, not a derived path; a deployment that mounts this row on a network share owns that share's retention.**
 
 </details>
+
+## Home inventory
+
+Every manifest records each top-level Harness home entry with a `covered` flag: `true` when the selection copied it, `false` when the snapshot only documents that the entry existed. When the plugin mounts, it compares the newest snapshot inventory with the current home and warns with the names of entries that disappeared. A warning means data loss, not a restore opportunity: an entry marked `covered: false` was never copied and cannot be restored from that snapshot.

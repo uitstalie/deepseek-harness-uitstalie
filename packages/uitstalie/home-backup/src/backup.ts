@@ -7,7 +7,7 @@
  * @module @deepseek-ai/dsh-home-backup/backup
  */
 
-import { cp, lstat, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 /** Prefix of every snapshot directory this package writes. */
@@ -46,6 +46,13 @@ export interface BackupRequest {
   readonly now: () => Date
 }
 
+/** One top-level Harness home entry recorded with the snapshot, and whether the selection copied it. */
+export interface HomeEntry {
+  /** Entry name as it appears directly below the Harness home. */
+  readonly name: string
+  /** Whether this snapshot's selection copied the entry; `false` records data the snapshot cannot restore. */
+  readonly covered: boolean
+}
 /** One copied tree's accounting, recorded per manifest entry. */
 export interface EntrySize {
   /** Home-relative path the entry was copied from. */
@@ -156,6 +163,34 @@ async function pruneSnapshots(destination: string, retain: number): Promise<stri
  * is a legitimate empty result; a profile directory without one of the known
  * files simply contributes the files it has.
  */
+/** Home entries the selection copies, recorded in the manifest inventory. */
+function coveredNames(selection: BackupSelection): ReadonlySet<string> {
+  const covered = new Set(selection.paths)
+  if (selection.profileConfig) covered.add('profiles')
+  if (selection.credentials) covered.add(CREDENTIALS_FILENAME)
+  return covered
+}
+
+/**
+ * Record every top-level home entry and whether the selection copies it.
+ *
+ * The inventory is the snapshot's statement about what it cannot restore: an
+ * entry marked `covered: false` was present when the snapshot ran and is absent
+ * from it, so a later disappearance of that entry is data loss rather than a
+ * restore opportunity.
+ * @param home - Harness home read for its direct children.
+ * @param covered - home entry names the selection copies.
+ * @returns entries sorted by name.
+ */
+async function homeInventory(home: string, covered: ReadonlySet<string>): Promise<HomeEntry[]> {
+  const entries: HomeEntry[] = []
+  for (const entry of await readdir(home, { withFileTypes: true })) {
+    if (!entry.isDirectory() && !entry.isFile()) continue
+    entries.push({ name: entry.name, covered: covered.has(entry.name) })
+  }
+  return entries.sort((left, right) => left.name.localeCompare(right.name))
+}
+
 async function copyProfileConfig(home: string, staging: string): Promise<void> {
   const profiles = join(home, 'profiles')
   if (!await exists(profiles)) return
@@ -190,6 +225,46 @@ async function copyCredentials(home: string, staging: string): Promise<void> {
  * @throws when the selection names a missing home entry, a copy fails, or
  *   `retain` is not a positive integer; the staging directory is removed first.
  */
+/**
+ * Read the inventory recorded by the newest complete snapshot.
+ *
+ * An absent destination, or a snapshot written before the inventory existed,
+ * reads as `undefined` so a first run stays quiet.
+ * @param destination - directory holding the snapshots.
+ * @returns the newest snapshot inventory, or undefined when none is recorded.
+ */
+export async function readLatestSnapshotInventory(destination: string): Promise<readonly HomeEntry[] | undefined> {
+  let names: string[]
+  try {
+    names = await snapshotNames(destination)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+  for (const name of names.reverse()) {
+    let text: string
+    try {
+      text = await readFile(join(destination, name, MANIFEST_FILENAME), 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+      throw error
+    }
+    const parsed: unknown = JSON.parse(text)
+    if (typeof parsed !== 'object' || parsed === null) continue
+    const inventory = (parsed as { inventory?: unknown }).inventory
+    if (!Array.isArray(inventory)) continue
+    const entries: HomeEntry[] = []
+    for (const value of inventory) {
+      if (typeof value !== 'object' || value === null) continue
+      const candidate = value as { name?: unknown; covered?: unknown }
+      if (typeof candidate.name !== 'string' || typeof candidate.covered !== 'boolean') continue
+      entries.push({ name: candidate.name, covered: candidate.covered })
+    }
+    return entries
+  }
+  return undefined
+}
+
 export async function runBackup(request: BackupRequest): Promise<BackupResult> {
   if (!Number.isInteger(request.retain) || request.retain < 1) {
     throw new Error(`home-backup: retain must be a positive integer, received ${String(request.retain)}`)
@@ -220,6 +295,7 @@ export async function runBackup(request: BackupRequest): Promise<BackupResult> {
       home: request.home,
       credentials: request.selection.credentials,
       entries,
+      inventory: await homeInventory(request.home, coveredNames(request.selection)),
     }
     await writeFile(join(staging, MANIFEST_FILENAME), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
     const size = await measureTree(staging)

@@ -16,7 +16,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-system-environment'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { runBackup, type BackupSelection } from './backup.ts'
+import { readdir } from 'node:fs/promises'
+import { readLatestSnapshotInventory, runBackup, type BackupSelection } from './backup.ts'
 
 /** Plugin name the Loader and patch rows address. */
 export const name = 'home-backup'
@@ -136,6 +137,23 @@ function settingsOf(ctx: Context, config: Config): Settings {
 export function apply(ctx: Context, config: Config): void {
   const settings = settingsOf(ctx, config)
   const logger = ctx.logger
+  // The newest snapshot inventory is the last known set of home entries. An entry it
+  // recorded and the home no longer has is data loss, not a restore opportunity; the
+  // warning names what vanished so the disappearance cannot go unnoticed.
+  const reportDisappeared = async (): Promise<void> => {
+    try {
+      const inventory = await readLatestSnapshotInventory(settings.destination)
+      if (inventory === undefined) return
+      const present = new Set((await readdir(settings.home, { withFileTypes: true })).map(entry => entry.name))
+      const missing = inventory.filter(entry => !present.has(entry.name)).map(entry => entry.name)
+      if (missing.length === 0) return
+      logger.warn('home-backup: harness home entries disappeared since the newest snapshot: '
+        + `${missing.join(', ')}. Entries marked uncovered in that snapshot were never copied, so they cannot be restored from it.`)
+    } catch (error) {
+      logger.warn('home-backup: home inventory check failed', error)
+    }
+  }
+  void reportDisappeared()
   let inFlight: Promise<void> | undefined
 
   const execute = async (): Promise<void> => {
