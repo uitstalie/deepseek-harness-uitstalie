@@ -203,6 +203,114 @@ export function readDesktopRuntime(root: string): DesktopRuntimeDescriptor {
     arch: value.arch, sharedPackages, files }
 }
 
+/** Prefix every DSH release-family package name shares. */
+const DSH_PACKAGE_PREFIX = '@deepseek-ai/dsh'
+
+/** One packaged package whose DSH peer requirement names a version other than the runtime. */
+export interface DshPeerIssue {
+  /** Packaged package owning the peer requirement. */
+  readonly packageName: string
+  /** Peer package name. */
+  readonly peer: string
+  /** Range as packaged. */
+  readonly range: string
+}
+
+/** Every packaged `@deepseek-ai` package manifest below a runtime tree's node_modules. */
+function packagedDshManifests(root: string): { directory: string; manifest: Record<string, unknown> }[] {
+  const modules = join(root, 'node_modules')
+  const found: { directory: string; manifest: Record<string, unknown> }[] = []
+  for (const entry of readdirSync(modules, { withFileTypes: true })) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
+    if (entry.name === '@deepseek-ai') {
+      const scope = join(modules, entry.name)
+      for (const child of readdirSync(scope, { withFileTypes: true })) {
+        if (!child.isDirectory() && !child.isSymbolicLink()) continue
+        const directory = join(scope, child.name)
+        const manifest = readPackageManifest(directory)
+        if (manifest !== undefined) found.push({ directory, manifest })
+      }
+    }
+  }
+  return found
+}
+
+/** Read one package manifest, or undefined when the directory carries none. */
+function readPackageManifest(directory: string): Record<string, unknown> | undefined {
+  let text: string
+  try {
+    text = readFileSync(join(directory, 'package.json'), 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+  const parsed: unknown = JSON.parse(text)
+  return record(parsed) ? parsed : undefined
+}
+
+/** Whether one peer name belongs to the DSH release family the runtime version names. */
+function isDshPeer(name: string): boolean {
+  return name === DSH_PACKAGE_PREFIX || name.startsWith(`${DSH_PACKAGE_PREFIX}-`)
+}
+
+/**
+ * Read every packaged DSH peer requirement that does not name the runtime version.
+ *
+ * Packaging materializes `workspace:*` peer ranges to the target package version, so a private
+ * package lands as `0.0.0` and any package left on an older release lands as that release. The
+ * startup compatibility preflight compares each DSH peer range with the running runtime version
+ * and disables the whole row when they differ; a silent whole-row disable is how `tool-fs` and
+ * `llm-plus` disappeared from the Desktop profile.
+ * @param root - packaged dsh tree (the directory holding `node_modules`).
+ * @param runtimeVersion - version the runtime declares, which every DSH peer must name.
+ * @returns the offending requirements, in package then peer order.
+ */
+export function dshPeerIssues(root: string, runtimeVersion: string): DshPeerIssue[] {
+  const issues: DshPeerIssue[] = []
+  for (const { manifest } of packagedDshManifests(root)) {
+    const peers = manifest.peerDependencies
+    if (!record(peers)) continue
+    const name = typeof manifest.name === 'string' ? manifest.name : undefined
+    if (name === undefined) continue
+    for (const [peer, range] of Object.entries(peers)) {
+      if (!isDshPeer(peer) || typeof range !== 'string') continue
+      if (range !== runtimeVersion) issues.push({ packageName: name, peer, range })
+    }
+  }
+  return issues
+}
+
+/**
+ * Rewrite every packaged DSH peer requirement to the runtime version.
+ *
+ * The staged tree is build output, so normalizing it after installation is what makes the
+ * packaged manifests match the runtime the compatibility preflight compares them against.
+ * Non-DSH peers (cordis, schemastery, third-party) keep their declared ranges.
+ * @param root - packaged dsh tree (the directory holding `node_modules`).
+ * @param runtimeVersion - version every DSH peer must name.
+ * @returns package names whose manifest changed.
+ */
+export function normalizeDshPeerVersions(root: string, runtimeVersion: string): string[] {
+  const changed: string[] = []
+  for (const { directory, manifest } of packagedDshManifests(root)) {
+    const peers = manifest.peerDependencies
+    if (!record(peers)) continue
+    const name = typeof manifest.name === 'string' ? manifest.name : undefined
+    if (name === undefined) continue
+    let touched = false
+    for (const [peer, range] of Object.entries(peers)) {
+      if (!isDshPeer(peer) || typeof range !== 'string' || range === runtimeVersion) continue
+      peers[peer] = runtimeVersion
+      touched = true
+    }
+    if (!touched) continue
+    writeFileSync(join(directory, 'package.json'), `${JSON.stringify(manifest, undefined, 2)}
+`)
+    changed.push(name)
+  }
+  return changed
+}
+
 /**
  * Verify every packaged runtime file against its recorded bytes and permissions at build time.
  * @param root - Materialized runtime resources.
@@ -227,6 +335,11 @@ export async function verifyDesktopRuntime(
     if (!record(manifest) || manifest.name !== entry.name || manifest.version !== entry.version) {
       throw new Error(`desktop runtime: shared package metadata mismatch for ${entry.name}`)
     }
+  }
+  const peerIssues = dshPeerIssues(root, release.version)
+  if (peerIssues.length > 0) {
+    throw new Error(`desktop runtime: DSH peer requirements do not name ${release.version}: `
+      + peerIssues.map(issue => `${issue.packageName} -> ${issue.peer}@${issue.range}`).join(', '))
   }
   const actual = await inventoryRuntimeConcurrently(root)
   // Windows has no portable Unix executable permission bits.

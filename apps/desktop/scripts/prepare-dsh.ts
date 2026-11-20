@@ -23,7 +23,7 @@ import { smokePrimaryRuntime } from './prepare-primary-runtime.ts'
 import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
 import { prepareRuntimeManifests } from './prepare-runtime-manifests.ts'
 import { prepareRuntimePatches, verifyRuntimePatches } from './prepare-runtime-patches.ts'
-import { writeDesktopRuntime, writeDesktopRuntimeAsync, verifyDesktopRuntime } from '../src/runtime-tree.ts'
+import { normalizeDshPeerVersions, writeDesktopRuntime, writeDesktopRuntimeAsync, verifyDesktopRuntime } from '../src/runtime-tree.ts'
 import {
   resolveDesktopAppId,
   resolveMacOSSigningEnvironment,
@@ -176,6 +176,14 @@ async function main(): Promise<void> {
       const writeRuntime = target.platform === 'win32' ? writeDesktopRuntimeAsync : writeDesktopRuntime
       return writeRuntime(DSH_OUTPUT_ROOT, release, packageSet.packages.map(entry => entry.name), target)
     })
+    // Packaging materializes `workspace:*` peers to each target package's own version, which lands
+    // private packages on 0.0.0 and any lagging package on its older release. The runtime compatibility
+    // preflight compares every DSH peer range with this runtime version and disables the whole row when
+    // they differ, so normalize the staged manifests before verification rejects the mismatch.
+    const normalizedPeers = normalizeDshPeerVersions(DSH_OUTPUT_ROOT, release.version)
+    if (normalizedPeers.length > 0) {
+      console.log(`desktop runtime: normalized DSH peers on ${String(normalizedPeers.length)} package(s): ${normalizedPeers.join(', ')}`)
+    }
     const descriptor = await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:verify-before-smoke', () => verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target))
     if (!process.argv.includes('--defer-runtime-smoke')) {
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:smoke', () => smokePreparedRuntime(DSH_OUTPUT_ROOT, NODE, RUNTIME_ROOT, descriptor))
