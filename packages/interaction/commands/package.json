@@ -36,6 +36,10 @@
     "./builtin": {
       "types": "./lib/types/builtin.d.ts",
       "default": "./lib/types/builtin.js"
+    },
+    "./brand": {
+      "types": "./lib/types/brand.d.ts",
+      "default": "./lib/types/brand.js"
     }
   },
   "files": [
