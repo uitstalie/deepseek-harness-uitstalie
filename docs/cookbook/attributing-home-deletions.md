@@ -68,3 +68,10 @@ auditpol /set /subcategory:"Process Creation" /success:disable
 ## 7. Know the limits
 
 The Security log retains events only until its size cap rotates them, so export it after the reproduction. Auditing shows the process that issued the delete, not why it ran; an interpreter that executes an inline command still appears as `pwsh.exe` or `node.exe` with the command line from `4688`. Virtualization, containers, and network paths can produce events without a local process id, and a delete performed inside another user's logon session names that session instead.
+## 8. Record what you enabled
+
+Write down the enabled subcategories, the SACL scope, and where the evidence lives before the first event arrives. The deployment that enabled this audit records: File System with success and failure, Process Creation, the 4688 command-line setting, and a .dsh SACL limited to Delete and DeleteSubdirectoriesAndFiles; policy output, SACL state, a probe event, and the original SDDL are kept beside the operator log.
+
+- The audit records only events after enablement; earlier deletions cannot be recovered from it.
+- Keep the original SDDL until the SACL is restored, per section 6.
+- Treat an absent event as evidence of a quiet window, never as proof that nothing was attempted.
