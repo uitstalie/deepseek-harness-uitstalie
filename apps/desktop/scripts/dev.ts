@@ -11,6 +11,7 @@ import { developmentRuntimeDirectory, resolveDesktopBuildTarget } from './deskto
 import { prepareDevelopmentProject } from './development-project.ts'
 import { prepareDevelopmentApp } from './development-app.ts'
 import { preparePrimaryRuntime } from './prepare-primary-runtime.ts'
+import { assertIsolatedHarnessHome } from './home-isolation.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
@@ -67,6 +68,8 @@ async function launchElectron(): Promise<void> {
   const rendererPort = debugPort('DSH_DESKTOP_RENDERER_DEBUG_PORT', 9222)
   const hostPort = debugPort('DSH_DESKTOP_HOST_INSPECT_PORT', 9230)
   const home = resolve(process.env.DSH_HOME ?? join(DEVELOPMENT_ROOT, 'home'))
+  // A developer shell that exports DSH_HOME must not silently point the dev app at the user's own home.
+  assertIsolatedHarnessHome(home)
   const userData = resolve(process.env.DSH_DESKTOP_USER_DATA_DIR ?? join(DEVELOPMENT_ROOT, 'electron-user-data'))
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
