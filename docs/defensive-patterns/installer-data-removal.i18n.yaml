@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for installer-data-removal.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/defensive-patterns/installer-data-removal.md
+/installer-data-removal:
+  en: d91832a2dc67011a
+  zh: 84e86ee8639194d0
+/installer-data-removal/why:
+  en: 3945e0499053e1f7
+  zh: 0cc058bccb344dc4
+/installer-data-removal/how-to-apply-it:
+  en: 8fbbfa435478122e
+  zh: 20d4df5eb35b598a
+/installer-data-removal/evidence:
+  en: 7da122070e999158
+  zh: cdcc930a1e0a45c2
+/installer-data-removal/wrong:
+  en: 83e1340ad0d3958a
+  zh: b8f00b61a2d8b4ce

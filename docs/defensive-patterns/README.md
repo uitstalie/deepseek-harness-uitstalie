@@ -21,5 +21,6 @@ Five habits cover most of what follows, and each page is their application to on
 | Client components, slots, stores, hooks, effects | [client-components.md](client-components.md) |
 | Session reads, retention, conversation nodes, renderers | [conversation-and-session.md](conversation-and-session.md) |
 | Timing, state representation, shared ownership, decentralization, refactors, migrations, performance evidence, disposal, callbacks, subprocesses | [general.md](general.md) |
+| Installers, uninstallers, update paths, `$DSH_HOME` removal | [installer-data-removal.md](installer-data-removal.md) |
 
 Type definitions and per-subsystem semantics live in [subsystems/](../subsystems/README.md); this directory carries the rules, and the semantics pages carry what the types mean. [dsh-code-review](../../.agents/skills/dsh-code-review/SKILL.md) reads this directory when judging a pull request, and Development routes through the same table from [AGENTS.md](../../AGENTS.md).
