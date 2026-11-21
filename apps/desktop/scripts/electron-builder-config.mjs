@@ -26,6 +26,7 @@ import { resolveDesktopBuildVersion } from './desktop-build-version.mjs'
 import { resolveDesktopPolicyEnvironment } from './desktop-policy-environment.mjs'
 import { desktopArtifactOutput, desktopTargetBuildPaths, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
 import { flipFusesWithRetry } from './fuses-retry.mjs'
+import { writeLinuxIconSet } from './linux-icons.mjs'
 import { installWindowsDirectoryInstaller } from './windows-directory-installer.mjs'
 import { preserveWindowsRuntimeSignature, signWindowsCode } from './windows-runtime-signature.mjs'
 import { prepareWindowsAsarUnpack, verifyWindowsAsarUnpack } from './windows-asar-unpack.mjs'
@@ -73,6 +74,8 @@ export function createElectronBuilderConfig(
   if (packagesMacOS && !unsigned && !skipNotarization) resolveMacOSNotarizationEnvironment(env)
   const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch), env)
   const output = desktopArtifactOutput(buildPaths, { unsigned, skipNotarization })
+  const linuxIconSource = fileURLToPath(new URL('../resources/icon.png', import.meta.url))
+  const linuxIcons = join(buildPaths.root, 'linux-icons')
   let primaryRuntimeDestination
   let dshDestination
   let windowsCode = []
@@ -129,6 +132,7 @@ export function createElectronBuilderConfig(
     // scanner lock; Windows flips fuses in this file's afterPack hook instead, with retries.
     ...(packagesWindows ? {} : { electronFuses: { runAsNode: true } }),
     beforeBuild: async () => {
+      if (resolvedPlatform === 'linux') await writeLinuxIconSet(linuxIconSource, linuxIcons)
       if (resolvedPlatform !== 'win32') return true
       await promisify(execFile)('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
         fileURLToPath(new URL('./prepare-windows-installer.ps1', import.meta.url)),
@@ -272,7 +276,7 @@ export function createElectronBuilderConfig(
       target: ['nsis'],
     },
     linux: {
-      icon: fileURLToPath(new URL('../resources/icon.png', import.meta.url)),
+      icon: linuxIcons,
       category: 'Development',
       executableName: 'deepseek-harness',
       maintainer: 'DeepSeek Harness <deepseek-harness@deepseek.com>',
@@ -280,6 +284,14 @@ export function createElectronBuilderConfig(
     },
     rpm: {
       packageName: 'deepseek-harness',
+      fpm: [
+        // fpm maps after-install to %post; posttrans runs after every package in
+        // the transaction is installed, which is the correct point to rebuild
+        // the icon and desktop caches this package contributes to.
+        '--rpm-posttrans', fileURLToPath(new URL('../packaging/linux/posttrans.sh', import.meta.url)),
+        // Themes without a hicolor index still fall back to /usr/share/pixmaps.
+        `${join(linuxIcons, '256x256.png')}=/usr/share/pixmaps/deepseek-harness.png`,
+      ],
     },
     nsis: {
       uninstallDisplayName: '${productName}',

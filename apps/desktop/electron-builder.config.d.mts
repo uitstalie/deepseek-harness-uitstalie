@@ -46,6 +46,17 @@ export interface DesktopElectronBuilderConfig {
       readonly signingHashAlgorithms: readonly string[]
     }
   }
+  readonly linux: {
+    readonly icon: string
+    readonly category: 'Development'
+    readonly executableName: 'deepseek-harness'
+    readonly maintainer: string
+    readonly target: readonly ['rpm', 'AppImage']
+  }
+  readonly rpm: {
+    readonly packageName: 'deepseek-harness'
+    readonly fpm: readonly ['--rpm-posttrans', string, `${string}=/usr/share/pixmaps/deepseek-harness.png`]
+  }
   readonly nsis: {
     readonly uninstallDisplayName: '${productName}'
     readonly include: string
