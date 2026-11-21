@@ -993,6 +993,9 @@ importers:
       '@deepseek-ai/node-addon-system':
         specifier: workspace:~
         version: link:../../native/system/packages/entry
+      '@electron/fuses':
+        specifier: 1.8.0
+        version: 1.8.0
       '@electron/get':
         specifier: ^5.1.0
         version: 5.1.0(supports-color@9.4.0)

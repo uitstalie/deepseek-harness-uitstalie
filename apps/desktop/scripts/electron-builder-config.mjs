@@ -25,6 +25,7 @@ import { resolveDesktopBuildCommit } from './desktop-build-commit.mjs'
 import { resolveDesktopBuildVersion } from './desktop-build-version.mjs'
 import { resolveDesktopPolicyEnvironment } from './desktop-policy-environment.mjs'
 import { desktopArtifactOutput, desktopTargetBuildPaths, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
+import { flipFusesWithRetry } from './fuses-retry.mjs'
 import { installWindowsDirectoryInstaller } from './windows-directory-installer.mjs'
 import { preserveWindowsRuntimeSignature, signWindowsCode } from './windows-runtime-signature.mjs'
 import { prepareWindowsAsarUnpack, verifyWindowsAsarUnpack } from './windows-asar-unpack.mjs'
@@ -124,7 +125,9 @@ export function createElectronBuilderConfig(
     directories: { output: output.directory },
     asar: true,
     electronDist: buildPaths.electron,
-    electronFuses: { runAsNode: true },
+    // electron-builder's own fuse step opens the freshly written executable once and fails on a transient
+    // scanner lock; Windows flips fuses in this file's afterPack hook instead, with retries.
+    ...(packagesWindows ? {} : { electronFuses: { runAsNode: true } }),
     beforeBuild: async () => {
       if (resolvedPlatform !== 'win32') return true
       await promisify(execFile)('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
@@ -221,6 +224,13 @@ export function createElectronBuilderConfig(
         preparedRuntimeVersion ?? productVersion, { platform: resolvedPlatform, arch: resolvedArch })
       // Unsigned Windows builds skip electron-builder's afterSign hook.
       if (packagesWindows && unsigned) await verifyWindowsAsarUnpack(buildPaths.dsh, resourcesDir, windowsCode)
+      if (packagesWindows) {
+        await flipFusesWithRetry(join(context.appOutDir, `${context.packager.appInfo.productFilename}.exe`), {
+          onRetry: (attempt, error) => {
+            console.warn(`desktop package: fuse flip attempt ${String(attempt)} failed: ${error.message.slice(0, 200)}`)
+          },
+        })
+      }
     },
     afterSign: async context => {
       if (windowsSigner !== undefined) {
