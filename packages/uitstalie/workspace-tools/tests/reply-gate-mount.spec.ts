@@ -1,12 +1,19 @@
 /** The mounted gate keeps a dispatched turn open once, then blocks it, and stays off when disabled. */
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+interface StoredMessage {
+  sourceSessionId: string
+  targetSessionId: string
+  status: string
+  createdAt: string
+}
 const mocks = vi.hoisted(() => ({
-  update: vi.fn(async () => undefined),
-  list: vi.fn(async () => [{ sourceSessionId: 'session-22222222-2222-2222-2222-222222222222', targetSessionId: 'session-other', status: 'delivered', createdAt: new Date(1_000).toISOString() }]),
+  update: vi.fn<(ctx: unknown, workspace: string, source: string, target: string, state: Record<string, unknown>) => Promise<void>>(),
+  list: vi.fn<(ctx: unknown, workspace: string) => Promise<StoredMessage[]>>(),
+  owner: vi.fn<(ctx: unknown, sessionId: string) => { id: string } | undefined>(),
 }))
 vi.mock('../src/store.ts', () => ({ listMessages: mocks.list, updateDispatchReplyState: mocks.update }))
-vi.mock('../src/scope.ts', () => ({ resolveWorkspace: async () => ({ workspace: { id: 'w1' } }) }))
+vi.mock('../src/scope.ts', () => ({ resolveWorkspace: async () => ({ workspace: { id: 'w1' } }), workspaceOwningSession: mocks.owner }))
 
 const { mountReplyGate } = await import('../src/reply-gate.ts')
 
@@ -29,6 +36,14 @@ function harness(mode: 'off' | 'enforce') {
 }
 
 describe('mountReplyGate', () => {
+  beforeEach(() => {
+    mocks.list.mockReset()
+    mocks.list.mockResolvedValue([{ sourceSessionId: 'session-22222222-2222-2222-2222-222222222222', targetSessionId: 'session-other', status: 'delivered', createdAt: new Date(1_000).toISOString() }])
+    mocks.owner.mockReset()
+    mocks.owner.mockReturnValue(undefined)
+    mocks.update.mockClear()
+  })
+
   it('lets the first miss steer, then blocks the turn and records pendingReply', async () => {
     const h = harness('enforce')
     h.sessionEvent({ type: 'turn/start', time: 1_000, data: { turn: 7 } })
@@ -45,5 +60,29 @@ describe('mountReplyGate', () => {
   it('registers nothing when the gate is off', () => {
     const h = harness('off')
     expect(h.handlers.size).toBe(0)
+  })
+  it('reads the dispatching workspace so a cross-workspace reply counts as answered', async () => {
+    const h = harness('enforce')
+    mocks.owner.mockReturnValue({ id: 'w2' })
+    mocks.list.mockImplementation(async (_ctx: unknown, workspace: string) => workspace === 'w2'
+      ? [{ sourceSessionId: 'session-22222222-2222-2222-2222-222222222222', targetSessionId: 'session-11111111-1111-1111-1111-111111111111', status: 'delivered', createdAt: new Date(1_500).toISOString() }]
+      : [])
+    h.sessionEvent({ type: 'turn/start', time: 1_000, data: { turn: 9 } })
+    h.sessionEvent({ type: 'user/message', time: 1_001, data: { content: [{ type: 'text', text: HEADER }] } })
+    const stopping = h.handlers.get('agent/turn-stopping') as (p: unknown) => Promise<{ blocked?: string } | undefined>
+    expect(await stopping({ agent: h.agent, turn: 9 })).toBeUndefined()
+    expect(h.appended).toHaveLength(0)
+    expect(mocks.list.mock.calls.map(call => call[1])).toEqual(['w1', 'w2'])
+  })
+
+  it('records the reminder on the dispatching workspace relation', async () => {
+    const h = harness('enforce')
+    mocks.owner.mockReturnValue({ id: 'w2' })
+    mocks.list.mockImplementation(async () => [])
+    h.sessionEvent({ type: 'turn/start', time: 2_000, data: { turn: 10 } })
+    h.sessionEvent({ type: 'user/message', time: 2_001, data: { content: [{ type: 'text', text: HEADER }] } })
+    const stopping = h.handlers.get('agent/turn-stopping') as (p: unknown) => Promise<{ blocked?: string } | undefined>
+    await stopping({ agent: h.agent, turn: 10 })
+    expect(mocks.update).toHaveBeenLastCalledWith(expect.anything(), 'w2', 'session-11111111-1111-1111-1111-111111111111', 'session-22222222-2222-2222-2222-222222222222', { replyRemindedAt: expect.any(String) })
   })
 })

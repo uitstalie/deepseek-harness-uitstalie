@@ -16,7 +16,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { listMessages, updateDispatchReplyState } from './store.ts'
-import { resolveWorkspace } from './scope.ts'
+import { resolveWorkspace, workspaceOwningSession } from './scope.ts'
 
 /** Prefix every delivered inter-agent message carries. */
 export const WORKSPACE_MESSAGE_MARKER = '[workspace_message]'
@@ -132,26 +132,31 @@ export function mountReplyGate(ctx: Context, options: ReplyGateOptions): void {
     const key = `${sourceSessionId}|${sessionId}`
     let replied = false
     try {
-      const workspace = (await resolveWorkspace(ctx, agent.session, 'reply-gate')).workspace
-      const messages = await listMessages(ctx, workspace.id)
-      replied = messages.some(message =>
+      const receiver = (await resolveWorkspace(ctx, agent.session, 'reply-gate')).workspace
+      // The delivered message is stored in the receiver's workspace; a cross-workspace reply is stored where its
+      // target session lives, so both accounts must be read before the gate calls a turn unanswered.
+      const dispatcher = workspaceOwningSession(ctx, sourceSessionId)
+      const accounts = dispatcher === undefined || dispatcher.id === receiver.id ? [receiver] : [receiver, dispatcher]
+      const stores = await Promise.all(accounts.map(account => listMessages(ctx, account.id)))
+      replied = stores.some(messages => messages.some(message =>
         message.sourceSessionId === sessionId
         && message.targetSessionId === sourceSessionId
         && message.status !== 'failed'
-        && Date.parse(message.createdAt) >= state.startedAt)
+        && Date.parse(message.createdAt) >= state.startedAt))
       const decision = decideReplyGate({ initiatedBySend: true, replied, exempt: false, reminded: reminded.has(key) })
       if (decision === 'allow') return
       const at = new Date().toISOString()
+      const relationWorkspace = dispatcher ?? receiver
       if (decision === 'remind') {
         reminded.set(key, turn)
-        await updateDispatchReplyState(ctx, workspace.id, sourceSessionId, sessionId, { replyRemindedAt: at })
+        await updateDispatchReplyState(ctx, relationWorkspace.id, sourceSessionId, sessionId, { replyRemindedAt: at })
         agent.inbox.append('next-step', createUserMessage({
           content: [{ type: 'text', text: REPLY_REMINDER }],
           source: { kind: 'user' },
         }))
         return
       }
-      await updateDispatchReplyState(ctx, workspace.id, sourceSessionId, sessionId, { pendingReplyAt: at, pendingReplyTurn: turn })
+      await updateDispatchReplyState(ctx, relationWorkspace.id, sourceSessionId, sessionId, { pendingReplyAt: at, pendingReplyTurn: turn })
       return { blocked: 'the turn was started by a workspace_message and no reply was sent; workspace_message.send is required' }
     } catch (error: unknown) {
       ctx.logger.warn('workspace-tools: reply gate failed for %s: %s', sessionId, error instanceof Error ? error.message : String(error))

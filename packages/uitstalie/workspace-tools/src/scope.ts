@@ -117,3 +117,17 @@ async function callerWorkspace(all: readonly Workspace[], session: Session): Pro
   }
   return all.find(workspace => workspace.path === canonical)
 }
+
+/**
+ * Find the registered workspace that lists one Session id.
+ *
+ * A cross-workspace delivery records the sender's message in the receiver's workspace, while the receiver's reply is
+ * recorded where its target lives. Reading only the caller's workspace therefore misses the reply; this lookup names
+ * the other side's account from the id alone.
+ * @param ctx - context carrying the workspace registry.
+ * @param sessionId - session id to locate, branded or plain.
+ * @returns the workspace whose account lists the session, or undefined when none does.
+ */
+export function workspaceOwningSession(ctx: Context, sessionId: string): Workspace | undefined {
+  return workspaceDirectory(ctx).list().find(workspace => workspace.sessionIds.some(id => String(id) === sessionId))
+}
