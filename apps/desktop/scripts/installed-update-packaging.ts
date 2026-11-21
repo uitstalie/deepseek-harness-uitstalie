@@ -2,7 +2,6 @@
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { readInstalledUpdateRun } from './installed-update-qualification.ts'
 import { createInstalledUpdateBuilderConfig } from './installed-update-builder.ts'
@@ -36,7 +35,19 @@ async function absent(path: string): Promise<boolean> {
  * @param stateFile Per-user signing interlock; an isolated file may be supplied by tests, not the CLI.
  * @returns Nothing when absent; an inaccessible or existing file rejects before credentials are loaded.
  */
-export async function assertInstalledUpdateSigningClear(stateFile = join(homedir(), '.dsh-desktop-signing', 'attempt.json')): Promise<void> {
+/**
+ * Signing interlock shared with windows-signing-state.mjs; it lives in the checkout build state, not the user profile,
+ * and only an administrator clears it after a failed hardware attempt.
+ * @returns absolute path of the interlock file.
+ */
+export function installedUpdateSigningStatePath(environment: NodeJS.ProcessEnv = process.env): string {
+  const override = environment.DSH_DESKTOP_SIGNING_STATE_DIR
+  return override === undefined || override.trim() === ''
+    ? join(APP_ROOT, '.desktop-build', 'signing', 'attempt.json')
+    : join(override, 'attempt.json')
+}
+
+export async function assertInstalledUpdateSigningClear(stateFile = installedUpdateSigningStatePath()): Promise<void> {
   if (!await absent(stateFile)) throw new InstalledUpdateSigningHoldError()
 }
 

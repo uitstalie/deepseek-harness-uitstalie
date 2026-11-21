@@ -1,6 +1,5 @@
 /** Persist a per-user hardware-signing interlock; failures and interrupted attempts never unlock automatically. */
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join, isAbsolute } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { failPackagingRun, recordPackagingEvent } from './packaging-run.mjs'
@@ -16,7 +15,11 @@ export function beginWindowsSigningAttempt(options) {
     throw new Error('Windows hardware signing requires a supervised packaging run with retained records')
   }
   if (existsSync(join(runDirectory, 'fatal.json'))) throw new Error('Windows signing refused: packaging run already failed')
-  const root = options.stateDirectory ?? join(homedir(), '.dsh-desktop-signing')
+  // Checkout state, not the user profile: the interlock must survive builds but stay out of the Harness home and user home.
+  const override = process.env.DSH_DESKTOP_SIGNING_STATE_DIR
+  const root = options.stateDirectory ?? (override === undefined || override.trim() === ''
+    ? join(import.meta.dirname, '..', '.desktop-build', 'signing')
+    : override)
   const lock = join(root, 'attempt.json')
   const attemptId = randomUUID()
   mkdirSync(root, { recursive: true })

@@ -3,7 +3,6 @@
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, watch, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { resolveDshHome } from '../../../packages/util/home-paths/src/index.ts'
 import { parseArgs } from 'node:util'
 import { assertScratchHome, createScratchHome, removeScratchHome } from './scratch-home.ts'
 
@@ -285,18 +284,18 @@ if (mode === 'seed') {
   console.log(JSON.stringify(diff, undefined, 2))
   if (diff.removed.length > 0) process.exitCode = 1
 } else if (mode === 'watch') {
-  // The observer only reads the Harness home and writes its log outside it; it never boots a profile, so it is the
-  // one script that targets the user's real home instead of a scratch home.
-  const home = values.home ?? resolveDshHome()
+  // Without --home the observer watches a freshly minted scratch home, so a mistaken run cannot point at the user's
+  // real Harness home by default; observing the real home always takes an explicit --home.
+  const home = values.home ?? createScratchHome()
   const log = values.log ?? join(process.cwd(), 'home-canary-events.jsonl')
   const controller = new AbortController()
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => controller.abort())
   console.log(JSON.stringify({ watching: home, log, pid: process.pid }))
   await watchHome(home, log, controller.signal)
 } else if (mode === 'sample') {
-  // The observer only reads the Harness home and writes its log outside it; it never boots a profile, so it is the
-  // one script that targets the user's real home instead of a scratch home.
-  const home = values.home ?? resolveDshHome()
+  // Without --home the observer watches a freshly minted scratch home, so a mistaken run cannot point at the user's
+  // real Harness home by default; observing the real home always takes an explicit --home.
+  const home = values.home ?? createScratchHome()
   const log = values.log ?? join(process.cwd(), 'home-canary-events.jsonl')
   const removed = sampleHome(home, log)
   console.log(JSON.stringify({ sampled: home, removed }))

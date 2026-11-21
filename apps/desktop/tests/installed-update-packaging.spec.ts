@@ -40,6 +40,7 @@ vi.mock('../scripts/packaging-run.mjs', async (original) => {
 const versions = ['0.1.6-nightly.20260914.1', '0.1.6-nightly.20260914.2'] as const
 
 async function fixture(body: (manifest: string, root: string) => Promise<void>): Promise<void> {
+  const previousSigningStateDir = process.env.DSH_DESKTOP_SIGNING_STATE_DIR
   const root = await mkdtemp(join(tmpdir(), 'dsh-packaging-entry-'))
   const previous = { ...state }
   try {
@@ -58,15 +59,20 @@ async function fixture(body: (manifest: string, root: string) => Promise<void>):
       .filter(([name]) => !/KEY|SECRET|TOKEN|PASSWORD|^NODE_OPTIONS$/iu.test(name))),
     DSH_DESKTOP_WINDOWS_CER_FILE: certificate, DSH_DESKTOP_WINDOWS_SIGNTOOL: tool,
     DSH_DESKTOP_WINDOWS_TOKEN_PIN: 'fixture-secret-pin', DSH_DESKTOP_WINDOWS_KEY_CONTAINER: 'fixture-container' }
+    process.env.DSH_DESKTOP_SIGNING_STATE_DIR = root
     await body(join(run.root, 'run.json'), root)
-  } finally { Object.assign(state, previous); await rm(root, { recursive: true, force: true }) }
+  } finally {
+    Object.assign(state, previous)
+    if (previousSigningStateDir === undefined) delete process.env.DSH_DESKTOP_SIGNING_STATE_DIR
+    else process.env.DSH_DESKTOP_SIGNING_STATE_DIR = previousSigningStateDir
+    await rm(root, { recursive: true, force: true })
+  }
 }
 
 describe('operator-driven packaging entry', () => {
   it('refuses the interlock before loading credentials, confirmation, or child allocation and preserves it byte-for-byte', async () => {
     await fixture(async (manifest, root) => {
-      const lock = join(root, '.dsh-desktop-signing/attempt.json')
-      await mkdir(join(root, '.dsh-desktop-signing'))
+      const lock = join(root, 'attempt.json')
       await writeFile(lock, 'retained incident record')
       const confirm = vi.fn(async () => true)
       await expect(packageInstalledUpdate(manifest, versions[0], { execute: true, confirm })).rejects.toThrow('interlock exists')
@@ -122,8 +128,7 @@ describe('operator-driven packaging entry', () => {
       await expect(packageInstalledUpdate(manifest, versions[0], { execute: true, confirm: async () => false }))
         .rejects.toThrow('did not confirm')
       await expect(packageInstalledUpdate(manifest, versions[0], { execute: true, confirm: async () => {
-        await mkdir(join(root, '.dsh-desktop-signing'))
-        await writeFile(join(root, '.dsh-desktop-signing/attempt.json'), 'another operation acquired the token')
+        await writeFile(join(root, 'attempt.json'), 'another operation acquired the token')
         return true
       } })).rejects.toThrow('interlock exists')
       expect(await readdir(join(manifest, '..', versions[0]))).toEqual(['dsh'])
