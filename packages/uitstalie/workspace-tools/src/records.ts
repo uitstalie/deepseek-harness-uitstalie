@@ -352,8 +352,8 @@ export interface MessageRecord {
   readonly references: ArtifactCitation[]
   /** Task this message reports on, when linked. */
   readonly taskId?: string | undefined
-  /** Idempotency key of the send call. */
-  readonly requestId: string
+  /** Idempotency key of the send call; absent on records written before this field was persisted. */
+  readonly requestId?: string | undefined
   /** Current delivery state. */
   readonly status: MessageDeliveryStatus
   /** ISO-8601 creation instant. */

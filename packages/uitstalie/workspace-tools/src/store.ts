@@ -115,7 +115,8 @@ const messageSchema = z.strictObject({
   replyTo: z.string().optional(),
   references: z.array(citationSchema),
   taskId: z.string().optional(),
-  requestId: z.string(),
+  // A record written before this field was persisted still names its own delivery; joining it would fail the read.
+  requestId: z.string().optional(),
   status: messageDeliveryStatusSchema,
   createdAt: z.string(),
   deliveredAt: z.string().optional(),
