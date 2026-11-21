@@ -145,7 +145,8 @@ export function workspaceMessageTool(ctx: Context): ToolDefinition {
       + 'instruction change. Attach files with `references` (artifact ids), never pasted content. '
       + 'A delivered message starts with a `[workspace_message]` header naming the sender\'s role, Session, workspace, '
       + 'and task, so the receiver replies to that Session with `workspace_message.send`; a dispatched Session never '
-      + 'asks the user directly. '
+      + 'asks the user directly. To declare that no reply is required, begin the body with a line '
+      + '`reply-required: no`. '
       + '`read` returns one message by id or a page filtered by target session. '
       + 'The caller\'s workspace is the default scope.',
     parameters: {

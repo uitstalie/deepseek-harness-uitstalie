@@ -391,7 +391,16 @@ export interface DispatchRelation {
   readonly lastAt: string
   /** Deliveries recorded for this relation. */
   readonly deliveries: number
+  /** ISO-8601 instant the reply gate last reminded the target to reply. */
+  readonly replyRemindedAt?: string | undefined
+  /** ISO-8601 instant the reply gate last left a turn blocked for a missing reply. */
+  readonly pendingReplyAt?: string | undefined
+  /** Turn the reply gate last blocked for a missing reply. */
+  readonly pendingReplyTurn?: number | undefined
 }
+
+/** Reply-gate state merged into one dispatch relation. */
+export type DispatchReplyState = Pick<DispatchRelation, 'replyRemindedAt' | 'pendingReplyAt' | 'pendingReplyTurn'>
 
 /** One session's roster entry: who created it, who archived it, and when. */
 export interface SessionRosterEntry {

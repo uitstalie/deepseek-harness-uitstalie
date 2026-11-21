@@ -1946,7 +1946,7 @@ function foldLog(events: readonly SessionEvent[]): LogFacts {
           .join(' ')
           .trim()
         if (text.length === 0) break
-        progress.push({ at: new Date(event.time).toISOString(), summary: oneLine(text, 200) })
+        progress.push({ at: new Date(event.time).toISOString(), summary: oneLine(text, 120) })
         currentActivity = `Assistant: ${oneLine(text, 120)}`
         break
       }

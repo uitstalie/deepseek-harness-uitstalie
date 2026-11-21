@@ -417,7 +417,7 @@ declare module '@deepseek-ai/cordis' {
      * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
      * @mode serial
      */
-    'agent/turn-stopping'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; signal: AbortSignal }): Promise<void> | void
+    'agent/turn-stopping'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; signal: AbortSignal }): Promise<TurnStoppingDecision | void> | TurnStoppingDecision | void
     // ---- error notifications (emit) ----
     /**
      * A step or turn errored. The machine reports a failure here even when
@@ -431,4 +431,8 @@ declare module '@deepseek-ai/cordis' {
      */
     'agent/error'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; error: unknown }): void
   }
+}/** A listener's verdict on whether the finishing turn may end. */
+export interface TurnStoppingDecision {
+  /** Reason the turn must end `blocked`; omitted/undefined lets the turn end normally. */
+  readonly blocked?: string
 }

@@ -410,8 +410,15 @@ export class ReactLoopAgent implements Agent {
         }
         signal.throwIfAborted()
         if (turnEnds && this.inbox.nextStep.length === 0) {
-          await this.dispatch.serial('agent/turn-stopping', { turn, signal })
+          const stopping = await this.dispatch.serial('agent/turn-stopping', { turn, signal })
           signal.throwIfAborted()
+          // A listener may refuse the close (a required reply that was not sent): the turn ends blocked.
+          if (stopping !== undefined && stopping.blocked !== undefined) {
+            this.ctx.logger.warn('agent-loop: turn %d of %s blocked by a turn-stopping listener: %s',
+              turn, String(this.session.id), stopping.blocked)
+            turnEnds = { kind: 'blocked' }
+            break
+          }
         }
         if (turnEnds && this.inbox.nextStep.length === 0) break
         target = 'next-step'

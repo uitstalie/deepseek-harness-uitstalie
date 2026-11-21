@@ -19,6 +19,7 @@ import type {
   ArtifactRecord,
   ArtifactReference,
   DispatchRelation,
+  DispatchReplyState,
   MessageRecord,
   SessionRosterEntry,
   TaskRecord,
@@ -137,6 +138,9 @@ const dispatchRelationSchema = z.strictObject({
   firstAt: z.string(),
   lastAt: z.string(),
   deliveries: z.number().int().positive(),
+  replyRemindedAt: z.string().optional(),
+  pendingReplyAt: z.string().optional(),
+  pendingReplyTurn: z.number().int().positive().optional(),
 }) satisfies z.ZodType<DispatchRelation>
 
 /** Durable session-roster schema. */
@@ -464,6 +468,36 @@ export async function recordDispatchRelation(
     { scope: 'global' },
   )
   return relation
+}
+
+/**
+ * Persist reply-gate state on one dispatch relation without counting a delivery.
+ * @param ctx - context carrying the `.dsh` store.
+ * @param workspaceId - workspace that received the dispatch.
+ * @param sourceSessionId - Session that delivered.
+ * @param targetSessionId - Session the delivery reached.
+ * @param state - reply fields to merge into the relation.
+ * @param signal - cancellation for the store read and write.
+ * @returns the updated relation, or undefined when none is recorded.
+ */
+export async function updateDispatchReplyState(
+  ctx: Context,
+  workspaceId: WorkspaceId | string,
+  sourceSessionId: string,
+  targetSessionId: string,
+  state: DispatchReplyState,
+  signal?: AbortSignal,
+): Promise<DispatchRelation | undefined> {
+  const existing = await readDispatchRelation(ctx, workspaceId, sourceSessionId, targetSessionId, signal)
+  if (existing === undefined) return undefined
+  const next: DispatchRelation = { ...existing, ...state }
+  await ctx.dshStore.writeFile(
+    undefined,
+    dispatchPath(workspaceId, sourceSessionId, targetSessionId),
+    `${JSON.stringify(next, undefined, 2)}\n`,
+    { scope: 'global' },
+  )
+  return next
 }
 
 /**

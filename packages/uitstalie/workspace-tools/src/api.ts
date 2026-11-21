@@ -36,6 +36,7 @@ import {
   workspaceRoutingText,
 } from './prompt.ts'
 import { workspaceTools } from './tools.ts'
+import { mountReplyGate } from './reply-gate.ts'
 import {
   DEFAULT_NOTICE_MAX_PER_TASK,
   DEFAULT_NOTICE_TTL_MS,
@@ -74,6 +75,8 @@ export interface Config {
   noticeMaxPerTask?: number
   /** Window for the per-task notice cap and duplicate guard, in milliseconds. */
   noticeTtlMs?: number
+  /** Enforce that a turn started by a workspace_message must send a reply; default true. */
+  replyGate?: boolean
 }
 
 /** Validated lease schema; the minimums keep a typo from turning the idle window into no lease at all. */
@@ -84,6 +87,7 @@ export const Config: z<Config> = z.object({
   completionNotice: z.union([z.const('off'), z.const('task-bound')]).default('off'),
   noticeMaxPerTask: z.number().step(1).min(1).default(DEFAULT_NOTICE_MAX_PER_TASK),
   noticeTtlMs: z.number().step(1).min(1).default(DEFAULT_NOTICE_TTL_MS),
+  replyGate: z.boolean().default(true),
 })
 
 /**
@@ -108,6 +112,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     maxPerTask: config.noticeMaxPerTask ?? DEFAULT_NOTICE_MAX_PER_TASK,
     ttlMs: config.noticeTtlMs ?? DEFAULT_NOTICE_TTL_MS,
   })
+  mountReplyGate(ctx, { mode: (config.replyGate ?? true) ? 'enforce' : 'off' })
   const registration = ctx.dafeiyu.register({
     id: WORKSPACE_TOOLSET_CAPABILITY_ID,
     contractVersion: WORKSPACE_TOOLSET_CONTRACT_VERSION,
