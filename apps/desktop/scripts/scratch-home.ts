@@ -5,8 +5,9 @@ import { homedir, tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve, sep } from 'node:path'
 import { resolveDshHome } from '../../../packages/util/home-paths/src/index.ts'
 
+import { SCRATCH_HOME_PREFIX } from '../src/home-isolation.ts'
 /** Name prefix every minted scratch home carries, so a later refusal can prove ownership. */
-export const SCRATCH_HOME_PREFIX = 'dsh-scratch-home-'
+export { SCRATCH_HOME_PREFIX }
 
 /**
  * Canonicalize a path for comparison, resolving links through the deepest existing ancestor.

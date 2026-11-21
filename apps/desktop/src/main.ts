@@ -28,7 +28,9 @@ import {
   type IpcMainInvokeEvent,
   type MenuItemConstructorOptions,
 } from 'electron'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { resolveDesktopPaths } from './paths.ts'
+import { assertIsolatedHarnessHome } from './home-isolation.ts'
 import { DesktopProjectManager } from './project-manager.ts'
 import { DesktopHostFatalError, DesktopHostProcess, DesktopHostUncleanExitError } from './host-process.ts'
 import { DesktopPlatformView, PLATFORM_IPC, platformBounds } from './platform-view.ts'
@@ -452,6 +454,13 @@ async function main(): Promise<void> {
   const resources = runtimeResources()
   const paths = resolveDesktopPaths()
   const development = !app.isPackaged
+  // A development launch or an explicitly exported DSH_HOME must not silently target the user's own Harness home;
+  // an installed application keeps using it, because that is its normal target.
+  if (development || process.env.DSH_DESKTOP_DEV_APP === '1' || process.env.DSH_HOME !== undefined) {
+    assertIsolatedHarnessHome(resolveDshHome(), {
+      allowDefaultHarnessHome: process.env.DSH_DESKTOP_DEV_APP !== '1' && app.isPackaged,
+    })
+  }
   const primaryRuntime = development
     ? developmentPrimaryRuntime()
     : join(process.resourcesPath, 'runtime', 'primary-runtime')

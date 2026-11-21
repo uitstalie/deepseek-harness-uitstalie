@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { resolveDshHome } from '../../../packages/util/home-paths/src/index.ts'
 import { afterEach, expect, it } from 'vitest'
-import { ALLOW_USER_HOME_ENV, assertIsolatedHarnessHome } from '../scripts/home-isolation.ts'
+import { ALLOW_USER_HOME_ENV, assertIsolatedHarnessHome } from '../src/home-isolation.ts'
 import { createScratchHome } from '../scripts/scratch-home.ts'
 
 const roots: string[] = []
@@ -39,4 +39,10 @@ it('refuses the temporary directory itself and relative paths', () => {
 it('permits the user home only through the explicit opt-in', () => {
   expect(() => { assertIsolatedHarnessHome(homedir(), { allowUserHome: true }) }).not.toThrow()
   expect(() => { assertIsolatedHarnessHome(homedir(), { environment: { [ALLOW_USER_HOME_ENV]: '1' } }) }).not.toThrow()
+})
+
+it('permits the default Harness home only when the caller allows it', () => {
+  expect(() => { assertIsolatedHarnessHome(resolveDshHome(), { allowDefaultHarnessHome: true, environment: {} }) }).not.toThrow()
+  expect(() => { assertIsolatedHarnessHome(join(resolveDshHome(), 'sessions'), { allowDefaultHarnessHome: true, environment: {} }) })
+    .toThrow(/home isolation/u)
 })

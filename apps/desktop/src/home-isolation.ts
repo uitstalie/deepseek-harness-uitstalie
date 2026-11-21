@@ -3,8 +3,11 @@
 import { existsSync, realpathSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve, sep } from 'node:path'
-import { resolveDshHome } from '../../../packages/util/home-paths/src/index.ts'
-import { SCRATCH_HOME_PREFIX } from './scratch-home.ts'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+
+
+/** Name prefix every minted scratch home carries; scripts reuse this value. */
+export const SCRATCH_HOME_PREFIX = 'dsh-scratch-home-'
 
 /** Environment variable a caller sets to allow the user's own Harness home explicitly. */
 export const ALLOW_USER_HOME_ENV = 'DSH_ALLOW_USER_HOME'
@@ -54,7 +57,7 @@ function below(root: string, path: string): boolean {
  */
 export function assertIsolatedHarnessHome(
   home: string,
-  options: { allowUserHome?: boolean; environment?: NodeJS.ProcessEnv } = {},
+  options: { allowUserHome?: boolean; allowDefaultHarnessHome?: boolean; environment?: NodeJS.ProcessEnv } = {},
 ): void {
   if (!isAbsolute(home)) throw new Error(`home isolation: ${JSON.stringify(home)} is not an absolute path`)
   const environment = options.environment ?? process.env
@@ -66,6 +69,7 @@ export function assertIsolatedHarnessHome(
     throw new Error(`home isolation: ${resolved} is the user profile itself; set a scratch home or ${ALLOW_USER_HOME_ENV}=1 `
       + 'only when the user asked for that exact home')
   }
+  if (options.allowDefaultHarnessHome === true && samePath(resolved, dsh)) return
   if (samePath(resolved, dsh) || below(dsh, resolved)) {
     throw new Error(`home isolation: ${resolved} is inside the user's Harness home ${dsh}; scripts boot scratch homes, `
       + `and ${ALLOW_USER_HOME_ENV}=1 is required to target the user's own home`)
