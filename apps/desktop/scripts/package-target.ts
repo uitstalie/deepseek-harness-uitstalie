@@ -9,6 +9,7 @@ import {
   resolveDesktopAutoUpdateConfig,
 } from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
 import { desktopArtifactOutput, desktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { acquirePackagingLock, clearStaleOutput } from './packaging-lock.ts'
 import { packageMacOSArtifacts, type DesktopPrepackagedArtifact } from './package-macos.ts'
 import { loadDesktopPackageEnvironment, localLinuxPackageEnvironment, localMacOSPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'
 import { createPackagingRun, recordPackagingEvent } from './packaging-run.mjs'
@@ -436,8 +437,21 @@ async function main(): Promise<void> {
   console.log(`DESKTOP_PACKAGING_RECORD ${run.directory}`)
   const previousDirectory = process.env.DSH_DESKTOP_PACKAGING_RUN_DIR
   process.env.DSH_DESKTOP_PACKAGING_RUN_DIR = run.directory
+  // One builder per target: two runs writing the same output directory collide with opaque file-open errors.
+  const lock = acquirePackagingLock(join(APP_ROOT, '.desktop-build'), target.name, run.directory)
+  if (lock.stale !== undefined) {
+    recordPackagingEvent(run.directory, { type: 'stale-lock-taken', pid: lock.stale.pid, startedAt: lock.stale.startedAt, run: lock.stale.run })
+    console.warn(`desktop package: took over a stale ${target.name} lock from pid=${String(lock.stale.pid)} (${lock.stale.startedAt})`)
+  }
   let success = false
   try {
+    if (!invocation.prepareOnly) {
+      const cleared = clearStaleOutput(desktopArtifactOutput(desktopTargetBuildPaths(target.name, environment), invocation).directory)
+      if (cleared.length > 0) {
+        recordPackagingEvent(run.directory, { type: 'stale-output-cleared', entries: cleared })
+        console.warn(`desktop package: cleared stale output ${cleared.join(', ')}`)
+      }
+    }
     await packagingStep(run.directory, 'configuration', async () => { validateDesktopPackageEnvironment(environment, target, invocation) }, secrets)
     await packagingStep(run.directory, 'toolchain', () => requireDesktopToolchain(target.platform, environment), secrets)
     if (target.platform === 'darwin') {
@@ -457,6 +471,7 @@ async function main(): Promise<void> {
     process.stderr.write(`desktop package: failed; see ${run.directory}/events.jsonl\n`)
     process.exitCode = 1
   } finally {
+    lock.release()
     if (previousDirectory === undefined) delete process.env.DSH_DESKTOP_PACKAGING_RUN_DIR
     else process.env.DSH_DESKTOP_PACKAGING_RUN_DIR = previousDirectory
     run.finish(success)
