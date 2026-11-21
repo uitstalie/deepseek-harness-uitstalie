@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-token-calculator",
   "description": "DeepSeek V4 token calculator: an offline byte-level BPE tokenizer and the count_tokens tool for budgeting prompts",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "private": true,
   "type": "module",
   "main": "lib/index.js",

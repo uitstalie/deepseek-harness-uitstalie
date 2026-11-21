@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-tool-dsh-store",
   "description": "Web sidebar rules button: per-workspace read-only view of the .dsh rules the instruction loader injects",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "icon": "./icon.svg",
   "private": true,
   "type": "module",

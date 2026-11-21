@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-common-view",
   "description": "Common-view overlay plugin: adopts one native view at a time and contributes its overlay through slots, theme tokens, and component-local custom properties",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "icon": "./icon.svg",
   "private": true,
   "type": "module",

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-tool-dsh-store",
   "description": "The model-facing .dsh store tool and the read-only sidebar Remote over the store atom's dshStore service",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "icon": "./icon.svg",
   "private": true,
   "type": "module",

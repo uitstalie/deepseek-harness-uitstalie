@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-store-atom",
   "description": "The .dsh store atom: the dshStore base interface with project-root discovery, path confinement, namespace authoring checks, and version-guarded reads and writes",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "private": true,
   "type": "module",
   "main": "lib/index.js",

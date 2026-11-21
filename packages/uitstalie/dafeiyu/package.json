@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-dafeiyu",
   "description": "Host-side capability organizer: registry, enable gate, per-agent wiring, turn-end dispatch, failure isolation, and the read-only capability status list for capability providers",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "private": true,
   "type": "module",
   "main": "lib/index.js",

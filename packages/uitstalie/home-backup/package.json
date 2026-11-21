@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-home-backup",
   "description": "Scheduled snapshots of the harness home: sessions, storages, and profile configuration copied outside $DSH_HOME with a retention window",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "private": true,
   "type": "module",
   "main": "lib/index.js",

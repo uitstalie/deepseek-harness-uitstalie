@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-dafeiyu",
   "description": "The capability list's browser surface: a settings section that lists every dafeiyu provider with its state, its enable switch, and a link to the provider's own settings page",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "private": true,
   "type": "module",
   "main": "lib/index.js",

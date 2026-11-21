@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-persona-card",
   "description": "Assistant persona cards: the persona/v1 format, a pure validator and renderer, and a safe Character Card V2/V3 JSON importer",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "private": true,
   "type": "module",
   "main": "lib/index.js",

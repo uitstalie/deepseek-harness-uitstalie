@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-agent-instructions-plus",
   "description": "Always-on agent-context seam: appends registered sources (workspace rules today) to the native AGENTS.md/CLAUDE.md baseline, with a registry for memory and personality context",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "icon": "./icon.svg",
   "private": true,
   "type": "module",

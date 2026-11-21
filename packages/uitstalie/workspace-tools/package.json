@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-workspace-tools",
   "description": "Workspace information toolset: sessions, dispatch tasks, intent cards, messages, and artifact references scoped to one registered workspace",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "private": true,
   "type": "module",
   "main": "lib/index.js",

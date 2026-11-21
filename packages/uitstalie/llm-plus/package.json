@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-llm-plus",
   "description": "Self-owned multi-protocol LLM adapter (openai-completions / anthropic-messages / gemini) with models.dev catalog integration and native extra-params injection",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "icon": "./icon.svg",
   "private": true,
   "type": "module",

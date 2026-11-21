@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-system-environment",
   "description": "The host environment atom: one provider for platform facts, path spelling and comparison rules, environment lookup, and the user and Harness home directories",
-  "version": "0.0.0",
+  "version": "0.2.2-rc.4",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
