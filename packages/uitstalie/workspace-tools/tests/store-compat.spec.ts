@@ -28,10 +28,10 @@ function context(text: string) {
 }
 
 describe('message record compatibility', () => {
-  it('reads a record that predates requestId', async () => {
+  it('falls back to messageId for a record that predates requestId', async () => {
     const stored = await readMessage(context(JSON.stringify(legacy)), 'workspace-1', 'message-legacy')
     expect(stored?.message.messageId).toBe('message-legacy')
-    expect(stored?.message.requestId).toBeUndefined()
+    expect(stored?.message.requestId).toBe('message-legacy')
     expect(stored?.version).toBe('v1')
   })
 

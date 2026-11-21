@@ -337,6 +337,18 @@ export async function listTasks(
  * @param signal - cancellation for the store read.
  * @returns the record, its store version, or undefined when no such message exists.
  */
+/**
+ * Fill the idempotency key a record written before the field existed never persisted.
+ *
+ * The key is only a send-time dedupe token, so the record's own identity is a safe stand-in; leaving it absent would
+ * push the missing-field decision into every caller.
+ * @param message - record read from the store.
+ * @returns the record with `requestId` present.
+ */
+function normalizeMessage(message: MessageRecord): MessageRecord {
+  return message.requestId === undefined ? { ...message, requestId: message.messageId } : message
+}
+
 export async function readMessage(
   ctx: Context,
   workspaceId: WorkspaceId | string,
@@ -344,7 +356,9 @@ export async function readMessage(
   signal?: AbortSignal,
 ): Promise<{ readonly message: MessageRecord; readonly version?: string } | undefined> {
   const stored = await readJson(ctx, messagePath(workspaceId, messageId), messageSchema, signal)
-  return stored === undefined ? undefined : { message: stored.value, ...stored.version === undefined ? {} : { version: stored.version } }
+  return stored === undefined
+    ? undefined
+    : { message: normalizeMessage(stored.value), ...stored.version === undefined ? {} : { version: stored.version } }
 }
 
 /**
@@ -380,7 +394,7 @@ export async function listMessages(
   workspaceId: WorkspaceId | string,
   signal?: AbortSignal,
 ): Promise<MessageRecord[]> {
-  const messages = await listJson(ctx, messagesDirectory(workspaceId), messageSchema, signal)
+  const messages = (await listJson(ctx, messagesDirectory(workspaceId), messageSchema, signal)).map(normalizeMessage)
   return messages.sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.messageId.localeCompare(right.messageId))
 }
 
