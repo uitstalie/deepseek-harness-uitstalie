@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for attributing-home-deletions.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/cookbook/attributing-home-deletions.md
+/cookbook-attributing-home-deletions-to-a-process:
+  en: 56660ac73cf5748f
+  zh: 5dcf22174b2d8dc2
+/cookbook-attributing-home-deletions-to-a-process/1-decide-the-window:
+  en: 4c95995a08f4dd9b
+  zh: 4070eb679b5b82d3
+/cookbook-attributing-home-deletions-to-a-process/2-enable-object-access-auditing:
+  en: ee8cee063a7059c4
+  zh: fdac3b754a66de88
+/cookbook-attributing-home-deletions-to-a-process/3-scope-a-sacl-to-the-home:
+  en: 326f0ee6a3ad64b8
+  zh: d791f2d2a3c35247
+/cookbook-attributing-home-deletions-to-a-process/4-enable-process-creation-auditing:
+  en: 65b1db9f1ca6c32b
+  zh: 0c9d72bf4a95164d
+/cookbook-attributing-home-deletions-to-a-process/5-read-the-evidence:
+  en: 63f3bb2a7ca102d8
+  zh: 27bd9bb7ebb9a3c2
+/cookbook-attributing-home-deletions-to-a-process/6-turn-it-off-afterwards:
+  en: 6d02bbbe6dd3ff4d
+  zh: d1b9ea4de7f8c5c6
+/cookbook-attributing-home-deletions-to-a-process/7-know-the-limits:
+  en: cf877e7f6c774a3a
+  zh: 0b32aead8f19bfdb

@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for repairing-a-session-request.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/cookbook/repairing-a-session-request.md
+/cookbook-repairing-a-session-request:
+  en: f1ab9a48e35afee7
+  zh: 7c46c8786b61af66
+/cookbook-repairing-a-session-request/1-find-the-sessions-root:
+  en: 62636f1e921958fb
+  zh: 384ae742e538af52
+/cookbook-repairing-a-session-request/2-run-the-dry-run:
+  en: c7d45d5551da19ed
+  zh: b83e6eb7de8fb226
+/cookbook-repairing-a-session-request/3-apply-and-restart:
+  en: d21994e43e5deb45
+  zh: 61045626631c446e
+/cookbook-repairing-a-session-request/4-verify:
+  en: de2fedd4f38bd58f
+  zh: c209a4129ecaeb6d
+/cookbook-repairing-a-session-request/5-tune-the-repair:
+  en: 3358eb8ee6c40ffb
+  zh: 52bfce00ce142cdc
+/cookbook-repairing-a-session-request/6-know-what-it-is:
+  en: 711658bf23d5cf6e
+  zh: f148aa42fd8645ad
