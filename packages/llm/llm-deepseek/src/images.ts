@@ -26,6 +26,40 @@ function* imageRefs(blocks: readonly ContentBlock[]): Generator<ImageAttachmentR
   }
 }
 
+/**
+ * Decide whether a retained reference lost its stored bytes.
+ *
+ * A durable history can outlive the attachment store's objects, for example after a recovery restored Session logs
+ * without the attachments directory. The request then has no bytes to send, and only that reference is unusable.
+ * The attachment contract names `ATTACHMENT_NOT_FOUND` for a missing object, and other attachment failures stay fatal.
+ * @param error - failure raised while reading one request image.
+ * @returns whether the attachment store no longer holds the object.
+ */
+function isMissingAttachment(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ATTACHMENT_NOT_FOUND'
+}
+
+/**
+ * Replace the retained image blocks whose bytes are gone with a stable text placeholder.
+ * @param messages - projected history that still references the missing attachments.
+ * @param missing - attachment ids the store no longer holds.
+ * @returns history without those image blocks; other blocks keep their order and content.
+ */
+function degradeMissingImages(
+  messages: readonly RequestMessage[], missing: ReadonlySet<ImageAttachmentRef['attachmentId']>,
+): readonly RequestMessage[] {
+  return messages.map((message) => {
+    const absent = message.content.some(block => block.type === 'image' && missing.has(block.attachment.attachmentId))
+    if (!absent) return message
+    return {
+      ...message,
+      content: message.content.map((block): ContentBlock => block.type === 'image' && missing.has(block.attachment.attachmentId)
+        ? { type: 'text', text: `[image unavailable: attachment ${String(block.attachment.attachmentId)} is missing from the attachment store]` }
+        : block),
+    }
+  })
+}
+
 /** Normalize retained image references before converting Messages content.
  * @param history - durable history; never mutated.
  * @param connection - request-local image budgets.
@@ -40,7 +74,7 @@ export async function prepareImages(
   attachments: AttachmentStore | undefined, access: ImageAttachmentAccessResolver, signal: AbortSignal,
 ): Promise<{ messages: readonly RequestMessage[]; versions: Map<ImageAttachmentRef['attachmentId'], RequestImageAttachment> }> {
   const versions = new Map<ImageAttachmentRef['attachmentId'], RequestImageAttachment>()
-  const messages = projectOffloadedImages(history, ref => offloadedImageText(ref, access(ref)))
+  let messages = projectOffloadedImages(history, ref => offloadedImageText(ref, access(ref)))
   if (!messages.some(message => contentHasImage(message.content))) return { messages, versions }
   const model = connection.models.find(entry => entry.id === modelId)
   if (model?.inputModalities?.includes('image') !== true || attachments === undefined) {
@@ -49,13 +83,19 @@ export async function prepareImages(
   if (messages.some(message => message.role !== 'user' && message.role !== 'tool' && contentHasImage(message.content))) {
     throw new LlmError('DeepSeek Messages supports images only in user messages and tool results', 'UNSUPPORTED_CONTENT')
   }
+  const missing = new Set<ImageAttachmentRef['attachmentId']>()
   for (const message of messages) {
     for (const ref of imageRefs(message.content)) {
-      if (!versions.has(ref.attachmentId)) {
+      if (versions.has(ref.attachmentId) || missing.has(ref.attachmentId)) continue
+      try {
         versions.set(ref.attachmentId, await attachments.readImageRequest(ref, resolveRequestImageTarget(model, ref), signal))
+      } catch (error) {
+        if (!isMissingAttachment(error)) throw error
+        missing.add(ref.attachmentId)
       }
     }
   }
+  if (missing.size > 0) messages = degradeMissingImages(messages, missing)
   assertImagesFit(messages, versions, connection, 'raw')
   return { messages, versions }
 }
