@@ -251,3 +251,7 @@ The judged condition is whether spawned processes inherit the ambient environmen
 A path that may be a symlink or Windows junction is removed with `lstatSync().isSymbolicLink()` then `unlinkSync`: unlink deletes only the link and refuses a real directory, so it never follows the link into its target. Windows `rmSync(link)` throws `ERR_FS_EISDIR` on a junction; recursive deletion may descend through one into its target. Reserve recursive `rmSync` for known real directories.
 
 The judged condition is whether the removal primitive can follow a link into its target. The boundary is a path the code created itself in a directory it owns, where a plain recursive removal is already known to be safe.
+
+## PowerShell script variables
+
+$home in PowerShell is a read-only automatic variable holding the user profile. Assigning $home = <path> fails silently and leaves every derived home path under the user profile instead of the intended Harness home. Name an intentional home $dshHome (or another explicit variable), and let a check reject the assignment form so a diagnostic script cannot repeat it.

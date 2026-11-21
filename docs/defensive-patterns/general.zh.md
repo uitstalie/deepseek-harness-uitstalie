@@ -283,3 +283,7 @@ async function dispatch(listeners: ((event: string) => Promise<void>)[], event: 
 可能是符号链接或 Windows junction 的路径，应先用 `lstatSync().isSymbolicLink()` 判断，再用 `unlinkSync` 删除：unlink 只删除链接本身并拒绝真实目录，因此绝不会跟随链接进入其目标。Windows 上对 junction 调用 `rmSync(link)` 会抛 `ERR_FS_EISDIR`；递归删除可能穿过 junction 进入其目标。真实目录才使用带 `recursive` 的 `rmSync`。
 
 判定条件是：所用的删除原语是否可能跟随链接进入其目标。边界是代码在自己拥有的目录里自行创建的路径，那里已知普通递归删除是安全的。
+
+## PowerShell 脚本变量
+
+PowerShell 的 `C:\Users\TS` 是只读自动变量，值为用户主目录。脚本里写 `C:\Users\TS = <path>` 会静默失败，之后派生的 home 路径全部落到用户主目录而不是目标 Harness home。需要指定 home 时用 ``（或其它显式变量），并用检查拒绝该赋值形式，避免诊断脚本重犯。
