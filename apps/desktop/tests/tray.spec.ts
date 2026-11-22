@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import type { MenuItemConstructorOptions } from 'electron'
 import { afterEach, expect, it, vi } from 'vitest'
 import { resolveDesktopLocale } from '../src/locale.ts'
@@ -13,9 +14,15 @@ const native = await vi.hoisted(async () => {
     constructor(readonly image: unknown) { super(); trays.push(this) }
   }
   const menus: MenuItemConstructorOptions[][] = []
+  const addRepresentation = vi.fn()
   return {
-    trays, FakeTray, menus,
-    createFromPath: vi.fn((path: string) => ({ path })),
+    trays, FakeTray, menus, addRepresentation,
+    createFromPath: vi.fn((path: string) => {
+      const image = { path }
+      // Keep the path enumerable so existing assertions still compare the base image.
+      Object.defineProperty(image, 'addRepresentation', { value: addRepresentation })
+      return image
+    }),
     buildFromTemplate: vi.fn((template: MenuItemConstructorOptions[]) => { menus.push(template); return { template } }),
   }
 })
@@ -57,6 +64,28 @@ it('opens the window on a single click and routes menu entries to the open and q
   ;(menu[2] as { click: () => void }).click()
   expect(f.open).toHaveBeenCalledTimes(2)
   expect(f.quit).toHaveBeenCalledOnce()
+})
+
+it('adds the Linux HiDPI representation to the base tray image', () => {
+  const open = vi.fn()
+  const quit = vi.fn()
+  new DesktopTray({
+    iconPath: fileURLToPath(new URL('../resources/tray-linux.png', import.meta.url)),
+    iconRepresentations: [{
+      scaleFactor: 2,
+      width: 44,
+      height: 44,
+      path: fileURLToPath(new URL('../resources/tray-linux@2x.png', import.meta.url)),
+    }],
+    locale: () => resolveDesktopLocale('en'),
+    open,
+    quit,
+  })
+  expect(native.addRepresentation).toHaveBeenCalledWith(expect.objectContaining({
+    scaleFactor: 2,
+    width: 44,
+    height: 44,
+  }))
 })
 
 it('relabels the menu in the current locale and ignores relabel after disposal', () => {

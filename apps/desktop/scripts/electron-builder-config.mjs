@@ -194,6 +194,11 @@ export function createElectronBuilderConfig(
       { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
       // Windows tray bitmaps; macOS keeps the Dock and ships no menu bar icon.
       ...(packagesWindows ? [{ from: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)), to: 'tray.ico' }] : []),
+      // Linux StatusNotifierItem PNGs; the HiDPI copy is added as a nativeImage representation.
+      ...(resolvedPlatform === 'linux' ? [
+        { from: fileURLToPath(new URL('../resources/tray-linux.png', import.meta.url)), to: 'tray-linux.png' },
+        { from: fileURLToPath(new URL('../resources/tray-linux@2x.png', import.meta.url)), to: 'tray-linux@2x.png' },
+      ] : []),
     ],
     mac: {
       icon: fileURLToPath(new URL('../resources/icon-macos.png', import.meta.url)),

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { packIco, TRAY_ICON_PATHS, TRAY_ICON_SIZES, unpackIco, type IcoEntry } from '../scripts/render-tray-icon.ts'
+import { packIco, TRAY_ICON_PATHS, TRAY_ICON_SIZES, TRAY_LINUX_ICON_PATHS, unpackIco, type IcoEntry } from '../scripts/render-tray-icon.ts'
 
 /** Smallest valid-looking PNG stream: signature plus an IHDR chunk declaring the given edge. */
 function pngStub(width: number, height = width): Buffer {
@@ -33,6 +33,16 @@ describe('tray icon packaging', () => {
     const forged = packIco([{ size: 16, png: pngStub(16) }])
     forged.writeUInt8(20, 6)
     expect(() => unpackIco(forged)).toThrow('declares 20 but holds 16x16')
+  })
+
+  it('ships 22 px and 44 px Linux StatusNotifierItem PNGs', () => {
+    for (const [path, size] of [[TRAY_LINUX_ICON_PATHS.base, 22], [TRAY_LINUX_ICON_PATHS.hidpi, 44]] as const) {
+      const png = readFileSync(path)
+      expect(png.subarray(1, 4).toString()).toBe('PNG')
+      expect(png.readUInt32BE(16)).toBe(size)
+      expect(png.readUInt32BE(20)).toBe(size)
+      expect(png.length).toBeGreaterThan(100)
+    }
   })
 
   it('ships one crisp bitmap per supported display scale in the committed tray icon', () => {

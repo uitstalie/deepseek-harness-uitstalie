@@ -89,6 +89,20 @@ describe('installer preparation preserves application dependencies', () => {
     }
   })
 
+  it('ships Linux StatusNotifierItem PNGs instead of the Windows ICO', async () => {
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const config = createElectronBuilderConfig({
+      DSH_DESKTOP_APP_ID: 'com.example.linux-installer',
+      DSH_DESKTOP_TARGET_PLATFORM: 'linux',
+      DSH_DESKTOP_TARGET_ARCH: 'x64',
+      DSH_DESKTOP_UNSIGNED: '1',
+    }, 'linux', 'x64')
+    const trayEntries = config.extraResources.filter(resource => resource.to.startsWith('tray-'))
+    expect(trayEntries.map(resource => resource.to)).toEqual(['tray-linux.png', 'tray-linux@2x.png'])
+    expect(readFileSync(trayEntries[0]!.from)).toEqual(readFileSync(new URL('../resources/tray-linux.png', import.meta.url)))
+    expect(readFileSync(trayEntries[1]!.from)).toEqual(readFileSync(new URL('../resources/tray-linux@2x.png', import.meta.url)))
+  })
+
   it('names unsigned Windows artifacts so they cannot pass for release builds', async () => {
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     const config = createElectronBuilderConfig({
