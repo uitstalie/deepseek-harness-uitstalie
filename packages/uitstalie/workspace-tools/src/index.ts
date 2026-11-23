@@ -4,7 +4,7 @@
  */
 
 export { apply, Config, inject, name, WORKSPACE_TOOLSET_CAPABILITY_ID } from './api.ts'
-export { LEASE_IDLE_MS, LEASE_MAX_MS, WORKSPACE_LEASE_HELD, WORKSPACE_LEASE_LOST, classifyLeaseTool } from './lease.ts'
+export { LEASE_ACTIVE_TURN_GRACE_MS, LEASE_IDLE_MS, LEASE_MAX_MS, WORKSPACE_LEASE_HELD, WORKSPACE_LEASE_LOST, classifyLeaseTool } from './lease.ts'
 export type { LeaseClass, LeaseGuardOptions, WorkspaceLeaseGuard } from './lease.ts'
 export type * from './api.ts'
 export type * from './records.ts'

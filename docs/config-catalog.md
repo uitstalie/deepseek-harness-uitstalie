@@ -1865,7 +1865,7 @@ export interface HmrConfig extends ChokidarOptions {
 
 ## `@deepseek-ai/dsh-home-backup`
 
-- `source`: [`packages/uitstalie/home-backup/src/api.ts:37`](../packages/uitstalie/home-backup/src/api.ts)
+- `source`: [`packages/uitstalie/home-backup/src/api.ts:38`](../packages/uitstalie/home-backup/src/api.ts)
 
 ```ts config-catalog
 /** Plugin configuration; every field is optional and the schema supplies the default. */
@@ -5692,6 +5692,44 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-workspace-changes -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-workspace-tools -->
+<a id="deepseek-aidsh-workspace-tools"></a>
+
+## `@deepseek-ai/dsh-workspace-tools`
+
+- `inject`: `dafeiyu` · `dshStore` · `sessionQuery` · `workspaceRegistry` · `fs`
+- `source`: [`packages/uitstalie/workspace-tools/src/api.ts:66`](../packages/uitstalie/workspace-tools/src/api.ts)
+
+```ts config-catalog
+/** Plugin configuration; every field is optional and the schema supplies the default. */
+export interface Config {
+  /** Workspace write lease: `enforce` refuses a conflicting write, `observe` only audits it. */
+  mode?: 'enforce' | 'observe'
+  /** Idle window after which an unrenewed lease may be reclaimed, in milliseconds. */
+  idleMs?: number
+  /** Hard cap on one lease's life, in milliseconds. */
+  maxMs?: number
+  /**
+   * Idle window granted while the holder's turn is open in this process, in
+   * milliseconds; a long-running turn keeps its lease instead of losing it to
+   * the idle window.
+   */
+  activeTurnGraceMs?: number
+  /** Deliver a task-bound completion notice to a dispatcher when its executor turn ends. */
+  completionNotice?: CompletionNoticeMode
+  /** Most notices one task may receive inside `noticeTtlMs`. */
+  noticeMaxPerTask?: number
+  /** Window for the per-task notice cap and duplicate guard, in milliseconds. */
+  noticeTtlMs?: number
+  /** Enforce that a turn started by a workspace_message must send a reply; default true. */
+  replyGate?: boolean
+}
+
+/** When completion notices are delivered: never, or only for task-bound dispatches. */
+export type CompletionNoticeMode = 'off' | 'task-bound'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-workspace-tools -->
+
 ## Loadable plugins with no config
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
@@ -5833,7 +5871,6 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |
 | `@deepseek-ai/dsh-webhook` | `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` | [`packages/experimental/webhook/src/index.ts`](../packages/experimental/webhook/src/index.ts) |
 | `@deepseek-ai/dsh-workspace` | `storageDomain` · `sessionPersistence` | [`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts) |
-| `@deepseek-ai/dsh-workspace-tools` | `dafeiyu` · `dshStore` · `sessionQuery` · `workspaceRegistry` · `fs` | [`packages/uitstalie/workspace-tools/src/index.ts`](../packages/uitstalie/workspace-tools/src/index.ts) |
 <!-- END GENERATED config-catalog:no-config -->
 
 ## Seam packages (not directly loadable)

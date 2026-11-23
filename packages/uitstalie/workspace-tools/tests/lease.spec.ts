@@ -5,7 +5,7 @@
  * writes into the real `$DSH_HOME`.
  */
 import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -19,7 +19,9 @@ import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { defineContentToolFixture, executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import {
+  LEASE_ACTIVE_TURN_GRACE_MS,
   LEASE_IDLE_MS,
+  LEASE_MAX_MS,
   WORKSPACE_LEASE_HELD,
   WORKSPACE_LEASE_LOST,
   classifyLeaseTool,
@@ -64,7 +66,7 @@ function emitSessionEvent(sessionId: string, event: { type: string; time: number
 }
 
 /** Mount the registry, the native executor, a write tool, a read tool, and the guard. */
-async function mount(options: { mode?: 'enforce' | 'observe' } = {}): Promise<void> {
+async function mount(options: { mode?: 'enforce' | 'observe'; activeTurnGraceMs?: number } = {}): Promise<void> {
   ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -78,12 +80,18 @@ async function mount(options: { mode?: 'enforce' | 'observe' } = {}): Promise<vo
     pid: 4242,
     mode: options.mode ?? 'enforce',
     idleMs: LEASE_IDLE_MS,
+    ...options.activeTurnGraceMs === undefined ? {} : { activeTurnGraceMs: options.activeTurnGraceMs },
   })
   // The spec's own mount wires the same `session/event` → release rule that
   // `mountWorkspaceLease` registers in production, captured so
   // `emitSessionEvent` can flush the release before assertions.
   sessionEventListeners.push((session, event) => {
+    if (event.type === 'turn/start') {
+      guard.noteTurnStart(session.id)
+      return
+    }
     if (event.type !== 'turn/end') return
+    guard.noteTurnEnd(session.id)
     const release = guard.release(session.id, 'turn end')
     turnEndReleases.push(release)
     void release
@@ -113,8 +121,8 @@ async function mount(options: { mode?: 'enforce' | 'observe' } = {}): Promise<vo
 }
 
 /** Run one tool call as the given Session. */
-function run(name: string, agent: Agent, id = 'c1'): Promise<ToolExecutionResult> {
-  return executeToolFixture(ctx, { callId: brandString<ToolCallId>(id), name, arguments: {}, signal, agent })
+function run(name: string, agent: Agent, id = 'c1', args: unknown = {}): Promise<ToolExecutionResult> {
+  return executeToolFixture(ctx, { callId: brandString<ToolCallId>(id), name, arguments: args, signal, agent })
 }
 
 /** Read the lease record the guard wrote, or undefined when no record remains. */
@@ -400,6 +408,187 @@ describe('expiry, reclaim, fencing, and release', () => {
     const result = await run('write', agentOf('s2'), 'c2')
     const info = result.error?.info as Record<string, unknown> | undefined
     if (info !== undefined) expect(Number(info.retryAfterMs)).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe('active-turn grace', () => {
+  it('keeps the lease past the idle window while the holder turn is open', async () => {
+    await mount()
+    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
+    await run('write', agentOf('s1'))
+    clock += LEASE_IDLE_MS + 1
+    const refused = await run('write', agentOf('s2'), 'c2')
+    expect(refused.isError).toBe(true)
+    expect(refused.error?.info?.code).toBe(WORKSPACE_LEASE_HELD)
+    expect(await record()).toMatchObject({ sessionId: 's1', generation: 1 })
+    expect(writes).toEqual(['s1'])
+  })
+
+  it('reclaims the record once the active-turn grace passes', async () => {
+    await mount()
+    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
+    await run('write', agentOf('s1'))
+    clock += LEASE_ACTIVE_TURN_GRACE_MS + 1
+    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2 })
+    expect((await run('write', agentOf('s1'), 'c3')).error?.info?.code).toBe(WORKSPACE_LEASE_LOST)
+  })
+
+  it('still caps the lease at its maximum life while the holder turn is open', async () => {
+    await mount({ activeTurnGraceMs: LEASE_MAX_MS * 2 })
+    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
+    await run('write', agentOf('s1'))
+    clock += LEASE_MAX_MS + 1
+    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2 })
+  })
+
+  it('drops the grace when the holder turn closes', async () => {
+    await mount()
+    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
+    await run('write', agentOf('s1'))
+    guard.noteTurnEnd('s1')
+    clock += LEASE_IDLE_MS + 1
+    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2 })
+  })
+
+  it('does not grant the grace to a record written by another host', async () => {
+    await mount()
+    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
+    const foreign = createWorkspaceLeaseGuard(ctx, {
+      home, now: () => clock, hostId: 'other-host', pid: 999, idleMs: LEASE_IDLE_MS,
+    })
+    expect(await foreign.beforeTool({ name: 'write', arguments: {}, agent: agentOf('s1') })).toBeUndefined()
+    clock += LEASE_IDLE_MS + 1
+    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2 })
+  })
+
+  it('names the holder and the single retry in the LOST refusal', async () => {
+    await mount()
+    await run('write', agentOf('s1'))
+    clock += LEASE_IDLE_MS + 1
+    await run('write', agentOf('s2'), 'c2')
+    const holder = await record()
+    clock += 60_000
+    const lost = await run('write', agentOf('s1'), 'c3')
+    expect(lost.isError).toBe(true)
+    const info: unknown = lost.error?.info
+    expect(info).toMatchObject({
+      code: WORKSPACE_LEASE_LOST,
+      root: holder?.['root'],
+      holderSessionId: 's2',
+      holderOperation: 'write',
+      retryAfterMs: LEASE_IDLE_MS - 60_000,
+    })
+    expect(info).toHaveProperty('idleExpiresAt')
+    const text = lost.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+    expect(text).toContain('holder:     session s2 acquired')
+    expect(text).toMatch(/idle expiry \d{4}-\d{2}-\d{2}T[0-9:.]+Z/)
+    expect(text).toContain('The record becomes reclaimable in 540s')
+    expect(text).not.toContain('do not write')
+    expect(text).toContain('retry once after that moment')
+    expect(text).toContain("If the holder's turn is still running, wait for it to end first")
+  })
+})
+
+describe('archive releases the lease', () => {
+  let archiveFails = false
+
+  /**
+   * Mount only the production wiring (`mountWorkspaceLease`), plus the tools the
+   * archive path dispatches, so the release runs through the real wrapper.
+   */
+  async function mountProductionOnly(): Promise<void> {
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
+    writes = []
+    archiveFails = false
+    sessionEventListeners = []
+    turnEndReleases = []
+    guard = mountWorkspaceLease(ctx, {
+      home,
+      now: () => clock,
+      hostId: 'test-host',
+      pid: 4242,
+      mode: 'enforce',
+      idleMs: LEASE_IDLE_MS,
+    })
+    ctx.tools.register(defineContentToolFixture({
+      name: 'write',
+      description: 'records one write',
+      parameters: {},
+      execute(_args, exec) {
+        writes.push(String(exec.agent?.session.id))
+        return Promise.resolve([{ type: 'text', text: 'wrote' }])
+      },
+    }))
+    ctx.tools.register(defineContentToolFixture({
+      name: 'workspace_sessions',
+      description: 'archives one Session',
+      parameters: { action: { type: 'string', required: true }, sessionId: { type: 'string' } },
+      execute(args) {
+        if (archiveFails) throw new Error('archive refused')
+        return Promise.resolve([{ type: 'text', text: `archived ${String(args.sessionId)}` }])
+      },
+    }))
+  }
+
+  it('releases the archived Session lease and audits the operation', async () => {
+    await mountProductionOnly()
+    await run('write', agentOf('s1'))
+    expect(await record()).toMatchObject({ sessionId: 's1' })
+    const archived = await run('workspace_sessions', agentOf('s2'), 'c2', { action: 'archive', sessionId: 's1' })
+    expect(archived.isError).toBe(false)
+    expect(await record()).toBeUndefined()
+    const released = (await auditLines()).filter(line => line.event === 'released')
+    expect(released.at(-1)).toMatchObject({ sessionId: 's1', operation: 'session archived' })
+    expect((await run('write', agentOf('s2'), 'c3')).isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's2', generation: 1 })
+  })
+
+  it('keeps other leases when the archived Session holds none', async () => {
+    await mountProductionOnly()
+    await run('write', agentOf('s1'))
+    const archived = await run('workspace_sessions', agentOf('s2'), 'c2', { action: 'archive', sessionId: 's3' })
+    expect(archived.isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's1' })
+    expect((await auditLines()).filter(line => line.event === 'released')).toHaveLength(0)
+  })
+
+  it('does not release when the archive call itself failed', async () => {
+    await mountProductionOnly()
+    await run('write', agentOf('s1'))
+    archiveFails = true
+    const archived = await run('workspace_sessions', agentOf('s2'), 'c2', { action: 'archive', sessionId: 's1' })
+    expect(archived.isError).toBe(true)
+    expect(await record()).toMatchObject({ sessionId: 's1' })
+    expect((await auditLines()).filter(line => line.event === 'released')).toHaveLength(0)
+  })
+
+  it('keeps the archive result when the release audit cannot be written', async () => {
+    await mountProductionOnly()
+    await run('write', agentOf('s1'))
+    // Replace the audit directory with a file: the release removes the record
+    // and then fails to append its audit line, which must not fail the archive.
+    await rm(join(home, 'logs'), { recursive: true, force: true })
+    await writeFile(join(home, 'logs'), 'not a directory')
+    const archived = await run('workspace_sessions', agentOf('s2'), 'c2', { action: 'archive', sessionId: 's1' })
+    expect(archived.isError).toBe(false)
+    expect(await record()).toBeUndefined()
+  })
+
+  it('ignores non-archive and malformed workspace_sessions calls', async () => {
+    await mountProductionOnly()
+    await run('write', agentOf('s1'))
+    expect((await run('workspace_sessions', agentOf('s2'), 'c2', { action: 'list' })).isError).toBe(false)
+    expect((await run('workspace_sessions', agentOf('s2'), 'c3', { action: 'archive' })).isError).toBe(false)
+    expect((await run('workspace_sessions', agentOf('s2'), 'c4', { action: 'archive', sessionId: '   ' })).isError).toBe(false)
+    expect(await record()).toMatchObject({ sessionId: 's1' })
+    expect((await auditLines()).filter(line => line.event === 'released')).toHaveLength(0)
   })
 })
 

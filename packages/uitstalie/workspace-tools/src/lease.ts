@@ -10,13 +10,18 @@
  * `$DSH_HOME/logs/workspace-lease.jsonl`.
  *
  * A lease is held by a Session, not by one call or one turn, so a multi-step
- * edit does not reacquire. It is released when the holder's turn ends or the
- * Session is disposed; it expires after ten idle minutes or eight hours of
- * total life, whichever comes first, as the fallback for a holder that never
- * reaches a turn boundary (a crashed host or a disposed listener). An expired
- * or stale record is reclaimed by the next writer. Every acquisition and
- * reclaim bumps a fencing generation, and a holder whose generation moved on
- * is refused while another Session owns the lease; once that record is gone,
+ * edit does not reacquire. It is released when the holder's turn ends, when the
+ * Session is disposed, or when another Session archives the holder. It expires
+ * after ten idle minutes or eight hours of total life, whichever comes first,
+ * as the fallback for a holder that never reaches a turn boundary (a crashed
+ * host or a disposed listener). While the holder's turn is still open in this
+ * process, the idle window becomes `LEASE_ACTIVE_TURN_GRACE_MS` measured from
+ * the last renewal, so a long model call does not cost a live writer its lease;
+ * the hard lifetime cap still applies, and a record written by another host or
+ * process keeps the plain idle window. An expired or stale record is reclaimed
+ * by the next writer. Every acquisition and reclaim bumps a fencing generation,
+ * and a holder whose generation moved on is refused with the current holder and
+ * the moment a single retry can reclaim the record; once that record is gone,
  * expired, or its process is dead, the fenced holder reclaims it and continues.
  *
  * @module @deepseek-ai/dsh-workspace-tools/lease
@@ -41,6 +46,13 @@ export const LEASE_IDLE_MS = 10 * 60 * 1000
 
 /** Hard cap on one lease's life, renewed or not: eight hours. */
 export const LEASE_MAX_MS = 8 * 60 * 60 * 1000
+
+/**
+ * Idle window granted while the holder's turn is still open in this process:
+ * forty-five minutes. A turn can run long without writing, and the ten idle
+ * minutes would otherwise hand a live writer's lease to the next Session.
+ */
+export const LEASE_ACTIVE_TURN_GRACE_MS = 45 * 60 * 1000
 
 /** Refusal code for a write while another Session holds the workspace lease. */
 export const WORKSPACE_LEASE_HELD = 'WORKSPACE_LEASE_HELD'
@@ -121,6 +133,8 @@ export interface LeaseGuardOptions {
   readonly idleMs?: number
   /** Hard lifetime cap in milliseconds. */
   readonly maxMs?: number
+  /** Idle window granted while this process's holder keeps a turn open, in milliseconds. */
+  readonly activeTurnGraceMs?: number
 }
 
 /** What the guard remembers about the lease one Session holds. */
@@ -137,6 +151,18 @@ export interface WorkspaceLeaseGuard {
    * @returns a refusal result, or undefined to let the call run.
    */
   beforeTool(exec: ToolDispatchExchange): Promise<ToolExecutionResult | undefined>
+  /**
+   * Record that a Session's turn is open, so its held lease keeps the
+   * active-turn grace until {@link noteTurnEnd}.
+   * @param sessionId - Session whose turn just started.
+   */
+  noteTurnStart(sessionId: string): void
+  /**
+   * Record that a Session's turn closed, dropping its active-turn grace. The
+   * lease itself is released separately, at the turn boundary.
+   * @param sessionId - Session whose turn just ended.
+   */
+  noteTurnEnd(sessionId: string): void
   /**
    * Release the lease one Session holds, if the record is still that Session's.
    * @param sessionId - Session releasing its lease.
@@ -166,8 +192,10 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
   const mode = options.mode ?? 'enforce'
   const idleMs = options.idleMs ?? LEASE_IDLE_MS
   const maxMs = options.maxMs ?? LEASE_MAX_MS
+  const activeTurnGraceMs = options.activeTurnGraceMs ?? LEASE_ACTIVE_TURN_GRACE_MS
   const held = new Map<string, HeldLease>()
   const roots = new Map<string, string | undefined>()
+  const openTurns = new Set<string>()
 
   const leasePath = (key: string): string => join(options.home, 'workspaces', key, 'lease.json')
   const auditPath = (): string => join(options.home, 'logs', 'workspace-lease.jsonl')
@@ -195,8 +223,34 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
     await rename(temporary, target)
   }
 
+  /**
+   * Whether this process holds `record` for a Session whose turn is still open.
+   * The host identity is minted once per process, so a record written by another
+   * host or process never inherits the grace.
+   * @param record - lease record under evaluation.
+   * @returns true when the holder is a live in-process turn.
+   */
+  function activeTurnHolder(record: LeaseRecord): boolean {
+    return record.hostId === hostId && record.pid === pid && openTurns.has(record.sessionId)
+  }
+
+  /**
+   * Moment this record becomes reclaimable: its idle expiry, extended to the
+   * active-turn grace while this process's holder keeps a turn open, and never
+   * past the hard lifetime cap.
+   * @param record - lease record under evaluation.
+   * @returns epoch milliseconds of the reclaim moment.
+   */
+  function reclaimAt(record: LeaseRecord): number {
+    const idle = Date.parse(record.idleExpiresAt)
+    const idleWithGrace = activeTurnHolder(record)
+      ? Math.max(idle, Date.parse(record.renewedAt) + activeTurnGraceMs)
+      : idle
+    return Math.min(idleWithGrace, Date.parse(record.maxExpiresAt))
+  }
+
   function expired(record: LeaseRecord): boolean {
-    return now() > Date.parse(record.idleExpiresAt) || now() > Date.parse(record.maxExpiresAt)
+    return now() > reclaimAt(record)
   }
 
   function deadProcess(record: LeaseRecord): boolean {
@@ -224,6 +278,36 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
   function describe(record: LeaseRecord): string {
     return `session ${record.sessionId} acquired ${record.acquiredAt} (last ${record.lastOperation}; `
       + `idle expiry ${record.idleExpiresAt}; maximum life ${record.maxExpiresAt})`
+  }
+
+  /**
+   * Refusal for a fenced writer: name the Session that now owns the lease and
+   * the moment one retry reclaims it, so the conflict is actionable rather than
+   * a permanent stop.
+   * @param root - canonical workspace root the record is keyed by.
+   * @param mine - the lease state this Session remembers holding.
+   * @param current - the record the other Session now owns.
+   * @returns the refusal result with its structured identity.
+   */
+  function lostRefusal(root: string, mine: HeldLease, current: LeaseRecord): ToolExecutionResult {
+    const reclaim = reclaimAt(current)
+    const retryAfterMs = Math.max(0, reclaim - now())
+    return refusal(
+      WORKSPACE_LEASE_LOST,
+      `WORKSPACE_LEASE_LOST\nworkspace:  ${root}\nholder:     ${describe(current)}\n`
+      + `lease generation ${String(current.generation)} replaced ${String(mine.generation)}; another Session now holds `
+      + `the write lease. The record becomes reclaimable in ${String(Math.ceil(retryAfterMs / 1000))}s (at `
+      + `${new Date(reclaim).toISOString()}), and an expired record is reclaimed automatically on your `
+      + 'next write: retry once after that moment and this write proceeds. If the holder\'s turn is still running, '
+      + 'wait for it to end first; report the conflict only if a retry after that moment is still refused.',
+      {
+        root,
+        holderSessionId: current.sessionId,
+        holderOperation: current.lastOperation,
+        idleExpiresAt: current.idleExpiresAt,
+        retryAfterMs,
+      },
+    )
   }
 
   function recordFor(root: string, sessionId: string, generation: number, operation: string): LeaseRecord {
@@ -293,11 +377,7 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
       if (activeForeignHolder) {
         await audit({ event: 'lost', workspace: root, sessionId, operation: exec.name, generation: mine.generation })
         if (mode === 'observe') return undefined
-        return refusal(
-          WORKSPACE_LEASE_LOST,
-          `WORKSPACE_LEASE_LOST\nworkspace:  ${root}\nlease generation ${String(current?.generation ?? 0)} replaced `
-          + `${String(mine.generation)}; another Session now holds the write lease. Report the conflict; do not write.`,
-        )
+        return lostRefusal(root, mine, current)
       }
       const generation = (current?.generation ?? mine.generation) + 1
       await writeRecord(key, recordFor(root, sessionId, generation, exec.name))
@@ -324,13 +404,13 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
         holder: current.sessionId, generation: current.generation,
       })
       if (mode === 'observe') return undefined
-      const idleExpiresMs = Date.parse(current.idleExpiresAt)
-      const retryAfterMs = Math.max(0, idleExpiresMs - now())
+      const reclaim = reclaimAt(current)
+      const retryAfterMs = Math.max(0, reclaim - now())
       return refusal(
         WORKSPACE_LEASE_HELD,
         `WORKSPACE_LEASE_HELD\nworkspace:  ${root}\nholder:     ${describe(current)}\n`
-        + `The holder's lease frees when its turn ends, or at latest ${current.idleExpiresAt} (in `
-        + `${Math.ceil(retryAfterMs / 1000)}s). This is temporary: retry once after that moment and the `
+        + `The holder's lease frees when its turn ends, or at latest ${new Date(reclaim).toISOString()} (in `
+        + `${String(Math.ceil(retryAfterMs / 1000))}s). This is temporary: retry once after that moment and the `
         + 'expired record is reclaimed automatically. Only escalate if a retry after the expiry is still '
         + 'refused; do not retry in a loop.',
         {
@@ -360,6 +440,14 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
     return undefined
   }
 
+  function noteTurnStart(sessionId: string): void {
+    openTurns.add(sessionId)
+  }
+
+  function noteTurnEnd(sessionId: string): void {
+    openTurns.delete(sessionId)
+  }
+
   async function release(sessionId: string, operation: string): Promise<boolean> {
     const mine = held.get(sessionId)
     if (mine === undefined) return false
@@ -371,13 +459,14 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
     return true
   }
 
-  return { beforeTool, release }
+  return { beforeTool, release, noteTurnStart, noteTurnEnd }
 }
 
 /**
- * Mount the guard on a plugin context: refuse conflicting writes, release a
- * Session's lease when its turn ends, and release it again on disposal for a
- * turn that never reaches its end event.
+ * Mount the guard on a plugin context: refuse conflicting writes, track each
+ * Session's open turn so its lease keeps the active-turn grace, release a
+ * Session's lease when its turn ends, when it is archived, and again on
+ * disposal for a turn that never reaches its end event.
  * @param ctx - plugin context that provides tools and carries the workspace registry.
  * @param options - home, clock, identity, mode, and lease windows.
  * @returns the mounted guard.
@@ -390,20 +479,56 @@ export function mountWorkspaceLease(ctx: Context, options: LeaseGuardOptions): W
       : { name: exec.name, agent: exec.agent, arguments: exec.arguments }
     const decision = await guard.beforeTool(exchange)
     if (decision !== undefined) return decision
-    return next()
+    const result = await next()
+    // An archive succeeded, so the archived Session can never write again: drop
+    // its lease now instead of waiting for an idle expiry that no turn will end.
+    const archived = archivedSessionOf(exec)
+    if (archived !== undefined && !result.isError) {
+      try {
+        await guard.release(archived, 'session archived')
+      } catch (error: unknown) {
+        ctx.logger.warn(
+          'workspace-tools: lease release after archiving %s failed: %s',
+          archived,
+          error instanceof Error ? error.message : String(error),
+        )
+      }
+    }
+    return result
   })
   ctx.on('session/event', (session: Session, event: SessionEvent): void => {
+    const sessionId = String(session.id)
+    if (event.type === 'turn/start') {
+      guard.noteTurnStart(sessionId)
+      return
+    }
     if (event.type !== 'turn/end') return
+    guard.noteTurnEnd(sessionId)
     // The turn has irrevocably ended (agent-loop appends `turn/end` only after
     // `agent/turn-stopping` lets it close), so no further write of this turn
     // can follow. `agent/turn-stopping` is not a release point: the reply gate
     // can steer or veto there and the same turn keeps running.
-    void guard.release(String(session.id), 'turn end')
+    void guard.release(sessionId, 'turn end')
   })
   ctx.on('agent/disposed', ({ agent }) => {
     void guard.release(String(agent.session.id), 'session disposed')
   })
   return guard
+}
+
+/**
+ * The Session a `workspace_sessions` archive call archived, when this call is
+ * one. The caller may archive another Session, so the target is the argument,
+ * not the calling Session.
+ * @param exec - dispatch view of the call.
+ * @returns the archived Session id, or undefined for any other call.
+ */
+function archivedSessionOf(exec: ToolDispatchExecution): string | undefined {
+  if (exec.name !== 'workspace_sessions') return undefined
+  const args = exec.arguments as { action?: unknown; sessionId?: unknown } | null | undefined
+  if (args?.action !== 'archive') return undefined
+  const sessionId = args.sessionId
+  return typeof sessionId === 'string' && sessionId.trim() !== '' ? sessionId.trim() : undefined
 }
 
 /**
