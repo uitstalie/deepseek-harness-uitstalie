@@ -235,7 +235,8 @@ export class PlusAdapter extends LlmAdapter {
         // 按源尺寸与预算算保持宽高比的投影尺寸（与请求计价同一套几何）
         const variant = await attachments.readImageRequest(ref, {
           ...requestImageDimensions(ref.width, ref.height, policy.maxPixels),
-          maxBytes: policy.maxBytes,
+          maxImageBytes: policy.maxBytes,
+          imageTargetBytes: policy.maxBytes,
         })
         return { base64: toBase64(variant.data), mediaType: variant.mediaType }
       }

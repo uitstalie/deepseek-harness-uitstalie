@@ -486,8 +486,8 @@ test('route requestImagePolicy projects images through the attachment seam', asy
   const ref = { attachmentId: 'att-1', mediaType: 'image/png', bytes: 9, width: 3, height: 3 } as never
   ctx[Context.root].provide('attachments', {
     readImage: () => { calls.push('readImage'); return Promise.resolve({ ref, data: new Uint8Array([9, 9, 9]) }) },
-    readImageRequest: (r: never, target: { width: number; height: number; maxBytes: number }) => {
-      calls.push(`readImageRequest:${target.width}x${target.height}/${target.maxBytes}`)
+    readImageRequest: (r: never, target: { width: number; height: number; maxImageBytes: number }) => {
+      calls.push(`readImageRequest:${target.width}x${target.height}/${target.maxImageBytes}`)
       return Promise.resolve({ variantId: 'v1', attachment: r, data: new Uint8Array([1, 2, 3]), mediaType: 'image/png', bytes: 3, width: 1, height: 1, depth: 'uchar', space: 'srgb' })
     },
   })

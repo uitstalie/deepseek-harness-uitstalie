@@ -35,6 +35,7 @@ import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandb
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type {} from '@deepseek-ai/dsh-working-directory'
 
 export { SANDBOX_MODES, setSandboxMode } from './session-mode.ts'
 export { HOME_WRITE_TOOL_NAME, homeWriteTool } from './home-write-tool.ts'
@@ -378,7 +379,8 @@ export class SandboxPolicyService extends Service {
 
   /** The session's recorded cwd, or the configured root, as the workspace-write boundary. */
   private sessionWorkspaceRoot(session: Session | undefined): string {
-    const cwd = session?.header.cwd
+    if (session === undefined) return this.workspaceRoot
+    const cwd = this.ctx.get('workingDirectory')?.get(session) ?? session.header.cwd
     if (cwd === undefined) return this.workspaceRoot
     if (!isExecutionWorldPath(cwd)) {
       throw new SandboxInvalidRootError(cwd, 'the Session working directory must be an absolute execution-world path without NUL bytes', 'sandbox workspace root')

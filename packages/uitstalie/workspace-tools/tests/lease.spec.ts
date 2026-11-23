@@ -14,6 +14,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm/types'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import SessionProjections from '@deepseek-ai/dsh-session-projection'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
@@ -59,7 +60,7 @@ function agentOf(sessionId: string): Agent {
  * the flush for the release work the event started.
  */
 function emitSessionEvent(sessionId: string, event: { type: string; time: number; data: unknown }): Promise<unknown> {
-  const session = { id: sessionId, header: { cwd: project } }
+  const session = { id: sessionId, header: { cwd: project }, snapshotEvents: () => [], inheritedEventCount: 0 }
   turnEndReleases = []
   for (const listener of sessionEventListeners) listener(session, event)
   return Promise.allSettled(turnEndReleases)
@@ -68,6 +69,7 @@ function emitSessionEvent(sessionId: string, event: { type: string; time: number
 /** Mount the registry, the native executor, a write tool, a read tool, and the guard. */
 async function mount(options: { mode?: 'enforce' | 'observe'; activeTurnGraceMs?: number } = {}): Promise<void> {
   ctx = new Context()
+  await ctx.plugin(SessionProjections)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(NativeToolExecutor)
@@ -502,6 +504,7 @@ describe('archive releases the lease', () => {
    */
   async function mountProductionOnly(): Promise<void> {
     ctx = new Context()
+    await ctx.plugin(SessionProjections)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(NativeToolExecutor)
@@ -615,7 +618,7 @@ describe('mountWorkspaceLease wiring', () => {
   it('releases through the real session/event wiring on turn end and audits the operation', async () => {
     await mountProductionWiring()
     await run('write', agentOf('s1'))
-    ctx.emit('session/event', { id: 's1', header: { cwd: project } } as never, {
+    ctx.emit('session/event', { id: 's1', header: { cwd: project }, snapshotEvents: () => [], inheritedEventCount: 0 } as never, {
       type: 'turn/end', seq: 0, time: clock, data: { turn: 1, reason: { kind: 'completed' } },
     } as never)
     // The production listener releases without awaiting; let it settle.

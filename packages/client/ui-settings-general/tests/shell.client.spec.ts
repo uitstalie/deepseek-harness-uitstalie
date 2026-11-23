@@ -48,7 +48,9 @@ const CHILD_NAMES = Object.keys(CHILD_SPECS) as Array<keyof typeof CHILD_SPECS>
  */
 // BEGIN uitstalie-deepseek-flash, 2026/10/26, DH-15, 分支 JIRA 段退场后只保留能力总代段
 const PRODUCT_SECTIONS: readonly string[] = [
-  'general', 'models', 'models-dev', 'plugins', 'agent-presets', 'capabilities',
+  'general', 'models', 'models-dev', 'plugins', 'agent-presets', 'remote-connection',
+  // uitstalie-deepseek-flash, 2026/10/26, DH-12: ui-dafeiyu adds `capabilities` at order 150.
+  'capabilities',
   // uitstalie-deepseek-flash, 2026/10/28, DH-316, DH-310 的 memory 段进入 roster
   'memory',
 ]

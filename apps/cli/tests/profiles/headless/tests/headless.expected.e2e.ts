@@ -9,6 +9,7 @@ import {
   normalizeSessionLog,
   normalizeSessionSnapshot,
   normalizeSessionSnapshots,
+  REPLAY_CREDENTIAL_ENV,
   normalizeStdout,
   scrubModelRequestBulk,
   type NormalizeContext,
@@ -395,6 +396,7 @@ describe('headless stream-json snapshots', () => {
       binArgs: ['headless', '--patch', headlessOverlayPath, task],
       tsconfigPath,
       env: {
+        ...REPLAY_CREDENTIAL_ENV,
         DSH_PERMISSION_MODE: 'danger-full-access',
         DSH_TELEMETRY_DISABLED: '1',
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
@@ -693,6 +695,7 @@ describe('headless stream-json snapshots', () => {
       binArgs: [retryConfigPath, prompt],
       tsconfigPath,
       env: {
+        ...REPLAY_CREDENTIAL_ENV,
         DSH_SNAPSHOT: 'replay',
         NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
       },
@@ -1319,6 +1322,7 @@ describe('headless stream-json snapshots', () => {
       binArgs: [goalConfigPath, prompt],
       tsconfigPath,
       env: {
+        ...REPLAY_CREDENTIAL_ENV,
         DSH_SNAPSHOT: 'replay',
         DSH_SNAPSHOT_FILE: join(goalScenarioDir, 'session.jsonl'),
         DSH_SNAPSHOT_OVERRIDE: join(goalScenarioDir, 'replay.override.json'),
@@ -1379,6 +1383,7 @@ describe('headless stream-json snapshots', () => {
       binArgs: [settlementConfigPath, task],
       tsconfigPath,
       env: {
+        ...REPLAY_CREDENTIAL_ENV,
         // The override fully supplies the parent script; the child fixture
         // remains separate so replay binds it to the fresh child Session.
         DSH_SNAPSHOT_FILE: parentReplay,

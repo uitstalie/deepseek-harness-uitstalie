@@ -11,12 +11,12 @@ import { createPluginProfile } from '../src/project-manager.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 import { createScratchHome, removeScratchHome, scratchHomeEnvironment } from './scratch-home.ts'
 
-const OFFICE_SKILLS = ['office', 'office-docx', 'office-pptx', 'office-xlsx']
+const OFFICE_SKILLS = ['office']
 
 /**
- * Require each bundled Office skill to be listed and loaded with a nonempty body.
+ * Require the bundled `office` skill to be listed and loaded with a nonempty body.
  * @param results - Host probe results; `bytes` is the loaded body length, 0 when unlisted or not loaded.
- * @throws Error listing every result when a bundled Office skill is missing or empty.
+ * @throws Error listing every result when the bundled `office` skill is missing or empty.
  */
 export function assertOfficeSkillsLoadable(results: ReadonlyArray<{ readonly name: string; readonly bytes: number }>): void {
   if (!OFFICE_SKILLS.every(name => results.some(skill => skill.name === name && skill.bytes > 0))) {
