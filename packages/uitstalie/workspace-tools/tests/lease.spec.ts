@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -24,6 +24,7 @@ import {
   WORKSPACE_LEASE_LOST,
   classifyLeaseTool,
   createWorkspaceLeaseGuard,
+  mountWorkspaceLease,
 } from '../src/lease.ts'
 import type { WorkspaceLeaseGuard } from '../src/lease.ts'
 
@@ -399,5 +400,53 @@ describe('expiry, reclaim, fencing, and release', () => {
     const result = await run('write', agentOf('s2'), 'c2')
     const info = result.error?.info as Record<string, unknown> | undefined
     if (info !== undefined) expect(Number(info.retryAfterMs)).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe('mountWorkspaceLease wiring', () => {
+  /**
+   * Mount the production wiring — `mountWorkspaceLease`, not a re-implementation
+   * of its listeners — over the shared ctx, so the registered `session/event`
+   * and `agent/disposed` handlers are the ones the tests exercise.
+   */
+  async function mountProductionWiring(): Promise<void> {
+    await mount()
+    sessionEventListeners = []
+    turnEndReleases = []
+    mountWorkspaceLease(ctx, {
+      home,
+      now: () => clock,
+      hostId: 'test-host',
+      pid: 4242,
+      mode: 'enforce',
+      idleMs: LEASE_IDLE_MS,
+    })
+  }
+
+  it('releases through the real session/event wiring on turn end and audits the operation', async () => {
+    await mountProductionWiring()
+    await run('write', agentOf('s1'))
+    ctx.emit('session/event', { id: 's1', header: { cwd: project } } as never, {
+      type: 'turn/end', seq: 0, time: clock, data: { turn: 1, reason: { kind: 'completed' } },
+    } as never)
+    // The production listener releases without awaiting; let it settle.
+    await vi.waitFor(async () => {
+      expect(await record()).toBeUndefined()
+    })
+    const released = (await auditLines()).filter(line => line.event === 'released')
+    expect(released).toHaveLength(1)
+    expect(released[0]).toMatchObject({ sessionId: 's1', operation: 'turn end' })
+    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
+  })
+
+  it('releases through the real agent/disposed wiring', async () => {
+    await mountProductionWiring()
+    await run('write', agentOf('s1'))
+    ctx.emit('agent/disposed', { agent: agentOf('s1') } as never)
+    await vi.waitFor(async () => {
+      expect(await record()).toBeUndefined()
+    })
+    const released = (await auditLines()).filter(line => line.event === 'released')
+    expect(released.at(-1)).toMatchObject({ sessionId: 's1', operation: 'session disposed' })
   })
 })
