@@ -10,12 +10,14 @@
  * `$DSH_HOME/logs/workspace-lease.jsonl`.
  *
  * A lease is held by a Session, not by one call or one turn, so a multi-step
- * edit does not reacquire. It expires after ten idle minutes or eight hours of
- * total life, whichever comes first; an expired or stale record is reclaimed by
- * the next writer. Every acquisition and reclaim bumps a fencing generation,
- * and a holder whose generation moved on is refused while another Session owns
- * the lease; once that record is gone, expired, or its process is dead, the
- * fenced holder reclaims it and continues.
+ * edit does not reacquire. It is released when the holder's turn ends or the
+ * Session is disposed; it expires after ten idle minutes or eight hours of
+ * total life, whichever comes first, as the fallback for a holder that never
+ * reaches a turn boundary (a crashed host or a disposed listener). An expired
+ * or stale record is reclaimed by the next writer. Every acquisition and
+ * reclaim bumps a fencing generation, and a holder whose generation moved on
+ * is refused while another Session owns the lease; once that record is gone,
+ * expired, or its process is dead, the fenced holder reclaims it and continues.
  *
  * @module @deepseek-ai/dsh-workspace-tools/lease
  */
@@ -25,7 +27,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { Session } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ToolDispatchExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { realpathNormalize } from '@deepseek-ai/dsh-workspace'
@@ -137,10 +139,11 @@ export interface WorkspaceLeaseGuard {
   beforeTool(exec: ToolDispatchExchange): Promise<ToolExecutionResult | undefined>
   /**
    * Release the lease one Session holds, if the record is still that Session's.
-   * @param sessionId - Session being disposed.
+   * @param sessionId - Session releasing its lease.
+   * @param operation - audit label for why the lease was released.
    * @returns true when a record was removed.
    */
-  release(sessionId: string): Promise<boolean>
+  release(sessionId: string, operation: string): Promise<boolean>
 }
 
 /** The dispatch fields the guard reads. */
@@ -151,7 +154,7 @@ const PROCESS_HOST_ID = randomUUID()
 
 /**
  * Build the guard. One instance per host process; the plugin registers it on
- * `tools/execute` and releases through `agent/disposed`.
+ * `tools/execute` and releases on `session/event` turn ends and `agent/disposed`.
  * @param ctx - plugin context that carries the workspace registry.
  * @param options - home, clock, identity, mode, and lease windows.
  * @returns the guard.
@@ -206,11 +209,15 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
     }
   }
 
-  function refusal(code: string, text: string): ToolExecutionResult {
+  function refusal(
+    code: string,
+    text: string,
+    info: Record<string, unknown> = {},
+  ): ToolExecutionResult {
     return {
       content: [{ type: 'text', text }],
       isError: true,
-      error: { message: text, info: { name: 'WorkspaceLeaseError', code } },
+      error: { message: text, info: { name: 'WorkspaceLeaseError', code, ...info } },
     }
   }
 
@@ -317,10 +324,22 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
         holder: current.sessionId, generation: current.generation,
       })
       if (mode === 'observe') return undefined
+      const idleExpiresMs = Date.parse(current.idleExpiresAt)
+      const retryAfterMs = Math.max(0, idleExpiresMs - now())
       return refusal(
         WORKSPACE_LEASE_HELD,
         `WORKSPACE_LEASE_HELD\nworkspace:  ${root}\nholder:     ${describe(current)}\n`
-        + 'Another Session holds this workspace\'s write lease. Report the conflict; do not retry or write.',
+        + `The holder's lease frees when its turn ends, or at latest ${current.idleExpiresAt} (in `
+        + `${Math.ceil(retryAfterMs / 1000)}s). This is temporary: retry once after that moment and the `
+        + 'expired record is reclaimed automatically. Only escalate if a retry after the expiry is still '
+        + 'refused; do not retry in a loop.',
+        {
+          root,
+          holderSessionId: current.sessionId,
+          holderOperation: current.lastOperation,
+          idleExpiresAt: current.idleExpiresAt,
+          retryAfterMs,
+        },
       )
     }
 
@@ -341,14 +360,14 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
     return undefined
   }
 
-  async function release(sessionId: string): Promise<boolean> {
+  async function release(sessionId: string, operation: string): Promise<boolean> {
     const mine = held.get(sessionId)
     if (mine === undefined) return false
     held.delete(sessionId)
     const current = await readRecord(mine.key)
     if (current === undefined || current.sessionId !== sessionId || current.generation !== mine.generation) return false
     await rm(leasePath(mine.key), { force: true })
-    await audit({ event: 'released', workspace: current.root, sessionId, operation: 'session disposed', generation: current.generation })
+    await audit({ event: 'released', workspace: current.root, sessionId, operation, generation: current.generation })
     return true
   }
 
@@ -356,8 +375,9 @@ export function createWorkspaceLeaseGuard(ctx: Context, options: LeaseGuardOptio
 }
 
 /**
- * Mount the guard on a plugin context: refuse conflicting writes and release a
- * disposed Session's lease.
+ * Mount the guard on a plugin context: refuse conflicting writes, release a
+ * Session's lease when its turn ends, and release it again on disposal for a
+ * turn that never reaches its end event.
  * @param ctx - plugin context that provides tools and carries the workspace registry.
  * @param options - home, clock, identity, mode, and lease windows.
  * @returns the mounted guard.
@@ -372,8 +392,16 @@ export function mountWorkspaceLease(ctx: Context, options: LeaseGuardOptions): W
     if (decision !== undefined) return decision
     return next()
   })
+  ctx.on('session/event', (session: Session, event: SessionEvent): void => {
+    if (event.type !== 'turn/end') return
+    // The turn has irrevocably ended (agent-loop appends `turn/end` only after
+    // `agent/turn-stopping` lets it close), so no further write of this turn
+    // can follow. `agent/turn-stopping` is not a release point: the reply gate
+    // can steer or veto there and the same turn keeps running.
+    void guard.release(String(session.id), 'turn end')
+  })
   ctx.on('agent/disposed', ({ agent }) => {
-    void guard.release(String(agent.session.id))
+    void guard.release(String(agent.session.id), 'session disposed')
   })
   return guard
 }
