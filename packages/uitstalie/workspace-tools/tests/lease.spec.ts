@@ -1,8 +1,8 @@
 /**
- * Workspace write lease coverage: classification, acquisition, conflict,
- * reclaim with fencing, release, observe mode, and the audit trail. Every test
- * owns a temporary harness home and a temporary checkout directory, so no test
- * writes into the real `$DSH_HOME`.
+ * Workspace write lease coverage: classification, tool-level acquisition and
+ * release, the FIFO queue, wait timeout, cancellation, reclaim, re-entry, and
+ * the audit trail. Every test owns a temporary harness home and a temporary
+ * checkout directory, so no test writes into the real `$DSH_HOME`.
  */
 import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
@@ -21,99 +21,146 @@ import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { defineContentToolFixture, executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import {
-  LEASE_ACTIVE_TURN_GRACE_MS,
   LEASE_IDLE_MS,
   LEASE_MAX_MS,
   WORKSPACE_LEASE_HELD,
   WORKSPACE_LEASE_LOST,
+  WORKSPACE_LEASE_QUEUE_TIMEOUT,
   classifyLeaseTool,
   createWorkspaceLeaseGuard,
   hasExplicitLeaseClass,
   mountWorkspaceLease,
 } from '../src/lease.ts'
-import type { WorkspaceLeaseGuard } from '../src/lease.ts'
+import type { LeaseGuardOptions } from '../src/lease.ts'
 
-const signal = new AbortController().signal
+const defaultSignal = new AbortController().signal
 
 let home: string
 let project: string
 let ctx: Context
-let guard: WorkspaceLeaseGuard
-let writes: string[]
-let clock: number
+/** Session ids whose tool body started, in the order they entered the body. */
+let entered: string[]
+/** Bodies currently running, and the highest number that ever ran at once. */
+let running: number
+let maxRunning: number
+/** Bodies waiting on a hold, keyed by Session id. */
+let holds: Map<string, { promise: Promise<void>; release: () => void }>
+/** Resolvers waiting for the next body to start. */
+let enterWaiters: Array<() => void>
 
-/** `session/event` listeners the current mount registered, for `emitSessionEvent`. */
-let sessionEventListeners: Array<(session: { id: string }, event: { type: string; time: number; data: unknown }) => void> = []
+/** Wake every waiter that is polling for the next body start. */
+function notifyEnter(): void {
+  for (const waiter of enterWaiters.splice(0)) waiter()
+}
 
 /**
- * Release promises the current mount's `session/event` listener has started and
- * not awaited; `flushTurnEndReleases` settles them before assertions.
+ * Block one Session's tool body until {@link releaseBody}, so a test can hold
+ * the lease while it exercises the queue.
+ * @param sessionId - Session whose next body waits.
  */
-let turnEndReleases: Array<Promise<unknown>> = []
+function holdBody(sessionId: string): void {
+  let release!: () => void
+  const promise = new Promise<void>((resolveHold) => { release = () => { resolveHold() } })
+  holds.set(sessionId, { promise, release })
+}
+
+/**
+ * Let a held body finish.
+ * @param sessionId - Session whose body is waiting.
+ */
+function releaseBody(sessionId: string): void {
+  holds.get(sessionId)?.release()
+  holds.delete(sessionId)
+}
+
+/**
+ * Wait until at least `count` tool bodies have started.
+ * @param count - number of started bodies to observe.
+ */
+async function waitForEnter(count: number): Promise<void> {
+  while (entered.length < count) {
+    await new Promise<void>((resolveWait) => { enterWaiters.push(resolveWait) })
+  }
+}
+
+/** Whether the archive fixture fails its call. */
+let archiveFails = false
 
 /** One fake Agent carrying only the Session identity and cwd the guard reads. */
 function agentOf(sessionId: string): Agent {
   return { session: { id: sessionId, header: { cwd: project } } } as unknown as Agent
 }
 
-/**
- * Deliver one session event to the listeners the mounted guard registered,
- * mirroring how agent-loop emits `session/event` (fire-and-forget), and return
- * the flush for the release work the event started.
- */
-function emitSessionEvent(sessionId: string, event: { type: string; time: number; data: unknown }): Promise<unknown> {
-  const session = { id: sessionId, header: { cwd: project }, snapshotEvents: () => [], inheritedEventCount: 0 }
-  turnEndReleases = []
-  for (const listener of sessionEventListeners) listener(session, event)
-  return Promise.allSettled(turnEndReleases)
+/** The Session-shaped object the `session/event` listeners receive. */
+function sessionOf(sessionId: string): never {
+  return { id: sessionId, header: { cwd: project }, snapshotEvents: () => [], inheritedEventCount: 0 } as never
 }
 
-/** Mount the registry, the native executor, a write tool, a read tool, and the guard. */
-async function mount(options: { mode?: 'enforce' | 'observe'; activeTurnGraceMs?: number } = {}): Promise<void> {
+/**
+ * Mount the registry, the native executor, a write tool, a read tool, a shell
+ * tool, the archive tool, and the production lease wiring.
+ * @param options - lease mode, queue window, poll interval, and clock.
+ */
+async function mount(options: {
+  mode?: 'enforce' | 'observe'
+  queueTimeoutMs?: number
+  pollMs?: number
+  now?: () => number
+  idleMs?: number
+  maxMs?: number
+} = {}): Promise<void> {
   ctx = new Context()
   await ctx.plugin(SessionProjections)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(NativeToolExecutor)
-  sessionEventListeners = []
-  turnEndReleases = []
-  guard = createWorkspaceLeaseGuard(ctx, {
+  holds = new Map()
+  enterWaiters = []
+  const leaseOptions: LeaseGuardOptions = {
     home,
-    now: () => clock,
     hostId: 'test-host',
     pid: 4242,
     mode: options.mode ?? 'enforce',
-    idleMs: LEASE_IDLE_MS,
-    ...options.activeTurnGraceMs === undefined ? {} : { activeTurnGraceMs: options.activeTurnGraceMs },
-  })
-  // The spec's own mount wires the same `session/event` → release rule that
-  // `mountWorkspaceLease` registers in production, captured so
-  // `emitSessionEvent` can flush the release before assertions.
-  sessionEventListeners.push((session, event) => {
-    if (event.type === 'turn/start') {
-      guard.noteTurnStart(session.id)
-      return
-    }
-    if (event.type !== 'turn/end') return
-    guard.noteTurnEnd(session.id)
-    const release = guard.release(session.id, 'turn end')
-    turnEndReleases.push(release)
-    void release
-  })
-  ctx.on('tools/execute', async (exec, next) => {
-    const decision = await guard.beforeTool(exec.agent === undefined
-      ? { name: exec.name, arguments: exec.arguments }
-      : { name: exec.name, agent: exec.agent, arguments: exec.arguments })
-    if (decision !== undefined) return decision
-    return next()
-  })
+    idleMs: options.idleMs ?? LEASE_IDLE_MS,
+    queueTimeoutMs: options.queueTimeoutMs ?? 5000,
+    pollMs: options.pollMs ?? 50,
+    heartbeatMs: 0,
+    ...(options.maxMs === undefined ? {} : { maxMs: options.maxMs }),
+    ...(options.now === undefined ? {} : { now: options.now }),
+  }
+  mountWorkspaceLease(ctx, leaseOptions)
+  const record = (sessionId: string): void => {
+    entered.push(sessionId)
+    running += 1
+    maxRunning = Math.max(maxRunning, running)
+    notifyEnter()
+  }
+  const settle = (): void => {
+    running -= 1
+  }
+  const body = async (sessionId: string, args: { file?: string }): Promise<void> => {
+    record(sessionId)
+    const hold = holds.get(sessionId)
+    if (hold !== undefined) await hold.promise
+    if (args.file !== undefined) await writeFile(join(project, args.file), sessionId)
+    settle()
+  }
   ctx.tools.register(defineContentToolFixture({
     name: 'write',
     description: 'records one write',
-    parameters: {},
-    execute(_args, exec) {
-      writes.push(String(exec.agent?.session.id))
-      return Promise.resolve([{ type: 'text', text: 'wrote' }])
+    parameters: { file: { type: 'string' } },
+    async execute(args, exec) {
+      await body(String(exec.agent?.session.id), args)
+      return [{ type: 'text', text: 'wrote' }]
+    },
+  }))
+  ctx.tools.register(defineContentToolFixture({
+    name: 'pwsh',
+    description: 'runs one command',
+    parameters: { file: { type: 'string' } },
+    async execute(args, exec) {
+      await body(String(exec.agent?.session.id), args)
+      return [{ type: 'text', text: 'ran' }]
     },
   }))
   ctx.tools.register(defineContentToolFixture({
@@ -122,17 +169,37 @@ async function mount(options: { mode?: 'enforce' | 'observe'; activeTurnGraceMs?
     parameters: {},
     execute() { return Promise.resolve([{ type: 'text', text: 'read' }]) },
   }))
+  ctx.tools.register(defineContentToolFixture({
+    name: 'workspace_sessions',
+    description: 'archives one Session',
+    parameters: { action: { type: 'string', required: true }, sessionId: { type: 'string' } },
+    execute(args) {
+      if (archiveFails) throw new Error('archive refused')
+      return Promise.resolve([{ type: 'text', text: `archived ${String(args.sessionId)}` }])
+    },
+  }))
 }
 
 /** Run one tool call as the given Session. */
-function run(name: string, agent: Agent, id = 'c1', args: unknown = {}): Promise<ToolExecutionResult> {
+function run(
+  name: string,
+  agent: Agent,
+  id = 'c1',
+  args: unknown = {},
+  signal: AbortSignal = defaultSignal,
+): Promise<ToolExecutionResult> {
   return executeToolFixture(ctx, { callId: brandString<ToolCallId>(id), name, arguments: args, signal, agent })
+}
+
+/** The key of the checkout the guard resolved, discovered from the records it wrote. */
+async function leaseKey(): Promise<string | undefined> {
+  const directories = await readdir(join(home, 'workspaces')).catch(() => [] as string[])
+  return directories.find(name => name.startsWith('lease-'))
 }
 
 /** Read the lease record the guard wrote, or undefined when no record remains. */
 async function record(): Promise<Record<string, unknown> | undefined> {
-  const directories = await readdir(join(home, 'workspaces'))
-  const key = directories.find(name => name.startsWith('lease-'))
+  const key = await leaseKey()
   if (key === undefined) return undefined
   try {
     const parsed: unknown = JSON.parse(await readFile(join(home, 'workspaces', key, 'lease.json'), 'utf8'))
@@ -141,6 +208,31 @@ async function record(): Promise<Record<string, unknown> | undefined> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
     throw error
   }
+}
+
+/** Read the queue file's entries, or an empty list when no queue exists. */
+async function queueEntries(): Promise<Record<string, unknown>[]> {
+  const key = await leaseKey()
+  if (key === undefined) return []
+  try {
+    const parsed = JSON.parse(await readFile(join(home, 'workspaces', key, 'lease-queue.json'), 'utf8')) as {
+      entries?: Record<string, unknown>[]
+    }
+    return parsed.entries ?? []
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
+}
+
+/**
+ * Wait until the queue holds exactly `depth` entries.
+ * @param depth - expected queue depth.
+ */
+async function waitForQueueDepth(depth: number): Promise<void> {
+  await vi.waitFor(async () => {
+    expect(await queueEntries()).toHaveLength(depth)
+  }, { timeout: 20000, interval: 10 })
 }
 
 /** Read the audit lines written so far. */
@@ -175,13 +267,15 @@ async function exitedPid(): Promise<number> {
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), 'dsh-lease-home-'))
   project = await mkdtemp(join(tmpdir(), 'dsh-lease-project-'))
-  writes = []
-  clock = Date.now()
+  entered = []
+  running = 0
+  maxRunning = 0
+  archiveFails = false
 })
 
 afterEach(async () => {
-  await rm(home, { recursive: true, force: true })
-  await rm(project, { recursive: true, force: true })
+  await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })
+  await rm(project, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })
 })
 
 describe('lease classification', () => {
@@ -301,473 +395,388 @@ describe('lease classification coverage', () => {
   })
 })
 
-describe('acquisition and conflict', () => {
-  it('the first write acquires, the next one renews, and the record names the holder', async () => {
+describe('tool-level acquisition and release', () => {
+  it('holds the lease only while the tool body runs', async () => {
     await mount()
     expect((await run('write', agentOf('s1'))).isError).toBe(false)
-    expect(writes).toEqual(['s1'])
-    expect(await record()).toMatchObject({ sessionId: 's1', generation: 1 })
-    expect((await run('write', agentOf('s1'), 'c2')).isError).toBe(false)
-    const events = (await auditLines()).map(line => line.event)
-    expect(events).toEqual(['acquired'])
-  })
-
-  it('refuses a second Session with WORKSPACE_LEASE_HELD and never runs its tool', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    const result = await run('write', agentOf('s2'), 'c2')
-    expect(result.isError).toBe(true)
-    expect(result.error?.info?.code).toBe(WORKSPACE_LEASE_HELD)
-    expect(writes).toEqual(['s1'])
-    const denied = (await auditLines()).filter(line => line.event === 'denied')
-    expect(denied).toHaveLength(1)
-    expect(denied[0]).toMatchObject({ workspace: (await record())?.root, sessionId: 's2', holder: 's1', generation: 1 })
-  })
-
-  it('lets another Session read while the lease is held', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    expect((await run('read', agentOf('s2'), 'c2')).isError).toBe(false)
-    expect(writes).toEqual(['s1'])
-  })
-
-  it('never audits a denial for an image read while another Session writes', async () => {
-    await mount()
-    ctx.tools.register(defineContentToolFixture({
-      name: 'read_image',
-      description: 'reads one image',
-      parameters: {},
-      execute() { return Promise.resolve([{ type: 'text', text: 'image' }]) },
-    }))
-    ctx.tools.register(defineContentToolFixture({
-      name: 'pwsh',
-      description: 'runs one command',
-      parameters: {},
-      execute() { return Promise.resolve([{ type: 'text', text: 'ran' }]) },
-    }))
-    await run('write', agentOf('s1'))
-    expect((await run('read_image', agentOf('s2'), 'c2')).isError).toBe(false)
-    expect((await auditLines()).filter(line => line.event === 'denied')).toEqual([])
-    const refused = await run('pwsh', agentOf('s2'), 'c3')
-    expect(refused.isError).toBe(true)
-    expect(refused.error?.info?.code).toBe(WORKSPACE_LEASE_HELD)
-    const denied = (await auditLines()).filter(line => line.event === 'denied')
-    expect(denied).toHaveLength(1)
-    expect(denied[0]).toMatchObject({ operation: 'pwsh', sessionId: 's2', holder: 's1' })
-  })
-
-  it('observe mode audits the conflict and lets the write proceed', async () => {
-    await mount({ mode: 'observe' })
-    await run('write', agentOf('s1'))
-    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
-    expect(writes).toEqual(['s1', 's2'])
-    expect((await auditLines()).filter(line => line.event === 'denied')[0]).toMatchObject({ result: 'observe', holder: 's1' })
-  })
-})
-
-describe('expiry, reclaim, fencing, and release', () => {
-  it('reclaims an idle lease, fences the old holder, and audits both events', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    clock += LEASE_IDLE_MS + 1
-    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2 })
-    const lost = await run('write', agentOf('s1'), 'c3')
-    expect(lost.isError).toBe(true)
-    expect(lost.error?.info?.code).toBe(WORKSPACE_LEASE_LOST)
-    const events = (await auditLines()).map(line => line.event)
-    expect(events).toContain('reclaimed')
-    expect(events).toContain('lost')
-  })
-
-  it('recovers a fenced Session after the new holder releases', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    clock += LEASE_IDLE_MS + 1
-    await run('write', agentOf('s2'), 'c2')
-    expect((await run('write', agentOf('s1'), 'c3')).error?.info?.code).toBe(WORKSPACE_LEASE_LOST)
-
-    expect(await guard.release('s2', 'session disposed')).toBe(true)
-    expect((await run('write', agentOf('s1'), 'c4')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's1', generation: 2 })
-    const reclaimed = (await auditLines()).filter(line => line.event === 'reclaimed').at(-1)
-    expect(reclaimed).toMatchObject({ sessionId: 's1', holder: 'unknown', generation: 2 })
-    expect(writes).toEqual(['s1', 's2', 's1'])
-  })
-
-  it('recovers a fenced Session after the new holder idle-expires', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    clock += LEASE_IDLE_MS + 1
-    await run('write', agentOf('s2'), 'c2')
-    expect((await run('write', agentOf('s1'), 'c3')).error?.info?.code).toBe(WORKSPACE_LEASE_LOST)
-
-    clock += LEASE_IDLE_MS + 1
-    expect((await run('write', agentOf('s1'), 'c4')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's1', generation: 3 })
-    const reclaimed = (await auditLines()).filter(line => line.event === 'reclaimed').at(-1)
-    expect(reclaimed).toMatchObject({ sessionId: 's1', holder: 's2', generation: 3 })
-  })
-
-  it('recovers a fenced Session after the holding process dies', async () => {
-    const deadPid = await exitedPid()
-    await mount()
-    await run('write', agentOf('s1'))
-    clock += LEASE_IDLE_MS + 1
-    const foreign = createWorkspaceLeaseGuard(ctx, {
-      home, now: () => clock, hostId: 'test-host', pid: deadPid, idleMs: LEASE_IDLE_MS,
-    })
-    expect(await foreign.beforeTool({ name: 'write', arguments: {}, agent: agentOf('s2') })).toBeUndefined()
-    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2, pid: deadPid, hostId: 'test-host' })
-
-    expect((await run('write', agentOf('s1'), 'c2')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's1', generation: 3 })
-    const reclaimed = (await auditLines()).filter(line => line.event === 'reclaimed').at(-1)
-    expect(reclaimed).toMatchObject({ sessionId: 's1', holder: 's2', generation: 3 })
-  })
-
-  it('still refuses a fenced Session while the new holder is active', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    clock += LEASE_IDLE_MS + 1
-    await run('write', agentOf('s2'), 'c2')
-    const before = await record()
-
-    const refused = await run('write', agentOf('s1'), 'c3')
-    expect(refused.isError).toBe(true)
-    expect(refused.error?.info?.code).toBe(WORKSPACE_LEASE_LOST)
-    expect(writes).toEqual(['s1', 's2'])
-    expect(await record()).toEqual(before)
-    const lost = (await auditLines()).filter(line => line.event === 'lost')
-    expect(lost.at(-1)).toMatchObject({ sessionId: 's1', generation: 1 })
-  })
-
-  it('observe mode recovers a fenced Session without refusing and reclaims the stale record', async () => {
-    await mount({ mode: 'observe' })
-    await run('write', agentOf('s1'))
-    clock += LEASE_IDLE_MS + 1
-    await run('write', agentOf('s2'), 'c2')
-    clock += LEASE_IDLE_MS + 1
-    expect((await run('write', agentOf('s1'), 'c3')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's1', generation: 3 })
-    const reclaimed = (await auditLines()).filter(line => line.event === 'reclaimed').at(-1)
-    expect(reclaimed).toMatchObject({ sessionId: 's1', holder: 's2', generation: 3 })
-  })
-
-  it('releases a disposed Session lease so another Session can acquire', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    expect(await guard.release('s1', 'session disposed')).toBe(true)
-    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
-    const events = (await auditLines()).map(line => line.event)
-    expect(events).toContain('released')
-    expect(events.filter(event => event === 'acquired')).toHaveLength(2)
-    const released = (await auditLines()).filter(line => line.event === 'released')
-    expect(released.at(-1)).toMatchObject({ sessionId: 's1', operation: 'session disposed' })
-  })
-
-  it('keeps a record when release runs for a Session that holds nothing', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    expect(await guard.release('s2', 'session disposed')).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's1' })
-  })
-
-  it('releases on turn end so another Session acquires immediately, and audits the operation', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    await emitSessionEvent('s1', { type: 'turn/end', time: clock, data: { turn: 1, reason: { kind: 'completed' } } })
+    expect(entered).toEqual(['s1'])
     expect(await record()).toBeUndefined()
-    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's2', generation: 1 })
-    const released = (await auditLines()).filter(line => line.event === 'released')
-    expect(released).toHaveLength(1)
-    expect(released[0]).toMatchObject({ sessionId: 's1', operation: 'turn end' })
+    const events = (await auditLines()).map(line => line.event)
+    expect(events).toEqual(['acquired', 'released'])
+    const released = (await auditLines()).find(line => line.event === 'released')
+    expect(released).toMatchObject({ sessionId: 's1', operation: 'tool end', generation: 1 })
   })
 
-  it('keeps the lease across steps of one turn: turn/end is the release point, not turn/start', async () => {
+  it('makes the second Session wait in the queue instead of refusing it', async () => {
     await mount()
-    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
-    await run('write', agentOf('s1'))
-    await run('write', agentOf('s1'), 'c2')
+    holdBody('s1')
+    const first = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
     expect(await record()).toMatchObject({ sessionId: 's1' })
-    await emitSessionEvent('s1', { type: 'turn/end', time: clock, data: { turn: 1, reason: { kind: 'completed' } } })
-    expect(await record()).toBeUndefined()
+
+    const second = run('write', agentOf('s2'), 'c2')
+    await waitForQueueDepth(1)
+    expect(entered).toEqual(['s1'])
+
+    releaseBody('s1')
+    expect((await first).isError).toBe(false)
+    expect((await second).isError).toBe(false)
+    expect(entered).toEqual(['s1', 's2'])
+    expect(maxRunning).toBe(1)
+    const lines = await auditLines()
+    expect(lines.filter(line => line.event === 'denied')).toEqual([])
+    expect(lines.filter(line => line.event === 'queued')[0]).toMatchObject({ sessionId: 's2', position: 1 })
+    const acquired = lines.filter(line => line.event === 'acquired')
+    expect(acquired.at(-1)).toMatchObject({ sessionId: 's2' })
+    expect(acquired.at(-1)?.['waitMs']).toBeTypeOf('number')
   })
 
-  it('ignores non-turn-end session events', async () => {
+  it('never makes a read wait for a writer', async () => {
     await mount()
-    await run('write', agentOf('s1'))
-    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 2 } })
-    await emitSessionEvent('s1', { type: 'step/end', time: clock, data: {} })
-    expect(await record()).toMatchObject({ sessionId: 's1' })
+    holdBody('s1')
+    const first = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
+    const read = await run('read', agentOf('s2'), 'c2')
+    expect(read.isError).toBe(false)
+    releaseBody('s1')
+    await first
+    expect(await auditLines()).toHaveLength(2)
   })
 
-  it('reports the holder, retry moment, and retryAfterMs in the refusal text and info', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    clock += 120_000
-    const result = await run('write', agentOf('s2'), 'c2')
-    if (!result.isError) throw new Error('expected the held write to be refused')
-    const info = result.error.info
-    if (info === undefined) throw new Error('expected refusal info')
-    expect(info.code).toBe(WORKSPACE_LEASE_HELD)
-    const fields = info as unknown as Record<string, unknown>
-    expect(fields.root).toBeTypeOf('string')
-    expect(fields.holderSessionId).toBe('s1')
-    expect(fields.holderOperation).toBe('write')
-    expect(fields.retryAfterMs).toBe(LEASE_IDLE_MS - 120_000)
-    const text = result.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
-    expect(text).not.toContain('do not retry or write')
-    expect(text).toContain('holder:     session s1')
-    expect(text).toContain(`idle expiry ${String(fields.idleExpiresAt)}`)
-    expect(text).toContain('retry once after that moment')
-    expect(text).toContain('do not retry in a loop')
-    expect(String(fields.idleExpiresAt)).toMatch(/Z$/)
-  })
-
-  it('reports retryAfterMs 0 when the held record is already past its idle expiry moment', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    clock += LEASE_IDLE_MS + 1
-    // s2 reclaims on its own write; instead exercise the boundary via a holder
-    // whose record expired between the expiry check and the refusal: the same
-    // write path reclaims, so simulate the boundary with max-life expiry off
-    // and a fresh read: the refusal only fires while not expired, and the
-    // arithmetic must never go negative.
-    clock -= 1
-    const result = await run('write', agentOf('s2'), 'c2')
-    const info = result.error?.info as Record<string, unknown> | undefined
-    if (info !== undefined) expect(Number(info.retryAfterMs)).toBeGreaterThanOrEqual(0)
-  })
-})
-
-describe('active-turn grace', () => {
-  it('keeps the lease past the idle window while the holder turn is open', async () => {
-    await mount()
-    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
-    await run('write', agentOf('s1'))
-    clock += LEASE_IDLE_MS + 1
+  it('refuses with WORKSPACE_LEASE_HELD when queueing is off', async () => {
+    await mount({ queueTimeoutMs: 0 })
+    holdBody('s1')
+    const first = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
     const refused = await run('write', agentOf('s2'), 'c2')
     expect(refused.isError).toBe(true)
     expect(refused.error?.info?.code).toBe(WORKSPACE_LEASE_HELD)
-    expect(await record()).toMatchObject({ sessionId: 's1', generation: 1 })
-    expect(writes).toEqual(['s1'])
+    const text = refused.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+    expect(text).toContain('WORKSPACE_LEASE_HELD')
+    expect(text).toContain('holder:     session s1')
+    releaseBody('s1')
+    await first
+    expect(entered).toEqual(['s1'])
   })
 
-  it('reclaims the record once the active-turn grace passes', async () => {
-    await mount()
-    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
-    await run('write', agentOf('s1'))
-    clock += LEASE_ACTIVE_TURN_GRACE_MS + 1
+  it('observe mode audits the conflict and runs the write', async () => {
+    await mount({ mode: 'observe' })
+    holdBody('s1')
+    const first = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
     expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2 })
-    expect((await run('write', agentOf('s1'), 'c3')).error?.info?.code).toBe(WORKSPACE_LEASE_LOST)
-  })
-
-  it('still caps the lease at its maximum life while the holder turn is open', async () => {
-    await mount({ activeTurnGraceMs: LEASE_MAX_MS * 2 })
-    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
-    await run('write', agentOf('s1'))
-    clock += LEASE_MAX_MS + 1
-    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2 })
-  })
-
-  it('drops the grace when the holder turn closes', async () => {
-    await mount()
-    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
-    await run('write', agentOf('s1'))
-    guard.noteTurnEnd('s1')
-    clock += LEASE_IDLE_MS + 1
-    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2 })
-  })
-
-  it('does not grant the grace to a record written by another host', async () => {
-    await mount()
-    await emitSessionEvent('s1', { type: 'turn/start', time: clock, data: { turn: 1 } })
-    const foreign = createWorkspaceLeaseGuard(ctx, {
-      home, now: () => clock, hostId: 'other-host', pid: 999, idleMs: LEASE_IDLE_MS,
+    expect((await auditLines()).filter(line => line.event === 'denied')[0]).toMatchObject({
+      result: 'observe', holder: 's1',
     })
-    expect(await foreign.beforeTool({ name: 'write', arguments: {}, agent: agentOf('s1') })).toBeUndefined()
-    clock += LEASE_IDLE_MS + 1
-    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's2', generation: 2 })
-  })
-
-  it('names the holder and the single retry in the LOST refusal', async () => {
-    await mount()
-    await run('write', agentOf('s1'))
-    clock += LEASE_IDLE_MS + 1
-    await run('write', agentOf('s2'), 'c2')
-    const holder = await record()
-    clock += 60_000
-    const lost = await run('write', agentOf('s1'), 'c3')
-    expect(lost.isError).toBe(true)
-    const info: unknown = lost.error?.info
-    expect(info).toMatchObject({
-      code: WORKSPACE_LEASE_LOST,
-      root: holder?.['root'],
-      holderSessionId: 's2',
-      holderOperation: 'write',
-      retryAfterMs: LEASE_IDLE_MS - 60_000,
-    })
-    expect(info).toHaveProperty('idleExpiresAt')
-    const text = lost.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
-    expect(text).toContain('holder:     session s2 acquired')
-    expect(text).toMatch(/idle expiry \d{4}-\d{2}-\d{2}T[0-9:.]+Z/)
-    expect(text).toContain('The record becomes reclaimable in 540s')
-    expect(text).not.toContain('do not write')
-    expect(text).toContain('retry once after that moment')
-    expect(text).toContain("If the holder's turn is still running, wait for it to end first")
+    releaseBody('s1')
+    await first
   })
 })
 
-describe('archive releases the lease', () => {
-  let archiveFails = false
+describe('FIFO queue order', () => {
+  it('grants eight concurrent Sessions in arrival order with no refusal', { timeout: 20_000 }, async () => {
+    await mount()
+    holdBody('s1')
+    const calls = [run('write', agentOf('s1'), 'c1', { file: 's1.txt' })]
+    await waitForEnter(1)
+    for (let index = 2; index <= 8; index += 1) {
+      const sessionId = `s${String(index)}`
+      calls.push(run('write', agentOf(sessionId), `c${String(index)}`, { file: `${sessionId}.txt` }))
+      await waitForQueueDepth(index - 1)
+    }
+    expect(await queueEntries()).toHaveLength(7)
 
-  /**
-   * Mount only the production wiring (`mountWorkspaceLease`), plus the tools the
-   * archive path dispatches, so the release runs through the real wrapper.
-   */
-  async function mountProductionOnly(): Promise<void> {
-    ctx = new Context()
-    await ctx.plugin(SessionProjections)
-    await ctx.plugin(SystemPrompt)
-    await ctx.plugin(ToolRuntime)
-    await ctx.plugin(NativeToolExecutor)
-    writes = []
-    archiveFails = false
-    sessionEventListeners = []
-    turnEndReleases = []
-    guard = mountWorkspaceLease(ctx, {
-      home,
-      now: () => clock,
+    releaseBody('s1')
+    const results = await Promise.all(calls)
+    expect(results.map(result => result.isError)).toEqual([false, false, false, false, false, false, false, false])
+    expect(entered).toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'])
+    expect(maxRunning).toBe(1)
+    for (let index = 1; index <= 8; index += 1) {
+      expect(await readFile(join(project, `s${String(index)}.txt`), 'utf8')).toBe(`s${String(index)}`)
+    }
+    const lines = await auditLines()
+    expect(lines.filter(line => line.event === 'denied')).toEqual([])
+    expect(lines.filter(line => line.event === 'acquired').map(line => line.sessionId))
+      .toEqual(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'])
+    expect(await record()).toBeUndefined()
+    expect(await queueEntries()).toEqual([])
+  })
+
+  it('serializes concurrent pwsh calls one body at a time in arrival order', { timeout: 20_000 }, async () => {
+    await mount()
+    holdBody('s1')
+    const calls = [run('pwsh', agentOf('s1'), 'c1', { file: 's1.sh' })]
+    await waitForEnter(1)
+    for (let index = 2; index <= 4; index += 1) {
+      const sessionId = `s${String(index)}`
+      calls.push(run('pwsh', agentOf(sessionId), `c${String(index)}`, { file: `${sessionId}.sh` }))
+      await waitForQueueDepth(index - 1)
+    }
+    releaseBody('s1')
+    await Promise.all(calls)
+    expect(entered).toEqual(['s1', 's2', 's3', 's4'])
+    expect(maxRunning).toBe(1)
+    const lines = await auditLines()
+    expect(lines.filter(line => line.event === 'denied')).toEqual([])
+    expect(lines.filter(line => line.event === 'acquired').map(line => line.operation))
+      .toEqual(['pwsh', 'pwsh', 'pwsh', 'pwsh'])
+  })
+})
+
+describe('wait timeout, cancellation, and recovery', () => {
+  it('fails with WORKSPACE_LEASE_QUEUE_TIMEOUT and leaves the queue', { timeout: 20_000 }, async () => {
+    await mount({ queueTimeoutMs: 300, pollMs: 20 })
+    holdBody('s1')
+    const first = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
+    const refused = await run('write', agentOf('s2'), 'c2')
+    expect(refused.isError).toBe(true)
+    expect(refused.error?.info?.code).toBe(WORKSPACE_LEASE_QUEUE_TIMEOUT)
+    const info = refused.error?.info as unknown as Record<string, unknown>
+    expect(Number(info.waitMs)).toBeGreaterThanOrEqual(300)
+    expect(info.queuePosition).toBe(1)
+    const text = refused.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+    expect(text).toContain('WORKSPACE_LEASE_QUEUE_TIMEOUT')
+    expect(text).toContain('did not run and left the queue')
+    expect(await queueEntries()).toEqual([])
+    expect((await auditLines()).filter(line => line.event === 'queue_timeout')).toHaveLength(1)
+    expect(entered).toEqual(['s1'])
+
+    // The queue is empty again: the next call takes the lease as soon as the
+    // holder releases it, with no stale entry in front.
+    releaseBody('s1')
+    await first
+    expect((await run('write', agentOf('s3'), 'c3')).isError).toBe(false)
+    expect(entered).toEqual(['s1', 's3'])
+  })
+
+  it('lets a cancelled waiter leave the queue so the next call proceeds', { timeout: 20_000 }, async () => {
+    await mount({ queueTimeoutMs: 5000, pollMs: 25 })
+    holdBody('s1')
+    const first = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
+    const cancelled = new AbortController()
+    const waiting = run('write', agentOf('s2'), 'c2', {}, cancelled.signal)
+    await waitForQueueDepth(1)
+    cancelled.abort(new Error('turn cancelled'))
+    const settled = await waiting.then(
+      value => value,
+      () => ({ isError: true }) as ToolExecutionResult,
+    )
+    expect(settled.isError).toBe(true)
+    expect((await auditLines()).filter(line => line.event === 'queue_cancelled')).toHaveLength(1)
+    expect(await queueEntries()).toEqual([])
+
+    const next = run('write', agentOf('s3'), 'c3')
+    await waitForQueueDepth(1)
+    releaseBody('s1')
+    await first
+    expect((await next).isError).toBe(false)
+    expect(entered).toEqual(['s1', 's3'])
+  })
+
+  it('takes a queued Session out of the queue when its turn ends', { timeout: 20_000 }, async () => {
+    await mount({ queueTimeoutMs: 5000, pollMs: 25 })
+    holdBody('s1')
+    const first = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
+    const cancelled = new AbortController()
+    const waiting = run('write', agentOf('s2'), 'c2', {}, cancelled.signal)
+    await waitForQueueDepth(1)
+
+    ctx.emit('session/event', sessionOf('s2'), {
+      type: 'turn/end', seq: 0, time: Date.now(), data: { turn: 1, reason: { kind: 'cancelled' } },
+    } as never)
+    await vi.waitFor(async () => { expect(await queueEntries()).toEqual([]) }, { timeout: 10000, interval: 10 })
+
+    cancelled.abort(new Error('turn ended'))
+    const settled = await waiting.then(
+      value => value,
+      () => ({ isError: true }) as ToolExecutionResult,
+    )
+    expect(settled.isError).toBe(true)
+    releaseBody('s1')
+    await first
+    expect(entered).toEqual(['s1'])
+  })
+
+  it('re-enters the lease for a parallel call of the same Session', async () => {
+    await mount()
+    holdBody('s1')
+    const first = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
+    const second = run('write', agentOf('s1'), 'c2')
+    await waitForEnter(2)
+    expect(await queueEntries()).toEqual([])
+    expect(await record()).toMatchObject({ sessionId: 's1', generation: 1 })
+    releaseBody('s1')
+    expect((await first).isError).toBe(false)
+    expect((await second).isError).toBe(false)
+    expect(await record()).toBeUndefined()
+    expect((await auditLines()).filter(line => line.event === 'acquired')).toHaveLength(1)
+  })
+
+  it('reclaims the lease of a dead holder instead of waiting for it', async () => {
+    const deadPid = await exitedPid()
+    await mount()
+    const deceased = createWorkspaceLeaseGuard(ctx, {
+      home, hostId: 'test-host', pid: deadPid, idleMs: LEASE_IDLE_MS,
+    })
+    expect(await deceased.beforeTool({ name: 'write', arguments: {}, agent: agentOf('s1') })).toEqual({ held: true })
+    expect(await record()).toMatchObject({ sessionId: 's1', pid: deadPid, generation: 1 })
+
+    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
+    expect(entered).toEqual(['s2'])
+    expect(await record()).toBeUndefined()
+    const reclaimed = (await auditLines()).filter(line => line.event === 'reclaimed').at(-1)
+    expect(reclaimed).toMatchObject({ sessionId: 's2', holder: 's1', generation: 2 })
+  })
+
+  it('drops a queue entry left by a dead process', async () => {
+    const deadPid = await exitedPid()
+    await mount()
+    // One write before the queue exists, so the guard resolves the checkout key.
+    await run('write', agentOf('s0'), 'c0')
+    const key = await leaseKey()
+    if (key === undefined) throw new Error('expected a lease directory')
+    const now = new Date().toISOString()
+    await writeFile(join(home, 'workspaces', key, 'lease-queue.json'), `${JSON.stringify({
+      version: 1,
+      nextSeq: 2,
+      entries: [{
+        seq: 1, sessionId: 'ghost', operation: 'write', pid: deadPid, hostId: 'test-host',
+        enqueuedAt: now, heartbeatAt: now,
+      }],
+    })}\n`, 'utf8')
+
+    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
+    expect(entered).toEqual(['s0', 's2'])
+    expect(await queueEntries()).toEqual([])
+  })
+
+  it('waits behind a version-1 record written by the previous build', async () => {
+    await mount({ queueTimeoutMs: 150, pollMs: 20 })
+    // A record with exactly the fields the turn-level build wrote: no queue,
+    // no call id, just the durable v1 lease record.
+    await run('write', agentOf('s0'), 'c0')
+    const key = await leaseKey()
+    if (key === undefined) throw new Error('expected a lease directory')
+    const now = Date.now()
+    await writeFile(join(home, 'workspaces', key, 'lease.json'), `${JSON.stringify({
+      version: 1,
+      root: project,
+      sessionId: 'legacy',
+      generation: 7,
+      acquiredAt: new Date(now).toISOString(),
+      renewedAt: new Date(now).toISOString(),
+      lastOperation: 'edit',
+      idleExpiresAt: new Date(now + 60_000).toISOString(),
+      maxExpiresAt: new Date(now + LEASE_MAX_MS).toISOString(),
       hostId: 'test-host',
       pid: 4242,
-      mode: 'enforce',
-      idleMs: LEASE_IDLE_MS,
-    })
-    ctx.tools.register(defineContentToolFixture({
-      name: 'write',
-      description: 'records one write',
-      parameters: {},
-      execute(_args, exec) {
-        writes.push(String(exec.agent?.session.id))
-        return Promise.resolve([{ type: 'text', text: 'wrote' }])
-      },
-    }))
-    ctx.tools.register(defineContentToolFixture({
-      name: 'workspace_sessions',
-      description: 'archives one Session',
-      parameters: { action: { type: 'string', required: true }, sessionId: { type: 'string' } },
-      execute(args) {
-        if (archiveFails) throw new Error('archive refused')
-        return Promise.resolve([{ type: 'text', text: `archived ${String(args.sessionId)}` }])
-      },
-    }))
-  }
+    }, undefined, 2)}\n`, 'utf8')
+    const before = JSON.parse(await readFile(join(home, 'workspaces', key, 'lease.json'), 'utf8')) as Record<string, unknown>
+
+    const refused = await run('write', agentOf('s2'), 'c2')
+    expect(refused.isError).toBe(true)
+    expect(refused.error?.info?.code).toBe(WORKSPACE_LEASE_QUEUE_TIMEOUT)
+    // A live holder keeps the record: the wait ends with a refusal, and the
+    // record the previous build wrote is read and left untouched.
+    expect(JSON.parse(await readFile(join(home, 'workspaces', key, 'lease.json'), 'utf8'))).toEqual(before)
+  })
+})
+
+describe('turn end, disposal, and archive release', () => {
+  it('releases on turn end through the production listener', async () => {
+    await mount()
+    holdBody('s1')
+    const call = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
+    ctx.emit('session/event', sessionOf('s1'), {
+      type: 'turn/end', seq: 0, time: Date.now(), data: { turn: 1, reason: { kind: 'completed' } },
+    } as never)
+    await vi.waitFor(async () => { expect(await record()).toBeUndefined() }, { timeout: 10000, interval: 10 })
+    const released = (await auditLines()).filter(line => line.event === 'released')
+    expect(released.at(-1)).toMatchObject({ sessionId: 's1', operation: 'turn end' })
+    releaseBody('s1')
+    await call
+  })
+
+  it('releases on agent disposal', async () => {
+    await mount()
+    holdBody('s1')
+    const call = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
+    ctx.emit('agent/disposed', { agent: agentOf('s1') } as never)
+    await vi.waitFor(async () => { expect(await record()).toBeUndefined() }, { timeout: 10000, interval: 10 })
+    const released = (await auditLines()).filter(line => line.event === 'released')
+    expect(released.at(-1)).toMatchObject({ sessionId: 's1', operation: 'session disposed' })
+    releaseBody('s1')
+    await call
+  })
 
   it('releases the archived Session lease and audits the operation', async () => {
-    await mountProductionOnly()
-    await run('write', agentOf('s1'))
-    expect(await record()).toMatchObject({ sessionId: 's1' })
+    await mount()
+    holdBody('s1')
+    const call = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
     const archived = await run('workspace_sessions', agentOf('s2'), 'c2', { action: 'archive', sessionId: 's1' })
     expect(archived.isError).toBe(false)
     expect(await record()).toBeUndefined()
     const released = (await auditLines()).filter(line => line.event === 'released')
     expect(released.at(-1)).toMatchObject({ sessionId: 's1', operation: 'session archived' })
-    expect((await run('write', agentOf('s2'), 'c3')).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's2', generation: 1 })
-  })
-
-  it('keeps other leases when the archived Session holds none', async () => {
-    await mountProductionOnly()
-    await run('write', agentOf('s1'))
-    const archived = await run('workspace_sessions', agentOf('s2'), 'c2', { action: 'archive', sessionId: 's3' })
-    expect(archived.isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's1' })
-    expect((await auditLines()).filter(line => line.event === 'released')).toHaveLength(0)
+    releaseBody('s1')
+    await call
   })
 
   it('does not release when the archive call itself failed', async () => {
-    await mountProductionOnly()
-    await run('write', agentOf('s1'))
+    await mount()
+    holdBody('s1')
+    const call = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
     archiveFails = true
     const archived = await run('workspace_sessions', agentOf('s2'), 'c2', { action: 'archive', sessionId: 's1' })
     expect(archived.isError).toBe(true)
     expect(await record()).toMatchObject({ sessionId: 's1' })
-    expect((await auditLines()).filter(line => line.event === 'released')).toHaveLength(0)
-  })
-
-  it('keeps the archive result when the release audit cannot be written', async () => {
-    await mountProductionOnly()
-    await run('write', agentOf('s1'))
-    // Replace the audit directory with a file: the release removes the record
-    // and then fails to append its audit line, which must not fail the archive.
-    await rm(join(home, 'logs'), { recursive: true, force: true })
-    await writeFile(join(home, 'logs'), 'not a directory')
-    const archived = await run('workspace_sessions', agentOf('s2'), 'c2', { action: 'archive', sessionId: 's1' })
-    expect(archived.isError).toBe(false)
-    expect(await record()).toBeUndefined()
-  })
-
-  it('ignores non-archive and malformed workspace_sessions calls', async () => {
-    await mountProductionOnly()
-    await run('write', agentOf('s1'))
-    expect((await run('workspace_sessions', agentOf('s2'), 'c2', { action: 'list' })).isError).toBe(false)
-    expect((await run('workspace_sessions', agentOf('s2'), 'c3', { action: 'archive' })).isError).toBe(false)
-    expect((await run('workspace_sessions', agentOf('s2'), 'c4', { action: 'archive', sessionId: '   ' })).isError).toBe(false)
-    expect(await record()).toMatchObject({ sessionId: 's1' })
-    expect((await auditLines()).filter(line => line.event === 'released')).toHaveLength(0)
+    expect((await auditLines()).filter(line => line.event === 'released')).toEqual([])
+    releaseBody('s1')
+    await call
   })
 })
 
-describe('mountWorkspaceLease wiring', () => {
-  /**
-   * Mount the production wiring — `mountWorkspaceLease`, not a re-implementation
-   * of its listeners — over the shared ctx, so the registered `session/event`
-   * and `agent/disposed` handlers are the ones the tests exercise.
-   */
-  async function mountProductionWiring(): Promise<void> {
+describe('fencing after a lost record', () => {
+  it('refuses a Session whose open call lost the record to another Session', async () => {
     await mount()
-    sessionEventListeners = []
-    turnEndReleases = []
-    mountWorkspaceLease(ctx, {
-      home,
-      now: () => clock,
+    holdBody('s1')
+    const call = run('write', agentOf('s1'), 'c1')
+    await waitForEnter(1)
+    const key = await leaseKey()
+    if (key === undefined) throw new Error('expected a lease directory')
+    // Another Session's record replaces the open one, as a reclaim after the
+    // maximum life would.
+    const now = Date.now()
+    await writeFile(join(home, 'workspaces', key, 'lease.json'), `${JSON.stringify({
+      version: 1,
+      root: project,
+      sessionId: 's2',
+      generation: 9,
+      acquiredAt: new Date(now).toISOString(),
+      renewedAt: new Date(now).toISOString(),
+      lastOperation: 'edit',
+      idleExpiresAt: new Date(now + 60_000).toISOString(),
+      maxExpiresAt: new Date(now + LEASE_MAX_MS).toISOString(),
       hostId: 'test-host',
       pid: 4242,
-      mode: 'enforce',
-      idleMs: LEASE_IDLE_MS,
-    })
-  }
+    })}\n`, 'utf8')
 
-  it('releases through the real session/event wiring on turn end and audits the operation', async () => {
-    await mountProductionWiring()
-    await run('write', agentOf('s1'))
-    ctx.emit('session/event', { id: 's1', header: { cwd: project }, snapshotEvents: () => [], inheritedEventCount: 0 } as never, {
-      type: 'turn/end', seq: 0, time: clock, data: { turn: 1, reason: { kind: 'completed' } },
-    } as never)
-    // The production listener releases without awaiting; let it settle.
-    await vi.waitFor(async () => {
-      expect(await record()).toBeUndefined()
-    })
-    const released = (await auditLines()).filter(line => line.event === 'released')
-    expect(released).toHaveLength(1)
-    expect(released[0]).toMatchObject({ sessionId: 's1', operation: 'turn end' })
-    expect((await run('write', agentOf('s2'), 'c2')).isError).toBe(false)
-  })
-
-  it('releases through the real agent/disposed wiring', async () => {
-    await mountProductionWiring()
-    await run('write', agentOf('s1'))
-    ctx.emit('agent/disposed', { agent: agentOf('s1') } as never)
-    await vi.waitFor(async () => {
-      expect(await record()).toBeUndefined()
-    })
-    const released = (await auditLines()).filter(line => line.event === 'released')
-    expect(released.at(-1)).toMatchObject({ sessionId: 's1', operation: 'session disposed' })
+    const lost = await run('write', agentOf('s1'), 'c2')
+    expect(lost.isError).toBe(true)
+    expect(lost.error?.info?.code).toBe(WORKSPACE_LEASE_LOST)
+    const text = lost.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+    expect(text).toContain('WORKSPACE_LEASE_LOST')
+    expect(text).toContain('holder:     session s2')
+    expect(text).toContain('retry once after that moment')
+    releaseBody('s1')
+    await call
   })
 })

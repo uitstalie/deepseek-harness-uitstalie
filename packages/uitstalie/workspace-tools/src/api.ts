@@ -22,9 +22,9 @@ import type {} from '@deepseek-ai/dsh-store-atom'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { createWorkspaceTasksService } from './service.ts'
 import {
-  LEASE_ACTIVE_TURN_GRACE_MS,
   LEASE_IDLE_MS,
   LEASE_MAX_MS,
+  LEASE_QUEUE_TIMEOUT_MS,
   defaultLeaseHome,
   mountWorkspaceLease,
 } from './lease.ts'
@@ -71,11 +71,10 @@ export interface Config {
   /** Hard cap on one lease's life, in milliseconds. */
   maxMs?: number
   /**
-   * Idle window granted while the holder's turn is open in this process, in
-   * milliseconds; a long-running turn keeps its lease instead of losing it to
-   * the idle window.
+   * How long one write call waits in the FIFO queue before it fails, in
+   * milliseconds; `0` refuses a taken lease instead of queueing for it.
    */
-  activeTurnGraceMs?: number
+  queueTimeoutMs?: number
   /** Deliver a task-bound completion notice to a dispatcher when its executor turn ends. */
   completionNotice?: CompletionNoticeMode
   /** Most notices one task may receive inside `noticeTtlMs`. */
@@ -91,7 +90,7 @@ export const Config: z<Config> = z.object({
   mode: z.union([z.const('enforce'), z.const('observe')]).default('enforce'),
   idleMs: z.number().step(1).min(60_000).default(LEASE_IDLE_MS),
   maxMs: z.number().step(1).min(60_000).default(LEASE_MAX_MS),
-  activeTurnGraceMs: z.number().step(1).min(60_000).default(LEASE_ACTIVE_TURN_GRACE_MS),
+  queueTimeoutMs: z.number().step(1).min(0).default(LEASE_QUEUE_TIMEOUT_MS),
   completionNotice: z.union([z.const('off'), z.const('task-bound')]).default('off'),
   noticeMaxPerTask: z.number().step(1).min(1).default(DEFAULT_NOTICE_MAX_PER_TASK),
   noticeTtlMs: z.number().step(1).min(1).default(DEFAULT_NOTICE_TTL_MS),
@@ -114,7 +113,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     mode: config.mode ?? 'enforce',
     idleMs: config.idleMs ?? LEASE_IDLE_MS,
     maxMs: config.maxMs ?? LEASE_MAX_MS,
-    activeTurnGraceMs: config.activeTurnGraceMs ?? LEASE_ACTIVE_TURN_GRACE_MS,
+    queueTimeoutMs: config.queueTimeoutMs ?? LEASE_QUEUE_TIMEOUT_MS,
   })
   mountCompletionNotices(ctx, {
     mode: config.completionNotice ?? 'off',
