@@ -62,10 +62,13 @@ export const WORKSPACE_LEASE_LOST = 'WORKSPACE_LEASE_LOST'
 
 /** Tools that only read workspace content or harness state, so they never acquire. */
 const READ_TOOLS: ReadonlySet<string> = new Set([
-  'read', 'glob', 'grep', 'list',
+  'read', 'read_image', 'glob', 'grep',
   'session_search', 'session_event_read', 'session_event_search', 'session_trace', 'session_event_trace',
   'memory_search', 'web_search', 'web_fetch',
   'list_agents', 'list_subagent_models', 'wait_agent',
+  'job_list', 'job_output',
+  'cordis_inspect', 'load_workspace_dependencies',
+  'get_goal', 'personality_analyze',
   'ask_user_question', 'ask_user_question_plus', 'todo_write', 'present', 'skill', 'count_tokens',
 ])
 
@@ -74,6 +77,7 @@ const EXEMPT_TOOLS: ReadonlySet<string> = new Set([
   'memory_write', 'memory_forget',
   'workspace_intents', 'workspace_tasks', 'workspace_message', 'workspace_artifacts',
   'send_message', 'subagent', 'subagent_fork', 'workflow',
+  'create_goal', 'update_goal', 'job_kill', 'personality_apply',
   'schedule_create', 'schedule_edit', 'schedule_list', 'schedule_view',
 ])
 
@@ -82,24 +86,81 @@ const EXEMPT_SESSION_ACTIONS: ReadonlySet<string> = new Set([
   'list', 'get', 'run', 'start', 'append', 'prompt', 'stop', 'abort', 'fork', 'archive', 'compact', 'delete',
 ])
 
+/** `persona_state` actions that only read the recorded persona state. */
+const READ_PERSONA_ACTIONS: ReadonlySet<string> = new Set([
+  'show',
+])
+
+/** `plugin_manager` actions that only read the installed profile. */
+const READ_PLUGIN_ACTIONS: ReadonlySet<string> = new Set([
+  'list_plugins', 'list_bundles', 'list_version_exemptions',
+])
+
+/**
+ * `plugin_manager` actions that change the profile, never checkout content.
+ * Installing or removing a plugin runs that plugin's install scripts, which is
+ * the profile owner's decision and not another Session's checkout: serializing
+ * it behind a workspace write would refuse a profile change for a writer that
+ * touches no files in that checkout.
+ */
+const PROFILE_PLUGIN_ACTIONS: ReadonlySet<string> = new Set([
+  'install_bundle', 'set_plugin', 'set_bundle', 'remove_bundle', 'set_version_exemption',
+])
+
+/** Tools whose class comes from the call's action rather than from the name alone. */
+const ACTION_SCOPED_TOOLS: ReadonlySet<string> = new Set([
+  'workspace_sessions', 'persona_state', 'plugin_manager',
+])
+
+/**
+ * Read the action selector out of a call's arguments.
+ * @param args - parsed call arguments of any shape.
+ * @returns the action name, or undefined when the call carries none.
+ */
+function actionOf(args: unknown): string | undefined {
+  const action = (args as { action?: unknown } | null)?.action
+  return typeof action === 'string' ? action : undefined
+}
+
 /**
  * Classify one tool call.
  *
  * An unknown tool is a write: the failure this lease prevents is a missed
- * write, so the default must be restrictive. `workspace_sessions` is the one
- * name whose class depends on its action.
+ * write, so the default must be restrictive. `workspace_sessions`,
+ * `persona_state`, and `plugin_manager` are the names whose class depends on
+ * their action; a missing or unrecognized action falls back to write.
  * @param name - registered tool name.
  * @param args - parsed call arguments, read only for the action selector.
  * @returns the lease class of the call.
  */
 export function classifyLeaseTool(name: string, args: unknown): LeaseClass {
+  const action = actionOf(args)
   if (name === 'workspace_sessions') {
-    const action = (args as { action?: unknown } | null)?.action
-    return typeof action === 'string' && EXEMPT_SESSION_ACTIONS.has(action) ? 'exempt' : 'write'
+    return action !== undefined && EXEMPT_SESSION_ACTIONS.has(action) ? 'exempt' : 'write'
+  }
+  if (name === 'persona_state') {
+    return action !== undefined && READ_PERSONA_ACTIONS.has(action) ? 'read' : 'write'
+  }
+  if (name === 'plugin_manager') {
+    if (action !== undefined && READ_PLUGIN_ACTIONS.has(action)) return 'read'
+    if (action !== undefined && PROFILE_PLUGIN_ACTIONS.has(action)) return 'exempt'
+    return 'write'
   }
   if (READ_TOOLS.has(name)) return 'read'
   if (EXEMPT_TOOLS.has(name)) return 'exempt'
   return 'write'
+}
+
+/**
+ * Whether {@link classifyLeaseTool} resolves a name from an explicit entry
+ * instead of the write default. A tool that lands without a decision keeps the
+ * restrictive default; the classification tests use this predicate to fail
+ * before that default silently serializes a read behind a writer.
+ * @param name - registered tool name.
+ * @returns true for an explicit read, exempt, or action-scoped entry.
+ */
+export function hasExplicitLeaseClass(name: string): boolean {
+  return ACTION_SCOPED_TOOLS.has(name) || READ_TOOLS.has(name) || EXEMPT_TOOLS.has(name)
 }
 
 /** One durable lease record. */
